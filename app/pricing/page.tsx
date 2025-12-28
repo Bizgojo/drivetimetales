@@ -1,351 +1,263 @@
-'use client'
+'use client';
 
-import Link from 'next/link'
-import { useState } from 'react'
-import { useUser } from '../layout'
+import React, { useState } from 'react';
+import Link from 'next/link';
+import { Header } from '@/components/ui/Header';
+import { useAuth } from '@/contexts/AuthContext';
+import { useCheckout } from '@/hooks/useData';
 
 export default function PricingPage() {
-  const [billingInterval, setBillingInterval] = useState<'monthly' | 'annual'>('monthly')
-  const [loading, setLoading] = useState<string | null>(null)
-  const { user } = useUser()
+  const { user } = useAuth();
+  const { checkout, loading: checkoutLoading, error: checkoutError } = useCheckout();
+  const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('annual');
+  const [activeSection, setActiveSection] = useState<'subscriptions' | 'packs'>('subscriptions');
 
-  const handleCheckout = async (productId: string) => {
-    setLoading(productId)
-    try {
-      const response = await fetch('/api/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          productId,
-          userEmail: user?.email,
-          userName: user?.name,
-        }),
-      })
-      
-      const data = await response.json()
-      
-      if (data.url) {
-        window.location.href = data.url
-      } else {
-        alert('Failed to start checkout. Please try again.')
-      }
-    } catch (error) {
-      console.error('Checkout error:', error)
-      alert('Failed to start checkout. Please try again.')
-    } finally {
-      setLoading(null)
-    }
-  }
-
-  const subscriptionTiers = [
+  const plans = [
     {
       id: 'test_driver',
       name: 'Test Driver',
       icon: '🚗',
-      description: 'Try before you commit',
-      monthlyPrice: 0,
-      annualPrice: 0,
-      productId: null,
-      features: [
-        '2 hours/month streaming',
-        'Ad-supported playback',
-        'New releases delayed 30 days',
-        'Access to sampler shelf',
-      ],
-      limitations: [
-        'No offline downloads',
-        'Ads before stories',
-      ],
-      cta: 'Current Plan',
-      ctaDisabled: true,
-      highlight: false,
+      monthlyPrice: 2.99,
+      annualPrice: 29.99,
+      credits: 12,
+      perMonth: true,
     },
     {
       id: 'commuter',
       name: 'Commuter',
       icon: '🚙',
-      description: 'For daily listeners',
       monthlyPrice: 7.99,
-      annualPrice: 59.99,
-      annualSavings: 36,
-      productIdMonthly: 'commuter_monthly',
-      productIdAnnual: 'commuter_annual',
-      features: [
-        'Unlimited streaming',
-        'Ad-free experience',
-        'Instant new releases',
-        'Full catalog access',
-        'Listen on any device',
-      ],
-      limitations: [
-        'No offline downloads',
-      ],
-      cta: 'Subscribe',
-      ctaDisabled: false,
-      highlight: true,
-      badge: 'Most Popular',
+      annualPrice: 79.99,
+      credits: 45,
+      perMonth: true,
+      badge: 'BEST VALUE',
     },
     {
       id: 'road_warrior',
       name: 'Road Warrior',
       icon: '🚛',
-      description: 'The complete experience',
-      monthlyPrice: 12.99,
-      annualPrice: 99.99,
-      annualSavings: 56,
-      productIdMonthly: 'road_warrior_monthly',
-      productIdAnnual: 'road_warrior_annual',
-      features: [
-        'Everything in Commuter',
-        'Offline downloads',
-        'Up to 3 devices',
-        '48-hour early access',
-        'Exclusive content',
-        'Behind-the-scenes extras',
-      ],
-      limitations: [],
-      cta: 'Subscribe',
-      ctaDisabled: false,
-      highlight: false,
+      monthlyPrice: 14.99,
+      annualPrice: 149.99,
+      credits: 'Unlimited',
+      perMonth: true,
     },
-  ]
+  ];
 
-  const creditPacks = [
-    { id: 'credits_small', name: 'Small Pack', credits: 10, hours: '2.5 hrs', price: 3.99, perHour: 1.60 },
-    { id: 'credits_medium', name: 'Medium Pack', credits: 25, hours: '6.25 hrs', price: 8.99, perHour: 1.44 },
-    { id: 'credits_large', name: 'Large Pack', credits: 50, hours: '12.5 hrs', price: 14.99, perHour: 1.20, badge: 'Best Value' },
-  ]
+  const packs = [
+    { id: 'small', name: 'Small Pack', icon: '📦', credits: 10, hours: '2.5', price: 4.99, perCredit: 0.50 },
+    { id: 'medium', name: 'Medium Pack', icon: '📦', credits: 25, hours: '6.5', price: 9.99, perCredit: 0.40, badge: 'POPULAR' },
+    { id: 'large', name: 'Large Pack', icon: '📦', credits: 60, hours: '15', price: 19.99, perCredit: 0.33 },
+  ];
 
-  const individualPrices = [
-    { duration: '15 min', price: 0.69 },
-    { duration: '30 min', price: 1.29 },
-    { duration: '1 hour', price: 2.49 },
-    { duration: '3 hours', price: 6.99 },
-  ]
+  const handleSubscribe = (planId: string) => {
+    const productId = `${planId}_${billingCycle === 'monthly' ? 'monthly' : 'annual'}`;
+    checkout('subscription', productId);
+  };
+
+  const handleBuyPack = (packId: string) => {
+    checkout('credit_pack', packId);
+  };
 
   return (
-    <div className="py-8 px-4">
-      <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">Choose Your Journey</h1>
-          <p className="text-slate-400">Three ways to enjoy Drive Time Tales</p>
+    <div className="min-h-screen bg-gray-950 text-white">
+      <Header showBack />
+      
+      <div className="px-4 py-5">
+        {/* User Credits Display */}
+        {user && (
+          <div className="mb-4 p-3 bg-green-500/20 border border-green-500/30 rounded-xl">
+            <p className="text-green-400 text-sm text-center">
+              💎 You have <span className="font-bold">{user.credits}</span> credits
+              {user.subscription_type !== 'free' && ` • ${user.subscription_type.replace('_', ' ')} plan`}
+            </p>
+          </div>
+        )}
+
+        {checkoutError && (
+          <div className="mb-4 p-3 bg-red-500/20 border border-red-500/30 rounded-xl">
+            <p className="text-red-400 text-sm text-center">{checkoutError}</p>
+          </div>
+        )}
+
+        <h1 className="text-2xl font-bold text-white mb-2">💳 Pricing</h1>
+        <p className="text-white text-sm mb-6">Choose the plan that fits your drive</p>
+
+        {/* Section Toggle */}
+        <div className="flex gap-2 mb-6">
+          <button
+            onClick={() => setActiveSection('subscriptions')}
+            className={`flex-1 py-3 rounded-xl font-medium ${
+              activeSection === 'subscriptions' 
+                ? 'bg-orange-500 text-white' 
+                : 'bg-gray-800 text-white'
+            }`}
+          >
+            Subscriptions
+          </button>
+          <button
+            onClick={() => setActiveSection('packs')}
+            className={`flex-1 py-3 rounded-xl font-medium ${
+              activeSection === 'packs' 
+                ? 'bg-orange-500 text-white' 
+                : 'bg-gray-800 text-white'
+            }`}
+          >
+            Freedom Packs
+          </button>
         </div>
 
-        {/* ==================== SUBSCRIPTIONS ==================== */}
-        <section className="mb-12">
-          <h2 className="text-xl font-bold text-white mb-4 text-center">📅 Subscriptions</h2>
-          <p className="text-slate-400 text-center mb-6">Ongoing access for regular listeners</p>
-
-          {/* Billing Toggle */}
-          <div className="flex justify-center mb-8">
-            <div className="bg-slate-800 rounded-full p-1 flex">
+        {/* Subscriptions Section */}
+        {activeSection === 'subscriptions' && (
+          <>
+            {/* Billing Toggle */}
+            <div className="flex items-center justify-center gap-3 mb-6">
+              <span className={billingCycle === 'monthly' ? 'text-white' : 'text-gray-500'}>Monthly</span>
               <button
-                onClick={() => setBillingInterval('monthly')}
-                className={`px-6 py-2 rounded-full text-sm font-semibold transition-colors ${
-                  billingInterval === 'monthly'
-                    ? 'bg-orange-500 text-black'
-                    : 'text-slate-400 hover:text-white'
-                }`}
+                onClick={() => setBillingCycle(billingCycle === 'monthly' ? 'annual' : 'monthly')}
+                className="w-14 h-8 bg-gray-800 rounded-full relative"
               >
-                Monthly
+                <div className={`w-6 h-6 bg-orange-500 rounded-full absolute top-1 transition-all ${
+                  billingCycle === 'annual' ? 'right-1' : 'left-1'
+                }`} />
               </button>
-              <button
-                onClick={() => setBillingInterval('annual')}
-                className={`px-6 py-2 rounded-full text-sm font-semibold transition-colors ${
-                  billingInterval === 'annual'
-                    ? 'bg-orange-500 text-black'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                Annual <span className="text-green-400 ml-1">Save 37%</span>
-              </button>
+              <span className={billingCycle === 'annual' ? 'text-white' : 'text-gray-500'}>
+                Annual
+                <span className="ml-1 text-green-400 text-xs">Save 17%</span>
+              </span>
             </div>
-          </div>
 
-          {/* Subscription Cards */}
-          <div className="grid md:grid-cols-3 gap-6">
-            {subscriptionTiers.map((tier) => {
-              const productId = billingInterval === 'monthly' 
-                ? (tier as any).productIdMonthly 
-                : (tier as any).productIdAnnual
-              const isLoading = loading === productId
-              
-              return (
-                <div
-                  key={tier.id}
-                  className={`relative rounded-2xl p-6 ${
-                    tier.highlight
-                      ? 'bg-gradient-to-b from-orange-500/20 to-slate-800 border-2 border-orange-500'
-                      : 'bg-slate-800/50 border border-slate-700'
-                  }`}
-                >
-                  {tier.badge && (
-                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-orange-500 text-black text-xs font-bold rounded-full">
-                      {tier.badge}
-                    </div>
-                  )}
-
-                  <div className="text-center mb-4">
-                    <span className="text-4xl block mb-2">{tier.icon}</span>
-                    <h3 className="text-xl font-bold text-white">{tier.name}</h3>
-                    <p className="text-slate-400 text-sm">{tier.description}</p>
-                  </div>
-
-                  <div className="text-center mb-6">
-                    {tier.monthlyPrice === 0 ? (
-                      <div className="text-3xl font-bold text-white">Free</div>
-                    ) : (
-                      <>
-                        <div className="text-3xl font-bold text-white">
-                          ${billingInterval === 'monthly' ? tier.monthlyPrice : tier.annualPrice}
-                          <span className="text-lg text-slate-400 font-normal">
-                            /{billingInterval === 'monthly' ? 'mo' : 'yr'}
-                          </span>
-                        </div>
-                        {billingInterval === 'annual' && tier.annualSavings && (
-                          <p className="text-green-400 text-sm mt-1">
-                            Save ${tier.annualSavings}/year • ${(tier.annualPrice / 12).toFixed(2)}/mo
-                          </p>
-                        )}
-                      </>
-                    )}
-                  </div>
-
-                  <ul className="space-y-2 mb-6">
-                    {tier.features.map((feature, i) => (
-                      <li key={i} className="flex items-start gap-2 text-sm">
-                        <span className="text-green-400 mt-0.5">✓</span>
-                        <span className="text-slate-300">{feature}</span>
-                      </li>
-                    ))}
-                    {tier.limitations.map((limitation, i) => (
-                      <li key={i} className="flex items-start gap-2 text-sm">
-                        <span className="text-slate-500 mt-0.5">✗</span>
-                        <span className="text-slate-500">{limitation}</span>
-                      </li>
-                    ))}
-                  </ul>
-
-                  <button
-                    onClick={() => productId && handleCheckout(productId)}
-                    disabled={tier.ctaDisabled || isLoading}
-                    className={`w-full py-3 rounded-xl font-semibold transition-colors ${
-                      tier.ctaDisabled
-                        ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
-                        : tier.highlight
-                        ? 'bg-orange-500 hover:bg-orange-400 text-black'
-                        : 'bg-slate-700 hover:bg-slate-600 text-white'
+            {/* Plans */}
+            <div className="space-y-4">
+              {plans.map((plan) => {
+                const price = billingCycle === 'monthly' ? plan.monthlyPrice : plan.annualPrice;
+                const monthlyEquiv = billingCycle === 'annual' ? (plan.annualPrice / 12).toFixed(2) : null;
+                const savings = billingCycle === 'annual' ? ((plan.monthlyPrice * 12) - plan.annualPrice).toFixed(2) : null;
+                
+                return (
+                  <div 
+                    key={plan.name}
+                    className={`p-4 bg-gray-900 border rounded-xl ${
+                      plan.badge ? 'border-orange-500' : 'border-gray-800'
                     }`}
                   >
-                    {isLoading ? 'Loading...' : (user?.subscriptionTier === tier.id ? 'Current Plan' : tier.cta)}
-                  </button>
-                </div>
-              )
-            })}
-          </div>
+                    {plan.badge && (
+                      <span className="inline-block px-2 py-1 bg-orange-500 text-white text-xs font-bold rounded mb-2">
+                        {plan.badge}
+                      </span>
+                    )}
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-2xl">{plan.icon}</span>
+                        <span className="text-white font-bold text-lg">{plan.name}</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-white text-2xl font-bold">${price}</span>
+                        <span className="text-white text-sm">/{billingCycle === 'monthly' ? 'mo' : 'yr'}</span>
+                      </div>
+                    </div>
+                    
+                    {monthlyEquiv && (
+                      <p className="text-white text-sm mb-1">(${monthlyEquiv}/mo)</p>
+                    )}
+                    
+                    <p className="text-orange-400 text-sm mb-2">
+                      💎 {plan.credits} credits{plan.perMonth ? '/month' : ''}
+                    </p>
+                    
+                    {savings && (
+                      <p className="text-green-400 text-sm">
+                        Save ${savings}/year vs monthly
+                      </p>
+                    )}
+                    
+                    <button 
+                      onClick={() => handleSubscribe(plan.id)}
+                      disabled={checkoutLoading}
+                      className="w-full mt-3 py-3 bg-orange-500 text-white font-bold rounded-xl disabled:opacity-50"
+                    >
+                      {checkoutLoading ? 'Loading...' : 'Subscribe'}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
 
-          {/* Breakeven Info */}
-          <p className="text-center text-slate-500 text-sm mt-4">
-            💡 Commuter pays for itself at ~5 hours/month of listening
-          </p>
-        </section>
+        {/* Freedom Packs Section */}
+        {activeSection === 'packs' && (
+          <>
+            <p className="text-white text-sm mb-4">
+              No subscription? No problem. Buy credits when you need them.
+            </p>
 
-        {/* ==================== CREDIT PACKS ==================== */}
-        <section className="mb-12">
-          <h2 className="text-xl font-bold text-white mb-4 text-center">🎟️ Credit Packs</h2>
-          <p className="text-slate-400 text-center mb-6">Pay-as-you-go streaming • 1 credit = 15 minutes • Credits never expire</p>
-
-          <div className="grid md:grid-cols-3 gap-4 max-w-3xl mx-auto">
-            {creditPacks.map((pack) => {
-              const isLoading = loading === pack.id
-              return (
-                <div
-                  key={pack.id}
-                  className={`relative bg-slate-800/50 border rounded-xl p-5 text-center ${
-                    pack.badge ? 'border-green-500' : 'border-slate-700'
+            <div className="space-y-4">
+              {packs.map((pack) => (
+                <div 
+                  key={pack.name}
+                  className={`p-4 bg-gray-900 border rounded-xl ${
+                    pack.badge ? 'border-orange-500' : 'border-gray-800'
                   }`}
                 >
                   {pack.badge && (
-                    <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-2 py-0.5 bg-green-500 text-black text-xs font-bold rounded">
+                    <span className="inline-block px-2 py-1 bg-orange-500 text-white text-xs font-bold rounded mb-2">
                       {pack.badge}
-                    </div>
+                    </span>
                   )}
-                  <h3 className="font-bold text-white mb-1">{pack.name}</h3>
-                  <p className="text-2xl font-bold text-orange-400 mb-1">${pack.price}</p>
-                  <p className="text-slate-400 text-sm mb-2">{pack.credits} credits • {pack.hours}</p>
-                  <p className="text-slate-500 text-xs mb-3">${pack.perHour.toFixed(2)}/hour</p>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xl">{pack.icon}</span>
+                      <div>
+                        <span className="text-white font-bold text-lg block">{pack.name}</span>
+                        <span className="text-white text-sm">💎 {pack.credits} credits</span>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-white text-2xl font-bold">${pack.price}</span>
+                    </div>
+                  </div>
+                  
+                  <p className="text-white text-sm mb-1">Up to {pack.hours} hours of content</p>
+                  <p className="text-green-400 text-sm">${pack.perCredit.toFixed(2)}/credit</p>
+                  
                   <button 
-                    onClick={() => handleCheckout(pack.id)}
-                    disabled={isLoading}
-                    className="w-full py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-semibold disabled:opacity-50"
+                    onClick={() => handleBuyPack(pack.id)}
+                    disabled={checkoutLoading}
+                    className="w-full mt-3 py-3 bg-orange-500 text-white font-bold rounded-xl disabled:opacity-50"
                   >
-                    {isLoading ? 'Loading...' : 'Buy Credits'}
+                    {checkoutLoading ? 'Loading...' : 'Buy Pack'}
                   </button>
-                </div>
-              )
-            })}
-          </div>
-        </section>
-
-        {/* ==================== INDIVIDUAL PURCHASE ==================== */}
-        <section className="mb-12">
-          <h2 className="text-xl font-bold text-white mb-4 text-center">🎁 Own Forever</h2>
-          <p className="text-slate-400 text-center mb-6">Buy individual stories • Download included • Yours permanently</p>
-
-          <div className="bg-slate-800/30 border border-slate-700 rounded-xl p-6 max-w-2xl mx-auto">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {individualPrices.map((item) => (
-                <div key={item.duration} className="text-center">
-                  <p className="text-slate-400 text-sm mb-1">{item.duration}</p>
-                  <p className="text-xl font-bold text-white">${item.price.toFixed(2)}</p>
                 </div>
               ))}
             </div>
-            <p className="text-center text-slate-500 text-sm mt-4">
-              Look for the "Buy" button on any story page
-            </p>
-          </div>
-        </section>
 
-        {/* ==================== REFERRAL PROGRAM ==================== */}
-        <section className="mb-8">
-          <div className="bg-gradient-to-r from-purple-500/20 to-orange-500/20 border border-purple-500/30 rounded-xl p-6 max-w-3xl mx-auto text-center">
-            <h2 className="text-xl font-bold text-white mb-2">🎉 Share & Earn</h2>
-            <p className="text-slate-300 mb-4">
-              Give a friend their first month for $0.99. You get a <span className="text-green-400 font-semibold">free month</span> + <span className="text-orange-400 font-semibold">$3 store credit</span>!
-            </p>
-            {user?.isLoggedIn ? (
-              <button className="px-6 py-2 bg-purple-600 hover:bg-purple-500 text-white font-semibold rounded-lg">
-                Get My Referral Link
-              </button>
-            ) : (
-              <Link href="/signup" className="px-6 py-2 bg-purple-600 hover:bg-purple-500 text-white font-semibold rounded-lg inline-block">
-                Sign Up to Share
-              </Link>
-            )}
-          </div>
-        </section>
+            {/* Why Freedom Packs */}
+            <div className="mt-6 p-4 bg-gray-900 border border-gray-800 rounded-xl">
+              <h3 className="text-white font-bold mb-2">Why Freedom Packs?</h3>
+              <ul className="text-white text-sm space-y-1">
+                <li>✓ No recurring charges</li>
+                <li>✓ Credits never expire</li>
+                <li>✓ Use at your own pace</li>
+              </ul>
+            </div>
 
-        {/* ==================== FAQ ==================== */}
-        <section>
-          <h2 className="text-xl font-bold text-white mb-4 text-center">Questions?</h2>
-          <div className="max-w-2xl mx-auto space-y-4">
-            <div className="bg-slate-800/30 border border-slate-700 rounded-lg p-4">
-              <h3 className="font-semibold text-white mb-1">What's the difference between credits and subscriptions?</h3>
-              <p className="text-slate-400 text-sm">Subscriptions give unlimited streaming (Commuter/Road Warrior). Credits are pay-as-you-go - buy a pack, listen anytime, they never expire. Great for occasional listeners!</p>
-            </div>
-            <div className="bg-slate-800/30 border border-slate-700 rounded-lg p-4">
-              <h3 className="font-semibold text-white mb-1">Can I download stories?</h3>
-              <p className="text-slate-400 text-sm">Road Warrior subscribers can download for offline listening. Individual purchases also include download rights - own forever!</p>
-            </div>
-            <div className="bg-slate-800/30 border border-slate-700 rounded-lg p-4">
-              <h3 className="font-semibold text-white mb-1">What happens to my credits if I subscribe?</h3>
-              <p className="text-slate-400 text-sm">Your credits stay in your account! Use them alongside your subscription or save them for later.</p>
-            </div>
-          </div>
-        </section>
+            <button 
+              onClick={() => setActiveSection('subscriptions')}
+              className="w-full mt-4 py-3 bg-gray-800 border border-gray-700 text-white rounded-xl"
+            >
+              📅 View Subscriptions
+            </button>
+          </>
+        )}
+
+        {/* Footer */}
+        <div className="mt-6 text-center">
+          <p className="text-white text-sm">🔒 Cancel anytime</p>
+          <Link href="/about#faq" className="text-orange-400 text-sm">
+            View FAQ
+          </Link>
+        </div>
       </div>
     </div>
-  )
+  );
 }

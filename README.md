@@ -1,189 +1,150 @@
-# Drive Time Tales v3.3 - Cloud Integration Setup
+# 🚛🚗 DriveTimeTales - Complete Integration Package v3
 
-## Overview
+Full-featured audio story platform for drivers with payments, series support, reviews, and offline downloads.
 
-This version connects Drive Time Tales to:
-- **Supabase** - Database for stories, users, analytics
-- **Cloudflare R2** - Audio file storage
-- **Audio Drama Maker** - Automatic publishing
+## ✨ What's Included
 
-## Quick Setup
+### Frontend
+- **7 UI Components**: Logo, Header, StoryCard, Modal, DurationFilter, CreditStatus, Reviews
+- **17 Pages**: Landing, Library, Browse, Search, Pricing, About, Collection, Wishlist, Account, Billing, Settings, Downloads, Series Detail, Player, Login, Signup
 
-### Step 1: Run Database Schema
+### Backend
+- **Supabase Integration**: Full database with typed queries
+- **Stripe Payments**: Subscriptions + Credit Packs + Webhooks
+- **Authentication**: Complete auth flow with Supabase Auth
+- **Real Audio Player**: Progress tracking, speed control, sample previews
+- **Reviews System**: User ratings and reviews
+- **Wishlist API**: Save stories for later
+- **Series Support**: Multi-episode series with progress tracking
+- **Downloads**: Offline story management
 
-1. Go to your Supabase project: https://supabase.com/dashboard
-2. Click **SQL Editor** in the left sidebar
-3. Click **New Query**
-4. Copy the contents of `supabase-schema.sql` and paste it
-5. Click **Run** (or Cmd/Ctrl + Enter)
-
-This creates:
-- `stories` table (with 12 sample stories)
-- `users` table
-- `qr_sources` table (for marketing tracking)
-- `play_history` table
-- `analytics_events` table
-- `promo_messages` table
-
-### Step 2: Enable R2 Public Access
-
-1. Go to Cloudflare Dashboard → R2 → drivetimetales-audio
-2. Click **Settings** tab
-3. Under **Public Access**, click **Allow Access**
-4. Copy the public URL (like `https://pub-xxx.r2.dev`)
-5. Update `R2_PUBLIC_URL` in `.env.local`
-
-### Step 3: Install & Run
-
-```bash
-cd drivetimetales
-npm install
-npm run dev
-```
-
-Visit http://localhost:3000
-
-## File Structure
+## 📦 Package Structure
 
 ```
 drivetimetales/
-├── .env.local              # Your API keys (don't share!)
-├── supabase-schema.sql     # Database setup
-├── dtt_publisher.py        # Audio Drama Maker integration
-├── lib/
-│   ├── supabase.ts         # Supabase client
-│   └── r2.ts               # R2 storage utilities
 ├── app/
-│   ├── api/
-│   │   ├── stories/        # Stories CRUD API
-│   │   ├── upload/         # File upload API
-│   │   └── publish/        # Audio Drama Maker publish endpoint
-│   └── ...
-└── ...
+│   ├── page.tsx              # Landing page
+│   ├── library/              # Story library
+│   ├── browse/               # Browse categories
+│   ├── search/               # Search page
+│   ├── pricing/              # Pricing with Stripe
+│   ├── about/                # About + FAQ
+│   ├── collection/           # User's stories
+│   ├── wishlist/             # Saved stories
+│   ├── series/[id]/          # Series detail
+│   ├── player/[id]/          # Audio player
+│   ├── auth/                 # Login & Signup
+│   ├── account/
+│   │   ├── page.tsx          # Account dashboard
+│   │   ├── billing/          # Credits & subscription
+│   │   ├── settings/         # User preferences
+│   │   └── downloads/        # Offline stories
+│   └── api/
+│       ├── checkout/         # Stripe checkout
+│       ├── webhooks/stripe/  # Payment webhooks
+│       ├── stories/          # Stories API
+│       ├── reviews/          # Reviews CRUD
+│       ├── wishlist/         # Wishlist CRUD
+│       └── user/             # User & purchase APIs
+├── components/ui/            # Reusable components
+├── contexts/                 # Auth context
+├── hooks/                    # Custom hooks
+├── lib/                      # Supabase & Stripe clients
+└── supabase-schema-v3.sql    # Database schema
 ```
 
-## Publishing from Audio Drama Maker
+## 🚀 Quick Setup
 
-### Option 1: Python Integration
-
-```python
-from dtt_publisher import publish_to_dtt
-
-result = publish_to_dtt(
-    audio_path="output/my-story.mp3",
-    title="The Dark Highway",
-    author="Your Name",
-    genre="Horror",
-    duration_mins=30,
-    description="A trucker encounters something strange...",
-    sample_path="output/my-story-sample.mp3"
-)
-
-if result["success"]:
-    print(f"Published! Story ID: {result['story']['id']}")
-```
-
-### Option 2: Command Line
-
+### 1. Environment Variables
 ```bash
-python dtt_publisher.py output/my-story.mp3 \
-    --title "The Dark Highway" \
-    --author "Your Name" \
-    --genre "Horror" \
-    --duration 30 \
-    --description "A trucker encounters something strange..." \
-    --create-sample
+cp .env.example .env.local
+# Fill in Supabase, Stripe, and R2 credentials
 ```
 
-### Option 3: Direct API Call
+### 2. Database
+Run `supabase-schema-v3.sql` in Supabase SQL Editor
 
+### 3. Stripe Products
+Create in Stripe Dashboard:
+- **Subscriptions**: Test Driver ($2.99), Commuter ($7.99), Road Warrior ($14.99)
+- **Credit Packs**: Small (10/$4.99), Medium (25/$9.99), Large (60/$19.99)
+
+### 4. Deploy
 ```bash
-curl -X POST http://localhost:3000/api/publish \
-  -F "metadata={\"title\":\"Test Story\",\"author\":\"Test\",\"genre\":\"Horror\",\"duration_mins\":15}" \
-  -F "audio=@output/story.mp3"
+npm install @supabase/supabase-js stripe
+npm run dev  # Test locally
+git push     # Deploy to Vercel
 ```
 
-## Environment Variables
+## 🎨 Design System
 
-```env
-# Supabase
-NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_xxx
-SUPABASE_SERVICE_ROLE_KEY=sb_secret_xxx
+| Element | Value |
+|---------|-------|
+| Primary | Orange-500 (#f97316) |
+| Background | Gray-950 (#030712) |
+| Cards | Gray-900 (#111827) |
+| Min Width | 375px |
 
-# Cloudflare R2
-R2_ACCOUNT_ID=xxx
-R2_ACCESS_KEY_ID=xxx
-R2_SECRET_ACCESS_KEY=xxx
-R2_BUCKET_NAME=drivetimetales-audio
-R2_ENDPOINT=https://xxx.r2.cloudflarestorage.com
-R2_PUBLIC_URL=https://pub-xxx.r2.dev
-```
+## 📱 Features
 
-## API Endpoints
+### 💳 Payments
+- Stripe Checkout for subscriptions & one-time purchases
+- Automatic credit allocation on payment
+- Subscription management (upgrade/cancel)
+- Purchase history
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/stories` | GET | List all stories |
-| `/api/stories` | POST | Create a story (JSON) |
-| `/api/upload` | POST | Get presigned upload URL |
-| `/api/upload` | PUT | Direct file upload |
-| `/api/publish` | POST | Publish from Audio Drama Maker |
+### 🎧 Audio Player
+- Sample mode for non-owners
+- Progress auto-save every 10 seconds
+- Speed control (0.5x - 2x)
+- Skip forward/backward
+- Buffer indicator
 
-## Database Tables
+### 📺 Series
+- Multi-episode series support
+- Episode progress tracking
+- Automatic episode numbering
+- Series completion status
 
-### stories
-| Column | Type | Description |
-|--------|------|-------------|
-| id | UUID | Primary key |
-| title | TEXT | Story title |
-| author | TEXT | Author name |
-| genre | TEXT | Genre category |
-| duration_mins | INT | Duration in minutes |
-| credits | INT | Credit cost |
-| audio_url | TEXT | R2 key for full audio |
-| sample_url | TEXT | R2 key for sample |
-| play_count | INT | Number of plays |
-| is_new | BOOL | Show NEW badge |
-| is_featured | BOOL | Show on homepage |
+### ⭐ Reviews
+- 5-star ratings
+- Written reviews
+- Average rating calculation
+- Review management
 
-### qr_sources
-For tracking marketing campaigns with QR codes.
+### 📥 Downloads
+- Offline story storage
+- Storage usage tracking
+- Download management
 
-| Column | Type | Description |
-|--------|------|-------------|
-| code | TEXT | URL parameter (e.g., "flyingj-dec2024") |
-| name | TEXT | Human readable name |
-| promo_message | TEXT | Custom welcome message |
-| scan_count | INT | Number of scans |
+### ♡ Wishlist
+- Save stories for later
+- Quick add/remove
+- Sync across devices
 
-## Genres
+## 🔧 API Routes
 
-- Mystery
-- Drama
-- Sci-Fi
-- Horror
-- Comedy
-- Romance
-- Trucker Stories
+| Route | Methods | Description |
+|-------|---------|-------------|
+| `/api/stories` | GET | List stories |
+| `/api/checkout` | POST | Create Stripe session |
+| `/api/webhooks/stripe` | POST | Handle payments |
+| `/api/user` | GET, PATCH | User profile |
+| `/api/user/purchase` | POST | Buy story |
+| `/api/user/cancel-subscription` | POST | Cancel sub |
+| `/api/reviews` | GET, POST, DELETE | Reviews |
+| `/api/wishlist` | GET, POST, DELETE | Wishlist |
 
-## Troubleshooting
+## 📋 Deployment Checklist
 
-### "Failed to fetch stories"
-- Check Supabase is running and schema is installed
-- Verify environment variables are correct
+- [ ] Set environment variables in Vercel
+- [ ] Run database schema in Supabase
+- [ ] Create Stripe products & webhooks
+- [ ] Test checkout flow (test mode)
+- [ ] Switch to live Stripe keys
+- [ ] Configure R2 for audio storage
+- [ ] Set up Stripe webhook endpoint
 
-### "Failed to upload file"
-- Check R2 credentials
-- Ensure bucket exists and token has write permission
+---
 
-### Audio not playing
-- Enable public access on R2 bucket
-- Update R2_PUBLIC_URL in .env.local
-
-## Next Steps
-
-1. **Deploy to Vercel** - Add environment variables in Vercel dashboard
-2. **Custom domain** - Connect drivetimetales.com
-3. **Stripe integration** - Enable real payments
-4. **QR code generator** - Create marketing materials
+Built with ❤️ for truckers and commuters everywhere.

@@ -1,94 +1,194 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient } from '@supabase/supabase-js';
 
-// Hardcoded for reliability - env files can be tricky
-const supabaseUrl = 'https://vmyhlfeouzslixtkmddy.supabase.co'
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZteWhsZmVvdXpzbGl4dGttZGR5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYwODk2MTIsImV4cCI6MjA4MTY2NTYxMn0.7asAd8ctLKJLdv2AojbF8WEo-N6dVheVA3mWxjkFwkk'
-const serviceRoleKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZteWhsZmVvdXpzbGl4dGttZGR5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NjA4OTYxMiwiZXhwIjoyMDgxNjY1NjEyfQ.xa0VB5h-KgLMxmM_ZWwIDuSRPUOxOmxow-c-Ua_pdQ0'
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-// Client for browser use
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+// Client-side Supabase client
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// Server client with service role (for API routes)
-export function createServerClient() {
-  return createClient(supabaseUrl, serviceRoleKey)
-}
-
-// Types
+// Types for our database
 export interface Story {
-  id: string
-  title: string
-  author: string
-  genre: string
-  description: string | null
-  duration_mins: number
-  duration_label: string
-  credits: number
-  color: string
-  promo_text: string | null
-  is_new: boolean
-  is_featured: boolean
-  play_count: number
-  audio_url: string | null
-  sample_url: string | null
-  created_at: string
-  updated_at: string
-}
-
-export interface QRSource {
-  id: string
-  code: string
-  name: string
-  location: string | null
-  promo_message: string | null
-  promo_audio_url: string | null
-  discount_code: string | null
-  discount_percent: number | null
-  scan_count: number
-  signup_count: number
-  is_active: boolean
-  created_at: string
+  id: string;
+  title: string;
+  author: string;
+  genre: string;
+  description?: string;
+  duration_mins: number;
+  credits: number;
+  audio_url?: string;
+  sample_url?: string;
+  cover_url?: string;
+  play_count: number;
+  rating: number;
+  is_new: boolean;
+  is_featured: boolean;
+  created_at: string;
 }
 
 export interface User {
-  id: string
-  email: string
-  name: string
-  plan: string
-  credits_remaining: number
-  credits_total: number
-  subscription_ends_at: string | null
-  source_id: string | null
-  device_ids: string[]
-  wishlist: string[]
-  free_minutes_used: number
-  created_at: string
-  updated_at: string
+  id: string;
+  email: string;
+  display_name?: string;
+  credits: number;
+  subscription_type: 'free' | 'test_driver' | 'commuter' | 'road_warrior';
+  subscription_ends_at?: string;
+  stripe_customer_id?: string;
+  created_at: string;
 }
 
-export interface PlayHistory {
-  id: string
-  user_id: string | null
-  story_id: string
-  device_id: string | null
-  source_id: string | null
-  progress_percent: number
-  current_time_seconds: number
-  completed: boolean
-  play_type: string | null
-  credits_used: number
-  started_at: string
-  last_played_at: string
+export interface UserStory {
+  id: string;
+  user_id: string;
+  story_id: string;
+  progress_seconds: number;
+  completed: boolean;
+  purchased_at: string;
+  last_played_at?: string;
 }
 
-export interface PromoMessage {
-  id: string
-  name: string
-  message: string
-  audio_url: string | null
-  is_default: boolean
-  source_ids: string[]
-  starts_at: string | null
-  ends_at: string | null
-  is_active: boolean
-  created_at: string
+export interface Purchase {
+  id: string;
+  user_id: string;
+  type: 'subscription' | 'credit_pack';
+  product_id: string;
+  amount_cents: number;
+  credits_added: number;
+  stripe_payment_id?: string;
+  created_at: string;
+}
+
+// Helper functions
+export async function getStories(options?: {
+  category?: string;
+  featured?: boolean;
+  limit?: number;
+  search?: string;
+}) {
+  let query = supabase
+    .from('stories')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (options?.category) {
+    query = query.eq('genre', options.category);
+  }
+  if (options?.featured) {
+    query = query.eq('is_featured', true);
+  }
+  if (options?.limit) {
+    query = query.limit(options.limit);
+  }
+  if (options?.search) {
+    query = query.or(`title.ilike.%${options.search}%,author.ilike.%${options.search}%,description.ilike.%${options.search}%`);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return data as Story[];
+}
+
+export async function getStory(id: string) {
+  const { data, error } = await supabase
+    .from('stories')
+    .select('*')
+    .eq('id', id)
+    .single();
+  
+  if (error) throw error;
+  return data as Story;
+}
+
+export async function getUserProfile(userId: string) {
+  const { data, error } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', userId)
+    .single();
+  
+  if (error) throw error;
+  return data as User;
+}
+
+export async function getUserStories(userId: string) {
+  const { data, error } = await supabase
+    .from('user_stories')
+    .select(`
+      *,
+      story:stories(*)
+    `)
+    .eq('user_id', userId)
+    .order('last_played_at', { ascending: false });
+  
+  if (error) throw error;
+  return data;
+}
+
+export async function updatePlayProgress(userId: string, storyId: string, progressSeconds: number) {
+  const { error } = await supabase
+    .from('user_stories')
+    .upsert({
+      user_id: userId,
+      story_id: storyId,
+      progress_seconds: progressSeconds,
+      last_played_at: new Date().toISOString(),
+    }, {
+      onConflict: 'user_id,story_id'
+    });
+  
+  if (error) throw error;
+}
+
+export async function purchaseStory(userId: string, storyId: string, credits: number) {
+  // Start a transaction
+  const { data: user, error: userError } = await supabase
+    .from('users')
+    .select('credits')
+    .eq('id', userId)
+    .single();
+  
+  if (userError) throw userError;
+  if (user.credits < credits) {
+    throw new Error('Insufficient credits');
+  }
+
+  // Deduct credits
+  const { error: deductError } = await supabase
+    .from('users')
+    .update({ credits: user.credits - credits })
+    .eq('id', userId);
+  
+  if (deductError) throw deductError;
+
+  // Add to user's collection
+  const { error: addError } = await supabase
+    .from('user_stories')
+    .insert({
+      user_id: userId,
+      story_id: storyId,
+      progress_seconds: 0,
+      completed: false,
+      purchased_at: new Date().toISOString(),
+    });
+  
+  if (addError) throw addError;
+
+  return { success: true, remainingCredits: user.credits - credits };
+}
+
+export async function addCredits(userId: string, credits: number) {
+  const { data: user, error: userError } = await supabase
+    .from('users')
+    .select('credits')
+    .eq('id', userId)
+    .single();
+  
+  if (userError) throw userError;
+
+  const { error } = await supabase
+    .from('users')
+    .update({ credits: user.credits + credits })
+    .eq('id', userId);
+  
+  if (error) throw error;
+  return { success: true, newBalance: user.credits + credits };
 }
