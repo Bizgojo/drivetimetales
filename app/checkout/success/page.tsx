@@ -3,12 +3,12 @@
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { Suspense, useEffect, useState } from 'react'
-import { useUser } from '../../layout'
+import { useAuth } from '@/contexts/AuthContext'
 
 function SuccessContent() {
   const searchParams = useSearchParams()
   const sessionId = searchParams.get('session_id')
-  const { user, setUser } = useUser()
+  const { user } = useAuth()
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {

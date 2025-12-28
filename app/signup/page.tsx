@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useState, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { useUser } from '../layout'
+import { useAuth } from '@/contexts/AuthContext'
 
 type TierKey = 'test_driver' | 'commuter' | 'road_warrior'
 
@@ -20,7 +20,7 @@ function Form() {
   const [email, setEmail] = useState('')
   const [name, setName] = useState('')
   const router = useRouter()
-  const { setUser } = useUser()
+  const { signUp } = useAuth()
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()

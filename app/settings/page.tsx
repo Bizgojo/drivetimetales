@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useUser } from '../layout'
+import { useAuth } from '@/contexts/AuthContext'
 import { useStories, createStoryLookup } from '../hooks/useStories'
 
 const tierNames: Record<string, { name: string; icon: string; color: string }> = {
@@ -14,7 +14,7 @@ const tierNames: Record<string, { name: string; icon: string; color: string }> =
 
 export default function SettingsPage() {
   const router = useRouter()
-  const { user, setUser, logout, listeningHistory } = useUser()
+  const { user, signOut } = useAuth()
   const { stories } = useStories()
   const storyLookup = createStoryLookup(stories)
   const [editing, setEditing] = useState(false)
