@@ -3,14 +3,14 @@
 import Link from 'next/link'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useUser } from '../layout'
+import { useAuth } from '@/contexts/AuthContext'
 
 export default function SignInPage() {
   const [email, setEmail] = useState('')
   const [name, setName] = useState('')
   const [step, setStep] = useState<'info' | 'verify'>('info')
   const router = useRouter()
-  const { setUser } = useUser()
+  const { signIn } = useAuth()
 
   const handleInfoSubmit = (e: React.FormEvent) => {
     e.preventDefault()

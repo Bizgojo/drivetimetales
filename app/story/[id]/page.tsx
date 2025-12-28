@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useParams, useSearchParams } from 'next/navigation'
 import { useState, useEffect, Suspense } from 'react'
-import { useUser } from '../../layout'
+import { useAuth } from '@/contexts/AuthContext'
 import { useStory } from '../../hooks/useStories'
 
 const PROMO_MESSAGE = "You're listening to Drive Time Tales - audio stories for the road. Visit drivetimetales.com to hear the full story."
@@ -22,10 +22,10 @@ function StoryContent() {
   const storyId = params.id as string
   const { story, loading, error } = useStory(storyId)
   const { 
-    user, setUser, 
-    checkAccess, useFreeSeconds, useCredits,
-    toggleWishlist, nowPlaying, setNowPlaying, setIsPlaying, listeningHistory 
-  } = useUser()
+    user, 
+
+
+  } = useAuth()
   
   const [showPromo, setShowPromo] = useState(false)
   const [pendingAction, setPendingAction] = useState<string | null>(null)

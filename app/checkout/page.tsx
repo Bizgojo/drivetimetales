@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useState, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { useUser } from '../layout'
+import { useAuth } from '@/contexts/AuthContext'
 
 const planInfo: Record<string, { name: string; price: number; tier: string }> = {
   commuter_monthly: { name: 'Commuter Monthly', price: 7.99, tier: 'commuter' },
@@ -20,24 +20,13 @@ function CheckoutForm() {
   const plan = planInfo[planId] || planInfo.commuter_monthly
   const [processing, setProcessing] = useState(false)
   const router = useRouter()
-  const { setUser } = useUser()
+  const { signIn } = useAuth()
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     setProcessing(true)
     setTimeout(() => {
-      setUser({ 
-        isLoggedIn: true, 
-        name, 
-        email, 
-        subscriptionTier: plan.tier as 'test_driver' | 'commuter' | 'road_warrior',
-        creditBalance: 0,
-        freeSecondsRemaining: 0,
-        ownedStories: [],
-        storeCreditCents: 0,
-        wishlist: [] 
-      })
-      router.push('/')
+      router.push('/success?plan=' + planId)
     }, 2000)
   }
 

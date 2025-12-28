@@ -3,13 +3,13 @@
 import Link from 'next/link'
 import { useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { useUser } from '../layout'
+import { useAuth } from '@/contexts/AuthContext'
 import { useStories, createStoryLookup } from '../hooks/useStories'
 
 function Content() {
   const params = useSearchParams()
   const [tab, setTab] = useState(params.get('tab') || 'library')
-  const { user, toggleWishlist, listeningHistory } = useUser()
+  const { user } = useAuth()
   const { stories, loading, error } = useStories()
   const storyLookup = createStoryLookup(stories)
 
