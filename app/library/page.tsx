@@ -4,14 +4,15 @@ import { useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext'
-import { useStories, createStoryLookup } from '@/hooks/useStories'
+import { useStories } from '@/hooks/useData'
 
 function MyLibraryContent() {
   const params = useSearchParams()
   const [tab, setTab] = useState(params.get('tab') || 'library')
   const { user } = useAuth()
   const { stories, loading, error } = useStories()
-  const storyLookup = createStoryLookup(stories)
+ const storyLookup: Record<string, any> = {}
+   stories.forEach((story: any) => { storyLookup[story.id] = story })
 
   if (!user) {
     return (
