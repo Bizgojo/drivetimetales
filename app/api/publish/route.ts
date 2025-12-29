@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
 
 // R2 Client
@@ -110,7 +110,6 @@ export async function POST(request: NextRequest) {
     const credits = metadata.credits || Math.max(2, Math.ceil(durationMins / 15))
     
     // Insert into database
-    const supabase = createServerClient()
     
     const { data, error } = await supabase
       .from('stories')
