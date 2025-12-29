@@ -21,7 +21,7 @@ export default function SettingsPage() {
   const [name, setName] = useState(user?.name || '')
   const [showClearConfirm, setShowClearConfirm] = useState(false)
 
-  if (!user?.isLoggedIn) {
+  if (!user) {
     return (
       <div className="py-12 px-4 text-center">
         <span className="text-4xl block mb-3">🔐</span>
@@ -35,7 +35,6 @@ export default function SettingsPage() {
 
   const handleSaveName = () => {
     if (name.trim()) {
-      setUser({ ...user, name: name.trim() })
       setEditing(false)
     }
   }

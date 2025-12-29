@@ -13,7 +13,7 @@ function Content() {
   const { stories, loading, error } = useStories()
   const storyLookup = createStoryLookup(stories)
 
-  if (!user?.isLoggedIn) {
+  if (!user) {
     return (
       <div className="text-center py-12">
         <span className="text-4xl block mb-3">🔐</span>

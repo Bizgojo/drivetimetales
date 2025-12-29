@@ -27,21 +27,9 @@ function Form() {
     if (tier.monthlyPrice > 0) {
       router.push(`/checkout?tier=${tierId}&email=${encodeURIComponent(email)}&name=${encodeURIComponent(name)}`)
     } else {
-      setUser({ 
-        isLoggedIn: true, 
-        name, 
-        email, 
-        subscriptionTier: 'test_driver',
-        creditBalance: 0,
-        freeSecondsRemaining: 7200,
-        ownedStories: [],
-        wishlist: [],
-        storeCreditCents: 0,
-      })
       router.push('/')
     }
   }
-
   return (
     <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-6">
       <div className="bg-slate-900/50 rounded-lg p-3 mb-4 text-center">
