@@ -1,21 +1,7 @@
 'use client';
 
 import React from 'react';
-
-export interface Story {
-  id: string;
-  title: string;
-  author: string;
-  category: string;
-  duration: number;
-  rating: number;
-  reviews?: number;
-  credits: number;
-  description?: string;
-  banner?: string | null;
-  coverUrl?: string;
-  isFree?: boolean;
-}
+import { Story } from '@/lib/supabase';
 
 interface StoryCardProps {
   story: Story;
@@ -54,9 +40,11 @@ export const StoryCard = ({
   showDescription = true,
   onClick 
 }: StoryCardProps) => {
-  const categoryIcon = CATEGORY_ICONS[story.category] || '📚';
-  const bannerColor = story.banner ? BANNER_COLORS[story.banner] || 'bg-gray-500' : '';
+  const categoryIcon = CATEGORY_ICONS[story.genre] || '📚';
+  const isFree = story.credits === 0;
   const canAfford = userCredits >= story.credits;
+  const banner = story.is_new ? 'New Release' : story.is_featured ? 'Staff Pick' : null;
+  const bannerColor = banner ? BANNER_COLORS[banner] || 'bg-gray-500' : '';
 
   const renderStars = (rating: number) => {
     const fullStars = Math.floor(rating);
@@ -74,11 +62,10 @@ export const StoryCard = ({
       onClick={onClick}
     >
       <div className="flex gap-4">
-        {/* Album Cover */}
         <div className="flex-shrink-0">
-          {story.coverUrl ? (
+          {story.cover_url ? (
             <img 
-              src={story.coverUrl} 
+              src={story.cover_url} 
               alt={story.title}
               className="w-24 h-24 rounded-xl object-cover shadow-lg"
             />
@@ -92,36 +79,30 @@ export const StoryCard = ({
           )}
         </div>
 
-        {/* Info */}
         <div className="flex-1 min-w-0 flex flex-col">
-          {/* Banner */}
-          {story.banner && (
+          {banner && (
             <span className={`self-start px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide mb-1 ${bannerColor}`}>
-              {story.banner}
+              {banner}
             </span>
           )}
           
-          {/* Title */}
           <h3 className="text-lg font-bold text-white leading-tight mb-0.5 truncate">
             {story.title}
           </h3>
           
-          {/* Author */}
           <p className="text-white text-sm mb-1">{story.author}</p>
           
-          {/* Category • Duration */}
           <p className="text-orange-400 text-sm mb-1">
-            {categoryIcon} {story.category} • {story.duration} min
+            {categoryIcon} {story.genre} • {story.duration_mins} min
           </p>
           
-          {/* Stars + Credits Badge */}
           <div className="flex items-center justify-between mt-auto">
             <div className="flex items-center gap-1">
               <span className="text-sm">{renderStars(story.rating)}</span>
               <span className="text-white text-xs">{story.rating}</span>
             </div>
             
-            {story.isFree ? (
+            {isFree ? (
               <span className="px-3 py-1 bg-green-600 text-white text-xs font-bold rounded-full">
                 ▶ FREE
               </span>
@@ -136,7 +117,6 @@ export const StoryCard = ({
         </div>
       </div>
 
-      {/* Description */}
       {showDescription && story.description && (
         <p className="text-sm text-white leading-relaxed mt-3 line-clamp-2">
           {story.description}
