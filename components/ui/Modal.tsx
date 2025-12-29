@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Story } from './StoryCard';
+import { Story } from '@/lib/supabase';
 
 interface StoryModalProps {
   story: Story | null;
@@ -44,9 +44,11 @@ export const StoryModal = ({
 }: StoryModalProps) => {
   if (!story) return null;
 
-  const categoryIcon = CATEGORY_ICONS[story.category] || '📚';
-  const bannerColor = story.banner ? BANNER_COLORS[story.banner] || 'bg-gray-500' : '';
-  const canAfford = story.isFree || userCredits >= story.credits;
+  const categoryIcon = CATEGORY_ICONS[story.genre] || '📚';
+  const isFree = story.credits === 0;
+  const canAfford = isFree || userCredits >= story.credits;
+  const banner = story.is_new ? 'New Release' : story.is_featured ? 'Staff Pick' : null;
+  const bannerColor = banner ? BANNER_COLORS[banner] || 'bg-gray-500' : '';
 
   return (
     <div 
@@ -57,14 +59,12 @@ export const StoryModal = ({
         className="bg-gray-900 border-t border-gray-700 rounded-t-2xl w-full max-w-lg p-5 animate-slide-up"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Handle */}
         <div className="w-12 h-1 bg-gray-700 rounded-full mx-auto mb-4"></div>
         
-        {/* Story Info */}
         <div className="flex gap-4 mb-3">
-          {story.coverUrl ? (
+          {story.cover_url ? (
             <img 
-              src={story.coverUrl}
+              src={story.cover_url}
               alt={story.title}
               className="w-20 h-20 rounded-xl object-cover flex-shrink-0"
             />
@@ -77,25 +77,23 @@ export const StoryModal = ({
             </div>
           )}
           <div className="flex-1">
-            {story.banner && (
+            {banner && (
               <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase mb-1 ${bannerColor}`}>
-                {story.banner}
+                {banner}
               </span>
             )}
             <h2 className="text-xl font-bold text-white">{story.title}</h2>
             <p className="text-white text-sm">{story.author}</p>
             <p className="text-orange-400 text-sm">
-              {categoryIcon} {story.category} • {story.duration} min
+              {categoryIcon} {story.genre} • {story.duration_mins} min
             </p>
           </div>
         </div>
         
-        {/* Description */}
         {story.description && (
           <p className="text-white text-sm mb-4">{story.description}</p>
         )}
         
-        {/* Actions */}
         {canAfford ? (
           <>
             <div className="flex gap-3">
@@ -114,7 +112,7 @@ export const StoryModal = ({
                 </button>
               )}
             </div>
-            {!story.isFree && (
+            {!isFree && (
               <p className="text-center text-white text-sm mt-3">
                 Uses <span className="text-orange-400 font-bold">{story.credits} credits</span>
                 {' '}• {userCredits - story.credits} remaining after
