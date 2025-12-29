@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { Header } from '@/components/ui/Header';
 import { StoryCard } from '@/components/ui/StoryCard';
-   import { Story } from '@/lib/supabase';
+import { Story } from '@/lib/supabase';
 import { StoryModal } from '@/components/ui/Modal';
 
 const CATEGORY_ICONS: Record<string, string> = {
@@ -19,16 +19,16 @@ const CATEGORY_ICONS: Record<string, string> = {
 
 // Sample data
 const allStories: Story[] = [
-  { id: '1', title: 'The Midnight Haul', author: 'Jack Morrison', category: 'Trucker Stories', duration: 30, rating: 4.8, credits: 2, description: 'A veteran trucker faces his final haul across the desert.' },
-  { id: '2', title: 'Desert Run', author: 'Sarah Chen', category: 'Adventure', duration: 25, rating: 4.9, credits: 2, description: 'A solo journey through the Mojave becomes a race against time.' },
-  { id: '3', title: 'Ghost Frequencies', author: 'Mike Torres', category: 'Horror', duration: 45, rating: 4.6, credits: 3, description: 'Late night radio signals lead to transmissions from beyond the grave.' },
-  { id: '4', title: 'Highway Hearts', author: 'Lisa Park', category: 'Drama', duration: 60, rating: 4.7, credits: 4, description: 'Two strangers meet at a truck stop and discover their paths have crossed before.' },
-  { id: '5', title: 'The Long Haul', author: 'Tom Bradley', category: 'Mystery', duration: 35, rating: 4.5, credits: 2, description: 'A dispatcher receives a distress call from a truck that went missing 20 years ago.' },
-  { id: '6', title: 'Neon Nights', author: 'Amy Walsh', category: 'Thriller', duration: 50, rating: 4.8, credits: 3, description: 'A cross-country chase through forgotten highways.' },
-  { id: '7', title: 'Star Runner', author: 'Dan Blake', category: 'Sci-Fi', duration: 40, rating: 4.4, credits: 3, description: 'Interstellar truckers haul cargo between planets.' },
-  { id: '8', title: 'Bedtime Journey', author: 'Mary Johnson', category: 'Children', duration: 15, rating: 4.9, credits: 1, description: 'A friendly truck driver delivers dreams to children.' },
-  { id: '9', title: 'Midnight Diner', author: 'Sarah Chen', category: 'Drama', duration: 30, rating: 4.9, credits: 2, description: 'At a roadside diner that only appears after midnight.' },
-  { id: '10', title: 'Route 66 Ghost', author: 'Mike Rivera', category: 'Horror', duration: 45, rating: 4.6, credits: 3, description: 'A hitchhiker discovers why some roads are better left untraveled.' },
+  { id: '1', title: 'The Midnight Haul', author: 'Jack Morrison', genre: 'Trucker Stories', duration_mins: 30, rating: 4.8, credits: 2, play_count: 0, is_new: true, is_featured: false, created_at: '', description: 'A veteran trucker faces his final haul across the desert.' },
+  { id: '2', title: 'Desert Run', author: 'Sarah Chen', genre: 'Adventure', duration_mins: 25, rating: 4.9, credits: 2, play_count: 0, is_new: true, is_featured: false, created_at: '', description: 'A solo journey through the Mojave becomes a race against time.' },
+  { id: '3', title: 'Ghost Frequencies', author: 'Mike Torres', genre: 'Horror', duration_mins: 45, rating: 4.6, credits: 3, play_count: 0, is_new: false, is_featured: false, created_at: '', description: 'Late night radio signals lead to transmissions from beyond the grave.' },
+  { id: '4', title: 'Highway Hearts', author: 'Lisa Park', genre: 'Drama', duration_mins: 60, rating: 4.7, credits: 4, play_count: 0, is_new: false, is_featured: true, created_at: '', description: 'Two strangers meet at a truck stop and discover their paths have crossed before.' },
+  { id: '5', title: 'The Long Haul', author: 'Tom Bradley', genre: 'Mystery', duration_mins: 35, rating: 4.5, credits: 2, play_count: 0, is_new: false, is_featured: false, created_at: '', description: 'A dispatcher receives a distress call from a truck that went missing 20 years ago.' },
+  { id: '6', title: 'Neon Nights', author: 'Amy Walsh', genre: 'Thriller', duration_mins: 50, rating: 4.8, credits: 3, play_count: 0, is_new: true, is_featured: true, created_at: '', description: 'A cross-country chase through forgotten highways.' },
+  { id: '7', title: 'Star Runner', author: 'Dan Blake', genre: 'Sci-Fi', duration_mins: 40, rating: 4.4, credits: 3, play_count: 0, is_new: false, is_featured: false, created_at: '', description: 'Interstellar truckers haul cargo between planets.' },
+  { id: '8', title: 'Bedtime Journey', author: 'Mary Johnson', genre: 'Children', duration_mins: 15, rating: 4.9, credits: 1, play_count: 0, is_new: true, is_featured: false, created_at: '', description: 'A friendly truck driver delivers dreams to children.' },
+  { id: '9', title: 'Midnight Diner', author: 'Sarah Chen', genre: 'Drama', duration_mins: 30, rating: 4.9, credits: 2, play_count: 0, is_new: false, is_featured: true, created_at: '', description: 'At a roadside diner that only appears after midnight.' },
+  { id: '10', title: 'Route 66 Ghost', author: 'Mike Rivera', genre: 'Horror', duration_mins: 45, rating: 4.6, credits: 3, play_count: 0, is_new: false, is_featured: false, created_at: '', description: 'A hitchhiker discovers why some roads are better left untraveled.' },
 ];
 
 export default function SearchPage() {
@@ -43,7 +43,7 @@ export default function SearchPage() {
     ? allStories.filter(story => 
         story.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         story.author.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        story.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        story.genre.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (story.description?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false)
       )
     : [];
