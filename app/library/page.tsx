@@ -1,13 +1,12 @@
 'use client';
 
 import React, { useState } from 'react';
-import Link from 'next/link';
 import { Header } from '@/components/ui/Header';
-import { StoryCard, Story } from '@/components/ui/StoryCard';
+import { StoryCard } from '@/components/ui/StoryCard';
+import { Story } from '@/lib/supabase';
 import { StoryModal } from '@/components/ui/Modal';
 import { CreditStatus } from '@/components/ui/CreditStatus';
 import { DurationFilter, filterByDuration, getDurationCounts, DurationFilterValue } from '@/components/ui/DurationFilter';
-
 // Sample data - replace with actual data fetching
 const sampleStories: Story[] = [
   { id: '1', title: 'The Midnight Haul', author: 'Jack Morrison', category: 'Trucker Stories', duration: 30, rating: 4.8, credits: 2, banner: 'New Release', description: 'A veteran trucker faces his final haul across the desert, carrying cargo that will change everything he believes about loyalty and redemption.' },
