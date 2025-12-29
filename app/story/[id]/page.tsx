@@ -86,7 +86,7 @@ function StoryContent() {
 
   const handlePlay = (accessType: string) => {
     // Show promo for non-subscribers
-    const showPromoMessage = !user?.isLoggedIn || 
+    const showPromoMessage = !!!user || 
       (user.subscriptionTier !== 'commuter' && user.subscriptionTier !== 'road_warrior')
     
     if (showPromoMessage && accessType !== 'sample') {
@@ -239,7 +239,7 @@ function StoryContent() {
               )}
 
               {/* Wishlist Button */}
-              {user?.isLoggedIn && (
+              {!!user && (
                 <button 
                   onClick={() => toggleWishlist(storyId)}
                   className={`w-full py-3 rounded-xl font-semibold border ${
@@ -256,7 +256,7 @@ function StoryContent() {
             {/* Access Status */}
             <div className="mt-4 p-3 bg-slate-800/50 rounded-lg">
               <p className="text-xs text-slate-500">
-                {user?.isLoggedIn ? (
+                {!!user ? (
                   user.subscriptionTier === 'commuter' || user.subscriptionTier === 'road_warrior' ? (
                     <span className="text-green-400">✓ Unlimited streaming with your {user.subscriptionTier === 'road_warrior' ? 'Road Warrior' : 'Commuter'} plan</span>
                   ) : user.creditBalance > 0 ? (

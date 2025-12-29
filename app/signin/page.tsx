@@ -19,20 +19,8 @@ export default function SignInPage() {
 
   const handleVerify = (e: React.FormEvent) => {
     e.preventDefault()
-    setUser({
-      isLoggedIn: true,
-      name: name,
-      email: email,
-      subscriptionTier: 'test_driver',
-      creditBalance: 0,
-      freeSecondsRemaining: 7200, // 2 hours
-      ownedStories: [],
-      wishlist: [],
-      storeCreditCents: 0,
-    })
     router.push('/')
   }
-
   return (
     <div className="py-16 px-4">
       <div className="max-w-sm mx-auto">
