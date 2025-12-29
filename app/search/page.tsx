@@ -2,7 +2,8 @@
 
 import React, { useState } from 'react';
 import { Header } from '@/components/ui/Header';
-import { StoryCard, Story } from '@/components/ui/StoryCard';
+import { StoryCard } from '@/components/ui/StoryCard';
+   import { Story } from '@/lib/supabase';
 import { StoryModal } from '@/components/ui/Modal';
 
 const CATEGORY_ICONS: Record<string, string> = {
