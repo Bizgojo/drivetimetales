@@ -34,7 +34,7 @@ function MyLibraryContent() {
   }
 
   if (error) {
-    return <div className="py-12 text-center text-red-400">Error: {error}</div>
+return <div className="py-12 text-center text-red-400">Error: {error?.message || 'Unknown error'}</div>
   }
 
   // Mock data for demo - replace with actual user data when available
