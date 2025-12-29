@@ -37,6 +37,7 @@ function Content() {
   }
 
   // Get stories from listening history (purchased/played stories)
+  const listeningHistory: Record<string, { progress: number }> = {}
   const myStoryIds = Object.keys(listeningHistory)
   const myStories = myStoryIds
     .map(id => {
