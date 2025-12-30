@@ -78,7 +78,7 @@ const historyEntries: any[] = []
                 </div>
               ) : (
                 <div className="flex items-center justify-between">
-                  <span className="text-white">{user.name}</span>
+                  <span className="text-white">{user.display_name}</span>
                   <button onClick={() => setEditing(true)} className="text-orange-400 text-sm">Edit</button>
                 </div>
               )}
