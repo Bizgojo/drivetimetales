@@ -50,7 +50,7 @@ export default function SettingsPage() {
   }
 
   // Get listening history entries
-  const historyEntries = Object.entries(listeningHistory)
+ const historyEntries = Object.entries({})
     .map(([storyId, data]) => ({
       storyId,
       ...data,
