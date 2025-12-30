@@ -18,7 +18,7 @@ export default function SettingsPage() {
   const { stories } = useStories()
   const storyLookup = createStoryLookup(stories)
   const [editing, setEditing] = useState(false)
-  const [name, setName] = useState(user?.name || '')
+  const [name, setName] = useState(user?.display_name || '')
   const [showClearConfirm, setShowClearConfirm] = useState(false)
 
   if (!user) {
