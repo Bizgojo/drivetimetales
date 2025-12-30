@@ -31,7 +31,7 @@ export default function SettingsPage() {
     )
   }
 
-  const tier = tierNames[user.subscriptionTier] || tierNames['test_driver']
+  const tier = tierNames[user.subscription_type] || tierNames['test_driver']
 
   const handleSaveName = () => {
     if (name.trim()) {
