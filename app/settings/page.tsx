@@ -49,15 +49,8 @@ export default function SettingsPage() {
     router.push('/')
   }
 
-  // Get listening history entries
- const historyEntries = Object.entries({})
-    .map(([storyId, data]) => ({
-      storyId,
-      ...data,
-      story: storyLookup[storyId]
-    }))
-    .filter(e => e.story)
-    .sort((a, b) => b.lastPlayed - a.lastPlayed)
+ // Get listening history entries
+const historyEntries: any[] = []
 
   return (
     <div className="py-8 px-4">
