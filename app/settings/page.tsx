@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
-import { useStories, createStoryLookup } from '../hooks/useStories'
+import { useStories } from '@/hooks/useData'
 
 const tierNames: Record<string, { name: string; icon: string; color: string }> = {
   'test_driver': { name: 'Test Driver', icon: '🚗', color: 'text-slate-300' },
@@ -16,7 +16,11 @@ export default function SettingsPage() {
   const router = useRouter()
   const { user, signOut } = useAuth()
   const { stories } = useStories()
-  const storyLookup = createStoryLookup(stories)
+  
+  // Create story lookup
+  const storyLookup: Record<string, any> = {}
+  stories.forEach((story: any) => { storyLookup[story.id] = story })
+  
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(user?.display_name || '')
   const [showClearConfirm, setShowClearConfirm] = useState(false)
@@ -31,7 +35,11 @@ export default function SettingsPage() {
     )
   }
 
-  const tier = tierNames[user.subscription_type] || tierNames['test_driver']
+  const tier = tierNames[user.subscription_type || 'test_driver'] || tierNames['test_driver']
+  const freeSecondsRemaining = user.free_seconds_remaining || 0
+  const creditBalance = user.credit_balance || 0
+  const storeCreditCents = user.store_credit_cents || 0
+  const ownedStories = user.owned_stories || []
 
   const handleSaveName = () => {
     if (name.trim()) {
@@ -45,12 +53,12 @@ export default function SettingsPage() {
   }
 
   const handleSignOut = () => {
-
+    signOut()
     router.push('/')
   }
 
- // Get listening history entries
-const historyEntries: any[] = []
+  // Get listening history entries
+  const historyEntries: any[] = []
 
   return (
     <div className="py-8 px-4">
@@ -74,11 +82,11 @@ const historyEntries: any[] = []
                     className="flex-1 px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white text-sm focus:outline-none focus:border-orange-500"
                   />
                   <button onClick={handleSaveName} className="px-4 py-2 bg-green-600 text-white text-sm rounded-lg">Save</button>
-                  <button onClick={() => { setEditing(false); setName(user.display_name); }} className="px-4 py-2 bg-slate-700 text-white text-sm rounded-lg">Cancel</button>
+                  <button onClick={() => { setEditing(false); setName(user.display_name || ''); }} className="px-4 py-2 bg-slate-700 text-white text-sm rounded-lg">Cancel</button>
                 </div>
               ) : (
                 <div className="flex items-center justify-between">
-                  <span className="text-white">{user.display_name}</span>
+                  <span className="text-white">{user.display_name || 'Not set'}</span>
                   <button onClick={() => setEditing(true)} className="text-orange-400 text-sm">Edit</button>
                 </div>
               )}
@@ -103,25 +111,25 @@ const historyEntries: any[] = []
                   {tier.icon} {tier.name}
                 </p>
                 <p className="text-sm text-slate-400">
-                  {user.subscriptionTier === 'road_warrior' 
+                  {user.subscription_type === 'road_warrior' 
                     ? 'Unlimited streaming + downloads' 
-                    : user.subscriptionTier === 'commuter'
+                    : user.subscription_type === 'commuter'
                     ? 'Unlimited streaming'
-                    : `${Math.floor(user.freeSecondsRemaining / 60)} free minutes remaining`}
+                    : `${Math.floor(freeSecondsRemaining / 60)} free minutes remaining`}
                 </p>
               </div>
               <Link href="/pricing" className="px-4 py-2 bg-orange-500 text-black text-sm font-semibold rounded-lg">
-                {user.subscriptionTier === 'test_driver' ? 'Upgrade' : 'Change Plan'}
+                {user.subscription_type === 'test_driver' ? 'Upgrade' : 'Change Plan'}
               </Link>
             </div>
 
             {/* Free tier progress bar */}
-            {user.subscriptionTier === 'test_driver' && (
+            {user.subscription_type === 'test_driver' && (
               <div>
                 <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
                   <div 
                     className="h-full bg-green-500" 
-                    style={{ width: `${(user.freeSecondsRemaining / 7200) * 100}%` }} 
+                    style={{ width: `${(freeSecondsRemaining / 7200) * 100}%` }} 
                   />
                 </div>
                 <p className="text-xs text-slate-500 mt-1">Free hours reset monthly</p>
@@ -129,22 +137,22 @@ const historyEntries: any[] = []
             )}
 
             {/* Credit balance */}
-            {user.creditBalance > 0 && (
+            {creditBalance > 0 && (
               <div className="p-3 bg-slate-900/50 rounded-lg">
                 <div className="flex items-center justify-between">
                   <span className="text-slate-400 text-sm">Credit Balance</span>
-                  <span className="text-green-400 font-semibold">{user.creditBalance.toFixed(1)} credits</span>
+                  <span className="text-green-400 font-semibold">{creditBalance.toFixed(1)} credits</span>
                 </div>
                 <p className="text-xs text-slate-500 mt-1">1 credit = 15 minutes • Credits never expire</p>
               </div>
             )}
 
             {/* Store credit */}
-            {user.storeCreditCents > 0 && (
+            {storeCreditCents > 0 && (
               <div className="p-3 bg-slate-900/50 rounded-lg">
                 <div className="flex items-center justify-between">
                   <span className="text-slate-400 text-sm">Store Credit</span>
-                  <span className="text-orange-400 font-semibold">${(user.storeCreditCents / 100).toFixed(2)}</span>
+                  <span className="text-orange-400 font-semibold">${(storeCreditCents / 100).toFixed(2)}</span>
                 </div>
                 <p className="text-xs text-slate-500 mt-1">Use for individual story purchases</p>
               </div>
@@ -153,11 +161,11 @@ const historyEntries: any[] = []
         </section>
 
         {/* Owned Stories Section */}
-        {user.ownedStories && user.ownedStories.length > 0 && (
+        {ownedStories.length > 0 && (
           <section className="bg-slate-800/50 border border-slate-700 rounded-xl p-6 mb-6">
             <h2 className="text-lg font-semibold text-white mb-4">🎁 Owned Stories</h2>
             <div className="space-y-2">
-              {user.ownedStories.map(storyId => {
+              {ownedStories.map((storyId: string) => {
                 const story = storyLookup[storyId]
                 if (!story) return null
                 return (
@@ -168,7 +176,7 @@ const historyEntries: any[] = []
                   >
                     <div>
                       <p className="text-white text-sm font-semibold">{story.title}</p>
-                      <p className="text-xs text-slate-400">{story.author} • {story.duration}</p>
+                      <p className="text-xs text-slate-400">{story.author} • {story.duration_mins} min</p>
                     </div>
                     <span className="text-green-400 text-xs">✓ Owned</span>
                   </Link>
@@ -194,7 +202,7 @@ const historyEntries: any[] = []
           
           {historyEntries.length > 0 ? (
             <div className="space-y-3">
-              {historyEntries.slice(0, 5).map(entry => (
+              {historyEntries.slice(0, 5).map((entry: any) => (
                 <Link 
                   key={entry.storyId}
                   href={`/story/${entry.storyId}`}
@@ -202,7 +210,7 @@ const historyEntries: any[] = []
                 >
                   <div>
                     <p className="text-white text-sm font-semibold">{entry.story?.title}</p>
-                    <p className="text-xs text-slate-400">{entry.story?.author} • {entry.story?.duration}</p>
+                    <p className="text-xs text-slate-400">{entry.story?.author} • {entry.story?.duration_mins} min</p>
                   </div>
                   <div className="text-right">
                     <p className="text-xs text-green-400">{Math.round(entry.progress)}% complete</p>
