@@ -74,7 +74,7 @@ const historyEntries: any[] = []
                     className="flex-1 px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white text-sm focus:outline-none focus:border-orange-500"
                   />
                   <button onClick={handleSaveName} className="px-4 py-2 bg-green-600 text-white text-sm rounded-lg">Save</button>
-                  <button onClick={() => { setEditing(false); setName(user.name); }} className="px-4 py-2 bg-slate-700 text-white text-sm rounded-lg">Cancel</button>
+                  <button onClick={() => { setEditing(false); setName(user.display_name); }} className="px-4 py-2 bg-slate-700 text-white text-sm rounded-lg">Cancel</button>
                 </div>
               ) : (
                 <div className="flex items-center justify-between">
