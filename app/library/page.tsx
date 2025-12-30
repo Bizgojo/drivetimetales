@@ -3,7 +3,6 @@
 import Link from 'next/link'
 import { useState } from 'react'
 import { useStories } from '@/hooks/useData'
-import { Header } from '@/components/ui/Header'
 
 const genres = ['All', 'Mystery', 'Drama', 'Sci-Fi', 'Horror', 'Comedy', 'Romance', 'Adventure', 'Trucker Stories', 'Thriller']
 
@@ -33,8 +32,7 @@ export default function LibraryPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-950 text-white">
-        <Header isLoggedIn />
-        <div className="max-w-6xl mx-auto text-center py-12">
+        <div className="max-w-2xl mx-auto px-4 py-8 text-center">
           <div className="inline-block w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mb-4" />
           <p className="text-slate-400">Loading stories...</p>
         </div>
@@ -45,8 +43,7 @@ export default function LibraryPage() {
   if (error) {
     return (
       <div className="min-h-screen bg-gray-950 text-white">
-        <Header isLoggedIn />
-        <div className="max-w-6xl mx-auto text-center py-12">
+        <div className="max-w-2xl mx-auto px-4 py-8 text-center">
           <p className="text-red-400">Error: {error?.message || 'Failed to load stories'}</p>
         </div>
       </div>
@@ -55,34 +52,32 @@ export default function LibraryPage() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
-      <Header isLoggedIn />
-      
-      <div className="max-w-6xl mx-auto px-4 py-8">
-        <h1 className="text-3xl font-bold text-white mb-2">Library</h1>
-        <p className="text-slate-400 mb-8">Browse our complete collection of audio stories</p>
+      <div className="max-w-2xl mx-auto px-4 py-6">
+        <h1 className="text-2xl font-bold text-white mb-1">Library</h1>
+        <p className="text-slate-400 text-sm mb-6">Browse our complete collection of audio stories</p>
 
         {/* Search and Filter */}
-        <div className="flex flex-col md:flex-row gap-4 mb-8">
+        <div className="flex gap-3 mb-6">
           <input
             type="text"
             placeholder="Search stories..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="flex-1 px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-orange-500"
+            className="flex-1 px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-orange-500 text-sm"
           />
           <select
             value={genre}
             onChange={(e) => setGenre(e.target.value)}
-            className="px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white cursor-pointer"
+            className="px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white cursor-pointer text-sm"
           >
             {genres.map(g => <option key={g} value={g}>{g}</option>)}
           </select>
         </div>
 
         {/* Results count */}
-        <p className="text-slate-400 mb-6">{filtered.length} {filtered.length === 1 ? 'story' : 'stories'} found</p>
+        <p className="text-slate-500 text-sm mb-4">{filtered.length} {filtered.length === 1 ? 'story' : 'stories'} found</p>
 
-        {/* Stories Grid */}
+        {/* Stories List - Horizontal Cards */}
         {filtered.length === 0 ? (
           <div className="text-center py-12">
             <span className="text-5xl block mb-4">📚</span>
@@ -90,54 +85,75 @@ export default function LibraryPage() {
             <p className="text-slate-400">Try adjusting your search or filter</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
-            {filtered.map((story: any) => (
-              <Link key={story.id} href={`/story/${story.id}`} className="group">
-                {/* Cover Image */}
-                <div className="aspect-square rounded-xl relative overflow-hidden mb-3 group-hover:scale-105 transition-transform">
-                  {story.cover_url ? (
-                    <img 
-                      src={story.cover_url} 
-                      alt={story.title}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className={`w-full h-full bg-gradient-to-br ${genreColors[story.genre] || 'from-slate-600 to-slate-800'} flex items-center justify-center`}>
-                      <span className="text-4xl opacity-50">🎧</span>
+          <div className="space-y-4">
+            {filtered.map((story: any) => {
+              const creditsNeeded = Math.ceil(story.duration_mins / 15)
+              return (
+                <Link 
+                  key={story.id} 
+                  href={`/story/${story.id}`} 
+                  className="block bg-slate-900 border border-slate-800 rounded-xl overflow-hidden hover:border-slate-700 transition-all"
+                >
+                  {/* Horizontal Card Layout */}
+                  <div className="flex">
+                    {/* Cover - Left Half */}
+                    <div className="w-1/2 aspect-square relative flex-shrink-0">
+                      {story.cover_url ? (
+                        <img 
+                          src={story.cover_url} 
+                          alt={story.title}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className={`w-full h-full bg-gradient-to-br ${genreColors[story.genre] || 'from-slate-600 to-slate-800'} flex items-center justify-center`}>
+                          <span className="text-5xl opacity-50">🎧</span>
+                        </div>
+                      )}
+                      
+                      {/* Play overlay */}
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                        <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center hover:bg-white/40 transition-all">
+                          <div className="w-0 h-0 border-l-[18px] border-l-white border-y-[10px] border-y-transparent ml-1" />
+                        </div>
+                      </div>
+                      
+                      {/* NEW badge */}
+                      {story.is_new && (
+                        <div className="absolute top-2 left-2 px-2 py-0.5 bg-green-500 text-black text-xs font-semibold rounded">
+                          NEW
+                        </div>
+                      )}
                     </div>
-                  )}
-                  
-                  {/* Play overlay */}
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/40 transition-all">
-                    <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center group-hover:bg-white/40 transition-all">
-                      <div className="w-0 h-0 border-l-[14px] border-l-white border-y-[8px] border-y-transparent ml-1" />
+
+                    {/* Info - Right Half */}
+                    <div className="w-1/2 p-4 flex flex-col justify-between">
+                      <div>
+                        <h3 className="font-bold text-white text-base mb-1 line-clamp-2">{story.title}</h3>
+                        <p className="text-orange-400 text-sm mb-1">{story.genre}</p>
+                        <p className="text-slate-400 text-sm mb-2">by {story.author}</p>
+                        <div className="flex items-center gap-2 text-xs text-slate-500">
+                          <span>{story.duration_mins} min</span>
+                          <span>•</span>
+                          <span>{creditsNeeded} {creditsNeeded === 1 ? 'credit' : 'credits'}</span>
+                        </div>
+                      </div>
+                      
+                      {/* Play button */}
+                      <div className="mt-3 w-full py-2 bg-orange-500 hover:bg-orange-400 text-black text-sm font-semibold rounded-lg transition-all text-center">
+                        ▶ Play
+                      </div>
                     </div>
                   </div>
-                  
-                  {/* NEW badge */}
-                  {story.is_new && (
-                    <div className="absolute top-2 left-2 px-2 py-0.5 bg-green-500 text-black text-xs font-semibold rounded">
-                      NEW
+
+                  {/* Description - Below the block */}
+                  {story.description && (
+                    <div className="px-4 pb-4 pt-2 border-t border-slate-800">
+                      <p className="text-slate-400 text-sm line-clamp-2">{story.description}</p>
                     </div>
                   )}
-                  
-                  {/* Duration badge */}
-                  <div className="absolute bottom-2 right-2 px-2 py-0.5 bg-black/60 text-white text-xs rounded">
-                    {story.duration_label || `${story.duration_mins} min`}
-                  </div>
-                </div>
-                
-                {/* Story Info */}
-                <h3 className="font-semibold text-white text-sm group-hover:text-orange-400 line-clamp-2">{story.title}</h3>
-                <p className="text-xs text-orange-400">{story.genre}</p>
-                <p className="text-xs text-slate-400">{story.author}</p>
-                
-                {/* Play button */}
-                <div className="mt-2 w-full py-2 bg-orange-500 hover:bg-orange-400 text-black text-xs font-semibold rounded-lg transition-all text-center">
-                  ▶ Play
-                </div>
-              </Link>
-            ))}
+                </Link>
+              )
+            })}
           </div>
         )}
       </div>
