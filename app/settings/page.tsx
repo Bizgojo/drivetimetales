@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useStories } from '@/hooks/useData'
 
 const tierNames: Record<string, { name: string; icon: string; color: string }> = {
+  'free': { name: 'Free', icon: '🆓', color: 'text-slate-300' },
   'test_driver': { name: 'Test Driver', icon: '🚗', color: 'text-slate-300' },
   'commuter': { name: 'Commuter', icon: '🚙', color: 'text-orange-400' },
   'road_warrior': { name: 'Road Warrior', icon: '🚛', color: 'text-purple-400' },
@@ -35,11 +36,7 @@ export default function SettingsPage() {
     )
   }
 
-  const tier = tierNames[user.subscription_type || 'test_driver'] || tierNames['test_driver']
-  const freeSecondsRemaining = user.free_seconds_remaining || 0
-  const creditBalance = user.credit_balance || 0
-  const storeCreditCents = user.store_credit_cents || 0
-  const ownedStories = user.owned_stories || []
+  const tier = tierNames[user.subscription_type] || tierNames['free']
 
   const handleSaveName = () => {
     if (name.trim()) {
@@ -52,13 +49,10 @@ export default function SettingsPage() {
     window.location.reload()
   }
 
-  const handleSignOut = () => {
-    signOut()
+  const handleSignOut = async () => {
+    await signOut()
     router.push('/')
   }
-
-  // Get listening history entries
-  const historyEntries: any[] = []
 
   return (
     <div className="py-8 px-4">
@@ -115,141 +109,41 @@ export default function SettingsPage() {
                     ? 'Unlimited streaming + downloads' 
                     : user.subscription_type === 'commuter'
                     ? 'Unlimited streaming'
-                    : `${Math.floor(freeSecondsRemaining / 60)} free minutes remaining`}
+                    : 'Pay per story with credits'}
                 </p>
               </div>
               <Link href="/pricing" className="px-4 py-2 bg-orange-500 text-black text-sm font-semibold rounded-lg">
-                {user.subscription_type === 'test_driver' ? 'Upgrade' : 'Change Plan'}
+                {user.subscription_type === 'free' || user.subscription_type === 'test_driver' ? 'Upgrade' : 'Change Plan'}
               </Link>
             </div>
 
-            {/* Free tier progress bar */}
-            {user.subscription_type === 'test_driver' && (
-              <div>
-                <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-green-500" 
-                    style={{ width: `${(freeSecondsRemaining / 7200) * 100}%` }} 
-                  />
-                </div>
-                <p className="text-xs text-slate-500 mt-1">Free hours reset monthly</p>
-              </div>
-            )}
-
             {/* Credit balance */}
-            {creditBalance > 0 && (
-              <div className="p-3 bg-slate-900/50 rounded-lg">
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-400 text-sm">Credit Balance</span>
-                  <span className="text-green-400 font-semibold">{creditBalance.toFixed(1)} credits</span>
-                </div>
-                <p className="text-xs text-slate-500 mt-1">1 credit = 15 minutes • Credits never expire</p>
+            <div className="p-3 bg-slate-900/50 rounded-lg">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400 text-sm">Credit Balance</span>
+                <span className="text-green-400 font-semibold">{user.credits} credits</span>
               </div>
-            )}
+              <p className="text-xs text-slate-500 mt-1">1 credit = 15 minutes • Credits never expire</p>
+            </div>
 
-            {/* Store credit */}
-            {storeCreditCents > 0 && (
+            {/* Subscription end date if applicable */}
+            {user.subscription_ends_at && (
               <div className="p-3 bg-slate-900/50 rounded-lg">
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-400 text-sm">Store Credit</span>
-                  <span className="text-orange-400 font-semibold">${(storeCreditCents / 100).toFixed(2)}</span>
+                  <span className="text-slate-400 text-sm">Subscription Renews</span>
+                  <span className="text-white">{new Date(user.subscription_ends_at).toLocaleDateString()}</span>
                 </div>
-                <p className="text-xs text-slate-500 mt-1">Use for individual story purchases</p>
               </div>
             )}
           </div>
         </section>
 
-        {/* Owned Stories Section */}
-        {ownedStories.length > 0 && (
-          <section className="bg-slate-800/50 border border-slate-700 rounded-xl p-6 mb-6">
-            <h2 className="text-lg font-semibold text-white mb-4">🎁 Owned Stories</h2>
-            <div className="space-y-2">
-              {ownedStories.map((storyId: string) => {
-                const story = storyLookup[storyId]
-                if (!story) return null
-                return (
-                  <Link 
-                    key={storyId}
-                    href={`/story/${storyId}`}
-                    className="flex items-center justify-between p-3 bg-slate-900/50 rounded-lg hover:bg-slate-900"
-                  >
-                    <div>
-                      <p className="text-white text-sm font-semibold">{story.title}</p>
-                      <p className="text-xs text-slate-400">{story.author} • {story.duration_mins} min</p>
-                    </div>
-                    <span className="text-green-400 text-xs">✓ Owned</span>
-                  </Link>
-                )
-              })}
-            </div>
-          </section>
-        )}
-
         {/* Listening History Section */}
         <section className="bg-slate-800/50 border border-slate-700 rounded-xl p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-white">📊 Listening History</h2>
-            {historyEntries.length > 0 && (
-              <button 
-                onClick={() => setShowClearConfirm(true)}
-                className="text-red-400 text-sm hover:text-red-300"
-              >
-                Clear History
-              </button>
-            )}
           </div>
-          
-          {historyEntries.length > 0 ? (
-            <div className="space-y-3">
-              {historyEntries.slice(0, 5).map((entry: any) => (
-                <Link 
-                  key={entry.storyId}
-                  href={`/story/${entry.storyId}`}
-                  className="flex items-center justify-between p-3 bg-slate-900/50 rounded-lg hover:bg-slate-900"
-                >
-                  <div>
-                    <p className="text-white text-sm font-semibold">{entry.story?.title}</p>
-                    <p className="text-xs text-slate-400">{entry.story?.author} • {entry.story?.duration_mins} min</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xs text-green-400">{Math.round(entry.progress)}% complete</p>
-                    <p className="text-xs text-slate-500">
-                      {new Date(entry.lastPlayed).toLocaleDateString()}
-                    </p>
-                  </div>
-                </Link>
-              ))}
-              {historyEntries.length > 5 && (
-                <p className="text-xs text-slate-500 text-center">
-                  + {historyEntries.length - 5} more stories
-                </p>
-              )}
-            </div>
-          ) : (
-            <p className="text-slate-400 text-sm">No listening history yet</p>
-          )}
-
-          {/* Clear confirmation */}
-          {showClearConfirm && (
-            <div className="mt-4 p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
-              <p className="text-white text-sm mb-3">Are you sure you want to clear your listening history?</p>
-              <div className="flex gap-2">
-                <button 
-                  onClick={handleClearHistory}
-                  className="px-4 py-2 bg-red-600 text-white text-sm rounded-lg"
-                >
-                  Yes, Clear
-                </button>
-                <button 
-                  onClick={() => setShowClearConfirm(false)}
-                  className="px-4 py-2 bg-slate-700 text-white text-sm rounded-lg"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
+          <p className="text-slate-400 text-sm">No listening history yet</p>
         </section>
 
         {/* Device Section */}
