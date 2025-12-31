@@ -1,73 +1,306 @@
 'use client'
 
+import { useState, useEffect, Suspense } from 'react'
 import Link from 'next/link'
-import { useState, Suspense } from 'react'
-import { useSearchParams, useRouter } from 'next/navigation'
-import { useAuth } from '@/contexts/AuthContext'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { supabase } from '@/lib/supabase'
 
-type TierKey = 'test_driver' | 'commuter' | 'road_warrior'
-
-const tierInfo: Record<TierKey, { name: string; icon: string; monthlyPrice: number; features: string }> = {
-  test_driver: { name: 'Test Driver', icon: '🚗', monthlyPrice: 0, features: '2 hours/month free' },
-  commuter: { name: 'Commuter', icon: '🚙', monthlyPrice: 7.99, features: 'Unlimited streaming' },
-  road_warrior: { name: 'Road Warrior', icon: '🚛', monthlyPrice: 12.99, features: 'Unlimited + Downloads' },
-}
-
-function Form() {
-  const params = useSearchParams()
-  const tierId = (params.get('tier') || 'test_driver') as TierKey
-  const tier = tierInfo[tierId] || tierInfo.test_driver
-  const [email, setEmail] = useState('')
-  const [name, setName] = useState('')
+function SignUpContent() {
   const router = useRouter()
-  const { signUp } = useAuth()
+  const searchParams = useSearchParams()
+  
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  
+  // Get plan from URL params
+  const planId = searchParams.get('plan') || 'premium'
+  const billing = searchParams.get('billing') || 'monthly'
+  const priceId = searchParams.get('priceId') || ''
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const planNames: { [key: string]: string } = {
+    basic: 'Basic',
+    premium: 'Premium',
+    unlimited: 'Unlimited'
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (tier.monthlyPrice > 0) {
-      router.push(`/checkout?tier=${tierId}&email=${encodeURIComponent(email)}&name=${encodeURIComponent(name)}`)
-    } else {
-      router.push('/')
+    setError(null)
+    
+    // Validation
+    if (!name.trim()) {
+      setError('Please enter your name')
+      return
+    }
+    
+    if (!email.trim()) {
+      setError('Please enter your email')
+      return
+    }
+    
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters')
+      return
+    }
+    
+    if (password !== confirmPassword) {
+      setError('Passwords do not match')
+      return
+    }
+    
+    setIsSubmitting(true)
+    
+    try {
+      // Create user account with Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: email.trim(),
+        password: password,
+        options: {
+          data: {
+            display_name: name.trim(),
+          }
+        }
+      })
+      
+      if (authError) {
+        if (authError.message.includes('already registered')) {
+          setError('This email is already registered. Please sign in instead.')
+        } else {
+          setError(authError.message)
+        }
+        setIsSubmitting(false)
+        return
+      }
+      
+      if (!authData.user) {
+        setError('Failed to create account. Please try again.')
+        setIsSubmitting(false)
+        return
+      }
+      
+      // Create user profile (pending subscription)
+      const { error: profileError } = await supabase
+        .from('users')
+        .insert({
+          id: authData.user.id,
+          email: email.trim(),
+          display_name: name.trim(),
+          subscription_status: 'pending',
+          subscription_plan: planId,
+          credits: 0,
+          created_at: new Date().toISOString()
+        })
+      
+      if (profileError) {
+        console.error('Profile creation error:', profileError)
+      }
+      
+      // Redirect to Stripe checkout
+      const response = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          priceId: priceId,
+          userId: authData.user.id,
+          email: email.trim(),
+          plan: planId,
+          billing: billing
+        }),
+      })
+      
+      const { url, error: checkoutError } = await response.json()
+      
+      if (checkoutError) {
+        setError('Failed to create checkout session. Please try again.')
+        setIsSubmitting(false)
+        return
+      }
+      
+      // Redirect to Stripe
+      if (url) {
+        window.location.href = url
+      }
+      
+    } catch (err) {
+      setError('An error occurred. Please try again.')
+      setIsSubmitting(false)
     }
   }
+
+  // Logo component
+  const Logo = () => (
+    <div className="flex items-center justify-center gap-2">
+      <svg width="50" height="30" viewBox="0 0 80 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <g>
+          <rect x="45" y="24" width="30" height="14" rx="3" fill="#f97316"/>
+          <path d="M52 24 L56 16 L68 16 L72 24" fill="#f97316"/>
+          <path d="M54 23 L57 17 L67 17 L70 23" fill="#1e293b"/>
+          <circle cx="54" cy="38" r="5" fill="#334155"/>
+          <circle cx="54" cy="38" r="2.5" fill="#64748b"/>
+          <circle cx="68" cy="38" r="5" fill="#334155"/>
+          <circle cx="68" cy="38" r="2.5" fill="#64748b"/>
+          <rect x="73" y="28" width="3" height="4" rx="1" fill="#fef08a"/>
+        </g>
+        <g>
+          <rect x="2" y="20" width="18" height="18" rx="3" fill="#3b82f6"/>
+          <path d="M5 20 L8 12 L17 12 L20 20" fill="#3b82f6"/>
+          <path d="M7 19 L9 13 L16 13 L18 19" fill="#1e293b"/>
+          <rect x="20" y="18" width="22" height="20" rx="2" fill="#60a5fa"/>
+          <circle cx="10" cy="38" r="5" fill="#334155"/>
+          <circle cx="10" cy="38" r="2.5" fill="#64748b"/>
+          <circle cx="32" cy="38" r="5" fill="#334155"/>
+          <circle cx="32" cy="38" r="2.5" fill="#64748b"/>
+        </g>
+      </svg>
+      <div className="flex items-baseline">
+        <span className="text-lg font-bold text-white">Drive Time </span>
+        <span className="text-lg font-bold text-orange-500">Tales</span>
+      </div>
+    </div>
+  )
+
   return (
-    <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-6">
-      <div className="bg-slate-900/50 rounded-lg p-3 mb-4 text-center">
-        <p className="text-xs text-slate-400">Selected Plan</p>
-        <p className="text-2xl mb-1">{tier.icon}</p>
-        <p className="text-lg font-bold text-white">{tier.name}</p>
-        <p className="text-orange-400 text-sm">
-          {tier.features}
-          {tier.monthlyPrice > 0 && ` • $${tier.monthlyPrice}/mo`}
+    <div className="min-h-screen bg-slate-950 text-white">
+      <div className="max-w-md mx-auto px-4 py-6">
+        
+        {/* Logo */}
+        <div className="flex justify-center mb-6">
+          <Link href="/welcome">
+            <Logo />
+          </Link>
+        </div>
+
+        {/* Selected Plan Banner */}
+        <div className="bg-orange-500/20 border border-orange-500/50 rounded-xl p-3 mb-6 text-center">
+          <p className="text-orange-400 text-sm">
+            Selected Plan: <span className="font-bold">{planNames[planId] || 'Premium'}</span>
+            <span className="text-orange-300"> ({billing})</span>
+          </p>
+          <Link href="/pricing" className="text-orange-300 text-xs hover:underline">
+            Change plan
+          </Link>
+        </div>
+
+        {/* Registration Form */}
+        <div className="bg-slate-900 rounded-2xl p-6 border border-slate-800">
+          <h1 className="text-xl font-bold text-white text-center mb-2">
+            Create Your Account
+          </h1>
+          <p className="text-slate-400 text-sm text-center mb-6">
+            Then proceed to payment
+          </p>
+          
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Name */}
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Your Name</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="John Smith"
+                className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-orange-500"
+                autoComplete="name"
+              />
+            </div>
+            
+            {/* Email */}
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Email Address</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-orange-500"
+                autoComplete="email"
+              />
+            </div>
+            
+            {/* Password */}
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Create Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-orange-500"
+                autoComplete="new-password"
+              />
+            </div>
+            
+            {/* Confirm Password */}
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Confirm Password</label>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-orange-500"
+                autoComplete="new-password"
+              />
+            </div>
+            
+            {/* Error Message */}
+            {error && (
+              <div className="p-3 bg-red-500/20 border border-red-500/30 rounded-lg">
+                <p className="text-red-400 text-sm text-center">{error}</p>
+              </div>
+            )}
+            
+            {/* Submit Button */}
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className={`w-full py-3 rounded-xl font-bold text-base transition-colors ${
+                isSubmitting
+                  ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                  : 'bg-orange-500 hover:bg-orange-400 text-black'
+              }`}
+            >
+              {isSubmitting ? 'Creating Account...' : 'Continue to Payment'}
+            </button>
+          </form>
+          
+          {/* Terms */}
+          <p className="text-slate-500 text-xs text-center mt-4">
+            By creating an account, you agree to our{' '}
+            <Link href="/terms" className="text-orange-400 hover:underline">Terms of Service</Link>
+            {' '}and{' '}
+            <Link href="/privacy" className="text-orange-400 hover:underline">Privacy Policy</Link>
+          </p>
+        </div>
+
+        {/* Already have account */}
+        <p className="text-slate-400 text-sm text-center mt-6">
+          Already have an account?{' '}
+          <Link href="/signin" className="text-orange-400 hover:underline font-medium">Sign In</Link>
         </p>
       </div>
-      <h1 className="text-xl font-bold text-white text-center mb-4">Create Your Account</h1>
-      <form onSubmit={handleSubmit} className="space-y-3">
-        <input type="text" value={name} onChange={e => setName(e.target.value)} required placeholder="Your name" className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-orange-500" />
-        <input type="email" value={email} onChange={e => setEmail(e.target.value)} required placeholder="you@example.com" className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-orange-500" />
-        <button type="submit" className="w-full py-3 bg-orange-500 hover:bg-orange-400 text-black font-semibold rounded-lg">
-          {tier.monthlyPrice > 0 ? 'Continue to Payment' : 'Create Free Account'}
-        </button>
-      </form>
-      <p className="text-xs text-slate-500 text-center mt-3">🔒 This device will remember you</p>
-      <p className="text-center text-xs text-slate-500 mt-3"><Link href="/pricing" className="text-orange-400">← Change plan</Link></p>
+    </div>
+  )
+}
+
+function LoadingFallback() {
+  return (
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+      <div className="inline-block w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
     </div>
   )
 }
 
 export default function SignUpPage() {
   return (
-    <div className="py-12 px-4">
-      <div className="max-w-sm mx-auto">
-        <Link href="/" className="flex items-center justify-center gap-2 mb-6">
-          <span className="text-2xl">🚛</span>
-          <span className="font-bold"><span className="text-orange-400">Drive Time</span> Tales</span>
-        </Link>
-        <Suspense fallback={<div className="text-slate-400 text-center">Loading...</div>}>
-          <Form />
-        </Suspense>
-        <p className="text-center text-slate-400 text-sm mt-4">Have an account? <Link href="/signin" className="text-orange-400">Sign in</Link></p>
-      </div>
-    </div>
+    <Suspense fallback={<LoadingFallback />}>
+      <SignUpContent />
+    </Suspense>
   )
 }
