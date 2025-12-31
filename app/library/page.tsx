@@ -9,6 +9,7 @@ export default function LibraryPage() {
   const router = useRouter()
   const { stories, loading, error } = useStories()
   const [genre, setGenre] = useState('All')
+  const [duration, setDuration] = useState('All')
 
   const genreOptions = [
     { name: 'All', icon: '📚' },
@@ -18,14 +19,27 @@ export default function LibraryPage() {
     { name: 'Horror', icon: '👻' },
     { name: 'Comedy', icon: '😂' },
     { name: 'Romance', icon: '💕' },
-    { name: 'Adventure', icon: '⚔️' },
     { name: 'Trucker Stories', icon: '🚛' },
     { name: 'Thriller', icon: '😱' },
   ]
 
-  // Filter stories by genre
+  const durationOptions = [
+    { name: 'All', label: 'All' },
+    { name: '15 min', label: '~15 min' },
+    { name: '30 min', label: '~30 min' },
+    { name: '1 hr', label: '~1 hr' },
+  ]
+
+  // Filter stories by genre and duration
   const filtered = stories.filter((s: any) => {
+    // Genre filter
     if (genre !== 'All' && s.genre !== genre) return false
+    
+    // Duration filter
+    if (duration === '15 min' && (s.duration_mins < 10 || s.duration_mins > 20)) return false
+    if (duration === '30 min' && (s.duration_mins < 20 || s.duration_mins > 45)) return false
+    if (duration === '1 hr' && s.duration_mins < 45) return false
+    
     return true
   })
 
@@ -84,7 +98,7 @@ export default function LibraryPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      <div className="max-w-2xl mx-auto px-4 py-6">
+      <div className="max-w-2xl mx-auto px-4 py-4">
         
         {/* Header with Logo */}
         <div className="flex justify-center mb-4">
@@ -98,7 +112,7 @@ export default function LibraryPage() {
         </div>
 
         {/* Genre Icons */}
-        <div className="mb-4">
+        <div className="mb-3">
           <div className="flex flex-wrap justify-center gap-1">
             {genreOptions.map((g) => (
               <button
@@ -117,6 +131,25 @@ export default function LibraryPage() {
           </div>
         </div>
 
+        {/* Duration Filter Buttons */}
+        <div className="mb-4">
+          <div className="flex justify-center gap-2">
+            {durationOptions.map((d) => (
+              <button
+                key={d.name}
+                onClick={() => setDuration(d.name)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                  duration === d.name 
+                    ? 'bg-orange-500 text-black' 
+                    : 'bg-slate-800 text-white border border-slate-700'
+                }`}
+              >
+                {d.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Results count */}
         <p className="text-white text-xs mb-3">{filtered.length} {filtered.length === 1 ? 'story' : 'stories'} found</p>
 
@@ -125,19 +158,19 @@ export default function LibraryPage() {
           <div className="text-center py-12">
             <span className="text-5xl block mb-4">📚</span>
             <h2 className="text-xl font-bold text-white mb-2">No Stories Found</h2>
-            <p className="text-white">Try selecting a different genre</p>
+            <p className="text-white">Try selecting a different genre or duration</p>
           </div>
         ) : (
-          <div className="space-y-2">
-            {filtered.map((story: any) => (
+          <div className="space-y-3">
+            {filtered.map((story: any, index: number) => (
               <Link 
                 key={story.id}
                 href={`/story/${story.id}`}
-                className="block bg-slate-900 rounded-xl overflow-hidden border border-slate-800 hover:border-slate-700 transition-all"
+                className={`block rounded-xl overflow-hidden ${index % 2 === 0 ? 'bg-slate-900' : 'bg-slate-800'}`}
               >
-                <div className="flex h-24">
-                  {/* Cover with duration badge */}
-                  <div className="w-24 h-24 flex-shrink-0 relative">
+                <div className="flex">
+                  {/* Cover - Larger */}
+                  <div className="w-32 h-32 flex-shrink-0 relative">
                     {story.cover_url ? (
                       <img 
                         src={story.cover_url}
@@ -149,23 +182,28 @@ export default function LibraryPage() {
                         <span className="text-3xl opacity-50">🎧</span>
                       </div>
                     )}
-                    {/* Duration badge bottom right */}
+                    {/* Duration badge */}
                     <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/70 text-white text-[10px] rounded">
                       {story.duration_mins} min
                     </div>
                   </div>
                   
+                  {/* Spacer */}
+                  <div className="w-3" />
+                  
                   {/* Info */}
-                  <div className="flex-1 p-2 flex flex-col justify-between">
+                  <div className="flex-1 py-3 pr-3 flex flex-col justify-between">
                     <div>
-                      <h3 className="font-bold text-white text-sm leading-tight line-clamp-1">{story.title}</h3>
-                      <p className="text-white text-xs mt-0.5">{story.genre} • {story.credits} {story.credits === 1 ? 'credit' : 'credits'}</p>
-                      <p className="text-slate-400 text-xs">{story.author}</p>
+                      <h3 className="font-bold text-white text-sm leading-tight">{story.title}</h3>
+                      <p className="text-white text-xs mt-1">{story.genre} • {story.credits} {story.credits === 1 ? 'credit' : 'credits'}</p>
+                      <p className="text-slate-400 text-xs mt-0.5">{story.author}</p>
                     </div>
                     
-                    {/* Preview Story button - ORANGE */}
-                    <div className="py-1.5 bg-orange-500 hover:bg-orange-400 text-center rounded-lg transition-colors">
-                      <span className="text-black text-xs font-semibold">Preview Story</span>
+                    {/* Preview Story button - shorter, no tags */}
+                    <div className="mt-2">
+                      <span className="inline-block px-6 py-1.5 bg-orange-500 hover:bg-orange-400 rounded-lg transition-colors">
+                        <span className="text-black text-xs font-semibold">Preview Story</span>
+                      </span>
                     </div>
                   </div>
                 </div>
