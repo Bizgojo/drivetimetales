@@ -6,47 +6,44 @@ import { useRouter } from 'next/navigation'
 
 export default function PricingPage() {
   const router = useRouter()
-  const [selectedPlan, setSelectedPlan] = useState<string | null>(null)
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly')
 
-  // Subscription plans - update these with your actual Stripe price IDs
+  // Subscription plans with real Stripe Price IDs
   const plans = [
     {
-      id: 'basic',
-      name: 'Basic',
-      monthlyPrice: 4.99,
-      yearlyPrice: 49.99,
+      id: 'test-driver',
+      name: 'Test Driver',
+      monthlyPrice: 2.99,
+      yearlyPrice: 29.99,
       credits: 10,
       features: [
         '10 credits per month',
         'Access to all stories',
         'Save to wishlist',
-        'Track your progress',
       ],
       popular: false,
-      monthlyPriceId: 'price_basic_monthly', // Replace with actual Stripe price ID
-      yearlyPriceId: 'price_basic_yearly',   // Replace with actual Stripe price ID
+      monthlyPriceId: 'price_1SjSWGG3QDdai0ZhIluFz2T3',
+      yearlyPriceId: 'price_1SjSc8G3QDdai0ZhzV24N11l',
     },
     {
-      id: 'premium',
-      name: 'Premium',
-      monthlyPrice: 9.99,
-      yearlyPrice: 99.99,
-      credits: 30,
+      id: 'commuter',
+      name: 'Commuter',
+      monthlyPrice: 7.99,
+      yearlyPrice: 79.99,
+      credits: 25,
       features: [
-        '30 credits per month',
+        '25 credits per month',
         'Access to all stories',
         'Save to wishlist',
         'Track your progress',
-        'Early access to new releases',
       ],
       popular: true,
-      monthlyPriceId: 'price_premium_monthly', // Replace with actual Stripe price ID
-      yearlyPriceId: 'price_premium_yearly',   // Replace with actual Stripe price ID
+      monthlyPriceId: 'price_1SjShgG3QDdai0ZhpLpMLBig',
+      yearlyPriceId: 'price_1SjSj1G3QDdai0ZhSETd2rcS',
     },
     {
-      id: 'unlimited',
-      name: 'Unlimited',
+      id: 'road-warrior',
+      name: 'Road Warrior',
       monthlyPrice: 14.99,
       yearlyPrice: 149.99,
       credits: -1, // -1 means unlimited
@@ -56,28 +53,45 @@ export default function PricingPage() {
         'Save to wishlist',
         'Track your progress',
         'Early access to new releases',
-        'Exclusive content',
       ],
       popular: false,
-      monthlyPriceId: 'price_unlimited_monthly', // Replace with actual Stripe price ID
-      yearlyPriceId: 'price_unlimited_yearly',   // Replace with actual Stripe price ID
+      monthlyPriceId: 'price_1SjSkJG3QDdai0ZhEqPaFOmU',
+      yearlyPriceId: 'price_1SjSlRG3QDdai0ZhD10RJ0sl',
     },
   ]
 
-  const handleSelectPlan = (planId: string) => {
-    setSelectedPlan(planId)
-    const plan = plans.find(p => p.id === planId)
-    if (plan) {
-      const priceId = billingCycle === 'monthly' ? plan.monthlyPriceId : plan.yearlyPriceId
-      // Navigate to signup with selected plan
-      router.push(`/signup?plan=${planId}&billing=${billingCycle}&priceId=${priceId}`)
-    }
+  // Freedom Packs (one-time purchase)
+  const freedomPacks = [
+    {
+      id: 'small-pack',
+      name: 'Small Pack',
+      price: 4.99,
+      credits: 10,
+      priceId: 'price_1SjSxEG3QDdai0Zhi0BbuzED',
+    },
+    {
+      id: 'medium-pack',
+      name: 'Medium Pack',
+      price: 9.99,
+      credits: 25,
+      priceId: 'price_1SjSydG3QDdai0ZhUIYLwgzw',
+    },
+    {
+      id: 'large-pack',
+      name: 'Large Pack',
+      price: 19.99,
+      credits: 60,
+      priceId: 'price_1SjT2LG3QDdai0ZhyG3JTuGY',
+      bestValue: true,
+    },
+  ]
+
+  const handleSelectPlan = (planId: string, priceId: string) => {
+    router.push(`/signup?plan=${planId}&billing=${billingCycle}&priceId=${priceId}&type=subscription`)
   }
 
-  const yearlySavings = (monthly: number, yearly: number) => {
-    const monthlyCost = monthly * 12
-    const savings = Math.round(((monthlyCost - yearly) / monthlyCost) * 100)
-    return savings
+  const handleSelectPack = (packId: string, priceId: string) => {
+    router.push(`/signup?plan=${packId}&priceId=${priceId}&type=one-time`)
   }
 
   // Logo component
@@ -126,7 +140,7 @@ export default function PricingPage() {
         {/* Title */}
         <div className="text-center mb-6">
           <h1 className="text-2xl font-bold text-white mb-2">Choose Your Plan</h1>
-          <p className="text-slate-400 text-sm">Unlock unlimited audio stories for your commute</p>
+          <p className="text-slate-400 text-sm">Unlock audio stories for your commute</p>
         </div>
 
         {/* Billing Toggle */}
@@ -156,10 +170,11 @@ export default function PricingPage() {
           </div>
         </div>
 
-        {/* Plans */}
-        <div className="space-y-4">
+        {/* Subscription Plans */}
+        <div className="space-y-4 mb-8">
           {plans.map((plan) => {
             const price = billingCycle === 'monthly' ? plan.monthlyPrice : plan.yearlyPrice
+            const priceId = billingCycle === 'monthly' ? plan.monthlyPriceId : plan.yearlyPriceId
             const perMonth = billingCycle === 'yearly' ? (plan.yearlyPrice / 12).toFixed(2) : plan.monthlyPrice
             
             return (
@@ -211,7 +226,7 @@ export default function PricingPage() {
 
                 {/* Select button */}
                 <button
-                  onClick={() => handleSelectPlan(plan.id)}
+                  onClick={() => handleSelectPlan(plan.id, priceId)}
                   className={`w-full mt-4 py-3 rounded-xl font-semibold transition-colors ${
                     plan.popular
                       ? 'bg-orange-500 hover:bg-orange-400 text-black'
@@ -225,8 +240,54 @@ export default function PricingPage() {
           })}
         </div>
 
+        {/* Freedom Packs Section */}
+        <div className="mb-8">
+          <div className="text-center mb-4">
+            <h2 className="text-xl font-bold text-white mb-1">Freedom Packs</h2>
+            <p className="text-slate-400 text-sm">One-time purchase, no subscription required</p>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            {freedomPacks.map((pack) => (
+              <div
+                key={pack.id}
+                className={`relative rounded-xl p-3 border-2 transition-all ${
+                  pack.bestValue
+                    ? 'border-green-500 bg-slate-900'
+                    : 'border-slate-700 bg-slate-900/50'
+                }`}
+              >
+                {pack.bestValue && (
+                  <div className="absolute -top-2 left-1/2 transform -translate-x-1/2">
+                    <span className="bg-green-500 text-black text-[10px] font-bold px-2 py-0.5 rounded-full">
+                      BEST VALUE
+                    </span>
+                  </div>
+                )}
+
+                <div className="text-center">
+                  <h3 className="text-sm font-bold text-white">{pack.name}</h3>
+                  <p className="text-2xl font-bold text-white mt-1">${pack.price}</p>
+                  <p className="text-orange-400 text-sm font-medium">{pack.credits} credits</p>
+                  
+                  <button
+                    onClick={() => handleSelectPack(pack.id, pack.priceId)}
+                    className={`w-full mt-3 py-2 rounded-lg font-semibold text-sm transition-colors ${
+                      pack.bestValue
+                        ? 'bg-green-500 hover:bg-green-400 text-black'
+                        : 'bg-slate-700 hover:bg-slate-600 text-white'
+                    }`}
+                  >
+                    Buy Now
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* Already have account */}
-        <p className="text-center text-slate-400 text-sm mt-6">
+        <p className="text-center text-slate-400 text-sm">
           Already have an account?{' '}
           <Link href="/signin" className="text-orange-400 hover:underline font-medium">
             Sign In
