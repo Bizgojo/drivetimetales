@@ -134,8 +134,8 @@ function PlayContent() {
     router.push(`/player/${storyId}`)
   }
 
-  // Cover size - larger on player screen
-  const coverSize = Math.min(screenHeight * 0.3, 200)
+  // Cover size - larger, 35% of screen height
+  const coverSize = Math.min(screenHeight * 0.35, 240)
 
   if (loading) {
     return (
@@ -207,18 +207,21 @@ function PlayContent() {
         </div>
 
         {/* Title + Author - compact */}
-        <div className="text-center mt-2 mb-2">
-          <h1 className="font-bold text-white text-base">{story.title}</h1>
-          <p className="text-slate-300 text-xs">{story.author}</p>
+        <div className="text-center mt-2">
+          <h1 className="font-bold text-white text-lg">{story.title}</h1>
+          <p className="text-slate-300 text-sm">{story.author}</p>
         </div>
 
-        {/* Compact Player - smaller orange box */}
+        {/* Spacer */}
+        <div className="flex-1 min-h-2" />
+
+        {/* Compact Player */}
         <div className="bg-orange-500 rounded-xl p-3 mb-4">
           
           {/* Time display */}
           <div className="flex justify-between text-black text-xs font-medium mb-1">
             <span>{formatTime(currentTime)}</span>
-            <span>-{formatTime(duration - currentTime)}</span>
+            <span>-{formatTime(Math.max(0, duration - currentTime))}</span>
           </div>
 
           {/* Progress slider */}
@@ -235,7 +238,7 @@ function PlayContent() {
           />
 
           {/* Controls - compact */}
-          <div className="flex items-center justify-center gap-3 mb-2">
+          <div className="flex items-center justify-center gap-4 mb-2">
             {/* Rewind 15s */}
             <button 
               onClick={() => handleSkip(-15)}
@@ -270,7 +273,7 @@ function PlayContent() {
               <button
                 key={speed}
                 onClick={() => setPlaybackSpeed(speed)}
-                className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
                   playbackSpeed === speed 
                     ? 'bg-black text-white' 
                     : 'bg-orange-600 text-white hover:bg-orange-700'
