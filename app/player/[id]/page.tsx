@@ -1,203 +1,260 @@
-'use client';
+'use client'
 
-import React, { useEffect, useState } from 'react';
-import Link from 'next/link';
-import { useParams } from 'next/navigation';
-import { useAudioPlayer, PLAYBACK_RATES } from '@/hooks/useAudioPlayer';
-import { useStory, useOwnsStory, usePlayProgress, usePurchaseStory } from '@/hooks/useData';
-import { useAuth } from '@/contexts/AuthContext';
+import { useState, useEffect, Suspense } from 'react'
+import Link from 'next/link'
+import { useRouter, useParams } from 'next/navigation'
+import { supabase, getStory, Story } from '@/lib/supabase'
 
-const CATEGORY_ICONS: Record<string, string> = {
-  'Trucker Stories': '🚛',
-  'Drama': '🎭',
-  'Horror': '👻',
-  'Mystery': '🔍',
-  'Thriller': '⚡',
-  'Adventure': '🏜️',
-  'Romance': '💕',
-  'Comedy': '😂',
-  'Sci-Fi': '🚀',
-};
-
-export default function PlayerPage() {
-  const params = useParams();
-  const storyId = params.id as string;
+function PlayerContent() {
+  const router = useRouter()
+  const params = useParams()
+  const storyId = params.id as string
   
-  const { user } = useAuth();
-  const { story, loading: storyLoading, error: storyError } = useStory(storyId);
-  const { owns, loading: ownsLoading } = useOwnsStory(storyId);
-  const { updateProgress } = usePlayProgress(storyId);
-  const { purchase, purchasing } = usePurchaseStory();
-  
-  const [showSpeedMenu, setShowSpeedMenu] = useState(false);
-  const [lastSavedTime, setLastSavedTime] = useState(0);
+  const [story, setStory] = useState<Story | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [isInLibrary, setIsInLibrary] = useState(false)
+  const [lastPlayed, setLastPlayed] = useState<string | null>(null)
+  const [freeCredits, setFreeCredits] = useState(0)
+  const [screenHeight, setScreenHeight] = useState(0)
+  const [screenWidth, setScreenWidth] = useState(0)
 
-  // Determine which audio URL to use
-  const audioUrl = owns ? story?.audio_url : story?.sample_url;
-  
-  const {
-    isPlaying,
-    currentTime,
-    duration,
-    progress,
-    bufferedProgress,
-    loading: audioLoading,
-    playbackRate,
-    togglePlay,
-    skipForward,
-    skipBackward,
-    seek,
-    changePlaybackRate,
-    formattedCurrentTime,
-    formattedDuration,
-    formattedRemaining,
-  } = useAudioPlayer(audioUrl || null, {
-    onEnded: () => {
-      if (owns) {
-        updateProgress(duration, true);
-      }
-    },
-  });
-
-  // Save progress periodically (every 10 seconds)
   useEffect(() => {
-    if (owns && isPlaying && currentTime - lastSavedTime >= 10) {
-      updateProgress(currentTime, false);
-      setLastSavedTime(currentTime);
+    // Get screen dimensions
+    const updateDimensions = () => {
+      setScreenHeight(window.innerHeight)
+      setScreenWidth(window.innerWidth)
     }
-  }, [owns, isPlaying, currentTime, lastSavedTime, updateProgress]);
+    updateDimensions()
+    window.addEventListener('resize', updateDimensions)
+    return () => window.removeEventListener('resize', updateDimensions)
+  }, [])
 
-  // Handle seeking via progress bar
-  const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const percent = (e.clientX - rect.left) / rect.width;
-    seek(percent * duration);
-  };
+  useEffect(() => {
+    async function loadStory() {
+      try {
+        // Check free credits from localStorage
+        const storedCredits = localStorage.getItem('dtt_free_credits')
+        if (storedCredits) {
+          setFreeCredits(parseInt(storedCredits))
+        }
 
-  // Handle purchase
-  const handlePurchase = async () => {
-    if (!user) {
-      window.location.href = '/auth/login';
-      return;
+        // Check if story is in user's library
+        const libraryData = localStorage.getItem('dtt_library')
+        if (libraryData) {
+          const library = JSON.parse(libraryData)
+          const libraryItem = library.find((item: any) => item.storyId === storyId)
+          if (libraryItem) {
+            setIsInLibrary(true)
+            setLastPlayed(libraryItem.lastPlayed)
+          }
+        }
+
+        // Fetch story details
+        const storyData = await getStory(storyId)
+        setStory(storyData)
+      } catch (err) {
+        setError('Story not found')
+      } finally {
+        setLoading(false)
+      }
     }
     
-    const result = await purchase(storyId);
-    if (result.success) {
-      window.location.reload();
+    if (storyId) {
+      loadStory()
     }
-  };
+  }, [storyId])
 
-  if (storyLoading || ownsLoading) {
+  // Calculate cover size dynamically
+  // Fixed elements: back button (~50px) + title/info (~70px) + buttons (~120px) + padding (~60px) = ~300px
+  const availableForCover = Math.min(screenWidth - 32, screenHeight - 300)
+  const coverSize = Math.max(120, Math.min(availableForCover, 320))
+
+  const handlePlay = () => {
+    // Add to library if not already there
+    if (!isInLibrary) {
+      const libraryData = localStorage.getItem('dtt_library')
+      const library = libraryData ? JSON.parse(libraryData) : []
+      library.push({
+        storyId: storyId,
+        lastPlayed: new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
+        progress: 0
+      })
+      localStorage.setItem('dtt_library', JSON.stringify(library))
+    }
+    
+    // Navigate to player screen
+    router.push(`/player/${storyId}/play`)
+  }
+
+  const handlePreview = () => {
+    router.push(`/player/${storyId}/preview`)
+  }
+
+  // Logo component
+  const Logo = () => (
+    <div className="flex items-center justify-center gap-2">
+      <svg width="40" height="24" viewBox="0 0 80 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <g>
+          <rect x="45" y="24" width="30" height="14" rx="3" fill="#f97316"/>
+          <path d="M52 24 L56 16 L68 16 L72 24" fill="#f97316"/>
+          <path d="M54 23 L57 17 L67 17 L70 23" fill="#1e293b"/>
+          <circle cx="54" cy="38" r="5" fill="#334155"/>
+          <circle cx="54" cy="38" r="2.5" fill="#64748b"/>
+          <circle cx="68" cy="38" r="5" fill="#334155"/>
+          <circle cx="68" cy="38" r="2.5" fill="#64748b"/>
+          <rect x="73" y="28" width="3" height="4" rx="1" fill="#fef08a"/>
+        </g>
+        <g>
+          <rect x="2" y="20" width="18" height="18" rx="3" fill="#3b82f6"/>
+          <path d="M5 20 L8 12 L17 12 L20 20" fill="#3b82f6"/>
+          <path d="M7 19 L9 13 L16 13 L18 19" fill="#1e293b"/>
+          <rect x="20" y="18" width="22" height="20" rx="2" fill="#60a5fa"/>
+          <circle cx="10" cy="38" r="5" fill="#334155"/>
+          <circle cx="10" cy="38" r="2.5" fill="#64748b"/>
+          <circle cx="32" cy="38" r="5" fill="#334155"/>
+          <circle cx="32" cy="38" r="2.5" fill="#64748b"/>
+        </g>
+      </svg>
+      <div className="flex items-baseline">
+        <span className="text-sm font-bold text-white">Drive Time </span>
+        <span className="text-sm font-bold text-orange-500">Tales</span>
+      </div>
+    </div>
+  )
+
+  if (loading) {
     return (
-      <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
+      <div className="h-screen bg-slate-950 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin text-4xl mb-4">🚛</div>
+          <div className="inline-block w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mb-4" />
           <p className="text-white">Loading story...</p>
         </div>
       </div>
-    );
+    )
   }
 
-  if (storyError || !story) {
+  if (error || !story) {
     return (
-      <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
+      <div className="h-screen bg-slate-950 flex items-center justify-center">
         <div className="text-center">
-          <div className="text-5xl mb-4">😢</div>
-          <h2 className="text-white text-xl font-bold mb-2">Story Not Found</h2>
+          <p className="text-white text-xl mb-4">Story not found</p>
           <Link href="/library" className="text-orange-400">← Back to Library</Link>
         </div>
       </div>
-    );
+    )
   }
 
-  const categoryIcon = CATEGORY_ICONS[story.genre] || '📚';
-  const isSampleMode = !owns;
+  const canPlayFree = story.credits <= 2 && freeCredits > 0
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white flex flex-col">
-      {/* Header */}
-      <header className="sticky top-0 bg-gray-950 border-b border-gray-800 px-4 py-3 z-10">
-        <div className="flex items-center justify-between">
-          <button onClick={() => window.history.back()} className="text-white px-3 py-1 bg-gray-800 rounded-lg text-sm">← Back</button>
-          <span className="text-white font-medium">{isSampleMode ? '🎧 Sample' : '▶ Now Playing'}</span>
-          <button className="text-white text-xl">⋮</button>
-        </div>
-      </header>
-
-      {isSampleMode && (
-        <div className="bg-orange-500/20 border-b border-orange-500/30 px-4 py-3">
-          <p className="text-orange-400 text-sm text-center">🎧 Sample preview. Purchase to unlock full story!</p>
-        </div>
-      )}
-
-      <div className="flex-1 flex flex-col items-center justify-center px-6 py-8">
-        <div 
-          className="w-64 h-64 rounded-2xl flex items-center justify-center text-8xl shadow-2xl mb-8 relative"
-          style={{ background: story.cover_url ? undefined : 'linear-gradient(135deg, #ea580c 0%, #c2410c 100%)' }}
+    <div className="h-screen bg-slate-950 text-white flex flex-col overflow-hidden">
+      <div className="px-4 h-full flex flex-col">
+        
+        {/* Back button */}
+        <button 
+          onClick={() => router.back()}
+          className="px-3 py-1.5 bg-slate-800 rounded-lg self-start mt-3 mb-3"
         >
-          {story.cover_url ? <img src={story.cover_url} alt={story.title} className="w-full h-full object-cover rounded-2xl"/> : categoryIcon}
-          {audioLoading && <div className="absolute inset-0 bg-black/50 rounded-2xl flex items-center justify-center"><div className="animate-spin text-4xl">⏳</div></div>}
-        </div>
+          <span className="text-orange-400 text-sm font-medium">← Back</span>
+        </button>
 
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-white mb-1">{story.title}</h1>
-          <p className="text-white">{story.author}</p>
-          <p className="text-orange-400 text-sm">{categoryIcon} {story.genre} • {story.duration_mins} min</p>
-        </div>
-
-        <div className="w-full max-w-md mb-4">
-          <div className="h-2 bg-gray-800 rounded-full cursor-pointer relative" onClick={handleProgressClick}>
-            <div className="absolute h-full bg-gray-700 rounded-full" style={{ width: `${bufferedProgress}%` }}/>
-            <div className="absolute h-full bg-orange-500 rounded-full transition-all" style={{ width: `${progress}%` }}/>
-            <div className="absolute w-4 h-4 bg-white rounded-full -top-1 shadow-lg" style={{ left: `calc(${progress}% - 8px)` }}/>
-          </div>
-          <div className="flex justify-between text-sm mt-2">
-            <span className="text-white">{formattedCurrentTime}</span>
-            <span className="text-white">-{formattedRemaining}</span>
-          </div>
-        </div>
-
-        <div className="flex items-center justify-center gap-8">
-          <button onClick={() => skipBackward(15)} className="w-16 h-16 bg-gray-800 rounded-full flex flex-col items-center justify-center active:bg-gray-700">
-            <span className="text-white text-xl">⏪</span><span className="text-white text-xs">15s</span>
-          </button>
-          <button onClick={togglePlay} disabled={audioLoading} className="w-20 h-20 bg-orange-500 rounded-full flex items-center justify-center active:bg-orange-600 disabled:opacity-50">
-            <span className="text-white text-4xl">{audioLoading ? '⏳' : isPlaying ? '⏸' : '▶'}</span>
-          </button>
-          <button onClick={() => skipForward(30)} className="w-16 h-16 bg-gray-800 rounded-full flex flex-col items-center justify-center active:bg-gray-700">
-            <span className="text-white text-xl">⏩</span><span className="text-white text-xs">30s</span>
-          </button>
-        </div>
-
-        <div className="relative mt-8">
-          <button onClick={() => setShowSpeedMenu(!showSpeedMenu)} className="px-4 py-2 bg-gray-800 rounded-lg text-white text-sm">Speed: {playbackRate}x</button>
-          {showSpeedMenu && (
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-gray-900 border border-gray-700 rounded-xl p-2 flex gap-1">
-              {PLAYBACK_RATES.map(rate => (
-                <button key={rate} onClick={() => { changePlaybackRate(rate); setShowSpeedMenu(false); }} className={`px-3 py-1 rounded-lg text-sm ${playbackRate === rate ? 'bg-orange-500 text-white' : 'bg-gray-800 text-white'}`}>{rate}x</button>
-              ))}
+        {/* Large centered cover */}
+        <div 
+          className="mx-auto rounded-xl overflow-hidden border-4 border-white flex-shrink-0"
+          style={{ width: coverSize, height: coverSize }}
+        >
+          {story.cover_url ? (
+            <img 
+              src={story.cover_url} 
+              alt={story.title} 
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="w-full h-full bg-gradient-to-br from-slate-700 to-slate-800 flex items-center justify-center">
+              <span className="text-4xl">🎧</span>
             </div>
           )}
         </div>
-      </div>
 
-      {isSampleMode && (
-        <div className="px-4 py-4 border-t border-gray-800 bg-gray-900">
-          <p className="text-center text-white text-sm mb-2">💎 {story.credits} credits</p>
-          <button onClick={handlePurchase} disabled={purchasing} className="w-full py-4 bg-green-600 text-white font-bold rounded-xl disabled:opacity-50">
-            {purchasing ? 'Purchasing...' : `▶ Unlock Full Story`}
-          </button>
+        {/* Title + Info */}
+        <div className="text-center mt-3 mb-2">
+          <h1 className="font-bold text-white text-lg leading-tight">{story.title}</h1>
+          <p className="text-slate-400 text-xs mt-1">
+            {story.author} • {story.genre} • {story.duration_mins} min • {story.credits} credit{story.credits !== 1 ? 's' : ''}
+          </p>
         </div>
-      )}
 
-      {owns && (
-        <div className="px-4 py-4 border-t border-gray-800">
-          <div className="flex gap-4">
-            <button className="flex-1 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white text-sm">📥 Download</button>
-            <button className="flex-1 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white text-sm">📤 Share</button>
+        {/* Description - only show if enough space */}
+        {screenHeight > 600 && story.description && (
+          <p className="text-white text-xs leading-relaxed text-center px-2 line-clamp-2 mb-2">
+            {story.description}
+          </p>
+        )}
+
+        {/* Spacer */}
+        <div className="flex-1" />
+
+        {/* Buttons */}
+        <div className="pb-6">
+          {/* Preview + Wishlist */}
+          <div className="flex gap-2 mb-3">
+            <button 
+              onClick={handlePreview}
+              className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-400 rounded-xl transition-colors"
+            >
+              <span className="text-black font-semibold text-sm">Preview</span>
+            </button>
+            <button className="flex-1 py-2.5 bg-blue-500 hover:bg-blue-400 rounded-xl transition-colors">
+              <span className="text-white font-semibold text-sm">Save to Wishlist</span>
+            </button>
           </div>
+
+          {/* Play button - varies based on user status */}
+          {canPlayFree ? (
+            <button 
+              onClick={handlePlay}
+              className="w-full py-3 bg-green-500 hover:bg-green-400 rounded-xl transition-colors"
+            >
+              <span className="text-black font-bold text-base">
+                {isInLibrary ? 'Resume Story' : 'Play Free'}
+              </span>
+            </button>
+          ) : freeCredits > 0 ? (
+            <button 
+              onClick={handlePlay}
+              className="w-full py-3 bg-green-500 hover:bg-green-400 rounded-xl transition-colors"
+            >
+              <span className="text-black font-bold text-base">
+                {isInLibrary ? 'Resume Story' : 'Play Story'}
+              </span>
+            </button>
+          ) : (
+            <Link 
+              href="/pricing"
+              className="w-full py-3 bg-yellow-500 hover:bg-yellow-400 rounded-xl transition-colors block text-center"
+            >
+              <span className="text-black font-bold text-sm">Insufficient credits - Subscribe</span>
+            </Link>
+          )}
         </div>
-      )}
+      </div>
     </div>
-  );
+  )
+}
+
+function LoadingFallback() {
+  return (
+    <div className="h-screen bg-slate-950 flex items-center justify-center">
+      <div className="inline-block w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
+}
+
+export default function PlayerPage() {
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <PlayerContent />
+    </Suspense>
+  )
 }
