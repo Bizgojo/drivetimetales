@@ -163,10 +163,10 @@ export default function LibraryPage() {
         ) : (
           <div className="space-y-3">
             {filtered.map((story: any, index: number) => (
-              <Link 
+              <div 
                 key={story.id}
-                href={`/story/${story.id}`}
-                className={`block rounded-xl overflow-hidden ${index % 2 === 0 ? 'bg-slate-900' : 'bg-slate-800'}`}
+                onClick={() => router.push(`/player/${story.id}`)}
+                className={`rounded-xl overflow-hidden cursor-pointer active:opacity-80 transition-opacity ${index % 2 === 0 ? 'bg-slate-900' : 'bg-slate-800'}`}
               >
                 <div className="flex">
                   {/* Cover - Larger */}
@@ -195,19 +195,17 @@ export default function LibraryPage() {
                   <div className="flex-1 py-3 pr-3 flex flex-col justify-between">
                     <div>
                       <h3 className="font-bold text-white text-sm leading-tight">{story.title}</h3>
-                      <p className="text-white text-xs mt-1">{story.genre} • {story.credits} {story.credits === 1 ? 'credit' : 'credits'}</p>
+                      <p className="text-white text-xs mt-1">{story.genre} • {story.credits || 1} credit{(story.credits || 1) !== 1 ? 's' : ''}</p>
                       <p className="text-slate-400 text-xs mt-0.5">{story.author}</p>
                     </div>
                     
-                    {/* Preview Story button - shorter, no tags */}
+                    {/* Tap to play indicator */}
                     <div className="mt-2">
-                      <span className="inline-block px-6 py-1.5 bg-orange-500 hover:bg-orange-400 rounded-lg transition-colors">
-                        <span className="text-black text-xs font-semibold">Preview Story</span>
-                      </span>
+                      <span className="text-orange-400 text-xs">Tap to play →</span>
                     </div>
                   </div>
                 </div>
-              </Link>
+              </div>
             ))}
           </div>
         )}
