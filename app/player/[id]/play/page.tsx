@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, Suspense } from 'react'
 import { useRouter, useParams } from 'next/navigation'
-import { getStory, Story } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
 
 function PlayContent() {
   const router = useRouter()
@@ -10,7 +10,7 @@ function PlayContent() {
   const storyId = params.id as string
   const audioRef = useRef<HTMLAudioElement>(null)
   
-  const [story, setStory] = useState<Story | null>(null)
+  const [story, setStory] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -19,9 +19,9 @@ function PlayContent() {
   const [playbackSpeed, setPlaybackSpeed] = useState(1)
   const [isInLibrary, setIsInLibrary] = useState(false)
   const [lastPlayed, setLastPlayed] = useState<string | null>(null)
-  const [screenHeight, setScreenHeight] = useState(0)
+  const [screenHeight, setScreenHeight] = useState(700)
 
-  const speedOptions = [1, 1.25, 1.5, 2]
+  const speedOptions = [1, 1.5, 2]
 
   useEffect(() => {
     const updateDimensions = () => {
@@ -35,7 +35,6 @@ function PlayContent() {
   useEffect(() => {
     async function loadStory() {
       try {
-        // Check if story is in user's library
         const libraryData = localStorage.getItem('dtt_library')
         if (libraryData) {
           const library = JSON.parse(libraryData)
@@ -43,15 +42,20 @@ function PlayContent() {
           if (libraryItem) {
             setIsInLibrary(true)
             setLastPlayed(libraryItem.lastPlayed)
-            // Restore progress if available
-            if (libraryItem.progress && audioRef.current) {
-              audioRef.current.currentTime = libraryItem.progress
-            }
           }
         }
 
-        const storyData = await getStory(storyId)
-        setStory(storyData)
+        const { data, error } = await supabase
+          .from('stories')
+          .select('*')
+          .eq('id', storyId)
+          .single()
+        
+        if (error || !data) {
+          setError('Story not found')
+        } else {
+          setStory(data)
+        }
       } catch (err) {
         setError('Story not found')
       } finally {
@@ -64,43 +68,19 @@ function PlayContent() {
     }
   }, [storyId])
 
-  // Auto-play when story loads (coming from Screen A)
+  // Auto-play when story loads (if not returning from library)
   useEffect(() => {
     if (story && audioRef.current && !isInLibrary) {
-      audioRef.current.play()
+      audioRef.current.play().catch(() => {})
       setIsPlaying(true)
     }
   }, [story, isInLibrary])
 
-  // Update playback speed
   useEffect(() => {
     if (audioRef.current) {
       audioRef.current.playbackRate = playbackSpeed
     }
   }, [playbackSpeed])
-
-  // Save progress periodically
-  useEffect(() => {
-    const saveProgress = () => {
-      if (currentTime > 0) {
-        const libraryData = localStorage.getItem('dtt_library')
-        if (libraryData) {
-          const library = JSON.parse(libraryData)
-          const index = library.findIndex((item: any) => item.storyId === storyId)
-          if (index !== -1) {
-            library[index].progress = currentTime
-            library[index].lastPlayed = new Date().toLocaleDateString('en-US', { 
-              weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
-            })
-            localStorage.setItem('dtt_library', JSON.stringify(library))
-          }
-        }
-      }
-    }
-
-    const interval = setInterval(saveProgress, 5000) // Save every 5 seconds
-    return () => clearInterval(interval)
-  }, [currentTime, storyId])
 
   const handlePlayPause = () => {
     if (!audioRef.current) return
@@ -148,32 +128,19 @@ function PlayContent() {
   }
 
   const handleBack = () => {
-    // Save progress before leaving
-    if (audioRef.current && currentTime > 0) {
-      const libraryData = localStorage.getItem('dtt_library')
-      if (libraryData) {
-        const library = JSON.parse(libraryData)
-        const index = library.findIndex((item: any) => item.storyId === storyId)
-        if (index !== -1) {
-          library[index].progress = currentTime
-          localStorage.setItem('dtt_library', JSON.stringify(library))
-        }
-      }
+    if (audioRef.current) {
+      audioRef.current.pause()
     }
     router.push(`/player/${storyId}`)
   }
 
-  // Calculate cover size for player screen
-  // Fixed elements: back + library notice (~80px) + title (~50px) + player (~220px) + padding (~50px) = ~400px
-  const coverSize = Math.max(80, Math.min(screenHeight - 400, 180))
+  // Cover size - larger on player screen
+  const coverSize = Math.min(screenHeight * 0.3, 200)
 
   if (loading) {
     return (
       <div className="h-screen bg-slate-950 flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mb-4" />
-          <p className="text-white">Loading player...</p>
-        </div>
+        <div className="inline-block w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
       </div>
     )
   }
@@ -202,7 +169,7 @@ function PlayContent() {
         onEnded={() => setIsPlaying(false)}
       />
 
-      <div className="px-4 h-full flex flex-col">
+      <div className="px-4 flex-1 flex flex-col">
         
         {/* Back button */}
         <button 
@@ -214,14 +181,14 @@ function PlayContent() {
 
         {/* In Library notice */}
         {isInLibrary && lastPlayed && (
-          <div className="bg-slate-800 rounded-lg p-2 mb-2 border border-slate-700 text-center">
+          <div className="bg-slate-800 rounded-lg py-1.5 px-3 mb-2 border border-slate-700 text-center">
             <p className="text-green-400 text-xs font-medium">
-              📚 In your library • Last played {lastPlayed}
+              📚 Last played {lastPlayed}
             </p>
           </div>
         )}
 
-        {/* Cover */}
+        {/* Cover - larger */}
         <div 
           className="mx-auto rounded-xl overflow-hidden border-4 border-white flex-shrink-0"
           style={{ width: coverSize, height: coverSize }}
@@ -239,17 +206,17 @@ function PlayContent() {
           )}
         </div>
 
-        {/* Title + Author */}
+        {/* Title + Author - compact */}
         <div className="text-center mt-2 mb-2">
           <h1 className="font-bold text-white text-base">{story.title}</h1>
           <p className="text-slate-300 text-xs">{story.author}</p>
         </div>
 
-        {/* Player */}
-        <div className="bg-orange-500 rounded-xl p-4 flex-1 flex flex-col justify-center mb-4">
+        {/* Compact Player - smaller orange box */}
+        <div className="bg-orange-500 rounded-xl p-3 mb-4">
           
           {/* Time display */}
-          <div className="flex justify-between text-black text-sm font-medium mb-1">
+          <div className="flex justify-between text-black text-xs font-medium mb-1">
             <span>{formatTime(currentTime)}</span>
             <span>-{formatTime(duration - currentTime)}</span>
           </div>
@@ -261,44 +228,44 @@ function PlayContent() {
             max={duration || 100}
             value={currentTime}
             onChange={handleSeek}
-            className="w-full h-2 rounded-full appearance-none cursor-pointer mb-4"
+            className="w-full h-2 rounded-full appearance-none cursor-pointer mb-3"
             style={{ 
               background: `linear-gradient(to right, #000 ${progress}%, #fdba74 ${progress}%)` 
             }}
           />
 
-          {/* Large Controls */}
-          <div className="flex items-center justify-center gap-4 mb-4">
+          {/* Controls - compact */}
+          <div className="flex items-center justify-center gap-3 mb-2">
             {/* Rewind 15s */}
             <button 
               onClick={() => handleSkip(-15)}
-              className="w-14 h-14 rounded-full bg-orange-600 hover:bg-orange-700 flex flex-col items-center justify-center transition-colors"
+              className="w-12 h-12 rounded-full bg-orange-600 hover:bg-orange-700 flex flex-col items-center justify-center transition-colors"
             >
-              <span className="text-white text-lg">⏪</span>
+              <span className="text-white text-base">⏪</span>
               <span className="text-white text-[8px]">15s</span>
             </button>
 
-            {/* Play/Pause - Extra Large */}
+            {/* Play/Pause - Large */}
             <button 
               onClick={handlePlayPause}
-              className="w-20 h-20 rounded-full bg-black hover:bg-slate-800 flex items-center justify-center transition-colors"
+              className="w-16 h-16 rounded-full bg-black hover:bg-slate-800 flex items-center justify-center transition-colors"
             >
-              <span className="text-white text-4xl">{isPlaying ? '⏸' : '▶'}</span>
+              <span className="text-white text-3xl">{isPlaying ? '⏸' : '▶'}</span>
             </button>
 
             {/* Forward 15s */}
             <button 
               onClick={() => handleSkip(15)}
-              className="w-14 h-14 rounded-full bg-orange-600 hover:bg-orange-700 flex flex-col items-center justify-center transition-colors"
+              className="w-12 h-12 rounded-full bg-orange-600 hover:bg-orange-700 flex flex-col items-center justify-center transition-colors"
             >
-              <span className="text-white text-lg">⏩</span>
+              <span className="text-white text-base">⏩</span>
               <span className="text-white text-[8px]">15s</span>
             </button>
           </div>
 
-          {/* Speed controls */}
+          {/* Speed controls - compact */}
           <div className="flex items-center justify-center gap-2">
-            <span className="text-black text-xs font-medium mr-1">Speed:</span>
+            <span className="text-black text-xs font-medium">Speed:</span>
             {speedOptions.map((speed) => (
               <button
                 key={speed}
