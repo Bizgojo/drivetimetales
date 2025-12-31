@@ -19,18 +19,8 @@ function PlayContent() {
   const [playbackSpeed, setPlaybackSpeed] = useState(1)
   const [isInLibrary, setIsInLibrary] = useState(false)
   const [lastPlayed, setLastPlayed] = useState<string | null>(null)
-  const [screenHeight, setScreenHeight] = useState(700)
 
-  const speedOptions = [1, 1.5, 2]
-
-  useEffect(() => {
-    const updateDimensions = () => {
-      setScreenHeight(window.innerHeight)
-    }
-    updateDimensions()
-    window.addEventListener('resize', updateDimensions)
-    return () => window.removeEventListener('resize', updateDimensions)
-  }, [])
+  const speedOptions = [0.85, 1, 1.15]
 
   useEffect(() => {
     async function loadStory() {
@@ -134,9 +124,6 @@ function PlayContent() {
     router.push(`/player/${storyId}`)
   }
 
-  // Cover size - larger, 35% of screen height
-  const coverSize = Math.min(screenHeight * 0.35, 240)
-
   if (loading) {
     return (
       <div className="h-screen bg-slate-950 flex items-center justify-center">
@@ -159,7 +146,7 @@ function PlayContent() {
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0
 
   return (
-    <div className="h-screen bg-slate-950 text-white flex flex-col overflow-hidden">
+    <div className="min-h-screen bg-slate-950 text-white">
       {/* Hidden audio element */}
       <audio
         ref={audioRef}
@@ -169,30 +156,27 @@ function PlayContent() {
         onEnded={() => setIsPlaying(false)}
       />
 
-      <div className="px-4 flex-1 flex flex-col">
+      <div className="px-4 py-3">
         
         {/* Back button */}
         <button 
           onClick={handleBack}
-          className="px-3 py-1.5 bg-slate-800 rounded-lg self-start mt-3 mb-2"
+          className="px-3 py-1.5 bg-slate-800 rounded-lg mb-3"
         >
           <span className="text-orange-400 text-sm font-medium">← Back</span>
         </button>
 
         {/* In Library notice */}
         {isInLibrary && lastPlayed && (
-          <div className="bg-slate-800 rounded-lg py-1.5 px-3 mb-2 border border-slate-700 text-center">
+          <div className="bg-slate-800 rounded-lg py-1.5 px-3 mb-3 border border-slate-700 text-center">
             <p className="text-green-400 text-xs font-medium">
               📚 Last played {lastPlayed}
             </p>
           </div>
         )}
 
-        {/* Cover - larger */}
-        <div 
-          className="mx-auto rounded-xl overflow-hidden border-4 border-white flex-shrink-0"
-          style={{ width: coverSize, height: coverSize }}
-        >
+        {/* Cover - large */}
+        <div className="w-56 h-56 mx-auto rounded-xl overflow-hidden border-4 border-white">
           {story.cover_url ? (
             <img 
               src={story.cover_url} 
@@ -206,17 +190,14 @@ function PlayContent() {
           )}
         </div>
 
-        {/* Title + Author - compact */}
-        <div className="text-center mt-2">
+        {/* Title + Author */}
+        <div className="text-center mt-3 mb-4">
           <h1 className="font-bold text-white text-lg">{story.title}</h1>
           <p className="text-slate-300 text-sm">{story.author}</p>
         </div>
 
-        {/* Spacer */}
-        <div className="flex-1 min-h-2" />
-
-        {/* Compact Player */}
-        <div className="bg-orange-500 rounded-xl p-3 mb-4">
+        {/* Compact Player - moved up close to title */}
+        <div className="bg-orange-500 rounded-xl p-3">
           
           {/* Time display */}
           <div className="flex justify-between text-black text-xs font-medium mb-1">
@@ -231,14 +212,14 @@ function PlayContent() {
             max={duration || 100}
             value={currentTime}
             onChange={handleSeek}
-            className="w-full h-2 rounded-full appearance-none cursor-pointer mb-3"
+            className="w-full h-2 rounded-full appearance-none cursor-pointer mb-4"
             style={{ 
               background: `linear-gradient(to right, #000 ${progress}%, #fdba74 ${progress}%)` 
             }}
           />
 
-          {/* Controls - compact */}
-          <div className="flex items-center justify-center gap-4 mb-2">
+          {/* Controls - larger play button, wider spacing */}
+          <div className="flex items-center justify-center gap-8 mb-3">
             {/* Rewind 15s */}
             <button 
               onClick={() => handleSkip(-15)}
@@ -248,12 +229,12 @@ function PlayContent() {
               <span className="text-white text-[8px]">15s</span>
             </button>
 
-            {/* Play/Pause - Large */}
+            {/* Play/Pause - Extra Large */}
             <button 
               onClick={handlePlayPause}
-              className="w-16 h-16 rounded-full bg-black hover:bg-slate-800 flex items-center justify-center transition-colors"
+              className="w-20 h-20 rounded-full bg-black hover:bg-slate-800 flex items-center justify-center transition-colors"
             >
-              <span className="text-white text-3xl">{isPlaying ? '⏸' : '▶'}</span>
+              <span className="text-white text-4xl">{isPlaying ? '⏸' : '▶'}</span>
             </button>
 
             {/* Forward 15s */}
@@ -266,7 +247,7 @@ function PlayContent() {
             </button>
           </div>
 
-          {/* Speed controls - compact */}
+          {/* Speed controls */}
           <div className="flex items-center justify-center gap-2">
             <span className="text-black text-xs font-medium">Speed:</span>
             {speedOptions.map((speed) => (
