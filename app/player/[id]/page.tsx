@@ -3,14 +3,14 @@
 import { useState, useEffect, Suspense } from 'react'
 import Link from 'next/link'
 import { useRouter, useParams } from 'next/navigation'
-import { supabase, getStories, Story } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
 
 function PlayerContent() {
   const router = useRouter()
   const params = useParams()
   const storyId = params.id as string
   
-  const [story, setStory] = useState<Story | null>(null)
+  const [story, setStory] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isInLibrary, setIsInLibrary] = useState(false)
@@ -33,6 +33,10 @@ function PlayerContent() {
         const storedCredits = localStorage.getItem('dtt_free_credits')
         if (storedCredits) {
           setFreeCredits(parseInt(storedCredits))
+        } else {
+          // Default 2 free credits for newcomers
+          localStorage.setItem('dtt_free_credits', '2')
+          setFreeCredits(2)
         }
 
         const libraryData = localStorage.getItem('dtt_library')
@@ -87,8 +91,8 @@ function PlayerContent() {
     router.push(`/player/${storyId}/preview`)
   }
 
-  // Dynamic cover size - smaller to fit everything
-  const coverSize = Math.min(screenHeight * 0.28, 180)
+  // Larger cover - 40% of screen height, max 280px
+  const coverSize = Math.min(screenHeight * 0.4, 280)
 
   if (loading) {
     return (
@@ -109,7 +113,11 @@ function PlayerContent() {
     )
   }
 
-  const canPlayFree = freeCredits > 0
+  // Check if user can play free:
+  // - Story credits <= 2 AND user has free credits remaining
+  // - OR story is already in their library
+  const storyCredits = story.credits || 1
+  const canPlayFree = (storyCredits <= 2 && freeCredits > 0) || isInLibrary
 
   return (
     <div className="h-screen bg-slate-950 text-white flex flex-col overflow-hidden">
@@ -123,7 +131,7 @@ function PlayerContent() {
           <span className="text-orange-400 text-sm font-medium">← Back</span>
         </button>
 
-        {/* Cover - centered */}
+        {/* Cover - larger */}
         <div 
           className="mx-auto rounded-xl overflow-hidden border-4 border-white flex-shrink-0"
           style={{ width: coverSize, height: coverSize }}
@@ -142,16 +150,16 @@ function PlayerContent() {
         </div>
 
         {/* Title + Info - compact */}
-        <div className="text-center mt-2">
-          <h1 className="font-bold text-white text-lg leading-tight">{story.title}</h1>
-          <p className="text-slate-400 text-xs mt-1">
-            {story.author} • {story.genre} • {story.duration_mins} min • {story.credits || 1} credit
+        <div className="text-center mt-3">
+          <h1 className="font-bold text-white text-xl leading-tight">{story.title}</h1>
+          <p className="text-slate-400 text-sm mt-1">
+            {story.author} • {story.genre} • {story.duration_mins} min • {storyCredits} credit{storyCredits !== 1 ? 's' : ''}
           </p>
         </div>
 
         {/* Description - always show, truncated */}
         {story.description && (
-          <p className="text-slate-300 text-xs leading-relaxed text-center mt-2 line-clamp-3 px-2">
+          <p className="text-slate-300 text-sm leading-relaxed text-center mt-2 line-clamp-2 px-2">
             {story.description}
           </p>
         )}
@@ -165,31 +173,31 @@ function PlayerContent() {
           <div className="flex gap-2 mb-3">
             <button 
               onClick={handlePreview}
-              className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-400 rounded-xl transition-colors"
+              className="flex-1 py-3 bg-orange-500 hover:bg-orange-400 rounded-xl transition-colors"
             >
-              <span className="text-black font-semibold text-sm">Preview</span>
+              <span className="text-black font-semibold">Preview</span>
             </button>
-            <button className="flex-1 py-2.5 bg-blue-500 hover:bg-blue-400 rounded-xl transition-colors">
-              <span className="text-white font-semibold text-sm">Save to Wishlist</span>
+            <button className="flex-1 py-3 bg-blue-500 hover:bg-blue-400 rounded-xl transition-colors">
+              <span className="text-white font-semibold">Save to Wishlist</span>
             </button>
           </div>
 
-          {/* Play button */}
+          {/* Play button - changes based on credits */}
           {canPlayFree ? (
             <button 
               onClick={handlePlay}
-              className="w-full py-3 bg-green-500 hover:bg-green-400 rounded-xl transition-colors"
+              className="w-full py-4 bg-green-500 hover:bg-green-400 rounded-xl transition-colors"
             >
-              <span className="text-black font-bold text-base">
+              <span className="text-black font-bold text-lg">
                 {isInLibrary ? 'Resume Story' : 'Play Free'}
               </span>
             </button>
           ) : (
             <Link 
               href="/pricing"
-              className="w-full py-3 bg-yellow-500 hover:bg-yellow-400 rounded-xl transition-colors block text-center"
+              className="w-full py-4 bg-yellow-500 hover:bg-yellow-400 rounded-xl transition-colors block text-center"
             >
-              <span className="text-black font-bold text-sm">Subscribe to Listen</span>
+              <span className="text-black font-bold text-lg">Subscribe to Listen</span>
             </Link>
           )}
         </div>
