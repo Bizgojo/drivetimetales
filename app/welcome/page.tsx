@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase, getStories, Story } from '@/lib/supabase'
 
-export default function WelcomePage() {
+function WelcomeContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [stories, setStories] = useState<Story[]>([])
@@ -13,7 +13,7 @@ export default function WelcomePage() {
   const [freeCredits, setFreeCredits] = useState(0)
   const [genre, setGenre] = useState('All')
   
-  // Promo banner from QR code - check URL params or could be fetched from admin settings
+  // Promo banner from QR code
   const [showPromoBanner, setShowPromoBanner] = useState(false)
   const [promoBannerText, setPromoBannerText] = useState('')
 
@@ -41,10 +41,8 @@ export default function WelcomePage() {
       // Check for promo code in URL (from QR code)
       const promo = searchParams.get('promo')
       if (promo) {
-        // In production, fetch promo details from database
-        // For now, decode the promo text from URL or use default
         setShowPromoBanner(true)
-        setPromoBannerText(decodeURIComponent(promo) || "This free story from Drive Time Tales is courtesy of our partner, we appreciate your business")
+        setPromoBannerText(decodeURIComponent(promo))
       }
 
       // Check for existing free credits in localStorage
@@ -52,7 +50,6 @@ export default function WelcomePage() {
       const creditsUsed = localStorage.getItem('dtt_credits_used')
       
       if (storedCredits === null) {
-        // First time visitor - give 2 free credits
         localStorage.setItem('dtt_free_credits', '2')
         localStorage.setItem('dtt_credits_used', 'false')
         setFreeCredits(2)
@@ -188,7 +185,7 @@ export default function WelcomePage() {
         </div>
 
         {/* Results count */}
-        <p className="text-white text-xs mb-2">{filtered.length} {filtered.length === 1 ? 'story' : 'stories'} found</p>
+        <p className="text-white text-xs mb-3">{filtered.length} {filtered.length === 1 ? 'story' : 'stories'} found</p>
 
         {/* Stories List */}
         {loading ? (
@@ -203,19 +200,18 @@ export default function WelcomePage() {
             <p className="text-white">Try selecting a different genre</p>
           </div>
         ) : (
-          <div className="space-y-2">
-            {filtered.map((story) => {
+          <div className="space-y-3">
+            {filtered.map((story, index) => {
               const isFreeStory = story.credits <= 2
-              const canPlay = isFreeStory && freeCredits > 0
               
               return (
                 <div 
                   key={story.id}
-                  className="bg-slate-900 rounded-xl overflow-hidden border border-slate-800"
+                  className={`rounded-xl overflow-hidden ${index % 2 === 0 ? 'bg-slate-900' : 'bg-slate-800'}`}
                 >
-                  <div className="flex h-24">
-                    {/* Cover with duration badge */}
-                    <div className="w-24 h-24 flex-shrink-0 relative">
+                  <div className="flex">
+                    {/* Cover - Larger */}
+                    <div className="w-32 h-32 flex-shrink-0 relative">
                       {story.cover_url ? (
                         <img 
                           src={story.cover_url}
@@ -227,21 +223,25 @@ export default function WelcomePage() {
                           <span className="text-3xl opacity-50">🎧</span>
                         </div>
                       )}
-                      {/* Duration badge bottom right */}
+                      {/* Duration badge */}
                       <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/70 text-white text-[10px] rounded">
                         {story.duration_mins} min
                       </div>
                     </div>
                     
+                    {/* Spacer */}
+                    <div className="w-3" />
+                    
                     {/* Info */}
-                    <div className="flex-1 p-2 flex flex-col justify-between">
+                    <div className="flex-1 py-3 pr-3 flex flex-col justify-between">
                       <div>
-                        <h3 className="font-bold text-white text-sm leading-tight line-clamp-1">{story.title}</h3>
-                        <p className="text-white text-xs mt-0.5">{story.genre} • {story.credits} {story.credits === 1 ? 'credit' : 'credits'}</p>
-                        <p className="text-slate-400 text-xs">{story.author}</p>
+                        <h3 className="font-bold text-white text-sm leading-tight">{story.title}</h3>
+                        <p className="text-white text-xs mt-1">{story.genre} • {story.credits} {story.credits === 1 ? 'credit' : 'credits'}</p>
+                        <p className="text-slate-400 text-xs mt-0.5">{story.author}</p>
                       </div>
                       
-                      <div className="flex items-center gap-2">
+                      {/* Buttons row */}
+                      <div className="flex items-center gap-2 mt-2">
                         {/* Free Story or Subscribe tag */}
                         {isFreeStory ? (
                           <button 
@@ -259,10 +259,10 @@ export default function WelcomePage() {
                           </button>
                         )}
                         
-                        {/* Preview Story button */}
+                        {/* Preview Story button - shorter */}
                         <button 
                           onClick={() => handleStoryClick(story)}
-                          className="flex-1 py-1.5 bg-orange-500 hover:bg-orange-400 text-center rounded-lg transition-colors"
+                          className="px-4 py-1.5 bg-orange-500 hover:bg-orange-400 rounded-lg transition-colors"
                         >
                           <span className="text-black text-xs font-semibold">Preview Story</span>
                         </button>
@@ -276,5 +276,26 @@ export default function WelcomePage() {
         )}
       </div>
     </div>
+  )
+}
+
+// Loading fallback
+function LoadingFallback() {
+  return (
+    <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center">
+      <div className="text-center">
+        <div className="inline-block w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mb-4" />
+        <p className="text-white">Loading...</p>
+      </div>
+    </div>
+  )
+}
+
+// Main export with Suspense wrapper
+export default function WelcomePage() {
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <WelcomeContent />
+    </Suspense>
   )
 }
