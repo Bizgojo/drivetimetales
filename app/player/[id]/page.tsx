@@ -1,46 +1,41 @@
 'use client'
 
-import { useState, useEffect, useRef, Suspense } from 'react'
-import { useRouter, useParams, useSearchParams } from 'next/navigation'
+import { useState, useEffect, Suspense } from 'react'
+import Link from 'next/link'
+import { useRouter, useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
-function PlayContent() {
+function PlayerContent() {
   const router = useRouter()
   const params = useParams()
-  const searchParams = useSearchParams()
   const storyId = params.id as string
-  const audioRef = useRef<HTMLAudioElement>(null)
   
   const [story, setStory] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [currentTime, setCurrentTime] = useState(0)
-  const [duration, setDuration] = useState(0)
-  const [playbackSpeed, setPlaybackSpeed] = useState(1)
-  const [lastPlayed, setLastPlayed] = useState<string | null>(null)
-  const [hasStartedPlaying, setHasStartedPlaying] = useState(false)
-
-  const speedOptions = [0.85, 1, 1.15]
-  
-  // Get URL params
-  const shouldAutoplay = searchParams.get('autoplay') === 'true'
-  const shouldResume = searchParams.get('resume') === 'true'
+  const [hasProgress, setHasProgress] = useState(false)
+  const [savedProgress, setSavedProgress] = useState(0)
+  const [freeCredits, setFreeCredits] = useState(0)
 
   useEffect(() => {
     async function loadStory() {
       try {
-        // Check library for saved progress and last played
+        const storedCredits = localStorage.getItem('dtt_free_credits')
+        if (storedCredits) {
+          setFreeCredits(parseInt(storedCredits))
+        } else {
+          localStorage.setItem('dtt_free_credits', '2')
+          setFreeCredits(2)
+        }
+
+        // Check library for progress
         const libraryData = localStorage.getItem('dtt_library')
         if (libraryData) {
           const library = JSON.parse(libraryData)
           const libraryItem = library.find((item: any) => item.storyId === storyId)
-          if (libraryItem) {
-            setLastPlayed(libraryItem.lastPlayed)
-            // If resuming, we'll set the time after audio loads
-            if (shouldResume && libraryItem.progress > 0) {
-              setCurrentTime(libraryItem.progress)
-            }
+          if (libraryItem && libraryItem.progress > 0) {
+            setHasProgress(true)
+            setSavedProgress(libraryItem.progress)
           }
         }
 
@@ -65,140 +60,54 @@ function PlayContent() {
     if (storyId) {
       loadStory()
     }
-  }, [storyId, shouldResume])
+  }, [storyId])
 
-  // Handle autoplay and resume when audio is ready
-  useEffect(() => {
-    if (story && audioRef.current && !hasStartedPlaying) {
-      const audio = audioRef.current
-      
-      const handleCanPlay = () => {
-        // If resuming, seek to saved position
-        if (shouldResume) {
-          const libraryData = localStorage.getItem('dtt_library')
-          if (libraryData) {
-            const library = JSON.parse(libraryData)
-            const libraryItem = library.find((item: any) => item.storyId === storyId)
-            if (libraryItem && libraryItem.progress > 0) {
-              audio.currentTime = libraryItem.progress
-            }
-          }
-        }
-        
-        // Autoplay if flag is set
-        if (shouldAutoplay) {
-          audio.play().then(() => {
-            setIsPlaying(true)
-            setHasStartedPlaying(true)
-          }).catch(() => {
-            // Autoplay blocked, user will need to tap play
-            setHasStartedPlaying(true)
-          })
-        } else {
-          setHasStartedPlaying(true)
-        }
-      }
-      
-      audio.addEventListener('canplay', handleCanPlay)
-      return () => audio.removeEventListener('canplay', handleCanPlay)
-    }
-  }, [story, shouldAutoplay, shouldResume, storyId, hasStartedPlaying])
-
-  // Save progress periodically
-  useEffect(() => {
-    if (!isPlaying || currentTime === 0) return
+  const handlePlay = () => {
+    // Add to library if not already there
+    const libraryData = localStorage.getItem('dtt_library')
+    const library = libraryData ? JSON.parse(libraryData) : []
+    const existingIndex = library.findIndex((item: any) => item.storyId === storyId)
     
-    const saveProgress = () => {
-      const libraryData = localStorage.getItem('dtt_library')
-      if (libraryData) {
-        const library = JSON.parse(libraryData)
-        const existingIndex = library.findIndex((item: any) => item.storyId === storyId)
-        if (existingIndex !== -1) {
-          library[existingIndex].progress = currentTime
-          library[existingIndex].lastPlayed = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
-          localStorage.setItem('dtt_library', JSON.stringify(library))
-        }
+    if (existingIndex === -1) {
+      library.push({
+        storyId: storyId,
+        lastPlayed: new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
+        progress: 0
+      })
+      localStorage.setItem('dtt_library', JSON.stringify(library))
+    }
+    
+    // Go to play page with autoplay flag
+    router.push(`/player/${storyId}/play?autoplay=true`)
+  }
+
+  const handleResume = () => {
+    // Update last played date
+    const libraryData = localStorage.getItem('dtt_library')
+    if (libraryData) {
+      const library = JSON.parse(libraryData)
+      const existingIndex = library.findIndex((item: any) => item.storyId === storyId)
+      if (existingIndex !== -1) {
+        library[existingIndex].lastPlayed = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+        localStorage.setItem('dtt_library', JSON.stringify(library))
       }
     }
     
-    const interval = setInterval(saveProgress, 5000) // Save every 5 seconds
-    return () => clearInterval(interval)
-  }, [isPlaying, currentTime, storyId])
-
-  useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.playbackRate = playbackSpeed
-    }
-  }, [playbackSpeed])
-
-  const handlePlayPause = () => {
-    if (!audioRef.current) return
-    
-    if (isPlaying) {
-      audioRef.current.pause()
-    } else {
-      audioRef.current.play()
-    }
-    setIsPlaying(!isPlaying)
+    // Go to play page with autoplay and resume flags
+    router.push(`/player/${storyId}/play?autoplay=true&resume=true`)
   }
 
-  const handleTimeUpdate = () => {
-    if (audioRef.current) {
-      setCurrentTime(audioRef.current.currentTime)
-    }
-  }
-
-  const handleLoadedMetadata = () => {
-    if (audioRef.current) {
-      setDuration(audioRef.current.duration)
-    }
-  }
-
-  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const time = parseFloat(e.target.value)
-    if (audioRef.current) {
-      audioRef.current.currentTime = time
-      setCurrentTime(time)
-    }
-  }
-
-  const handleSkip = (seconds: number) => {
-    if (audioRef.current) {
-      const newTime = Math.max(0, Math.min(duration, audioRef.current.currentTime + seconds))
-      audioRef.current.currentTime = newTime
-      setCurrentTime(newTime)
-    }
-  }
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60)
-    const secs = Math.floor(seconds % 60)
-    return `${mins}:${secs.toString().padStart(2, '0')}`
+  const handlePreview = () => {
+    router.push(`/player/${storyId}/preview`)
   }
 
   const handleBack = () => {
-    // Save progress before leaving
-    if (currentTime > 0) {
-      const libraryData = localStorage.getItem('dtt_library')
-      if (libraryData) {
-        const library = JSON.parse(libraryData)
-        const existingIndex = library.findIndex((item: any) => item.storyId === storyId)
-        if (existingIndex !== -1) {
-          library[existingIndex].progress = currentTime
-          localStorage.setItem('dtt_library', JSON.stringify(library))
-        }
-      }
-    }
-    
-    if (audioRef.current) {
-      audioRef.current.pause()
-    }
-    router.push(`/player/${storyId}`)
+    router.push('/welcome')
   }
 
   if (loading) {
     return (
-      <div className="h-screen bg-slate-950 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
         <div className="inline-block w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
       </div>
     )
@@ -206,49 +115,39 @@ function PlayContent() {
 
   if (error || !story) {
     return (
-      <div className="h-screen bg-slate-950 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
         <div className="text-center">
           <p className="text-white text-xl mb-4">Story not found</p>
-          <button onClick={() => router.push('/library')} className="text-orange-400">← Back to Library</button>
+          <Link href="/welcome" className="text-orange-400">← Back to Stories</Link>
         </div>
       </div>
     )
   }
 
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0
+  const storyCredits = story.credits || 1
+  const canPlayFree = storyCredits <= 2 && freeCredits > 0
+
+  // Format saved progress for display
+  const formatProgress = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = Math.floor(seconds % 60)
+    return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      {/* Hidden audio element */}
-      <audio
-        ref={audioRef}
-        src={story.audio_url}
-        onTimeUpdate={handleTimeUpdate}
-        onLoadedMetadata={handleLoadedMetadata}
-        onEnded={() => setIsPlaying(false)}
-      />
-
-      <div className="px-4 py-3">
+      <div className="max-w-md mx-auto px-4 py-4">
         
         {/* Back button */}
         <button 
           onClick={handleBack}
-          className="px-3 py-1.5 bg-slate-800 rounded-lg mb-3"
+          className="px-3 py-1.5 bg-slate-800 rounded-lg mb-4"
         >
           <span className="text-orange-400 text-sm font-medium">← Back</span>
         </button>
 
-        {/* In Library notice */}
-        {lastPlayed && (
-          <div className="bg-slate-800 rounded-lg py-1.5 px-3 mb-3 border border-slate-700 text-center">
-            <p className="text-green-400 text-xs font-medium">
-              📚 Last played {lastPlayed}
-            </p>
-          </div>
-        )}
-
         {/* Cover - large */}
-        <div className="w-56 h-56 mx-auto rounded-xl overflow-hidden border-4 border-white">
+        <div className="w-64 h-64 mx-auto rounded-xl overflow-hidden border-4 border-white">
           {story.cover_url ? (
             <img 
               src={story.cover_url} 
@@ -257,85 +156,73 @@ function PlayContent() {
             />
           ) : (
             <div className="w-full h-full bg-gradient-to-br from-slate-700 to-slate-800 flex items-center justify-center">
-              <span className="text-3xl">🎧</span>
+              <span className="text-4xl">🎧</span>
             </div>
           )}
         </div>
 
-        {/* Title + Author */}
-        <div className="text-center mt-3 mb-4">
-          <h1 className="font-bold text-white text-lg">{story.title}</h1>
-          <p className="text-slate-300 text-sm">{story.author}</p>
+        {/* Title + Info */}
+        <div className="text-center mt-4">
+          <h1 className="font-bold text-white text-xl leading-tight">{story.title}</h1>
+          <p className="text-slate-400 text-sm mt-1">
+            {story.author} • {story.genre} • {story.duration_mins} min • {storyCredits} credit{storyCredits !== 1 ? 's' : ''}
+          </p>
         </div>
 
-        {/* Compact Player */}
-        <div className="bg-orange-500 rounded-xl p-3">
-          
-          {/* Time display */}
-          <div className="flex justify-between text-black text-xs font-medium mb-1">
-            <span>{formatTime(currentTime)}</span>
-            <span>-{formatTime(Math.max(0, duration - currentTime))}</span>
+        {/* Description */}
+        {story.description && (
+          <p className="text-slate-300 text-sm leading-relaxed text-center mt-3">
+            {story.description}
+          </p>
+        )}
+
+        {/* Progress indicator if resuming */}
+        {hasProgress && (
+          <div className="text-center mt-3">
+            <p className="text-green-400 text-sm">
+              📚 Resume from {formatProgress(savedProgress)}
+            </p>
           </div>
+        )}
 
-          {/* Progress slider */}
-          <input
-            type="range"
-            min="0"
-            max={duration || 100}
-            value={currentTime}
-            onChange={handleSeek}
-            className="w-full h-2 rounded-full appearance-none cursor-pointer mb-4"
-            style={{ 
-              background: `linear-gradient(to right, #000 ${progress}%, #fdba74 ${progress}%)` 
-            }}
-          />
-
-          {/* Controls - larger play button, wider spacing */}
-          <div className="flex items-center justify-center gap-8 mb-3">
-            {/* Rewind 15s */}
+        {/* Buttons */}
+        <div className="mt-6">
+          {/* Preview + Wishlist */}
+          <div className="flex gap-2 mb-3">
             <button 
-              onClick={() => handleSkip(-15)}
-              className="w-12 h-12 rounded-full bg-orange-600 hover:bg-orange-700 flex flex-col items-center justify-center transition-colors"
+              onClick={handlePreview}
+              className="flex-1 py-3 bg-orange-500 hover:bg-orange-400 rounded-xl transition-colors"
             >
-              <span className="text-white text-base">⏪</span>
-              <span className="text-white text-[8px]">15s</span>
+              <span className="text-black font-semibold">Preview</span>
             </button>
-
-            {/* Play/Pause - Extra Large */}
-            <button 
-              onClick={handlePlayPause}
-              className="w-20 h-20 rounded-full bg-black hover:bg-slate-800 flex items-center justify-center transition-colors"
-            >
-              <span className="text-white text-4xl">{isPlaying ? '⏸' : '▶'}</span>
-            </button>
-
-            {/* Forward 15s */}
-            <button 
-              onClick={() => handleSkip(15)}
-              className="w-12 h-12 rounded-full bg-orange-600 hover:bg-orange-700 flex flex-col items-center justify-center transition-colors"
-            >
-              <span className="text-white text-base">⏩</span>
-              <span className="text-white text-[8px]">15s</span>
+            <button className="flex-1 py-3 bg-blue-500 hover:bg-blue-400 rounded-xl transition-colors">
+              <span className="text-white font-semibold">Save to Wishlist</span>
             </button>
           </div>
 
-          {/* Speed controls */}
-          <div className="flex items-center justify-center gap-2">
-            <span className="text-black text-xs font-medium">Speed:</span>
-            {speedOptions.map((speed) => (
-              <button
-                key={speed}
-                onClick={() => setPlaybackSpeed(speed)}
-                className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-                  playbackSpeed === speed 
-                    ? 'bg-black text-white' 
-                    : 'bg-orange-600 text-white hover:bg-orange-700'
-                }`}
-              >
-                {speed}x
-              </button>
-            ))}
-          </div>
+          {/* Play/Resume button */}
+          {hasProgress ? (
+            <button 
+              onClick={handleResume}
+              className="w-full py-4 bg-green-500 hover:bg-green-400 rounded-xl transition-colors"
+            >
+              <span className="text-black font-bold text-lg">Resume Story</span>
+            </button>
+          ) : canPlayFree ? (
+            <button 
+              onClick={handlePlay}
+              className="w-full py-4 bg-green-500 hover:bg-green-400 rounded-xl transition-colors"
+            >
+              <span className="text-black font-bold text-lg">Play Free</span>
+            </button>
+          ) : (
+            <Link 
+              href="/pricing"
+              className="w-full py-4 bg-yellow-500 hover:bg-yellow-400 rounded-xl transition-colors block text-center"
+            >
+              <span className="text-black font-bold text-lg">Subscribe to Listen</span>
+            </Link>
+          )}
         </div>
       </div>
     </div>
@@ -344,16 +231,16 @@ function PlayContent() {
 
 function LoadingFallback() {
   return (
-    <div className="h-screen bg-slate-950 flex items-center justify-center">
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center">
       <div className="inline-block w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
     </div>
   )
 }
 
-export default function PlayPage() {
+export default function PlayerPage() {
   return (
     <Suspense fallback={<LoadingFallback />}>
-      <PlayContent />
+      <PlayerContent />
     </Suspense>
   )
 }
