@@ -13,11 +13,9 @@ function WelcomeContent() {
   const [freeCredits, setFreeCredits] = useState(0)
   const [genre, setGenre] = useState('All')
   
-  // Promo banner from QR code
   const [showPromoBanner, setShowPromoBanner] = useState(false)
   const [promoBannerText, setPromoBannerText] = useState('')
 
-  // Secret code feature
   const [logoTapCount, setLogoTapCount] = useState(0)
   const [lastTapTime, setLastTapTime] = useState(0)
   const [showSecretInput, setShowSecretInput] = useState(false)
@@ -39,21 +37,18 @@ function WelcomeContent() {
 
   useEffect(() => {
     async function initialize() {
-      // Check if user is already logged in - redirect to home
       const { data: { session } } = await supabase.auth.getSession()
       if (session) {
         router.push('/home')
         return
       }
 
-      // Check for promo code in URL (from QR code)
       const promo = searchParams.get('promo')
       if (promo) {
         setShowPromoBanner(true)
         setPromoBannerText(decodeURIComponent(promo))
       }
 
-      // Check for existing free credits in localStorage
       const storedCredits = localStorage.getItem('dtt_free_credits')
       
       if (storedCredits === null) {
@@ -65,7 +60,6 @@ function WelcomeContent() {
         setFreeCredits(credits)
       }
 
-      // Fetch all stories
       try {
         const allStories = await getStories({})
         setStories(allStories)
@@ -78,11 +72,9 @@ function WelcomeContent() {
     initialize()
   }, [router, searchParams])
 
-  // Handle secret logo tap
   const handleLogoTap = () => {
     const now = Date.now()
     
-    // Reset count if more than 1 second since last tap
     if (now - lastTapTime > 1000) {
       setLogoTapCount(1)
     } else {
@@ -91,14 +83,12 @@ function WelcomeContent() {
     
     setLastTapTime(now)
     
-    // Show secret input after 5 rapid taps
     if (logoTapCount >= 4) {
       setShowSecretInput(true)
       setLogoTapCount(0)
     }
   }
 
-  // Handle secret code submission - ONE-TIME USE
   const handleCodeSubmit = async () => {
     if (!secretCode.trim()) return
     
@@ -106,7 +96,6 @@ function WelcomeContent() {
     setCodeMessage(null)
     
     try {
-      // Check code against database - must be active and not yet redeemed
       const { data, error } = await supabase
         .from('promo_codes')
         .select('*')
@@ -121,18 +110,15 @@ function WelcomeContent() {
         return
       }
       
-      // Check if code is expired
       if (data.expires_at && new Date(data.expires_at) < new Date()) {
         setCodeMessage({ type: 'error', text: 'This code has expired' })
         setIsSubmitting(false)
         return
       }
       
-      // Generate a unique device/browser fingerprint for this redemption
       const deviceId = localStorage.getItem('dtt_device_id') || crypto.randomUUID()
       localStorage.setItem('dtt_device_id', deviceId)
       
-      // Mark code as REDEEMED (one-time use)
       const { error: updateError } = await supabase
         .from('promo_codes')
         .update({ 
@@ -148,7 +134,6 @@ function WelcomeContent() {
         return
       }
       
-      // Store the subscription in localStorage
       const subscriptionData = {
         code: data.code,
         type: data.subscription_type,
@@ -164,7 +149,6 @@ function WelcomeContent() {
         text: `🎉 Success! Redirecting to create your account...` 
       })
       
-      // Redirect to promo registration page after 1.5 seconds
       setTimeout(() => {
         setShowSecretInput(false)
         setSecretCode('')
@@ -178,18 +162,15 @@ function WelcomeContent() {
     setIsSubmitting(false)
   }
 
-  // Filter stories by genre
   const filtered = stories.filter((s) => {
     if (genre !== 'All' && s.genre !== genre) return false
     return true
   })
 
-  // Handle story click
   const handleStoryClick = (story: Story) => {
     router.push(`/player/${story.id}`)
   }
 
-  // Logo component with secret tap handler
   const Logo = () => (
     <button 
       onClick={handleLogoTap}
@@ -284,7 +265,7 @@ function WelcomeContent() {
         </div>
       )}
 
-      {/* Promo Banner - sticky at top */}
+      {/* Promo Banner */}
       {showPromoBanner && promoBannerText && (
         <div className="sticky top-0 z-20 bg-gradient-to-r from-green-600 to-green-500 px-3 py-2">
           <p className="text-white text-xs text-center font-medium leading-tight">
@@ -301,13 +282,12 @@ function WelcomeContent() {
           <Logo />
         </div>
 
-        {/* CTA Text - two lines */}
+        {/* CTA Text */}
         <div className="text-center my-4">
           <h2 className="text-2xl font-bold text-white">Start Listening</h2>
           <h2 className="text-2xl font-bold text-white">To Your Free Story Now!</h2>
           <p className="text-white text-sm mt-2">No Sign Up Required</p>
           
-          {/* Credits Display */}
           {freeCredits > 0 ? (
             <p className="text-green-400 font-semibold text-sm mt-1">
               🎁 You have {freeCredits} free credit{freeCredits !== 1 ? 's' : ''}
@@ -365,15 +345,16 @@ function WelcomeContent() {
         ) : (
           <div className="space-y-3">
             {filtered.map((story, index) => {
-              const isFreeStory = story.credits <= 2
+              const isFreeStory = (story.credits || 1) <= 2
               
               return (
                 <div 
                   key={story.id}
-                  className={`rounded-xl overflow-hidden ${index % 2 === 0 ? 'bg-slate-900' : 'bg-slate-800'}`}
+                  onClick={() => handleStoryClick(story)}
+                  className={`rounded-xl overflow-hidden cursor-pointer active:opacity-80 transition-opacity ${index % 2 === 0 ? 'bg-slate-900' : 'bg-slate-800'}`}
                 >
                   <div className="flex">
-                    {/* Cover - Larger */}
+                    {/* Cover */}
                     <div className="w-32 h-32 flex-shrink-0 relative">
                       {story.cover_url ? (
                         <img 
@@ -399,36 +380,21 @@ function WelcomeContent() {
                     <div className="flex-1 py-3 pr-3 flex flex-col justify-between">
                       <div>
                         <h3 className="font-bold text-white text-sm leading-tight">{story.title}</h3>
-                        <p className="text-white text-xs mt-1">{story.genre} • {story.credits} {story.credits === 1 ? 'credit' : 'credits'}</p>
+                        <p className="text-white text-xs mt-1">{story.genre} • {story.credits || 1} credit{(story.credits || 1) !== 1 ? 's' : ''}</p>
                         <p className="text-slate-400 text-xs mt-0.5">{story.author}</p>
                       </div>
                       
-                      {/* Buttons row */}
-                      <div className="flex items-center gap-2 mt-2">
-                        {/* Free Story or Subscribe tag */}
+                      {/* Tag - not a button, just text indicator */}
+                      <div className="mt-2">
                         {isFreeStory ? (
-                          <button 
-                            onClick={() => handleStoryClick(story)}
-                            className="px-2 py-0.5 text-[10px] font-bold rounded bg-green-500/20 text-green-400 border border-green-500/30"
-                          >
+                          <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-green-500/20 text-green-400 border border-green-500/30">
                             Free Story
-                          </button>
+                          </span>
                         ) : (
-                          <button 
-                            onClick={() => router.push('/pricing')}
-                            className="px-2 py-0.5 text-[10px] font-bold rounded bg-orange-500/20 text-orange-400 border border-orange-500/30"
-                          >
-                            Subscribe
-                          </button>
+                          <span className="text-[10px] text-orange-400 italic">
+                            Requires Subscription
+                          </span>
                         )}
-                        
-                        {/* Preview Story button - shorter */}
-                        <button 
-                          onClick={() => handleStoryClick(story)}
-                          className="px-4 py-1.5 bg-orange-500 hover:bg-orange-400 rounded-lg transition-colors"
-                        >
-                          <span className="text-black text-xs font-semibold">Preview Story</span>
-                        </button>
                       </div>
                     </div>
                   </div>
@@ -442,7 +408,6 @@ function WelcomeContent() {
   )
 }
 
-// Loading fallback
 function LoadingFallback() {
   return (
     <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center">
@@ -454,7 +419,6 @@ function LoadingFallback() {
   )
 }
 
-// Main export with Suspense wrapper
 export default function WelcomePage() {
   return (
     <Suspense fallback={<LoadingFallback />}>
