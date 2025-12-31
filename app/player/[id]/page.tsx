@@ -16,16 +16,6 @@ function PlayerContent() {
   const [isInLibrary, setIsInLibrary] = useState(false)
   const [lastPlayed, setLastPlayed] = useState<string | null>(null)
   const [freeCredits, setFreeCredits] = useState(0)
-  const [screenHeight, setScreenHeight] = useState(700)
-
-  useEffect(() => {
-    const updateDimensions = () => {
-      setScreenHeight(window.innerHeight)
-    }
-    updateDimensions()
-    window.addEventListener('resize', updateDimensions)
-    return () => window.removeEventListener('resize', updateDimensions)
-  }, [])
 
   useEffect(() => {
     async function loadStory() {
@@ -34,7 +24,6 @@ function PlayerContent() {
         if (storedCredits) {
           setFreeCredits(parseInt(storedCredits))
         } else {
-          // Default 2 free credits for newcomers
           localStorage.setItem('dtt_free_credits', '2')
           setFreeCredits(2)
         }
@@ -49,7 +38,6 @@ function PlayerContent() {
           }
         }
 
-        // Fetch story from Supabase
         const { data, error } = await supabase
           .from('stories')
           .select('*')
@@ -91,9 +79,6 @@ function PlayerContent() {
     router.push(`/player/${storyId}/preview`)
   }
 
-  // Larger cover - 40% of screen height, max 280px
-  const coverSize = Math.min(screenHeight * 0.4, 280)
-
   if (loading) {
     return (
       <div className="h-screen bg-slate-950 flex items-center justify-center">
@@ -113,29 +98,23 @@ function PlayerContent() {
     )
   }
 
-  // Check if user can play free:
-  // - Story credits <= 2 AND user has free credits remaining
-  // - OR story is already in their library
   const storyCredits = story.credits || 1
   const canPlayFree = (storyCredits <= 2 && freeCredits > 0) || isInLibrary
 
   return (
-    <div className="h-screen bg-slate-950 text-white flex flex-col overflow-hidden">
-      <div className="px-4 flex-1 flex flex-col">
+    <div className="min-h-screen bg-slate-950 text-white">
+      <div className="px-4 py-3">
         
         {/* Back button */}
         <button 
           onClick={() => router.back()}
-          className="px-3 py-1.5 bg-slate-800 rounded-lg self-start mt-3 mb-2"
+          className="px-3 py-1.5 bg-slate-800 rounded-lg mb-3"
         >
           <span className="text-orange-400 text-sm font-medium">← Back</span>
         </button>
 
-        {/* Cover - larger */}
-        <div 
-          className="mx-auto rounded-xl overflow-hidden border-4 border-white flex-shrink-0"
-          style={{ width: coverSize, height: coverSize }}
-        >
+        {/* Cover - large */}
+        <div className="w-64 h-64 mx-auto rounded-xl overflow-hidden border-4 border-white">
           {story.cover_url ? (
             <img 
               src={story.cover_url} 
@@ -149,26 +128,23 @@ function PlayerContent() {
           )}
         </div>
 
-        {/* Title + Info - compact */}
-        <div className="text-center mt-3">
+        {/* Title + Info */}
+        <div className="text-center mt-4">
           <h1 className="font-bold text-white text-xl leading-tight">{story.title}</h1>
           <p className="text-slate-400 text-sm mt-1">
             {story.author} • {story.genre} • {story.duration_mins} min • {storyCredits} credit{storyCredits !== 1 ? 's' : ''}
           </p>
         </div>
 
-        {/* Description - always show, truncated */}
+        {/* Description */}
         {story.description && (
-          <p className="text-slate-300 text-sm leading-relaxed text-center mt-2 line-clamp-2 px-2">
+          <p className="text-slate-300 text-sm leading-relaxed text-center mt-3 px-2">
             {story.description}
           </p>
         )}
 
-        {/* Spacer - pushes buttons to bottom */}
-        <div className="flex-1 min-h-4" />
-
-        {/* Buttons - always at bottom */}
-        <div className="pb-6">
+        {/* Buttons - directly after content */}
+        <div className="mt-6">
           {/* Preview + Wishlist */}
           <div className="flex gap-2 mb-3">
             <button 
@@ -182,7 +158,7 @@ function PlayerContent() {
             </button>
           </div>
 
-          {/* Play button - changes based on credits */}
+          {/* Play button */}
           {canPlayFree ? (
             <button 
               onClick={handlePlay}
