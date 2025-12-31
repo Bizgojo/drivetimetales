@@ -7,13 +7,10 @@ import { supabase, getStories, Story } from '@/lib/supabase'
 
 export default function WelcomePage() {
   const router = useRouter()
-  const [featuredStories, setFeaturedStories] = useState<Story[]>([])
+  const [stories, setStories] = useState<Story[]>([])
   const [loading, setLoading] = useState(true)
   const [freeCredits, setFreeCredits] = useState(0)
-  const [hasUsedFreeCredits, setHasUsedFreeCredits] = useState(false)
-  const [showSubscribeModal, setShowSubscribeModal] = useState(false)
-
-  const genres = ['Mystery', 'Sci-Fi', 'Romance', 'Thriller', 'Fantasy', 'Drama', 'Horror', 'Comedy']
+  const [showOutOfCredits, setShowOutOfCredits] = useState(false)
 
   useEffect(() => {
     async function initialize() {
@@ -33,22 +30,20 @@ export default function WelcomePage() {
         localStorage.setItem('dtt_free_credits', '2')
         localStorage.setItem('dtt_credits_used', 'false')
         setFreeCredits(2)
-        setHasUsedFreeCredits(false)
       } else {
         const credits = parseInt(storedCredits)
         setFreeCredits(credits)
-        setHasUsedFreeCredits(creditsUsed === 'true' && credits === 0)
         
-        // If they've used all credits, show subscribe modal after a delay
+        // If they've used all credits, show out of credits notice
         if (credits === 0 && creditsUsed === 'true') {
-          setTimeout(() => setShowSubscribeModal(true), 1500)
+          setShowOutOfCredits(true)
         }
       }
 
-      // Fetch featured stories using the helper function
+      // Fetch all stories for the library
       try {
-        const stories = await getStories({ featured: true, limit: 4 })
-        setFeaturedStories(stories)
+        const allStories = await getStories({})
+        setStories(allStories)
       } catch (error) {
         console.error('Error fetching stories:', error)
       }
@@ -58,88 +53,85 @@ export default function WelcomePage() {
     initialize()
   }, [router])
 
-  // Handle story click for newcomers
-  const handleStoryClick = (storyId: string) => {
-    if (freeCredits > 0) {
-      router.push(`/story/${storyId}`)
+  // Handle story click
+  const handleStoryClick = (story: Story) => {
+    if (story.credits <= 2 && freeCredits > 0) {
+      // Free story - they can play it
+      router.push(`/story/${story.id}`)
     } else {
-      setShowSubscribeModal(true)
+      // Need subscription
+      router.push('/pricing')
     }
   }
 
+  // Logo component with cartoon truck and car
+  const Logo = () => (
+    <div className="flex items-center gap-3">
+      <svg width="80" height="48" viewBox="0 0 80 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+        {/* Car (front) */}
+        <g>
+          {/* Car body */}
+          <rect x="45" y="24" width="30" height="14" rx="3" fill="#f97316"/>
+          {/* Car top */}
+          <path d="M52 24 L56 16 L68 16 L72 24" fill="#f97316"/>
+          {/* Car windows */}
+          <path d="M54 23 L57 17 L67 17 L70 23" fill="#1e293b"/>
+          {/* Wheels */}
+          <circle cx="54" cy="38" r="5" fill="#334155"/>
+          <circle cx="54" cy="38" r="2.5" fill="#64748b"/>
+          <circle cx="68" cy="38" r="5" fill="#334155"/>
+          <circle cx="68" cy="38" r="2.5" fill="#64748b"/>
+          {/* Headlight */}
+          <rect x="73" y="28" width="3" height="4" rx="1" fill="#fef08a"/>
+        </g>
+        
+        {/* Truck (back) */}
+        <g>
+          {/* Truck cab */}
+          <rect x="2" y="20" width="18" height="18" rx="3" fill="#3b82f6"/>
+          {/* Truck cab top */}
+          <path d="M5 20 L8 12 L17 12 L20 20" fill="#3b82f6"/>
+          {/* Truck window */}
+          <path d="M7 19 L9 13 L16 13 L18 19" fill="#1e293b"/>
+          {/* Truck cargo */}
+          <rect x="20" y="18" width="22" height="20" rx="2" fill="#60a5fa"/>
+          {/* Cargo lines */}
+          <line x1="26" y1="18" x2="26" y2="38" stroke="#3b82f6" strokeWidth="1"/>
+          <line x1="32" y1="18" x2="32" y2="38" stroke="#3b82f6" strokeWidth="1"/>
+          <line x1="38" y1="18" x2="38" y2="38" stroke="#3b82f6" strokeWidth="1"/>
+          {/* Wheels */}
+          <circle cx="10" cy="38" r="5" fill="#334155"/>
+          <circle cx="10" cy="38" r="2.5" fill="#64748b"/>
+          <circle cx="32" cy="38" r="5" fill="#334155"/>
+          <circle cx="32" cy="38" r="2.5" fill="#64748b"/>
+        </g>
+        
+        {/* Motion lines */}
+        <line x1="0" y1="30" x2="0" y2="30" stroke="#64748b" strokeWidth="2" strokeLinecap="round"/>
+      </svg>
+      <div className="flex items-baseline">
+        <span className="text-2xl sm:text-3xl font-bold text-white">Drive Time </span>
+        <span className="text-2xl sm:text-3xl font-bold text-orange-500">Tales</span>
+      </div>
+    </div>
+  )
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
+    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 pb-20">
       
-      {/* Subscribe Modal */}
-      {showSubscribeModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="relative w-full max-w-md bg-slate-900 rounded-2xl border border-slate-700 shadow-2xl overflow-hidden">
-            <button 
-              onClick={() => setShowSubscribeModal(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors"
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-
-            <div className="p-8 text-center">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-orange-500/20 flex items-center justify-center">
-                <span className="text-3xl">🎧</span>
-              </div>
-              
-              <h3 className="text-2xl font-bold text-white mb-2">
-                Enjoyed Your Free Stories?
-              </h3>
-              <p className="text-slate-400 mb-6">
-                You've used your 2 free credits. Subscribe or buy credits to keep listening!
-              </p>
-
-              <div className="space-y-3">
-                <Link 
-                  href="/auth/signup"
-                  className="block w-full py-3 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 text-white font-semibold rounded-xl transition-all"
-                >
-                  Create Free Account
-                </Link>
-                <Link 
-                  href="/pricing"
-                  className="block w-full py-3 bg-slate-800 hover:bg-slate-700 text-white font-medium rounded-xl border border-slate-700 transition-all"
-                >
-                  View Subscription Plans
-                </Link>
-              </div>
-
-              <p className="text-xs text-slate-500 mt-4">
-                Get unlimited access starting at $9.99/month
+      {/* Out of Credits Notice */}
+      {showOutOfCredits && (
+        <div className="bg-gradient-to-r from-red-600/20 via-red-500/10 to-red-600/20 border-b border-red-500/20">
+          <div className="max-w-6xl mx-auto px-4 py-4 flex flex-col sm:flex-row items-center justify-center gap-4">
+            <div className="flex items-center gap-2">
+              <span className="text-red-400">⚠️</span>
+              <p className="text-red-300 font-medium">
+                You're out of free credits!
               </p>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Free Credits Banner */}
-      {freeCredits > 0 && (
-        <div className="bg-gradient-to-r from-green-600/20 via-green-500/10 to-green-600/20 border-b border-green-500/20">
-          <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-center gap-3">
-            <span className="text-green-400">🎁</span>
-            <p className="text-sm text-green-300">
-              <span className="font-semibold">Welcome!</span> You have <span className="font-bold text-white">{freeCredits} free credit{freeCredits !== 1 ? 's' : ''}</span> to start listening!
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* No Credits Banner */}
-      {hasUsedFreeCredits && freeCredits === 0 && (
-        <div className="bg-gradient-to-r from-orange-600/20 via-orange-500/10 to-orange-600/20 border-b border-orange-500/20">
-          <div className="max-w-6xl mx-auto px-4 py-3 flex flex-col sm:flex-row items-center justify-center gap-3">
-            <p className="text-sm text-orange-300">
-              You've used your free credits!
-            </p>
             <Link 
               href="/pricing"
-              className="px-4 py-1.5 bg-orange-500 hover:bg-orange-400 text-black text-sm font-semibold rounded-lg transition-colors"
+              className="px-6 py-2 bg-orange-500 hover:bg-orange-400 text-black font-semibold rounded-lg transition-colors"
             >
               Subscribe Now
             </Link>
@@ -151,112 +143,42 @@ export default function WelcomePage() {
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute top-20 left-10 w-72 h-72 bg-orange-500/10 rounded-full blur-3xl" />
-          <div className="absolute bottom-20 right-10 w-96 h-96 bg-orange-600/5 rounded-full blur-3xl" />
+          <div className="absolute bottom-20 right-10 w-96 h-96 bg-blue-500/5 rounded-full blur-3xl" />
         </div>
 
-        <div className="relative max-w-6xl mx-auto px-4 pt-12 pb-20 sm:pt-20 sm:pb-28">
-          <div className="text-center mb-10">
-            <div className="inline-flex items-center gap-3 mb-6">
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center shadow-lg shadow-orange-500/25">
-                <span className="text-2xl">🎧</span>
-              </div>
-              <h1 className="text-3xl sm:text-4xl font-bold text-white tracking-tight">
-                Drive Time Tales
-              </h1>
-            </div>
+        <div className="relative max-w-6xl mx-auto px-4 pt-12 pb-8 sm:pt-16 sm:pb-12">
+          {/* Logo */}
+          <div className="flex justify-center mb-10">
+            <Logo />
           </div>
 
+          {/* Hero Content */}
           <div className="text-center max-w-3xl mx-auto">
-            <h2 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white mb-6 leading-tight">
-              Turn Your Commute Into
-              <span className="block text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-orange-500">
-                Story Time
-              </span>
-            </h2>
-            <p className="text-lg sm:text-xl text-slate-300 mb-10 leading-relaxed">
-              Premium audio stories crafted for your drive. Mystery, romance, sci-fi, and more — 
-              each tale perfectly timed for your journey.
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white mb-6 leading-tight">
+              Start Listening to Your Free Story Now
+            </h1>
+            <p className="text-xl sm:text-2xl text-slate-300 mb-2">
+              No Sign Up Required
             </p>
-
-            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-6">
-              {freeCredits > 0 ? (
-                <Link 
-                  href="/library"
-                  className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-orange-500/25 hover:shadow-orange-500/40 hover:scale-105 text-center"
-                >
-                  🎧 Start Listening Free
-                </Link>
-              ) : (
-                <Link 
-                  href="/pricing"
-                  className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-orange-500/25 hover:shadow-orange-500/40 hover:scale-105 text-center"
-                >
-                  🎧 Subscribe Now
-                </Link>
-              )}
-              <Link 
-                href="/auth/signin"
-                className="w-full sm:w-auto px-8 py-4 bg-slate-800/80 hover:bg-slate-700 text-white font-medium rounded-xl transition-all border border-slate-700 hover:border-slate-600 text-center"
-              >
-                Sign In
-              </Link>
-            </div>
-
-            {freeCredits > 0 ? (
-              <p className="text-sm text-slate-500">
-                No signup required • Start listening in seconds
-              </p>
-            ) : (
-              <p className="text-sm text-slate-500">
-                Already have an account? <Link href="/auth/signin" className="text-orange-400 hover:text-orange-300">Sign in</Link>
+            {freeCredits > 0 && (
+              <p className="text-lg text-green-400 font-medium">
+                🎁 You have {freeCredits} free credit{freeCredits !== 1 ? 's' : ''}!
               </p>
             )}
           </div>
         </div>
       </section>
 
-      {/* How It Works */}
-      <section className="py-16 px-4">
-        <div className="max-w-5xl mx-auto">
-          <h3 className="text-2xl sm:text-3xl font-bold text-white text-center mb-12">
-            How It Works
-          </h3>
-          <div className="grid sm:grid-cols-3 gap-8">
-            {[
-              { icon: '📱', title: 'Pick a Story', desc: 'Browse our library of professionally narrated tales across every genre' },
-              { icon: '🚗', title: 'Start Driving', desc: 'Hit play and enjoy crystal-clear audio optimized for your car speakers' },
-              { icon: '🎧', title: 'Resume Anywhere', desc: 'Pause anytime and pick up right where you left off on your next trip' }
-            ].map((step, i) => (
-              <div key={i} className="text-center group">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-slate-800/80 border border-slate-700 flex items-center justify-center text-3xl group-hover:border-orange-500/50 transition-all">
-                  {step.icon}
-                </div>
-                <h4 className="text-lg font-semibold text-white mb-2">{step.title}</h4>
-                <p className="text-slate-400 text-sm leading-relaxed">{step.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Featured Stories */}
-      <section className="py-16 px-4 bg-slate-900/50">
+      {/* Story Library */}
+      <section className="py-8 px-4">
         <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-12">
-            <h3 className="text-2xl sm:text-3xl font-bold text-white mb-3">
-              Popular Stories
-            </h3>
-            <p className="text-slate-400">
-              {freeCredits > 0 
-                ? `Pick a story and start listening — you have ${freeCredits} free credit${freeCredits !== 1 ? 's' : ''}!`
-                : 'Subscribe to access our full library'
-              }
-            </p>
-          </div>
+          <h2 className="text-2xl font-bold text-white mb-6 text-center">
+            Choose Your Story
+          </h2>
 
           {loading ? (
-            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              {[1, 2, 3, 4].map((i) => (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
+              {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
                 <div key={i} className="animate-pulse">
                   <div className="aspect-[3/4] bg-slate-800 rounded-xl mb-3" />
                   <div className="h-4 bg-slate-800 rounded w-3/4 mb-2" />
@@ -264,196 +186,96 @@ export default function WelcomePage() {
                 </div>
               ))}
             </div>
-          ) : featuredStories.length > 0 ? (
-            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              {featuredStories.map((story) => (
-                <div 
-                  key={story.id} 
-                  className="group cursor-pointer" 
-                  onClick={() => handleStoryClick(story.id)}
-                >
-                  <div className="relative aspect-[3/4] rounded-xl overflow-hidden mb-3 bg-slate-800">
-                    {story.cover_url ? (
-                      <img 
-                        src={story.cover_url} 
-                        alt={story.title}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      />
-                    ) : (
-                      <div className="w-full h-full bg-gradient-to-br from-orange-600/30 to-slate-800 flex items-center justify-center">
-                        <span className="text-5xl opacity-50">🎧</span>
+          ) : stories.length > 0 ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
+              {stories.map((story) => {
+                const isFreeStory = story.credits <= 2
+                const canPlay = isFreeStory && freeCredits > 0
+                
+                return (
+                  <div 
+                    key={story.id} 
+                    className="group cursor-pointer" 
+                    onClick={() => handleStoryClick(story)}
+                  >
+                    <div className="relative aspect-[3/4] rounded-xl overflow-hidden mb-3 bg-slate-800">
+                      {story.cover_url ? (
+                        <img 
+                          src={story.cover_url} 
+                          alt={story.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-gradient-to-br from-slate-700 to-slate-800 flex items-center justify-center">
+                          <span className="text-5xl opacity-50">🎧</span>
+                        </div>
+                      )}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                      
+                      {/* Free Story or Subscribe Flag */}
+                      <div className={`absolute top-2 left-2 px-3 py-1 text-xs font-bold rounded ${
+                        isFreeStory 
+                          ? 'bg-green-500 text-black' 
+                          : 'bg-yellow-500 text-black'
+                      }`}>
+                        {isFreeStory ? 'Free Story' : 'Subscribe'}
                       </div>
-                    )}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-                    <div className="absolute bottom-3 left-3">
-                      <span className="inline-block px-2 py-1 bg-orange-500/90 text-white text-xs font-medium rounded">
-                        {story.genre}
-                      </span>
-                    </div>
-                    
-                    {/* Play overlay */}
-                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 bg-black/40 transition-opacity">
-                      <div className="w-14 h-14 rounded-full bg-orange-500 flex items-center justify-center shadow-lg">
-                        <div className="w-0 h-0 border-l-[16px] border-l-white border-y-[10px] border-y-transparent ml-1" />
+                      
+                      {/* Duration badge */}
+                      <div className="absolute bottom-2 right-2 px-2 py-1 bg-black/60 text-white text-xs rounded">
+                        {story.duration_mins} min
                       </div>
-                    </div>
-                    
-                    {/* Lock overlay if no credits */}
-                    {freeCredits === 0 && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-                        <div className="text-center">
-                          <span className="text-3xl">🔒</span>
-                          <p className="text-white text-xs mt-1">Subscribe to listen</p>
+
+                      {/* Play overlay */}
+                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 bg-black/40 transition-opacity">
+                        <div className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg ${
+                          canPlay ? 'bg-green-500' : 'bg-orange-500'
+                        }`}>
+                          {canPlay ? (
+                            <div className="w-0 h-0 border-l-[16px] border-l-white border-y-[10px] border-y-transparent ml-1" />
+                          ) : (
+                            <span className="text-white text-lg">🔒</span>
+                          )}
                         </div>
                       </div>
-                    )}
+                    </div>
+                    <h3 className="font-semibold text-white group-hover:text-orange-400 transition-colors line-clamp-2">
+                      {story.title}
+                    </h3>
+                    <p className="text-sm text-slate-400">{story.author}</p>
+                    <p className="text-xs text-slate-500">{story.genre} • {story.credits} credit{story.credits !== 1 ? 's' : ''}</p>
                   </div>
-                  <h4 className="font-semibold text-white group-hover:text-orange-400 transition-colors line-clamp-1">
-                    {story.title}
-                  </h4>
-                  <p className="text-sm text-slate-400">{story.author} • {story.duration_mins} min</p>
-                </div>
-              ))}
+                )
+              })}
             </div>
           ) : (
             <div className="text-center text-slate-500 py-12">
               <p>No stories available</p>
             </div>
           )}
-
-          <div className="text-center mt-10">
-            <Link 
-              href={freeCredits > 0 ? "/library" : "/pricing"}
-              className="inline-flex items-center gap-2 px-6 py-3 bg-slate-800 hover:bg-slate-700 text-white font-medium rounded-xl transition-all border border-slate-700"
-            >
-              {freeCredits > 0 ? 'Browse All Stories' : 'View Subscription Plans'}
-              <span className="text-orange-400">→</span>
-            </Link>
-          </div>
         </div>
       </section>
 
-      {/* Genres */}
-      <section className="py-16 px-4">
-        <div className="max-w-5xl mx-auto">
-          <h3 className="text-2xl sm:text-3xl font-bold text-white text-center mb-10">
-            Every Genre You Love
-          </h3>
-          <div className="flex flex-wrap justify-center gap-3">
-            {genres.map((genre) => (
-              <span 
-                key={genre}
-                className="px-5 py-2.5 bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white rounded-full border border-slate-700 hover:border-orange-500/50 transition-all cursor-pointer"
-              >
-                {genre}
-              </span>
-            ))}
+      {/* Sticky Footer - Subscribe Link */}
+      <div className="fixed bottom-0 left-0 right-0 bg-slate-950/95 backdrop-blur-lg border-t border-slate-800 z-50">
+        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-orange-400">🪙</span>
+            <span className="text-slate-300 text-sm sm:text-base">
+              {freeCredits > 0 
+                ? `${freeCredits} free credit${freeCredits !== 1 ? 's' : ''} remaining`
+                : 'Out of credits'
+              }
+            </span>
           </div>
-        </div>
-      </section>
-
-      {/* Pricing Preview */}
-      <section className="py-16 px-4 bg-slate-900/50">
-        <div className="max-w-4xl mx-auto">
-          <div className="text-center mb-10">
-            <h3 className="text-2xl sm:text-3xl font-bold text-white mb-3">
-              Simple, Flexible Plans
-            </h3>
-            <p className="text-slate-400">Choose the plan that fits your commute</p>
-          </div>
-          
-          <div className="grid sm:grid-cols-3 gap-6">
-            <div className="p-6 bg-slate-800/50 rounded-2xl border border-slate-700/50">
-              <h4 className="font-semibold text-white mb-1">Free Trial</h4>
-              <p className="text-3xl font-bold text-white mb-4">2 <span className="text-base font-normal text-slate-400">credits</span></p>
-              <ul className="space-y-2 text-sm text-slate-400 mb-6">
-                <li className="flex items-center gap-2"><span className="text-green-400">✓</span> No signup required</li>
-                <li className="flex items-center gap-2"><span className="text-green-400">✓</span> Listen to 2 stories</li>
-                <li className="flex items-center gap-2"><span className="text-green-400">✓</span> Full audio quality</li>
-              </ul>
-              {freeCredits > 0 ? (
-                <div className="py-2 text-center text-green-400 text-sm font-medium">
-                  ✓ You have {freeCredits} credit{freeCredits !== 1 ? 's' : ''}!
-                </div>
-              ) : (
-                <div className="py-2 text-center text-slate-500 text-sm">Credits used</div>
-              )}
-            </div>
-
-            <div className="p-6 bg-gradient-to-b from-orange-500/10 to-slate-800/50 rounded-2xl border border-orange-500/30 relative">
-              <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-orange-500 text-black text-xs font-semibold rounded-full">
-                POPULAR
-              </div>
-              <h4 className="font-semibold text-white mb-1">Monthly</h4>
-              <p className="text-3xl font-bold text-white mb-4">$9.99<span className="text-base font-normal text-slate-400">/mo</span></p>
-              <ul className="space-y-2 text-sm text-slate-300 mb-6">
-                <li className="flex items-center gap-2"><span className="text-orange-400">✓</span> Unlimited stories</li>
-                <li className="flex items-center gap-2"><span className="text-orange-400">✓</span> New releases weekly</li>
-                <li className="flex items-center gap-2"><span className="text-orange-400">✓</span> Cancel anytime</li>
-              </ul>
-              <Link 
-                href="/pricing"
-                className="block w-full py-2.5 bg-orange-500 hover:bg-orange-400 text-black text-sm font-semibold rounded-lg text-center transition-colors"
-              >
-                Subscribe
-              </Link>
-            </div>
-
-            <div className="p-6 bg-slate-800/50 rounded-2xl border border-slate-700/50">
-              <h4 className="font-semibold text-white mb-1">Credit Packs</h4>
-              <p className="text-3xl font-bold text-white mb-4">$4.99<span className="text-base font-normal text-slate-400">+</span></p>
-              <ul className="space-y-2 text-sm text-slate-400 mb-6">
-                <li className="flex items-center gap-2"><span className="text-green-400">✓</span> Buy credits as needed</li>
-                <li className="flex items-center gap-2"><span className="text-green-400">✓</span> Credits never expire</li>
-                <li className="flex items-center gap-2"><span className="text-green-400">✓</span> No commitment</li>
-              </ul>
-              <Link 
-                href="/pricing"
-                className="block w-full py-2.5 bg-slate-700 hover:bg-slate-600 text-white text-sm font-medium rounded-lg text-center transition-colors"
-              >
-                Buy Credits
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Final CTA */}
-      <section className="py-20 px-4">
-        <div className="max-w-2xl mx-auto text-center">
-          <h3 className="text-3xl sm:text-4xl font-bold text-white mb-4">
-            {freeCredits > 0 ? 'Ready to Start Listening?' : 'Ready to Continue?'}
-          </h3>
-          <p className="text-slate-400 mb-8">
-            {freeCredits > 0 
-              ? 'Jump right in — no signup required for your first 2 stories.'
-              : 'Subscribe now and get unlimited access to our entire library.'
-            }
-          </p>
           <Link 
-            href={freeCredits > 0 ? "/library" : "/pricing"}
-            className="inline-flex items-center gap-2 px-10 py-4 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-orange-500/25 hover:scale-105"
+            href="/pricing"
+            className="px-5 py-2 bg-orange-500 hover:bg-orange-400 text-black font-semibold rounded-lg transition-colors text-sm sm:text-base"
           >
-            🎧 {freeCredits > 0 ? 'Browse Stories' : 'View Plans & Subscribe'}
+            Get Unlimited Access
           </Link>
         </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="py-8 px-4 border-t border-slate-800">
-        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
-          <div className="flex items-center gap-2">
-            <span className="text-xl">🎧</span>
-            <span className="text-slate-400 text-sm">Drive Time Tales</span>
-          </div>
-          <div className="flex gap-6">
-            <Link href="/about" className="text-slate-500 hover:text-slate-300 text-sm transition-colors">About</Link>
-            <Link href="/privacy" className="text-slate-500 hover:text-slate-300 text-sm transition-colors">Privacy</Link>
-            <Link href="/terms" className="text-slate-500 hover:text-slate-300 text-sm transition-colors">Terms</Link>
-          </div>
-          <p className="text-slate-600 text-sm">© 2024 Drive Time Tales</p>
-        </div>
-      </footer>
+      </div>
     </div>
   )
 }
