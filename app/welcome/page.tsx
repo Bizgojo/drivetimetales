@@ -167,6 +167,7 @@ function WelcomeContent() {
     return true
   })
 
+  // Go to player details page (Screen A)
   const handleStoryClick = (story: Story) => {
     router.push(`/player/${story.id}`)
   }
@@ -384,7 +385,7 @@ function WelcomeContent() {
                         <p className="text-slate-400 text-xs mt-0.5">{story.author}</p>
                       </div>
                       
-                      {/* Tag - not a button, just text indicator */}
+                      {/* Tag */}
                       <div className="mt-2">
                         {isFreeStory ? (
                           <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-green-500/20 text-green-400 border border-green-500/30">
