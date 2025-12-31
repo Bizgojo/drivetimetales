@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react'
 import Link from 'next/link'
 import { useRouter, useParams } from 'next/navigation'
-import { supabase, getStory, Story } from '@/lib/supabase'
+import { supabase, getStories, Story } from '@/lib/supabase'
 
 function PlayerContent() {
   const router = useRouter()
@@ -16,14 +16,11 @@ function PlayerContent() {
   const [isInLibrary, setIsInLibrary] = useState(false)
   const [lastPlayed, setLastPlayed] = useState<string | null>(null)
   const [freeCredits, setFreeCredits] = useState(0)
-  const [screenHeight, setScreenHeight] = useState(0)
-  const [screenWidth, setScreenWidth] = useState(0)
+  const [screenHeight, setScreenHeight] = useState(700)
 
   useEffect(() => {
-    // Get screen dimensions
     const updateDimensions = () => {
       setScreenHeight(window.innerHeight)
-      setScreenWidth(window.innerWidth)
     }
     updateDimensions()
     window.addEventListener('resize', updateDimensions)
@@ -33,13 +30,11 @@ function PlayerContent() {
   useEffect(() => {
     async function loadStory() {
       try {
-        // Check free credits from localStorage
         const storedCredits = localStorage.getItem('dtt_free_credits')
         if (storedCredits) {
           setFreeCredits(parseInt(storedCredits))
         }
 
-        // Check if story is in user's library
         const libraryData = localStorage.getItem('dtt_library')
         if (libraryData) {
           const library = JSON.parse(libraryData)
@@ -50,9 +45,18 @@ function PlayerContent() {
           }
         }
 
-        // Fetch story details
-        const storyData = await getStory(storyId)
-        setStory(storyData)
+        // Fetch story from Supabase
+        const { data, error } = await supabase
+          .from('stories')
+          .select('*')
+          .eq('id', storyId)
+          .single()
+        
+        if (error || !data) {
+          setError('Story not found')
+        } else {
+          setStory(data)
+        }
       } catch (err) {
         setError('Story not found')
       } finally {
@@ -65,13 +69,7 @@ function PlayerContent() {
     }
   }, [storyId])
 
-  // Calculate cover size dynamically
-  // Fixed elements: back button (~50px) + title/info (~70px) + buttons (~120px) + padding (~60px) = ~300px
-  const availableForCover = Math.min(screenWidth - 32, screenHeight - 300)
-  const coverSize = Math.max(120, Math.min(availableForCover, 320))
-
   const handlePlay = () => {
-    // Add to library if not already there
     if (!isInLibrary) {
       const libraryData = localStorage.getItem('dtt_library')
       const library = libraryData ? JSON.parse(libraryData) : []
@@ -82,8 +80,6 @@ function PlayerContent() {
       })
       localStorage.setItem('dtt_library', JSON.stringify(library))
     }
-    
-    // Navigate to player screen
     router.push(`/player/${storyId}/play`)
   }
 
@@ -91,45 +87,13 @@ function PlayerContent() {
     router.push(`/player/${storyId}/preview`)
   }
 
-  // Logo component
-  const Logo = () => (
-    <div className="flex items-center justify-center gap-2">
-      <svg width="40" height="24" viewBox="0 0 80 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <g>
-          <rect x="45" y="24" width="30" height="14" rx="3" fill="#f97316"/>
-          <path d="M52 24 L56 16 L68 16 L72 24" fill="#f97316"/>
-          <path d="M54 23 L57 17 L67 17 L70 23" fill="#1e293b"/>
-          <circle cx="54" cy="38" r="5" fill="#334155"/>
-          <circle cx="54" cy="38" r="2.5" fill="#64748b"/>
-          <circle cx="68" cy="38" r="5" fill="#334155"/>
-          <circle cx="68" cy="38" r="2.5" fill="#64748b"/>
-          <rect x="73" y="28" width="3" height="4" rx="1" fill="#fef08a"/>
-        </g>
-        <g>
-          <rect x="2" y="20" width="18" height="18" rx="3" fill="#3b82f6"/>
-          <path d="M5 20 L8 12 L17 12 L20 20" fill="#3b82f6"/>
-          <path d="M7 19 L9 13 L16 13 L18 19" fill="#1e293b"/>
-          <rect x="20" y="18" width="22" height="20" rx="2" fill="#60a5fa"/>
-          <circle cx="10" cy="38" r="5" fill="#334155"/>
-          <circle cx="10" cy="38" r="2.5" fill="#64748b"/>
-          <circle cx="32" cy="38" r="5" fill="#334155"/>
-          <circle cx="32" cy="38" r="2.5" fill="#64748b"/>
-        </g>
-      </svg>
-      <div className="flex items-baseline">
-        <span className="text-sm font-bold text-white">Drive Time </span>
-        <span className="text-sm font-bold text-orange-500">Tales</span>
-      </div>
-    </div>
-  )
+  // Dynamic cover size - smaller to fit everything
+  const coverSize = Math.min(screenHeight * 0.28, 180)
 
   if (loading) {
     return (
       <div className="h-screen bg-slate-950 flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mb-4" />
-          <p className="text-white">Loading story...</p>
-        </div>
+        <div className="inline-block w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
       </div>
     )
   }
@@ -145,21 +109,21 @@ function PlayerContent() {
     )
   }
 
-  const canPlayFree = story.credits <= 2 && freeCredits > 0
+  const canPlayFree = freeCredits > 0
 
   return (
     <div className="h-screen bg-slate-950 text-white flex flex-col overflow-hidden">
-      <div className="px-4 h-full flex flex-col">
+      <div className="px-4 flex-1 flex flex-col">
         
         {/* Back button */}
         <button 
           onClick={() => router.back()}
-          className="px-3 py-1.5 bg-slate-800 rounded-lg self-start mt-3 mb-3"
+          className="px-3 py-1.5 bg-slate-800 rounded-lg self-start mt-3 mb-2"
         >
           <span className="text-orange-400 text-sm font-medium">← Back</span>
         </button>
 
-        {/* Large centered cover */}
+        {/* Cover - centered */}
         <div 
           className="mx-auto rounded-xl overflow-hidden border-4 border-white flex-shrink-0"
           style={{ width: coverSize, height: coverSize }}
@@ -177,25 +141,25 @@ function PlayerContent() {
           )}
         </div>
 
-        {/* Title + Info */}
-        <div className="text-center mt-3 mb-2">
+        {/* Title + Info - compact */}
+        <div className="text-center mt-2">
           <h1 className="font-bold text-white text-lg leading-tight">{story.title}</h1>
           <p className="text-slate-400 text-xs mt-1">
-            {story.author} • {story.genre} • {story.duration_mins} min • {story.credits} credit{story.credits !== 1 ? 's' : ''}
+            {story.author} • {story.genre} • {story.duration_mins} min • {story.credits || 1} credit
           </p>
         </div>
 
-        {/* Description - only show if enough space */}
-        {screenHeight > 600 && story.description && (
-          <p className="text-white text-xs leading-relaxed text-center px-2 line-clamp-2 mb-2">
+        {/* Description - always show, truncated */}
+        {story.description && (
+          <p className="text-slate-300 text-xs leading-relaxed text-center mt-2 line-clamp-3 px-2">
             {story.description}
           </p>
         )}
 
-        {/* Spacer */}
-        <div className="flex-1" />
+        {/* Spacer - pushes buttons to bottom */}
+        <div className="flex-1 min-h-4" />
 
-        {/* Buttons */}
+        {/* Buttons - always at bottom */}
         <div className="pb-6">
           {/* Preview + Wishlist */}
           <div className="flex gap-2 mb-3">
@@ -210,7 +174,7 @@ function PlayerContent() {
             </button>
           </div>
 
-          {/* Play button - varies based on user status */}
+          {/* Play button */}
           {canPlayFree ? (
             <button 
               onClick={handlePlay}
@@ -220,21 +184,12 @@ function PlayerContent() {
                 {isInLibrary ? 'Resume Story' : 'Play Free'}
               </span>
             </button>
-          ) : freeCredits > 0 ? (
-            <button 
-              onClick={handlePlay}
-              className="w-full py-3 bg-green-500 hover:bg-green-400 rounded-xl transition-colors"
-            >
-              <span className="text-black font-bold text-base">
-                {isInLibrary ? 'Resume Story' : 'Play Story'}
-              </span>
-            </button>
           ) : (
             <Link 
               href="/pricing"
               className="w-full py-3 bg-yellow-500 hover:bg-yellow-400 rounded-xl transition-colors block text-center"
             >
-              <span className="text-black font-bold text-sm">Insufficient credits - Subscribe</span>
+              <span className="text-black font-bold text-sm">Subscribe to Listen</span>
             </Link>
           )}
         </div>
