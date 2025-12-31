@@ -17,6 +17,14 @@ function WelcomeContent() {
   const [showPromoBanner, setShowPromoBanner] = useState(false)
   const [promoBannerText, setPromoBannerText] = useState('')
 
+  // Secret code feature
+  const [logoTapCount, setLogoTapCount] = useState(0)
+  const [lastTapTime, setLastTapTime] = useState(0)
+  const [showSecretInput, setShowSecretInput] = useState(false)
+  const [secretCode, setSecretCode] = useState('')
+  const [codeMessage, setCodeMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
   const genreOptions = [
     { name: 'All', icon: '📚' },
     { name: 'Mystery', icon: '🔍' },
@@ -47,7 +55,6 @@ function WelcomeContent() {
 
       // Check for existing free credits in localStorage
       const storedCredits = localStorage.getItem('dtt_free_credits')
-      const creditsUsed = localStorage.getItem('dtt_credits_used')
       
       if (storedCredits === null) {
         localStorage.setItem('dtt_free_credits', '2')
@@ -71,6 +78,106 @@ function WelcomeContent() {
     initialize()
   }, [router, searchParams])
 
+  // Handle secret logo tap
+  const handleLogoTap = () => {
+    const now = Date.now()
+    
+    // Reset count if more than 1 second since last tap
+    if (now - lastTapTime > 1000) {
+      setLogoTapCount(1)
+    } else {
+      setLogoTapCount(prev => prev + 1)
+    }
+    
+    setLastTapTime(now)
+    
+    // Show secret input after 5 rapid taps
+    if (logoTapCount >= 4) {
+      setShowSecretInput(true)
+      setLogoTapCount(0)
+    }
+  }
+
+  // Handle secret code submission - ONE-TIME USE
+  const handleCodeSubmit = async () => {
+    if (!secretCode.trim()) return
+    
+    setIsSubmitting(true)
+    setCodeMessage(null)
+    
+    try {
+      // Check code against database - must be active and not yet redeemed
+      const { data, error } = await supabase
+        .from('promo_codes')
+        .select('*')
+        .eq('code', secretCode.toUpperCase().trim())
+        .eq('is_active', true)
+        .eq('is_redeemed', false)
+        .single()
+      
+      if (error || !data) {
+        setCodeMessage({ type: 'error', text: 'Invalid, expired, or already used code' })
+        setIsSubmitting(false)
+        return
+      }
+      
+      // Check if code is expired
+      if (data.expires_at && new Date(data.expires_at) < new Date()) {
+        setCodeMessage({ type: 'error', text: 'This code has expired' })
+        setIsSubmitting(false)
+        return
+      }
+      
+      // Generate a unique device/browser fingerprint for this redemption
+      const deviceId = localStorage.getItem('dtt_device_id') || crypto.randomUUID()
+      localStorage.setItem('dtt_device_id', deviceId)
+      
+      // Mark code as REDEEMED (one-time use)
+      const { error: updateError } = await supabase
+        .from('promo_codes')
+        .update({ 
+          is_redeemed: true,
+          redeemed_at: new Date().toISOString(),
+          redeemed_by_device: deviceId
+        })
+        .eq('id', data.id)
+      
+      if (updateError) {
+        setCodeMessage({ type: 'error', text: 'Error redeeming code. Please try again.' })
+        setIsSubmitting(false)
+        return
+      }
+      
+      // Store the subscription in localStorage
+      const subscriptionData = {
+        code: data.code,
+        type: data.subscription_type,
+        days: data.subscription_days,
+        startDate: new Date().toISOString(),
+        endDate: new Date(Date.now() + data.subscription_days * 24 * 60 * 60 * 1000).toISOString(),
+        deviceId: deviceId
+      }
+      localStorage.setItem('dtt_promo_subscription', JSON.stringify(subscriptionData))
+      
+      setCodeMessage({ 
+        type: 'success', 
+        text: `🎉 Success! Redirecting to create your account...` 
+      })
+      
+      // Redirect to promo registration page after 1.5 seconds
+      setTimeout(() => {
+        setShowSecretInput(false)
+        setSecretCode('')
+        router.push('/register/promo')
+      }, 1500)
+      
+    } catch (err) {
+      setCodeMessage({ type: 'error', text: 'Error validating code. Please try again.' })
+    }
+    
+    setIsSubmitting(false)
+  }
+
   // Filter stories by genre
   const filtered = stories.filter((s) => {
     if (genre !== 'All' && s.genre !== genre) return false
@@ -79,16 +186,15 @@ function WelcomeContent() {
 
   // Handle story click
   const handleStoryClick = (story: Story) => {
-    if (story.credits <= 2 && freeCredits > 0) {
-      router.push(`/player/${story.id}`)
-    } else {
-      router.push('/pricing')
-    }
+    router.push(`/player/${story.id}`)
   }
 
-  // Logo component
+  // Logo component with secret tap handler
   const Logo = () => (
-    <div className="flex items-center justify-center gap-2">
+    <button 
+      onClick={handleLogoTap}
+      className="flex items-center justify-center gap-2 focus:outline-none"
+    >
       <svg width="50" height="30" viewBox="0 0 80 48" fill="none" xmlns="http://www.w3.org/2000/svg">
         <g>
           <rect x="45" y="24" width="30" height="14" rx="3" fill="#f97316"/>
@@ -115,12 +221,69 @@ function WelcomeContent() {
         <span className="text-lg font-bold text-white">Drive Time </span>
         <span className="text-lg font-bold text-orange-500">Tales</span>
       </div>
-    </div>
+    </button>
   )
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       
+      {/* Secret Code Modal */}
+      {showSecretInput && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 rounded-2xl p-6 w-full max-w-sm border border-slate-700">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-bold text-white">🎁 Enter Promo Code</h2>
+              <button 
+                onClick={() => {
+                  setShowSecretInput(false)
+                  setSecretCode('')
+                  setCodeMessage(null)
+                }}
+                className="text-slate-400 hover:text-white text-xl"
+              >
+                ×
+              </button>
+            </div>
+            
+            <input
+              type="text"
+              value={secretCode}
+              onChange={(e) => setSecretCode(e.target.value.toUpperCase())}
+              placeholder="Enter code..."
+              className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white text-center text-lg tracking-widest uppercase focus:outline-none focus:border-orange-500 mb-4"
+              maxLength={20}
+              autoFocus
+            />
+            
+            {codeMessage && (
+              <div className={`p-3 rounded-lg mb-4 text-sm text-center ${
+                codeMessage.type === 'success' 
+                  ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
+                  : 'bg-red-500/20 text-red-400 border border-red-500/30'
+              }`}>
+                {codeMessage.text}
+              </div>
+            )}
+            
+            <button
+              onClick={handleCodeSubmit}
+              disabled={isSubmitting || !secretCode.trim()}
+              className={`w-full py-3 rounded-xl font-semibold transition-colors ${
+                isSubmitting || !secretCode.trim()
+                  ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                  : 'bg-orange-500 hover:bg-orange-400 text-black'
+              }`}
+            >
+              {isSubmitting ? 'Validating...' : 'Redeem Code'}
+            </button>
+            
+            <p className="text-slate-500 text-xs text-center mt-3">
+              Each code can only be used once
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Promo Banner - sticky at top */}
       {showPromoBanner && promoBannerText && (
         <div className="sticky top-0 z-20 bg-gradient-to-r from-green-600 to-green-500 px-3 py-2">
