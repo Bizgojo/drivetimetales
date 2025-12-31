@@ -13,8 +13,8 @@ function PlayerContent() {
   const [story, setStory] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [isInLibrary, setIsInLibrary] = useState(false)
-  const [lastPlayed, setLastPlayed] = useState<string | null>(null)
+  const [hasProgress, setHasProgress] = useState(false)
+  const [savedProgress, setSavedProgress] = useState(0)
   const [freeCredits, setFreeCredits] = useState(0)
 
   useEffect(() => {
@@ -28,13 +28,14 @@ function PlayerContent() {
           setFreeCredits(2)
         }
 
+        // Check library for progress
         const libraryData = localStorage.getItem('dtt_library')
         if (libraryData) {
           const library = JSON.parse(libraryData)
           const libraryItem = library.find((item: any) => item.storyId === storyId)
-          if (libraryItem) {
-            setIsInLibrary(true)
-            setLastPlayed(libraryItem.lastPlayed)
+          if (libraryItem && libraryItem.progress > 0) {
+            setHasProgress(true)
+            setSavedProgress(libraryItem.progress)
           }
         }
 
@@ -62,9 +63,12 @@ function PlayerContent() {
   }, [storyId])
 
   const handlePlay = () => {
-    if (!isInLibrary) {
-      const libraryData = localStorage.getItem('dtt_library')
-      const library = libraryData ? JSON.parse(libraryData) : []
+    // Add to library if not already there
+    const libraryData = localStorage.getItem('dtt_library')
+    const library = libraryData ? JSON.parse(libraryData) : []
+    const existingIndex = library.findIndex((item: any) => item.storyId === storyId)
+    
+    if (existingIndex === -1) {
       library.push({
         storyId: storyId,
         lastPlayed: new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
@@ -72,7 +76,25 @@ function PlayerContent() {
       })
       localStorage.setItem('dtt_library', JSON.stringify(library))
     }
-    router.push(`/player/${storyId}/play`)
+    
+    // Go to play page with autoplay flag
+    router.push(`/player/${storyId}/play?autoplay=true`)
+  }
+
+  const handleResume = () => {
+    // Update last played date
+    const libraryData = localStorage.getItem('dtt_library')
+    if (libraryData) {
+      const library = JSON.parse(libraryData)
+      const existingIndex = library.findIndex((item: any) => item.storyId === storyId)
+      if (existingIndex !== -1) {
+        library[existingIndex].lastPlayed = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+        localStorage.setItem('dtt_library', JSON.stringify(library))
+      }
+    }
+    
+    // Go to play page with autoplay and resume flags
+    router.push(`/player/${storyId}/play?autoplay=true&resume=true`)
   }
 
   const handlePreview = () => {
@@ -99,7 +121,14 @@ function PlayerContent() {
   }
 
   const storyCredits = story.credits || 1
-  const canPlayFree = (storyCredits <= 2 && freeCredits > 0) || isInLibrary
+  const canPlayFree = storyCredits <= 2 && freeCredits > 0
+
+  // Format saved progress for display
+  const formatProgress = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = Math.floor(seconds % 60)
+    return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
@@ -143,7 +172,16 @@ function PlayerContent() {
           </p>
         )}
 
-        {/* Buttons - directly after content */}
+        {/* Progress indicator if resuming */}
+        {hasProgress && (
+          <div className="text-center mt-3">
+            <p className="text-green-400 text-sm">
+              📚 Resume from {formatProgress(savedProgress)}
+            </p>
+          </div>
+        )}
+
+        {/* Buttons */}
         <div className="mt-6">
           {/* Preview + Wishlist */}
           <div className="flex gap-2 mb-3">
@@ -158,15 +196,20 @@ function PlayerContent() {
             </button>
           </div>
 
-          {/* Play button */}
-          {canPlayFree ? (
+          {/* Play/Resume button */}
+          {hasProgress ? (
+            <button 
+              onClick={handleResume}
+              className="w-full py-4 bg-green-500 hover:bg-green-400 rounded-xl transition-colors"
+            >
+              <span className="text-black font-bold text-lg">Resume Story</span>
+            </button>
+          ) : canPlayFree ? (
             <button 
               onClick={handlePlay}
               className="w-full py-4 bg-green-500 hover:bg-green-400 rounded-xl transition-colors"
             >
-              <span className="text-black font-bold text-lg">
-                {isInLibrary ? 'Resume Story' : 'Play Free'}
-              </span>
+              <span className="text-black font-bold text-lg">Play Free</span>
             </button>
           ) : (
             <Link 
