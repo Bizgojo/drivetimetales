@@ -230,13 +230,26 @@ function PlayContent() {
 
       <div className="max-w-md mx-auto px-4 py-4">
         
-        {/* Back button */}
-        <button 
-          onClick={handleBack}
-          className="px-3 py-1.5 bg-slate-800 rounded-lg mb-4"
-        >
-          <span className="text-orange-400 text-sm font-medium">← Back</span>
-        </button>
+        {/* Logo + Back Button Row */}
+        <div className="flex items-center justify-between mb-4">
+          {/* Logo */}
+          <div className="flex items-center gap-1">
+            <span className="text-2xl">🚛</span>
+            <span className="text-2xl">🚗</span>
+            <div className="flex items-baseline ml-1">
+              <span className="text-sm font-bold text-white">Drive Time </span>
+              <span className="text-sm font-bold text-orange-500">Tales</span>
+            </div>
+          </div>
+          
+          {/* Back button */}
+          <button 
+            onClick={handleBack}
+            className="px-3 py-1.5 bg-slate-800 rounded-lg"
+          >
+            <span className="text-orange-400 text-sm font-medium">← Back</span>
+          </button>
+        </div>
 
         {/* In Library notice */}
         {lastPlayed && (
