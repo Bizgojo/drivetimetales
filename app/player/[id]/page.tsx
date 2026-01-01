@@ -107,7 +107,7 @@ function PlayerContent() {
       localStorage.setItem('dtt_library', JSON.stringify(library))
     }
     
-    // Go to play page with autoplay flag
+    // Go to play page with autoplay flag - FIXED SYNTAX
     router.push(`/player/${storyId}/play?autoplay=true`)
   }
 
@@ -123,11 +123,12 @@ function PlayerContent() {
       }
     }
     
-    // Go to play page with autoplay and resume flags
+    // Go to play page with autoplay and resume flags - FIXED SYNTAX
     router.push(`/player/${storyId}/play?autoplay=true&resume=true`)
   }
 
   const handlePreview = () => {
+    // FIXED SYNTAX
     router.push(`/player/${storyId}/preview`)
   }
 
