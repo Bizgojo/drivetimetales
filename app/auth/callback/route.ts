@@ -1,4 +1,3 @@
-import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
@@ -6,22 +5,19 @@ export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url)
   const code = requestUrl.searchParams.get('code')
   const next = requestUrl.searchParams.get('next') || '/home'
+  const error = requestUrl.searchParams.get('error')
 
-  if (code) {
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    )
-
-    // Exchange the code for a session
-    const { error } = await supabase.auth.exchangeCodeForSession(code)
-
-    if (!error) {
-      // Redirect to the intended destination
-      return NextResponse.redirect(new URL(next, requestUrl.origin))
-    }
+  // If there's an error, redirect to signin
+  if (error) {
+    return NextResponse.redirect(new URL('/signin?error=auth_failed', requestUrl.origin))
   }
 
-  // If there's an error or no code, redirect to sign in
+  // If there's a code, pass it to the client-side reset password page
+  if (code) {
+    // Redirect to reset-password with the code as a query param
+    return NextResponse.redirect(new URL(`${next}?code=${code}`, requestUrl.origin))
+  }
+
+  // No code, redirect to signin
   return NextResponse.redirect(new URL('/signin?error=auth_failed', requestUrl.origin))
 }
