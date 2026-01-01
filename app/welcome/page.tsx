@@ -194,7 +194,7 @@ function WelcomeContent() {
         setSecretCode('')
         router.push('/register/promo')
       }, 1500)
-      
+     <StarRating rating={story.rating} /> 
     } catch (err) {
       setCodeMessage({ type: 'error', text: 'Error validating code. Please try again.' })
     }
