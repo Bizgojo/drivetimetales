@@ -1,21 +1,33 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
-export default function SignInPage() {
+function SignInContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showExistingAccountMessage, setShowExistingAccountMessage] = useState(false)
+
+  // Check for email in URL params (from Sign Up redirect)
+  useEffect(() => {
+    const emailParam = searchParams.get('email')
+    if (emailParam) {
+      setEmail(emailParam)
+      setShowExistingAccountMessage(true)
+    }
+  }, [searchParams])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+    setShowExistingAccountMessage(false)
     
     if (!email.trim()) {
       setError('Please enter your email')
@@ -73,6 +85,7 @@ export default function SignInPage() {
     }
     
     setIsSubmitting(true)
+    setError(null)
     
     const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
       redirectTo: `${window.location.origin}/reset-password`,
@@ -112,6 +125,15 @@ export default function SignInPage() {
           <p className="text-slate-400 text-sm text-center mb-6">
             Sign in to continue listening
           </p>
+
+          {/* Existing Account Message */}
+          {showExistingAccountMessage && (
+            <div className="p-3 bg-blue-500/20 border border-blue-500/30 rounded-lg mb-4">
+              <p className="text-blue-400 text-sm text-center">
+                You already have an account! Please sign in below.
+              </p>
+            </div>
+          )}
           
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Email */}
@@ -189,5 +211,21 @@ export default function SignInPage() {
         </p>
       </div>
     </div>
+  )
+}
+
+function LoadingFallback() {
+  return (
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+      <div className="inline-block w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
+}
+
+export default function SignInPage() {
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <SignInContent />
+    </Suspense>
   )
 }
