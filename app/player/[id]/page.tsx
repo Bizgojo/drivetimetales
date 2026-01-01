@@ -2,12 +2,13 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import Link from 'next/link'
-import { useRouter, useParams } from 'next/navigation'
+import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 function PlayerContent() {
   const router = useRouter()
   const params = useParams()
+  const searchParams = useSearchParams()
   const storyId = params.id as string
   
   const [story, setStory] = useState<any>(null)
@@ -16,10 +17,39 @@ function PlayerContent() {
   const [hasProgress, setHasProgress] = useState(false)
   const [savedProgress, setSavedProgress] = useState(0)
   const [freeCredits, setFreeCredits] = useState(0)
+  
+  // Sponsor banner from QR code
+  const [sponsorData, setSponsorData] = useState<{
+    sponsor_name: string
+    sponsor_message: string
+    sponsor_tagline: string
+  } | null>(null)
 
   useEffect(() => {
     async function loadStory() {
       try {
+        // Check for QR source sponsor
+        const qrCode = searchParams.get('qr') || searchParams.get('source') || localStorage.getItem('dtt_qr_source')
+        if (qrCode) {
+          // Save QR source for future pages
+          localStorage.setItem('dtt_qr_source', qrCode)
+          
+          const { data } = await supabase
+            .from('qr_sources')
+            .select('sponsor_name, sponsor_message, sponsor_tagline, is_sponsored')
+            .eq('code', qrCode)
+            .eq('is_active', true)
+            .single()
+          
+          if (data && data.is_sponsored && data.sponsor_name) {
+            setSponsorData({
+              sponsor_name: data.sponsor_name,
+              sponsor_message: data.sponsor_message || 'This Free Story brought to you courtesy of',
+              sponsor_tagline: data.sponsor_tagline || 'We appreciate your business'
+            })
+          }
+        }
+
         const storedCredits = localStorage.getItem('dtt_free_credits')
         if (storedCredits) {
           setFreeCredits(parseInt(storedCredits))
@@ -60,7 +90,7 @@ function PlayerContent() {
     if (storyId) {
       loadStory()
     }
-  }, [storyId])
+  }, [storyId, searchParams])
 
   const handlePlay = () => {
     // Add to library if not already there
@@ -136,15 +166,38 @@ function PlayerContent() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
+      
+      {/* Sponsor Banner - Shows when user comes from sponsored QR code */}
+      {sponsorData && (
+        <div className="sticky top-0 z-40 bg-gradient-to-r from-emerald-600 via-emerald-500 to-emerald-600 px-4 py-2 text-center shadow-lg">
+          <p className="text-white text-sm font-medium">
+            {sponsorData.sponsor_message} <span className="font-bold">{sponsorData.sponsor_name}</span> — {sponsorData.sponsor_tagline}
+          </p>
+        </div>
+      )}
+
       <div className="max-w-md mx-auto px-4 py-4">
         
-        {/* Back button */}
-        <button 
-          onClick={handleBack}
-          className="px-3 py-1.5 bg-slate-800 rounded-lg mb-4"
-        >
-          <span className="text-orange-400 text-sm font-medium">← Back</span>
-        </button>
+        {/* Logo + Back Button Row */}
+        <div className="flex items-center justify-between mb-4">
+          {/* Logo */}
+          <div className="flex items-center gap-1">
+            <span className="text-2xl">🚛</span>
+            <span className="text-2xl">🚗</span>
+            <div className="flex items-baseline ml-1">
+              <span className="text-sm font-bold text-white">Drive Time </span>
+              <span className="text-sm font-bold text-orange-500">Tales</span>
+            </div>
+          </div>
+          
+          {/* Back button */}
+          <button 
+            onClick={handleBack}
+            className="px-3 py-1.5 bg-slate-800 rounded-lg"
+          >
+            <span className="text-orange-400 text-sm font-medium">← Back</span>
+          </button>
+        </div>
 
         {/* Cover - large */}
         <div className="w-64 h-64 mx-auto rounded-xl overflow-hidden border-4 border-white">
