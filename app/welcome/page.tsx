@@ -494,7 +494,7 @@ function WelcomeContent() {
                       
                       {/* Star Rating + Flag */}
                       <div className="flex items-center gap-2 flex-wrap">
-                        <StarRating rating={story.ai_rating || story.average_rating} />
+                        <StarRating rating={story.average_rating} />
                         {flag && <FlagBadge text={flag.text} color={flag.color} />}
                       </div>
                     </div>
