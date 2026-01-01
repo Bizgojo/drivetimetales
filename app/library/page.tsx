@@ -10,6 +10,9 @@ export default function LibraryPage() {
   const { stories, loading, error } = useStories()
   const [genre, setGenre] = useState('All')
   const [duration, setDuration] = useState('All')
+  const [showSearchMenu, setShowSearchMenu] = useState(false)
+  const [searchType, setSearchType] = useState<'title' | 'author' | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
 
   const genreOptions = [
     { name: 'All', icon: '📚' },
@@ -19,61 +22,74 @@ export default function LibraryPage() {
     { name: 'Horror', icon: '👻' },
     { name: 'Comedy', icon: '😂' },
     { name: 'Romance', icon: '💕' },
-    { name: 'Trucker Stories', icon: '🚛' },
+    { name: 'Trucker', icon: '🚛' },
     { name: 'Thriller', icon: '😱' },
   ]
 
   const durationOptions = [
     { name: 'All', label: 'All' },
-    { name: '15 min', label: '~15 min' },
-    { name: '30 min', label: '~30 min' },
-    { name: '1 hr', label: '~1 hr' },
+    { name: '15', label: '~15 min' },
+    { name: '30', label: '~30 min' },
+    { name: '60', label: '~1 hr' },
   ]
 
-  // Filter stories by genre and duration
+  // Star rating component - with proper half stars
+  const StarRating = ({ rating }: { rating: number }) => {
+    return (
+      <div className="flex items-center gap-1">
+        <div className="flex text-sm">
+          {[1, 2, 3, 4, 5].map((star) => {
+            const filled = rating >= star
+            const halfFilled = !filled && rating >= star - 0.5
+            return (
+              <span key={star} className="relative">
+                <span className="text-slate-600">☆</span>
+                {filled && (
+                  <span className="absolute left-0 top-0 text-yellow-400 overflow-hidden w-full">★</span>
+                )}
+                {halfFilled && (
+                  <span className="absolute left-0 top-0 text-yellow-400 overflow-hidden" style={{ width: '50%' }}>★</span>
+                )}
+              </span>
+            )
+          })}
+        </div>
+        <span className="text-slate-400 text-xs">{rating?.toFixed(1) || '0.0'}</span>
+      </div>
+    )
+  }
+
+  // Filter stories
   const filtered = stories.filter((s: any) => {
+    // Search filter
+    if (searchType === 'title' && searchQuery) {
+      if (!s.title?.toLowerCase().includes(searchQuery.toLowerCase())) return false
+    }
+    if (searchType === 'author' && searchQuery) {
+      if (!s.author?.toLowerCase().includes(searchQuery.toLowerCase())) return false
+    }
+    
     // Genre filter
     if (genre !== 'All' && s.genre !== genre) return false
     
     // Duration filter
-    if (duration === '15 min' && (s.duration_mins < 10 || s.duration_mins > 20)) return false
-    if (duration === '30 min' && (s.duration_mins < 20 || s.duration_mins > 45)) return false
-    if (duration === '1 hr' && s.duration_mins < 45) return false
+    if (duration === '15' && (s.duration_mins < 10 || s.duration_mins > 20)) return false
+    if (duration === '30' && (s.duration_mins < 20 || s.duration_mins > 45)) return false
+    if (duration === '60' && s.duration_mins < 45) return false
     
     return true
   })
 
-  // Logo component
-  const Logo = () => (
-    <div className="flex items-center justify-center gap-2">
-      <svg width="50" height="30" viewBox="0 0 80 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <g>
-          <rect x="45" y="24" width="30" height="14" rx="3" fill="#f97316"/>
-          <path d="M52 24 L56 16 L68 16 L72 24" fill="#f97316"/>
-          <path d="M54 23 L57 17 L67 17 L70 23" fill="#1e293b"/>
-          <circle cx="54" cy="38" r="5" fill="#334155"/>
-          <circle cx="54" cy="38" r="2.5" fill="#64748b"/>
-          <circle cx="68" cy="38" r="5" fill="#334155"/>
-          <circle cx="68" cy="38" r="2.5" fill="#64748b"/>
-          <rect x="73" y="28" width="3" height="4" rx="1" fill="#fef08a"/>
-        </g>
-        <g>
-          <rect x="2" y="20" width="18" height="18" rx="3" fill="#3b82f6"/>
-          <path d="M5 20 L8 12 L17 12 L20 20" fill="#3b82f6"/>
-          <path d="M7 19 L9 13 L16 13 L18 19" fill="#1e293b"/>
-          <rect x="20" y="18" width="22" height="20" rx="2" fill="#60a5fa"/>
-          <circle cx="10" cy="38" r="5" fill="#334155"/>
-          <circle cx="10" cy="38" r="2.5" fill="#64748b"/>
-          <circle cx="32" cy="38" r="5" fill="#334155"/>
-          <circle cx="32" cy="38" r="2.5" fill="#64748b"/>
-        </g>
-      </svg>
-      <div className="flex items-baseline">
-        <span className="text-lg font-bold text-white">Drive Time </span>
-        <span className="text-lg font-bold text-orange-500">Tales</span>
-      </div>
-    </div>
-  )
+  const handleSearchSelect = (type: 'title' | 'author') => {
+    setSearchType(type)
+    setShowSearchMenu(false)
+    setSearchQuery('')
+  }
+
+  const clearSearch = () => {
+    setSearchType(null)
+    setSearchQuery('')
+  }
 
   if (loading) {
     return (
@@ -97,18 +113,34 @@ export default function LibraryPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
+    <div className="min-h-screen bg-slate-950 text-white pb-8">
       <div className="max-w-2xl mx-auto px-4 py-4">
         
-        {/* Header with Logo */}
-        <div className="flex justify-center mb-4">
-          <Logo />
+        {/* Header - Logo left, Back button right */}
+        <div className="flex items-center justify-between mb-4">
+          {/* Logo */}
+          <Link href="/welcome" className="flex items-center gap-1">
+            <span className="text-2xl">🚛</span>
+            <span className="text-2xl">🚗</span>
+            <div className="flex items-baseline ml-1">
+              <span className="text-base font-bold text-white">Drive Time </span>
+              <span className="text-base font-bold text-orange-500">Tales</span>
+            </div>
+          </Link>
+          
+          {/* Back button */}
+          <button 
+            onClick={() => router.back()}
+            className="text-slate-400 hover:text-white text-sm flex items-center gap-1"
+          >
+            <span>Back</span>
+            <span>→</span>
+          </button>
         </div>
 
-        {/* Page Title */}
-        <div className="text-center mb-4">
-          <h1 className="text-2xl font-bold text-white">Story Library</h1>
-          <p className="text-white text-sm mt-1">Browse our complete collection</p>
+        {/* Page Title - LARGER */}
+        <div className="text-center mb-5">
+          <h1 className="text-3xl font-bold text-white">Story Library</h1>
         </div>
 
         {/* Genre Icons */}
@@ -125,13 +157,13 @@ export default function LibraryPage() {
                 }`}
               >
                 <span className="text-sm">{g.icon}</span>
-                <span className="text-[9px] mt-0.5">{g.name === 'Trucker Stories' ? 'Trucker' : g.name}</span>
+                <span className="text-[9px] mt-0.5">{g.name}</span>
               </button>
             ))}
           </div>
         </div>
 
-        {/* Duration Filter Buttons */}
+        {/* Duration Filter */}
         <div className="mb-4">
           <div className="flex justify-center gap-2">
             {durationOptions.map((d) => (
@@ -150,8 +182,59 @@ export default function LibraryPage() {
           </div>
         </div>
 
-        {/* Results count */}
-        <p className="text-white text-xs mb-3">{filtered.length} {filtered.length === 1 ? 'story' : 'stories'} found</p>
+        {/* Results count + Search */}
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-slate-400 text-sm">{filtered.length} stories found</p>
+          
+          {/* Search dropdown */}
+          <div className="relative">
+            {searchType ? (
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder={`Search by ${searchType}...`}
+                  className="w-40 px-3 py-1.5 bg-slate-800 text-white text-sm rounded-lg border border-slate-700 focus:outline-none focus:border-orange-500"
+                  autoFocus
+                />
+                <button
+                  onClick={clearSearch}
+                  className="text-slate-400 hover:text-white text-sm"
+                >
+                  ✕
+                </button>
+              </div>
+            ) : (
+              <>
+                <button
+                  onClick={() => setShowSearchMenu(!showSearchMenu)}
+                  className="flex items-center gap-1 text-slate-400 hover:text-white text-sm px-3 py-1.5 bg-slate-800 rounded-lg border border-slate-700"
+                >
+                  <span>🔍</span>
+                  <span>Search</span>
+                </button>
+                
+                {showSearchMenu && (
+                  <div className="absolute right-0 top-full mt-1 bg-slate-800 border border-slate-700 rounded-lg overflow-hidden z-10 shadow-lg">
+                    <button 
+                      className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-slate-700"
+                      onClick={() => handleSearchSelect('title')}
+                    >
+                      Search by Title
+                    </button>
+                    <button 
+                      className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-slate-700"
+                      onClick={() => handleSearchSelect('author')}
+                    >
+                      Search by Author
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
 
         {/* Stories List */}
         {filtered.length === 0 ? (
@@ -162,15 +245,15 @@ export default function LibraryPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            {filtered.map((story: any, index: number) => (
+            {filtered.map((story: any) => (
               <div 
                 key={story.id}
                 onClick={() => router.push(`/player/${story.id}`)}
-                className={`rounded-xl overflow-hidden cursor-pointer active:opacity-80 transition-opacity ${index % 2 === 0 ? 'bg-slate-900' : 'bg-slate-800'}`}
+                className="bg-slate-800 rounded-xl overflow-hidden cursor-pointer hover:bg-slate-700 transition-colors"
               >
                 <div className="flex">
-                  {/* Cover - Larger */}
-                  <div className="w-32 h-32 flex-shrink-0 relative">
+                  {/* Cover */}
+                  <div className="w-32 h-32 flex-shrink-0 relative bg-gradient-to-br from-slate-700 to-slate-800 flex items-center justify-center">
                     {story.cover_url ? (
                       <img 
                         src={story.cover_url}
@@ -178,30 +261,27 @@ export default function LibraryPage() {
                         className="w-full h-full object-cover"
                       />
                     ) : (
-                      <div className="w-full h-full bg-gradient-to-br from-slate-700 to-slate-800 flex items-center justify-center">
-                        <span className="text-3xl opacity-50">🎧</span>
-                      </div>
+                      <span className="text-4xl opacity-40">🎧</span>
                     )}
-                    {/* Duration badge */}
-                    <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/70 text-white text-[10px] rounded">
+                    <div className="absolute bottom-2 left-2 px-1.5 py-0.5 bg-black/70 text-white text-xs rounded">
                       {story.duration_mins} min
                     </div>
                   </div>
                   
-                  {/* Spacer */}
-                  <div className="w-3" />
-                  
                   {/* Info */}
-                  <div className="flex-1 py-3 pr-3 flex flex-col justify-between">
+                  <div className="flex-1 p-3 flex flex-col justify-between min-w-0">
                     <div>
-                      <h3 className="font-bold text-white text-sm leading-tight">{story.title}</h3>
-                      <p className="text-white text-xs mt-1">{story.genre} • {story.credits || 1} credit{(story.credits || 1) !== 1 ? 's' : ''}</p>
-                      <p className="text-slate-400 text-xs mt-0.5">{story.author}</p>
+                      <h3 className="font-bold text-white text-base">{story.title}</h3>
+                      <p className="text-white text-sm">{story.genre} • {story.credits || 1} credit{(story.credits || 1) !== 1 ? 's' : ''}</p>
+                      <p className="text-white text-sm">{story.author}</p>
                     </div>
-                    
-                    {/* Tap to play indicator */}
-                    <div className="mt-2">
-                      <span className="text-orange-400 text-xs">Tap to play →</span>
+                    <div className="flex items-center gap-3 mt-2">
+                      <StarRating rating={story.rating || 0} />
+                      {story.is_new && (
+                        <span className="px-2 py-0.5 bg-blue-500/20 text-blue-400 text-xs font-medium rounded border border-blue-500/30">
+                          New Release
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -209,6 +289,7 @@ export default function LibraryPage() {
             ))}
           </div>
         )}
+
       </div>
     </div>
   )
