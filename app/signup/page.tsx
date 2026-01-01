@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, Suspense } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
@@ -15,7 +15,6 @@ function SignUpContent() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [errorWithSignIn, setErrorWithSignIn] = useState(false)
   
   // Get plan from URL params
   const planId = searchParams.get('plan') || 'road_warrior'
@@ -64,7 +63,6 @@ function SignUpContent() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
-    setErrorWithSignIn(false)
     
     // Validation
     if (!name.trim()) {
@@ -105,8 +103,9 @@ function SignUpContent() {
       
       if (authError) {
         if (authError.message.includes('already registered')) {
-          setError('This email is already registered.')
-          setErrorWithSignIn(true)
+          // Auto-redirect to Sign In with email pre-filled
+          router.push(`/signin?email=${encodeURIComponent(email.trim())}`)
+          return
         } else {
           setError(authError.message)
         }
@@ -270,17 +269,7 @@ function SignUpContent() {
             {/* Error Message */}
             {error && (
               <div className="p-3 bg-red-500/20 border border-red-500/30 rounded-lg">
-                <p className="text-red-400 text-sm text-center">
-                  {error}
-                  {errorWithSignIn && (
-                    <>
-                      {' '}
-                      <Link href="/signin" className="text-orange-400 hover:underline font-medium">
-                        Sign In here
-                      </Link>
-                    </>
-                  )}
-                </p>
+                <p className="text-red-400 text-sm text-center">{error}</p>
               </div>
             )}
             
