@@ -15,17 +15,25 @@ export default function ResetPasswordPage() {
   const [success, setSuccess] = useState(false)
   const [isValidSession, setIsValidSession] = useState(false)
   const [checking, setChecking] = useState(true)
+  const [linkError, setLinkError] = useState<string | null>(null)
 
   // Check if user has a valid recovery session
   useEffect(() => {
     async function checkSession() {
-      const { data: { session } } = await supabase.auth.getSession()
-      
-      if (session) {
-        setIsValidSession(true)
-      } else {
-        // Try to exchange the token from URL hash
+      // First check for error in URL hash
+      if (typeof window !== 'undefined') {
         const hashParams = new URLSearchParams(window.location.hash.substring(1))
+        const errorParam = hashParams.get('error')
+        const errorDescription = hashParams.get('error_description')
+        
+        if (errorParam) {
+          // There's an error in the URL - link expired or access denied
+          setLinkError(errorDescription || 'This password reset link has expired or is invalid.')
+          setChecking(false)
+          return
+        }
+        
+        // Check for access token
         const accessToken = hashParams.get('access_token')
         const refreshToken = hashParams.get('refresh_token')
         
@@ -37,9 +45,25 @@ export default function ResetPasswordPage() {
           
           if (!error) {
             setIsValidSession(true)
+            setChecking(false)
+            return
+          } else {
+            setLinkError('This password reset link has expired or is invalid.')
+            setChecking(false)
+            return
           }
         }
       }
+      
+      // Check for existing session
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (session) {
+        setIsValidSession(true)
+      } else {
+        setLinkError('This password reset link has expired or is invalid.')
+      }
+      
       setChecking(false)
     }
     
@@ -122,19 +146,35 @@ export default function ResetPasswordPage() {
     )
   }
 
-  if (!isValidSession) {
+  if (linkError || !isValidSession) {
     return (
-      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center">
-        <div className="text-center px-4">
-          <div className="text-5xl mb-4">⚠️</div>
-          <h1 className="text-2xl font-bold mb-2">Link Expired</h1>
-          <p className="text-slate-400 mb-6">This password reset link has expired or is invalid.</p>
-          <Link 
-            href="/signin"
-            className="px-6 py-3 bg-orange-500 hover:bg-orange-400 text-black font-bold rounded-xl inline-block"
-          >
-            Request a new link
-          </Link>
+      <div className="min-h-screen bg-slate-950 text-white">
+        <div className="max-w-md mx-auto px-4 py-8">
+          {/* Logo */}
+          <div className="flex justify-center mb-8">
+            <Link href="/welcome" className="flex items-center gap-2">
+              <span className="text-3xl">🚛</span>
+              <span className="text-3xl">🚗</span>
+              <div className="flex items-baseline ml-1">
+                <span className="text-lg font-bold text-white">Drive Time </span>
+                <span className="text-lg font-bold text-orange-500">Tales</span>
+              </div>
+            </Link>
+          </div>
+          
+          <div className="text-center">
+            <div className="text-5xl mb-4">⚠️</div>
+            <h1 className="text-2xl font-bold mb-2">Link Expired</h1>
+            <p className="text-slate-400 mb-6">
+              {linkError || 'This password reset link has expired or is invalid.'}
+            </p>
+            <Link 
+              href="/signin"
+              className="px-6 py-3 bg-orange-500 hover:bg-orange-400 text-black font-bold rounded-xl inline-block"
+            >
+              Request a new link
+            </Link>
+          </div>
         </div>
       </div>
     )
