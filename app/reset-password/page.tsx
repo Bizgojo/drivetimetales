@@ -2,27 +2,57 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { Suspense } from 'react'
 
-export default function ResetPasswordPage() {
+function ResetPasswordContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
-  const [hasSession, setHasSession] = useState<boolean | null>(null)
+  const [isReady, setIsReady] = useState(false)
+  const [sessionError, setSessionError] = useState(false)
 
-  // Check for existing session on mount
+  // Handle the code from URL on mount
   useEffect(() => {
-    async function checkSession() {
+    async function handleCode() {
+      const code = searchParams.get('code')
+      
+      if (code) {
+        try {
+          // Exchange the code for a session
+          const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+          
+          if (error) {
+            console.error('Code exchange error:', error)
+            setSessionError(true)
+          } else if (data.session) {
+            // Session established successfully
+            setIsReady(true)
+            return
+          }
+        } catch (err) {
+          console.error('Exchange failed:', err)
+          setSessionError(true)
+        }
+      }
+      
+      // Check if we already have a session
       const { data: { session } } = await supabase.auth.getSession()
-      setHasSession(!!session)
+      if (session) {
+        setIsReady(true)
+      } else {
+        setSessionError(true)
+      }
     }
-    checkSession()
-  }, [])
+    
+    handleCode()
+  }, [searchParams])
 
   // Password validation
   const validatePassword = (pwd: string): string | null => {
@@ -78,8 +108,8 @@ export default function ResetPasswordPage() {
     }
   }
 
-  // Loading state
-  if (hasSession === null) {
+  // Loading state while checking code
+  if (!isReady && !sessionError) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
         <div className="inline-block w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
@@ -87,8 +117,8 @@ export default function ResetPasswordPage() {
     )
   }
 
-  // No session - show expired message
-  if (hasSession === false) {
+  // Session error - show expired message
+  if (sessionError) {
     return (
       <div className="min-h-screen bg-slate-950 text-white">
         <div className="max-w-md mx-auto px-4 py-8">
@@ -113,8 +143,11 @@ export default function ResetPasswordPage() {
               href="/signin"
               className="px-6 py-3 bg-orange-500 hover:bg-orange-400 text-black font-bold rounded-xl inline-block"
             >
-              Request a new link
+              Go to Sign In
             </Link>
+            <p className="text-slate-500 text-sm mt-4">
+              Click "Forgot password?" to request a new link
+            </p>
           </div>
         </div>
       </div>
@@ -213,5 +246,21 @@ export default function ResetPasswordPage() {
         </p>
       </div>
     </div>
+  )
+}
+
+function LoadingFallback() {
+  return (
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+      <div className="inline-block w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <ResetPasswordContent />
+    </Suspense>
   )
 }
