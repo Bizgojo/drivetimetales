@@ -13,46 +13,15 @@ export default function ResetPasswordPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
-  const [sessionReady, setSessionReady] = useState(false)
+  const [hasSession, setHasSession] = useState<boolean | null>(null)
 
-  // Handle the token from URL on mount
+  // Check for existing session on mount
   useEffect(() => {
-    async function handleTokenFromUrl() {
-      if (typeof window === 'undefined') return
-
-      const hash = window.location.hash
-      
-      // Check for error in URL
-      if (hash.includes('error=')) {
-        setError('This password reset link has expired. Please request a new one.')
-        setSessionReady(true)
-        return
-      }
-
-      // Extract tokens from hash
-      if (hash.includes('access_token=')) {
-        const hashParams = new URLSearchParams(hash.substring(1))
-        const accessToken = hashParams.get('access_token')
-        const refreshToken = hashParams.get('refresh_token')
-
-        if (accessToken && refreshToken) {
-          // Set the session manually
-          const { error } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken
-          })
-
-          if (error) {
-            console.error('Session error:', error)
-            setError('This password reset link has expired. Please request a new one.')
-          }
-        }
-      }
-      
-      setSessionReady(true)
+    async function checkSession() {
+      const { data: { session } } = await supabase.auth.getSession()
+      setHasSession(!!session)
     }
-
-    handleTokenFromUrl()
+    checkSession()
   }, [])
 
   // Password validation
@@ -73,7 +42,6 @@ export default function ResetPasswordPage() {
     e.preventDefault()
     setError(null)
     
-    // Validate password
     const passwordError = validatePassword(password)
     if (passwordError) {
       setError(passwordError)
@@ -88,46 +56,30 @@ export default function ResetPasswordPage() {
     setIsSubmitting(true)
     
     try {
-      // Check if we have a session
-      const { data: { session } } = await supabase.auth.getSession()
-      
-      if (!session) {
-        setError('Your reset link has expired. Please request a new one from the Sign In page.')
-        setIsSubmitting(false)
-        return
-      }
-
       const { error } = await supabase.auth.updateUser({
         password: password
       })
       
       if (error) {
-        console.error('Update error:', error)
-        if (error.message.includes('session') || error.message.includes('logged in')) {
-          setError('Your reset link has expired. Please request a new one from the Sign In page.')
-        } else {
-          setError(error.message)
-        }
+        setError(error.message)
         setIsSubmitting(false)
         return
       }
       
       setSuccess(true)
       
-      // Redirect to home after 1.5 seconds
       setTimeout(() => {
         router.push('/home')
       }, 1500)
       
     } catch (err) {
-      console.error('Catch error:', err)
       setError('An error occurred. Please try again.')
       setIsSubmitting(false)
     }
   }
 
-  // Show loading while setting up session
-  if (!sessionReady) {
+  // Loading state
+  if (hasSession === null) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
         <div className="inline-block w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
@@ -135,6 +87,41 @@ export default function ResetPasswordPage() {
     )
   }
 
+  // No session - show expired message
+  if (hasSession === false) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-white">
+        <div className="max-w-md mx-auto px-4 py-8">
+          <div className="flex justify-center mb-8">
+            <Link href="/welcome" className="flex items-center gap-2">
+              <span className="text-3xl">🚛</span>
+              <span className="text-3xl">🚗</span>
+              <div className="flex items-baseline ml-1">
+                <span className="text-lg font-bold text-white">Drive Time </span>
+                <span className="text-lg font-bold text-orange-500">Tales</span>
+              </div>
+            </Link>
+          </div>
+          
+          <div className="text-center">
+            <div className="text-5xl mb-4">⚠️</div>
+            <h1 className="text-2xl font-bold mb-2">Link Expired</h1>
+            <p className="text-slate-400 mb-6">
+              This password reset link has expired or is invalid.
+            </p>
+            <Link 
+              href="/signin"
+              className="px-6 py-3 bg-orange-500 hover:bg-orange-400 text-black font-bold rounded-xl inline-block"
+            >
+              Request a new link
+            </Link>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Success state
   if (success) {
     return (
       <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center">
@@ -147,11 +134,11 @@ export default function ResetPasswordPage() {
     )
   }
 
+  // Reset form
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       <div className="max-w-md mx-auto px-4 py-8">
         
-        {/* Logo */}
         <div className="flex justify-center mb-8">
           <Link href="/welcome" className="flex items-center gap-2">
             <span className="text-3xl">🚛</span>
@@ -163,7 +150,6 @@ export default function ResetPasswordPage() {
           </Link>
         </div>
 
-        {/* Reset Password Form */}
         <div className="bg-slate-900 rounded-2xl p-6 border border-slate-800">
           <h1 className="text-xl font-bold text-white text-center mb-2">
             Reset Your Password
@@ -173,7 +159,6 @@ export default function ResetPasswordPage() {
           </p>
           
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* New Password */}
             <div>
               <label className="block text-sm text-slate-400 mb-1">New Password</label>
               <input
@@ -189,7 +174,6 @@ export default function ResetPasswordPage() {
               </p>
             </div>
             
-            {/* Confirm Password */}
             <div>
               <label className="block text-sm text-slate-400 mb-1">Confirm New Password</label>
               <input
@@ -202,22 +186,12 @@ export default function ResetPasswordPage() {
               />
             </div>
             
-            {/* Error Message */}
             {error && (
               <div className="p-3 bg-red-500/20 border border-red-500/30 rounded-lg">
                 <p className="text-red-400 text-sm text-center">{error}</p>
-                {error.includes('expired') && (
-                  <Link 
-                    href="/signin" 
-                    className="block text-center text-orange-400 text-sm mt-2 hover:underline"
-                  >
-                    Go to Sign In to request a new link →
-                  </Link>
-                )}
               </div>
             )}
             
-            {/* Submit Button */}
             <button
               type="submit"
               disabled={isSubmitting}
@@ -232,7 +206,6 @@ export default function ResetPasswordPage() {
           </form>
         </div>
 
-        {/* Back to sign in */}
         <p className="text-center mt-6">
           <Link href="/signin" className="text-slate-500 text-sm hover:text-white">
             ← Back to Sign In
