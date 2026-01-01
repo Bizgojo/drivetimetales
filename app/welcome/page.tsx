@@ -5,6 +5,12 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase, getStories, Story } from '@/lib/supabase'
 
+interface SponsorData {
+  sponsor_name: string
+  sponsor_message: string
+  sponsor_tagline: string
+}
+
 function WelcomeContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -12,10 +18,16 @@ function WelcomeContent() {
   const [loading, setLoading] = useState(true)
   const [freeCredits, setFreeCredits] = useState(0)
   const [genre, setGenre] = useState('All')
+  const [duration, setDuration] = useState('All')
   
+  // Promo banner from URL param
   const [showPromoBanner, setShowPromoBanner] = useState(false)
   const [promoBannerText, setPromoBannerText] = useState('')
 
+  // Sponsor banner from QR code
+  const [sponsorData, setSponsorData] = useState<SponsorData | null>(null)
+
+  // Secret code modal
   const [logoTapCount, setLogoTapCount] = useState(0)
   const [lastTapTime, setLastTapTime] = useState(0)
   const [showSecretInput, setShowSecretInput] = useState(false)
@@ -35,31 +47,59 @@ function WelcomeContent() {
     { name: 'Thriller', icon: '😱' },
   ]
 
+  const durationOptions = [
+    { name: 'All', label: 'All' },
+    { name: '15', label: '~15 min' },
+    { name: '30', label: '~30 min' },
+    { name: '60', label: '~1 hr' },
+  ]
+
   useEffect(() => {
     async function initialize() {
+      // Check if user is logged in - redirect to home
       const { data: { session } } = await supabase.auth.getSession()
       if (session) {
         router.push('/home')
         return
       }
 
+      // Check for promo text in URL
       const promo = searchParams.get('promo')
       if (promo) {
         setShowPromoBanner(true)
         setPromoBannerText(decodeURIComponent(promo))
       }
 
+      // Check for QR source sponsor
+      const qrCode = searchParams.get('qr') || searchParams.get('source')
+      if (qrCode) {
+        const { data } = await supabase
+          .from('qr_sources')
+          .select('sponsor_name, sponsor_message, sponsor_tagline, is_sponsored')
+          .eq('code', qrCode)
+          .eq('is_active', true)
+          .single()
+        
+        if (data && data.is_sponsored && data.sponsor_name) {
+          setSponsorData({
+            sponsor_name: data.sponsor_name,
+            sponsor_message: data.sponsor_message || 'This Free Story brought to you courtesy of',
+            sponsor_tagline: data.sponsor_tagline || 'We appreciate your business'
+          })
+        }
+      }
+
+      // Load free credits from localStorage
       const storedCredits = localStorage.getItem('dtt_free_credits')
-      
       if (storedCredits === null) {
         localStorage.setItem('dtt_free_credits', '2')
         localStorage.setItem('dtt_credits_used', 'false')
         setFreeCredits(2)
       } else {
-        const credits = parseInt(storedCredits)
-        setFreeCredits(credits)
+        setFreeCredits(parseInt(storedCredits))
       }
 
+      // Load stories
       try {
         const allStories = await getStories({})
         setStories(allStories)
@@ -162,52 +202,77 @@ function WelcomeContent() {
     setIsSubmitting(false)
   }
 
+  // Filter stories by genre and duration
   const filtered = stories.filter((s) => {
     if (genre !== 'All' && s.genre !== genre) return false
+    if (duration === '15' && (s.duration_mins < 10 || s.duration_mins > 20)) return false
+    if (duration === '30' && (s.duration_mins < 20 || s.duration_mins > 45)) return false
+    if (duration === '60' && s.duration_mins < 45) return false
     return true
   })
 
-  // Go to player details page (Screen A)
+  // Navigate to player details page
   const handleStoryClick = (story: Story) => {
     router.push(`/player/${story.id}`)
   }
 
-  const Logo = () => (
-    <button 
-      onClick={handleLogoTap}
-      className="flex items-center justify-center gap-2 focus:outline-none"
-    >
-      <svg width="50" height="30" viewBox="0 0 80 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <g>
-          <rect x="45" y="24" width="30" height="14" rx="3" fill="#f97316"/>
-          <path d="M52 24 L56 16 L68 16 L72 24" fill="#f97316"/>
-          <path d="M54 23 L57 17 L67 17 L70 23" fill="#1e293b"/>
-          <circle cx="54" cy="38" r="5" fill="#334155"/>
-          <circle cx="54" cy="38" r="2.5" fill="#64748b"/>
-          <circle cx="68" cy="38" r="5" fill="#334155"/>
-          <circle cx="68" cy="38" r="2.5" fill="#64748b"/>
-          <rect x="73" y="28" width="3" height="4" rx="1" fill="#fef08a"/>
-        </g>
-        <g>
-          <rect x="2" y="20" width="18" height="18" rx="3" fill="#3b82f6"/>
-          <path d="M5 20 L8 12 L17 12 L20 20" fill="#3b82f6"/>
-          <path d="M7 19 L9 13 L16 13 L18 19" fill="#1e293b"/>
-          <rect x="20" y="18" width="22" height="20" rx="2" fill="#60a5fa"/>
-          <circle cx="10" cy="38" r="5" fill="#334155"/>
-          <circle cx="10" cy="38" r="2.5" fill="#64748b"/>
-          <circle cx="32" cy="38" r="5" fill="#334155"/>
-          <circle cx="32" cy="38" r="2.5" fill="#64748b"/>
-        </g>
-      </svg>
-      <div className="flex items-baseline">
-        <span className="text-lg font-bold text-white">Drive Time </span>
-        <span className="text-lg font-bold text-orange-500">Tales</span>
-      </div>
-    </button>
-  )
+  // Get flag for story based on its properties
+  const getStoryFlag = (story: Story) => {
+    if ((story.credits || 1) <= 2 && freeCredits > 0) {
+      return { text: 'Free Story', color: 'green' }
+    }
+    if (story.is_featured) {
+      return { text: "Listener's Choice", color: 'orange' }
+    }
+    if (story.is_new) {
+      return { text: 'New Release', color: 'blue' }
+    }
+    return null
+  }
+
+  // Star rating component with half-star support
+  const StarRating = ({ rating }: { rating: number }) => {
+    const displayRating = rating || 4.0
+    return (
+      <span className="flex items-center">
+        {[1, 2, 3, 4, 5].map((star) => {
+          const filled = displayRating >= star
+          const halfFilled = !filled && displayRating >= star - 0.5
+          return (
+            <span key={star} className="relative text-sm">
+              <span className="text-slate-600">☆</span>
+              {(filled || halfFilled) && (
+                <span 
+                  className="absolute left-0 top-0 text-yellow-400 overflow-hidden"
+                  style={{ width: halfFilled ? '50%' : '100%' }}
+                >
+                  ★
+                </span>
+              )}
+            </span>
+          )
+        })}
+        <span className="text-slate-400 text-xs ml-1">{displayRating.toFixed(1)}</span>
+      </span>
+    )
+  }
+
+  // Flag badge component
+  const FlagBadge = ({ text, color }: { text: string, color: string }) => {
+    const colorClasses: { [key: string]: string } = {
+      green: 'bg-green-500/20 text-green-400 border-green-500/30',
+      orange: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+      blue: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+    }
+    return (
+      <span className={`px-2 py-0.5 text-[10px] font-medium rounded border ${colorClasses[color]}`}>
+        {text}
+      </span>
+    )
+  }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
+    <div className="min-h-screen bg-slate-950 text-white pb-20">
       
       {/* Secret Code Modal */}
       {showSecretInput && (
@@ -266,9 +331,18 @@ function WelcomeContent() {
         </div>
       )}
 
-      {/* Promo Banner */}
-      {showPromoBanner && promoBannerText && (
-        <div className="sticky top-0 z-20 bg-gradient-to-r from-green-600 to-green-500 px-3 py-2">
+      {/* Sponsor Banner - Shows when user comes from sponsored QR code */}
+      {sponsorData && (
+        <div className="sticky top-0 z-40 bg-gradient-to-r from-emerald-600 via-emerald-500 to-emerald-600 px-4 py-2 text-center shadow-lg">
+          <p className="text-white text-sm font-medium">
+            {sponsorData.sponsor_message} <span className="font-bold">{sponsorData.sponsor_name}</span> — {sponsorData.sponsor_tagline}
+          </p>
+        </div>
+      )}
+
+      {/* Promo Banner - Shows when ?promo= URL param exists */}
+      {showPromoBanner && promoBannerText && !sponsorData && (
+        <div className="sticky top-0 z-40 bg-gradient-to-r from-green-600 to-green-500 px-3 py-2">
           <p className="text-white text-xs text-center font-medium leading-tight">
             🎁 {promoBannerText}
           </p>
@@ -278,19 +352,39 @@ function WelcomeContent() {
       <div className="max-w-2xl mx-auto px-4 py-4">
         
         {/* Welcome To Header */}
-        <div className="text-center mb-2">
-          <h1 className="text-2xl font-serif italic text-orange-400 mb-2">Welcome To</h1>
-          <Logo />
-        </div>
+        <p className="text-center text-orange-400 italic text-xl mb-2">Welcome To</p>
+        
+        {/* LARGE CENTERED LOGO - Emoji Vehicles */}
+        <button 
+          onClick={handleLogoTap}
+          className="w-full flex flex-col items-center justify-center mb-4 focus:outline-none"
+        >
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-5xl">🚛</span>
+            <span className="text-5xl">🚗</span>
+          </div>
+          <div className="flex items-baseline">
+            <span className="text-2xl font-bold text-white">Drive Time </span>
+            <span className="text-2xl font-bold text-orange-500">Tales</span>
+          </div>
+        </button>
 
-        {/* CTA Text */}
-        <div className="text-center my-4">
-          <h2 className="text-2xl font-bold text-white">Start Listening</h2>
-          <h2 className="text-2xl font-bold text-white">To Your Free Story Now!</h2>
-          <p className="text-white text-sm mt-2">No Sign Up Required</p>
+        {/* Tagline - EYE CATCHING */}
+        <div className="text-center mb-4">
+          <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 py-4 px-3 rounded-xl border border-slate-700/50">
+            <h1 className="text-xl sm:text-2xl font-extrabold text-white leading-tight">
+              Start Listening
+            </h1>
+            <h2 className="text-xl sm:text-2xl font-extrabold text-orange-400 leading-tight">
+              To Your Free Story Now!
+            </h2>
+            <p className="text-white text-sm mt-2 font-medium">
+              No Sign Up Required — Just Click & Listen
+            </p>
+          </div>
           
           {freeCredits > 0 ? (
-            <p className="text-green-400 font-semibold text-sm mt-1">
+            <p className="text-green-400 text-sm mt-2">
               🎁 You have {freeCredits} free credit{freeCredits !== 1 ? 's' : ''}
             </p>
           ) : (
@@ -298,18 +392,12 @@ function WelcomeContent() {
               <p className="text-red-400 font-semibold text-sm">
                 You have 0 free credits
               </p>
-              <Link 
-                href="/pricing"
-                className="inline-block mt-2 px-6 py-2 bg-orange-500 hover:bg-orange-400 text-black font-semibold rounded-lg transition-colors text-sm"
-              >
-                Subscribe Now & Get 17% Discount
-              </Link>
             </div>
           )}
         </div>
 
-        {/* Genre Icons */}
-        <div className="mb-3">
+        {/* Genre Filters */}
+        <div className="mb-2">
           <div className="flex flex-wrap justify-center gap-1">
             {genreOptions.map((g) => (
               <button
@@ -328,8 +416,27 @@ function WelcomeContent() {
           </div>
         </div>
 
+        {/* Duration Filters */}
+        <div className="mb-3">
+          <div className="flex justify-center gap-2">
+            {durationOptions.map((d) => (
+              <button
+                key={d.name}
+                onClick={() => setDuration(d.name)}
+                className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                  duration === d.name 
+                    ? 'bg-orange-500 text-black' 
+                    : 'bg-slate-800 text-white border border-slate-700'
+                }`}
+              >
+                {d.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Results count */}
-        <p className="text-white text-xs mb-3">{filtered.length} {filtered.length === 1 ? 'story' : 'stories'} found</p>
+        <p className="text-slate-400 text-xs mb-3">{filtered.length} {filtered.length === 1 ? 'story' : 'stories'} found</p>
 
         {/* Stories List */}
         {loading ? (
@@ -341,12 +448,12 @@ function WelcomeContent() {
           <div className="text-center py-12">
             <span className="text-5xl block mb-4">📚</span>
             <h2 className="text-xl font-bold text-white mb-2">No Stories Found</h2>
-            <p className="text-white">Try selecting a different genre</p>
+            <p className="text-white">Try selecting a different genre or duration</p>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-2">
             {filtered.map((story, index) => {
-              const isFreeStory = (story.credits || 1) <= 2
+              const flag = getStoryFlag(story)
               
               return (
                 <div 
@@ -356,7 +463,7 @@ function WelcomeContent() {
                 >
                   <div className="flex">
                     {/* Cover */}
-                    <div className="w-32 h-32 flex-shrink-0 relative">
+                    <div className="w-28 h-28 flex-shrink-0 relative">
                       {story.cover_url ? (
                         <img 
                           src={story.cover_url}
@@ -369,33 +476,26 @@ function WelcomeContent() {
                         </div>
                       )}
                       {/* Duration badge */}
-                      <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/70 text-white text-[10px] rounded">
+                      <div className="absolute bottom-1 left-1 px-1.5 py-0.5 bg-black/70 text-white text-[10px] rounded">
                         {story.duration_mins} min
                       </div>
                     </div>
                     
-                    {/* Spacer */}
-                    <div className="w-3" />
-                    
                     {/* Info */}
-                    <div className="flex-1 py-3 pr-3 flex flex-col justify-between">
-                      <div>
-                        <h3 className="font-bold text-white text-sm leading-tight">{story.title}</h3>
-                        <p className="text-white text-xs mt-1">{story.genre} • {story.credits || 1} credit{(story.credits || 1) !== 1 ? 's' : ''}</p>
-                        <p className="text-slate-400 text-xs mt-0.5">{story.author}</p>
-                      </div>
+                    <div className="flex-1 p-2 flex flex-col justify-between min-w-0">
+                      {/* Title */}
+                      <h3 className="font-bold text-white text-base leading-tight truncate">{story.title}</h3>
                       
-                      {/* Tag */}
-                      <div className="mt-2">
-                        {isFreeStory ? (
-                          <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-green-500/20 text-green-400 border border-green-500/30">
-                            Free Story
-                          </span>
-                        ) : (
-                          <span className="text-[10px] text-orange-400 italic">
-                            Requires Subscription
-                          </span>
-                        )}
+                      {/* Genre + Credits */}
+                      <p className="text-slate-400 text-sm">{story.genre} • {story.credits || 1} credit{(story.credits || 1) !== 1 ? 's' : ''}</p>
+                      
+                      {/* Author */}
+                      <p className="text-slate-300 text-sm">{story.author}</p>
+                      
+                      {/* Star Rating + Flag */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <StarRating rating={story.ai_rating || story.average_rating} />
+                        {flag && <FlagBadge text={flag.text} color={flag.color} />}
                       </div>
                     </div>
                   </div>
@@ -404,6 +504,18 @@ function WelcomeContent() {
             })}
           </div>
         )}
+      </div>
+
+      {/* STICKY SUBSCRIBE BUTTON */}
+      <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-slate-950 via-slate-950 to-transparent pt-4 pb-3 px-4 z-30">
+        <div className="max-w-2xl mx-auto">
+          <button 
+            onClick={() => router.push('/pricing')}
+            className="w-full py-3 bg-orange-500 hover:bg-orange-400 text-black font-bold text-base rounded-xl transition-colors"
+          >
+            Subscribe Here
+          </button>
+        </div>
       </div>
     </div>
   )
