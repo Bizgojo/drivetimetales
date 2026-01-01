@@ -194,7 +194,7 @@ function WelcomeContent() {
         setSecretCode('')
         router.push('/register/promo')
       }, 1500)
-     <StarRating rating={story.rating} /> 
+    
     } catch (err) {
       setCodeMessage({ type: 'error', text: 'Error validating code. Please try again.' })
     }
@@ -494,7 +494,7 @@ function WelcomeContent() {
                       
                       {/* Star Rating + Flag */}
                       <div className="flex items-center gap-2 flex-wrap">
-                        <StarRating rating={story.average_rating} />
+                       <StarRating rating={story.rating} />
                         {flag && <FlagBadge text={flag.text} color={flag.color} />}
                       </div>
                     </div>
