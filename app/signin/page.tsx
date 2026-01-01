@@ -13,6 +13,7 @@ function SignInContent() {
   const [password, setPassword] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [message, setMessage] = useState<string | null>(null)
   const [showExistingAccountMessage, setShowExistingAccountMessage] = useState(false)
 
   // Check for email in URL params (from Sign Up redirect)
@@ -22,11 +23,18 @@ function SignInContent() {
       setEmail(emailParam)
       setShowExistingAccountMessage(true)
     }
+    
+    // Check for auth error
+    const errorParam = searchParams.get('error')
+    if (errorParam === 'auth_failed') {
+      setError('Password reset link has expired. Please request a new one.')
+    }
   }, [searchParams])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+    setMessage(null)
     setShowExistingAccountMessage(false)
     
     if (!email.trim()) {
@@ -86,16 +94,17 @@ function SignInContent() {
     
     setIsSubmitting(true)
     setError(null)
+    setMessage(null)
     
+    // Use PKCE flow - redirect to /auth/callback which will then go to /reset-password
     const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: `${window.location.origin}/reset-password`,
+      redirectTo: `${window.location.origin}/auth/callback?next=/reset-password`,
     })
     
     if (error) {
       setError(error.message)
     } else {
-      setError(null)
-      alert('Password reset email sent! Check your inbox.')
+      setMessage('Password reset email sent! Check your inbox.')
     }
     
     setIsSubmitting(false)
@@ -105,7 +114,7 @@ function SignInContent() {
     <div className="min-h-screen bg-slate-950 text-white">
       <div className="max-w-md mx-auto px-4 py-8">
         
-        {/* Logo - NEW EMOJI VERSION */}
+        {/* Logo */}
         <div className="flex justify-center mb-8">
           <Link href="/welcome" className="flex items-center gap-2">
             <span className="text-3xl">🚛</span>
@@ -132,6 +141,13 @@ function SignInContent() {
               <p className="text-blue-400 text-sm text-center">
                 You already have an account! Please sign in below.
               </p>
+            </div>
+          )}
+
+          {/* Success Message */}
+          {message && (
+            <div className="p-3 bg-green-500/20 border border-green-500/30 rounded-lg mb-4">
+              <p className="text-green-400 text-sm text-center">{message}</p>
             </div>
           )}
           
