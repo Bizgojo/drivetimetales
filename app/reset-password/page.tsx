@@ -206,6 +206,14 @@ export default function ResetPasswordPage() {
             {error && (
               <div className="p-3 bg-red-500/20 border border-red-500/30 rounded-lg">
                 <p className="text-red-400 text-sm text-center">{error}</p>
+                {error.includes('expired') && (
+                  <Link 
+                    href="/signin" 
+                    className="block text-center text-orange-400 text-sm mt-2 hover:underline"
+                  >
+                    Go to Sign In to request a new link →
+                  </Link>
+                )}
               </div>
             )}
             
