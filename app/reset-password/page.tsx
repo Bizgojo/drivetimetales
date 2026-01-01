@@ -13,6 +13,38 @@ export default function ResetPasswordPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  const [isValidSession, setIsValidSession] = useState(false)
+  const [checking, setChecking] = useState(true)
+
+  // Check if user has a valid recovery session
+  useEffect(() => {
+    async function checkSession() {
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (session) {
+        setIsValidSession(true)
+      } else {
+        // Try to exchange the token from URL hash
+        const hashParams = new URLSearchParams(window.location.hash.substring(1))
+        const accessToken = hashParams.get('access_token')
+        const refreshToken = hashParams.get('refresh_token')
+        
+        if (accessToken && refreshToken) {
+          const { error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken
+          })
+          
+          if (!error) {
+            setIsValidSession(true)
+          }
+        }
+      }
+      setChecking(false)
+    }
+    
+    checkSession()
+  }, [])
 
   // Password validation
   const validatePassword = (pwd: string): string | null => {
@@ -59,15 +91,23 @@ export default function ResetPasswordPage() {
       
       setSuccess(true)
       
-      // Redirect to home after 2 seconds
+      // Redirect to home after 1.5 seconds
       setTimeout(() => {
         router.push('/home')
-      }, 2000)
+      }, 1500)
       
     } catch (err) {
       setError('An error occurred. Please try again.')
       setIsSubmitting(false)
     }
+  }
+
+  if (checking) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="inline-block w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
   }
 
   if (success) {
@@ -76,7 +116,25 @@ export default function ResetPasswordPage() {
         <div className="text-center px-4">
           <div className="text-5xl mb-4">✅</div>
           <h1 className="text-2xl font-bold mb-2">Password Updated!</h1>
-          <p className="text-slate-400">Redirecting you to the app...</p>
+          <p className="text-slate-400">Taking you to your stories...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!isValidSession) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center">
+        <div className="text-center px-4">
+          <div className="text-5xl mb-4">⚠️</div>
+          <h1 className="text-2xl font-bold mb-2">Link Expired</h1>
+          <p className="text-slate-400 mb-6">This password reset link has expired or is invalid.</p>
+          <Link 
+            href="/signin"
+            className="px-6 py-3 bg-orange-500 hover:bg-orange-400 text-black font-bold rounded-xl inline-block"
+          >
+            Request a new link
+          </Link>
         </div>
       </div>
     )
