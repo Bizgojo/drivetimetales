@@ -42,7 +42,7 @@ export default function AccountPage() {
         {/* Stats */}
         <div className="grid grid-cols-3 gap-3 mb-6">
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center">
-            <p className="text-2xl font-bold text-orange-400">{user.credits}</p>
+            <p className="text-2xl font-bold text-orange-400">{user.credits_remaining}</p>
             <p className="text-white text-xs">Credits</p>
           </div>
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center">
