@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
@@ -13,49 +13,6 @@ export default function ResetPasswordPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
-  const [isReady, setIsReady] = useState(false)
-  const [linkError, setLinkError] = useState<string | null>(null)
-
-  useEffect(() => {
-    // Check for error in URL hash first
-    if (typeof window !== 'undefined') {
-      const hash = window.location.hash
-      if (hash.includes('error=')) {
-        const hashParams = new URLSearchParams(hash.substring(1))
-        const errorDescription = hashParams.get('error_description')
-        setLinkError(errorDescription || 'This password reset link has expired or is invalid.')
-        setIsReady(true)
-        return
-      }
-    }
-
-    // Listen for auth state changes - Supabase handles the token exchange
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'PASSWORD_RECOVERY') {
-        // User clicked the recovery link and is ready to reset password
-        setIsReady(true)
-      } else if (event === 'SIGNED_IN' && session) {
-        // Session established
-        setIsReady(true)
-      }
-    })
-
-    // Also check if there's already a session (in case event already fired)
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        setIsReady(true)
-      } else {
-        // Give it a moment for the auth state change to fire
-        setTimeout(() => {
-          setIsReady(true)
-        }, 2000)
-      }
-    })
-
-    return () => {
-      subscription.unsubscribe()
-    }
-  }, [])
 
   // Password validation
   const validatePassword = (pwd: string): string | null => {
@@ -95,8 +52,8 @@ export default function ResetPasswordPage() {
       })
       
       if (error) {
-        if (error.message.includes('session')) {
-          setError('Your reset link has expired. Please request a new one.')
+        if (error.message.includes('session') || error.message.includes('logged in')) {
+          setError('Your reset link has expired. Please request a new one from the Sign In page.')
         } else {
           setError(error.message)
         }
@@ -117,14 +74,6 @@ export default function ResetPasswordPage() {
     }
   }
 
-  if (!isReady) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="inline-block w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
-      </div>
-    )
-  }
-
   if (success) {
     return (
       <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center">
@@ -132,38 +81,6 @@ export default function ResetPasswordPage() {
           <div className="text-5xl mb-4">✅</div>
           <h1 className="text-2xl font-bold mb-2">Password Updated!</h1>
           <p className="text-slate-400">Taking you to your stories...</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (linkError) {
-    return (
-      <div className="min-h-screen bg-slate-950 text-white">
-        <div className="max-w-md mx-auto px-4 py-8">
-          {/* Logo */}
-          <div className="flex justify-center mb-8">
-            <Link href="/welcome" className="flex items-center gap-2">
-              <span className="text-3xl">🚛</span>
-              <span className="text-3xl">🚗</span>
-              <div className="flex items-baseline ml-1">
-                <span className="text-lg font-bold text-white">Drive Time </span>
-                <span className="text-lg font-bold text-orange-500">Tales</span>
-              </div>
-            </Link>
-          </div>
-          
-          <div className="text-center">
-            <div className="text-5xl mb-4">⚠️</div>
-            <h1 className="text-2xl font-bold mb-2">Link Expired</h1>
-            <p className="text-slate-400 mb-6">{linkError}</p>
-            <Link 
-              href="/signin"
-              className="px-6 py-3 bg-orange-500 hover:bg-orange-400 text-black font-bold rounded-xl inline-block"
-            >
-              Request a new link
-            </Link>
-          </div>
         </div>
       </div>
     )
