@@ -6,7 +6,7 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 // Client-side Supabase client
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// Types for our database
+// Types for our database - UPDATED TO MATCH ACTUAL DB SCHEMA
 export interface Story {
   id: string;
   title: string;
@@ -14,25 +14,42 @@ export interface Story {
   genre: string;
   description?: string;
   duration_mins: number;
+  duration_label?: string;
   credits: number;
+  color?: string;
+  promo_text?: string;
   audio_url?: string;
   sample_url?: string;
   cover_url?: string;
   play_count: number;
-  rating: number;
+  rating?: number;        // Keep for backward compatibility
+  ai_rating?: number;     // Actual DB field
+  average_rating?: number;
+  total_reviews?: number;
   is_new: boolean;
   is_featured: boolean;
+  price_cents?: number;
+  series_name?: string;
+  episode_number?: number;
+  series_id?: string;
+  release_date?: string;
   created_at: string;
+  updated_at?: string;
 }
 
 export interface User {
   id: string;
   email: string;
+  name?: string;
   display_name?: string;
-  credits: number;
-  subscription_type: 'free' | 'test_driver' | 'commuter' | 'road_warrior';
+  credits_remaining: number;
+  subscription_status?: string;
+  subscription_plan?: string;
+  subscription_type?: 'free' | 'test_driver' | 'commuter' | 'road_warrior';
   subscription_ends_at?: string;
   stripe_customer_id?: string;
+  stripe_subscription_id?: string;
+  last_login?: string;
   created_at: string;
 }
 
@@ -84,7 +101,14 @@ export async function getStories(options?: {
 
   const { data, error } = await query;
   if (error) throw error;
-  return data as Story[];
+  
+  // Map ai_rating to rating for backward compatibility
+  const stories = (data || []).map(story => ({
+    ...story,
+    rating: story.rating || story.ai_rating || 4.0
+  }));
+  
+  return stories as Story[];
 }
 
 export async function getStory(id: string) {
@@ -95,7 +119,12 @@ export async function getStory(id: string) {
     .single();
   
   if (error) throw error;
-  return data as Story;
+  
+  // Map ai_rating to rating
+  return {
+    ...data,
+    rating: data.rating || data.ai_rating || 4.0
+  } as Story;
 }
 
 export async function getUserProfile(userId: string) {
@@ -142,19 +171,19 @@ export async function purchaseStory(userId: string, storyId: string, credits: nu
   // Start a transaction
   const { data: user, error: userError } = await supabase
     .from('users')
-    .select('credits')
+    .select('credits_remaining')
     .eq('id', userId)
     .single();
   
   if (userError) throw userError;
-  if (user.credits < credits) {
+  if (user.credits_remaining < credits) {
     throw new Error('Insufficient credits');
   }
 
   // Deduct credits
   const { error: deductError } = await supabase
     .from('users')
-    .update({ credits: user.credits - credits })
+    .update({ credits_remaining: user.credits_remaining - credits })
     .eq('id', userId);
   
   if (deductError) throw deductError;
@@ -172,13 +201,13 @@ export async function purchaseStory(userId: string, storyId: string, credits: nu
   
   if (addError) throw addError;
 
-  return { success: true, remainingCredits: user.credits - credits };
+  return { success: true, remainingCredits: user.credits_remaining - credits };
 }
 
 export async function addCredits(userId: string, credits: number) {
   const { data: user, error: userError } = await supabase
     .from('users')
-    .select('credits')
+    .select('credits_remaining')
     .eq('id', userId)
     .single();
   
@@ -186,9 +215,9 @@ export async function addCredits(userId: string, credits: number) {
 
   const { error } = await supabase
     .from('users')
-    .update({ credits: user.credits + credits })
+    .update({ credits_remaining: user.credits_remaining + credits })
     .eq('id', userId);
   
   if (error) throw error;
-  return { success: true, newBalance: user.credits + credits };
+  return { success: true, newBalance: user.credits_remaining + credits };
 }
