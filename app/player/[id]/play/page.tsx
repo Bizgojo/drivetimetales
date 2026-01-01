@@ -20,6 +20,7 @@ function PlayContent() {
   const [playbackSpeed, setPlaybackSpeed] = useState(1)
   const [lastPlayed, setLastPlayed] = useState<string | null>(null)
   const [hasStartedPlaying, setHasStartedPlaying] = useState(false)
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
 
   const speedOptions = [0.85, 1, 1.15]
   
@@ -30,17 +31,41 @@ function PlayContent() {
   useEffect(() => {
     async function loadStory() {
       try {
-        // Check library for saved progress and last played
-        const libraryData = localStorage.getItem('dtt_library')
-        if (libraryData) {
-          const library = JSON.parse(libraryData)
-          const libraryItem = library.find((item: any) => item.storyId === storyId)
+        // Check if user is logged in
+        const { data: { session } } = await supabase.auth.getSession()
+        const loggedIn = !!session
+        setIsLoggedIn(loggedIn)
+        
+        // Only check user_library for logged-in members
+        if (loggedIn && session?.user?.id) {
+          const { data: libraryItem } = await supabase
+            .from('user_library')
+            .select('*')
+            .eq('user_id', session.user.id)
+            .eq('story_id', storyId)
+            .single()
+          
           if (libraryItem) {
-            setLastPlayed(libraryItem.lastPlayed)
-            // If resuming, we'll set the time after audio loads
-            if (shouldResume && libraryItem.progress > 0) {
+            // Format last played date from database
+            if (libraryItem.last_played_at) {
+              const date = new Date(libraryItem.last_played_at)
+              setLastPlayed(date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }))
+            }
+            // If resuming, set the saved progress
+            if (shouldResume && libraryItem.progress_seconds > 0) {
+              setCurrentTime(libraryItem.progress_seconds)
+            }
+          }
+        } else {
+          // Newcomer - check localStorage for progress only (no "Last played" shown)
+          const libraryData = localStorage.getItem('dtt_library')
+          if (libraryData) {
+            const library = JSON.parse(libraryData)
+            const libraryItem = library.find((item: any) => item.storyId === storyId)
+            if (libraryItem && shouldResume && libraryItem.progress > 0) {
               setCurrentTime(libraryItem.progress)
             }
+            // Don't set lastPlayed for newcomers
           }
         }
 
@@ -108,22 +133,39 @@ function PlayContent() {
   useEffect(() => {
     if (!isPlaying || currentTime === 0) return
     
-    const saveProgress = () => {
-      const libraryData = localStorage.getItem('dtt_library')
-      if (libraryData) {
-        const library = JSON.parse(libraryData)
-        const existingIndex = library.findIndex((item: any) => item.storyId === storyId)
-        if (existingIndex !== -1) {
-          library[existingIndex].progress = currentTime
-          library[existingIndex].lastPlayed = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
-          localStorage.setItem('dtt_library', JSON.stringify(library))
+    const saveProgress = async () => {
+      if (isLoggedIn) {
+        // Save to database for logged-in members
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session?.user?.id) {
+          await supabase
+            .from('user_library')
+            .upsert({
+              user_id: session.user.id,
+              story_id: storyId,
+              progress_seconds: Math.floor(currentTime),
+              last_played_at: new Date().toISOString()
+            }, {
+              onConflict: 'user_id,story_id'
+            })
+        }
+      } else {
+        // Save to localStorage for newcomers
+        const libraryData = localStorage.getItem('dtt_library')
+        if (libraryData) {
+          const library = JSON.parse(libraryData)
+          const existingIndex = library.findIndex((item: any) => item.storyId === storyId)
+          if (existingIndex !== -1) {
+            library[existingIndex].progress = currentTime
+            localStorage.setItem('dtt_library', JSON.stringify(library))
+          }
         }
       }
     }
     
     const interval = setInterval(saveProgress, 5000) // Save every 5 seconds
     return () => clearInterval(interval)
-  }, [isPlaying, currentTime, storyId])
+  }, [isPlaying, currentTime, storyId, isLoggedIn])
 
   useEffect(() => {
     if (audioRef.current) {
@@ -176,16 +218,34 @@ function PlayContent() {
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
-  const handleBack = () => {
+  const handleBack = async () => {
     // Save progress before leaving
     if (currentTime > 0) {
-      const libraryData = localStorage.getItem('dtt_library')
-      if (libraryData) {
-        const library = JSON.parse(libraryData)
-        const existingIndex = library.findIndex((item: any) => item.storyId === storyId)
-        if (existingIndex !== -1) {
-          library[existingIndex].progress = currentTime
-          localStorage.setItem('dtt_library', JSON.stringify(library))
+      if (isLoggedIn) {
+        // Save to database for logged-in members
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session?.user?.id) {
+          await supabase
+            .from('user_library')
+            .upsert({
+              user_id: session.user.id,
+              story_id: storyId,
+              progress_seconds: Math.floor(currentTime),
+              last_played_at: new Date().toISOString()
+            }, {
+              onConflict: 'user_id,story_id'
+            })
+        }
+      } else {
+        // Save to localStorage for newcomers
+        const libraryData = localStorage.getItem('dtt_library')
+        if (libraryData) {
+          const library = JSON.parse(libraryData)
+          const existingIndex = library.findIndex((item: any) => item.storyId === storyId)
+          if (existingIndex !== -1) {
+            library[existingIndex].progress = currentTime
+            localStorage.setItem('dtt_library', JSON.stringify(library))
+          }
         }
       }
     }
