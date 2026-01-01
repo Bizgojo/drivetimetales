@@ -88,46 +88,19 @@ export default function SignInPage() {
     setIsSubmitting(false)
   }
 
-  // Logo component
-  const Logo = () => (
-    <div className="flex items-center justify-center gap-2">
-      <svg width="50" height="30" viewBox="0 0 80 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <g>
-          <rect x="45" y="24" width="30" height="14" rx="3" fill="#f97316"/>
-          <path d="M52 24 L56 16 L68 16 L72 24" fill="#f97316"/>
-          <path d="M54 23 L57 17 L67 17 L70 23" fill="#1e293b"/>
-          <circle cx="54" cy="38" r="5" fill="#334155"/>
-          <circle cx="54" cy="38" r="2.5" fill="#64748b"/>
-          <circle cx="68" cy="38" r="5" fill="#334155"/>
-          <circle cx="68" cy="38" r="2.5" fill="#64748b"/>
-          <rect x="73" y="28" width="3" height="4" rx="1" fill="#fef08a"/>
-        </g>
-        <g>
-          <rect x="2" y="20" width="18" height="18" rx="3" fill="#3b82f6"/>
-          <path d="M5 20 L8 12 L17 12 L20 20" fill="#3b82f6"/>
-          <path d="M7 19 L9 13 L16 13 L18 19" fill="#1e293b"/>
-          <rect x="20" y="18" width="22" height="20" rx="2" fill="#60a5fa"/>
-          <circle cx="10" cy="38" r="5" fill="#334155"/>
-          <circle cx="10" cy="38" r="2.5" fill="#64748b"/>
-          <circle cx="32" cy="38" r="5" fill="#334155"/>
-          <circle cx="32" cy="38" r="2.5" fill="#64748b"/>
-        </g>
-      </svg>
-      <div className="flex items-baseline">
-        <span className="text-lg font-bold text-white">Drive Time </span>
-        <span className="text-lg font-bold text-orange-500">Tales</span>
-      </div>
-    </div>
-  )
-
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       <div className="max-w-md mx-auto px-4 py-8">
         
-        {/* Logo */}
+        {/* Logo - NEW EMOJI VERSION */}
         <div className="flex justify-center mb-8">
-          <Link href="/welcome">
-            <Logo />
+          <Link href="/welcome" className="flex items-center gap-2">
+            <span className="text-3xl">🚛</span>
+            <span className="text-3xl">🚗</span>
+            <div className="flex items-baseline ml-1">
+              <span className="text-lg font-bold text-white">Drive Time </span>
+              <span className="text-lg font-bold text-orange-500">Tales</span>
+            </div>
           </Link>
         </div>
 
