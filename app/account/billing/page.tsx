@@ -62,7 +62,7 @@ export default function BillingPage() {
           </div>
         </div>
 
-        {user?.subscription_type !== 'free' && (
+        {user?.subscription_status !== 'free' && (
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-6">
             <div className="flex justify-between items-start mb-3">
               <div>
@@ -86,7 +86,7 @@ export default function BillingPage() {
           </div>
         )}
 
-        {user?.subscription_type === 'free' && (
+        {user?.subscription_status === 'free' && (
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-6 text-center py-6">
             <span className="text-4xl mb-3 block">🚗</span>
             <h3 className="text-white font-bold mb-1">No Active Subscription</h3>
