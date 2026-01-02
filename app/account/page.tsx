@@ -2,18 +2,51 @@
 
 import React from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Header } from '@/components/ui/Header';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function AccountPage() {
-  // TODO: Get from auth context
-  const user = {
-    firstName: 'John',
-    lastName: 'Doe',
-    email: 'john@example.com',
-    plan: 'Commuter',
-    credits: 32,
-    memberSince: 'October 2024',
+  const { user, signOut, loading } = useAuth();
+  const router = useRouter();
+
+  // Handle sign out
+  const handleSignOut = async () => {
+    await signOut();
+    router.push('/');
   };
+
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mb-4" />
+          <p>Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Redirect if not logged in
+  if (!user) {
+    router.push('/auth/login');
+    return null;
+  }
+
+  // Get display name or fallback
+  const displayName = user.display_name || user.email.split('@')[0];
+  const initials = displayName.substring(0, 2).toUpperCase();
+
+  // Format subscription type for display
+  const planDisplay = user.subscription_type === 'free' ? 'Free' 
+    : user.subscription_type === 'test_driver' ? 'Test Driver'
+    : user.subscription_type === 'commuter' ? 'Commuter'
+    : user.subscription_type === 'road_warrior' ? 'Road Warrior'
+    : 'Free';
+
+  // Format member since date
+  const memberSince = new Date(user.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
   const menuItems = [
     { href: '/account/billing', icon: '💎', label: 'Billing & Credits', desc: `${user.credits} credits available` },
@@ -30,27 +63,27 @@ export default function AccountPage() {
         {/* Profile Header */}
         <div className="flex items-center gap-4 mb-6">
           <div className="w-20 h-20 bg-orange-500 rounded-full flex items-center justify-center text-3xl font-bold">
-            {user.firstName[0]}{user.lastName[0]}
+            {initials}
           </div>
           <div>
-            <h1 className="text-xl font-bold text-white">{user.firstName} {user.lastName}</h1>
+            <h1 className="text-xl font-bold text-white">{displayName}</h1>
             <p className="text-white text-sm">{user.email}</p>
-            <p className="text-orange-400 text-sm">{user.plan} • Member since {user.memberSince}</p>
+            <p className="text-orange-400 text-sm">{planDisplay} • Member since {memberSince}</p>
           </div>
         </div>
 
         {/* Stats */}
         <div className="grid grid-cols-3 gap-3 mb-6">
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center">
-            <p className="text-2xl font-bold text-orange-400">{user.credits_remaining}</p>
+            <p className="text-2xl font-bold text-orange-400">{user.credits}</p>
             <p className="text-white text-xs">Credits</p>
           </div>
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center">
-            <p className="text-2xl font-bold text-green-400">12</p>
+            <p className="text-2xl font-bold text-green-400">-</p>
             <p className="text-white text-xs">Completed</p>
           </div>
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center">
-            <p className="text-2xl font-bold text-blue-400">3</p>
+            <p className="text-2xl font-bold text-blue-400">-</p>
             <p className="text-white text-xs">In Progress</p>
           </div>
         </div>
@@ -85,13 +118,18 @@ export default function AccountPage() {
 
         {/* Danger Zone */}
         <div className="border-t border-gray-800 pt-6">
-          <Link 
-            href="/account/cancel"
-            className="block w-full py-3 bg-gray-900 border border-red-500/30 rounded-xl text-center text-red-400 text-sm"
+          {user.subscription_type !== 'free' && (
+            <Link 
+              href="/account/cancel"
+              className="block w-full py-3 bg-gray-900 border border-red-500/30 rounded-xl text-center text-red-400 text-sm mb-3"
+            >
+              Cancel Subscription
+            </Link>
+          )}
+          <button 
+            onClick={handleSignOut}
+            className="w-full py-3 text-red-400 text-sm"
           >
-            Cancel Subscription
-          </Link>
-          <button className="w-full mt-3 py-3 text-red-400 text-sm">
             Sign Out
           </button>
         </div>
