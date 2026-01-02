@@ -58,19 +58,26 @@ function WelcomeContent() {
     async function initialize() {
       console.log('[DTT Debug] Welcome page initialize() started')
       
-      // Check if user is logged in - redirect to home
-      console.log('[DTT Debug] Checking auth session...')
+      // Load stories FIRST - don't wait for auth
+      console.log('[DTT Debug] Loading stories...')
       try {
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-        console.log('[DTT Debug] Auth session result:', { hasSession: !!session, error: sessionError })
-        
-        if (session) {
-          console.log('[DTT Debug] User logged in, redirecting to /home')
-          router.push('/home')
-          return
-        }
-      } catch (authErr) {
-        console.error('[DTT Debug] Auth check EXCEPTION:', authErr)
+        const allStories = await getStories({})
+        console.log('[DTT Debug] getStories() returned', allStories.length, 'stories')
+        setStories(allStories)
+        setLoading(false)
+      } catch (error) {
+        console.error('[DTT Debug] Error fetching stories:', error)
+        setLoading(false)
+      }
+
+      // Load free credits from localStorage
+      const storedCredits = localStorage.getItem('dtt_free_credits')
+      if (storedCredits === null) {
+        localStorage.setItem('dtt_free_credits', '2')
+        localStorage.setItem('dtt_credits_used', 'false')
+        setFreeCredits(2)
+      } else {
+        setFreeCredits(parseInt(storedCredits))
       }
 
       // Check for promo text in URL
@@ -84,44 +91,45 @@ function WelcomeContent() {
       const qrCode = searchParams.get('qr') || searchParams.get('source')
       if (qrCode) {
         console.log('[DTT Debug] Checking QR code:', qrCode)
-        const { data } = await supabase
-          .from('qr_sources')
-          .select('sponsor_name, sponsor_message, sponsor_tagline, is_sponsored')
-          .eq('code', qrCode)
-          .eq('is_active', true)
-          .single()
-        
-        if (data && data.is_sponsored && data.sponsor_name) {
-          setSponsorData({
-            sponsor_name: data.sponsor_name,
-            sponsor_message: data.sponsor_message || 'This Free Story brought to you courtesy of',
-            sponsor_tagline: data.sponsor_tagline || 'We appreciate your business'
-          })
+        try {
+          const { data } = await supabase
+            .from('qr_sources')
+            .select('sponsor_name, sponsor_message, sponsor_tagline, is_sponsored')
+            .eq('code', qrCode)
+            .eq('is_active', true)
+            .single()
+          
+          if (data && data.is_sponsored && data.sponsor_name) {
+            setSponsorData({
+              sponsor_name: data.sponsor_name,
+              sponsor_message: data.sponsor_message || 'This Free Story brought to you courtesy of',
+              sponsor_tagline: data.sponsor_tagline || 'We appreciate your business'
+            })
+          }
+        } catch (qrErr) {
+          console.log('[DTT Debug] QR lookup failed (ok if no QR):', qrErr)
         }
       }
-
-      // Load free credits from localStorage
-      const storedCredits = localStorage.getItem('dtt_free_credits')
-      if (storedCredits === null) {
-        localStorage.setItem('dtt_free_credits', '2')
-        localStorage.setItem('dtt_credits_used', 'false')
-        setFreeCredits(2)
-      } else {
-        setFreeCredits(parseInt(storedCredits))
-      }
-
-      // Load stories
-      console.log('[DTT Debug] About to call getStories()...')
-      try {
-        const allStories = await getStories({})
-        console.log('[DTT Debug] getStories() returned', allStories.length, 'stories')
-        setStories(allStories)
-      } catch (error) {
-        console.error('[DTT Debug] Error fetching stories:', error)
-      }
       
-      console.log('[DTT Debug] Setting loading=false')
-      setLoading(false)
+      // Check auth in background with timeout - don't block the page
+      console.log('[DTT Debug] Checking auth session (with timeout)...')
+      const authTimeout = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Auth timeout')), 3000)
+      )
+      
+      try {
+        const authPromise = supabase.auth.getSession()
+        const { data: { session } } = await Promise.race([authPromise, authTimeout]) as any
+        
+        if (session) {
+          console.log('[DTT Debug] User logged in, redirecting to /home')
+          router.push('/home')
+          return
+        }
+      } catch (authErr) {
+        console.log('[DTT Debug] Auth check skipped (timeout or error):', authErr)
+        // Continue without auth - this is the welcome page for non-logged-in users anyway
+      }
     }
     
     console.log('[DTT Debug] Welcome page useEffect triggered')
