@@ -52,10 +52,10 @@ export default function BillingPage() {
 
         <div className="bg-gradient-to-r from-orange-500 to-orange-600 rounded-xl p-4 mb-6">
           <div className="flex justify-between items-center">
-            <div>
+         <div>
               <p className="text-white/80 text-sm">Available Credits</p>
-              {/* user.credits matches DB column name */}
-             <p className="text-4xl font-bold text-white">{user?.credits_remaining || 0}</p>
+              <p className="text-4xl font-bold text-white">{user?.credits_remaining || 0}</p>
+            </div>
             <Link href="/pricing" className="px-4 py-2 bg-white text-orange-600 font-bold rounded-xl text-sm">
               + Buy More
             </Link>
