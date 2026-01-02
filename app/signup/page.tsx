@@ -143,12 +143,10 @@ function SignUpContent() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          priceId: priceId,
-          userId: authData.user.id,
-          email: email.trim(),
-          plan: planId,
-          billing: billing
-        }),
+  productType: 'subscription',
+  productId: `${planId}_${billing}`,
+  userId: authData.user.id,
+}),
       })
       
       const { url, error: checkoutError } = await response.json()
