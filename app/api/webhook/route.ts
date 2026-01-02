@@ -13,11 +13,12 @@ const supabase = createClient(
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!
 
-// Credit amounts per plan
+// Credit amounts per plan - matches subscription_type values in DB
 const planCredits: { [key: string]: number } = {
-  basic: 10,
-  premium: 30,
-  unlimited: -1, // -1 means unlimited
+  free: 2,
+  test_driver: 10,
+  commuter: 25,
+  road_warrior: -1, // -1 means unlimited
 }
 
 export async function POST(request: NextRequest) {
@@ -41,19 +42,18 @@ export async function POST(request: NextRequest) {
     case 'checkout.session.completed': {
       const session = event.data.object as Stripe.Checkout.Session
       const userId = session.metadata?.userId
-      const plan = session.metadata?.plan || 'premium'
+      const plan = session.metadata?.plan || 'commuter'
       
       if (userId) {
         // Update user subscription
+        // DB columns: subscription_type (NOT subscription_status/subscription_plan), credits, stripe_customer_id, stripe_subscription_id, subscription_ends_at
         await supabase
           .from('users')
           .update({
-            subscription_status: 'active',
-            subscription_plan: plan,
+            subscription_type: plan,  // DB column is 'subscription_type'
             stripe_customer_id: session.customer as string,
             stripe_subscription_id: session.subscription as string,
-            credits: planCredits[plan] || 30,
-            subscription_start: new Date().toISOString(),
+            credits: planCredits[plan] || 25,
           })
           .eq('id', userId)
       }
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
       const invoice = event.data.object as Stripe.Invoice
       const subscription = await stripe.subscriptions.retrieve(invoice.subscription as string)
       const userId = subscription.metadata?.userId
-      const plan = subscription.metadata?.plan || 'premium'
+      const plan = subscription.metadata?.plan || 'commuter'
       
       if (userId) {
         // Add monthly credits
@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
         await supabase
           .from('users')
           .update({
-            subscription_status: 'cancelled',
+            subscription_type: 'free',  // DB column is 'subscription_type'
             credits: 0,
           })
           .eq('id', userId)
@@ -113,8 +113,8 @@ export async function POST(request: NextRequest) {
         await supabase
           .from('users')
           .update({
-            subscription_plan: plan,
-            credits: planCredits[plan] || 30,
+            subscription_type: plan,  // DB column is 'subscription_type'
+            credits: planCredits[plan] || 25,
           })
           .eq('id', userId)
       }
