@@ -4,21 +4,9 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
-import { getStories } from '@/lib/supabase'
+import { getStories, Story } from '@/lib/supabase'
 
-interface Story {
-  id: string
-  title: string
-  author: string
-  genre: string
-  duration_mins: number
-  cover_url: string
-  description: string
-  credits: number
-  rating: number
-  release_date: string
-  is_new: boolean
-}
+
 
 export default function HomePage() {
   const router = useRouter()
