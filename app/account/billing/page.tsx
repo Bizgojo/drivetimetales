@@ -55,8 +55,7 @@ export default function BillingPage() {
             <div>
               <p className="text-white/80 text-sm">Available Credits</p>
               {/* user.credits matches DB column name */}
-              <p className="text-4xl font-bold text-white">{user?.credits || 0}</p>
-            </div>
+             <p className="text-4xl font-bold text-white">{user?.credits_remaining || 0}</p>
             <Link href="/pricing" className="px-4 py-2 bg-white text-orange-600 font-bold rounded-xl text-sm">
               + Buy More
             </Link>
