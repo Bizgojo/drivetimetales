@@ -56,11 +56,21 @@ function WelcomeContent() {
 
   useEffect(() => {
     async function initialize() {
+      console.log('[DTT Debug] Welcome page initialize() started')
+      
       // Check if user is logged in - redirect to home
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session) {
-        router.push('/home')
-        return
+      console.log('[DTT Debug] Checking auth session...')
+      try {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+        console.log('[DTT Debug] Auth session result:', { hasSession: !!session, error: sessionError })
+        
+        if (session) {
+          console.log('[DTT Debug] User logged in, redirecting to /home')
+          router.push('/home')
+          return
+        }
+      } catch (authErr) {
+        console.error('[DTT Debug] Auth check EXCEPTION:', authErr)
       }
 
       // Check for promo text in URL
@@ -73,6 +83,7 @@ function WelcomeContent() {
       // Check for QR source sponsor
       const qrCode = searchParams.get('qr') || searchParams.get('source')
       if (qrCode) {
+        console.log('[DTT Debug] Checking QR code:', qrCode)
         const { data } = await supabase
           .from('qr_sources')
           .select('sponsor_name, sponsor_message, sponsor_tagline, is_sponsored')
@@ -100,15 +111,20 @@ function WelcomeContent() {
       }
 
       // Load stories
+      console.log('[DTT Debug] About to call getStories()...')
       try {
         const allStories = await getStories({})
+        console.log('[DTT Debug] getStories() returned', allStories.length, 'stories')
         setStories(allStories)
       } catch (error) {
-        console.error('Error fetching stories:', error)
+        console.error('[DTT Debug] Error fetching stories:', error)
       }
       
+      console.log('[DTT Debug] Setting loading=false')
       setLoading(false)
     }
+    
+    console.log('[DTT Debug] Welcome page useEffect triggered')
     initialize()
   }, [router, searchParams])
 
