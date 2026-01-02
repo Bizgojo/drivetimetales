@@ -123,47 +123,61 @@ export async function getStories(options?: {
 }) {
   console.log('[DTT Debug] getStories() called with options:', options);
   
+  // Use direct fetch as a workaround for Supabase client hanging issue
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  
+  if (!url || !key) {
+    console.error('[DTT Debug] Missing env vars for direct fetch');
+    return [];
+  }
+  
   try {
-    let query = supabase
-      .from('stories')
-      .select('*')
-      .order('created_at', { ascending: false });
-
+    // Build query string
+    let queryParams = 'select=*&order=created_at.desc';
+    
     if (options?.category) {
-      query = query.eq('genre', options.category);
+      queryParams += `&genre=eq.${encodeURIComponent(options.category)}`;
     }
     if (options?.featured) {
-      query = query.eq('is_featured', true);
+      queryParams += '&is_featured=eq.true';
     }
     if (options?.limit) {
-      query = query.limit(options.limit);
+      queryParams += `&limit=${options.limit}`;
     }
     if (options?.search) {
-      query = query.or(`title.ilike.%${options.search}%,author.ilike.%${options.search}%,description.ilike.%${options.search}%`);
+      queryParams += `&or=(title.ilike.%${encodeURIComponent(options.search)}%,author.ilike.%${encodeURIComponent(options.search)}%,description.ilike.%${encodeURIComponent(options.search)}%)`;
     }
-
-    console.log('[DTT Debug] Executing Supabase query...');
-    const { data, error } = await query;
     
-    if (error) {
-      console.error('[DTT Debug] getStories() ERROR:', error);
-      console.error('[DTT Debug] Error code:', error.code);
-      console.error('[DTT Debug] Error message:', error.message);
-      console.error('[DTT Debug] Error details:', error.details);
-      throw error;
+    const apiUrl = `${url}/rest/v1/stories?${queryParams}`;
+    console.log('[DTT Debug] Fetching stories from:', apiUrl.substring(0, 80) + '...');
+    
+    const response = await fetch(apiUrl, {
+      headers: {
+        'apikey': key,
+        'Authorization': `Bearer ${key}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[DTT Debug] getStories() fetch error:', response.status, errorText);
+      throw new Error(`Failed to fetch stories: ${response.status}`);
     }
+    
+    const data = await response.json();
     
     console.log('[DTT Debug] getStories() SUCCESS:');
     console.log('[DTT Debug] - Stories returned:', data?.length || 0);
     if (data && data.length > 0) {
       console.log('[DTT Debug] - First story title:', data[0].title);
-      console.log('[DTT Debug] - First story keys:', Object.keys(data[0]));
     }
     
     return (data || []) as Story[];
   } catch (err) {
     console.error('[DTT Debug] getStories() EXCEPTION:', err);
-    throw err;
+    return [];
   }
 }
 
