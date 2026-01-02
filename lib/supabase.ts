@@ -52,13 +52,13 @@ export interface Story {
   created_at: string;
 }
 
-// User interface - MATCHES ACTUAL users table columns
+// User interface - MATCHES users table after column renames
 export interface User {
   id: string;
   email: string;
-  name?: string;  // DB column is 'name', NOT 'display_name'
-  credits_remaining: number;  // DB column is 'credits_remaining'
-  subscription_status?: 'free' | 'test_driver' | 'commuter' | 'road_warrior';  // DB uses subscription_status
+  display_name?: string;  // Renamed from 'name'
+  credits: number;  // Renamed from 'credits_remaining'
+  subscription_type?: 'free' | 'test_driver' | 'commuter' | 'road_warrior';  // Renamed from 'subscription_status'
   subscription_ends_at?: string;
   stripe_customer_id?: string;
   stripe_subscription_id?: string;
@@ -246,8 +246,8 @@ export async function getUserProfile(userId: string) {
     
     console.log('[DTT Debug] getUserProfile() SUCCESS:');
     console.log('[DTT Debug] - User email:', user.email);
-    console.log('[DTT Debug] - User name:', user.name);
-    console.log('[DTT Debug] - User credits_remaining:', user.credits_remaining);
+    console.log('[DTT Debug] - User display_name:', user.display_name);
+    console.log('[DTT Debug] - User credits:', user.credits);
     
     return user as User;
   } catch (err) {
