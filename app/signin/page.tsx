@@ -98,7 +98,7 @@ function SignInContent() {
     
     // Use PKCE flow - redirect to /auth/callback which will then go to /reset-password
     const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: redirectTo: `${window.location.origin}/reset-password`,
+      redirectTo:`${window.location.origin}/reset-password`,
     })
     
     if (error) {
