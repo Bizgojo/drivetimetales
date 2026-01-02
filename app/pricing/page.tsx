@@ -11,7 +11,7 @@ export default function PricingPage() {
   // Subscription plans with real Stripe Price IDs
   const plans = [
     {
-      id: 'test-driver',
+      id: 'test_driver',
       name: 'Test Driver',
       monthlyPrice: 2.99,
       yearlyPrice: 29.99,
@@ -42,7 +42,7 @@ export default function PricingPage() {
       yearlyPriceId: 'price_1SjSj1G3QDdai0ZhSETd2rcS',
     },
     {
-      id: 'road-warrior',
+      id: 'road_warrior',
       name: 'Road Warrior',
       monthlyPrice: 14.99,
       yearlyPrice: 149.99,
@@ -63,21 +63,21 @@ export default function PricingPage() {
   // Freedom Packs (one-time purchase)
   const freedomPacks = [
     {
-      id: 'small-pack',
+      id: 'small_pack',
       name: 'Small Pack',
       price: 4.99,
       credits: 10,
       priceId: 'price_1SjSxEG3QDdai0Zhi0BbuzED',
     },
     {
-      id: 'medium-pack',
+      id: 'medium_pack',
       name: 'Medium Pack',
       price: 9.99,
       credits: 25,
       priceId: 'price_1SjSydG3QDdai0ZhUIYLwgzw',
     },
     {
-      id: 'large-pack',
+      id: 'large_pack',
       name: 'Large Pack',
       price: 19.99,
       credits: 60,
