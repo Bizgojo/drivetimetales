@@ -44,7 +44,7 @@ export default function BillingPage() {
   return (
     <div className="min-h-screen bg-gray-950 text-white">
       {/* user.credits matches DB column name */}
-      <Header isLoggedIn={!!user} showBack userCredits={user.credits_remaining} />
+      <Header isLoggedIn={!!user} showBack userCredits={user.credits}} />
       
       <div className="px-4 py-5">
         <h1 className="text-2xl font-bold text-white mb-1">💎 Billing & Credits</h1>
