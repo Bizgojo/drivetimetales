@@ -197,10 +197,10 @@ export default function HomePage() {
     )
   }
 
-  // DB column is 'display_name', not 'name'
-  const firstName = user?.display_name?.split(' ')[0] || 'there'
-  // DB column is 'credits', not 'credits_remaining'
-  const credits = user?.credits
+  // DB column is 'name', not 'display_name'
+  const firstName = user?.name?.split(' ')[0] || 'there'
+  // DB column is 'credits_remaining', not 'credits'
+  const credits = user?.credits_remaining
   const creditsDisplay = credits === -1 ? 'Unlimited' : credits
 
   return (
