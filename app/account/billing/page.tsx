@@ -43,7 +43,8 @@ export default function BillingPage() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
-      <Header isLoggedIn={!!user} showBack userCredits={user?.credits_remaining} />
+      {/* user.credits matches DB column name */}
+      <Header isLoggedIn={!!user} showBack userCredits={user?.credits} />
       
       <div className="px-4 py-5">
         <h1 className="text-2xl font-bold text-white mb-1">💎 Billing & Credits</h1>
@@ -53,7 +54,8 @@ export default function BillingPage() {
           <div className="flex justify-between items-center">
             <div>
               <p className="text-white/80 text-sm">Available Credits</p>
-              <p className="text-4xl font-bold text-white">{user?.credits_remaining || 0}</p>
+              {/* user.credits matches DB column name */}
+              <p className="text-4xl font-bold text-white">{user?.credits || 0}</p>
             </div>
             <Link href="/pricing" className="px-4 py-2 bg-white text-orange-600 font-bold rounded-xl text-sm">
               + Buy More
