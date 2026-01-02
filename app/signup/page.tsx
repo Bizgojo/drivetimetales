@@ -120,16 +120,16 @@ function SignUpContent() {
       }
       
       // Create user profile (pending subscription)
+      // DB columns: id, email, display_name, credits, subscription_type, subscription_ends_at, stripe_customer_id, stripe_subscription_id, created_at
       const { error: profileError } = await supabase
         .from('users')
         .insert({
           id: authData.user.id,
           email: email.trim(),
-          name: name.trim(),
-          subscription_status: 'pending',
-          subscription_plan: planId,
-          credits_remaining: 0,
-          created_at: new Date().toISOString()
+          display_name: name.trim(),  // DB column is 'display_name', not 'name'
+          credits: 0,                  // DB column is 'credits', not 'credits_remaining'
+          subscription_type: planId,   // DB column is 'subscription_type'
+          // Note: subscription_status and subscription_plan don't exist in DB schema
         })
       
       if (profileError) {
