@@ -52,13 +52,13 @@ export interface Story {
   created_at: string;
 }
 
-// User interface - MATCHES users table in supabase-schema-v3.sql exactly
+// User interface - MATCHES ACTUAL users table columns
 export interface User {
   id: string;
   email: string;
-  display_name?: string;
-  credits: number;  // DB column is 'credits', NOT 'credits_remaining'
-  subscription_type?: 'free' | 'test_driver' | 'commuter' | 'road_warrior';
+  name?: string;  // DB column is 'name', NOT 'display_name'
+  credits_remaining: number;  // DB column is 'credits_remaining'
+  subscription_status?: 'free' | 'test_driver' | 'commuter' | 'road_warrior';  // DB uses subscription_status
   subscription_ends_at?: string;
   stripe_customer_id?: string;
   stripe_subscription_id?: string;
@@ -207,27 +207,52 @@ export async function getStory(id: string) {
 export async function getUserProfile(userId: string) {
   console.log('[DTT Debug] getUserProfile() called with userId:', userId);
   
+  // Use direct fetch as a workaround for Supabase client hanging issue
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  
+  if (!url || !key) {
+    console.error('[DTT Debug] Missing env vars for direct fetch');
+    return null;
+  }
+  
   try {
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', userId)
-      .single();
+    const apiUrl = `${url}/rest/v1/users?id=eq.${userId}&select=*`;
+    console.log('[DTT Debug] Fetching user profile from:', apiUrl.substring(0, 60) + '...');
     
-    if (error) {
-      console.error('[DTT Debug] getUserProfile() ERROR:', error);
-      throw error;
+    const response = await fetch(apiUrl, {
+      headers: {
+        'apikey': key,
+        'Authorization': `Bearer ${key}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[DTT Debug] getUserProfile() fetch error:', response.status, errorText);
+      throw new Error(`Failed to fetch user profile: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    
+    // API returns an array, get first item
+    const user = data && data.length > 0 ? data[0] : null;
+    
+    if (!user) {
+      console.log('[DTT Debug] getUserProfile() - No user found');
+      return null;
     }
     
     console.log('[DTT Debug] getUserProfile() SUCCESS:');
-    console.log('[DTT Debug] - User email:', data?.email);
-    console.log('[DTT Debug] - User credits:', data?.credits);
-    console.log('[DTT Debug] - User keys:', Object.keys(data || {}));
+    console.log('[DTT Debug] - User email:', user.email);
+    console.log('[DTT Debug] - User name:', user.name);
+    console.log('[DTT Debug] - User credits_remaining:', user.credits_remaining);
     
-    return data as User;
+    return user as User;
   } catch (err) {
     console.error('[DTT Debug] getUserProfile() EXCEPTION:', err);
-    throw err;
+    return null;
   }
 }
 
