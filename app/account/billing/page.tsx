@@ -53,7 +53,7 @@ export default function BillingPage() {
           <div className="flex justify-between items-center">
             <div>
               <p className="text-white/80 text-sm">Available Credits</p>
-              <p className="text-4xl font-bold text-white">{user?.credits || 0}</p>
+              <p className="text-4xl font-bold text-white">{user?.credits_remaining || 0}</p>
             </div>
             <Link href="/pricing" className="px-4 py-2 bg-white text-orange-600 font-bold rounded-xl text-sm">
               + Buy More
