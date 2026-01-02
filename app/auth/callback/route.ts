@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
   // If there's a code, pass it to the client-side reset password page
   if (code) {
     // Redirect to reset-password with the code as a query param
-    return NextResponse.redirect(new URL(`${next}?code=${code}`, requestUrl.origin))
+   return NextResponse.redirect(new URL(`${next}?code=${code}`, requestUrl.origin))
   }
 
   // No code, redirect to signin
