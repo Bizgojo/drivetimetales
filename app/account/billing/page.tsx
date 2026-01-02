@@ -43,8 +43,7 @@ export default function BillingPage() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
-      {/* user.credits matches DB column name */}
-      <Header isLoggedIn={!!user} showBack userCredits={user.credits}} />
+      <Header isLoggedIn={!!user} showBack userCredits={user?.credits} />
       
       <div className="px-4 py-5">
         <h1 className="text-2xl font-bold text-white mb-1">💎 Billing & Credits</h1>
@@ -52,9 +51,9 @@ export default function BillingPage() {
 
         <div className="bg-gradient-to-r from-orange-500 to-orange-600 rounded-xl p-4 mb-6">
           <div className="flex justify-between items-center">
-         <div>
+            <div>
               <p className="text-white/80 text-sm">Available Credits</p>
-              <p className="text-4xl font-bold text-white">{user?.credits_remaining || 0}</p>
+              <p className="text-4xl font-bold text-white">{user?.credits || 0}</p>
             </div>
             <Link href="/pricing" className="px-4 py-2 bg-white text-orange-600 font-bold rounded-xl text-sm">
               + Buy More
@@ -62,7 +61,7 @@ export default function BillingPage() {
           </div>
         </div>
 
-        {user?.subscription_status !== 'free' && (
+        {user?.subscription_type !== 'free' && (
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-6">
             <div className="flex justify-between items-start mb-3">
               <div>
@@ -86,7 +85,7 @@ export default function BillingPage() {
           </div>
         )}
 
-        {user?.subscription_status === 'free' && (
+        {user?.subscription_type === 'free' && (
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-6 text-center py-6">
             <span className="text-4xl mb-3 block">🚗</span>
             <h3 className="text-white font-bold mb-1">No Active Subscription</h3>
