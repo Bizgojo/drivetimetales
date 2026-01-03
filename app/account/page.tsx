@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Header } from '@/components/ui/Header';
@@ -9,11 +9,18 @@ import { useAuth } from '@/contexts/AuthContext';
 export default function AccountPage() {
   const { user, signOut, loading } = useAuth();
   const router = useRouter();
+  const [showSignOutModal, setShowSignOutModal] = useState(false);
 
-  // Handle sign out
+  // Handle sign out with confirmation
   const handleSignOut = async () => {
+    // Save the user's name for "Welcome Back" message before signing out
+    if (user?.display_name) {
+      localStorage.setItem('dtt_remembered_name', user.display_name.split(' ')[0]);
+      localStorage.setItem('dtt_remembered_email', user.email);
+    }
+    
     await signOut();
-    router.push('/');
+    router.push('/signed-out');
   };
 
   // Show loading state
@@ -57,7 +64,7 @@ export default function AccountPage() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
-      <Header showBack isLoggedIn userCredits={user.credits} />
+      <Header showBack isLoggedIn userName={displayName} userCredits={user.credits} />
       
       <div className="px-4 py-5">
         {/* Profile Header */}
@@ -127,13 +134,49 @@ export default function AccountPage() {
             </Link>
           )}
           <button 
-            onClick={handleSignOut}
+            onClick={() => setShowSignOutModal(true)}
             className="w-full py-3 text-red-400 text-sm"
           >
             Sign Out
           </button>
         </div>
       </div>
+
+      {/* Sign Out Confirmation Modal */}
+      {showSignOutModal && (
+        <div 
+          className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 px-4"
+          onClick={() => setShowSignOutModal(false)}
+        >
+          <div 
+            className="bg-gray-900 rounded-2xl p-6 max-w-sm w-full border border-gray-800"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-center mb-4">
+              <span className="text-5xl block mb-3">👋</span>
+              <h3 className="text-xl font-bold text-white mb-2">Sign Out?</h3>
+              <p className="text-gray-400 text-sm">
+                Are you sure you want to sign out of Drive Time Tales?
+              </p>
+            </div>
+            
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowSignOutModal(false)}
+                className="flex-1 py-3 bg-gray-800 hover:bg-gray-700 text-white rounded-xl transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSignOut}
+                className="flex-1 py-3 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl transition-colors"
+              >
+                Sign Out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
