@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, Suspense } from 'react'
 import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/contexts/AuthContext'
 
 function PlayContent() {
   const router = useRouter()
@@ -10,6 +11,7 @@ function PlayContent() {
   const searchParams = useSearchParams()
   const storyId = params.id as string
   const audioRef = useRef<HTMLAudioElement>(null)
+  const { user, refreshCredits } = useAuth()
   
   const [story, setStory] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -21,6 +23,7 @@ function PlayContent() {
   const [lastPlayed, setLastPlayed] = useState<string | null>(null)
   const [hasStartedPlaying, setHasStartedPlaying] = useState(false)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [creditsDeducted, setCreditsDeducted] = useState(false)
 
   const speedOptions = [0.85, 1, 1.15]
   
@@ -173,8 +176,55 @@ function PlayContent() {
     }
   }, [playbackSpeed])
 
-  const handlePlayPause = () => {
+  const handlePlayPause = async () => {
     if (!audioRef.current) return
+    
+    // Deduct credits on first play (not resume)
+    if (!isPlaying && !creditsDeducted && user && story) {
+      const storyCredits = story.credits || 1
+      
+      // Check if user already owns this story (has it in library with progress)
+      const { data: libraryItem } = await supabase
+        .from('user_library')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('story_id', storyId)
+        .single()
+      
+      // Only deduct if not already in library (first time playing this story)
+      if (!libraryItem) {
+        // Road Warrior has unlimited (-1)
+        if (user.credits !== -1) {
+          // Deduct credits
+          const newCredits = Math.max(0, (user.credits || 0) - storyCredits)
+          
+          const { error: updateError } = await supabase
+            .from('users')
+            .update({ credits: newCredits })
+            .eq('id', user.id)
+          
+          if (updateError) {
+            console.error('Failed to deduct credits:', updateError)
+          } else {
+            console.log(`Deducted ${storyCredits} credits. New balance: ${newCredits}`)
+            // Refresh user data to update UI
+            if (refreshCredits) refreshCredits()
+          }
+        }
+        
+        // Add to user's library
+        await supabase
+          .from('user_library')
+          .insert({
+            user_id: user.id,
+            story_id: storyId,
+            progress_seconds: 0,
+            last_played_at: new Date().toISOString()
+          })
+      }
+      
+      setCreditsDeducted(true)
+    }
     
     if (isPlaying) {
       audioRef.current.pause()
