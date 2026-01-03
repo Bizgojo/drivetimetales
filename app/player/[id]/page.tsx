@@ -137,8 +137,8 @@ function PlayerContent() {
             .insert({
               user_id: user.id,
               story_id: storyId,
-              progress_seconds: 0,
-              last_played_at: new Date().toISOString()
+              progress: 0,
+              last_played: new Date().toISOString()
             })
           
           // Refresh user credits in UI

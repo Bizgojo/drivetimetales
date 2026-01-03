@@ -147,8 +147,8 @@ function PlayContent() {
             .upsert({
               user_id: session.user.id,
               story_id: storyId,
-              progress_seconds: Math.floor(currentTime),
-              last_played_at: new Date().toISOString()
+              progress: Math.floor(currentTime),
+              last_played: new Date().toISOString()
             }, {
               onConflict: 'user_id,story_id'
             })
@@ -281,8 +281,8 @@ function PlayContent() {
             .upsert({
               user_id: session.user.id,
               story_id: storyId,
-              progress_seconds: Math.floor(currentTime),
-              last_played_at: new Date().toISOString()
+              progress: Math.floor(currentTime),
+              last_played: new Date().toISOString()
             }, {
               onConflict: 'user_id,story_id'
             })

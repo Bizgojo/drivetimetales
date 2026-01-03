@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation'
 import { useState, useEffect, useRef, Suspense } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { getStory, Story } from '@/lib/supabase'
+import { Header } from '@/components/ui/Header'
 
 const genreColors: Record<string, string> = {
   'Mystery': 'from-purple-600 to-purple-900',
@@ -84,7 +85,7 @@ function StoryContent() {
 
   if (loading) {
     return (
-      <div className="py-12 px-4 text-center">
+      <div className="min-h-screen bg-slate-950 text-white py-12 px-4 text-center">
         <div className="inline-block w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mb-4" />
         <p className="text-slate-400">Loading story...</p>
       </div>
@@ -93,7 +94,7 @@ function StoryContent() {
 
   if (error || !story) {
     return (
-      <div className="py-12 px-4 text-center">
+      <div className="min-h-screen bg-slate-950 text-white py-12 px-4 text-center">
         <h1 className="text-xl text-white mb-4">Story not found</h1>
         <Link href="/library" className="text-orange-400">← Back to Library</Link>
       </div>
@@ -107,11 +108,14 @@ function StoryContent() {
     user.credits >= creditsNeeded
   )
   const gradientColor = genreColors[story.genre] || 'from-slate-600 to-slate-800'
+  const displayName = user?.display_name || user?.email?.split('@')[0]
 
   return (
-    <div className="py-8 px-4">
-      <div className="max-w-3xl mx-auto">
-        <Link href="/library" className="text-slate-400 hover:text-white text-sm mb-6 inline-block">← Back to Library</Link>
+    <div className="min-h-screen bg-slate-950 text-white">
+      <Header isLoggedIn={!!user} showBack userName={displayName} userCredits={user?.credits} />
+      
+      <div className="py-4 px-4">
+        <div className="max-w-3xl mx-auto">
         
         <div className="flex flex-col md:flex-row gap-6">
           {/* Cover */}
