@@ -116,7 +116,7 @@ async function handleSubscriptionUpdate(subscription: Stripe.Subscription) {
   const customerId = subscription.customer as string;
   const priceId = subscription.items.data[0]?.price.id;
 
-  // Determine subscription type from price ID
+  // Determine subscription type and credits from price ID
   let subscriptionType: 'free' | 'test_driver' | 'commuter' | 'road_warrior' = 'free';
   let monthlyCredits = 0;
 
@@ -125,10 +125,10 @@ async function handleSubscriptionUpdate(subscription: Stripe.Subscription) {
     if (product.priceId === priceId) {
       if (key.includes('test_driver')) {
         subscriptionType = 'test_driver';
-        monthlyCredits = 12;
+        monthlyCredits = 10;
       } else if (key.includes('commuter')) {
         subscriptionType = 'commuter';
-        monthlyCredits = 45;
+        monthlyCredits = 30;
       } else if (key.includes('road_warrior')) {
         subscriptionType = 'road_warrior';
         monthlyCredits = -1; // Unlimited
@@ -149,16 +149,27 @@ async function handleSubscriptionUpdate(subscription: Stripe.Subscription) {
     return;
   }
 
-  // Update user subscription
+  // Update user subscription AND add credits for new subscriptions
+  const updateData: any = {
+    subscription_type: subscriptionType,
+    subscription_ends_at: new Date(subscription.current_period_end * 1000).toISOString(),
+  };
+
+  // Add credits if this is a new subscription (user currently has 'free' or few credits)
+  // For Road Warrior, set credits to -1 (unlimited)
+  if (monthlyCredits === -1) {
+    updateData.credits = -1; // Unlimited
+  } else if (monthlyCredits > 0) {
+    // Add monthly credits to existing credits
+    updateData.credits = (user.credits || 0) + monthlyCredits;
+  }
+
   await supabaseAdmin
     .from('users')
-    .update({
-      subscription_type: subscriptionType,
-      subscription_ends_at: new Date(subscription.current_period_end * 1000).toISOString(),
-    })
+    .update(updateData)
     .eq('id', user.id);
 
-  console.log(`Updated subscription for user ${user.id} to ${subscriptionType}`);
+  console.log(`Updated subscription for user ${user.id} to ${subscriptionType}, credits: ${updateData.credits}`);
 }
 
 async function handleSubscriptionCanceled(subscription: Stripe.Subscription) {
@@ -195,11 +206,18 @@ async function handleInvoicePaid(invoice: Stripe.Invoice) {
 
   if (!subscriptionId) return;
 
+  // Skip the first invoice (handled by handleSubscriptionUpdate)
+  // Only process renewal invoices
+  if (invoice.billing_reason === 'subscription_create') {
+    console.log('Skipping initial subscription invoice - handled by subscription update');
+    return;
+  }
+
   // Get the subscription to find the price
   const subscription = await stripe.subscriptions.retrieve(subscriptionId);
   const priceId = subscription.items.data[0]?.price.id;
 
-  // Determine credits to add
+  // Determine credits to add based on price
   let creditsToAdd = 0;
   for (const [key, product] of Object.entries(PRODUCTS.subscriptions)) {
     if (product.priceId === priceId) {
@@ -226,16 +244,6 @@ async function handleInvoicePaid(invoice: Stripe.Invoice) {
     .from('users')
     .update({ credits: user.credits + creditsToAdd })
     .eq('id', user.id);
-
-  // Record the purchase
-  await supabaseAdmin.from('purchases').insert({
-    user_id: user.id,
-    type: 'subscription',
-    product_id: subscriptionId,
-    amount_cents: invoice.amount_paid,
-    credits_added: creditsToAdd,
-    stripe_payment_id: invoice.payment_intent as string,
-  });
 
   console.log(`Added ${creditsToAdd} monthly credits to user ${user.id}`);
 }

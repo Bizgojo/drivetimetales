@@ -12,25 +12,25 @@ export const PRODUCTS = {
     test_driver_monthly: {
       priceId: process.env.STRIPE_PRICE_TEST_DRIVER_MONTHLY!,
       name: 'Test Driver',
-      credits: 12,
+      credits: 10,
       interval: 'month' as const,
     },
     test_driver_annual: {
       priceId: process.env.STRIPE_PRICE_TEST_DRIVER_ANNUAL!,
       name: 'Test Driver (Annual)',
-      credits: 12,
+      credits: 10,
       interval: 'year' as const,
     },
     commuter_monthly: {
       priceId: process.env.STRIPE_PRICE_COMMUTER_MONTHLY!,
       name: 'Commuter',
-      credits: 45,
+      credits: 30,
       interval: 'month' as const,
     },
     commuter_annual: {
       priceId: process.env.STRIPE_PRICE_COMMUTER_ANNUAL!,
       name: 'Commuter (Annual)',
-      credits: 45,
+      credits: 30,
       interval: 'year' as const,
     },
     road_warrior_monthly: {
