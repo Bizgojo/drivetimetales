@@ -132,18 +132,18 @@ function PlayerContent() {
           }
           
           // Add to user's library in database
+          const insertData = {
+            user_id: user.id,
+            story_id: storyId
+          }
+          console.log('Inserting to user_library:', insertData)
+          
           const { error: libraryError } = await supabase
             .from('user_library')
-            .insert({
-              user_id: user.id,
-              story_id: storyId,
-              progress: 0,
-              last_played: new Date().toISOString(),
-              completed: false
-            })
+            .insert(insertData)
           
           if (libraryError) {
-            console.error('Failed to add to library:', libraryError)
+            console.error('Failed to add to library:', JSON.stringify(libraryError))
           } else {
             console.log('Added to library successfully')
           }
