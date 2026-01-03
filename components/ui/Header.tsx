@@ -50,6 +50,16 @@ export const Header = ({
               🔍
             </Link>
             
+            {/* User Avatar - links to account */}
+            {isLoggedIn && userName && (
+              <Link 
+                href="/account"
+                className="w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center text-black font-bold text-sm"
+              >
+                {userName.charAt(0).toUpperCase()}
+              </Link>
+            )}
+            
             <button 
               onClick={handleMenuToggle}
               className="text-white text-xl"
