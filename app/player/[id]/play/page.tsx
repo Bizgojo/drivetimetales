@@ -144,14 +144,12 @@ function PlayContent() {
         if (session?.user?.id) {
           await supabase
             .from('user_library')
-            .upsert({
-              user_id: session.user.id,
-              story_id: storyId,
+            .update({
               progress: Math.floor(currentTime),
               last_played: new Date().toISOString()
-            }, {
-              onConflict: 'user_id,story_id'
             })
+            .eq('user_id', session.user.id)
+            .eq('story_id', storyId)
         }
       } else {
         // Save to localStorage for newcomers
@@ -278,14 +276,12 @@ function PlayContent() {
         if (session?.user?.id) {
           await supabase
             .from('user_library')
-            .upsert({
-              user_id: session.user.id,
-              story_id: storyId,
+            .update({
               progress: Math.floor(currentTime),
               last_played: new Date().toISOString()
-            }, {
-              onConflict: 'user_id,story_id'
             })
+            .eq('user_id', session.user.id)
+            .eq('story_id', storyId)
         }
       } else {
         // Save to localStorage for newcomers
