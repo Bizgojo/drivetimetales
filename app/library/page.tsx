@@ -4,10 +4,12 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useStories } from '@/hooks/useData'
+import { useAuth } from '@/contexts/AuthContext'
 
 export default function LibraryPage() {
   const router = useRouter()
   const { stories, loading, error } = useStories()
+  const { user } = useAuth()
   const [genre, setGenre] = useState('All')
   const [duration, setDuration] = useState('All')
   const [showSearchMenu, setShowSearchMenu] = useState(false)
@@ -116,10 +118,10 @@ export default function LibraryPage() {
     <div className="min-h-screen bg-slate-950 text-white pb-8">
       <div className="max-w-2xl mx-auto px-4 py-4">
         
-        {/* Header - Logo left, Back button right */}
+        {/* Header - Logo left, User avatar right */}
         <div className="flex items-center justify-between mb-4">
           {/* Logo */}
-          <Link href="/welcome" className="flex items-center gap-1">
+          <Link href={user ? '/home' : '/welcome'} className="flex items-center gap-1">
             <span className="text-2xl">🚛</span>
             <span className="text-2xl">🚗</span>
             <div className="flex items-baseline ml-1">
@@ -128,14 +130,32 @@ export default function LibraryPage() {
             </div>
           </Link>
           
-          {/* Back button */}
-          <button 
-            onClick={() => router.back()}
-            className="text-slate-400 hover:text-white text-sm flex items-center gap-1"
-          >
-            <span>Back</span>
-            <span>→</span>
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Back button */}
+            <button 
+              onClick={() => router.back()}
+              className="px-3 py-1.5 bg-slate-800 rounded-lg text-slate-400 hover:text-white text-sm"
+            >
+              ← Back
+            </button>
+            
+            {/* User avatar or Sign In */}
+            {user ? (
+              <Link 
+                href="/account"
+                className="w-9 h-9 bg-orange-500 rounded-full flex items-center justify-center text-black font-bold text-sm"
+              >
+                {(user.display_name || user.email || 'U').charAt(0).toUpperCase()}
+              </Link>
+            ) : (
+              <Link 
+                href="/auth/login"
+                className="px-3 py-1.5 bg-orange-500 rounded-lg text-black text-sm font-medium"
+              >
+                Sign In
+              </Link>
+            )}
+          </div>
         </div>
 
         {/* Page Title - LARGER */}
