@@ -53,9 +53,9 @@ export default function HomePage() {
       try {
         const { data: libraryItems } = await supabase
           .from('user_library')
-          .select('story_id, progress_seconds, last_played_at')
+          .select('story_id, progress, last_played')
           .eq('user_id', user.id)
-          .order('last_played_at', { ascending: false })
+          .order('last_played', { ascending: false })
           .limit(6)
         
         if (libraryItems && libraryItems.length > 0) {
@@ -69,6 +69,7 @@ export default function HomePage() {
           // Combine library items with story data
           const itemsWithStories = libraryItems.map(item => ({
             ...item,
+            progress_seconds: item.progress, // Map to expected name
             story: stories?.find(s => s.id === item.story_id)
           }))
           
