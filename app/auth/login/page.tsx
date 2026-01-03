@@ -96,14 +96,16 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white flex flex-col">
-      {/* Header */}
-      <header className="px-4 py-4">
-        <button 
-          onClick={() => router.push('/welcome')}
-          className="text-white"
-        >
-          ← Back
-        </button>
+      {/* Header - only show Back button for new users, not returning users */}
+      <header className="px-4 py-4 h-12">
+        {!rememberedName && (
+          <button 
+            onClick={() => router.push('/welcome')}
+            className="text-white"
+          >
+            ← Back
+          </button>
+        )}
       </header>
 
       {/* Content */}
