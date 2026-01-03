@@ -8,8 +8,9 @@ import { getStories, Story, supabase } from '@/lib/supabase'
 
 interface LibraryItem {
   story_id: string;
+  progress: number;
+  last_played: string;
   progress_seconds: number;
-  last_played_at: string;
   story?: Story;
 }
 
