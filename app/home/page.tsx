@@ -4,14 +4,20 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
-import { getStories, Story } from '@/lib/supabase'
+import { getStories, Story, supabase } from '@/lib/supabase'
 
-
+interface LibraryItem {
+  story_id: string;
+  progress_seconds: number;
+  last_played_at: string;
+  story?: Story;
+}
 
 export default function HomePage() {
   const router = useRouter()
   const { user, loading: authLoading } = useAuth()
   const [recentlyAdded, setRecentlyAdded] = useState<Story[]>([])
+  const [continueListening, setContinueListening] = useState<LibraryItem[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -41,6 +47,35 @@ export default function HomePage() {
         setRecentlyAdded(stories as Story[])
       } catch (err) {
         console.error('[DTT Debug] Error getting stories:', err)
+      }
+      
+      // Get user's library (stories in progress)
+      try {
+        const { data: libraryItems } = await supabase
+          .from('user_library')
+          .select('story_id, progress_seconds, last_played_at')
+          .eq('user_id', user.id)
+          .order('last_played_at', { ascending: false })
+          .limit(6)
+        
+        if (libraryItems && libraryItems.length > 0) {
+          // Fetch story details for each library item
+          const storyIds = libraryItems.map(item => item.story_id)
+          const { data: stories } = await supabase
+            .from('stories')
+            .select('*')
+            .in('id', storyIds)
+          
+          // Combine library items with story data
+          const itemsWithStories = libraryItems.map(item => ({
+            ...item,
+            story: stories?.find(s => s.id === item.story_id)
+          }))
+          
+          setContinueListening(itemsWithStories)
+        }
+      } catch (err) {
+        console.error('[DTT Debug] Error getting library:', err)
       }
       
       setLoading(false)
@@ -93,6 +128,54 @@ export default function HomePage() {
             <span className="text-orange-400 font-medium">{creditsDisplay}</span> credits
           </Link>
         </div>
+
+        {/* Continue Listening */}
+        {continueListening.length > 0 && (
+          <div className="mb-8">
+            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              <span>▶️</span> Continue Listening
+            </h2>
+            
+            <div className="space-y-3">
+              {continueListening.map((item) => {
+                if (!item.story) return null
+                const progressPercent = item.story.duration_mins 
+                  ? Math.round((item.progress_seconds / (item.story.duration_mins * 60)) * 100)
+                  : 0
+                
+                return (
+                  <Link 
+                    href={`/player/${item.story_id}/play?resume=true&autoplay=true`} 
+                    key={item.story_id}
+                    className="flex items-center gap-3 p-3 bg-slate-900 rounded-xl border border-slate-800 hover:border-orange-500 transition-colors"
+                  >
+                    <div className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0">
+                      <img 
+                        src={item.story.cover_url || '/placeholder-cover.jpg'} 
+                        alt={item.story.title}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white font-medium truncate">{item.story.title}</p>
+                      <p className="text-slate-400 text-sm">{item.story.author}</p>
+                      <div className="mt-1 flex items-center gap-2">
+                        <div className="flex-1 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-orange-500 rounded-full"
+                            style={{ width: `${Math.min(progressPercent, 100)}%` }}
+                          />
+                        </div>
+                        <span className="text-xs text-slate-500">{progressPercent}%</span>
+                      </div>
+                    </div>
+                    <div className="text-2xl">▶️</div>
+                  </Link>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Recently Added */}
         <div className="mb-8">

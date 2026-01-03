@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, Suspense } from 'react'
+import Link from 'next/link'
 import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
@@ -340,7 +341,7 @@ function PlayContent() {
 
       <div className="max-w-md mx-auto px-4 py-4">
         
-        {/* Logo + Back Button Row */}
+        {/* Logo + Back Button + Avatar Row */}
         <div className="flex items-center justify-between mb-4">
           {/* Logo */}
           <div className="flex items-center gap-1">
@@ -352,13 +353,25 @@ function PlayContent() {
             </div>
           </div>
           
-          {/* Back button */}
-          <button 
-            onClick={handleBack}
-            className="px-3 py-1.5 bg-slate-800 rounded-lg"
-          >
-            <span className="text-orange-400 text-sm font-medium">← Back</span>
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Back button */}
+            <button 
+              onClick={handleBack}
+              className="px-3 py-1.5 bg-slate-800 rounded-lg"
+            >
+              <span className="text-orange-400 text-sm font-medium">← Back</span>
+            </button>
+            
+            {/* User avatar */}
+            {user && (
+              <Link 
+                href="/account"
+                className="w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center text-black font-bold text-sm"
+              >
+                {(user.display_name || user.email || 'U').charAt(0).toUpperCase()}
+              </Link>
+            )}
+          </div>
         </div>
 
         {/* In Library notice */}
