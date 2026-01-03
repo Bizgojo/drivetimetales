@@ -1,17 +1,19 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Header } from '@/components/ui/Header';
 import { useAuth } from '@/contexts/AuthContext';
 
-interface Purchase {
+interface Invoice {
   id: string;
   date: string;
   description: string;
   amount: number;
   credits: number;
-  type: 'subscription' | 'credit_pack' | 'story';
+  type: 'subscription' | 'credit_pack';
+  invoice_url?: string;
+  receipt_url?: string;
 }
 
 // Helper to get plan details
@@ -24,13 +26,17 @@ const getPlanDetails = (subscriptionType: string) => {
     case 'road_warrior':
       return { name: 'Road Warrior', amount: 14.99, credits: 999, icon: '🚛' };
     default:
-      return { name: 'Free', amount: 0, credits: 6, icon: '🚶' };
+      return { name: 'Free', amount: 0, credits: 0, icon: '🚶' };
   }
 };
 
 export default function BillingPage() {
-  const { user } = useAuth();
+  const { user, session } = useAuth();
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [totalSpent, setTotalSpent] = useState(0);
+  const [totalCredits, setTotalCredits] = useState(0);
+  const [loadingInvoices, setLoadingInvoices] = useState(true);
   
   // Get display name for header
   const displayName = user?.display_name || user?.email?.split('@')[0] || 'User';
@@ -38,21 +44,43 @@ export default function BillingPage() {
   // Get actual plan details based on user's subscription
   const planDetails = getPlanDetails(user?.subscription_type || 'free');
   
-  // Calculate next billing date (30 days from now as placeholder - ideally from Stripe)
+  // Calculate next billing date
   const nextBillingDate = user?.subscription_ends_at 
     ? new Date(user.subscription_ends_at).toISOString().split('T')[0]
     : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+  // Fetch purchase history from Stripe
+  useEffect(() => {
+    async function fetchInvoices() {
+      if (!session?.user?.id) {
+        setLoadingInvoices(false);
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/user/invoices?userId=${session.user.id}`);
+        const data = await response.json();
+        
+        if (data.invoices) {
+          setInvoices(data.invoices);
+          setTotalSpent(data.total_spent || 0);
+          setTotalCredits(data.total_credits || 0);
+        }
+      } catch (error) {
+        console.error('Error fetching invoices:', error);
+      } finally {
+        setLoadingInvoices(false);
+      }
+    }
+
+    fetchInvoices();
+  }, [session?.user?.id]);
 
   const handleCancelSubscription = async () => {
     console.log('Canceling subscription...');
     // TODO: Implement actual cancellation via Stripe API
     setShowCancelModal(false);
   };
-
-  // TODO: Fetch actual purchase history from database
-  const purchases: Purchase[] = [];
-  const totalSpent = purchases.reduce((sum, p) => sum + p.amount, 0);
-  const totalCredits = purchases.reduce((sum, p) => sum + p.credits, 0);
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
@@ -67,7 +95,7 @@ export default function BillingPage() {
             <div>
               <p className="text-white/80 text-sm">Available Credits</p>
               <p className="text-4xl font-bold text-white">
-                {user?.subscription_type === 'road_warrior' ? '∞' : (user?.credits || 0)}
+                {user?.credits === -1 ? '∞' : (user?.credits || 0)}
               </p>
             </div>
             <Link href="/pricing" className="px-4 py-2 bg-white text-orange-600 font-bold rounded-xl text-sm">
@@ -125,31 +153,39 @@ export default function BillingPage() {
         </div>
 
         <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-          {purchases.length > 0 ? (
+          {loadingInvoices ? (
+            <div className="p-8 text-center">
+              <div className="inline-block w-6 h-6 border-2 border-orange-500 border-t-transparent rounded-full animate-spin mb-2" />
+              <p className="text-gray-400 text-sm">Loading purchase history...</p>
+            </div>
+          ) : invoices.length > 0 ? (
             <div className="divide-y divide-gray-800">
-              {purchases.map((purchase) => (
-                <div key={purchase.id} className="p-4 flex items-center justify-between">
+              {invoices.map((invoice) => (
+                <div key={invoice.id} className="p-4 flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg ${
-                      purchase.type === 'subscription' ? 'bg-violet-500/20 text-violet-400' :
-                      purchase.type === 'credit_pack' ? 'bg-orange-500/20 text-orange-400' : 'bg-blue-500/20 text-blue-400'
+                      invoice.type === 'subscription' ? 'bg-violet-500/20 text-violet-400' : 'bg-orange-500/20 text-orange-400'
                     }`}>
-                      {purchase.type === 'subscription' ? '📅' : purchase.type === 'credit_pack' ? '📦' : '📖'}
+                      {invoice.type === 'subscription' ? '📅' : '📦'}
                     </div>
                     <div>
-                      <p className="text-white font-medium">{purchase.description}</p>
-                      <p className="text-white text-sm">{purchase.date}</p>
+                      <p className="text-white font-medium">{invoice.description}</p>
+                      <p className="text-gray-400 text-sm">{invoice.date}</p>
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-white font-bold">${purchase.amount.toFixed(2)}</p>
-                    <p className="text-orange-400 text-sm">+{purchase.credits} credits</p>
+                    <p className="text-white font-bold">${invoice.amount.toFixed(2)}</p>
+                    <p className="text-orange-400 text-sm">
+                      {invoice.credits === -1 ? '∞ Unlimited' : `+${invoice.credits} credits`}
+                    </p>
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="p-8 text-center"><p className="text-white">No purchase history yet</p></div>
+            <div className="p-8 text-center">
+              <p className="text-gray-400">No purchase history yet</p>
+            </div>
           )}
         </div>
 
@@ -162,10 +198,15 @@ export default function BillingPage() {
               </div>
               <div>
                 <p className="text-white">Managed by Stripe</p>
-                <p className="text-white text-sm">Update in Stripe portal</p>
+                <p className="text-gray-400 text-sm">Update payment method</p>
               </div>
             </div>
-            <button className="text-orange-400 text-sm">Manage</button>
+            <Link 
+              href={`/api/user/portal?userId=${session?.user?.id || ''}`}
+              className="text-orange-400 text-sm hover:underline"
+            >
+              Manage
+            </Link>
           </div>
         </div>
       </div>
@@ -174,7 +215,7 @@ export default function BillingPage() {
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 px-4" onClick={() => setShowCancelModal(false)}>
           <div className="bg-gray-900 rounded-xl p-6 max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-xl font-bold text-white mb-2">Cancel Subscription?</h3>
-            <p className="text-white text-sm mb-4">You'll lose access to monthly credits at the end of your billing period.</p>
+            <p className="text-gray-400 text-sm mb-4">You'll lose access to monthly credits at the end of your billing period.</p>
             <div className="flex gap-3">
               <button onClick={() => setShowCancelModal(false)} className="flex-1 py-3 bg-gray-800 text-white rounded-xl">Keep Plan</button>
               <button onClick={handleCancelSubscription} className="flex-1 py-3 bg-red-600 text-white font-bold rounded-xl">Cancel</button>
