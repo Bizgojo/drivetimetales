@@ -187,7 +187,7 @@ export default function HomePage() {
           {recentlyAdded.length > 0 ? (
             <div className="grid grid-cols-3 gap-3">
               {recentlyAdded.map((story) => (
-                <Link href={`/story/${story.id}`} key={story.id} className="group">
+                <Link href={`/player/${story.id}`} key={story.id} className="group">
                   <div className="relative aspect-[3/4] rounded-xl overflow-hidden mb-2">
                     <img 
                       src={story.cover_url || '/placeholder-cover.jpg'} 
