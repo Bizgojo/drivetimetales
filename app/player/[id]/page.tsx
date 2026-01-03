@@ -6,6 +6,15 @@ import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 
+// Generate UUID for library entries
+const generateUUID = () => {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0
+    const v = c === 'x' ? r : (r & 0x3 | 0x8)
+    return v.toString(16)
+  })
+}
+
 function PlayerContent() {
   const router = useRouter()
   const params = useParams()
@@ -132,14 +141,20 @@ function PlayerContent() {
           }
           
           // Add to user's library in database
-          await supabase
+          const { error: libraryError } = await supabase
             .from('user_library')
             .insert({
+              id: generateUUID(),
               user_id: user.id,
               story_id: storyId,
               progress: 0,
-              last_played: new Date().toISOString()
+              last_played: new Date().toISOString(),
+              completed: false
             })
+          
+          if (libraryError) {
+            console.error('Failed to add to library:', libraryError)
+          }
           
           // Refresh user credits in UI
           if (refreshCredits) await refreshCredits()
