@@ -222,7 +222,7 @@ export default function HomePage() {
         {/* Bottom Navigation */}
         <div className="fixed bottom-0 left-0 right-0 p-4 bg-slate-950">
           <div className="max-w-2xl mx-auto flex gap-3">
-            <Link href="/welcome" className="flex-1 py-4 bg-orange-500 text-white font-bold rounded-xl text-center flex items-center justify-center gap-2">
+            <Link href="/library" className="flex-1 py-4 bg-orange-500 text-white font-bold rounded-xl text-center flex items-center justify-center gap-2">
               <span>🔍</span> Browse All
             </Link>
             <Link href="/wishlist" className="flex-1 py-4 bg-blue-500 text-white font-bold rounded-xl text-center flex items-center justify-center gap-2">
