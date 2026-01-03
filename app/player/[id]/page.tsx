@@ -4,12 +4,14 @@ import { useState, useEffect, Suspense } from 'react'
 import Link from 'next/link'
 import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/contexts/AuthContext'
 
 function PlayerContent() {
   const router = useRouter()
   const params = useParams()
   const searchParams = useSearchParams()
   const storyId = params.id as string
+  const { user } = useAuth()
   
   const [story, setStory] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -156,7 +158,18 @@ function PlayerContent() {
   }
 
   const storyCredits = story.credits || 1
-  const canPlayFree = storyCredits <= 2 && freeCredits > 0
+  
+  // Check if user is a subscriber with credits
+  const isSubscriber = user && (
+    user.subscription_type === 'road_warrior' ||
+    user.subscription_type === 'commuter' ||
+    user.subscription_type === 'test_driver'
+  )
+  const hasEnoughCredits = user && (user.credits === -1 || user.credits >= storyCredits)
+  const canPlayAsSubscriber = isSubscriber && hasEnoughCredits
+  
+  // For non-logged-in users, check localStorage free credits
+  const canPlayFree = !user && storyCredits <= 2 && freeCredits > 0
 
   // Format saved progress for display
   const formatProgress = (seconds: number) => {
@@ -179,7 +192,7 @@ function PlayerContent() {
 
       <div className="max-w-md mx-auto px-4 py-4">
         
-        {/* Logo + Back Button Row */}
+        {/* Logo + Back Button + User Avatar Row */}
         <div className="flex items-center justify-between mb-4">
           {/* Logo */}
           <div className="flex items-center gap-1">
@@ -191,13 +204,32 @@ function PlayerContent() {
             </div>
           </div>
           
-          {/* Back button */}
-          <button 
-            onClick={handleBack}
-            className="px-3 py-1.5 bg-slate-800 rounded-lg"
-          >
-            <span className="text-orange-400 text-sm font-medium">← Back</span>
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Back button */}
+            <button 
+              onClick={handleBack}
+              className="px-3 py-1.5 bg-slate-800 rounded-lg"
+            >
+              <span className="text-orange-400 text-sm font-medium">← Back</span>
+            </button>
+            
+            {/* User avatar or Sign In */}
+            {user ? (
+              <Link 
+                href="/account"
+                className="w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center text-black font-bold text-sm"
+              >
+                {(user.display_name || user.email || 'U').charAt(0).toUpperCase()}
+              </Link>
+            ) : (
+              <Link 
+                href="/auth/login"
+                className="px-3 py-1.5 bg-orange-500 rounded-lg"
+              >
+                <span className="text-black text-sm font-medium">Sign In</span>
+              </Link>
+            )}
+          </div>
         </div>
 
         {/* Cover - large */}
@@ -262,6 +294,15 @@ function PlayerContent() {
             >
               <span className="text-black font-bold text-lg">Resume Story</span>
             </button>
+          ) : canPlayAsSubscriber ? (
+            <button 
+              onClick={handlePlay}
+              className="w-full py-4 bg-green-500 hover:bg-green-400 rounded-xl transition-colors"
+            >
+              <span className="text-black font-bold text-lg">
+                {user?.credits === -1 ? 'Play Now (Unlimited)' : `Play Now (${storyCredits} credit${storyCredits !== 1 ? 's' : ''})`}
+              </span>
+            </button>
           ) : canPlayFree ? (
             <button 
               onClick={handlePlay}
@@ -269,6 +310,13 @@ function PlayerContent() {
             >
               <span className="text-black font-bold text-lg">Play Free</span>
             </button>
+          ) : user ? (
+            <Link 
+              href="/pricing"
+              className="w-full py-4 bg-yellow-500 hover:bg-yellow-400 rounded-xl transition-colors block text-center"
+            >
+              <span className="text-black font-bold text-lg">Need More Credits</span>
+            </Link>
           ) : (
             <Link 
               href="/pricing"
