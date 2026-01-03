@@ -11,7 +11,7 @@ function PlayerContent() {
   const params = useParams()
   const searchParams = useSearchParams()
   const storyId = params.id as string
-  const { user } = useAuth()
+  const { user, refreshCredits } = useAuth()
   
   const [story, setStory] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -19,6 +19,7 @@ function PlayerContent() {
   const [hasProgress, setHasProgress] = useState(false)
   const [savedProgress, setSavedProgress] = useState(0)
   const [freeCredits, setFreeCredits] = useState(0)
+  const [isProcessing, setIsProcessing] = useState(false)
   
   // Sponsor banner from QR code
   const [sponsorData, setSponsorData] = useState<{
@@ -94,23 +95,84 @@ function PlayerContent() {
     }
   }, [storyId, searchParams])
 
-  const handlePlay = () => {
-    // Add to library if not already there
-    const libraryData = localStorage.getItem('dtt_library')
-    const library = libraryData ? JSON.parse(libraryData) : []
-    const existingIndex = library.findIndex((item: any) => item.storyId === storyId)
+  const handlePlay = async () => {
+    if (isProcessing) return
+    setIsProcessing(true)
     
-    if (existingIndex === -1) {
-      library.push({
-        storyId: storyId,
-        lastPlayed: new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
-        progress: 0
-      })
-      localStorage.setItem('dtt_library', JSON.stringify(library))
+    try {
+      const storyCredits = story?.credits || 1
+      
+      // For logged-in subscribers, deduct credits and add to library
+      if (user) {
+        // Check if already in user's library (already paid for)
+        const { data: existingLibraryItem } = await supabase
+          .from('user_library')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('story_id', storyId)
+          .single()
+        
+        if (!existingLibraryItem) {
+          // Deduct credits (unless unlimited)
+          if (user.credits !== -1) {
+            const newCredits = Math.max(0, (user.credits || 0) - storyCredits)
+            
+            const { error: updateError } = await supabase
+              .from('users')
+              .update({ credits: newCredits })
+              .eq('id', user.id)
+            
+            if (updateError) {
+              console.error('Failed to deduct credits:', updateError)
+              setIsProcessing(false)
+              return
+            }
+            
+            console.log(`Deducted ${storyCredits} credits. New balance: ${newCredits}`)
+          }
+          
+          // Add to user's library in database
+          await supabase
+            .from('user_library')
+            .insert({
+              user_id: user.id,
+              story_id: storyId,
+              progress_seconds: 0,
+              last_played_at: new Date().toISOString()
+            })
+          
+          // Refresh user credits in UI
+          if (refreshCredits) await refreshCredits()
+        }
+      } else {
+        // Non-logged-in user - use localStorage
+        const libraryData = localStorage.getItem('dtt_library')
+        const library = libraryData ? JSON.parse(libraryData) : []
+        const existingIndex = library.findIndex((item: any) => item.storyId === storyId)
+        
+        if (existingIndex === -1) {
+          // Deduct free credits
+          const currentFreeCredits = parseInt(localStorage.getItem('dtt_free_credits') || '2')
+          if (currentFreeCredits > 0) {
+            localStorage.setItem('dtt_free_credits', String(currentFreeCredits - 1))
+          }
+          
+          library.push({
+            storyId: storyId,
+            lastPlayed: new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
+            progress: 0
+          })
+          localStorage.setItem('dtt_library', JSON.stringify(library))
+        }
+      }
+      
+      // Go to play page
+      router.push(`/player/${storyId}/play?autoplay=true`)
+    } catch (error) {
+      console.error('Error starting playback:', error)
+    } finally {
+      setIsProcessing(false)
     }
-    
-    // Go to play page with autoplay flag - FIXED SYNTAX
-    router.push(`/player/${storyId}/play?autoplay=true`)
   }
 
   const handleResume = () => {
@@ -297,18 +359,35 @@ function PlayerContent() {
           ) : canPlayAsSubscriber ? (
             <button 
               onClick={handlePlay}
-              className="w-full py-4 bg-green-500 hover:bg-green-400 rounded-xl transition-colors"
+              disabled={isProcessing}
+              className={`w-full py-4 rounded-xl transition-colors ${
+                isProcessing 
+                  ? 'bg-gray-500 cursor-not-allowed' 
+                  : 'bg-green-500 hover:bg-green-400'
+              }`}
             >
               <span className="text-black font-bold text-lg">
-                {user?.credits === -1 ? 'Play Now (Unlimited)' : `Play Now (${storyCredits} credit${storyCredits !== 1 ? 's' : ''})`}
+                {isProcessing 
+                  ? 'Processing...' 
+                  : user?.credits === -1 
+                    ? 'Play Now (Unlimited)' 
+                    : `Play Now (${storyCredits} credit${storyCredits !== 1 ? 's' : ''})`
+                }
               </span>
             </button>
           ) : canPlayFree ? (
             <button 
               onClick={handlePlay}
-              className="w-full py-4 bg-green-500 hover:bg-green-400 rounded-xl transition-colors"
+              disabled={isProcessing}
+              className={`w-full py-4 rounded-xl transition-colors ${
+                isProcessing 
+                  ? 'bg-gray-500 cursor-not-allowed' 
+                  : 'bg-green-500 hover:bg-green-400'
+              }`}
             >
-              <span className="text-black font-bold text-lg">Play Free</span>
+              <span className="text-black font-bold text-lg">
+                {isProcessing ? 'Processing...' : 'Play Free'}
+              </span>
             </button>
           ) : user ? (
             <Link 

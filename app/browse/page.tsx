@@ -3,6 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { Header } from '@/components/ui/Header';
+import { useAuth } from '@/contexts/AuthContext';
 
 const categories = [
   { id: 'trucker', name: 'Trucker Stories', icon: '🚛', count: 24, color: 'from-orange-600 to-orange-800' },
@@ -27,11 +28,13 @@ const series = [
 ];
 
 export default function BrowsePage() {
+  const { user } = useAuth();
   const totalStories = categories.reduce((sum, cat) => sum + cat.count, 0);
+  const displayName = user?.display_name || user?.email?.split('@')[0];
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
-      <Header isLoggedIn showBack />
+      <Header isLoggedIn={!!user} showBack userName={displayName} userCredits={user?.credits} />
       
       <div className="px-4 py-5">
         <h1 className="text-2xl font-bold text-white mb-1">📂 Browse</h1>
