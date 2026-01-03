@@ -130,11 +130,18 @@ export default function PricingPage() {
     <div className="min-h-screen bg-slate-950 text-white">
       <div className="max-w-4xl mx-auto px-4 py-6">
         
-        {/* Header */}
-        <div className="flex justify-center mb-6">
+        {/* Header with Back button */}
+        <div className="flex items-center justify-between mb-6">
+          <button 
+            onClick={() => window.history.back()}
+            className="px-3 py-1.5 bg-slate-800 border border-slate-700 text-white text-xs font-medium rounded-lg hover:bg-slate-700 transition-colors"
+          >
+            ← Back
+          </button>
           <Link href="/welcome">
             <Logo />
           </Link>
+          <div className="w-16" /> {/* Spacer for centering */}
         </div>
 
         {/* Title */}
