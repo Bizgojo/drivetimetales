@@ -48,7 +48,6 @@ function StoryContent() {
 
   const handlePlayPause = () => {
     if (!audioRef.current) return
-    
     if (isPlaying) {
       audioRef.current.pause()
     } else {
@@ -114,9 +113,7 @@ function StoryContent() {
     <div className="min-h-screen bg-slate-950 text-white">
       <Header isLoggedIn={!!user} showBack userName={displayName} userCredits={user?.credits} />
       
-      <div className="py-4 px-4">
-        <div className="max-w-3xl mx-auto">
-        
+      <div className="py-4 px-4 max-w-3xl mx-auto">
         <div className="flex flex-col md:flex-row gap-6">
           {/* Cover */}
           <div className="w-full md:w-64 flex-shrink-0">
@@ -143,8 +140,6 @@ function StoryContent() {
                   onLoadedMetadata={handleLoadedMetadata}
                   onEnded={() => setIsPlaying(false)}
                 />
-                
-                {/* Progress bar */}
                 <input
                   type="range"
                   min={0}
@@ -153,14 +148,10 @@ function StoryContent() {
                   onChange={handleSeek}
                   className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-orange-500"
                 />
-                
-                {/* Time display */}
                 <div className="flex justify-between text-xs text-slate-400 mt-1">
                   <span>{formatTime(currentTime)}</span>
                   <span>{formatTime(duration)}</span>
                 </div>
-                
-                {/* Play button */}
                 <button
                   onClick={handlePlayPause}
                   className="w-full mt-3 py-3 bg-orange-500 hover:bg-orange-400 text-black font-semibold rounded-xl"
