@@ -119,6 +119,20 @@ export default function HomePage() {
       <div className="px-4 py-6">
         <h1 className="text-2xl font-bold mb-1">Welcome back, {displayName}!</h1>
         {user && <p className="text-slate-400">You have <span className="text-orange-400 font-medium">{displayCredits} credits</span></p>}
+        
+        {/* Low credits warning */}
+        {user && user.credits !== -1 && user.credits <= 3 && (
+          <Link 
+            href="/pricing" 
+            className="mt-3 flex items-center justify-between bg-orange-500/20 border border-orange-500/50 rounded-xl px-4 py-3 hover:bg-orange-500/30 transition"
+          >
+            <div>
+              <p className="text-orange-400 font-medium">Running low on credits!</p>
+              <p className="text-slate-400 text-sm">Get more to keep listening</p>
+            </div>
+            <span className="text-orange-400 font-bold">Buy More →</span>
+          </Link>
+        )}
       </div>
 
       {continueListening.length > 0 && (

@@ -133,9 +133,9 @@ function PreviewContent() {
     if (audioRef.current) {
       audioRef.current.pause()
     }
-    // Clear any preview status and return to library
-    localStorage.removeItem(`preview_${storyId}`)
-    router.push('/library')
+    // Mark preview as completed and go to options page
+    localStorage.setItem(`preview_${storyId}`, 'completed')
+    router.push(`/player/${storyId}?fromPreview=true`)
   }
 
   const handleBuyNow = async () => {
