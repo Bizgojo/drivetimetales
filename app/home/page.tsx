@@ -284,11 +284,11 @@ export default function HomePage() {
       {/* New Releases - 3 equal columns with light background */}
       <section className="px-4 py-4 border-b border-slate-800">
         <h2 className="text-sm font-bold text-white mb-3 uppercase tracking-wide">New Releases</h2>
-        <div className="bg-[#F5F5F0] rounded-xl p-3">
+        <div className="bg-gray-400 rounded-xl p-3">
           <div className="grid grid-cols-3 gap-3">
             {newReleases.map(story => (
               <Link key={story.id} href={`/player/${story.id}`} className="group">
-                <div className="aspect-square rounded-lg overflow-hidden bg-slate-200 mb-1">
+                <div className="aspect-square rounded-lg overflow-hidden bg-gray-500 mb-1">
                   {story.cover_url ? (
                     <img src={story.cover_url} alt={story.title} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
                   ) : (
@@ -298,7 +298,7 @@ export default function HomePage() {
                   )}
                 </div>
                 <p className="text-black text-xs font-medium truncate">{story.title}</p>
-                <p className="text-slate-700 text-[10px]">{story.duration_mins} min</p>
+                <p className="text-slate-800 text-[10px]">{story.duration_mins} min</p>
                 <StarRating rating={story.rating} count={story.review_count} dark />
               </Link>
             ))}
@@ -316,9 +316,9 @@ export default function HomePage() {
               <Link 
                 key={story.id} 
                 href={`/player/${story.id}`}
-                className="bg-[#F5F5F0] rounded-xl p-3 flex gap-3 hover:bg-[#EEEEEA] transition"
+                className="bg-gray-400 rounded-xl p-3 flex gap-3 hover:bg-gray-300 transition"
               >
-                <div className="w-16 h-16 rounded-lg overflow-hidden bg-slate-200 flex-shrink-0 relative">
+                <div className="w-16 h-16 rounded-lg overflow-hidden bg-gray-500 flex-shrink-0 relative">
                   {story.cover_url ? (
                     <img src={story.cover_url} alt={story.title} className="w-full h-full object-cover" />
                   ) : (
@@ -332,8 +332,8 @@ export default function HomePage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-black font-bold text-sm truncate">{story.title}</p>
-                  <p className="text-slate-700 text-xs">{story.genre} • {story.credits || 1} credit{(story.credits || 1) > 1 ? 's' : ''}</p>
-                  <p className="text-slate-600 text-[10px]">by {story.author || 'Drive Time Tales'}</p>
+                  <p className="text-slate-800 text-xs">{story.genre} • {story.credits || 1} credit{(story.credits || 1) > 1 ? 's' : ''}</p>
+                  <p className="text-slate-700 text-[10px]">by {story.author || 'Drive Time Tales'}</p>
                   <div className="flex items-center gap-2 mt-1">
                     <StarRating rating={story.rating} count={story.review_count} dark />
                     {flag && <FlagBadge type={flag} />}
@@ -343,9 +343,9 @@ export default function HomePage() {
             )
           })}
           {filteredRecommended.length === 0 && !loading && (
-            <div className="bg-[#F5F5F0] rounded-xl p-6 text-center">
+            <div className="bg-gray-400 rounded-xl p-6 text-center">
               <p className="text-black">No recommendations yet</p>
-              <p className="text-slate-700 text-sm mt-1">Browse the library to discover stories!</p>
+              <p className="text-slate-800 text-sm mt-1">Browse the library to discover stories!</p>
             </div>
           )}
         </div>
