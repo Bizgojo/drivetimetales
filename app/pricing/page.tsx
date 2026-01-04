@@ -3,10 +3,13 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { useAuth } from '@/contexts/AuthContext'
 
 export default function PricingPage() {
   const router = useRouter()
+  const { user } = useAuth()
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly')
+  const [processing, setProcessing] = useState<string | null>(null)
 
   // Subscription plans with real Stripe Price IDs
   const plans = [
@@ -86,12 +89,68 @@ export default function PricingPage() {
     },
   ]
 
-  const handleSelectPlan = (planId: string, priceId: string) => {
-    router.push(`/signup?plan=${planId}&billing=${billingCycle}&priceId=${priceId}&type=subscription`)
+  const handleSelectPlan = async (planId: string, priceId: string) => {
+    if (user) {
+      // Logged in - go directly to Stripe checkout
+      setProcessing(planId)
+      try {
+        const response = await fetch('/api/checkout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            productType: 'subscription',
+            productId: `${planId}_${billingCycle}`,
+            userId: user.id
+          })
+        })
+        const data = await response.json()
+        if (data.url) {
+          window.location.href = data.url
+        } else {
+          alert(data.error || 'Failed to create checkout session')
+        }
+      } catch (error) {
+        console.error('Checkout error:', error)
+        alert('Failed to start checkout. Please try again.')
+      } finally {
+        setProcessing(null)
+      }
+    } else {
+      // Not logged in - go to signup
+      router.push(`/signup?plan=${planId}&billing=${billingCycle}&priceId=${priceId}&type=subscription`)
+    }
   }
 
-  const handleSelectPack = (packId: string, priceId: string) => {
-    router.push(`/signup?plan=${packId}&priceId=${priceId}&type=one-time`)
+  const handleSelectPack = async (packId: string, priceId: string) => {
+    if (user) {
+      // Logged in - go directly to Stripe checkout
+      setProcessing(packId)
+      try {
+        const response = await fetch('/api/checkout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            productType: 'credit_pack',
+            productId: packId,
+            userId: user.id
+          })
+        })
+        const data = await response.json()
+        if (data.url) {
+          window.location.href = data.url
+        } else {
+          alert(data.error || 'Failed to create checkout session')
+        }
+      } catch (error) {
+        console.error('Checkout error:', error)
+        alert('Failed to start checkout. Please try again.')
+      } finally {
+        setProcessing(null)
+      }
+    } else {
+      // Not logged in - go to signup
+      router.push(`/signup?plan=${packId}&priceId=${priceId}&type=one-time`)
+    }
   }
 
   // Logo component
@@ -234,13 +293,14 @@ export default function PricingPage() {
                 {/* Select button */}
                 <button
                   onClick={() => handleSelectPlan(plan.id, priceId)}
-                  className={`w-full mt-4 py-3 rounded-xl font-semibold transition-colors ${
+                  disabled={processing === plan.id}
+                  className={`w-full mt-4 py-3 rounded-xl font-semibold transition-colors disabled:opacity-50 ${
                     plan.popular
                       ? 'bg-orange-500 hover:bg-orange-400 text-black'
                       : 'bg-slate-700 hover:bg-slate-600 text-white'
                   }`}
                 >
-                  Get {plan.name}
+                  {processing === plan.id ? 'Processing...' : `Get ${plan.name}`}
                 </button>
               </div>
             )
@@ -279,13 +339,14 @@ export default function PricingPage() {
                   
                   <button
                     onClick={() => handleSelectPack(pack.id, pack.priceId)}
-                    className={`w-full mt-3 py-2 rounded-lg font-semibold text-sm transition-colors ${
+                    disabled={processing === pack.id}
+                    className={`w-full mt-3 py-2 rounded-lg font-semibold text-sm transition-colors disabled:opacity-50 ${
                       pack.bestValue
                         ? 'bg-green-500 hover:bg-green-400 text-black'
                         : 'bg-slate-700 hover:bg-slate-600 text-white'
                     }`}
                   >
-                    Buy Now
+                    {processing === pack.id ? '...' : 'Buy Now'}
                   </button>
                 </div>
               </div>
