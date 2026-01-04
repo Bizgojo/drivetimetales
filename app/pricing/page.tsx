@@ -7,7 +7,7 @@ import { useAuth } from '@/contexts/AuthContext'
 
 export default function PricingPage() {
   const router = useRouter()
-  const { user, refreshCredits } = useAuth()
+  const { user, loading: authLoading, refreshCredits } = useAuth()
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly')
   const [processing, setProcessing] = useState<string | null>(null)
   const [confirmPack, setConfirmPack] = useState<{id: string, name: string, price: number, credits: number} | null>(null)
@@ -91,6 +91,12 @@ export default function PricingPage() {
   ]
 
   const handleSelectPlan = async (planId: string, priceId: string) => {
+    // If still loading auth, wait a bit
+    if (authLoading) {
+      console.log('Auth still loading, waiting...')
+      await new Promise(resolve => setTimeout(resolve, 500))
+    }
+    
     if (user) {
       // Logged in - go directly to Stripe checkout
       setProcessing(planId)
@@ -126,6 +132,14 @@ export default function PricingPage() {
     const pack = freedomPacks.find(p => p.id === packId)
     if (!pack) return
 
+    // If still loading auth, wait a bit
+    if (authLoading) {
+      console.log('Auth still loading, waiting...')
+      await new Promise(resolve => setTimeout(resolve, 500))
+    }
+    
+    console.log('handleSelectPack called, user:', user ? user.email : 'NOT LOGGED IN')
+    
     if (user) {
       // Show confirmation modal for quick purchase
       setConfirmPack({ id: packId, name: pack.name, price: pack.price, credits: pack.credits })
