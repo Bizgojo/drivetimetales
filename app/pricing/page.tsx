@@ -140,12 +140,16 @@ export default function PricingPage() {
     
     setProcessing(confirmPack.id)
     try {
+      // Get the referrer URL to return to after purchase
+      const returnUrl = document.referrer || '/library'
+      
       const response = await fetch('/api/quick-purchase', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           packId: confirmPack.id,
-          userId: user.id
+          userId: user.id,
+          returnUrl: returnUrl
         })
       })
       const data = await response.json()
