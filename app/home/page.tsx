@@ -1,238 +1,163 @@
 'use client'
 
-import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
-import { getStories, Story, supabase } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
+
+interface Story {
+  id: string
+  title: string
+  author: string | null
+  genre: string
+  duration_mins: number
+  cover_url: string | null
+}
 
 interface LibraryItem {
-  story_id: string;
-  progress: number;
-  last_played: string;
-  progress_seconds: number;
-  story?: Story;
+  story_id: string
+  progress: number
+  last_played: string
+  completed: boolean
+  story: Story
 }
 
 export default function HomePage() {
-  const router = useRouter()
-  const { user, loading: authLoading } = useAuth()
-  const [recentlyAdded, setRecentlyAdded] = useState<Story[]>([])
+  const { user } = useAuth()
+  const [recentStories, setRecentStories] = useState<Story[]>([])
   const [continueListening, setContinueListening] = useState<LibraryItem[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    async function loadData() {
-      console.log('[DTT Debug] Home page loadData() started')
-      console.log('[DTT Debug] Auth loading:', authLoading, 'User:', user?.email)
-      
-      // Wait for auth to finish
-      if (authLoading) {
-        console.log('[DTT Debug] Still loading auth...')
-        return
-      }
-      
-      // Redirect if not logged in
-      if (!user) {
-        console.log('[DTT Debug] No user, redirecting to signin')
-        router.push('/signin')
-        return
-      }
+    loadData()
+  }, [user])
 
-      console.log('[DTT Debug] User found:', user.email, 'Credits:', user.credits)
+  async function loadData() {
+    try {
+      const { data: stories } = await supabase
+        .from('stories')
+        .select('id, title, author, genre, duration_mins, cover_url')
+        .order('created_at', { ascending: false })
+        .limit(10)
 
-      // Get recently added stories
-      try {
-        const stories = await getStories({ limit: 6 })
-        console.log('[DTT Debug] Got stories:', stories.length)
-        setRecentlyAdded(stories as Story[])
-      } catch (err) {
-        console.error('[DTT Debug] Error getting stories:', err)
-      }
-      
-      // Get user's library (stories in progress)
-      try {
-        const { data: libraryItems } = await supabase
+      if (stories) setRecentStories(stories)
+
+      if (user) {
+        const { data: library } = await supabase
           .from('user_library')
-          .select('story_id, progress, last_played')
+          .select('story_id, progress, last_played, completed, story:stories(id, title, author, genre, duration_mins, cover_url)')
           .eq('user_id', user.id)
+          .eq('completed', false)
+          .gt('progress', 0)
           .order('last_played', { ascending: false })
-          .limit(6)
-        
-        if (libraryItems && libraryItems.length > 0) {
-          // Fetch story details for each library item
-          const storyIds = libraryItems.map(item => item.story_id)
-          const { data: stories } = await supabase
-            .from('stories')
-            .select('*')
-            .in('id', storyIds)
-          
-          // Combine library items with story data
-          const itemsWithStories = libraryItems.map(item => ({
-            ...item,
-            progress_seconds: item.progress, // Map to expected name
-            story: stories?.find(s => s.id === item.story_id)
+          .limit(5)
+
+        if (library) {
+          const items = library.filter(item => item.story).map(item => ({
+            story_id: item.story_id,
+            progress: item.progress,
+            last_played: item.last_played,
+            completed: item.completed,
+            story: item.story as Story
           }))
-          
-          setContinueListening(itemsWithStories)
+          setContinueListening(items)
         }
-      } catch (err) {
-        console.error('[DTT Debug] Error getting library:', err)
       }
-      
+    } catch (error) {
+      console.error('Error loading data:', error)
+    } finally {
       setLoading(false)
     }
-    
-    loadData()
-  }, [user, authLoading, router])
-
-  // Show loading while checking auth
-  if (authLoading || loading) {
-    return (
-      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin text-4xl mb-4">🎧</div>
-          <p className="text-gray-400">Loading...</p>
-        </div>
-      </div>
-    )
   }
 
-  // Get user's first name
-  const firstName = user?.display_name?.split(' ')[0] || 'there'
-  const credits = user?.credits ?? 0
-  const creditsDisplay = credits === -1 ? 'Unlimited' : credits
+  const displayName = user?.display_name || user?.email?.split('@')[0] || 'there'
+  const displayCredits = user?.credits === -1 ? 'unlimited' : user?.credits
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white pb-24">
-      <div className="max-w-2xl mx-auto px-4 py-4">
-        
-        {/* Header - Logo + Avatar */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-2">
-            <span className="text-2xl">🚛</span>
-            <span className="text-2xl">🚗</span>
-            <span className="text-xl font-bold">
-              Drive Time<span className="text-orange-500">Tales</span>
-            </span>
+    <div className="min-h-screen bg-slate-950 text-white">
+      <header className="flex items-center justify-between px-4 py-4 border-b border-slate-800">
+        <Link href="/home" className="flex items-center gap-1">
+          <span className="text-xl">🚛🚗</span>
+          <span className="font-bold text-lg">Drive Time<span className="text-orange-400">Tales</span></span>
+        </Link>
+        {user ? (
+          <Link href="/account" className="w-10 h-10 rounded-full bg-orange-500 flex items-center justify-center text-black font-bold hover:bg-orange-400 transition">
+            {displayName?.charAt(0).toUpperCase() || 'U'}
+          </Link>
+        ) : (
+          <Link href="/auth/login" className="text-orange-400 hover:text-orange-300 font-medium transition">Sign In</Link>
+        )}
+      </header>
+
+      <div className="px-4 py-6">
+        <h1 className="text-2xl font-bold mb-1">Welcome back, {displayName}!</h1>
+        {user && <p className="text-slate-400">You have <span className="text-orange-400 font-medium">{displayCredits} credits</span></p>}
+      </div>
+
+      {continueListening.length > 0 && (
+        <section className="mb-8">
+          <div className="flex items-center justify-between px-4 mb-4">
+            <h2 className="text-lg font-bold">Continue Listening</h2>
           </div>
-          <Link href="/account" className="w-10 h-10 bg-orange-500 rounded-full flex items-center justify-center text-white font-bold">
-            {firstName.charAt(0).toUpperCase()}
-          </Link>
-        </div>
-
-        {/* Welcome + Credits */}
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-xl">
-            Welcome back, <span className="font-bold">{firstName}</span> 👋
-          </h1>
-          <Link href="/account/billing" className="px-3 py-1 bg-gray-800 rounded-full text-sm">
-            <span className="text-orange-400 font-medium">{creditsDisplay}</span> credits
-          </Link>
-        </div>
-
-        {/* Continue Listening */}
-        {continueListening.length > 0 && (
-          <div className="mb-8">
-            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <span>▶️</span> Continue Listening
-            </h2>
-            
-            <div className="space-y-3">
-              {continueListening.map((item) => {
-                if (!item.story) return null
-                const progressPercent = item.story.duration_mins 
-                  ? Math.round((item.progress_seconds / (item.story.duration_mins * 60)) * 100)
-                  : 0
-                
+          <div className="overflow-x-auto px-4">
+            <div className="flex gap-4 min-w-max">
+              {continueListening.map(item => {
+                const progressPercent = Math.round((item.progress / (item.story.duration_mins * 60)) * 100)
                 return (
-                  <Link 
-                    href={`/player/${item.story_id}/play?resume=true&autoplay=true`} 
-                    key={item.story_id}
-                    className="flex items-center gap-3 p-3 bg-slate-900 rounded-xl border border-slate-800 hover:border-orange-500 transition-colors"
-                  >
-                    <div className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0">
-                      <img 
-                        src={item.story.cover_url || '/placeholder-cover.jpg'} 
-                        alt={item.story.title}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-white font-medium truncate">{item.story.title}</p>
-                      <p className="text-slate-400 text-sm">{item.story.author}</p>
-                      <div className="mt-1 flex items-center gap-2">
-                        <div className="flex-1 h-1.5 bg-slate-700 rounded-full overflow-hidden">
-                          <div 
-                            className="h-full bg-orange-500 rounded-full"
-                            style={{ width: `${Math.min(progressPercent, 100)}%` }}
-                          />
+                  <Link key={item.story_id} href={`/player/${item.story_id}/play?autoplay=true&resume=${item.progress}`} className="w-40 flex-shrink-0 group">
+                    <div className="aspect-square rounded-xl overflow-hidden bg-slate-800 relative mb-2">
+                      {item.story.cover_url ? (
+                        <img src={item.story.cover_url} alt={item.story.title} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-orange-600 to-orange-900">
+                          <span className="text-4xl opacity-50">🎧</span>
                         </div>
-                        <span className="text-xs text-slate-500">{progressPercent}%</span>
+                      )}
+                      <div className="absolute bottom-0 left-0 right-0 h-1 bg-slate-900">
+                        <div className="h-full bg-orange-500" style={{ width: `${progressPercent}%` }} />
                       </div>
                     </div>
-                    <div className="text-2xl">▶️</div>
+                    <h3 className="text-white text-sm font-medium line-clamp-2 group-hover:text-orange-400 transition">{item.story.title}</h3>
+                    <p className="text-slate-400 text-xs mt-1">{progressPercent}% complete</p>
                   </Link>
                 )
               })}
             </div>
           </div>
-        )}
+        </section>
+      )}
 
-        {/* Recently Added */}
-        <div className="mb-8">
-          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <span>✨</span> Recently Added
-          </h2>
-          
-          {recentlyAdded.length > 0 ? (
-            <div className="grid grid-cols-3 gap-3">
-              {recentlyAdded.map((story) => (
-                <Link href={`/player/${story.id}`} key={story.id} className="group">
-                  <div className="relative aspect-[3/4] rounded-xl overflow-hidden mb-2">
-                    <img 
-                      src={story.cover_url || '/placeholder-cover.jpg'} 
-                      alt={story.title}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                    />
-                    {story.is_new && (
-                      <span className="absolute top-2 left-2 px-2 py-0.5 bg-green-500 text-white text-xs font-bold rounded">
-                        NEW
-                      </span>
-                    )}
-                    <span className="absolute bottom-2 right-2 px-2 py-0.5 bg-black/70 text-white text-xs rounded">
-                      {story.duration_mins}m
-                    </span>
-                  </div>
-                  <h3 className="font-medium text-sm truncate">{story.title}</h3>
-                  <p className="text-gray-400 text-xs truncate">{story.author}</p>
-                  <div className="flex items-center gap-1 text-yellow-400 text-xs">
-                    {'★'.repeat(Math.floor(story.rating || 4))}
-                    <span className="text-gray-500">{story.rating?.toFixed(1) || '4.0'}</span>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8 text-gray-400">
-              <p>No stories yet. Check back soon!</p>
-            </div>
-          )}
+      <section className="mb-8">
+        <div className="flex items-center justify-between px-4 mb-4">
+          <h2 className="text-lg font-bold">Recently Added</h2>
+          <Link href="/library" className="text-orange-400 hover:text-orange-300 text-sm">Browse All</Link>
         </div>
-
-        {/* Bottom Navigation */}
-        <div className="fixed bottom-0 left-0 right-0 p-4 bg-slate-950">
-          <div className="max-w-2xl mx-auto flex gap-3">
-            <Link href="/library" className="flex-1 py-4 bg-orange-500 text-white font-bold rounded-xl text-center flex items-center justify-center gap-2">
-              <span>🔍</span> Browse All
-            </Link>
-            <Link href="/wishlist" className="flex-1 py-4 bg-blue-500 text-white font-bold rounded-xl text-center flex items-center justify-center gap-2">
-              <span>❤️</span> My Wishlist
-            </Link>
+        <div className="overflow-x-auto px-4">
+          <div className="flex gap-4 min-w-max">
+            {recentStories.map(story => (
+              <Link key={story.id} href={`/player/${story.id}`} className="w-40 flex-shrink-0 group">
+                <div className="aspect-square rounded-xl overflow-hidden bg-slate-800 relative mb-2">
+                  {story.cover_url ? (
+                    <img src={story.cover_url} alt={story.title} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-orange-600 to-orange-900">
+                      <span className="text-4xl opacity-50">🎧</span>
+                    </div>
+                  )}
+                </div>
+                <h3 className="text-white text-sm font-medium line-clamp-2 group-hover:text-orange-400 transition">{story.title}</h3>
+                <p className="text-slate-400 text-xs mt-1">{story.genre} - {story.duration_mins} min</p>
+              </Link>
+            ))}
           </div>
         </div>
+      </section>
 
-      </div>
+      {loading && (
+        <div className="flex justify-center py-8">
+          <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+        </div>
+      )}
     </div>
   )
 }

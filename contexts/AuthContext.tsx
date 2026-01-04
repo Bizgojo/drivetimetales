@@ -1,182 +1,164 @@
-'use client';
+'use client'
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { supabase, User, getUserProfile } from '@/lib/supabase';
-import { Session } from '@supabase/supabase-js';
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import { supabase } from '@/lib/supabase'
 
-interface AuthContextType {
-  user: User | null;
-  session: Session | null;
-  loading: boolean;
-  signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signUp: (email: string, password: string, displayName: string) => Promise<{ error: Error | null }>;
-  signOut: () => Promise<void>;
-  refreshCredits: () => Promise<void>;
+interface User {
+  id: string
+  email: string
+  display_name: string | null
+  credits: number
+  subscription_type: string | null
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+interface AuthContextType {
+  user: User | null
+  loading: boolean
+  signIn: (email: string, password: string) => Promise<{ error?: string }>
+  signUp: (email: string, password: string, name: string) => Promise<{ error?: string }>
+  signOut: () => Promise<void>
+  refreshCredits: () => Promise<void>
+}
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
+const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-  // Fetch user profile from our users table
-  const fetchUserProfile = async (userId: string) => {
-    console.log('[DTT Debug] AuthContext: fetchUserProfile() called for userId:', userId);
-    try {
-      const profile = await getUserProfile(userId);
-      console.log('[DTT Debug] AuthContext: fetchUserProfile() SUCCESS:', profile?.email);
-      setUser(profile);
-    } catch (error) {
-      console.error('[DTT Debug] AuthContext: fetchUserProfile() ERROR:', error);
-      setUser(null);
-    }
-  };
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<User | null>(null)
+  const [loading, setLoading] = useState(true)
 
-  // Initialize auth state
   useEffect(() => {
-    console.log('[DTT Debug] AuthContext: useEffect initializing...');
-    
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session }, error }) => {
-      console.log('[DTT Debug] AuthContext: getSession() result:', { 
-        hasSession: !!session, 
-        userId: session?.user?.id,
-        error 
-      });
-      
-      setSession(session);
-      if (session?.user) {
-        fetchUserProfile(session.user.id);
-      } else {
-        console.log('[DTT Debug] AuthContext: No session, setting loading=false');
-        setLoading(false);
-      }
-    }).catch(err => {
-      console.error('[DTT Debug] AuthContext: getSession() EXCEPTION:', err);
-      setLoading(false);
-    });
+    // Check for existing session
+    checkUser()
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log('[DTT Debug] AuthContext: onAuthStateChange event:', event);
-        setSession(session);
-        if (session?.user) {
-          await fetchUserProfile(session.user.id);
-        } else {
-          setUser(null);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        await loadUserProfile(session.user.id)
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null)
+      }
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
+
+  async function checkUser() {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session?.user) {
+        await loadUserProfile(session.user.id)
+      }
+    } catch (error) {
+      console.error('Error checking user:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function loadUserProfile(userId: string) {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, email, display_name, credits, subscription_type')
+        .eq('id', userId)
+        .single()
+
+      if (error) throw error
+      setUser(data)
+    } catch (error) {
+      console.error('Error loading user profile:', error)
+    }
+  }
+
+  async function signIn(email: string, password: string) {
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      })
+
+      if (error) return { error: error.message }
+      return {}
+    } catch (error: any) {
+      return { error: error.message || 'Sign in failed' }
+    }
+  }
+
+  async function signUp(email: string, password: string, name: string) {
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { display_name: name }
         }
-        setLoading(false);
+      })
+
+      if (error) return { error: error.message }
+
+      // Create user profile
+      if (data.user) {
+        await supabase.from('users').insert({
+          id: data.user.id,
+          email,
+          display_name: name,
+          credits: 0,
+          subscription_type: null
+        })
       }
-    );
 
-    return () => subscription.unsubscribe();
-  }, []);
-
-  const signIn = async (email: string, password: string) => {
-    console.log('[DTT Debug] AuthContext: signIn() called');
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    if (error) {
-      console.error('[DTT Debug] AuthContext: signIn() ERROR:', error);
-    } else {
-      console.log('[DTT Debug] AuthContext: signIn() SUCCESS');
+      return {}
+    } catch (error: any) {
+      return { error: error.message || 'Sign up failed' }
     }
-    return { error: error as Error | null };
-  };
+  }
 
-  const signUp = async (email: string, password: string, displayName: string) => {
-    console.log('[DTT Debug] AuthContext: signUp() called');
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          display_name: displayName,
-        },
-      },
-    });
-
-    if (error) {
-      console.error('[DTT Debug] AuthContext: signUp() auth ERROR:', error);
+  async function signOut() {
+    // Save user name for "Welcome back" feature
+    if (user?.display_name) {
+      localStorage.setItem('dtt_last_user_name', user.display_name)
+      localStorage.setItem('dtt_last_user_email', user.email)
     }
+    
+    await supabase.auth.signOut()
+    setUser(null)
+  }
 
-    if (!error && data.user) {
-      console.log('[DTT Debug] AuthContext: signUp() creating user profile...');
-      // Create user profile in our users table
-      // DB columns: id, email, display_name, credits, subscription_type, subscription_ends_at, stripe_customer_id, stripe_subscription_id, created_at
-      const { error: insertError } = await supabase.from('users').insert({
-        id: data.user.id,
-        email: data.user.email,
-        display_name: displayName,
-        credits: 2, // Free credits for new users - matches DB column name
-        subscription_type: 'free',
-      });
-      
-      if (insertError) {
-        console.error('[DTT Debug] AuthContext: signUp() profile insert ERROR:', insertError);
-      } else {
-        console.log('[DTT Debug] AuthContext: signUp() profile created successfully');
-      }
+  async function refreshCredits() {
+    if (!user) return
+
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('credits')
+        .eq('id', user.id)
+        .single()
+
+      if (error) throw error
+      setUser(prev => prev ? { ...prev, credits: data.credits } : null)
+    } catch (error) {
+      console.error('Error refreshing credits:', error)
     }
-
-    return { error: error as Error | null };
-  };
-
-  const signOut = async () => {
-    console.log('[DTT Debug] AuthContext: signOut() called');
-    await supabase.auth.signOut();
-    setUser(null);
-    setSession(null);
-  };
-
-  const refreshCredits = async () => {
-    console.log('[DTT Debug] AuthContext: refreshCredits() called');
-    if (session?.user) {
-      await fetchUserProfile(session.user.id);
-    }
-  };
+  }
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        session,
-        loading,
-        signIn,
-        signUp,
-        signOut,
-        refreshCredits,
-      }}
-    >
+    <AuthContext.Provider value={{
+      user,
+      loading,
+      signIn,
+      signUp,
+      signOut,
+      refreshCredits
+    }}>
       {children}
     </AuthContext.Provider>
-  );
+  )
 }
 
 export function useAuth() {
-  const context = useContext(AuthContext);
+  const context = useContext(AuthContext)
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error('useAuth must be used within an AuthProvider')
   }
-  return context;
-}
-
-// Hook for checking if user has unlimited credits (Road Warrior plan)
-export function useHasUnlimitedCredits() {
-  const { user } = useAuth();
-  return user?.subscription_type === 'road_warrior';
-}
-
-// Hook for checking if user can afford a story
-// Uses user.credits which matches DB column name
-export function useCanAfford(storyCredits: number) {
-  const { user } = useAuth();
-  if (!user) return false;
-  if (user.subscription_type === 'road_warrior') return true;
-  return user.credits >= storyCredits;
+  return context
 }

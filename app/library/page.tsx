@@ -1,316 +1,255 @@
 'use client'
 
-import { useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { useStories } from '@/hooks/useData'
+import { useSearchParams } from 'next/navigation'
+import { useState, useEffect, Suspense } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
+import { supabase } from '@/lib/supabase'
+import { Header } from '@/components/ui/Header'
 
-export default function LibraryPage() {
-  const router = useRouter()
-  const { stories, loading, error } = useStories()
+interface Story {
+  id: string
+  title: string
+  author: string | null
+  genre: string
+  duration_mins: number
+  cover_url: string | null
+  credit_cost: number
+}
+
+interface UserPreference {
+  story_id: string
+  wishlisted: boolean
+  not_for_me: boolean
+}
+
+interface LibraryEntry {
+  story_id: string
+  progress: number
+  completed: boolean
+}
+
+function LibraryContent() {
+  const searchParams = useSearchParams()
   const { user } = useAuth()
-  const [genre, setGenre] = useState('All')
-  const [duration, setDuration] = useState('All')
-  const [showSearchMenu, setShowSearchMenu] = useState(false)
-  const [searchType, setSearchType] = useState<'title' | 'author' | null>(null)
-  const [searchQuery, setSearchQuery] = useState('')
+  
+  const [stories, setStories] = useState<Story[]>([])
+  const [preferences, setPreferences] = useState<Map<string, UserPreference>>(new Map())
+  const [library, setLibrary] = useState<Map<string, LibraryEntry>>(new Map())
+  const [loading, setLoading] = useState(true)
+  const [selectedGenre, setSelectedGenre] = useState<string>('All')
+  const [toast, setToast] = useState<string | null>(null)
+  
+  const genres = ['All', 'Mystery', 'Drama', 'Sci-Fi', 'Horror', 'Comedy', 'Romance', 'Adventure', 'Thriller']
 
-  const genreOptions = [
-    { name: 'All', icon: '📚' },
-    { name: 'Mystery', icon: '🔍' },
-    { name: 'Drama', icon: '🎭' },
-    { name: 'Sci-Fi', icon: '🚀' },
-    { name: 'Horror', icon: '👻' },
-    { name: 'Comedy', icon: '😂' },
-    { name: 'Romance', icon: '💕' },
-    { name: 'Trucker', icon: '🚛' },
-    { name: 'Thriller', icon: '😱' },
-  ]
+  useEffect(() => {
+    loadData()
+    
+    // Check for toast message
+    const toastParam = searchParams.get('toast')
+    if (toastParam === 'wishlisted') {
+      setToast('❤️ Added to Wishlist')
+    } else if (toastParam === 'notforme') {
+      setToast('👎 Marked as Not For Me')
+    }
+    
+    // Clear toast after 3 seconds
+    if (toastParam) {
+      setTimeout(() => setToast(null), 3000)
+    }
+  }, [searchParams])
 
-  const durationOptions = [
-    { name: 'All', label: 'All' },
-    { name: '15', label: '~15 min' },
-    { name: '30', label: '~30 min' },
-    { name: '60', label: '~1 hr' },
-  ]
+  async function loadData() {
+    try {
+      // Load stories
+      const { data: storiesData } = await supabase
+        .from('stories')
+        .select('id, title, author, genre, duration_mins, cover_url, credit_cost')
+        .order('created_at', { ascending: false })
 
-  // Star rating component - with proper half stars
-  const StarRating = ({ rating }: { rating: number }) => {
-    return (
-      <div className="flex items-center gap-1">
-        <div className="flex text-sm">
-          {[1, 2, 3, 4, 5].map((star) => {
-            const filled = rating >= star
-            const halfFilled = !filled && rating >= star - 0.5
-            return (
-              <span key={star} className="relative">
-                <span className="text-slate-600">☆</span>
-                {filled && (
-                  <span className="absolute left-0 top-0 text-yellow-400 overflow-hidden w-full">★</span>
-                )}
-                {halfFilled && (
-                  <span className="absolute left-0 top-0 text-yellow-400 overflow-hidden" style={{ width: '50%' }}>★</span>
-                )}
-              </span>
-            )
-          })}
-        </div>
-        <span className="text-slate-400 text-xs">{rating?.toFixed(1) || '0.0'}</span>
-      </div>
-    )
+      if (storiesData) setStories(storiesData)
+
+      // Load user preferences and library
+      if (user) {
+        const { data: prefsData } = await supabase
+          .from('user_preferences')
+          .select('story_id, wishlisted, not_for_me')
+          .eq('user_id', user.id)
+
+        if (prefsData) {
+          const prefsMap = new Map<string, UserPreference>()
+          prefsData.forEach(p => prefsMap.set(p.story_id, p))
+          setPreferences(prefsMap)
+        }
+
+        const { data: libData } = await supabase
+          .from('user_library')
+          .select('story_id, progress, completed')
+          .eq('user_id', user.id)
+
+        if (libData) {
+          const libMap = new Map<string, LibraryEntry>()
+          libData.forEach(l => libMap.set(l.story_id, l))
+          setLibrary(libMap)
+        }
+      }
+    } catch (error) {
+      console.error('Error loading data:', error)
+    } finally {
+      setLoading(false)
+    }
   }
 
-  // Filter stories
-  const filtered = stories.filter((s: any) => {
-    // Search filter
-    if (searchType === 'title' && searchQuery) {
-      if (!s.title?.toLowerCase().includes(searchQuery.toLowerCase())) return false
-    }
-    if (searchType === 'author' && searchQuery) {
-      if (!s.author?.toLowerCase().includes(searchQuery.toLowerCase())) return false
-    }
-    
-    // Genre filter
-    if (genre !== 'All' && s.genre !== genre) return false
-    
-    // Duration filter
-    if (duration === '15' && (s.duration_mins < 10 || s.duration_mins > 20)) return false
-    if (duration === '30' && (s.duration_mins < 20 || s.duration_mins > 45)) return false
-    if (duration === '60' && s.duration_mins < 45) return false
-    
+  // Filter stories by genre and hide "not for me"
+  const filteredStories = stories.filter(story => {
+    const pref = preferences.get(story.id)
+    // Hide stories marked as "not for me" unless specifically filtered
+    if (pref?.not_for_me) return false
+    // Filter by genre
+    if (selectedGenre !== 'All' && story.genre !== selectedGenre) return false
     return true
   })
 
-  const handleSearchSelect = (type: 'title' | 'author') => {
-    setSearchType(type)
-    setShowSearchMenu(false)
-    setSearchQuery('')
-  }
-
-  const clearSearch = () => {
-    setSearchType(null)
-    setSearchQuery('')
-  }
+  const displayName = user?.display_name || user?.email?.split('@')[0]
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 text-white">
-        <div className="max-w-2xl mx-auto px-4 py-8 text-center">
-          <div className="inline-block w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mb-4" />
-          <p className="text-white">Loading stories...</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen bg-slate-950 text-white">
-        <div className="max-w-2xl mx-auto px-4 py-8 text-center">
-          <p className="text-red-400">Error: {error?.message || 'Failed to load stories'}</p>
-        </div>
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white pb-8">
-      <div className="max-w-2xl mx-auto px-4 py-4">
-        
-        {/* Header - Logo left, User avatar right */}
-        <div className="flex items-center justify-between mb-4">
-          {/* Logo */}
-          <Link href={user ? '/home' : '/welcome'} className="flex items-center gap-1">
-            <span className="text-2xl">🚛</span>
-            <span className="text-2xl">🚗</span>
-            <div className="flex items-baseline ml-1">
-              <span className="text-base font-bold text-white">Drive Time </span>
-              <span className="text-base font-bold text-orange-500">Tales</span>
-            </div>
-          </Link>
-          
-          <div className="flex items-center gap-2">
-            {/* Back button */}
-            <button 
-              onClick={() => router.back()}
-              className="px-3 py-1.5 bg-slate-800 rounded-lg text-slate-400 hover:text-white text-sm"
+    <div className="min-h-screen bg-slate-950 text-white">
+      <Header 
+        isLoggedIn={!!user} 
+        showBack 
+        userName={displayName} 
+        userCredits={user?.credits} 
+      />
+
+      {/* Toast Notification */}
+      {toast && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg animate-fade-in">
+          {toast}
+        </div>
+      )}
+
+      {/* Genre Filter */}
+      <div className="px-4 py-4 border-b border-slate-800 overflow-x-auto">
+        <div className="flex gap-2 min-w-max">
+          {genres.map(genre => (
+            <button
+              key={genre}
+              onClick={() => setSelectedGenre(genre)}
+              className={`px-4 py-2 rounded-full text-sm font-medium transition ${
+                selectedGenre === genre
+                  ? 'bg-orange-500 text-black'
+                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+              }`}
             >
-              ← Back
+              {genre}
             </button>
-            
-            {/* User avatar or Sign In */}
-            {user ? (
-              <Link 
-                href="/account"
-                className="w-9 h-9 bg-orange-500 rounded-full flex items-center justify-center text-black font-bold text-sm"
-              >
-                {(user.display_name || user.email || 'U').charAt(0).toUpperCase()}
-              </Link>
-            ) : (
-              <Link 
-                href="/auth/login"
-                className="px-3 py-1.5 bg-orange-500 rounded-lg text-black text-sm font-medium"
-              >
-                Sign In
-              </Link>
-            )}
-          </div>
+          ))}
         </div>
+      </div>
 
-        {/* Page Title - LARGER */}
-        <div className="text-center mb-5">
-          <h1 className="text-3xl font-bold text-white">Story Library</h1>
-        </div>
+      {/* Stories Grid */}
+      <div className="p-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+          {filteredStories.map(story => {
+            const pref = preferences.get(story.id)
+            const libEntry = library.get(story.id)
+            const isOwned = !!libEntry
+            const isWishlisted = pref?.wishlisted
+            const progressPercent = libEntry && story.duration_mins 
+              ? Math.round((libEntry.progress / (story.duration_mins * 60)) * 100)
+              : 0
 
-        {/* Genre Icons */}
-        <div className="mb-3">
-          <div className="flex flex-wrap justify-center gap-1">
-            {genreOptions.map((g) => (
-              <button
-                key={g.name}
-                onClick={() => setGenre(g.name)}
-                className={`flex flex-col items-center px-2 py-1 rounded-lg transition-all ${
-                  genre === g.name 
-                    ? 'bg-orange-500 text-black' 
-                    : 'bg-slate-800 text-white'
-                }`}
-              >
-                <span className="text-sm">{g.icon}</span>
-                <span className="text-[9px] mt-0.5">{g.name}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Duration Filter */}
-        <div className="mb-4">
-          <div className="flex justify-center gap-2">
-            {durationOptions.map((d) => (
-              <button
-                key={d.name}
-                onClick={() => setDuration(d.name)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-                  duration === d.name 
-                    ? 'bg-orange-500 text-black' 
-                    : 'bg-slate-800 text-white border border-slate-700'
-                }`}
-              >
-                {d.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Results count + Search */}
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-slate-400 text-sm">{filtered.length} stories found</p>
-          
-          {/* Search dropdown */}
-          <div className="relative">
-            {searchType ? (
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder={`Search by ${searchType}...`}
-                  className="w-40 px-3 py-1.5 bg-slate-800 text-white text-sm rounded-lg border border-slate-700 focus:outline-none focus:border-orange-500"
-                  autoFocus
-                />
-                <button
-                  onClick={clearSearch}
-                  className="text-slate-400 hover:text-white text-sm"
-                >
-                  ✕
-                </button>
-              </div>
-            ) : (
-              <>
-                <button
-                  onClick={() => setShowSearchMenu(!showSearchMenu)}
-                  className="flex items-center gap-1 text-slate-400 hover:text-white text-sm px-3 py-1.5 bg-slate-800 rounded-lg border border-slate-700"
-                >
-                  <span>🔍</span>
-                  <span>Search</span>
-                </button>
-                
-                {showSearchMenu && (
-                  <div className="absolute right-0 top-full mt-1 bg-slate-800 border border-slate-700 rounded-lg overflow-hidden z-10 shadow-lg">
-                    <button 
-                      className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-slate-700"
-                      onClick={() => handleSearchSelect('title')}
-                    >
-                      Search by Title
-                    </button>
-                    <button 
-                      className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-slate-700"
-                      onClick={() => handleSearchSelect('author')}
-                    >
-                      Search by Author
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Stories List */}
-        {filtered.length === 0 ? (
-          <div className="text-center py-12">
-            <span className="text-5xl block mb-4">📚</span>
-            <h2 className="text-xl font-bold text-white mb-2">No Stories Found</h2>
-            <p className="text-white">Try selecting a different genre or duration</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {filtered.map((story: any) => (
-              <div 
+            return (
+              <Link
                 key={story.id}
-                onClick={() => router.push(`/player/${story.id}`)}
-                className="bg-slate-800 rounded-xl overflow-hidden cursor-pointer hover:bg-slate-700 transition-colors"
+                href={`/player/${story.id}`}
+                className="group"
               >
-                <div className="flex">
-                  {/* Cover */}
-                  <div className="w-32 h-32 flex-shrink-0 relative bg-gradient-to-br from-slate-700 to-slate-800 flex items-center justify-center">
-                    {story.cover_url ? (
-                      <img 
-                        src={story.cover_url}
-                        alt={story.title}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <span className="text-4xl opacity-40">🎧</span>
+                {/* Cover */}
+                <div className="aspect-square rounded-xl overflow-hidden bg-slate-800 relative mb-2">
+                  {story.cover_url ? (
+                    <img 
+                      src={story.cover_url} 
+                      alt={story.title} 
+                      className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-orange-600 to-orange-900">
+                      <span className="text-4xl opacity-50">🎧</span>
+                    </div>
+                  )}
+
+                  {/* Badges */}
+                  <div className="absolute top-2 right-2 flex flex-col gap-1">
+                    {isOwned && (
+                      <span className="bg-green-500 text-black text-xs font-bold px-2 py-0.5 rounded">
+                        ✓
+                      </span>
                     )}
-                    <div className="absolute bottom-2 left-2 px-1.5 py-0.5 bg-black/70 text-white text-xs rounded">
-                      {story.duration_mins} min
-                    </div>
+                    {isWishlisted && !isOwned && (
+                      <span className="bg-pink-500 text-white text-xs font-bold px-2 py-0.5 rounded">
+                        ❤️
+                      </span>
+                    )}
                   </div>
-                  
-                  {/* Info */}
-                  <div className="flex-1 p-3 flex flex-col justify-between min-w-0">
-                    <div>
-                      <h3 className="font-bold text-white text-base">{story.title}</h3>
-                      <p className="text-white text-sm">{story.genre} • {story.credits || 1} credit{(story.credits || 1) !== 1 ? 's' : ''}</p>
-                      <p className="text-white text-sm">{story.author}</p>
+
+                  {/* Progress bar for owned stories */}
+                  {isOwned && progressPercent > 0 && (
+                    <div className="absolute bottom-0 left-0 right-0 h-1 bg-slate-900">
+                      <div 
+                        className="h-full bg-orange-500"
+                        style={{ width: `${progressPercent}%` }}
+                      />
                     </div>
-                    <div className="flex items-center gap-3 mt-2">
-                      <StarRating rating={story.rating || 0} />
-                      {story.is_new && (
-                        <span className="px-2 py-0.5 bg-blue-500/20 text-blue-400 text-xs font-medium rounded border border-blue-500/30">
-                          New Release
-                        </span>
-                      )}
+                  )}
+
+                  {/* Completed badge */}
+                  {libEntry?.completed && (
+                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                      <span className="text-2xl">✅</span>
                     </div>
-                  </div>
+                  )}
                 </div>
-              </div>
-            ))}
+
+                {/* Info */}
+                <h3 className="text-white text-sm font-medium line-clamp-2 group-hover:text-orange-400 transition">
+                  {story.title}
+                </h3>
+                <p className="text-slate-400 text-xs mt-1">
+                  {story.genre} • {story.duration_mins} min
+                  {!isOwned && <span className="text-orange-400"> • {story.credit_cost} cr</span>}
+                </p>
+              </Link>
+            )
+          })}
+        </div>
+
+        {filteredStories.length === 0 && (
+          <div className="text-center py-12">
+            <p className="text-slate-400">No stories found</p>
           </div>
         )}
-
       </div>
     </div>
+  )
+}
+
+export default function LibraryPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    }>
+      <LibraryContent />
+    </Suspense>
   )
 }
