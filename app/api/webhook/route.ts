@@ -37,20 +37,67 @@ export async function POST(request: NextRequest) {
     )
   }
 
+  console.log('Webhook event received:', event.type)
+
   // Handle the event
   switch (event.type) {
     case 'checkout.session.completed': {
       const session = event.data.object as Stripe.Checkout.Session
-      const userId = session.metadata?.userId
+      
+      // Check for user_id (one-time purchase) or userId (subscription)
+      const userId = session.metadata?.user_id || session.metadata?.userId
+      const packId = session.metadata?.pack_id
+      const creditsToAdd = session.metadata?.credits ? parseInt(session.metadata.credits) : null
       const plan = session.metadata?.plan || 'commuter'
       
-      if (userId) {
-        // Update user subscription
-        // DB columns: subscription_type (NOT subscription_status/subscription_plan), credits, stripe_customer_id, stripe_subscription_id, subscription_ends_at
+      console.log('Checkout completed:', { userId, packId, creditsToAdd, plan, mode: session.mode })
+      
+      if (!userId) {
+        console.error('No user ID in session metadata')
+        break
+      }
+
+      // ONE-TIME PURCHASE (Freedom Packs)
+      if (session.mode === 'payment' && creditsToAdd) {
+        console.log(`Adding ${creditsToAdd} credits to user ${userId}`)
+        
+        // Get current credits
+        const { data: userData, error: fetchError } = await supabase
+          .from('users')
+          .select('credits')
+          .eq('id', userId)
+          .single()
+        
+        if (fetchError) {
+          console.error('Error fetching user:', fetchError)
+          break
+        }
+        
+        const currentCredits = userData?.credits || 0
+        const newCredits = currentCredits === -1 ? -1 : currentCredits + creditsToAdd
+        
+        const { error: updateError } = await supabase
+          .from('users')
+          .update({
+            credits: newCredits,
+            stripe_customer_id: session.customer as string,
+          })
+          .eq('id', userId)
+        
+        if (updateError) {
+          console.error('Error updating credits:', updateError)
+        } else {
+          console.log(`Successfully updated credits: ${currentCredits} -> ${newCredits}`)
+        }
+      }
+      // SUBSCRIPTION
+      else if (session.mode === 'subscription') {
+        console.log(`Setting up subscription ${plan} for user ${userId}`)
+        
         await supabase
           .from('users')
           .update({
-            subscription_type: plan,  // DB column is 'subscription_type'
+            subscription_type: plan,
             stripe_customer_id: session.customer as string,
             stripe_subscription_id: session.subscription as string,
             credits: planCredits[plan] || 25,
@@ -64,7 +111,7 @@ export async function POST(request: NextRequest) {
       // Monthly renewal - add credits
       const invoice = event.data.object as Stripe.Invoice
       const subscription = await stripe.subscriptions.retrieve(invoice.subscription as string)
-      const userId = subscription.metadata?.userId
+      const userId = subscription.metadata?.userId || subscription.metadata?.user_id
       const plan = subscription.metadata?.plan || 'commuter'
       
       if (userId) {
@@ -89,13 +136,13 @@ export async function POST(request: NextRequest) {
     case 'customer.subscription.deleted': {
       // Subscription cancelled
       const subscription = event.data.object as Stripe.Subscription
-      const userId = subscription.metadata?.userId
+      const userId = subscription.metadata?.userId || subscription.metadata?.user_id
       
       if (userId) {
         await supabase
           .from('users')
           .update({
-            subscription_type: 'free',  // DB column is 'subscription_type'
+            subscription_type: 'free',
             credits: 0,
           })
           .eq('id', userId)
@@ -106,14 +153,14 @@ export async function POST(request: NextRequest) {
     case 'customer.subscription.updated': {
       // Subscription changed (upgrade/downgrade)
       const subscription = event.data.object as Stripe.Subscription
-      const userId = subscription.metadata?.userId
+      const userId = subscription.metadata?.userId || subscription.metadata?.user_id
       const plan = subscription.metadata?.plan
       
       if (userId && plan) {
         await supabase
           .from('users')
           .update({
-            subscription_type: plan,  // DB column is 'subscription_type'
+            subscription_type: plan,
             credits: planCredits[plan] || 25,
           })
           .eq('id', userId)
