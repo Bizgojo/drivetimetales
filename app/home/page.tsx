@@ -53,13 +53,26 @@ export default function HomePage() {
           .limit(5)
 
         if (library) {
-          const items = library.filter(item => item.story).map(item => ({
-            story_id: item.story_id,
-            progress: item.progress,
-            last_played: item.last_played,
-            completed: item.completed,
-            story: item.story as Story
-          }))
+          const items: LibraryItem[] = []
+          for (const item of library) {
+            if (item.story && typeof item.story === 'object' && !Array.isArray(item.story)) {
+              const storyData = item.story as Record<string, unknown>
+              items.push({
+                story_id: item.story_id,
+                progress: item.progress,
+                last_played: item.last_played,
+                completed: item.completed,
+                story: {
+                  id: storyData.id as string,
+                  title: storyData.title as string,
+                  author: storyData.author as string | null,
+                  genre: storyData.genre as string,
+                  duration_mins: storyData.duration_mins as number,
+                  cover_url: storyData.cover_url as string | null
+                }
+              })
+            }
+          }
           setContinueListening(items)
         }
       }
