@@ -53,7 +53,9 @@ export default function AccountPage() {
     : 'Free';
 
   // Format member since date
-  const memberSince = new Date(user.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const memberSince = user.created_at 
+    ? new Date(user.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+    : 'Recently';
 
   const menuItems = [
     { href: '/account/billing', icon: '💎', label: 'Billing & Credits', desc: `${user.credits} credits available` },
