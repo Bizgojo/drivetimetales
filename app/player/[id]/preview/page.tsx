@@ -32,7 +32,6 @@ function PreviewContent() {
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
-  const [previewEnded, setPreviewEnded] = useState(false)
   
   const audioRef = useRef<HTMLAudioElement>(null)
 
@@ -64,28 +63,30 @@ function PreviewContent() {
 
   useEffect(() => {
     // Auto-play when story loads
-    if (story && audioRef.current && !previewEnded) {
+    if (story && audioRef.current) {
       audioRef.current.play().catch(console.error)
       setIsPlaying(true)
     }
-  }, [story, previewEnded])
+  }, [story])
 
   useEffect(() => {
     // Check if preview should end
-    if (currentTime >= previewDuration && previewDuration > 0 && !previewEnded) {
+    if (currentTime >= previewDuration && previewDuration > 0 && isPlaying) {
       handlePreviewEnd()
     }
-  }, [currentTime, previewDuration, previewEnded])
+  }, [currentTime, previewDuration, isPlaying])
 
   const handlePreviewEnd = () => {
     if (audioRef.current) {
       audioRef.current.pause()
     }
     setIsPlaying(false)
-    setPreviewEnded(true)
     
     // Save preview completed status
     localStorage.setItem(`preview_${storyId}`, 'completed')
+    
+    // Go directly to player page with options (no intermediate screen)
+    router.push(`/player/${storyId}?fromPreview=true`)
   }
 
   const handlePlayPause = () => {
@@ -155,87 +156,6 @@ function PreviewContent() {
           <Link href="/library" className="text-blue-400 hover:text-blue-300">
             ← Back to Library
           </Link>
-        </div>
-      </div>
-    )
-  }
-
-  // Preview ended state
-  if (previewEnded) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-blue-950 to-slate-950 text-white flex flex-col">
-        {/* Header */}
-        <header className="flex items-center justify-between px-4 py-3 border-b border-blue-800/50">
-          <button onClick={handleBack} className="text-blue-300 hover:text-white flex items-center gap-2">
-            <span>←</span>
-            <span className="text-sm">Back</span>
-          </button>
-          
-          <div className="text-center">
-            <span className="text-xs text-blue-400 font-medium">PREVIEW ENDED</span>
-          </div>
-          
-          {user && (
-            <Link href="/account" className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-sm">
-              {displayName?.charAt(0).toUpperCase() || 'U'}
-            </Link>
-          )}
-        </header>
-
-        {/* Content */}
-        <main className="flex-1 px-4 py-8 flex flex-col items-center justify-center">
-          {/* Small Cover */}
-          <div className="w-24 h-24 rounded-lg overflow-hidden bg-slate-800 mb-6 shadow-lg shadow-blue-500/20">
-            {story.cover_url ? (
-              <img src={story.cover_url} alt={story.title} className="w-full h-full object-cover" />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-600 to-blue-900">
-                <span className="text-3xl opacity-50">🎧</span>
-              </div>
-            )}
-          </div>
-
-          {/* Announcer Message */}
-          <div className="text-center max-w-sm mb-8">
-            <p className="text-blue-200 text-lg leading-relaxed">
-              I hope you enjoyed this preview of <span className="text-white font-semibold">"{story.title}"</span>.
-            </p>
-            <p className="text-slate-400 mt-3 text-sm">
-              The full story is <span className="text-white">{story.duration_mins} minutes</span> long 
-              and you've heard the first 10%.
-            </p>
-          </div>
-
-          {/* Stats */}
-          <div className="flex items-center gap-4 text-sm text-slate-400 mb-8">
-            <span className="flex items-center gap-1">
-              <span>🎧</span>
-              <span>{formatTime(previewDuration)} preview</span>
-            </span>
-            <span>•</span>
-            <span className="flex items-center gap-1">
-              <span>📖</span>
-              <span>{story.duration_mins} min full</span>
-            </span>
-          </div>
-
-          {/* Call to Action */}
-          <div className="text-center text-slate-400 text-sm">
-            <p>If you like this story, you can:</p>
-          </div>
-        </main>
-
-        {/* Bottom Action Buttons */}
-        <div className="px-4 pb-8 space-y-3">
-          <button
-            onClick={handleBack}
-            className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition"
-          >
-            See My Options →
-          </button>
-          <p className="text-slate-500 text-xs text-center">
-            Resume, save to wishlist, or skip this story
-          </p>
         </div>
       </div>
     )
