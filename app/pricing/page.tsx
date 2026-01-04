@@ -153,8 +153,8 @@ export default function PricingPage() {
       if (data.success) {
         await refreshCredits()
         setConfirmPack(null)
-        alert(`Success! ${confirmPack.credits} credits added to your account.`)
-        router.push('/home')
+        // Go back to previous page (where they clicked "get more credits")
+        window.history.back()
       } else {
         alert(data.error || 'Purchase failed. Please try again.')
       }
