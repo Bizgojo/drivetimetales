@@ -18,6 +18,45 @@ const CREDIT_PACKS = {
   large: { price: 1999, credits: 60, name: 'Large Pack', priceId: 'price_1SjT2LG3QDdai0ZhyG3JTuGY' },
 };
 
+// Helper function to create checkout session
+async function createCheckoutSession(
+  customerId: string, 
+  userId: string, 
+  pack: typeof CREDIT_PACKS['small'], 
+  packId: string,
+  returnUrl?: string
+): Promise<string> {
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://drivetimetales.vercel.app';
+  const successUrl = returnUrl 
+    ? `${baseUrl}/purchase-success?returnUrl=${encodeURIComponent(returnUrl)}&credits=${pack.credits}`
+    : `${baseUrl}/library?purchased=${pack.credits}`;
+  const cancelUrl = returnUrl || `${baseUrl}/pricing`;
+
+  const session = await stripe.checkout.sessions.create({
+    customer: customerId,
+    payment_method_types: ['card'],
+    line_items: [
+      {
+        price: pack.priceId,
+        quantity: 1,
+      },
+    ],
+    mode: 'payment',
+    success_url: successUrl,
+    cancel_url: cancelUrl,
+    metadata: {
+      user_id: userId,
+      pack_id: packId,
+      credits: pack.credits.toString(),
+    },
+    payment_intent_data: {
+      setup_future_usage: 'off_session',
+    },
+  });
+
+  return session.url!;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -52,147 +91,130 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if user has a Stripe customer ID and payment method
-    let hasPaymentMethod = false;
+    // Ensure user has a Stripe customer ID
+    let customerId = user.stripe_customer_id;
     
-    if (user.stripe_customer_id) {
-      try {
-        const paymentMethods = await stripe.paymentMethods.list({
-          customer: user.stripe_customer_id,
-          type: 'card',
-          limit: 1,
-        });
-        hasPaymentMethod = paymentMethods.data.length > 0;
-      } catch (e) {
-        console.log('Error checking payment methods:', e);
-        hasPaymentMethod = false;
-      }
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        email: user.email,
+        metadata: { supabase_user_id: userId },
+      });
+      customerId = customer.id;
+      
+      await supabaseAdmin
+        .from('users')
+        .update({ stripe_customer_id: customerId })
+        .eq('id', userId);
+    }
+
+    // Check if user has a payment method
+    let hasPaymentMethod = false;
+    try {
+      const paymentMethods = await stripe.paymentMethods.list({
+        customer: customerId,
+        type: 'card',
+        limit: 1,
+      });
+      hasPaymentMethod = paymentMethods.data.length > 0;
+    } catch (e) {
+      console.log('Error checking payment methods:', e);
+      hasPaymentMethod = false;
     }
 
     // If no payment method, redirect to Stripe Checkout
     if (!hasPaymentMethod) {
-      // Create or get Stripe customer
-      let customerId = user.stripe_customer_id;
-      
-      if (!customerId) {
-        const customer = await stripe.customers.create({
-          email: user.email,
-          metadata: { supabase_user_id: userId },
-        });
-        customerId = customer.id;
-        
-        // Save customer ID to user
-        await supabaseAdmin
-          .from('users')
-          .update({ stripe_customer_id: customerId })
-          .eq('id', userId);
-      }
+      const checkoutUrl = await createCheckoutSession(customerId, userId, pack, packId, returnUrl);
+      return NextResponse.json({ 
+        needsCheckout: true, 
+        checkoutUrl 
+      });
+    }
 
-      // Use returnUrl if provided, otherwise go to library
-      const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://drivetimetales.vercel.app';
-      const successUrl = returnUrl 
-        ? `${baseUrl}/purchase-success?returnUrl=${encodeURIComponent(returnUrl)}&credits=${pack.credits}`
-        : `${baseUrl}/library?purchased=${pack.credits}`;
-      const cancelUrl = returnUrl || `${baseUrl}/pricing`;
-
-      // Create checkout session for the pack
-      const session = await stripe.checkout.sessions.create({
+    // User has payment method - try to charge directly
+    try {
+      const paymentMethods = await stripe.paymentMethods.list({
         customer: customerId,
-        payment_method_types: ['card'],
-        line_items: [
-          {
-            price: pack.priceId,
-            quantity: 1,
-          },
-        ],
-        mode: 'payment',
-        success_url: successUrl,
-        cancel_url: cancelUrl,
+        type: 'card',
+        limit: 1,
+      });
+      
+      const paymentMethodId = paymentMethods.data[0].id;
+
+      // Create and confirm payment intent
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: pack.price,
+        currency: 'usd',
+        customer: customerId,
+        payment_method: paymentMethodId,
+        off_session: true,
+        confirm: true,
+        description: `${pack.name} - ${pack.credits} credits`,
         metadata: {
           user_id: userId,
           pack_id: packId,
           credits: pack.credits.toString(),
         },
-        payment_intent_data: {
-          setup_future_usage: 'off_session', // Save card for future purchases
-        },
       });
+
+      if (paymentIntent.status !== 'succeeded') {
+        // Payment requires action - redirect to checkout
+        console.log('Payment status:', paymentIntent.status);
+        const checkoutUrl = await createCheckoutSession(customerId, userId, pack, packId, returnUrl);
+        return NextResponse.json({ 
+          needsCheckout: true, 
+          checkoutUrl 
+        });
+      }
+
+      // Payment successful - add credits to user
+      const newCredits = user.credits === -1 ? -1 : (user.credits || 0) + pack.credits;
+      
+      await supabaseAdmin
+        .from('users')
+        .update({ credits: newCredits })
+        .eq('id', userId);
+
+      // Record the purchase in payment history
+      try {
+        await supabaseAdmin
+          .from('payment_history')
+          .insert({
+            user_id: userId,
+            amount: pack.price,
+            credits: pack.credits,
+            description: pack.name,
+            status: 'completed',
+          });
+      } catch (e) {
+        console.log('Could not record payment history:', e);
+      }
 
       return NextResponse.json({ 
-        needsCheckout: true, 
-        checkoutUrl: session.url 
+        success: true, 
+        credits: newCredits,
+        message: `Successfully purchased ${pack.credits} credits!`
       });
-    }
-
-    // User has payment method - charge directly
-    const customer = await stripe.customers.retrieve(user.stripe_customer_id!) as Stripe.Customer;
-    
-    // Get payment method
-    const paymentMethods = await stripe.paymentMethods.list({
-      customer: user.stripe_customer_id!,
-      type: 'card',
-      limit: 1,
-    });
-    
-    const paymentMethodId = paymentMethods.data[0].id;
-
-    // Create and confirm payment intent
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: pack.price,
-      currency: 'usd',
-      customer: user.stripe_customer_id!,
-      payment_method: paymentMethodId,
-      off_session: true,
-      confirm: true,
-      description: `${pack.name} - ${pack.credits} credits`,
-      metadata: {
-        user_id: userId,
-        pack_id: packId,
-        credits: pack.credits.toString(),
-      },
-    });
-
-    if (paymentIntent.status !== 'succeeded') {
-      return NextResponse.json(
-        { error: 'Payment failed. Please try again.' },
-        { status: 400 }
-      );
-    }
-
-    // Payment successful - add credits to user
-    const newCredits = user.credits === -1 ? -1 : (user.credits || 0) + pack.credits;
-    
-    await supabaseAdmin
-      .from('users')
-      .update({ credits: newCredits })
-      .eq('id', userId);
-
-    // Record the purchase in payment history (if table exists)
-    try {
-      await supabaseAdmin
-        .from('payment_history')
-        .insert({
-          user_id: userId,
-          amount: pack.price,
-          credits: pack.credits,
-          description: pack.name,
-          status: 'completed',
+      
+    } catch (stripeError: any) {
+      console.error('Stripe charge error:', stripeError.message);
+      
+      // If card requires authentication or fails, redirect to checkout
+      if (stripeError.code === 'authentication_required' || 
+          stripeError.code === 'card_declined' ||
+          stripeError.type === 'StripeCardError') {
+        const checkoutUrl = await createCheckoutSession(customerId, userId, pack, packId, returnUrl);
+        return NextResponse.json({ 
+          needsCheckout: true, 
+          checkoutUrl 
         });
-    } catch (e) {
-      // Table might not exist, that's okay
-      console.log('Could not record payment history:', e);
+      }
+      
+      throw stripeError;
     }
-
-    return NextResponse.json({ 
-      success: true, 
-      credits: newCredits,
-      message: `Successfully purchased ${pack.credits} credits!`
-    });
 
   } catch (error: any) {
     console.error('Quick purchase error:', error);
     
-    // Handle specific Stripe errors
     if (error.type === 'StripeCardError') {
       return NextResponse.json(
         { error: error.message || 'Card declined. Please update your payment method.' },
