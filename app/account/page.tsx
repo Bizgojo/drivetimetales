@@ -59,6 +59,7 @@ export default function AccountPage() {
 
   const menuItems = [
     { href: '/account/billing', icon: '💎', label: 'Billing & Credits', desc: `${user.credits} credits available` },
+    { href: '/add-payment-method', icon: '💳', label: 'Payment Method', desc: 'Add or update card' },
     { href: '/account/settings', icon: '⚙️', label: 'Settings', desc: 'Preferences & notifications' },
     { href: '/account/downloads', icon: '📥', label: 'Downloads', desc: 'Offline stories' },
     { href: '/account/help', icon: '❓', label: 'Help & Support', desc: 'FAQs & contact' },
