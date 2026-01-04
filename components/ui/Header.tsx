@@ -1,184 +1,218 @@
-'use client';
+'use client'
 
-import React, { useState } from 'react';
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { Logo } from './Logo';
+import Link from 'next/link'
+import { useState } from 'react'
 
 interface HeaderProps {
-  isLoggedIn?: boolean;
-  userName?: string;
-  userCredits?: number;
-  showBack?: boolean;
-  onMenuClick?: () => void;
+  isLoggedIn?: boolean
+  showBack?: boolean
+  backHref?: string
+  userName?: string
+  userCredits?: number
+  variant?: 'default' | 'minimal'
 }
 
-export const Header = ({ 
-  isLoggedIn = false, 
-  userName,
-  userCredits = 0,
-  showBack = false,
-  onMenuClick 
-}: HeaderProps) => {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const pathname = usePathname();
+export function Header({ 
+  isLoggedIn, 
+  showBack, 
+  backHref = '/library',
+  userName, 
+  userCredits,
+  variant = 'default'
+}: HeaderProps) {
+  const [menuOpen, setMenuOpen] = useState(false)
 
-  const handleMenuToggle = () => {
-    setMenuOpen(!menuOpen);
-    onMenuClick?.();
-  };
+  const handleBack = () => {
+    if (typeof window !== 'undefined') {
+      window.history.back()
+    }
+  }
+
+  const userInitial = userName?.charAt(0).toUpperCase() || 'U'
+  const displayCredits = userCredits === -1 ? '∞' : userCredits
 
   return (
     <>
-      <header className="sticky top-0 bg-gray-950 border-b border-gray-800 px-4 pt-2 pb-3 z-40">
-        <div className="flex items-center justify-between">
-          <Link href={isLoggedIn ? '/home' : '/'}>
-            <Logo size="md" />
+      <header className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-950">
+        {/* Left - Back button or empty space */}
+        {showBack ? (
+          <button 
+            onClick={handleBack}
+            className="text-slate-400 hover:text-white flex items-center gap-2 transition"
+          >
+            <span>←</span>
+            <span className="text-sm">Back</span>
+          </button>
+        ) : (
+          <div className="w-16" /> 
+        )}
+
+        {/* Center - Logo */}
+        <Link href="/home" className="flex items-center gap-1">
+          <span className="text-lg">🚛🚗</span>
+          <span className="font-bold text-white">
+            Drive Time<span className="text-orange-400">Tales</span>
+          </span>
+        </Link>
+
+        {/* Right - User avatar or hamburger */}
+        {isLoggedIn ? (
+          <button 
+            onClick={() => setMenuOpen(true)}
+            className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-black font-bold text-sm hover:bg-orange-400 transition"
+          >
+            {userInitial}
+          </button>
+        ) : (
+          <Link 
+            href="/auth/login"
+            className="text-orange-400 hover:text-orange-300 text-sm font-medium transition"
+          >
+            Sign In
           </Link>
-          
-          <div className="flex items-center gap-3">
-            {showBack && (
-              <button 
-                onClick={() => window.history.back()}
-                className="px-3 py-1.5 bg-gray-800 border border-gray-700 text-white text-xs font-medium rounded-lg"
-              >
-                ← Back
-              </button>
-            )}
-            
-            <Link href="/search" className="text-white text-xl">
-              🔍
-            </Link>
-            
-            {/* User Avatar - links to account */}
-            {isLoggedIn && userName && (
-              <Link 
-                href="/account"
-                className="w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center text-black font-bold text-sm"
-              >
-                {userName.charAt(0).toUpperCase()}
-              </Link>
-            )}
-            
-            <button 
-              onClick={handleMenuToggle}
-              className="text-white text-xl"
-            >
-              ☰
-            </button>
-          </div>
-        </div>
+        )}
       </header>
 
-      {/* Mobile Menu Dropdown */}
+      {/* Mobile Menu Overlay */}
       {menuOpen && (
         <div 
-          className="fixed inset-0 bg-black/50 z-40"
+          className="fixed inset-0 bg-black/80 z-50"
           onClick={() => setMenuOpen(false)}
         >
           <div 
-            className="absolute right-0 top-0 w-72 bg-gray-900 h-full shadow-xl"
-            onClick={e => e.stopPropagation()}
+            className="absolute right-0 top-0 h-full w-72 bg-slate-900 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
           >
-            <div className="p-4 border-b border-gray-800">
+            {/* Menu Header */}
+            <div className="p-4 border-b border-slate-800">
               <div className="flex items-center justify-between mb-4">
-                <span className="text-white font-bold">Menu</span>
                 <button 
                   onClick={() => setMenuOpen(false)}
-                  className="text-gray-400 text-xl"
+                  className="text-slate-400 hover:text-white"
                 >
                   ✕
                 </button>
               </div>
               
-              {isLoggedIn ? (
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-orange-500 rounded-full flex items-center justify-center text-white font-bold">
-                    {userName?.charAt(0) || 'U'}
-                  </div>
-                  <div>
-                    <p className="text-white font-medium">{userName || 'User'}</p>
-                    <p className="text-orange-400 text-sm">💎 {userCredits} credits</p>
-                  </div>
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-full bg-orange-500 flex items-center justify-center text-black font-bold text-xl">
+                  {userInitial}
                 </div>
-              ) : (
-                <div className="flex gap-2">
-                  <Link 
-                    href="/auth/login"
-                    className="flex-1 py-2 bg-gray-800 text-white text-center rounded-lg text-sm"
-                  >
-                    Sign In
-                  </Link>
-                  <Link 
-                    href="/auth/signup"
-                    className="flex-1 py-2 bg-orange-500 text-white text-center rounded-lg text-sm"
-                  >
-                    Sign Up
-                  </Link>
+                <div>
+                  <p className="text-white font-medium">{userName || 'User'}</p>
+                  <p className="text-orange-400 text-sm">{displayCredits} credits</p>
                 </div>
-              )}
+              </div>
             </div>
 
-            <nav className="p-4">
-              <ul className="space-y-1">
-                <MenuItem href="/" label="Home" icon="🏠" active={pathname === '/'} />
-                <MenuItem href="/library" label="Library" icon="📖" active={pathname === '/library'} />
-                <MenuItem href="/browse" label="Browse" icon="📂" active={pathname === '/browse'} />
-                <MenuItem href="/search" label="Search" icon="🔍" active={pathname === '/search'} />
-                
-                {isLoggedIn && (
-                  <>
-                    <div className="border-t border-gray-800 my-3" />
-                    <MenuItem href="/collection" label="My Collection" icon="📚" active={pathname === '/collection'} />
-                    <MenuItem href="/wishlist" label="Wishlist" icon="♡" active={pathname === '/wishlist'} />
-                    <MenuItem href="/account/downloads" label="Downloads" icon="📥" active={pathname === '/account/downloads'} />
-                  </>
-                )}
-                
-                <div className="border-t border-gray-800 my-3" />
-                <MenuItem href="/pricing" label="Pricing" icon="💳" active={pathname === '/pricing'} />
-                <MenuItem href="/about" label="About" icon="ℹ️" active={pathname === '/about'} />
-                
-                {isLoggedIn && (
-                  <>
-                    <div className="border-t border-gray-800 my-3" />
-                    <MenuItem href="/account" label="My Account" icon="👤" active={pathname === '/account'} />
-                    <MenuItem href="/account/billing" label="Billing & Credits" icon="💎" active={pathname === '/account/billing'} />
-                    <MenuItem href="/account/settings" label="Settings" icon="⚙️" active={pathname === '/account/settings'} />
-                    <MenuItem href="/account/help" label="Help & Support" icon="❓" active={pathname === '/account/help'} />
-                  </>
-                )}
-              </ul>
+            {/* Menu Items */}
+            <nav className="p-4 space-y-1">
+              <Link 
+                href="/home" 
+                className="flex items-center gap-3 px-3 py-3 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition"
+                onClick={() => setMenuOpen(false)}
+              >
+                <span>🏠</span>
+                <span>Home</span>
+              </Link>
+              
+              <Link 
+                href="/library" 
+                className="flex items-center gap-3 px-3 py-3 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition"
+                onClick={() => setMenuOpen(false)}
+              >
+                <span>📚</span>
+                <span>Browse Library</span>
+              </Link>
+              
+              <Link 
+                href="/collection" 
+                className="flex items-center gap-3 px-3 py-3 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition"
+                onClick={() => setMenuOpen(false)}
+              >
+                <span>📖</span>
+                <span>My Collection</span>
+              </Link>
+              
+              <Link 
+                href="/wishlist" 
+                className="flex items-center gap-3 px-3 py-3 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition"
+                onClick={() => setMenuOpen(false)}
+              >
+                <span>❤️</span>
+                <span>Wishlist</span>
+              </Link>
+
+              <div className="border-t border-slate-800 my-3" />
+
+              <Link 
+                href="/account" 
+                className="flex items-center gap-3 px-3 py-3 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition"
+                onClick={() => setMenuOpen(false)}
+              >
+                <span>👤</span>
+                <span>My Account</span>
+              </Link>
+              
+              <Link 
+                href="/account/billing" 
+                className="flex items-center gap-3 px-3 py-3 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition"
+                onClick={() => setMenuOpen(false)}
+              >
+                <span>💳</span>
+                <span>Billing & Credits</span>
+              </Link>
+              
+              <Link 
+                href="/account/settings" 
+                className="flex items-center gap-3 px-3 py-3 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition"
+                onClick={() => setMenuOpen(false)}
+              >
+                <span>⚙️</span>
+                <span>Settings</span>
+              </Link>
             </nav>
+
+            {/* Sign Out */}
+            <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-slate-800">
+              <Link 
+                href="/auth/login"
+                className="flex items-center gap-3 px-3 py-3 text-red-400 hover:text-red-300 hover:bg-slate-800 rounded-lg transition"
+                onClick={() => setMenuOpen(false)}
+              >
+                <span>🚪</span>
+                <span>Sign Out</span>
+              </Link>
+            </div>
           </div>
         </div>
       )}
     </>
-  );
-};
+  )
+}
 
-const MenuItem = ({ 
-  href, 
-  label, 
-  icon, 
-  active 
-}: { 
-  href: string; 
-  label: string; 
-  icon: string; 
-  active: boolean;
-}) => (
-  <li>
-    <Link 
-      href={href}
-      className={`flex items-center gap-3 px-3 py-2 rounded-lg ${
-        active ? 'bg-orange-500/20 text-orange-400' : 'text-white hover:bg-gray-800'
-      }`}
-    >
-      <span>{icon}</span>
-      <span>{label}</span>
+// Export Logo component separately for use in custom headers
+export function Logo({ size = 'default' }: { size?: 'small' | 'default' | 'large' }) {
+  const textSize = {
+    small: 'text-sm',
+    default: 'text-base',
+    large: 'text-xl'
+  }[size]
+
+  const iconSize = {
+    small: 'text-base',
+    default: 'text-lg',
+    large: 'text-2xl'
+  }[size]
+
+  return (
+    <Link href="/home" className="flex items-center gap-1">
+      <span className={iconSize}>🚛🚗</span>
+      <span className={`font-bold text-white ${textSize}`}>
+        Drive Time<span className="text-orange-400">Tales</span>
+      </span>
     </Link>
-  </li>
-);
+  )
+}
 
-export default Header;
+export default Header

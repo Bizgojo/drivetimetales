@@ -1,379 +1,124 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js'
 
-// ============================================
-// DEBUG: Log environment variables (safely)
-// ============================================
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
-console.log('[DTT Debug] Supabase initialization:');
-console.log('[DTT Debug] - URL exists:', !!supabaseUrl);
-console.log('[DTT Debug] - URL value:', supabaseUrl ? supabaseUrl.substring(0, 30) + '...' : 'MISSING!');
-console.log('[DTT Debug] - Anon key exists:', !!supabaseAnonKey);
-console.log('[DTT Debug] - Anon key length:', supabaseAnonKey?.length || 0);
+export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('[DTT Debug] CRITICAL: Missing Supabase environment variables!');
-  console.error('[DTT Debug] Make sure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY are set in Vercel');
-}
-
-// Client-side Supabase client
-export const supabase = createClient(
-  supabaseUrl || 'https://placeholder.supabase.co',
-  supabaseAnonKey || 'placeholder-key'
-);
-
-// ============================================
-// Types for our database - MATCHES ACTUAL DB SCHEMA EXACTLY
-// Database: supabase-schema-v3.sql
-// ============================================
-
+// Types for database
 export interface Story {
-  id: string;
-  title: string;
-  author: string;
-  genre: string;
-  description?: string;
-  duration_mins: number;
-  duration_label?: string;
-  credits: number;
-  color?: string;
-  promo_text?: string;
-  audio_url?: string;
-  sample_url?: string;
-  cover_url?: string;
-  play_count: number;
-  rating?: number;
-  is_new: boolean;
-  is_featured: boolean;
-  is_free?: boolean;
-  series_id?: string;
-  episode_number?: number;
-  created_at: string;
+  id: string
+  title: string
+  author: string | null
+  description: string
+  genre: string
+  duration_mins: number
+  cover_url: string | null
+  audio_url: string
+  preview_audio_url?: string
+  preview_end_time?: number
+  credit_cost: number
+  created_at: string
 }
 
-// User interface - MATCHES users table after column renames
 export interface User {
-  id: string;
-  email: string;
-  display_name?: string;  // Renamed from 'name'
-  credits: number;  // Renamed from 'credits_remaining'
-  subscription_type?: 'free' | 'test_driver' | 'commuter' | 'road_warrior';  // Renamed from 'subscription_status'
-  subscription_ends_at?: string;
-  stripe_customer_id?: string;
-  stripe_subscription_id?: string;
-  created_at: string;
+  id: string
+  email: string
+  display_name: string | null
+  credits: number
+  subscription_type: string | null
 }
 
-export interface UserStory {
-  id: string;
-  user_id: string;
-  story_id: string;
-  progress_seconds: number;
-  completed: boolean;
-  purchased_at: string;
-  last_played_at?: string;
+export interface LibraryEntry {
+  id: string
+  user_id: string
+  story_id: string
+  progress: number
+  last_played: string
+  completed: boolean
 }
 
-export interface Purchase {
-  id: string;
-  user_id: string;
-  type: 'subscription' | 'credit_pack' | 'story';
-  product_id: string;
-  amount_cents: number;
-  credits_added: number;
-  stripe_payment_id?: string;
-  created_at: string;
+export interface UserPreference {
+  id: string
+  user_id: string
+  story_id: string
+  wishlisted: boolean
+  not_for_me: boolean
 }
 
-export interface Series {
-  id: string;
-  title: string;
-  description?: string;
-  author: string;
-  genre: string;
-  cover_url?: string;
-  total_episodes: number;
-  total_duration_mins: number;
-  is_complete: boolean;
-  is_featured: boolean;
-  created_at: string;
-}
+// Helper functions
+export async function getStory(storyId: string): Promise<Story | null> {
+  const { data, error } = await supabase
+    .from('stories')
+    .select('*')
+    .eq('id', storyId)
+    .single()
 
-export interface Review {
-  id: string;
-  user_id: string;
-  story_id: string;
-  rating: number;
-  title?: string;
-  content?: string;
-  created_at: string;
-  updated_at: string;
-}
+  if (error) {
+    console.error('Error fetching story:', error)
+    return null
+  }
 
-// ============================================
-// Helper functions with DEBUG logging
-// ============================================
+  return data
+}
 
 export async function getStories(options?: {
-  category?: string;
-  featured?: boolean;
-  limit?: number;
-  search?: string;
-}) {
-  console.log('[DTT Debug] getStories() called with options:', options);
-  
-  // Use direct fetch as a workaround for Supabase client hanging issue
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  
-  if (!url || !key) {
-    console.error('[DTT Debug] Missing env vars for direct fetch');
-    return [];
+  genre?: string
+  limit?: number
+  offset?: number
+}): Promise<Story[]> {
+  let query = supabase
+    .from('stories')
+    .select('*')
+    .order('created_at', { ascending: false })
+
+  if (options?.genre) {
+    query = query.eq('genre', options.genre)
   }
-  
-  try {
-    // Build query string
-    let queryParams = 'select=*&order=created_at.desc';
-    
-    if (options?.category) {
-      queryParams += `&genre=eq.${encodeURIComponent(options.category)}`;
-    }
-    if (options?.featured) {
-      queryParams += '&is_featured=eq.true';
-    }
-    if (options?.limit) {
-      queryParams += `&limit=${options.limit}`;
-    }
-    if (options?.search) {
-      queryParams += `&or=(title.ilike.%${encodeURIComponent(options.search)}%,author.ilike.%${encodeURIComponent(options.search)}%,description.ilike.%${encodeURIComponent(options.search)}%)`;
-    }
-    
-    const apiUrl = `${url}/rest/v1/stories?${queryParams}`;
-    console.log('[DTT Debug] Fetching stories from:', apiUrl.substring(0, 80) + '...');
-    
-    const response = await fetch(apiUrl, {
-      headers: {
-        'apikey': key,
-        'Authorization': `Bearer ${key}`,
-        'Content-Type': 'application/json'
-      }
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('[DTT Debug] getStories() fetch error:', response.status, errorText);
-      throw new Error(`Failed to fetch stories: ${response.status}`);
-    }
-    
-    const data = await response.json();
-    
-    console.log('[DTT Debug] getStories() SUCCESS:');
-    console.log('[DTT Debug] - Stories returned:', data?.length || 0);
-    if (data && data.length > 0) {
-      console.log('[DTT Debug] - First story title:', data[0].title);
-    }
-    
-    return (data || []) as Story[];
-  } catch (err) {
-    console.error('[DTT Debug] getStories() EXCEPTION:', err);
-    return [];
+
+  if (options?.limit) {
+    query = query.limit(options.limit)
   }
+
+  if (options?.offset) {
+    query = query.range(options.offset, options.offset + (options.limit || 10) - 1)
+  }
+
+  const { data, error } = await query
+
+  if (error) {
+    console.error('Error fetching stories:', error)
+    return []
+  }
+
+  return data || []
 }
 
-export async function getStory(id: string) {
-  console.log('[DTT Debug] getStory() called with id:', id);
-  
-  try {
-    const { data, error } = await supabase
-      .from('stories')
-      .select('*')
-      .eq('id', id)
-      .single();
-    
-    if (error) {
-      console.error('[DTT Debug] getStory() ERROR:', error);
-      throw error;
-    }
-    
-    console.log('[DTT Debug] getStory() SUCCESS:', data?.title);
-    return data as Story;
-  } catch (err) {
-    console.error('[DTT Debug] getStory() EXCEPTION:', err);
-    throw err;
-  }
-}
-
-export async function getUserProfile(userId: string) {
-  console.log('[DTT Debug] getUserProfile() called with userId:', userId);
-  
-  // Use direct fetch as a workaround for Supabase client hanging issue
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  
-  if (!url || !key) {
-    console.error('[DTT Debug] Missing env vars for direct fetch');
-    return null;
-  }
-  
-  try {
-    const apiUrl = `${url}/rest/v1/users?id=eq.${userId}&select=*`;
-    console.log('[DTT Debug] Fetching user profile from:', apiUrl.substring(0, 60) + '...');
-    
-    const response = await fetch(apiUrl, {
-      headers: {
-        'apikey': key,
-        'Authorization': `Bearer ${key}`,
-        'Content-Type': 'application/json'
-      }
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('[DTT Debug] getUserProfile() fetch error:', response.status, errorText);
-      throw new Error(`Failed to fetch user profile: ${response.status}`);
-    }
-    
-    const data = await response.json();
-    
-    // API returns an array, get first item
-    const user = data && data.length > 0 ? data[0] : null;
-    
-    if (!user) {
-      console.log('[DTT Debug] getUserProfile() - No user found');
-      return null;
-    }
-    
-    console.log('[DTT Debug] getUserProfile() SUCCESS:');
-    console.log('[DTT Debug] - User email:', user.email);
-    console.log('[DTT Debug] - User display_name:', user.display_name);
-    console.log('[DTT Debug] - User credits:', user.credits);
-    
-    return user as User;
-  } catch (err) {
-    console.error('[DTT Debug] getUserProfile() EXCEPTION:', err);
-    return null;
-  }
-}
-
-export async function getUserStories(userId: string) {
-  console.log('[DTT Debug] getUserStories() called');
-  
+export async function getUserLibrary(userId: string): Promise<LibraryEntry[]> {
   const { data, error } = await supabase
-    .from('user_stories')
-    .select(`
-      *,
-      story:stories(*)
-    `)
+    .from('user_library')
+    .select('*')
     .eq('user_id', userId)
-    .order('last_played_at', { ascending: false });
-  
+    .order('last_played', { ascending: false })
+
   if (error) {
-    console.error('[DTT Debug] getUserStories() ERROR:', error);
-    throw error;
+    console.error('Error fetching user library:', error)
+    return []
   }
-  
-  console.log('[DTT Debug] getUserStories() returned:', data?.length || 0, 'items');
-  return data;
+
+  return data || []
 }
 
-export async function updatePlayProgress(userId: string, storyId: string, progressSeconds: number) {
-  console.log('[DTT Debug] updatePlayProgress() called');
-  
-  const { error } = await supabase
-    .from('user_stories')
-    .upsert({
-      user_id: userId,
-      story_id: storyId,
-      progress_seconds: progressSeconds,
-      last_played_at: new Date().toISOString(),
-    }, {
-      onConflict: 'user_id,story_id'
-    });
-  
+export async function getUserPreferences(userId: string): Promise<UserPreference[]> {
+  const { data, error } = await supabase
+    .from('user_preferences')
+    .select('*')
+    .eq('user_id', userId)
+
   if (error) {
-    console.error('[DTT Debug] updatePlayProgress() ERROR:', error);
-    throw error;
-  }
-  
-  console.log('[DTT Debug] updatePlayProgress() SUCCESS');
-}
-
-export async function purchaseStory(userId: string, storyId: string, creditsToDeduct: number) {
-  console.log('[DTT Debug] purchaseStory() called');
-  
-  // Get current user credits
-  const { data: user, error: userError } = await supabase
-    .from('users')
-    .select('credits')
-    .eq('id', userId)
-    .single();
-  
-  if (userError) {
-    console.error('[DTT Debug] purchaseStory() user fetch ERROR:', userError);
-    throw userError;
-  }
-  
-  if (user.credits < creditsToDeduct) {
-    console.error('[DTT Debug] purchaseStory() insufficient credits:', user.credits, '<', creditsToDeduct);
-    throw new Error('Insufficient credits');
+    console.error('Error fetching user preferences:', error)
+    return []
   }
 
-  // Deduct credits
-  const { error: deductError } = await supabase
-    .from('users')
-    .update({ credits: user.credits - creditsToDeduct })
-    .eq('id', userId);
-  
-  if (deductError) {
-    console.error('[DTT Debug] purchaseStory() deduct ERROR:', deductError);
-    throw deductError;
-  }
-
-  // Add to user's collection
-  const { error: addError } = await supabase
-    .from('user_stories')
-    .insert({
-      user_id: userId,
-      story_id: storyId,
-      progress_seconds: 0,
-      completed: false,
-      purchased_at: new Date().toISOString(),
-    });
-  
-  if (addError) {
-    console.error('[DTT Debug] purchaseStory() add story ERROR:', addError);
-    throw addError;
-  }
-
-  console.log('[DTT Debug] purchaseStory() SUCCESS');
-  return { success: true, remainingCredits: user.credits - creditsToDeduct };
-}
-
-export async function addCredits(userId: string, creditsToAdd: number) {
-  console.log('[DTT Debug] addCredits() called');
-  
-  const { data: user, error: userError } = await supabase
-    .from('users')
-    .select('credits')
-    .eq('id', userId)
-    .single();
-  
-  if (userError) {
-    console.error('[DTT Debug] addCredits() ERROR:', userError);
-    throw userError;
-  }
-
-  const { error } = await supabase
-    .from('users')
-    .update({ credits: user.credits + creditsToAdd })
-    .eq('id', userId);
-  
-  if (error) {
-    console.error('[DTT Debug] addCredits() update ERROR:', error);
-    throw error;
-  }
-  
-  console.log('[DTT Debug] addCredits() SUCCESS, new balance:', user.credits + creditsToAdd);
-  return { success: true, newBalance: user.credits + creditsToAdd };
+  return data || []
 }
