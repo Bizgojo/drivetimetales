@@ -172,8 +172,9 @@ export default function HomePage() {
     }
   }
 
-  // Filter recommended stories (exclude owned, wishlist, pass)
+  // Filter recommended stories (exclude owned, wishlist, pass) - but show all if no user
   const filteredRecommended = recommended.filter(story => {
+    if (!user) return true // Show all if not logged in
     const pref = userPrefs.find(p => p.story_id === story.id)
     if (ownedStoryIds.has(story.id)) return false
     if (pref?.wishlisted) return false
@@ -280,26 +281,28 @@ export default function HomePage() {
         </section>
       )}
 
-      {/* New Releases - 3 equal columns */}
+      {/* New Releases - 3 equal columns with light background */}
       <section className="px-4 py-4 border-b border-slate-800">
         <h2 className="text-sm font-bold text-white mb-3 uppercase tracking-wide">New Releases</h2>
-        <div className="grid grid-cols-3 gap-3">
-          {newReleases.map(story => (
-            <Link key={story.id} href={`/player/${story.id}`} className="group">
-              <div className="aspect-square rounded-lg overflow-hidden bg-slate-800 mb-1">
-                {story.cover_url ? (
-                  <img src={story.cover_url} alt={story.title} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
-                ) : (
-                  <div className="w-full h-full bg-gradient-to-br from-orange-600 to-orange-900 flex items-center justify-center">
-                    <span className="text-2xl opacity-50">🎧</span>
-                  </div>
-                )}
-              </div>
-              <p className="text-white text-xs font-medium truncate">{story.title}</p>
-              <p className="text-white text-[10px]">{story.duration_mins} min</p>
-              <StarRating rating={story.rating} count={story.review_count} />
-            </Link>
-          ))}
+        <div className="bg-slate-700 rounded-xl p-3">
+          <div className="grid grid-cols-3 gap-3">
+            {newReleases.map(story => (
+              <Link key={story.id} href={`/player/${story.id}`} className="group">
+                <div className="aspect-square rounded-lg overflow-hidden bg-slate-600 mb-1">
+                  {story.cover_url ? (
+                    <img src={story.cover_url} alt={story.title} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-orange-600 to-orange-900 flex items-center justify-center">
+                      <span className="text-2xl opacity-50">🎧</span>
+                    </div>
+                  )}
+                </div>
+                <p className="text-white text-xs font-medium truncate">{story.title}</p>
+                <p className="text-white text-[10px]">{story.duration_mins} min</p>
+                <StarRating rating={story.rating} count={story.review_count} />
+              </Link>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -339,6 +342,12 @@ export default function HomePage() {
               </Link>
             )
           })}
+          {filteredRecommended.length === 0 && !loading && (
+            <div className="bg-slate-700 rounded-xl p-6 text-center">
+              <p className="text-white">No recommendations yet</p>
+              <p className="text-white text-sm mt-1">Browse the library to discover stories!</p>
+            </div>
+          )}
         </div>
       </section>
 
