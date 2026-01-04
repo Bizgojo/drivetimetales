@@ -9,15 +9,23 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 export interface Story {
   id: string
   title: string
-  author: string | null
-  description: string
+  author: string
+  description: string | null
   genre: string
   duration_mins: number
+  credits: number
   cover_url: string | null
-  audio_url: string
+  audio_url: string | null
+  sample_url: string | null
   preview_audio_url?: string
   preview_end_time?: number
-  credit_cost: number
+  play_count: number
+  rating: number
+  is_new: boolean
+  is_featured: boolean
+  is_free: boolean
+  series_id: string | null
+  episode_number: number | null
   created_at: string
 }
 

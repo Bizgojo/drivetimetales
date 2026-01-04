@@ -14,7 +14,7 @@ interface Story {
   genre: string
   duration_mins: number
   cover_url: string | null
-  credit_cost: number
+  credits: number
 }
 
 interface UserPreference {
@@ -64,7 +64,7 @@ function LibraryContent() {
       // Load stories
       const { data: storiesData } = await supabase
         .from('stories')
-        .select('id, title, author, genre, duration_mins, cover_url, credit_cost')
+        .select('id, title, author, genre, duration_mins, cover_url, credits')
         .order('created_at', { ascending: false })
 
       if (storiesData) setStories(storiesData)
@@ -225,7 +225,7 @@ function LibraryContent() {
                 </h3>
                 <p className="text-slate-400 text-xs mt-1">
                   {story.genre} • {story.duration_mins} min
-                  {!isOwned && <span className="text-orange-400"> • {story.credit_cost} cr</span>}
+                  {!isOwned && <span className="text-orange-400"> • {story.credits} cr</span>}
                 </p>
               </Link>
             )

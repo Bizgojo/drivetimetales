@@ -17,7 +17,7 @@ interface Story {
   audio_url: string
   preview_audio_url?: string // Optional separate preview file
   preview_end_time?: number // Seconds where preview ends
-  credit_cost: number
+  credits: number
 }
 
 function PreviewContent() {
