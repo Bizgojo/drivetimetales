@@ -15,7 +15,7 @@ interface Story {
   duration_mins: number
   cover_url: string | null
   audio_url: string
-  credit_cost: number
+  credits: number
 }
 
 function PlayContent() {

@@ -15,7 +15,7 @@ interface Story {
   duration_mins: number
   cover_url: string | null
   audio_url: string
-  credit_cost: number
+  credits: number
   preview_end_time?: number // Seconds where preview ends (at voice break)
 }
 
@@ -113,7 +113,7 @@ function PlayerContent() {
       // Check if user already owns this story
       if (!libraryEntry) {
         // Deduct credits
-        const creditCost = story.credit_cost || 1
+        const creditCost = story.credits || 1
         
         if (user.credits < creditCost && user.credits !== -1) {
           alert('Not enough credits. Please purchase more credits.')
@@ -163,7 +163,7 @@ function PlayerContent() {
       // Check if user already owns this story
       if (!libraryEntry) {
         // Deduct credits
-        const creditCost = story.credit_cost || 1
+        const creditCost = story.credits || 1
         
         if (user.credits < creditCost && user.credits !== -1) {
           alert('Not enough credits. Please purchase more credits.')
@@ -303,7 +303,7 @@ function PlayerContent() {
   }
 
   const displayName = user?.display_name || user?.email?.split('@')[0]
-  const creditCost = story.credit_cost || 1
+  const creditCost = story.credits || 1
   const hasEnoughCredits = user && (user.credits >= creditCost || user.credits === -1)
   const ownsStory = !!libraryEntry
   const progressPercent = libraryEntry 
