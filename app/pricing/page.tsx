@@ -66,21 +66,21 @@ export default function PricingPage() {
   // Freedom Packs (one-time purchase)
   const freedomPacks = [
     {
-      id: 'small_pack',
+      id: 'small',
       name: 'Small Pack',
       price: 4.99,
       credits: 10,
       priceId: 'price_1SjSxEG3QDdai0Zhi0BbuzED',
     },
     {
-      id: 'medium_pack',
+      id: 'medium',
       name: 'Medium Pack',
       price: 9.99,
       credits: 25,
       priceId: 'price_1SjSydG3QDdai0ZhUIYLwgzw',
     },
     {
-      id: 'large_pack',
+      id: 'large',
       name: 'Large Pack',
       price: 19.99,
       credits: 60,
