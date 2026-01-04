@@ -9,6 +9,7 @@ interface User {
   display_name: string | null
   credits: number
   subscription_type: string | null
+  subscription_ends_at: string | null
   created_at: string | null
 }
 
@@ -60,7 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const { data, error } = await supabase
         .from('users')
-        .select('id, email, display_name, credits, subscription_type, created_at')
+        .select('id, email, display_name, credits, subscription_type, subscription_ends_at, created_at')
         .eq('id', userId)
         .single()
 
