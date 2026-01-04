@@ -384,7 +384,7 @@ function PlayerContent() {
         </p>
 
         {/* Action Buttons - Different states */}
-        <div className="mt-auto space-y-3">
+        <div className="mt-auto space-y-3 px-2">
           
           {/* STATE 1: User owns story - show Continue/Start Over */}
           {ownsStory && (
@@ -393,7 +393,7 @@ function PlayerContent() {
                 <button
                   onClick={handleContinue}
                   disabled={actionLoading}
-                  className="flex-1 py-4 bg-orange-500 hover:bg-orange-400 text-black rounded-xl font-bold transition disabled:opacity-50"
+                  className="flex-1 py-4 bg-orange-500 hover:bg-orange-400 text-black rounded-xl font-bold text-lg transition disabled:opacity-50"
                 >
                   {libraryEntry.progress > 0 ? '▶️ Continue' : '▶️ Play'}
                 </button>
@@ -401,13 +401,13 @@ function PlayerContent() {
                   <button
                     onClick={handleStartOver}
                     disabled={actionLoading}
-                    className="px-4 py-4 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-medium transition disabled:opacity-50"
+                    className="px-6 py-4 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-medium transition disabled:opacity-50"
                   >
-                    ↺
+                    ↺ Start Over
                   </button>
                 )}
               </div>
-              <p className="text-slate-500 text-xs text-center">No additional credits needed</p>
+              <p className="text-slate-500 text-sm text-center">No additional credits needed</p>
             </>
           )}
 
@@ -418,14 +418,14 @@ function PlayerContent() {
                 <button
                   onClick={handleWishlist}
                   disabled={actionLoading}
-                  className="flex-1 py-3 bg-pink-600 hover:bg-pink-500 text-white rounded-xl font-medium transition disabled:opacity-50"
+                  className="flex-1 py-3 bg-pink-600 hover:bg-pink-500 text-white rounded-xl font-semibold transition disabled:opacity-50"
                 >
-                  ❤️ Save to Wishlist
+                  ❤️ Wishlist
                 </button>
                 <button
                   onClick={handleNotForMe}
                   disabled={actionLoading}
-                  className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-medium transition disabled:opacity-50"
+                  className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-semibold transition disabled:opacity-50"
                 >
                   👎 Not For Me
                 </button>
@@ -433,41 +433,43 @@ function PlayerContent() {
               <button
                 onClick={handleResume}
                 disabled={actionLoading || !hasEnoughCredits}
-                className="w-full py-4 bg-orange-500 hover:bg-orange-400 text-black rounded-xl font-bold transition disabled:opacity-50 disabled:bg-slate-600 disabled:text-slate-400"
+                className="w-full py-4 bg-orange-500 hover:bg-orange-400 text-black rounded-xl font-bold text-lg transition disabled:opacity-50 disabled:bg-slate-600 disabled:text-slate-400"
               >
                 {actionLoading ? 'Processing...' : `▶️ Resume Story (${creditCost} credit${creditCost > 1 ? 's' : ''})`}
               </button>
               {!hasEnoughCredits && (
-                <p className="text-red-400 text-xs text-center">Not enough credits</p>
+                <p className="text-red-400 text-sm text-center">Not enough credits</p>
               )}
             </>
           )}
 
-          {/* STATE 3: New story - show Preview/Play Now */}
+          {/* STATE 3: New story - show Preview/Play Now side by side */}
           {!ownsStory && !previewCompleted && (
             <>
               <div className="flex gap-3">
                 <button
                   onClick={handlePreview}
-                  className="flex-1 py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition"
+                  className="flex-1 py-4 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-bold text-base transition"
                 >
-                  🎧 Preview ({previewMins} min)
+                  🎧 Preview<br/>
+                  <span className="text-sm font-normal opacity-80">{previewMins} min sample</span>
                 </button>
                 <button
                   onClick={handlePlayNow}
                   disabled={actionLoading || !hasEnoughCredits}
-                  className="flex-1 py-4 bg-orange-500 hover:bg-orange-400 text-black rounded-xl font-bold transition disabled:opacity-50 disabled:bg-slate-600 disabled:text-slate-400"
+                  className="flex-1 py-4 bg-orange-500 hover:bg-orange-400 text-black rounded-xl font-bold text-base transition disabled:opacity-50 disabled:bg-slate-600 disabled:text-slate-400"
                 >
-                  {actionLoading ? '...' : `▶️ Play (${creditCost} cr)`}
+                  ▶️ Play Now<br/>
+                  <span className="text-sm font-normal opacity-80">{creditCost} credit{creditCost > 1 ? 's' : ''}</span>
                 </button>
               </div>
               {!user && (
-                <p className="text-slate-500 text-xs text-center">
+                <p className="text-slate-500 text-sm text-center">
                   <Link href="/auth/login" className="text-orange-400 hover:underline">Sign in</Link> to purchase
                 </p>
               )}
               {user && !hasEnoughCredits && (
-                <p className="text-red-400 text-xs text-center">
+                <p className="text-red-400 text-sm text-center">
                   Not enough credits. <Link href="/pricing" className="text-orange-400 hover:underline">Get more</Link>
                 </p>
               )}
