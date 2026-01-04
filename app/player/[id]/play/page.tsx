@@ -414,7 +414,7 @@ function PlayContent() {
               background: `linear-gradient(to right, #f97316 0%, #f97316 ${progressPercent}%, #334155 ${progressPercent}%, #334155 100%)`
             }}
           />
-          <div className="flex justify-between text-xs text-slate-400 mt-1">
+          <div className="flex justify-between text-xs text-white mt-1">
             <span>{formatTime(currentTime)}</span>
             <span>{formatTime(duration)}</span>
           </div>
@@ -466,25 +466,6 @@ function PlayContent() {
           </button>
         </div>
       </main>
-
-      {/* Now Playing Footer */}
-      <div className="px-4 pb-6">
-        <div className="bg-slate-800/50 rounded-xl p-3 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg overflow-hidden bg-slate-700 flex-shrink-0">
-            {story.cover_url ? (
-              <img src={story.cover_url} alt="" className="w-full h-full object-cover" />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-orange-600 to-orange-900">
-                <span className="text-lg">🎧</span>
-              </div>
-            )}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-white text-sm font-medium truncate">{story.title}</p>
-            <p className="text-slate-400 text-xs">{Math.round(progressPercent)}% • {formatTime(duration - currentTime)} remaining</p>
-          </div>
-        </div>
-      </div>
     </div>
   )
 }
