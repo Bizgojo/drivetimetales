@@ -1,11 +1,10 @@
 'use client'
 
 import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { useState, useEffect, Suspense } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
-import { Header } from '@/components/ui/Header'
 
 interface Story {
   id: string
@@ -15,6 +14,12 @@ interface Story {
   duration_mins: number
   cover_url: string | null
   credits: number
+  rating: number | null
+  review_count: number | null
+  is_free: boolean
+  is_new: boolean
+  is_dtt_pick: boolean
+  is_best_seller: boolean
 }
 
 interface UserPreference {
@@ -29,8 +34,61 @@ interface LibraryEntry {
   completed: boolean
 }
 
+// Star Rating Component
+function StarRating({ rating, count }: { rating: number | null, count: number | null }) {
+  const r = rating || 0
+  const fullStars = Math.floor(r)
+  const hasHalf = r - fullStars >= 0.5
+  const emptyStars = 5 - fullStars - (hasHalf ? 1 : 0)
+  
+  return (
+    <div className="flex items-center gap-0.5">
+      <span className="text-orange-400 text-[10px]">{r.toFixed(1)}</span>
+      <span className="text-yellow-400 text-[10px]">{'★'.repeat(fullStars)}</span>
+      {hasHalf && <span className="text-yellow-400/50 text-[10px]">★</span>}
+      <span className="text-slate-500 text-[10px]">{'★'.repeat(emptyStars)}</span>
+      <span className="text-white text-[10px]">({count || 0})</span>
+    </div>
+  )
+}
+
+// Flag Badge Component
+function FlagBadge({ type }: { type: 'free' | 'new' | 'dtt_pick' | 'best_seller' | 'owned' | 'wishlist' | 'pass' }) {
+  const config = {
+    free: { bg: 'bg-green-500', text: 'text-black', label: 'FREE' },
+    new: { bg: 'bg-yellow-500', text: 'text-black', label: 'NEW' },
+    dtt_pick: { bg: 'bg-orange-500', text: 'text-black', label: '⭐ DTT PICK' },
+    best_seller: { bg: 'bg-blue-500', text: 'text-white', label: '🔥 BEST SELLER' },
+    owned: { bg: 'bg-green-500', text: 'text-black', label: 'OWNED' },
+    wishlist: { bg: 'bg-pink-500', text: 'text-white', label: '❤️ WISHLIST' },
+    pass: { bg: 'bg-slate-500', text: 'text-white', label: '👎 PASS' },
+  }
+  const c = config[type]
+  return <span className={`${c.bg} ${c.text} text-[8px] font-bold px-1 py-0.5 rounded`}>{c.label}</span>
+}
+
+const genreOptions = [
+  { name: 'All', icon: '📚' },
+  { name: 'Mystery', icon: '🔍' },
+  { name: 'Drama', icon: '🎭' },
+  { name: 'Sci-Fi', icon: '🚀' },
+  { name: 'Horror', icon: '👻' },
+  { name: 'Thriller', icon: '😱' },
+  { name: 'Non-Fiction', icon: '📖' },
+  { name: 'Children', icon: '👶' },
+  { name: 'Comedy', icon: '😂' },
+  { name: 'Romance', icon: '💕' },
+]
+
+const durationOptions = [
+  { name: 'All', label: 'All' },
+  { name: '15', label: '~15 min' },
+  { name: '30', label: '~30 min' },
+  { name: '60', label: '~1 hr' },
+]
+
 function LibraryContent() {
-  const searchParams = useSearchParams()
+  const router = useRouter()
   const { user } = useAuth()
   
   const [stories, setStories] = useState<Story[]>([])
@@ -38,33 +96,18 @@ function LibraryContent() {
   const [library, setLibrary] = useState<Map<string, LibraryEntry>>(new Map())
   const [loading, setLoading] = useState(true)
   const [selectedGenre, setSelectedGenre] = useState<string>('All')
-  const [toast, setToast] = useState<string | null>(null)
-  
-  const genres = ['All', 'Mystery', 'Drama', 'Sci-Fi', 'Horror', 'Comedy', 'Romance', 'Adventure', 'Thriller']
+  const [selectedDuration, setSelectedDuration] = useState<string>('All')
 
   useEffect(() => {
     loadData()
-    
-    // Check for toast message
-    const toastParam = searchParams.get('toast')
-    if (toastParam === 'wishlisted') {
-      setToast('❤️ Added to Wishlist')
-    } else if (toastParam === 'notforme') {
-      setToast('👎 Marked as Not For Me')
-    }
-    
-    // Clear toast after 3 seconds
-    if (toastParam) {
-      setTimeout(() => setToast(null), 3000)
-    }
-  }, [searchParams])
+  }, [user])
 
   async function loadData() {
     try {
-      // Load stories
+      // Load all stories
       const { data: storiesData } = await supabase
         .from('stories')
-        .select('id, title, author, genre, duration_mins, cover_url, credits')
+        .select('*')
         .order('created_at', { ascending: false })
 
       if (storiesData) setStories(storiesData)
@@ -100,17 +143,48 @@ function LibraryContent() {
     }
   }
 
-  // Filter stories by genre and hide "not for me"
+  // Filter stories
   const filteredStories = stories.filter(story => {
-    const pref = preferences.get(story.id)
-    // Hide stories marked as "not for me" unless specifically filtered
-    if (pref?.not_for_me) return false
-    // Filter by genre
-    if (selectedGenre !== 'All' && story.genre !== selectedGenre) return false
+    // Genre filter
+    if (selectedGenre !== 'All') {
+      const storyGenre = story.genre?.toLowerCase() || ''
+      const filterGenre = selectedGenre.toLowerCase()
+      if (!storyGenre.includes(filterGenre) && filterGenre !== 'all') return false
+    }
+    
+    // Duration filter
+    if (selectedDuration !== 'All') {
+      const mins = story.duration_mins
+      if (selectedDuration === '15' && mins > 20) return false
+      if (selectedDuration === '30' && (mins < 20 || mins > 45)) return false
+      if (selectedDuration === '60' && mins < 45) return false
+    }
+    
     return true
   })
 
+  // Get flag for a story
+  const getFlag = (story: Story): 'free' | 'new' | 'dtt_pick' | 'best_seller' | 'owned' | 'wishlist' | 'pass' | null => {
+    const pref = preferences.get(story.id)
+    const libEntry = library.get(story.id)
+    
+    // User status flags take priority
+    if (libEntry) return 'owned'
+    if (pref?.wishlisted) return 'wishlist'
+    if (pref?.not_for_me) return 'pass'
+    
+    // Story flags
+    if (story.is_free || story.credits === 0) return 'free'
+    if (story.is_dtt_pick) return 'dtt_pick'
+    if (story.is_best_seller) return 'best_seller'
+    if (story.is_new) return 'new'
+    
+    return null
+  }
+
   const displayName = user?.display_name || user?.email?.split('@')[0]
+  const credits = user?.credits ?? 0
+  const isLowCredits = user && credits !== -1 && credits <= 3
 
   if (loading) {
     return (
@@ -121,120 +195,131 @@ function LibraryContent() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
-      <Header 
-        isLoggedIn={!!user} 
-        showBack 
-        userName={displayName} 
-        userCredits={user?.credits} 
-      />
-
-      {/* Toast Notification */}
-      {toast && (
-        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg animate-fade-in">
-          {toast}
+    <div className="min-h-screen bg-slate-950 text-white flex flex-col">
+      {/* Header */}
+      <header className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
+        <button onClick={() => router.back()} className="text-white flex items-center gap-1">
+          <span>←</span>
+          <span className="text-sm">Back</span>
+        </button>
+        <div className="text-center">
+          <div className="flex items-center gap-1 justify-center">
+            <span className="text-lg">🚛</span>
+            <span className="text-lg">🚗</span>
+            <span className="font-bold text-white text-sm ml-1">Drive</span>
+            <span className="font-bold text-white text-sm">Time</span>
+            <span className="font-bold text-orange-400 text-sm">Tales</span>
+          </div>
+          {user && (
+            <p className="text-white text-[10px]">
+              <span className="text-orange-400 font-bold">{credits === -1 ? 'unlimited' : credits} credits</span>
+            </p>
+          )}
         </div>
+        {user ? (
+          <Link href="/account" className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-black font-bold text-sm hover:bg-orange-400 transition">
+            {displayName?.charAt(0).toUpperCase() || 'U'}
+          </Link>
+        ) : (
+          <Link href="/signin" className="text-orange-400 text-sm">Sign In</Link>
+        )}
+      </header>
+
+      {/* Low Credits Warning */}
+      {isLowCredits && (
+        <Link 
+          href="/pricing" 
+          className="mx-4 mt-3 bg-orange-500/20 border border-orange-500/50 rounded-xl px-4 py-3 flex items-center justify-between hover:bg-orange-500/30 transition"
+        >
+          <div>
+            <p className="text-orange-400 font-medium">Running low on credits!</p>
+            <p className="text-white text-sm">Get more to keep listening</p>
+          </div>
+          <span className="text-orange-400 font-bold">Buy More →</span>
+        </Link>
       )}
 
       {/* Genre Filter */}
-      <div className="px-4 py-4 border-b border-slate-800 overflow-x-auto">
-        <div className="flex gap-2 min-w-max">
-          {genres.map(genre => (
+      <div className="px-4 py-3 border-b border-slate-800">
+        <div className="flex flex-wrap justify-center gap-1">
+          {genreOptions.map(g => (
             <button
-              key={genre}
-              onClick={() => setSelectedGenre(genre)}
-              className={`px-4 py-2 rounded-full text-sm font-medium transition ${
-                selectedGenre === genre
+              key={g.name}
+              onClick={() => setSelectedGenre(g.name)}
+              className={`flex flex-col items-center px-2 py-1 rounded-lg transition ${
+                selectedGenre === g.name
                   ? 'bg-orange-500 text-black'
-                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                  : 'bg-slate-700 text-white'
               }`}
             >
-              {genre}
+              <span className="text-sm">{g.icon}</span>
+              <span className="text-[9px]">{g.name === 'Non-Fiction' ? 'Non-Fic' : g.name}</span>
             </button>
           ))}
         </div>
       </div>
 
-      {/* Stories Grid */}
-      <div className="p-4">
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-          {filteredStories.map(story => {
-            const pref = preferences.get(story.id)
-            const libEntry = library.get(story.id)
-            const isOwned = !!libEntry
-            const isWishlisted = pref?.wishlisted
-            const progressPercent = libEntry && story.duration_mins 
-              ? Math.round((libEntry.progress / (story.duration_mins * 60)) * 100)
-              : 0
-
-            return (
-              <Link
-                key={story.id}
-                href={`/player/${story.id}`}
-                className="group"
-              >
-                {/* Cover */}
-                <div className="aspect-square rounded-xl overflow-hidden bg-slate-800 relative mb-2">
-                  {story.cover_url ? (
-                    <img 
-                      src={story.cover_url} 
-                      alt={story.title} 
-                      className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-orange-600 to-orange-900">
-                      <span className="text-4xl opacity-50">🎧</span>
-                    </div>
-                  )}
-
-                  {/* Badges */}
-                  <div className="absolute top-2 right-2 flex flex-col gap-1">
-                    {isOwned && (
-                      <span className="bg-green-500 text-black text-xs font-bold px-2 py-0.5 rounded">
-                        ✓
-                      </span>
-                    )}
-                    {isWishlisted && !isOwned && (
-                      <span className="bg-pink-500 text-white text-xs font-bold px-2 py-0.5 rounded">
-                        ❤️
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Progress bar for owned stories */}
-                  {isOwned && progressPercent > 0 && (
-                    <div className="absolute bottom-0 left-0 right-0 h-1 bg-slate-900">
-                      <div 
-                        className="h-full bg-orange-500"
-                        style={{ width: `${progressPercent}%` }}
-                      />
-                    </div>
-                  )}
-
-                  {/* Completed badge */}
-                  {libEntry?.completed && (
-                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                      <span className="text-2xl">✅</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Info */}
-                <h3 className="text-white text-sm font-medium line-clamp-2 group-hover:text-orange-400 transition">
-                  {story.title}
-                </h3>
-                <p className="text-slate-400 text-xs mt-1">
-                  {story.genre} • {story.duration_mins} min
-                  {!isOwned && <span className="text-orange-400"> • {story.credits} cr</span>}
-                </p>
-              </Link>
-            )
-          })}
+      {/* Duration Filter */}
+      <div className="px-4 py-2 border-b border-slate-800">
+        <div className="flex justify-center gap-2">
+          {durationOptions.map(d => (
+            <button
+              key={d.name}
+              onClick={() => setSelectedDuration(d.name)}
+              className={`px-3 py-1 rounded-full text-xs font-medium transition ${
+                selectedDuration === d.name
+                  ? 'bg-orange-500 text-black'
+                  : 'bg-slate-700 text-white border border-slate-600'
+              }`}
+            >
+              {d.label}
+            </button>
+          ))}
         </div>
+      </div>
+
+      {/* Story List */}
+      <div className="px-4 py-4 flex-1 space-y-3">
+        {filteredStories.map(story => {
+          const flag = getFlag(story)
+          const pref = preferences.get(story.id)
+          const isPass = pref?.not_for_me
+          
+          return (
+            <Link
+              key={story.id}
+              href={`/player/${story.id}`}
+              className={`bg-slate-700 rounded-xl p-3 flex gap-3 hover:bg-slate-600 transition ${isPass ? 'opacity-60' : ''}`}
+            >
+              <div className="w-20 h-20 rounded-lg overflow-hidden bg-slate-600 flex-shrink-0 relative">
+                {story.cover_url ? (
+                  <img src={story.cover_url} alt={story.title} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-orange-600 to-orange-900 flex items-center justify-center">
+                    <span className="text-2xl">🎧</span>
+                  </div>
+                )}
+                <span className="absolute bottom-0.5 right-0.5 bg-black/70 text-white text-[8px] px-1 rounded">
+                  {story.duration_mins}m
+                </span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-white font-bold text-sm truncate">{story.title}</p>
+                <p className="text-white text-xs">{story.genre} • {story.credits || 1} credit{(story.credits || 1) > 1 ? 's' : ''}</p>
+                <p className="text-white text-[10px]">by {story.author || 'Drive Time Tales'}</p>
+                <div className="flex items-center gap-2 mt-1">
+                  <StarRating rating={story.rating} count={story.review_count} />
+                  {flag && <FlagBadge type={flag} />}
+                </div>
+              </div>
+            </Link>
+          )
+        })}
 
         {filteredStories.length === 0 && (
           <div className="text-center py-12">
-            <p className="text-slate-400">No stories found</p>
+            <p className="text-white">No stories found</p>
+            <p className="text-white text-sm mt-2">Try a different filter</p>
           </div>
         )}
       </div>
