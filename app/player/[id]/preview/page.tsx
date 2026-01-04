@@ -308,7 +308,7 @@ function PreviewContent() {
         </div>
 
         {/* Play/Pause Control */}
-        <div className="flex-1 flex items-center justify-center">
+        <div className="flex items-center justify-center py-6">
           <button
             onClick={handlePlayPause}
             className="w-20 h-20 bg-blue-600 hover:bg-blue-500 rounded-full flex items-center justify-center transition shadow-lg shadow-blue-500/30"
