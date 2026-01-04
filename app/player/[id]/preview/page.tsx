@@ -287,7 +287,7 @@ function PreviewContent() {
               background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${progressPercent}%, #1e3a5f ${progressPercent}%, #1e3a5f 100%)`
             }}
           />
-          <div className="flex justify-between text-xs text-slate-400 mt-1">
+          <div className="flex justify-between text-xs text-white mt-1">
             <span>{formatTime(currentTime)}</span>
             <span>{formatTime(previewDuration)}</span>
           </div>
