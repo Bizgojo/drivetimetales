@@ -11,11 +11,11 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-// Credit pack prices (in cents)
+// Credit pack prices (in cents) and Stripe Price IDs
 const CREDIT_PACKS = {
-  small: { price: 499, credits: 10, name: 'Small Pack' },
-  medium: { price: 999, credits: 25, name: 'Medium Pack' },
-  large: { price: 1999, credits: 60, name: 'Large Pack' },
+  small: { price: 499, credits: 10, name: 'Small Pack', priceId: 'price_1SjSxEG3QDdai0Zhi0BbuzED' },
+  medium: { price: 999, credits: 25, name: 'Medium Pack', priceId: 'price_1SjSydG3QDdai0ZhUIYLwgzw' },
+  large: { price: 1999, credits: 60, name: 'Large Pack', priceId: 'price_1SjT2LG3QDdai0ZhyG3JTuGY' },
 };
 
 export async function POST(request: NextRequest) {
@@ -52,81 +52,104 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!user.stripe_customer_id) {
-      return NextResponse.json(
-        { error: 'No payment method on file. Please complete a purchase first.' },
-        { status: 400 }
-      );
+    // Check if user has a Stripe customer ID and payment method
+    let hasPaymentMethod = false;
+    
+    if (user.stripe_customer_id) {
+      try {
+        const paymentMethods = await stripe.paymentMethods.list({
+          customer: user.stripe_customer_id,
+          type: 'card',
+          limit: 1,
+        });
+        hasPaymentMethod = paymentMethods.data.length > 0;
+      } catch (e) {
+        console.log('Error checking payment methods:', e);
+        hasPaymentMethod = false;
+      }
     }
 
-    // Get customer's default payment method
-    const customer = await stripe.customers.retrieve(user.stripe_customer_id) as Stripe.Customer;
+    // If no payment method, redirect to Stripe Checkout
+    if (!hasPaymentMethod) {
+      // Create or get Stripe customer
+      let customerId = user.stripe_customer_id;
+      
+      if (!customerId) {
+        const customer = await stripe.customers.create({
+          email: user.email,
+          metadata: { supabase_user_id: userId },
+        });
+        customerId = customer.id;
+        
+        // Save customer ID to user
+        await supabaseAdmin
+          .from('users')
+          .update({ stripe_customer_id: customerId })
+          .eq('id', userId);
+      }
+
+      // Create checkout session for the pack
+      const session = await stripe.checkout.sessions.create({
+        customer: customerId,
+        payment_method_types: ['card'],
+        line_items: [
+          {
+            price: pack.priceId,
+            quantity: 1,
+          },
+        ],
+        mode: 'payment',
+        success_url: `${process.env.NEXT_PUBLIC_SITE_URL || 'https://drivetimetales.vercel.app'}/pricing?success=true&credits=${pack.credits}`,
+        cancel_url: `${process.env.NEXT_PUBLIC_SITE_URL || 'https://drivetimetales.vercel.app'}/pricing?canceled=true`,
+        metadata: {
+          user_id: userId,
+          pack_id: packId,
+          credits: pack.credits.toString(),
+        },
+        payment_intent_data: {
+          setup_future_usage: 'off_session', // Save card for future purchases
+        },
+      });
+
+      return NextResponse.json({ 
+        needsCheckout: true, 
+        checkoutUrl: session.url 
+      });
+    }
+
+    // User has payment method - charge directly
+    const customer = await stripe.customers.retrieve(user.stripe_customer_id!) as Stripe.Customer;
     
-    if (!customer.invoice_settings?.default_payment_method && !customer.default_source) {
-      // Try to get any payment method
-      const paymentMethods = await stripe.paymentMethods.list({
-        customer: user.stripe_customer_id,
-        type: 'card',
-        limit: 1,
-      });
+    // Get payment method
+    const paymentMethods = await stripe.paymentMethods.list({
+      customer: user.stripe_customer_id!,
+      type: 'card',
+      limit: 1,
+    });
+    
+    const paymentMethodId = paymentMethods.data[0].id;
 
-      if (paymentMethods.data.length === 0) {
-        return NextResponse.json(
-          { error: 'No payment method on file. Please add a card first.' },
-          { status: 400 }
-        );
-      }
+    // Create and confirm payment intent
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: pack.price,
+      currency: 'usd',
+      customer: user.stripe_customer_id!,
+      payment_method: paymentMethodId,
+      off_session: true,
+      confirm: true,
+      description: `${pack.name} - ${pack.credits} credits`,
+      metadata: {
+        user_id: userId,
+        pack_id: packId,
+        credits: pack.credits.toString(),
+      },
+    });
 
-      // Use the first available payment method
-      const paymentMethodId = paymentMethods.data[0].id;
-
-      // Create and confirm payment intent
-      const paymentIntent = await stripe.paymentIntents.create({
-        amount: pack.price,
-        currency: 'usd',
-        customer: user.stripe_customer_id,
-        payment_method: paymentMethodId,
-        off_session: true,
-        confirm: true,
-        description: `${pack.name} - ${pack.credits} credits`,
-        metadata: {
-          user_id: userId,
-          pack_id: packId,
-          credits: pack.credits.toString(),
-        },
-      });
-
-      if (paymentIntent.status !== 'succeeded') {
-        return NextResponse.json(
-          { error: 'Payment failed. Please try again.' },
-          { status: 400 }
-        );
-      }
-    } else {
-      // Use default payment method
-      const paymentMethodId = (customer.invoice_settings?.default_payment_method || customer.default_source) as string;
-
-      const paymentIntent = await stripe.paymentIntents.create({
-        amount: pack.price,
-        currency: 'usd',
-        customer: user.stripe_customer_id,
-        payment_method: paymentMethodId,
-        off_session: true,
-        confirm: true,
-        description: `${pack.name} - ${pack.credits} credits`,
-        metadata: {
-          user_id: userId,
-          pack_id: packId,
-          credits: pack.credits.toString(),
-        },
-      });
-
-      if (paymentIntent.status !== 'succeeded') {
-        return NextResponse.json(
-          { error: 'Payment failed. Please try again.' },
-          { status: 400 }
-        );
-      }
+    if (paymentIntent.status !== 'succeeded') {
+      return NextResponse.json(
+        { error: 'Payment failed. Please try again.' },
+        { status: 400 }
+      );
     }
 
     // Payment successful - add credits to user

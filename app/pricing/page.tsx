@@ -150,6 +150,12 @@ export default function PricingPage() {
       })
       const data = await response.json()
       
+      if (data.needsCheckout && data.checkoutUrl) {
+        // No payment method on file - redirect to Stripe Checkout
+        window.location.href = data.checkoutUrl
+        return
+      }
+      
       if (data.success) {
         await refreshCredits()
         setConfirmPack(null)
