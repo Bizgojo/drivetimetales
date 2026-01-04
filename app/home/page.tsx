@@ -134,27 +134,27 @@ export default function HomePage() {
           .filter(item => !item.completed && item.progress > 0 && item.story)
           .sort((a, b) => new Date(b.last_played).getTime() - new Date(a.last_played).getTime())[0]
 
-        if (unfinished && unfinished.story) {
-          const storyData = unfinished.story as Record<string, unknown>
+        if (unfinished && unfinished.story && typeof unfinished.story === 'object' && !Array.isArray(unfinished.story)) {
+          const storyData = unfinished.story as unknown as Record<string, unknown>
           setContinueListening({
             story_id: unfinished.story_id,
             progress: unfinished.progress,
             last_played: unfinished.last_played,
             completed: unfinished.completed,
             story: {
-              id: storyData.id as string,
-              title: storyData.title as string,
-              author: storyData.author as string | null,
-              genre: storyData.genre as string,
-              duration_mins: storyData.duration_mins as number,
-              cover_url: storyData.cover_url as string | null,
-              credits: storyData.credits as number || 1,
-              rating: storyData.rating as number | null,
-              review_count: storyData.review_count as number | null,
-              is_free: storyData.is_free as boolean || false,
-              is_new: storyData.is_new as boolean || false,
-              is_dtt_pick: storyData.is_dtt_pick as boolean || false,
-              is_best_seller: storyData.is_best_seller as boolean || false,
+              id: String(storyData.id || ''),
+              title: String(storyData.title || ''),
+              author: storyData.author ? String(storyData.author) : null,
+              genre: String(storyData.genre || ''),
+              duration_mins: Number(storyData.duration_mins) || 0,
+              cover_url: storyData.cover_url ? String(storyData.cover_url) : null,
+              credits: Number(storyData.credits) || 1,
+              rating: storyData.rating ? Number(storyData.rating) : null,
+              review_count: storyData.review_count ? Number(storyData.review_count) : null,
+              is_free: Boolean(storyData.is_free),
+              is_new: Boolean(storyData.is_new),
+              is_dtt_pick: Boolean(storyData.is_dtt_pick),
+              is_best_seller: Boolean(storyData.is_best_seller),
             }
           })
         }
