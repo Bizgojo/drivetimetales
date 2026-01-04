@@ -264,23 +264,24 @@ function PreviewContent() {
           )}
         </div>
 
-        {/* Story Info */}
+        {/* Story Info - Author under title */}
         <div className="text-center mb-3">
           <h1 className="text-lg font-bold mb-1">{story.title}</h1>
+          <p className="text-white text-sm mb-1">by {story.author || 'Unknown Author'}</p>
           <p className="text-orange-400 text-sm">{story.genre} • Preview</p>
         </div>
 
         {/* Orange Player Controls Box */}
         <div className="bg-orange-500 rounded-2xl p-4 mb-3">
-          {/* Progress Bar */}
-          <div className="mb-3">
+          {/* Progress Bar - Larger slider thumb */}
+          <div className="mb-4">
             <input
               type="range"
               min="0"
               max={previewDuration}
               value={currentTime}
               onChange={handleSeek}
-              className="w-full h-2 bg-orange-700 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:shadow-md"
+              className="w-full h-3 bg-orange-700 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-orange-300"
               style={{
                 background: `linear-gradient(to right, #fff 0%, #fff ${progressPercent}%, #c2410c ${progressPercent}%, #c2410c 100%)`
               }}
@@ -292,36 +293,38 @@ function PreviewContent() {
           </div>
 
           {/* Preview progress indicator */}
-          <div className="flex items-center justify-between text-sm mb-3">
+          <div className="flex items-center justify-between text-sm mb-4">
             <span className="text-black/70">Preview Progress</span>
             <span className="text-black font-bold">{Math.round(progressPercent)}%</span>
           </div>
 
-          {/* Playback Controls - Black buttons, both 15 sec */}
-          <div className="flex items-center justify-center gap-4">
+          {/* Play/Pause - Separated with more space */}
+          <div className="flex justify-center mb-4">
+            <button
+              onClick={handlePlayPause}
+              className="w-20 h-20 bg-black hover:bg-slate-900 rounded-full flex items-center justify-center transition shadow-lg"
+            >
+              {isPlaying ? (
+                <svg className="w-9 h-9 text-orange-500" fill="currentColor" viewBox="0 0 24 24">
+                  <rect x="6" y="4" width="4" height="16" rx="1" />
+                  <rect x="14" y="4" width="4" height="16" rx="1" />
+                </svg>
+              ) : (
+                <svg className="w-9 h-9 text-orange-500 ml-1" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+              )}
+            </button>
+          </div>
+
+          {/* Skip buttons - Separated row */}
+          <div className="flex items-center justify-center gap-8">
             {/* Skip Back 15 */}
             <button
               onClick={() => handleSkip(-15)}
               className="w-12 h-12 bg-black hover:bg-slate-900 rounded-full flex items-center justify-center transition"
             >
               <span className="text-orange-500 text-xs font-bold">-15</span>
-            </button>
-
-            {/* Play/Pause */}
-            <button
-              onClick={handlePlayPause}
-              className="w-16 h-16 bg-black hover:bg-slate-900 rounded-full flex items-center justify-center transition shadow-lg"
-            >
-              {isPlaying ? (
-                <svg className="w-7 h-7 text-orange-500" fill="currentColor" viewBox="0 0 24 24">
-                  <rect x="6" y="4" width="4" height="16" rx="1" />
-                  <rect x="14" y="4" width="4" height="16" rx="1" />
-                </svg>
-              ) : (
-                <svg className="w-7 h-7 text-orange-500 ml-1" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M8 5v14l11-7z" />
-                </svg>
-              )}
             </button>
 
             {/* Skip Forward 15 */}
@@ -335,7 +338,7 @@ function PreviewContent() {
         </div>
 
         {/* Action Buttons */}
-        <div className="space-y-2 mt-auto">
+        <div className="space-y-2">
           {user && (
             <button
               onClick={handleBuyNow}
