@@ -379,12 +379,12 @@ function PlayerContent() {
         )}
 
         {/* Description - Justified 25-30 words */}
-        <p className="text-slate-300 text-sm leading-relaxed mb-6 px-2 text-justify">
+        <p className="text-slate-300 text-sm leading-relaxed mb-4 px-2 text-justify">
           {story.description}
         </p>
 
         {/* Action Buttons - Different states */}
-        <div className="mt-auto space-y-3 px-2">
+        <div className="space-y-3 px-2">
           
           {/* STATE 1: User owns story - show Continue/Start Over */}
           {ownsStory && (

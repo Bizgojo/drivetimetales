@@ -129,6 +129,15 @@ function PreviewContent() {
     router.push(`/player/${storyId}?fromPreview=true`)
   }
 
+  const handleExit = () => {
+    if (audioRef.current) {
+      audioRef.current.pause()
+    }
+    // Clear any preview status and return to library
+    localStorage.removeItem(`preview_${storyId}`)
+    router.push('/library')
+  }
+
   const handleBuyNow = async () => {
     if (!user || !story) return
     
@@ -328,12 +337,12 @@ function PreviewContent() {
           </button>
         )}
 
-        {/* Skip Preview */}
+        {/* Exit Preview - return to library */}
         <button
-          onClick={handlePreviewEnd}
-          className="text-slate-400 hover:text-white text-sm py-3 transition"
+          onClick={handleExit}
+          className="w-full py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-medium text-sm transition"
         >
-          Skip to end →
+          ← Exit Preview
         </button>
       </main>
     </div>
