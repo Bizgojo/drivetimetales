@@ -15,8 +15,8 @@ interface Story {
   duration_mins: number
   cover_url: string | null
   audio_url: string
-  preview_audio_url?: string // Optional separate preview file
-  preview_end_time?: number // Seconds where preview ends
+  preview_audio_url?: string
+  preview_end_time?: number
   credits: number
 }
 
@@ -57,13 +57,11 @@ function PreviewContent() {
     loadStory()
   }, [storyId])
 
-  // Calculate preview duration (10% of story)
   const previewDuration = story 
     ? (story.preview_end_time || Math.floor(story.duration_mins * 60 * 0.1))
     : 0
 
   useEffect(() => {
-    // Auto-play when story loads
     if (story && audioRef.current) {
       audioRef.current.play().catch(console.error)
       setIsPlaying(true)
@@ -71,7 +69,6 @@ function PreviewContent() {
   }, [story])
 
   useEffect(() => {
-    // Check if preview should end
     if (currentTime >= previewDuration && previewDuration > 0 && isPlaying) {
       handlePreviewEnd()
     }
@@ -82,11 +79,7 @@ function PreviewContent() {
       audioRef.current.pause()
     }
     setIsPlaying(false)
-    
-    // Save preview completed status
     localStorage.setItem(`preview_${storyId}`, 'completed')
-    
-    // Go directly to player page with options (no intermediate screen)
     router.push(`/player/${storyId}?fromPreview=true`)
   }
 
@@ -133,7 +126,6 @@ function PreviewContent() {
     if (audioRef.current) {
       audioRef.current.pause()
     }
-    // Mark preview as completed and go to options page
     localStorage.setItem(`preview_${storyId}`, 'completed')
     router.push(`/player/${storyId}?fromPreview=true`)
   }
@@ -143,7 +135,6 @@ function PreviewContent() {
     
     const creditCost = story.credits || 1
     
-    // Check credits
     if (user.credits < creditCost && user.credits !== -1) {
       alert('Not enough credits. Please purchase more credits.')
       return
@@ -151,12 +142,10 @@ function PreviewContent() {
     
     setBuying(true)
     try {
-      // Pause audio
       if (audioRef.current) {
         audioRef.current.pause()
       }
       
-      // Deduct credits
       const newCredits = user.credits === -1 ? -1 : user.credits - creditCost
       const { error: creditError } = await supabase
         .from('users')
@@ -165,7 +154,6 @@ function PreviewContent() {
       
       if (creditError) throw creditError
       
-      // Add to library with current position
       const { error: libError } = await supabase
         .from('user_library')
         .insert({
@@ -178,11 +166,7 @@ function PreviewContent() {
       if (libError) throw libError
       
       await refreshCredits()
-      
-      // Clear preview status
       localStorage.removeItem(`preview_${storyId}`)
-      
-      // Go to full player, continuing from current position
       router.push(`/player/${storyId}/play?autoplay=true&resume=${Math.floor(currentTime)}`)
     } catch (err) {
       console.error('Error purchasing:', err)
@@ -205,7 +189,7 @@ function PreviewContent() {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
         <div className="text-center">
-          <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
           <p className="text-slate-400">Loading preview...</p>
         </div>
       </div>
@@ -217,7 +201,7 @@ function PreviewContent() {
       <div className="min-h-screen bg-slate-950 flex items-center justify-center px-4">
         <div className="text-center">
           <h1 className="text-xl text-white mb-4">Story not found</h1>
-          <Link href="/library" className="text-blue-400 hover:text-blue-300">
+          <Link href="/library" className="text-orange-400 hover:text-orange-300">
             ← Back to Library
           </Link>
         </div>
@@ -225,9 +209,8 @@ function PreviewContent() {
     )
   }
 
-  // Playing preview state
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-950 to-slate-950 text-white flex flex-col">
+    <div className="min-h-screen bg-slate-950 text-white flex flex-col">
       {/* Hidden Audio Element */}
       <audio
         ref={audioRef}
@@ -237,113 +220,114 @@ function PreviewContent() {
         onEnded={handlePreviewEnd}
       />
 
-      {/* Header */}
-      <header className="flex items-center justify-between px-4 py-3 border-b border-blue-800/50">
-        <button onClick={handleBack} className="text-blue-300 hover:text-white flex items-center gap-2">
-          <span>←</span>
-          <span className="text-sm">Stop</span>
+      {/* Header - Same as other pages */}
+      <header className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
+        <button onClick={handleBack} className="text-white hover:text-orange-400 flex items-center gap-2 font-medium">
+          <span className="text-lg">←</span>
+          <span>Back</span>
         </button>
         
-        <div className="text-center">
-          <span className="text-xs text-blue-400 font-medium">PREVIEW MODE</span>
-        </div>
+        <Link href="/home" className="flex items-center gap-1">
+          <span className="text-lg">🚛</span>
+          <span className="text-lg">🚗</span>
+          <span className="font-bold text-white ml-1">Drive Time</span>
+          <span className="font-bold text-orange-400">Tales</span>
+        </Link>
         
-        {user && (
-          <Link href="/account" className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-sm">
+        {user ? (
+          <Link href="/account" className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-black font-bold text-sm">
             {displayName?.charAt(0).toUpperCase() || 'U'}
           </Link>
+        ) : (
+          <div className="w-8" />
         )}
       </header>
 
-      {/* Main Content */}
-      <main className="flex-1 px-4 py-6 flex flex-col">
-        {/* Cover - Smaller for preview */}
-        <div className="w-40 h-40 mx-auto rounded-xl overflow-hidden bg-slate-800 mb-4 shadow-lg shadow-blue-500/20">
+      {/* Main Content - Centered */}
+      <main className="flex-1 px-4 py-4 flex flex-col justify-center">
+        {/* Cover with Glow */}
+        <div className="w-44 h-44 mx-auto rounded-xl overflow-hidden bg-slate-800 mb-3 shadow-[0_0_30px_rgba(255,255,255,0.5)]">
           {story.cover_url ? (
             <img src={story.cover_url} alt={story.title} className="w-full h-full object-cover" />
           ) : (
-            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-600 to-blue-900">
+            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-orange-600 to-orange-900">
               <span className="text-5xl opacity-50">🎧</span>
             </div>
           )}
         </div>
 
         {/* Story Info */}
-        <div className="text-center mb-6">
+        <div className="text-center mb-3">
           <h1 className="text-lg font-bold mb-1">{story.title}</h1>
-          <p className="text-blue-400 text-sm">{story.genre} • Preview</p>
+          <p className="text-orange-400 text-sm">{story.genre} • Preview</p>
         </div>
 
-        {/* Progress Bar */}
-        <div className="mb-4">
-          <input
-            type="range"
-            min="0"
-            max={previewDuration}
-            value={currentTime}
-            onChange={handleSeek}
-            className="w-full h-2 bg-blue-900 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-blue-400 [&::-webkit-slider-thumb]:rounded-full"
-            style={{
-              background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${progressPercent}%, #1e3a5f ${progressPercent}%, #1e3a5f 100%)`
-            }}
-          />
-          <div className="flex justify-between text-xs text-white mt-1">
-            <span>{formatTime(currentTime)}</span>
-            <span>{formatTime(previewDuration)}</span>
-          </div>
-        </div>
-
-        {/* Preview indicator */}
-        <div className="bg-blue-900/30 rounded-lg p-3 mb-6">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-blue-300">Preview Progress</span>
-            <span className="text-white font-medium">{Math.round(progressPercent)}%</span>
-          </div>
-          <div className="h-1 bg-blue-900 rounded-full mt-2 overflow-hidden">
-            <div 
-              className="h-full bg-blue-400 rounded-full transition-all"
-              style={{ width: `${progressPercent}%` }}
+        {/* Orange Player Controls Box */}
+        <div className="bg-orange-500 rounded-2xl p-4 mx-2 mb-3">
+          {/* Progress Bar */}
+          <div className="mb-3">
+            <input
+              type="range"
+              min="0"
+              max={previewDuration}
+              value={currentTime}
+              onChange={handleSeek}
+              className="w-full h-2 bg-orange-700 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:shadow-md"
+              style={{
+                background: `linear-gradient(to right, #fff 0%, #fff ${progressPercent}%, #c2410c ${progressPercent}%, #c2410c 100%)`
+              }}
             />
+            <div className="flex justify-between text-xs text-black font-medium mt-1">
+              <span>{formatTime(currentTime)}</span>
+              <span>{formatTime(previewDuration)}</span>
+            </div>
+          </div>
+
+          {/* Preview progress indicator */}
+          <div className="flex items-center justify-between text-sm mb-3">
+            <span className="text-black/70">Preview Progress</span>
+            <span className="text-black font-bold">{Math.round(progressPercent)}%</span>
+          </div>
+
+          {/* Play/Pause Control */}
+          <div className="flex items-center justify-center">
+            <button
+              onClick={handlePlayPause}
+              className="w-16 h-16 bg-black hover:bg-slate-900 rounded-full flex items-center justify-center transition shadow-lg"
+            >
+              {isPlaying ? (
+                <svg className="w-7 h-7 text-orange-500" fill="currentColor" viewBox="0 0 24 24">
+                  <rect x="6" y="4" width="4" height="16" rx="1" />
+                  <rect x="14" y="4" width="4" height="16" rx="1" />
+                </svg>
+              ) : (
+                <svg className="w-7 h-7 text-orange-500 ml-1" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+              )}
+            </button>
           </div>
         </div>
 
-        {/* Play/Pause Control */}
-        <div className="flex items-center justify-center py-6">
+        {/* Action Buttons */}
+        <div className="space-y-2 mx-2">
+          {user && (
+            <button
+              onClick={handleBuyNow}
+              disabled={buying || (user.credits < (story.credits || 1) && user.credits !== -1)}
+              className="w-full py-4 bg-green-500 hover:bg-green-400 text-black rounded-xl font-bold text-base transition disabled:opacity-50 disabled:bg-slate-600 disabled:text-slate-400"
+            >
+              {buying ? 'Processing...' : `▶ Buy Now & Continue (${story.credits || 1} credit${(story.credits || 1) > 1 ? 's' : ''})`}
+            </button>
+          )}
+
           <button
-            onClick={handlePlayPause}
-            className="w-20 h-20 bg-blue-600 hover:bg-blue-500 rounded-full flex items-center justify-center transition shadow-lg shadow-blue-500/30"
+            onClick={handleExit}
+            className="w-full py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-medium text-sm transition"
           >
-            {isPlaying ? (
-              <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
-                <rect x="6" y="4" width="4" height="16" rx="1" />
-                <rect x="14" y="4" width="4" height="16" rx="1" />
-              </svg>
-            ) : (
-              <svg className="w-8 h-8 text-white ml-1" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M8 5v14l11-7z" />
-              </svg>
-            )}
+            ← Exit Preview
           </button>
         </div>
-
-        {/* Buy Now Button */}
-        {user && (
-          <button
-            onClick={handleBuyNow}
-            disabled={buying || (user.credits < (story.credits || 1) && user.credits !== -1)}
-            className="w-full py-4 bg-orange-500 hover:bg-orange-400 text-black rounded-xl font-bold text-base transition disabled:opacity-50 disabled:bg-slate-600 disabled:text-slate-400 mb-2"
-          >
-            {buying ? 'Processing...' : `▶️ Buy Now & Continue (${story.credits || 1} credit${(story.credits || 1) > 1 ? 's' : ''})`}
-          </button>
-        )}
-
-        {/* Exit Preview - return to library */}
-        <button
-          onClick={handleExit}
-          className="w-full py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-medium text-sm transition"
-        >
-          ← Exit Preview
-        </button>
       </main>
     </div>
   )
@@ -353,7 +337,7 @@ export default function PreviewPage() {
   return (
     <Suspense fallback={
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+        <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
       </div>
     }>
       <PreviewContent />

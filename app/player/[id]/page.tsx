@@ -303,10 +303,10 @@ function PlayerContent() {
         )}
       </header>
 
-      {/* Main Content */}
-      <main className="flex-1 px-4 py-6 flex flex-col">
+      {/* Main Content - Centered vertically */}
+      <main className="flex-1 px-4 py-4 flex flex-col justify-center">
         {/* Cover Image with Glow */}
-        <div className="w-full max-w-xs mx-auto aspect-square rounded-xl overflow-hidden bg-slate-800 mb-4 shadow-[0_0_30px_rgba(255,255,255,0.5)]">
+        <div className="w-48 h-48 mx-auto rounded-xl overflow-hidden bg-slate-800 mb-3 shadow-[0_0_30px_rgba(255,255,255,0.5)]">
           {story.cover_url ? (
             <img src={story.cover_url} alt={story.title} className="w-full h-full object-cover" />
           ) : (
@@ -317,8 +317,8 @@ function PlayerContent() {
         </div>
 
         {/* Story Info */}
-        <div className="text-center mb-4">
-          <h1 className="text-xl font-bold mb-2">{story.title}</h1>
+        <div className="text-center mb-3">
+          <h1 className="text-xl font-bold mb-1">{story.title}</h1>
           
           {/* Genre and Flags on same line */}
           <div className="flex items-center justify-center gap-2 mb-1">
@@ -338,7 +338,7 @@ function PlayerContent() {
 
         {/* Progress Bar (if owned and has progress) */}
         {ownsStory && libraryEntry && libraryEntry.progress > 0 && (
-          <div className="mb-4 px-4">
+          <div className="mb-3 px-4">
             <div className="h-1 bg-slate-700 rounded-full overflow-hidden">
               <div 
                 className="h-full bg-orange-500 rounded-full transition-all"
@@ -350,12 +350,12 @@ function PlayerContent() {
         )}
 
         {/* Description */}
-        <p className="text-slate-300 text-sm leading-relaxed mb-6 px-2 text-center">
+        <p className="text-slate-300 text-sm leading-relaxed mb-4 px-2 text-center">
           {story.description}
         </p>
 
-        {/* Action Buttons */}
-        <div className="space-y-3 px-2 mt-auto">
+        {/* Action Buttons - Moved up */}
+        <div className="space-y-3 px-2">
           
           {/* STATE 1: User owns story */}
           {ownsStory && (

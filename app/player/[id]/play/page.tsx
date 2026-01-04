@@ -268,9 +268,12 @@ function PlayContent() {
             <span>Home</span>
           </button>
           
-          <div className="text-center">
-            <span className="text-xs text-green-400 font-medium">COMPLETE!</span>
-          </div>
+          <Link href="/home" className="flex items-center gap-1">
+            <span className="text-lg">🚛</span>
+            <span className="text-lg">🚗</span>
+            <span className="font-bold text-white ml-1">Drive Time</span>
+            <span className="font-bold text-orange-400">Tales</span>
+          </Link>
           
           {user && (
             <Link href="/account" className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center text-black font-bold text-sm">
@@ -279,30 +282,30 @@ function PlayContent() {
           )}
         </header>
 
-        <main className="flex-1 px-4 py-8 flex flex-col items-center justify-center">
-          <div className="text-6xl mb-4">🎉</div>
-          <h1 className="text-2xl font-bold text-center mb-2">Story Complete!</h1>
-          <p className="text-slate-400 text-center mb-8">
+        <main className="flex-1 px-4 py-4 flex flex-col justify-center items-center">
+          <div className="text-5xl mb-3">🎉</div>
+          <h1 className="text-xl font-bold text-center mb-1">Story Complete!</h1>
+          <p className="text-slate-400 text-center text-sm mb-4">
             You finished "{story.title}"
           </p>
 
-          <div className="w-32 h-32 rounded-xl overflow-hidden bg-slate-800 mb-6 shadow-[0_0_30px_rgba(34,197,94,0.5)]">
+          <div className="w-28 h-28 rounded-xl overflow-hidden bg-slate-800 mb-4 shadow-[0_0_30px_rgba(34,197,94,0.5)]">
             {story.cover_url ? (
               <img src={story.cover_url} alt={story.title} className="w-full h-full object-cover" />
             ) : (
               <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-green-600 to-green-900">
-                <span className="text-4xl opacity-50">🎧</span>
+                <span className="text-3xl opacity-50">🎧</span>
               </div>
             )}
           </div>
 
-          <p className="text-slate-400 text-sm mb-3">How would you rate this story?</p>
-          <div className="flex gap-2 mb-8">
+          <p className="text-slate-400 text-sm mb-2">Rate this story</p>
+          <div className="flex gap-2 mb-4">
             {[1, 2, 3, 4, 5].map((star) => (
               <button
                 key={star}
                 onClick={() => handleRating(star)}
-                className={`text-3xl transition ${
+                className={`text-2xl transition ${
                   star <= rating ? 'text-yellow-400' : 'text-slate-600 hover:text-slate-400'
                 }`}
               >
@@ -312,24 +315,24 @@ function PlayContent() {
           </div>
 
           {rating > 0 && (
-            <p className="text-green-400 text-sm mb-6">Thanks for rating!</p>
+            <p className="text-green-400 text-sm mb-4">Thanks for rating!</p>
           )}
-        </main>
 
-        <div className="px-4 pb-8 space-y-3">
-          <button
-            onClick={handlePlaySimilar}
-            className="w-full py-4 bg-green-600 hover:bg-green-500 text-white rounded-xl font-bold transition"
-          >
-            🎧 Find Similar Stories
-          </button>
-          <button
-            onClick={handlePlayAgain}
-            className="w-full py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-medium transition"
-          >
-            ↺ Play Again
-          </button>
-        </div>
+          <div className="w-full space-y-2">
+            <button
+              onClick={handlePlaySimilar}
+              className="w-full py-3 bg-green-600 hover:bg-green-500 text-white rounded-xl font-bold transition"
+            >
+              🎧 Find Similar Stories
+            </button>
+            <button
+              onClick={handlePlayAgain}
+              className="w-full py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-medium transition"
+            >
+              ↺ Play Again
+            </button>
+          </div>
+        </main>
       </div>
     )
   }
@@ -374,10 +377,10 @@ function PlayContent() {
         </div>
       )}
 
-      {/* Main Content */}
-      <main className="flex-1 px-4 py-4 flex flex-col">
-        {/* Larger Cover with Glow */}
-        <div className="w-56 h-56 mx-auto rounded-xl overflow-hidden bg-slate-800 mb-4 shadow-[0_0_30px_rgba(255,255,255,0.5)]">
+      {/* Main Content - Centered */}
+      <main className="flex-1 px-4 py-4 flex flex-col justify-center">
+        {/* Cover with Glow */}
+        <div className="w-52 h-52 mx-auto rounded-xl overflow-hidden bg-slate-800 mb-3 shadow-[0_0_30px_rgba(255,255,255,0.5)]">
           {story.cover_url ? (
             <img src={story.cover_url} alt={story.title} className="w-full h-full object-cover" />
           ) : (
@@ -388,13 +391,13 @@ function PlayContent() {
         </div>
 
         {/* Story Info */}
-        <div className="text-center mb-4">
+        <div className="text-center mb-3">
           <h1 className="text-lg font-bold mb-1">{story.title}</h1>
           <p className="text-white text-sm">{story.author || 'Unknown Author'}</p>
         </div>
 
         {/* Orange Player Controls Box */}
-        <div className="bg-orange-500 rounded-2xl p-4 mx-2 mt-auto">
+        <div className="bg-orange-500 rounded-2xl p-4 mx-2">
           {/* Progress Bar */}
           <div className="mb-3">
             <input

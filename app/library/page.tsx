@@ -61,7 +61,7 @@ function FlagBadge({ type }: { type: 'free' | 'new' | 'dtt_pick' | 'best_seller'
     best_seller: { bg: 'bg-blue-500', text: 'text-white', label: '🔥 BEST SELLER' },
     owned: { bg: 'bg-green-500', text: 'text-black', label: 'OWNED' },
     wishlist: { bg: 'bg-pink-500', text: 'text-white', label: '❤️ WISHLIST' },
-    pass: { bg: 'bg-slate-500', text: 'text-white', label: '👎 PASS' },
+    pass: { bg: 'bg-red-600', text: 'text-white', label: '👎 PASS' },
   }
   const c = config[type]
   return <span className={`${c.bg} ${c.text} text-[8px] font-bold px-1 py-0.5 rounded`}>{c.label}</span>
