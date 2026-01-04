@@ -21,7 +21,7 @@ const CREDIT_PACKS = {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { packId, userId } = body;
+    const { packId, userId, returnUrl } = body;
 
     if (!packId || !userId) {
       return NextResponse.json(
@@ -88,6 +88,13 @@ export async function POST(request: NextRequest) {
           .eq('id', userId);
       }
 
+      // Use returnUrl if provided, otherwise go to library
+      const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://drivetimetales.vercel.app';
+      const successUrl = returnUrl 
+        ? `${baseUrl}/purchase-success?returnUrl=${encodeURIComponent(returnUrl)}&credits=${pack.credits}`
+        : `${baseUrl}/library?purchased=${pack.credits}`;
+      const cancelUrl = returnUrl || `${baseUrl}/pricing`;
+
       // Create checkout session for the pack
       const session = await stripe.checkout.sessions.create({
         customer: customerId,
@@ -99,8 +106,8 @@ export async function POST(request: NextRequest) {
           },
         ],
         mode: 'payment',
-        success_url: `${process.env.NEXT_PUBLIC_SITE_URL || 'https://drivetimetales.vercel.app'}/pricing?success=true&credits=${pack.credits}`,
-        cancel_url: `${process.env.NEXT_PUBLIC_SITE_URL || 'https://drivetimetales.vercel.app'}/pricing?canceled=true`,
+        success_url: successUrl,
+        cancel_url: cancelUrl,
         metadata: {
           user_id: userId,
           pack_id: packId,
