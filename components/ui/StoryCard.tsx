@@ -26,12 +26,12 @@ const CATEGORY_ICONS: Record<string, string> = {
 };
 
 const BANNER_COLORS: Record<string, string> = {
-  'New Release': 'bg-blue-500',
-  "Reader's Choice": 'bg-yellow-500 text-black',
-  'Staff Pick': 'bg-purple-500',
-  'Most Popular': 'bg-red-500',
-  'Trending': 'bg-pink-500',
-  'Family Favorite': 'bg-green-500',
+  'New Release': 'bg-yellow-500 text-black',
+  "Reader's Choice": 'bg-blue-500 text-white',
+  'Staff Pick': 'bg-orange-500 text-black',
+  'Most Popular': 'bg-red-500 text-white',
+  'Trending': 'bg-pink-500 text-white',
+  'Family Favorite': 'bg-green-500 text-black',
 };
 
 export const StoryCard = ({ 
@@ -44,7 +44,7 @@ export const StoryCard = ({
   const isFree = story.credits === 0;
   const canAfford = userCredits >= story.credits;
   const banner = story.is_new ? 'New Release' : story.is_featured ? 'Staff Pick' : null;
-  const bannerColor = banner ? BANNER_COLORS[banner] || 'bg-gray-500' : '';
+  const bannerColor = banner ? BANNER_COLORS[banner] || 'bg-slate-500' : '';
 
   const renderStars = (rating: number) => {
     const fullStars = Math.floor(rating);
@@ -58,7 +58,7 @@ export const StoryCard = ({
 
   return (
     <div 
-      className="p-3 bg-gray-900 border border-gray-800 rounded-xl cursor-pointer hover:border-gray-700 transition-colors"
+      className="p-3 bg-slate-700 rounded-xl cursor-pointer hover:bg-slate-600 transition-colors"
       onClick={onClick}
     >
       <div className="flex gap-4">
@@ -67,11 +67,11 @@ export const StoryCard = ({
             <img 
               src={story.cover_url} 
               alt={story.title}
-              className="w-24 h-24 rounded-xl object-cover shadow-lg"
+              className="w-24 h-24 rounded-xl object-cover shadow-[0_0_20px_rgba(255,255,255,0.6)]"
             />
           ) : (
             <div 
-              className="w-24 h-24 rounded-xl flex items-center justify-center text-4xl shadow-lg"
+              className="w-24 h-24 rounded-xl flex items-center justify-center text-4xl shadow-[0_0_20px_rgba(255,255,255,0.6)]"
               style={{ background: 'linear-gradient(135deg, #ea580c 0%, #c2410c 100%)' }}
             >
               {categoryIcon}
@@ -90,9 +90,9 @@ export const StoryCard = ({
             {story.title}
           </h3>
           
-          <p className="text-white text-sm mb-1">{story.author}</p>
+          <p className="text-slate-300 text-sm mb-1">{story.author}</p>
           
-          <p className="text-orange-400 text-sm mb-1">
+          <p className="text-white text-sm mb-1">
             {categoryIcon} {story.genre} • {story.duration_mins} min
           </p>
           
@@ -103,12 +103,12 @@ export const StoryCard = ({
             </div>
             
             {isFree ? (
-              <span className="px-3 py-1 bg-green-600 text-white text-xs font-bold rounded-full">
+              <span className="px-3 py-1 bg-green-500 text-black text-xs font-bold rounded-full">
                 ▶ FREE
               </span>
             ) : (
-              <span className={`px-3 py-1 text-white text-xs font-bold rounded-full ${
-                canAfford ? 'bg-orange-500' : 'bg-red-500'
+              <span className={`px-3 py-1 text-xs font-bold rounded-full ${
+                canAfford ? 'bg-orange-500 text-black' : 'bg-red-500 text-white'
               }`}>
                 💎 {story.credits} credits
               </span>
@@ -118,7 +118,7 @@ export const StoryCard = ({
       </div>
 
       {showDescription && story.description && (
-        <p className="text-sm text-white leading-relaxed mt-3 line-clamp-2">
+        <p className="text-sm text-slate-300 leading-relaxed mt-3 line-clamp-2">
           {story.description}
         </p>
       )}

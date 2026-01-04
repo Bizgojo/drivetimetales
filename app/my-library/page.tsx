@@ -42,19 +42,19 @@ function MyLibraryContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
+    <div className="min-h-screen bg-slate-950 text-white">
       <div className="px-4 py-6">
         <h1 className="text-2xl font-bold mb-6">My Library</h1>
         <div className="flex gap-2 mb-6">
           <button 
             onClick={() => setTab('library')} 
-            className={tab === 'library' ? 'px-4 py-2 rounded-lg font-medium bg-orange-500 text-black' : 'px-4 py-2 rounded-lg font-medium bg-slate-800 text-white'}
+            className={tab === 'library' ? 'px-4 py-2 rounded-lg font-medium bg-orange-500 text-black' : 'px-4 py-2 rounded-lg font-medium bg-slate-700 text-white'}
           >
             My Stories
           </button>
           <button 
             onClick={() => setTab('wishlist')} 
-            className={tab === 'wishlist' ? 'px-4 py-2 rounded-lg font-medium bg-orange-500 text-black' : 'px-4 py-2 rounded-lg font-medium bg-slate-800 text-white'}
+            className={tab === 'wishlist' ? 'px-4 py-2 rounded-lg font-medium bg-orange-500 text-black' : 'px-4 py-2 rounded-lg font-medium bg-slate-700 text-white'}
           >
             Wishlist
           </button>
@@ -80,7 +80,7 @@ function MyLibraryContent() {
 
 export default function MyLibraryPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-gray-950 flex items-center justify-center"><div className="text-white">Loading...</div></div>}>
+    <Suspense fallback={<div className="min-h-screen bg-slate-950 flex items-center justify-center"><div className="text-white">Loading...</div></div>}>
       <MyLibraryContent />
     </Suspense>
   )
