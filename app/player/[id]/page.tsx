@@ -303,15 +303,15 @@ function PlayerContent() {
         )}
       </header>
 
-      {/* Main Content - Centered vertically */}
-      <main className="flex-1 px-4 py-4 flex flex-col justify-center">
-        {/* Cover Image with Glow */}
-        <div className="w-48 h-48 mx-auto rounded-xl overflow-hidden bg-slate-800 mb-3 shadow-[0_0_30px_rgba(255,255,255,0.5)]">
+      {/* Main Content - Everything under logo */}
+      <main className="flex-1 px-4 pt-4 pb-6 flex flex-col">
+        {/* Full Width Cover Image with Glow */}
+        <div className="w-full aspect-square rounded-xl overflow-hidden bg-slate-800 mb-4 shadow-[0_0_30px_rgba(255,255,255,0.5)]">
           {story.cover_url ? (
             <img src={story.cover_url} alt={story.title} className="w-full h-full object-cover" />
           ) : (
             <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-orange-600 to-orange-900">
-              <span className="text-6xl opacity-50">🎧</span>
+              <span className="text-8xl opacity-50">🎧</span>
             </div>
           )}
         </div>
@@ -338,7 +338,7 @@ function PlayerContent() {
 
         {/* Progress Bar (if owned and has progress) */}
         {ownsStory && libraryEntry && libraryEntry.progress > 0 && (
-          <div className="mb-3 px-4">
+          <div className="mb-3">
             <div className="h-1 bg-slate-700 rounded-full overflow-hidden">
               <div 
                 className="h-full bg-orange-500 rounded-full transition-all"
@@ -350,12 +350,12 @@ function PlayerContent() {
         )}
 
         {/* Description */}
-        <p className="text-slate-300 text-sm leading-relaxed mb-4 px-2 text-center">
+        <p className="text-slate-300 text-sm leading-relaxed mb-4 text-center">
           {story.description}
         </p>
 
-        {/* Action Buttons - Moved up */}
-        <div className="space-y-3 px-2">
+        {/* Action Buttons */}
+        <div className="space-y-3 mt-auto">
           
           {/* STATE 1: User owns story */}
           {ownsStory && (

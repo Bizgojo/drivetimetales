@@ -115,6 +115,14 @@ function PreviewContent() {
     }
   }
 
+  const handleSkip = (seconds: number) => {
+    if (audioRef.current) {
+      const newTime = Math.max(0, Math.min(previewDuration, audioRef.current.currentTime + seconds))
+      audioRef.current.currentTime = newTime
+      setCurrentTime(newTime)
+    }
+  }
+
   const handleBack = () => {
     if (audioRef.current) {
       audioRef.current.pause()
@@ -220,7 +228,7 @@ function PreviewContent() {
         onEnded={handlePreviewEnd}
       />
 
-      {/* Header - Same as other pages */}
+      {/* Header */}
       <header className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
         <button onClick={handleBack} className="text-white hover:text-orange-400 flex items-center gap-2 font-medium">
           <span className="text-lg">←</span>
@@ -243,15 +251,15 @@ function PreviewContent() {
         )}
       </header>
 
-      {/* Main Content - Centered */}
-      <main className="flex-1 px-4 py-4 flex flex-col justify-center">
-        {/* Cover with Glow */}
-        <div className="w-44 h-44 mx-auto rounded-xl overflow-hidden bg-slate-800 mb-3 shadow-[0_0_30px_rgba(255,255,255,0.5)]">
+      {/* Main Content */}
+      <main className="flex-1 px-4 pt-4 pb-6 flex flex-col">
+        {/* Full Width Cover with Glow */}
+        <div className="w-full aspect-square rounded-xl overflow-hidden bg-slate-800 mb-3 shadow-[0_0_30px_rgba(255,255,255,0.5)]">
           {story.cover_url ? (
             <img src={story.cover_url} alt={story.title} className="w-full h-full object-cover" />
           ) : (
             <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-orange-600 to-orange-900">
-              <span className="text-5xl opacity-50">🎧</span>
+              <span className="text-8xl opacity-50">🎧</span>
             </div>
           )}
         </div>
@@ -263,7 +271,7 @@ function PreviewContent() {
         </div>
 
         {/* Orange Player Controls Box */}
-        <div className="bg-orange-500 rounded-2xl p-4 mx-2 mb-3">
+        <div className="bg-orange-500 rounded-2xl p-4 mb-3">
           {/* Progress Bar */}
           <div className="mb-3">
             <input
@@ -289,8 +297,17 @@ function PreviewContent() {
             <span className="text-black font-bold">{Math.round(progressPercent)}%</span>
           </div>
 
-          {/* Play/Pause Control */}
-          <div className="flex items-center justify-center">
+          {/* Playback Controls - Black buttons, both 15 sec */}
+          <div className="flex items-center justify-center gap-4">
+            {/* Skip Back 15 */}
+            <button
+              onClick={() => handleSkip(-15)}
+              className="w-12 h-12 bg-black hover:bg-slate-900 rounded-full flex items-center justify-center transition"
+            >
+              <span className="text-orange-500 text-xs font-bold">-15</span>
+            </button>
+
+            {/* Play/Pause */}
             <button
               onClick={handlePlayPause}
               className="w-16 h-16 bg-black hover:bg-slate-900 rounded-full flex items-center justify-center transition shadow-lg"
@@ -306,11 +323,19 @@ function PreviewContent() {
                 </svg>
               )}
             </button>
+
+            {/* Skip Forward 15 */}
+            <button
+              onClick={() => handleSkip(15)}
+              className="w-12 h-12 bg-black hover:bg-slate-900 rounded-full flex items-center justify-center transition"
+            >
+              <span className="text-orange-500 text-xs font-bold">+15</span>
+            </button>
           </div>
         </div>
 
         {/* Action Buttons */}
-        <div className="space-y-2 mx-2">
+        <div className="space-y-2 mt-auto">
           {user && (
             <button
               onClick={handleBuyNow}
