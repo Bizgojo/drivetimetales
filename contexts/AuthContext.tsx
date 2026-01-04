@@ -46,7 +46,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function checkUser() {
     try {
-      const { data: { session } } = await supabase.auth.getSession()
+      // Add timeout to prevent hanging
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Auth timeout')), 3000)
+      )
+      
+      const sessionPromise = supabase.auth.getSession()
+      
+      const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise]) as any
+      
       if (session?.user) {
         await loadUserProfile(session.user.id)
       }

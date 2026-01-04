@@ -23,16 +23,24 @@ interface LibraryItem {
 }
 
 export default function HomePage() {
-  const { user } = useAuth()
+  const { user, loading: authLoading } = useAuth()
   const [recentStories, setRecentStories] = useState<Story[]>([])
   const [continueListening, setContinueListening] = useState<LibraryItem[]>([])
   const [loading, setLoading] = useState(true)
 
+  // Load stories immediately, don't wait for auth
   useEffect(() => {
-    loadData()
+    loadStories()
+  }, [])
+
+  // Load user's continue listening when user is available
+  useEffect(() => {
+    if (user) {
+      loadUserLibrary()
+    }
   }, [user])
 
-  async function loadData() {
+  async function loadStories() {
     try {
       const { data: stories } = await supabase
         .from('stories')
@@ -41,45 +49,51 @@ export default function HomePage() {
         .limit(10)
 
       if (stories) setRecentStories(stories)
-
-      if (user) {
-        const { data: library } = await supabase
-          .from('user_library')
-          .select('story_id, progress, last_played, completed, story:stories(id, title, author, genre, duration_mins, cover_url)')
-          .eq('user_id', user.id)
-          .eq('completed', false)
-          .gt('progress', 0)
-          .order('last_played', { ascending: false })
-          .limit(5)
-
-        if (library) {
-          const items: LibraryItem[] = []
-          for (const item of library) {
-            if (item.story && typeof item.story === 'object' && !Array.isArray(item.story)) {
-              const storyData = item.story as Record<string, unknown>
-              items.push({
-                story_id: item.story_id,
-                progress: item.progress,
-                last_played: item.last_played,
-                completed: item.completed,
-                story: {
-                  id: storyData.id as string,
-                  title: storyData.title as string,
-                  author: storyData.author as string | null,
-                  genre: storyData.genre as string,
-                  duration_mins: storyData.duration_mins as number,
-                  cover_url: storyData.cover_url as string | null
-                }
-              })
-            }
-          }
-          setContinueListening(items)
-        }
-      }
     } catch (error) {
-      console.error('Error loading data:', error)
+      console.error('Error loading stories:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function loadUserLibrary() {
+    if (!user) return
+    
+    try {
+      const { data: library } = await supabase
+        .from('user_library')
+        .select('story_id, progress, last_played, completed, story:stories(id, title, author, genre, duration_mins, cover_url)')
+        .eq('user_id', user.id)
+        .eq('completed', false)
+        .gt('progress', 0)
+        .order('last_played', { ascending: false })
+        .limit(5)
+
+      if (library) {
+        const items: LibraryItem[] = []
+        for (const item of library) {
+          if (item.story && typeof item.story === 'object' && !Array.isArray(item.story)) {
+            const storyData = item.story as Record<string, unknown>
+            items.push({
+              story_id: item.story_id,
+              progress: item.progress,
+              last_played: item.last_played,
+              completed: item.completed,
+              story: {
+                id: storyData.id as string,
+                title: storyData.title as string,
+                author: storyData.author as string | null,
+                genre: storyData.genre as string,
+                duration_mins: storyData.duration_mins as number,
+                cover_url: storyData.cover_url as string | null
+              }
+            })
+          }
+        }
+        setContinueListening(items)
+      }
+    } catch (error) {
+      console.error('Error loading user library:', error)
     }
   }
 
