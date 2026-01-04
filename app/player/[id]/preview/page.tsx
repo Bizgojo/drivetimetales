@@ -24,7 +24,7 @@ function PreviewContent() {
   const params = useParams()
   const router = useRouter()
   const storyId = params.id as string
-  const { user } = useAuth()
+  const { user, refreshCredits } = useAuth()
   
   const [story, setStory] = useState<Story | null>(null)
   const [loading, setLoading] = useState(true)
@@ -32,6 +32,7 @@ function PreviewContent() {
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
+  const [buying, setBuying] = useState(false)
   
   const audioRef = useRef<HTMLAudioElement>(null)
 
@@ -126,6 +127,60 @@ function PreviewContent() {
       audioRef.current.pause()
     }
     router.push(`/player/${storyId}?fromPreview=true`)
+  }
+
+  const handleBuyNow = async () => {
+    if (!user || !story) return
+    
+    const creditCost = story.credits || 1
+    
+    // Check credits
+    if (user.credits < creditCost && user.credits !== -1) {
+      alert('Not enough credits. Please purchase more credits.')
+      return
+    }
+    
+    setBuying(true)
+    try {
+      // Pause audio
+      if (audioRef.current) {
+        audioRef.current.pause()
+      }
+      
+      // Deduct credits
+      const newCredits = user.credits === -1 ? -1 : user.credits - creditCost
+      const { error: creditError } = await supabase
+        .from('users')
+        .update({ credits: newCredits })
+        .eq('id', user.id)
+      
+      if (creditError) throw creditError
+      
+      // Add to library with current position
+      const { error: libError } = await supabase
+        .from('user_library')
+        .insert({
+          user_id: user.id,
+          story_id: storyId,
+          progress: Math.floor(currentTime),
+          completed: false
+        })
+      
+      if (libError) throw libError
+      
+      await refreshCredits()
+      
+      // Clear preview status
+      localStorage.removeItem(`preview_${storyId}`)
+      
+      // Go to full player, continuing from current position
+      router.push(`/player/${storyId}/play?autoplay=true&resume=${Math.floor(currentTime)}`)
+    } catch (err) {
+      console.error('Error purchasing:', err)
+      alert('Failed to purchase. Please try again.')
+    } finally {
+      setBuying(false)
+    }
   }
 
   const formatTime = (seconds: number) => {
@@ -261,6 +316,17 @@ function PreviewContent() {
             )}
           </button>
         </div>
+
+        {/* Buy Now Button */}
+        {user && (
+          <button
+            onClick={handleBuyNow}
+            disabled={buying || (user.credits < (story.credits || 1) && user.credits !== -1)}
+            className="w-full py-4 bg-orange-500 hover:bg-orange-400 text-black rounded-xl font-bold text-base transition disabled:opacity-50 disabled:bg-slate-600 disabled:text-slate-400 mb-2"
+          >
+            {buying ? 'Processing...' : `▶️ Buy Now & Continue (${story.credits || 1} credit${(story.credits || 1) > 1 ? 's' : ''})`}
+          </button>
+        )}
 
         {/* Skip Preview */}
         <button
