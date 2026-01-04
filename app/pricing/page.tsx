@@ -154,37 +154,32 @@ export default function PricingPage() {
     
     setProcessing(confirmPack.id)
     try {
-      // Get the referrer URL to return to after purchase
-      const returnUrl = document.referrer || '/library'
-      
       const response = await fetch('/api/quick-purchase', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           packId: confirmPack.id,
-          userId: user.id,
-          returnUrl: returnUrl
+          userId: user.id
         })
       })
       const data = await response.json()
       
-      if (data.needsCheckout && data.checkoutUrl) {
-        // No payment method on file - redirect to Stripe Checkout
-        window.location.href = data.checkoutUrl
-        return
-      }
-      
       if (data.success) {
+        // Payment succeeded - refresh credits and go back
         await refreshCredits()
         setConfirmPack(null)
-        // Go back to previous page (where they clicked "get more credits")
+        alert(`Success! ${data.message}`)
+        // Go back to previous page
         window.history.back()
       } else {
+        // Show error message
         alert(data.error || 'Purchase failed. Please try again.')
+        setConfirmPack(null)
       }
     } catch (error) {
       console.error('Purchase error:', error)
       alert('Purchase failed. Please try again.')
+      setConfirmPack(null)
     } finally {
       setProcessing(null)
     }
