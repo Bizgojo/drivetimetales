@@ -285,11 +285,11 @@ function PlayContent() {
         <main className="flex-1 px-4 pt-4 pb-6 flex flex-col">
           <div className="text-5xl mb-3 text-center">🎉</div>
           <h1 className="text-xl font-bold text-center mb-1">Story Complete!</h1>
-          <p className="text-slate-400 text-center text-sm mb-4">
+          <p className="text-slate-400 text-center text-sm mb-3">
             You finished "{story.title}"
           </p>
 
-          <div className="w-full aspect-square rounded-xl overflow-hidden bg-slate-800 mb-4 shadow-[0_0_30px_rgba(34,197,94,0.5)]">
+          <div className="w-full aspect-square rounded-xl overflow-hidden bg-slate-800 mb-3 shadow-[0_0_30px_rgba(34,197,94,0.5)]">
             {story.cover_url ? (
               <img src={story.cover_url} alt={story.title} className="w-full h-full object-cover" />
             ) : (
@@ -300,7 +300,7 @@ function PlayContent() {
           </div>
 
           <p className="text-slate-400 text-sm mb-2 text-center">Rate this story</p>
-          <div className="flex gap-2 mb-4 justify-center">
+          <div className="flex gap-2 mb-3 justify-center">
             {[1, 2, 3, 4, 5].map((star) => (
               <button
                 key={star}
@@ -315,10 +315,10 @@ function PlayContent() {
           </div>
 
           {rating > 0 && (
-            <p className="text-green-400 text-sm mb-4 text-center">Thanks for rating!</p>
+            <p className="text-green-400 text-sm mb-3 text-center">Thanks for rating!</p>
           )}
 
-          <div className="space-y-2 mt-auto">
+          <div className="space-y-2">
             <button
               onClick={handlePlaySimilar}
               className="w-full py-3 bg-green-600 hover:bg-green-500 text-white rounded-xl font-bold transition"
@@ -390,23 +390,23 @@ function PlayContent() {
           )}
         </div>
 
-        {/* Story Info */}
+        {/* Story Info - Author under title */}
         <div className="text-center mb-3">
           <h1 className="text-lg font-bold mb-1">{story.title}</h1>
-          <p className="text-white text-sm">{story.author || 'Unknown Author'}</p>
+          <p className="text-white text-sm">by {story.author || 'Unknown Author'}</p>
         </div>
 
         {/* Orange Player Controls Box */}
-        <div className="bg-orange-500 rounded-2xl p-4 mt-auto">
-          {/* Progress Bar */}
-          <div className="mb-3">
+        <div className="bg-orange-500 rounded-2xl p-4">
+          {/* Progress Bar - Larger slider thumb */}
+          <div className="mb-4">
             <input
               type="range"
               min="0"
               max={duration || 100}
               value={currentTime}
               onChange={handleSeek}
-              className="w-full h-2 bg-orange-700 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:shadow-md"
+              className="w-full h-3 bg-orange-700 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-orange-300"
               style={{
                 background: `linear-gradient(to right, #fff 0%, #fff ${progressPercent}%, #c2410c ${progressPercent}%, #c2410c 100%)`
               }}
@@ -417,8 +417,27 @@ function PlayContent() {
             </div>
           </div>
 
-          {/* Playback Controls - Black buttons, both 15 sec */}
-          <div className="flex items-center justify-center gap-4">
+          {/* Play/Pause - Separated with more space */}
+          <div className="flex justify-center mb-4">
+            <button
+              onClick={handlePlayPause}
+              className="w-20 h-20 bg-black hover:bg-slate-900 rounded-full flex items-center justify-center transition shadow-lg"
+            >
+              {isPlaying ? (
+                <svg className="w-9 h-9 text-orange-500" fill="currentColor" viewBox="0 0 24 24">
+                  <rect x="6" y="4" width="4" height="16" rx="1" />
+                  <rect x="14" y="4" width="4" height="16" rx="1" />
+                </svg>
+              ) : (
+                <svg className="w-9 h-9 text-orange-500 ml-1" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+              )}
+            </button>
+          </div>
+
+          {/* Skip buttons and Speed - Separated row */}
+          <div className="flex items-center justify-center gap-6">
             {/* Skip Back 15 */}
             <button
               onClick={() => handleSkip(-15)}
@@ -427,21 +446,12 @@ function PlayContent() {
               <span className="text-orange-500 text-xs font-bold">-15</span>
             </button>
 
-            {/* Play/Pause */}
+            {/* Speed Control */}
             <button
-              onClick={handlePlayPause}
-              className="w-16 h-16 bg-black hover:bg-slate-900 rounded-full flex items-center justify-center transition shadow-lg"
+              onClick={handleSpeedChange}
+              className="px-4 py-2 bg-black hover:bg-slate-900 rounded-full text-sm text-orange-500 font-medium transition"
             >
-              {isPlaying ? (
-                <svg className="w-7 h-7 text-orange-500" fill="currentColor" viewBox="0 0 24 24">
-                  <rect x="6" y="4" width="4" height="16" rx="1" />
-                  <rect x="14" y="4" width="4" height="16" rx="1" />
-                </svg>
-              ) : (
-                <svg className="w-7 h-7 text-orange-500 ml-1" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M8 5v14l11-7z" />
-                </svg>
-              )}
+              {playbackSpeed}x Speed
             </button>
 
             {/* Skip Forward 15 */}
@@ -450,16 +460,6 @@ function PlayContent() {
               className="w-12 h-12 bg-black hover:bg-slate-900 rounded-full flex items-center justify-center transition"
             >
               <span className="text-orange-500 text-xs font-bold">+15</span>
-            </button>
-          </div>
-
-          {/* Speed Control */}
-          <div className="flex justify-center mt-3">
-            <button
-              onClick={handleSpeedChange}
-              className="px-4 py-1.5 bg-black hover:bg-slate-900 rounded-full text-sm text-orange-500 font-medium transition"
-            >
-              {playbackSpeed}x Speed
             </button>
           </div>
         </div>
