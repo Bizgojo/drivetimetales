@@ -9,6 +9,7 @@ interface User {
   display_name: string | null
   credits: number
   subscription_type: string | null
+  created_at: string | null
 }
 
 interface AuthContextType {
@@ -59,7 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const { data, error } = await supabase
         .from('users')
-        .select('id, email, display_name, credits, subscription_type')
+        .select('id, email, display_name, credits, subscription_type, created_at')
         .eq('id', userId)
         .single()
 
