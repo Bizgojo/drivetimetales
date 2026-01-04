@@ -91,7 +91,7 @@ export function useStory(id: string) {
 
 // Hook to fetch user's story collection
 export function useUserCollection() {
-  const { user, session } = useAuth();
+  const { user } = useAuth();
   const [collection, setCollection] = useState<(UserStory & { story: Story })[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -168,11 +168,17 @@ export function useOwnsStory(storyId: string) {
 
 // Hook to purchase a story
 export function usePurchaseStory() {
-  const { session, refreshCredits } = useAuth();
+  const { user, refreshCredits } = useAuth();
   const [purchasing, setPurchasing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const purchase = async (storyId: string) => {
+    if (!user) {
+      setError('Please sign in to purchase');
+      return { success: false };
+    }
+
+    const { data: { session } } = await supabase.auth.getSession();
     if (!session?.access_token) {
       setError('Please sign in to purchase');
       return { success: false };
@@ -288,11 +294,18 @@ export function useCheckout() {
 
 // Hook for wishlist management
 export function useWishlist() {
-  const { user, session } = useAuth();
+  const { user } = useAuth();
   const [wishlist, setWishlist] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchWishlist = useCallback(async () => {
+    if (!user) {
+      setWishlist([]);
+      setLoading(false);
+      return;
+    }
+
+    const { data: { session } } = await supabase.auth.getSession();
     if (!session?.access_token) {
       setWishlist([]);
       setLoading(false);
@@ -312,13 +325,14 @@ export function useWishlist() {
     } finally {
       setLoading(false);
     }
-  }, [session?.access_token]);
+  }, [user]);
 
   useEffect(() => {
     fetchWishlist();
   }, [fetchWishlist]);
 
   const addToWishlist = async (storyId: string) => {
+    const { data: { session } } = await supabase.auth.getSession();
     if (!session?.access_token) return { success: false };
 
     try {
@@ -342,6 +356,7 @@ export function useWishlist() {
   };
 
   const removeFromWishlist = async (storyId: string) => {
+    const { data: { session } } = await supabase.auth.getSession();
     if (!session?.access_token) return { success: false };
 
     try {

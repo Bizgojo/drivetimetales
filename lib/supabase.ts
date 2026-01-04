@@ -54,6 +54,16 @@ export interface UserPreference {
   not_for_me: boolean
 }
 
+export interface UserStory {
+  id: string
+  user_id: string
+  story_id: string
+  progress_seconds: number
+  completed: boolean
+  last_played_at: string | null
+  created_at: string
+}
+
 // Helper functions
 export async function getStory(storyId: string): Promise<Story | null> {
   const { data, error } = await supabase
