@@ -14,6 +14,7 @@ interface CollectionStory {
   progress: number;
   lastPlayed: string;
   completed: boolean;
+  cover_url?: string;
 }
 
 const collectionStories: CollectionStory[] = [
@@ -43,7 +44,7 @@ export default function CollectionPage() {
       : completed;
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
+    <div className="min-h-screen bg-slate-950 text-white">
       <Header isLoggedIn showBack userCredits={userCredits} />
       
       <div className="px-4 py-5">
@@ -71,8 +72,8 @@ export default function CollectionPage() {
               onClick={() => setFilter(tab.id as 'all' | 'progress' | 'completed')}
               className={`px-4 py-2 rounded-lg text-sm ${
                 filter === tab.id 
-                  ? 'bg-orange-500 text-white' 
-                  : 'bg-gray-800 text-white'
+                  ? 'bg-orange-500 text-black font-bold' 
+                  : 'bg-slate-700 text-white'
               }`}
             >
               {tab.label}
@@ -81,15 +82,15 @@ export default function CollectionPage() {
         </div>
 
         {filteredStories.length > 0 ? (
-          <div className="space-y-4">
+          <div className="space-y-3">
             {filteredStories.map((story) => (
               <div 
                 key={story.id}
-                className="p-4 bg-gray-900 border border-gray-800 rounded-xl"
+                className="p-3 bg-slate-700 rounded-xl"
               >
-                <div className="flex gap-4">
+                <div className="flex gap-3">
                   <div 
-                    className={`w-16 h-16 rounded-xl flex items-center justify-center text-2xl ${
+                    className={`w-20 h-20 rounded-lg flex items-center justify-center text-2xl flex-shrink-0 shadow-[0_0_20px_rgba(255,255,255,0.6)] ${
                       story.completed ? 'bg-green-600' : ''
                     }`}
                     style={!story.completed ? { background: 'linear-gradient(135deg, #ea580c 0%, #c2410c 100%)' } : {}}
@@ -97,18 +98,18 @@ export default function CollectionPage() {
                     {story.completed ? '✓' : (CATEGORY_ICONS[story.category] || '📚')}
                   </div>
                   
-                  <div className="flex-1">
-                    <h3 className="text-white font-bold">{story.title}</h3>
-                    <p className="text-white text-sm">{story.author}</p>
-                    <p className="text-white text-xs mt-1">Last played: {story.lastPlayed}</p>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-white font-bold truncate">{story.title}</h3>
+                    <p className="text-slate-300 text-sm">{story.author}</p>
+                    <p className="text-slate-400 text-xs mt-1">Last played: {story.lastPlayed}</p>
                     
                     {!story.completed && (
                       <div className="mt-2">
                         <div className="flex justify-between text-xs mb-1">
                           <span className="text-orange-400">{story.progress}% complete</span>
-                          <span className="text-white">{Math.round(story.duration * (1 - story.progress / 100))} min left</span>
+                          <span className="text-slate-300">{Math.round(story.duration * (1 - story.progress / 100))} min left</span>
                         </div>
-                        <div className="h-1.5 bg-gray-800 rounded-full">
+                        <div className="h-1.5 bg-slate-600 rounded-full">
                           <div 
                             className="h-full bg-orange-500 rounded-full"
                             style={{ width: `${story.progress}%` }}
@@ -123,9 +124,9 @@ export default function CollectionPage() {
                   href={`/player/${story.id}`}
                   className={`block w-full mt-3 py-2 rounded-lg text-center font-medium ${
                     story.completed 
-                      ? 'bg-gray-800 text-white' 
-                      : 'bg-green-600 text-white'
-                  }`}
+                      ? 'bg-slate-600 text-white hover:bg-slate-500' 
+                      : 'bg-orange-500 text-black hover:bg-orange-400'
+                  } transition`}
                 >
                   {story.completed ? '🔄 Listen Again' : '▶ Continue'}
                 </Link>
@@ -136,12 +137,12 @@ export default function CollectionPage() {
           <div className="text-center py-12">
             <div className="text-5xl mb-4">📚</div>
             <h2 className="text-white text-lg font-bold mb-2">No Stories Yet</h2>
-            <p className="text-white text-sm mb-6">
+            <p className="text-slate-400 text-sm mb-6">
               Start listening to build your collection.
             </p>
             <Link 
               href="/library"
-              className="inline-block px-6 py-3 bg-orange-500 text-white rounded-xl font-medium"
+              className="inline-block px-6 py-3 bg-orange-500 text-black rounded-xl font-medium"
             >
               Browse Stories
             </Link>

@@ -17,7 +17,7 @@ export default function WishlistPage() {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
+      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center">
         <div className="text-center">
           <span className="text-4xl block mb-4">🔐</span>
           <p className="text-white mb-4">Please sign in to view your wishlist</p>
@@ -30,7 +30,7 @@ export default function WishlistPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
+    <div className="min-h-screen bg-slate-950 text-white">
       <div className="px-4 py-8">
         <div className="max-w-4xl mx-auto">
           <Link href="/library" className="text-slate-400 hover:text-white text-sm mb-6 inline-block">
@@ -46,24 +46,26 @@ export default function WishlistPage() {
               <p className="text-slate-400">Loading...</p>
             </div>
           ) : stories.length > 0 ? (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="space-y-3">
               {stories.map((story) => (
-                <Link key={story.id} href={`/story/${story.id}`} className="group">
-                  <div className="aspect-square rounded-xl relative overflow-hidden mb-2 bg-gradient-to-br from-slate-700 to-slate-900">
+                <Link key={story.id} href={`/player/${story.id}`} className="bg-slate-700 rounded-xl p-3 flex gap-3 hover:bg-slate-600 transition block">
+                  <div className="w-20 h-20 rounded-lg overflow-hidden flex-shrink-0 relative shadow-[0_0_20px_rgba(255,255,255,0.6)]">
                     {story.cover_url ? (
                       <img src={story.cover_url} alt={story.title} className="w-full h-full object-cover" />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <span className="text-4xl opacity-50">🎧</span>
+                      <div className="w-full h-full bg-gradient-to-br from-orange-600 to-orange-900 flex items-center justify-center">
+                        <span className="text-2xl">🎧</span>
                       </div>
                     )}
-                    <div className="absolute bottom-2 right-2 px-2 py-0.5 bg-black/60 text-white text-xs rounded">
-                      {story.duration_mins} min
-                    </div>
+                    <span className="absolute bottom-0.5 right-0.5 bg-black/70 text-white text-[8px] px-1 rounded">
+                      {story.duration_mins}m
+                    </span>
                   </div>
-                  <h3 className="font-semibold text-white text-sm group-hover:text-orange-400 line-clamp-2">{story.title}</h3>
-                  <p className="text-xs text-orange-400">{story.genre}</p>
-                  <p className="text-xs text-slate-400">{story.author}</p>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white font-bold text-sm truncate">{story.title}</p>
+                    <p className="text-white text-xs">{story.genre} • {story.credits || 1} credit{(story.credits || 1) > 1 ? 's' : ''}</p>
+                    <p className="text-slate-300 text-[10px]">by {story.author || 'Drive Time Tales'}</p>
+                  </div>
                 </Link>
               ))}
             </div>
