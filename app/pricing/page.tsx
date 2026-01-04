@@ -165,11 +165,10 @@ export default function PricingPage() {
       const data = await response.json()
       
       if (data.success) {
-        // Payment succeeded - refresh credits and go back
+        // Payment succeeded - refresh credits and go back immediately
         await refreshCredits()
         setConfirmPack(null)
-        alert(`Success! ${data.message}`)
-        // Go back to previous page
+        // Go back to previous page immediately
         window.history.back()
       } else {
         // Show error message
