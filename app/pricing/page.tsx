@@ -7,9 +7,10 @@ import { useAuth } from '@/contexts/AuthContext'
 
 export default function PricingPage() {
   const router = useRouter()
-  const { user } = useAuth()
+  const { user, refreshCredits } = useAuth()
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly')
   const [processing, setProcessing] = useState<string | null>(null)
+  const [confirmPack, setConfirmPack] = useState<{id: string, name: string, price: number, credits: number} | null>(null)
 
   // Subscription plans with real Stripe Price IDs
   const plans = [
@@ -122,34 +123,46 @@ export default function PricingPage() {
   }
 
   const handleSelectPack = async (packId: string, priceId: string) => {
+    const pack = freedomPacks.find(p => p.id === packId)
+    if (!pack) return
+
     if (user) {
-      // Logged in - go directly to Stripe checkout
-      setProcessing(packId)
-      try {
-        const response = await fetch('/api/checkout', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            productType: 'credit_pack',
-            productId: packId,
-            userId: user.id
-          })
-        })
-        const data = await response.json()
-        if (data.url) {
-          window.location.href = data.url
-        } else {
-          alert(data.error || 'Failed to create checkout session')
-        }
-      } catch (error) {
-        console.error('Checkout error:', error)
-        alert('Failed to start checkout. Please try again.')
-      } finally {
-        setProcessing(null)
-      }
+      // Show confirmation modal for quick purchase
+      setConfirmPack({ id: packId, name: pack.name, price: pack.price, credits: pack.credits })
     } else {
       // Not logged in - go to signup
       router.push(`/signup?plan=${packId}&priceId=${priceId}&type=one-time`)
+    }
+  }
+
+  const handleQuickPurchase = async () => {
+    if (!user || !confirmPack) return
+    
+    setProcessing(confirmPack.id)
+    try {
+      const response = await fetch('/api/quick-purchase', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          packId: confirmPack.id,
+          userId: user.id
+        })
+      })
+      const data = await response.json()
+      
+      if (data.success) {
+        await refreshCredits()
+        setConfirmPack(null)
+        alert(`Success! ${confirmPack.credits} credits added to your account.`)
+        router.push('/home')
+      } else {
+        alert(data.error || 'Purchase failed. Please try again.')
+      }
+    } catch (error) {
+      console.error('Purchase error:', error)
+      alert('Purchase failed. Please try again.')
+    } finally {
+      setProcessing(null)
     }
   }
 
@@ -369,6 +382,42 @@ export default function PricingPage() {
           </Link>
         </p>
       </div>
+
+      {/* Quick Purchase Confirmation Modal */}
+      {confirmPack && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4">
+          <div className="bg-slate-900 rounded-2xl p-6 max-w-sm w-full border border-slate-700">
+            <h3 className="text-xl font-bold text-white text-center mb-2">Confirm Purchase</h3>
+            
+            <div className="bg-slate-800 rounded-xl p-4 my-4 text-center">
+              <p className="text-2xl font-bold text-white">{confirmPack.name}</p>
+              <p className="text-orange-400 font-medium">{confirmPack.credits} credits</p>
+              <p className="text-3xl font-bold text-white mt-2">${confirmPack.price}</p>
+            </div>
+
+            <p className="text-slate-400 text-sm text-center mb-4">
+              Your card on file will be charged
+            </p>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmPack(null)}
+                disabled={processing === confirmPack.id}
+                className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-medium transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleQuickPurchase}
+                disabled={processing === confirmPack.id}
+                className="flex-1 py-3 bg-orange-500 hover:bg-orange-400 text-black rounded-xl font-bold transition disabled:opacity-50"
+              >
+                {processing === confirmPack.id ? 'Processing...' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
