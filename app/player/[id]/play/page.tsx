@@ -65,7 +65,6 @@ function PlayContent() {
 
   useEffect(() => {
     if (story && audioRef.current) {
-      // Set resume position if provided
       if (resumeTime) {
         const time = parseInt(resumeTime)
         if (!isNaN(time) && time > 0) {
@@ -76,7 +75,6 @@ function PlayContent() {
         }
       }
       
-      // Auto-play if requested
       if (autoplay) {
         audioRef.current.play().catch(console.error)
         setIsPlaying(true)
@@ -84,12 +82,11 @@ function PlayContent() {
     }
   }, [story, autoplay, resumeTime])
 
-  // Save progress periodically
   useEffect(() => {
     if (user && isPlaying) {
       progressSaveInterval.current = setInterval(() => {
         saveProgress()
-      }, 10000) // Save every 10 seconds
+      }, 10000)
     }
     
     return () => {
@@ -153,7 +150,6 @@ function PlayContent() {
     setIsPlaying(false)
     setIsComplete(true)
     
-    // Mark as completed in database
     if (user) {
       try {
         await supabase
@@ -266,11 +262,10 @@ function PlayContent() {
   if (isComplete) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-green-950 to-slate-950 text-white flex flex-col">
-        {/* Header */}
         <header className="flex items-center justify-between px-4 py-3 border-b border-green-800/50">
-          <button onClick={() => router.push('/home')} className="text-green-300 hover:text-white flex items-center gap-2">
-            <span>←</span>
-            <span className="text-sm">Home</span>
+          <button onClick={() => router.push('/home')} className="text-white hover:text-green-400 flex items-center gap-2 font-medium">
+            <span className="text-lg">←</span>
+            <span>Home</span>
           </button>
           
           <div className="text-center">
@@ -284,17 +279,14 @@ function PlayContent() {
           )}
         </header>
 
-        {/* Content */}
         <main className="flex-1 px-4 py-8 flex flex-col items-center justify-center">
-          {/* Celebration */}
           <div className="text-6xl mb-4">🎉</div>
           <h1 className="text-2xl font-bold text-center mb-2">Story Complete!</h1>
           <p className="text-slate-400 text-center mb-8">
             You finished "{story.title}"
           </p>
 
-          {/* Cover */}
-          <div className="w-32 h-32 rounded-xl overflow-hidden bg-slate-800 mb-6 shadow-lg shadow-green-500/20">
+          <div className="w-32 h-32 rounded-xl overflow-hidden bg-slate-800 mb-6 shadow-[0_0_30px_rgba(34,197,94,0.5)]">
             {story.cover_url ? (
               <img src={story.cover_url} alt={story.title} className="w-full h-full object-cover" />
             ) : (
@@ -304,7 +296,6 @@ function PlayContent() {
             )}
           </div>
 
-          {/* Rating */}
           <p className="text-slate-400 text-sm mb-3">How would you rate this story?</p>
           <div className="flex gap-2 mb-8">
             {[1, 2, 3, 4, 5].map((star) => (
@@ -325,7 +316,6 @@ function PlayContent() {
           )}
         </main>
 
-        {/* Action Buttons */}
         <div className="px-4 pb-8 space-y-3">
           <button
             onClick={handlePlaySimilar}
@@ -344,9 +334,9 @@ function PlayContent() {
     )
   }
 
-  // Now playing screen
+  // Now playing screen - Orange themed player
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-900 to-slate-950 text-white flex flex-col">
+    <div className="min-h-screen bg-slate-950 text-white flex flex-col">
       {/* Hidden Audio Element */}
       <audio
         ref={audioRef}
@@ -358,14 +348,16 @@ function PlayContent() {
 
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
-        <button onClick={handleBack} className="text-slate-400 hover:text-white flex items-center gap-2">
-          <span>←</span>
-          <span className="text-sm">Back</span>
+        <button onClick={handleBack} className="text-white hover:text-orange-400 flex items-center gap-2 font-medium">
+          <span className="text-lg">←</span>
+          <span>Back</span>
         </button>
         
         <Link href="/home" className="flex items-center gap-1">
-          <span className="text-lg">🚛🚗</span>
-          <span className="font-bold text-white text-sm">Drive Time<span className="text-orange-400">Tales</span></span>
+          <span className="text-lg">🚛</span>
+          <span className="text-lg">🚗</span>
+          <span className="font-bold text-white text-sm ml-1">Drive Time</span>
+          <span className="font-bold text-orange-400 text-sm">Tales</span>
         </Link>
         
         {user && (
@@ -383,9 +375,9 @@ function PlayContent() {
       )}
 
       {/* Main Content */}
-      <main className="flex-1 px-4 py-6 flex flex-col">
-        {/* Cover */}
-        <div className="w-48 h-48 mx-auto rounded-xl overflow-hidden bg-slate-800 mb-4 shadow-xl">
+      <main className="flex-1 px-4 py-4 flex flex-col">
+        {/* Larger Cover with Glow */}
+        <div className="w-56 h-56 mx-auto rounded-xl overflow-hidden bg-slate-800 mb-4 shadow-[0_0_30px_rgba(255,255,255,0.5)]">
           {story.cover_url ? (
             <img src={story.cover_url} alt={story.title} className="w-full h-full object-cover" />
           ) : (
@@ -396,74 +388,77 @@ function PlayContent() {
         </div>
 
         {/* Story Info */}
-        <div className="text-center mb-6">
+        <div className="text-center mb-4">
           <h1 className="text-lg font-bold mb-1">{story.title}</h1>
-          <p className="text-orange-400 text-sm">{story.author || 'Drive Time Tales'}</p>
+          <p className="text-white text-sm">{story.author || 'Unknown Author'}</p>
         </div>
 
-        {/* Progress Bar */}
-        <div className="mb-2">
-          <input
-            type="range"
-            min="0"
-            max={duration || 100}
-            value={currentTime}
-            onChange={handleSeek}
-            className="w-full h-2 bg-slate-700 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-orange-500 [&::-webkit-slider-thumb]:rounded-full"
-            style={{
-              background: `linear-gradient(to right, #f97316 0%, #f97316 ${progressPercent}%, #334155 ${progressPercent}%, #334155 100%)`
-            }}
-          />
-          <div className="flex justify-between text-xs text-white mt-1">
-            <span>{formatTime(currentTime)}</span>
-            <span>{formatTime(duration)}</span>
+        {/* Orange Player Controls Box */}
+        <div className="bg-orange-500 rounded-2xl p-4 mx-2 mt-auto">
+          {/* Progress Bar */}
+          <div className="mb-3">
+            <input
+              type="range"
+              min="0"
+              max={duration || 100}
+              value={currentTime}
+              onChange={handleSeek}
+              className="w-full h-2 bg-orange-700 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:shadow-md"
+              style={{
+                background: `linear-gradient(to right, #fff 0%, #fff ${progressPercent}%, #c2410c ${progressPercent}%, #c2410c 100%)`
+              }}
+            />
+            <div className="flex justify-between text-xs text-black font-medium mt-1">
+              <span>{formatTime(currentTime)}</span>
+              <span>{formatTime(duration)}</span>
+            </div>
           </div>
-        </div>
 
-        {/* Playback Controls */}
-        <div className="flex items-center justify-center gap-6 my-8">
-          {/* Skip Back */}
-          <button
-            onClick={() => handleSkip(-15)}
-            className="w-12 h-12 bg-slate-800 hover:bg-slate-700 rounded-full flex items-center justify-center transition"
-          >
-            <span className="text-white text-xs font-bold">-15</span>
-          </button>
+          {/* Playback Controls */}
+          <div className="flex items-center justify-center gap-4">
+            {/* Skip Back */}
+            <button
+              onClick={() => handleSkip(-15)}
+              className="w-12 h-12 bg-orange-600 hover:bg-orange-700 rounded-full flex items-center justify-center transition"
+            >
+              <span className="text-black text-xs font-bold">-15</span>
+            </button>
 
-          {/* Play/Pause */}
-          <button
-            onClick={handlePlayPause}
-            className="w-20 h-20 bg-orange-500 hover:bg-orange-400 rounded-full flex items-center justify-center transition shadow-lg shadow-orange-500/30"
-          >
-            {isPlaying ? (
-              <svg className="w-8 h-8 text-black" fill="currentColor" viewBox="0 0 24 24">
-                <rect x="6" y="4" width="4" height="16" rx="1" />
-                <rect x="14" y="4" width="4" height="16" rx="1" />
-              </svg>
-            ) : (
-              <svg className="w-8 h-8 text-black ml-1" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M8 5v14l11-7z" />
-              </svg>
-            )}
-          </button>
+            {/* Play/Pause */}
+            <button
+              onClick={handlePlayPause}
+              className="w-16 h-16 bg-black hover:bg-slate-900 rounded-full flex items-center justify-center transition shadow-lg"
+            >
+              {isPlaying ? (
+                <svg className="w-7 h-7 text-orange-500" fill="currentColor" viewBox="0 0 24 24">
+                  <rect x="6" y="4" width="4" height="16" rx="1" />
+                  <rect x="14" y="4" width="4" height="16" rx="1" />
+                </svg>
+              ) : (
+                <svg className="w-7 h-7 text-orange-500 ml-1" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+              )}
+            </button>
 
-          {/* Skip Forward */}
-          <button
-            onClick={() => handleSkip(30)}
-            className="w-12 h-12 bg-slate-800 hover:bg-slate-700 rounded-full flex items-center justify-center transition"
-          >
-            <span className="text-white text-xs font-bold">+30</span>
-          </button>
-        </div>
+            {/* Skip Forward */}
+            <button
+              onClick={() => handleSkip(30)}
+              className="w-12 h-12 bg-orange-600 hover:bg-orange-700 rounded-full flex items-center justify-center transition"
+            >
+              <span className="text-black text-xs font-bold">+30</span>
+            </button>
+          </div>
 
-        {/* Speed Control */}
-        <div className="flex justify-center">
-          <button
-            onClick={handleSpeedChange}
-            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-full text-sm text-white transition"
-          >
-            {playbackSpeed}x Speed
-          </button>
+          {/* Speed Control */}
+          <div className="flex justify-center mt-3">
+            <button
+              onClick={handleSpeedChange}
+              className="px-4 py-1.5 bg-orange-600 hover:bg-orange-700 rounded-full text-sm text-black font-medium transition"
+            >
+              {playbackSpeed}x Speed
+            </button>
+          </div>
         </div>
       </main>
     </div>
