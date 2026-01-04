@@ -222,6 +222,18 @@ export default function PricingPage() {
     </div>
   )
 
+  // Show loading while auth is being checked
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-slate-400">Loading...</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       <div className="max-w-4xl mx-auto px-4 py-6">
@@ -239,6 +251,15 @@ export default function PricingPage() {
           </Link>
           <div className="w-16" /> {/* Spacer for centering */}
         </div>
+
+        {/* Show logged in status */}
+        {user && (
+          <div className="bg-green-900/30 border border-green-700 rounded-lg px-4 py-2 mb-4 text-center">
+            <p className="text-green-400 text-sm">
+              Signed in as <span className="font-bold">{user.email}</span> • {user.credits === -1 ? 'Unlimited' : user.credits} credits
+            </p>
+          </div>
+        )}
 
         {/* Title */}
         <div className="text-center mb-6">
