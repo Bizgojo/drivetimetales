@@ -303,10 +303,10 @@ function PlayerContent() {
         )}
       </header>
 
-      {/* Main Content - Everything under logo */}
+      {/* Main Content */}
       <main className="flex-1 px-4 pt-4 pb-6 flex flex-col">
         {/* Full Width Cover Image with Glow */}
-        <div className="w-full aspect-square rounded-xl overflow-hidden bg-slate-800 mb-4 shadow-[0_0_30px_rgba(255,255,255,0.5)]">
+        <div className="w-full aspect-square rounded-xl overflow-hidden bg-slate-800 mb-3 shadow-[0_0_30px_rgba(255,255,255,0.5)]">
           {story.cover_url ? (
             <img src={story.cover_url} alt={story.title} className="w-full h-full object-cover" />
           ) : (
@@ -316,9 +316,10 @@ function PlayerContent() {
           )}
         </div>
 
-        {/* Story Info */}
-        <div className="text-center mb-3">
+        {/* Story Info - Author under title */}
+        <div className="text-center mb-2">
           <h1 className="text-xl font-bold mb-1">{story.title}</h1>
+          <p className="text-white text-sm mb-1">by {story.author || 'Unknown Author'}</p>
           
           {/* Genre and Flags on same line */}
           <div className="flex items-center justify-center gap-2 mb-1">
@@ -331,14 +332,14 @@ function PlayerContent() {
             )}
           </div>
           
-          <p className="text-white text-sm">
+          <p className="text-slate-400 text-sm">
             {story.duration_mins} min • {ownsStory ? 'In Library' : `${creditCost} credit${creditCost > 1 ? 's' : ''}`}
           </p>
         </div>
 
         {/* Progress Bar (if owned and has progress) */}
         {ownsStory && libraryEntry && libraryEntry.progress > 0 && (
-          <div className="mb-3">
+          <div className="mb-2">
             <div className="h-1 bg-slate-700 rounded-full overflow-hidden">
               <div 
                 className="h-full bg-orange-500 rounded-full transition-all"
@@ -350,12 +351,12 @@ function PlayerContent() {
         )}
 
         {/* Description */}
-        <p className="text-slate-300 text-sm leading-relaxed mb-4 text-center">
+        <p className="text-slate-300 text-sm leading-relaxed mb-3 text-center">
           {story.description}
         </p>
 
-        {/* Action Buttons */}
-        <div className="space-y-3 mt-auto">
+        {/* Action Buttons - No blank space */}
+        <div className="space-y-3">
           
           {/* STATE 1: User owns story */}
           {ownsStory && (
@@ -385,7 +386,7 @@ function PlayerContent() {
           {/* STATE 2: Preview completed but not owned */}
           {!ownsStory && previewCompleted && (
             <>
-              <div className="flex gap-3 mb-3">
+              <div className="flex gap-3">
                 <button
                   onClick={handleWishlist}
                   disabled={actionLoading}
@@ -404,7 +405,7 @@ function PlayerContent() {
               <button
                 onClick={handleResume}
                 disabled={actionLoading || !hasEnoughCredits}
-                className="w-full py-4 bg-orange-500 hover:bg-orange-400 text-black rounded-xl font-bold transition disabled:opacity-50 disabled:bg-slate-600 disabled:text-slate-400 mb-2"
+                className="w-full py-4 bg-orange-500 hover:bg-orange-400 text-black rounded-xl font-bold transition disabled:opacity-50 disabled:bg-slate-600 disabled:text-slate-400"
               >
                 {actionLoading ? 'Processing...' : `▶ Resume (${creditCost} credit${creditCost > 1 ? 's' : ''})`}
               </button>
@@ -416,7 +417,7 @@ function PlayerContent() {
                 ↺ Start from Beginning
               </button>
               {!hasEnoughCredits && (
-                <p className="text-red-400 text-sm text-center mt-2">
+                <p className="text-red-400 text-sm text-center">
                   Not enough credits. <Link href="/pricing" className="text-orange-400 hover:underline">Get more</Link>
                 </p>
               )}
