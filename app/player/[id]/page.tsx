@@ -16,7 +16,7 @@ interface Story {
   cover_url: string | null
   audio_url: string
   credits: number
-  preview_end_time?: number // Seconds where preview ends (at voice break)
+  preview_end_time?: number
 }
 
 interface LibraryEntry {
@@ -47,13 +47,11 @@ function PlayerContent() {
   const [previewCompleted, setPreviewCompleted] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
   
-  // Check if returning from preview
   const fromPreview = searchParams.get('fromPreview') === 'true'
 
   useEffect(() => {
     async function loadData() {
       try {
-        // Load story
         const { data: storyData, error: storyError } = await supabase
           .from('stories')
           .select('*')
@@ -63,7 +61,6 @@ function PlayerContent() {
         if (storyError) throw storyError
         setStory(storyData)
 
-        // Check if user owns this story
         if (user) {
           const { data: libData } = await supabase
             .from('user_library')
@@ -74,7 +71,6 @@ function PlayerContent() {
           
           if (libData) setLibraryEntry(libData)
 
-          // Check user preferences (wishlist/not for me)
           const { data: prefData } = await supabase
             .from('user_preferences')
             .select('story_id, wishlisted, not_for_me')
@@ -84,7 +80,6 @@ function PlayerContent() {
           
           if (prefData) setUserPreference(prefData)
 
-          // Check if preview was completed
           const previewKey = `preview_${storyId}`
           const previewStatus = localStorage.getItem(previewKey)
           if (previewStatus === 'completed' || fromPreview) {
@@ -110,9 +105,7 @@ function PlayerContent() {
     
     setActionLoading(true)
     try {
-      // Check if user already owns this story
       if (!libraryEntry) {
-        // Deduct credits
         const creditCost = story.credits || 1
         
         if (user.credits < creditCost && user.credits !== -1) {
@@ -121,7 +114,6 @@ function PlayerContent() {
           return
         }
 
-        // Update user credits
         const newCredits = user.credits === -1 ? -1 : user.credits - creditCost
         const { error: creditError } = await supabase
           .from('users')
@@ -130,7 +122,6 @@ function PlayerContent() {
 
         if (creditError) throw creditError
 
-        // Add to library
         const { error: libError } = await supabase
           .from('user_library')
           .insert({
@@ -145,7 +136,6 @@ function PlayerContent() {
         await refreshCredits()
       }
 
-      // Navigate to play page
       router.push(`/player/${storyId}/play?autoplay=true`)
     } catch (err) {
       console.error('Error starting playback:', err)
@@ -155,14 +145,21 @@ function PlayerContent() {
     }
   }
 
+  const handleContinue = () => {
+    const resumeTime = libraryEntry?.progress || 0
+    router.push(`/player/${storyId}/play?autoplay=true&resume=${resumeTime}`)
+  }
+
+  const handleStartOver = () => {
+    router.push(`/player/${storyId}/play?autoplay=true`)
+  }
+
   const handleResume = async () => {
     if (!user || !story) return
     
     setActionLoading(true)
     try {
-      // Check if user already owns this story
       if (!libraryEntry) {
-        // Deduct credits
         const creditCost = story.credits || 1
         
         if (user.credits < creditCost && user.credits !== -1) {
@@ -171,7 +168,6 @@ function PlayerContent() {
           return
         }
 
-        // Update user credits
         const newCredits = user.credits === -1 ? -1 : user.credits - creditCost
         const { error: creditError } = await supabase
           .from('users')
@@ -180,7 +176,6 @@ function PlayerContent() {
 
         if (creditError) throw creditError
 
-        // Add to library with preview position
         const previewEnd = story.preview_end_time || Math.floor(story.duration_mins * 60 * 0.1)
         const { error: libError } = await supabase
           .from('user_library')
@@ -196,7 +191,6 @@ function PlayerContent() {
         await refreshCredits()
       }
 
-      // Navigate to play page with resume flag
       const resumeTime = story.preview_end_time || Math.floor(story.duration_mins * 60 * 0.1)
       router.push(`/player/${storyId}/play?autoplay=true&resume=${resumeTime}`)
     } catch (err) {
@@ -221,14 +215,11 @@ function PlayerContent() {
           not_for_me: false
         })
       
-      // Clear preview status
-      localStorage.removeItem(`preview_${storyId}`)
+      router.push('/library?toast=wishlisted')
     } catch (err) {
       console.error('Error adding to wishlist:', err)
     } finally {
       setActionLoading(false)
-      // Always navigate back to library
-      router.push('/library')
     }
   }
 
@@ -246,29 +237,13 @@ function PlayerContent() {
           not_for_me: true
         })
       
-      // Clear preview status
-      localStorage.removeItem(`preview_${storyId}`)
+      router.push('/library?toast=notforme')
     } catch (err) {
       console.error('Error marking not for me:', err)
     } finally {
       setActionLoading(false)
-      // Always navigate back to library
-      router.push('/library')
     }
   }
-
-  const handleContinue = () => {
-    if (libraryEntry) {
-      router.push(`/player/${storyId}/play?autoplay=true&resume=${libraryEntry.progress}`)
-    }
-  }
-
-  const handleStartOver = () => {
-    router.push(`/player/${storyId}/play?autoplay=true&resume=0`)
-  }
-
-  // Calculate preview duration (10% of story)
-  const previewMins = story ? Math.ceil(story.duration_mins * 0.1) : 0
 
   if (loading) {
     return (
@@ -301,32 +276,37 @@ function PlayerContent() {
   const progressPercent = libraryEntry 
     ? Math.round((libraryEntry.progress / (story.duration_mins * 60)) * 100) 
     : 0
+  const previewMins = Math.ceil((story.preview_end_time || story.duration_mins * 60 * 0.1) / 60)
 
   return (
     <div className="min-h-screen bg-slate-950 text-white flex flex-col">
-      {/* Header with Logo */}
+      {/* Header */}
       <header className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
-        <Link href="/library" className="text-slate-400 hover:text-white flex items-center gap-2">
-          <span>←</span>
-          <span className="text-sm">Back</span>
+        <Link href="/library" className="text-white hover:text-orange-400 flex items-center gap-2 font-medium">
+          <span className="text-lg">←</span>
+          <span>Back</span>
         </Link>
         
         <Link href="/home" className="flex items-center gap-1">
-          <span className="text-lg">🚛🚗</span>
-          <span className="font-bold text-white">Drive Time<span className="text-orange-400">Tales</span></span>
+          <span className="text-lg">🚛</span>
+          <span className="text-lg">🚗</span>
+          <span className="font-bold text-white ml-1">Drive Time</span>
+          <span className="font-bold text-orange-400">Tales</span>
         </Link>
         
-        {user && (
+        {user ? (
           <Link href="/account" className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-black font-bold text-sm">
             {displayName?.charAt(0).toUpperCase() || 'U'}
           </Link>
+        ) : (
+          <div className="w-8" />
         )}
       </header>
 
       {/* Main Content */}
       <main className="flex-1 px-4 py-6 flex flex-col">
-        {/* Cover Image */}
-        <div className="w-full max-w-xs mx-auto aspect-square rounded-xl overflow-hidden bg-slate-800 mb-4 relative">
+        {/* Cover Image with Glow */}
+        <div className="w-full max-w-xs mx-auto aspect-square rounded-xl overflow-hidden bg-slate-800 mb-4 shadow-[0_0_30px_rgba(255,255,255,0.5)]">
           {story.cover_url ? (
             <img src={story.cover_url} alt={story.title} className="w-full h-full object-cover" />
           ) : (
@@ -334,26 +314,25 @@ function PlayerContent() {
               <span className="text-6xl opacity-50">🎧</span>
             </div>
           )}
-          
-          {/* Badges */}
-          {ownsStory && (
-            <div className="absolute top-2 right-2 bg-green-500 text-black text-xs font-bold px-2 py-1 rounded">
-              IN LIBRARY
-            </div>
-          )}
-          {userPreference?.wishlisted && (
-            <div className="absolute top-2 left-2 bg-pink-500 text-white text-xs font-bold px-2 py-1 rounded">
-              ❤️ WISHLISTED
-            </div>
-          )}
         </div>
 
         {/* Story Info */}
         <div className="text-center mb-4">
-          <h1 className="text-xl font-bold mb-1">{story.title}</h1>
-          <p className="text-orange-400 text-sm mb-1">{story.genre}</p>
-          <p className="text-slate-400 text-sm">
-            {story.duration_mins} min • {ownsStory ? 'Owned' : `${creditCost} credit${creditCost > 1 ? 's' : ''}`}
+          <h1 className="text-xl font-bold mb-2">{story.title}</h1>
+          
+          {/* Genre and Flags on same line */}
+          <div className="flex items-center justify-center gap-2 mb-1">
+            <span className="text-orange-400 text-sm">{story.genre}</span>
+            {ownsStory && (
+              <span className="bg-green-500 text-black text-xs font-bold px-2 py-0.5 rounded">OWNED</span>
+            )}
+            {userPreference?.wishlisted && !ownsStory && (
+              <span className="bg-pink-500 text-white text-xs font-bold px-2 py-0.5 rounded">❤️ WISHLIST</span>
+            )}
+          </div>
+          
+          <p className="text-white text-sm">
+            {story.duration_mins} min • {ownsStory ? 'In Library' : `${creditCost} credit${creditCost > 1 ? 's' : ''}`}
           </p>
         </div>
 
@@ -366,19 +345,19 @@ function PlayerContent() {
                 style={{ width: `${progressPercent}%` }}
               />
             </div>
-            <p className="text-slate-500 text-xs text-center mt-1">{progressPercent}% complete</p>
+            <p className="text-slate-400 text-xs text-center mt-1">{progressPercent}% complete</p>
           </div>
         )}
 
-        {/* Description - Justified 25-30 words */}
-        <p className="text-slate-300 text-sm leading-relaxed mb-4 px-2 text-justify">
+        {/* Description */}
+        <p className="text-slate-300 text-sm leading-relaxed mb-6 px-2 text-center">
           {story.description}
         </p>
 
-        {/* Action Buttons - Different states */}
-        <div className="space-y-3 px-2">
+        {/* Action Buttons */}
+        <div className="space-y-3 px-2 mt-auto">
           
-          {/* STATE 1: User owns story - show Continue/Start Over */}
+          {/* STATE 1: User owns story */}
           {ownsStory && (
             <>
               <div className="flex gap-3">
@@ -387,7 +366,7 @@ function PlayerContent() {
                   disabled={actionLoading}
                   className="flex-1 py-4 bg-orange-500 hover:bg-orange-400 text-black rounded-xl font-bold text-lg transition disabled:opacity-50"
                 >
-                  {libraryEntry.progress > 0 ? '▶️ Continue' : '▶️ Play'}
+                  {libraryEntry.progress > 0 ? '▶ Continue' : '▶ Play'}
                 </button>
                 {libraryEntry.progress > 0 && (
                   <button
@@ -403,23 +382,23 @@ function PlayerContent() {
             </>
           )}
 
-          {/* STATE 2: Preview completed but not owned - show options */}
+          {/* STATE 2: Preview completed but not owned */}
           {!ownsStory && previewCompleted && (
             <>
               <div className="flex gap-3 mb-3">
                 <button
                   onClick={handleWishlist}
                   disabled={actionLoading}
-                  className="flex-1 py-3 bg-pink-600 hover:bg-pink-500 text-white rounded-xl font-semibold transition disabled:opacity-50"
+                  className="flex-1 py-3 bg-pink-500 hover:bg-pink-400 text-white rounded-xl font-semibold transition disabled:opacity-50"
                 >
-                  ❤️ Add to Wishlist
+                  ❤️ Wishlist
                 </button>
                 <button
                   onClick={handleNotForMe}
                   disabled={actionLoading}
                   className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-semibold transition disabled:opacity-50"
                 >
-                  👎 Not For Me
+                  👎 Pass
                 </button>
               </div>
               <button
@@ -427,14 +406,14 @@ function PlayerContent() {
                 disabled={actionLoading || !hasEnoughCredits}
                 className="w-full py-4 bg-orange-500 hover:bg-orange-400 text-black rounded-xl font-bold transition disabled:opacity-50 disabled:bg-slate-600 disabled:text-slate-400 mb-2"
               >
-                {actionLoading ? 'Processing...' : `▶️ Resume from Preview (${creditCost} credit${creditCost > 1 ? 's' : ''})`}
+                {actionLoading ? 'Processing...' : `▶ Resume (${creditCost} credit${creditCost > 1 ? 's' : ''})`}
               </button>
               <button
                 onClick={handlePlayNow}
                 disabled={actionLoading || !hasEnoughCredits}
                 className="w-full py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-medium transition disabled:opacity-50"
               >
-                {actionLoading ? 'Processing...' : `↺ Play from Beginning (${creditCost} credit${creditCost > 1 ? 's' : ''})`}
+                ↺ Start from Beginning
               </button>
               {!hasEnoughCredits && (
                 <p className="text-red-400 text-sm text-center mt-2">
@@ -444,7 +423,7 @@ function PlayerContent() {
             </>
           )}
 
-          {/* STATE 3: New story - show Preview/Play Now side by side */}
+          {/* STATE 3: New story */}
           {!ownsStory && !previewCompleted && (
             <>
               <div className="flex gap-3">
@@ -460,13 +439,13 @@ function PlayerContent() {
                   disabled={actionLoading || !hasEnoughCredits}
                   className="flex-1 py-4 bg-orange-500 hover:bg-orange-400 text-black rounded-xl font-bold text-base transition disabled:opacity-50 disabled:bg-slate-600 disabled:text-slate-400"
                 >
-                  ▶️ Play Now<br/>
+                  ▶ Play Now<br/>
                   <span className="text-sm font-normal opacity-80">{creditCost} credit{creditCost > 1 ? 's' : ''}</span>
                 </button>
               </div>
               {!user && (
                 <p className="text-slate-500 text-sm text-center">
-                  <Link href="/auth/login" className="text-orange-400 hover:underline">Sign in</Link> to purchase
+                  <Link href="/signin" className="text-orange-400 hover:underline">Sign in</Link> to purchase
                 </p>
               )}
               {user && !hasEnoughCredits && (
