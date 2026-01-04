@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
 
 interface Review {
   id: string;
@@ -20,7 +21,7 @@ interface ReviewsProps {
 }
 
 export const Reviews = ({ storyId, userOwnsStory = false }: ReviewsProps) => {
-  const { user, session } = useAuth();
+  const { user } = useAuth();
   const [reviews, setReviews] = useState<Review[]>([]);
   const [averageRating, setAverageRating] = useState(0);
   const [totalReviews, setTotalReviews] = useState(0);
@@ -53,7 +54,11 @@ export const Reviews = ({ storyId, userOwnsStory = false }: ReviewsProps) => {
 
   const handleSubmitReview = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user) return;
+    
+    const { data: { session } } = await supabase.auth.getSession();
     if (!session?.access_token) return;
+    
     setSubmitting(true);
     try {
       const response = await fetch('/api/reviews', {
@@ -75,7 +80,11 @@ export const Reviews = ({ storyId, userOwnsStory = false }: ReviewsProps) => {
   };
 
   const handleDeleteReview = async (reviewId: string) => {
-    if (!confirm('Delete review?') || !session?.access_token) return;
+    if (!confirm('Delete review?')) return;
+    
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) return;
+    
     try {
       const response = await fetch(`/api/reviews?id=${reviewId}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${session.access_token}` } });
       if (response.ok) await fetchReviews();
