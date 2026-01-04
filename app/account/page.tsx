@@ -26,7 +26,7 @@ export default function AccountPage() {
   // Show loading state
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
+      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center">
         <div className="text-center">
           <div className="inline-block w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mb-4" />
           <p>Loading...</p>
@@ -65,33 +65,33 @@ export default function AccountPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
+    <div className="min-h-screen bg-slate-950 text-white">
       <Header showBack isLoggedIn userName={displayName} userCredits={user.credits} />
       
       <div className="px-4 py-5">
         {/* Profile Header */}
         <div className="flex items-center gap-4 mb-6">
-          <div className="w-20 h-20 bg-orange-500 rounded-full flex items-center justify-center text-3xl font-bold">
+          <div className="w-20 h-20 bg-orange-500 rounded-full flex items-center justify-center text-3xl font-bold text-black">
             {initials}
           </div>
           <div>
             <h1 className="text-xl font-bold text-white">{displayName}</h1>
-            <p className="text-white text-sm">{user.email}</p>
+            <p className="text-slate-300 text-sm">{user.email}</p>
             <p className="text-orange-400 text-sm">{planDisplay} • Member since {memberSince}</p>
           </div>
         </div>
 
         {/* Stats */}
         <div className="grid grid-cols-3 gap-3 mb-6">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center">
+          <div className="bg-slate-700 rounded-xl p-3 text-center">
             <p className="text-2xl font-bold text-orange-400">{user.credits}</p>
             <p className="text-white text-xs">Credits</p>
           </div>
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center">
+          <div className="bg-slate-700 rounded-xl p-3 text-center">
             <p className="text-2xl font-bold text-green-400">-</p>
             <p className="text-white text-xs">Completed</p>
           </div>
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-3 text-center">
+          <div className="bg-slate-700 rounded-xl p-3 text-center">
             <p className="text-2xl font-bold text-blue-400">-</p>
             <p className="text-white text-xs">In Progress</p>
           </div>
@@ -99,10 +99,10 @@ export default function AccountPage() {
 
         {/* Quick Actions */}
         <div className="flex gap-3 mb-6">
-          <Link href="/collection" className="flex-1 py-3 bg-gray-900 border border-gray-800 rounded-xl text-center text-white text-sm">
+          <Link href="/collection" className="flex-1 py-3 bg-slate-700 rounded-xl text-center text-white text-sm hover:bg-slate-600 transition">
             📚 My Collection
           </Link>
-          <Link href="/wishlist" className="flex-1 py-3 bg-gray-900 border border-gray-800 rounded-xl text-center text-white text-sm">
+          <Link href="/wishlist" className="flex-1 py-3 bg-slate-700 rounded-xl text-center text-white text-sm hover:bg-slate-600 transition">
             ♡ Wishlist
           </Link>
         </div>
@@ -113,24 +113,24 @@ export default function AccountPage() {
             <Link
               key={item.href}
               href={item.href}
-              className="flex items-center gap-4 p-4 bg-gray-900 border border-gray-800 rounded-xl"
+              className="flex items-center gap-4 p-4 bg-slate-700 rounded-xl hover:bg-slate-600 transition"
             >
               <span className="text-2xl">{item.icon}</span>
               <div className="flex-1">
                 <p className="text-white font-medium">{item.label}</p>
-                <p className="text-white text-sm">{item.desc}</p>
+                <p className="text-slate-300 text-sm">{item.desc}</p>
               </div>
-              <span className="text-gray-500">›</span>
+              <span className="text-slate-500">›</span>
             </Link>
           ))}
         </div>
 
         {/* Danger Zone */}
-        <div className="border-t border-gray-800 pt-6">
+        <div className="border-t border-slate-800 pt-6">
           {user.subscription_type !== 'free' && (
             <Link 
               href="/account/cancel"
-              className="block w-full py-3 bg-gray-900 border border-red-500/30 rounded-xl text-center text-red-400 text-sm mb-3"
+              className="block w-full py-3 bg-slate-700 border border-red-500/30 rounded-xl text-center text-red-400 text-sm mb-3 hover:bg-slate-600 transition"
             >
               Cancel Subscription
             </Link>
@@ -151,13 +151,13 @@ export default function AccountPage() {
           onClick={() => setShowSignOutModal(false)}
         >
           <div 
-            className="bg-gray-900 rounded-2xl p-6 max-w-sm w-full border border-gray-800"
+            className="bg-slate-800 rounded-2xl p-6 max-w-sm w-full border border-slate-700"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="text-center mb-4">
               <span className="text-5xl block mb-3">👋</span>
               <h3 className="text-xl font-bold text-white mb-2">Sign Out?</h3>
-              <p className="text-gray-400 text-sm">
+              <p className="text-slate-400 text-sm">
                 Are you sure you want to sign out of Drive Time Tales?
               </p>
             </div>
@@ -165,7 +165,7 @@ export default function AccountPage() {
             <div className="flex gap-3">
               <button
                 onClick={() => setShowSignOutModal(false)}
-                className="flex-1 py-3 bg-gray-800 hover:bg-gray-700 text-white rounded-xl transition-colors"
+                className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl transition-colors"
               >
                 Cancel
               </button>

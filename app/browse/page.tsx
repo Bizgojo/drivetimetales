@@ -8,7 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 const categories = [
   { id: 'trucker', name: 'Trucker Stories', icon: '🚛', count: 24, color: 'from-orange-600 to-orange-800' },
   { id: 'drama', name: 'Drama', icon: '🎭', count: 18, color: 'from-purple-600 to-purple-800' },
-  { id: 'horror', name: 'Horror', icon: '👻', count: 15, color: 'from-gray-600 to-gray-800' },
+  { id: 'horror', name: 'Horror', icon: '👻', count: 15, color: 'from-slate-600 to-slate-800' },
   { id: 'mystery', name: 'Mystery', icon: '🔍', count: 21, color: 'from-blue-600 to-blue-800' },
   { id: 'thriller', name: 'Thriller', icon: '⚡', count: 19, color: 'from-red-600 to-red-800' },
   { id: 'adventure', name: 'Adventure', icon: '🏜️', count: 12, color: 'from-yellow-600 to-yellow-800' },
@@ -33,12 +33,12 @@ export default function BrowsePage() {
   const displayName = user?.display_name || user?.email?.split('@')[0];
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
+    <div className="min-h-screen bg-slate-950 text-white">
       <Header isLoggedIn={!!user} showBack userName={displayName} userCredits={user?.credits} />
       
       <div className="px-4 py-5">
         <h1 className="text-2xl font-bold text-white mb-1">📂 Browse</h1>
-        <p className="text-white text-sm mb-6">{totalStories} stories across {categories.length} categories</p>
+        <p className="text-slate-300 text-sm mb-6">{totalStories} stories across {categories.length} categories</p>
 
         {/* All Categories Button */}
         <Link
@@ -46,8 +46,8 @@ export default function BrowsePage() {
           className="block w-full bg-gradient-to-r from-orange-500 to-orange-600 rounded-xl p-4 mb-4 text-center"
         >
           <span className="text-xl mr-2">📂</span>
-          <span className="text-white font-bold text-lg">All Categories</span>
-          <span className="text-white/70 text-sm ml-2">({totalStories} stories)</span>
+          <span className="text-black font-bold text-lg">All Categories</span>
+          <span className="text-black/70 text-sm ml-2">({totalStories} stories)</span>
         </Link>
 
         {/* Category Grid */}
@@ -74,16 +74,16 @@ export default function BrowsePage() {
             <Link
               key={s.id}
               href={`/series/${s.id}`}
-              className="flex items-center gap-4 p-4 bg-gray-900 border border-gray-800 rounded-xl"
+              className="flex items-center gap-4 p-4 bg-slate-700 rounded-xl hover:bg-slate-600 transition"
             >
-              <div className="w-12 h-12 bg-gradient-to-br from-violet-600 to-violet-800 rounded-xl flex items-center justify-center text-2xl">
+              <div className="w-12 h-12 bg-gradient-to-br from-violet-600 to-violet-800 rounded-xl flex items-center justify-center text-2xl shadow-[0_0_20px_rgba(255,255,255,0.6)]">
                 {s.icon}
               </div>
               <div className="flex-1">
                 <p className="text-white font-bold">{s.name}</p>
-                <p className="text-white text-sm">{s.episodes} episodes</p>
+                <p className="text-slate-300 text-sm">{s.episodes} episodes</p>
               </div>
-              <span className="text-gray-500">›</span>
+              <span className="text-slate-500">›</span>
             </Link>
           ))}
         </div>
