@@ -212,7 +212,7 @@ function PlayerContent() {
     
     setActionLoading(true)
     try {
-      const { error } = await supabase
+      await supabase
         .from('user_preferences')
         .upsert({
           user_id: user.id,
@@ -220,19 +220,15 @@ function PlayerContent() {
           wishlisted: true,
           not_for_me: false
         })
-
-      if (error) throw error
       
       // Clear preview status
       localStorage.removeItem(`preview_${storyId}`)
-      
-      // Navigate back to library with toast
-      router.push('/library?toast=wishlisted')
     } catch (err) {
       console.error('Error adding to wishlist:', err)
-      alert('Failed to add to wishlist. Please try again.')
     } finally {
       setActionLoading(false)
+      // Always navigate back to library
+      router.push('/library')
     }
   }
 
@@ -241,7 +237,7 @@ function PlayerContent() {
     
     setActionLoading(true)
     try {
-      const { error } = await supabase
+      await supabase
         .from('user_preferences')
         .upsert({
           user_id: user.id,
@@ -249,19 +245,15 @@ function PlayerContent() {
           wishlisted: false,
           not_for_me: true
         })
-
-      if (error) throw error
       
       // Clear preview status
       localStorage.removeItem(`preview_${storyId}`)
-      
-      // Navigate back to library with toast
-      router.push('/library?toast=notforme')
     } catch (err) {
       console.error('Error marking not for me:', err)
-      alert('Failed to update preference. Please try again.')
     } finally {
       setActionLoading(false)
+      // Always navigate back to library
+      router.push('/library')
     }
   }
 
@@ -411,7 +403,7 @@ function PlayerContent() {
             </>
           )}
 
-          {/* STATE 2: Preview completed but not owned - show Wishlist/NotForMe/Resume */}
+          {/* STATE 2: Preview completed but not owned - show options */}
           {!ownsStory && previewCompleted && (
             <>
               <div className="flex gap-3 mb-3">
@@ -420,7 +412,7 @@ function PlayerContent() {
                   disabled={actionLoading}
                   className="flex-1 py-3 bg-pink-600 hover:bg-pink-500 text-white rounded-xl font-semibold transition disabled:opacity-50"
                 >
-                  ❤️ Wishlist
+                  ❤️ Add to Wishlist
                 </button>
                 <button
                   onClick={handleNotForMe}
@@ -433,12 +425,21 @@ function PlayerContent() {
               <button
                 onClick={handleResume}
                 disabled={actionLoading || !hasEnoughCredits}
-                className="w-full py-4 bg-orange-500 hover:bg-orange-400 text-black rounded-xl font-bold text-lg transition disabled:opacity-50 disabled:bg-slate-600 disabled:text-slate-400"
+                className="w-full py-4 bg-orange-500 hover:bg-orange-400 text-black rounded-xl font-bold transition disabled:opacity-50 disabled:bg-slate-600 disabled:text-slate-400 mb-2"
               >
-                {actionLoading ? 'Processing...' : `▶️ Resume Story (${creditCost} credit${creditCost > 1 ? 's' : ''})`}
+                {actionLoading ? 'Processing...' : `▶️ Resume from Preview (${creditCost} credit${creditCost > 1 ? 's' : ''})`}
+              </button>
+              <button
+                onClick={handlePlayNow}
+                disabled={actionLoading || !hasEnoughCredits}
+                className="w-full py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-medium transition disabled:opacity-50"
+              >
+                {actionLoading ? 'Processing...' : `↺ Play from Beginning (${creditCost} credit${creditCost > 1 ? 's' : ''})`}
               </button>
               {!hasEnoughCredits && (
-                <p className="text-red-400 text-sm text-center">Not enough credits</p>
+                <p className="text-red-400 text-sm text-center mt-2">
+                  Not enough credits. <Link href="/pricing" className="text-orange-400 hover:underline">Get more</Link>
+                </p>
               )}
             </>
           )}
