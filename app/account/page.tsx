@@ -13,7 +13,7 @@ export default function AccountPage() {
   const [stats, setStats] = useState({ completed: 0, inProgress: 0 });
   const [statsLoading, setStatsLoading] = useState(true);
 
-  // Fetch user story stats
+  // Fetch user story stats from user_library table
   useEffect(() => {
     async function fetchStats() {
       if (!user?.id) return;
@@ -25,7 +25,7 @@ export default function AccountPage() {
         if (!url || !key) return;
         
         const response = await fetch(
-          `${url}/rest/v1/user_stories?user_id=eq.${user.id}&select=completed,progress_seconds`,
+          `${url}/rest/v1/user_library?user_id=eq.${user.id}&select=completed,progress`,
           {
             headers: {
               'apikey': key,
@@ -36,8 +36,8 @@ export default function AccountPage() {
         
         if (response.ok) {
           const data = await response.json();
-          const completed = data.filter((s: any) => s.completed).length;
-          const inProgress = data.filter((s: any) => !s.completed && s.progress_seconds > 0).length;
+          const completed = data.filter((s: any) => s.completed === true).length;
+          const inProgress = data.filter((s: any) => s.completed !== true && s.progress > 0).length;
           setStats({ completed, inProgress });
         }
       } catch (error) {
