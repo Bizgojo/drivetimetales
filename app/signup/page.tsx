@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, Suspense } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
@@ -17,47 +17,14 @@ function SignUpContent() {
   const [error, setError] = useState<string | null>(null)
   
   // Get plan from URL params
-  const planId = searchParams.get('plan') || 'road_warrior'
+  const planId = searchParams.get('plan') || 'premium'
   const billing = searchParams.get('billing') || 'monthly'
   const priceId = searchParams.get('priceId') || ''
 
-  // Plan details mapping
-  const planDetails: { [key: string]: { name: string, monthly: string, annual: string, credits: string } } = {
-    test_driver: { 
-      name: 'Test Driver', 
-      monthly: '$2.99/mo', 
-      annual: '$29.99/yr',
-      credits: '10 credits/month'
-    },
-    commuter: { 
-      name: 'Commuter', 
-      monthly: '$7.99/mo', 
-      annual: '$79.99/yr',
-      credits: '25 credits/month'
-    },
-    road_warrior: { 
-      name: 'Road Warrior', 
-      monthly: '$14.99/mo', 
-      annual: '$149.99/yr',
-      credits: 'Unlimited'
-    }
-  }
-
-  const currentPlan = planDetails[planId] || planDetails['road_warrior']
-  const currentPrice = billing === 'annual' ? currentPlan.annual : currentPlan.monthly
-
-  // Password validation
-  const validatePassword = (pwd: string): string | null => {
-    if (pwd.length < 6) {
-      return 'Password must be at least 6 characters'
-    }
-    if (!/[A-Z]/.test(pwd)) {
-      return 'Password must contain at least 1 capital letter'
-    }
-    if (!/[0-9]/.test(pwd)) {
-      return 'Password must contain at least 1 number'
-    }
-    return null
+  const planNames: { [key: string]: string } = {
+    basic: 'Basic',
+    premium: 'Premium',
+    unlimited: 'Unlimited'
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -75,10 +42,8 @@ function SignUpContent() {
       return
     }
     
-    // Password validation with new rules
-    const passwordError = validatePassword(password)
-    if (passwordError) {
-      setError(passwordError)
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters')
       return
     }
     
@@ -96,16 +61,14 @@ function SignUpContent() {
         password: password,
         options: {
           data: {
-            name: name.trim(),
+            display_name: name.trim(),
           }
         }
       })
       
       if (authError) {
         if (authError.message.includes('already registered')) {
-          // Auto-redirect to Sign In with email pre-filled
-          router.push(`/signin?email=${encodeURIComponent(email.trim())}`)
-          return
+          setError('This email is already registered. Please sign in instead.')
         } else {
           setError(authError.message)
         }
@@ -120,16 +83,16 @@ function SignUpContent() {
       }
       
       // Create user profile (pending subscription)
-      // DB columns: id, email, display_name, credits, subscription_type, subscription_ends_at, stripe_customer_id, stripe_subscription_id, created_at
       const { error: profileError } = await supabase
         .from('users')
         .insert({
           id: authData.user.id,
           email: email.trim(),
-          display_name: name.trim(),  // DB column is 'display_name', not 'name'
-          credits: 0,                  // DB column is 'credits', not 'credits_remaining'
-          subscription_type: planId,   // DB column is 'subscription_type'
-          // Note: subscription_status and subscription_plan don't exist in DB schema
+          display_name: name.trim(),
+          subscription_status: 'pending',
+          subscription_plan: planId,
+          credits: 0,
+          created_at: new Date().toISOString()
         })
       
       if (profileError) {
@@ -143,10 +106,12 @@ function SignUpContent() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-  productType: 'subscription',
-  productId: `${planId}_${billing}`,
-  userId: authData.user.id,
-}),
+          priceId: priceId,
+          userId: authData.user.id,
+          email: email.trim(),
+          plan: planId,
+          billing: billing
+        }),
       })
       
       const { url, error: checkoutError } = await response.json()
@@ -168,45 +133,68 @@ function SignUpContent() {
     }
   }
 
+  // Logo component
+  const Logo = () => (
+    <div className="flex items-center justify-center gap-2">
+      <svg width="50" height="30" viewBox="0 0 80 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <g>
+          <rect x="45" y="24" width="30" height="14" rx="3" fill="#f97316"/>
+          <path d="M52 24 L56 16 L68 16 L72 24" fill="#f97316"/>
+          <path d="M54 23 L57 17 L67 17 L70 23" fill="#1e293b"/>
+          <circle cx="54" cy="38" r="5" fill="#334155"/>
+          <circle cx="54" cy="38" r="2.5" fill="#64748b"/>
+          <circle cx="68" cy="38" r="5" fill="#334155"/>
+          <circle cx="68" cy="38" r="2.5" fill="#64748b"/>
+          <rect x="73" y="28" width="3" height="4" rx="1" fill="#fef08a"/>
+        </g>
+        <g>
+          <rect x="2" y="20" width="18" height="18" rx="3" fill="#3b82f6"/>
+          <path d="M5 20 L8 12 L17 12 L20 20" fill="#3b82f6"/>
+          <path d="M7 19 L9 13 L16 13 L18 19" fill="#1e293b"/>
+          <rect x="20" y="18" width="22" height="20" rx="2" fill="#60a5fa"/>
+          <circle cx="10" cy="38" r="5" fill="#334155"/>
+          <circle cx="10" cy="38" r="2.5" fill="#64748b"/>
+          <circle cx="32" cy="38" r="5" fill="#334155"/>
+          <circle cx="32" cy="38" r="2.5" fill="#64748b"/>
+        </g>
+      </svg>
+      <div className="flex items-baseline">
+        <span className="text-lg font-bold text-white">Drive Time </span>
+        <span className="text-lg font-bold text-orange-500">Tales</span>
+      </div>
+    </div>
+  )
+
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       <div className="max-w-md mx-auto px-4 py-6">
         
-        {/* Logo - NEW EMOJI VERSION */}
+        {/* Logo */}
         <div className="flex justify-center mb-6">
-          <Link href="/welcome" className="flex items-center gap-2">
-            <span className="text-3xl">🚛</span>
-            <span className="text-3xl">🚗</span>
-            <div className="flex items-baseline ml-1">
-              <span className="text-lg font-bold text-white">Drive Time </span>
-              <span className="text-lg font-bold text-orange-500">Tales</span>
-            </div>
+          <Link href="/welcome">
+            <Logo />
           </Link>
         </div>
 
-        {/* Selected Plan Banner - UPDATED with name, type, price, credits */}
-        <div className="bg-orange-500/20 border border-orange-500/50 rounded-xl p-4 mb-6">
-          <div className="text-center">
-            <p className="text-orange-300 text-xs uppercase tracking-wide mb-1">Selected Plan</p>
-            <p className="text-white text-lg font-bold">
-              {currentPlan.name}
-              <span className="text-orange-400 font-normal"> ({billing})</span>
-            </p>
-            <p className="text-orange-400 text-xl font-bold mt-1">{currentPrice}</p>
-            <p className="text-slate-400 text-sm">{currentPlan.credits}</p>
-          </div>
-          <div className="text-center mt-2">
-            <Link href="/pricing" className="text-orange-300 text-sm hover:underline">
-              Change plan
-            </Link>
-          </div>
+        {/* Selected Plan Banner */}
+        <div className="bg-orange-500/20 border border-orange-500/50 rounded-xl p-3 mb-6 text-center">
+          <p className="text-orange-400 text-sm">
+            Selected Plan: <span className="font-bold">{planNames[planId] || 'Premium'}</span>
+            <span className="text-orange-300"> ({billing})</span>
+          </p>
+          <Link href="/pricing" className="text-orange-300 text-xs hover:underline">
+            Change plan
+          </Link>
         </div>
 
         {/* Registration Form */}
         <div className="bg-slate-900 rounded-2xl p-6 border border-slate-800">
-          <h1 className="text-xl font-bold text-white text-center mb-4">
+          <h1 className="text-xl font-bold text-white text-center mb-2">
             Create Your Account
           </h1>
+          <p className="text-slate-400 text-sm text-center mb-6">
+            Then proceed to payment
+          </p>
           
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Name */}
@@ -246,9 +234,6 @@ function SignUpContent() {
                 className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-orange-500"
                 autoComplete="new-password"
               />
-              <p className="text-slate-500 text-xs mt-1">
-                Must be 6+ characters with 1 capital letter and 1 number
-              </p>
             </div>
             
             {/* Confirm Password */}
@@ -293,6 +278,12 @@ function SignUpContent() {
             <Link href="/privacy" className="text-orange-400 hover:underline">Privacy Policy</Link>
           </p>
         </div>
+
+        {/* Already have account */}
+        <p className="text-slate-400 text-sm text-center mt-6">
+          Already have an account?{' '}
+          <Link href="/signin" className="text-orange-400 hover:underline font-medium">Sign In</Link>
+        </p>
       </div>
     </div>
   )
