@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
+import NewsBriefings from '@/components/news/NewsBriefings'
 
 interface Story {
   id: string
@@ -244,6 +245,11 @@ export default function HomePage() {
           <span className="text-orange-400 font-bold">Buy More →</span>
         </Link>
       )}
+
+      {/* Daily News Briefings */}
+      <section className="px-4 py-4 border-b border-slate-800">
+        <NewsBriefings userSubscription={user?.subscription_type} />
+      </section>
 
       {/* Continue Listening */}
       {continueListening && (
