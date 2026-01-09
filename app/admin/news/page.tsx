@@ -490,7 +490,7 @@ export default function NewsManagementPage() {
         <h2 className="text-lg font-bold text-white">📂 Categories & RSS Feeds</h2>
         
         {CATEGORIES.map(cat => {
-          const catSettings = settings.categories[cat.id] || { 
+          const catSettings: CategorySettings = settings.categories[cat.id] || { 
             enabled: true, 
             feeds: [], 
             voice_id: VOICES[0].id, 
