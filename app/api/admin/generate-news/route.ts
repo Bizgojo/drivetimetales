@@ -105,9 +105,17 @@ export async function POST(request: NextRequest) {
 
     // Step 1: Fetch news stories
     console.log('[News Generator] Fetching stories from RSS feeds...');
-    const stories = await fetchTopStories(storiesPerSection);
+    const fetchedStories = await fetchTopStories(storiesPerSection);
     
-    console.log(`[News Generator] Fetched: ${stories.news.length} news, ${stories.science.length} science, ${stories.sports.length} sports`);
+    console.log(`[News Generator] Fetched: ${fetchedStories.national.length} national, ${fetchedStories.international.length} international, ${fetchedStories.business.length} business, ${fetchedStories.sports.length} sports, ${fetchedStories.science.length} science`);
+
+    // Map 5 categories to 3 for script generator compatibility
+    // Combine national + international + business into "news"
+    const stories = {
+      news: [...fetchedStories.national, ...fetchedStories.international, ...fetchedStories.business].slice(0, storiesPerSection),
+      science: fetchedStories.science,
+      sports: fetchedStories.sports
+    };
 
     // Step 2: Generate script using Claude
     console.log('[News Generator] Generating script with Claude API...');
