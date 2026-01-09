@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { AdminNewsGenerator } from '@/components/news';
 import { supabase } from '@/lib/supabase'
 
 type TabType = 'overview' | 'stories' | 'users' | 'financial' | 'settings'
