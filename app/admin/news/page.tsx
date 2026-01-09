@@ -490,7 +490,12 @@ export default function NewsManagementPage() {
         <h2 className="text-lg font-bold text-white">📂 Categories & RSS Feeds</h2>
         
         {CATEGORIES.map(cat => {
-          const catSettings = settings.categories[cat.id] || { enabled: true, feeds: [] };
+          const catSettings = settings.categories[cat.id] || { 
+            enabled: true, 
+            feeds: [], 
+            voice_id: VOICES[0].id, 
+            voice_name: VOICES[0].name 
+          };
           const isExpanded = expandedCategory === cat.id;
           
           return (
