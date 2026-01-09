@@ -1,5 +1,5 @@
 // lib/news-fetcher.ts
-// Fetches top stories from RSS feeds for News, Science, and Sports
+// Fetches top stories from RSS feeds for 5 categories
 
 import Parser from 'rss-parser';
 
@@ -10,21 +10,49 @@ const parser = new Parser({
   }
 });
 
-// RSS Feed sources organized by category
-const RSS_FEEDS = {
-  news: [
-    { name: 'AP News', url: 'https://rsshub.app/apnews/topics/apf-topnews' },
-    { name: 'NPR News', url: 'https://feeds.npr.org/1001/rss.xml' },
-    { name: 'BBC World', url: 'https://feeds.bbci.co.uk/news/world/rss.xml' },
+// News category types
+export type NewsCategory = 'national' | 'international' | 'business' | 'sports' | 'science';
+
+export const NEWS_CATEGORIES: { id: NewsCategory; label: string; icon: string; color: string }[] = [
+  { id: 'national', label: 'National News', icon: '🗞️', color: 'blue' },
+  { id: 'international', label: 'International News', icon: '🌍', color: 'green' },
+  { id: 'business', label: 'Business & Finance', icon: '💼', color: 'yellow' },
+  { id: 'sports', label: 'Sports', icon: '⚽', color: 'red' },
+  { id: 'science', label: 'Science & Technology', icon: '🔬', color: 'purple' },
+];
+
+// Default RSS Feed sources organized by category
+export const DEFAULT_RSS_FEEDS: Record<NewsCategory, { name: string; url: string; enabled: boolean }[]> = {
+  national: [
+    { name: 'AP News - US', url: 'https://rsshub.app/apnews/topics/apf-usnews', enabled: true },
+    { name: 'NPR News', url: 'https://feeds.npr.org/1001/rss.xml', enabled: true },
+    { name: 'CBS News', url: 'https://www.cbsnews.com/latest/rss/main', enabled: true },
+    { name: 'ABC News', url: 'https://abcnews.go.com/abcnews/topstories', enabled: false },
   ],
-  science: [
-    { name: 'Science Daily', url: 'https://www.sciencedaily.com/rss/all.xml' },
-    { name: 'NASA', url: 'https://www.nasa.gov/rss/dyn/breaking_news.rss' },
-    { name: 'NPR Science', url: 'https://feeds.npr.org/1007/rss.xml' },
+  international: [
+    { name: 'BBC World', url: 'https://feeds.bbci.co.uk/news/world/rss.xml', enabled: true },
+    { name: 'AP News - World', url: 'https://rsshub.app/apnews/topics/apf-intlnews', enabled: true },
+    { name: 'Reuters World', url: 'https://www.reutersagency.com/feed/?taxonomy=best-regions&post_type=best', enabled: true },
+    { name: 'Al Jazeera', url: 'https://www.aljazeera.com/xml/rss/all.xml', enabled: false },
+  ],
+  business: [
+    { name: 'CNBC', url: 'https://www.cnbc.com/id/100003114/device/rss/rss.html', enabled: true },
+    { name: 'Bloomberg', url: 'https://feeds.bloomberg.com/markets/news.rss', enabled: true },
+    { name: 'MarketWatch', url: 'https://feeds.marketwatch.com/marketwatch/topstories/', enabled: true },
+    { name: 'Yahoo Finance', url: 'https://finance.yahoo.com/news/rssindex', enabled: false },
   ],
   sports: [
-    { name: 'ESPN', url: 'https://www.espn.com/espn/rss/news' },
-    { name: 'CBS Sports', url: 'https://www.cbssports.com/rss/headlines/' },
+    { name: 'ESPN', url: 'https://www.espn.com/espn/rss/news', enabled: true },
+    { name: 'CBS Sports', url: 'https://www.cbssports.com/rss/headlines/', enabled: true },
+    { name: 'Yahoo Sports', url: 'https://sports.yahoo.com/rss/', enabled: true },
+    { name: 'Bleacher Report', url: 'https://bleacherreport.com/articles/feed', enabled: false },
+  ],
+  science: [
+    { name: 'Science Daily', url: 'https://www.sciencedaily.com/rss/all.xml', enabled: true },
+    { name: 'NASA', url: 'https://www.nasa.gov/rss/dyn/breaking_news.rss', enabled: true },
+    { name: 'NPR Science', url: 'https://feeds.npr.org/1007/rss.xml', enabled: true },
+    { name: 'Ars Technica', url: 'https://feeds.arstechnica.com/arstechnica/science', enabled: true },
+    { name: 'TechCrunch', url: 'https://techcrunch.com/feed/', enabled: false },
   ]
 };
 
@@ -34,13 +62,22 @@ export interface NewsStory {
   source: string;
   link: string;
   pubDate: string;
-  category: 'news' | 'science' | 'sports';
+  category: NewsCategory;
+}
+
+export interface CategoryFetchResult {
+  category: NewsCategory;
+  stories: NewsStory[];
+  fetchedAt: string;
+  errors: string[];
 }
 
 export interface FetchResult {
-  news: NewsStory[];
-  science: NewsStory[];
+  national: NewsStory[];
+  international: NewsStory[];
+  business: NewsStory[];
   sports: NewsStory[];
+  science: NewsStory[];
   fetchedAt: string;
   errors: string[];
 }
@@ -49,7 +86,7 @@ export interface FetchResult {
 async function fetchFeed(
   feedUrl: string, 
   feedName: string, 
-  category: 'news' | 'science' | 'sports'
+  category: NewsCategory
 ): Promise<NewsStory[]> {
   try {
     const feed = await parser.parseURL(feedUrl);
@@ -104,53 +141,58 @@ function sortByRecency(stories: NewsStory[]): NewsStory[] {
   });
 }
 
-// Main function: fetch top stories for all categories
-export async function fetchTopStories(storiesPerCategory: number = 5): Promise<FetchResult> {
+// Fetch stories for a single category
+export async function fetchCategoryStories(
+  category: NewsCategory,
+  feeds: { name: string; url: string; enabled: boolean }[],
+  storiesCount: number = 5
+): Promise<CategoryFetchResult> {
   const errors: string[] = [];
+  let stories: NewsStory[] = [];
+
+  const enabledFeeds = feeds.filter(f => f.enabled);
   
-  // Use separate arrays to collect stories
-  let newsStories: NewsStory[] = [];
-  let scienceStories: NewsStory[] = [];
-  let sportsStories: NewsStory[] = [];
-
-  // Fetch all feeds in parallel
-  const fetchPromises: Promise<void>[] = [];
-
-  for (const feed of RSS_FEEDS.news) {
-    fetchPromises.push(
-      fetchFeed(feed.url, feed.name, 'news')
-        .then(stories => { newsStories = [...newsStories, ...stories]; })
-        .catch(err => { errors.push(`${feed.name}: ${err.message}`); })
-    );
-  }
-
-  for (const feed of RSS_FEEDS.science) {
-    fetchPromises.push(
-      fetchFeed(feed.url, feed.name, 'science')
-        .then(stories => { scienceStories = [...scienceStories, ...stories]; })
-        .catch(err => { errors.push(`${feed.name}: ${err.message}`); })
-    );
-  }
-
-  for (const feed of RSS_FEEDS.sports) {
-    fetchPromises.push(
-      fetchFeed(feed.url, feed.name, 'sports')
-        .then(stories => { sportsStories = [...sportsStories, ...stories]; })
-        .catch(err => { errors.push(`${feed.name}: ${err.message}`); })
-    );
-  }
+  const fetchPromises = enabledFeeds.map(feed =>
+    fetchFeed(feed.url, feed.name, category)
+      .then(fetchedStories => { stories = [...stories, ...fetchedStories]; })
+      .catch(err => { errors.push(`${feed.name}: ${err.message}`); })
+  );
 
   await Promise.allSettled(fetchPromises);
 
-  // Process each category: dedupe, sort, take top N
-  newsStories = sortByRecency(deduplicateStories(newsStories)).slice(0, storiesPerCategory);
-  scienceStories = sortByRecency(deduplicateStories(scienceStories)).slice(0, storiesPerCategory);
-  sportsStories = sortByRecency(deduplicateStories(sportsStories)).slice(0, storiesPerCategory);
+  stories = sortByRecency(deduplicateStories(stories)).slice(0, storiesCount);
 
   return {
-    news: newsStories,
-    science: scienceStories,
-    sports: sportsStories,
+    category,
+    stories,
+    fetchedAt: new Date().toISOString(),
+    errors
+  };
+}
+
+// Main function: fetch top stories for all categories
+export async function fetchTopStories(
+  storiesPerCategory: number = 5,
+  customFeeds?: Partial<Record<NewsCategory, { name: string; url: string; enabled: boolean }[]>>
+): Promise<FetchResult> {
+  const errors: string[] = [];
+  const feeds = { ...DEFAULT_RSS_FEEDS, ...customFeeds };
+  
+  const results = await Promise.all(
+    NEWS_CATEGORIES.map(cat => 
+      fetchCategoryStories(cat.id, feeds[cat.id], storiesPerCategory)
+    )
+  );
+
+  // Collect all errors
+  results.forEach(r => errors.push(...r.errors));
+
+  return {
+    national: results.find(r => r.category === 'national')?.stories || [],
+    international: results.find(r => r.category === 'international')?.stories || [],
+    business: results.find(r => r.category === 'business')?.stories || [],
+    sports: results.find(r => r.category === 'sports')?.stories || [],
+    science: results.find(r => r.category === 'science')?.stories || [],
     fetchedAt: new Date().toISOString(),
     errors
   };
@@ -160,23 +202,24 @@ export async function fetchTopStories(storiesPerCategory: number = 5): Promise<F
 export function formatStoriesForLog(result: FetchResult): string {
   let output = `=== News Fetch Results (${result.fetchedAt}) ===\n\n`;
   
-  output += `--- NEWS ---\n`;
-  result.news.forEach((story, i) => {
-    output += `${i + 1}. ${story.title} (${story.source})\n`;
-  });
-  output += '\n';
+  const categories: { key: keyof FetchResult; label: string }[] = [
+    { key: 'national', label: 'NATIONAL NEWS' },
+    { key: 'international', label: 'INTERNATIONAL NEWS' },
+    { key: 'business', label: 'BUSINESS & FINANCE' },
+    { key: 'sports', label: 'SPORTS' },
+    { key: 'science', label: 'SCIENCE & TECHNOLOGY' },
+  ];
 
-  output += `--- SCIENCE ---\n`;
-  result.science.forEach((story, i) => {
-    output += `${i + 1}. ${story.title} (${story.source})\n`;
+  categories.forEach(cat => {
+    const stories = result[cat.key];
+    if (Array.isArray(stories)) {
+      output += `--- ${cat.label} ---\n`;
+      stories.forEach((story, i) => {
+        output += `${i + 1}. ${story.title} (${story.source})\n`;
+      });
+      output += '\n';
+    }
   });
-  output += '\n';
-
-  output += `--- SPORTS ---\n`;
-  result.sports.forEach((story, i) => {
-    output += `${i + 1}. ${story.title} (${story.source})\n`;
-  });
-  output += '\n';
   
   if (result.errors.length > 0) {
     output += `--- ERRORS ---\n${result.errors.join('\n')}\n`;
