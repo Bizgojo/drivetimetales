@@ -1,565 +1,459 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { supabase, getStories, Story } from '@/lib/supabase'
 
-interface SponsorData {
-  sponsor_name: string
-  sponsor_message: string
-  sponsor_tagline: string
-}
-
-function WelcomeContent() {
+export default function WelcomePage() {
   const router = useRouter()
-  const searchParams = useSearchParams()
-  const [stories, setStories] = useState<Story[]>([])
+  const [featuredStories, setFeaturedStories] = useState<Story[]>([])
   const [loading, setLoading] = useState(true)
   const [freeCredits, setFreeCredits] = useState(0)
-  const [genre, setGenre] = useState('All')
-  const [duration, setDuration] = useState('All')
-  
-  // Promo banner from URL param
-  const [showPromoBanner, setShowPromoBanner] = useState(false)
-  const [promoBannerText, setPromoBannerText] = useState('')
+  const [hasUsedFreeCredits, setHasUsedFreeCredits] = useState(false)
+  const [showSubscribeModal, setShowSubscribeModal] = useState(false)
 
-  // Sponsor banner from QR code
-  const [sponsorData, setSponsorData] = useState<SponsorData | null>(null)
-
-  // Secret code modal
-  const [logoTapCount, setLogoTapCount] = useState(0)
-  const [lastTapTime, setLastTapTime] = useState(0)
-  const [showSecretInput, setShowSecretInput] = useState(false)
-  const [secretCode, setSecretCode] = useState('')
-  const [codeMessage, setCodeMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
-  const [isSubmitting, setIsSubmitting] = useState(false)
-
-  const genreOptions = [
-    { name: 'All', icon: '📚' },
-    { name: 'Mystery', icon: '🔍' },
-    { name: 'Drama', icon: '🎭' },
-    { name: 'Sci-Fi', icon: '🚀' },
-    { name: 'Horror', icon: '👻' },
-    { name: 'Comedy', icon: '😂' },
-    { name: 'Romance', icon: '💕' },
-    { name: 'Trucker Stories', icon: '🚛' },
-    { name: 'Thriller', icon: '😱' },
-  ]
-
-  const durationOptions = [
-    { name: 'All', label: 'All' },
-    { name: '15', label: '~15 min' },
-    { name: '30', label: '~30 min' },
-    { name: '60', label: '~1 hr' },
-  ]
+  const genres = ['Mystery', 'Sci-Fi', 'Romance', 'Thriller', 'Fantasy', 'Drama', 'Horror', 'Comedy']
 
   useEffect(() => {
     async function initialize() {
-      console.log('[DTT Debug] Welcome page initialize() started')
-      
-      // Load stories FIRST - don't wait for auth
-      console.log('[DTT Debug] Loading stories...')
-      try {
-        const allStories = await getStories({})
-        console.log('[DTT Debug] getStories() returned', allStories.length, 'stories')
-        setStories(allStories)
-        setLoading(false)
-      } catch (error) {
-        console.error('[DTT Debug] Error fetching stories:', error)
-        setLoading(false)
+      // Check if user is already logged in - redirect to home
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session) {
+        router.push('/home')
+        return
       }
 
-      // Load free credits from localStorage
+      // Check for existing free credits in localStorage
       const storedCredits = localStorage.getItem('dtt_free_credits')
+      const creditsUsed = localStorage.getItem('dtt_credits_used')
+      
       if (storedCredits === null) {
+        // First time visitor - give 2 free credits
         localStorage.setItem('dtt_free_credits', '2')
         localStorage.setItem('dtt_credits_used', 'false')
         setFreeCredits(2)
+        setHasUsedFreeCredits(false)
       } else {
-        setFreeCredits(parseInt(storedCredits))
-      }
-
-      // Check for promo text in URL
-      const promo = searchParams.get('promo')
-      if (promo) {
-        setShowPromoBanner(true)
-        setPromoBannerText(decodeURIComponent(promo))
-      }
-
-      // Check for QR source sponsor
-      const qrCode = searchParams.get('qr') || searchParams.get('source')
-      if (qrCode) {
-        console.log('[DTT Debug] Checking QR code:', qrCode)
-        try {
-          const { data } = await supabase
-            .from('qr_sources')
-            .select('sponsor_name, sponsor_message, sponsor_tagline, is_sponsored')
-            .eq('code', qrCode)
-            .eq('is_active', true)
-            .single()
-          
-          if (data && data.is_sponsored && data.sponsor_name) {
-            setSponsorData({
-              sponsor_name: data.sponsor_name,
-              sponsor_message: data.sponsor_message || 'This Free Story brought to you courtesy of',
-              sponsor_tagline: data.sponsor_tagline || 'We appreciate your business'
-            })
-          }
-        } catch (qrErr) {
-          console.log('[DTT Debug] QR lookup failed (ok if no QR):', qrErr)
-        }
-      }
-      
-      // Check auth in background with timeout - don't block the page
-      console.log('[DTT Debug] Checking auth session (with timeout)...')
-      const authTimeout = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Auth timeout')), 3000)
-      )
-      
-      try {
-        const authPromise = supabase.auth.getSession()
-        const { data: { session } } = await Promise.race([authPromise, authTimeout]) as any
+        const credits = parseInt(storedCredits)
+        setFreeCredits(credits)
+        setHasUsedFreeCredits(creditsUsed === 'true' && credits === 0)
         
-        if (session) {
-          console.log('[DTT Debug] User logged in, redirecting to /home')
-          router.push('/home')
-          return
+        // If they've used all credits, show subscribe modal after a delay
+        if (credits === 0 && creditsUsed === 'true') {
+          setTimeout(() => setShowSubscribeModal(true), 1500)
         }
-      } catch (authErr) {
-        console.log('[DTT Debug] Auth check skipped (timeout or error):', authErr)
-        // Continue without auth - this is the welcome page for non-logged-in users anyway
       }
+
+      // Fetch featured stories using the helper function
+      try {
+        const stories = await getStories({ featured: true, limit: 4 })
+        setFeaturedStories(stories)
+      } catch (error) {
+        console.error('Error fetching stories:', error)
+      }
+      
+      setLoading(false)
     }
-    
-    console.log('[DTT Debug] Welcome page useEffect triggered')
     initialize()
-  }, [router, searchParams])
+  }, [router])
 
-  const handleLogoTap = () => {
-    const now = Date.now()
-    
-    if (now - lastTapTime > 1000) {
-      setLogoTapCount(1)
+  // Handle story click for newcomers
+  const handleStoryClick = (storyId: string) => {
+    if (freeCredits > 0) {
+      router.push(`/story/${storyId}`)
     } else {
-      setLogoTapCount(prev => prev + 1)
+      setShowSubscribeModal(true)
     }
-    
-    setLastTapTime(now)
-    
-    if (logoTapCount >= 4) {
-      setShowSecretInput(true)
-      setLogoTapCount(0)
-    }
-  }
-
-  const handleCodeSubmit = async () => {
-    if (!secretCode.trim()) return
-    
-    setIsSubmitting(true)
-    setCodeMessage(null)
-    
-    try {
-      const { data, error } = await supabase
-        .from('promo_codes')
-        .select('*')
-        .eq('code', secretCode.toUpperCase().trim())
-        .eq('is_active', true)
-        .eq('is_redeemed', false)
-        .single()
-      
-      if (error || !data) {
-        setCodeMessage({ type: 'error', text: 'Invalid, expired, or already used code' })
-        setIsSubmitting(false)
-        return
-      }
-      
-      if (data.expires_at && new Date(data.expires_at) < new Date()) {
-        setCodeMessage({ type: 'error', text: 'This code has expired' })
-        setIsSubmitting(false)
-        return
-      }
-      
-      const deviceId = localStorage.getItem('dtt_device_id') || crypto.randomUUID()
-      localStorage.setItem('dtt_device_id', deviceId)
-      
-      const { error: updateError } = await supabase
-        .from('promo_codes')
-        .update({ 
-          is_redeemed: true,
-          redeemed_at: new Date().toISOString(),
-          redeemed_by_device: deviceId
-        })
-        .eq('id', data.id)
-      
-      if (updateError) {
-        setCodeMessage({ type: 'error', text: 'Error redeeming code. Please try again.' })
-        setIsSubmitting(false)
-        return
-      }
-      
-      const subscriptionData = {
-        code: data.code,
-        type: data.subscription_type,
-        days: data.subscription_days,
-        startDate: new Date().toISOString(),
-        endDate: new Date(Date.now() + data.subscription_days * 24 * 60 * 60 * 1000).toISOString(),
-        deviceId: deviceId
-      }
-      localStorage.setItem('dtt_promo_subscription', JSON.stringify(subscriptionData))
-      
-      setCodeMessage({ 
-        type: 'success', 
-        text: `🎉 Success! Redirecting to create your account...` 
-      })
-      
-      setTimeout(() => {
-        setShowSecretInput(false)
-        setSecretCode('')
-        router.push('/register/promo')
-      }, 1500)
-    
-    } catch (err) {
-      setCodeMessage({ type: 'error', text: 'Error validating code. Please try again.' })
-    }
-    
-    setIsSubmitting(false)
-  }
-
-  // Filter stories by genre and duration
-  const filtered = stories.filter((s) => {
-    if (genre !== 'All' && s.genre !== genre) return false
-    if (duration === '15' && (s.duration_mins < 10 || s.duration_mins > 20)) return false
-    if (duration === '30' && (s.duration_mins < 20 || s.duration_mins > 45)) return false
-    if (duration === '60' && s.duration_mins < 45) return false
-    return true
-  })
-
-  // Navigate to player details page
-  const handleStoryClick = (story: Story) => {
-    router.push(`/player/${story.id}`)
-  }
-
-  // Get flag for story based on its properties
-  const getStoryFlag = (story: Story) => {
-    if ((story.credits || 1) <= 2 && freeCredits > 0) {
-      return { text: 'Free Story', color: 'green' }
-    }
-    if (story.is_featured) {
-      return { text: "Listener's Choice", color: 'orange' }
-    }
-    if (story.is_new) {
-      return { text: 'New Release', color: 'blue' }
-    }
-    return null
-  }
-
-  // Star rating component with half-star support
-  const StarRating = ({ rating }: { rating: number }) => {
-    const displayRating = rating || 4.0
-    return (
-      <span className="flex items-center">
-        {[1, 2, 3, 4, 5].map((star) => {
-          const filled = displayRating >= star
-          const halfFilled = !filled && displayRating >= star - 0.5
-          return (
-            <span key={star} className="relative text-sm">
-              <span className="text-slate-600">☆</span>
-              {(filled || halfFilled) && (
-                <span 
-                  className="absolute left-0 top-0 text-yellow-400 overflow-hidden"
-                  style={{ width: halfFilled ? '50%' : '100%' }}
-                >
-                  ★
-                </span>
-              )}
-            </span>
-          )
-        })}
-        <span className="text-slate-400 text-xs ml-1">{displayRating.toFixed(1)}</span>
-      </span>
-    )
-  }
-
-  // Flag badge component
-  const FlagBadge = ({ text, color }: { text: string, color: string }) => {
-    const colorClasses: { [key: string]: string } = {
-      green: 'bg-green-500/20 text-green-400 border-green-500/30',
-      orange: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
-      blue: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-    }
-    return (
-      <span className={`px-2 py-0.5 text-[10px] font-medium rounded border ${colorClasses[color]}`}>
-        {text}
-      </span>
-    )
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white pb-20">
+    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
       
-      {/* Secret Code Modal */}
-      {showSecretInput && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 rounded-2xl p-6 w-full max-w-sm border border-slate-700">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-bold text-white">🎁 Enter Promo Code</h2>
-              <button 
-                onClick={() => {
-                  setShowSecretInput(false)
-                  setSecretCode('')
-                  setCodeMessage(null)
-                }}
-                className="text-slate-400 hover:text-white text-xl"
-              >
-                ×
-              </button>
-            </div>
-            
-            <input
-              type="text"
-              value={secretCode}
-              onChange={(e) => setSecretCode(e.target.value.toUpperCase())}
-              placeholder="Enter code..."
-              className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white text-center text-lg tracking-widest uppercase focus:outline-none focus:border-orange-500 mb-4"
-              maxLength={20}
-              autoFocus
-            />
-            
-            {codeMessage && (
-              <div className={`p-3 rounded-lg mb-4 text-sm text-center ${
-                codeMessage.type === 'success' 
-                  ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
-                  : 'bg-red-500/20 text-red-400 border border-red-500/30'
-              }`}>
-                {codeMessage.text}
-              </div>
-            )}
-            
-            <button
-              onClick={handleCodeSubmit}
-              disabled={isSubmitting || !secretCode.trim()}
-              className={`w-full py-3 rounded-xl font-semibold transition-colors ${
-                isSubmitting || !secretCode.trim()
-                  ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
-                  : 'bg-orange-500 hover:bg-orange-400 text-black'
-              }`}
+      {/* Subscribe Modal */}
+      {showSubscribeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="relative w-full max-w-md bg-slate-900 rounded-2xl border border-slate-700 shadow-2xl overflow-hidden">
+            <button 
+              onClick={() => setShowSubscribeModal(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors"
             >
-              {isSubmitting ? 'Validating...' : 'Redeem Code'}
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
             </button>
-            
-            <p className="text-slate-500 text-xs text-center mt-3">
-              Each code can only be used once
-            </p>
-          </div>
-        </div>
-      )}
 
-      {/* Sponsor Banner - Shows when user comes from sponsored QR code */}
-      {sponsorData && (
-        <div className="sticky top-0 z-40 bg-gradient-to-r from-emerald-600 via-emerald-500 to-emerald-600 px-4 py-2 text-center shadow-lg">
-          <p className="text-white text-sm font-medium">
-            {sponsorData.sponsor_message} <span className="font-bold">{sponsorData.sponsor_name}</span> — {sponsorData.sponsor_tagline}
-          </p>
-        </div>
-      )}
+            <div className="p-8 text-center">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-orange-500/20 flex items-center justify-center">
+                <span className="text-3xl">🎧</span>
+              </div>
+              
+              <h3 className="text-2xl font-bold text-white mb-2">
+                Enjoyed Your Free Stories?
+              </h3>
+              <p className="text-slate-400 mb-6">
+                You've used your 2 free credits. Subscribe or buy credits to keep listening!
+              </p>
 
-      {/* Promo Banner - Shows when ?promo= URL param exists */}
-      {showPromoBanner && promoBannerText && !sponsorData && (
-        <div className="sticky top-0 z-40 bg-gradient-to-r from-green-600 to-green-500 px-3 py-2">
-          <p className="text-white text-xs text-center font-medium leading-tight">
-            🎁 {promoBannerText}
-          </p>
-        </div>
-      )}
+              <div className="space-y-3">
+                <Link 
+                  href="/auth/signup"
+                  className="block w-full py-3 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 text-white font-semibold rounded-xl transition-all"
+                >
+                  Create Free Account
+                </Link>
+                <Link 
+                  href="/pricing"
+                  className="block w-full py-3 bg-slate-800 hover:bg-slate-700 text-white font-medium rounded-xl border border-slate-700 transition-all"
+                >
+                  View Subscription Plans
+                </Link>
+              </div>
 
-      <div className="max-w-2xl mx-auto px-4 py-4">
-        
-        {/* Welcome To Header */}
-        <p className="text-center text-orange-400 italic text-xl mb-2">Welcome To</p>
-        
-        {/* LARGE CENTERED LOGO - Emoji Vehicles */}
-        <button 
-          onClick={handleLogoTap}
-          className="w-full flex flex-col items-center justify-center mb-4 focus:outline-none"
-        >
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-5xl">🚛</span>
-            <span className="text-5xl">🚗</span>
-          </div>
-          <div className="flex items-baseline">
-            <span className="text-2xl font-bold text-white">Drive Time </span>
-            <span className="text-2xl font-bold text-orange-500">Tales</span>
-          </div>
-        </button>
-
-        {/* Tagline - EYE CATCHING */}
-        <div className="text-center mb-4">
-          <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 py-4 px-3 rounded-xl border border-slate-700/50">
-            <h1 className="text-xl sm:text-2xl font-extrabold text-white leading-tight">
-              Start Listening
-            </h1>
-            <h2 className="text-xl sm:text-2xl font-extrabold text-orange-400 leading-tight">
-              To Your Free Story Now!
-            </h2>
-            <p className="text-white text-sm mt-2 font-medium">
-              No Sign Up Required — Just Click & Listen
-            </p>
-          </div>
-          
-          {freeCredits > 0 ? (
-            <p className="text-green-400 text-sm mt-2">
-              🎁 You have {freeCredits} free credit{freeCredits !== 1 ? 's' : ''}
-            </p>
-          ) : (
-            <div className="mt-2">
-              <p className="text-red-400 font-semibold text-sm">
-                You have 0 free credits
+              <p className="text-xs text-slate-500 mt-4">
+                Get unlimited access starting at $9.99/month
               </p>
             </div>
-          )}
-        </div>
-
-        {/* Genre Filters */}
-        <div className="mb-2">
-          <div className="flex flex-wrap justify-center gap-1">
-            {genreOptions.map((g) => (
-              <button
-                key={g.name}
-                onClick={() => setGenre(g.name)}
-                className={`flex flex-col items-center px-2 py-1 rounded-lg transition-all ${
-                  genre === g.name 
-                    ? 'bg-orange-500 text-black' 
-                    : 'bg-slate-800 text-white'
-                }`}
-              >
-                <span className="text-sm">{g.icon}</span>
-                <span className="text-[9px] mt-0.5">{g.name === 'Trucker Stories' ? 'Trucker' : g.name}</span>
-              </button>
-            ))}
           </div>
         </div>
+      )}
 
-        {/* Duration Filters */}
-        <div className="mb-3">
-          <div className="flex justify-center gap-2">
-            {durationOptions.map((d) => (
-              <button
-                key={d.name}
-                onClick={() => setDuration(d.name)}
-                className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
-                  duration === d.name 
-                    ? 'bg-orange-500 text-black' 
-                    : 'bg-slate-800 text-white border border-slate-700'
-                }`}
-              >
-                {d.label}
-              </button>
-            ))}
+      {/* Free Credits Banner */}
+      {freeCredits > 0 && (
+        <div className="bg-gradient-to-r from-green-600/20 via-green-500/10 to-green-600/20 border-b border-green-500/20">
+          <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-center gap-3">
+            <span className="text-green-400">🎁</span>
+            <p className="text-sm text-green-300">
+              <span className="font-semibold">Welcome!</span> You have <span className="font-bold text-white">{freeCredits} free credit{freeCredits !== 1 ? 's' : ''}</span> to start listening!
+            </p>
           </div>
         </div>
+      )}
 
-        {/* Results count */}
-        <p className="text-slate-400 text-xs mb-3">{filtered.length} {filtered.length === 1 ? 'story' : 'stories'} found</p>
+      {/* No Credits Banner */}
+      {hasUsedFreeCredits && freeCredits === 0 && (
+        <div className="bg-gradient-to-r from-orange-600/20 via-orange-500/10 to-orange-600/20 border-b border-orange-500/20">
+          <div className="max-w-6xl mx-auto px-4 py-3 flex flex-col sm:flex-row items-center justify-center gap-3">
+            <p className="text-sm text-orange-300">
+              You've used your free credits!
+            </p>
+            <Link 
+              href="/pricing"
+              className="px-4 py-1.5 bg-orange-500 hover:bg-orange-400 text-black text-sm font-semibold rounded-lg transition-colors"
+            >
+              Subscribe Now
+            </Link>
+          </div>
+        </div>
+      )}
 
-        {/* Stories List */}
-        {loading ? (
-          <div className="text-center py-12">
-            <div className="inline-block w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mb-4" />
-            <p className="text-white">Loading stories...</p>
+      {/* Hero Section */}
+      <section className="relative overflow-hidden">
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-20 left-10 w-72 h-72 bg-orange-500/10 rounded-full blur-3xl" />
+          <div className="absolute bottom-20 right-10 w-96 h-96 bg-orange-600/5 rounded-full blur-3xl" />
+        </div>
+
+        <div className="relative max-w-6xl mx-auto px-4 pt-12 pb-20 sm:pt-20 sm:pb-28">
+          <div className="text-center mb-10">
+            <div className="inline-flex items-center gap-3 mb-6">
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center shadow-lg shadow-orange-500/25">
+                <span className="text-2xl">🎧</span>
+              </div>
+              <h1 className="text-3xl sm:text-4xl font-bold text-white tracking-tight">
+                Drive Time Tales
+              </h1>
+            </div>
           </div>
-        ) : filtered.length === 0 ? (
-          <div className="text-center py-12">
-            <span className="text-5xl block mb-4">📚</span>
-            <h2 className="text-xl font-bold text-white mb-2">No Stories Found</h2>
-            <p className="text-white">Try selecting a different genre or duration</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {filtered.map((story, index) => {
-              const flag = getStoryFlag(story)
-              
-              return (
-                <div 
-                  key={story.id}
-                  onClick={() => handleStoryClick(story)}
-                  className={`rounded-xl overflow-hidden cursor-pointer active:opacity-80 transition-opacity ${index % 2 === 0 ? 'bg-slate-900' : 'bg-slate-800'}`}
+
+          <div className="text-center max-w-3xl mx-auto">
+            <h2 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white mb-6 leading-tight">
+              Turn Your Commute Into
+              <span className="block text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-orange-500">
+                Story Time
+              </span>
+            </h2>
+            <p className="text-lg sm:text-xl text-slate-300 mb-10 leading-relaxed">
+              Premium audio stories crafted for your drive. Mystery, romance, sci-fi, and more — 
+              each tale perfectly timed for your journey.
+            </p>
+
+            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-6">
+              {freeCredits > 0 ? (
+                <Link 
+                  href="/library"
+                  className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-orange-500/25 hover:shadow-orange-500/40 hover:scale-105 text-center"
                 >
-                  <div className="flex">
-                    {/* Cover */}
-                    <div className="w-28 h-28 flex-shrink-0 relative">
-                      {story.cover_url ? (
-                        <img 
-                          src={story.cover_url}
-                          alt={story.title}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full bg-gradient-to-br from-slate-700 to-slate-800 flex items-center justify-center">
-                          <span className="text-3xl opacity-50">🎧</span>
-                        </div>
-                      )}
-                      {/* Duration badge */}
-                      <div className="absolute bottom-1 left-1 px-1.5 py-0.5 bg-black/70 text-white text-[10px] rounded">
-                        {story.duration_mins} min
+                  🎧 Start Listening Free
+                </Link>
+              ) : (
+                <Link 
+                  href="/pricing"
+                  className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-orange-500/25 hover:shadow-orange-500/40 hover:scale-105 text-center"
+                >
+                  🎧 Subscribe Now
+                </Link>
+              )}
+              <Link 
+                href="/auth/signin"
+                className="w-full sm:w-auto px-8 py-4 bg-slate-800/80 hover:bg-slate-700 text-white font-medium rounded-xl transition-all border border-slate-700 hover:border-slate-600 text-center"
+              >
+                Sign In
+              </Link>
+            </div>
+
+            {freeCredits > 0 ? (
+              <p className="text-sm text-slate-500">
+                No signup required • Start listening in seconds
+              </p>
+            ) : (
+              <p className="text-sm text-slate-500">
+                Already have an account? <Link href="/auth/signin" className="text-orange-400 hover:text-orange-300">Sign in</Link>
+              </p>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* How It Works */}
+      <section className="py-16 px-4">
+        <div className="max-w-5xl mx-auto">
+          <h3 className="text-2xl sm:text-3xl font-bold text-white text-center mb-12">
+            How It Works
+          </h3>
+          <div className="grid sm:grid-cols-3 gap-8">
+            {[
+              { icon: '📱', title: 'Pick a Story', desc: 'Browse our library of professionally narrated tales across every genre' },
+              { icon: '🚗', title: 'Start Driving', desc: 'Hit play and enjoy crystal-clear audio optimized for your car speakers' },
+              { icon: '🎧', title: 'Resume Anywhere', desc: 'Pause anytime and pick up right where you left off on your next trip' }
+            ].map((step, i) => (
+              <div key={i} className="text-center group">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-slate-800/80 border border-slate-700 flex items-center justify-center text-3xl group-hover:border-orange-500/50 transition-all">
+                  {step.icon}
+                </div>
+                <h4 className="text-lg font-semibold text-white mb-2">{step.title}</h4>
+                <p className="text-slate-400 text-sm leading-relaxed">{step.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Featured Stories */}
+      <section className="py-16 px-4 bg-slate-900/50">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center mb-12">
+            <h3 className="text-2xl sm:text-3xl font-bold text-white mb-3">
+              Popular Stories
+            </h3>
+            <p className="text-slate-400">
+              {freeCredits > 0 
+                ? `Pick a story and start listening — you have ${freeCredits} free credit${freeCredits !== 1 ? 's' : ''}!`
+                : 'Subscribe to access our full library'
+              }
+            </p>
+          </div>
+
+          {loading ? (
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="animate-pulse">
+                  <div className="aspect-[3/4] bg-slate-800 rounded-xl mb-3" />
+                  <div className="h-4 bg-slate-800 rounded w-3/4 mb-2" />
+                  <div className="h-3 bg-slate-800 rounded w-1/2" />
+                </div>
+              ))}
+            </div>
+          ) : featuredStories.length > 0 ? (
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {featuredStories.map((story) => (
+                <div 
+                  key={story.id} 
+                  className="group cursor-pointer" 
+                  onClick={() => handleStoryClick(story.id)}
+                >
+                  <div className="relative aspect-[3/4] rounded-xl overflow-hidden mb-3 bg-slate-800">
+                    {story.cover_url ? (
+                      <img 
+                        src={story.cover_url} 
+                        alt={story.title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-br from-orange-600/30 to-slate-800 flex items-center justify-center">
+                        <span className="text-5xl opacity-50">🎧</span>
+                      </div>
+                    )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                    <div className="absolute bottom-3 left-3">
+                      <span className="inline-block px-2 py-1 bg-orange-500/90 text-white text-xs font-medium rounded">
+                        {story.genre}
+                      </span>
+                    </div>
+                    
+                    {/* Play overlay */}
+                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 bg-black/40 transition-opacity">
+                      <div className="w-14 h-14 rounded-full bg-orange-500 flex items-center justify-center shadow-lg">
+                        <div className="w-0 h-0 border-l-[16px] border-l-white border-y-[10px] border-y-transparent ml-1" />
                       </div>
                     </div>
                     
-                    {/* Info */}
-                    <div className="flex-1 p-2 flex flex-col justify-between min-w-0">
-                      {/* Title */}
-                      <h3 className="font-bold text-white text-base leading-tight truncate">{story.title}</h3>
-                      
-                      {/* Genre + Credits */}
-                      <p className="text-slate-400 text-sm">{story.genre} • {story.credits || 1} credit{(story.credits || 1) !== 1 ? 's' : ''}</p>
-                      
-                      {/* Author */}
-                      <p className="text-slate-300 text-sm">{story.author}</p>
-                      
-                      {/* Star Rating + Flag */}
-                      <div className="flex items-center gap-2 flex-wrap">
-                       <StarRating rating={story.rating} />
-                        {flag && <FlagBadge text={flag.text} color={flag.color} />}
+                    {/* Lock overlay if no credits */}
+                    {freeCredits === 0 && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+                        <div className="text-center">
+                          <span className="text-3xl">🔒</span>
+                          <p className="text-white text-xs mt-1">Subscribe to listen</p>
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
+                  <h4 className="font-semibold text-white group-hover:text-orange-400 transition-colors line-clamp-1">
+                    {story.title}
+                  </h4>
+                  <p className="text-sm text-slate-400">{story.author} • {story.duration_mins} min</p>
                 </div>
-              )
-            })}
+              ))}
+            </div>
+          ) : (
+            <div className="text-center text-slate-500 py-12">
+              <p>No stories available</p>
+            </div>
+          )}
+
+          <div className="text-center mt-10">
+            <Link 
+              href={freeCredits > 0 ? "/library" : "/pricing"}
+              className="inline-flex items-center gap-2 px-6 py-3 bg-slate-800 hover:bg-slate-700 text-white font-medium rounded-xl transition-all border border-slate-700"
+            >
+              {freeCredits > 0 ? 'Browse All Stories' : 'View Subscription Plans'}
+              <span className="text-orange-400">→</span>
+            </Link>
           </div>
-        )}
-      </div>
-
-      {/* STICKY SUBSCRIBE BUTTON */}
-      <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-slate-950 via-slate-950 to-transparent pt-4 pb-3 px-4 z-30">
-        <div className="max-w-2xl mx-auto">
-          <button 
-            onClick={() => router.push('/pricing')}
-            className="w-full py-3 bg-orange-500 hover:bg-orange-400 text-black font-bold text-base rounded-xl transition-colors"
-          >
-            Subscribe Here
-          </button>
         </div>
-      </div>
-    </div>
-  )
-}
+      </section>
 
-function LoadingFallback() {
-  return (
-    <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center">
-      <div className="text-center">
-        <div className="inline-block w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mb-4" />
-        <p className="text-white">Loading...</p>
-      </div>
-    </div>
-  )
-}
+      {/* Genres */}
+      <section className="py-16 px-4">
+        <div className="max-w-5xl mx-auto">
+          <h3 className="text-2xl sm:text-3xl font-bold text-white text-center mb-10">
+            Every Genre You Love
+          </h3>
+          <div className="flex flex-wrap justify-center gap-3">
+            {genres.map((genre) => (
+              <span 
+                key={genre}
+                className="px-5 py-2.5 bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white rounded-full border border-slate-700 hover:border-orange-500/50 transition-all cursor-pointer"
+              >
+                {genre}
+              </span>
+            ))}
+          </div>
+        </div>
+      </section>
 
-export default function WelcomePage() {
-  return (
-    <Suspense fallback={<LoadingFallback />}>
-      <WelcomeContent />
-    </Suspense>
+      {/* Pricing Preview */}
+      <section className="py-16 px-4 bg-slate-900/50">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center mb-10">
+            <h3 className="text-2xl sm:text-3xl font-bold text-white mb-3">
+              Simple, Flexible Plans
+            </h3>
+            <p className="text-slate-400">Choose the plan that fits your commute</p>
+          </div>
+          
+          <div className="grid sm:grid-cols-3 gap-6">
+            <div className="p-6 bg-slate-800/50 rounded-2xl border border-slate-700/50">
+              <h4 className="font-semibold text-white mb-1">Free Trial</h4>
+              <p className="text-3xl font-bold text-white mb-4">2 <span className="text-base font-normal text-slate-400">credits</span></p>
+              <ul className="space-y-2 text-sm text-slate-400 mb-6">
+                <li className="flex items-center gap-2"><span className="text-green-400">✓</span> No signup required</li>
+                <li className="flex items-center gap-2"><span className="text-green-400">✓</span> Listen to 2 stories</li>
+                <li className="flex items-center gap-2"><span className="text-green-400">✓</span> Full audio quality</li>
+              </ul>
+              {freeCredits > 0 ? (
+                <div className="py-2 text-center text-green-400 text-sm font-medium">
+                  ✓ You have {freeCredits} credit{freeCredits !== 1 ? 's' : ''}!
+                </div>
+              ) : (
+                <div className="py-2 text-center text-slate-500 text-sm">Credits used</div>
+              )}
+            </div>
+
+            <div className="p-6 bg-gradient-to-b from-orange-500/10 to-slate-800/50 rounded-2xl border border-orange-500/30 relative">
+              <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-orange-500 text-black text-xs font-semibold rounded-full">
+                POPULAR
+              </div>
+              <h4 className="font-semibold text-white mb-1">Monthly</h4>
+              <p className="text-3xl font-bold text-white mb-4">$9.99<span className="text-base font-normal text-slate-400">/mo</span></p>
+              <ul className="space-y-2 text-sm text-slate-300 mb-6">
+                <li className="flex items-center gap-2"><span className="text-orange-400">✓</span> Unlimited stories</li>
+                <li className="flex items-center gap-2"><span className="text-orange-400">✓</span> New releases weekly</li>
+                <li className="flex items-center gap-2"><span className="text-orange-400">✓</span> Cancel anytime</li>
+              </ul>
+              <Link 
+                href="/pricing"
+                className="block w-full py-2.5 bg-orange-500 hover:bg-orange-400 text-black text-sm font-semibold rounded-lg text-center transition-colors"
+              >
+                Subscribe
+              </Link>
+            </div>
+
+            <div className="p-6 bg-slate-800/50 rounded-2xl border border-slate-700/50">
+              <h4 className="font-semibold text-white mb-1">Credit Packs</h4>
+              <p className="text-3xl font-bold text-white mb-4">$4.99<span className="text-base font-normal text-slate-400">+</span></p>
+              <ul className="space-y-2 text-sm text-slate-400 mb-6">
+                <li className="flex items-center gap-2"><span className="text-green-400">✓</span> Buy credits as needed</li>
+                <li className="flex items-center gap-2"><span className="text-green-400">✓</span> Credits never expire</li>
+                <li className="flex items-center gap-2"><span className="text-green-400">✓</span> No commitment</li>
+              </ul>
+              <Link 
+                href="/pricing"
+                className="block w-full py-2.5 bg-slate-700 hover:bg-slate-600 text-white text-sm font-medium rounded-lg text-center transition-colors"
+              >
+                Buy Credits
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Final CTA */}
+      <section className="py-20 px-4">
+        <div className="max-w-2xl mx-auto text-center">
+          <h3 className="text-3xl sm:text-4xl font-bold text-white mb-4">
+            {freeCredits > 0 ? 'Ready to Start Listening?' : 'Ready to Continue?'}
+          </h3>
+          <p className="text-slate-400 mb-8">
+            {freeCredits > 0 
+              ? 'Jump right in — no signup required for your first 2 stories.'
+              : 'Subscribe now and get unlimited access to our entire library.'
+            }
+          </p>
+          <Link 
+            href={freeCredits > 0 ? "/library" : "/pricing"}
+            className="inline-flex items-center gap-2 px-10 py-4 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-orange-500/25 hover:scale-105"
+          >
+            🎧 {freeCredits > 0 ? 'Browse Stories' : 'View Plans & Subscribe'}
+          </Link>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="py-8 px-4 border-t border-slate-800">
+        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">🎧</span>
+            <span className="text-slate-400 text-sm">Drive Time Tales</span>
+          </div>
+          <div className="flex gap-6">
+            <Link href="/about" className="text-slate-500 hover:text-slate-300 text-sm transition-colors">About</Link>
+            <Link href="/privacy" className="text-slate-500 hover:text-slate-300 text-sm transition-colors">Privacy</Link>
+            <Link href="/terms" className="text-slate-500 hover:text-slate-300 text-sm transition-colors">Terms</Link>
+          </div>
+          <p className="text-slate-600 text-sm">© 2024 Drive Time Tales</p>
+        </div>
+      </footer>
+    </div>
   )
 }
