@@ -359,6 +359,9 @@ export default function AdminPage() {
           <div>
             <h2 className="text-lg font-bold text-white mb-4">Dashboard Overview</h2>
             
+
+            {/* Daily News Generator */}
+            <AdminNewsGenerator />
             {/* Stats Grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
               <div className="bg-slate-800 rounded-xl p-4">
