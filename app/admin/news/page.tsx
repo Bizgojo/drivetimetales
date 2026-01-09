@@ -12,13 +12,14 @@ interface RssFeed {
 interface CategorySettings {
   enabled: boolean;
   feeds: RssFeed[];
+  voice_id: string;
+  voice_name: string;
 }
 
 interface NewsSettings {
   categories: Record<string, CategorySettings>;
-  narrator_voice_id: string;
-  narrator_voice_name: string;
-  generation_times: string[];
+  generation_times: string[]; // 3 times: morning, noon, evening
+  generation_timezone: string;
   auto_generate: boolean;
   stories_per_category: number;
 }
@@ -41,13 +42,26 @@ const CATEGORIES = [
 ];
 
 const VOICES = [
-  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah (Female)' },
-  { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel (Female)' },
-  { id: 'AZnzlk1XvdvUeBnXmlld', name: 'Domi (Female)' },
-  { id: 'ErXwobaYiN019PkySvjV', name: 'Antoni (Male)' },
-  { id: 'VR6AewLTigWG4xSOukaG', name: 'Arnold (Male)' },
-  { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam (Male)' },
-  { id: 'yoZ06aMxZJJ28mfd3POQ', name: 'Sam (Male)' },
+  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah (Female)', style: 'Professional' },
+  { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel (Female)', style: 'Warm' },
+  { id: 'AZnzlk1XvdvUeBnXmlld', name: 'Domi (Female)', style: 'Energetic' },
+  { id: 'ErXwobaYiN019PkySvjV', name: 'Antoni (Male)', style: 'Friendly' },
+  { id: 'VR6AewLTigWG4xSOukaG', name: 'Arnold (Male)', style: 'Deep' },
+  { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam (Male)', style: 'Authoritative' },
+  { id: 'yoZ06aMxZJJ28mfd3POQ', name: 'Sam (Male)', style: 'Casual' },
+];
+
+const TIMEZONES = [
+  { id: 'America/New_York', label: 'Eastern (ET)' },
+  { id: 'America/Chicago', label: 'Central (CT)' },
+  { id: 'America/Denver', label: 'Mountain (MT)' },
+  { id: 'America/Los_Angeles', label: 'Pacific (PT)' },
+  { id: 'America/Anchorage', label: 'Alaska (AKT)' },
+  { id: 'Pacific/Honolulu', label: 'Hawaii (HT)' },
+  { id: 'Europe/London', label: 'UK (GMT/BST)' },
+  { id: 'Europe/Paris', label: 'Central Europe (CET)' },
+  { id: 'Asia/Tokyo', label: 'Japan (JST)' },
+  { id: 'Australia/Sydney', label: 'Australia (AEST)' },
 ];
 
 const DEFAULT_FEEDS: Record<string, RssFeed[]> = {
@@ -82,11 +96,15 @@ const DEFAULT_FEEDS: Record<string, RssFeed[]> = {
 export default function NewsManagementPage() {
   const [settings, setSettings] = useState<NewsSettings>({
     categories: Object.fromEntries(
-      CATEGORIES.map(cat => [cat.id, { enabled: true, feeds: DEFAULT_FEEDS[cat.id] || [] }])
+      CATEGORIES.map((cat, idx) => [cat.id, { 
+        enabled: true, 
+        feeds: DEFAULT_FEEDS[cat.id] || [],
+        voice_id: VOICES[idx % VOICES.length].id,
+        voice_name: VOICES[idx % VOICES.length].name,
+      }])
     ),
-    narrator_voice_id: 'EXAVITQu4vr4xnSDxMaL',
-    narrator_voice_name: 'Sarah (Female)',
-    generation_times: ['06:00', '18:00'],
+    generation_times: ['06:00', '12:00', '18:00'], // 6am, noon, 6pm
+    generation_timezone: 'America/New_York',
     auto_generate: true,
     stories_per_category: 5,
   });
@@ -386,30 +404,9 @@ export default function NewsManagementPage() {
 
       {/* Global Settings */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-        {/* Narrator Voice */}
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-          <h2 className="text-lg font-bold text-white mb-4">🎙️ Narrator Voice</h2>
-          <select
-            value={settings.narrator_voice_id}
-            onChange={(e) => {
-              const voice = VOICES.find(v => v.id === e.target.value);
-              setSettings(prev => ({
-                ...prev,
-                narrator_voice_id: e.target.value,
-                narrator_voice_name: voice?.name || '',
-              }));
-            }}
-            className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white"
-          >
-            {VOICES.map(voice => (
-              <option key={voice.id} value={voice.id}>{voice.name}</option>
-            ))}
-          </select>
-        </div>
-
         {/* Generation Schedule */}
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-          <h2 className="text-lg font-bold text-white mb-4">⏰ Auto-Generation Schedule</h2>
+          <h2 className="text-lg font-bold text-white mb-4">⏰ Generation Schedule</h2>
           <div className="flex items-center gap-4 mb-4">
             <label className="flex items-center gap-2">
               <input
@@ -421,8 +418,8 @@ export default function NewsManagementPage() {
               <span className="text-white">Enable auto-generation</span>
             </label>
           </div>
-          <div className="flex gap-3">
-            <div className="flex-1">
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            <div>
               <label className="block text-gray-400 text-sm mb-1">Morning</label>
               <input
                 type="time"
@@ -431,16 +428,43 @@ export default function NewsManagementPage() {
                 className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white"
               />
             </div>
-            <div className="flex-1">
-              <label className="block text-gray-400 text-sm mb-1">Evening</label>
+            <div>
+              <label className="block text-gray-400 text-sm mb-1">Midday</label>
               <input
                 type="time"
-                value={settings.generation_times[1] || '18:00'}
+                value={settings.generation_times[1] || '12:00'}
                 onChange={(e) => updateGenerationTime(1, e.target.value)}
                 className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white"
               />
             </div>
+            <div>
+              <label className="block text-gray-400 text-sm mb-1">Evening</label>
+              <input
+                type="time"
+                value={settings.generation_times[2] || '18:00'}
+                onChange={(e) => updateGenerationTime(2, e.target.value)}
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white"
+              />
+            </div>
           </div>
+          <p className="text-gray-500 text-xs">Briefings generated 3x daily at these times</p>
+        </div>
+
+        {/* Timezone */}
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
+          <h2 className="text-lg font-bold text-white mb-4">🌍 Timezone</h2>
+          <select
+            value={settings.generation_timezone}
+            onChange={(e) => setSettings(prev => ({ ...prev, generation_timezone: e.target.value }))}
+            className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white mb-4"
+          >
+            {TIMEZONES.map(tz => (
+              <option key={tz.id} value={tz.id}>{tz.label}</option>
+            ))}
+          </select>
+          <p className="text-gray-500 text-xs">
+            Generation times are based on this timezone. Subscribers receive briefings adjusted to their local time.
+          </p>
         </div>
       </div>
 
@@ -508,7 +532,35 @@ export default function NewsManagementPage() {
               {/* Expanded Feed List */}
               {isExpanded && (
                 <div className="px-4 pb-4 border-t border-gray-800 pt-4">
+                  {/* Voice Selection for this category */}
+                  <div className="mb-4 p-3 bg-gray-800 rounded-lg">
+                    <label className="block text-gray-400 text-sm mb-2">🎙️ Narrator Voice for {cat.label}</label>
+                    <select
+                      value={catSettings.voice_id || VOICES[0].id}
+                      onChange={(e) => {
+                        const voice = VOICES.find(v => v.id === e.target.value);
+                        setSettings(prev => ({
+                          ...prev,
+                          categories: {
+                            ...prev.categories,
+                            [cat.id]: {
+                              ...prev.categories[cat.id],
+                              voice_id: e.target.value,
+                              voice_name: voice?.name || '',
+                            },
+                          },
+                        }));
+                      }}
+                      className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                    >
+                      {VOICES.map(voice => (
+                        <option key={voice.id} value={voice.id}>{voice.name} - {voice.style}</option>
+                      ))}
+                    </select>
+                  </div>
+
                   {/* Existing Feeds */}
+                  <p className="text-gray-400 text-sm mb-2">RSS Feeds:</p>
                   <div className="space-y-2 mb-4">
                     {(catSettings.feeds || []).map((feed, idx) => (
                       <div key={idx} className="flex items-center gap-3 p-2 bg-gray-800 rounded-lg">
