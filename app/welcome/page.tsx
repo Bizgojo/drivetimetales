@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase, getStories, Story } from '@/lib/supabase'
+import { LiveNewsBanner } from '@/components/news'
 
 export default function WelcomePage() {
   const router = useRouter()
@@ -47,7 +48,7 @@ export default function WelcomePage() {
 
       // Fetch featured stories using the helper function
       try {
-        const stories = await getStories({ featured: true, limit: 4 })
+        const stories = await getStories({ limit: 4 })
         setFeaturedStories(stories)
       } catch (error) {
         console.error('Error fetching stories:', error)
@@ -147,6 +148,9 @@ export default function WelcomePage() {
         </div>
       )}
 
+
+      {/* Daily News Banner */}
+      <LiveNewsBanner />
       {/* Hero Section */}
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
