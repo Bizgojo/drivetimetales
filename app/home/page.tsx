@@ -390,7 +390,7 @@ export default function HomePage() {
 
       {/* Bottom Buttons */}
       <div className="px-4 py-3 mt-auto bg-slate-950 border-t border-slate-800">
-        <div className="flex gap-3">
+        <div className="flex gap-3 mb-3">
           <Link 
             href="/library" 
             className="flex-1 py-3 bg-orange-500 text-black rounded-xl font-bold text-sm text-center hover:bg-orange-400 transition"
@@ -404,6 +404,12 @@ export default function HomePage() {
             ❤️ My Wishlist
           </Link>
         </div>
+        <Link 
+          href="/referral" 
+          className="block w-full py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl font-bold text-sm text-center hover:from-green-500 hover:to-emerald-500 transition"
+        >
+          🚗 Share the Road - Get 3 Free Credits!
+        </Link>
       </div>
     </div>
   )
