@@ -1,150 +1,95 @@
-# 🚛🚗 DriveTimeTales - Complete Integration Package v3
+# DTT Working Auth and Home Page - January 10, 2026
 
-Full-featured audio story platform for drivers with payments, series support, reviews, and offline downloads.
+## What This Fixes
 
-## ✨ What's Included
+These files fix the following issues that have occurred multiple times:
 
-### Frontend
-- **7 UI Components**: Logo, Header, StoryCard, Modal, DurationFilter, CreditStatus, Reviews
-- **17 Pages**: Landing, Library, Browse, Search, Pricing, About, Collection, Wishlist, Account, Billing, Settings, Downloads, Series Detail, Player, Login, Signup
+### 1. Signin Page Hanging / "Signing In..." Forever
+**Symptoms:** 
+- Click "Sign In with Email" button
+- Button turns gray, shows "Signing In..."
+- Never completes, browser console shows "Auth timeout"
 
-### Backend
-- **Supabase Integration**: Full database with typed queries
-- **Stripe Payments**: Subscriptions + Credit Packs + Webhooks
-- **Authentication**: Complete auth flow with Supabase Auth
-- **Real Audio Player**: Progress tracking, speed control, sample previews
-- **Reviews System**: User ratings and reviews
-- **Wishlist API**: Save stories for later
-- **Series Support**: Multi-episode series with progress tracking
-- **Downloads**: Offline story management
+**Fixed by:** `app/signin/page.tsx`
+- Fixed password toggle causing form fields to clear
+- Changed redirect from `router.push()` to `window.location.href`
+- Non-blocking last_login update
 
-## 📦 Package Structure
+### 2. Auth Timeout Errors
+**Symptoms:**
+- Console shows `[Auth] Error checking user: Error: Auth timeout`
+- Pages hang waiting for authentication
+- User appears logged out even after signing in
 
-```
-drivetimetales/
-├── app/
-│   ├── page.tsx              # Landing page
-│   ├── library/              # Story library
-│   ├── browse/               # Browse categories
-│   ├── search/               # Search page
-│   ├── pricing/              # Pricing with Stripe
-│   ├── about/                # About + FAQ
-│   ├── collection/           # User's stories
-│   ├── wishlist/             # Saved stories
-│   ├── series/[id]/          # Series detail
-│   ├── player/[id]/          # Audio player
-│   ├── auth/                 # Login & Signup
-│   ├── account/
-│   │   ├── page.tsx          # Account dashboard
-│   │   ├── billing/          # Credits & subscription
-│   │   ├── settings/         # User preferences
-│   │   └── downloads/        # Offline stories
-│   └── api/
-│       ├── checkout/         # Stripe checkout
-│       ├── webhooks/stripe/  # Payment webhooks
-│       ├── stories/          # Stories API
-│       ├── reviews/          # Reviews CRUD
-│       ├── wishlist/         # Wishlist CRUD
-│       └── user/             # User & purchase APIs
-├── components/ui/            # Reusable components
-├── contexts/                 # Auth context
-├── hooks/                    # Custom hooks
-├── lib/                      # Supabase & Stripe clients
-└── supabase-schema-v3.sql    # Database schema
-```
+**Fixed by:** `contexts/AuthContext.tsx`
+- Non-blocking auth - doesn't wait for `getSession()`
+- Uses `onAuthStateChange` listener instead
+- Sets loading=false quickly (1 second) so pages render
+- Includes `signIn` and `refreshCredits` functions required by other pages
 
-## 🚀 Quick Setup
+### 3. Home Page Spinner Forever / Stories Not Loading
+**Symptoms:**
+- Home page shows "Welcome back, there!"
+- NEW RELEASES shows loading bar
+- RECOMMENDED FOR YOU shows spinner indefinitely
+- Console shows `[Home] Stories loading timeout`
 
-### 1. Environment Variables
+**Fixed by:** `app/home/page.tsx`
+- Uses `/api/stories` endpoint instead of direct Supabase queries
+- Direct client-side Supabase queries hang, API route works
+- 10-second timeout with friendly error message
+
+## How to Use
+
+If these issues happen again:
+
 ```bash
-cp .env.example .env.local
-# Fill in Supabase, Stripe, and R2 credentials
+cd ~/Downloads
+unzip -o DTT-Working-Auth-and-Home-Jan10-2026.zip -d ~/Projects/drivetimetales/
+cd ~/Projects/drivetimetales
+git add .
+git commit -m "Restore working auth and home page"
+git push
 ```
 
-### 2. Database
-Run `supabase-schema-v3.sql` in Supabase SQL Editor
+## File Structure
 
-### 3. Stripe Products
-Create in Stripe Dashboard:
-- **Subscriptions**: Test Driver ($2.99), Commuter ($7.99), Road Warrior ($14.99)
-- **Credit Packs**: Small (10/$4.99), Medium (25/$9.99), Large (60/$19.99)
+```
+contexts/
+  AuthContext.tsx    # Non-blocking auth with signIn/refreshCredits
 
-### 4. Deploy
-```bash
-npm install @supabase/supabase-js stripe
-npm run dev  # Test locally
-git push     # Deploy to Vercel
+app/
+  signin/
+    page.tsx         # Fixed signin with proper password toggle
+  home/
+    page.tsx         # Uses API route for stories, has timeout
 ```
 
-## 🎨 Design System
+## Key Technical Details
 
-| Element | Value |
-|---------|-------|
-| Primary | Orange-500 (#f97316) |
-| Background | Gray-950 (#030712) |
-| Cards | Gray-900 (#111827) |
-| Min Width | 375px |
+### AuthContext.tsx
+- Timeout: Sets `loading=false` after 1 second (non-blocking)
+- Uses `onAuthStateChange` for auth state updates
+- `getSession()` runs in background, doesn't block
+- Exports: `user`, `loading`, `signIn`, `signOut`, `refreshUser`, `refreshCredits`
 
-## 📱 Features
+### signin/page.tsx
+- Uses `window.location.href = '/home'` for redirect (not router.push)
+- Password toggle uses `useCallback` to prevent re-renders
+- SVG icons instead of emoji for eye toggle
+- `tabIndex={-1}` on eye button
 
-### 💳 Payments
-- Stripe Checkout for subscriptions & one-time purchases
-- Automatic credit allocation on payment
-- Subscription management (upgrade/cancel)
-- Purchase history
+### home/page.tsx
+- Fetches stories via `fetch('/api/stories')` 
+- NOT direct `supabase.from('stories').select('*')`
+- 10-second timeout protection
+- Console logs: `[Home] Loading stories via API...`
 
-### 🎧 Audio Player
-- Sample mode for non-owners
-- Progress auto-save every 10 seconds
-- Speed control (0.5x - 2x)
-- Skip forward/backward
-- Buffer indicator
+## Root Cause
 
-### 📺 Series
-- Multi-episode series support
-- Episode progress tracking
-- Automatic episode numbering
-- Series completion status
+The underlying issue is that **client-side Supabase queries hang** on this project, but **server-side API routes work fine**. This is likely related to:
+- Supabase connection pooling
+- RLS (Row Level Security) policies
+- Network/CORS configuration
 
-### ⭐ Reviews
-- 5-star ratings
-- Written reviews
-- Average rating calculation
-- Review management
-
-### 📥 Downloads
-- Offline story storage
-- Storage usage tracking
-- Download management
-
-### ♡ Wishlist
-- Save stories for later
-- Quick add/remove
-- Sync across devices
-
-## 🔧 API Routes
-
-| Route | Methods | Description |
-|-------|---------|-------------|
-| `/api/stories` | GET | List stories |
-| `/api/checkout` | POST | Create Stripe session |
-| `/api/webhooks/stripe` | POST | Handle payments |
-| `/api/user` | GET, PATCH | User profile |
-| `/api/user/purchase` | POST | Buy story |
-| `/api/user/cancel-subscription` | POST | Cancel sub |
-| `/api/reviews` | GET, POST, DELETE | Reviews |
-| `/api/wishlist` | GET, POST, DELETE | Wishlist |
-
-## 📋 Deployment Checklist
-
-- [ ] Set environment variables in Vercel
-- [ ] Run database schema in Supabase
-- [ ] Create Stripe products & webhooks
-- [ ] Test checkout flow (test mode)
-- [ ] Switch to live Stripe keys
-- [ ] Configure R2 for audio storage
-- [ ] Set up Stripe webhook endpoint
-
----
-
-Built with ❤️ for truckers and commuters everywhere.
+The welcome page was already using `/api/stories` which is why it worked while the home page didn't.
