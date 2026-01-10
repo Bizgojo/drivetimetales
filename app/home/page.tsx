@@ -1,72 +1,77 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useState, useEffect } from 'react'
-import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/contexts/AuthContext'
 
 interface Story {
   id: string
   title: string
-  author: string | null
+  description: string
   genre: string
-  duration_mins: number
-  cover_url: string | null
-  credits: number
-  rating: number | null
-  review_count: number | null
+  duration: number
+  cover_image: string
+  audio_url: string
+  rating: number
+  price: number
   is_free: boolean
-  is_new: boolean
-  is_dtt_pick: boolean
-  is_best_seller: boolean
+  created_at: string
 }
 
 interface LibraryItem {
+  id: string
   story_id: string
   progress: number
-  last_played: string
-  completed: boolean
-  story: Story
+  stories: Story
 }
 
 interface UserPreference {
-  story_id: string
-  wishlisted: boolean
-  not_for_me: boolean
+  genre: string
 }
 
-// Star Rating Component
-function StarRating({ rating, count }: { rating: number | null, count: number | null }) {
-  const r = rating || 0
-  const fullStars = Math.floor(r)
-  const hasHalf = r - fullStars >= 0.5
-  const emptyStars = 5 - fullStars - (hasHalf ? 1 : 0)
-  
+// News categories
+const NEWS_CATEGORIES = [
+  { id: 'national', name: 'National', icon: '🇺🇸', color: 'from-red-600 to-red-800' },
+  { id: 'world', name: 'World', icon: '🌍', color: 'from-blue-600 to-blue-800' },
+  { id: 'business', name: 'Business', icon: '💼', color: 'from-amber-700 to-amber-900' },
+  { id: 'sports', name: 'Sports', icon: '⚽', color: 'from-green-600 to-green-800' },
+  { id: 'science', name: 'Sci/Tech', icon: '🔬', color: 'from-purple-600 to-purple-800' },
+]
+
+// Logo component
+function Logo() {
   return (
-    <div className="flex items-center gap-0.5">
-      <span className="text-orange-400 text-[10px]">{r.toFixed(1)}</span>
-      <span className="text-yellow-400 text-[10px]">{'★'.repeat(fullStars)}</span>
-      {hasHalf && <span className="text-yellow-400/50 text-[10px]">★</span>}
-      <span className="text-slate-500 text-[10px]">{'★'.repeat(emptyStars)}</span>
-      <span className="text-white text-[10px]">({count || 0})</span>
+    <div className="flex items-center gap-2">
+      <svg width="50" height="30" viewBox="0 0 80 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <g>
+          <rect x="45" y="24" width="30" height="14" rx="3" fill="#f97316"/>
+          <path d="M52 24 L56 16 L68 16 L72 24" fill="#f97316"/>
+          <path d="M54 23 L57 17 L67 17 L70 23" fill="#1e293b"/>
+          <circle cx="54" cy="38" r="5" fill="#334155"/>
+          <circle cx="54" cy="38" r="2.5" fill="#64748b"/>
+          <circle cx="68" cy="38" r="5" fill="#334155"/>
+          <circle cx="68" cy="38" r="2.5" fill="#64748b"/>
+          <rect x="73" y="28" width="3" height="4" rx="1" fill="#fef08a"/>
+        </g>
+        <g>
+          <rect x="2" y="20" width="18" height="18" rx="3" fill="#3b82f6"/>
+          <path d="M5 20 L8 12 L17 12 L20 20" fill="#3b82f6"/>
+          <path d="M7 19 L9 13 L16 13 L18 19" fill="#1e293b"/>
+          <rect x="20" y="18" width="22" height="20" rx="2" fill="#60a5fa"/>
+          <circle cx="10" cy="38" r="5" fill="#334155"/>
+          <circle cx="10" cy="38" r="2.5" fill="#64748b"/>
+          <circle cx="32" cy="38" r="5" fill="#334155"/>
+          <circle cx="32" cy="38" r="2.5" fill="#64748b"/>
+        </g>
+      </svg>
+      <div className="flex items-baseline">
+        <span className="text-lg font-bold text-white">Drive Time </span>
+        <span className="text-lg font-bold text-orange-500">Tales</span>
+      </div>
     </div>
   )
-}
-
-// Flag Badge Component
-function FlagBadge({ type }: { type: 'free' | 'new' | 'dtt_pick' | 'best_seller' | 'owned' | 'wishlist' | 'pass' }) {
-  const config = {
-    free: { bg: 'bg-green-500', text: 'text-black', label: 'FREE' },
-    new: { bg: 'bg-yellow-500', text: 'text-black', label: 'NEW' },
-    dtt_pick: { bg: 'bg-orange-500', text: 'text-black', label: '⭐ DTT PICK' },
-    best_seller: { bg: 'bg-blue-500', text: 'text-white', label: '🔥 BEST SELLER' },
-    owned: { bg: 'bg-green-500', text: 'text-black', label: 'OWNED' },
-    wishlist: { bg: 'bg-pink-500', text: 'text-white', label: '❤️ WISHLIST' },
-    pass: { bg: 'bg-red-600', text: 'text-white', label: '👎 PASS' },
-  }
-  const c = config[type]
-  return <span className={`${c.bg} ${c.text} text-[8px] font-bold px-1 py-0.5 rounded`}>{c.label}</span>
 }
 
 export default function HomePage() {
@@ -78,6 +83,7 @@ export default function HomePage() {
   const [userPrefs, setUserPrefs] = useState<UserPreference[]>([])
   const [ownedStoryIds, setOwnedStoryIds] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
+  const [storiesError, setStoriesError] = useState<string | null>(null)
 
   useEffect(() => {
     loadStories()
@@ -90,26 +96,40 @@ export default function HomePage() {
   }, [user])
 
   async function loadStories() {
+    console.log('[Home] Loading stories...')
+    
+    // Set a timeout to prevent infinite loading
+    const timeout = setTimeout(() => {
+      console.log('[Home] Stories loading timeout')
+      setLoading(false)
+      setStoriesError('Stories took too long to load. Please refresh.')
+    }, 10000)
+    
     try {
       // Get new releases (3 most recent)
-      const { data: newStories } = await supabase
+      const { data: newStories, error: newError } = await supabase
         .from('stories')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(3)
-
+      
+      console.log('[Home] New releases:', newStories?.length || 0, newError || '')
       if (newStories) setNewReleases(newStories)
 
       // Get recommended (next 6 stories for variety)
-      const { data: recStories } = await supabase
+      const { data: recStories, error: recError } = await supabase
         .from('stories')
         .select('*')
         .order('rating', { ascending: false })
         .limit(10)
-
+      
+      console.log('[Home] Recommended:', recStories?.length || 0, recError || '')
       if (recStories) setRecommended(recStories)
+      
+      clearTimeout(timeout)
     } catch (error) {
-      console.error('Error loading stories:', error)
+      console.error('[Home] Error loading stories:', error)
+      clearTimeout(timeout)
     } finally {
       setLoading(false)
     }
@@ -117,300 +137,263 @@ export default function HomePage() {
 
   async function loadUserData() {
     if (!user) return
+    
+    console.log('[Home] Loading user data...')
 
     try {
-      // Get user's library (owned stories)
-      const { data: library } = await supabase
-        .from('user_library')
-        .select('story_id, progress, last_played, completed, story:stories(*)')
+      // Get continue listening
+      const { data: libraryData } = await supabase
+        .from('library')
+        .select('*, stories(*)')
         .eq('user_id', user.id)
+        .gt('progress', 0)
+        .lt('progress', 100)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .single()
 
-      if (library) {
-        const owned = new Set(library.map(item => item.story_id))
-        setOwnedStoryIds(owned)
+      if (libraryData) setContinueListening(libraryData)
 
-        // Find most recent unfinished story for "Continue Listening"
-        const unfinished = library
-          .filter(item => !item.completed && item.progress > 0 && item.story)
-          .sort((a, b) => new Date(b.last_played).getTime() - new Date(a.last_played).getTime())[0]
-
-        if (unfinished && unfinished.story && typeof unfinished.story === 'object' && !Array.isArray(unfinished.story)) {
-          const storyData = unfinished.story as unknown as Record<string, unknown>
-          setContinueListening({
-            story_id: unfinished.story_id,
-            progress: unfinished.progress,
-            last_played: unfinished.last_played,
-            completed: unfinished.completed,
-            story: {
-              id: String(storyData.id || ''),
-              title: String(storyData.title || ''),
-              author: storyData.author ? String(storyData.author) : null,
-              genre: String(storyData.genre || ''),
-              duration_mins: Number(storyData.duration_mins) || 0,
-              cover_url: storyData.cover_url ? String(storyData.cover_url) : null,
-              credits: Number(storyData.credits) || 1,
-              rating: storyData.rating ? Number(storyData.rating) : null,
-              review_count: storyData.review_count ? Number(storyData.review_count) : null,
-              is_free: Boolean(storyData.is_free),
-              is_new: Boolean(storyData.is_new),
-              is_dtt_pick: Boolean(storyData.is_dtt_pick),
-              is_best_seller: Boolean(storyData.is_best_seller),
-            }
-          })
-        }
-      }
-
-      // Get user preferences (wishlist, not for me)
-      const { data: prefs } = await supabase
+      // Get user preferences
+      const { data: prefsData } = await supabase
         .from('user_preferences')
-        .select('story_id, wishlisted, not_for_me')
+        .select('genre')
         .eq('user_id', user.id)
 
-      if (prefs) setUserPrefs(prefs)
+      if (prefsData) setUserPrefs(prefsData)
+
+      // Get owned stories
+      const { data: purchasedData } = await supabase
+        .from('purchases')
+        .select('story_id')
+        .eq('user_id', user.id)
+
+      if (purchasedData) {
+        setOwnedStoryIds(new Set(purchasedData.map(p => p.story_id)))
+      }
     } catch (error) {
-      console.error('Error loading user data:', error)
+      console.error('[Home] Error loading user data:', error)
     }
   }
 
-  // Filter recommended stories (exclude owned, wishlist, pass) - but show all if no user
-  const filteredRecommended = recommended.filter(story => {
-    if (!user) return true // Show all if not logged in
-    const pref = userPrefs.find(p => p.story_id === story.id)
-    if (ownedStoryIds.has(story.id)) return false
-    if (pref?.wishlisted) return false
-    if (pref?.not_for_me) return false
-    return true
-  }).slice(0, 5)
-
-  // Get flag for a story
-  const getFlag = (story: Story): 'free' | 'new' | 'dtt_pick' | 'best_seller' | null => {
-    if (story.is_free || story.credits === 0) return 'free'
-    if (story.is_dtt_pick) return 'dtt_pick'
-    if (story.is_best_seller) return 'best_seller'
-    if (story.is_new) return 'new'
-    return null
-  }
-
-  const displayName = user?.display_name || user?.email?.split('@')[0] || 'there'
-  const credits = user?.credits ?? 0
-  const isLowCredits = user && credits !== -1 && credits <= 3
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return `${mins}:${secs.toString().padStart(2, '0')}`
+  function formatDuration(minutes: number) {
+    if (minutes < 60) return `${minutes}m`
+    const hrs = Math.floor(minutes / 60)
+    const mins = minutes % 60
+    return mins > 0 ? `${hrs}h ${mins}m` : `${hrs}h`
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white flex flex-col">
+    <div className="min-h-screen bg-slate-950 text-white">
       {/* Header */}
-      <header className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
-        <Link href="/home" className="flex items-center gap-1">
-          <span className="text-xl">🚛</span>
-          <span className="text-xl">🚗</span>
-          <span className="font-bold text-white ml-1">Drive</span>
-          <span className="font-bold text-white">Time</span>
-          <span className="font-bold text-orange-400">Tales</span>
-        </Link>
-        {user ? (
-          <Link href="/account" className="w-10 h-10 rounded-full bg-orange-500 flex items-center justify-center text-black font-bold hover:bg-orange-400 transition">
-            {displayName?.charAt(0).toUpperCase() || 'U'}
+      <header className="sticky top-0 z-50 bg-slate-950/95 backdrop-blur border-b border-slate-800">
+        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+          <Link href="/home">
+            <Logo />
           </Link>
-        ) : (
-          <Link href="/signin" className="text-orange-400 hover:text-orange-300 font-medium transition">Sign In</Link>
-        )}
-      </header>
-
-      {/* Welcome Section */}
-      <div className="px-4 py-3 bg-slate-900/50">
-        <h1 className="text-xl font-bold text-white">Welcome back, {displayName}!</h1>
-        {user && (
-          <p className="text-white text-sm">
-            You have <span className="text-orange-400 font-bold">{credits === -1 ? 'unlimited' : credits} credits</span>
-          </p>
-        )}
-      </div>
-
-      {/* Daily News Briefings */}
-      <section className="px-4 py-3">
-        <h2 className="text-sm font-bold text-white mb-2 uppercase tracking-wide">📰 Daily News Briefings</h2>
-        <div className="bg-slate-800 rounded-xl p-3">
-          <p className="text-slate-400 text-xs mb-3">Top 5 stories • Updated twice daily</p>
-          <div className="grid grid-cols-5 gap-2">
-            <Link href="/news/national" className="bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 rounded-lg p-2 text-center transition">
-              <span className="text-xl block">🇺🇸</span>
-              <span className="text-[10px] text-blue-300">National</span>
-            </Link>
-            <Link href="/news/international" className="bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 rounded-lg p-2 text-center transition">
-              <span className="text-xl block">🌍</span>
-              <span className="text-[10px] text-green-300">World</span>
-            </Link>
-            <Link href="/news/business" className="bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/30 rounded-lg p-2 text-center transition">
-              <span className="text-xl block">💼</span>
-              <span className="text-[10px] text-yellow-300">Business</span>
-            </Link>
-            <Link href="/news/sports" className="bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-lg p-2 text-center transition">
-              <span className="text-xl block">⚽</span>
-              <span className="text-[10px] text-red-300">Sports</span>
-            </Link>
-            <Link href="/news/science" className="bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 rounded-lg p-2 text-center transition">
-              <span className="text-xl block">🔬</span>
-              <span className="text-[10px] text-purple-300">Sci/Tech</span>
-            </Link>
+          
+          <div className="flex items-center gap-4">
+            {user ? (
+              <Link href="/account" className="flex items-center gap-2 text-slate-300 hover:text-white">
+                <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-black font-bold">
+                  {user.display_name?.[0] || user.email?.[0]?.toUpperCase() || '?'}
+                </div>
+              </Link>
+            ) : (
+              <Link href="/signin" className="text-orange-400 hover:text-orange-300 font-medium">
+                Sign In
+              </Link>
+            )}
           </div>
         </div>
-      </section>
+      </header>
 
-      {/* Low Credits Warning */}
-      {isLowCredits && (
-        <Link 
-          href="/pricing" 
-          className="mx-4 mt-3 bg-orange-500/20 border border-orange-500/50 rounded-xl px-4 py-3 flex items-center justify-between hover:bg-orange-500/30 transition"
-        >
-          <div>
-            <p className="text-orange-400 font-medium">Running low on credits!</p>
-            <p className="text-white text-sm">Get more to keep listening</p>
+      <main className="max-w-7xl mx-auto px-4 py-6">
+        {/* Welcome */}
+        <h1 className="text-2xl font-bold mb-6">
+          Welcome back{user?.display_name ? `, ${user.display_name}` : ', there'}!
+        </h1>
+
+        {/* Daily News Briefings */}
+        <section className="mb-8">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-xl">📰</span>
+            <h2 className="text-lg font-bold">DAILY NEWS BRIEFINGS</h2>
           </div>
-          <span className="text-orange-400 font-bold">Buy More →</span>
-        </Link>
-      )}
-
-      {/* Continue Listening */}
-      {continueListening && (
-        <section className="px-4 py-4 border-b border-slate-800">
-          <h2 className="text-sm font-bold text-white mb-2 uppercase tracking-wide">Continue Listening</h2>
-          <Link 
-            href={`/player/${continueListening.story_id}/play?autoplay=true&resume=${continueListening.progress}`}
-            className="bg-slate-700 rounded-xl p-3 flex items-center gap-3 hover:bg-slate-600 transition"
-          >
-            <div className="w-14 h-14 rounded-lg overflow-hidden bg-slate-600 flex-shrink-0">
-              {continueListening.story.cover_url ? (
-                <img src={continueListening.story.cover_url} alt={continueListening.story.title} className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full bg-gradient-to-br from-orange-600 to-red-900 flex items-center justify-center">
-                  <span className="text-xl">🎧</span>
-                </div>
-              )}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-white font-medium text-sm truncate">{continueListening.story.title}</p>
-              <p className="text-white text-xs">
-                {Math.round((continueListening.progress / (continueListening.story.duration_mins * 60)) * 100)}% • {formatTime((continueListening.story.duration_mins * 60) - continueListening.progress)} remaining
-              </p>
-              <div className="h-1 bg-slate-600 rounded-full mt-1">
-                <div 
-                  className="h-full bg-orange-500 rounded-full" 
-                  style={{ width: `${(continueListening.progress / (continueListening.story.duration_mins * 60)) * 100}%` }} 
-                />
-              </div>
-            </div>
-            <div className="w-10 h-10 bg-orange-500 rounded-full flex items-center justify-center flex-shrink-0">
-              <span className="text-black text-lg ml-0.5">▶</span>
-            </div>
-          </Link>
-        </section>
-      )}
-
-      {/* New Releases - 3 equal columns */}
-      <section className="px-4 py-4 border-b border-slate-800">
-        <h2 className="text-sm font-bold text-white mb-3 uppercase tracking-wide">New Releases</h2>
-        <div className="bg-slate-700 rounded-xl p-3">
-          <div className="grid grid-cols-3 gap-3">
-            {newReleases.map(story => (
-              <Link key={story.id} href={`/player/${story.id}`} className="group">
-                <div className="aspect-square rounded-lg overflow-hidden bg-slate-600 mb-1 shadow-[0_0_20px_rgba(255,255,255,0.6)]">
-                  {story.cover_url ? (
-                    <img src={story.cover_url} alt={story.title} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
-                  ) : (
-                    <div className="w-full h-full bg-gradient-to-br from-orange-600 to-orange-900 flex items-center justify-center">
-                      <span className="text-2xl opacity-50">🎧</span>
-                    </div>
-                  )}
-                </div>
-                <p className="text-white text-xs font-medium truncate">{story.title}</p>
-                <p className="text-slate-300 text-[10px]">{story.duration_mins} min</p>
-                <StarRating rating={story.rating} count={story.review_count} />
+          <p className="text-slate-400 text-sm mb-4">Top 5 stories • Updated twice daily</p>
+          
+          <div className="grid grid-cols-5 gap-3">
+            {NEWS_CATEGORIES.map((cat) => (
+              <Link
+                key={cat.id}
+                href={`/news/${cat.id}`}
+                className={`bg-gradient-to-br ${cat.color} rounded-xl p-4 text-center hover:scale-105 transition-transform`}
+              >
+                <div className="text-2xl mb-1">{cat.icon}</div>
+                <div className="text-sm font-medium">{cat.name}</div>
               </Link>
             ))}
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* Recommended For You - Story blocks */}
-      <section className="px-4 py-4">
-        <h2 className="text-sm font-bold text-white mb-3 uppercase tracking-wide">Recommended For You</h2>
-        <div className="space-y-3">
-          {filteredRecommended.map(story => {
-            const flag = getFlag(story)
-            return (
-              <Link 
-                key={story.id} 
-                href={`/player/${story.id}`}
-                className="bg-slate-700 rounded-xl p-3 flex gap-3 hover:bg-slate-600 transition"
-              >
-                <div className="w-16 h-16 rounded-lg overflow-hidden bg-slate-600 flex-shrink-0 relative shadow-[0_0_20px_rgba(255,255,255,0.6)]">
-                  {story.cover_url ? (
-                    <img src={story.cover_url} alt={story.title} className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="w-full h-full bg-gradient-to-br from-orange-600 to-orange-900 flex items-center justify-center">
-                      <span className="text-xl">🎧</span>
-                    </div>
-                  )}
-                  <span className="absolute bottom-0.5 right-0.5 bg-black/70 text-white text-[8px] px-1 rounded">
-                    {story.duration_mins}m
-                  </span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-white font-bold text-sm truncate">{story.title}</p>
-                  <p className="text-white text-xs">{story.genre} • {story.credits || 1} credit{(story.credits || 1) > 1 ? 's' : ''}</p>
-                  <p className="text-slate-300 text-[10px]">by {story.author || 'Drive Time Tales'}</p>
-                  <div className="flex items-center gap-2 mt-1">
-                    <StarRating rating={story.rating} count={story.review_count} />
-                    {flag && <FlagBadge type={flag} />}
+        {/* New Releases */}
+        <section className="mb-8">
+          <h2 className="text-lg font-bold mb-4">NEW RELEASES</h2>
+          {loading ? (
+            <div className="h-2 bg-orange-500 rounded animate-pulse"></div>
+          ) : storiesError ? (
+            <p className="text-red-400 text-sm">{storiesError}</p>
+          ) : newReleases.length === 0 ? (
+            <p className="text-slate-400 text-sm">No stories available yet.</p>
+          ) : (
+            <div className="grid grid-cols-3 gap-4">
+              {newReleases.map((story) => (
+                <Link
+                  key={story.id}
+                  href={`/story/${story.id}`}
+                  className="bg-slate-900 rounded-xl overflow-hidden hover:ring-2 hover:ring-orange-500 transition"
+                >
+                  <div className="aspect-[3/4] bg-slate-800 relative">
+                    {story.cover_image ? (
+                      <img src={story.cover_image} alt={story.title} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-4xl">📖</div>
+                    )}
+                    {story.is_free && (
+                      <span className="absolute top-2 left-2 bg-green-500 text-black text-xs font-bold px-2 py-1 rounded">
+                        FREE
+                      </span>
+                    )}
                   </div>
-                </div>
-              </Link>
-            )
-          })}
-          {filteredRecommended.length === 0 && !loading && (
-            <div className="bg-slate-700 rounded-xl p-6 text-center">
-              <p className="text-white">No recommendations yet</p>
-              <p className="text-slate-300 text-sm mt-1">Browse the library to discover stories!</p>
+                  <div className="p-3">
+                    <h3 className="font-medium text-sm line-clamp-1">{story.title}</h3>
+                    <p className="text-slate-400 text-xs">{story.genre} • {formatDuration(story.duration)}</p>
+                  </div>
+                </Link>
+              ))}
             </div>
           )}
-        </div>
-      </section>
+        </section>
 
-      {/* Loading */}
-      {loading && (
-        <div className="flex justify-center py-8">
-          <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
-        </div>
-      )}
+        {/* Recommended */}
+        <section className="mb-8">
+          <h2 className="text-lg font-bold mb-4">RECOMMENDED FOR YOU</h2>
+          {loading ? (
+            <div className="flex justify-center py-12">
+              <div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+          ) : storiesError ? (
+            <p className="text-red-400 text-sm">{storiesError}</p>
+          ) : recommended.length === 0 ? (
+            <p className="text-slate-400 text-sm">No recommendations yet. Browse our <Link href="/browse" className="text-orange-400 hover:underline">library</Link>.</p>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+              {recommended.map((story) => (
+                <Link
+                  key={story.id}
+                  href={`/story/${story.id}`}
+                  className="bg-slate-900 rounded-xl overflow-hidden hover:ring-2 hover:ring-orange-500 transition"
+                >
+                  <div className="aspect-[3/4] bg-slate-800 relative">
+                    {story.cover_image ? (
+                      <img src={story.cover_image} alt={story.title} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-4xl">📖</div>
+                    )}
+                    {ownedStoryIds.has(story.id) && (
+                      <span className="absolute top-2 right-2 bg-blue-500 text-white text-xs font-bold px-2 py-1 rounded">
+                        OWNED
+                      </span>
+                    )}
+                    {story.is_free && !ownedStoryIds.has(story.id) && (
+                      <span className="absolute top-2 left-2 bg-green-500 text-black text-xs font-bold px-2 py-1 rounded">
+                        FREE
+                      </span>
+                    )}
+                  </div>
+                  <div className="p-3">
+                    <h3 className="font-medium text-sm line-clamp-1">{story.title}</h3>
+                    <p className="text-slate-400 text-xs">{story.genre} • {formatDuration(story.duration)}</p>
+                    <div className="flex items-center gap-1 mt-1">
+                      <span className="text-yellow-400 text-xs">★</span>
+                      <span className="text-xs text-slate-400">{story.rating?.toFixed(1) || '—'}</span>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </section>
 
-      {/* Bottom Buttons */}
-      <div className="px-4 py-3 mt-auto bg-slate-950 border-t border-slate-800">
-        <div className="flex gap-3 mb-3">
-          <Link 
-            href="/library" 
-            className="flex-1 py-3 bg-orange-500 text-black rounded-xl font-bold text-sm text-center hover:bg-orange-400 transition"
-          >
-            📚 Story Library
-          </Link>
-          <Link 
-            href="/wishlist" 
-            className="flex-1 py-3 bg-pink-500 text-white rounded-xl font-bold text-sm text-center hover:bg-pink-400 transition"
-          >
-            ❤️ My Wishlist
-          </Link>
-        </div>
-        <Link 
-          href="/referral" 
-          className="block w-full py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl font-bold text-sm text-center hover:from-green-500 hover:to-emerald-500 transition"
-        >
-          🚗 Share the Road - Get 3 Free Credits!
-        </Link>
-      </div>
+        {/* Continue Listening */}
+        {continueListening && (
+          <section className="mb-8">
+            <h2 className="text-lg font-bold mb-4">CONTINUE LISTENING</h2>
+            <Link
+              href={`/player/${continueListening.story_id}/play`}
+              className="flex items-center gap-4 bg-slate-900 rounded-xl p-4 hover:bg-slate-800 transition"
+            >
+              <div className="w-16 h-16 bg-slate-800 rounded-lg flex items-center justify-center">
+                {continueListening.stories?.cover_image ? (
+                  <img src={continueListening.stories.cover_image} alt="" className="w-full h-full object-cover rounded-lg" />
+                ) : (
+                  <span className="text-2xl">📖</span>
+                )}
+              </div>
+              <div className="flex-1">
+                <h3 className="font-medium">{continueListening.stories?.title}</h3>
+                <div className="flex items-center gap-2 mt-1">
+                  <div className="flex-1 h-1 bg-slate-700 rounded-full">
+                    <div 
+                      className="h-1 bg-orange-500 rounded-full" 
+                      style={{ width: `${continueListening.progress}%` }}
+                    ></div>
+                  </div>
+                  <span className="text-xs text-slate-400">{continueListening.progress}%</span>
+                </div>
+              </div>
+              <div className="w-10 h-10 bg-orange-500 rounded-full flex items-center justify-center">
+                <svg className="w-5 h-5 text-black" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
+                </svg>
+              </div>
+            </Link>
+          </section>
+        )}
+
+        {/* Bottom Navigation */}
+        <nav className="fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-800 px-4 py-2">
+          <div className="max-w-7xl mx-auto flex justify-around">
+            <Link href="/home" className="flex flex-col items-center text-orange-400">
+              <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" />
+              </svg>
+              <span className="text-xs mt-1">Home</span>
+            </Link>
+            <Link href="/browse" className="flex flex-col items-center text-slate-400 hover:text-white">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <span className="text-xs mt-1">Browse</span>
+            </Link>
+            <Link href="/library" className="flex flex-col items-center text-slate-400 hover:text-white">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+              </svg>
+              <span className="text-xs mt-1">Library</span>
+            </Link>
+            <Link href="/account" className="flex flex-col items-center text-slate-400 hover:text-white">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+              <span className="text-xs mt-1">Account</span>
+            </Link>
+          </div>
+        </nav>
+        
+        {/* Spacer for bottom nav */}
+        <div className="h-20"></div>
+      </main>
     </div>
   )
 }
