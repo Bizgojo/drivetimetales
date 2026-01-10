@@ -72,14 +72,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const { data, error } = await supabase
         .from('users')
-        .select('id, email, display_name, credits, subscription_type, subscription_ends_at, created_at, referral_code, referral_count, referral_tier')
+        .select('id, email, display_name, credits, subscription_type, subscription_ends_at, created_at')
         .eq('id', userId)
         .single()
 
       if (error) throw error
-      setUser(data)
+      
+      // Set user with default values for referral fields (may not exist yet)
+      setUser({
+        ...data,
+        referral_code: (data as any).referral_code || null,
+        referral_count: (data as any).referral_count || 0,
+        referral_tier: (data as any).referral_tier || null
+      })
     } catch (error) {
       console.error('Error loading user profile:', error)
+      setLoading(false)
     }
   }
 
