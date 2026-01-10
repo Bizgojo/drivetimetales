@@ -36,24 +36,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Check for existing session on mount
-    checkUser()
+    // Don't block on getSession - just set loading false quickly
+    // The onAuthStateChange listener will update the user when ready
+    const initTimeout = setTimeout(() => {
+      setLoading(false)
+    }, 1000)
 
-    // Listen for auth changes
+    // Listen for auth changes - this will fire if user is already logged in
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('[Auth] State change:', event, session?.user?.id)
       
-      if (event === 'SIGNED_IN' && session?.user) {
+      if (session?.user) {
         await loadUserProfile(session.user.id)
       } else if (event === 'SIGNED_OUT') {
         setUser(null)
-      } else if (event === 'TOKEN_REFRESHED' && session?.user) {
-        // Refresh user data on token refresh
-        await loadUserProfile(session.user.id)
       }
+      setLoading(false)
     })
 
-    return () => subscription.unsubscribe()
+    // Also try to get session in background (non-blocking)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log('[Auth] getSession result:', session ? 'Has session' : 'No session')
+      if (session?.user) {
+        loadUserProfile(session.user.id)
+      }
+    }).catch(err => {
+      console.log('[Auth] getSession error:', err)
+    })
+
+    return () => {
+      clearTimeout(initTimeout)
+      subscription.unsubscribe()
+    }
   }, [])
 
   async function checkUser() {
