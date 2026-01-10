@@ -1,32 +1,28 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 export default function SignInPage() {
-  const router = useRouter()
-  
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showPassword, setShowPassword] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+    setMessage(null)
     
-    const trimmedEmail = email.trim()
-    const trimmedPassword = password
-    
-    if (!trimmedEmail) {
+    if (!email.trim()) {
       setError('Please enter your email')
       return
     }
     
-    if (!trimmedPassword) {
+    if (!password) {
       setError('Please enter your password')
       return
     }
@@ -34,17 +30,15 @@ export default function SignInPage() {
     setIsSubmitting(true)
     
     try {
-      console.log('Attempting sign in for:', trimmedEmail)
+      console.log('[SignIn] Attempting signin for:', email.trim())
       
       const { data, error: authError } = await supabase.auth.signInWithPassword({
-        email: trimmedEmail,
-        password: trimmedPassword,
+        email: email.trim(),
+        password: password,
       })
       
-      console.log('Auth response:', { user: data?.user?.id, error: authError })
-      
       if (authError) {
-        console.error('Auth error:', authError)
+        console.error('[SignIn] Auth error:', authError)
         if (authError.message.includes('Invalid login')) {
           setError('Invalid email or password')
         } else {
@@ -55,28 +49,40 @@ export default function SignInPage() {
       }
       
       if (!data.user) {
+        console.error('[SignIn] No user returned')
         setError('Login failed. Please try again.')
         setIsSubmitting(false)
         return
       }
       
-      console.log('Sign in successful, redirecting...')
+      console.log('[SignIn] Success! User:', data.user.id)
       
-      // Redirect to home immediately
+      // Update last login (don't await - let it happen in background)
+      supabase
+        .from('users')
+        .update({ last_login: new Date().toISOString() })
+        .eq('id', data.user.id)
+        .then(() => console.log('[SignIn] Updated last_login'))
+        .catch(err => console.log('[SignIn] last_login update failed:', err))
+      
+      // Use window.location for reliable redirect
+      console.log('[SignIn] Redirecting to /home')
       window.location.href = '/home'
       
-    } catch (err: any) {
-      console.error('Sign in catch error:', err)
-      setError(err.message || 'An error occurred. Please try again.')
+    } catch (err) {
+      console.error('[SignIn] Catch error:', err)
+      setError('An error occurred. Please try again.')
       setIsSubmitting(false)
     }
   }
 
   const handleGoogleSignIn = async () => {
     setError(null)
+    setMessage(null)
     setIsSubmitting(true)
     
     try {
+      console.log('[SignIn] Starting Google OAuth')
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -85,10 +91,12 @@ export default function SignInPage() {
       })
       
       if (error) {
+        console.error('[SignIn] Google OAuth error:', error)
         setError(error.message)
         setIsSubmitting(false)
       }
     } catch (err) {
+      console.error('[SignIn] Google OAuth catch:', err)
       setError('Google sign in failed. Please try again.')
       setIsSubmitting(false)
     }
@@ -96,9 +104,11 @@ export default function SignInPage() {
 
   const handleAppleSignIn = async () => {
     setError(null)
+    setMessage(null)
     setIsSubmitting(true)
     
     try {
+      console.log('[SignIn] Starting Apple OAuth')
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'apple',
         options: {
@@ -107,10 +117,12 @@ export default function SignInPage() {
       })
       
       if (error) {
+        console.error('[SignIn] Apple OAuth error:', error)
         setError(error.message)
         setIsSubmitting(false)
       }
     } catch (err) {
+      console.error('[SignIn] Apple OAuth catch:', err)
       setError('Apple sign in failed. Please try again.')
       setIsSubmitting(false)
     }
@@ -123,20 +135,30 @@ export default function SignInPage() {
     }
     
     setIsSubmitting(true)
+    setError(null)
+    setMessage(null)
     
-    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: `${window.location.origin}/reset-password`,
-    })
-    
-    if (error) {
-      setError(error.message)
-    } else {
-      setError(null)
-      alert('Password reset email sent! Check your inbox.')
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo: `${window.location.origin}/reset-password`,
+      })
+      
+      if (error) {
+        setError(error.message)
+      } else {
+        setMessage('Password reset email sent! Check your inbox.')
+      }
+    } catch (err) {
+      setError('Failed to send reset email. Please try again.')
     }
     
     setIsSubmitting(false)
   }
+
+  // Memoized toggle to prevent unnecessary re-renders
+  const togglePassword = useCallback(() => {
+    setShowPassword(prev => !prev)
+  }, [])
 
   // Logo component
   const Logo = () => (
@@ -238,6 +260,7 @@ export default function SignInPage() {
                 placeholder="you@example.com"
                 className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-orange-500"
                 autoComplete="email"
+                disabled={isSubmitting}
               />
             </div>
             
@@ -252,13 +275,24 @@ export default function SignInPage() {
                   placeholder="••••••••"
                   className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-orange-500 pr-12"
                   autoComplete="current-password"
+                  disabled={isSubmitting}
                 />
                 <button
                   type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                  onClick={togglePassword}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-1"
+                  tabIndex={-1}
                 >
-                  {showPassword ? '🙈' : '👁️'}
+                  {showPassword ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" />
+                    </svg>
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  )}
                 </button>
               </div>
             </div>
@@ -268,7 +302,8 @@ export default function SignInPage() {
               <button
                 type="button"
                 onClick={handleForgotPassword}
-                className="text-orange-400 text-sm hover:underline"
+                disabled={isSubmitting}
+                className="text-orange-400 text-sm hover:underline disabled:opacity-50"
               >
                 Forgot password?
               </button>
@@ -278,6 +313,13 @@ export default function SignInPage() {
             {error && (
               <div className="p-3 bg-red-500/20 border border-red-500/30 rounded-lg">
                 <p className="text-red-400 text-sm text-center">{error}</p>
+              </div>
+            )}
+
+            {/* Success Message */}
+            {message && (
+              <div className="p-3 bg-green-500/20 border border-green-500/30 rounded-lg">
+                <p className="text-green-400 text-sm text-center">{message}</p>
               </div>
             )}
             
