@@ -11,13 +11,15 @@ interface Story {
   title: string
   description: string
   genre: string
-  duration: number
-  cover_image: string
+  duration_mins: number
+  duration_label: string
+  cover_url: string
   audio_url: string
   rating: number
   price: number
   is_free: boolean
   created_at: string
+  average_rating: number
 }
 
 interface LibraryItem {
@@ -176,7 +178,11 @@ export default function HomePage() {
     }
   }
 
-  function formatDuration(minutes: number) {
+  function formatDuration(story: Story) {
+    // Use duration_label if available, otherwise format duration_mins
+    if (story.duration_label) return story.duration_label
+    const minutes = story.duration_mins
+    if (!minutes) return ''
     if (minutes < 60) return `${minutes}m`
     const hrs = Math.floor(minutes / 60)
     const mins = minutes % 60
@@ -254,8 +260,8 @@ export default function HomePage() {
                   className="bg-slate-900 rounded-xl overflow-hidden hover:ring-2 hover:ring-orange-500 transition"
                 >
                   <div className="aspect-[3/4] bg-slate-800 relative">
-                    {story.cover_image ? (
-                      <img src={story.cover_image} alt={story.title} className="w-full h-full object-cover" />
+                    {story.cover_url ? (
+                      <img src={story.cover_url} alt={story.title} className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-4xl">📖</div>
                     )}
@@ -267,7 +273,7 @@ export default function HomePage() {
                   </div>
                   <div className="p-3">
                     <h3 className="font-medium text-sm line-clamp-1">{story.title}</h3>
-                    <p className="text-slate-400 text-xs">{story.genre} • {formatDuration(story.duration)}</p>
+                    <p className="text-slate-400 text-xs">{story.genre} • {formatDuration(story)}</p>
                   </div>
                 </Link>
               ))}
@@ -295,8 +301,8 @@ export default function HomePage() {
                   className="bg-slate-900 rounded-xl overflow-hidden hover:ring-2 hover:ring-orange-500 transition"
                 >
                   <div className="aspect-[3/4] bg-slate-800 relative">
-                    {story.cover_image ? (
-                      <img src={story.cover_image} alt={story.title} className="w-full h-full object-cover" />
+                    {story.cover_url ? (
+                      <img src={story.cover_url} alt={story.title} className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-4xl">📖</div>
                     )}
@@ -313,10 +319,10 @@ export default function HomePage() {
                   </div>
                   <div className="p-3">
                     <h3 className="font-medium text-sm line-clamp-1">{story.title}</h3>
-                    <p className="text-slate-400 text-xs">{story.genre} • {formatDuration(story.duration)}</p>
+                    <p className="text-slate-400 text-xs">{story.genre} • {formatDuration(story)}</p>
                     <div className="flex items-center gap-1 mt-1">
                       <span className="text-yellow-400 text-xs">★</span>
-                      <span className="text-xs text-slate-400">{story.rating?.toFixed(1) || '—'}</span>
+                      <span className="text-xs text-slate-400">{story.average_rating?.toFixed(1) || story.rating?.toFixed(1) || '—'}</span>
                     </div>
                   </div>
                 </Link>
