@@ -189,6 +189,14 @@ export default function HomePage() {
     return mins > 0 ? `${hrs}h ${mins}m` : `${hrs}h`
   }
 
+  function formatGenre(genre: string | null) {
+    // Hide debug text like "(not set - go to Tab 4)"
+    if (!genre || genre.includes('not set') || genre.includes('Tab')) {
+      return 'Audio Drama'
+    }
+    return genre
+  }
+
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       {/* Header */}
@@ -252,7 +260,7 @@ export default function HomePage() {
           ) : newReleases.length === 0 ? (
             <p className="text-slate-400 text-sm">No stories available yet.</p>
           ) : (
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
               {newReleases.map((story) => (
                 <Link
                   key={story.id}
@@ -273,7 +281,7 @@ export default function HomePage() {
                   </div>
                   <div className="p-3">
                     <h3 className="font-medium text-sm line-clamp-1">{story.title}</h3>
-                    <p className="text-slate-400 text-xs">{story.genre} • {formatDuration(story)}</p>
+                    <p className="text-slate-400 text-xs">{formatGenre(story.genre)} • {formatDuration(story)}</p>
                   </div>
                 </Link>
               ))}
@@ -293,7 +301,7 @@ export default function HomePage() {
           ) : recommended.length === 0 ? (
             <p className="text-slate-400 text-sm">No recommendations yet. Browse our <Link href="/browse" className="text-orange-400 hover:underline">library</Link>.</p>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
               {recommended.map((story) => (
                 <Link
                   key={story.id}
@@ -319,7 +327,7 @@ export default function HomePage() {
                   </div>
                   <div className="p-3">
                     <h3 className="font-medium text-sm line-clamp-1">{story.title}</h3>
-                    <p className="text-slate-400 text-xs">{story.genre} • {formatDuration(story)}</p>
+                    <p className="text-slate-400 text-xs">{formatGenre(story.genre)} • {formatDuration(story)}</p>
                     <div className="flex items-center gap-1 mt-1">
                       <span className="text-yellow-400 text-xs">★</span>
                       <span className="text-xs text-slate-400">{story.average_rating?.toFixed(1) || story.rating?.toFixed(1) || '—'}</span>
