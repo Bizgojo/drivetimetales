@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { supabase, getStories, Story } from '@/lib/supabase'
+import { supabase, Story } from '@/lib/supabase'
 
 interface SponsorData {
   sponsor_name: string
@@ -58,15 +58,20 @@ function WelcomeContent() {
     async function initialize() {
       console.log('[DTT Debug] Welcome page initialize() started')
       
-      // Load stories FIRST - don't wait for auth
-      console.log('[DTT Debug] Loading stories...')
+      // Load stories via API instead of client-side Supabase (bypasses RLS issues)
+      console.log('[DTT Debug] Loading stories via API...')
       try {
-        const allStories = await getStories({})
-        console.log('[DTT Debug] getStories() returned', allStories.length, 'stories')
-        setStories(allStories)
-        setLoading(false)
+        const response = await fetch('/api/stories')
+        if (response.ok) {
+          const allStories = await response.json()
+          console.log('[DTT Debug] API returned', allStories.length, 'stories')
+          setStories(allStories)
+        } else {
+          console.error('[DTT Debug] API error:', response.status)
+        }
       } catch (error) {
         console.error('[DTT Debug] Error fetching stories:', error)
+      } finally {
         setLoading(false)
       }
 
@@ -114,7 +119,7 @@ function WelcomeContent() {
       // Check auth in background with timeout - don't block the page
       console.log('[DTT Debug] Checking auth session (with timeout)...')
       const authTimeout = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Auth timeout')), 3000)
+        setTimeout(() => reject(new Error('Auth timeout')), 10000)
       )
       
       try {
@@ -227,7 +232,7 @@ function WelcomeContent() {
   }
 
   // Filter stories by genre and duration
-  const filtered = stories.filter((s) => {
+  const filtered = stories.filter((s: any) => {
     if (genre !== 'All' && s.genre !== genre) return false
     if (duration === '15' && (s.duration_mins < 10 || s.duration_mins > 20)) return false
     if (duration === '30' && (s.duration_mins < 20 || s.duration_mins > 45)) return false
@@ -236,12 +241,12 @@ function WelcomeContent() {
   })
 
   // Navigate to player details page
-  const handleStoryClick = (story: Story) => {
+  const handleStoryClick = (story: any) => {
     router.push(`/player/${story.id}`)
   }
 
   // Get flag for story based on its properties
-  const getStoryFlag = (story: Story) => {
+  const getStoryFlag = (story: any) => {
     if ((story.credits || 1) <= 2 && freeCredits > 0) {
       return { text: 'Free Story', color: 'green' }
     }
@@ -282,14 +287,14 @@ function WelcomeContent() {
   }
 
   // Flag badge component
-  const FlagBadge = ({ text, color }: { text: string, color: string }) => {
-    const colorClasses: { [key: string]: string } = {
+  const FlagBadge = ({ text, color }: { text: string; color: string }) => {
+    const colorClasses: Record<string, string> = {
       green: 'bg-green-500/20 text-green-400 border-green-500/30',
       orange: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
       blue: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
     }
     return (
-      <span className={`px-2 py-0.5 text-[10px] font-medium rounded border ${colorClasses[color]}`}>
+      <span className={`px-1.5 py-0.5 text-[10px] rounded border ${colorClasses[color] || colorClasses.blue}`}>
         {text}
       </span>
     )
@@ -300,17 +305,17 @@ function WelcomeContent() {
       
       {/* Secret Code Modal */}
       {showSecretInput && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 rounded-2xl p-6 w-full max-w-sm border border-slate-700">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+          <div className="bg-slate-900 rounded-2xl p-6 max-w-sm w-full border border-slate-700">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-bold text-white">🎁 Enter Promo Code</h2>
+              <h3 className="text-lg font-bold text-white">🎁 Enter Secret Code</h3>
               <button 
                 onClick={() => {
                   setShowSecretInput(false)
                   setSecretCode('')
                   setCodeMessage(null)
                 }}
-                className="text-slate-400 hover:text-white text-xl"
+                className="text-slate-400 hover:text-white text-2xl leading-none"
               >
                 ×
               </button>
@@ -318,16 +323,16 @@ function WelcomeContent() {
             
             <input
               type="text"
+              placeholder="Enter your code..."
               value={secretCode}
               onChange={(e) => setSecretCode(e.target.value.toUpperCase())}
-              placeholder="Enter code..."
-              className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white text-center text-lg tracking-widest uppercase focus:outline-none focus:border-orange-500 mb-4"
+              className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-white text-center text-lg tracking-widest uppercase mb-4 focus:outline-none focus:border-orange-500"
               maxLength={20}
               autoFocus
             />
             
             {codeMessage && (
-              <div className={`p-3 rounded-lg mb-4 text-sm text-center ${
+              <div className={`mb-4 p-3 rounded-lg text-center ${
                 codeMessage.type === 'success' 
                   ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
                   : 'bg-red-500/20 text-red-400 border border-red-500/30'
@@ -339,11 +344,7 @@ function WelcomeContent() {
             <button
               onClick={handleCodeSubmit}
               disabled={isSubmitting || !secretCode.trim()}
-              className={`w-full py-3 rounded-xl font-semibold transition-colors ${
-                isSubmitting || !secretCode.trim()
-                  ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
-                  : 'bg-orange-500 hover:bg-orange-400 text-black'
-              }`}
+              className="w-full py-3 bg-orange-500 hover:bg-orange-400 disabled:bg-slate-700 disabled:text-slate-500 text-black font-bold rounded-lg transition-colors"
             >
               {isSubmitting ? 'Validating...' : 'Redeem Code'}
             </button>
@@ -459,8 +460,10 @@ function WelcomeContent() {
           </div>
         </div>
 
-        {/* Results count */}
-        <p className="text-slate-400 text-xs mb-3">{filtered.length} {filtered.length === 1 ? 'story' : 'stories'} found</p>
+        {/* Results count - only show when not loading */}
+        {!loading && (
+          <p className="text-slate-400 text-xs mb-3">{filtered.length} {filtered.length === 1 ? 'story' : 'stories'} found</p>
+        )}
 
         {/* Stories List */}
         {loading ? (
@@ -476,7 +479,7 @@ function WelcomeContent() {
           </div>
         ) : (
           <div className="space-y-2">
-            {filtered.map((story, index) => {
+            {filtered.map((story: any, index: number) => {
               const flag = getStoryFlag(story)
               
               return (
@@ -518,7 +521,7 @@ function WelcomeContent() {
                       
                       {/* Star Rating + Flag */}
                       <div className="flex items-center gap-2 flex-wrap">
-                       <StarRating rating={story.rating} />
+                       <StarRating rating={story.ai_rating || story.average_rating || 4.0} />
                         {flag && <FlagBadge text={flag.text} color={flag.color} />}
                       </div>
                     </div>
