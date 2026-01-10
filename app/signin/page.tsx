@@ -18,12 +18,15 @@ export default function SignInPage() {
     e.preventDefault()
     setError(null)
     
-    if (!email.trim()) {
+    const trimmedEmail = email.trim()
+    const trimmedPassword = password
+    
+    if (!trimmedEmail) {
       setError('Please enter your email')
       return
     }
     
-    if (!password) {
+    if (!trimmedPassword) {
       setError('Please enter your password')
       return
     }
@@ -31,12 +34,17 @@ export default function SignInPage() {
     setIsSubmitting(true)
     
     try {
+      console.log('Attempting sign in for:', trimmedEmail)
+      
       const { data, error: authError } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password: password,
+        email: trimmedEmail,
+        password: trimmedPassword,
       })
       
+      console.log('Auth response:', { user: data?.user?.id, error: authError })
+      
       if (authError) {
+        console.error('Auth error:', authError)
         if (authError.message.includes('Invalid login')) {
           setError('Invalid email or password')
         } else {
@@ -52,22 +60,14 @@ export default function SignInPage() {
         return
       }
       
-      // Update last login (ignore errors - column may not exist)
-      try {
-        await supabase
-          .from('users')
-          .update({ last_login: new Date().toISOString() })
-          .eq('id', data.user.id)
-      } catch (e) {
-        // Ignore - last_login column may not exist
-      }
+      console.log('Sign in successful, redirecting...')
       
-      // Redirect to home - use window.location for reliability
+      // Redirect to home immediately
       window.location.href = '/home'
       
-    } catch (err) {
-      console.error('Sign in error:', err)
-      setError('An error occurred. Please try again.')
+    } catch (err: any) {
+      console.error('Sign in catch error:', err)
+      setError(err.message || 'An error occurred. Please try again.')
       setIsSubmitting(false)
     }
   }
