@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
 
 interface User {
@@ -8,21 +8,23 @@ interface User {
   email: string
   display_name: string | null
   credits: number
-  subscription_type: string | null
+  subscription_type: string
   subscription_ends_at: string | null
-  created_at: string | null
+  created_at: string
   referral_code: string | null
   referral_count: number
-  referral_tier: string | null
+  first_name?: string | null
+  address?: string | null
+  city?: string | null
+  state?: string | null
+  zip?: string | null
 }
 
 interface AuthContextType {
   user: User | null
   loading: boolean
-  signIn: (email: string, password: string) => Promise<{ error?: string }>
-  signUp: (email: string, password: string, name: string) => Promise<{ error?: string }>
   signOut: () => Promise<void>
-  refreshCredits: () => Promise<void>
+  refreshUser: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -32,15 +34,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Check for existing session
+    // Check for existing session on mount
     checkUser()
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('[Auth] State change:', event, session?.user?.id)
+      
       if (event === 'SIGNED_IN' && session?.user) {
         await loadUserProfile(session.user.id)
       } else if (event === 'SIGNED_OUT') {
         setUser(null)
+      } else if (event === 'TOKEN_REFRESHED' && session?.user) {
+        // Refresh user data on token refresh
+        await loadUserProfile(session.user.id)
       }
     })
 
@@ -48,130 +55,97 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   async function checkUser() {
+    console.log('[Auth] Checking user session...')
+    
     try {
-      // Add timeout to prevent hanging - increased to 10 seconds
+      // Increased timeout to 15 seconds
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Auth timeout')), 10000)
+        setTimeout(() => reject(new Error('Auth timeout')), 15000)
       )
       
       const sessionPromise = supabase.auth.getSession()
       
-      const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise]) as any
+      const result = await Promise.race([sessionPromise, timeoutPromise]) as any
+      const session = result?.data?.session
+      
+      console.log('[Auth] Session check result:', session ? 'Has session' : 'No session')
       
       if (session?.user) {
         await loadUserProfile(session.user.id)
       }
     } catch (error) {
-      console.error('Error checking user:', error)
+      console.error('[Auth] Error checking user:', error)
       // Don't block the app - just continue without user
+      // User can try signing in again
     } finally {
       setLoading(false)
     }
   }
 
   async function loadUserProfile(userId: string) {
+    console.log('[Auth] Loading profile for:', userId)
+    
     try {
-      const { data, error } = await supabase
+      // Add timeout for profile loading too
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Profile load timeout')), 10000)
+      )
+      
+      const profilePromise = supabase
         .from('users')
-        .select('id, email, display_name, credits, subscription_type, subscription_ends_at, created_at')
+        .select('id, email, display_name, credits, subscription_type, subscription_ends_at, created_at, first_name, address, city, state, zip')
         .eq('id', userId)
         .single()
-
-      if (error) throw error
       
-      // Set user with default values for referral fields (may not exist yet)
+      const { data, error } = await Promise.race([profilePromise, timeoutPromise]) as any
+
+      if (error) {
+        console.error('[Auth] Profile load error:', error)
+        // If user doesn't exist in users table, create minimal entry
+        if (error.code === 'PGRST116') {
+          console.log('[Auth] User not in users table, will be created on next action')
+        }
+        throw error
+      }
+      
+      console.log('[Auth] Profile loaded:', data?.email)
+      
+      // Set user with default values for optional fields
       setUser({
         ...data,
         referral_code: (data as any).referral_code || null,
         referral_count: (data as any).referral_count || 0,
-        referral_tier: (data as any).referral_tier || null
       })
     } catch (error) {
-      console.error('Error loading user profile:', error)
-      setLoading(false)
-    }
-  }
-
-  async function signIn(email: string, password: string) {
-    try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      })
-
-      if (error) return { error: error.message }
-      return {}
-    } catch (error: any) {
-      return { error: error.message || 'Sign in failed' }
-    }
-  }
-
-  async function signUp(email: string, password: string, name: string) {
-    try {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: { display_name: name }
-        }
-      })
-
-      if (error) return { error: error.message }
-
-      // Create user profile
-      if (data.user) {
-        await supabase.from('users').insert({
-          id: data.user.id,
-          email,
-          display_name: name,
-          credits: 0,
-          subscription_type: null
-        })
-      }
-
-      return {}
-    } catch (error: any) {
-      return { error: error.message || 'Sign up failed' }
+      console.error('[Auth] Error loading profile:', error)
+      // Still set loading to false so the app can continue
     }
   }
 
   async function signOut() {
-    // Save user name for "Welcome back" feature
-    if (user?.display_name) {
-      localStorage.setItem('dtt_last_user_name', user.display_name)
-      localStorage.setItem('dtt_last_user_email', user.email)
+    console.log('[Auth] Signing out...')
+    try {
+      await supabase.auth.signOut()
+      setUser(null)
+      // Force redirect to welcome
+      window.location.href = '/welcome'
+    } catch (error) {
+      console.error('[Auth] Sign out error:', error)
+      // Force clear anyway
+      setUser(null)
+      window.location.href = '/welcome'
     }
-    
-    await supabase.auth.signOut()
-    setUser(null)
   }
 
-  async function refreshCredits() {
-    if (!user) return
-
-    try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('credits')
-        .eq('id', user.id)
-        .single()
-
-      if (error) throw error
-      setUser(prev => prev ? { ...prev, credits: data.credits } : null)
-    } catch (error) {
-      console.error('Error refreshing credits:', error)
+  async function refreshUser() {
+    console.log('[Auth] Refreshing user...')
+    if (user?.id) {
+      await loadUserProfile(user.id)
     }
   }
 
   return (
-    <AuthContext.Provider value={{
-      user,
-      loading,
-      signIn,
-      signUp,
-      signOut,
-      refreshCredits
-    }}>
+    <AuthContext.Provider value={{ user, loading, signOut, refreshUser }}>
       {children}
     </AuthContext.Provider>
   )
