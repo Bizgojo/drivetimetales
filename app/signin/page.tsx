@@ -62,8 +62,13 @@ export default function SignInPage() {
         .from('users')
         .update({ last_login: new Date().toISOString() })
         .eq('id', data.user.id)
-        .then(() => console.log('[SignIn] Updated last_login'))
-        .catch(err => console.log('[SignIn] last_login update failed:', err))
+        .then((result) => {
+          if (result.error) {
+            console.log('[SignIn] last_login update failed:', result.error)
+          } else {
+            console.log('[SignIn] Updated last_login')
+          }
+        })
       
       // Use window.location for reliable redirect
       console.log('[SignIn] Redirecting to /home')
