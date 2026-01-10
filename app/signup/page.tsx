@@ -13,6 +13,8 @@ function SignUpContent() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [referralCode, setReferralCode] = useState('')
+  const [referrerName, setReferrerName] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   
@@ -20,6 +22,34 @@ function SignUpContent() {
   const planId = searchParams.get('plan') || 'premium'
   const billing = searchParams.get('billing') || 'monthly'
   const priceId = searchParams.get('priceId') || ''
+  const refCode = searchParams.get('ref') || ''
+
+  // Validate referral code from URL
+  useEffect(() => {
+    if (refCode) {
+      setReferralCode(refCode)
+      validateReferralCode(refCode)
+    }
+  }, [refCode])
+
+  async function validateReferralCode(code: string) {
+    if (!code) {
+      setReferrerName(null)
+      return
+    }
+    try {
+      const res = await fetch(`/api/referral?code=${code}`)
+      const data = await res.json()
+      if (data.valid) {
+        setReferrerName(data.referrer_name)
+      } else {
+        setReferrerName(null)
+      }
+    } catch (error) {
+      console.error('Error validating referral code:', error)
+      setReferrerName(null)
+    }
+  }
 
   const planNames: { [key: string]: string } = {
     basic: 'Basic',
@@ -97,6 +127,23 @@ function SignUpContent() {
       
       if (profileError) {
         console.error('Profile creation error:', profileError)
+      }
+
+      // Process referral if there's a valid code
+      if (referralCode && referrerName) {
+        try {
+          await fetch('/api/referral', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              referral_code: referralCode,
+              referred_user_id: authData.user.id
+            })
+          })
+        } catch (refError) {
+          console.error('Referral processing error:', refError)
+          // Don't block signup if referral fails
+        }
       }
       
       // Redirect to Stripe checkout
@@ -247,6 +294,44 @@ function SignUpContent() {
                 className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-orange-500"
                 autoComplete="new-password"
               />
+            </div>
+
+            {/* Referral Code */}
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">
+                Referral Code <span className="text-slate-500">(optional)</span>
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={referralCode}
+                  onChange={(e) => {
+                    setReferralCode(e.target.value.toUpperCase())
+                    validateReferralCode(e.target.value)
+                  }}
+                  placeholder="FRIEND123"
+                  className={`w-full px-4 py-3 bg-slate-800 border rounded-xl text-white focus:outline-none ${
+                    referrerName 
+                      ? 'border-green-500' 
+                      : referralCode && !referrerName 
+                        ? 'border-red-500' 
+                        : 'border-slate-700 focus:border-orange-500'
+                  }`}
+                />
+                {referrerName && (
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-green-400">✓</span>
+                )}
+              </div>
+              {referrerName && (
+                <p className="text-green-400 text-sm mt-1">
+                  🎉 Referred by {referrerName} - You'll get 3 free credits!
+                </p>
+              )}
+              {referralCode && !referrerName && (
+                <p className="text-slate-500 text-xs mt-1">
+                  Invalid code - but you can still sign up!
+                </p>
+              )}
             </div>
             
             {/* Error Message */}
