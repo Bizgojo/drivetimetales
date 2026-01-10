@@ -115,8 +115,20 @@ export default function AdminNewsPage() {
   const [activeTab, setActiveTab] = useState<'settings' | 'episodes'>('settings')
 
   useEffect(() => {
-    loadSettings()
+    // Set a max timeout to prevent infinite loading
+    const timeout = setTimeout(() => {
+      console.log('[News] Loading timeout - showing page with defaults')
+      setSettings(prev => ({
+        ...prev,
+        categories: initializeCategories()
+      }))
+      setLoading(false)
+    }, 5000)
+
+    loadSettings().finally(() => clearTimeout(timeout))
     loadEpisodes()
+    
+    return () => clearTimeout(timeout)
   }, [])
 
   async function loadSettings() {
@@ -166,14 +178,18 @@ export default function AdminNewsPage() {
   }
 
   async function loadEpisodes() {
-    const { data } = await supabase
-      .from('news_episodes')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(20)
+    try {
+      const { data } = await supabase
+        .from('news_episodes')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(20)
 
-    if (data) {
-      setEpisodes(data)
+      if (data) {
+        setEpisodes(data)
+      }
+    } catch (error) {
+      console.error('Error loading episodes:', error)
     }
   }
 
@@ -323,7 +339,10 @@ export default function AdminNewsPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-white text-sm">Loading news settings...</p>
+        </div>
       </div>
     )
   }
