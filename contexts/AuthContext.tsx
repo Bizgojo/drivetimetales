@@ -26,6 +26,7 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<{ error: any }>
   signOut: () => Promise<void>
   refreshUser: () => Promise<void>
+  refreshCredits: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -169,8 +170,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  async function refreshCredits() {
+    console.log('[Auth] Refreshing credits...')
+    if (user?.id) {
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .select('credits')
+          .eq('id', user.id)
+          .single()
+        
+        if (!error && data) {
+          setUser(prev => prev ? { ...prev, credits: data.credits } : null)
+        }
+      } catch (err) {
+        console.error('[Auth] Error refreshing credits:', err)
+      }
+    }
+  }
+
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signOut, refreshUser }}>
+    <AuthContext.Provider value={{ user, loading, signIn, signOut, refreshUser, refreshCredits }}>
       {children}
     </AuthContext.Provider>
   )
