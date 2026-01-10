@@ -60,9 +60,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     console.log('[Auth] Checking user session...')
     
     try {
-      // Increased timeout to 15 seconds
+      // Increased timeout to 30 seconds for slow connections
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Auth timeout')), 15000)
+        setTimeout(() => reject(new Error('Auth timeout')), 30000)
       )
       
       const sessionPromise = supabase.auth.getSession()
