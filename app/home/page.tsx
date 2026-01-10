@@ -96,7 +96,7 @@ export default function HomePage() {
   }, [user])
 
   async function loadStories() {
-    console.log('[Home] Loading stories...')
+    console.log('[Home] Loading stories via API...')
     
     // Set a timeout to prevent infinite loading
     const timeout = setTimeout(() => {
@@ -106,25 +106,25 @@ export default function HomePage() {
     }, 10000)
     
     try {
-      // Get new releases (3 most recent)
-      const { data: newStories, error: newError } = await supabase
-        .from('stories')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(3)
+      // Use API route instead of direct Supabase (bypasses RLS issues)
+      const response = await fetch('/api/stories')
+      const allStories = await response.json()
       
-      console.log('[Home] New releases:', newStories?.length || 0, newError || '')
-      if (newStories) setNewReleases(newStories)
-
-      // Get recommended (next 6 stories for variety)
-      const { data: recStories, error: recError } = await supabase
-        .from('stories')
-        .select('*')
-        .order('rating', { ascending: false })
-        .limit(10)
+      console.log('[Home] API returned', allStories.length, 'stories')
       
-      console.log('[Home] Recommended:', recStories?.length || 0, recError || '')
-      if (recStories) setRecommended(recStories)
+      if (allStories && allStories.length > 0) {
+        // Sort by created_at for new releases (3 most recent)
+        const sortedByDate = [...allStories].sort((a: Story, b: Story) => 
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        )
+        setNewReleases(sortedByDate.slice(0, 3))
+        
+        // Sort by rating for recommended (top 10)
+        const sortedByRating = [...allStories].sort((a: Story, b: Story) => 
+          (b.rating || 0) - (a.rating || 0)
+        )
+        setRecommended(sortedByRating.slice(0, 10))
+      }
       
       clearTimeout(timeout)
     } catch (error) {
