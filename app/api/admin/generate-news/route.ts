@@ -1,5 +1,6 @@
 // app/api/admin/generate-news/route.ts
 // API endpoint to generate news episodes by category
+// Uses Claude with web search to get REAL current news from CNN, ABC, CBS, Fox, NBC
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
@@ -12,30 +13,6 @@ const supabase = createClient(
 
 export const maxDuration = 300; // 5 minute timeout for long generation
 
-// Category-specific RSS feeds
-const CATEGORY_FEEDS: Record<string, string[]> = {
-  national: [
-    'https://feeds.npr.org/1001/rss.xml',
-    'https://rss.nytimes.com/services/xml/rss/nyt/US.xml',
-  ],
-  international: [
-    'https://feeds.npr.org/1004/rss.xml',
-    'https://rss.nytimes.com/services/xml/rss/nyt/World.xml',
-  ],
-  business: [
-    'https://feeds.npr.org/1006/rss.xml',
-    'https://rss.nytimes.com/services/xml/rss/nyt/Business.xml',
-  ],
-  sports: [
-    'https://www.espn.com/espn/rss/news',
-    'https://rss.nytimes.com/services/xml/rss/nyt/Sports.xml',
-  ],
-  science: [
-    'https://feeds.npr.org/1007/rss.xml',
-    'https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml',
-  ],
-};
-
 const CATEGORY_NAMES: Record<string, string> = {
   national: 'National News',
   international: 'International News',
@@ -44,119 +21,55 @@ const CATEGORY_NAMES: Record<string, string> = {
   science: 'Science & Technology',
 };
 
-interface NewsItem {
-  title: string;
-  description: string;
-  link: string;
-  pubDate: string;
-  source: string;
-}
+const CATEGORY_SEARCH_QUERIES: Record<string, string> = {
+  national: 'breaking news today US America CNN ABC CBS Fox NBC',
+  international: 'world news today international global CNN ABC CBS Fox NBC',
+  business: 'business news today stock market economy finance CNBC Bloomberg Fox Business',
+  sports: 'sports news today NFL NBA MLB ESPN CBS Sports Fox Sports',
+  science: 'science technology news today CNN NBC CBS Wired',
+};
 
-// Simple RSS parser
-async function fetchRSSFeed(url: string): Promise<NewsItem[]> {
-  try {
-    const response = await fetch(url, { 
-      next: { revalidate: 0 },
-      headers: { 'User-Agent': 'DriveTimeTales/1.0' }
-    });
-    
-    if (!response.ok) {
-      console.error(`Failed to fetch RSS: ${url} - ${response.status}`);
-      return [];
-    }
-    
-    const xml = await response.text();
-    const items: NewsItem[] = [];
-    
-    // Simple XML parsing for RSS items
-    const itemMatches = xml.match(/<item[^>]*>[\s\S]*?<\/item>/gi) || [];
-    
-    for (const itemXml of itemMatches.slice(0, 10)) {
-      const title = itemXml.match(/<title[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/i)?.[1]?.trim() || '';
-      const description = itemXml.match(/<description[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/i)?.[1]?.trim() || '';
-      const link = itemXml.match(/<link[^>]*>([\s\S]*?)<\/link>/i)?.[1]?.trim() || '';
-      const pubDate = itemXml.match(/<pubDate[^>]*>([\s\S]*?)<\/pubDate>/i)?.[1]?.trim() || '';
-      
-      if (title) {
-        items.push({
-          title: title.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>'),
-          description: description.replace(/<[^>]+>/g, '').substring(0, 300),
-          link,
-          pubDate,
-          source: new URL(url).hostname
-        });
-      }
-    }
-    
-    return items;
-  } catch (error) {
-    console.error(`Error fetching RSS ${url}:`, error);
-    return [];
-  }
-}
-
-async function fetchCategoryStories(category: string, maxStories: number = 5): Promise<NewsItem[]> {
-  // Get custom feeds from settings or use defaults
-  const { data: settings } = await supabase
-    .from('news_settings')
-    .select('categories')
-    .eq('id', 1)
-    .single();
-
-  const feeds = settings?.categories?.[category]?.feeds || CATEGORY_FEEDS[category] || [];
-  
-  const allItems: NewsItem[] = [];
-  
-  for (const feedUrl of feeds) {
-    const items = await fetchRSSFeed(feedUrl);
-    allItems.push(...items);
-  }
-  
-  // Deduplicate by title similarity and return top stories
-  const seen = new Set<string>();
-  const unique = allItems.filter(item => {
-    const key = item.title.toLowerCase().substring(0, 50);
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-  
-  return unique.slice(0, maxStories);
-}
-
-async function generateScriptWithClaude(
+async function generateScriptWithRealNews(
   category: string,
-  stories: NewsItem[],
-  apiKey: string
+  apiKey: string,
+  storiesCount: number = 5
 ): Promise<{ script: string; title: string }> {
   const categoryName = CATEGORY_NAMES[category] || category;
+  const searchQuery = CATEGORY_SEARCH_QUERIES[category];
   const now = new Date();
   const dateStr = now.toLocaleDateString('en-US', { 
     weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' 
   });
   const edition = now.getHours() < 12 ? 'Morning' : 'Evening';
-  
-  const storySummaries = stories.map((s, i) => 
-    `${i + 1}. ${s.title}\n   ${s.description}`
-  ).join('\n\n');
 
-  const prompt = `You are a professional radio news anchor for Drive Time Tales, an audio platform for commuters and truckers.
+  const prompt = `You are a news researcher and radio script writer for Drive Time Tales, an audio platform for drivers.
 
-Write a natural, engaging ${categoryName} briefing script for ${dateStr}, ${edition} Edition.
+YOUR TASK:
+1. Search the web for: "${searchQuery}"
+2. Find the ${storiesCount} biggest REAL news stories being covered RIGHT NOW by major news outlets
+3. Write a radio news briefing script reporting these REAL stories
 
-Here are the top ${stories.length} stories to cover:
+CRITICAL REQUIREMENTS:
+- Search for and report ONLY real, actual news stories happening today
+- Include real names, real places, real numbers from actual news coverage
+- Do NOT make up or fabricate any news - only report what you find in your search
+- Each story should be 2-3 sentences with specific factual details
 
-${storySummaries}
+SCRIPT FORMAT:
+Start: "Good ${edition.toLowerCase()}, drivers. This is your ${categoryName} briefing for ${dateStr}..."
 
-Guidelines:
-- Start with a brief intro: "Good ${edition.toLowerCase()}, drivers. This is your ${categoryName} briefing for ${dateStr}..."
-- Cover each story in 2-3 sentences, conversational tone
-- Use transitions between stories
-- End with a brief outro: "That's your ${categoryName} update. Stay safe out there, and we'll see you next time on Drive Time Tales."
-- Total length: approximately 3-4 minutes when read aloud
-- Write ONLY the script text, no stage directions or notes
+Then report the ${storiesCount} real news stories with transitions like:
+- "Our top story..."
+- "In other news..."
+- "Meanwhile..."
+- "Also making headlines today..."
+- "And finally..."
 
-Write the script now:`;
+End: "That's your ${categoryName} update. Stay safe out there, and we'll see you next time on Drive Time Tales."
+
+Search for real news and write the script now:`;
+
+  console.log(`[News Generator] Calling Claude API with web search for real ${category} news...`);
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -167,18 +80,45 @@ Write the script now:`;
     },
     body: JSON.stringify({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 2000,
+      max_tokens: 3000,
+      tools: [
+        {
+          type: 'web_search_20250305',
+          name: 'web_search'
+        }
+      ],
       messages: [{ role: 'user', content: prompt }]
     })
   });
 
   if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Claude API error: ${error}`);
+    const errorText = await response.text();
+    console.error('[News Generator] Claude API error:', errorText);
+    throw new Error(`Claude API error: ${response.status} - ${errorText}`);
   }
 
   const data = await response.json();
-  const script = data.content[0]?.text || '';
+  
+  // Extract text from response (may have multiple content blocks due to tool use)
+  let script = '';
+  for (const block of data.content) {
+    if (block.type === 'text') {
+      script += block.text;
+    }
+  }
+  
+  if (!script) {
+    throw new Error('No script generated from Claude');
+  }
+
+  // Clean up the script - remove any markdown or extra formatting
+  script = script
+    .replace(/```[\s\S]*?```/g, '') // Remove code blocks
+    .replace(/\*\*/g, '') // Remove bold markers
+    .replace(/\n{3,}/g, '\n\n') // Normalize line breaks
+    .trim();
+
+  console.log(`[News Generator] Script generated with real news: ${script.length} chars`);
   
   return {
     script,
@@ -191,6 +131,8 @@ async function generateAudioWithElevenLabs(
   voiceId: string,
   apiKey: string
 ): Promise<{ audioBuffer: Buffer; durationSeconds: number }> {
+  console.log(`[News Generator] Calling ElevenLabs API with voice ${voiceId}...`);
+  
   const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
     method: 'POST',
     headers: {
@@ -209,6 +151,7 @@ async function generateAudioWithElevenLabs(
 
   if (!response.ok) {
     const error = await response.text();
+    console.error('[News Generator] ElevenLabs error:', error);
     throw new Error(`ElevenLabs API error: ${error}`);
   }
 
@@ -218,6 +161,8 @@ async function generateAudioWithElevenLabs(
   // Estimate duration: ~150 words per minute, ~5 characters per word
   const estimatedWords = script.length / 5;
   const durationSeconds = (estimatedWords / 150) * 60;
+  
+  console.log(`[News Generator] Audio generated: ${audioBuffer.length} bytes, ~${durationSeconds.toFixed(0)}s`);
   
   return { audioBuffer, durationSeconds };
 }
@@ -231,7 +176,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid category' }, { status: 400 });
     }
 
-    console.log(`[News Generator] Starting ${category} briefing...`);
+    console.log(`[News Generator] ========================================`);
+    console.log(`[News Generator] Starting ${category} briefing generation...`);
 
     // Get settings
     const { data: settings } = await supabase
@@ -246,33 +192,24 @@ export async function POST(request: NextRequest) {
     const elevenLabsKey = process.env.ELEVENLABS_API_KEY;
 
     if (!anthropicKey) {
+      console.error('[News Generator] Missing ANTHROPIC_API_KEY');
       return NextResponse.json({ error: 'Anthropic API key not configured' }, { status: 500 });
     }
     if (!elevenLabsKey) {
+      console.error('[News Generator] Missing ELEVENLABS_API_KEY');
       return NextResponse.json({ error: 'ElevenLabs API key not configured' }, { status: 500 });
     }
 
-    // Step 1: Fetch stories
-    console.log(`[News Generator] Fetching ${category} stories...`);
-    const stories = await fetchCategoryStories(category, storiesPerCategory);
-    
-    if (stories.length === 0) {
-      return NextResponse.json({ error: 'No stories found for category' }, { status: 500 });
-    }
-    
-    console.log(`[News Generator] Found ${stories.length} stories`);
+    // Step 1: Generate script with real news from web search
+    console.log(`[News Generator] Step 1: Searching for real ${category} news...`);
+    const { script, title } = await generateScriptWithRealNews(category, anthropicKey, storiesPerCategory);
 
-    // Step 2: Generate script
-    console.log('[News Generator] Generating script...');
-    const { script, title } = await generateScriptWithClaude(category, stories, anthropicKey);
-    console.log(`[News Generator] Script generated: ${script.length} chars`);
-
-    // Step 3: Generate audio
-    console.log('[News Generator] Generating audio...');
+    // Step 2: Generate audio
+    console.log('[News Generator] Step 2: Generating audio...');
     const { audioBuffer, durationSeconds } = await generateAudioWithElevenLabs(script, voiceId, elevenLabsKey);
-    console.log(`[News Generator] Audio generated: ${durationSeconds.toFixed(0)}s`);
 
-    // Step 4: Upload to Supabase Storage
+    // Step 3: Upload to Supabase Storage
+    console.log('[News Generator] Step 3: Uploading audio to storage...');
     const now = new Date();
     const dateStr = now.toISOString().split('T')[0];
     const edition = now.getHours() < 12 ? 'AM' : 'PM';
@@ -287,14 +224,14 @@ export async function POST(request: NextRequest) {
 
     if (uploadError) {
       console.error('[News Generator] Upload error:', uploadError);
-      // Continue without audio - save script only
     }
 
     const { data: publicUrl } = supabase.storage
       .from('audio')
       .getPublicUrl(audioFileName);
 
-    // Step 5: Create episode record
+    // Step 4: Create episode record
+    console.log('[News Generator] Step 4: Saving episode to database...');
     const { data: episode, error: insertError } = await supabase
       .from('news_episodes')
       .insert({
@@ -311,18 +248,21 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (insertError) {
-      console.error('[News Generator] Insert error:', insertError);
+      console.error('[News Generator] Database insert error:', insertError);
       return NextResponse.json({ error: 'Failed to save episode' }, { status: 500 });
     }
 
-    // Step 6: Set this as the live episode for this category (unset others)
+    // Step 5: Set this as the live episode for this category (unset others)
     await supabase
       .from('news_episodes')
       .update({ is_live: false })
       .eq('category', category)
       .neq('id', episode.id);
 
-    console.log(`[News Generator] ✅ ${category} briefing published: ${episode.id}`);
+    console.log(`[News Generator] ✅ SUCCESS: ${category} briefing published!`);
+    console.log(`[News Generator] Episode ID: ${episode.id}`);
+    console.log(`[News Generator] Audio URL: ${publicUrl.publicUrl}`);
+    console.log(`[News Generator] ========================================`);
 
     return NextResponse.json({
       success: true,
@@ -332,12 +272,12 @@ export async function POST(request: NextRequest) {
         category,
         audioUrl: publicUrl.publicUrl,
         durationMins: Math.ceil(durationSeconds / 60),
-        storiesCount: stories.length
+        storiesCount: storiesPerCategory
       }
     });
 
   } catch (error) {
-    console.error('[News Generator] Error:', error);
+    console.error('[News Generator] ❌ ERROR:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Generation failed' },
       { status: 500 }
@@ -351,7 +291,6 @@ export async function GET(request: NextRequest) {
   const category = searchParams.get('category');
 
   if (category) {
-    // Get live episode for specific category
     const { data: episode } = await supabase
       .from('news_episodes')
       .select('*')
@@ -362,7 +301,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ episode });
   }
 
-  // Return all live episodes (one per category)
   const { data: episodes } = await supabase
     .from('news_episodes')
     .select('*')
