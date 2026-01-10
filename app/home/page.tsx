@@ -254,15 +254,15 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* Continue Listening */}
-        {continueListening && (
-          <section className="mb-8">
-            <h2 className="text-lg font-bold mb-4">CONTINUE LISTENING</h2>
+        {/* Continue Listening - always show (placeholder if no unfinished) */}
+        <section className="mb-8">
+          <h2 className="text-lg font-bold mb-4">CONTINUE LISTENING</h2>
+          {continueListening ? (
             <Link
               href={`/player/${continueListening.story_id}`}
-              className="flex bg-slate-800 rounded-xl overflow-hidden hover:bg-slate-700 transition h-24"
+              className="flex bg-slate-800 rounded-xl overflow-hidden hover:bg-slate-700 transition h-28"
             >
-              <div className="p-2 flex-shrink-0 w-20">
+              <div className="p-2 flex-shrink-0 w-24">
                 <div className="rounded-lg overflow-hidden h-full w-full" style={{ boxShadow: '0 0 12px rgba(255, 255, 255, 0.4), 0 0 24px rgba(255, 255, 255, 0.2)' }}>
                   {continueListening.stories?.cover_url ? (
                     <img 
@@ -277,9 +277,8 @@ export default function HomePage() {
               </div>
               <div className="flex-1 p-3 flex flex-col justify-center">
                 <h3 className="font-bold text-white text-sm mb-0.5 line-clamp-1">{continueListening.stories?.title}</h3>
-                <p className="text-white text-xs mb-2">
-                  {formatGenre(continueListening.stories?.genre)} • {formatDuration(continueListening.stories as Story)}
-                </p>
+                <p className="text-white text-xs mb-0.5">{formatGenre(continueListening.stories?.genre)}</p>
+                <p className="text-white text-xs mb-2">{formatDuration(continueListening.stories as Story)} • {formatCredits(continueListening.stories as Story)}</p>
                 <div className="flex items-center gap-2">
                   <div className="flex-1 h-1.5 bg-slate-600 rounded-full">
                     <div 
@@ -298,8 +297,18 @@ export default function HomePage() {
                 </div>
               </div>
             </Link>
-          </section>
-        )}
+          ) : (
+            <div className="flex bg-slate-800 rounded-xl overflow-hidden h-28">
+              <div className="p-2 flex-shrink-0 w-24">
+                <div className="rounded-lg overflow-hidden h-full w-full bg-slate-700 flex items-center justify-center text-2xl">📖</div>
+              </div>
+              <div className="flex-1 p-3 flex flex-col justify-center">
+                <p className="text-slate-400 text-sm">No stories in progress</p>
+                <p className="text-slate-500 text-xs">Start listening to see your progress here</p>
+              </div>
+            </div>
+          )}
+        </section>
 
         {/* New Releases */}
         <section className="mb-8">
@@ -332,8 +341,9 @@ export default function HomePage() {
                   </div>
                   <div className="mt-2">
                     <h3 className="font-medium text-sm text-white line-clamp-1">{story.title}</h3>
-                    <p className="text-white text-xs">{formatGenre(story.genre)} • {formatCredits(story)}</p>
-                    <p className="text-white text-xs">By {story.author || 'Drive Time Tales'} • {formatDuration(story)}</p>
+                    <p className="text-white text-xs">{formatGenre(story.genre)}</p>
+                    <p className="text-white text-xs">By {story.author || 'Drive Time Tales'}</p>
+                    <p className="text-white text-xs">{formatDuration(story)} • {formatCredits(story)}</p>
                     <p className="text-white text-xs opacity-70">{formatReleaseDate(story.created_at)}</p>
                   </div>
                 </Link>
@@ -359,9 +369,9 @@ export default function HomePage() {
                 <Link
                   key={story.id}
                   href={`/story/${story.id}`}
-                  className="flex bg-slate-800 rounded-xl overflow-hidden hover:bg-slate-700 transition h-24"
+                  className="flex bg-slate-800 rounded-xl overflow-hidden hover:bg-slate-700 transition h-32"
                 >
-                  <div className="p-2 flex-shrink-0 w-20">
+                  <div className="p-2 flex-shrink-0 w-28">
                     <div 
                       className="rounded-lg overflow-hidden h-full w-full"
                       style={{ boxShadow: '0 0 12px rgba(255, 255, 255, 0.4), 0 0 24px rgba(255, 255, 255, 0.2)' }}
@@ -379,8 +389,9 @@ export default function HomePage() {
                   </div>
                   <div className="flex-1 p-3 flex flex-col justify-center">
                     <h3 className="font-bold text-white text-sm mb-0.5 line-clamp-1">{story.title}</h3>
-                    <p className="text-white text-xs mb-0.5">{formatGenre(story.genre)} • {formatCredits(story)}</p>
-                    <p className="text-white text-xs mb-1">By {story.author || 'Drive Time Tales'} • {formatDuration(story)}</p>
+                    <p className="text-white text-xs mb-0.5">{formatGenre(story.genre)}</p>
+                    <p className="text-white text-xs mb-0.5">By {story.author || 'Drive Time Tales'}</p>
+                    <p className="text-white text-xs mb-1">{formatDuration(story)} • {formatCredits(story)}</p>
                     <div className="flex items-center gap-2">
                       <div className="flex text-xs">
                         {renderStarRating(story.average_rating || story.rating || 0)}
@@ -427,7 +438,7 @@ export default function HomePage() {
             href="/share" 
             className="block w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-4 rounded-xl text-center transition"
           >
-            Share With A Friend - A Win Win
+            Share With A Friend - Its A Win Win
           </Link>
         </div>
       </div>
