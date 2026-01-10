@@ -340,8 +340,8 @@ export default function HomePage() {
               className="flex items-center gap-4 bg-slate-900 rounded-xl p-4 hover:bg-slate-800 transition"
             >
               <div className="w-16 h-16 bg-slate-800 rounded-lg flex items-center justify-center">
-                {continueListening.stories?.cover_image ? (
-                  <img src={continueListening.stories.cover_image} alt="" className="w-full h-full object-cover rounded-lg" />
+                {continueListening.stories?.cover_url ? (
+                  <img src={continueListening.stories.cover_url} alt="" className="w-full h-full object-cover rounded-lg" />
                 ) : (
                   <span className="text-2xl">📖</span>
                 )}
