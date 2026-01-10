@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
-import NewsBriefings from '@/components/news/NewsBriefings'
 
 interface Story {
   id: string
@@ -232,6 +231,36 @@ export default function HomePage() {
         )}
       </div>
 
+      {/* Daily News Briefings */}
+      <section className="px-4 py-3">
+        <h2 className="text-sm font-bold text-white mb-2 uppercase tracking-wide">📰 Daily News Briefings</h2>
+        <div className="bg-slate-800 rounded-xl p-3">
+          <p className="text-slate-400 text-xs mb-3">Top 5 stories • Updated twice daily</p>
+          <div className="grid grid-cols-5 gap-2">
+            <Link href="/news/national" className="bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 rounded-lg p-2 text-center transition">
+              <span className="text-xl block">🇺🇸</span>
+              <span className="text-[10px] text-blue-300">National</span>
+            </Link>
+            <Link href="/news/international" className="bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 rounded-lg p-2 text-center transition">
+              <span className="text-xl block">🌍</span>
+              <span className="text-[10px] text-green-300">World</span>
+            </Link>
+            <Link href="/news/business" className="bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/30 rounded-lg p-2 text-center transition">
+              <span className="text-xl block">💼</span>
+              <span className="text-[10px] text-yellow-300">Business</span>
+            </Link>
+            <Link href="/news/sports" className="bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-lg p-2 text-center transition">
+              <span className="text-xl block">⚽</span>
+              <span className="text-[10px] text-red-300">Sports</span>
+            </Link>
+            <Link href="/news/science" className="bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 rounded-lg p-2 text-center transition">
+              <span className="text-xl block">🔬</span>
+              <span className="text-[10px] text-purple-300">Sci/Tech</span>
+            </Link>
+          </div>
+        </div>
+      </section>
+
       {/* Low Credits Warning */}
       {isLowCredits && (
         <Link 
@@ -245,11 +274,6 @@ export default function HomePage() {
           <span className="text-orange-400 font-bold">Buy More →</span>
         </Link>
       )}
-
-      {/* Daily News Briefings */}
-      <section className="px-4 py-4 border-b border-slate-800">
-        <NewsBriefings userSubscription={user?.subscription_type} />
-      </section>
 
       {/* Continue Listening */}
       {continueListening && (
