@@ -11,6 +11,9 @@ interface User {
   subscription_type: string | null
   subscription_ends_at: string | null
   created_at: string | null
+  referral_code: string | null
+  referral_count: number
+  referral_tier: string | null
 }
 
 interface AuthContextType {
@@ -69,7 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const { data, error } = await supabase
         .from('users')
-        .select('id, email, display_name, credits, subscription_type, subscription_ends_at, created_at')
+        .select('id, email, display_name, credits, subscription_type, subscription_ends_at, created_at, referral_code, referral_count, referral_tier')
         .eq('id', userId)
         .single()
 
