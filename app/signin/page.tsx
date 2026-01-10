@@ -52,16 +52,21 @@ export default function SignInPage() {
         return
       }
       
-      // Update last login
-      await supabase
-        .from('users')
-        .update({ last_login: new Date().toISOString() })
-        .eq('id', data.user.id)
+      // Update last login (ignore errors - column may not exist)
+      try {
+        await supabase
+          .from('users')
+          .update({ last_login: new Date().toISOString() })
+          .eq('id', data.user.id)
+      } catch (e) {
+        // Ignore - last_login column may not exist
+      }
       
-      // Redirect to home
-      router.push('/home')
+      // Redirect to home - use window.location for reliability
+      window.location.href = '/home'
       
     } catch (err) {
+      console.error('Sign in error:', err)
       setError('An error occurred. Please try again.')
       setIsSubmitting(false)
     }
