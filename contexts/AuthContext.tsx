@@ -49,9 +49,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function checkUser() {
     try {
-      // Add timeout to prevent hanging
+      // Add timeout to prevent hanging - increased to 10 seconds
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Auth timeout')), 3000)
+        setTimeout(() => reject(new Error('Auth timeout')), 10000)
       )
       
       const sessionPromise = supabase.auth.getSession()
@@ -63,6 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error('Error checking user:', error)
+      // Don't block the app - just continue without user
     } finally {
       setLoading(false)
     }
