@@ -23,6 +23,7 @@ interface User {
 interface AuthContextType {
   user: User | null
   loading: boolean
+  signIn: (email: string, password: string) => Promise<{ error: any }>
   signOut: () => Promise<void>
   refreshUser: () => Promise<void>
 }
@@ -122,6 +123,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  async function signIn(email: string, password: string): Promise<{ error: any }> {
+    console.log('[Auth] signIn called for:', email)
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password: password,
+      })
+      
+      if (error) {
+        console.error('[Auth] signIn error:', error)
+        return { error }
+      }
+      
+      if (data.user) {
+        await loadUserProfile(data.user.id)
+      }
+      
+      return { error: null }
+    } catch (err) {
+      console.error('[Auth] signIn catch:', err)
+      return { error: err }
+    }
+  }
+
   async function signOut() {
     console.log('[Auth] Signing out...')
     try {
@@ -145,7 +170,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, signOut, refreshUser }}>
+    <AuthContext.Provider value={{ user, loading, signIn, signOut, refreshUser }}>
       {children}
     </AuthContext.Provider>
   )
