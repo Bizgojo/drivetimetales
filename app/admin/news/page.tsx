@@ -73,6 +73,8 @@ const NEWS_CATEGORIES = [
 interface CategorySettings {
   enabled: boolean
   feeds: string[]
+  voice_id: string
+  last_generated: string | null
 }
 
 interface NewsSettings {
@@ -100,19 +102,21 @@ export default function AdminNewsPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [generating, setGenerating] = useState<string | null>(null)
+  const [previewing, setPreviewing] = useState<string | null>(null)
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
   
   const [settings, setSettings] = useState<NewsSettings>({
     categories: {},
     narrator_voice_id: 'EXAVITQu4vr4xnSDxMaL',
     narrator_voice_name: 'Sarah (Female)',
-    generation_times: ['06:00', '18:00'],
+    generation_times: ['06:00', '12:00', '18:00'],
     auto_generate: true,
     stories_per_category: 5,
   })
 
   const [episodes, setEpisodes] = useState<NewsEpisode[]>([])
   const [activeTab, setActiveTab] = useState<'settings' | 'episodes'>('settings')
+  const [previewAudio, setPreviewAudio] = useState<HTMLAudioElement | null>(null)
 
   useEffect(() => {
     // Set a max timeout to prevent infinite loading
@@ -140,11 +144,25 @@ export default function AdminNewsPage() {
         .single()
 
       if (data) {
+        // Merge database categories with defaults to ensure voice_id and last_generated exist
+        const defaultCats = initializeCategories()
+        const mergedCategories: Record<string, CategorySettings> = {}
+        
+        Object.keys(defaultCats).forEach(catId => {
+          const dbCat = data.categories?.[catId] || {}
+          mergedCategories[catId] = {
+            enabled: dbCat.enabled ?? defaultCats[catId].enabled,
+            feeds: dbCat.feeds || defaultCats[catId].feeds,
+            voice_id: dbCat.voice_id || 'EXAVITQu4vr4xnSDxMaL',
+            last_generated: dbCat.last_generated || null
+          }
+        })
+        
         setSettings({
-          categories: data.categories || initializeCategories(),
+          categories: mergedCategories,
           narrator_voice_id: data.narrator_voice_id || 'EXAVITQu4vr4xnSDxMaL',
           narrator_voice_name: data.narrator_voice_name || 'Sarah (Female)',
-          generation_times: data.generation_times || ['06:00', '18:00'],
+          generation_times: data.generation_times || ['06:00', '12:00', '18:00'],
           auto_generate: data.auto_generate ?? true,
           stories_per_category: data.stories_per_category || 5,
         })
@@ -171,7 +189,9 @@ export default function AdminNewsPage() {
     NEWS_CATEGORIES.forEach(cat => {
       cats[cat.id] = {
         enabled: true,
-        feeds: cat.defaultFeeds
+        feeds: cat.defaultFeeds,
+        voice_id: 'EXAVITQu4vr4xnSDxMaL', // Default to Sarah
+        last_generated: null
       }
     })
     return cats
@@ -229,12 +249,26 @@ export default function AdminNewsPage() {
       const response = await fetch('/api/admin/generate-news', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ category: categoryId })
+        body: JSON.stringify({ 
+          category: categoryId,
+          voice_id: settings.categories[categoryId]?.voice_id
+        })
       })
 
       const result = await response.json()
 
       if (result.success) {
+        // Update last_generated timestamp
+        setSettings(prev => ({
+          ...prev,
+          categories: {
+            ...prev.categories,
+            [categoryId]: {
+              ...prev.categories[categoryId],
+              last_generated: new Date().toISOString()
+            }
+          }
+        }))
         setMessage({ type: 'success', text: `${getCategoryName(categoryId)} briefing generated!` })
         loadEpisodes()
       } else {
@@ -291,6 +325,20 @@ export default function AdminNewsPage() {
     return NEWS_CATEGORIES.find(c => c.id === id)?.icon || '📰'
   }
 
+  function formatLastGenerated(timestamp: string | null): string {
+    if (!timestamp) return 'Never'
+    const date = new Date(timestamp)
+    return date.toLocaleString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: 'America/New_York'
+    }) + ' EST'
+  }
+
   function toggleCategory(categoryId: string) {
     setSettings(prev => ({
       ...prev,
@@ -315,6 +363,70 @@ export default function AdminNewsPage() {
         }
       }
     }))
+  }
+
+  function updateCategoryVoice(categoryId: string, voiceId: string) {
+    setSettings(prev => ({
+      ...prev,
+      categories: {
+        ...prev.categories,
+        [categoryId]: {
+          ...prev.categories[categoryId],
+          voice_id: voiceId
+        }
+      }
+    }))
+  }
+
+  async function previewVoice(categoryId: string, voiceId: string) {
+    // Stop any currently playing preview
+    if (previewAudio) {
+      previewAudio.pause()
+      previewAudio.src = ''
+      setPreviewAudio(null)
+    }
+
+    setPreviewing(categoryId)
+    
+    try {
+      const voice = AVAILABLE_VOICES.find(v => v.id === voiceId)
+      const voiceName = voice?.name.split(' ')[0] || 'narrator'
+      const categoryName = NEWS_CATEGORIES.find(c => c.id === categoryId)?.name || categoryId
+      
+      const response = await fetch('/api/admin/preview-voice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          voice_id: voiceId,
+          text: `Hello, I'm ${voiceName}, and I'll be your ${categoryName} narrator. Stay informed with Drive Time Tales.`
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error('Preview failed')
+      }
+
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      const audio = new Audio(url)
+      
+      audio.onended = () => {
+        setPreviewing(null)
+        URL.revokeObjectURL(url)
+      }
+      
+      audio.onerror = () => {
+        setPreviewing(null)
+        setMessage({ type: 'error', text: 'Failed to play preview' })
+      }
+
+      setPreviewAudio(audio)
+      await audio.play()
+    } catch (error) {
+      console.error('Preview error:', error)
+      setMessage({ type: 'error', text: 'Failed to generate voice preview' })
+      setPreviewing(null)
+    }
   }
 
   function selectVoice(voiceId: string) {
@@ -353,7 +465,7 @@ export default function AdminNewsPage() {
       <header className="bg-slate-900 border-b border-slate-800 px-4 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Link href="/admin" className="text-slate-400 hover:text-white transition">
+            <Link href="/admin" className="text-white hover:text-white transition">
               ← Back
             </Link>
             <h1 className="text-xl font-bold">📰 News Briefings</h1>
@@ -369,7 +481,7 @@ export default function AdminNewsPage() {
             className={`px-6 py-3 font-medium transition ${
               activeTab === 'settings'
                 ? 'text-orange-400 border-b-2 border-orange-400'
-                : 'text-slate-400 hover:text-white'
+                : 'text-white hover:text-white'
             }`}
           >
             ⚙️ Settings
@@ -379,7 +491,7 @@ export default function AdminNewsPage() {
             className={`px-6 py-3 font-medium transition ${
               activeTab === 'episodes'
                 ? 'text-orange-400 border-b-2 border-orange-400'
-                : 'text-slate-400 hover:text-white'
+                : 'text-white hover:text-white'
             }`}
           >
             🎙️ Episodes ({episodes.length})
@@ -410,55 +522,97 @@ export default function AdminNewsPage() {
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
                         <span className="text-xl">{cat.icon}</span>
-                        <span className="font-medium">{cat.name}</span>
+                        <div>
+                          <span className="font-medium">{cat.name}</span>
+                          <p className="text-xs text-white">
+                            Last generated: {formatLastGenerated(settings.categories[cat.id]?.last_generated)}
+                          </p>
+                        </div>
                       </div>
-                      <button
-                        onClick={() => toggleCategory(cat.id)}
-                        className={`w-12 h-6 rounded-full transition relative ${
-                          settings.categories[cat.id]?.enabled
-                            ? 'bg-green-500'
-                            : 'bg-slate-600'
-                        }`}
-                      >
-                        <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${
-                          settings.categories[cat.id]?.enabled ? 'left-7' : 'left-1'
-                        }`} />
-                      </button>
+                      <div className="flex items-center gap-2">
+                        {settings.categories[cat.id]?.enabled && (
+                          <button
+                            onClick={() => generateCategory(cat.id)}
+                            disabled={generating !== null}
+                            className={`px-3 py-1 rounded-lg text-sm font-medium transition ${
+                              generating === cat.id
+                                ? 'bg-orange-500/50 text-white'
+                                : 'bg-orange-500 hover:bg-orange-400 text-black'
+                            }`}
+                          >
+                            {generating === cat.id ? (
+                              <span className="flex items-center gap-1">
+                                <span className="w-3 h-3 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                                Generating...
+                              </span>
+                            ) : (
+                              '▶ Generate Now'
+                            )}
+                          </button>
+                        )}
+                        <button
+                          onClick={() => toggleCategory(cat.id)}
+                          className={`w-12 h-6 rounded-full transition relative ${
+                            settings.categories[cat.id]?.enabled
+                              ? 'bg-green-500'
+                              : 'bg-slate-600'
+                          }`}
+                        >
+                          <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${
+                            settings.categories[cat.id]?.enabled ? 'left-7' : 'left-1'
+                          }`} />
+                        </button>
+                      </div>
                     </div>
                     {settings.categories[cat.id]?.enabled && (
-                      <div className="mt-2">
-                        <label className="text-xs text-slate-400 block mb-1">RSS Feeds (one per line)</label>
-                        <textarea
-                          value={settings.categories[cat.id]?.feeds?.join('\n') || ''}
-                          onChange={(e) => updateCategoryFeeds(cat.id, e.target.value.split('\n').filter(f => f.trim()))}
-                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white resize-none"
-                          rows={2}
-                          placeholder="Enter RSS feed URLs..."
-                        />
+                      <div className="mt-2 space-y-3">
+                        <div>
+                          <label className="text-xs text-white block mb-1">Narrator Voice</label>
+                          <div className="flex gap-2">
+                            <select
+                              value={settings.categories[cat.id]?.voice_id || 'EXAVITQu4vr4xnSDxMaL'}
+                              onChange={(e) => updateCategoryVoice(cat.id, e.target.value)}
+                              className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                            >
+                              {AVAILABLE_VOICES.map(voice => (
+                                <option key={voice.id} value={voice.id}>
+                                  {voice.name} - {voice.description}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              onClick={() => previewVoice(cat.id, settings.categories[cat.id]?.voice_id || 'EXAVITQu4vr4xnSDxMaL')}
+                              disabled={previewing !== null}
+                              className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
+                                previewing === cat.id
+                                  ? 'bg-purple-500/50 text-white'
+                                  : 'bg-purple-600 hover:bg-purple-500 text-white'
+                              }`}
+                            >
+                              {previewing === cat.id ? (
+                                <span className="flex items-center gap-1">
+                                  <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                  Playing...
+                                </span>
+                              ) : (
+                                '🔊 Preview'
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-xs text-white block mb-1">RSS Feeds (one per line)</label>
+                          <textarea
+                            value={settings.categories[cat.id]?.feeds?.join('\n') || ''}
+                            onChange={(e) => updateCategoryFeeds(cat.id, e.target.value.split('\n').filter(f => f.trim()))}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white resize-none"
+                            rows={2}
+                            placeholder="Enter RSS feed URLs..."
+                          />
+                        </div>
                       </div>
                     )}
                   </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Narrator Voice */}
-            <div className="bg-slate-900 rounded-xl p-4 border border-slate-800">
-              <h2 className="text-lg font-bold mb-3">🎙️ Narrator Voice</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {AVAILABLE_VOICES.map(voice => (
-                  <button
-                    key={voice.id}
-                    onClick={() => selectVoice(voice.id)}
-                    className={`p-3 rounded-lg text-left transition ${
-                      settings.narrator_voice_id === voice.id
-                        ? 'bg-orange-500/20 border-2 border-orange-500'
-                        : 'bg-slate-800 border-2 border-transparent hover:border-slate-600'
-                    }`}
-                  >
-                    <p className="font-medium">{voice.name}</p>
-                    <p className="text-sm text-slate-400">{voice.description}</p>
-                  </button>
                 ))}
               </div>
             </div>
@@ -484,7 +638,7 @@ export default function AdminNewsPage() {
               {settings.auto_generate && (
                 <div className="space-y-3">
                   <div className="flex items-center gap-3">
-                    <label className="text-sm text-slate-400 w-24">Morning:</label>
+                    <label className="text-sm text-white w-24">Morning:</label>
                     <input
                       type="time"
                       value={settings.generation_times[0] || '06:00'}
@@ -493,20 +647,30 @@ export default function AdminNewsPage() {
                     />
                   </div>
                   <div className="flex items-center gap-3">
-                    <label className="text-sm text-slate-400 w-24">Evening:</label>
+                    <label className="text-sm text-white w-24">Noon:</label>
                     <input
                       type="time"
-                      value={settings.generation_times[1] || '18:00'}
+                      value={settings.generation_times[1] || '12:00'}
                       onChange={(e) => updateGenerationTime(1, e.target.value)}
                       className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white"
                     />
                   </div>
+                  <div className="flex items-center gap-3">
+                    <label className="text-sm text-white w-24">Evening:</label>
+                    <input
+                      type="time"
+                      value={settings.generation_times[2] || '18:00'}
+                      onChange={(e) => updateGenerationTime(2, e.target.value)}
+                      className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white"
+                    />
+                  </div>
+                  <p className="text-xs text-white mt-2">Times are in EST (Eastern Standard Time)</p>
                 </div>
               )}
 
               <div className="mt-4 pt-4 border-t border-slate-700">
                 <div className="flex items-center gap-3">
-                  <label className="text-sm text-slate-400">Stories per category:</label>
+                  <label className="text-sm text-white">Stories per category:</label>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => setSettings(prev => ({ ...prev, stories_per_category: Math.max(3, prev.stories_per_category - 1) }))}
@@ -532,7 +696,7 @@ export default function AdminNewsPage() {
               disabled={saving}
               className={`w-full py-4 rounded-xl font-bold transition ${
                 saving
-                  ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                  ? 'bg-slate-700 text-white cursor-not-allowed'
                   : 'bg-green-500 hover:bg-green-400 text-black'
               }`}
             >
@@ -545,7 +709,7 @@ export default function AdminNewsPage() {
           <div className="space-y-3">
             {episodes.length === 0 ? (
               <div className="bg-slate-900 rounded-xl p-8 text-center border border-slate-800">
-                <p className="text-slate-400">No episodes generated yet</p>
+                <p className="text-white">No episodes generated yet</p>
                 <button
                   onClick={() => setActiveTab('settings')}
                   className="mt-3 text-orange-400 hover:text-orange-300"
@@ -571,7 +735,7 @@ export default function AdminNewsPage() {
                         </span>
                       )}
                     </div>
-                    <p className="text-sm text-slate-400">
+                    <p className="text-sm text-white">
                       {getCategoryName(ep.category)} • {new Date(ep.created_at).toLocaleString()}
                     </p>
                   </div>
@@ -586,7 +750,7 @@ export default function AdminNewsPage() {
                         🎧 Play
                       </a>
                     ) : (
-                      <span className="text-xs text-slate-500">No audio</span>
+                      <span className="text-xs text-white">No audio</span>
                     )}
                   </div>
                 </div>
