@@ -73,6 +73,7 @@ const NEWS_CATEGORIES = [
 interface CategorySettings {
   enabled: boolean
   feeds: string[]
+  voice_id: string
 }
 
 interface NewsSettings {
@@ -171,7 +172,8 @@ export default function AdminNewsPage() {
     NEWS_CATEGORIES.forEach(cat => {
       cats[cat.id] = {
         enabled: true,
-        feeds: cat.defaultFeeds
+        feeds: cat.defaultFeeds,
+        voice_id: 'EXAVITQu4vr4xnSDxMaL' // Default to Sarah
       }
     })
     return cats
@@ -317,6 +319,19 @@ export default function AdminNewsPage() {
     }))
   }
 
+  function updateCategoryVoice(categoryId: string, voiceId: string) {
+    setSettings(prev => ({
+      ...prev,
+      categories: {
+        ...prev.categories,
+        [categoryId]: {
+          ...prev.categories[categoryId],
+          voice_id: voiceId
+        }
+      }
+    }))
+  }
+
   function selectVoice(voiceId: string) {
     const voice = AVAILABLE_VOICES.find(v => v.id === voiceId)
     if (voice) {
@@ -426,39 +441,34 @@ export default function AdminNewsPage() {
                       </button>
                     </div>
                     {settings.categories[cat.id]?.enabled && (
-                      <div className="mt-2">
-                        <label className="text-xs text-slate-400 block mb-1">RSS Feeds (one per line)</label>
-                        <textarea
-                          value={settings.categories[cat.id]?.feeds?.join('\n') || ''}
-                          onChange={(e) => updateCategoryFeeds(cat.id, e.target.value.split('\n').filter(f => f.trim()))}
-                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white resize-none"
-                          rows={2}
-                          placeholder="Enter RSS feed URLs..."
-                        />
+                      <div className="mt-2 space-y-3">
+                        <div>
+                          <label className="text-xs text-slate-400 block mb-1">Narrator Voice</label>
+                          <select
+                            value={settings.categories[cat.id]?.voice_id || 'EXAVITQu4vr4xnSDxMaL'}
+                            onChange={(e) => updateCategoryVoice(cat.id, e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                          >
+                            {AVAILABLE_VOICES.map(voice => (
+                              <option key={voice.id} value={voice.id}>
+                                {voice.name} - {voice.description}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-xs text-slate-400 block mb-1">RSS Feeds (one per line)</label>
+                          <textarea
+                            value={settings.categories[cat.id]?.feeds?.join('\n') || ''}
+                            onChange={(e) => updateCategoryFeeds(cat.id, e.target.value.split('\n').filter(f => f.trim()))}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white resize-none"
+                            rows={2}
+                            placeholder="Enter RSS feed URLs..."
+                          />
+                        </div>
                       </div>
                     )}
                   </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Narrator Voice */}
-            <div className="bg-slate-900 rounded-xl p-4 border border-slate-800">
-              <h2 className="text-lg font-bold mb-3">🎙️ Narrator Voice</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {AVAILABLE_VOICES.map(voice => (
-                  <button
-                    key={voice.id}
-                    onClick={() => selectVoice(voice.id)}
-                    className={`p-3 rounded-lg text-left transition ${
-                      settings.narrator_voice_id === voice.id
-                        ? 'bg-orange-500/20 border-2 border-orange-500'
-                        : 'bg-slate-800 border-2 border-transparent hover:border-slate-600'
-                    }`}
-                  >
-                    <p className="font-medium">{voice.name}</p>
-                    <p className="text-sm text-slate-400">{voice.description}</p>
-                  </button>
                 ))}
               </div>
             </div>
