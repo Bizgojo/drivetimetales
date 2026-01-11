@@ -74,6 +74,7 @@ interface CategorySettings {
   enabled: boolean
   feeds: string[]
   voice_id: string
+  last_generated: string | null
 }
 
 interface NewsSettings {
@@ -107,7 +108,7 @@ export default function AdminNewsPage() {
     categories: {},
     narrator_voice_id: 'EXAVITQu4vr4xnSDxMaL',
     narrator_voice_name: 'Sarah (Female)',
-    generation_times: ['06:00', '18:00'],
+    generation_times: ['06:00', '12:00', '18:00'],
     auto_generate: true,
     stories_per_category: 5,
   })
@@ -173,7 +174,8 @@ export default function AdminNewsPage() {
       cats[cat.id] = {
         enabled: true,
         feeds: cat.defaultFeeds,
-        voice_id: 'EXAVITQu4vr4xnSDxMaL' // Default to Sarah
+        voice_id: 'EXAVITQu4vr4xnSDxMaL', // Default to Sarah
+        last_generated: null
       }
     })
     return cats
@@ -231,12 +233,26 @@ export default function AdminNewsPage() {
       const response = await fetch('/api/admin/generate-news', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ category: categoryId })
+        body: JSON.stringify({ 
+          category: categoryId,
+          voice_id: settings.categories[categoryId]?.voice_id
+        })
       })
 
       const result = await response.json()
 
       if (result.success) {
+        // Update last_generated timestamp
+        setSettings(prev => ({
+          ...prev,
+          categories: {
+            ...prev.categories,
+            [categoryId]: {
+              ...prev.categories[categoryId],
+              last_generated: new Date().toISOString()
+            }
+          }
+        }))
         setMessage({ type: 'success', text: `${getCategoryName(categoryId)} briefing generated!` })
         loadEpisodes()
       } else {
@@ -291,6 +307,20 @@ export default function AdminNewsPage() {
 
   function getCategoryIcon(id: string): string {
     return NEWS_CATEGORIES.find(c => c.id === id)?.icon || '📰'
+  }
+
+  function formatLastGenerated(timestamp: string | null): string {
+    if (!timestamp) return 'Never'
+    const date = new Date(timestamp)
+    return date.toLocaleString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: 'America/New_York'
+    }) + ' EST'
   }
 
   function toggleCategory(categoryId: string) {
@@ -425,20 +455,47 @@ export default function AdminNewsPage() {
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
                         <span className="text-xl">{cat.icon}</span>
-                        <span className="font-medium">{cat.name}</span>
+                        <div>
+                          <span className="font-medium">{cat.name}</span>
+                          <p className="text-xs text-slate-500">
+                            Last generated: {formatLastGenerated(settings.categories[cat.id]?.last_generated)}
+                          </p>
+                        </div>
                       </div>
-                      <button
-                        onClick={() => toggleCategory(cat.id)}
-                        className={`w-12 h-6 rounded-full transition relative ${
-                          settings.categories[cat.id]?.enabled
-                            ? 'bg-green-500'
-                            : 'bg-slate-600'
-                        }`}
-                      >
-                        <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${
-                          settings.categories[cat.id]?.enabled ? 'left-7' : 'left-1'
-                        }`} />
-                      </button>
+                      <div className="flex items-center gap-2">
+                        {settings.categories[cat.id]?.enabled && (
+                          <button
+                            onClick={() => generateCategory(cat.id)}
+                            disabled={generating !== null}
+                            className={`px-3 py-1 rounded-lg text-sm font-medium transition ${
+                              generating === cat.id
+                                ? 'bg-orange-500/50 text-white'
+                                : 'bg-orange-500 hover:bg-orange-400 text-black'
+                            }`}
+                          >
+                            {generating === cat.id ? (
+                              <span className="flex items-center gap-1">
+                                <span className="w-3 h-3 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                                Generating...
+                              </span>
+                            ) : (
+                              '▶ Generate Now'
+                            )}
+                          </button>
+                        )}
+                        <button
+                          onClick={() => toggleCategory(cat.id)}
+                          className={`w-12 h-6 rounded-full transition relative ${
+                            settings.categories[cat.id]?.enabled
+                              ? 'bg-green-500'
+                              : 'bg-slate-600'
+                          }`}
+                        >
+                          <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${
+                            settings.categories[cat.id]?.enabled ? 'left-7' : 'left-1'
+                          }`} />
+                        </button>
+                      </div>
                     </div>
                     {settings.categories[cat.id]?.enabled && (
                       <div className="mt-2 space-y-3">
@@ -503,14 +560,24 @@ export default function AdminNewsPage() {
                     />
                   </div>
                   <div className="flex items-center gap-3">
-                    <label className="text-sm text-slate-400 w-24">Evening:</label>
+                    <label className="text-sm text-slate-400 w-24">Noon:</label>
                     <input
                       type="time"
-                      value={settings.generation_times[1] || '18:00'}
+                      value={settings.generation_times[1] || '12:00'}
                       onChange={(e) => updateGenerationTime(1, e.target.value)}
                       className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white"
                     />
                   </div>
+                  <div className="flex items-center gap-3">
+                    <label className="text-sm text-slate-400 w-24">Evening:</label>
+                    <input
+                      type="time"
+                      value={settings.generation_times[2] || '18:00'}
+                      onChange={(e) => updateGenerationTime(2, e.target.value)}
+                      className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white"
+                    />
+                  </div>
+                  <p className="text-xs text-slate-500 mt-2">Times are in EST (Eastern Standard Time)</p>
                 </div>
               )}
 
