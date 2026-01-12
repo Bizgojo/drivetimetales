@@ -11,45 +11,36 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
 });
 
-const BING_API_KEY = process.env.BING_API_KEY!;
-const BING_NEWS_ENDPOINT = 'https://api.bing.microsoft.com/v7.0/news/search';
-
 // Category configurations
-const CATEGORY_CONFIG: Record<string, { label: string; searchQuery: string }> = {
-  local: { label: 'Local News and Weather', searchQuery: '' },
-  national: { label: 'National News', searchQuery: 'US news today' },
-  international: { label: 'International News', searchQuery: 'world news today' },
-  business: { label: 'Business and Finance', searchQuery: 'business finance stock market news' },
-  sports: { label: 'Sports', searchQuery: 'sports news today' },
-  science: { label: 'Science and Technology', searchQuery: 'technology science news today' },
+const CATEGORY_CONFIG: Record<string, { label: string; searchInstructions: string }> = {
+  local: { 
+    label: 'Local News and Weather', 
+    searchInstructions: '' // Built dynamically with location
+  },
+  national: { 
+    label: 'National News', 
+    searchInstructions: 'Search for the top 5 US national news stories from the last 24 hours. Focus on major stories from CNN, ABC, CBS, NBC, FOX, AP, Reuters, New York Times, Washington Post.'
+  },
+  international: { 
+    label: 'International News', 
+    searchInstructions: 'Search for the top 5 world/international news stories from the last 24 hours. Focus on major global events from BBC, Reuters, AP, Al Jazeera, and major international news sources.'
+  },
+  business: { 
+    label: 'Business and Finance', 
+    searchInstructions: 'Search for the top 5 business and finance news stories from the last 24 hours. Include stock market updates, major company news, economic indicators. Use Bloomberg, CNBC, Wall Street Journal, Financial Times.'
+  },
+  sports: { 
+    label: 'Sports', 
+    searchInstructions: 'Search for the top 5 sports news stories from the last 24 hours. Include major game results, trades, injuries, and upcoming events from ESPN, Sports Illustrated, and major sports news sources.'
+  },
+  science: { 
+    label: 'Science and Technology', 
+    searchInstructions: 'Search for the top 5 science and technology news stories from the last 24 hours. Include tech company news, scientific discoveries, space news, AI developments from TechCrunch, Wired, Ars Technica, Nature, Science.'
+  },
 };
 
 function getCategoryLabel(categoryId: string): string {
   return CATEGORY_CONFIG[categoryId]?.label || categoryId;
-}
-
-// Fetch news from Bing News API
-async function fetchBingNews(query: string, count: number = 5): Promise<any[]> {
-  const params = new URLSearchParams({
-    q: query,
-    count: count.toString(),
-    mkt: 'en-US',
-    freshness: 'Day',
-    textFormat: 'Raw',
-  });
-
-  const response = await fetch(BING_NEWS_ENDPOINT + '?' + params.toString(), {
-    headers: { 'Ocp-Apim-Subscription-Key': BING_API_KEY },
-  });
-
-  if (!response.ok) {
-    const error = await response.text();
-    console.error('[Bing News] API error:', error);
-    throw new Error('Bing News API error: ' + response.status);
-  }
-
-  const data = await response.json();
-  return data.value || [];
 }
 
 // Calculate episode number
@@ -64,7 +55,7 @@ function calculateEpisodeNumber(): number {
   return (dayOfYear * 3) + episodeOfDay;
 }
 
-// Generate news script using Claude with real headlines from Bing
+// Generate news script using Claude with web search
 async function generateNewsScript(
   categoryId: string,
   subscriberName: string | null,
@@ -80,80 +71,54 @@ async function generateNewsScript(
   if (hour >= 12 && hour < 17) timeGreeting = 'afternoon';
   else if (hour >= 17) timeGreeting = 'evening';
 
-  let newsHeadlines: any[] = [];
-  let stateNews: any[] = [];
-
-  if (categoryId === 'local' && testCity) {
-    const city = testCity.split(',')[0]?.trim() || testCity;
-    const state = testCity.split(',')[1]?.trim() || 'North Carolina';
-    console.log('[News Generator] Fetching local news for ' + city + ', ' + state);
-    newsHeadlines = await fetchBingNews(city + ' ' + state + ' local news', 5);
-    console.log('[News Generator] Fetching state news for ' + state);
-    stateNews = await fetchBingNews(state + ' news today', 5);
-  } else {
-    console.log('[News Generator] Fetching ' + categoryId + ' news');
-    newsHeadlines = await fetchBingNews(config.searchQuery, 7);
-  }
-
-  const formattedHeadlines = newsHeadlines.map((article, i) => 
-    (i + 1) + '. "' + article.name + '" - ' + (article.description || 'No description') + ' (Source: ' + (article.provider?.[0]?.name || 'Unknown') + ')'
-  ).join('\n');
-
-  const formattedStateNews = stateNews.map((article, i) =>
-    (i + 1) + '. "' + article.name + '" - ' + (article.description || 'No description') + ' (Source: ' + (article.provider?.[0]?.name || 'Unknown') + ')'
-  ).join('\n');
+  const narrator = narratorName || 'your host';
+  const subscriber = subscriberName || '';
+  const categoryLabel = getCategoryLabel(categoryId);
 
   let prompt = '';
-  const narrator = narratorName || 'a professional news anchor';
-  const subscriber = subscriberName || 'the listener';
-  const categoryLabel = getCategoryLabel(categoryId);
   
   if (categoryId === 'local' && testCity) {
     const city = testCity.split(',')[0]?.trim() || testCity;
     const state = testCity.split(',')[1]?.trim() || 'North Carolina';
     
-    prompt = 'You are ' + narrator + ' delivering a 4-7 minute local news broadcast for ' + subscriber + '.\n\n' +
-      'FIRST, search the web for the current weather forecast for ' + city + ', ' + state + ' (zip code ' + zipCode + ') and include a 4-5 sentence weather report.\n\n' +
-      'Then use ONLY the following REAL news headlines to write the news portion. Do NOT make up any additional stories.\n\n' +
-      'LOCAL NEWS FOR ' + city.toUpperCase() + ', ' + state.toUpperCase() + ' (within 50 miles):\n' +
-      (formattedHeadlines || 'No local news found - mention this briefly and move to state news.') + '\n\n' +
-      'STATE NEWS FOR ' + state.toUpperCase() + ':\n' +
-      (formattedStateNews || 'No state news found.') + '\n\n' +
+    prompt = 'You are ' + narrator + ', a professional news anchor. Create a 4-7 minute LOCAL news broadcast.\n\n' +
+      'STEP 1 - WEATHER: Search for the current weather and 24-hour forecast for ' + city + ', ' + state + ' (zip code ' + zipCode + '). Write 4-5 sentences about the weather.\n\n' +
+      'STEP 2 - LOCAL NEWS: Search for "' + city + ' ' + state + ' news today" and "' + city + ' local news". Find 3 stories happening IN or NEAR ' + city + ' (within 50 miles). These must be LOCAL stories - local crime, local government, local schools, local businesses, local events. NOT national news.\n\n' +
+      'STEP 3 - STATE NEWS: Search for "' + state + ' news today". Find 3 news stories from the state of ' + state + '.\n\n' +
       'BROADCAST FORMAT:\n' +
-      '1. Start with: "Good ' + timeGreeting + ' ' + (subscriberName || '') + ', this is ' + narrator + ' with your ' + categoryLabel + ' briefing."\n' +
-      '2. Weather report (4-5 sentences) - search for current weather\n' +
-      '3. Local news (3 stories, 3-5 sentences each)\n' +
-      '4. State news (2-3 stories, 3-5 sentences each)\n' +
-      '5. End with: "That\'s your ' + categoryLabel + ' update. Thanks for listening, ' + (subscriberName || '') + ', and have a great ' + timeGreeting + '."\n\n' +
-      'RULES:\n' +
-      '- Use ONLY the headlines provided above - do NOT invent stories\n' +
-      '- Always mention the town/city name when describing local events\n' +
-      '- Expand each headline into a natural spoken news story\n' +
-      '- Be professional and warm\n' +
-      '- Never mention "Bing" or that you got headlines from an API\n' +
-      '- Never use zip codes in the broadcast, only city names';
+      '- Opening: "Good ' + timeGreeting + (subscriber ? ' ' + subscriber : '') + ', this is ' + narrator + ' with your ' + categoryLabel + ' briefing."\n' +
+      '- Weather section (4-5 sentences)\n' +
+      '- Local news (3 stories, 3-5 sentences each) - always mention which town/city each story is in\n' +
+      '- State news (3 stories, 3-5 sentences each)\n' +
+      '- Closing: "That\'s your ' + categoryLabel + ' update. Thanks for listening' + (subscriber ? ', ' + subscriber : '') + ', and have a great ' + timeGreeting + '."\n\n' +
+      'CRITICAL RULES:\n' +
+      '- Use ONLY real, verified news from your web searches\n' +
+      '- Do NOT make up or invent any stories\n' +
+      '- Do NOT include national news in the local section\n' +
+      '- Always say which town/city events are in or near\n' +
+      '- Never use zip codes, only city names\n' +
+      '- Do NOT explain your search methodology\n' +
+      '- Write ONLY the broadcast script, nothing else';
   } else {
-    prompt = 'You are ' + narrator + ' delivering a 4-7 minute ' + categoryLabel + ' broadcast for ' + subscriber + '.\n\n' +
-      'Use ONLY the following REAL news headlines to write your broadcast. Do NOT make up any additional stories.\n\n' +
-      categoryLabel.toUpperCase() + ' HEADLINES:\n' +
-      (formattedHeadlines || 'No news found for this category.') + '\n\n' +
+    prompt = 'You are ' + narrator + ', a professional news anchor. Create a 4-7 minute ' + categoryLabel + ' broadcast.\n\n' +
+      'SEARCH INSTRUCTIONS: ' + config.searchInstructions + '\n\n' +
       'BROADCAST FORMAT:\n' +
-      '1. Start with: "Good ' + timeGreeting + ' ' + (subscriberName || '') + ', this is ' + narrator + ' with your ' + categoryLabel + ' briefing."\n' +
-      '2. Cover 5 stories (3-5 sentences each) from the headlines above\n' +
-      '3. End with: "That\'s your ' + categoryLabel + ' update. Thanks for listening, ' + (subscriberName || '') + ', and have a great ' + timeGreeting + '."\n\n' +
-      'RULES:\n' +
-      '- Use ONLY the headlines provided above - do NOT invent stories\n' +
-      '- Expand each headline into a natural spoken news story\n' +
-      '- Be professional and warm\n' +
-      '- Never mention "Bing" or that you got headlines from an API';
+      '- Opening: "Good ' + timeGreeting + (subscriber ? ' ' + subscriber : '') + ', this is ' + narrator + ' with your ' + categoryLabel + ' briefing."\n' +
+      '- Cover 5 news stories (3-5 sentences each)\n' +
+      '- Closing: "That\'s your ' + categoryLabel + ' update. Thanks for listening' + (subscriber ? ', ' + subscriber : '') + ', and have a great ' + timeGreeting + '."\n\n' +
+      'CRITICAL RULES:\n' +
+      '- Use ONLY real, verified news from your web searches\n' +
+      '- Do NOT make up or invent any stories\n' +
+      '- Do NOT explain your search methodology\n' +
+      '- Write ONLY the broadcast script, nothing else';
   }
 
-  const toolsConfig = categoryId === 'local' ? [{ type: 'web_search_20250305' as const, name: 'web_search' as const }] : [];
+  console.log('[News Generator] Calling Claude with web search for ' + categoryId);
 
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
     max_tokens: 3000,
-    tools: toolsConfig,
+    tools: [{ type: 'web_search_20250305' as const, name: 'web_search' as const }],
     messages: [{ role: 'user', content: prompt }],
   });
 
@@ -163,11 +128,15 @@ async function generateNewsScript(
       script += block.text;
     }
   }
+  
+  console.log('[News Generator] Script generated, length: ' + script.length);
   return script;
 }
 
 // Generate audio using ElevenLabs
 async function generateAudio(script: string, voiceId: string): Promise<Buffer> {
+  console.log('[News Generator] Calling ElevenLabs for voice ' + voiceId);
+  
   const response = await fetch('https://api.elevenlabs.io/v1/text-to-speech/' + voiceId, {
     method: 'POST',
     headers: {
@@ -194,6 +163,8 @@ async function generateAudio(script: string, voiceId: string): Promise<Buffer> {
 // Upload audio to Supabase Storage
 async function uploadAudio(audioBuffer: Buffer, categoryId: string, episodeNumber: number): Promise<string> {
   const fileName = 'news-' + categoryId + '-ep' + episodeNumber + '-' + Date.now() + '.mp3';
+  
+  console.log('[News Generator] Uploading to Supabase: ' + fileName);
   
   const { error } = await supabase.storage
     .from('news-audio')
@@ -240,17 +211,15 @@ export async function POST(request: NextRequest) {
 
     console.log('[News Generator] Starting generation for ' + categoryId);
     console.log('[News Generator] Location: ' + (testCity || 'N/A') + ', Zip: ' + (zipCode || 'N/A'));
+    console.log('[News Generator] Narrator: ' + (narratorName || 'default') + ', Subscriber: ' + (subscriberName || 'none'));
 
     const episodeNumber = calculateEpisodeNumber();
     await deleteOldBriefings(categoryId);
 
-    console.log('[News Generator] Fetching news from Bing and generating script...');
     const script = await generateNewsScript(categoryId, subscriberName || null, narratorName || null, zipCode || null, testCity || null);
 
-    console.log('[News Generator] Generating audio with ElevenLabs voice ' + voiceId + '...');
     const audioBuffer = await generateAudio(script, voiceId);
 
-    console.log('[News Generator] Uploading audio...');
     const audioUrl = await uploadAudio(audioBuffer, categoryId, episodeNumber);
 
     const { error: dbError } = await supabase
