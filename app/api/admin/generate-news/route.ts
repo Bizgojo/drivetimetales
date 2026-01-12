@@ -131,21 +131,20 @@ async function generateNewsScript(
       {
         role: 'user',
         content: categoryId === 'local' && testCity 
-          ? `Give me the current weather for ${testCity} ${zipCode ? 'around zip code ' + zipCode : ''}.
+          ? `You are a professional radio news anchor. Read this briefing exactly as written with NO preamble, NO explanation of your search process, and NO commentary.
 
-Then give me local news within a 50 mile radius of ${testCity}.
+Give me the 24-hour weather forecast for United States zip code ${zipCode} in 2 to 3 sentences. Do not include weather for any other location.
 
-Then give me state news for ${testCity.split(',')[1]?.trim() || 'the state'}.
+Now give me the top 2 local news stories from the last 24 hours within a 50-mile radius of ${testCity} ${zipCode}. Search the internet and major daily newspapers. Do not include news from outside this area.
 
-Search CNN, CBS, NBC, FOX, Associated Press, and local news sources.
+Now give me the top 3 state news stories from the last 12 hours for ${testCity.split(',')[1]?.trim() || 'North Carolina'} in the United States. Search CNN, ABC, CBS, NBC, FOX, and Associated Press. Do not include news from any other state.
 
-Give me exactly 5 news stories total (weather first, then 4 news stories).
-
-IMPORTANT: 
-- Start with weather, then local news, then state news
-- Only include news from ${testCity} and ${testCity.split(',')[1]?.trim() || 'the state'} - NOT from other states
-- Do NOT explain your search methodology - just deliver the news like a professional news anchor
-- Do NOT include any preamble about how you gathered the information
+CRITICAL RULES:
+- Output ONLY the news script - nothing else
+- Do NOT say "I will search" or "Let me find" or explain your methodology
+- Do NOT include any thinking or reasoning
+- Write as if you are reading directly to the listener
+- Be professional and concise
 
 ${config.systemPrompt}`
           : `Search for today's top news stories using these terms: ${config.searchTerms.join(', ')}. 
