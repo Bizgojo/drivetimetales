@@ -23,6 +23,7 @@ interface Category {
   episodeNumber: number;
   audioUrl: string | null;
   isGenerating: boolean;
+  narratorLocked: boolean;
 }
 
 interface ScheduleSlot {
@@ -37,12 +38,12 @@ interface ScheduleSlot {
 // ============================================================================
 
 const INITIAL_CATEGORIES: Category[] = [
-  { id: 'local', label: 'Local News & Weather', voiceId: '', narratorName: '', lastGenerated: null, episodeNumber: 0, audioUrl: null, isGenerating: false },
-  { id: 'national', label: 'National News', voiceId: '', narratorName: '', lastGenerated: null, episodeNumber: 0, audioUrl: null, isGenerating: false },
-  { id: 'international', label: 'International News', voiceId: '', narratorName: '', lastGenerated: null, episodeNumber: 0, audioUrl: null, isGenerating: false },
-  { id: 'business', label: 'Business & Finance', voiceId: '', narratorName: '', lastGenerated: null, episodeNumber: 0, audioUrl: null, isGenerating: false },
-  { id: 'sports', label: 'Sports', voiceId: '', narratorName: '', lastGenerated: null, episodeNumber: 0, audioUrl: null, isGenerating: false },
-  { id: 'science', label: 'Science & Technology', voiceId: '', narratorName: '', lastGenerated: null, episodeNumber: 0, audioUrl: null, isGenerating: false },
+  { id: 'local', label: 'Local News & Weather', voiceId: '', narratorName: '', lastGenerated: null, episodeNumber: 0, audioUrl: null, isGenerating: false, narratorLocked: false },
+  { id: 'national', label: 'National News', voiceId: '', narratorName: '', lastGenerated: null, episodeNumber: 0, audioUrl: null, isGenerating: false, narratorLocked: false },
+  { id: 'international', label: 'International News', voiceId: '', narratorName: '', lastGenerated: null, episodeNumber: 0, audioUrl: null, isGenerating: false, narratorLocked: false },
+  { id: 'business', label: 'Business & Finance', voiceId: '', narratorName: '', lastGenerated: null, episodeNumber: 0, audioUrl: null, isGenerating: false, narratorLocked: false },
+  { id: 'sports', label: 'Sports', voiceId: '', narratorName: '', lastGenerated: null, episodeNumber: 0, audioUrl: null, isGenerating: false, narratorLocked: false },
+  { id: 'science', label: 'Science & Technology', voiceId: '', narratorName: '', lastGenerated: null, episodeNumber: 0, audioUrl: null, isGenerating: false, narratorLocked: false },
 ];
 
 const INITIAL_SCHEDULE: ScheduleSlot[] = [
@@ -296,13 +297,23 @@ export default function NewsBriefingsPage() {
               {/* c. Narrator's Name */}
               <div className="mb-4">
                 <label className="block text-sm text-slate-400 mb-1">Narrator's Name</label>
-                <input
-                  type="text"
-                  value={cat.narratorName}
-                  onChange={e => updateCategory(cat.id, { narratorName: e.target.value })}
-                  placeholder="How narrator introduces themselves"
-                  className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white"
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={cat.narratorName}
+                    onChange={e => updateCategory(cat.id, { narratorName: e.target.value })}
+                    placeholder="How narrator introduces themselves"
+                    disabled={cat.narratorLocked}
+                    className={"flex-1 px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white " + (cat.narratorLocked ? "opacity-60 cursor-not-allowed" : "")}
+                  />
+                  <button
+                    onClick={() => updateCategory(cat.id, { narratorLocked: !cat.narratorLocked })}
+                    className={"px-3 py-2 rounded-lg " + (cat.narratorLocked ? "bg-orange-500 text-black" : "bg-slate-700 text-white hover:bg-slate-600")}
+                    title={cat.narratorLocked ? "Unlock narrator settings" : "Lock narrator settings"}
+                  >
+                    {cat.narratorLocked ? "🔒" : "🔓"}
+                  </button>
+                </div>
               </div>
 
               {/* d. Narrator's Voice + Preview */}
@@ -312,7 +323,8 @@ export default function NewsBriefingsPage() {
                   <select
                     value={cat.voiceId}
                     onChange={e => updateCategory(cat.id, { voiceId: e.target.value })}
-                    className="flex-1 px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white max-h-40 overflow-y-auto"
+                    disabled={cat.narratorLocked}
+                    className={"flex-1 px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white max-h-40 overflow-y-auto " + (cat.narratorLocked ? "opacity-60 cursor-not-allowed" : "")}
                   >
                     <option value="">Select voice...</option>
                     {voices.map(v => (
