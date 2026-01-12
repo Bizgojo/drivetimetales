@@ -79,6 +79,7 @@ async function generateNewsScript(
   episodeNumber: number,
   personalizeIntros: boolean,
   narratorName?: string,
+  testCity?: string,
   zipCode?: string
 ): Promise<string> {
   const config = CATEGORY_CONFIG[categoryId];
@@ -129,7 +130,7 @@ async function generateNewsScript(
     messages: [
       {
         role: 'user',
-        content: `Search for today's top news stories using these terms: ${config.searchTerms.join(', ')}${categoryId === 'local' && zipCode ? ` for zip code ${zipCode}. FIRST, look up what city and state zip code ${zipCode} is in. Then search for current weather forecast for that city. Then search for local news in that city and surrounding area within 50 miles. Include the city name in your news report` : ''}. 
+        content: `Search for today's top news stories using these terms: ${config.searchTerms.join(', ')}${categoryId === 'local' && zipCode ? ` for ${testCity || 'zip code ' + zipCode}. Search for current weather forecast in ${testCity || zipCode}. Then search for local news in ${testCity || zipCode} and the surrounding area within 50 miles. Mention the city name (${testCity || 'the area'}) in your report` : ''}. 
 Then write a professional news briefing script with exactly 5 stories.
 
 ${config.systemPrompt}
@@ -252,7 +253,7 @@ async function deleteOldBriefings(categoryId: string) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { categoryId, voiceId, personalizeIntros, subscriberName, zipCode, narratorName } = body;
+    const { categoryId, voiceId, personalizeIntros, subscriberName, zipCode, narratorName, testCity } = body;
 
     if (!categoryId || !voiceId) {
       return NextResponse.json(
@@ -277,6 +278,7 @@ export async function POST(request: NextRequest) {
       episodeNumber,
       personalizeIntros !== false,
       narratorName,
+      testCity,
       zipCode
     );
 

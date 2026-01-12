@@ -59,6 +59,7 @@ export default function NewsBriefingsPage() {
   const [categories, setCategories] = useState<Category[]>(INITIAL_CATEGORIES);
   const [voices, setVoices] = useState<Voice[]>([]);
   const [testZipCode, setTestZipCode] = useState('');
+  const [testCity, setTestCity] = useState('');
   const [automate, setAutomate] = useState(false);
   const [schedule, setSchedule] = useState<ScheduleSlot[]>(INITIAL_SCHEDULE);
   const [loading, setLoading] = useState(true);
@@ -106,6 +107,7 @@ export default function NewsBriefingsPage() {
       if (data?.settings) {
         setCategories(data.settings.categories || INITIAL_CATEGORIES);
         setTestZipCode(data.settings.testZipCode || '');
+        setTestCity(data.settings.testCity || '');
         setAutomate(data.settings.automate || false);
         setSchedule(data.settings.schedule || INITIAL_SCHEDULE);
       }
@@ -123,7 +125,7 @@ export default function NewsBriefingsPage() {
       if (!user) throw new Error('Not authenticated');
       await supabase.from('news_settings').upsert({
         user_id: user.id,
-        settings: { categories, testZipCode, automate, schedule },
+        settings: { categories, testZipCode, testCity, automate, schedule },
         updated_at: new Date().toISOString()
       }, { onConflict: 'user_id' });
       setMessage({ type: 'success', text: 'Settings saved!' });
@@ -147,6 +149,7 @@ export default function NewsBriefingsPage() {
           voiceId: cat.voiceId,
           narratorName: cat.narratorName,
           zipCode: categoryId === 'local' ? testZipCode : undefined,
+          testCity: categoryId === 'local' ? testCity : undefined,
         }),
       });
       const data = await res.json();
@@ -273,7 +276,15 @@ export default function NewsBriefingsPage() {
                     onChange={e => setTestZipCode(e.target.value.replace(/\D/g, '').slice(0, 5))}
                     placeholder="e.g. 28801"
                     maxLength={5}
-                    className="w-32 px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white"
+                    className="w-32 px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white mb-3"
+                  />
+                  <label className="block text-sm text-slate-400 mb-1">Test City, State</label>
+                  <input
+                    type="text"
+                    value={testCity}
+                    onChange={e => setTestCity(e.target.value)}
+                    placeholder="e.g. Asheville, NC"
+                    className="w-48 px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white"
                   />
                 </div>
               )}
@@ -314,6 +325,14 @@ export default function NewsBriefingsPage() {
                   >
                     {previewingVoice === cat.voiceId ? '⏹ Stop' : '▶ Preview'}
                   </button>
+                  <label className="block text-sm text-slate-400 mb-1">Test City, State</label>
+                  <input
+                    type="text"
+                    value={testCity}
+                    onChange={e => setTestCity(e.target.value)}
+                    placeholder="e.g. Asheville, NC"
+                    className="w-48 px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white"
+                  />
                 </div>
               </div>
 
@@ -374,6 +393,14 @@ export default function NewsBriefingsPage() {
                   >
                     <span className={`block w-4 h-4 bg-white rounded-full transition-all ${slot.enabled ? 'ml-5' : 'ml-0.5'}`} />
                   </button>
+                  <label className="block text-sm text-slate-400 mb-1">Test City, State</label>
+                  <input
+                    type="text"
+                    value={testCity}
+                    onChange={e => setTestCity(e.target.value)}
+                    placeholder="e.g. Asheville, NC"
+                    className="w-48 px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white"
+                  />
                 </div>
                 <input
                   type="time"
