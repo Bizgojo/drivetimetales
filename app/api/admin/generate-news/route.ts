@@ -130,14 +130,23 @@ async function generateNewsScript(
     messages: [
       {
         role: 'user',
-        content: `Search for today's top news stories using these terms: ${config.searchTerms.join(', ')}${categoryId === 'local' && (zipCode || testCity) ? ` . The location is: ${testCity || 'zip code ' + zipCode}. 
+        content: categoryId === 'local' && testCity 
+          ? `Search for weather and local news for ${testCity}.
 
-IMPORTANT LOCATION INSTRUCTIONS:
-1. FIRST search for 'weather forecast' + the CITY NAME extracted from this address: ${testCity || zipCode}
-2. THEN search for 'local news' + the CITY NAME extracted from this address: ${testCity || zipCode}
-3. You MUST mention the city name (from the address provided) in your report
-4. Only include news and weather for THIS specific location, not other cities` : ''}. 
+YOUR SEARCH TASKS:
+1. Search for "${testCity} weather forecast today"
+2. Search for "${testCity} local news today"
+3. Search for "${testCity.split(',')[1]?.trim() || 'North Carolina'} state news today"
+
+Write a local news briefing with the weather FIRST, then 4 local/state news stories.
+You MUST only report news from ${testCity} and the surrounding area.
+Do NOT include news from other states or cities.
+
+${config.systemPrompt}`
+          : `Search for today's top news stories using these terms: ${config.searchTerms.join(', ')}. 
 Then write a professional news briefing script with exactly 5 stories.
+
+${config.systemPrompt}`
 
 ${config.systemPrompt}
 
