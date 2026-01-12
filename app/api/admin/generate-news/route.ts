@@ -130,7 +130,13 @@ async function generateNewsScript(
     messages: [
       {
         role: 'user',
-        content: `Search for today's top news stories using these terms: ${config.searchTerms.join(', ')}${categoryId === 'local' && zipCode ? ` for the area near ${testCity || 'zip code ' + zipCode}. Extract the city and state from this address: ${testCity || zipCode}. Search for current weather forecast for that city. Then search for local news happening in that city and surrounding area within 50 miles. Always mention the city name in your weather and news report` : ''}. 
+        content: `Search for today's top news stories using these terms: ${config.searchTerms.join(', ')}${categoryId === 'local' && (zipCode || testCity) ? ` . The location is: ${testCity || 'zip code ' + zipCode}. 
+
+IMPORTANT LOCATION INSTRUCTIONS:
+1. FIRST search for '${testCity ? testCity.split(',')[0] : zipCode} weather today' to get the current weather
+2. THEN search for '${testCity ? testCity.split(',')[0] : zipCode} news today' to find local news
+3. You MUST mention the city name (from the address provided) in your report
+4. Only include news and weather for THIS specific location, not other cities` : ''}. 
 Then write a professional news briefing script with exactly 5 stories.
 
 ${config.systemPrompt}
