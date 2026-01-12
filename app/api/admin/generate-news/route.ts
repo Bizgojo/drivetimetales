@@ -147,18 +147,6 @@ ${config.systemPrompt}`
 Then write a professional news briefing script with exactly 5 stories.
 
 ${config.systemPrompt}`
-
-${config.systemPrompt}
-
-CRITICAL RULES:
-1. Only include REAL news from your search results
-2. Do NOT make up any stories or details
-3. Do NOT include your thought process or search methodology
-4. Just deliver the news in a professional anchor style
-5. Each story should be 2-3 sentences
-6. Do NOT add any commentary or opinions
-
-The script should be ready to read aloud directly.`,
       },
     ],
   });
