@@ -346,9 +346,9 @@ export default function NewsBriefingsPage() {
                 <button
                   onClick={() => generateBriefing(cat.id)}
                   disabled={cat.isGenerating || !cat.voiceId}
-                  className="flex-1 px-4 py-2 bg-orange-500 hover:bg-orange-600 disabled:bg-slate-700 disabled:text-slate-500 text-black font-semibold rounded-lg"
+                  className={`flex-1 px-4 py-2 font-semibold rounded-lg ${cat.isGenerating ? "bg-orange-400 animate-pulse text-black" : "bg-orange-500 hover:bg-orange-600 disabled:bg-slate-700 disabled:text-slate-500 text-black"}`}
                 >
-                  {cat.isGenerating ? '⏳ Generating...' : 'Generate'}
+                  {cat.isGenerating ? 'Generating...' : 'Generate'}
                 </button>
                 <button
                   onClick={() => togglePlayBriefing(cat.id, cat.audioUrl)}
