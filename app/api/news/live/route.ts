@@ -1,6 +1,3 @@
-// app/api/news/live/route.ts
-// Public API endpoint to get the current live news episode
-
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
@@ -9,117 +6,51 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-// Subscription tiers that get free news access
-const NEWS_ELIGIBLE_TIERS = ['commuter', 'road_warrior'];
-
+// GET - Get live news briefings for all categories
 export async function GET(request: NextRequest) {
   try {
-    // Get auth token if present
-    const authHeader = request.headers.get('authorization');
-    let userId: string | null = null;
-    let userTier: string | null = null;
-    let isNewcomer = false;
+    const { searchParams } = new URL(request.url);
+    const category = searchParams.get('category');
 
-    if (authHeader?.startsWith('Bearer ')) {
-      const token = authHeader.substring(7);
-      const { data: { user } } = await supabase.auth.getUser(token);
-      
-      if (user) {
-        userId = user.id;
-        
-        // Get user's subscription tier
-        const { data: userData } = await supabase
-          .from('users')
-          .select('subscription_type, created_at')
-          .eq('id', userId)
-          .single();
-        
-        userTier = userData?.subscription_type || 'free';
-        
-        // Check if newcomer (registered in last 7 days)
-        if (userData?.created_at) {
-          const createdAt = new Date(userData.created_at);
-          const daysSinceCreation = (Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24);
-          isNewcomer = daysSinceCreation <= 7;
-        }
-      }
-    }
-
-    // Get the live news episode
-    const { data: liveEpisode, error } = await supabase
+    let query = supabase
       .from('news_episodes')
       .select('*')
       .eq('is_live', true)
-      .eq('status', 'published')
-      .single();
+      .order('created_at', { ascending: false });
 
-    if (error || !liveEpisode) {
+    // If specific category requested
+    if (category) {
+      query = query.eq('category', category).limit(1);
+    }
+
+    const { data, error } = await query;
+
+    if (error) throw error;
+
+    // If requesting single category, return single object
+    if (category) {
       return NextResponse.json({
-        hasLiveEpisode: false,
-        message: 'No live news episode available'
+        success: true,
+        briefing: data?.[0] || null,
       });
     }
 
-    // Determine access level
-    const hasEligibleSubscription = NEWS_ELIGIBLE_TIERS.includes(userTier || '');
-    const canAccess = hasEligibleSubscription || isNewcomer;
-
-    // Check if user already has access to this episode
-    let alreadyHasAccess = false;
-    if (userId) {
-      const { data: existingAccess } = await supabase
-        .from('news_access')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('episode_id', liveEpisode.id)
-        .single();
-      
-      alreadyHasAccess = !!existingAccess;
-    }
-
-    // If user can access and doesn't have access yet, grant it
-    if (canAccess && userId && !alreadyHasAccess) {
-      await supabase
-        .from('news_access')
-        .insert({
-          user_id: userId,
-          episode_id: liveEpisode.id,
-          acquired_via: isNewcomer ? 'newcomer_bonus' : 'subscription_perk'
-        });
-    }
-
-    // Build response
-    const response: any = {
-      hasLiveEpisode: true,
-      episode: {
-        id: liveEpisode.id,
-        title: liveEpisode.title,
-        edition: liveEpisode.edition,
-        date: liveEpisode.edition_date,
-        durationMins: liveEpisode.duration_mins,
-        coverUrl: liveEpisode.cover_url,
-        publishedAt: liveEpisode.published_at
-      },
-      access: {
-        canAccess,
-        reason: canAccess 
-          ? (isNewcomer ? 'newcomer_bonus' : 'subscription_perk')
-          : 'subscription_required',
-        eligibleTiers: NEWS_ELIGIBLE_TIERS
+    // Otherwise, return all live briefings grouped by category
+    const briefingsByCategory: Record<string, any> = {};
+    for (const briefing of data || []) {
+      if (!briefingsByCategory[briefing.category]) {
+        briefingsByCategory[briefing.category] = briefing;
       }
-    };
-
-    // Only include audio URL if user has access
-    if (canAccess) {
-      response.episode.audioUrl = liveEpisode.audio_url;
     }
 
-    return NextResponse.json(response);
-
+    return NextResponse.json({
+      success: true,
+      briefings: briefingsByCategory,
+    });
   } catch (error) {
-    console.error('[News Live API] Error:', error);
+    console.error('[News Live] Error:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch news episode' },
+      { success: false, error: String(error) },
       { status: 500 }
     );
   }
