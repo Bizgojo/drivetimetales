@@ -81,7 +81,13 @@ async function generateNewsScript(
 
 Give me the 24-hour weather forecast for United States zip code ${zipCode} in 4 to 5 sentences. Do not include any other zip codes other than ${zipCode}.
 
-Now give me the top 3 stories for local news as reported from searching the internet and major daily newspapers within a 50-mile radius of ${testCity} ${zipCode} for the last 24-hours.
+Now give me the top 3 stories for LOCAL news ONLY. LOCAL news means:
+- News happening IN or NEAR ${testCity} (within 50 miles)
+- Local crime, local government, local schools, local businesses, local events
+- News from local newspapers like the Asheville Citizen-Times, WLOS, local TV stations
+- Do NOT include national news stories
+- Do NOT include stories about other cities or states
+Search for "${testCity} news today" and "${testCity} local news" to find these stories.
 
 Then give 3 to 5 sentences describing each of 3 top state news stories in the last 12 hours for the state of ${state} in the United States by searching the internet and major news outlets including CNN, ABC, CBS, NBC, FOX and Associated Press. Do not include any news for any other state except ${state} in the United States of America.
 
