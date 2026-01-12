@@ -78,6 +78,7 @@ async function generateNewsScript(
   subscriberName: string | null,
   episodeNumber: number,
   personalizeIntros: boolean,
+  narratorName?: string,
   zipCode?: string
 ): Promise<string> {
   const config = CATEGORY_CONFIG[categoryId];
@@ -93,9 +94,9 @@ async function generateNewsScript(
   let intro = '';
   if (personalizeIntros && subscriberName) {
     const intros = [
-      `Hello ${subscriberName}, I have your ${timeGreeting} briefing to keep you up to date on ${getCategoryLabel(categoryId)}. This is episode ${episodeNumber}.`,
-      `Good ${timeGreeting} ${subscriberName}! Here's your ${getCategoryLabel(categoryId)} update, episode ${episodeNumber}.`,
-      `${subscriberName}, welcome to your ${timeGreeting} ${getCategoryLabel(categoryId)} briefing. Episode ${episodeNumber}.`,
+      `Good ${timeGreeting} ${subscriberName}, this is ${narratorName || "your host"} with your ${getCategoryLabel(categoryId)} briefing. Episode ${episodeNumber}.`,
+      `Hello ${subscriberName}, ${narratorName || "I"} here with your ${timeGreeting} ${getCategoryLabel(categoryId)} update. This is episode ${episodeNumber}.`,
+      `${subscriberName}, welcome! This is ${narratorName || "your correspondent"} bringing you ${getCategoryLabel(categoryId)}. Episode ${episodeNumber}.`,
     ];
     intro = intros[Math.floor(Math.random() * intros.length)];
   } else {
@@ -128,7 +129,7 @@ async function generateNewsScript(
     messages: [
       {
         role: 'user',
-        content: `Search for today's top news stories using these terms: ${config.searchTerms.join(', ')}${categoryId === 'local' && zipCode ? ` near zip code ${zipCode}. Search for weather in ${zipCode} and local news within 50 miles of ${zipCode}` : ''}. 
+        content: `Search for today's top news stories using these terms: ${config.searchTerms.join(', ')}${categoryId === 'local' && zipCode ? ` for zip code ${zipCode}. FIRST, look up what city and state zip code ${zipCode} is in. Then search for current weather forecast for that city. Then search for local news in that city and surrounding area within 50 miles. Include the city name in your news report` : ''}. 
 Then write a professional news briefing script with exactly 5 stories.
 
 ${config.systemPrompt}
@@ -251,7 +252,7 @@ async function deleteOldBriefings(categoryId: string) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { categoryId, voiceId, personalizeIntros, subscriberName, zipCode } = body;
+    const { categoryId, voiceId, personalizeIntros, subscriberName, zipCode, narratorName } = body;
 
     if (!categoryId || !voiceId) {
       return NextResponse.json(
@@ -275,6 +276,7 @@ export async function POST(request: NextRequest) {
       subscriberName || null,
       episodeNumber,
       personalizeIntros !== false,
+      narratorName,
       zipCode
     );
 
