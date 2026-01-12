@@ -3,6 +3,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 
+// ============================================================================
+// TYPES
+// ============================================================================
+
 interface Voice {
   voice_id: string;
   name: string;
@@ -21,6 +25,17 @@ interface Category {
   isGenerating: boolean;
 }
 
+interface ScheduleSlot {
+  id: string;
+  label: string;
+  time: string;
+  enabled: boolean;
+}
+
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
 const INITIAL_CATEGORIES: Category[] = [
   { id: 'local', label: 'Local News & Weather', voiceId: '', narratorName: '', lastGenerated: null, episodeNumber: 0, audioUrl: null, isGenerating: false },
   { id: 'national', label: 'National News', voiceId: '', narratorName: '', lastGenerated: null, episodeNumber: 0, audioUrl: null, isGenerating: false },
@@ -30,29 +45,46 @@ const INITIAL_CATEGORIES: Category[] = [
   { id: 'science', label: 'Science & Technology', voiceId: '', narratorName: '', lastGenerated: null, episodeNumber: 0, audioUrl: null, isGenerating: false },
 ];
 
+const INITIAL_SCHEDULE: ScheduleSlot[] = [
+  { id: 'morning', label: 'Morning', time: '06:00', enabled: true },
+  { id: 'noon', label: 'Noon', time: '12:00', enabled: true },
+  { id: 'evening', label: 'Evening', time: '18:00', enabled: true },
+];
+
+// ============================================================================
+// COMPONENT
+// ============================================================================
+
 export default function NewsBriefingsPage() {
   const [categories, setCategories] = useState<Category[]>(INITIAL_CATEGORIES);
   const [voices, setVoices] = useState<Voice[]>([]);
   const [testZipCode, setTestZipCode] = useState('');
   const [automate, setAutomate] = useState(false);
-  const [isGeneratingAll, setIsGeneratingAll] = useState(false);
+  const [schedule, setSchedule] = useState<ScheduleSlot[]>(INITIAL_SCHEDULE);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [previewingVoice, setPreviewingVoice] = useState<string | null>(null);
+  const [playingAudio, setPlayingAudio] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
+  // Load data on mount
   useEffect(() => {
     loadVoices();
     loadSettings();
   }, []);
 
+  // Auto-dismiss messages
   useEffect(() => {
     if (message) {
       const timer = setTimeout(() => setMessage(null), 5000);
       return () => clearTimeout(timer);
     }
   }, [message]);
+
+  // ============================================================================
+  // API FUNCTIONS
+  // ============================================================================
 
   async function loadVoices() {
     try {
@@ -75,6 +107,7 @@ export default function NewsBriefingsPage() {
         setCategories(data.settings.categories || INITIAL_CATEGORIES);
         setTestZipCode(data.settings.testZipCode || '');
         setAutomate(data.settings.automate || false);
+        setSchedule(data.settings.schedule || INITIAL_SCHEDULE);
       }
     } catch (e) {
       console.error('Failed to load settings:', e);
@@ -90,7 +123,7 @@ export default function NewsBriefingsPage() {
       if (!user) throw new Error('Not authenticated');
       await supabase.from('news_settings').upsert({
         user_id: user.id,
-        settings: { categories, testZipCode, automate },
+        settings: { categories, testZipCode, automate, schedule },
         updated_at: new Date().toISOString()
       }, { onConflict: 'user_id' });
       setMessage({ type: 'success', text: 'Settings saved!' });
@@ -135,13 +168,9 @@ export default function NewsBriefingsPage() {
     }
   }
 
-  async function generateAll() {
-    setIsGeneratingAll(true);
-    for (const cat of categories) {
-      await generateBriefing(cat.id);
-    }
-    setIsGeneratingAll(false);
-  }
+  // ============================================================================
+  // AUDIO FUNCTIONS
+  // ============================================================================
 
   function previewVoice(voice: Voice) {
     if (previewingVoice === voice.voice_id) {
@@ -150,6 +179,7 @@ export default function NewsBriefingsPage() {
       return;
     }
     setPreviewingVoice(voice.voice_id);
+    setPlayingAudio(null);
     if (voice.preview_url) {
       const audio = new Audio(voice.preview_url);
       audioRef.current = audio;
@@ -158,94 +188,120 @@ export default function NewsBriefingsPage() {
     }
   }
 
-  function playBriefing(audioUrl: string | null) {
+  function togglePlayBriefing(categoryId: string, audioUrl: string | null) {
     if (!audioUrl) return;
-    if (audioRef.current) audioRef.current.pause();
+    
+    // If already playing this one, stop it
+    if (playingAudio === categoryId) {
+      if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+      setPlayingAudio(null);
+      return;
+    }
+    
+    // Stop any current audio
+    if (audioRef.current) { audioRef.current.pause(); }
+    setPreviewingVoice(null);
+    
+    // Play new audio
     const audio = new Audio(audioUrl);
     audioRef.current = audio;
+    audio.onended = () => setPlayingAudio(null);
     audio.play();
+    setPlayingAudio(categoryId);
   }
+
+  // ============================================================================
+  // HELPER FUNCTIONS
+  // ============================================================================
 
   function updateCategory(id: string, updates: Partial<Category>) {
     setCategories(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
   }
 
-  function formatTime(iso: string | null): string {
-    if (!iso) return '--';
-    return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  function updateSchedule(id: string, updates: Partial<ScheduleSlot>) {
+    setSchedule(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
   }
 
+  function formatTime(iso: string | null): string {
+    if (!iso) return 'Never';
+    return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
+  }
+
+  // ============================================================================
+  // RENDER
+  // ============================================================================
+
   if (loading) {
-    return <div className="min-h-screen bg-slate-950 flex items-center justify-center"><p className="text-white">Loading...</p></div>;
+    return <div className="min-h-screen bg-slate-950 flex items-center justify-center"><p className="text-white text-xl">Loading...</p></div>;
   }
 
   return (
     <div className="min-h-screen bg-slate-950 p-6">
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-5xl mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-700 pb-5 mb-6">
+        <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold text-white">News Briefing Dashboard</h1>
-          <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 text-white">
-              <span>Automate (6am, Noon, 6pm):</span>
-              <input type="checkbox" checked={automate} onChange={e => setAutomate(e.target.checked)} className="w-5 h-5 rounded" />
-            </label>
-            <button onClick={generateAll} disabled={isGeneratingAll} className="px-4 py-2 bg-green-700 hover:bg-green-600 disabled:bg-green-900 text-white font-semibold rounded-lg">
-              {isGeneratingAll ? 'Generating...' : '[Generate All]'}
-            </button>
-            <button onClick={saveSettings} disabled={saving} className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-black font-semibold rounded-lg">
-              {saving ? 'Saving...' : 'Save Settings'}
-            </button>
-          </div>
+          <button onClick={saveSettings} disabled={saving} className="px-5 py-2 bg-orange-500 hover:bg-orange-600 disabled:bg-orange-500/50 text-black font-semibold rounded-lg">
+            {saving ? 'Saving...' : 'Save Settings'}
+          </button>
         </div>
 
         {/* Status Message */}
         {message && (
-          <div className={`mb-4 p-3 rounded-lg ${message.type === 'success' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+          <div className={`mb-4 p-3 rounded-lg ${message.type === 'success' ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
             {message.text}
           </div>
         )}
 
-        {/* Category Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        {/* Category Grid - 2 wide x 3 deep */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-8">
           {categories.map(cat => (
-            <div key={cat.id} className="bg-slate-900 border border-slate-700 rounded-xl p-5 flex flex-col gap-4">
-              {/* Header */}
-              <div className="flex justify-between items-start">
-                <h2 className="text-lg font-bold text-white">{cat.label}</h2>
-                <span className="text-xs text-slate-400">Last: {formatTime(cat.lastGenerated)}</span>
-              </div>
+            <div key={cat.id} className="bg-slate-900 border border-slate-700 rounded-xl p-5">
+              {/* a. Category Label */}
+              <h2 className="text-lg font-bold text-white mb-1">{cat.label}</h2>
+              
+              {/* b. Last Updated */}
+              <p className="text-sm text-slate-400 mb-4">Last Updated: {formatTime(cat.lastGenerated)}</p>
 
-              {/* Zip Code - Only for Local */}
+              {/* Zip Code - Only for Local News */}
               {cat.id === 'local' && (
-                <div>
-                  <label className="text-sm text-slate-400">Test Zip Code (50mi radius):</label>
+                <div className="mb-4">
+                  <label className="block text-sm text-slate-400 mb-1">Test Zip Code (50mi radius)</label>
                   <input
                     type="text"
                     value={testZipCode}
                     onChange={e => setTestZipCode(e.target.value.replace(/\D/g, '').slice(0, 5))}
                     placeholder="e.g. 28801"
                     maxLength={5}
-                    className="mt-1 w-24 px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white"
+                    className="w-32 px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white"
                   />
                 </div>
               )}
 
-              {/* Voice Selection */}
-              <div>
-                <label className="text-sm text-slate-400">Narrator Voice:</label>
-                <div className="flex gap-2 mt-1">
+              {/* c. Narrator's Name */}
+              <div className="mb-4">
+                <label className="block text-sm text-slate-400 mb-1">Narrator's Name</label>
+                <input
+                  type="text"
+                  value={cat.narratorName}
+                  onChange={e => updateCategory(cat.id, { narratorName: e.target.value })}
+                  placeholder="How narrator introduces themselves"
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white"
+                />
+              </div>
+
+              {/* d. Narrator's Voice + Preview */}
+              <div className="mb-4">
+                <label className="block text-sm text-slate-400 mb-1">Narrator's Voice</label>
+                <div className="flex gap-2">
                   <select
                     value={cat.voiceId}
-                    onChange={e => {
-                      const voice = voices.find(v => v.voice_id === e.target.value);
-                      updateCategory(cat.id, { voiceId: e.target.value, narratorName: voice?.name || '' });
-                    }}
-                    className="flex-1 px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white"
+                    onChange={e => updateCategory(cat.id, { voiceId: e.target.value })}
+                    className="flex-1 px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white max-h-40 overflow-y-auto"
                   >
                     <option value="">Select voice...</option>
                     {voices.map(v => (
-                      <option key={v.voice_id} value={v.voice_id}>{v.name}</option>
+                      <option key={v.voice_id} value={v.voice_id}>{v.name} {v.labels?.accent ? `(${v.labels.accent})` : ''}</option>
                     ))}
                   </select>
                   <button
@@ -254,37 +310,86 @@ export default function NewsBriefingsPage() {
                       if (voice) previewVoice(voice);
                     }}
                     disabled={!cat.voiceId}
-                    className="px-3 py-2 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:text-slate-500 text-white rounded-lg"
+                    className="px-3 py-2 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:text-slate-500 text-white rounded-lg text-sm"
                   >
-                    {previewingVoice === cat.voiceId ? '⏹' : '▶'} Preview
+                    {previewingVoice === cat.voiceId ? '⏹ Stop' : '▶ Preview'}
                   </button>
                 </div>
               </div>
 
-              {/* Episode Info */}
+              {/* Episode Number */}
               {cat.episodeNumber > 0 && (
-                <p className="text-xs text-slate-500">Episode #{cat.episodeNumber}</p>
+                <p className="text-xs text-slate-500 mb-3">Episode #{cat.episodeNumber}</p>
               )}
 
-              {/* Action Buttons */}
-              <div className="flex justify-between mt-auto pt-3 border-t border-slate-700">
+              {/* e. Generate Button & f. Listen Button */}
+              <div className="flex gap-3 pt-3 border-t border-slate-700">
                 <button
                   onClick={() => generateBriefing(cat.id)}
-                  disabled={cat.isGenerating || isGeneratingAll || !cat.voiceId}
-                  className="px-4 py-2 bg-orange-500 hover:bg-orange-600 disabled:bg-slate-700 disabled:text-slate-500 text-black font-semibold rounded-lg"
+                  disabled={cat.isGenerating || !cat.voiceId}
+                  className="flex-1 px-4 py-2 bg-orange-500 hover:bg-orange-600 disabled:bg-slate-700 disabled:text-slate-500 text-black font-semibold rounded-lg"
                 >
                   {cat.isGenerating ? '⏳ Generating...' : 'Generate'}
                 </button>
                 <button
-                  onClick={() => playBriefing(cat.audioUrl)}
+                  onClick={() => togglePlayBriefing(cat.id, cat.audioUrl)}
                   disabled={!cat.audioUrl}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-semibold rounded-lg"
+                  className={`flex-1 px-4 py-2 font-semibold rounded-lg ${
+                    playingAudio === cat.id 
+                      ? 'bg-red-600 hover:bg-red-500 text-white' 
+                      : 'bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-500 text-white'
+                  }`}
                 >
-                  🔊 Listen
+                  {playingAudio === cat.id ? '⏹ Stop' : '🔊 Listen'}
                 </button>
               </div>
             </div>
           ))}
+        </div>
+
+        {/* Bottom Section - Automation */}
+        <div className="bg-slate-900 border border-slate-700 rounded-xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-lg font-bold text-white">Automation</h2>
+              <p className="text-sm text-slate-400">Auto-generate briefings at scheduled times (all US time zones)</p>
+            </div>
+            <button
+              onClick={() => setAutomate(!automate)}
+              className={`relative w-14 h-7 rounded-full transition-colors ${automate ? 'bg-orange-500' : 'bg-slate-700'}`}
+            >
+              <span className={`absolute top-1 w-5 h-5 bg-white rounded-full transition-all ${automate ? 'left-8' : 'left-1'}`} />
+            </button>
+          </div>
+
+          {/* Time Slots */}
+          <div className="grid grid-cols-3 gap-4">
+            {schedule.map(slot => (
+              <div key={slot.id} className={`p-4 rounded-lg border ${slot.enabled ? 'bg-slate-800 border-orange-500/50' : 'bg-slate-800/50 border-slate-700 opacity-60'}`}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-white font-medium">{slot.label}</span>
+                  <button
+                    onClick={() => updateSchedule(slot.id, { enabled: !slot.enabled })}
+                    className={`w-10 h-5 rounded-full transition-colors ${slot.enabled ? 'bg-orange-500' : 'bg-slate-600'}`}
+                  >
+                    <span className={`block w-4 h-4 bg-white rounded-full transition-all ${slot.enabled ? 'ml-5' : 'ml-0.5'}`} />
+                  </button>
+                </div>
+                <input
+                  type="time"
+                  value={slot.time}
+                  onChange={e => updateSchedule(slot.id, { time: e.target.value })}
+                  disabled={!slot.enabled}
+                  className="w-full px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white text-center disabled:opacity-50"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="mt-6 text-center text-slate-600 text-xs">
+          News Briefings Admin v2.0 • Drive Time Tales
         </div>
       </div>
     </div>
