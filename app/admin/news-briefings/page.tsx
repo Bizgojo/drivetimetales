@@ -19,6 +19,7 @@ interface CategoryConfig {
   icon: string;
   description: string;
   voiceId: string;
+  narratorName: string;
   lastGenerated: string | null;
   episodeNumber: number;
   isGenerating: boolean;
@@ -55,12 +56,12 @@ const AVAILABLE_VOICES: Voice[] = [
 ];
 
 const DEFAULT_CATEGORIES: CategoryConfig[] = [
-  { id: 'local', label: 'Local News & Weather', icon: '🏠', description: 'Weather first, then local news within 50mi radius', voiceId: 'EXAVITQu4vr4xnSDxMaL', lastGenerated: null, episodeNumber: 0, isGenerating: false, audioUrl: null },
-  { id: 'national', label: 'National News', icon: '🇺🇸', description: 'Top 5 US news stories', voiceId: '21m00Tcm4TlvDq8ikWAM', lastGenerated: null, episodeNumber: 0, isGenerating: false, audioUrl: null },
-  { id: 'international', label: 'International News', icon: '🌍', description: 'Top 5 world news stories', voiceId: 'VR6AewLTigWG4xSOukaG', lastGenerated: null, episodeNumber: 0, isGenerating: false, audioUrl: null },
-  { id: 'business', label: 'Business & Finance', icon: '📈', description: 'Markets, economy, corporate news', voiceId: 'pNInz6obpgDQGcFmaJgB', lastGenerated: null, episodeNumber: 0, isGenerating: false, audioUrl: null },
-  { id: 'sports', label: 'Sports', icon: '⚽', description: 'Top 5 sports stories', voiceId: 'ErXwobaYiN019PkySvjV', lastGenerated: null, episodeNumber: 0, isGenerating: false, audioUrl: null },
-  { id: 'science', label: 'Science & Technology', icon: '🔬', description: 'Tech, science, innovation news', voiceId: 'yoZ06aMxZJJ28mfd3POQ', lastGenerated: null, episodeNumber: 0, isGenerating: false, audioUrl: null },
+  { id: 'local', label: 'Local News & Weather', icon: '🏠', description: 'Weather first, then local news within 50mi radius', voiceId: 'EXAVITQu4vr4xnSDxMaL', narratorName: 'Sarah', lastGenerated: null, episodeNumber: 0, isGenerating: false, audioUrl: null },
+  { id: 'national', label: 'National News', icon: '🇺🇸', description: 'Top 5 US news stories', voiceId: '21m00Tcm4TlvDq8ikWAM', narratorName: 'Rachel', lastGenerated: null, episodeNumber: 0, isGenerating: false, audioUrl: null },
+  { id: 'international', label: 'International News', icon: '🌍', description: 'Top 5 world news stories', voiceId: 'VR6AewLTigWG4xSOukaG', narratorName: 'Arnold', lastGenerated: null, episodeNumber: 0, isGenerating: false, audioUrl: null },
+  { id: 'business', label: 'Business & Finance', icon: '📈', description: 'Markets, economy, corporate news', voiceId: 'pNInz6obpgDQGcFmaJgB', narratorName: 'Adam', lastGenerated: null, episodeNumber: 0, isGenerating: false, audioUrl: null },
+  { id: 'sports', label: 'Sports', icon: '⚽', description: 'Top 5 sports stories', voiceId: 'ErXwobaYiN019PkySvjV', narratorName: 'Antoni', lastGenerated: null, episodeNumber: 0, isGenerating: false, audioUrl: null },
+  { id: 'science', label: 'Science & Technology', icon: '🔬', description: 'Tech, science, innovation news', voiceId: 'yoZ06aMxZJJ28mfd3POQ', narratorName: 'Sam', lastGenerated: null, episodeNumber: 0, isGenerating: false, audioUrl: null },
 ];
 
 const DEFAULT_SCHEDULE: ScheduleTime[] = [
@@ -275,6 +276,15 @@ export default function NewsBriefingsAdmin() {
       ...prev,
       categories: prev.categories.map(cat =>
         cat.id === categoryId ? { ...cat, voiceId } : cat
+      ),
+    }));
+  }
+
+  function updateCategoryNarratorName(categoryId: string, narratorName: string) {
+    setSettings(prev => ({
+      ...prev,
+      categories: prev.categories.map(cat =>
+        cat.id === categoryId ? { ...cat, narratorName } : cat
       ),
     }));
   }
@@ -537,6 +547,18 @@ export default function NewsBriefingsAdmin() {
                 </div>
               </div>
 
+              {/* Narrator Name */}
+              <div className="mb-4">
+                <label className="text-gray-400 text-sm mb-2 block">Narrator Name (for intro)</label>
+                <input
+                  type="text"
+                  value={category.narratorName}
+                  onChange={e => updateCategoryNarratorName(category.id, e.target.value)}
+                  placeholder="e.g., Sarah, John, etc."
+                  className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-xl text-white focus:border-orange-500 focus:outline-none"
+                />
+              </div>
+
               {/* Last Generated & Actions */}
               <div className="flex items-center justify-between pt-4 border-t border-gray-800">
                 <div className="text-sm">
@@ -547,7 +569,7 @@ export default function NewsBriefingsAdmin() {
                   {category.audioUrl && (
                     <button
                       onClick={() => playBriefing(category.audioUrl)}
-                      className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-xl transition-all flex items-center gap-2"
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl transition-all flex items-center gap-2"
                     >
                       <span>🔊</span>
                       Listen
