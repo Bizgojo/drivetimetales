@@ -282,12 +282,12 @@ export default function NewsBriefingsPage() {
                     maxLength={5}
                     className="w-32 px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white mb-3"
                   />
-                  <label className="block text-sm text-slate-400 mb-1">Test Address</label>
+                  <label className="block text-sm text-slate-400 mb-1">Test City, State</label>
                   <input
                     type="text"
                     value={testCity}
                     onChange={e => setTestCity(e.target.value)}
-                    placeholder="e.g. 12 S Lexington Ave, Asheville, NC 28801"
+                    placeholder="e.g. Asheville, NC"
                     className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white"
                   />
                 </div>
@@ -329,12 +329,12 @@ export default function NewsBriefingsPage() {
                   >
                     {previewingVoice === cat.voiceId ? '⏹ Stop' : '▶ Preview'}
                   </button>
-                  <label className="block text-sm text-slate-400 mb-1">Test Address</label>
+                  <label className="block text-sm text-slate-400 mb-1">Test City, State</label>
                   <input
                     type="text"
                     value={testCity}
                     onChange={e => setTestCity(e.target.value)}
-                    placeholder="e.g. 12 S Lexington Ave, Asheville, NC 28801"
+                    placeholder="e.g. Asheville, NC"
                     className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white"
                   />
                 </div>
@@ -397,12 +397,12 @@ export default function NewsBriefingsPage() {
                   >
                     <span className={`block w-4 h-4 bg-white rounded-full transition-all ${slot.enabled ? 'ml-5' : 'ml-0.5'}`} />
                   </button>
-                  <label className="block text-sm text-slate-400 mb-1">Test Address</label>
+                  <label className="block text-sm text-slate-400 mb-1">Test City, State</label>
                   <input
                     type="text"
                     value={testCity}
                     onChange={e => setTestCity(e.target.value)}
-                    placeholder="e.g. 12 S Lexington Ave, Asheville, NC 28801"
+                    placeholder="e.g. Asheville, NC"
                     className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white"
                   />
                 </div>
