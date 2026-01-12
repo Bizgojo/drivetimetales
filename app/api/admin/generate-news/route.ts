@@ -133,8 +133,8 @@ async function generateNewsScript(
         content: `Search for today's top news stories using these terms: ${config.searchTerms.join(', ')}${categoryId === 'local' && (zipCode || testCity) ? ` . The location is: ${testCity || 'zip code ' + zipCode}. 
 
 IMPORTANT LOCATION INSTRUCTIONS:
-1. FIRST search for '${testCity ? testCity.split(',')[0] : zipCode} weather today' to get the current weather
-2. THEN search for '${testCity ? testCity.split(',')[0] : zipCode} news today' to find local news
+1. FIRST search for 'weather forecast' + the CITY NAME extracted from this address: ${testCity || zipCode}
+2. THEN search for 'local news' + the CITY NAME extracted from this address: ${testCity || zipCode}
 3. You MUST mention the city name (from the address provided) in your report
 4. Only include news and weather for THIS specific location, not other cities` : ''}. 
 Then write a professional news briefing script with exactly 5 stories.
