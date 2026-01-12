@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { createClient } from '@/utils/supabase/client';
+import { supabase } from '@/lib/supabase';
 
 interface Voice {
   voice_id: string;
@@ -85,7 +85,7 @@ export default function NewsBriefingsPage() {
 
   const loadSettings = async () => {
     try {
-      const supabase = createClient();
+      
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       const { data, error } = await supabase.from('news_settings').select('*').eq('user_id', user.id).single();
@@ -115,7 +115,7 @@ export default function NewsBriefingsPage() {
     setSaving(true);
     setMessage(null);
     try {
-      const supabase = createClient();
+      
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
       const { error } = await supabase.from('news_settings').upsert({ ...settings, user_id: user.id, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
