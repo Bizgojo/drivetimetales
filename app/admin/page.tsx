@@ -394,7 +394,7 @@ export default function AdminPage() {
 
             {/* Quick Links */}
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              <Link href="/admin/news" className="bg-slate-900 hover:bg-slate-800 rounded-xl p-4 border border-slate-700 transition-colors">
+              <Link href="/admin/news-briefings" className="bg-slate-900 hover:bg-slate-800 rounded-xl p-4 border border-slate-700 transition-colors">
                 <span className="text-2xl mb-2 block">📰</span>
                 <p className="text-white font-medium">News Briefings</p>
                 <p className="text-slate-400 text-xs">Manage news generation</p>
