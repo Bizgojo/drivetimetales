@@ -153,6 +153,7 @@ export default function NewsBriefingsPage() {
           zipCode: categoryId === 'local' ? testZipCode : undefined,
           testCity: categoryId === 'local' ? testCity : undefined,
           subscriberName: testSubscriberName,
+          personalizeIntros: true,
         }),
       });
       const data = await res.json();
