@@ -131,20 +131,15 @@ async function generateNewsScript(
       {
         role: 'user',
         content: categoryId === 'local' && testCity 
-          ? `You are a professional radio news anchor. Read this briefing exactly as written with NO preamble, NO explanation of your search process, and NO commentary.
+          ? `I want a 4 to 7 minute news style audio broadcast by news anchor ${narratorName || 'your host'} especially for ${subscriberName || 'you'}.
 
-Give me the 24-hour weather forecast for United States zip code ${zipCode} in 2 to 3 sentences. Do not include weather for any other location.
+Give me the 24-hour weather forecast for United States zip code ${zipCode} in 4 to 5 sentences. Do not include any other zip codes other than ${zipCode}.
 
-Now give me the top 2 local news stories from the last 24 hours within a 50-mile radius of ${testCity} ${zipCode}. Search the internet and major daily newspapers. Do not include news from outside this area.
+Now give me the top 3 stories for local news as reported from searching the internet and major daily newspapers within a 50-mile radius of ${testCity} ${zipCode} for the last 24-hours.
 
-Now give me the top 3 state news stories from the last 12 hours for ${testCity.split(',')[1]?.trim() || 'North Carolina'} in the United States. Search CNN, ABC, CBS, NBC, FOX, and Associated Press. Do not include news from any other state.
+Then give 3 to 5 sentences describing each of 3 top state news stories in the last 12 hours for the state of ${testCity.split(',')[1]?.trim() || 'North Carolina'} in the United States by searching the internet and major news outlets including CNN, ABC, CBS, NBC, FOX and Associated Press. Do not include any news for any other state except ${testCity.split(',')[1]?.trim() || 'North Carolina'} in the United States of America.
 
-CRITICAL RULES:
-- Output ONLY the news script - nothing else
-- Do NOT say "I will search" or "Let me find" or explain your methodology
-- Do NOT include any thinking or reasoning
-- Write as if you are reading directly to the listener
-- Be professional and concise
+Write this as one 4 to 7 minute spoken news broadcast by ${narratorName || 'your host'} leaving out your methodology for gathering the information. Never use zip code in story only the name of the closest town to that zip code. Personalize this for "${subscriberName || 'the listener'}" the listener. When you describe a place or event in the story always say what town it is in or near. Expand local stories as much as state-wide stories.
 
 ${config.systemPrompt}`
           : `Search for today's top news stories using these terms: ${config.searchTerms.join(', ')}. 
