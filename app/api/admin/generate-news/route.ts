@@ -131,16 +131,21 @@ async function generateNewsScript(
       {
         role: 'user',
         content: categoryId === 'local' && testCity 
-          ? `Search for weather and local news for ${testCity}.
+          ? `Give me the current weather for ${testCity} ${zipCode ? 'around zip code ' + zipCode : ''}.
 
-YOUR SEARCH TASKS:
-1. Search for "${testCity} weather forecast today"
-2. Search for "${testCity} local news today"
-3. Search for "${testCity.split(',')[1]?.trim() || 'North Carolina'} state news today"
+Then give me local news within a 50 mile radius of ${testCity}.
 
-Write a local news briefing with the weather FIRST, then 4 local/state news stories.
-You MUST only report news from ${testCity} and the surrounding area.
-Do NOT include news from other states or cities.
+Then give me state news for ${testCity.split(',')[1]?.trim() || 'the state'}.
+
+Search CNN, CBS, NBC, FOX, Associated Press, and local news sources.
+
+Give me exactly 5 news stories total (weather first, then 4 news stories).
+
+IMPORTANT: 
+- Start with weather, then local news, then state news
+- Only include news from ${testCity} and ${testCity.split(',')[1]?.trim() || 'the state'} - NOT from other states
+- Do NOT explain your search methodology - just deliver the news like a professional news anchor
+- Do NOT include any preamble about how you gathered the information
 
 ${config.systemPrompt}`
           : `Search for today's top news stories using these terms: ${config.searchTerms.join(', ')}. 
