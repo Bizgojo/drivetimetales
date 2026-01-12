@@ -60,6 +60,7 @@ export default function NewsBriefingsPage() {
   const [voices, setVoices] = useState<Voice[]>([]);
   const [testZipCode, setTestZipCode] = useState('');
   const [testCity, setTestCity] = useState('');
+  const [testSubscriberName, setTestSubscriberName] = useState('Marc');
   const [automate, setAutomate] = useState(false);
   const [schedule, setSchedule] = useState<ScheduleSlot[]>(INITIAL_SCHEDULE);
   const [loading, setLoading] = useState(true);
@@ -108,6 +109,7 @@ export default function NewsBriefingsPage() {
         setCategories(data.settings.categories || INITIAL_CATEGORIES);
         setTestZipCode(data.settings.testZipCode || '');
         setTestCity(data.settings.testCity || '');
+        setTestSubscriberName(data.settings.testSubscriberName || 'Marc');
         setAutomate(data.settings.automate || false);
         setSchedule(data.settings.schedule || INITIAL_SCHEDULE);
       }
@@ -125,7 +127,7 @@ export default function NewsBriefingsPage() {
       if (!user) throw new Error('Not authenticated');
       await supabase.from('news_settings').upsert({
         user_id: user.id,
-        settings: { categories, testZipCode, testCity, automate, schedule },
+        settings: { categories, testZipCode, testCity, testSubscriberName, automate, schedule },
         updated_at: new Date().toISOString()
       }, { onConflict: 'user_id' });
       setMessage({ type: 'success', text: 'Settings saved!' });
@@ -150,6 +152,7 @@ export default function NewsBriefingsPage() {
           narratorName: cat.narratorName,
           zipCode: categoryId === 'local' ? testZipCode : undefined,
           testCity: categoryId === 'local' ? testCity : undefined,
+          subscriberName: testSubscriberName,
         }),
       });
       const data = await res.json();
