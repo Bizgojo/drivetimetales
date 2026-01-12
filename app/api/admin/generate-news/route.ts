@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -9,6 +10,10 @@ const supabase = createClient(
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
+});
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY!,
 });
 
 // Category configurations for news search
@@ -117,21 +122,17 @@ async function generateNewsScript(
     outro = `That concludes your ${getCategoryLabel(categoryId)} briefing. Thanks for listening.`;
   }
 
-  // Use Claude with web search to get real news
-  const message = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
-    max_tokens: 2000,
-    tools: [
-      {
-        type: 'web_search_20250305' as any,
-        name: 'web_search',
-      },
-    ],
-    messages: [
-      {
-        role: 'user',
-        content: categoryId === 'local' && testCity 
-          ? `I want a 4 to 7 minute news style audio broadcast by news anchor ${narratorName || 'your host'} especially for ${subscriberName || 'you'}.
+  // Use OpenAI for local news (better with locations), Claude for other categories
+  let newsContent = '';
+
+  if (categoryId === 'local' && testCity) {
+    // Use OpenAI/ChatGPT for local news
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        {
+          role: 'user',
+          content: `I want a 4 to 7 minute news style audio broadcast by news anchor ${narratorName || 'your host'} especially for ${subscriberName || 'you'}.
 
 Give me the 24-hour weather forecast for United States zip code ${zipCode} in 4 to 5 sentences. Do not include any other zip codes other than ${zipCode}.
 
@@ -141,20 +142,45 @@ Then give 3 to 5 sentences describing each of 3 top state news stories in the la
 
 Write this as one 4 to 7 minute spoken news broadcast by ${narratorName || 'your host'} leaving out your methodology for gathering the information. Never use zip code in story only the name of the closest town to that zip code. Personalize this for "${subscriberName || 'the listener'}" the listener. When you describe a place or event in the story always say what town it is in or near. Expand local stories as much as state-wide stories.
 
+CRITICAL VERIFICATION RULES:
+- Use ONLY real, verified news from legitimate news outlets (CNN, ABC, CBS, NBC, FOX, Associated Press, local newspapers)
+- Do NOT guess, hallucinate, or make up any news stories, names, places, or events
+- Do NOT invent quotes or statistics
+- If you cannot find verified news for an area, say "No major local news to report at this time" rather than making something up
+- Every story must be based on actual reported news you found in your search
+- Include the news source name when possible (e.g., "According to WLOS..." or "The Asheville Citizen-Times reports...")
+
 ${config.systemPrompt}`
-          : `Search for today's top news stories using these terms: ${config.searchTerms.join(', ')}. 
+        }
+      ],
+    });
+    newsContent = completion.choices[0]?.message?.content || '';
+  } else {
+    // Use Claude for non-local categories
+    const message = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 2000,
+      tools: [
+        {
+          type: 'web_search_20250305' as any,
+          name: 'web_search',
+        },
+      ],
+      messages: [
+        {
+          role: 'user',
+          content: `Search for today's top news stories using these terms: ${config.searchTerms.join(', ')}. 
 Then write a professional news briefing script with exactly 5 stories.
 
 ${config.systemPrompt}`
-      },
-    ],
-  });
+        },
+      ],
+    });
 
-  // Extract text content from response
-  let newsContent = '';
-  for (const block of message.content) {
-    if (block.type === 'text') {
-      newsContent += block.text;
+    for (const block of message.content) {
+      if (block.type === 'text') {
+        newsContent += block.text;
+      }
     }
   }
 
