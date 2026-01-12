@@ -77,7 +77,8 @@ async function generateNewsScript(
   categoryId: string,
   subscriberName: string | null,
   episodeNumber: number,
-  personalizeIntros: boolean
+  personalizeIntros: boolean,
+  zipCode?: string
 ): Promise<string> {
   const config = CATEGORY_CONFIG[categoryId];
   if (!config) throw new Error(`Unknown category: ${categoryId}`);
@@ -127,7 +128,7 @@ async function generateNewsScript(
     messages: [
       {
         role: 'user',
-        content: `Search for today's top news stories using these terms: ${config.searchTerms.join(', ')}. 
+        content: `Search for today's top news stories using these terms: ${config.searchTerms.join(', ')}${categoryId === 'local' && zipCode ? ` near zip code ${zipCode}. Search for weather in ${zipCode} and local news within 50 miles of ${zipCode}` : ''}. 
 Then write a professional news briefing script with exactly 5 stories.
 
 ${config.systemPrompt}
@@ -250,7 +251,7 @@ async function deleteOldBriefings(categoryId: string) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { categoryId, voiceId, personalizeIntros, subscriberName } = body;
+    const { categoryId, voiceId, personalizeIntros, subscriberName, zipCode } = body;
 
     if (!categoryId || !voiceId) {
       return NextResponse.json(
@@ -273,7 +274,8 @@ export async function POST(request: NextRequest) {
       categoryId,
       subscriberName || null,
       episodeNumber,
-      personalizeIntros !== false
+      personalizeIntros !== false,
+      zipCode
     );
 
     // Generate audio
