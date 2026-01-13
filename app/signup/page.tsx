@@ -5,6 +5,27 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
+// US States for dropdown
+const US_STATES = [
+  { code: 'AL', name: 'Alabama' }, { code: 'AK', name: 'Alaska' }, { code: 'AZ', name: 'Arizona' },
+  { code: 'AR', name: 'Arkansas' }, { code: 'CA', name: 'California' }, { code: 'CO', name: 'Colorado' },
+  { code: 'CT', name: 'Connecticut' }, { code: 'DE', name: 'Delaware' }, { code: 'FL', name: 'Florida' },
+  { code: 'GA', name: 'Georgia' }, { code: 'HI', name: 'Hawaii' }, { code: 'ID', name: 'Idaho' },
+  { code: 'IL', name: 'Illinois' }, { code: 'IN', name: 'Indiana' }, { code: 'IA', name: 'Iowa' },
+  { code: 'KS', name: 'Kansas' }, { code: 'KY', name: 'Kentucky' }, { code: 'LA', name: 'Louisiana' },
+  { code: 'ME', name: 'Maine' }, { code: 'MD', name: 'Maryland' }, { code: 'MA', name: 'Massachusetts' },
+  { code: 'MI', name: 'Michigan' }, { code: 'MN', name: 'Minnesota' }, { code: 'MS', name: 'Mississippi' },
+  { code: 'MO', name: 'Missouri' }, { code: 'MT', name: 'Montana' }, { code: 'NE', name: 'Nebraska' },
+  { code: 'NV', name: 'Nevada' }, { code: 'NH', name: 'New Hampshire' }, { code: 'NJ', name: 'New Jersey' },
+  { code: 'NM', name: 'New Mexico' }, { code: 'NY', name: 'New York' }, { code: 'NC', name: 'North Carolina' },
+  { code: 'ND', name: 'North Dakota' }, { code: 'OH', name: 'Ohio' }, { code: 'OK', name: 'Oklahoma' },
+  { code: 'OR', name: 'Oregon' }, { code: 'PA', name: 'Pennsylvania' }, { code: 'RI', name: 'Rhode Island' },
+  { code: 'SC', name: 'South Carolina' }, { code: 'SD', name: 'South Dakota' }, { code: 'TN', name: 'Tennessee' },
+  { code: 'TX', name: 'Texas' }, { code: 'UT', name: 'Utah' }, { code: 'VT', name: 'Vermont' },
+  { code: 'VA', name: 'Virginia' }, { code: 'WA', name: 'Washington' }, { code: 'WV', name: 'West Virginia' },
+  { code: 'WI', name: 'Wisconsin' }, { code: 'WY', name: 'Wyoming' }
+]
+
 function SignUpContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -13,18 +34,17 @@ function SignUpContent() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [state, setState] = useState('')
   const [referralCode, setReferralCode] = useState('')
   const [referrerName, setReferrerName] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   
-  // Get plan from URL params
   const planId = searchParams.get('plan') || 'premium'
   const billing = searchParams.get('billing') || 'monthly'
   const priceId = searchParams.get('priceId') || ''
   const refCode = searchParams.get('ref') || ''
 
-  // Validate referral code from URL
   useEffect(() => {
     if (refCode) {
       setReferralCode(refCode)
@@ -61,7 +81,6 @@ function SignUpContent() {
     e.preventDefault()
     setError(null)
     
-    // Validation
     if (!name.trim()) {
       setError('Please enter your name')
       return
@@ -81,11 +100,15 @@ function SignUpContent() {
       setError('Passwords do not match')
       return
     }
+
+    if (!state) {
+      setError('Please select your state')
+      return
+    }
     
     setIsSubmitting(true)
     
     try {
-      // Create user account with Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: email.trim(),
         password: password,
@@ -111,14 +134,16 @@ function SignUpContent() {
         setIsSubmitting(false)
         return
       }
+
+      const stateName = US_STATES.find(s => s.code === state)?.name || state
       
-      // Create user profile (pending subscription)
       const { error: profileError } = await supabase
         .from('users')
         .insert({
           id: authData.user.id,
           email: email.trim(),
           display_name: name.trim(),
+          state: stateName,
           subscription_status: 'pending',
           subscription_plan: planId,
           credits: 0,
@@ -129,7 +154,6 @@ function SignUpContent() {
         console.error('Profile creation error:', profileError)
       }
 
-      // Process referral if there's a valid code
       if (referralCode && referrerName) {
         try {
           await fetch('/api/referral', {
@@ -142,16 +166,12 @@ function SignUpContent() {
           })
         } catch (refError) {
           console.error('Referral processing error:', refError)
-          // Don't block signup if referral fails
         }
       }
       
-      // Redirect to Stripe checkout
       const response = await fetch('/api/checkout', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           priceId: priceId,
           userId: authData.user.id,
@@ -169,7 +189,6 @@ function SignUpContent() {
         return
       }
       
-      // Redirect to Stripe
       if (url) {
         window.location.href = url
       }
@@ -180,7 +199,6 @@ function SignUpContent() {
     }
   }
 
-  // Logo component
   const Logo = () => (
     <div className="flex items-center justify-center gap-2">
       <svg width="50" height="30" viewBox="0 0 80 48" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -216,14 +234,12 @@ function SignUpContent() {
     <div className="min-h-screen bg-slate-950 text-white">
       <div className="max-w-md mx-auto px-4 py-6">
         
-        {/* Logo */}
         <div className="flex justify-center mb-6">
           <Link href="/welcome">
             <Logo />
           </Link>
         </div>
 
-        {/* Selected Plan Banner */}
         <div className="bg-orange-500/20 border border-orange-500/50 rounded-xl p-3 mb-6 text-center">
           <p className="text-orange-400 text-sm">
             Selected Plan: <span className="font-bold">{planNames[planId] || 'Premium'}</span>
@@ -234,7 +250,6 @@ function SignUpContent() {
           </Link>
         </div>
 
-        {/* Registration Form */}
         <div className="bg-slate-900 rounded-2xl p-6 border border-slate-800">
           <h1 className="text-xl font-bold text-white text-center mb-2">
             Create Your Account
@@ -244,7 +259,6 @@ function SignUpContent() {
           </p>
           
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Name */}
             <div>
               <label className="block text-sm text-slate-400 mb-1">Your Name</label>
               <input
@@ -257,7 +271,6 @@ function SignUpContent() {
               />
             </div>
             
-            {/* Email */}
             <div>
               <label className="block text-sm text-slate-400 mb-1">Email Address</label>
               <input
@@ -269,8 +282,22 @@ function SignUpContent() {
                 autoComplete="email"
               />
             </div>
+
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Your State</label>
+              <select
+                value={state}
+                onChange={(e) => setState(e.target.value)}
+                className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-orange-500"
+              >
+                <option value="">Select your state...</option>
+                {US_STATES.map(s => (
+                  <option key={s.code} value={s.code}>{s.name}</option>
+                ))}
+              </select>
+              <p className="text-slate-500 text-xs mt-1">Used for personalized State News briefings</p>
+            </div>
             
-            {/* Password */}
             <div>
               <label className="block text-sm text-slate-400 mb-1">Create Password</label>
               <input
@@ -283,7 +310,6 @@ function SignUpContent() {
               />
             </div>
             
-            {/* Confirm Password */}
             <div>
               <label className="block text-sm text-slate-400 mb-1">Confirm Password</label>
               <input
@@ -296,7 +322,6 @@ function SignUpContent() {
               />
             </div>
 
-            {/* Referral Code */}
             <div>
               <label className="block text-sm text-slate-400 mb-1">
                 Referral Code <span className="text-slate-500">(optional)</span>
@@ -334,14 +359,12 @@ function SignUpContent() {
               )}
             </div>
             
-            {/* Error Message */}
             {error && (
               <div className="p-3 bg-red-500/20 border border-red-500/30 rounded-lg">
                 <p className="text-red-400 text-sm text-center">{error}</p>
               </div>
             )}
             
-            {/* Submit Button */}
             <button
               type="submit"
               disabled={isSubmitting}
@@ -355,7 +378,6 @@ function SignUpContent() {
             </button>
           </form>
           
-          {/* Terms */}
           <p className="text-slate-500 text-xs text-center mt-4">
             By creating an account, you agree to our{' '}
             <Link href="/terms" className="text-orange-400 hover:underline">Terms of Service</Link>
@@ -364,7 +386,6 @@ function SignUpContent() {
           </p>
         </div>
 
-        {/* Already have account */}
         <p className="text-slate-400 text-sm text-center mt-6">
           Already have an account?{' '}
           <Link href="/signin" className="text-orange-400 hover:underline font-medium">Sign In</Link>

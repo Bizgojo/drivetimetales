@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
@@ -34,15 +34,33 @@ interface LibraryItem {
   stories: Story
 }
 
-// News categories
+interface NewsEpisode {
+  id: string
+  category: string
+  audio_url: string | null
+  is_live: boolean
+  state?: string
+}
+
+interface UserProfile {
+  id: string
+  display_name: string
+  credits: number
+  state?: string
+}
+
+// News categories with colors evenly distributed on color wheel
+// Order: State, National, International, Business, Sports, Science
 const NEWS_CATEGORIES = [
-  { id: 'local', name: 'Local & Weather', icon: '📍', color: 'from-sky-500 to-sky-700' },
-  { id: 'national', name: 'National', icon: '🇺🇸', color: 'from-red-700 to-red-900' },
-  { id: 'world', name: 'World', icon: '🌍', color: 'from-blue-700 to-blue-900' },
-  { id: 'business', name: 'Business', icon: '💼', color: 'from-amber-600 to-amber-800' },
-  { id: 'sports', name: 'Sports', icon: '⚽', color: 'from-emerald-600 to-emerald-800' },
-  { id: 'science', name: 'Sci/Tech', icon: '🔬', color: 'from-violet-600 to-violet-800' },
+  { id: 'state', name: 'State News', icon: '🏛️', color: 'from-red-500 to-red-700', borderColor: 'border-red-400' },
+  { id: 'national', name: 'National', icon: '🇺🇸', color: 'from-orange-500 to-orange-700', borderColor: 'border-orange-400' },
+  { id: 'international', name: 'International', icon: '🌍', color: 'from-yellow-500 to-yellow-700', borderColor: 'border-yellow-400' },
+  { id: 'business', name: 'Business', icon: '💼', color: 'from-green-500 to-green-700', borderColor: 'border-green-400' },
+  { id: 'sports', name: 'Sports', icon: '⚽', color: 'from-blue-500 to-blue-700', borderColor: 'border-blue-400' },
+  { id: 'science', name: 'Sci/Tech', icon: '🔬', color: 'from-purple-500 to-purple-700', borderColor: 'border-purple-400' },
 ]
+
+type BriefingStatus = 'new' | 'playing' | 'paused' | 'played'
 
 export default function HomePage() {
   const router = useRouter()
@@ -54,16 +72,36 @@ export default function HomePage() {
   const [wishlistCount, setWishlistCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [storiesError, setStoriesError] = useState<string | null>(null)
+  
+  // News briefing state
+  const [newsEpisodes, setNewsEpisodes] = useState<Record<string, NewsEpisode>>({})
+  const [briefingStatus, setBriefingStatus] = useState<Record<string, BriefingStatus>>({})
+  const [briefingProgress, setBriefingProgress] = useState<Record<string, number>>({})
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
+  const [userCredits, setUserCredits] = useState(0)
+  const audioRefs = useRef<Record<string, HTMLAudioElement>>({})
 
   useEffect(() => {
     loadStories()
+    loadNewsEpisodes()
   }, [])
 
   useEffect(() => {
     if (user) {
       loadUserData()
+      loadUserProfile()
     }
   }, [user])
+
+  // Cleanup audio on unmount
+  useEffect(() => {
+    return () => {
+      Object.values(audioRefs.current).forEach(audio => {
+        audio.pause()
+        audio.src = ''
+      })
+    }
+  }, [])
 
   async function loadStories() {
     console.log('[Home] Loading stories via API...')
@@ -101,6 +139,28 @@ export default function HomePage() {
     }
   }
 
+  async function loadNewsEpisodes() {
+    try {
+      const response = await fetch('/api/admin/generate-news')
+      const data = await response.json()
+      
+      if (data.episodes) {
+        const episodeMap: Record<string, NewsEpisode> = {}
+        const statusMap: Record<string, BriefingStatus> = {}
+        
+        data.episodes.forEach((ep: NewsEpisode) => {
+          episodeMap[ep.category] = ep
+          statusMap[ep.category] = 'new' // Default to 'new'
+        })
+        
+        setNewsEpisodes(episodeMap)
+        setBriefingStatus(statusMap)
+      }
+    } catch (error) {
+      console.error('[Home] Error loading news episodes:', error)
+    }
+  }
+
   async function loadUserData() {
     if (!user) return
     
@@ -135,6 +195,146 @@ export default function HomePage() {
 
     } catch (error) {
       console.error('[Home] Error loading user data:', error)
+    }
+  }
+
+  async function loadUserProfile() {
+    if (!user) return
+    
+    try {
+      const { data } = await supabase
+        .from('users')
+        .select('id, display_name, credits, state')
+        .eq('id', user.id)
+        .single()
+      
+      if (data) {
+        setUserProfile(data)
+        setUserCredits(data.credits || 0)
+      }
+    } catch (error) {
+      console.error('[Home] Error loading user profile:', error)
+    }
+  }
+
+  async function playNoCreditsMessage(categoryId: string) {
+    const episode = newsEpisodes[categoryId]
+    if (!episode) return
+    
+    try {
+      // Generate "no credits" audio message
+      const displayName = userProfile?.display_name || ''
+      const response = await fetch('/api/news/no-credits-audio', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          voiceId: 'EXAVITQu4vr4xnSDxMaL', // Default voice
+          userName: displayName
+        })
+      })
+      
+      if (response.ok) {
+        const blob = await response.blob()
+        const audioUrl = URL.createObjectURL(blob)
+        const audio = new Audio(audioUrl)
+        audio.play()
+      }
+    } catch (error) {
+      console.error('[Home] Error playing no credits message:', error)
+    }
+  }
+
+  function handleBriefingClick(categoryId: string) {
+    // Check if user has at least 1 credit
+    if (userCredits < 1) {
+      playNoCreditsMessage(categoryId)
+      return
+    }
+
+    const currentStatus = briefingStatus[categoryId] || 'new'
+    const episode = newsEpisodes[categoryId]
+    
+    if (!episode?.audio_url) {
+      console.log('[Home] No audio available for', categoryId)
+      return
+    }
+
+    // Get or create audio element
+    if (!audioRefs.current[categoryId]) {
+      const audio = new Audio(episode.audio_url)
+      
+      audio.onended = () => {
+        setBriefingStatus(prev => ({ ...prev, [categoryId]: 'played' }))
+      }
+      
+      audio.ontimeupdate = () => {
+        const progress = (audio.currentTime / audio.duration) * 100
+        setBriefingProgress(prev => ({ ...prev, [categoryId]: progress }))
+      }
+      
+      audioRefs.current[categoryId] = audio
+    }
+
+    const audio = audioRefs.current[categoryId]
+
+    switch (currentStatus) {
+      case 'new':
+      case 'played':
+        // Start playing from beginning
+        audio.currentTime = 0
+        audio.play()
+        setBriefingStatus(prev => ({ ...prev, [categoryId]: 'playing' }))
+        // Pause other briefings
+        Object.keys(audioRefs.current).forEach(key => {
+          if (key !== categoryId && audioRefs.current[key]) {
+            audioRefs.current[key].pause()
+            if (briefingStatus[key] === 'playing') {
+              setBriefingStatus(prev => ({ ...prev, [key]: 'paused' }))
+            }
+          }
+        })
+        break
+      
+      case 'playing':
+        // Pause
+        audio.pause()
+        setBriefingStatus(prev => ({ ...prev, [categoryId]: 'paused' }))
+        break
+      
+      case 'paused':
+        // Resume from where paused
+        audio.play()
+        setBriefingStatus(prev => ({ ...prev, [categoryId]: 'playing' }))
+        // Pause other briefings
+        Object.keys(audioRefs.current).forEach(key => {
+          if (key !== categoryId && audioRefs.current[key]) {
+            audioRefs.current[key].pause()
+            if (briefingStatus[key] === 'playing') {
+              setBriefingStatus(prev => ({ ...prev, [key]: 'paused' }))
+            }
+          }
+        })
+        break
+    }
+  }
+
+  function getStatusLabel(status: BriefingStatus): string {
+    switch (status) {
+      case 'new': return 'New'
+      case 'playing': return 'Playing'
+      case 'paused': return 'Paused'
+      case 'played': return 'Played'
+      default: return 'New'
+    }
+  }
+
+  function getStatusColor(status: BriefingStatus): string {
+    switch (status) {
+      case 'new': return 'bg-orange-500'
+      case 'playing': return 'bg-green-500 animate-pulse'
+      case 'paused': return 'bg-yellow-500'
+      case 'played': return 'bg-slate-500'
+      default: return 'bg-orange-500'
     }
   }
 
@@ -180,6 +380,9 @@ export default function HomePage() {
     return stars
   }
 
+  // Get state name for display
+  const userStateName = userProfile?.state || 'Your State'
+
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       {/* Header */}
@@ -192,7 +395,7 @@ export default function HomePage() {
           
           {user ? (
             <Link href="/account" className="w-9 h-9 rounded-full bg-orange-500 flex items-center justify-center text-black font-bold">
-              {user.display_name?.[0] || user.email?.[0]?.toUpperCase() || '?'}
+              {userProfile?.display_name?.[0] || user.email?.[0]?.toUpperCase() || '?'}
             </Link>
           ) : (
             <Link href="/signin" className="text-orange-400 hover:text-orange-300 font-medium">
@@ -202,59 +405,52 @@ export default function HomePage() {
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 py-6 pb-48">
+      {/* Main Content */}
+      <main className="max-w-4xl mx-auto px-4 py-6 pb-40">
         
-        {/* Welcome + Credits */}
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold">
-            Welcome back{user?.display_name ? `, ${user.display_name}` : ''}!
-          </h1>
-          {user && (
-            <p className="text-white text-sm">
-              {user.subscription_type === 'unlimited' 
-                ? 'You have unlimited credits' 
-                : `You have ${user.credits || 0} credits`}
-            </p>
-          )}
-        </div>
-
-        {/* Daily News Briefings */}
+        {/* News Briefings Section */}
         <section className="mb-8">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-xl">📰</span>
-            <h2 className="text-lg font-bold">DAILY NEWS BRIEFINGS</h2>
-          </div>
-          <p className="text-white text-sm mb-4">Top stories updated thrice daily (no credits required)</p>
-          
-          {/* Row 1 */}
-          <div className="grid grid-cols-3 gap-3 mb-3">
-            {NEWS_CATEGORIES.slice(0, 3).map((cat) => (
-              <Link
-                key={cat.id}
-                href={`/news/${cat.id}`}
-                className={`bg-gradient-to-br ${cat.color} rounded-lg py-2 px-3 flex items-center gap-2 hover:scale-105 transition-transform`}
-              >
-                <span className="text-xl bg-white/20 rounded-full p-1">{cat.icon}</span>
-                <span className="text-sm font-medium text-white">{cat.name}</span>
-              </Link>
-            ))}
-          </div>
-          {/* Row 2 */}
+          <h2 className="text-lg font-bold mb-4">NEWS BRIEFINGS</h2>
           <div className="grid grid-cols-3 gap-3">
-            {NEWS_CATEGORIES.slice(3, 6).map((cat) => (
-              <Link
-                key={cat.id}
-                href={`/news/${cat.id}`}
-                className={`bg-gradient-to-br ${cat.color} rounded-lg py-2 px-3 flex items-center gap-2 hover:scale-105 transition-transform`}
-              >
-                <span className="text-xl bg-white/20 rounded-full p-1">{cat.icon}</span>
-                <span className="text-sm font-medium text-white">{cat.name}</span>
-              </Link>
-            ))}
+            {NEWS_CATEGORIES.map(cat => {
+              const status = briefingStatus[cat.id] || 'new'
+              const hasEpisode = !!newsEpisodes[cat.id]?.audio_url
+              const displayName = cat.id === 'state' ? `${userStateName} News` : cat.name
+              
+              return (
+                <button
+                  key={cat.id}
+                  onClick={() => handleBriefingClick(cat.id)}
+                  disabled={!hasEpisode}
+                  className={`relative bg-gradient-to-br ${cat.color} rounded-xl p-3 text-left transition-all hover:scale-[1.02] active:scale-[0.98] border-2 ${cat.borderColor} ${!hasEpisode ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  {/* Status Flag */}
+                  <div className={`absolute -top-2 -right-2 ${getStatusColor(status)} text-white text-xs font-bold px-2 py-0.5 rounded-full shadow-lg`}>
+                    {getStatusLabel(status)}
+                  </div>
+                  
+                  {/* Content */}
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xl">{cat.icon}</span>
+                    <span className="font-bold text-sm text-white truncate">{displayName}</span>
+                  </div>
+                  
+                  {/* Progress bar (only show if playing or paused) */}
+                  {(status === 'playing' || status === 'paused') && (
+                    <div className="mt-2 h-1 bg-black/30 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-white transition-all duration-300"
+                        style={{ width: `${briefingProgress[cat.id] || 0}%` }}
+                      />
+                    </div>
+                  )}
+                </button>
+              )
+            })}
           </div>
         </section>
 
-        {/* Continue Listening - always show (placeholder if no unfinished) */}
+        {/* Continue Listening */}
         <section className="mb-8">
           <h2 className="text-lg font-bold mb-4">CONTINUE LISTENING</h2>
           {continueListening ? (
