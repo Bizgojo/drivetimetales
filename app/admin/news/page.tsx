@@ -1,8 +1,7 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 // US States for dropdown
@@ -102,22 +101,56 @@ interface NewsSettings {
 }
 
 export default function AdminNewsPage() {
-  const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [generating, setGenerating] = useState<string | null>(null)
   const [playing, setPlaying] = useState<string | null>(null)
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
+  const [autoSaveStatus, setAutoSaveStatus] = useState<string | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   
   const [settings, setSettings] = useState<NewsSettings>({
     categories: {},
-    test_state: 'TN',
+    test_state: 'SC',
     generation_times: ['06:00', '12:00', '18:00'],
     auto_generate: true,
     stories_per_category: 5,
     timezone: 'America/New_York'
   })
+
+  // Auto-save debounced function
+  const debouncedSave = useCallback(async (newSettings: NewsSettings) => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current)
+    }
+    
+    saveTimeoutRef.current = setTimeout(async () => {
+      setAutoSaveStatus('Saving...')
+      try {
+        const { error } = await supabase
+          .from('news_settings')
+          .upsert({
+            id: 1,
+            categories: newSettings.categories,
+            test_state: newSettings.test_state,
+            generation_times: newSettings.generation_times,
+            auto_generate: newSettings.auto_generate,
+            stories_per_category: newSettings.stories_per_category,
+            timezone: newSettings.timezone,
+            updated_at: new Date().toISOString()
+          })
+
+        if (error) throw error
+        setAutoSaveStatus('✓ Saved')
+        setTimeout(() => setAutoSaveStatus(null), 2000)
+      } catch (error) {
+        console.error('Auto-save error:', error)
+        setAutoSaveStatus('Save failed')
+        setTimeout(() => setAutoSaveStatus(null), 3000)
+      }
+    }, 1000) // 1 second debounce
+  }, [])
 
   useEffect(() => {
     const timeout = setTimeout(() => {
@@ -130,7 +163,12 @@ export default function AdminNewsPage() {
 
     loadSettings().finally(() => clearTimeout(timeout))
     
-    return () => clearTimeout(timeout)
+    return () => {
+      clearTimeout(timeout)
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current)
+      }
+    }
   }, [])
 
   // Cleanup audio on unmount
@@ -167,19 +205,46 @@ export default function AdminNewsPage() {
           }
         })
         
+        console.log('[Admin News] Loaded settings from database:', {
+          test_state: data.test_state,
+          categories: Object.keys(mergedCategories).map(k => ({
+            id: k,
+            voice: mergedCategories[k].voice_id,
+            narrator: mergedCategories[k].narrator_name
+          }))
+        })
+        
         setSettings({
           categories: mergedCategories,
-          test_state: data.test_state || 'TN',
+          test_state: data.test_state || 'SC',
           generation_times: data.generation_times || ['06:00', '12:00', '18:00'],
           auto_generate: data.auto_generate ?? true,
           stories_per_category: data.stories_per_category || 5,
           timezone: data.timezone || 'America/New_York'
         })
       } else {
-        setSettings(prev => ({
-          ...prev,
-          categories: initializeCategories()
-        }))
+        // No settings exist yet - create initial record
+        const defaultSettings = {
+          id: 1,
+          categories: initializeCategories(),
+          test_state: 'SC',
+          generation_times: ['06:00', '12:00', '18:00'],
+          auto_generate: true,
+          stories_per_category: 5,
+          timezone: 'America/New_York',
+          updated_at: new Date().toISOString()
+        }
+        
+        await supabase.from('news_settings').upsert(defaultSettings)
+        
+        setSettings({
+          categories: defaultSettings.categories,
+          test_state: defaultSettings.test_state,
+          generation_times: defaultSettings.generation_times,
+          auto_generate: defaultSettings.auto_generate,
+          stories_per_category: defaultSettings.stories_per_category,
+          timezone: defaultSettings.timezone
+        })
       }
     } catch (error) {
       console.error('Error loading settings:', error)
@@ -205,6 +270,36 @@ export default function AdminNewsPage() {
       }
     })
     return cats
+  }
+
+  // Update category setting and auto-save
+  function updateCategorySetting(categoryId: string, field: keyof CategorySettings, value: any) {
+    setSettings(prev => {
+      const newSettings = {
+        ...prev,
+        categories: {
+          ...prev.categories,
+          [categoryId]: {
+            ...prev.categories[categoryId],
+            [field]: value
+          }
+        }
+      }
+      // Trigger auto-save for voice and narrator changes
+      if (field === 'voice_id' || field === 'narrator_name' || field === 'enabled') {
+        debouncedSave(newSettings)
+      }
+      return newSettings
+    })
+  }
+
+  // Update general setting and auto-save
+  function updateGeneralSetting(field: keyof NewsSettings, value: any) {
+    setSettings(prev => {
+      const newSettings = { ...prev, [field]: value }
+      debouncedSave(newSettings)
+      return newSettings
+    })
   }
 
   async function saveSettings() {
@@ -245,6 +340,13 @@ export default function AdminNewsPage() {
         ? US_STATES.find(s => s.code === settings.test_state)?.name || settings.test_state
         : null
 
+      console.log('[Admin News] Generating briefing with:', {
+        category: categoryId,
+        voiceId: catSettings?.voice_id,
+        narratorName: catSettings?.narrator_name,
+        state: stateName
+      })
+
       const response = await fetch('/api/admin/generate-news', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -264,18 +366,32 @@ export default function AdminNewsPage() {
       }
 
       // Update local state with new episode info
+      const newCategorySettings = {
+        ...settings.categories[categoryId],
+        last_generated: new Date().toISOString(),
+        episode_number: (settings.categories[categoryId]?.episode_number || 0) + 1,
+        audio_url: result.episode?.audioUrl || null
+      }
+
       setSettings(prev => ({
         ...prev,
         categories: {
           ...prev.categories,
-          [categoryId]: {
-            ...prev.categories[categoryId],
-            last_generated: new Date().toISOString(),
-            episode_number: (prev.categories[categoryId]?.episode_number || 0) + 1,
-            audio_url: result.episode?.audioUrl || null
-          }
+          [categoryId]: newCategorySettings
         }
       }))
+
+      // Also save to database immediately after generation
+      await supabase
+        .from('news_settings')
+        .update({
+          categories: {
+            ...settings.categories,
+            [categoryId]: newCategorySettings
+          },
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', 1)
 
       setMessage({ type: 'success', text: `${NEWS_CATEGORIES.find(c => c.id === categoryId)?.name} briefing generated!` })
     } catch (error) {
@@ -381,9 +497,16 @@ export default function AdminNewsPage() {
             <h1 className="text-2xl font-bold">📰 News Briefings Admin</h1>
             <p className="text-slate-400 text-sm">Configure and generate news briefings for each category</p>
           </div>
-          <Link href="/admin" className="text-orange-400 hover:text-orange-300">
-            ← Back to Admin
-          </Link>
+          <div className="flex items-center gap-4">
+            {autoSaveStatus && (
+              <span className={`text-sm ${autoSaveStatus.includes('✓') ? 'text-green-400' : 'text-slate-400'}`}>
+                {autoSaveStatus}
+              </span>
+            )}
+            <Link href="/admin" className="text-orange-400 hover:text-orange-300">
+              ← Back to Admin
+            </Link>
+          </div>
         </div>
 
         {/* Message */}
@@ -402,7 +525,7 @@ export default function AdminNewsPage() {
             <label className="text-sm text-slate-400">Test State:</label>
             <select
               value={settings.test_state}
-              onChange={(e) => setSettings(prev => ({ ...prev, test_state: e.target.value }))}
+              onChange={(e) => updateGeneralSetting('test_state', e.target.value)}
               className="bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white"
             >
               {US_STATES.map(state => (
@@ -439,16 +562,7 @@ export default function AdminNewsPage() {
                   </div>
                 </div>
                 <button
-                  onClick={() => setSettings(prev => ({
-                    ...prev,
-                    categories: {
-                      ...prev.categories,
-                      [cat.id]: {
-                        ...prev.categories[cat.id],
-                        enabled: !prev.categories[cat.id]?.enabled
-                      }
-                    }
-                  }))}
+                  onClick={() => updateCategorySetting(cat.id, 'enabled', !settings.categories[cat.id]?.enabled)}
                   className={`w-12 h-6 rounded-full transition relative ${
                     settings.categories[cat.id]?.enabled ? 'bg-green-500' : 'bg-slate-600'
                   }`}
@@ -467,13 +581,7 @@ export default function AdminNewsPage() {
                     <div className="flex gap-2">
                       <select
                         value={settings.categories[cat.id]?.voice_id || 'EXAVITQu4vr4xnSDxMaL'}
-                        onChange={(e) => setSettings(prev => ({
-                          ...prev,
-                          categories: {
-                            ...prev.categories,
-                            [cat.id]: { ...prev.categories[cat.id], voice_id: e.target.value }
-                          }
-                        }))}
+                        onChange={(e) => updateCategorySetting(cat.id, 'voice_id', e.target.value)}
                         className="flex-1 bg-black/30 border border-white/20 rounded-lg px-2 py-1.5 text-sm text-white"
                       >
                         {AVAILABLE_VOICES.map(voice => (
@@ -494,18 +602,12 @@ export default function AdminNewsPage() {
 
                   {/* Narrator Name */}
                   <div>
-                    <label className="text-xs text-white/80 block mb-1">Narrator's Name (optional)</label>
+                    <label className="text-xs text-white/80 block mb-1">Narrator Name (appears in script)</label>
                     <input
                       type="text"
                       value={settings.categories[cat.id]?.narrator_name || ''}
-                      onChange={(e) => setSettings(prev => ({
-                        ...prev,
-                        categories: {
-                          ...prev.categories,
-                          [cat.id]: { ...prev.categories[cat.id], narrator_name: e.target.value }
-                        }
-                      }))}
-                      placeholder="e.g., Sarah"
+                      onChange={(e) => updateCategorySetting(cat.id, 'narrator_name', e.target.value)}
+                      placeholder="e.g., Sarah Mitchell"
                       className="w-full bg-black/30 border border-white/20 rounded-lg px-2 py-1.5 text-sm text-white placeholder-white/40"
                     />
                   </div>
@@ -569,7 +671,7 @@ export default function AdminNewsPage() {
           <div className="flex items-center justify-between mb-4">
             <span>Enable Auto-Generation</span>
             <button
-              onClick={() => setSettings(prev => ({ ...prev, auto_generate: !prev.auto_generate }))}
+              onClick={() => updateGeneralSetting('auto_generate', !settings.auto_generate)}
               className={`w-12 h-6 rounded-full transition relative ${
                 settings.auto_generate ? 'bg-green-500' : 'bg-slate-600'
               }`}
@@ -590,7 +692,7 @@ export default function AdminNewsPage() {
                   onChange={(e) => {
                     const times = [...settings.generation_times]
                     times[0] = e.target.value
-                    setSettings(prev => ({ ...prev, generation_times: times }))
+                    updateGeneralSetting('generation_times', times)
                   }}
                   className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white"
                 />
@@ -603,7 +705,7 @@ export default function AdminNewsPage() {
                   onChange={(e) => {
                     const times = [...settings.generation_times]
                     times[1] = e.target.value
-                    setSettings(prev => ({ ...prev, generation_times: times }))
+                    updateGeneralSetting('generation_times', times)
                   }}
                   className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white"
                 />
@@ -616,7 +718,7 @@ export default function AdminNewsPage() {
                   onChange={(e) => {
                     const times = [...settings.generation_times]
                     times[2] = e.target.value
-                    setSettings(prev => ({ ...prev, generation_times: times }))
+                    updateGeneralSetting('generation_times', times)
                   }}
                   className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white"
                 />
@@ -625,7 +727,7 @@ export default function AdminNewsPage() {
                 <label className="text-sm text-slate-400 block mb-1">Timezone</label>
                 <select
                   value={settings.timezone}
-                  onChange={(e) => setSettings(prev => ({ ...prev, timezone: e.target.value }))}
+                  onChange={(e) => updateGeneralSetting('timezone', e.target.value)}
                   className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white"
                 >
                   <option value="America/New_York">Eastern (ET)</option>
@@ -644,20 +746,14 @@ export default function AdminNewsPage() {
               <label className="text-sm text-slate-400">Stories per briefing:</label>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setSettings(prev => ({ 
-                    ...prev, 
-                    stories_per_category: Math.max(2, prev.stories_per_category - 1) 
-                  }))}
+                  onClick={() => updateGeneralSetting('stories_per_category', Math.max(2, settings.stories_per_category - 1))}
                   className="w-8 h-8 bg-slate-800 hover:bg-slate-700 rounded-lg font-bold"
                 >
                   -
                 </button>
                 <span className="w-8 text-center font-bold">{settings.stories_per_category}</span>
                 <button
-                  onClick={() => setSettings(prev => ({ 
-                    ...prev, 
-                    stories_per_category: Math.min(6, prev.stories_per_category + 1) 
-                  }))}
+                  onClick={() => updateGeneralSetting('stories_per_category', Math.min(6, settings.stories_per_category + 1))}
                   className="w-8 h-8 bg-slate-800 hover:bg-slate-700 rounded-lg font-bold"
                 >
                   +
@@ -680,6 +776,10 @@ export default function AdminNewsPage() {
         >
           {saving ? 'Saving...' : '💾 Save All Settings'}
         </button>
+        
+        <p className="text-center text-slate-500 text-sm mt-2">
+          Voice and narrator settings auto-save when changed
+        </p>
       </div>
     </div>
   )
