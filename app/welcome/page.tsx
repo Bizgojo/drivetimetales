@@ -274,7 +274,7 @@ function WelcomeContent() {
           <div className="flex justify-center mt-3">
             <div className="flex items-center gap-2 text-orange-400">
               <span className="text-xl">🎁</span>
-              <span>You have {freeCredits} free credits</span>
+              <span>You have {freeCredits} free credits (News Briefings are Free)</span>
             </div>
           </div>
         </section>
@@ -295,7 +295,7 @@ function WelcomeContent() {
                   </div>
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-xl">{cat.icon}</span>
-                    <span className="font-bold text-sm text-white truncate">{cat.name}</span>
+                    <span className="font-bold text-xs text-white">{cat.name}</span>
                   </div>
                   {(status === 'playing' || status === 'paused') && !cat.subscriberOnly && (
                     <div className="mt-2 h-1 bg-black/30 rounded-full overflow-hidden">
