@@ -2,6 +2,7 @@
 // API endpoint to generate news episodes by category
 // Uses Claude with web search to get REAL current news
 // Updated: Added State News support
+// Fixed: Removes Claude's thinking process from script
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
@@ -43,6 +44,58 @@ function getGreeting(): string {
   return `Good ${timeOfDay}`;
 }
 
+// Clean script to remove Claude's thinking process
+function cleanScript(rawScript: string): string {
+  let script = rawScript;
+  
+  // Remove markdown code blocks
+  script = script.replace(/```[\s\S]*?```/g, '');
+  
+  // Remove bold markers
+  script = script.replace(/\*\*/g, '');
+  
+  // Remove excessive newlines
+  script = script.replace(/\n{3,}/g, '\n\n');
+  
+  // Find where the actual script starts - look for greeting patterns
+  const greetingPatterns = [
+    /Good morning/i,
+    /Good afternoon/i,
+    /Good evening/i,
+  ];
+  
+  let scriptStart = -1;
+  for (const pattern of greetingPatterns) {
+    const match = script.search(pattern);
+    if (match !== -1 && (scriptStart === -1 || match < scriptStart)) {
+      scriptStart = match;
+    }
+  }
+  
+  // If we found a greeting, strip everything before it
+  if (scriptStart > 0) {
+    script = script.substring(scriptStart);
+    console.log(`[News Generator] Stripped ${scriptStart} chars of preamble`);
+  }
+  
+  // Find where the script ends - look for sign-off
+  const signOffPatterns = [
+    /Drive Time Tales\.?\s*$/i,
+    /see you next time on Drive Time Tales/i,
+  ];
+  
+  for (const pattern of signOffPatterns) {
+    const match = script.match(pattern);
+    if (match && match.index !== undefined) {
+      // Keep up to and including the sign-off
+      script = script.substring(0, match.index + match[0].length);
+      break;
+    }
+  }
+  
+  return script.trim();
+}
+
 async function generateStateNewsScript(
   state: string,
   apiKey: string,
@@ -76,6 +129,8 @@ CRITICAL REQUIREMENTS:
 - Each story should be 2-3 sentences with specific factual details
 - Start with weather, then cover 4-5 other stories from the categories above
 
+IMPORTANT: Output ONLY the script text. Do NOT include any thinking, planning, or explanation. Start directly with the greeting.
+
 SCRIPT FORMAT:
 Start: "${greeting}${narratorName ? ', ' + narratorName : ''}, here is your latest news for the great state of ${state}. Today is ${dateStr}."
 
@@ -90,7 +145,7 @@ Then report ${storiesCount - 1} more real news stories with transitions like:
 
 End: "That's your ${state} news update. Stay safe out there, and we'll see you next time on Drive Time Tales."
 
-Search for real ${state} news and write the script now:`;
+Output the script now, starting with "${greeting}":`;
 
   console.log(`[News Generator] Calling Claude API with web search for ${state} news...`);
 
@@ -133,11 +188,8 @@ Search for real ${state} news and write the script now:`;
     throw new Error('No script generated from Claude');
   }
 
-  script = script
-    .replace(/```[\s\S]*?```/g, '')
-    .replace(/\*\*/g, '')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+  // Clean the script to remove thinking process
+  script = cleanScript(script);
 
   console.log(`[News Generator] State news script generated: ${script.length} chars`);
   
@@ -174,6 +226,8 @@ CRITICAL REQUIREMENTS:
 - Do NOT make up or fabricate any news - only report what you find in your search
 - Each story should be 2-3 sentences with specific factual details
 
+IMPORTANT: Output ONLY the script text. Do NOT include any thinking, planning, or explanation. Start directly with the greeting.
+
 SCRIPT FORMAT:
 Start: "${greeting}${narratorName ? ' ' + narratorName : ''}, drivers. This is your ${categoryName} briefing for ${dateStr}..."
 
@@ -186,7 +240,7 @@ Then report the ${storiesCount} real news stories with transitions like:
 
 End: "That's your ${categoryName} update. Stay safe out there, and we'll see you next time on Drive Time Tales."
 
-Search for real news and write the script now:`;
+Output the script now, starting with "${greeting}":`;
 
   console.log(`[News Generator] Calling Claude API with web search for real ${category} news...`);
 
@@ -229,11 +283,8 @@ Search for real news and write the script now:`;
     throw new Error('No script generated from Claude');
   }
 
-  script = script
-    .replace(/```[\s\S]*?```/g, '')
-    .replace(/\*\*/g, '')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+  // Clean the script to remove thinking process
+  script = cleanScript(script);
 
   console.log(`[News Generator] Script generated with real news: ${script.length} chars`);
   
@@ -480,4 +531,3 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({ episodes });
 }
-
