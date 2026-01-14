@@ -77,22 +77,27 @@ function WelcomeContent() {
   async function loadPreGeneratedAudio() {
     try {
       // Load live episodes from news_episodes table
-      const { data: episodes } = await supabase
+      const { data: episodes, error } = await supabase
         .from('news_episodes')
         .select('category, audio_url')
         .eq('is_live', true)
-      
+
+      if (error) {
+        console.error('[Welcome] Error querying news_episodes:', error)
+        return
+      }
+
       if (episodes && episodes.length > 0) {
         const audioMap: Record<string, string> = {}
-        episodes.forEach((ep: any) => {
+        episodes.forEach((ep: { category: string; audio_url: string | null }) => {
           if (ep.audio_url) {
             audioMap[ep.category] = ep.audio_url
           }
         })
         setPreGeneratedAudio(audioMap)
-        console.log('[Welcome] Loaded audio:', Object.keys(audioMap))
+        console.log('[Welcome] Loaded audio for:', Object.keys(audioMap))
       }
-      
+
       const statusMap: Record<string, BriefingStatus> = {}
       NEWS_CATEGORIES.forEach(cat => {
         statusMap[cat.id] = 'new'
