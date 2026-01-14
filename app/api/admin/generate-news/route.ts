@@ -1,8 +1,7 @@
 // app/api/admin/generate-news/route.ts
 // API endpoint to generate news episodes by category
 // Uses Claude with web search to get REAL current news
-// Updated: Added State News support
-// Fixed: Removes Claude's thinking process from script
+// Updated: Personalized intros for logged-in users, varied announcer introductions
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
@@ -44,7 +43,10 @@ function getGreeting(): string {
   return `Good ${timeOfDay}`;
 }
 
-// Clean script to remove Claude's thinking process
+/**
+ * Aggressively clean the script to remove ALL Claude thinking/preamble
+ * The output should be ONLY the broadcast-ready script
+ */
 function cleanScript(rawScript: string): string {
   let script = rawScript;
   
@@ -54,8 +56,31 @@ function cleanScript(rawScript: string): string {
   // Remove bold markers
   script = script.replace(/\*\*/g, '');
   
+  // Remove italic markers
+  script = script.replace(/\*([^*]+)\*/g, '$1');
+  
   // Remove excessive newlines
   script = script.replace(/\n{3,}/g, '\n\n');
+  
+  // Remove common Claude preamble patterns
+  const preamblePatterns = [
+    /^[\s\S]*?(?=Good morning)/i,
+    /^[\s\S]*?(?=Good afternoon)/i,
+    /^[\s\S]*?(?=Good evening)/i,
+    /I'll search[\s\S]*?(?=Good)/i,
+    /Let me search[\s\S]*?(?=Good)/i,
+    /I found[\s\S]*?(?=Good)/i,
+    /Here's the[\s\S]*?(?=Good)/i,
+    /Here is the[\s\S]*?(?=Good)/i,
+    /Based on[\s\S]*?(?=Good)/i,
+    /After searching[\s\S]*?(?=Good)/i,
+    /I've searched[\s\S]*?(?=Good)/i,
+    /Now I'll write[\s\S]*?(?=Good)/i,
+  ];
+  
+  for (const pattern of preamblePatterns) {
+    script = script.replace(pattern, '');
+  }
   
   // Find where the actual script starts - look for greeting patterns
   const greetingPatterns = [
@@ -78,19 +103,18 @@ function cleanScript(rawScript: string): string {
     console.log(`[News Generator] Stripped ${scriptStart} chars of preamble`);
   }
   
-  // Find where the script ends - look for sign-off
-  const signOffPatterns = [
-    /Drive Time Tales\.?\s*$/i,
-    /see you next time on Drive Time Tales/i,
+  // Remove any trailing meta-commentary
+  const endPatterns = [
+    /\n\n---[\s\S]*$/,
+    /\n\nNote:[\s\S]*$/i,
+    /\n\nSources:[\s\S]*$/i,
+    /\n\nThis script[\s\S]*$/i,
+    /\n\nI hope[\s\S]*$/i,
+    /\n\nLet me know[\s\S]*$/i,
   ];
   
-  for (const pattern of signOffPatterns) {
-    const match = script.match(pattern);
-    if (match && match.index !== undefined) {
-      // Keep up to and including the sign-off
-      script = script.substring(0, match.index + match[0].length);
-      break;
-    }
+  for (const pattern of endPatterns) {
+    script = script.replace(pattern, '');
   }
   
   return script.trim();
@@ -100,54 +124,51 @@ async function generateStateNewsScript(
   state: string,
   apiKey: string,
   storiesCount: number,
-  narratorName: string
+  narratorName: string,
+  userName: string | null
 ): Promise<{ script: string; title: string }> {
   const now = new Date();
   const dateStr = now.toLocaleDateString('en-US', { 
     weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' 
   });
   const greeting = getGreeting();
+  const timeOfDay = getTimeOfDay();
 
-  const prompt = `You are a news researcher and radio script writer for Drive Time Tales, an audio platform for drivers.
+  // Build personalized or generic greeting
+  const userGreeting = userName 
+    ? `${greeting}, ${userName}.`
+    : `${greeting}, and welcome.`;
+  
+  // Build narrator intro (varied)
+  const narratorIntro = narratorName 
+    ? `I'm ${narratorName}, and this is your ${timeOfDay} news brief`
+    : `This is your ${timeOfDay} news brief`;
+
+  const prompt = `You are a professional radio news broadcaster for Drive Time Tales.
+
+CRITICAL: Output ONLY the broadcast script. NO thinking, NO preamble, NO "I'll search" text. Start DIRECTLY with the greeting.
 
 YOUR TASK:
-1. Search the web for current news specifically about ${state} state
-2. Find the ${storiesCount} biggest REAL news stories from ${state} covering these categories:
-   - Weather conditions and forecasts for ${state}
-   - Political news (state government, elections, legislation)
-   - Crime and public safety
-   - Sports (local teams, college sports)
-   - Business and economy news specific to ${state}
-3. Write a radio news briefing script reporting ONLY news from ${state} - no other states
+1. Search for current ${state} news
+2. Write a radio script with ${storiesCount} real stories
+3. Vary your delivery style naturally - don't be robotic
 
-CRITICAL REQUIREMENTS:
-- Search for "${state} news today" and "${state} weather today"
-- Report ONLY real, actual news stories from ${state}
-- Include real names, real places, real numbers from actual news coverage
-- Do NOT make up or fabricate any news - only report what you find
-- Do NOT report news from other states
-- Each story should be 2-3 sentences with specific factual details
-- Start with weather, then cover 4-5 other stories from the categories above
+EXACT OPENING FORMAT (start with this EXACTLY, then continue naturally):
+"${userGreeting} ${narratorIntro} for the great state of ${state}. Today is ${dateStr}."
 
-IMPORTANT: Output ONLY the script text. Do NOT include any thinking, planning, or explanation. Start directly with the greeting.
+After the opening, continue with weather first, then other news stories. Use natural transitions like:
+- "Let's start with your weather..."
+- "Turning to the forecast..."
+- "First up, your local weather..."
 
-SCRIPT FORMAT:
-Start: "${greeting}${narratorName ? ', ' + narratorName : ''}, here is your latest news for the great state of ${state}. Today is ${dateStr}."
+Then cover 4-5 more stories with varied transitions.
 
-Then START WITH WEATHER: "Let's begin with your ${state} weather forecast..."
+End with something like: "That's your ${state} update. Stay safe on the roads, and we'll see you next time on Drive Time Tales."
 
-Then report ${storiesCount - 1} more real news stories with transitions like:
-- "In political news from the state capitol..."
-- "In crime news..."
-- "On the sports front..."
-- "In business news..."
-- "Also making headlines in ${state}..."
+IMPORTANT: Start your response with "${greeting}" - nothing before it. Output ONLY the script.`;
 
-End: "That's your ${state} news update. Stay safe out there, and we'll see you next time on Drive Time Tales."
-
-Output the script now, starting with "${greeting}":`;
-
-  console.log(`[News Generator] Calling Claude API with web search for ${state} news...`);
+  console.log(`[News Generator] Generating ${state} news script...`);
+  console.log(`[News Generator] User: ${userName || 'anonymous'}, Narrator: ${narratorName || 'none'}`);
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -159,12 +180,7 @@ Output the script now, starting with "${greeting}":`;
     body: JSON.stringify({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 3000,
-      tools: [
-        {
-          type: 'web_search_20250305',
-          name: 'web_search'
-        }
-      ],
+      tools: [{ type: 'web_search_20250305', name: 'web_search' }],
       messages: [{ role: 'user', content: prompt }]
     })
   });
@@ -188,10 +204,10 @@ Output the script now, starting with "${greeting}":`;
     throw new Error('No script generated from Claude');
   }
 
-  // Clean the script to remove thinking process
   script = cleanScript(script);
 
   console.log(`[News Generator] State news script generated: ${script.length} chars`);
+  console.log(`[News Generator] Script preview: ${script.substring(0, 250)}...`);
   
   return {
     script,
@@ -203,7 +219,8 @@ async function generateScriptWithRealNews(
   category: string,
   apiKey: string,
   storiesCount: number = 5,
-  narratorName: string = ''
+  narratorName: string = '',
+  userName: string | null = null
 ): Promise<{ script: string; title: string }> {
   const categoryName = CATEGORY_NAMES[category] || category;
   const searchQuery = CATEGORY_SEARCH_QUERIES[category];
@@ -212,37 +229,45 @@ async function generateScriptWithRealNews(
     weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' 
   });
   const greeting = getGreeting();
+  const timeOfDay = getTimeOfDay();
 
-  const prompt = `You are a news researcher and radio script writer for Drive Time Tales, an audio platform for drivers.
+  // Build personalized or generic greeting
+  const userGreeting = userName 
+    ? `${greeting}, ${userName}.`
+    : `${greeting}, and thanks for tuning in.`;
+  
+  // Build narrator intro (varied)
+  const narratorIntro = narratorName 
+    ? `I'm ${narratorName}, bringing you your ${categoryName.toLowerCase()} briefing`
+    : `This is your ${categoryName.toLowerCase()} briefing`;
+
+  const prompt = `You are a professional radio news broadcaster for Drive Time Tales.
+
+CRITICAL: Output ONLY the broadcast script. NO thinking, NO preamble, NO "I'll search" text. Start DIRECTLY with the greeting.
 
 YOUR TASK:
-1. Search the web for: "${searchQuery}"
-2. Find the ${storiesCount} biggest REAL news stories being covered RIGHT NOW by major news outlets
-3. Write a radio news briefing script reporting these REAL stories
+1. Search for: "${searchQuery}"
+2. Write a radio script with ${storiesCount} real stories
+3. Sound like a natural broadcaster - vary your delivery
 
-CRITICAL REQUIREMENTS:
-- Search for and report ONLY real, actual news stories happening today
-- Include real names, real places, real numbers from actual news coverage
-- Do NOT make up or fabricate any news - only report what you find in your search
-- Each story should be 2-3 sentences with specific factual details
+EXACT OPENING FORMAT (start with this EXACTLY, then continue naturally):
+"${userGreeting} ${narratorIntro} for ${dateStr}."
 
-IMPORTANT: Output ONLY the script text. Do NOT include any thinking, planning, or explanation. Start directly with the greeting.
-
-SCRIPT FORMAT:
-Start: "${greeting}${narratorName ? ' ' + narratorName : ''}, drivers. This is your ${categoryName} briefing for ${dateStr}..."
-
-Then report the ${storiesCount} real news stories with transitions like:
-- "Our top story..."
+After the opening, deliver the news stories with natural transitions like:
+- "Our top story today..."
+- "Leading the news..."
+- "We begin with..."
 - "In other news..."
 - "Meanwhile..."
-- "Also making headlines today..."
+- "Also making headlines..."
 - "And finally..."
 
-End: "That's your ${categoryName} update. Stay safe out there, and we'll see you next time on Drive Time Tales."
+End with something like: "That's your ${categoryName.toLowerCase()} update. Stay safe out there, and we'll catch you next time on Drive Time Tales."
 
-Output the script now, starting with "${greeting}":`;
+IMPORTANT: Start your response with "${greeting}" - nothing before it. Output ONLY the script.`;
 
-  console.log(`[News Generator] Calling Claude API with web search for real ${category} news...`);
+  console.log(`[News Generator] Generating ${category} news script...`);
+  console.log(`[News Generator] User: ${userName || 'anonymous'}, Narrator: ${narratorName || 'none'}`);
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -254,12 +279,7 @@ Output the script now, starting with "${greeting}":`;
     body: JSON.stringify({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 3000,
-      tools: [
-        {
-          type: 'web_search_20250305',
-          name: 'web_search'
-        }
-      ],
+      tools: [{ type: 'web_search_20250305', name: 'web_search' }],
       messages: [{ role: 'user', content: prompt }]
     })
   });
@@ -283,10 +303,10 @@ Output the script now, starting with "${greeting}":`;
     throw new Error('No script generated from Claude');
   }
 
-  // Clean the script to remove thinking process
   script = cleanScript(script);
 
-  console.log(`[News Generator] Script generated with real news: ${script.length} chars`);
+  console.log(`[News Generator] Script generated: ${script.length} chars`);
+  console.log(`[News Generator] Script preview: ${script.substring(0, 250)}...`);
   
   return {
     script,
@@ -340,8 +360,9 @@ export async function POST(request: NextRequest) {
     const category = body.category || 'national';
     const voiceId = body.voiceId || 'EXAVITQu4vr4xnSDxMaL';
     const narratorName = body.narratorName || '';
-    const state = body.state || null; // For state news
+    const state = body.state || null;
     const storiesCount = body.storiesCount || 5;
+    const userName = body.userName || null; // NEW: User's first name for personalization
     
     // Validate category
     if (!CATEGORY_NAMES[category]) {
@@ -356,6 +377,8 @@ export async function POST(request: NextRequest) {
     console.log(`[News Generator] ========================================`);
     console.log(`[News Generator] Starting ${category} briefing generation...`);
     if (state) console.log(`[News Generator] State: ${state}`);
+    if (narratorName) console.log(`[News Generator] Narrator: ${narratorName}`);
+    if (userName) console.log(`[News Generator] User: ${userName}`);
 
     const anthropicKey = process.env.ANTHROPIC_API_KEY;
     const elevenLabsKey = process.env.ELEVENLABS_API_KEY;
@@ -374,9 +397,9 @@ export async function POST(request: NextRequest) {
     let scriptResult: { script: string; title: string };
     
     if (category === 'state' && state) {
-      scriptResult = await generateStateNewsScript(state, anthropicKey, storiesCount, narratorName);
+      scriptResult = await generateStateNewsScript(state, anthropicKey, storiesCount, narratorName, userName);
     } else {
-      scriptResult = await generateScriptWithRealNews(category, anthropicKey, storiesCount, narratorName);
+      scriptResult = await generateScriptWithRealNews(category, anthropicKey, storiesCount, narratorName, userName);
     }
 
     // Step 2: Generate audio
@@ -392,9 +415,12 @@ export async function POST(request: NextRequest) {
     const now = new Date();
     const dateStr = now.toISOString().split('T')[0];
     const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-');
+    
+    // Include userName in filename if personalized
+    const userSlug = userName ? `-${userName.toLowerCase().replace(/\s+/g, '-')}` : '';
     const audioFileName = category === 'state' && state
-      ? `news/state-${state.toLowerCase().replace(/\s+/g, '-')}-${dateStr}-${timeStr}.mp3`
-      : `news/${category}-${dateStr}-${timeStr}.mp3`;
+      ? `news/state-${state.toLowerCase().replace(/\s+/g, '-')}${userSlug}-${dateStr}-${timeStr}.mp3`
+      : `news/${category}${userSlug}-${dateStr}-${timeStr}.mp3`;
 
     const { error: uploadError } = await supabase.storage
       .from('audio')
@@ -437,7 +463,7 @@ export async function POST(request: NextRequest) {
         voice_id: voiceId,
         narrator_name: narratorName,
         duration_mins: Math.ceil(durationSeconds / 60),
-        is_live: true,
+        is_live: !userName, // Only set as live for generic (non-personalized) episodes
         published_at: new Date().toISOString()
       })
       .select()
@@ -448,40 +474,45 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to save episode' }, { status: 500 });
     }
 
-    // Step 5: Set this as the live episode for this category (unset others)
-    await supabase
-      .from('news_episodes')
-      .update({ is_live: false })
-      .eq('category', category)
-      .neq('id', episode.id);
-
-    // Step 6: Update category settings with last_generated and audio_url
-    const { data: currentSettings } = await supabase
-      .from('news_settings')
-      .select('categories')
-      .eq('id', 1)
-      .single();
-
-    if (currentSettings) {
-      const updatedCategories = {
-        ...currentSettings.categories,
-        [category]: {
-          ...currentSettings.categories?.[category],
-          last_generated: new Date().toISOString(),
-          episode_number: episodeNumber,
-          audio_url: publicUrl.publicUrl
-        }
-      };
-
+    // Step 5: Set this as the live episode for this category (only for non-personalized)
+    if (!userName) {
       await supabase
+        .from('news_episodes')
+        .update({ is_live: false })
+        .eq('category', category)
+        .neq('id', episode.id);
+    }
+
+    // Step 6: Update category settings with last_generated and audio_url (only for non-personalized)
+    if (!userName) {
+      const { data: currentSettings } = await supabase
         .from('news_settings')
-        .update({ categories: updatedCategories })
-        .eq('id', 1);
+        .select('categories')
+        .eq('id', 1)
+        .single();
+
+      if (currentSettings) {
+        const updatedCategories = {
+          ...currentSettings.categories,
+          [category]: {
+            ...currentSettings.categories?.[category],
+            last_generated: new Date().toISOString(),
+            episode_number: episodeNumber,
+            audio_url: publicUrl.publicUrl
+          }
+        };
+
+        await supabase
+          .from('news_settings')
+          .update({ categories: updatedCategories })
+          .eq('id', 1);
+      }
     }
 
     console.log(`[News Generator] ✅ SUCCESS: ${category} briefing published!`);
     console.log(`[News Generator] Episode ID: ${episode.id}`);
     console.log(`[News Generator] Audio URL: ${publicUrl.publicUrl}`);
+    console.log(`[News Generator] Personalized: ${userName ? 'Yes' : 'No'}`);
     console.log(`[News Generator] ========================================`);
 
     return NextResponse.json({
@@ -494,7 +525,9 @@ export async function POST(request: NextRequest) {
         episodeNumber,
         audioUrl: publicUrl.publicUrl,
         durationMins: Math.ceil(durationSeconds / 60),
-        storiesCount
+        storiesCount,
+        personalized: !!userName,
+        scriptPreview: scriptResult.script.substring(0, 300)
       }
     });
 
