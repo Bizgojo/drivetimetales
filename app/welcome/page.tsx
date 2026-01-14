@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, Suspense } from 'react'
 import Link from 'next/link'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 interface Story {
@@ -25,7 +25,6 @@ interface Story {
   is_new: boolean
 }
 
-// News categories with colors - same as home page
 const NEWS_CATEGORIES = [
   { id: 'state', name: 'Your State News', icon: '🏛️', color: 'from-red-500 to-red-700', borderColor: 'border-red-400', subscriberOnly: true },
   { id: 'national', name: 'National', icon: '🇺🇸', color: 'from-orange-500 to-orange-700', borderColor: 'border-orange-400', subscriberOnly: false },
@@ -38,11 +37,10 @@ const NEWS_CATEGORIES = [
 type BriefingStatus = 'new' | 'playing' | 'paused' | 'played'
 
 function WelcomeContent() {
-  const router = useRouter()
   const searchParams = useSearchParams()
   const [stories, setStories] = useState<Story[]>([])
   const [loading, setLoading] = useState(true)
-  const [freeCredits, setFreeCredits] = useState(2)
+  const [freeCredits] = useState(2)
   const [briefingStatus, setBriefingStatus] = useState<Record<string, BriefingStatus>>({})
   const [briefingProgress, setBriefingProgress] = useState<Record<string, number>>({})
   const [preGeneratedAudio, setPreGeneratedAudio] = useState<Record<string, string>>({})
@@ -51,76 +49,6 @@ function WelcomeContent() {
   useEffect(() => {
     loadStories()
     loadPreGeneratedAudio()
-    // Auth redirect disabled for testing
-    console.log('[Welcome] Auth redirect disabled for testing')
-  }, [])
-
-  useEffect(() => {
-    return () => {
-      Object.values(audioRefs.current).forEach(audio => {
-        audio.pause()
-        audio.src = ''
-      })
-    }
-  }, [])
-
-  async function loadS
-cat > ~/Projects/drivetimetales/app/welcome/page.tsx << 'ENDOFFILE'
-'use client'
-
-import { useState, useEffect, useRef, Suspense } from 'react'
-import Link from 'next/link'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
-
-interface Story {
-  id: string
-  title: string
-  description: string
-  genre: string
-  duration_mins: number
-  duration_label: string
-  cover_url: string
-  audio_url: string
-  rating: number
-  price: number
-  price_cents: number
-  credits: number
-  is_free: boolean
-  created_at: string
-  average_rating: number
-  author: string
-  is_new: boolean
-}
-
-// News categories with colors - same as home page
-const NEWS_CATEGORIES = [
-  { id: 'state', name: 'Your State News', icon: '🏛️', color: 'from-red-500 to-red-700', borderColor: 'border-red-400', subscriberOnly: true },
-  { id: 'national', name: 'National', icon: '🇺🇸', color: 'from-orange-500 to-orange-700', borderColor: 'border-orange-400', subscriberOnly: false },
-  { id: 'international', name: 'International', icon: '🌍', color: 'from-yellow-500 to-yellow-700', borderColor: 'border-yellow-400', subscriberOnly: false },
-  { id: 'business', name: 'Business', icon: '💼', color: 'from-green-500 to-green-700', borderColor: 'border-green-400', subscriberOnly: false },
-  { id: 'sports', name: 'Sports', icon: '⚽', color: 'from-blue-500 to-blue-700', borderColor: 'border-blue-400', subscriberOnly: false },
-  { id: 'science', name: 'Sci/Tech', icon: '🔬', color: 'from-purple-500 to-purple-700', borderColor: 'border-purple-400', subscriberOnly: false },
-]
-
-type BriefingStatus = 'new' | 'playing' | 'paused' | 'played'
-
-function WelcomeContent() {
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const [stories, setStories] = useState<Story[]>([])
-  const [loading, setLoading] = useState(true)
-  const [freeCredits, setFreeCredits] = useState(2)
-  const [briefingStatus, setBriefingStatus] = useState<Record<string, BriefingStatus>>({})
-  const [briefingProgress, setBriefingProgress] = useState<Record<string, number>>({})
-  const [preGeneratedAudio, setPreGeneratedAudio] = useState<Record<string, string>>({})
-  const audioRefs = useRef<Record<string, HTMLAudioElement>>({})
-
-  useEffect(() => {
-    loadStories()
-    loadPreGeneratedAudio()
-    // Auth redirect disabled for testing
-    console.log('[Welcome] Auth redirect disabled for testing')
   }, [])
 
   useEffect(() => {
@@ -148,16 +76,17 @@ function WelcomeContent() {
 
   async function loadPreGeneratedAudio() {
     try {
-      const { data: episodes } = await supabase
-        .from('news_episodes')
-        .select('category, audio_url')
-        .eq('is_live', true)
+      const { data: settings } = await supabase
+        .from('news_settings')
+        .select('*')
+        .single()
       
-      if (episodes) {
+      if (settings) {
         const audioMap: Record<string, string> = {}
-        episodes.forEach(ep => {
-          if (ep.audio_url) {
-            audioMap[ep.category] = ep.audio_url
+        NEWS_CATEGORIES.forEach(cat => {
+          const audioUrl = settings[`${cat.id}_audio_url`]
+          if (audioUrl) {
+            audioMap[cat.id] = audioUrl
           }
         })
         setPreGeneratedAudio(audioMap)
@@ -183,7 +112,8 @@ function WelcomeContent() {
 
     const audioUrl = preGeneratedAudio[categoryId]
     if (!audioUrl) {
-      console.log('[Welcome] No audio for', categoryId)
+      console.log('[Welcome] No audio available for', categoryId)
+      alert('This briefing is not yet available. Please check back later!')
       return
     }
 
