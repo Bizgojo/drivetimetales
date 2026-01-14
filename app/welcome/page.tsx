@@ -77,9 +77,9 @@ function WelcomeContent() {
   async function loadPreGeneratedAudio() {
     try {
       const { data: settings } = await supabase
-        .from('news_settings')
+        .from('news_episodes')
         .select('*')
-        .single()
+        .eq('is_live', true)
       
       if (settings) {
         const audioMap: Record<string, string> = {}
