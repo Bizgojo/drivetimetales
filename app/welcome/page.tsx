@@ -26,12 +26,12 @@ interface Story {
 }
 
 const NEWS_CATEGORIES = [
-  { id: 'state', name: 'Your State News', icon: '🏛️', color: 'from-red-500 to-red-700', borderColor: 'border-red-400', subscriberOnly: true },
-  { id: 'national', name: 'National', icon: '🇺🇸', color: 'from-orange-500 to-orange-700', borderColor: 'border-orange-400', subscriberOnly: false },
-  { id: 'international', name: 'International', icon: '🌍', color: 'from-yellow-500 to-yellow-700', borderColor: 'border-yellow-400', subscriberOnly: false },
-  { id: 'business', name: 'Business', icon: '💼', color: 'from-green-500 to-green-700', borderColor: 'border-green-400', subscriberOnly: false },
-  { id: 'sports', name: 'Sports', icon: '⚽', color: 'from-blue-500 to-blue-700', borderColor: 'border-blue-400', subscriberOnly: false },
-  { id: 'science', name: 'Sci/Tech', icon: '🔬', color: 'from-purple-500 to-purple-700', borderColor: 'border-purple-400', subscriberOnly: false },
+  { id: 'state', name: 'Your State News', icon: '🏛️', color: 'from-red-500 to-red-700', borderColor: 'border-red-400' },
+  { id: 'national', name: 'National', icon: '🇺🇸', color: 'from-orange-500 to-orange-700', borderColor: 'border-orange-400' },
+  { id: 'international', name: 'International', icon: '🌍', color: 'from-yellow-500 to-yellow-700', borderColor: 'border-yellow-400' },
+  { id: 'business', name: 'Business', icon: '💼', color: 'from-green-500 to-green-700', borderColor: 'border-green-400' },
+  { id: 'sports', name: 'Sports', icon: '⚽', color: 'from-blue-500 to-blue-700', borderColor: 'border-blue-400' },
+  { id: 'science', name: 'Sci/Tech', icon: '🔬', color: 'from-purple-500 to-purple-700', borderColor: 'border-purple-400' },
 ]
 
 type BriefingStatus = 'new' | 'playing' | 'paused' | 'played'
@@ -105,7 +105,7 @@ function WelcomeContent() {
   function handleBriefingClick(categoryId: string) {
     const category = NEWS_CATEGORIES.find(c => c.id === categoryId)
     
-    if (category?.subscriberOnly) {
+    if (false) {
       alert('State news is only available for subscribers. Subscribe to get access!')
       return
     }
@@ -218,7 +218,7 @@ function WelcomeContent() {
                 <button
                   key={cat.id}
                   onClick={() => handleBriefingClick(cat.id)}
-                  className={`relative bg-gradient-to-br ${cat.color} rounded-xl p-3 text-left transition-all hover:scale-[1.02] active:scale-[0.98] border-2 ${cat.borderColor} ${cat.subscriberOnly ? 'opacity-70' : ''}`}
+                  className={`relative bg-gradient-to-br ${cat.color} rounded-xl p-3 text-left transition-all hover:scale-[1.02] active:scale-[0.98] border-2 ${cat.borderColor} `}
                 >
                   <div className={`absolute -top-2 -right-2 ${getStatusColor(status)} text-white text-xs font-bold px-2 py-0.5 rounded-full shadow-lg`}>
                     {getStatusLabel(status)}
@@ -227,7 +227,7 @@ function WelcomeContent() {
                     <span className="text-xl">{cat.icon}</span>
                     <span className="font-bold text-xs text-white">{cat.name}</span>
                   </div>
-                  {(status === 'playing' || status === 'paused') && !cat.subscriberOnly && (
+                  {(status === 'playing' || status === 'paused')  && (
                     <div className="mt-2 h-1 bg-black/30 rounded-full overflow-hidden">
                       <div className="h-full bg-white transition-all" style={{ width: `${briefingProgress[cat.id] || 0}%` }} />
                     </div>
