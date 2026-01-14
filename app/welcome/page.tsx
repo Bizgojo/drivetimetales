@@ -1,9 +1,29 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, useRef, Suspense } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { supabase, Story } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
+
+interface Story {
+  id: string
+  title: string
+  description: string
+  genre: string
+  duration_mins: number
+  duration_label: string
+  cover_url: string
+  audio_url: string
+  rating: number
+  price: number
+  price_cents: number
+  credits: number
+  is_free: boolean
+  created_at: string
+  average_rating: number
+  author: string
+  is_new: boolean
+}
 
 interface SponsorData {
   sponsor_name: string
@@ -11,550 +31,549 @@ interface SponsorData {
   sponsor_tagline: string
 }
 
+// News categories with colors - same as home page
+const NEWS_CATEGORIES = [
+  { id: 'state', name: 'Your State News', icon: '🏛️', color: 'from-red-500 to-red-700', borderColor: 'border-red-400', subscriberOnly: true },
+  { id: 'national', name: 'National', icon: '🇺🇸', color: 'from-orange-500 to-orange-700', borderColor: 'border-orange-400', subscriberOnly: false },
+  { id: 'international', name: 'International', icon: '🌍', color: 'from-yellow-500 to-yellow-700', borderColor: 'border-yellow-400', subscriberOnly: false },
+  { id: 'business', name: 'Business', icon: '💼', color: 'from-green-500 to-green-700', borderColor: 'border-green-400', subscriberOnly: false },
+  { id: 'sports', name: 'Sports', icon: '⚽', color: 'from-blue-500 to-blue-700', borderColor: 'border-blue-400', subscriberOnly: false },
+  { id: 'science', name: 'Sci/Tech', icon: '🔬', color: 'from-purple-500 to-purple-700', borderColor: 'border-purple-400', subscriberOnly: false },
+]
+
+type BriefingStatus = 'new' | 'playing' | 'paused' | 'played'
+
 function WelcomeContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [stories, setStories] = useState<Story[]>([])
   const [loading, setLoading] = useState(true)
   const [freeCredits, setFreeCredits] = useState(0)
-  const [genre, setGenre] = useState('All')
-  const [duration, setDuration] = useState('All')
   
-  // Promo banner from URL param
-  const [showPromoBanner, setShowPromoBanner] = useState(false)
-  const [promoBannerText, setPromoBannerText] = useState('')
-
   // Sponsor banner from QR code
   const [sponsorData, setSponsorData] = useState<SponsorData | null>(null)
-
-  // Secret code modal
-  const [logoTapCount, setLogoTapCount] = useState(0)
-  const [lastTapTime, setLastTapTime] = useState(0)
-  const [showSecretInput, setShowSecretInput] = useState(false)
-  const [secretCode, setSecretCode] = useState('')
-  const [codeMessage, setCodeMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
-  const [isSubmitting, setIsSubmitting] = useState(false)
-
-  const genreOptions = [
-    { name: 'All', icon: '📚' },
-    { name: 'Mystery', icon: '🔍' },
-    { name: 'Drama', icon: '🎭' },
-    { name: 'Sci-Fi', icon: '🚀' },
-    { name: 'Horror', icon: '👻' },
-    { name: 'Comedy', icon: '😂' },
-    { name: 'Romance', icon: '💕' },
-    { name: 'Trucker Stories', icon: '🚛' },
-    { name: 'Thriller', icon: '😱' },
-  ]
-
-  const durationOptions = [
-    { name: 'All', label: 'All' },
-    { name: '15', label: '~15 min' },
-    { name: '30', label: '~30 min' },
-    { name: '60', label: '~1 hr' },
-  ]
+  
+  // News briefing state
+  const [briefingStatus, setBriefingStatus] = useState<Record<string, BriefingStatus>>({})
+  const [briefingProgress, setBriefingProgress] = useState<Record<string, number>>({})
+  const [preGeneratedAudio, setPreGeneratedAudio] = useState<Record<string, string>>({})
+  const audioRefs = useRef<Record<string, HTMLAudioElement>>({})
+  
+  // Subscribers only audio
+  const [subscribersOnlyAudioUrl, setSubscribersOnlyAudioUrl] = useState<string | null>(null)
 
   useEffect(() => {
-    async function initialize() {
-      console.log('[DTT Debug] Welcome page initialize() started')
-      
-      // Load stories via API instead of client-side Supabase (bypasses RLS issues)
-      console.log('[DTT Debug] Loading stories via API...')
-      try {
-        const response = await fetch('/api/stories')
-        if (response.ok) {
-          const allStories = await response.json()
-          console.log('[DTT Debug] API returned', allStories.length, 'stories')
-          setStories(allStories)
-        } else {
-          console.error('[DTT Debug] API error:', response.status)
-        }
-      } catch (error) {
-        console.error('[DTT Debug] Error fetching stories:', error)
-      } finally {
-        setLoading(false)
-      }
+    loadStories()
+    loadPreGeneratedAudio()
+    loadFreeCredits()
+    checkForSponsor()
+    checkAuthAndRedirect()
+  }, [])
 
-      // Load free credits from localStorage
-      const storedCredits = localStorage.getItem('dtt_free_credits')
-      if (storedCredits === null) {
-        localStorage.setItem('dtt_free_credits', '2')
-        localStorage.setItem('dtt_credits_used', 'false')
-        setFreeCredits(2)
-      } else {
-        setFreeCredits(parseInt(storedCredits))
-      }
-
-      // Check for promo text in URL
-      const promo = searchParams.get('promo')
-      if (promo) {
-        setShowPromoBanner(true)
-        setPromoBannerText(decodeURIComponent(promo))
-      }
-
-      // Check for QR source sponsor
-      const qrCode = searchParams.get('qr') || searchParams.get('source')
-      if (qrCode) {
-        console.log('[DTT Debug] Checking QR code:', qrCode)
-        try {
-          const { data } = await supabase
-            .from('qr_sources')
-            .select('sponsor_name, sponsor_message, sponsor_tagline, is_sponsored')
-            .eq('code', qrCode)
-            .eq('is_active', true)
-            .single()
-          
-          if (data && data.is_sponsored && data.sponsor_name) {
-            setSponsorData({
-              sponsor_name: data.sponsor_name,
-              sponsor_message: data.sponsor_message || 'This Free Story brought to you courtesy of',
-              sponsor_tagline: data.sponsor_tagline || 'We appreciate your business'
-            })
-          }
-        } catch (qrErr) {
-          console.log('[DTT Debug] QR lookup failed (ok if no QR):', qrErr)
-        }
-      }
-      
-      // Check auth in background with timeout - don't block the page
-      console.log('[DTT Debug] Checking auth session (with timeout)...')
-      const authTimeout = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Auth timeout')), 10000)
-      )
-      
-      try {
-        const authPromise = supabase.auth.getSession()
-        const { data: { session } } = await Promise.race([authPromise, authTimeout]) as any
-        
-        if (session) {
-          console.log('[DTT Debug] User logged in, redirecting to /home')
-          router.push('/home')
-          return
-        }
-      } catch (authErr) {
-        console.log('[DTT Debug] Auth check skipped (timeout or error):', authErr)
-        // Continue without auth - this is the welcome page for non-logged-in users anyway
-      }
-    }
-    
-    console.log('[DTT Debug] Welcome page useEffect triggered')
-    initialize()
-  }, [router, searchParams])
-
-  const handleLogoTap = () => {
-    const now = Date.now()
-    
-    if (now - lastTapTime > 1000) {
-      setLogoTapCount(1)
-    } else {
-      setLogoTapCount(prev => prev + 1)
-    }
-    
-    setLastTapTime(now)
-    
-    if (logoTapCount >= 4) {
-      setShowSecretInput(true)
-      setLogoTapCount(0)
-    }
-  }
-
-  const handleCodeSubmit = async () => {
-    if (!secretCode.trim()) return
-    
-    setIsSubmitting(true)
-    setCodeMessage(null)
-    
-    try {
-      const { data, error } = await supabase
-        .from('promo_codes')
-        .select('*')
-        .eq('code', secretCode.toUpperCase().trim())
-        .eq('is_active', true)
-        .eq('is_redeemed', false)
-        .single()
-      
-      if (error || !data) {
-        setCodeMessage({ type: 'error', text: 'Invalid, expired, or already used code' })
-        setIsSubmitting(false)
-        return
-      }
-      
-      if (data.expires_at && new Date(data.expires_at) < new Date()) {
-        setCodeMessage({ type: 'error', text: 'This code has expired' })
-        setIsSubmitting(false)
-        return
-      }
-      
-      const deviceId = localStorage.getItem('dtt_device_id') || crypto.randomUUID()
-      localStorage.setItem('dtt_device_id', deviceId)
-      
-      const { error: updateError } = await supabase
-        .from('promo_codes')
-        .update({ 
-          is_redeemed: true,
-          redeemed_at: new Date().toISOString(),
-          redeemed_by_device: deviceId
-        })
-        .eq('id', data.id)
-      
-      if (updateError) {
-        setCodeMessage({ type: 'error', text: 'Error redeeming code. Please try again.' })
-        setIsSubmitting(false)
-        return
-      }
-      
-      const subscriptionData = {
-        code: data.code,
-        type: data.subscription_type,
-        days: data.subscription_days,
-        startDate: new Date().toISOString(),
-        endDate: new Date(Date.now() + data.subscription_days * 24 * 60 * 60 * 1000).toISOString(),
-        deviceId: deviceId
-      }
-      localStorage.setItem('dtt_promo_subscription', JSON.stringify(subscriptionData))
-      
-      setCodeMessage({ 
-        type: 'success', 
-        text: `🎉 Success! Redirecting to create your account...` 
+  // Cleanup audio on unmount
+  useEffect(() => {
+    return () => {
+      Object.values(audioRefs.current).forEach(audio => {
+        audio.pause()
+        audio.src = ''
       })
+    }
+  }, [])
+
+  async function loadStories() {
+    try {
+      const response = await fetch('/api/stories')
+      if (response.ok) {
+        const allStories = await response.json()
+        setStories(allStories)
+      }
+    } catch (error) {
+      console.error('[Welcome] Error fetching stories:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function loadPreGeneratedAudio() {
+    // Load pre-generated news briefing audio URLs from Supabase
+    try {
+      const { data: episodes } = await supabase
+        .from('news_episodes')
+        .select('category, audio_url')
+        .eq('is_live', true)
       
-      setTimeout(() => {
-        setShowSecretInput(false)
-        setSecretCode('')
-        router.push('/register/promo')
-      }, 1500)
-    
+      if (episodes) {
+        const audioMap: Record<string, string> = {}
+        episodes.forEach(ep => {
+          if (ep.audio_url) {
+            audioMap[ep.category] = ep.audio_url
+          }
+        })
+        setPreGeneratedAudio(audioMap)
+        
+        // Initialize all as 'new'
+        const statusMap: Record<string, BriefingStatus> = {}
+        NEWS_CATEGORIES.forEach(cat => {
+          statusMap[cat.id] = 'new'
+        })
+        setBriefingStatus(statusMap)
+      }
+      
+      // Load subscribers-only audio URL
+      const { data: systemAudio } = await supabase
+        .storage
+        .from('system-audio')
+        .getPublicUrl('subscribers-only-state.mp3')
+      
+      if (systemAudio?.publicUrl) {
+        setSubscribersOnlyAudioUrl(systemAudio.publicUrl)
+      }
+    } catch (error) {
+      console.error('[Welcome] Error loading pre-generated audio:', error)
+    }
+  }
+
+  function loadFreeCredits() {
+    const storedCredits = localStorage.getItem('dtt_free_credits')
+    if (storedCredits === null) {
+      localStorage.setItem('dtt_free_credits', '2')
+      localStorage.setItem('dtt_credits_used', 'false')
+      setFreeCredits(2)
+    } else {
+      setFreeCredits(parseInt(storedCredits))
+    }
+  }
+
+  async function checkForSponsor() {
+    const qrCode = searchParams.get('qr') || searchParams.get('source')
+    if (qrCode) {
+      try {
+        const { data } = await supabase
+          .from('qr_sources')
+          .select('sponsor_name, sponsor_message, sponsor_tagline, is_sponsored')
+          .eq('code', qrCode)
+          .eq('is_active', true)
+          .single()
+        
+        if (data && data.is_sponsored && data.sponsor_name) {
+          setSponsorData({
+            sponsor_name: data.sponsor_name,
+            sponsor_message: data.sponsor_message || 'This Free Story brought to you courtesy of',
+            sponsor_tagline: data.sponsor_tagline || 'We appreciate your business'
+          })
+        }
+      } catch (err) {
+        console.log('[Welcome] QR lookup failed:', err)
+      }
+    }
+  }
+
+  async function checkAuthAndRedirect() {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session) {
+        router.push('/home')
+      }
     } catch (err) {
-      setCodeMessage({ type: 'error', text: 'Error validating code. Please try again.' })
+      console.log('[Welcome] Auth check skipped:', err)
     }
+  }
+
+  function playSubscribersOnlyMessage() {
+    // Play the "subscribers only" message for State News
+    if (subscribersOnlyAudioUrl) {
+      const audio = new Audio(subscribersOnlyAudioUrl)
+      audio.play()
+    } else {
+      // Fallback: generate on the fly if pre-generated doesn't exist
+      fetch('/api/news/subscribers-only-audio', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ voiceId: 'EXAVITQu4vr4xnSDxMaL' })
+      })
+        .then(res => res.blob())
+        .then(blob => {
+          const audioUrl = URL.createObjectURL(blob)
+          const audio = new Audio(audioUrl)
+          audio.play()
+        })
+        .catch(err => console.error('[Welcome] Error playing subscribers only message:', err))
+    }
+  }
+
+  function handleBriefingClick(categoryId: string) {
+    const category = NEWS_CATEGORIES.find(c => c.id === categoryId)
     
-    setIsSubmitting(false)
-  }
-
-  // Filter stories by genre and duration
-  const filtered = stories.filter((s: any) => {
-    if (genre !== 'All' && s.genre !== genre) return false
-    if (duration === '15' && (s.duration_mins < 10 || s.duration_mins > 20)) return false
-    if (duration === '30' && (s.duration_mins < 20 || s.duration_mins > 45)) return false
-    if (duration === '60' && s.duration_mins < 45) return false
-    return true
-  })
-
-  // Navigate to player details page
-  const handleStoryClick = (story: any) => {
-    router.push(`/player/${story.id}`)
-  }
-
-  // Get flag for story based on its properties
-  const getStoryFlag = (story: any) => {
-    if ((story.credits || 1) <= 2 && freeCredits > 0) {
-      return { text: 'Free Story', color: 'green' }
+    // State News is subscribers only
+    if (category?.subscriberOnly) {
+      playSubscribersOnlyMessage()
+      return
     }
-    if (story.is_featured) {
-      return { text: "Listener's Choice", color: 'orange' }
+
+    const audioUrl = preGeneratedAudio[categoryId]
+    if (!audioUrl) {
+      console.log('[Welcome] No audio available for', categoryId)
+      return
     }
-    if (story.is_new) {
-      return { text: 'New Release', color: 'blue' }
+
+    const currentStatus = briefingStatus[categoryId] || 'new'
+
+    // Get or create audio element
+    if (!audioRefs.current[categoryId]) {
+      const audio = new Audio(audioUrl)
+      
+      audio.onended = () => {
+        setBriefingStatus(prev => ({ ...prev, [categoryId]: 'played' }))
+      }
+      
+      audio.ontimeupdate = () => {
+        const progress = (audio.currentTime / audio.duration) * 100
+        setBriefingProgress(prev => ({ ...prev, [categoryId]: progress }))
+      }
+      
+      audioRefs.current[categoryId] = audio
     }
-    return null
+
+    const audio = audioRefs.current[categoryId]
+
+    switch (currentStatus) {
+      case 'new':
+      case 'played':
+        // Start playing from beginning
+        audio.currentTime = 0
+        audio.play()
+        setBriefingStatus(prev => ({ ...prev, [categoryId]: 'playing' }))
+        // Pause other briefings
+        Object.keys(audioRefs.current).forEach(key => {
+          if (key !== categoryId && audioRefs.current[key]) {
+            audioRefs.current[key].pause()
+            if (briefingStatus[key] === 'playing') {
+              setBriefingStatus(prev => ({ ...prev, [key]: 'paused' }))
+            }
+          }
+        })
+        break
+      
+      case 'playing':
+        // Pause
+        audio.pause()
+        setBriefingStatus(prev => ({ ...prev, [categoryId]: 'paused' }))
+        break
+      
+      case 'paused':
+        // Resume
+        audio.play()
+        setBriefingStatus(prev => ({ ...prev, [categoryId]: 'playing' }))
+        // Pause other briefings
+        Object.keys(audioRefs.current).forEach(key => {
+          if (key !== categoryId && audioRefs.current[key]) {
+            audioRefs.current[key].pause()
+            if (briefingStatus[key] === 'playing') {
+              setBriefingStatus(prev => ({ ...prev, [key]: 'paused' }))
+            }
+          }
+        })
+        break
+    }
   }
 
-  // Star rating component with half-star support
-  const StarRating = ({ rating }: { rating: number }) => {
-    const displayRating = rating || 4.0
-    return (
-      <span className="flex items-center">
-        {[1, 2, 3, 4, 5].map((star) => {
-          const filled = displayRating >= star
-          const halfFilled = !filled && displayRating >= star - 0.5
-          return (
-            <span key={star} className="relative text-sm">
-              <span className="text-slate-600">☆</span>
-              {(filled || halfFilled) && (
-                <span 
-                  className="absolute left-0 top-0 text-yellow-400 overflow-hidden"
-                  style={{ width: halfFilled ? '50%' : '100%' }}
-                >
-                  ★
-                </span>
-              )}
-            </span>
-          )
-        })}
-        <span className="text-slate-400 text-xs ml-1">{displayRating.toFixed(1)}</span>
-      </span>
-    )
+  function getStatusLabel(status: BriefingStatus): string {
+    switch (status) {
+      case 'new': return 'New'
+      case 'playing': return 'Playing'
+      case 'paused': return 'Paused'
+      case 'played': return 'Played'
+      default: return 'New'
+    }
   }
 
-  // Flag badge component
-  const FlagBadge = ({ text, color }: { text: string; color: string }) => {
-    const colorClasses: Record<string, string> = {
-      green: 'bg-green-500/20 text-green-400 border-green-500/30',
-      orange: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
-      blue: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+  function getStatusColor(status: BriefingStatus): string {
+    switch (status) {
+      case 'new': return 'bg-orange-500'
+      case 'playing': return 'bg-green-500 animate-pulse'
+      case 'paused': return 'bg-yellow-500'
+      case 'played': return 'bg-slate-500'
+      default: return 'bg-orange-500'
     }
-    return (
-      <span className={`px-1.5 py-0.5 text-[10px] rounded border ${colorClasses[color] || colorClasses.blue}`}>
-        {text}
-      </span>
-    )
   }
+
+  // Filter for free stories (1-2 credits)
+  const freeStories = stories.filter(s => s.is_free || (s.credits && s.credits <= 2))
+  
+  // New releases - sorted by date, limited to 3
+  const newReleases = [...stories]
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, 3)
+  
+  // Recommended - only free stories (1-2 credits), sorted by rating
+  const recommended = [...freeStories]
+    .sort((a, b) => (b.average_rating || b.rating || 0) - (a.average_rating || a.rating || 0))
+    .slice(0, 4)
+
+  function formatDuration(story: Story) {
+    if (story.duration_label) return story.duration_label
+    const minutes = story.duration_mins
+    if (!minutes) return ''
+    if (minutes < 60) return `${minutes} min`
+    const hrs = Math.floor(minutes / 60)
+    const mins = minutes % 60
+    return mins > 0 ? `${hrs}h ${mins}m` : `${hrs}h`
+  }
+
+  function formatGenre(genre: string | null) {
+    if (!genre || genre.includes('not set') || genre.includes('Tab')) {
+      return 'Audio Drama'
+    }
+    return genre
+  }
+
+  function isFreeStory(story: Story): boolean {
+    return story.is_free || (story.credits && story.credits <= 2)
+  }
+
+  function formatReleaseDate(dateStr: string) {
+    const date = new Date(dateStr)
+    return `Released ${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()}`
+  }
+
+  function renderStarRating(rating: number) {
+    const fullStars = Math.floor(rating)
+    const stars = []
+    for (let i = 0; i < 5; i++) {
+      if (i < fullStars) {
+        stars.push(<span key={i} className="text-yellow-400">★</span>)
+      } else {
+        stars.push(<span key={i} className="text-slate-500">★</span>)
+      }
+    }
+    return stars
+  }
+
+  // Logo component
+  const Logo = () => (
+    <div className="flex flex-col items-center">
+      <p className="text-orange-400 italic mb-2">Welcome To</p>
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-4xl">🚛</span>
+        <span className="text-4xl">🚗</span>
+      </div>
+      <div className="flex items-baseline">
+        <span className="text-2xl font-bold text-white">Drive Time</span>
+        <span className="text-2xl font-bold text-orange-500">Tales</span>
+      </div>
+    </div>
+  )
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white pb-20">
-      
-      {/* Secret Code Modal */}
-      {showSecretInput && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-          <div className="bg-slate-900 rounded-2xl p-6 max-w-sm w-full border border-slate-700">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-bold text-white">🎁 Enter Secret Code</h3>
-              <button 
-                onClick={() => {
-                  setShowSecretInput(false)
-                  setSecretCode('')
-                  setCodeMessage(null)
-                }}
-                className="text-slate-400 hover:text-white text-2xl leading-none"
-              >
-                ×
-              </button>
-            </div>
-            
-            <input
-              type="text"
-              placeholder="Enter your code..."
-              value={secretCode}
-              onChange={(e) => setSecretCode(e.target.value.toUpperCase())}
-              className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-white text-center text-lg tracking-widest uppercase mb-4 focus:outline-none focus:border-orange-500"
-              maxLength={20}
-              autoFocus
-            />
-            
-            {codeMessage && (
-              <div className={`mb-4 p-3 rounded-lg text-center ${
-                codeMessage.type === 'success' 
-                  ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
-                  : 'bg-red-500/20 text-red-400 border border-red-500/30'
-              }`}>
-                {codeMessage.text}
-              </div>
-            )}
-            
-            <button
-              onClick={handleCodeSubmit}
-              disabled={isSubmitting || !secretCode.trim()}
-              className="w-full py-3 bg-orange-500 hover:bg-orange-400 disabled:bg-slate-700 disabled:text-slate-500 text-black font-bold rounded-lg transition-colors"
-            >
-              {isSubmitting ? 'Validating...' : 'Redeem Code'}
-            </button>
-            
-            <p className="text-slate-500 text-xs text-center mt-3">
-              Each code can only be used once
-            </p>
-          </div>
+    <div className="min-h-screen bg-slate-950 text-white">
+      {/* Header */}
+      <header className="pt-6 pb-4">
+        <div className="max-w-4xl mx-auto px-4">
+          <Logo />
         </div>
-      )}
+      </header>
 
-      {/* Sponsor Banner - Shows when user comes from sponsored QR code */}
-      {sponsorData && (
-        <div className="sticky top-0 z-40 bg-gradient-to-r from-emerald-600 via-emerald-500 to-emerald-600 px-4 py-2 text-center shadow-lg">
-          <p className="text-white text-sm font-medium">
-            {sponsorData.sponsor_message} <span className="font-bold">{sponsorData.sponsor_name}</span> — {sponsorData.sponsor_tagline}
-          </p>
-        </div>
-      )}
-
-      {/* Promo Banner - Shows when ?promo= URL param exists */}
-      {showPromoBanner && promoBannerText && !sponsorData && (
-        <div className="sticky top-0 z-40 bg-gradient-to-r from-green-600 to-green-500 px-3 py-2">
-          <p className="text-white text-xs text-center font-medium leading-tight">
-            🎁 {promoBannerText}
-          </p>
-        </div>
-      )}
-
-      <div className="max-w-2xl mx-auto px-4 py-4">
+      {/* Main Content */}
+      <main className="max-w-4xl mx-auto px-4 pb-40">
         
-        {/* Welcome To Header */}
-        <p className="text-center text-orange-400 italic text-xl mb-2">Welcome To</p>
-        
-        {/* LARGE CENTERED LOGO - Emoji Vehicles */}
-        <button 
-          onClick={handleLogoTap}
-          className="w-full flex flex-col items-center justify-center mb-4 focus:outline-none"
-        >
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-5xl">🚛</span>
-            <span className="text-5xl">🚗</span>
-          </div>
-          <div className="flex items-baseline">
-            <span className="text-2xl font-bold text-white">Drive Time </span>
-            <span className="text-2xl font-bold text-orange-500">Tales</span>
-          </div>
-        </button>
-
-        {/* Tagline - EYE CATCHING */}
-        <div className="text-center mb-4">
-          <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 py-4 px-3 rounded-xl border border-slate-700/50">
-            <h1 className="text-xl sm:text-2xl font-extrabold text-white leading-tight">
-              Start Listening
-            </h1>
-            <h2 className="text-xl sm:text-2xl font-extrabold text-orange-400 leading-tight">
-              To Your Free Story Now!
-            </h2>
-            <p className="text-white text-sm mt-2 font-medium">
-              No Sign Up Required — Just Click & Listen
-            </p>
+        {/* Start Listening Banner */}
+        <section className="mb-6">
+          <div className="bg-slate-800 rounded-2xl p-6 text-center border border-slate-700">
+            <h1 className="text-2xl font-bold text-white mb-1">Start Listening</h1>
+            <p className="text-xl font-bold text-orange-500 mb-2">To Your Free Story Now!</p>
+            <p className="text-slate-400 text-sm">No Sign Up Required — Just Click & Listen</p>
           </div>
           
-          {freeCredits > 0 ? (
-            <p className="text-green-400 text-sm mt-2">
-              🎁 You have {freeCredits} free credit{freeCredits !== 1 ? 's' : ''}
-            </p>
-          ) : (
-            <div className="mt-2">
-              <p className="text-red-400 font-semibold text-sm">
-                You have 0 free credits
-              </p>
+          {/* Free Credits Badge */}
+          <div className="flex justify-center mt-3">
+            <div className="flex items-center gap-2 text-orange-400">
+              <span className="text-xl">🎁</span>
+              <span>You have {freeCredits} free credits</span>
             </div>
-          )}
-        </div>
-
-        {/* Genre Filters */}
-        <div className="mb-2">
-          <div className="flex flex-wrap justify-center gap-1">
-            {genreOptions.map((g) => (
-              <button
-                key={g.name}
-                onClick={() => setGenre(g.name)}
-                className={`flex flex-col items-center px-2 py-1 rounded-lg transition-all ${
-                  genre === g.name 
-                    ? 'bg-orange-500 text-black' 
-                    : 'bg-slate-800 text-white'
-                }`}
-              >
-                <span className="text-sm">{g.icon}</span>
-                <span className="text-[9px] mt-0.5">{g.name === 'Trucker Stories' ? 'Trucker' : g.name}</span>
-              </button>
-            ))}
           </div>
-        </div>
+        </section>
 
-        {/* Duration Filters */}
-        <div className="mb-3">
-          <div className="flex justify-center gap-2">
-            {durationOptions.map((d) => (
-              <button
-                key={d.name}
-                onClick={() => setDuration(d.name)}
-                className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
-                  duration === d.name 
-                    ? 'bg-orange-500 text-black' 
-                    : 'bg-slate-800 text-white border border-slate-700'
-                }`}
-              >
-                {d.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Results count - only show when not loading */}
-        {!loading && (
-          <p className="text-slate-400 text-xs mb-3">{filtered.length} {filtered.length === 1 ? 'story' : 'stories'} found</p>
+        {/* Sponsor Banner (if applicable) */}
+        {sponsorData && (
+          <section className="mb-6">
+            <div className="bg-gradient-to-r from-orange-500/20 to-yellow-500/20 rounded-xl p-4 border border-orange-500/30 text-center">
+              <p className="text-orange-300 text-sm">{sponsorData.sponsor_message}</p>
+              <p className="text-white font-bold text-lg">{sponsorData.sponsor_name}</p>
+              <p className="text-orange-300 text-xs">{sponsorData.sponsor_tagline}</p>
+            </div>
+          </section>
         )}
 
-        {/* Stories List */}
-        {loading ? (
-          <div className="text-center py-12">
-            <div className="inline-block w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mb-4" />
-            <p className="text-white">Loading stories...</p>
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="text-center py-12">
-            <span className="text-5xl block mb-4">📚</span>
-            <h2 className="text-xl font-bold text-white mb-2">No Stories Found</h2>
-            <p className="text-white">Try selecting a different genre or duration</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {filtered.map((story: any, index: number) => {
-              const flag = getStoryFlag(story)
+        {/* News Briefings Section */}
+        <section className="mb-8">
+          <h2 className="text-lg font-bold mb-4">NEWS BRIEFINGS</h2>
+          <div className="grid grid-cols-3 gap-3">
+            {NEWS_CATEGORIES.map(cat => {
+              const status = briefingStatus[cat.id] || 'new'
+              const hasAudio = !!preGeneratedAudio[cat.id] || cat.subscriberOnly
               
               return (
-                <div 
-                  key={story.id}
-                  onClick={() => handleStoryClick(story)}
-                  className={`rounded-xl overflow-hidden cursor-pointer active:opacity-80 transition-opacity ${index % 2 === 0 ? 'bg-slate-900' : 'bg-slate-800'}`}
+                <button
+                  key={cat.id}
+                  onClick={() => handleBriefingClick(cat.id)}
+                  className={`relative bg-gradient-to-br ${cat.color} rounded-xl p-3 text-left transition-all hover:scale-[1.02] active:scale-[0.98] border-2 ${cat.borderColor} ${cat.subscriberOnly ? 'opacity-70' : ''}`}
                 >
-                  <div className="flex">
-                    {/* Cover */}
-                    <div className="w-28 h-28 flex-shrink-0 relative">
-                      {story.cover_url ? (
-                        <img 
-                          src={story.cover_url}
-                          alt={story.title}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full bg-gradient-to-br from-slate-700 to-slate-800 flex items-center justify-center">
-                          <span className="text-3xl opacity-50">🎧</span>
-                        </div>
-                      )}
-                      {/* Duration badge */}
-                      <div className="absolute bottom-1 left-1 px-1.5 py-0.5 bg-black/70 text-white text-[10px] rounded">
-                        {story.duration_mins} min
-                      </div>
-                    </div>
-                    
-                    {/* Info */}
-                    <div className="flex-1 p-2 flex flex-col justify-between min-w-0">
-                      {/* Title */}
-                      <h3 className="font-bold text-white text-base leading-tight truncate">{story.title}</h3>
-                      
-                      {/* Genre + Credits */}
-                      <p className="text-slate-400 text-sm">{story.genre} • {story.credits || 1} credit{(story.credits || 1) !== 1 ? 's' : ''}</p>
-                      
-                      {/* Author */}
-                      <p className="text-slate-300 text-sm">{story.author}</p>
-                      
-                      {/* Star Rating + Flag */}
-                      <div className="flex items-center gap-2 flex-wrap">
-                       <StarRating rating={story.ai_rating || story.average_rating || 4.0} />
-                        {flag && <FlagBadge text={flag.text} color={flag.color} />}
-                      </div>
-                    </div>
+                  {/* Status Flag */}
+                  <div className={`absolute -top-2 -right-2 ${getStatusColor(status)} text-white text-xs font-bold px-2 py-0.5 rounded-full shadow-lg`}>
+                    {getStatusLabel(status)}
                   </div>
-                </div>
+                  
+                  {/* Content */}
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xl">{cat.icon}</span>
+                    <span className="font-bold text-sm text-white truncate">{cat.name}</span>
+                  </div>
+                  
+                  {/* Progress bar (only show if playing or paused) */}
+                  {(status === 'playing' || status === 'paused') && !cat.subscriberOnly && (
+                    <div className="mt-2 h-1 bg-black/30 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-white transition-all duration-300"
+                        style={{ width: `${briefingProgress[cat.id] || 0}%` }}
+                      />
+                    </div>
+                  )}
+                </button>
               )
             })}
           </div>
-        )}
-      </div>
+        </section>
 
-      {/* STICKY SUBSCRIBE BUTTON */}
-      <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-slate-950 via-slate-950 to-transparent pt-4 pb-3 px-4 z-30">
-        <div className="max-w-2xl mx-auto">
-          <button 
-            onClick={() => router.push('/pricing')}
-            className="w-full py-3 bg-orange-500 hover:bg-orange-400 text-black font-bold text-base rounded-xl transition-colors"
+        {/* New Releases */}
+        <section className="mb-8">
+          <h2 className="text-lg font-bold mb-4">NEW RELEASES</h2>
+          {loading ? (
+            <div className="flex justify-center py-8">
+              <div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+          ) : newReleases.length === 0 ? (
+            <p className="text-slate-400 text-sm">No stories available yet.</p>
+          ) : (
+            <div className="grid grid-cols-3 gap-4">
+              {newReleases.map((story) => (
+                <Link key={story.id} href={`/story/${story.id}`} className="block">
+                  <div 
+                    className="relative rounded-xl overflow-hidden"
+                    style={{ boxShadow: '0 0 20px rgba(255, 255, 255, 0.5), 0 0 40px rgba(255, 255, 255, 0.3)' }}
+                  >
+                    {story.cover_url ? (
+                      <img 
+                        src={story.cover_url} 
+                        alt={story.title}
+                        className="w-full aspect-[3/4] object-cover"
+                      />
+                    ) : (
+                      <div className="w-full aspect-[3/4] bg-slate-800 flex items-center justify-center text-4xl">📖</div>
+                    )}
+                    {/* FREE flag */}
+                    {isFreeStory(story) && (
+                      <div className="absolute top-2 right-2 bg-green-500 text-black text-xs font-bold px-2 py-1 rounded">
+                        FREE
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-2">
+                    <h3 className="font-medium text-sm text-white line-clamp-1">{story.title}</h3>
+                    <p className="text-slate-400 text-xs">{formatGenre(story.genre)}</p>
+                    <p className="text-slate-400 text-xs">By {story.author || 'Drive Time Tales'}</p>
+                    <p className="text-slate-400 text-xs">{formatDuration(story)}</p>
+                    <p className="text-slate-500 text-xs">{formatReleaseDate(story.created_at)}</p>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* Recommended For You - FREE stories only */}
+        <section className="mb-8">
+          <h2 className="text-lg font-bold mb-4">RECOMMENDED FOR YOU</h2>
+          {loading ? (
+            <div className="flex justify-center py-8">
+              <div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+          ) : recommended.length === 0 ? (
+            <p className="text-slate-400 text-sm">No free stories available yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {recommended.map((story) => (
+                <Link
+                  key={story.id}
+                  href={`/story/${story.id}`}
+                  className="flex bg-slate-800 rounded-xl overflow-hidden hover:bg-slate-700 transition h-32"
+                >
+                  <div className="p-2 flex-shrink-0 w-28 relative">
+                    <div 
+                      className="rounded-lg overflow-hidden h-full w-full"
+                      style={{ boxShadow: '0 0 12px rgba(255, 255, 255, 0.4), 0 0 24px rgba(255, 255, 255, 0.2)' }}
+                    >
+                      {story.cover_url ? (
+                        <img 
+                          src={story.cover_url} 
+                          alt={story.title}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="h-full w-full bg-slate-700 flex items-center justify-center text-2xl">📖</div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex-1 p-3 flex flex-col justify-center">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <h3 className="font-bold text-white text-sm line-clamp-1">{story.title}</h3>
+                      <span className="bg-green-500 text-black text-xs font-bold px-2 py-0.5 rounded flex-shrink-0">FREE</span>
+                    </div>
+                    <p className="text-slate-400 text-xs mb-0.5">{formatGenre(story.genre)}</p>
+                    <p className="text-slate-400 text-xs mb-0.5">By {story.author || 'Drive Time Tales'}</p>
+                    <p className="text-slate-400 text-xs mb-1">{formatDuration(story)}</p>
+                    <div className="flex items-center gap-2">
+                      <div className="flex text-xs">
+                        {renderStarRating(story.average_rating || story.rating || 0)}
+                      </div>
+                      <span className="text-slate-400 text-xs">
+                        {(story.average_rating || story.rating || 0).toFixed(1)}
+                      </span>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </section>
+
+      </main>
+
+      {/* Sticky Bottom Buttons */}
+      <div className="fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-800 p-4">
+        <div className="max-w-4xl mx-auto space-y-3">
+          <Link 
+            href="/library" 
+            className="block w-full bg-orange-500 hover:bg-orange-600 text-black font-bold py-3 px-4 rounded-xl text-center transition"
           >
-            Subscribe Here
-          </button>
+            Check Out Hundreds of Stories in Our Library
+          </Link>
+          <Link 
+            href="/pricing" 
+            className="block w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-4 rounded-xl text-center transition"
+          >
+            Subscribe Now and Get Two Months Free
+          </Link>
         </div>
       </div>
+
     </div>
   )
 }
 
 function LoadingFallback() {
   return (
-    <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center">
-      <div className="text-center">
-        <div className="inline-block w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mb-4" />
-        <p className="text-white">Loading...</p>
-      </div>
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+      <div className="inline-block w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
     </div>
   )
 }
