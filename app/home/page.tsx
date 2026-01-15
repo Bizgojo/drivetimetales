@@ -4,7 +4,6 @@ import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { useAuth } from '@/contexts/AuthContext'
 
 interface Story {
   id: string
@@ -50,8 +49,7 @@ interface UserProfile {
   state?: string
 }
 
-// News categories with colors evenly distributed on color wheel
-// Order: State, National, International, Business, Sports, Science
+// News categories
 const NEWS_CATEGORIES = [
   { id: 'state', name: 'State News', icon: '🏛️', color: 'from-red-500 to-red-700', borderColor: 'border-red-400' },
   { id: 'national', name: 'National', icon: '🇺🇸', color: 'from-orange-500 to-orange-700', borderColor: 'border-orange-400' },
@@ -65,11 +63,15 @@ type BriefingStatus = 'new' | 'playing' | 'paused' | 'played'
 
 export default function HomePage() {
   const router = useRouter()
-  const { user } = useAuth()
+  
+  // Auth state - managed directly, not through context
+  const [authUser, setAuthUser] = useState<any>(null)
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
+  const [authLoading, setAuthLoading] = useState(true)
+  
   const [newReleases, setNewReleases] = useState<Story[]>([])
   const [recommended, setRecommended] = useState<Story[]>([])
   const [continueListening, setContinueListening] = useState<LibraryItem | null>(null)
-  const [libraryCount, setLibraryCount] = useState(0)
   const [wishlistCount, setWishlistCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [storiesError, setStoriesError] = useState<string | null>(null)
@@ -78,9 +80,58 @@ export default function HomePage() {
   const [newsEpisodes, setNewsEpisodes] = useState<Record<string, NewsEpisode>>({})
   const [briefingStatus, setBriefingStatus] = useState<Record<string, BriefingStatus>>({})
   const [briefingProgress, setBriefingProgress] = useState<Record<string, number>>({})
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
-  const [userCredits, setUserCredits] = useState(0)
   const audioRefs = useRef<Record<string, HTMLAudioElement>>({})
+
+  // Check auth directly on mount
+  useEffect(() => {
+    async function checkAuth() {
+      console.log('[Home] Checking auth...')
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession()
+        console.log('[Home] Session check:', session ? 'Found' : 'None', error)
+        
+        if (session?.user) {
+          setAuthUser(session.user)
+          // Load user profile
+          const { data: profile } = await supabase
+            .from('users')
+            .select('id, display_name, first_name, credits, state')
+            .eq('id', session.user.id)
+            .single()
+          
+          if (profile) {
+            console.log('[Home] Profile loaded:', profile.display_name, 'Credits:', profile.credits)
+            setUserProfile(profile)
+          }
+        }
+      } catch (err) {
+        console.error('[Home] Auth check error:', err)
+      } finally {
+        setAuthLoading(false)
+      }
+    }
+    
+    checkAuth()
+    
+    // Also listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('[Home] Auth state changed:', event)
+      if (session?.user) {
+        setAuthUser(session.user)
+        const { data: profile } = await supabase
+          .from('users')
+          .select('id, display_name, first_name, credits, state')
+          .eq('id', session.user.id)
+          .single()
+        if (profile) setUserProfile(profile)
+      } else {
+        setAuthUser(null)
+        setUserProfile(null)
+      }
+    })
+    
+    return () => subscription.unsubscribe()
+  }, [])
 
   useEffect(() => {
     loadStories()
@@ -88,11 +139,10 @@ export default function HomePage() {
   }, [])
 
   useEffect(() => {
-    if (user) {
+    if (authUser) {
       loadUserData()
-      loadUserProfile()
     }
-  }, [user])
+  }, [authUser])
 
   // Cleanup audio on unmount
   useEffect(() => {
@@ -151,7 +201,7 @@ export default function HomePage() {
         
         data.episodes.forEach((ep: NewsEpisode) => {
           episodeMap[ep.category] = ep
-          statusMap[ep.category] = 'new' // Default to 'new'
+          statusMap[ep.category] = 'new'
         })
         
         setNewsEpisodes(episodeMap)
@@ -163,7 +213,7 @@ export default function HomePage() {
   }
 
   async function loadUserData() {
-    if (!user) return
+    if (!authUser) return
     
     console.log('[Home] Loading user data...')
 
@@ -171,7 +221,7 @@ export default function HomePage() {
       const { data: libraryData } = await supabase
         .from('library')
         .select('*, stories(*)')
-        .eq('user_id', user.id)
+        .eq('user_id', authUser.id)
         .gt('progress', 0)
         .lt('progress', 100)
         .order('updated_at', { ascending: false })
@@ -180,17 +230,10 @@ export default function HomePage() {
 
       if (libraryData) setContinueListening(libraryData)
 
-      const { count: libCount } = await supabase
-        .from('library')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-
-      setLibraryCount(libCount || 0)
-
       const { count: wishCount } = await supabase
         .from('wishlist')
         .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id)
+        .eq('user_id', authUser.id)
 
       setWishlistCount(wishCount || 0)
 
@@ -199,38 +242,15 @@ export default function HomePage() {
     }
   }
 
-  async function loadUserProfile() {
-    if (!user) return
-    
-    try {
-      const { data } = await supabase
-        .from('users')
-        .select('id, display_name, first_name, credits, state')
-        .eq('id', user.id)
-        .single()
-      
-      if (data) {
-        setUserProfile(data)
-        setUserCredits(data.credits || 0)
-      }
-    } catch (error) {
-      console.error('[Home] Error loading user profile:', error)
-    }
-  }
-
   async function playNoCreditsMessage(categoryId: string) {
-    const episode = newsEpisodes[categoryId]
-    if (!episode) return
-    
     try {
-      // Generate "no credits" audio message
-      const displayName = userProfile?.display_name || ''
+      const userName = userProfile?.first_name || userProfile?.display_name?.split(' ')[0] || ''
       const response = await fetch('/api/news/no-credits-audio', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          voiceId: 'EXAVITQu4vr4xnSDxMaL', // Default voice
-          userName: displayName
+          voiceId: 'EXAVITQu4vr4xnSDxMaL',
+          userName: userName
         })
       })
       
@@ -246,7 +266,9 @@ export default function HomePage() {
   }
 
   function handleBriefingClick(categoryId: string) {
-    // Check if user has at least 1 credit
+    const userCredits = userProfile?.credits || 0
+    
+    // If no credits, play the no-credits message instead of blocking
     if (userCredits < 1) {
       playNoCreditsMessage(categoryId)
       return
@@ -260,7 +282,6 @@ export default function HomePage() {
       return
     }
 
-    // Get or create audio element
     if (!audioRefs.current[categoryId]) {
       const audio = new Audio(episode.audio_url)
       
@@ -281,11 +302,9 @@ export default function HomePage() {
     switch (currentStatus) {
       case 'new':
       case 'played':
-        // Start playing from beginning
         audio.currentTime = 0
         audio.play()
         setBriefingStatus(prev => ({ ...prev, [categoryId]: 'playing' }))
-        // Pause other briefings
         Object.keys(audioRefs.current).forEach(key => {
           if (key !== categoryId && audioRefs.current[key]) {
             audioRefs.current[key].pause()
@@ -297,16 +316,13 @@ export default function HomePage() {
         break
       
       case 'playing':
-        // Pause
         audio.pause()
         setBriefingStatus(prev => ({ ...prev, [categoryId]: 'paused' }))
         break
       
       case 'paused':
-        // Resume from where paused
         audio.play()
         setBriefingStatus(prev => ({ ...prev, [categoryId]: 'playing' }))
-        // Pause other briefings
         Object.keys(audioRefs.current).forEach(key => {
           if (key !== categoryId && audioRefs.current[key]) {
             audioRefs.current[key].pause()
@@ -381,8 +397,9 @@ export default function HomePage() {
     return stars
   }
 
-  // Get state name for display
   const userStateName = userProfile?.state || 'Your State'
+  const userCredits = userProfile?.credits || 0
+  const userName = userProfile?.first_name || userProfile?.display_name?.split(' ')[0] || 'friend'
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
@@ -394,9 +411,11 @@ export default function HomePage() {
             <span className="text-lg font-bold">Drive Time <span className="text-orange-500">Tales</span></span>
           </Link>
           
-          {user ? (
+          {authLoading ? (
+            <div className="w-9 h-9 rounded-full bg-slate-700 animate-pulse" />
+          ) : authUser ? (
             <Link href="/account" className="w-9 h-9 rounded-full bg-orange-500 flex items-center justify-center text-black font-bold">
-              {userProfile?.display_name?.[0] || user.email?.[0]?.toUpperCase() || '?'}
+              {userProfile?.display_name?.[0] || authUser.email?.[0]?.toUpperCase() || '?'}
             </Link>
           ) : (
             <Link href="/signin" className="text-orange-400 hover:text-orange-300 font-medium">
@@ -409,10 +428,23 @@ export default function HomePage() {
       {/* Main Content */}
       <main className="max-w-4xl mx-auto px-4 py-6 pb-40">
 
-        {/* Welcome Message */}
-        {user && (
+        {/* Welcome Message & Credits */}
+        {authUser && (
           <div className="mb-6">
-            <h1 className="text-2xl font-bold text-white">Welcome back, {userProfile?.first_name || userProfile?.display_name?.split(" ")[0] || "friend"}!</h1>
+            <h1 className="text-2xl font-bold text-white">Welcome back, {userName}!</h1>
+            <div className="flex items-center gap-3 mt-2">
+              <p className="text-slate-400">
+                You have <span className={userCredits > 0 ? 'text-green-400 font-bold' : 'text-red-400 font-bold'}>{userCredits}</span> credit{userCredits !== 1 ? 's' : ''}
+              </p>
+              {userCredits === 0 && (
+                <Link 
+                  href="/pricing" 
+                  className="bg-orange-500 hover:bg-orange-400 text-black text-sm font-bold px-3 py-1 rounded-lg transition"
+                >
+                  Buy More Credits
+                </Link>
+              )}
+            </div>
           </div>
         )}
         
@@ -443,7 +475,7 @@ export default function HomePage() {
                     <span className="font-bold text-sm text-white truncate">{displayName}</span>
                   </div>
                   
-                  {/* Progress bar (only show if playing or paused) */}
+                  {/* Progress bar */}
                   {(status === 'playing' || status === 'paused') && (
                     <div className="mt-2 h-1 bg-black/30 rounded-full overflow-hidden">
                       <div 
