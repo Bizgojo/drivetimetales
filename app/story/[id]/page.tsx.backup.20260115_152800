@@ -58,7 +58,7 @@ function StoryContent() {
         await supabase
           .from('play_history')
           .update({
-            current_time_seconds: Math.floor(seconds),
+            progress_seconds: Math.floor(seconds),
             completed: completed,
             last_played_at: new Date().toISOString()
           })
@@ -70,10 +70,9 @@ function StoryContent() {
           .insert({
             user_id: user.id,
             story_id: storyId,
-            current_time_seconds: Math.floor(seconds),
+            progress_seconds: Math.floor(seconds),
             completed: completed,
-            last_played_at: new Date().toISOString(),
-            started_at: new Date().toISOString()
+            last_played_at: new Date().toISOString()
           })
       }
       setLastSavedTime(seconds)
