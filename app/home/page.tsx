@@ -1,386 +1,164 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@supabase/supabase-js'
-
-// Create supabase client directly
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-const supabase = createClient(supabaseUrl, supabaseAnonKey)
+import { useAuth } from '@/contexts/AuthContext'
+import { getStories } from '@/lib/supabase'
 
 interface Story {
   id: string
   title: string
-  description: string
+  author: string
   genre: string
   duration_mins: number
   cover_url: string
-  audio_url: string
+  description: string
   credits: number
-  author: string
+  rating: number
+  release_date: string
+  is_new: boolean
 }
-
-interface NewsEpisode {
-  id: string
-  category: string
-  audio_url: string | null
-  is_live: boolean
-}
-
-type BriefingStatus = 'new' | 'playing' | 'paused' | 'played'
-
-// State abbreviation to full name mapping
-const STATE_NAMES: Record<string, string> = {
-  'AL': 'Alabama', 'AK': 'Alaska', 'AZ': 'Arizona', 'AR': 'Arkansas', 'CA': 'California',
-  'CO': 'Colorado', 'CT': 'Connecticut', 'DE': 'Delaware', 'FL': 'Florida', 'GA': 'Georgia',
-  'HI': 'Hawaii', 'ID': 'Idaho', 'IL': 'Illinois', 'IN': 'Indiana', 'IA': 'Iowa',
-  'KS': 'Kansas', 'KY': 'Kentucky', 'LA': 'Louisiana', 'ME': 'Maine', 'MD': 'Maryland',
-  'MA': 'Massachusetts', 'MI': 'Michigan', 'MN': 'Minnesota', 'MS': 'Mississippi', 'MO': 'Missouri',
-  'MT': 'Montana', 'NE': 'Nebraska', 'NV': 'Nevada', 'NH': 'New Hampshire', 'NJ': 'New Jersey',
-  'NM': 'New Mexico', 'NY': 'New York', 'NC': 'North Carolina', 'ND': 'North Dakota', 'OH': 'Ohio',
-  'OK': 'Oklahoma', 'OR': 'Oregon', 'PA': 'Pennsylvania', 'RI': 'Rhode Island', 'SC': 'South Carolina',
-  'SD': 'South Dakota', 'TN': 'Tennessee', 'TX': 'Texas', 'UT': 'Utah', 'VT': 'Vermont',
-  'VA': 'Virginia', 'WA': 'Washington', 'WV': 'West Virginia', 'WI': 'Wisconsin', 'WY': 'Wyoming'
-}
-
-// News categories with color wheel colors (60° apart)
-const NEWS_CATEGORIES = [
-  { id: 'state', name: 'State News', icon: '🏛️', color: 'from-red-500 to-red-700' },        // Red (0°)
-  { id: 'national', name: 'National', icon: '🇺🇸', color: 'from-orange-500 to-orange-700' }, // Orange (60°)
-  { id: 'international', name: 'World', icon: '🌍', color: 'from-yellow-500 to-yellow-600' }, // Yellow (120°)
-  { id: 'business', name: 'Business', icon: '💼', color: 'from-green-500 to-green-700' },   // Green (180°)
-  { id: 'sports', name: 'Sports', icon: '⚽', color: 'from-blue-500 to-blue-700' },         // Blue (240°)
-  { id: 'science', name: 'Sci/Tech', icon: '🔬', color: 'from-purple-500 to-purple-700' },  // Purple (300°)
-]
 
 export default function HomePage() {
   const router = useRouter()
-  
-  // Auth state
-  const [authChecked, setAuthChecked] = useState(false)
-  const [currentUser, setCurrentUser] = useState<any>(null)
-  const [displayName, setDisplayName] = useState('friend')
-  const [userCredits, setUserCredits] = useState(0)
-  const [userState, setUserState] = useState('')
-  
-  // Stories state
-  const [stories, setStories] = useState<Story[]>([])
+  const { user, loading: authLoading } = useAuth()
+  const [recentlyAdded, setRecentlyAdded] = useState<Story[]>([])
   const [loading, setLoading] = useState(true)
-  
-  // News state
-  const [newsEpisodes, setNewsEpisodes] = useState<Record<string, NewsEpisode>>({})
-  const [briefingStatus, setBriefingStatus] = useState<Record<string, BriefingStatus>>({})
-  const audioRefs = useRef<Record<string, HTMLAudioElement>>({})
 
-  // Check auth and load profile
   useEffect(() => {
-    async function init() {
+    async function loadData() {
+      console.log('[DTT Debug] Home page loadData() started')
+      console.log('[DTT Debug] Auth loading:', authLoading, 'User:', user?.email)
+      
+      // Wait for auth to finish
+      if (authLoading) {
+        console.log('[DTT Debug] Still loading auth...')
+        return
+      }
+      
+      // Redirect if not logged in
+      if (!user) {
+        console.log('[DTT Debug] No user, redirecting to signin')
+        router.push('/signin')
+        return
+      }
+
+      console.log('[DTT Debug] User found:', user.email, 'Credits:', user.credits)
+
+      // Get recently added stories
       try {
-        const { data: { session } } = await supabase.auth.getSession()
-        
-        if (session?.user) {
-          setCurrentUser(session.user)
-          
-          const { data: profile, error } = await supabase
-            .from('users')
-            .select('first_name, display_name, credits, state')
-            .eq('id', session.user.id)
-            .single()
-          
-          if (profile && !error) {
-            const name = profile.first_name 
-              || profile.display_name?.split(' ')[0] 
-              || session.user.email?.split('@')[0] 
-              || 'friend'
-            setDisplayName(name)
-            setUserCredits(profile.credits || 0)
-            setUserState(profile.state || '')
-          } else {
-            setDisplayName(session.user.email?.split('@')[0] || 'friend')
-          }
-        }
+        const stories = await getStories({ limit: 6 })
+        console.log('[DTT Debug] Got stories:', stories.length)
+        setRecentlyAdded(stories as Story[])
       } catch (err) {
-        console.error('[Home] Init error:', err)
-      } finally {
-        setAuthChecked(true)
+        console.error('[DTT Debug] Error getting stories:', err)
       }
+      
+      setLoading(false)
     }
     
-    init()
-  }, [])
+    loadData()
+  }, [user, authLoading, router])
 
-  // Load stories
-  useEffect(() => {
-    async function loadStories() {
-      try {
-        const { data, error } = await supabase
-          .from('stories')
-          .select('id, title, description, genre, duration_mins, cover_url, audio_url, credits, author')
-          .order('created_at', { ascending: false })
-          .limit(12)
-        
-        if (data && !error) {
-          setStories(data)
-        }
-      } catch (err) {
-        console.error('[Home] Stories error:', err)
-      } finally {
-        setLoading(false)
-      }
-    }
-    loadStories()
-  }, [])
-
-  // Load news episodes
-  useEffect(() => {
-    async function loadNews() {
-      try {
-        const { data } = await supabase
-          .from('news_episodes')
-          .select('id, category, audio_url, is_live')
-          .eq('is_live', true)
-        
-        if (data) {
-          const episodeMap: Record<string, NewsEpisode> = {}
-          data.forEach(ep => { episodeMap[ep.category] = ep })
-          setNewsEpisodes(episodeMap)
-        }
-      } catch (err) {
-        console.error('[Home] News error:', err)
-      }
-    }
-    loadNews()
-  }, [])
-
-  // Get full state name
-  const getStateName = () => {
-    if (!userState) return 'State'
-    if (userState.length > 2) return userState
-    return STATE_NAMES[userState.toUpperCase()] || userState
+  // Show loading while checking auth
+  if (authLoading || loading) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin text-4xl mb-4">🎧</div>
+          <p className="text-gray-400">Loading...</p>
+        </div>
+      </div>
+    )
   }
 
-  // Play no credits message
-  const playNoCreditsMessage = () => {
-    const message = `Hi ${displayName}, this is your news briefing host. I'm glad you're back, but I'm sorry to inform you that you must have at least one credit in your account to hear the recent news briefings. Please buy more credits or upgrade your subscription. I look forward to seeing you soon. Goodbye!`
-    
-    if ('speechSynthesis' in window) {
-      const utterance = new SpeechSynthesisUtterance(message)
-      utterance.rate = 1.0
-      speechSynthesis.speak(utterance)
-    } else {
-      alert(message)
-    }
-  }
-
-  // Handle news briefing play
-  const handlePlayBriefing = (categoryId: string) => {
-    if (userCredits === 0) {
-      playNoCreditsMessage()
-      return
-    }
-    
-    const episode = newsEpisodes[categoryId]
-    if (!episode?.audio_url) {
-      alert('No briefing available for this category yet')
-      return
-    }
-    
-    // Pause any other playing audio
-    Object.entries(audioRefs.current).forEach(([id, audio]) => {
-      if (id !== categoryId && !audio.paused) {
-        audio.pause()
-        setBriefingStatus(prev => ({ ...prev, [id]: 'paused' }))
-      }
-    })
-    
-    // Create audio element if needed
-    if (!audioRefs.current[categoryId]) {
-      audioRefs.current[categoryId] = new Audio(episode.audio_url)
-      audioRefs.current[categoryId].onended = () => {
-        setBriefingStatus(prev => ({ ...prev, [categoryId]: 'played' }))
-      }
-    }
-    
-    const audio = audioRefs.current[categoryId]
-    const currentStatus = briefingStatus[categoryId]
-    
-    if (currentStatus === 'playing') {
-      // Currently playing -> pause it
-      audio.pause()
-      setBriefingStatus(prev => ({ ...prev, [categoryId]: 'paused' }))
-    } else {
-      // Not playing (new, paused, or played) -> play/resume
-      // If 'played', start from beginning
-      if (currentStatus === 'played') {
-        audio.currentTime = 0
-      }
-      audio.play()
-      setBriefingStatus(prev => ({ ...prev, [categoryId]: 'playing' }))
-    }
-  }
-
-  // Get flag badge color and text based on status
-  const getStatusBadge = (status: BriefingStatus | undefined, hasEpisode: boolean) => {
-    if (!hasEpisode) return null
-    
-    switch (status) {
-      case 'playing':
-        return <span className="absolute top-1 right-1 bg-orange-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold">Playing</span>
-      case 'paused':
-        return <span className="absolute top-1 right-1 bg-orange-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold">Paused</span>
-      case 'played':
-        return <span className="absolute top-1 right-1 bg-orange-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold">Played</span>
-      default:
-        return <span className="absolute top-1 right-1 bg-orange-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold">New</span>
-    }
-  }
+  // Get user's first name
+  const firstName = user?.display_name?.split(' ')[0] || 'there'
+  const credits = user?.credits ?? 0
+  const creditsDisplay = credits === -1 ? 'Unlimited' : credits
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
-      {/* Header */}
-      <header className="sticky top-0 z-50 bg-slate-950/95 backdrop-blur border-b border-slate-800">
-        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
-          <Link href="/home" className="flex items-center gap-2">
-            <span className="text-2xl">🚗</span>
-            <span className="text-lg font-bold">Drive Time <span className="text-orange-500">Tales</span></span>
-          </Link>
-
-          {!authChecked ? (
-            <div className="w-9 h-9 rounded-full bg-slate-700 animate-pulse" />
-          ) : currentUser ? (
-            <Link href="/account" className="w-9 h-9 rounded-full bg-orange-500 flex items-center justify-center text-black font-bold">
-              {displayName[0]?.toUpperCase() || '?'}
-            </Link>
-          ) : (
-            <Link href="/signin" className="text-orange-400 hover:text-orange-300 font-medium">
-              Sign In
-            </Link>
-          )}
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="max-w-4xl mx-auto px-4 py-6 pb-40">
+    <div className="min-h-screen bg-slate-950 text-white pb-24">
+      <div className="max-w-2xl mx-auto px-4 py-4">
         
-        {/* Welcome Message */}
-        {currentUser && (
-          <div className="mb-6">
-            <h1 className="text-2xl font-bold text-white">Welcome back, {displayName}!</h1>
-            <div className="flex items-center gap-3 mt-2">
-              <span className="text-slate-400">
-                You have <span className={userCredits > 0 ? 'text-green-400' : 'text-red-400'}>{userCredits}</span> credit{userCredits !== 1 ? 's' : ''}
-              </span>
-              {userCredits === 0 && (
-                <Link 
-                  href="/pricing" 
-                  className="bg-orange-500 hover:bg-orange-400 text-black text-sm font-bold px-3 py-1 rounded-lg transition"
-                >
-                  Buy More Credits
-                </Link>
-              )}
-            </div>
+        {/* Header - Logo + Avatar */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-2">
+            <span className="text-2xl">🚛</span>
+            <span className="text-2xl">🚗</span>
+            <span className="text-xl font-bold">
+              Drive Time<span className="text-orange-500">Tales</span>
+            </span>
           </div>
-        )}
-
-        {/* News Briefings */}
-        <section className="mb-8">
-          <h2 className="text-lg font-bold mb-2">NEWS BRIEFINGS</h2>
-          <p className="text-slate-400 text-sm mb-4">Top stories updated throughout the day</p>
-          <div className="grid grid-cols-3 gap-3">
-            {NEWS_CATEGORIES.map(cat => {
-              const status = briefingStatus[cat.id]
-              const hasEpisode = !!newsEpisodes[cat.id]?.audio_url
-              const catName = cat.id === 'state' ? `${getStateName()}\nNews` : cat.name
-
-              return (
-                <button
-                  key={cat.id}
-                  onClick={() => handlePlayBriefing(cat.id)}
-                  className={`relative p-4 rounded-xl text-center transition bg-gradient-to-br ${cat.color} hover:opacity-90 min-h-[100px]`}
-                >
-                  {getStatusBadge(status, hasEpisode)}
-                  <div className="text-2xl mb-1">{cat.icon}</div>
-                  <div className="text-xs font-bold whitespace-pre-line">{catName}</div>
-                  {status === 'playing' && (
-                    <div className="text-[10px] mt-1">▶ Now Playing</div>
-                  )}
-                </button>
-              )
-            })}
-          </div>
-        </section>
-
-        {/* Stories */}
-        <section className="mb-8">
-          <h2 className="text-lg font-bold mb-4">NEW RELEASES</h2>
-          {loading ? (
-            <div className="flex justify-center py-8">
-              <div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
-            </div>
-          ) : stories.length === 0 ? (
-            <p className="text-slate-400 text-sm">No stories available yet.</p>
-          ) : (
-            <div className="grid grid-cols-3 gap-4">
-              {stories.slice(0, 6).map((story) => (
-                <Link key={story.id} href={`/story/${story.id}`} className="block">
-                  <div className="rounded-xl overflow-hidden" style={{ boxShadow: '0 0 20px rgba(255, 255, 255, 0.5)' }}>
-                    {story.cover_url ? (
-                      <img src={story.cover_url} alt={story.title} className="w-full aspect-square object-cover" />
-                    ) : (
-                      <div className="w-full aspect-square bg-slate-700 flex items-center justify-center text-4xl">📖</div>
-                    )}
-                  </div>
-                  <h3 className="mt-2 text-sm font-medium line-clamp-1">{story.title}</h3>
-                  <p className="text-slate-400 text-xs line-clamp-1">{story.author}</p>
-                </Link>
-              ))}
-            </div>
-          )}
-        </section>
-
-        {/* Recommended */}
-        <section className="mb-8">
-          <h2 className="text-lg font-bold mb-4">RECOMMENDED FOR YOU</h2>
-          {loading ? (
-            <div className="flex justify-center py-8">
-              <div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
-            </div>
-          ) : stories.length === 0 ? (
-            <p className="text-slate-400 text-sm">No recommendations yet.</p>
-          ) : (
-            <div className="grid grid-cols-3 gap-4">
-              {stories.slice(0, 6).map((story) => (
-                <Link key={story.id} href={`/story/${story.id}`} className="block">
-                  <div className="rounded-xl overflow-hidden" style={{ boxShadow: '0 0 20px rgba(255, 255, 255, 0.5)' }}>
-                    {story.cover_url ? (
-                      <img src={story.cover_url} alt={story.title} className="w-full aspect-square object-cover" />
-                    ) : (
-                      <div className="w-full aspect-square bg-slate-700 flex items-center justify-center text-4xl">📖</div>
-                    )}
-                  </div>
-                  <h3 className="mt-2 text-sm font-medium line-clamp-1">{story.title}</h3>
-                  <p className="text-slate-400 text-xs line-clamp-1">{story.author}</p>
-                </Link>
-              ))}
-            </div>
-          )}
-        </section>
-      </main>
-
-      {/* Bottom Buttons */}
-      <div className="fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-800 p-4">
-        <div className="max-w-4xl mx-auto">
-          <div className="flex gap-3 mb-3">
-            <Link href="/library" className="flex-1 bg-orange-500 hover:bg-orange-600 text-black font-bold py-3 px-4 rounded-xl text-center transition">
-              Go To Library
-            </Link>
-          </div>
-          <Link href="/share" className="block w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-4 rounded-xl text-center transition">
-            Share With A Friend - Its A Win Win
+          <Link href="/account" className="w-10 h-10 bg-orange-500 rounded-full flex items-center justify-center text-white font-bold">
+            {firstName.charAt(0).toUpperCase()}
           </Link>
         </div>
+
+        {/* Welcome + Credits */}
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-xl">
+            Welcome back, <span className="font-bold">{firstName}</span> 👋
+          </h1>
+          <Link href="/account/billing" className="px-3 py-1 bg-gray-800 rounded-full text-sm">
+            <span className="text-orange-400 font-medium">{creditsDisplay}</span> credits
+          </Link>
+        </div>
+
+        {/* Recently Added */}
+        <div className="mb-8">
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <span>✨</span> Recently Added
+          </h2>
+          
+          {recentlyAdded.length > 0 ? (
+            <div className="grid grid-cols-3 gap-3">
+              {recentlyAdded.map((story) => (
+                <Link href={`/story/${story.id}`} key={story.id} className="group">
+                  <div className="relative aspect-[3/4] rounded-xl overflow-hidden mb-2">
+                    <img 
+                      src={story.cover_url || '/placeholder-cover.jpg'} 
+                      alt={story.title}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                    />
+                    {story.is_new && (
+                      <span className="absolute top-2 left-2 px-2 py-0.5 bg-green-500 text-white text-xs font-bold rounded">
+                        NEW
+                      </span>
+                    )}
+                    <span className="absolute bottom-2 right-2 px-2 py-0.5 bg-black/70 text-white text-xs rounded">
+                      {story.duration_mins}m
+                    </span>
+                  </div>
+                  <h3 className="font-medium text-sm truncate">{story.title}</h3>
+                  <p className="text-gray-400 text-xs truncate">{story.author}</p>
+                  <div className="flex items-center gap-1 text-yellow-400 text-xs">
+                    {'★'.repeat(Math.floor(story.rating || 4))}
+                    <span className="text-gray-500">{story.rating?.toFixed(1) || '4.0'}</span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-400">
+              <p>No stories yet. Check back soon!</p>
+            </div>
+          )}
+        </div>
+
+        {/* Bottom Navigation */}
+        <div className="fixed bottom-0 left-0 right-0 p-4 bg-slate-950">
+          <div className="max-w-2xl mx-auto flex gap-3">
+            <Link href="/welcome" className="flex-1 py-4 bg-orange-500 text-white font-bold rounded-xl text-center flex items-center justify-center gap-2">
+              <span>🔍</span> Browse All
+            </Link>
+            <Link href="/wishlist" className="flex-1 py-4 bg-blue-500 text-white font-bold rounded-xl text-center flex items-center justify-center gap-2">
+              <span>❤️</span> My Wishlist
+            </Link>
+          </div>
+        </div>
+
       </div>
     </div>
   )
