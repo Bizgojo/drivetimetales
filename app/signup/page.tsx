@@ -5,23 +5,82 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
+// US States for dropdown
+const US_STATES = [
+  { code: 'AL', name: 'Alabama' }, { code: 'AK', name: 'Alaska' }, { code: 'AZ', name: 'Arizona' },
+  { code: 'AR', name: 'Arkansas' }, { code: 'CA', name: 'California' }, { code: 'CO', name: 'Colorado' },
+  { code: 'CT', name: 'Connecticut' }, { code: 'DE', name: 'Delaware' }, { code: 'FL', name: 'Florida' },
+  { code: 'GA', name: 'Georgia' }, { code: 'HI', name: 'Hawaii' }, { code: 'ID', name: 'Idaho' },
+  { code: 'IL', name: 'Illinois' }, { code: 'IN', name: 'Indiana' }, { code: 'IA', name: 'Iowa' },
+  { code: 'KS', name: 'Kansas' }, { code: 'KY', name: 'Kentucky' }, { code: 'LA', name: 'Louisiana' },
+  { code: 'ME', name: 'Maine' }, { code: 'MD', name: 'Maryland' }, { code: 'MA', name: 'Massachusetts' },
+  { code: 'MI', name: 'Michigan' }, { code: 'MN', name: 'Minnesota' }, { code: 'MS', name: 'Mississippi' },
+  { code: 'MO', name: 'Missouri' }, { code: 'MT', name: 'Montana' }, { code: 'NE', name: 'Nebraska' },
+  { code: 'NV', name: 'Nevada' }, { code: 'NH', name: 'New Hampshire' }, { code: 'NJ', name: 'New Jersey' },
+  { code: 'NM', name: 'New Mexico' }, { code: 'NY', name: 'New York' }, { code: 'NC', name: 'North Carolina' },
+  { code: 'ND', name: 'North Dakota' }, { code: 'OH', name: 'Ohio' }, { code: 'OK', name: 'Oklahoma' },
+  { code: 'OR', name: 'Oregon' }, { code: 'PA', name: 'Pennsylvania' }, { code: 'RI', name: 'Rhode Island' },
+  { code: 'SC', name: 'South Carolina' }, { code: 'SD', name: 'South Dakota' }, { code: 'TN', name: 'Tennessee' },
+  { code: 'TX', name: 'Texas' }, { code: 'UT', name: 'Utah' }, { code: 'VT', name: 'Vermont' },
+  { code: 'VA', name: 'Virginia' }, { code: 'WA', name: 'Washington' }, { code: 'WV', name: 'West Virginia' },
+  { code: 'WI', name: 'Wisconsin' }, { code: 'WY', name: 'Wyoming' }
+]
+
 function SignUpContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   
   const [name, setName] = useState('')
+  const [nickname, setNickname] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [state, setState] = useState('')
+  const [referralCode, setReferralCode] = useState('')
+  const [referrerName, setReferrerName] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   
-  // Get plan from URL params
   const planId = searchParams.get('plan') || 'premium'
   const billing = searchParams.get('billing') || 'monthly'
   const priceId = searchParams.get('priceId') || ''
+  const refCode = searchParams.get('ref') || ''
 
-  const planNames: { [key: string]: string } = {
+  useEffect(() => {
+    if (refCode) {
+      setReferralCode(refCode)
+      validateReferralCode(refCode)
+    }
+  }, [refCode])
+
+  // Auto-fill nickname from first word of name
+  useEffect(() => {
+    if (name && !nickname) {
+      const firstName = name.trim().split(' ')[0]
+      setNickname(firstName)
+    }
+  }, [name, nickname])
+
+  async function validateReferralCode(code: string) {
+    if (!code) {
+      setReferrerName(null)
+      return
+    }
+    try {
+      const res = await fetch(`/api/referral?code=${code}`)
+      const data = await res.json()
+      if (data.valid) {
+        setReferrerName(data.referrer_name)
+      } else {
+        setReferrerName(null)
+      }
+    } catch (err) {
+      console.error('Error validating referral code:', err)
+      setReferrerName(null)
+    }
+  }
+
+  const planNames: Record<string, string> = {
     basic: 'Basic',
     premium: 'Premium',
     unlimited: 'Unlimited'
@@ -31,9 +90,13 @@ function SignUpContent() {
     e.preventDefault()
     setError(null)
     
-    // Validation
     if (!name.trim()) {
       setError('Please enter your name')
+      return
+    }
+
+    if (!nickname.trim()) {
+      setError('Please enter what you\'d like to be called')
       return
     }
     
@@ -51,11 +114,15 @@ function SignUpContent() {
       setError('Passwords do not match')
       return
     }
+
+    if (!state) {
+      setError('Please select your state')
+      return
+    }
     
     setIsSubmitting(true)
     
     try {
-      // Create user account with Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: email.trim(),
         password: password,
@@ -81,14 +148,17 @@ function SignUpContent() {
         setIsSubmitting(false)
         return
       }
+
+      const stateName = US_STATES.find(s => s.code === state)?.name || state
       
-      // Create user profile (pending subscription)
       const { error: profileError } = await supabase
         .from('users')
         .insert({
           id: authData.user.id,
           email: email.trim(),
           display_name: name.trim(),
+          first_name: nickname.trim(),
+          state: stateName,
           subscription_status: 'pending',
           subscription_plan: planId,
           credits: 0,
@@ -98,13 +168,25 @@ function SignUpContent() {
       if (profileError) {
         console.error('Profile creation error:', profileError)
       }
+
+      if (referralCode && referrerName) {
+        try {
+          await fetch('/api/referral', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              referral_code: referralCode,
+              referred_user_id: authData.user.id
+            })
+          })
+        } catch (refError) {
+          console.error('Referral processing error:', refError)
+        }
+      }
       
-      // Redirect to Stripe checkout
       const response = await fetch('/api/checkout', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           priceId: priceId,
           userId: authData.user.id,
@@ -114,26 +196,25 @@ function SignUpContent() {
         }),
       })
       
-      const { url, error: checkoutError } = await response.json()
+      const checkoutData = await response.json()
       
-      if (checkoutError) {
+      if (checkoutData.error) {
         setError('Failed to create checkout session. Please try again.')
         setIsSubmitting(false)
         return
       }
       
-      // Redirect to Stripe
-      if (url) {
-        window.location.href = url
+      if (checkoutData.url) {
+        window.location.href = checkoutData.url
       }
       
     } catch (err) {
+      console.error('Signup error:', err)
       setError('An error occurred. Please try again.')
       setIsSubmitting(false)
     }
   }
 
-  // Logo component
   const Logo = () => (
     <div className="flex items-center justify-center gap-2">
       <svg width="50" height="30" viewBox="0 0 80 48" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -169,14 +250,12 @@ function SignUpContent() {
     <div className="min-h-screen bg-slate-950 text-white">
       <div className="max-w-md mx-auto px-4 py-6">
         
-        {/* Logo */}
         <div className="flex justify-center mb-6">
           <Link href="/welcome">
             <Logo />
           </Link>
         </div>
 
-        {/* Selected Plan Banner */}
         <div className="bg-orange-500/20 border border-orange-500/50 rounded-xl p-3 mb-6 text-center">
           <p className="text-orange-400 text-sm">
             Selected Plan: <span className="font-bold">{planNames[planId] || 'Premium'}</span>
@@ -187,7 +266,6 @@ function SignUpContent() {
           </Link>
         </div>
 
-        {/* Registration Form */}
         <div className="bg-slate-900 rounded-2xl p-6 border border-slate-800">
           <h1 className="text-xl font-bold text-white text-center mb-2">
             Create Your Account
@@ -197,7 +275,7 @@ function SignUpContent() {
           </p>
           
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Name */}
+            {/* Full Name */}
             <div>
               <label className="block text-sm text-slate-400 mb-1">Your Name</label>
               <input
@@ -208,6 +286,20 @@ function SignUpContent() {
                 className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-orange-500"
                 autoComplete="name"
               />
+            </div>
+
+            {/* Nickname - NEW FIELD */}
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">What should we call you?</label>
+              <input
+                type="text"
+                value={nickname}
+                onChange={(e) => setNickname(e.target.value)}
+                placeholder="John"
+                className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-orange-500"
+                autoComplete="given-name"
+              />
+              <p className="text-slate-500 text-xs mt-1">Used for personalized greetings in news briefings</p>
             </div>
             
             {/* Email */}
@@ -221,6 +313,22 @@ function SignUpContent() {
                 className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-orange-500"
                 autoComplete="email"
               />
+            </div>
+
+            {/* State */}
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Your State</label>
+              <select
+                value={state}
+                onChange={(e) => setState(e.target.value)}
+                className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-orange-500"
+              >
+                <option value="">Select your state...</option>
+                {US_STATES.map(s => (
+                  <option key={s.code} value={s.code}>{s.name}</option>
+                ))}
+              </select>
+              <p className="text-slate-500 text-xs mt-1">Used for personalized State News briefings</p>
             </div>
             
             {/* Password */}
@@ -248,6 +356,44 @@ function SignUpContent() {
                 autoComplete="new-password"
               />
             </div>
+
+            {/* Referral Code */}
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">
+                Referral Code <span className="text-slate-500">(optional)</span>
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={referralCode}
+                  onChange={(e) => {
+                    setReferralCode(e.target.value.toUpperCase())
+                    validateReferralCode(e.target.value)
+                  }}
+                  placeholder="FRIEND123"
+                  className={`w-full px-4 py-3 bg-slate-800 border rounded-xl text-white focus:outline-none ${
+                    referrerName 
+                      ? 'border-green-500' 
+                      : referralCode && !referrerName 
+                        ? 'border-red-500' 
+                        : 'border-slate-700 focus:border-orange-500'
+                  }`}
+                />
+                {referrerName && (
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-green-400">✓</span>
+                )}
+              </div>
+              {referrerName && (
+                <p className="text-green-400 text-sm mt-1">
+                  🎉 Referred by {referrerName} - You will get 3 free credits!
+                </p>
+              )}
+              {referralCode && !referrerName && (
+                <p className="text-slate-500 text-xs mt-1">
+                  Invalid code - but you can still sign up!
+                </p>
+              )}
+            </div>
             
             {/* Error Message */}
             {error && (
@@ -270,7 +416,6 @@ function SignUpContent() {
             </button>
           </form>
           
-          {/* Terms */}
           <p className="text-slate-500 text-xs text-center mt-4">
             By creating an account, you agree to our{' '}
             <Link href="/terms" className="text-orange-400 hover:underline">Terms of Service</Link>
@@ -279,7 +424,6 @@ function SignUpContent() {
           </p>
         </div>
 
-        {/* Already have account */}
         <p className="text-slate-400 text-sm text-center mt-6">
           Already have an account?{' '}
           <Link href="/signin" className="text-orange-400 hover:underline font-medium">Sign In</Link>
