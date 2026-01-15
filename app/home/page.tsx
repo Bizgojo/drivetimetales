@@ -45,14 +45,14 @@ const STATE_NAMES: Record<string, string> = {
   'VA': 'Virginia', 'WA': 'Washington', 'WV': 'West Virginia', 'WI': 'Wisconsin', 'WY': 'Wyoming'
 }
 
-// News categories with colors - correct order
+// News categories with color wheel colors (60° apart)
 const NEWS_CATEGORIES = [
-  { id: 'state', name: 'State News', icon: '🏛️', color: 'from-green-600 to-green-800' },
-  { id: 'national', name: 'National', icon: '🇺🇸', color: 'from-orange-500 to-orange-700' },
-  { id: 'international', name: 'World', icon: '🌍', color: 'from-yellow-500 to-yellow-700' },
-  { id: 'business', name: 'Business', icon: '💼', color: 'from-blue-500 to-blue-700' },
-  { id: 'sports', name: 'Sports', icon: '⚽', color: 'from-blue-600 to-blue-800' },
-  { id: 'science', name: 'Sci/Tech', icon: '🔬', color: 'from-purple-500 to-purple-700' },
+  { id: 'state', name: 'State News', icon: '🏛️', color: 'from-red-500 to-red-700' },        // Red (0°)
+  { id: 'national', name: 'National', icon: '🇺🇸', color: 'from-orange-500 to-orange-700' }, // Orange (60°)
+  { id: 'international', name: 'World', icon: '🌍', color: 'from-yellow-500 to-yellow-600' }, // Yellow (120°)
+  { id: 'business', name: 'Business', icon: '💼', color: 'from-green-500 to-green-700' },   // Green (180°)
+  { id: 'sports', name: 'Sports', icon: '⚽', color: 'from-blue-500 to-blue-700' },         // Blue (240°)
+  { id: 'science', name: 'Sci/Tech', icon: '🔬', color: 'from-purple-500 to-purple-700' },  // Purple (300°)
 ]
 
 export default function HomePage() {
@@ -157,9 +157,7 @@ export default function HomePage() {
   // Get full state name
   const getStateName = () => {
     if (!userState) return 'State'
-    // If it's already a full name, return it
     if (userState.length > 2) return userState
-    // Otherwise look up the abbreviation
     return STATE_NAMES[userState.toUpperCase()] || userState
   }
 
@@ -197,6 +195,7 @@ export default function HomePage() {
       }
     })
     
+    // Create audio element if needed
     if (!audioRefs.current[categoryId]) {
       audioRefs.current[categoryId] = new Audio(episode.audio_url)
       audioRefs.current[categoryId].onended = () => {
@@ -205,31 +204,37 @@ export default function HomePage() {
     }
     
     const audio = audioRefs.current[categoryId]
+    const currentStatus = briefingStatus[categoryId]
     
-    if (briefingStatus[categoryId] === 'playing') {
+    if (currentStatus === 'playing') {
+      // Currently playing -> pause it
       audio.pause()
       setBriefingStatus(prev => ({ ...prev, [categoryId]: 'paused' }))
     } else {
+      // Not playing (new, paused, or played) -> play/resume
+      // If 'played', start from beginning
+      if (currentStatus === 'played') {
+        audio.currentTime = 0
+      }
       audio.play()
       setBriefingStatus(prev => ({ ...prev, [categoryId]: 'playing' }))
     }
   }
 
-  // Get status badge
-  const getStatusBadge = (status: BriefingStatus, hasEpisode: boolean) => {
-    if (status === 'playing') {
-      return <span className="absolute top-1 right-1 bg-green-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">Playing</span>
+  // Get flag badge color and text based on status
+  const getStatusBadge = (status: BriefingStatus | undefined, hasEpisode: boolean) => {
+    if (!hasEpisode) return null
+    
+    switch (status) {
+      case 'playing':
+        return <span className="absolute top-1 right-1 bg-orange-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold">Playing</span>
+      case 'paused':
+        return <span className="absolute top-1 right-1 bg-orange-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold">Paused</span>
+      case 'played':
+        return <span className="absolute top-1 right-1 bg-orange-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold">Played</span>
+      default:
+        return <span className="absolute top-1 right-1 bg-orange-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold">New</span>
     }
-    if (status === 'paused') {
-      return <span className="absolute top-1 right-1 bg-yellow-500 text-black text-[10px] px-1.5 py-0.5 rounded-full">Paused</span>
-    }
-    if (status === 'played') {
-      return <span className="absolute top-1 right-1 bg-gray-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">Played</span>
-    }
-    if (hasEpisode) {
-      return <span className="absolute top-1 right-1 bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">New</span>
-    }
-    return null
   }
 
   return (
@@ -285,7 +290,7 @@ export default function HomePage() {
           <p className="text-slate-400 text-sm mb-4">Top stories updated throughout the day</p>
           <div className="grid grid-cols-3 gap-3">
             {NEWS_CATEGORIES.map(cat => {
-              const status = briefingStatus[cat.id] || 'new'
+              const status = briefingStatus[cat.id]
               const hasEpisode = !!newsEpisodes[cat.id]?.audio_url
               const catName = cat.id === 'state' ? `${getStateName()}\nNews` : cat.name
 
@@ -293,13 +298,13 @@ export default function HomePage() {
                 <button
                   key={cat.id}
                   onClick={() => handlePlayBriefing(cat.id)}
-                  className={`relative p-4 rounded-xl text-center transition bg-gradient-to-br ${cat.color} hover:opacity-90`}
+                  className={`relative p-4 rounded-xl text-center transition bg-gradient-to-br ${cat.color} hover:opacity-90 min-h-[100px]`}
                 >
                   {getStatusBadge(status, hasEpisode)}
                   <div className="text-2xl mb-1">{cat.icon}</div>
-                  <div className="text-xs font-medium whitespace-pre-line">{catName}</div>
+                  <div className="text-xs font-bold whitespace-pre-line">{catName}</div>
                   {status === 'playing' && (
-                    <div className="text-[10px] mt-1 opacity-80">▶ Now Playing</div>
+                    <div className="text-[10px] mt-1">▶ Now Playing</div>
                   )}
                 </button>
               )
