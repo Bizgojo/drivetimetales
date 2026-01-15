@@ -29,15 +29,30 @@ interface NewsEpisode {
   is_live: boolean
 }
 
-type BriefingStatus = 'new' | 'playing' | 'paused' | 'listened'
+type BriefingStatus = 'new' | 'playing' | 'paused' | 'played'
 
+// State abbreviation to full name mapping
+const STATE_NAMES: Record<string, string> = {
+  'AL': 'Alabama', 'AK': 'Alaska', 'AZ': 'Arizona', 'AR': 'Arkansas', 'CA': 'California',
+  'CO': 'Colorado', 'CT': 'Connecticut', 'DE': 'Delaware', 'FL': 'Florida', 'GA': 'Georgia',
+  'HI': 'Hawaii', 'ID': 'Idaho', 'IL': 'Illinois', 'IN': 'Indiana', 'IA': 'Iowa',
+  'KS': 'Kansas', 'KY': 'Kentucky', 'LA': 'Louisiana', 'ME': 'Maine', 'MD': 'Maryland',
+  'MA': 'Massachusetts', 'MI': 'Michigan', 'MN': 'Minnesota', 'MS': 'Mississippi', 'MO': 'Missouri',
+  'MT': 'Montana', 'NE': 'Nebraska', 'NV': 'Nevada', 'NH': 'New Hampshire', 'NJ': 'New Jersey',
+  'NM': 'New Mexico', 'NY': 'New York', 'NC': 'North Carolina', 'ND': 'North Dakota', 'OH': 'Ohio',
+  'OK': 'Oklahoma', 'OR': 'Oregon', 'PA': 'Pennsylvania', 'RI': 'Rhode Island', 'SC': 'South Carolina',
+  'SD': 'South Dakota', 'TN': 'Tennessee', 'TX': 'Texas', 'UT': 'Utah', 'VT': 'Vermont',
+  'VA': 'Virginia', 'WA': 'Washington', 'WV': 'West Virginia', 'WI': 'Wisconsin', 'WY': 'Wyoming'
+}
+
+// News categories with colors - correct order
 const NEWS_CATEGORIES = [
-  { id: 'national', name: 'National', icon: '🇺🇸' },
-  { id: 'international', name: 'International', icon: '🌍' },
-  { id: 'state', name: 'State News', icon: '🏛️' },
-  { id: 'sports', name: 'Sports', icon: '⚽' },
-  { id: 'business', name: 'Business', icon: '💼' },
-  { id: 'science', name: 'Science & Tech', icon: '🔬' },
+  { id: 'state', name: 'State News', icon: '🏛️', color: 'from-green-600 to-green-800' },
+  { id: 'national', name: 'National', icon: '🇺🇸', color: 'from-orange-500 to-orange-700' },
+  { id: 'international', name: 'World', icon: '🌍', color: 'from-yellow-500 to-yellow-700' },
+  { id: 'business', name: 'Business', icon: '💼', color: 'from-blue-500 to-blue-700' },
+  { id: 'sports', name: 'Sports', icon: '⚽', color: 'from-blue-600 to-blue-800' },
+  { id: 'science', name: 'Sci/Tech', icon: '🔬', color: 'from-purple-500 to-purple-700' },
 ]
 
 export default function HomePage() {
@@ -48,7 +63,7 @@ export default function HomePage() {
   const [currentUser, setCurrentUser] = useState<any>(null)
   const [displayName, setDisplayName] = useState('friend')
   const [userCredits, setUserCredits] = useState(0)
-  const [userState, setUserState] = useState('Your State')
+  const [userState, setUserState] = useState('')
   
   // Stories state
   const [stories, setStories] = useState<Story[]>([])
@@ -59,17 +74,15 @@ export default function HomePage() {
   const [briefingStatus, setBriefingStatus] = useState<Record<string, BriefingStatus>>({})
   const audioRefs = useRef<Record<string, HTMLAudioElement>>({})
 
-  // Check auth and load profile - optimized for speed
+  // Check auth and load profile
   useEffect(() => {
     async function init() {
       try {
-        // Get session
         const { data: { session } } = await supabase.auth.getSession()
         
         if (session?.user) {
           setCurrentUser(session.user)
           
-          // Load profile with minimal fields - no timeout wrapper needed
           const { data: profile, error } = await supabase
             .from('users')
             .select('first_name, display_name, credits, state')
@@ -77,16 +90,14 @@ export default function HomePage() {
             .single()
           
           if (profile && !error) {
-            // Use first_name (nickname) first, then first word of display_name, then email
             const name = profile.first_name 
               || profile.display_name?.split(' ')[0] 
               || session.user.email?.split('@')[0] 
               || 'friend'
             setDisplayName(name)
             setUserCredits(profile.credits || 0)
-            setUserState(profile.state || 'Your State')
+            setUserState(profile.state || '')
           } else {
-            // Fallback to email if profile load fails
             setDisplayName(session.user.email?.split('@')[0] || 'friend')
           }
         }
@@ -100,7 +111,7 @@ export default function HomePage() {
     init()
   }, [])
 
-  // Load stories - separate effect for parallel loading
+  // Load stories
   useEffect(() => {
     async function loadStories() {
       try {
@@ -122,7 +133,7 @@ export default function HomePage() {
     loadStories()
   }, [])
 
-  // Load news episodes - separate effect for parallel loading
+  // Load news episodes
   useEffect(() => {
     async function loadNews() {
       try {
@@ -142,6 +153,15 @@ export default function HomePage() {
     }
     loadNews()
   }, [])
+
+  // Get full state name
+  const getStateName = () => {
+    if (!userState) return 'State'
+    // If it's already a full name, return it
+    if (userState.length > 2) return userState
+    // Otherwise look up the abbreviation
+    return STATE_NAMES[userState.toUpperCase()] || userState
+  }
 
   // Play no credits message
   const playNoCreditsMessage = () => {
@@ -171,7 +191,7 @@ export default function HomePage() {
     
     // Pause any other playing audio
     Object.entries(audioRefs.current).forEach(([id, audio]) => {
-      if (id !== categoryId) {
+      if (id !== categoryId && !audio.paused) {
         audio.pause()
         setBriefingStatus(prev => ({ ...prev, [id]: 'paused' }))
       }
@@ -180,7 +200,7 @@ export default function HomePage() {
     if (!audioRefs.current[categoryId]) {
       audioRefs.current[categoryId] = new Audio(episode.audio_url)
       audioRefs.current[categoryId].onended = () => {
-        setBriefingStatus(prev => ({ ...prev, [categoryId]: 'listened' }))
+        setBriefingStatus(prev => ({ ...prev, [categoryId]: 'played' }))
       }
     }
     
@@ -193,6 +213,23 @@ export default function HomePage() {
       audio.play()
       setBriefingStatus(prev => ({ ...prev, [categoryId]: 'playing' }))
     }
+  }
+
+  // Get status badge
+  const getStatusBadge = (status: BriefingStatus, hasEpisode: boolean) => {
+    if (status === 'playing') {
+      return <span className="absolute top-1 right-1 bg-green-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">Playing</span>
+    }
+    if (status === 'paused') {
+      return <span className="absolute top-1 right-1 bg-yellow-500 text-black text-[10px] px-1.5 py-0.5 rounded-full">Paused</span>
+    }
+    if (status === 'played') {
+      return <span className="absolute top-1 right-1 bg-gray-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">Played</span>
+    }
+    if (hasEpisode) {
+      return <span className="absolute top-1 right-1 bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">New</span>
+    }
+    return null
   }
 
   return (
@@ -244,32 +281,25 @@ export default function HomePage() {
 
         {/* News Briefings */}
         <section className="mb-8">
-          <h2 className="text-lg font-bold mb-4">NEWS BRIEFINGS</h2>
+          <h2 className="text-lg font-bold mb-2">NEWS BRIEFINGS</h2>
+          <p className="text-slate-400 text-sm mb-4">Top stories updated throughout the day</p>
           <div className="grid grid-cols-3 gap-3">
             {NEWS_CATEGORIES.map(cat => {
               const status = briefingStatus[cat.id] || 'new'
               const hasEpisode = !!newsEpisodes[cat.id]?.audio_url
-              const catName = cat.id === 'state' ? `${userState} News` : cat.name
+              const catName = cat.id === 'state' ? `${getStateName()}\nNews` : cat.name
 
               return (
                 <button
                   key={cat.id}
                   onClick={() => handlePlayBriefing(cat.id)}
-                  className={`relative p-4 rounded-xl text-center transition ${
-                    status === 'playing' 
-                      ? 'bg-orange-500 text-black' 
-                      : 'bg-slate-800 hover:bg-slate-700'
-                  }`}
+                  className={`relative p-4 rounded-xl text-center transition bg-gradient-to-br ${cat.color} hover:opacity-90`}
                 >
+                  {getStatusBadge(status, hasEpisode)}
                   <div className="text-2xl mb-1">{cat.icon}</div>
-                  <div className="text-xs font-medium">{catName}</div>
-                  {status === 'new' && hasEpisode && (
-                    <span className="absolute top-1 right-1 bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">
-                      New
-                    </span>
-                  )}
+                  <div className="text-xs font-medium whitespace-pre-line">{catName}</div>
                   {status === 'playing' && (
-                    <span className="absolute top-1 right-1 text-black text-sm">▶</span>
+                    <div className="text-[10px] mt-1 opacity-80">▶ Now Playing</div>
                   )}
                 </button>
               )
