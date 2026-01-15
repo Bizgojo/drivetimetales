@@ -136,7 +136,7 @@ export default function HomePage() {
       try {
         const { data, error } = await supabase
           .from('stories')
-          .select('id, title, description, genre, duration_mins, cover_url, audio_url, credits, author, rating, created_at')
+          .select('id, title, description, genre, duration_mins, cover_url, audio_url, credits, author')
           .order('created_at', { ascending: false })
           .limit(12)
         
