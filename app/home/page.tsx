@@ -10,6 +10,9 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
+// ============================================
+// INTERFACES
+// ============================================
 interface Story {
   id: string
   title: string
@@ -20,8 +23,6 @@ interface Story {
   audio_url: string
   credits: number
   author: string
-  rating?: number
-  created_at?: string
 }
 
 interface NewsEpisode {
@@ -33,7 +34,9 @@ interface NewsEpisode {
 
 type BriefingStatus = 'new' | 'playing' | 'paused' | 'played'
 
-// State abbreviation to full name mapping
+// ============================================
+// PROTECTED: STATE NAME MAPPING
+// ============================================
 const STATE_NAMES: Record<string, string> = {
   'AL': 'Alabama', 'AK': 'Alaska', 'AZ': 'Arizona', 'AR': 'Arkansas', 'CA': 'California',
   'CO': 'Colorado', 'CT': 'Connecticut', 'DE': 'Delaware', 'FL': 'Florida', 'GA': 'Georgia',
@@ -47,96 +50,101 @@ const STATE_NAMES: Record<string, string> = {
   'VA': 'Virginia', 'WA': 'Washington', 'WV': 'West Virginia', 'WI': 'Wisconsin', 'WY': 'Wyoming'
 }
 
-// News categories with color wheel colors (60° apart) - darker shades for buttons
+// ============================================
+// PROTECTED: NEWS CATEGORIES - DO NOT CHANGE WITHOUT EXPLICIT REQUEST
+// Order: State → National → World → Business → Sports → Sci/Tech
+// Colors: Color wheel (60° apart) - Red → Orange → Yellow → Green → Blue → Purple
+// ============================================
 const NEWS_CATEGORIES = [
-  { id: 'state', name: 'State News', icon: '🏛️', color: 'from-red-600 to-red-800' },        // Red (0°)
-  { id: 'national', name: 'National', icon: '🇺🇸', color: 'from-orange-600 to-orange-800' }, // Orange (60°)
-  { id: 'international', name: 'World', icon: '🌍', color: 'from-yellow-500 to-yellow-700' }, // Yellow (120°)
-  { id: 'business', name: 'Business', icon: '💼', color: 'from-green-600 to-green-800' },   // Green (180°)
-  { id: 'sports', name: 'Sports', icon: '⚽', color: 'from-blue-600 to-blue-800' },         // Blue (240°)
-  { id: 'science', name: 'Sci/Tech', icon: '🔬', color: 'from-purple-600 to-purple-800' },  // Purple (300°)
+  { id: 'state', name: 'State News', icon: '🏛️', color: 'from-red-600 to-red-800' },
+  { id: 'national', name: 'National', icon: '🇺🇸', color: 'from-orange-500 to-orange-700' },
+  { id: 'international', name: 'World', icon: '🌍', color: 'from-yellow-500 to-yellow-700' },
+  { id: 'business', name: 'Business', icon: '💼', color: 'from-green-600 to-green-800' },
+  { id: 'sports', name: 'Sports', icon: '⚽', color: 'from-blue-600 to-blue-800' },
+  { id: 'science', name: 'Sci/Tech', icon: '🔬', color: 'from-purple-600 to-purple-800' },
 ]
 
-
-// Helper function to render Amazon-style star ratings
-const renderStars = (rating: number) => {
-  const fullStars = Math.floor(rating)
-  const hasHalfStar = rating % 1 >= 0.5
-  const emptyStars = 5 - fullStars - (hasHalfStar ? 1 : 0)
-  return (
-    <span className="text-yellow-400 text-xs">
-      {'★'.repeat(fullStars)}
-      {hasHalfStar && '½'}
-      {'☆'.repeat(emptyStars)}
-      <span className="text-white ml-1">({rating.toFixed(1)})</span>
-    </span>
-  )
-}
-
+// ============================================
+// MAIN COMPONENT
+// ============================================
 export default function HomePage() {
   const router = useRouter()
-  
+
   // Auth state
   const [authChecked, setAuthChecked] = useState(false)
   const [currentUser, setCurrentUser] = useState<any>(null)
   const [displayName, setDisplayName] = useState('friend')
   const [userCredits, setUserCredits] = useState(0)
-  const [userState, setUserState] = useState('')
-  
-  // Stories state
+  const [userState, setUserState] = useState('State')
+
+  // Content state
   const [stories, setStories] = useState<Story[]>([])
   const [continueStory, setContinueStory] = useState<Story | null>(null)
   const [loading, setLoading] = useState(true)
-  
+
   // News state
   const [newsEpisodes, setNewsEpisodes] = useState<Record<string, NewsEpisode>>({})
-  const [briefingStatus, setBriefingStatus] = useState<Record<string, BriefingStatus>>({})
-  const audioRefs = useRef<Record<string, HTMLAudioElement>>({})
+  const [briefingStatuses, setBriefingStatuses] = useState<Record<string, BriefingStatus>>({})
+  const [currentlyPlaying, setCurrentlyPlaying] = useState<string | null>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
 
-  // Check auth and load profile
+  // ============================================
+  // AUTH & PROFILE LOADING
+  // ============================================
   useEffect(() => {
     async function init() {
       try {
         const { data: { session } } = await supabase.auth.getSession()
         
-        if (session?.user) {
-          setCurrentUser(session.user)
+        if (!session?.user) {
+          router.push('/signin')
+          return
+        }
+
+        setCurrentUser(session.user)
+
+        // Load user profile - only select columns that exist
+        const { data: profile, error } = await supabase
+          .from('users')
+          .select('first_name, display_name, credits, state')
+          .eq('id', session.user.id)
+          .single()
+        
+        if (profile && !error) {
+          const name = profile.first_name 
+            || profile.display_name?.split(' ')[0] 
+            || session.user.email?.split('@')[0] 
+            || 'friend'
+          setDisplayName(name)
+          setUserCredits(profile.credits || 0)
           
-          const { data: profile, error } = await supabase
-            .from('users')
-            .select('first_name, display_name, credits, state')
-            .eq('id', session.user.id)
-            .single()
-          
-          if (profile && !error) {
-            const name = profile.first_name 
-              || profile.display_name?.split(' ')[0] 
-              || session.user.email?.split('@')[0] 
-              || 'friend'
-            setDisplayName(name)
-            setUserCredits(profile.credits || 0)
-            setUserState(profile.state || '')
-          } else {
-            setDisplayName(session.user.email?.split('@')[0] || 'friend')
+          // Handle state - convert abbreviation to full name if needed
+          if (profile.state) {
+            if (profile.state.length === 2) {
+              setUserState(STATE_NAMES[profile.state.toUpperCase()] || profile.state)
+            } else {
+              setUserState(profile.state)
+            }
           }
         }
       } catch (err) {
-        console.error('[Home] Init error:', err)
+        console.error('[Home] Auth error:', err)
       } finally {
         setAuthChecked(true)
       }
     }
-    
     init()
-  }, [])
+  }, [router])
 
-  // Load stories
+  // ============================================
+  // LOAD STORIES
+  // ============================================
   useEffect(() => {
     async function loadStories() {
       try {
         const { data, error } = await supabase
           .from('stories')
-          .select('id, title, description, genre, duration_mins, cover_url, audio_url, credits, author, rating, created_at')
+          .select('id, title, description, genre, duration_mins, cover_url, audio_url, credits, author')
           .order('created_at', { ascending: false })
           .limit(12)
         
@@ -152,7 +160,50 @@ export default function HomePage() {
     loadStories()
   }, [])
 
-  // Load news episodes
+  // ============================================
+  // LOAD CONTINUE LISTENING
+  // ============================================
+  useEffect(() => {
+    async function loadContinueListening() {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.user) return
+
+        // Get user's most recent uncompleted story
+        const { data: userStory, error: userStoryError } = await supabase
+          .from('user_stories')
+          .select('story_id, progress_seconds')
+          .eq('user_id', session.user.id)
+          .eq('completed', false)
+          .gt('progress_seconds', 0)
+          .order('purchased_at', { ascending: false })
+          .limit(1)
+          .single()
+
+        if (userStoryError || !userStory) {
+          return
+        }
+
+        // Get the full story details
+        const { data: storyData, error: storyError } = await supabase
+          .from('stories')
+          .select('id, title, description, genre, duration_mins, cover_url, audio_url, credits, author')
+          .eq('id', userStory.story_id)
+          .single()
+
+        if (storyData && !storyError) {
+          setContinueStory(storyData)
+        }
+      } catch (err) {
+        console.error('[Home] Continue listening error:', err)
+      }
+    }
+    loadContinueListening()
+  }, [])
+
+  // ============================================
+  // LOAD NEWS EPISODES
+  // ============================================
   useEffect(() => {
     async function loadNews() {
       try {
@@ -165,6 +216,11 @@ export default function HomePage() {
           const episodeMap: Record<string, NewsEpisode> = {}
           data.forEach(ep => { episodeMap[ep.category] = ep })
           setNewsEpisodes(episodeMap)
+          
+          // Initialize all statuses to 'new'
+          const initialStatuses: Record<string, BriefingStatus> = {}
+          NEWS_CATEGORIES.forEach(cat => { initialStatuses[cat.id] = 'new' })
+          setBriefingStatuses(initialStatuses)
         }
       } catch (err) {
         console.error('[Home] News error:', err)
@@ -173,169 +229,147 @@ export default function HomePage() {
     loadNews()
   }, [])
 
-  // Get full state name from user's registered state
-  const getStateName = () => {
-    if (!userState) return 'State'
-    // If it's already a full name, return it
-    if (userState.length > 2) return userState
-    // Otherwise look up the abbreviation
-    return STATE_NAMES[userState.toUpperCase()] || userState
-  }
-
-  // Play no credits message
-  const playNoCreditsMessage = () => {
-    const message = `Hi ${displayName}, this is your news briefing host. I'm glad you're back, but I'm sorry to inform you that you must have at least one credit in your account to hear the recent news briefings. Please buy more credits or upgrade your subscription. I look forward to seeing you soon. Goodbye!`
-    
-    if ('speechSynthesis' in window) {
-      const utterance = new SpeechSynthesisUtterance(message)
-      utterance.rate = 1.0
-      speechSynthesis.speak(utterance)
-    } else {
-      alert(message)
-    }
-  }
-
-  // Handle news briefing play
-  const handlePlayBriefing = (categoryId: string) => {
-    if (userCredits === 0) {
-      playNoCreditsMessage()
-      return
-    }
-    
+  // ============================================
+  // PROTECTED: NEWS BRIEFING PLAYBACK HANDLER
+  // Status badge colors: Amber=New, Emerald=Playing, Sky=Paused, Rose=Played
+  // ============================================
+  const handleBriefingClick = (categoryId: string) => {
     const episode = newsEpisodes[categoryId]
-    if (!episode?.audio_url) {
-      alert('No briefing available for this category yet')
+    const currentStatus = briefingStatuses[categoryId]
+
+    // Check credits
+    if (userCredits <= 0) {
+      // Play spoken no-credits message instead of locking
+      const msg = new SpeechSynthesisUtterance("You don't have enough credits to play this briefing. Please purchase more credits.")
+      window.speechSynthesis.speak(msg)
       return
     }
-    
-    // Pause any other playing audio
-    Object.entries(audioRefs.current).forEach(([id, audio]) => {
-      if (id !== categoryId && !audio.paused) {
-        audio.pause()
-        setBriefingStatus(prev => ({ ...prev, [id]: 'paused' }))
-      }
-    })
-    
-    // Create audio element if needed
-    if (!audioRefs.current[categoryId]) {
-      audioRefs.current[categoryId] = new Audio(episode.audio_url)
-      audioRefs.current[categoryId].onended = () => {
-        setBriefingStatus(prev => ({ ...prev, [categoryId]: 'played' }))
-      }
+
+    if (!episode?.audio_url) {
+      return
     }
-    
-    const audio = audioRefs.current[categoryId]
-    const currentStatus = briefingStatus[categoryId]
-    
-    if (currentStatus === 'playing') {
-      // Currently playing -> pause it
-      audio.pause()
-      setBriefingStatus(prev => ({ ...prev, [categoryId]: 'paused' }))
-    } else {
-      // Not playing (new, paused, or played) -> play/resume
-      // If 'played', start from beginning
-      if (currentStatus === 'played') {
-        audio.currentTime = 0
+
+    // If something else is playing, stop it
+    if (currentlyPlaying && currentlyPlaying !== categoryId) {
+      if (audioRef.current) {
+        audioRef.current.pause()
       }
-      audio.play()
-      setBriefingStatus(prev => ({ ...prev, [categoryId]: 'playing' }))
+      setBriefingStatuses(prev => ({ ...prev, [currentlyPlaying]: 'paused' }))
+    }
+
+    if (currentStatus === 'playing') {
+      // Pause
+      if (audioRef.current) {
+        audioRef.current.pause()
+      }
+      setBriefingStatuses(prev => ({ ...prev, [categoryId]: 'paused' }))
+      setCurrentlyPlaying(null)
+    } else {
+      // Play or resume
+      if (!audioRef.current || audioRef.current.src !== episode.audio_url) {
+        audioRef.current = new Audio(episode.audio_url)
+        audioRef.current.onended = () => {
+          setBriefingStatuses(prev => ({ ...prev, [categoryId]: 'played' }))
+          setCurrentlyPlaying(null)
+        }
+      }
+      audioRef.current.play()
+      setBriefingStatuses(prev => ({ ...prev, [categoryId]: 'playing' }))
+      setCurrentlyPlaying(categoryId)
     }
   }
 
-  // Get flag badge with correct colors (contrasting with main button colors)
-  // Orange = New, Green = Playing, Blue = Paused, Red = Played
-  const getStatusBadge = (status: BriefingStatus | undefined, hasEpisode: boolean) => {
-    if (!hasEpisode) return null
-    
+  // Get status badge style
+  const getStatusBadgeStyle = (status: BriefingStatus) => {
     switch (status) {
-      case 'playing':
-        return <span className="absolute top-1 right-1 bg-emerald-400 text-black text-[10px] px-1.5 py-0.5 rounded-full font-bold shadow-md">Playing</span>
-      case 'paused':
-        return <span className="absolute top-1 right-1 bg-sky-400 text-black text-[10px] px-1.5 py-0.5 rounded-full font-bold shadow-md">Paused</span>
-      case 'played':
-        return <span className="absolute top-1 right-1 bg-rose-400 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold shadow-md">Played</span>
-      default:
-        return <span className="absolute top-1 right-1 bg-amber-400 text-black text-[10px] px-1.5 py-0.5 rounded-full font-bold shadow-md">New</span>
+      case 'new': return 'bg-amber-400 text-black'
+      case 'playing': return 'bg-emerald-400 text-black'
+      case 'paused': return 'bg-sky-400 text-black'
+      case 'played': return 'bg-rose-400 text-black'
+      default: return 'bg-amber-400 text-black'
     }
+  }
+
+  // Get status label
+  const getStatusLabel = (status: BriefingStatus) => {
+    switch (status) {
+      case 'new': return 'New'
+      case 'playing': return 'Playing'
+      case 'paused': return 'Paused'
+      case 'played': return 'Played'
+      default: return 'New'
+    }
+  }
+
+  // ============================================
+  // RENDER
+  // ============================================
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    )
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
+    <div className="min-h-screen bg-slate-950 text-white pb-40">
       {/* Header */}
-      <header className="sticky top-0 z-50 bg-slate-950/95 backdrop-blur border-b border-slate-800">
-        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
-          <Link href="/home" className="flex items-center gap-2">
-            <span className="text-2xl">🚗</span>
-            <span className="text-lg font-bold">Drive Time <span className="text-orange-500">Tales</span></span>
-          </Link>
-
-          {!authChecked ? (
-            <div className="w-9 h-9 rounded-full bg-slate-700 animate-pulse" />
-          ) : currentUser ? (
-            <Link href="/account" className="w-9 h-9 rounded-full bg-orange-500 flex items-center justify-center text-black font-bold">
-              {displayName[0]?.toUpperCase() || '?'}
-            </Link>
-          ) : (
-            <Link href="/signin" className="text-orange-400 hover:text-orange-300 font-medium">
-              Sign In
-            </Link>
-          )}
+      <header className="flex items-center justify-between p-4 border-b border-slate-800">
+        <div className="flex items-center gap-2">
+          <span className="text-2xl">🚗</span>
+          <span className="font-bold text-white">Drive Time <span className="text-orange-500">Tales</span></span>
+        </div>
+        <div className="w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center text-black font-bold">
+          {displayName.charAt(0).toUpperCase()}
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="max-w-4xl mx-auto px-4 py-6 pb-40">
-        
-        {/* Welcome Message */}
-        {currentUser && (
-          <div className="mb-6">
-            <h1 className="text-2xl font-bold text-white">Welcome back, {displayName}!</h1>
-            <div className="flex items-center gap-3 mt-2">
-              <span className="text-slate-400">
-                You have <span className={userCredits > 0 ? 'text-green-400' : 'text-red-400'}>{userCredits}</span> credit{userCredits !== 1 ? 's' : ''}
-              </span>
-              {userCredits === 0 && (
-                <Link 
-                  href="/pricing" 
-                  className="bg-orange-500 hover:bg-orange-400 text-black text-sm font-bold px-3 py-1 rounded-lg transition"
-                >
-                  Buy More Credits
-                </Link>
-              )}
-            </div>
-          </div>
-        )}
+      <main className="p-4 max-w-4xl mx-auto">
+        {/* Welcome */}
+        <section className="mb-6">
+          <h1 className="text-2xl font-bold">Welcome back, {displayName}!</h1>
+          <p className="text-white text-sm">You have {userCredits} credits</p>
+          {userCredits === 0 && (
+            <Link href="/credits" className="inline-block mt-2 bg-orange-500 text-black px-4 py-2 rounded-lg font-bold text-sm">
+              Buy More Credits
+            </Link>
+          )}
+        </section>
 
-        {/* News Briefings */}
+        {/* ============================================ */}
+        {/* PROTECTED: NEWS BRIEFINGS SECTION */}
+        {/* ============================================ */}
         <section className="mb-8">
-          <h2 className="text-lg font-bold mb-2">NEWS BRIEFINGS</h2>
-          <p className="text-slate-400 text-sm mb-4">Top stories updated throughout the day</p>
+          <h2 className="text-lg font-bold mb-1">NEWS BRIEFINGS</h2>
+          <p className="text-white text-xs mb-4">Top stories updated throughout the day</p>
           <div className="grid grid-cols-3 gap-3">
-            {NEWS_CATEGORIES.map(cat => {
-              const status = briefingStatus[cat.id]
+            {NEWS_CATEGORIES.map((cat) => {
+              const status = briefingStatuses[cat.id] || 'new'
               const hasEpisode = !!newsEpisodes[cat.id]?.audio_url
-              // For state news, show the user's registered state name
-              const catName = cat.id === 'state' ? `${getStateName()}\nNews` : cat.name
+              const catName = cat.id === 'state' ? `${userState} News` : cat.name
 
               return (
                 <button
                   key={cat.id}
-                  onClick={() => handlePlayBriefing(cat.id)}
-                  className={`relative p-4 rounded-xl text-center transition bg-gradient-to-br ${cat.color} hover:opacity-90 min-h-[100px]`}
+                  onClick={() => handleBriefingClick(cat.id)}
+                  className={`relative p-4 rounded-xl text-center transition bg-gradient-to-br ${cat.color} hover:opacity-90`}
                 >
-                  {getStatusBadge(status, hasEpisode)}
+                  {/* Status Badge */}
+                  <span className={`absolute top-1 right-1 text-[10px] px-1.5 py-0.5 rounded-full font-medium ${getStatusBadgeStyle(status)}`}>
+                    {getStatusLabel(status)}
+                  </span>
                   <div className="text-2xl mb-1">{cat.icon}</div>
-                  <div className="text-xs font-bold whitespace-pre-line">{catName}</div>
-                  {status === 'playing' && (
-                    <div className="text-[10px] mt-1">▶ Now Playing</div>
-                  )}
+                  <div className="text-xs font-medium text-white">{catName}</div>
                 </button>
               )
             })}
           </div>
         </section>
 
-        {/* Continue Listening - only shows if there's an uncompleted story */}
+        {/* ============================================ */}
+        {/* CONTINUE LISTENING */}
+        {/* ============================================ */}
         {continueStory && (
           <section className="mb-8">
             <h2 className="text-lg font-bold mb-4">CONTINUE LISTENING</h2>
@@ -356,7 +390,9 @@ export default function HomePage() {
           </section>
         )}
 
-        {/* Stories */}
+        {/* ============================================ */}
+        {/* NEW RELEASES - 3 horizontal cards */}
+        {/* ============================================ */}
         <section className="mb-8">
           <h2 className="text-lg font-bold mb-4">NEW RELEASES</h2>
           {loading ? (
@@ -369,7 +405,7 @@ export default function HomePage() {
             <div className="grid grid-cols-3 gap-4">
               {stories.slice(0, 3).map((story) => (
                 <Link key={story.id} href={`/story/${story.id}`} className="block">
-                  <div className="rounded-xl overflow-hidden" style={{ boxShadow: '0 0 20px rgba(255, 255, 255, 0.5)' }}>
+                  <div className="rounded-xl overflow-hidden" style={{ boxShadow: '0 0 20px rgba(255, 255, 255, 0.3)' }}>
                     {story.cover_url ? (
                       <img src={story.cover_url} alt={story.title} className="w-full aspect-square object-cover" />
                     ) : (
@@ -379,16 +415,16 @@ export default function HomePage() {
                   <h3 className="mt-2 text-sm font-bold text-white line-clamp-1">{story.title}</h3>
                   <p className="text-white text-xs">{story.genre}</p>
                   <p className="text-white text-xs">{story.duration_mins} min • {story.credits} credit{story.credits !== 1 ? 's' : ''}</p>
-                  {story.created_at && (
-                    <p className="text-white text-xs">Released {new Date(story.created_at).toLocaleDateString()}</p>
-                  )}
                 </Link>
               ))}
             </div>
           )}
         </section>
 
-        {/* Recommended */}
+        {/* ============================================ */}
+        {/* RECOMMENDED FOR YOU - 4 vertical blocks */}
+        {/* Cover on left, Title/Genre/Author/Duration+Credits on right */}
+        {/* ============================================ */}
         <section className="mb-8">
           <h2 className="text-lg font-bold mb-4">RECOMMENDED FOR YOU</h2>
           {loading ? (
@@ -410,9 +446,9 @@ export default function HomePage() {
                   </div>
                   <div className="flex-1 p-3 flex flex-col justify-center">
                     <h3 className="text-sm font-bold text-white line-clamp-1">{story.title}</h3>
-                    <p className="text-white text-xs">{story.genre} • {story.author}</p>
+                    <p className="text-white text-xs">{story.genre}</p>
+                    <p className="text-white text-xs">{story.author}</p>
                     <p className="text-white text-xs">{story.duration_mins} min • {story.credits} credit{story.credits !== 1 ? 's' : ''}</p>
-                    {story.rating && renderStars(story.rating)}
                   </div>
                 </Link>
               ))}
