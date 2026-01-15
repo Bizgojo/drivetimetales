@@ -172,11 +172,11 @@ export default function HomePage() {
         // Get user's most recent uncompleted story
         const { data: userStory, error: userStoryError } = await supabase
           .from('user_stories')
-          .select('story_id, progress')
+          .select('story_id, progress_seconds')
           .eq('user_id', session.user.id)
           .eq('completed', false)
-          .gt('progress', 0)
-          .order('last_played', { ascending: false })
+          .gt('progress_seconds', 0)
+          .order('purchased_at', { ascending: false })
           .limit(1)
           .single()
 
