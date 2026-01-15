@@ -4,14 +4,8 @@ import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { useState, useEffect, useRef, Suspense } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
-import { createClient } from '@supabase/supabase-js'
 import { getStory, Story } from '@/lib/supabase'
 import { Header } from '@/components/ui/Header'
-
-// Supabase client for saving play history
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 const genreColors: Record<string, string> = {
   'Mystery': 'from-purple-600 to-purple-900',
@@ -37,50 +31,6 @@ function StoryContent() {
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
   const audioRef = useRef<HTMLAudioElement>(null)
-  const [lastSavedTime, setLastSavedTime] = useState(0)
-  
-  // Save progress to play_history table
-  const saveProgress = async (seconds: number, completed: boolean = false) => {
-    if (!user || !storyId) return
-    try {
-      // Only save if we've progressed at least 5 seconds since last save
-      if (Math.abs(seconds - lastSavedTime) < 5 && !completed) return
-      
-      const { data: existing } = await supabase
-        .from('play_history')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('story_id', storyId)
-        .single()
-      
-      if (existing) {
-        // Update existing record
-        await supabase
-          .from('play_history')
-          .update({
-            progress_seconds: Math.floor(seconds),
-            completed: completed,
-            last_played_at: new Date().toISOString()
-          })
-          .eq('id', existing.id)
-      } else {
-        // Insert new record
-        await supabase
-          .from('play_history')
-          .insert({
-            user_id: user.id,
-            story_id: storyId,
-            progress_seconds: Math.floor(seconds),
-            completed: completed,
-            last_played_at: new Date().toISOString()
-          })
-      }
-      setLastSavedTime(seconds)
-      console.log('[Story] Progress saved:', Math.floor(seconds), 'seconds, completed:', completed)
-    } catch (err) {
-      console.error('[Story] Error saving progress:', err)
-    }
-  }
 
   useEffect(() => {
     async function loadStory() {
@@ -109,8 +59,6 @@ function StoryContent() {
   const handleTimeUpdate = () => {
     if (audioRef.current) {
       setCurrentTime(audioRef.current.currentTime)
-      // Save progress every 5 seconds
-      saveProgress(audioRef.current.currentTime)
     }
   }
 
@@ -190,10 +138,7 @@ function StoryContent() {
                   src={story.audio_url}
                   onTimeUpdate={handleTimeUpdate}
                   onLoadedMetadata={handleLoadedMetadata}
-                  onEnded={() => {
-                  setIsPlaying(false)
-                  saveProgress(duration, true)
-                }}
+                  onEnded={() => setIsPlaying(false)}
                 />
                 <input
                   type="range"
