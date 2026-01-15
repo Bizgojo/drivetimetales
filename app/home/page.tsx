@@ -3,7 +3,12 @@
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { createClient } from '@supabase/supabase-js'
+
+// Create supabase client directly to avoid any import issues
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 interface Story {
   id: string
@@ -49,49 +54,46 @@ interface UserProfile {
   state?: string
 }
 
-// News categories
-const NEWS_CATEGORIES = [
-  { id: 'state', name: 'State News', icon: '🏛️', color: 'from-red-500 to-red-700', borderColor: 'border-red-400' },
-  { id: 'national', name: 'National', icon: '🇺🇸', color: 'from-orange-500 to-orange-700', borderColor: 'border-orange-400' },
-  { id: 'international', name: 'International', icon: '🌍', color: 'from-yellow-500 to-yellow-700', borderColor: 'border-yellow-400' },
-  { id: 'business', name: 'Business', icon: '💼', color: 'from-green-500 to-green-700', borderColor: 'border-green-400' },
-  { id: 'sports', name: 'Sports', icon: '⚽', color: 'from-blue-500 to-blue-700', borderColor: 'border-blue-400' },
-  { id: 'science', name: 'Sci/Tech', icon: '🔬', color: 'from-purple-500 to-purple-700', borderColor: 'border-purple-400' },
-]
+type BriefingStatus = 'new' | 'playing' | 'paused' | 'listened'
 
-type BriefingStatus = 'new' | 'playing' | 'paused' | 'played'
+const NEWS_CATEGORIES = [
+  { id: 'national', name: 'National', icon: '🇺🇸' },
+  { id: 'international', name: 'International', icon: '🌍' },
+  { id: 'state', name: 'State News', icon: '🏛️' },
+  { id: 'sports', name: 'Sports', icon: '⚽' },
+  { id: 'business', name: 'Business', icon: '💼' },
+  { id: 'science', name: 'Science & Tech', icon: '🔬' },
+]
 
 export default function HomePage() {
   const router = useRouter()
   
-  // Auth state - managed directly, not through context
-  const [authUser, setAuthUser] = useState<any>(null)
+  // Auth state - check directly, bypass AuthContext
+  const [authChecked, setAuthChecked] = useState(false)
+  const [currentUser, setCurrentUser] = useState<any>(null)
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
-  const [authLoading, setAuthLoading] = useState(true)
   
+  // Stories state
   const [newReleases, setNewReleases] = useState<Story[]>([])
   const [recommended, setRecommended] = useState<Story[]>([])
   const [continueListening, setContinueListening] = useState<LibraryItem | null>(null)
-  const [wishlistCount, setWishlistCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [storiesError, setStoriesError] = useState<string | null>(null)
   
-  // News briefing state
+  // News state
   const [newsEpisodes, setNewsEpisodes] = useState<Record<string, NewsEpisode>>({})
   const [briefingStatus, setBriefingStatus] = useState<Record<string, BriefingStatus>>({})
-  const [briefingProgress, setBriefingProgress] = useState<Record<string, number>>({})
   const audioRefs = useRef<Record<string, HTMLAudioElement>>({})
 
-  // Check auth directly on mount
+  // Check auth on mount - directly with supabase
   useEffect(() => {
     async function checkAuth() {
-      console.log('[Home] Checking auth...')
       try {
         const { data: { session }, error } = await supabase.auth.getSession()
-        console.log('[Home] Session check:', session ? 'Found' : 'None', error)
+        console.log('[Home] Auth session check:', session ? 'Found user' : 'No session', error)
         
         if (session?.user) {
-          setAuthUser(session.user)
+          setCurrentUser(session.user)
           // Load user profile
           const { data: profile } = await supabase
             .from('users')
@@ -100,24 +102,24 @@ export default function HomePage() {
             .single()
           
           if (profile) {
-            console.log('[Home] Profile loaded:', profile.display_name, 'Credits:', profile.credits)
             setUserProfile(profile)
+            console.log('[Home] User profile loaded:', profile.display_name)
           }
         }
       } catch (err) {
         console.error('[Home] Auth check error:', err)
       } finally {
-        setAuthLoading(false)
+        setAuthChecked(true)
       }
     }
     
     checkAuth()
     
-    // Also listen for auth changes
+    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('[Home] Auth state changed:', event)
       if (session?.user) {
-        setAuthUser(session.user)
+        setCurrentUser(session.user)
         const { data: profile } = await supabase
           .from('users')
           .select('id, display_name, first_name, credits, state')
@@ -125,7 +127,7 @@ export default function HomePage() {
           .single()
         if (profile) setUserProfile(profile)
       } else {
-        setAuthUser(null)
+        setCurrentUser(null)
         setUserProfile(null)
       }
     })
@@ -133,273 +135,140 @@ export default function HomePage() {
     return () => subscription.unsubscribe()
   }, [])
 
+  // Load stories
   useEffect(() => {
+    async function loadStories() {
+      try {
+        const { data, error } = await supabase
+          .from('stories')
+          .select('*')
+          .order('created_at', { ascending: false })
+        
+        if (error) throw error
+        
+        if (data) {
+          setNewReleases(data.slice(0, 6))
+          setRecommended(data.slice(0, 6))
+        }
+      } catch (err) {
+        console.error('[Home] Error loading stories:', err)
+        setStoriesError('Failed to load stories')
+      } finally {
+        setLoading(false)
+      }
+    }
     loadStories()
-    loadNewsEpisodes()
   }, [])
 
+  // Load news episodes
   useEffect(() => {
-    if (authUser) {
-      loadUserData()
+    async function loadNews() {
+      try {
+        const { data } = await supabase
+          .from('news_episodes')
+          .select('*')
+          .eq('is_live', true)
+        
+        if (data) {
+          const episodeMap: Record<string, NewsEpisode> = {}
+          data.forEach(ep => {
+            episodeMap[ep.category] = ep
+          })
+          setNewsEpisodes(episodeMap)
+        }
+      } catch (err) {
+        console.error('[Home] Error loading news:', err)
+      }
     }
-  }, [authUser])
-
-  // Cleanup audio on unmount
-  useEffect(() => {
-    return () => {
-      Object.values(audioRefs.current).forEach(audio => {
-        audio.pause()
-        audio.src = ''
-      })
-    }
+    loadNews()
   }, [])
 
-  async function loadStories() {
-    console.log('[Home] Loading stories via API...')
+  // Load continue listening if user is logged in
+  useEffect(() => {
+    if (!currentUser) return
     
-    const timeout = setTimeout(() => {
-      console.log('[Home] Stories loading timeout')
-      setLoading(false)
-      setStoriesError('Stories took too long to load. Please refresh.')
-    }, 10000)
-    
-    try {
-      const response = await fetch('/api/stories')
-      const allStories = await response.json()
-      
-      console.log('[Home] API returned', allStories.length, 'stories')
-      
-      if (allStories && allStories.length > 0) {
-        const sortedByDate = [...allStories].sort((a: Story, b: Story) => 
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        )
-        setNewReleases(sortedByDate.slice(0, 3))
+    async function loadContinueListening() {
+      try {
+        const { data } = await supabase
+          .from('user_library')
+          .select('*, stories(*)')
+          .eq('user_id', currentUser.id)
+          .eq('completed', false)
+          .order('last_played', { ascending: false })
+          .limit(1)
+          .single()
         
-        const sortedByRating = [...allStories].sort((a: Story, b: Story) => 
-          (b.average_rating || b.rating || 0) - (a.average_rating || a.rating || 0)
-        )
-        setRecommended(sortedByRating.slice(0, 4))
+        if (data) {
+          setContinueListening(data)
+        }
+      } catch (err) {
+        // No story in progress - that's fine
       }
-      
-      clearTimeout(timeout)
-    } catch (error) {
-      console.error('[Home] Error loading stories:', error)
-      clearTimeout(timeout)
-    } finally {
-      setLoading(false)
     }
-  }
+    loadContinueListening()
+  }, [currentUser])
 
-  async function loadNewsEpisodes() {
-    try {
-      const response = await fetch('/api/admin/generate-news')
-      const data = await response.json()
-      
-      if (data.episodes) {
-        const episodeMap: Record<string, NewsEpisode> = {}
-        const statusMap: Record<string, BriefingStatus> = {}
-        
-        data.episodes.forEach((ep: NewsEpisode) => {
-          episodeMap[ep.category] = ep
-          statusMap[ep.category] = 'new'
-        })
-        
-        setNewsEpisodes(episodeMap)
-        setBriefingStatus(statusMap)
-      }
-    } catch (error) {
-      console.error('[Home] Error loading news episodes:', error)
-    }
-  }
-
-  async function loadUserData() {
-    if (!authUser) return
+  // Play no credits message
+  const playNoCreditsMessage = (category: string) => {
+    const userName = userProfile?.first_name || userProfile?.display_name?.split(' ')[0] || 'friend'
+    const message = `Hi ${userName}, this is your news briefing host. I'm glad you're back, but I'm sorry to inform you that you must have at least one credit in your account to hear the recent news briefings. Please buy more credits or upgrade your subscription. I look forward to seeing you soon. Goodbye!`
     
-    console.log('[Home] Loading user data...')
-
-    try {
-      const { data: libraryData } = await supabase
-        .from('library')
-        .select('*, stories(*)')
-        .eq('user_id', authUser.id)
-        .gt('progress', 0)
-        .lt('progress', 100)
-        .order('updated_at', { ascending: false })
-        .limit(1)
-        .single()
-
-      if (libraryData) setContinueListening(libraryData)
-
-      const { count: wishCount } = await supabase
-        .from('wishlist')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', authUser.id)
-
-      setWishlistCount(wishCount || 0)
-
-    } catch (error) {
-      console.error('[Home] Error loading user data:', error)
+    // Use speech synthesis for the no-credits message
+    if ('speechSynthesis' in window) {
+      const utterance = new SpeechSynthesisUtterance(message)
+      utterance.rate = 1.0
+      speechSynthesis.speak(utterance)
+    } else {
+      alert(message)
     }
   }
 
-  async function playNoCreditsMessage(categoryId: string) {
-    try {
-      const userName = userProfile?.first_name || userProfile?.display_name?.split(' ')[0] || ''
-      const response = await fetch('/api/news/no-credits-audio', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          voiceId: 'EXAVITQu4vr4xnSDxMaL',
-          userName: userName
-        })
-      })
-      
-      if (response.ok) {
-        const blob = await response.blob()
-        const audioUrl = URL.createObjectURL(blob)
-        const audio = new Audio(audioUrl)
-        audio.play()
-      }
-    } catch (error) {
-      console.error('[Home] Error playing no credits message:', error)
-    }
-  }
-
-  function handleBriefingClick(categoryId: string) {
-    const userCredits = userProfile?.credits || 0
+  // Handle news briefing play
+  const handlePlayBriefing = (categoryId: string) => {
+    const episode = newsEpisodes[categoryId]
     
-    // If no credits, play the no-credits message instead of blocking
-    if (userCredits < 1) {
+    // Check credits - if 0, play no credits message instead
+    if ((userProfile?.credits || 0) === 0) {
       playNoCreditsMessage(categoryId)
       return
     }
-
-    const currentStatus = briefingStatus[categoryId] || 'new'
-    const episode = newsEpisodes[categoryId]
     
     if (!episode?.audio_url) {
-      console.log('[Home] No audio available for', categoryId)
+      alert('No briefing available for this category yet')
       return
     }
-
-    if (!audioRefs.current[categoryId]) {
-      const audio = new Audio(episode.audio_url)
-      
-      audio.onended = () => {
-        setBriefingStatus(prev => ({ ...prev, [categoryId]: 'played' }))
-      }
-      
-      audio.ontimeupdate = () => {
-        const progress = (audio.currentTime / audio.duration) * 100
-        setBriefingProgress(prev => ({ ...prev, [categoryId]: progress }))
-      }
-      
-      audioRefs.current[categoryId] = audio
-    }
-
-    const audio = audioRefs.current[categoryId]
-
-    switch (currentStatus) {
-      case 'new':
-      case 'played':
-        audio.currentTime = 0
-        audio.play()
-        setBriefingStatus(prev => ({ ...prev, [categoryId]: 'playing' }))
-        Object.keys(audioRefs.current).forEach(key => {
-          if (key !== categoryId && audioRefs.current[key]) {
-            audioRefs.current[key].pause()
-            if (briefingStatus[key] === 'playing') {
-              setBriefingStatus(prev => ({ ...prev, [key]: 'paused' }))
-            }
-          }
-        })
-        break
-      
-      case 'playing':
+    
+    // Pause any other playing audio
+    Object.entries(audioRefs.current).forEach(([id, audio]) => {
+      if (id !== categoryId) {
         audio.pause()
-        setBriefingStatus(prev => ({ ...prev, [categoryId]: 'paused' }))
-        break
-      
-      case 'paused':
-        audio.play()
-        setBriefingStatus(prev => ({ ...prev, [categoryId]: 'playing' }))
-        Object.keys(audioRefs.current).forEach(key => {
-          if (key !== categoryId && audioRefs.current[key]) {
-            audioRefs.current[key].pause()
-            if (briefingStatus[key] === 'playing') {
-              setBriefingStatus(prev => ({ ...prev, [key]: 'paused' }))
-            }
-          }
-        })
-        break
-    }
-  }
-
-  function getStatusLabel(status: BriefingStatus): string {
-    switch (status) {
-      case 'new': return 'New'
-      case 'playing': return 'Playing'
-      case 'paused': return 'Paused'
-      case 'played': return 'Played'
-      default: return 'New'
-    }
-  }
-
-  function getStatusColor(status: BriefingStatus): string {
-    switch (status) {
-      case 'new': return 'bg-orange-500'
-      case 'playing': return 'bg-green-500 animate-pulse'
-      case 'paused': return 'bg-yellow-500'
-      case 'played': return 'bg-slate-500'
-      default: return 'bg-orange-500'
-    }
-  }
-
-  function formatDuration(story: Story) {
-    if (story.duration_label) return story.duration_label
-    const minutes = story.duration_mins
-    if (!minutes) return ''
-    if (minutes < 60) return `${minutes} min`
-    const hrs = Math.floor(minutes / 60)
-    const mins = minutes % 60
-    return mins > 0 ? `${hrs}h ${mins}m` : `${hrs}h`
-  }
-
-  function formatGenre(genre: string | null) {
-    if (!genre || genre.includes('not set') || genre.includes('Tab')) {
-      return 'Audio Drama'
-    }
-    return genre
-  }
-
-  function formatCredits(story: Story) {
-    if (story.is_free) return 'FREE'
-    const credits = story.credits || Math.ceil((story.price_cents || 0) / 100)
-    if (credits === 0) return 'FREE'
-    return `${credits} credit${credits > 1 ? 's' : ''}`
-  }
-
-  function formatReleaseDate(dateStr: string) {
-    const date = new Date(dateStr)
-    return `Released ${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()}`
-  }
-
-  function renderStarRating(rating: number) {
-    const fullStars = Math.floor(rating)
-    const stars = []
-    for (let i = 0; i < 5; i++) {
-      if (i < fullStars) {
-        stars.push(<span key={i} className="text-yellow-400">★</span>)
-      } else {
-        stars.push(<span key={i} className="text-slate-500">★</span>)
+        setBriefingStatus(prev => ({ ...prev, [id]: 'paused' }))
+      }
+    })
+    
+    // Get or create audio element
+    if (!audioRefs.current[categoryId]) {
+      audioRefs.current[categoryId] = new Audio(episode.audio_url)
+      audioRefs.current[categoryId].onended = () => {
+        setBriefingStatus(prev => ({ ...prev, [categoryId]: 'listened' }))
       }
     }
-    return stars
+    
+    const audio = audioRefs.current[categoryId]
+    
+    if (briefingStatus[categoryId] === 'playing') {
+      audio.pause()
+      setBriefingStatus(prev => ({ ...prev, [categoryId]: 'paused' }))
+    } else {
+      audio.play()
+      setBriefingStatus(prev => ({ ...prev, [categoryId]: 'playing' }))
+    }
   }
 
-  const userStateName = userProfile?.state || 'Your State'
+  // Get display name for welcome message
+  const displayName = userProfile?.first_name || userProfile?.display_name?.split(' ')[0] || 'friend'
   const userCredits = userProfile?.credits || 0
-  const userName = userProfile?.first_name || userProfile?.display_name?.split(' ')[0] || 'friend'
+  const userStateName = userProfile?.state || 'Your State'
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
@@ -410,12 +279,12 @@ export default function HomePage() {
             <span className="text-2xl">🚗</span>
             <span className="text-lg font-bold">Drive Time <span className="text-orange-500">Tales</span></span>
           </Link>
-          
-          {authLoading ? (
+
+          {!authChecked ? (
             <div className="w-9 h-9 rounded-full bg-slate-700 animate-pulse" />
-          ) : authUser ? (
+          ) : currentUser ? (
             <Link href="/account" className="w-9 h-9 rounded-full bg-orange-500 flex items-center justify-center text-black font-bold">
-              {userProfile?.display_name?.[0] || authUser.email?.[0]?.toUpperCase() || '?'}
+              {userProfile?.display_name?.[0] || currentUser.email?.[0]?.toUpperCase() || '?'}
             </Link>
           ) : (
             <Link href="/signin" className="text-orange-400 hover:text-orange-300 font-medium">
@@ -427,15 +296,15 @@ export default function HomePage() {
 
       {/* Main Content */}
       <main className="max-w-4xl mx-auto px-4 py-6 pb-40">
-
-        {/* Welcome Message & Credits */}
-        {authUser && (
+        
+        {/* Welcome Message - only for logged in users */}
+        {currentUser && (
           <div className="mb-6">
-            <h1 className="text-2xl font-bold text-white">Welcome back, {userName}!</h1>
+            <h1 className="text-2xl font-bold text-white">Welcome back, {displayName}!</h1>
             <div className="flex items-center gap-3 mt-2">
-              <p className="text-slate-400">
-                You have <span className={userCredits > 0 ? 'text-green-400 font-bold' : 'text-red-400 font-bold'}>{userCredits}</span> credit{userCredits !== 1 ? 's' : ''}
-              </p>
+              <span className="text-slate-400">
+                You have <span className={userCredits > 0 ? 'text-green-400' : 'text-red-400'}>{userCredits}</span> credit{userCredits !== 1 ? 's' : ''}
+              </span>
               {userCredits === 0 && (
                 <Link 
                   href="/pricing" 
@@ -447,7 +316,7 @@ export default function HomePage() {
             </div>
           </div>
         )}
-        
+
         {/* News Briefings Section */}
         <section className="mb-8">
           <h2 className="text-lg font-bold mb-4">NEWS BRIEFINGS</h2>
@@ -455,34 +324,27 @@ export default function HomePage() {
             {NEWS_CATEGORIES.map(cat => {
               const status = briefingStatus[cat.id] || 'new'
               const hasEpisode = !!newsEpisodes[cat.id]?.audio_url
-              const displayName = cat.id === 'state' ? `${userStateName} News` : cat.name
-              
+              const categoryDisplayName = cat.id === 'state' ? `${userStateName} News` : cat.name
+
               return (
                 <button
                   key={cat.id}
-                  onClick={() => handleBriefingClick(cat.id)}
-                  disabled={!hasEpisode}
-                  className={`relative bg-gradient-to-br ${cat.color} rounded-xl p-3 text-left transition-all hover:scale-[1.02] active:scale-[0.98] border-2 ${cat.borderColor} ${!hasEpisode ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  onClick={() => handlePlayBriefing(cat.id)}
+                  className={`relative p-4 rounded-xl text-center transition ${
+                    status === 'playing' 
+                      ? 'bg-orange-500 text-black' 
+                      : 'bg-slate-800 hover:bg-slate-700'
+                  }`}
                 >
-                  {/* Status Flag */}
-                  <div className={`absolute -top-2 -right-2 ${getStatusColor(status)} text-white text-xs font-bold px-2 py-0.5 rounded-full shadow-lg`}>
-                    {getStatusLabel(status)}
-                  </div>
-                  
-                  {/* Content */}
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xl">{cat.icon}</span>
-                    <span className="font-bold text-sm text-white truncate">{displayName}</span>
-                  </div>
-                  
-                  {/* Progress bar */}
-                  {(status === 'playing' || status === 'paused') && (
-                    <div className="mt-2 h-1 bg-black/30 rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-white transition-all duration-300"
-                        style={{ width: `${briefingProgress[cat.id] || 0}%` }}
-                      />
-                    </div>
+                  <div className="text-2xl mb-1">{cat.icon}</div>
+                  <div className="text-xs font-medium">{categoryDisplayName}</div>
+                  {status === 'new' && hasEpisode && (
+                    <span className="absolute top-1 right-1 bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">
+                      New
+                    </span>
+                  )}
+                  {status === 'playing' && (
+                    <span className="absolute top-1 right-1 text-black text-sm">▶</span>
                   )}
                 </button>
               )
@@ -490,7 +352,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* Continue Listening - only show if story in progress */}
+        {/* Continue Listening - only show if there's a story in progress */}
         {continueListening && (
           <section className="mb-8">
             <h2 className="text-lg font-bold mb-4">CONTINUE LISTENING</h2>
@@ -499,7 +361,7 @@ export default function HomePage() {
               className="flex bg-slate-800 rounded-xl overflow-hidden hover:bg-slate-700 transition h-28"
             >
               <div className="p-2 flex-shrink-0 w-24">
-                <div className="rounded-lg overflow-hidden h-full w-full" style={{ boxShadow: '0 0 12px rgba(255, 255, 255, 0.4), 0 0 24px rgba(255, 255, 255, 0.2)' }}>
+                <div className="rounded-lg overflow-hidden h-full w-full" style={{ boxShadow: '0 0 12px rgba(255, 255, 255, 0.4)' }}>
                   {continueListening.stories?.cover_url ? (
                     <img 
                       src={continueListening.stories.cover_url} 
@@ -512,24 +374,13 @@ export default function HomePage() {
                 </div>
               </div>
               <div className="flex-1 p-3 flex flex-col justify-center">
-                <h3 className="font-bold text-white text-sm mb-0.5 line-clamp-1">{continueListening.stories?.title}</h3>
-                <p className="text-white text-xs mb-0.5">{formatGenre(continueListening.stories?.genre)}</p>
-                <p className="text-white text-xs mb-2">{formatDuration(continueListening.stories as Story)} • {formatCredits(continueListening.stories as Story)}</p>
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 h-1.5 bg-slate-600 rounded-full">
-                    <div 
-                      className="h-1.5 bg-orange-500 rounded-full" 
-                      style={{ width: `${continueListening.progress}%` }}
-                    ></div>
-                  </div>
-                  <span className="text-white text-xs">{continueListening.progress}%</span>
-                </div>
-              </div>
-              <div className="p-3 flex items-center">
-                <div className="w-10 h-10 bg-orange-500 rounded-full flex items-center justify-center">
-                  <svg className="w-5 h-5 text-black ml-0.5" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
-                  </svg>
+                <h3 className="font-bold text-white text-sm line-clamp-1">{continueListening.stories?.title}</h3>
+                <p className="text-slate-400 text-xs line-clamp-1">{continueListening.stories?.author}</p>
+                <div className="mt-2 bg-slate-700 rounded-full h-1.5 overflow-hidden">
+                  <div 
+                    className="bg-orange-500 h-full" 
+                    style={{ width: `${Math.min(100, (continueListening.progress / (continueListening.stories?.duration_mins * 60 || 1)) * 100)}%` }}
+                  />
                 </div>
               </div>
             </Link>
@@ -546,99 +397,67 @@ export default function HomePage() {
           ) : storiesError ? (
             <p className="text-red-400 text-sm">{storiesError}</p>
           ) : newReleases.length === 0 ? (
-            <p className="text-white text-sm">No stories available yet.</p>
+            <p className="text-slate-400 text-sm">No stories available yet.</p>
           ) : (
             <div className="grid grid-cols-3 gap-4">
               {newReleases.map((story) => (
                 <Link key={story.id} href={`/story/${story.id}`} className="block">
                   <div 
                     className="rounded-xl overflow-hidden"
-                    style={{ boxShadow: '0 0 20px rgba(255, 255, 255, 0.5), 0 0 40px rgba(255, 255, 255, 0.3)' }}
+                    style={{ boxShadow: '0 0 20px rgba(255, 255, 255, 0.5)' }}
                   >
                     {story.cover_url ? (
                       <img 
                         src={story.cover_url} 
                         alt={story.title}
-                        className="w-full aspect-[3/4] object-cover"
+                        className="w-full aspect-square object-cover"
                       />
                     ) : (
-                      <div className="w-full aspect-[3/4] bg-slate-800 flex items-center justify-center text-4xl">📖</div>
+                      <div className="w-full aspect-square bg-slate-700 flex items-center justify-center text-4xl">📖</div>
                     )}
                   </div>
-                  <div className="mt-2">
-                    <h3 className="font-medium text-sm text-white line-clamp-1">{story.title}</h3>
-                    <p className="text-white text-xs">{formatGenre(story.genre)}</p>
-                    <p className="text-white text-xs">By {story.author || 'Drive Time Tales'}</p>
-                    <p className="text-white text-xs">{formatDuration(story)} • {formatCredits(story)}</p>
-                    <p className="text-white text-xs opacity-70">{formatReleaseDate(story.created_at)}</p>
-                  </div>
+                  <h3 className="mt-2 text-sm font-medium line-clamp-1">{story.title}</h3>
+                  <p className="text-slate-400 text-xs line-clamp-1">{story.author}</p>
                 </Link>
               ))}
             </div>
           )}
         </section>
 
-        {/* Recommended For You */}
+        {/* Recommended */}
         <section className="mb-8">
           <h2 className="text-lg font-bold mb-4">RECOMMENDED FOR YOU</h2>
           {loading ? (
             <div className="flex justify-center py-8">
               <div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
             </div>
-          ) : storiesError ? (
-            <p className="text-red-400 text-sm">{storiesError}</p>
           ) : recommended.length === 0 ? (
-            <p className="text-white text-sm">No recommendations yet.</p>
+            <p className="text-slate-400 text-sm">No recommendations yet.</p>
           ) : (
-            <div className="space-y-3">
+            <div className="grid grid-cols-3 gap-4">
               {recommended.map((story) => (
-                <Link
-                  key={story.id}
-                  href={`/story/${story.id}`}
-                  className="flex bg-slate-800 rounded-xl overflow-hidden hover:bg-slate-700 transition h-32"
-                >
-                  <div className="p-2 flex-shrink-0 w-28">
-                    <div 
-                      className="rounded-lg overflow-hidden h-full w-full"
-                      style={{ boxShadow: '0 0 12px rgba(255, 255, 255, 0.4), 0 0 24px rgba(255, 255, 255, 0.2)' }}
-                    >
-                      {story.cover_url ? (
-                        <img 
-                          src={story.cover_url} 
-                          alt={story.title}
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <div className="h-full w-full bg-slate-700 flex items-center justify-center text-2xl">📖</div>
-                      )}
-                    </div>
+                <Link key={story.id} href={`/story/${story.id}`} className="block">
+                  <div 
+                    className="rounded-xl overflow-hidden"
+                    style={{ boxShadow: '0 0 20px rgba(255, 255, 255, 0.5)' }}
+                  >
+                    {story.cover_url ? (
+                      <img 
+                        src={story.cover_url} 
+                        alt={story.title}
+                        className="w-full aspect-square object-cover"
+                      />
+                    ) : (
+                      <div className="w-full aspect-square bg-slate-700 flex items-center justify-center text-4xl">📖</div>
+                    )}
                   </div>
-                  <div className="flex-1 p-3 flex flex-col justify-center">
-                    <h3 className="font-bold text-white text-sm mb-0.5 line-clamp-1">{story.title}</h3>
-                    <p className="text-white text-xs mb-0.5">{formatGenre(story.genre)}</p>
-                    <p className="text-white text-xs mb-0.5">By {story.author || 'Drive Time Tales'}</p>
-                    <p className="text-white text-xs mb-1">{formatDuration(story)} • {formatCredits(story)}</p>
-                    <div className="flex items-center gap-2">
-                      <div className="flex text-xs">
-                        {renderStarRating(story.average_rating || story.rating || 0)}
-                      </div>
-                      <span className="text-white text-xs">
-                        {(story.average_rating || story.rating || 0).toFixed(1)}
-                      </span>
-                      {story.is_free && (
-                        <span className="ml-auto bg-green-500 text-black text-xs font-bold px-2 py-0.5 rounded">FREE</span>
-                      )}
-                      {story.is_new && !story.is_free && (
-                        <span className="ml-auto bg-orange-500 text-black text-xs font-bold px-2 py-0.5 rounded">NEW</span>
-                      )}
-                    </div>
-                  </div>
+                  <h3 className="mt-2 text-sm font-medium line-clamp-1">{story.title}</h3>
+                  <p className="text-slate-400 text-xs line-clamp-1">{story.author}</p>
                 </Link>
               ))}
             </div>
           )}
         </section>
-
       </main>
 
       {/* Sticky Bottom Buttons */}
@@ -651,14 +470,6 @@ export default function HomePage() {
             >
               Go To Library
             </Link>
-            {wishlistCount > 0 && (
-              <Link 
-                href="/wishlist" 
-                className="flex-1 bg-orange-500 hover:bg-orange-600 text-black font-bold py-3 px-4 rounded-xl text-center transition"
-              >
-                Go To Wishlist ({wishlistCount})
-              </Link>
-            )}
           </div>
           <Link 
             href="/share" 
@@ -668,7 +479,6 @@ export default function HomePage() {
           </Link>
         </div>
       </div>
-
     </div>
   )
 }
