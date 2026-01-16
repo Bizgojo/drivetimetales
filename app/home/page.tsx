@@ -91,27 +91,32 @@ export default function HomePage() {
       {/* 1. Header - No back button on Home */}
       <Header showBackButton={false} userInitial={userInitial} />
       
-      {/* Main content with bottom padding for sticky buttons */}
-      <main className="pb-24">
+      {/* Constrain content width for desktop */}
+      <div className="max-w-md mx-auto">
         
-        {/* 2. Welcome + Credits */}
-        <WelcomeCredits onUserLoaded={handleUserLoaded} />
+        {/* Main content with bottom padding for sticky buttons */}
+        <main className="pb-24">
+          
+          {/* 2. Welcome + Credits */}
+          <WelcomeCredits onUserLoaded={handleUserLoaded} />
+          
+          {/* 3. News Briefings */}
+          <NewsBriefings />
+          
+          {/* 4. Continue Listening (auto-hides if no uncompleted story) */}
+          <ContinueListening />
+          
+          {/* 5. New Releases */}
+          <NewReleases />
+          
+          {/* 6. Recommended For You */}
+          <RecommendedForYou />
+          
+        </main>
         
-        {/* 3. News Briefings */}
-        <NewsBriefings />
-        
-        {/* 4. Continue Listening (auto-hides if no uncompleted story) */}
-        <ContinueListening />
-        
-        {/* 5. New Releases */}
-        <NewReleases />
-        
-        {/* 6. Recommended For You */}
-        <RecommendedForYou />
-        
-      </main>
+      </div>
       
-      {/* 7. Bottom Sticky Buttons */}
+      {/* 7. Bottom Sticky Buttons - has its own max-width inside */}
       <BottomStickyButtons />
       
     </div>
