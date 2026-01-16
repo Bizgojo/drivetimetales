@@ -5,6 +5,7 @@
 Module: ContinueListening
 Location: /components/ContinueListening.tsx
 Created: January 16, 2026
+Updated: January 16, 2026 - Fixed layout to horizontal card
 Owner: Marc (Wonder Books Press / Drive Time Tales)
 Status: LOCKED
 
@@ -12,20 +13,13 @@ PURPOSE:
 Shows the user's most recently played uncompleted story with a progress bar
 and allows one-tap resume playback.
 
-DISPLAY RULES:
-- Only shows if user has an uncompleted story (completed = FALSE)
-- Shows only ONE story (most recent by last_played)
-- If no uncompleted story exists, this module does NOT render
-
-CLICK BEHAVIOR:
-- Entire card is clickable (cover, text, AND play button)
-- Click navigates to /player/[id]?resume=[position]
-- Audio resumes at (progress - 5 seconds) to rewind to sentence start
+LAYOUT:
+- Horizontal card with cover on LEFT (112px x 112px)
+- Info on RIGHT (title, genre, author, duration, progress bar)
+- Play button on far right
 
 DATA SOURCE:
 - Table: user_library (NOT play_history!)
-- Query: WHERE user_id = [user] AND completed = FALSE ORDER BY last_played DESC LIMIT 1
-- Join: stories table for title, genre, author, duration_mins, cover_url
 ================================================================================
 */
 
@@ -39,7 +33,6 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
-// Flat interface - story fields extracted from join
 interface ContinueListeningStory {
   story_id: string
   progress: number
@@ -66,7 +59,6 @@ export default function ContinueListening() {
           return
         }
 
-        // Query: most recent uncompleted story from user_library
         const { data, error } = await supabase
           .from('user_library')
           .select(`
@@ -90,12 +82,10 @@ export default function ContinueListening() {
           .single()
 
         if (error && error.code !== 'PGRST116') {
-          // PGRST116 = no rows returned (not an error for us)
           console.error('[ContinueListening] Error:', error)
         }
 
         if (data && data.stories) {
-          // Use (data.stories as any).field pattern to extract joined data
           setStory({
             story_id: data.story_id,
             progress: data.progress || 0,
@@ -118,37 +108,38 @@ export default function ContinueListening() {
     fetchContinueListening()
   }, [])
 
-  // Don't render anything while loading or if no story
   if (loading || !story) {
     return null
   }
 
-  // Calculate progress values
   const totalSeconds = story.duration_mins * 60
   const progressPercent = totalSeconds > 0 ? Math.round((story.progress / totalSeconds) * 100) : 0
   const secondsRemaining = totalSeconds - story.progress
   const minsRemaining = Math.max(1, Math.ceil(secondsRemaining / 60))
-  
-  // Resume position: rewind 5 seconds (sentence approximation)
   const resumePosition = Math.max(0, story.progress - 5)
 
   return (
     <section className="px-4 pt-6 pb-4">
       <h2 className="text-lg font-bold text-white mb-4">▶️ Continue Listening</h2>
       
-      {/* Entire card is clickable */}
+      {/* HORIZONTAL CARD - flex row layout */}
       <Link 
         href={`/player/${story.story_id}?resume=${resumePosition}`}
-        className="flex bg-slate-800 rounded-xl overflow-hidden hover:bg-slate-700 transition"
+        className="flex flex-row items-center bg-slate-800 rounded-xl overflow-hidden hover:bg-slate-700 transition"
+        style={{ height: '112px' }}
       >
-        {/* Cover: w-28 h-28 with p-2 padding */}
-        <div className="w-28 h-28 flex-shrink-0 p-2">
-          <div className="w-full h-full rounded-lg overflow-hidden" style={{ boxShadow: '0 0 15px rgba(255, 255, 255, 0.4)' }}>
+        {/* LEFT: Cover - fixed 96x96 with padding */}
+        <div className="flex-shrink-0 p-2" style={{ width: '112px', height: '112px' }}>
+          <div 
+            className="w-full h-full rounded-lg overflow-hidden"
+            style={{ boxShadow: '0 0 15px rgba(255, 255, 255, 0.4)' }}
+          >
             {story.cover_url ? (
               <img 
                 src={story.cover_url} 
                 alt={story.title}
-                className="w-full h-full object-cover" 
+                className="w-full h-full object-cover"
+                style={{ width: '96px', height: '96px' }}
               />
             ) : (
               <div className="w-full h-full bg-slate-700 flex items-center justify-center text-2xl">📖</div>
@@ -156,9 +147,9 @@ export default function ContinueListening() {
           </div>
         </div>
         
-        {/* Info */}
-        <div className="flex-1 py-2 pr-3 flex flex-col justify-center">
-          <h3 className="text-sm font-bold text-white line-clamp-1">{story.title}</h3>
+        {/* MIDDLE: Info */}
+        <div className="flex-1 py-2 pr-2 flex flex-col justify-center min-w-0">
+          <h3 className="text-sm font-bold text-white truncate">{story.title}</h3>
           <p className="text-white text-xs">{story.genre}</p>
           <p className="text-white text-xs">by {story.author}</p>
           <p className="text-white text-xs">{story.duration_mins} min • {minsRemaining} min left</p>
@@ -175,9 +166,9 @@ export default function ContinueListening() {
           </div>
         </div>
         
-        {/* Play button */}
-        <div className="pr-3 flex items-center">
-          <div className="w-10 h-10 bg-orange-500 rounded-full flex items-center justify-center hover:bg-orange-400 transition">
+        {/* RIGHT: Play button */}
+        <div className="flex-shrink-0 pr-3 flex items-center">
+          <div className="w-10 h-10 bg-orange-500 rounded-full flex items-center justify-center">
             <svg className="w-5 h-5 text-black ml-0.5" fill="currentColor" viewBox="0 0 20 20">
               <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
             </svg>
