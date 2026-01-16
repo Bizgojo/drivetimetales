@@ -88,11 +88,11 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       
-      {/* 1. Header - No back button on Home */}
-      <Header showBackButton={false} userInitial={userInitial} />
-      
-      {/* Constrain content width for desktop */}
+      {/* Constrain ALL content width for mobile */}
       <div className="max-w-md mx-auto">
+        
+        {/* 1. Header - No back button on Home */}
+        <Header showBackButton={false} userInitial={userInitial} />
         
         {/* Main content with bottom padding for sticky buttons */}
         <main className="pb-16">
