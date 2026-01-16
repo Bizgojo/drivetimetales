@@ -108,10 +108,11 @@ export default function RecommendedForYou() {
           <Link 
             key={story.id} 
             href={`/player/${story.id}`}
-            className="flex bg-slate-800 rounded-xl overflow-hidden hover:bg-slate-700 transition"
+            className="flex flex-row items-center bg-slate-800 rounded-xl overflow-hidden hover:bg-slate-700 transition"
+            style={{ height: '96px' }}
           >
-            {/* Cover: w-28 h-28 with p-2 padding */}
-            <div className="w-28 h-28 flex-shrink-0 p-2">
+            {/* Cover: fixed 80x80 with padding */}
+            <div className="flex-shrink-0 p-2" style={{ width: '96px', height: '96px' }}>
               <div 
                 className="w-full h-full rounded-lg overflow-hidden"
                 style={{ boxShadow: '0 0 15px rgba(255, 255, 255, 0.4)' }}
@@ -120,7 +121,7 @@ export default function RecommendedForYou() {
                   <img 
                     src={story.cover_url} 
                     alt={story.title}
-                    className="w-full h-full object-cover" 
+                    className="w-full h-full object-cover"
                   />
                 ) : (
                   <div className="w-full h-full bg-slate-700 flex items-center justify-center text-2xl">📖</div>
@@ -129,8 +130,8 @@ export default function RecommendedForYou() {
             </div>
             
             {/* Info - ALL WHITE TEXT */}
-            <div className="flex-1 py-2 pr-3 flex flex-col justify-center">
-              <h3 className="text-sm font-bold text-white line-clamp-1">{story.title}</h3>
+            <div className="flex-1 py-2 pr-3 flex flex-col justify-center min-w-0">
+              <h3 className="text-sm font-bold text-white truncate">{story.title}</h3>
               <p className="text-white text-xs">{story.genre}</p>
               <p className="text-white text-xs">by {story.author}</p>
               <p className="text-white text-xs">{story.duration_mins} min • {story.credits} credits</p>
