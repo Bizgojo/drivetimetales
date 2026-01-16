@@ -1,88 +1,52 @@
-/*
-================================================================================
-🔒 PROTECTED MODULE - DO NOT MODIFY WITHOUT OWNER APPROVAL
-================================================================================
-Module: WelcomeCredits
-Location: /components/WelcomeCredits.tsx
-Created: January 16, 2026
-Owner: Marc (Wonder Books Press / Drive Time Tales)
-Status: LOCKED
-
-PURPOSE:
-Welcome message and credits display for Home Page.
-- "Welcome back, {first_name}!"
-- "You have {credits} credits in your account."
-- If credits = 0, shows orange [Get More Credits] button
-================================================================================
-*/
-
-'use client'
+/**
+ * ============================================================================
+ * DTT PROTECTED MODULE - DO NOT MODIFY WITHOUT MARC'S PERMISSION
+ * ============================================================================
+ * 
+ * FILE: 02_HomePage/b_WelcomeCredits.tsx
+ * VERSION: 2026-01-16 3:15pm
+ * STATUS: APPROVED BY MARC
+ * PROTECTED: YES
+ * 
+ * DESCRIPTION:
+ * Welcome message and credits display for Home Page
+ * - "Welcome back, {first_name}!"
+ * - "You have {credits} credits in your account."
+ * - If credits = 0, shows orange [Get More Credits] button
+ * 
+ * LAYOUT:
+ * - Flush left (text-left)
+ * - Button appears inline to right of credits text when credits = 0
+ * 
+ * SPECIFICATIONS:
+ * - Welcome: text-2xl, font-bold, text-white, text-left
+ * - Credits text: text-white, credits number in text-orange-400 font-bold
+ * - Button: bg-orange-500, text-black, font-bold, rounded-lg, links to /pricing
+ * - Padding: px-4 py-6
+ * 
+ * DATABASE:
+ * - Table: users
+ * - Columns used: first_name, credits
+ * - Query: .from('users').select('first_name, credits').eq('id', session.user.id).single()
+ * 
+ * PROPS:
+ * - displayName: string - User's first name (from users.first_name)
+ * - userCredits: number - Credit balance (from users.credits)
+ * 
+ * BUTTON LINK:
+ * - Links to: /pricing (page for purchasing more credits)
+ * 
+ * ============================================================================
+ */
 
 import Link from 'next/link'
-import { useState, useEffect } from 'react'
-import { createClient } from '@supabase/supabase-js'
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 interface WelcomeCreditsProps {
-  onUserLoaded?: (name: string, credits: number) => void
+  displayName: string
+  userCredits: number
 }
 
-export default function WelcomeCredits({ onUserLoaded }: WelcomeCreditsProps) {
-  const [displayName, setDisplayName] = useState('friend')
-  const [userCredits, setUserCredits] = useState(0)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    async function loadUserProfile() {
-      try {
-        const { data: { session } } = await supabase.auth.getSession()
-        
-        if (!session?.user) {
-          setLoading(false)
-          return
-        }
-
-        const { data: profile, error } = await supabase
-          .from('users')
-          .select('first_name, display_name, credits')
-          .eq('id', session.user.id)
-          .single()
-        
-        if (profile && !error) {
-          const name = profile.first_name 
-            || profile.display_name?.split(' ')[0] 
-            || session.user.email?.split('@')[0] 
-            || 'friend'
-          setDisplayName(name)
-          setUserCredits(profile.credits || 0)
-          
-          // Callback to parent if needed
-          if (onUserLoaded) {
-            onUserLoaded(name, profile.credits || 0)
-          }
-        }
-      } catch (err) {
-        console.error('[WelcomeCredits] Error:', err)
-      } finally {
-        setLoading(false)
-      }
-    }
-    
-    loadUserProfile()
-  }, [onUserLoaded])
-
-  if (loading) {
-    return (
-      <section className="px-4 py-6">
-        <div className="h-8 bg-slate-800 rounded w-48 animate-pulse mb-2"></div>
-        <div className="h-5 bg-slate-800 rounded w-64 animate-pulse"></div>
-      </section>
-    )
-  }
-
+export function WelcomeCredits({ displayName, userCredits }: WelcomeCreditsProps) {
   return (
     <section className="px-4 py-6">
       <h1 className="text-2xl font-bold text-white text-left">Welcome back, {displayName}!</h1>
@@ -102,3 +66,29 @@ export default function WelcomeCredits({ onUserLoaded }: WelcomeCreditsProps) {
     </section>
   )
 }
+
+/**
+ * ============================================================================
+ * HOW TO FETCH DATA FOR THIS MODULE
+ * ============================================================================
+ * 
+ * In the parent page (e.g., app/home/page.tsx), fetch user data like this:
+ * 
+ * ```typescript
+ * const { data: { session } } = await supabase.auth.getSession()
+ * 
+ * const { data: profile, error } = await supabase
+ *   .from('users')
+ *   .select('first_name, credits')
+ *   .eq('id', session.user.id)
+ *   .single()
+ * 
+ * const displayName = profile?.first_name || session.user.email?.split('@')[0] || 'friend'
+ * const userCredits = profile?.credits || 0
+ * ```
+ * 
+ * Then pass to component:
+ * <WelcomeCredits displayName={displayName} userCredits={userCredits} />
+ * 
+ * ============================================================================
+ */
