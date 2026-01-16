@@ -95,7 +95,7 @@ export default function HomePage() {
       <div className="max-w-md mx-auto">
         
         {/* Main content with bottom padding for sticky buttons */}
-        <main className="pb-24">
+        <main className="pb-16">
           
           {/* 2. Welcome + Credits */}
           <WelcomeCredits onUserLoaded={handleUserLoaded} />
