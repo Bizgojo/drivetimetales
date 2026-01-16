@@ -25,7 +25,7 @@ import Link from 'next/link'
 export default function BottomStickyButtons() {
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-slate-950 border-t border-slate-800 px-4 py-2 z-50">
-      <div className="flex gap-2 max-w-md mx-auto">
+      <div className="flex gap-2">
         
         {/* Left Button: Go to Library (Orange) */}
         <Link 

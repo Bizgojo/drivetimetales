@@ -88,35 +88,30 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       
-      {/* Constrain ALL content width for mobile */}
-      <div className="max-w-md mx-auto">
-        
-        {/* 1. Header - No back button on Home */}
-        <Header showBackButton={false} userInitial={userInitial} />
-        
-        {/* Main content with bottom padding for sticky buttons */}
-        <main className="pb-16">
-          
-          {/* 2. Welcome + Credits */}
-          <WelcomeCredits onUserLoaded={handleUserLoaded} />
-          
-          {/* 3. News Briefings */}
-          <NewsBriefings />
-          
-          {/* 4. Continue Listening (auto-hides if no uncompleted story) */}
-          <ContinueListening />
-          
-          {/* 5. New Releases */}
-          <NewReleases />
-          
-          {/* 6. Recommended For You */}
-          <RecommendedForYou />
-          
-        </main>
-        
-      </div>
+      {/* 1. Header - No back button on Home */}
+      <Header showBackButton={false} userInitial={userInitial} />
       
-      {/* 7. Bottom Sticky Buttons - has its own max-width inside */}
+      {/* Main content with bottom padding for sticky buttons */}
+      <main className="pb-14">
+        
+        {/* 2. Welcome + Credits */}
+        <WelcomeCredits onUserLoaded={handleUserLoaded} />
+        
+        {/* 3. News Briefings */}
+        <NewsBriefings />
+        
+        {/* 4. Continue Listening (auto-hides if no uncompleted story) */}
+        <ContinueListening />
+        
+        {/* 5. New Releases */}
+        <NewReleases />
+        
+        {/* 6. Recommended For You */}
+        <RecommendedForYou />
+        
+      </main>
+      
+      {/* 7. Bottom Sticky Buttons */}
       <BottomStickyButtons />
       
     </div>
