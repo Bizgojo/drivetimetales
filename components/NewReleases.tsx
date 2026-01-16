@@ -3,25 +3,30 @@
 🔒 PROTECTED MODULE - DO NOT MODIFY WITHOUT OWNER APPROVAL
 ================================================================================
 Module: NewReleases
-Location: /components/NewReleases.tsx
+Location: ~/DriveTimeFiles/WorkingCodeLibrary/02_HomePage/
+File: NewReleases.protected.tsx
+
 Created: January 16, 2026
 Owner: Marc (Wonder Books Press / Drive Time Tales)
-Status: LOCKED
+Status: LOCKED - Universal Template
 
 PURPOSE:
-New Releases section - 3 most recent stories with large covers.
-Shows stories ordered by published_on date (newest first).
+This is the official New Releases module for the DTT Home Page.
+Shows the 3 most recently published stories in a vertical card grid.
 
-LAYOUT:
-- 3 columns grid (grid-cols-3 gap-3)
-- Large square cover images with white glow
-- Text below each: Title (2 lines max), Genre, Author, Duration+Credits, Date
-- All text WHITE (not gray)
+⚠️  DO NOT MODIFY THIS DESIGN WITHOUT MARC'S EXPLICIT APPROVAL
+⚠️  DO NOT GUESS OR CREATE ALTERNATIVE DESIGNS
+⚠️  ALWAYS CALL THIS MODULE WHEN BUILDING THE HOME PAGE
+
+DISPLAY RULES:
+- Shows exactly 3 stories (most recent by published_on)
+- No flags on New Releases cards
+- Entire card is clickable → /player/[id]
 
 DATA SOURCE:
 - Table: stories
 - Query: ORDER BY published_on DESC LIMIT 3
-- Note: stories table does NOT have rating or created_at columns
+
 ================================================================================
 */
 
@@ -29,11 +34,11 @@ DATA SOURCE:
 
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import { supabase } from '@/lib/supabase'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-const supabase = createClient(supabaseUrl, supabaseAnonKey)
+// =============================================================================
+// TYPES
+// =============================================================================
 
 interface Story {
   id: string
@@ -41,25 +46,34 @@ interface Story {
   genre: string
   author: string
   duration_mins: number
-  credits: number
   cover_url: string | null
-  published_on: string | null
+  published_on: string
 }
 
-// Format date as "Jan 16, 2026"
-function formatDate(dateString: string | null): string {
-  if (!dateString) return ''
-  try {
-    const date = new Date(dateString)
-    return date.toLocaleDateString('en-US', { 
-      month: 'short', 
-      day: 'numeric', 
-      year: 'numeric' 
-    })
-  } catch {
-    return ''
-  }
+// =============================================================================
+// HELPER: Calculate credits from duration
+// =============================================================================
+
+function getCredits(duration_mins: number): number {
+  return Math.max(1, Math.floor(duration_mins / 15))
 }
+
+// =============================================================================
+// HELPER: Format date
+// =============================================================================
+
+function formatDate(dateString: string): string {
+  const date = new Date(dateString)
+  return date.toLocaleDateString('en-US', { 
+    month: 'short', 
+    day: 'numeric', 
+    year: 'numeric' 
+  })
+}
+
+// =============================================================================
+// COMPONENT
+// =============================================================================
 
 export default function NewReleases() {
   const [stories, setStories] = useState<Story[]>([])
@@ -70,18 +84,17 @@ export default function NewReleases() {
       try {
         const { data, error } = await supabase
           .from('stories')
-          .select('id, title, genre, author, duration_mins, credits, cover_url, published_on')
-          .not('cover_url', 'is', null)
-          .order('published_on', { ascending: false, nullsFirst: false })
+          .select('id, title, genre, author, duration_mins, cover_url, published_on')
+          .order('published_on', { ascending: false })
           .limit(3)
 
         if (error) {
-          console.error('[NewReleases] Error:', error)
+          console.error('Error fetching new releases:', error)
         } else if (data) {
           setStories(data)
         }
       } catch (err) {
-        console.error('[NewReleases] Error:', err)
+        console.error('Error in fetchNewReleases:', err)
       } finally {
         setLoading(false)
       }
@@ -90,7 +103,10 @@ export default function NewReleases() {
     fetchNewReleases()
   }, [])
 
-  // Loading state
+  // =============================================================================
+  // LOADING STATE
+  // =============================================================================
+
   if (loading) {
     return (
       <section className="px-4 pt-6 pb-4">
@@ -108,10 +124,17 @@ export default function NewReleases() {
     )
   }
 
-  // Empty state
+  // =============================================================================
+  // EMPTY STATE
+  // =============================================================================
+
   if (stories.length === 0) {
-    return null
+    return null // Don't render section if no stories
   }
+
+  // =============================================================================
+  // RENDER
+  // =============================================================================
 
   return (
     <section className="px-4 pt-6 pb-4">
@@ -125,22 +148,15 @@ export default function NewReleases() {
             className="block"
           >
             {/* Cover with glow */}
-            <div 
-              className="rounded-xl overflow-hidden"
-              style={{ boxShadow: '0 0 15px rgba(255, 255, 255, 0.4)' }}
-            >
-              {story.cover_url ? (
-                <img 
-                  src={story.cover_url} 
-                  alt={story.title}
-                  className="w-full aspect-square object-cover" 
-                />
-              ) : (
-                <div className="w-full aspect-square bg-slate-700 flex items-center justify-center text-4xl">📖</div>
-              )}
+            <div className="rounded-xl overflow-hidden cover-glow">
+              <img 
+                src={story.cover_url || '/images/default-cover.png'} 
+                alt={story.title}
+                className="w-full aspect-square object-cover" 
+              />
             </div>
             
-            {/* Metadata - ALL WHITE TEXT */}
+            {/* Metadata */}
             <div className="mt-2">
               <h3 className="text-xs font-bold text-white line-clamp-2 leading-tight">
                 {story.title}
@@ -148,11 +164,9 @@ export default function NewReleases() {
               <p className="text-white text-xs">{story.genre}</p>
               <p className="text-white text-xs">by {story.author}</p>
               <p className="text-white text-xs">
-                {story.duration_mins} min • {story.credits} cr
+                {story.duration_mins} min • {getCredits(story.duration_mins)} cr
               </p>
-              {story.published_on && (
-                <p className="text-white text-xs">{formatDate(story.published_on)}</p>
-              )}
+              <p className="text-slate-400 text-xs">{formatDate(story.published_on)}</p>
             </div>
           </Link>
         ))}
@@ -160,3 +174,93 @@ export default function NewReleases() {
     </section>
   )
 }
+
+
+// =============================================================================
+// REQUIRED CSS (add to globals.css)
+// =============================================================================
+/*
+.cover-glow {
+  box-shadow: 0 0 15px rgba(255, 255, 255, 0.4);
+}
+*/
+
+
+// =============================================================================
+// SPECS REFERENCE (DO NOT CHANGE)
+// =============================================================================
+/*
+SECTION CONTAINER:
+- px-4 pt-6 pb-4
+
+SECTION TITLE:
+- text-lg font-bold text-white mb-4
+- Emoji: 🆕
+
+GRID:
+- grid grid-cols-3 gap-3
+
+CARD:
+- Entire card wrapped in Link (clickable)
+- Route: /player/[story.id]
+
+COVER:
+- rounded-xl overflow-hidden cover-glow
+- img: w-full aspect-square object-cover
+
+METADATA CONTAINER:
+- mt-2
+
+TITLE:
+- text-xs font-bold text-white line-clamp-2 leading-tight
+
+GENRE:
+- text-white text-xs
+
+AUTHOR:
+- text-white text-xs (prefixed with "by ")
+
+DURATION + CREDITS:
+- text-white text-xs
+- Format: "{duration} min • {credits} cr"
+- Credits = max(1, floor(duration_mins / 15))
+
+PUBLISHED DATE:
+- text-slate-400 text-xs
+- Format: "Jan 15, 2026"
+
+DATA QUERY:
+- Table: stories
+- Select: id, title, genre, author, duration_mins, cover_url, published_on
+- Order: published_on DESC
+- Limit: 3
+
+NO FLAGS ON NEW RELEASES CARDS
+*/
+
+
+// =============================================================================
+// USAGE IN HOME PAGE
+// =============================================================================
+/*
+import ContinueListening from '@/components/ContinueListening'
+import NewReleases from '@/components/NewReleases'
+import RecommendedForYou from '@/components/RecommendedForYou'
+import BottomStickyButtons from '@/components/BottomStickyButtons'
+
+export default function HomePage() {
+  return (
+    <div className="min-h-screen bg-slate-950">
+      <Header />
+      
+      <main className="pb-24">
+        <ContinueListening />
+        <NewReleases />
+        <RecommendedForYou />
+      </main>
+      
+      <BottomStickyButtons />
+    </div>
+  )
+}
+*/
