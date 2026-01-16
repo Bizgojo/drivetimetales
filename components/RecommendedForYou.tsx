@@ -50,10 +50,11 @@ export default function RecommendedForYou() {
   useEffect(() => {
     async function fetchRecommended() {
       try {
-        // Fetch stories 4-7 (skip first 3 which are New Releases)
+        // Fetch stories with cover images only
         const { data, error } = await supabase
           .from('stories')
           .select('id, title, genre, author, duration_mins, credits, cover_url')
+          .not('cover_url', 'is', null)
           .order('published_on', { ascending: false, nullsFirst: false })
           .range(3, 6)  // Skip first 3, get next 4
 
