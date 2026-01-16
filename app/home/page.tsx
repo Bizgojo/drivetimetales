@@ -6,49 +6,87 @@ Location: /app/home/page.tsx
 Created: January 16, 2026
 
 PURPOSE:
-This page simply imports and renders the 7 protected components in order.
-Each component handles its own data fetching and state.
+This page assembles the protected modules and handles data fetching.
+It passes props to modules that need them and renders standalone modules directly.
 
-COMPONENTS (in order):
-1. Header - Logo centered, avatar right, no back button
-2. WelcomeCredits - Welcome message + credit balance
-3. NewsBriefings - 6 news category tiles
-4. ContinueListening - Resume card (only shows if uncompleted story exists)
-5. NewReleases - 3 most recent stories grid
-6. RecommendedForYou - 4 horizontal story cards
-7. BottomStickyButtons - Library + Recommend buttons
+MODULES USED:
+- WelcomeCredits (props: displayName, userCredits)
+- NewsBriefings (props: newsEpisodes, userState, playingCategory, onPlayNews)
+- ContinueListening (standalone - uses useAuth)
+- NewReleases (standalone - fetches own data)
+- BottomStickyButtons (standalone)
 
-DO NOT add business logic here - keep it as a simple assembly file.
+DO NOT MODIFY THE PROTECTED MODULES - only this assembly file.
 ================================================================================
 */
 
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@supabase/supabase-js'
+import { supabase } from '@/lib/supabase'
 
-// Import all protected components
-import Header from '@/components/Header'
-import WelcomeCredits from '@/components/WelcomeCredits'
-import NewsBriefings from '@/components/NewsBriefings'
+// Import protected modules EXACTLY as they are
+import { WelcomeCredits } from '@/components/WelcomeCredits'
+import { NewsBriefings } from '@/components/NewsBriefings'
 import ContinueListening from '@/components/ContinueListening'
 import NewReleases from '@/components/NewReleases'
-import RecommendedForYou from '@/components/RecommendedForYou'
 import BottomStickyButtons from '@/components/BottomStickyButtons'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-const supabase = createClient(supabaseUrl, supabaseAnonKey)
+// =============================================================================
+// TYPES
+// =============================================================================
+
+interface NewsEpisode {
+  id: string
+  category: string
+  audio_url: string | null
+  is_live: boolean
+}
+
+// =============================================================================
+// STATE NAME MAPPING (for converting abbreviations)
+// =============================================================================
+
+const STATE_NAMES: Record<string, string> = {
+  'AL': 'Alabama', 'AK': 'Alaska', 'AZ': 'Arizona', 'AR': 'Arkansas', 'CA': 'California',
+  'CO': 'Colorado', 'CT': 'Connecticut', 'DE': 'Delaware', 'FL': 'Florida', 'GA': 'Georgia',
+  'HI': 'Hawaii', 'ID': 'Idaho', 'IL': 'Illinois', 'IN': 'Indiana', 'IA': 'Iowa',
+  'KS': 'Kansas', 'KY': 'Kentucky', 'LA': 'Louisiana', 'ME': 'Maine', 'MD': 'Maryland',
+  'MA': 'Massachusetts', 'MI': 'Michigan', 'MN': 'Minnesota', 'MS': 'Mississippi', 'MO': 'Missouri',
+  'MT': 'Montana', 'NE': 'Nebraska', 'NV': 'Nevada', 'NH': 'New Hampshire', 'NJ': 'New Jersey',
+  'NM': 'New Mexico', 'NY': 'New York', 'NC': 'North Carolina', 'ND': 'North Dakota', 'OH': 'Ohio',
+  'OK': 'Oklahoma', 'OR': 'Oregon', 'PA': 'Pennsylvania', 'RI': 'Rhode Island', 'SC': 'South Carolina',
+  'SD': 'South Dakota', 'TN': 'Tennessee', 'TX': 'Texas', 'UT': 'Utah', 'VT': 'Vermont',
+  'VA': 'Virginia', 'WA': 'Washington', 'WV': 'West Virginia', 'WI': 'Wisconsin', 'WY': 'Wyoming'
+}
+
+// =============================================================================
+// MAIN COMPONENT
+// =============================================================================
 
 export default function HomePage() {
   const router = useRouter()
-  const [authChecked, setAuthChecked] = useState(false)
-  const [userInitial, setUserInitial] = useState('U')
 
-  // Check auth on mount
+  // Auth state
+  const [authChecked, setAuthChecked] = useState(false)
+  
+  // User data for WelcomeCredits
+  const [displayName, setDisplayName] = useState('friend')
+  const [userCredits, setUserCredits] = useState(0)
+  const [userState, setUserState] = useState('State')
+
+  // News data for NewsBriefings
+  const [newsEpisodes, setNewsEpisodes] = useState<Record<string, NewsEpisode>>({})
+  const [playingCategory, setPlayingCategory] = useState<string | null>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+
+  // =============================================================================
+  // AUTH CHECK & DATA LOADING
+  // =============================================================================
+
   useEffect(() => {
-    async function checkAuth() {
+    async function init() {
       try {
         const { data: { session } } = await supabase.auth.getSession()
         
@@ -57,25 +95,103 @@ export default function HomePage() {
           return
         }
 
-        // Get user initial for header avatar
-        const email = session.user.email || ''
-        setUserInitial(email.charAt(0).toUpperCase() || 'U')
-        setAuthChecked(true)
+        // Load user profile for WelcomeCredits
+        const { data: profile } = await supabase
+          .from('users')
+          .select('first_name, display_name, credits, state')
+          .eq('id', session.user.id)
+          .single()
+        
+        if (profile) {
+          const name = profile.first_name 
+            || profile.display_name?.split(' ')[0] 
+            || session.user.email?.split('@')[0] 
+            || 'friend'
+          setDisplayName(name)
+          setUserCredits(profile.credits || 0)
+          
+          // Convert state abbreviation to full name if needed
+          if (profile.state) {
+            if (profile.state.length === 2) {
+              setUserState(STATE_NAMES[profile.state.toUpperCase()] || profile.state)
+            } else {
+              setUserState(profile.state)
+            }
+          }
+        }
+
+        // Load news episodes for NewsBriefings
+        const { data: episodes } = await supabase
+          .from('news_episodes')
+          .select('id, category, audio_url, is_live')
+          .eq('is_live', true)
+        
+        if (episodes) {
+          const episodeMap: Record<string, NewsEpisode> = {}
+          episodes.forEach(ep => { episodeMap[ep.category] = ep })
+          setNewsEpisodes(episodeMap)
+        }
+
       } catch (err) {
-        console.error('[HomePage] Auth error:', err)
-        router.push('/signin')
+        console.error('[HomePage] Init error:', err)
+      } finally {
+        setAuthChecked(true)
       }
     }
     
-    checkAuth()
+    init()
   }, [router])
 
-  // Callback when WelcomeCredits loads user data
-  const handleUserLoaded = (name: string) => {
-    setUserInitial(name.charAt(0).toUpperCase())
+  // =============================================================================
+  // NEWS PLAYBACK HANDLER (for NewsBriefings)
+  // =============================================================================
+
+  const handlePlayNews = (categoryId: string) => {
+    const episode = newsEpisodes[categoryId]
+    if (!episode?.audio_url) return
+
+    // Stop current audio if different category
+    if (playingCategory && playingCategory !== categoryId) {
+      if (audioRef.current) {
+        audioRef.current.pause()
+        audioRef.current = null
+      }
+    }
+
+    // Toggle play/pause
+    if (playingCategory === categoryId) {
+      if (audioRef.current) {
+        audioRef.current.pause()
+        audioRef.current = null
+      }
+      setPlayingCategory(null)
+      return
+    }
+
+    // Play new category
+    audioRef.current = new Audio(episode.audio_url)
+    audioRef.current.onended = () => {
+      setPlayingCategory(null)
+      audioRef.current = null
+    }
+    audioRef.current.play()
+    setPlayingCategory(categoryId)
   }
 
-  // Show loading while checking auth
+  // Cleanup audio on unmount
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause()
+        audioRef.current = null
+      }
+    }
+  }, [])
+
+  // =============================================================================
+  // LOADING STATE
+  // =============================================================================
+
   if (!authChecked) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
@@ -84,34 +200,52 @@ export default function HomePage() {
     )
   }
 
-  // Render all components in order
+  // =============================================================================
+  // RENDER - Assemble protected modules
+  // =============================================================================
+
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       
-      {/* 1. Header - No back button on Home */}
-      <Header showBackButton={false} userInitial={userInitial} />
+      {/* Header */}
+      <header className="flex items-center justify-between px-4 py-2 border-b border-slate-800 bg-slate-950">
+        <div className="w-10"></div>
+        <div className="flex items-center gap-1">
+          <span className="text-xl">🚗</span>
+          <span className="font-bold text-white text-sm">
+            Drive Time <span className="text-orange-400">Tales</span>
+          </span>
+        </div>
+        <div className="w-10 flex justify-end">
+          <div className="w-7 h-7 rounded-full bg-orange-500 flex items-center justify-center text-black font-bold text-xs">
+            {displayName.charAt(0).toUpperCase()}
+          </div>
+        </div>
+      </header>
       
-      {/* Main content with bottom padding for sticky buttons */}
-      <main className="pb-14">
+      {/* Main content */}
+      <main className="px-4 pb-20">
         
-        {/* 2. Welcome + Credits */}
-        <WelcomeCredits onUserLoaded={handleUserLoaded} />
+        {/* WelcomeCredits - pass props */}
+        <WelcomeCredits displayName={displayName} userCredits={userCredits} />
         
-        {/* 3. News Briefings */}
-        <NewsBriefings />
+        {/* NewsBriefings - pass props */}
+        <NewsBriefings 
+          newsEpisodes={newsEpisodes}
+          userState={userState}
+          playingCategory={playingCategory}
+          onPlayNews={handlePlayNews}
+        />
         
-        {/* 4. Continue Listening (auto-hides if no uncompleted story) */}
+        {/* ContinueListening - standalone */}
         <ContinueListening />
         
-        {/* 5. New Releases */}
+        {/* NewReleases - standalone */}
         <NewReleases />
-        
-        {/* 6. Recommended For You */}
-        <RecommendedForYou />
         
       </main>
       
-      {/* 7. Bottom Sticky Buttons */}
+      {/* BottomStickyButtons - standalone */}
       <BottomStickyButtons />
       
     </div>
