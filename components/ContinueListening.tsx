@@ -3,21 +3,14 @@
 🔒 PROTECTED MODULE - DO NOT MODIFY WITHOUT OWNER APPROVAL
 ================================================================================
 Module: ContinueListening
-Location: ~/DriveTimeFiles/WorkingCodeLibrary/02_HomePage/
-File: ContinueListening.protected.tsx
-
+Location: /components/ContinueListening.tsx
 Created: January 16, 2026
 Owner: Marc (Wonder Books Press / Drive Time Tales)
-Status: LOCKED - Universal Template
+Status: LOCKED
 
 PURPOSE:
-This is the official Continue Listening module for the DTT Home Page.
 Shows the user's most recently played uncompleted story with a progress bar
 and allows one-tap resume playback.
-
-⚠️  DO NOT MODIFY THIS DESIGN WITHOUT MARC'S EXPLICIT APPROVAL
-⚠️  DO NOT GUESS OR CREATE ALTERNATIVE DESIGNS
-⚠️  ALWAYS CALL THIS MODULE WHEN BUILDING THE HOME PAGE
 
 DISPLAY RULES:
 - Only shows if user has an uncompleted story (completed = FALSE)
@@ -26,14 +19,13 @@ DISPLAY RULES:
 
 CLICK BEHAVIOR:
 - Entire card is clickable (cover, text, AND play button)
-- Click navigates to /player/[id]/play
+- Click navigates to /player/[id]?resume=[position]
 - Audio resumes at (progress - 5 seconds) to rewind to sentence start
 
 DATA SOURCE:
-- Table: user_library
+- Table: user_library (NOT play_history!)
 - Query: WHERE user_id = [user] AND completed = FALSE ORDER BY last_played DESC LIMIT 1
 - Join: stories table for title, genre, author, duration_mins, cover_url
-
 ================================================================================
 */
 
@@ -41,20 +33,18 @@ DATA SOURCE:
 
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
-import { useAuth } from '@/contexts/AuthContext'
-import { supabase } from '@/lib/supabase'
+import { createClient } from '@supabase/supabase-js'
 
-// =============================================================================
-// TYPES
-// =============================================================================
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
+// Flat interface - story fields extracted from join
 interface ContinueListeningStory {
-  id: string
   story_id: string
-  progress: number          // seconds into the story
+  progress: number
   last_played: string
   completed: boolean
-  // Joined from stories table
   title: string
   genre: string
   author: string
@@ -62,28 +52,24 @@ interface ContinueListeningStory {
   cover_url: string | null
 }
 
-// =============================================================================
-// COMPONENT
-// =============================================================================
-
 export default function ContinueListening() {
-  const { user } = useAuth()
   const [story, setStory] = useState<ContinueListeningStory | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     async function fetchContinueListening() {
-      if (!user) {
-        setLoading(false)
-        return
-      }
-
       try {
-        // Query: most recent uncompleted story
+        const { data: { session } } = await supabase.auth.getSession()
+        
+        if (!session?.user) {
+          setLoading(false)
+          return
+        }
+
+        // Query: most recent uncompleted story from user_library
         const { data, error } = await supabase
           .from('user_library')
           .select(`
-            id,
             story_id,
             progress,
             last_played,
@@ -96,20 +82,21 @@ export default function ContinueListening() {
               cover_url
             )
           `)
-          .eq('user_id', user.id)
+          .eq('user_id', session.user.id)
           .eq('completed', false)
+          .gt('progress', 0)
           .order('last_played', { ascending: false })
           .limit(1)
           .single()
 
         if (error && error.code !== 'PGRST116') {
           // PGRST116 = no rows returned (not an error for us)
-          console.error('Error fetching continue listening:', error)
+          console.error('[ContinueListening] Error:', error)
         }
 
         if (data && data.stories) {
+          // Use (data.stories as any).field pattern to extract joined data
           setStory({
-            id: data.id,
             story_id: data.story_id,
             progress: data.progress || 0,
             last_played: data.last_played,
@@ -122,60 +109,50 @@ export default function ContinueListening() {
           })
         }
       } catch (err) {
-        console.error('Error in fetchContinueListening:', err)
+        console.error('[ContinueListening] Error:', err)
       } finally {
         setLoading(false)
       }
     }
 
     fetchContinueListening()
-  }, [user])
+  }, [])
 
-  // =============================================================================
-  // DISPLAY LOGIC: Do not render if no uncompleted story
-  // =============================================================================
-  
-  if (loading) {
-    return null // Don't show loading state, just hide until ready
+  // Don't render anything while loading or if no story
+  if (loading || !story) {
+    return null
   }
 
-  if (!story) {
-    return null // No uncompleted story = don't render module
-  }
-
-  // =============================================================================
-  // CALCULATIONS
-  // =============================================================================
-
+  // Calculate progress values
   const totalSeconds = story.duration_mins * 60
   const progressPercent = totalSeconds > 0 ? Math.round((story.progress / totalSeconds) * 100) : 0
   const secondsRemaining = totalSeconds - story.progress
   const minsRemaining = Math.max(1, Math.ceil(secondsRemaining / 60))
-
-  // Resume position: rewind 5 seconds (Phase 1 sentence approximation)
+  
+  // Resume position: rewind 5 seconds (sentence approximation)
   const resumePosition = Math.max(0, story.progress - 5)
-
-  // =============================================================================
-  // RENDER
-  // =============================================================================
 
   return (
     <section className="px-4 pt-6 pb-4">
       <h2 className="text-lg font-bold text-white mb-4">▶️ Continue Listening</h2>
       
-      {/* Entire card is clickable - navigates to play page with resume position */}
+      {/* Entire card is clickable */}
       <Link 
-        href={`/player/${story.story_id}/play?resume=${resumePosition}`}
+        href={`/player/${story.story_id}?resume=${resumePosition}`}
         className="flex bg-slate-800 rounded-xl overflow-hidden hover:bg-slate-700 transition"
       >
-        {/* Cover: w-28 h-28 with p-2 padding (matches HorizontalStoryCard template) */}
+        {/* Cover: w-28 h-28 with p-2 padding */}
         <div className="w-28 h-28 flex-shrink-0 p-2">
-          <div className="w-full h-full rounded-lg overflow-hidden cover-glow">
-            <img 
-              src={story.cover_url || '/images/default-cover.png'} 
-              alt={story.title}
-              className="w-full h-full object-cover" 
-            />
+          <div className="w-full h-full rounded-lg overflow-hidden" style={{ boxShadow: '0 0 15px rgba(255, 255, 255, 0.4)' }}>
+            {story.cover_url ? (
+              <img 
+                src={story.cover_url} 
+                alt={story.title}
+                className="w-full h-full object-cover" 
+              />
+            ) : (
+              <div className="w-full h-full bg-slate-700 flex items-center justify-center text-2xl">📖</div>
+            )}
           </div>
         </div>
         
@@ -210,119 +187,3 @@ export default function ContinueListening() {
     </section>
   )
 }
-
-
-// =============================================================================
-// REQUIRED CSS (add to globals.css)
-// =============================================================================
-/*
-.cover-glow {
-  box-shadow: 0 0 15px rgba(255, 255, 255, 0.4);
-}
-*/
-
-
-// =============================================================================
-// SPECS REFERENCE (DO NOT CHANGE)
-// =============================================================================
-/*
-SECTION CONTAINER:
-- px-4 pt-6 pb-4
-
-SECTION TITLE:
-- text-lg font-bold text-white mb-4
-- Emoji: ▶️
-
-CARD CONTAINER:
-- flex
-- bg-slate-800
-- rounded-xl
-- overflow-hidden
-- hover:bg-slate-700 transition
-- Entire card wrapped in Link (clickable)
-
-COVER WRAPPER:
-- w-28 h-28 (112px x 112px)
-- flex-shrink-0
-- p-2 (8px padding around cover)
-
-COVER INNER:
-- w-full h-full
-- rounded-lg
-- overflow-hidden
-- cover-glow (box-shadow: 0 0 15px rgba(255,255,255,0.4))
-
-INFO AREA:
-- flex-1
-- py-2 pr-3
-- flex flex-col justify-center
-
-TYPOGRAPHY:
-- Title: text-sm font-bold text-white line-clamp-1
-- Genre: text-white text-xs
-- Author: text-white text-xs (prefixed with "by ")
-- Duration line: text-white text-xs ("{duration} min • {remaining} min left")
-
-PROGRESS BAR:
-- Container: flex items-center gap-2 mt-1
-- Track: flex-1 h-1.5 bg-slate-700 rounded-full
-- Fill: h-1.5 bg-orange-500 rounded-full, width = progress %
-- Percentage: text-white text-xs
-
-PLAY BUTTON:
-- Container: pr-3 flex items-center
-- Button: w-10 h-10 bg-orange-500 rounded-full flex items-center justify-center
-- Hover: hover:bg-orange-400 transition
-- Icon: w-5 h-5 text-black ml-0.5 (play triangle SVG)
-
-NAVIGATION:
-- Route: /player/[story_id]/play?resume=[resumePosition]
-- Resume position: progress - 5 seconds (minimum 0)
-
-DATA QUERY:
-- Table: user_library JOIN stories
-- Filter: user_id = current user, completed = FALSE
-- Order: last_played DESC
-- Limit: 1
-*/
-
-
-// =============================================================================
-// USAGE IN HOME PAGE
-// =============================================================================
-/*
-import ContinueListening from '@/components/ContinueListening'
-
-export default function HomePage() {
-  return (
-    <div>
-      <ContinueListening />
-      
-      <NewReleases />
-      <RecommendedForYou />
-    </div>
-  )
-}
-
-NOTE: ContinueListening automatically hides itself if no uncompleted story exists.
-No conditional rendering needed in the parent component.
-*/
-
-
-// =============================================================================
-// PLAY PAGE MUST HANDLE RESUME PARAMETER
-// =============================================================================
-/*
-The /player/[id]/play page must read the ?resume= query parameter and set
-the audio currentTime on load:
-
-// In /player/[id]/play/page.tsx
-const searchParams = useSearchParams()
-const resumeTime = parseInt(searchParams.get('resume') || '0', 10)
-
-useEffect(() => {
-  if (audioRef.current && resumeTime > 0) {
-    audioRef.current.currentTime = resumeTime
-  }
-}, [resumeTime])
-*/
