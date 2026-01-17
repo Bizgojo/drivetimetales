@@ -1,19 +1,23 @@
 /*
 ================================================================================
-🔒 PROTECTED MODULE 07 - DO NOT MODIFY WITHOUT OWNER APPROVAL
+🔒 PROTECTED MODULE 07 - PRODUCTION SAFE VERSION
 ================================================================================
 Module: 07_NewReleases
 Location: ~/DriveTimeFiles/WorkingCodeLibrary/02_HomePage/
 File: 07_NewReleases.protected.tsx
 
 Created: January 16, 2026
-Updated: January 17, 2026
+Updated: January 17, 2026 - Added inline styles for Tailwind purge protection
 Owner: Marc (Wonder Books Press / Drive Time Tales)
 Status: PROTECTED
 
 PURPOSE:
 This is the official New Releases module for the DTT Home Page.
 Shows the 2 most recently published stories in a 2-column grid with gray background.
+
+PRODUCTION FIX:
+Critical layout properties use inline styles to prevent Tailwind CSS purging.
+Colors, hover states, and text remain as Tailwind classes (these don't purge).
 
 ⚠️  DO NOT MODIFY THIS DESIGN WITHOUT MARC'S EXPLICIT APPROVAL
 ⚠️  DO NOT GUESS OR CREATE ALTERNATIVE DESIGNS
@@ -29,10 +33,6 @@ DISPLAY RULES:
 DATA SOURCE:
 - Table: stories
 - Query: ORDER BY published_on DESC LIMIT 2
-
-CHANGE LOG:
-- 2026-01-16: Initial version (3 stories, 3-column, no background)
-- 2026-01-17: Changed to 2 stories, 2-column grid, added bg-slate-800 background
 
 ================================================================================
 */
@@ -116,14 +116,14 @@ export default function NewReleases() {
 
   if (loading) {
     return (
-      <section className="px-4 pt-6 pb-4">
-        <h2 className="text-lg font-bold text-white mb-4">🆕 New Releases</h2>
-        <div className="grid grid-cols-2 gap-3">
+      <section style={{ paddingLeft: '1rem', paddingRight: '1rem', paddingTop: '1.5rem', paddingBottom: '1rem' }}>
+        <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>🆕 New Releases</h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem' }}>
           {[1, 2].map((i) => (
-            <div key={i} className="animate-pulse bg-slate-800 rounded-xl p-2">
-              <div className="rounded-lg bg-slate-700 aspect-square mb-2" />
-              <div className="h-3 bg-slate-700 rounded mb-1" />
-              <div className="h-2 bg-slate-700 rounded w-2/3" />
+            <div key={i} className="animate-pulse bg-slate-800 rounded-xl" style={{ padding: '0.5rem' }}>
+              <div className="rounded-lg bg-slate-700" style={{ aspectRatio: '1 / 1', marginBottom: '0.5rem' }} />
+              <div className="bg-slate-700 rounded" style={{ height: '0.75rem', marginBottom: '0.25rem' }} />
+              <div className="bg-slate-700 rounded" style={{ height: '0.5rem', width: '66%' }} />
             </div>
           ))}
         </div>
@@ -144,27 +144,29 @@ export default function NewReleases() {
   // =============================================================================
 
   return (
-    <section className="px-4 pt-6 pb-4">
-      <h2 className="text-lg font-bold text-white mb-4">🆕 New Releases</h2>
+    <section style={{ paddingLeft: '1rem', paddingRight: '1rem', paddingTop: '1.5rem', paddingBottom: '1rem' }}>
+      <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>🆕 New Releases</h2>
       
-      <div className="grid grid-cols-2 gap-3">
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem' }}>
         {stories.map((story) => (
           <Link 
             key={story.id} 
             href={`/player/${story.id}`}
-            className="block bg-slate-800 rounded-xl p-2 hover:bg-slate-700 transition"
+            className="bg-slate-800 rounded-xl hover:bg-slate-700 transition"
+            style={{ display: 'block', padding: '0.5rem' }}
           >
             {/* Cover with glow */}
             <div className="rounded-lg overflow-hidden cover-glow">
               <img 
                 src={story.cover_url || '/images/default-cover.png'} 
                 alt={story.title}
-                className="w-full aspect-square object-cover" 
+                className="object-cover"
+                style={{ width: '100%', aspectRatio: '1 / 1' }}
               />
             </div>
             
             {/* Metadata */}
-            <div className="mt-2">
+            <div style={{ marginTop: '0.5rem' }}>
               <h3 className="text-xs font-bold text-white line-clamp-2 leading-tight">
                 {story.title}
               </h3>
@@ -181,3 +183,130 @@ export default function NewReleases() {
     </section>
   )
 }
+
+
+// =============================================================================
+// REQUIRED CSS (add to globals.css)
+// =============================================================================
+/*
+.cover-glow {
+  box-shadow: 0 0 15px rgba(255, 255, 255, 0.4);
+}
+*/
+
+
+// =============================================================================
+// INLINE STYLE CONVERSION REFERENCE
+// =============================================================================
+/*
+TAILWIND → INLINE STYLE CONVERSIONS:
+
+px-4        → paddingLeft: '1rem', paddingRight: '1rem'
+pt-6        → paddingTop: '1.5rem'
+pb-4        → paddingBottom: '1rem'
+mb-4        → marginBottom: '1rem'
+grid        → display: 'grid'
+grid-cols-2 → gridTemplateColumns: 'repeat(2, 1fr)'
+gap-3       → gap: '0.75rem'
+block       → display: 'block'
+p-2         → padding: '0.5rem'
+w-full      → width: '100%'
+aspect-square → aspectRatio: '1 / 1'
+mt-2        → marginTop: '0.5rem'
+mb-2        → marginBottom: '0.5rem'
+h-3         → height: '0.75rem'
+h-2         → height: '0.5rem'
+mb-1        → marginBottom: '0.25rem'
+w-2/3       → width: '66%'
+
+KEPT AS TAILWIND (don't get purged):
+- Colors: bg-slate-800, bg-slate-700, bg-slate-400, text-white, text-slate-400
+- Borders: rounded-xl, rounded-lg, rounded
+- Text: text-lg, text-xs, font-bold, line-clamp-2, leading-tight
+- Interactions: hover:bg-slate-700, transition
+- Overflow: overflow-hidden
+- Object fit: object-cover
+- Animation: animate-pulse
+*/
+
+
+// =============================================================================
+// SPECS REFERENCE (DO NOT CHANGE)
+// =============================================================================
+/*
+SECTION CONTAINER:
+- px-4 pt-6 pb-4
+
+SECTION TITLE:
+- text-lg font-bold text-white mb-4
+- Emoji: 🆕
+
+GRID:
+- grid grid-cols-2 gap-3
+
+CARD:
+- block bg-slate-800 rounded-xl p-2
+- hover:bg-slate-700 transition
+- Entire card wrapped in Link (clickable)
+- Route: /player/[story.id]
+
+COVER:
+- rounded-lg overflow-hidden cover-glow
+- img: w-full aspect-square object-cover
+
+METADATA CONTAINER:
+- mt-2
+
+TITLE:
+- text-xs font-bold text-white line-clamp-2 leading-tight
+
+GENRE:
+- text-white text-xs
+
+AUTHOR:
+- text-white text-xs (prefixed with "by ")
+
+DURATION + CREDITS:
+- text-white text-xs
+- Format: "{duration} min • {credits} cr"
+- Credits = max(1, floor(duration_mins / 15))
+
+PUBLISHED DATE:
+- text-slate-400 text-xs
+- Format: "Jan 15, 2026"
+
+DATA QUERY:
+- Table: stories
+- Select: id, title, genre, author, duration_mins, cover_url, published_on
+- Order: published_on DESC
+- Limit: 2
+
+NO FLAGS ON NEW RELEASES CARDS
+*/
+
+
+// =============================================================================
+// USAGE IN HOME PAGE
+// =============================================================================
+/*
+import ContinueListening from '@/components/ContinueListening'
+import NewReleases from '@/components/NewReleases'
+import RecommendedForYou from '@/components/RecommendedForYou'
+import BottomStickyButtons from '@/components/BottomStickyButtons'
+
+export default function HomePage() {
+  return (
+    <div className="min-h-screen bg-slate-950">
+      <Header />
+      
+      <main className="pb-24">
+        <ContinueListening />
+        <NewReleases />
+        <RecommendedForYou />
+      </main>
+      
+      <BottomStickyButtons />
+    </div>
+  )
+}
+*/
