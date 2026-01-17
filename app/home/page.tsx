@@ -110,7 +110,6 @@ export default function HomePage() {
         <ContinueListening />
         <NewReleases />
         <RecommendedForYou />
-        <RecommendedForYou />
       </main>
     </div>
   )
