@@ -39,6 +39,30 @@ const STATUS_LABELS: Record<BriefingStatus, string> = {
   played: 'Played',
 }
 
+// State name to abbreviation converter
+const STATE_ABBREVIATIONS: Record<string, string> = {
+  'alabama': 'AL', 'alaska': 'AK', 'arizona': 'AZ', 'arkansas': 'AR', 'california': 'CA',
+  'colorado': 'CO', 'connecticut': 'CT', 'delaware': 'DE', 'florida': 'FL', 'georgia': 'GA',
+  'hawaii': 'HI', 'idaho': 'ID', 'illinois': 'IL', 'indiana': 'IN', 'iowa': 'IA',
+  'kansas': 'KS', 'kentucky': 'KY', 'louisiana': 'LA', 'maine': 'ME', 'maryland': 'MD',
+  'massachusetts': 'MA', 'michigan': 'MI', 'minnesota': 'MN', 'mississippi': 'MS', 'missouri': 'MO',
+  'montana': 'MT', 'nebraska': 'NE', 'nevada': 'NV', 'new hampshire': 'NH', 'new jersey': 'NJ',
+  'new mexico': 'NM', 'new york': 'NY', 'north carolina': 'NC', 'north dakota': 'ND', 'ohio': 'OH',
+  'oklahoma': 'OK', 'oregon': 'OR', 'pennsylvania': 'PA', 'rhode island': 'RI', 'south carolina': 'SC',
+  'south dakota': 'SD', 'tennessee': 'TN', 'texas': 'TX', 'utah': 'UT', 'vermont': 'VT',
+  'virginia': 'VA', 'washington': 'WA', 'west virginia': 'WV', 'wisconsin': 'WI', 'wyoming': 'WY',
+  'district of columbia': 'DC'
+}
+
+function getStateAbbreviation(state: string): string {
+  if (!state) return 'State'
+  // If already 2 letters, return as-is
+  if (state.length === 2) return state.toUpperCase()
+  // Look up full name
+  const abbrev = STATE_ABBREVIATIONS[state.toLowerCase()]
+  return abbrev || state
+}
+
 export function NewsBriefings({ newsEpisodes, userState }: NewsBriefingsProps) {
   const [briefingStatus, setBriefingStatus] = useState<Record<string, BriefingStatus>>({})
   const audioRefs = useRef<Record<string, HTMLAudioElement>>({})
@@ -76,6 +100,8 @@ export function NewsBriefings({ newsEpisodes, userState }: NewsBriefingsProps) {
     }
   }
 
+  const stateAbbrev = getStateAbbreviation(userState)
+
   return (
     <section className="px-4">
       <h2 className="text-lg font-bold text-white mb-1">📰 NEWS BRIEFINGS</h2>
@@ -87,7 +113,7 @@ export function NewsBriefings({ newsEpisodes, userState }: NewsBriefingsProps) {
           const status: BriefingStatus = briefingStatus[cat.id] || 'new'
           
           const displayName = cat.id === 'state' 
-            ? `${userState || 'State'} ${cat.name}` 
+            ? `${stateAbbrev} ${cat.name}` 
             : cat.name
 
           return (
