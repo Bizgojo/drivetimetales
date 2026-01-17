@@ -14,6 +14,28 @@ interface NewsEpisode {
   is_live: boolean
 }
 
+// State name to abbreviation converter
+const STATE_ABBREVIATIONS: Record<string, string> = {
+  'alabama': 'AL', 'alaska': 'AK', 'arizona': 'AZ', 'arkansas': 'AR', 'california': 'CA',
+  'colorado': 'CO', 'connecticut': 'CT', 'delaware': 'DE', 'florida': 'FL', 'georgia': 'GA',
+  'hawaii': 'HI', 'idaho': 'ID', 'illinois': 'IL', 'indiana': 'IN', 'iowa': 'IA',
+  'kansas': 'KS', 'kentucky': 'KY', 'louisiana': 'LA', 'maine': 'ME', 'maryland': 'MD',
+  'massachusetts': 'MA', 'michigan': 'MI', 'minnesota': 'MN', 'mississippi': 'MS', 'missouri': 'MO',
+  'montana': 'MT', 'nebraska': 'NE', 'nevada': 'NV', 'new hampshire': 'NH', 'new jersey': 'NJ',
+  'new mexico': 'NM', 'new york': 'NY', 'north carolina': 'NC', 'north dakota': 'ND', 'ohio': 'OH',
+  'oklahoma': 'OK', 'oregon': 'OR', 'pennsylvania': 'PA', 'rhode island': 'RI', 'south carolina': 'SC',
+  'south dakota': 'SD', 'tennessee': 'TN', 'texas': 'TX', 'utah': 'UT', 'vermont': 'VT',
+  'virginia': 'VA', 'washington': 'WA', 'west virginia': 'WV', 'wisconsin': 'WI', 'wyoming': 'WY',
+  'district of columbia': 'DC'
+}
+
+function getStateAbbreviation(state: string): string {
+  if (!state) return ''
+  if (state.length === 2) return state.toUpperCase()
+  const abbrev = STATE_ABBREVIATIONS[state.toLowerCase()]
+  return abbrev || state
+}
+
 export default function HomePage() {
   const { user } = useAuth()
   const [displayName, setDisplayName] = useState('friend')
@@ -33,7 +55,8 @@ export default function HomePage() {
         if (profile) {
           setDisplayName(profile.first_name || user.email?.split('@')[0] || 'friend')
           setUserCredits(profile.credits || 0)
-          setUserState(profile.state || '')
+          // Convert full state name to abbreviation
+          setUserState(getStateAbbreviation(profile.state || ''))
         }
       } catch (err) {
         console.error('Error fetching user:', err)
@@ -71,6 +94,9 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-slate-950 w-full">
+      {/* Tailwind safelist - keeps dynamic classes from being purged */}
+      <div className="hidden bg-amber-400 bg-emerald-400 bg-sky-400 bg-rose-400 from-red-600 to-red-800 from-orange-500 to-orange-700 from-yellow-500 to-yellow-700 from-green-600 to-green-800 from-blue-600 to-blue-800 from-purple-600 to-purple-800"></div>
+      
       <StickyLogo1 userName={displayName} />
       <main className="pb-24">
         <WelcomeCredits displayName={displayName} userCredits={userCredits} />
