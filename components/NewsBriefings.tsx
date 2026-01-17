@@ -1,62 +1,59 @@
-/**
- * ============================================================================
- * DTT PROTECTED MODULE - DO NOT MODIFY WITHOUT MARC'S PERMISSION
- * ============================================================================
- * 
- * FILE: 02_HomePage/c_NewsBriefings.tsx
- * VERSION: 2026-01-16 3:30pm
- * STATUS: APPROVED BY MARC
- * PROTECTED: YES
- * 
- * DESCRIPTION:
- * News Briefings section with 6 categories in specific order and colors
- * Order: State (red) → National (blue) → World (green) → Business (yellow) → Sports (orange) → Sci/Tech (purple)
- * 
- * FEATURES:
- * - Green dot = audio available
- * - Red dot = no audio yet
- * - Pulsing green dot = currently playing
- * - State category shows user's registered state name
- * 
- * PROPS:
- * - newsEpisodes: Record<string, NewsEpisode> - Available episodes by category
- * - userState: string - User's state for State News label
- * - playingCategory: string | null - Currently playing category
- * - onPlayNews: (category: string) => void - Play handler
- * 
- * DATABASE:
- * - news_episodes table: id, category, audio_url, is_live
- * - users.state from database
- * 
- * QUERY FOR NEWS EPISODES:
- * .from('news_episodes').select('id, category, audio_url, is_live').eq('is_live', true)
- * 
- * ============================================================================
- */
+/*
+================================================================================
+🔒 PROTECTED MODULE 05 - DO NOT MODIFY WITHOUT OWNER APPROVAL
+================================================================================
+Module: 05_NewsBriefings
+Location: ~/DriveTimeFiles/WorkingCodeLibrary/02_HomePage/
+File: 05_NewsBriefings.protected.tsx
 
-// News categories - FIXED ORDER AND COLORS - DO NOT CHANGE
-const NEWS_CATEGORIES = [
-  { id: 'state', name: 'State', icon: '🏛️', color: 'from-red-600 to-red-800' },
-  { id: 'national', name: 'National', icon: '🇺🇸', color: 'from-blue-600 to-blue-800' },
-  { id: 'international', name: 'World', icon: '🌍', color: 'from-green-600 to-green-800' },
-  { id: 'business', name: 'Business', icon: '💼', color: 'from-yellow-600 to-yellow-800' },
-  { id: 'sports', name: 'Sports', icon: '⚽', color: 'from-orange-600 to-orange-800' },
-  { id: 'science', name: 'Sci/Tech', icon: '🔬', color: 'from-purple-600 to-purple-800' },
-]
+Created: January 16, 2026
+Updated: January 17, 2026
+Owner: Marc (Wonder Books Press / Drive Time Tales)
+Status: PROTECTED
 
-// State abbreviation to full name mapping
-const STATE_NAMES: Record<string, string> = {
-  'AL': 'Alabama', 'AK': 'Alaska', 'AZ': 'Arizona', 'AR': 'Arkansas', 'CA': 'California',
-  'CO': 'Colorado', 'CT': 'Connecticut', 'DE': 'Delaware', 'FL': 'Florida', 'GA': 'Georgia',
-  'HI': 'Hawaii', 'ID': 'Idaho', 'IL': 'Illinois', 'IN': 'Indiana', 'IA': 'Iowa',
-  'KS': 'Kansas', 'KY': 'Kentucky', 'LA': 'Louisiana', 'ME': 'Maine', 'MD': 'Maryland',
-  'MA': 'Massachusetts', 'MI': 'Michigan', 'MN': 'Minnesota', 'MS': 'Mississippi', 'MO': 'Missouri',
-  'MT': 'Montana', 'NE': 'Nebraska', 'NV': 'Nevada', 'NH': 'New Hampshire', 'NJ': 'New Jersey',
-  'NM': 'New Mexico', 'NY': 'New York', 'NC': 'North Carolina', 'ND': 'North Dakota', 'OH': 'Ohio',
-  'OK': 'Oklahoma', 'OR': 'Oregon', 'PA': 'Pennsylvania', 'RI': 'Rhode Island', 'SC': 'South Carolina',
-  'SD': 'South Dakota', 'TN': 'Tennessee', 'TX': 'Texas', 'UT': 'Utah', 'VT': 'Vermont',
-  'VA': 'Virginia', 'WA': 'Washington', 'WV': 'West Virginia', 'WI': 'Wisconsin', 'WY': 'Wyoming',
-}
+DESCRIPTION:
+News Briefings section with 6 categories using color wheel colors (60° apart)
+
+COLOR WHEEL ORDER:
+- State: Red (0°) - from-red-600 to-red-800
+- National: Orange (60°) - from-orange-500 to-orange-700
+- World: Yellow (120°) - from-yellow-500 to-yellow-700
+- Business: Green (180°) - from-green-600 to-green-800
+- Sports: Blue (240°) - from-blue-600 to-blue-800
+- Sci/Tech: Purple (300°) - from-purple-600 to-purple-800
+
+LAYOUT:
+- Icon: TOP LEFT corner
+- Status Flag: TOP RIGHT corner
+- Label: Centered below (uses state abbreviation + "News" for state category)
+
+STATUS FLAGS:
+- New: bg-amber-400 text-black
+- Playing: bg-emerald-400 text-black
+- Paused: bg-sky-400 text-black
+- Played: bg-rose-400 text-black
+
+BEHAVIOR:
+- New + Press → Playing
+- Playing + Press → Paused
+- Paused + Press → Resumes, Playing
+- Played + Press → Starts from beginning, Playing
+- Audio ends → Played
+
+CHANGE LOG:
+- 2026-01-16: Initial version (wrong colors, dots instead of flags)
+- 2026-01-17: Corrected to color wheel, added status flags, icon top-left, abbreviations
+
+================================================================================
+*/
+
+'use client'
+
+import { useState, useRef } from 'react'
+
+// =============================================================================
+// TYPES
+// =============================================================================
 
 interface NewsEpisode {
   id: string
@@ -65,56 +62,128 @@ interface NewsEpisode {
   is_live: boolean
 }
 
+type BriefingStatus = 'new' | 'playing' | 'paused' | 'played'
+
 interface NewsBriefingsProps {
   newsEpisodes: Record<string, NewsEpisode>
-  userState: string
-  playingCategory: string | null
-  onPlayNews: (category: string) => void
+  userState: string  // State abbreviation (e.g., "SC")
 }
 
-export function NewsBriefings({ newsEpisodes, userState, playingCategory, onPlayNews }: NewsBriefingsProps) {
-  
-  // Get full state name from abbreviation or return as-is
-  const getStateName = () => {
-    if (!userState) return 'State'
-    const upper = userState.toUpperCase()
-    return STATE_NAMES[upper] || userState
+// =============================================================================
+// NEWS CATEGORIES - COLOR WHEEL (60° apart) - DO NOT CHANGE
+// =============================================================================
+
+const NEWS_CATEGORIES = [
+  { id: 'state', name: 'News', icon: '🏛️', color: 'from-red-600 to-red-800' },        // Red (0°)
+  { id: 'national', name: 'National', icon: '🇺🇸', color: 'from-orange-500 to-orange-700' }, // Orange (60°)
+  { id: 'international', name: 'World', icon: '🌍', color: 'from-yellow-500 to-yellow-700' }, // Yellow (120°)
+  { id: 'business', name: 'Business', icon: '💼', color: 'from-green-600 to-green-800' },    // Green (180°)
+  { id: 'sports', name: 'Sports', icon: '⚽', color: 'from-blue-600 to-blue-800' },          // Blue (240°)
+  { id: 'science', name: 'Sci/Tech', icon: '🔬', color: 'from-purple-600 to-purple-800' },   // Purple (300°)
+]
+
+// =============================================================================
+// STATUS BADGE STYLES - DO NOT CHANGE
+// =============================================================================
+
+const STATUS_STYLES: Record<BriefingStatus, string> = {
+  new: 'bg-amber-400 text-black',
+  playing: 'bg-emerald-400 text-black',
+  paused: 'bg-sky-400 text-black',
+  played: 'bg-rose-400 text-black',
+}
+
+const STATUS_LABELS: Record<BriefingStatus, string> = {
+  new: 'New',
+  playing: 'Playing',
+  paused: 'Paused',
+  played: 'Played',
+}
+
+// =============================================================================
+// COMPONENT
+// =============================================================================
+
+export function NewsBriefings({ newsEpisodes, userState }: NewsBriefingsProps) {
+  const [briefingStatus, setBriefingStatus] = useState<Record<string, BriefingStatus>>({})
+  const audioRefs = useRef<Record<string, HTMLAudioElement>>({})
+
+  // Handle play/pause toggle
+  const handlePlayBriefing = (categoryId: string) => {
+    const episode = newsEpisodes[categoryId]
+    if (!episode?.audio_url) return
+
+    // Pause any other playing audio
+    Object.entries(audioRefs.current).forEach(([id, audio]) => {
+      if (id !== categoryId && !audio.paused) {
+        audio.pause()
+        setBriefingStatus(prev => ({ ...prev, [id]: 'paused' }))
+      }
+    })
+
+    // Create audio element if needed
+    if (!audioRefs.current[categoryId]) {
+      audioRefs.current[categoryId] = new Audio(episode.audio_url)
+      audioRefs.current[categoryId].onended = () => {
+        setBriefingStatus(prev => ({ ...prev, [categoryId]: 'played' }))
+      }
+    }
+
+    const audio = audioRefs.current[categoryId]
+    const currentStatus = briefingStatus[categoryId] || 'new'
+
+    if (currentStatus === 'playing') {
+      // Currently playing -> pause
+      audio.pause()
+      setBriefingStatus(prev => ({ ...prev, [categoryId]: 'paused' }))
+    } else {
+      // Not playing -> play/resume
+      if (currentStatus === 'played') {
+        audio.currentTime = 0
+      }
+      audio.play()
+      setBriefingStatus(prev => ({ ...prev, [categoryId]: 'playing' }))
+    }
   }
 
   return (
-    <section>
-      <h2 className="text-lg font-bold text-white mb-4">📰 News Briefings</h2>
-      <p className="text-white text-sm mb-3">News Briefings are Free!</p>
+    <section className="px-4">
+      <h2 className="text-lg font-bold text-white mb-1">📰 NEWS BRIEFINGS</h2>
+      <p className="text-white text-xs mb-4">Top stories updated throughout the day</p>
       <div className="grid grid-cols-3 gap-3">
         {NEWS_CATEGORIES.map((cat) => {
           const episode = newsEpisodes[cat.id]
-          const isAvailable = episode?.audio_url
-          const isPlaying = playingCategory === cat.id
-          const displayName = cat.id === 'state' ? getStateName() : cat.name
+          const hasEpisode = !!episode?.audio_url
+          const status: BriefingStatus = briefingStatus[cat.id] || 'new'
+          
+          // For state category, show "SC News" format
+          const displayName = cat.id === 'state' 
+            ? `${userState || 'State'} ${cat.name}` 
+            : cat.name
 
           return (
             <button
               key={cat.id}
-              onClick={() => isAvailable && onPlayNews(cat.id)}
-              disabled={!isAvailable}
-              className={`relative p-4 rounded-xl text-center transition-all ${
-                isAvailable 
+              onClick={() => hasEpisode && handlePlayBriefing(cat.id)}
+              disabled={!hasEpisode}
+              className={`relative p-3 rounded-xl text-center transition-all ${
+                hasEpisode 
                   ? `bg-gradient-to-br ${cat.color} hover:scale-105 cursor-pointer` 
                   : 'bg-slate-800 opacity-50 cursor-not-allowed'
               }`}
             >
-              <div className="text-2xl mb-1">{cat.icon}</div>
-              <div className="text-white text-xs font-medium">{displayName}</div>
-              {/* Status indicator */}
-              <div className="absolute top-2 right-2">
-                {isPlaying ? (
-                  <span className="w-3 h-3 bg-green-400 rounded-full animate-pulse inline-block"></span>
-                ) : isAvailable ? (
-                  <span className="w-3 h-3 bg-green-500 rounded-full inline-block"></span>
-                ) : (
-                  <span className="w-3 h-3 bg-red-500 rounded-full inline-block"></span>
-                )}
-              </div>
+              {/* Icon TOP LEFT */}
+              <span className="absolute top-2 left-2 text-lg">{cat.icon}</span>
+              
+              {/* Status Flag TOP RIGHT */}
+              {hasEpisode && (
+                <span className={`absolute top-1.5 right-1.5 text-[9px] px-1.5 py-0.5 rounded-full font-bold ${STATUS_STYLES[status]}`}>
+                  {STATUS_LABELS[status]}
+                </span>
+              )}
+              
+              {/* Label centered below */}
+              <div className="text-white text-sm font-semibold mt-6">{displayName}</div>
             </button>
           )
         })}

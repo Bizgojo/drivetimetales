@@ -1,10 +1,10 @@
 /*
 ================================================================================
-🔒 PROTECTED MODULE - DO NOT MODIFY WITHOUT OWNER APPROVAL
+🔒 PROTECTED MODULE 06 - DO NOT MODIFY WITHOUT OWNER APPROVAL
 ================================================================================
-Module: ContinueListening
+Module: 06_ContinueListening
 Location: ~/DriveTimeFiles/WorkingCodeLibrary/02_HomePage/
-File: ContinueListening.protected.tsx
+File: 06_ContinueListening.protected.tsx
 
 Created: January 16, 2026
 Owner: Marc (Wonder Books Press / Drive Time Tales)
@@ -210,119 +210,3 @@ export default function ContinueListening() {
     </section>
   )
 }
-
-
-// =============================================================================
-// REQUIRED CSS (add to globals.css)
-// =============================================================================
-/*
-.cover-glow {
-  box-shadow: 0 0 15px rgba(255, 255, 255, 0.4);
-}
-*/
-
-
-// =============================================================================
-// SPECS REFERENCE (DO NOT CHANGE)
-// =============================================================================
-/*
-SECTION CONTAINER:
-- px-4 pt-6 pb-4
-
-SECTION TITLE:
-- text-lg font-bold text-white mb-4
-- Emoji: ▶️
-
-CARD CONTAINER:
-- flex
-- bg-slate-800
-- rounded-xl
-- overflow-hidden
-- hover:bg-slate-700 transition
-- Entire card wrapped in Link (clickable)
-
-COVER WRAPPER:
-- w-28 h-28 (112px x 112px)
-- flex-shrink-0
-- p-2 (8px padding around cover)
-
-COVER INNER:
-- w-full h-full
-- rounded-lg
-- overflow-hidden
-- cover-glow (box-shadow: 0 0 15px rgba(255,255,255,0.4))
-
-INFO AREA:
-- flex-1
-- py-2 pr-3
-- flex flex-col justify-center
-
-TYPOGRAPHY:
-- Title: text-sm font-bold text-white line-clamp-1
-- Genre: text-white text-xs
-- Author: text-white text-xs (prefixed with "by ")
-- Duration line: text-white text-xs ("{duration} min • {remaining} min left")
-
-PROGRESS BAR:
-- Container: flex items-center gap-2 mt-1
-- Track: flex-1 h-1.5 bg-slate-700 rounded-full
-- Fill: h-1.5 bg-orange-500 rounded-full, width = progress %
-- Percentage: text-white text-xs
-
-PLAY BUTTON:
-- Container: pr-3 flex items-center
-- Button: w-10 h-10 bg-orange-500 rounded-full flex items-center justify-center
-- Hover: hover:bg-orange-400 transition
-- Icon: w-5 h-5 text-black ml-0.5 (play triangle SVG)
-
-NAVIGATION:
-- Route: /player/[story_id]/play?resume=[resumePosition]
-- Resume position: progress - 5 seconds (minimum 0)
-
-DATA QUERY:
-- Table: user_library JOIN stories
-- Filter: user_id = current user, completed = FALSE
-- Order: last_played DESC
-- Limit: 1
-*/
-
-
-// =============================================================================
-// USAGE IN HOME PAGE
-// =============================================================================
-/*
-import ContinueListening from '@/components/ContinueListening'
-
-export default function HomePage() {
-  return (
-    <div>
-      <ContinueListening />
-      
-      <NewReleases />
-      <RecommendedForYou />
-    </div>
-  )
-}
-
-NOTE: ContinueListening automatically hides itself if no uncompleted story exists.
-No conditional rendering needed in the parent component.
-*/
-
-
-// =============================================================================
-// PLAY PAGE MUST HANDLE RESUME PARAMETER
-// =============================================================================
-/*
-The /player/[id]/play page must read the ?resume= query parameter and set
-the audio currentTime on load:
-
-// In /player/[id]/play/page.tsx
-const searchParams = useSearchParams()
-const resumeTime = parseInt(searchParams.get('resume') || '0', 10)
-
-useEffect(() => {
-  if (audioRef.current && resumeTime > 0) {
-    audioRef.current.currentTime = resumeTime
-  }
-}, [resumeTime])
-*/

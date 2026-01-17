@@ -112,3 +112,20 @@ html {
     min-width: 44px;
   }
 }
+/* =============================================================================
+   DTT HOME PAGE - REQUIRED CSS ADDITIONS
+   Add these to your globals.css file
+   ============================================================================= */
+
+/* Cover glow effect for story cards */
+.cover-glow {
+  box-shadow: 0 0 15px rgba(255, 255, 255, 0.4);
+}
+
+/* Half-star rating effect */
+.star-half {
+  background: linear-gradient(90deg, #facc15 50%, #475569 50%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
