@@ -29,13 +29,11 @@ export default function HomePage() {
   }, [user])
 
   return (
-    <div className="min-h-screen bg-slate-950">
-      <div className="max-w-md mx-auto">
-        <StickyLogo1 userName={displayName} />
-        <main className="pb-24 px-4 pt-6">
-          <p className="text-white">Module 02 loaded successfully.</p>
-        </main>
-      </div>
+    <div className="min-h-screen bg-slate-950 w-full">
+      <StickyLogo1 userName={displayName} />
+      <main className="pb-24 px-4 pt-6">
+        <p className="text-white text-lg">Module 02 loaded successfully.</p>
+      </main>
     </div>
   )
 }
