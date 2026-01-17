@@ -1,20 +1,6 @@
 /*
 ================================================================================
-🔒 PROTECTED MODULE - DO NOT MODIFY WITHOUT OWNER APPROVAL
-================================================================================
-Module: BottomStickyButtons
-Location: /components/BottomStickyButtons.tsx
-Created: January 16, 2026
-Owner: Marc (Wonder Books Press / Drive Time Tales)
-Status: LOCKED
-
-PURPOSE:
-Bottom sticky button bar for the DTT Home Page.
-Two side-by-side buttons fixed to the bottom of the screen.
-
-BUTTONS:
-- Left: "📚 Go to Library" (Orange) → /library
-- Right: "💌 Recommend a Friend / It's a Win Win" (Teal) → /refer
+🔒 PROTECTED MODULE 09 - PRODUCTION SAFE VERSION
 ================================================================================
 */
 
@@ -24,23 +10,67 @@ import Link from 'next/link'
 
 export default function BottomStickyButtons() {
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-slate-950 border-t border-slate-800 px-4 py-2 z-50">
-      <div className="flex gap-2">
+    <div 
+      className="bg-slate-950 border-t border-slate-800"
+      style={{ 
+        position: 'fixed', 
+        bottom: 0, 
+        left: 0, 
+        right: 0, 
+        paddingLeft: '1rem', 
+        paddingRight: '1rem', 
+        paddingTop: '0.75rem', 
+        paddingBottom: '0.75rem', 
+        zIndex: 50 
+      }}
+    >
+      <div style={{ display: 'flex', gap: '0.75rem', maxWidth: '48rem', marginLeft: 'auto', marginRight: 'auto' }}>
         
-        {/* Left Button: Go to Library (Orange) */}
+        {/* Left Button: Go to Library (Orange, white text) */}
         <Link 
           href="/library" 
-          className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-400 text-black font-semibold text-sm rounded-xl text-center transition"
+          className="hover:bg-orange-400 font-semibold rounded-xl transition"
+          style={{ 
+            flex: 1, 
+            paddingTop: '1.25rem', 
+            paddingBottom: '1.25rem', 
+            textAlign: 'center', 
+            backgroundColor: '#f97316', 
+            color: 'white', 
+            fontSize: '1.125rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '0.5rem'
+          }}
         >
-          📚 Go to Library
+          <span style={{ fontSize: '1.75rem', lineHeight: 1 }}>📚</span>
+          <span>Go to Library</span>
         </Link>
         
-        {/* Right Button: Recommend a Friend (Teal with White Text) */}
+        {/* Right Button: Recommend a Friend (Teal, black text) */}
         <Link 
           href="/refer" 
-          className="flex-1 py-2.5 bg-teal-500 hover:bg-teal-400 text-white font-semibold text-sm rounded-xl text-center transition"
+          className="hover:bg-teal-400 font-semibold rounded-xl transition"
+          style={{ 
+            flex: 1, 
+            paddingTop: '1rem', 
+            paddingBottom: '1rem', 
+            textAlign: 'center', 
+            backgroundColor: '#14b8a6', 
+            color: 'black', 
+            fontSize: '1rem',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
         >
-          💌 Recommend a Friend
+          <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span style={{ fontSize: '1.75rem', lineHeight: 1 }}>💌</span>
+            <span>Recommend a Friend</span>
+          </span>
+          <span style={{ fontSize: '0.75rem', fontWeight: 'normal' }}>It's a Win Win</span>
         </Link>
         
       </div>
