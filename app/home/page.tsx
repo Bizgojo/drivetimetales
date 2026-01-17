@@ -106,7 +106,6 @@ export default function HomePage() {
         <NewsBriefings newsEpisodes={newsEpisodes} userState={userState} />
 
         <ContinueListening />
-        <p className="text-white text-lg px-4 pt-6">Modules 02 + 04 + 05 loaded successfully.</p>
       </main>
     </div>
   )
