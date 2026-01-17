@@ -41,7 +41,7 @@ const STATUS_LABELS: Record<BriefingStatus, string> = {
   played: '✓',
 }
 
-export default function NewsBriefings({ userState }: { userState?: string }) {
+export function NewsBriefings({ userState }: { userState?: string }) {
   const [newsEpisodes, setNewsEpisodes] = useState<Record<string, any>>({})
   const [briefingStatus, setBriefingStatus] = useState<Record<string, BriefingStatus>>({})
   const audioRefs = useRef<Record<string, HTMLAudioElement>>({})
