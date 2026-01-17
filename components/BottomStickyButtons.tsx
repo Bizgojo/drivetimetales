@@ -59,8 +59,8 @@ export default function BottomStickyButtons() {
         {/* Left Button: Go to Library (Orange) */}
         <Link 
           href="/library" 
-          className="bg-orange-500 hover:bg-orange-400 text-black font-semibold text-sm rounded-xl transition"
-          style={{ flex: 1, paddingTop: '0.75rem', paddingBottom: '0.75rem', textAlign: 'center' }}
+          className="hover:bg-orange-400 text-black font-semibold text-sm rounded-xl transition"
+          style={{ flex: 1, paddingTop: '0.75rem', paddingBottom: '0.75rem', textAlign: 'center', backgroundColor: '#f97316' }}
         >
           📚 Go to Library
         </Link>
@@ -68,8 +68,8 @@ export default function BottomStickyButtons() {
         {/* Right Button: Recommend a Friend (Teal with White Text) */}
         <Link 
           href="/refer" 
-          className="bg-teal-500 hover:bg-teal-400 text-white font-semibold text-sm rounded-xl transition"
-          style={{ flex: 1, paddingTop: '0.75rem', paddingBottom: '0.75rem', textAlign: 'center', lineHeight: '1.25' }}
+          className="hover:bg-teal-400 text-white font-semibold text-sm rounded-xl transition"
+          style={{ flex: 1, paddingTop: '0.75rem', paddingBottom: '0.75rem', textAlign: 'center', lineHeight: '1.25', backgroundColor: '#14b8a6' }}
         >
           💌 Recommend a Friend<br />
           <span className="text-xs font-normal">It's a Win Win</span>
