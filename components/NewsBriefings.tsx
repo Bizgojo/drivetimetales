@@ -25,20 +25,6 @@ const NEWS_CATEGORIES = [
   { id: 'science', name: 'Sci/Tech', icon: '🔬', color: 'from-purple-600 to-purple-800' },
 ]
 
-const STATUS_STYLES: Record<BriefingStatus, string> = {
-  new: 'bg-amber-400 text-black',
-  playing: 'bg-emerald-400 text-black',
-  paused: 'bg-sky-400 text-black',
-  played: 'bg-rose-400 text-black',
-}
-
-const STATUS_LABELS: Record<BriefingStatus, string> = {
-  new: 'New',
-  playing: 'Playing',
-  paused: 'Paused',
-  played: 'Played',
-}
-
 // State name to abbreviation converter
 const STATE_ABBREVIATIONS: Record<string, string> = {
   'alabama': 'AL', 'alaska': 'AK', 'arizona': 'AZ', 'arkansas': 'AR', 'california': 'CA',
@@ -56,11 +42,29 @@ const STATE_ABBREVIATIONS: Record<string, string> = {
 
 function getStateAbbreviation(state: string): string {
   if (!state) return 'State'
-  // If already 2 letters, return as-is
   if (state.length === 2) return state.toUpperCase()
-  // Look up full name
   const abbrev = STATE_ABBREVIATIONS[state.toLowerCase()]
   return abbrev || state
+}
+
+function getStatusStyle(status: BriefingStatus): string {
+  switch (status) {
+    case 'new': return 'bg-amber-400 text-black'
+    case 'playing': return 'bg-emerald-400 text-black'
+    case 'paused': return 'bg-sky-400 text-black'
+    case 'played': return 'bg-rose-400 text-black'
+    default: return 'bg-amber-400 text-black'
+  }
+}
+
+function getStatusLabel(status: BriefingStatus): string {
+  switch (status) {
+    case 'new': return 'New'
+    case 'playing': return 'Playing'
+    case 'paused': return 'Paused'
+    case 'played': return 'Played'
+    default: return 'New'
+  }
 }
 
 export function NewsBriefings({ newsEpisodes, userState }: NewsBriefingsProps) {
@@ -130,8 +134,16 @@ export function NewsBriefings({ newsEpisodes, userState }: NewsBriefingsProps) {
               <span className="absolute top-2 left-2 text-lg">{cat.icon}</span>
               
               {hasEpisode && (
-                <span className={`absolute top-1.5 right-1.5 text-[9px] px-1.5 py-0.5 rounded-full font-bold ${STATUS_STYLES[status]}`}>
-                  {STATUS_LABELS[status]}
+                <span 
+                  className={`absolute top-1.5 right-1.5 text-[9px] px-1.5 py-0.5 rounded-full font-bold ${getStatusStyle(status)}`}
+                  style={{ 
+                    backgroundColor: status === 'new' ? '#fbbf24' : 
+                                     status === 'playing' ? '#34d399' : 
+                                     status === 'paused' ? '#38bdf8' : '#fb7185',
+                    color: '#000'
+                  }}
+                >
+                  {getStatusLabel(status)}
                 </span>
               )}
               
