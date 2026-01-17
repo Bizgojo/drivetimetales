@@ -8,6 +8,7 @@ import { NewsBriefings } from '@/components/NewsBriefings'
 import ContinueListening from '@/components/ContinueListening'
 import NewReleases from '@/components/NewReleases'
 import RecommendedForYou from '@/components/RecommendedForYou'
+import RecommendedForYou from '@/components/RecommendedForYou'
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
@@ -109,6 +110,7 @@ export default function HomePage() {
 
         <ContinueListening />
         <NewReleases />
+        <RecommendedForYou />
         <RecommendedForYou />
       </main>
     </div>
