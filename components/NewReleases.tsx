@@ -92,6 +92,7 @@ export default function NewReleases() {
         const { data, error } = await supabase
           .from('stories')
           .select('id, title, genre, author, duration_mins, cover_url, published_on')
+          .not('cover_url', 'is', null)
           .order('published_on', { ascending: false })
           .limit(2)
 
