@@ -116,7 +116,7 @@ export default function RecommendedForYou() {
         // Fetch random stories for recommendations (only with covers)
         const { data, error } = await supabase
           .from('stories')
-          .select('id, title, genre, author, duration_mins, cover_url, rating, review_count, flag')
+          .select('id, title, genre, author, duration_mins, cover_url')
           .not('cover_url', 'is', null)
           .limit(3)
 
