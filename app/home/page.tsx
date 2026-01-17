@@ -30,10 +30,12 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-slate-950">
-      <StickyLogo1 userName={displayName} />
-      <main className="pb-24 px-4 pt-6">
-        <p className="text-white">Module 02 loaded successfully.</p>
-      </main>
+      <div className="max-w-md mx-auto">
+        <StickyLogo1 userName={displayName} />
+        <main className="pb-24 px-4 pt-6">
+          <p className="text-white">Module 02 loaded successfully.</p>
+        </main>
+      </div>
     </div>
   )
 }
