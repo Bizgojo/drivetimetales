@@ -1,7 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import { supabase } from '@/lib/supabase'
+import { useState, useRef } from 'react'
 
 const STATE_ABBREVIATIONS: Record<string, string> = {
   'Alabama': 'AL', 'Alaska': 'AK', 'Arizona': 'AZ', 'Arkansas': 'AR', 'California': 'CA',
@@ -41,37 +40,29 @@ const STATUS_LABELS: Record<BriefingStatus, string> = {
   played: '✓',
 }
 
-export function NewsBriefings({ userState }: { userState?: string }) {
-  const [newsEpisodes, setNewsEpisodes] = useState<Record<string, any>>({})
+interface NewsBriefingsProps {
+  newsEpisodes: Record<string, any>
+  userState?: string
+}
+
+export function NewsBriefings({ newsEpisodes, userState }: NewsBriefingsProps) {
   const [briefingStatus, setBriefingStatus] = useState<Record<string, BriefingStatus>>({})
   const audioRefs = useRef<Record<string, HTMLAudioElement>>({})
-
-  useEffect(() => {
-    const fetchNewsEpisodes = async () => {
-      const today = new Date().toISOString().split('T')[0]
-      const { data } = await supabase.from('news_episodes').select('*').eq('publish_date', today)
-      if (data) {
-        const episodeMap: Record<string, any> = {}
-        data.forEach((ep: any) => {
-          episodeMap[ep.category] = ep
-          if (ep.audio_url) {
-            const audio = new Audio(ep.audio_url)
-            audio.addEventListener('ended', () => setBriefingStatus(prev => ({ ...prev, [ep.category]: 'played' })))
-            audioRefs.current[ep.category] = audio
-          }
-        })
-        setNewsEpisodes(episodeMap)
-      }
-    }
-    fetchNewsEpisodes()
-    return () => { Object.values(audioRefs.current).forEach(a => { a.pause(); a.src = '' }) }
-  }, [])
 
   const handlePlayBriefing = (categoryId: string) => {
     Object.entries(audioRefs.current).forEach(([id, audio]) => {
       if (id !== categoryId && !audio.paused) { audio.pause(); setBriefingStatus(prev => ({ ...prev, [id]: 'paused' })) }
     })
+    
+    if (!audioRefs.current[categoryId] && newsEpisodes[categoryId]?.audio_url) {
+      const audio = new Audio(newsEpisodes[categoryId].audio_url)
+      audio.addEventListener('ended', () => setBriefingStatus(prev => ({ ...prev, [categoryId]: 'played' })))
+      audioRefs.current[categoryId] = audio
+    }
+    
     const audio = audioRefs.current[categoryId]
+    if (!audio) return
+    
     const currentStatus = briefingStatus[categoryId] || 'new'
     if (currentStatus === 'playing') { audio.pause(); setBriefingStatus(prev => ({ ...prev, [categoryId]: 'paused' })) }
     else { if (currentStatus === 'played') audio.currentTime = 0; audio.play(); setBriefingStatus(prev => ({ ...prev, [categoryId]: 'playing' })) }
