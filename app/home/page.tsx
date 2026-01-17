@@ -5,6 +5,7 @@
 import StickyLogo1 from '@/components/StickyLogo1'
 import { WelcomeCredits } from '@/components/WelcomeCredits'
 import { NewsBriefings } from '@/components/NewsBriefings'
+import ContinueListening from '@/components/ContinueListening'
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
@@ -103,6 +104,8 @@ export default function HomePage() {
       <main className="pb-24">
         <WelcomeCredits displayName={displayName} userCredits={userCredits} />
         <NewsBriefings newsEpisodes={newsEpisodes} userState={userState} />
+
+        <ContinueListening />
         <p className="text-white text-lg px-4 pt-6">Modules 02 + 04 + 05 loaded successfully.</p>
       </main>
     </div>
