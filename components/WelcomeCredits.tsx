@@ -1,45 +1,4 @@
-/*
-================================================================================
-🔒 PROTECTED MODULE 04 - DO NOT MODIFY WITHOUT OWNER APPROVAL
-================================================================================
-Module: 04_WelcomeCredits
-Location: ~/DriveTimeFiles/WorkingCodeLibrary/02_HomePage/
-File: 04_WelcomeCredits.protected.tsx
-
-VERSION: 2026-01-16 3:15pm
-Owner: Marc (Wonder Books Press / Drive Time Tales)
-Status: PROTECTED
-
-DESCRIPTION:
-Welcome message and credits display for Home Page
-- "Welcome back, {first_name}!"
-- "You have {credits} credits in your account."
-- If credits = 0, shows orange [Get More Credits] button
-
-LAYOUT:
-- Flush left (text-left)
-- Button appears inline to right of credits text when credits = 0
-
-SPECIFICATIONS:
-- Welcome: text-2xl, font-bold, text-white, text-left
-- Credits text: text-white, credits number in text-orange-400 font-bold
-- Button: bg-orange-500, text-black, font-bold, rounded-lg, links to /pricing
-- Padding: px-4 py-6
-
-DATABASE:
-- Table: users
-- Columns used: first_name, credits
-- Query: .from('users').select('first_name, credits').eq('id', session.user.id).single()
-
-PROPS:
-- displayName: string - User's first name (from users.first_name)
-- userCredits: number - Credit balance (from users.credits)
-
-BUTTON LINK:
-- Links to: /pricing (page for purchasing more credits)
-
-================================================================================
-*/
+'use client'
 
 import Link from 'next/link'
 
