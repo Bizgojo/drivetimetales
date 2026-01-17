@@ -60,7 +60,7 @@ export default function BottomStickyButtons() {
         <Link 
           href="/library" 
           className="hover:bg-orange-400 text-black font-semibold text-sm rounded-xl transition"
-          style={{ flex: 1, paddingTop: '0.75rem', paddingBottom: '0.75rem', textAlign: 'center', backgroundColor: '#f97316' }}
+          style={{ flex: 1, paddingTop: '0.75rem', paddingBottom: '0.75rem', textAlign: 'center', backgroundColor: '#f97316', color: 'white', fontSize: '1rem' }}
         >
           📚 Go to Library
         </Link>
@@ -69,7 +69,7 @@ export default function BottomStickyButtons() {
         <Link 
           href="/refer" 
           className="hover:bg-teal-400 text-white font-semibold text-sm rounded-xl transition"
-          style={{ flex: 1, paddingTop: '0.75rem', paddingBottom: '0.75rem', textAlign: 'center', lineHeight: '1.25', backgroundColor: '#14b8a6' }}
+          style={{ flex: 1, paddingTop: '0.75rem', paddingBottom: '0.75rem', textAlign: 'center', lineHeight: '1.25', backgroundColor: '#14b8a6', color: 'black' }}
         >
           💌 Recommend a Friend<br />
           <span className="text-xs font-normal">It's a Win Win</span>
