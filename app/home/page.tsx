@@ -6,6 +6,7 @@ import StickyLogo1 from '@/components/StickyLogo1'
 import { WelcomeCredits } from '@/components/WelcomeCredits'
 import { NewsBriefings } from '@/components/NewsBriefings'
 import ContinueListening from '@/components/ContinueListening'
+import NewReleases from '@/components/NewReleases'
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
@@ -106,6 +107,7 @@ export default function HomePage() {
         <NewsBriefings newsEpisodes={newsEpisodes} userState={userState} />
 
         <ContinueListening />
+        <NewReleases />
       </main>
     </div>
   )
