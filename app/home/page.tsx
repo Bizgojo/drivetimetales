@@ -11,6 +11,7 @@ import RecommendedForYou from '@/components/RecommendedForYou'
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
+import BottomStickyButtons from '@/components/BottomStickyButtons'
 
 interface NewsEpisode {
   id: string
@@ -111,6 +112,7 @@ export default function HomePage() {
         <NewReleases />
         <RecommendedForYou />
       </main>
+      <BottomStickyButtons />
     </div>
   )
 }
