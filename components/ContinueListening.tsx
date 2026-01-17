@@ -1,9 +1,3 @@
-/*
-================================================================================
-🔒 PROTECTED MODULE 06 - DO NOT MODIFY WITHOUT OWNER APPROVAL
-================================================================================
-*/
-
 'use client'
 
 import Link from 'next/link'
@@ -87,13 +81,8 @@ export default function ContinueListening() {
     fetchContinueListening()
   }, [user])
 
-  if (loading) {
-    return null
-  }
-
-  if (!story) {
-    return null
-  }
+  if (loading) return null
+  if (!story) return null
 
   const totalSeconds = story.duration_mins * 60
   const progressPercent = totalSeconds > 0 ? Math.round((story.progress / totalSeconds) * 100) : 0
