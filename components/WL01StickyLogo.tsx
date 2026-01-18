@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import DTTLogo from '@/components/DTTLogo'
 
 interface WL01StickyLogoProps {
   credits: number
@@ -32,16 +33,7 @@ export default function WL01StickyLogo({ credits }: WL01StickyLogoProps) {
           ← Back
         </Link>
         
-        <h1 
-          style={{ 
-            fontSize: '1.25rem',
-            fontWeight: 'bold',
-            fontStyle: 'italic',
-            color: '#f97316'
-          }}
-        >
-          Drive Time Tales
-        </h1>
+        <DTTLogo size="md" />
         
         <div className="text-white" style={{ fontSize: '0.875rem' }}>
           {credits} credits
