@@ -134,14 +134,6 @@ export default function LibraryFilters({
         )}
       </div>
       
-      {/* Reset */}
-      <button 
-        onClick={resetFilters}
-        className="text-slate-400 text-sm"
-        style={{ width: '100%', padding: '0.5rem', background: 'none', border: 'none', cursor: 'pointer' }}
-      >
-        ↺ Show me everything
-      </button>
     </div>
   )
 }
