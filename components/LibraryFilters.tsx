@@ -68,7 +68,7 @@ export default function LibraryFilters({
       <div style={{ marginBottom: '1rem' }}>
         <p className="text-white text-sm font-semibold" style={{ marginBottom: '0.5rem' }}>What are you in the mood for?</p>
         <div className="bg-slate-800 rounded-xl" style={{ padding: '0.375rem' }}>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.25rem' }}>
             {genres.map(g => (
               <button
                 key={g}
