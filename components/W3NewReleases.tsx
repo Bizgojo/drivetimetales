@@ -112,7 +112,7 @@ export default function W3NewReleases() {
     return (
       <section style={{ paddingLeft: '1rem', paddingRight: '1rem', paddingTop: '1.5rem', paddingBottom: '1rem' }}>
         <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>🆕 New Releases</h2>
-        <p className="text-slate-400 text-xs" style={{ marginTop: '-0.75rem', marginBottom: '1rem' }}>Stories you can enjoy with your free credits</p>
+        <p className="text-white text-xs" style={{ marginTop: '-0.75rem', marginBottom: '1rem' }}>Stories you can enjoy with your free credits</p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem' }}>
           {[1, 2].map((i) => (
             <div key={i} className="animate-pulse bg-slate-800 rounded-xl" style={{ padding: '0.5rem' }}>
@@ -141,7 +141,7 @@ export default function W3NewReleases() {
   return (
     <section style={{ paddingLeft: '1rem', paddingRight: '1rem', paddingTop: '1.5rem', paddingBottom: '1rem' }}>
       <h2 className="text-lg font-bold text-white" style={{ marginBottom: '0.25rem' }}>🆕 New Releases</h2>
-      <p className="text-slate-400 text-xs" style={{ marginBottom: '1rem' }}>Stories you can enjoy with your free credits</p>
+      <p className="text-white text-xs" style={{ marginBottom: '1rem' }}>Stories you can enjoy with your free credits</p>
       
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem' }}>
         {stories.map((story) => (
@@ -171,7 +171,7 @@ export default function W3NewReleases() {
               <p className="text-white text-xs">
                 {story.duration_mins} min • {getCredits(story.duration_mins)} cr
               </p>
-              <p className="text-slate-400 text-xs">{formatDate(story.published_on)}</p>
+              <p className="text-white text-xs">{formatDate(story.published_on)}</p>
             </div>
           </Link>
         ))}
