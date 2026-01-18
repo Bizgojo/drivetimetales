@@ -24,13 +24,19 @@ export default function LibraryFilters({
   setSelectedType
 }: LibraryFiltersProps) {
   
-  const [genreExpanded, setGenreExpanded] = useState(true)
+  const [durationExpanded, setDurationExpanded] = useState(false)
+  const [genreExpanded, setGenreExpanded] = useState(false)
+  const [typeExpanded, setTypeExpanded] = useState(false)
 
   const resetFilters = () => {
     setSelectedDuration('Any Length')
     setSelectedGenre('📚 All')
     setSelectedType('All')
-    setGenreExpanded(true)
+  }
+
+  const handleDurationSelect = (d: string) => {
+    setSelectedDuration(d)
+    setDurationExpanded(false)
   }
 
   const handleGenreSelect = (g: string) => {
@@ -38,27 +44,38 @@ export default function LibraryFilters({
     setGenreExpanded(false)
   }
 
+  const handleTypeSelect = (t: string) => {
+    setSelectedType(t)
+    setTypeExpanded(false)
+  }
+
   return (
     <div style={{ padding: '0 1rem' }}>
-      {/* Single instruction line */}
-      <p className="text-white text-sm" style={{ marginBottom: '0.75rem' }}>
-        <span className="font-bold">LIBRARY</span> pick a duration, genre, type
-      </p>
-
-      {/* Duration */}
+      {/* Duration - Collapsible */}
       <div style={{ marginBottom: '0.5rem' }}>
-        <div className="bg-slate-800 rounded-xl" style={{ padding: '0.25rem', display: 'flex' }}>
-          {durations.map(d => (
-            <button
-              key={d}
-              onClick={() => setSelectedDuration(d)}
-              className={`rounded-xl text-sm ${selectedDuration === d ? 'bg-orange-500' : ''}`}
-              style={{ flex: 1, padding: '0.75rem', border: 'none', cursor: 'pointer', color: 'white' }}
-            >
-              {d === 'Any Length' ? '🚗 Any' : d}
+        {durationExpanded ? (
+          <div className="bg-slate-800 rounded-xl" style={{ padding: '0.25rem', display: 'flex' }}>
+            {durations.map(d => (
+              <button
+                key={d}
+                onClick={() => handleDurationSelect(d)}
+                className={`rounded-xl text-sm ${selectedDuration === d ? 'bg-orange-500' : ''}`}
+                style={{ flex: 1, padding: '0.75rem', border: 'none', cursor: 'pointer', color: 'white' }}
+              >
+                {d === 'Any Length' ? '🚗 Any' : d}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="bg-slate-800 rounded-xl" style={{ padding: '0.25rem', display: 'flex', gap: '0.25rem' }}>
+            <button className="bg-orange-500 rounded-xl text-sm" style={{ flex: 1, padding: '0.75rem', border: 'none', cursor: 'pointer', color: 'white' }}>
+              {selectedDuration === 'Any Length' ? '🚗 Any' : selectedDuration}
             </button>
-          ))}
-        </div>
+            <button onClick={() => setDurationExpanded(true)} className="bg-slate-700 rounded-xl text-sm" style={{ flex: 1, padding: '0.75rem', border: 'none', cursor: 'pointer', color: 'white' }}>
+              Duration ▼
+            </button>
+          </div>
+        )}
       </div>
       
       {/* Genre - Collapsible */}
@@ -80,43 +97,41 @@ export default function LibraryFilters({
           </div>
         ) : (
           <div className="bg-slate-800 rounded-xl" style={{ padding: '0.25rem', display: 'flex', gap: '0.25rem' }}>
-            {selectedGenre === '📚 All' ? (
-              <>
-                <button className="bg-orange-500 rounded-xl text-sm" style={{ flex: 1, padding: '0.75rem', border: 'none', cursor: 'pointer', color: 'white' }}>
-                  📚 All
-                </button>
-                <button onClick={() => setGenreExpanded(true)} className="bg-slate-700 rounded-xl text-sm" style={{ flex: 1, padding: '0.75rem', border: 'none', cursor: 'pointer', color: 'white' }}>
-                  Genre ▼
-                </button>
-              </>
-            ) : (
-              <>
-                <button className="bg-orange-500 rounded-xl text-sm" style={{ flex: 1, padding: '0.75rem', border: 'none', cursor: 'pointer', color: 'white' }}>
-                  {selectedGenre}
-                </button>
-                <button onClick={() => setGenreExpanded(true)} className="bg-slate-700 rounded-xl text-sm" style={{ flex: 1, padding: '0.75rem', border: 'none', cursor: 'pointer', color: 'white' }}>
-                  More ▼
-                </button>
-              </>
-            )}
+            <button className="bg-orange-500 rounded-xl text-sm" style={{ flex: 1, padding: '0.75rem', border: 'none', cursor: 'pointer', color: 'white' }}>
+              {selectedGenre}
+            </button>
+            <button onClick={() => setGenreExpanded(true)} className="bg-slate-700 rounded-xl text-sm" style={{ flex: 1, padding: '0.75rem', border: 'none', cursor: 'pointer', color: 'white' }}>
+              Genre ▼
+            </button>
           </div>
         )}
       </div>
       
-      {/* Type */}
+      {/* Type - Collapsible */}
       <div style={{ marginBottom: '0.5rem' }}>
-        <div className="bg-slate-800 rounded-xl" style={{ padding: '0.25rem', display: 'flex' }}>
-          {types.map(t => (
-            <button
-              key={t}
-              onClick={() => setSelectedType(t)}
-              className={`rounded-xl text-sm font-medium ${selectedType === t ? 'bg-orange-500' : ''}`}
-              style={{ flex: 1, padding: '0.75rem', border: 'none', cursor: 'pointer', color: 'white' }}
-            >
-              {t === 'All' ? '📚 Either' : t === 'Singles' ? '📖 Singles' : '📺 Series'}
+        {typeExpanded ? (
+          <div className="bg-slate-800 rounded-xl" style={{ padding: '0.25rem', display: 'flex' }}>
+            {types.map(t => (
+              <button
+                key={t}
+                onClick={() => handleTypeSelect(t)}
+                className={`rounded-xl text-sm font-medium ${selectedType === t ? 'bg-orange-500' : ''}`}
+                style={{ flex: 1, padding: '0.75rem', border: 'none', cursor: 'pointer', color: 'white' }}
+              >
+                {t === 'All' ? '📚 Either' : t === 'Singles' ? '📖 Singles' : '📺 Series'}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="bg-slate-800 rounded-xl" style={{ padding: '0.25rem', display: 'flex', gap: '0.25rem' }}>
+            <button className="bg-orange-500 rounded-xl text-sm" style={{ flex: 1, padding: '0.75rem', border: 'none', cursor: 'pointer', color: 'white' }}>
+              {selectedType === 'All' ? '📚 Either' : selectedType === 'Singles' ? '📖 Singles' : '📺 Series'}
             </button>
-          ))}
-        </div>
+            <button onClick={() => setTypeExpanded(true)} className="bg-slate-700 rounded-xl text-sm" style={{ flex: 1, padding: '0.75rem', border: 'none', cursor: 'pointer', color: 'white' }}>
+              Type ▼
+            </button>
+          </div>
+        )}
       </div>
       
       {/* Reset */}
