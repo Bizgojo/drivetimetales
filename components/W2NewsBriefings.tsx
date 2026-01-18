@@ -7,21 +7,32 @@ Location: ~/DriveTimeFiles/WorkingCodeLibrary/01_WelcomePage/
 File: W2_NewsBriefings.protected.tsx
 
 Created: January 18, 2026
+Updated: January 18, 2026 - Added state selection dropdown, no-credits handling
 Owner: Marc (Wonder Books Press / Drive Time Tales)
 Status: PROTECTED
 
 PURPOSE:
 News Briefings section for Welcome page with horizontal button layout.
-Same functionality as Module 05 but different visual design.
 
-LAYOUT DIFFERENCES FROM MODULE 05:
+SCENARIOS:
+1. User has 1+ credits: Plays the actual news briefing
+2. User has 0 credits: Plays "no credits" message from narrator
+3. State News first click: Shows dropdown to select state, then plays
+
+FEATURES:
+- First click on State News shows state dropdown
+- Selected state saved to localStorage
+- State abbreviation becomes label (e.g., "TN News")
+- No-credits handling plays narrator message
+
+LAYOUT:
 - Wider horizontal buttons (not square)
 - Icon on LEFT side of button
 - Category name to RIGHT of icon
-- "New" badge (coral) in top right corner
+- Status badge (New/Playing/Paused/Played) in top right corner
 - 3-column grid
 
-COLOR WHEEL ORDER (same as Module 05):
+COLOR WHEEL ORDER:
 - State: Red (0°) - #dc2626 to #991b1b
 - National: Orange (60°) - #f97316 to #c2410c
 - World: Yellow (120°) - #eab308 to #a16207
@@ -35,7 +46,7 @@ COLOR WHEEL ORDER (same as Module 05):
 
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 
 // =============================================================================
 // TYPES
@@ -52,8 +63,66 @@ type BriefingStatus = 'new' | 'playing' | 'paused' | 'played'
 
 interface W2NewsBriefingsProps {
   newsEpisodes: Record<string, NewsEpisode>
-  userState: string
+  credits: number
 }
+
+// =============================================================================
+// US STATES
+// =============================================================================
+
+const US_STATES = [
+  { abbrev: 'AL', name: 'Alabama' },
+  { abbrev: 'AK', name: 'Alaska' },
+  { abbrev: 'AZ', name: 'Arizona' },
+  { abbrev: 'AR', name: 'Arkansas' },
+  { abbrev: 'CA', name: 'California' },
+  { abbrev: 'CO', name: 'Colorado' },
+  { abbrev: 'CT', name: 'Connecticut' },
+  { abbrev: 'DE', name: 'Delaware' },
+  { abbrev: 'FL', name: 'Florida' },
+  { abbrev: 'GA', name: 'Georgia' },
+  { abbrev: 'HI', name: 'Hawaii' },
+  { abbrev: 'ID', name: 'Idaho' },
+  { abbrev: 'IL', name: 'Illinois' },
+  { abbrev: 'IN', name: 'Indiana' },
+  { abbrev: 'IA', name: 'Iowa' },
+  { abbrev: 'KS', name: 'Kansas' },
+  { abbrev: 'KY', name: 'Kentucky' },
+  { abbrev: 'LA', name: 'Louisiana' },
+  { abbrev: 'ME', name: 'Maine' },
+  { abbrev: 'MD', name: 'Maryland' },
+  { abbrev: 'MA', name: 'Massachusetts' },
+  { abbrev: 'MI', name: 'Michigan' },
+  { abbrev: 'MN', name: 'Minnesota' },
+  { abbrev: 'MS', name: 'Mississippi' },
+  { abbrev: 'MO', name: 'Missouri' },
+  { abbrev: 'MT', name: 'Montana' },
+  { abbrev: 'NE', name: 'Nebraska' },
+  { abbrev: 'NV', name: 'Nevada' },
+  { abbrev: 'NH', name: 'New Hampshire' },
+  { abbrev: 'NJ', name: 'New Jersey' },
+  { abbrev: 'NM', name: 'New Mexico' },
+  { abbrev: 'NY', name: 'New York' },
+  { abbrev: 'NC', name: 'North Carolina' },
+  { abbrev: 'ND', name: 'North Dakota' },
+  { abbrev: 'OH', name: 'Ohio' },
+  { abbrev: 'OK', name: 'Oklahoma' },
+  { abbrev: 'OR', name: 'Oregon' },
+  { abbrev: 'PA', name: 'Pennsylvania' },
+  { abbrev: 'RI', name: 'Rhode Island' },
+  { abbrev: 'SC', name: 'South Carolina' },
+  { abbrev: 'SD', name: 'South Dakota' },
+  { abbrev: 'TN', name: 'Tennessee' },
+  { abbrev: 'TX', name: 'Texas' },
+  { abbrev: 'UT', name: 'Utah' },
+  { abbrev: 'VT', name: 'Vermont' },
+  { abbrev: 'VA', name: 'Virginia' },
+  { abbrev: 'WA', name: 'Washington' },
+  { abbrev: 'WV', name: 'West Virginia' },
+  { abbrev: 'WI', name: 'Wisconsin' },
+  { abbrev: 'WY', name: 'Wyoming' },
+  { abbrev: 'DC', name: 'Washington D.C.' },
+]
 
 // =============================================================================
 // NEWS CATEGORIES - COLOR WHEEL (60° apart) - DO NOT CHANGE
@@ -73,10 +142,10 @@ const NEWS_CATEGORIES = [
 // =============================================================================
 
 const STATUS_STYLES: Record<BriefingStatus, { backgroundColor: string; color: string }> = {
-  new: { backgroundColor: '#f87171', color: 'white' },      // Coral/red for "New"
-  playing: { backgroundColor: '#34d399', color: 'black' },  // Green for "Playing"
-  paused: { backgroundColor: '#38bdf8', color: 'black' },   // Blue for "Paused"
-  played: { backgroundColor: '#a78bfa', color: 'black' },   // Purple for "Played"
+  new: { backgroundColor: '#f87171', color: 'white' },
+  playing: { backgroundColor: '#34d399', color: 'black' },
+  paused: { backgroundColor: '#38bdf8', color: 'black' },
+  played: { backgroundColor: '#a78bfa', color: 'black' },
 }
 
 const STATUS_LABELS: Record<BriefingStatus, string> = {
@@ -90,12 +159,89 @@ const STATUS_LABELS: Record<BriefingStatus, string> = {
 // COMPONENT
 // =============================================================================
 
-export function W2NewsBriefings({ newsEpisodes, userState }: W2NewsBriefingsProps) {
+export function W2NewsBriefings({ newsEpisodes, credits }: W2NewsBriefingsProps) {
   const [briefingStatus, setBriefingStatus] = useState<Record<string, BriefingStatus>>({})
+  const [noCreditsPlaying, setNoCreditsPlaying] = useState(false)
+  const [showStateDropdown, setShowStateDropdown] = useState(false)
+  const [selectedState, setSelectedState] = useState<string>('')
   const audioRefs = useRef<Record<string, HTMLAudioElement>>({})
+  const noCreditsAudioRef = useRef<HTMLAudioElement | null>(null)
+
+  // Load saved state from localStorage on mount
+  useEffect(() => {
+    const savedState = localStorage.getItem('dtt_user_state')
+    if (savedState) {
+      setSelectedState(savedState)
+    }
+  }, [])
+
+  // Handle state selection
+  const handleStateSelect = (stateAbbrev: string) => {
+    setSelectedState(stateAbbrev)
+    localStorage.setItem('dtt_user_state', stateAbbrev)
+    setShowStateDropdown(false)
+    
+    // Auto-play state news after selection
+    setTimeout(() => {
+      handlePlayBriefing('state')
+    }, 100)
+  }
+
+  // Handle playing the "no credits" message
+  const playNoCreditsMessage = async (categoryId: string) => {
+    Object.values(audioRefs.current).forEach(audio => {
+      if (!audio.paused) audio.pause()
+    })
+    
+    if (noCreditsAudioRef.current && !noCreditsAudioRef.current.paused) {
+      noCreditsAudioRef.current.pause()
+      setNoCreditsPlaying(false)
+      setBriefingStatus(prev => ({ ...prev, [categoryId]: 'paused' }))
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/news/no-credits-audio?category=${categoryId}`)
+      
+      if (!response.ok) {
+        console.error('Failed to fetch no-credits audio')
+        return
+      }
+
+      const audioBlob = await response.blob()
+      const audioUrl = URL.createObjectURL(audioBlob)
+      
+      noCreditsAudioRef.current = new Audio(audioUrl)
+      noCreditsAudioRef.current.onended = () => {
+        setNoCreditsPlaying(false)
+        setBriefingStatus(prev => ({ ...prev, [categoryId]: 'played' }))
+        URL.revokeObjectURL(audioUrl)
+      }
+      
+      noCreditsAudioRef.current.play()
+      setNoCreditsPlaying(true)
+      setBriefingStatus(prev => ({ ...prev, [categoryId]: 'playing' }))
+      
+    } catch (err) {
+      console.error('Error playing no-credits message:', err)
+    }
+  }
 
   const handlePlayBriefing = (categoryId: string) => {
+    // Special handling for state news - show dropdown if no state selected
+    if (categoryId === 'state' && !selectedState) {
+      setShowStateDropdown(true)
+      return
+    }
+
     const episode = newsEpisodes[categoryId]
+    
+    // If user has no credits, play the "no credits" message instead
+    if (credits <= 0) {
+      playNoCreditsMessage(categoryId)
+      return
+    }
+
     if (!episode?.audio_url) return
 
     // Pause any other playing audio
@@ -106,7 +252,12 @@ export function W2NewsBriefings({ newsEpisodes, userState }: W2NewsBriefingsProp
       }
     })
 
-    // Create audio element if it doesn't exist
+    // Stop no-credits audio if playing
+    if (noCreditsAudioRef.current && !noCreditsAudioRef.current.paused) {
+      noCreditsAudioRef.current.pause()
+      setNoCreditsPlaying(false)
+    }
+
     if (!audioRefs.current[categoryId]) {
       audioRefs.current[categoryId] = new Audio(episode.audio_url)
       audioRefs.current[categoryId].onended = () => {
@@ -134,6 +285,74 @@ export function W2NewsBriefings({ newsEpisodes, userState }: W2NewsBriefingsProp
       <h2 className="text-lg font-bold text-white" style={{ marginBottom: '0.25rem' }}>📰 NEWS BRIEFINGS</h2>
       <p className="text-white text-xs" style={{ marginBottom: '1rem' }}>Top stories updated throughout the day</p>
       
+      {/* State Selection Dropdown */}
+      {showStateDropdown && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.7)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 100
+        }}>
+          <div style={{
+            backgroundColor: '#1e293b',
+            borderRadius: '1rem',
+            padding: '1.5rem',
+            maxWidth: '20rem',
+            width: '90%',
+            maxHeight: '70vh',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
+            <h3 className="text-white font-bold" style={{ fontSize: '1.125rem', marginBottom: '0.5rem', textAlign: 'center' }}>
+              Select Your State
+            </h3>
+            <p className="text-slate-400" style={{ fontSize: '0.75rem', marginBottom: '1rem', textAlign: 'center' }}>
+              Choose your state to hear local news
+            </p>
+            <div style={{ 
+              overflowY: 'auto', 
+              flex: 1,
+              display: 'grid',
+              gridTemplateColumns: 'repeat(2, 1fr)',
+              gap: '0.5rem'
+            }}>
+              {US_STATES.map((state) => (
+                <button
+                  key={state.abbrev}
+                  onClick={() => handleStateSelect(state.abbrev)}
+                  className="hover:bg-slate-600 transition rounded-lg"
+                  style={{
+                    padding: '0.5rem',
+                    backgroundColor: '#334155',
+                    color: 'white',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: '0.75rem',
+                    textAlign: 'left'
+                  }}
+                >
+                  <span style={{ fontWeight: 'bold' }}>{state.abbrev}</span> - {state.name}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setShowStateDropdown(false)}
+              className="text-slate-400 hover:text-white transition"
+              style={{ marginTop: '1rem', fontSize: '0.875rem', background: 'none', border: 'none', cursor: 'pointer' }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 3-column grid with horizontal buttons */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
         {NEWS_CATEGORIES.map((cat) => {
@@ -141,15 +360,19 @@ export function W2NewsBriefings({ newsEpisodes, userState }: W2NewsBriefingsProp
           const hasEpisode = !!episode?.audio_url
           const status: BriefingStatus = briefingStatus[cat.id] || 'new'
           
-          const displayName = cat.id === 'state' 
-            ? `${userState || 'State'} ${cat.name}` 
-            : cat.name
+          const isClickable = hasEpisode || credits <= 0 || cat.id === 'state'
+          
+          // For state news, show "XX News" if state selected, otherwise "State News"
+          let displayName = cat.name
+          if (cat.id === 'state') {
+            displayName = selectedState ? `${selectedState} News` : 'State News'
+          }
 
           return (
             <button
               key={cat.id}
-              onClick={() => hasEpisode && handlePlayBriefing(cat.id)}
-              disabled={!hasEpisode}
+              onClick={() => isClickable && handlePlayBriefing(cat.id)}
+              disabled={!isClickable}
               className="rounded-xl transition-all hover:scale-105"
               style={{
                 position: 'relative',
@@ -159,8 +382,8 @@ export function W2NewsBriefings({ newsEpisodes, userState }: W2NewsBriefingsProp
                 padding: '0.75rem',
                 paddingRight: '2.5rem',
                 background: hasEpisode ? cat.gradient : '#1e293b',
-                opacity: hasEpisode ? 1 : 0.5,
-                cursor: hasEpisode ? 'pointer' : 'not-allowed',
+                opacity: isClickable ? 1 : 0.5,
+                cursor: isClickable ? 'pointer' : 'not-allowed',
                 border: 'none',
                 minHeight: '3rem'
               }}
@@ -179,7 +402,7 @@ export function W2NewsBriefings({ newsEpisodes, userState }: W2NewsBriefingsProp
               </span>
               
               {/* Status Badge TOP RIGHT */}
-              {hasEpisode && (
+              {(hasEpisode || credits <= 0) && (
                 <span style={{
                   position: 'absolute',
                   top: '-0.25rem',
