@@ -7,23 +7,20 @@ Location: ~/DriveTimeFiles/WorkingCodeLibrary/01_WelcomePage/
 File: W4_RecommendedForYou.protected.tsx
 
 Created: January 18, 2026
+Updated: January 18, 2026 - Added insufficient credits popup
 Owner: Marc (Wonder Books Press / Drive Time Tales)
 Status: PROTECTED
 
 PURPOSE:
-RECOMMENDED FOR YOU section for Welcome page. Shows stories that cost 1-2 credits only,
-so free users (who start with 2 credits) can afford them.
+Recommended For You section for Welcome page. Shows stories costing 1-3 credits.
+If user doesn't have enough credits, shows popup with option to subscribe.
 
-KEY DIFFERENCE FROM MODULE 08:
-- Filters to only show stories where credits <= 2
-- Credits formula: max(1, floor(duration_mins / 15))
-- So: duration_mins < 45 = 1-2 credits
-
-LAYOUT (same as Module 08):
-- Horizontal cards (HorizontalStoryCard format)
-- 3 stories in vertical stack
-- Cover on left, info on right
-- Entire card clickable → /player/[id]
+BEHAVIOR:
+- Shows stories costing 1-3 credits (duration < 60 min)
+- If user clicks story they can afford → navigates to /player/[id]
+- If user clicks story they can't afford → shows popup
+- Popup has [Get More Credits] button → /subscribe
+- Popup closes on X, outside click, or escape key
 
 ⚠️  DO NOT MODIFY THIS DESIGN WITHOUT MARC'S EXPLICIT APPROVAL
 ================================================================================
@@ -33,6 +30,7 @@ LAYOUT (same as Module 08):
 
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 // =============================================================================
@@ -48,6 +46,10 @@ interface Story {
   cover_url: string | null
 }
 
+interface W4RecommendedForYouProps {
+  credits: number
+}
+
 // =============================================================================
 // HELPER: Calculate credits from duration
 // =============================================================================
@@ -60,19 +62,21 @@ function getCredits(duration_mins: number): number {
 // COMPONENT
 // =============================================================================
 
-export default function W4RecommendedForYou() {
+export default function W4RecommendedForYou({ credits }: W4RecommendedForYouProps) {
+  const router = useRouter()
   const [stories, setStories] = useState<Story[]>([])
   const [loading, setLoading] = useState(true)
+  const [showPopup, setShowPopup] = useState(false)
 
   useEffect(() => {
     async function fetchRecommendations() {
       try {
-        // Fetch stories that cost 1-2 credits (duration < 45 mins)
+        // Fetch stories costing 1-3 credits (duration < 60 mins)
         const { data, error } = await supabase
           .from('stories')
           .select('id, title, genre, author, duration_mins, cover_url')
           .not('cover_url', 'is', null)
-          .lt('duration_mins', 45)  // Only stories with 1-2 credits
+          .lt('duration_mins', 60)
           .limit(5)
 
         if (error) {
@@ -89,6 +93,24 @@ export default function W4RecommendedForYou() {
 
     fetchRecommendations()
   }, [])
+
+  // Close popup on escape key
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowPopup(false)
+    }
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [])
+
+  const handleStoryClick = (story: Story) => {
+    const storyCost = getCredits(story.duration_mins)
+    if (credits >= storyCost) {
+      router.push(`/player/${story.id}`)
+    } else {
+      setShowPopup(true)
+    }
+  }
 
   // =============================================================================
   // LOADING STATE
@@ -122,7 +144,7 @@ export default function W4RecommendedForYou() {
   // =============================================================================
 
   if (stories.length === 0) {
-    return null // Don't render section if no stories
+    return null
   }
 
   // =============================================================================
@@ -130,43 +152,112 @@ export default function W4RecommendedForYou() {
   // =============================================================================
 
   return (
-    <section style={{ paddingLeft: '1rem', paddingRight: '1rem', paddingTop: '1.5rem', paddingBottom: '1rem' }}>
-      <h2 className="text-lg font-bold text-white" style={{ marginBottom: '0.25rem' }}>⭐ RECOMMENDED FOR YOU</h2>
-      <p className="text-white text-xs" style={{ marginBottom: '1rem' }}>More stories you can enjoy with your free credits</p>
-      
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-        {stories.map((story) => (
-          <Link 
-            key={story.id}
-            href={`/player/${story.id}`}
-            className="bg-slate-800 rounded-xl overflow-hidden hover:bg-slate-700 transition"
-            style={{ display: 'flex' }}
+    <>
+      {/* Insufficient Credits Popup */}
+      {showPopup && (
+        <div 
+          onClick={() => setShowPopup(false)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 100
+          }}
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: '#1e293b',
+              borderRadius: '1rem',
+              padding: '1.5rem',
+              maxWidth: '20rem',
+              width: '90%',
+              position: 'relative',
+              textAlign: 'center'
+            }}
           >
-            {/* Cover: 112x112px (7rem) with 8px padding */}
-            <div style={{ width: '7rem', height: '7rem', flexShrink: 0, padding: '0.5rem' }}>
-              <div 
-                className="rounded-lg overflow-hidden cover-glow"
-                style={{ width: '100%', height: '100%' }}
-              >
-                <img 
-                  src={story.cover_url || '/images/default-cover.png'} 
-                  alt={story.title}
-                  className="object-cover"
+            {/* X Close Button */}
+            <button
+              onClick={() => setShowPopup(false)}
+              className="text-white hover:text-orange-400 transition"
+              style={{
+                position: 'absolute',
+                top: '0.75rem',
+                right: '0.75rem',
+                background: 'none',
+                border: 'none',
+                fontSize: '1.25rem',
+                cursor: 'pointer'
+              }}
+            >
+              ✕
+            </button>
+
+            <p className="text-white font-semibold" style={{ fontSize: '1rem', marginBottom: '1rem', marginTop: '0.5rem' }}>
+              Sorry, you do not have enough credits for this story
+            </p>
+
+            <Link
+              href="/subscribe"
+              className="hover:bg-orange-400 font-semibold rounded-xl transition"
+              style={{
+                display: 'inline-block',
+                padding: '0.75rem 1.5rem',
+                backgroundColor: '#f97316',
+                color: 'white',
+                fontSize: '1rem'
+              }}
+            >
+              Get More Credits
+            </Link>
+          </div>
+        </div>
+      )}
+
+      <section style={{ paddingLeft: '1rem', paddingRight: '1rem', paddingTop: '1.5rem', paddingBottom: '1rem' }}>
+        <h2 className="text-lg font-bold text-white" style={{ marginBottom: '0.25rem' }}>⭐ RECOMMENDED FOR YOU</h2>
+        <p className="text-white text-xs" style={{ marginBottom: '1rem' }}>More stories you can enjoy with your free credits</p>
+        
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          {stories.map((story) => (
+            <button
+              key={story.id}
+              onClick={() => handleStoryClick(story)}
+              className="bg-slate-800 rounded-xl overflow-hidden hover:bg-slate-700 transition text-left"
+              style={{ display: 'flex', border: 'none', cursor: 'pointer' }}
+            >
+              {/* Cover: 112x112px (7rem) with 8px padding */}
+              <div style={{ width: '7rem', height: '7rem', flexShrink: 0, padding: '0.5rem' }}>
+                <div 
+                  className="rounded-lg overflow-hidden cover-glow"
                   style={{ width: '100%', height: '100%' }}
-                />
+                >
+                  <img 
+                    src={story.cover_url || '/images/default-cover.png'} 
+                    alt={story.title}
+                    className="object-cover"
+                    style={{ width: '100%', height: '100%' }}
+                  />
+                </div>
               </div>
-            </div>
-            
-            {/* Info */}
-            <div style={{ flex: 1, paddingTop: '0.5rem', paddingBottom: '0.5rem', paddingRight: '0.75rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-              <h3 className="text-sm font-bold text-white line-clamp-1">{story.title}</h3>
-              <p className="text-white text-xs">{story.genre}</p>
-              <p className="text-white text-xs">by {story.author}</p>
-              <p className="text-white text-xs">{story.duration_mins} min • {getCredits(story.duration_mins)} credits</p>
-            </div>
-          </Link>
-        ))}
-      </div>
-    </section>
+              
+              {/* Info */}
+              <div style={{ flex: 1, paddingTop: '0.5rem', paddingBottom: '0.5rem', paddingRight: '0.75rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <h3 className="text-sm font-bold text-white line-clamp-1">{story.title}</h3>
+                <p className="text-white text-xs">{story.genre}</p>
+                <p className="text-white text-xs">by {story.author}</p>
+                <p className="text-white text-xs">{story.duration_mins} min • {getCredits(story.duration_mins)} credits</p>
+              </div>
+            </button>
+          ))}
+        </div>
+      </section>
+    </>
   )
 }

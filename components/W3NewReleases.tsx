@@ -7,22 +7,20 @@ Location: ~/DriveTimeFiles/WorkingCodeLibrary/01_WelcomePage/
 File: W3_NewReleases.protected.tsx
 
 Created: January 18, 2026
+Updated: January 18, 2026 - Added insufficient credits popup
 Owner: Marc (Wonder Books Press / Drive Time Tales)
 Status: PROTECTED
 
 PURPOSE:
-NEW RELEASES section for Welcome page. Shows stories that cost 1-2 credits only,
-so free users (who start with 2 credits) can afford them.
+New Releases section for Welcome page. Shows stories costing 1-3 credits.
+If user doesn't have enough credits, shows popup with option to subscribe.
 
-KEY DIFFERENCE FROM MODULE 07:
-- Filters to only show stories where credits <= 2
-- Credits formula: max(1, floor(duration_mins / 15))
-- So: duration_mins < 45 = 1-2 credits
-
-LAYOUT (same as Module 07):
-- 2-column grid
-- bg-slate-800 cards with cover-glow
-- Entire card clickable → /player/[id]
+BEHAVIOR:
+- Shows stories costing 1-3 credits (duration < 60 min)
+- If user clicks story they can afford → navigates to /player/[id]
+- If user clicks story they can't afford → shows popup
+- Popup has [Get More Credits] button → /subscribe
+- Popup closes on X, outside click, or escape key
 
 ⚠️  DO NOT MODIFY THIS DESIGN WITHOUT MARC'S EXPLICIT APPROVAL
 ================================================================================
@@ -32,6 +30,7 @@ LAYOUT (same as Module 07):
 
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 // =============================================================================
@@ -46,6 +45,10 @@ interface Story {
   duration_mins: number
   cover_url: string | null
   published_on: string
+}
+
+interface W3NewReleasesProps {
+  credits: number
 }
 
 // =============================================================================
@@ -73,19 +76,21 @@ function formatDate(dateString: string): string {
 // COMPONENT
 // =============================================================================
 
-export default function W3NewReleases() {
+export default function W3NewReleases({ credits }: W3NewReleasesProps) {
+  const router = useRouter()
   const [stories, setStories] = useState<Story[]>([])
   const [loading, setLoading] = useState(true)
+  const [showPopup, setShowPopup] = useState(false)
 
   useEffect(() => {
     async function fetchNewReleases() {
       try {
-        // Fetch stories that cost 1-2 credits (duration < 45 mins)
+        // Fetch stories costing 1-3 credits (duration < 60 mins)
         const { data, error } = await supabase
           .from('stories')
           .select('id, title, genre, author, duration_mins, cover_url, published_on')
           .not('cover_url', 'is', null)
-          .lt('duration_mins', 45)  // Only stories with 1-2 credits
+          .lt('duration_mins', 60)
           .order('published_on', { ascending: false })
           .limit(2)
 
@@ -104,6 +109,24 @@ export default function W3NewReleases() {
     fetchNewReleases()
   }, [])
 
+  // Close popup on escape key
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowPopup(false)
+    }
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [])
+
+  const handleStoryClick = (story: Story) => {
+    const storyCost = getCredits(story.duration_mins)
+    if (credits >= storyCost) {
+      router.push(`/player/${story.id}`)
+    } else {
+      setShowPopup(true)
+    }
+  }
+
   // =============================================================================
   // LOADING STATE
   // =============================================================================
@@ -111,8 +134,8 @@ export default function W3NewReleases() {
   if (loading) {
     return (
       <section style={{ paddingLeft: '1rem', paddingRight: '1rem', paddingTop: '1.5rem', paddingBottom: '1rem' }}>
-        <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>🆕 NEW RELEASES</h2>
-        <p className="text-white text-xs" style={{ marginTop: '-0.75rem', marginBottom: '1rem' }}>Stories you can enjoy with your free credits</p>
+        <h2 className="text-lg font-bold text-white" style={{ marginBottom: '0.25rem' }}>🆕 NEW RELEASES</h2>
+        <p className="text-white text-xs" style={{ marginBottom: '1rem' }}>Stories you can enjoy with your free credits</p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem' }}>
           {[1, 2].map((i) => (
             <div key={i} className="animate-pulse bg-slate-800 rounded-xl" style={{ padding: '0.5rem' }}>
@@ -131,7 +154,7 @@ export default function W3NewReleases() {
   // =============================================================================
 
   if (stories.length === 0) {
-    return null // Don't render section if no stories
+    return null
   }
 
   // =============================================================================
@@ -139,43 +162,112 @@ export default function W3NewReleases() {
   // =============================================================================
 
   return (
-    <section style={{ paddingLeft: '1rem', paddingRight: '1rem', paddingTop: '1.5rem', paddingBottom: '1rem' }}>
-      <h2 className="text-lg font-bold text-white" style={{ marginBottom: '0.25rem' }}>🆕 NEW RELEASES</h2>
-      <p className="text-white text-xs" style={{ marginBottom: '1rem' }}>Stories you can enjoy with your free credits</p>
-      
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem' }}>
-        {stories.map((story) => (
-          <Link 
-            key={story.id} 
-            href={`/player/${story.id}`}
-            className="bg-slate-800 rounded-xl hover:bg-slate-700 transition"
-            style={{ display: 'block', padding: '0.5rem' }}
+    <>
+      {/* Insufficient Credits Popup */}
+      {showPopup && (
+        <div 
+          onClick={() => setShowPopup(false)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 100
+          }}
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: '#1e293b',
+              borderRadius: '1rem',
+              padding: '1.5rem',
+              maxWidth: '20rem',
+              width: '90%',
+              position: 'relative',
+              textAlign: 'center'
+            }}
           >
-            {/* Cover with glow */}
-            <div className="rounded-lg overflow-hidden cover-glow">
-              <img 
-                src={story.cover_url || '/images/default-cover.png'} 
-                alt={story.title}
-                className="object-cover"
-                style={{ width: '100%', aspectRatio: '1 / 1' }}
-              />
-            </div>
-            
-            {/* Metadata */}
-            <div style={{ marginTop: '0.5rem' }}>
-              <h3 className="text-xs font-bold text-white line-clamp-2 leading-tight">
-                {story.title}
-              </h3>
-              <p className="text-white text-xs">{story.genre}</p>
-              <p className="text-white text-xs">by {story.author}</p>
-              <p className="text-white text-xs">
-                {story.duration_mins} min • {getCredits(story.duration_mins)} cr
-              </p>
-              <p className="text-white text-xs">{formatDate(story.published_on)}</p>
-            </div>
-          </Link>
-        ))}
-      </div>
-    </section>
+            {/* X Close Button */}
+            <button
+              onClick={() => setShowPopup(false)}
+              className="text-white hover:text-orange-400 transition"
+              style={{
+                position: 'absolute',
+                top: '0.75rem',
+                right: '0.75rem',
+                background: 'none',
+                border: 'none',
+                fontSize: '1.25rem',
+                cursor: 'pointer'
+              }}
+            >
+              ✕
+            </button>
+
+            <p className="text-white font-semibold" style={{ fontSize: '1rem', marginBottom: '1rem', marginTop: '0.5rem' }}>
+              Sorry, you do not have enough credits for this story
+            </p>
+
+            <Link
+              href="/subscribe"
+              className="hover:bg-orange-400 font-semibold rounded-xl transition"
+              style={{
+                display: 'inline-block',
+                padding: '0.75rem 1.5rem',
+                backgroundColor: '#f97316',
+                color: 'white',
+                fontSize: '1rem'
+              }}
+            >
+              Get More Credits
+            </Link>
+          </div>
+        </div>
+      )}
+
+      <section style={{ paddingLeft: '1rem', paddingRight: '1rem', paddingTop: '1.5rem', paddingBottom: '1rem' }}>
+        <h2 className="text-lg font-bold text-white" style={{ marginBottom: '0.25rem' }}>🆕 NEW RELEASES</h2>
+        <p className="text-white text-xs" style={{ marginBottom: '1rem' }}>Stories you can enjoy with your free credits</p>
+        
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem' }}>
+          {stories.map((story) => (
+            <button
+              key={story.id}
+              onClick={() => handleStoryClick(story)}
+              className="bg-slate-800 rounded-xl hover:bg-slate-700 transition text-left"
+              style={{ display: 'block', padding: '0.5rem', border: 'none', cursor: 'pointer' }}
+            >
+              {/* Cover with glow */}
+              <div className="rounded-lg overflow-hidden cover-glow">
+                <img 
+                  src={story.cover_url || '/images/default-cover.png'} 
+                  alt={story.title}
+                  className="object-cover"
+                  style={{ width: '100%', aspectRatio: '1 / 1' }}
+                />
+              </div>
+              
+              {/* Metadata */}
+              <div style={{ marginTop: '0.5rem' }}>
+                <h3 className="text-xs font-bold text-white line-clamp-2 leading-tight">
+                  {story.title}
+                </h3>
+                <p className="text-white text-xs">{story.genre}</p>
+                <p className="text-white text-xs">by {story.author}</p>
+                <p className="text-white text-xs">
+                  {story.duration_mins} min • {getCredits(story.duration_mins)} cr
+                </p>
+                <p className="text-white text-xs">{formatDate(story.published_on)}</p>
+              </div>
+            </button>
+          ))}
+        </div>
+      </section>
+    </>
   )
 }
