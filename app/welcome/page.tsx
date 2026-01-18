@@ -130,13 +130,6 @@ function WelcomeContent() {
     <div className="min-h-screen bg-slate-950 text-white">
       
       {/* Simple Header with Sign In (no sticky logo - W1 has the logo) */}
-      <header className="sticky top-0 z-50 bg-slate-950/95 backdrop-blur border-b border-slate-800">
-        <div style={{ maxWidth: '56rem', marginLeft: 'auto', marginRight: 'auto', padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
-          <Link href="/signin" className="text-orange-400 hover:text-orange-300 font-medium">
-            Sign In
-          </Link>
-        </div>
-      </header>
 
       <main style={{ maxWidth: '56rem', marginLeft: 'auto', marginRight: 'auto', padding: '1.5rem 1rem', paddingBottom: '12rem' }}>
         
