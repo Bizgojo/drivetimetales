@@ -180,7 +180,7 @@ function WelcomeContent() {
               fontSize: '1.125rem'
             }}
           >
-            Subscribe
+            Subscribe<br />or buy credits
           </Link>
         </div>
       </div>
