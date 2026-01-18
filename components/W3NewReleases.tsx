@@ -259,8 +259,24 @@ export default function W3NewReleases({ credits }: W3NewReleasesProps) {
                 </h3>
                 <p className="text-white text-xs">{story.genre}</p>
                 <p className="text-white text-xs">by {story.author}</p>
-                <p className="text-white text-xs">
+                <p className="text-white text-xs" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   {story.duration_mins} min • {getCredits(story.duration_mins)} cr
+                  {credits >= getCredits(story.duration_mins) && (
+                    <span 
+                      className="font-bold rounded"
+                      style={{ 
+                        backgroundColor: '#22c55e', 
+                        color: 'white', 
+                        fontSize: '9px',
+                        paddingLeft: '0.375rem',
+                        paddingRight: '0.375rem',
+                        paddingTop: '0.125rem',
+                        paddingBottom: '0.125rem'
+                      }}
+                    >
+                      FREE
+                    </span>
+                  )}
                 </p>
                 <p className="text-white text-xs">{formatDate(story.published_on)}</p>
               </div>
