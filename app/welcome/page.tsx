@@ -205,9 +205,11 @@ function WelcomeContent() {
             <span className="text-2xl">🚗</span>
             <span className="text-lg font-bold">Drive Time <span className="text-orange-500">Tales</span></span>
           </Link>
+        </div>
           <Link href="/signin" className="text-orange-400 hover:text-orange-300 font-medium">
             Sign In
           </Link>
+        </div>
       </header>
 
       <main className="max-w-4xl mx-auto px-4 py-6 pb-48">
@@ -294,6 +296,7 @@ function WelcomeContent() {
                     <p className="text-slate-400 text-xs">{formatDuration(story)} • {formatCredits(story)}</p>
                   </div>
                 </Link>
+        </div>
               ))}
             </div>
           )}
@@ -336,6 +339,7 @@ function WelcomeContent() {
                     )}
                   </div>
                 </Link>
+        </div>
               ))}
             </div>
           )}
@@ -351,12 +355,14 @@ function WelcomeContent() {
           >
             Check Out Hundreds of Stories in Our Library
           </Link>
+        </div>
           <Link 
             href="/pricing" 
             className="block w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-4 rounded-xl text-center transition"
           >
             Subscribe Now and Get Two Months Free
           </Link>
+        </div>
       </div>
     </div>
   )
