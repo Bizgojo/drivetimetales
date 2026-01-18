@@ -23,6 +23,7 @@ import { supabase } from '@/lib/supabase'
 import WelcomeHeader from '@/components/WelcomeHeader'
 import { W2NewsBriefings } from '@/components/W2NewsBriefings'
 import W3NewReleases from '@/components/W3NewReleases'
+import W4RecommendedForYou from '@/components/W4RecommendedForYou'
 
 // =============================================================================
 // TYPES
@@ -135,10 +136,8 @@ function WelcomeContent() {
         {/* W3: NewReleases */}
         <W3NewReleases />
 
-        {/* W4: RecommendedForYou (1-2 credits only) - TODO */}
-        <section style={{ marginTop: '2rem', padding: '1rem', background: '#1e293b', borderRadius: '0.75rem', textAlign: 'center' }}>
-          <p className="text-slate-400">W4: RecommendedForYou module (1-2 credits) coming soon</p>
-        </section>
+        {/* W4: RecommendedForYou */}
+        <W4RecommendedForYou />
 
       </main>
 
