@@ -1,20 +1,3 @@
-/*
-================================================================================
-🔒 PROTECTED MODULE L01/WL01 - LIBRARY FILTERS
-================================================================================
-Module: L01_LibraryFilters / WL01_LibraryFilters
-Location: ~/DriveTimeFiles/WorkingCodeLibrary/
-Status: PROTECTED
-
-ORDER (based on driver thinking):
-1. Duration - "How long is your drive?"
-2. Genre - "What are you in the mood for?" (collapsible)
-3. Type - "Want a series or standalone?"
-
-⚠️  DO NOT MODIFY WITHOUT MARC'S APPROVAL
-================================================================================
-*/
-
 'use client'
 
 import { useState } from 'react'
@@ -57,9 +40,13 @@ export default function LibraryFilters({
 
   return (
     <div style={{ padding: '0 1rem' }}>
-      {/* Duration FIRST */}
-      <div style={{ marginBottom: '1rem' }}>
-        <p className="text-white text-sm font-semibold" style={{ marginBottom: '0.5rem' }}>How long is your drive?</p>
+      {/* Single instruction line */}
+      <p className="text-white text-sm" style={{ marginBottom: '0.75rem' }}>
+        <span className="font-bold">LIBRARY</span> pick a duration, genre, type
+      </p>
+
+      {/* Duration */}
+      <div style={{ marginBottom: '0.5rem' }}>
         <div className="bg-slate-800 rounded-xl" style={{ padding: '0.25rem', display: 'flex' }}>
           {durations.map(d => (
             <button
@@ -74,12 +61,9 @@ export default function LibraryFilters({
         </div>
       </div>
       
-      {/* Genre SECOND - Collapsible */}
-      <div style={{ marginBottom: '1rem' }}>
-        <p className="text-white text-sm font-semibold" style={{ marginBottom: '0.5rem' }}>What are you in the mood for?</p>
-        
+      {/* Genre - Collapsible */}
+      <div style={{ marginBottom: '0.5rem' }}>
         {genreExpanded ? (
-          /* Expanded: Show all genres */
           <div className="bg-slate-800 rounded-xl" style={{ padding: '0.375rem' }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
               {genres.map(g => (
@@ -95,37 +79,22 @@ export default function LibraryFilters({
             </div>
           </div>
         ) : (
-          /* Collapsed: Show selected + More/Genre button */
           <div className="bg-slate-800 rounded-xl" style={{ padding: '0.25rem', display: 'flex', gap: '0.25rem' }}>
             {selectedGenre === '📚 All' ? (
               <>
-                <button
-                  className="bg-orange-500 rounded-xl text-sm"
-                  style={{ flex: 1, padding: '0.75rem', border: 'none', cursor: 'pointer', color: 'white' }}
-                >
+                <button className="bg-orange-500 rounded-xl text-sm" style={{ flex: 1, padding: '0.75rem', border: 'none', cursor: 'pointer', color: 'white' }}>
                   📚 All
                 </button>
-                <button
-                  onClick={() => setGenreExpanded(true)}
-                  className="bg-slate-700 rounded-xl text-sm"
-                  style={{ flex: 1, padding: '0.75rem', border: 'none', cursor: 'pointer', color: 'white' }}
-                >
+                <button onClick={() => setGenreExpanded(true)} className="bg-slate-700 rounded-xl text-sm" style={{ flex: 1, padding: '0.75rem', border: 'none', cursor: 'pointer', color: 'white' }}>
                   Genre ▼
                 </button>
               </>
             ) : (
               <>
-                <button
-                  className="bg-orange-500 rounded-xl text-sm"
-                  style={{ flex: 1, padding: '0.75rem', border: 'none', cursor: 'pointer', color: 'white' }}
-                >
+                <button className="bg-orange-500 rounded-xl text-sm" style={{ flex: 1, padding: '0.75rem', border: 'none', cursor: 'pointer', color: 'white' }}>
                   {selectedGenre}
                 </button>
-                <button
-                  onClick={() => setGenreExpanded(true)}
-                  className="bg-slate-700 rounded-xl text-sm"
-                  style={{ flex: 1, padding: '0.75rem', border: 'none', cursor: 'pointer', color: 'white' }}
-                >
+                <button onClick={() => setGenreExpanded(true)} className="bg-slate-700 rounded-xl text-sm" style={{ flex: 1, padding: '0.75rem', border: 'none', cursor: 'pointer', color: 'white' }}>
                   More ▼
                 </button>
               </>
@@ -134,9 +103,8 @@ export default function LibraryFilters({
         )}
       </div>
       
-      {/* Type THIRD */}
-      <div style={{ marginBottom: '1rem' }}>
-        <p className="text-white text-sm font-semibold" style={{ marginBottom: '0.5rem' }}>Want a series or standalone?</p>
+      {/* Type */}
+      <div style={{ marginBottom: '0.5rem' }}>
         <div className="bg-slate-800 rounded-xl" style={{ padding: '0.25rem', display: 'flex' }}>
           {types.map(t => (
             <button
