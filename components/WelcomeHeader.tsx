@@ -1,191 +1,218 @@
-/*
-================================================================================
-🔒 PROTECTED MODULE W1 - WELCOME HEADER
-================================================================================
-Module: W1_WelcomeHeader
-Location: ~/DriveTimeFiles/WorkingCodeLibrary/03_WelcomePage/
-File: W1_WelcomeHeader.protected.tsx
-
-Created: January 18, 2026
-Owner: Marc (Wonder Books Press / Drive Time Tales)
-Status: PROTECTED
-
-PURPOSE:
-Welcome page header with animated vehicles and 3 credit states.
-
-STATES:
-- State 1 (2+ credits): "You have {n} free credits"
-- State 2 (1 credit): "You have 1 free credit left"
-- State 3 (0 credits): "You have used all your free credits" + [Get More Credits] button
-
-⚠️  DO NOT MODIFY THIS DESIGN WITHOUT MARC'S EXPLICIT APPROVAL
-
-================================================================================
-*/
-
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { supabase } from '@/lib/supabase'
 
 interface WelcomeHeaderProps {
   credits: number
 }
 
 export default function WelcomeHeader({ credits }: WelcomeHeaderProps) {
+  const router = useRouter()
+  const [logoTapCount, setLogoTapCount] = useState(0)
+  const [lastTapTime, setLastTapTime] = useState(0)
+  const [showSecretInput, setShowSecretInput] = useState(false)
+  const [secretCode, setSecretCode] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [codeMessage, setCodeMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
+  const handleLogoTap = () => {
+    const now = Date.now()
+    if (now - lastTapTime > 1000) {
+      setLogoTapCount(1)
+    } else {
+      setLogoTapCount(prev => prev + 1)
+    }
+    setLastTapTime(now)
+    if (logoTapCount >= 4) {
+      setShowSecretInput(true)
+      setLogoTapCount(0)
+    }
+  }
+
+  const handleCodeSubmit = async () => {
+    if (!secretCode.trim()) return
+    setIsSubmitting(true)
+    setCodeMessage(null)
+    try {
+      const { data, error } = await supabase
+        .from('promo_codes')
+        .select('*')
+        .eq('code', secretCode.toUpperCase().trim())
+        .eq('is_active', true)
+        .eq('is_redeemed', false)
+        .single()
+      if (error || !data) {
+        setCodeMessage({ type: 'error', text: 'Invalid, expired, or already used code' })
+        setIsSubmitting(false)
+        return
+      }
+      if (data.expires_at && new Date(data.expires_at) < new Date()) {
+        setCodeMessage({ type: 'error', text: 'This code has expired' })
+        setIsSubmitting(false)
+        return
+      }
+      const deviceId = localStorage.getItem('dtt_device_id') || crypto.randomUUID()
+      localStorage.setItem('dtt_device_id', deviceId)
+      const { error: updateError } = await supabase
+        .from('promo_codes')
+        .update({ 
+          is_redeemed: true,
+          redeemed_at: new Date().toISOString(),
+          redeemed_by_device: deviceId
+        })
+        .eq('id', data.id)
+      if (updateError) {
+        setCodeMessage({ type: 'error', text: 'Error redeeming code. Please try again.' })
+        setIsSubmitting(false)
+        return
+      }
+      const subscriptionData = {
+        code: data.code,
+        type: data.subscription_type,
+        days: data.subscription_days,
+        startDate: new Date().toISOString(),
+        endDate: new Date(Date.now() + data.subscription_days * 24 * 60 * 60 * 1000).toISOString(),
+        deviceId: deviceId
+      }
+      localStorage.setItem('dtt_promo_subscription', JSON.stringify(subscriptionData))
+      setCodeMessage({ type: 'success', text: '🎉 Success! Redirecting to create your account...' })
+      setTimeout(() => {
+        setShowSecretInput(false)
+        setSecretCode('')
+        router.push('/register/promo')
+      }, 1500)
+    } catch (err) {
+      setCodeMessage({ type: 'error', text: 'Error validating code. Please try again.' })
+      setIsSubmitting(false)
+    }
+  }
+
   return (
-    <div style={{ textAlign: 'center', paddingTop: '2rem', paddingBottom: '1rem', overflow: 'hidden' }}>
-      
-      {/* CSS Animation */}
-      <style>{`
+    <div style={{ textAlign: 'center', paddingTop: '1.5rem', paddingBottom: '0.5rem' }}>
+      <style jsx>{`
         @keyframes driveLeft {
-          0% {
-            transform: translateX(100vw);
-          }
-          100% {
-            transform: translateX(-100vw);
-          }
+          0% { transform: translateX(100vw); }
+          100% { transform: translateX(-100%); }
         }
-        .driving-vehicles {
+        .vehicle-stream {
           animation: driveLeft 15s linear 2;
         }
       `}</style>
+
+      <h1 className="text-2xl font-bold text-white" style={{ marginBottom: '0.5rem' }}>Welcome To</h1>
       
-      {/* Welcome To */}
-      <h1 style={{ 
-        color: 'white', 
-        fontSize: '1.75rem', 
-        fontWeight: 'bold', 
-        marginBottom: '0.5rem' 
-      }}>
-        Welcome To
-      </h1>
-      
-      {/* Drive Time Tales Logo */}
-      <div style={{ 
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'center', 
-        gap: '0.5rem',
-        marginBottom: '1rem'
-      }}>
+      <div 
+        onClick={handleLogoTap}
+        style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center', 
+          gap: '0.5rem', 
+          marginBottom: '0.25rem',
+          cursor: 'pointer',
+          userSelect: 'none'
+        }}
+      >
         <span style={{ fontSize: '1.875rem' }}>🚛</span>
         <span style={{ fontSize: '1.875rem' }}>🚗</span>
-        <span style={{ 
-          fontSize: '2rem', 
-          fontWeight: 'bold',
-          color: 'white',
-          whiteSpace: 'nowrap'
-        }}>
-          Drive Time <span style={{ color: '#fb923c' }}>Tales</span>
+        <span className="font-bold text-white" style={{ fontSize: '1.5rem', fontStyle: 'italic' }}>
+          Drive Time <span className="text-orange-400">Tales</span>
         </span>
       </div>
       
-      {/* Animated Vehicles */}
-      <div style={{ 
-        position: 'relative', 
-        height: '3rem', 
-        marginBottom: '1rem',
-        overflow: 'hidden',
-        width: '100%'
-      }}>
-        <div className="driving-vehicles" style={{ 
-          position: 'absolute',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8rem',
-          top: 0
-        }}>
-          <span style={{ fontSize: '2.5rem' }}>🛻</span>
-          <span style={{ fontSize: '2.5rem' }}>🚕</span>
-          <span style={{ fontSize: '2.5rem' }}>🚚</span>
-          <span style={{ fontSize: '2.5rem' }}>🚙</span>
-          <span style={{ fontSize: '2.5rem' }}>🚐</span>
-          <span style={{ fontSize: '2.5rem' }}>🏎️</span>
+      <div style={{ position: 'relative', height: '2.5rem', overflow: 'hidden', marginBottom: '0.25rem' }}>
+        <div className="vehicle-stream" style={{ position: 'absolute', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '8rem' }}>
+          <span style={{ fontSize: '2rem' }}>🛻</span>
+          <span style={{ fontSize: '2rem' }}>🚕</span>
+          <span style={{ fontSize: '2rem' }}>🚚</span>
+          <span style={{ fontSize: '2rem' }}>🚙</span>
+          <span style={{ fontSize: '2rem' }}>🚐</span>
+          <span style={{ fontSize: '2rem' }}>🏎️</span>
         </div>
       </div>
+
+      {showSecretInput && (
+        <div style={{ background: '#1e293b', borderRadius: '0.75rem', padding: '1rem', margin: '0.75rem 0' }}>
+          <p className="text-white font-bold" style={{ fontSize: '0.875rem', marginBottom: '0.5rem' }}>🎁 Enter Secret Code</p>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <input 
+              type="text" 
+              placeholder="Enter code..."
+              value={secretCode}
+              onChange={(e) => setSecretCode(e.target.value)}
+              className="bg-slate-700 text-white rounded-lg"
+              style={{ flex: 1, padding: '0.5rem 0.75rem', fontSize: '0.875rem', border: '1px solid #475569' }}
+            />
+            <button 
+              onClick={handleCodeSubmit}
+              disabled={isSubmitting}
+              className="bg-orange-500 hover:bg-orange-400 text-black font-bold rounded-lg"
+              style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}
+            >
+              {isSubmitting ? '...' : 'Redeem'}
+            </button>
+          </div>
+          {codeMessage && (
+            <p style={{ fontSize: '0.75rem', marginTop: '0.5rem', color: codeMessage.type === 'success' ? '#4ade80' : '#f87171' }}>
+              {codeMessage.text}
+            </p>
+          )}
+          <button 
+            onClick={() => { setShowSecretInput(false); setSecretCode(''); setCodeMessage(null); }}
+            className="text-slate-400 hover:text-white"
+            style={{ fontSize: '0.75rem', marginTop: '0.5rem' }}
+          >
+            ✕ Cancel
+          </button>
+        </div>
+      )}
       
-      {/* Tagline */}
-      <p style={{ 
-        color: '#f97316', 
-        fontSize: '1.125rem', 
-        fontWeight: '600',
-        marginBottom: '0.5rem'
-      }}>
+      <p className="text-lg text-orange-400 font-semibold" style={{ marginBottom: '0.75rem' }}>
         Start Listening To Your Free Story Now!
       </p>
       
-      {/* Credits line - 3 states */}
-      {credits >= 2 ? (
-        // STATE 1: 2+ credits
-        <p style={{ color: 'white', fontSize: '1.125rem', marginBottom: '0.25rem' }}>
-          You have <span style={{ color: '#f97316', fontSize: '1.5rem', fontWeight: 'bold' }}>{credits}</span> free credits
-        </p>
-      ) : credits === 1 ? (
-        // STATE 2: 1 credit
-        <p style={{ color: 'white', fontSize: '1.125rem', marginBottom: '0.25rem' }}>
-          You have <span style={{ color: '#f97316', fontSize: '1.5rem', fontWeight: 'bold' }}>1</span> free credit left
-        </p>
-      ) : (
-        // STATE 3: 0 credits
-        <p style={{ 
-          color: 'white', 
-          fontSize: '1.125rem', 
-          marginBottom: '0.5rem', 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'center', 
-          gap: '0.75rem', 
-          flexWrap: 'wrap' 
-        }}>
-          You have used all your free credits
-          <Link 
-            href="/subscribe" 
-            style={{ 
-              backgroundColor: '#f97316', 
-              color: 'black', 
-              fontWeight: 'bold', 
-              fontSize: '0.875rem', 
-              paddingLeft: '1rem', 
-              paddingRight: '1rem', 
-              paddingTop: '0.5rem', 
-              paddingBottom: '0.5rem', 
-              borderRadius: '0.5rem', 
-              textDecoration: 'none'
-            }}
-          >
+      {credits >= 2 && (
+        <>
+          <p className="text-white" style={{ fontSize: '1.125rem', marginBottom: '1rem' }}>
+            You have <span className="text-orange-400 font-bold" style={{ fontSize: '1.5rem' }}>{credits}</span> free credits
+          </p>
+          <p className="text-white font-bold" style={{ fontSize: '1.25rem', lineHeight: '1.4' }}>
+            Select Any <span className="bg-green-500 text-black font-bold rounded uppercase" style={{ fontSize: '0.875rem', padding: '0.125rem 0.5rem' }}>Free</span> Story
+            <br />
+            <span style={{ fontWeight: 'normal', fontSize: '1rem' }}>or any News Briefing and play for free.</span>
+          </p>
+        </>
+      )}
+
+      {credits === 1 && (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
+            <p className="text-white" style={{ fontSize: '1.125rem', lineHeight: '1.3' }}>
+              You have only <span className="text-orange-400 font-bold" style={{ fontSize: '1.5rem' }}>1</span><br/>free credit left
+            </p>
+            <Link href="/subscribe" className="bg-orange-500 hover:bg-orange-400 text-black font-bold rounded-lg transition" style={{ padding: '0.5rem 1rem', fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
+              Get More Credits
+            </Link>
+          </div>
+          <p className="text-white font-bold" style={{ fontSize: '1.25rem', lineHeight: '1.4' }}>
+            Select Any <span className="bg-green-500 text-black font-bold rounded uppercase" style={{ fontSize: '0.875rem', padding: '0.125rem 0.5rem' }}>Free</span> Story
+            <br />
+            <span style={{ fontWeight: 'normal', fontSize: '1rem' }}>or any News Briefing and play for free.</span>
+          </p>
+        </>
+      )}
+
+      {credits <= 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem' }}>
+          <p className="text-white" style={{ fontSize: '1.125rem' }}>You have used all your free credits</p>
+          <Link href="/subscribe" className="bg-orange-500 hover:bg-orange-400 text-black font-bold rounded-lg transition" style={{ padding: '0.5rem 1rem', fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
             Get More Credits
           </Link>
-        </p>
+        </div>
       )}
-      
-      {/* Instructions line - only show if credits > 0 */}
-      {credits > 0 && (
-        <p style={{ 
-          color: 'white', 
-          fontSize: '1.125rem', fontWeight: 'bold', 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'center', 
-          gap: '0.35rem', 
-          flexWrap: 'wrap' 
-        }}>
-          Select Any 
-          <span style={{ 
-            backgroundColor: '#22c55e', 
-            color: 'black', 
-            fontWeight: 'bold', 
-            fontSize: '0.75rem', 
-            paddingLeft: '0.5rem', 
-            paddingRight: '0.5rem', 
-            paddingTop: '0.125rem', 
-            paddingBottom: '0.125rem', 
-            borderRadius: '0.25rem', 
-            textTransform: 'uppercase' 
-          }}>Free</span> 
-          Story or any News Briefing and play for free.
-        </p>
-      )}
-      
     </div>
   )
 }
