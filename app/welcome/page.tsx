@@ -166,7 +166,7 @@ function WelcomeContent() {
               fontSize: '1.125rem'
             }}
           >
-            Go to Library
+            See More Stories
           </Link>
           <Link
             href="/subscribe"
