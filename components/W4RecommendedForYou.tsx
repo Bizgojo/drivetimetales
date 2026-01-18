@@ -11,7 +11,7 @@ Owner: Marc (Wonder Books Press / Drive Time Tales)
 Status: PROTECTED
 
 PURPOSE:
-Recommended For You section for Welcome page. Shows stories that cost 1-2 credits only,
+RECOMMENDED FOR YOU section for Welcome page. Shows stories that cost 1-2 credits only,
 so free users (who start with 2 credits) can afford them.
 
 KEY DIFFERENCE FROM MODULE 08:
@@ -97,10 +97,10 @@ export default function W4RecommendedForYou() {
   if (loading) {
     return (
       <section style={{ paddingLeft: '1rem', paddingRight: '1rem', paddingTop: '1.5rem', paddingBottom: '1rem' }}>
-        <h2 className="text-lg font-bold text-white" style={{ marginBottom: '0.25rem' }}>⭐ Recommended For You</h2>
+        <h2 className="text-lg font-bold text-white" style={{ marginBottom: '0.25rem' }}>⭐ RECOMMENDED FOR YOU</h2>
         <p className="text-white text-xs" style={{ marginBottom: '1rem' }}>More stories you can enjoy with your free credits</p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          {[1, 2, 3].map((i) => (
+          {[1, 2, 3, 4, 5].map((i) => (
             <div key={i} className="bg-slate-800 rounded-xl overflow-hidden animate-pulse" style={{ display: 'flex' }}>
               <div style={{ width: '7rem', height: '7rem', flexShrink: 0, padding: '0.5rem' }}>
                 <div className="rounded-lg bg-slate-700" style={{ width: '100%', height: '100%' }} />
@@ -131,7 +131,7 @@ export default function W4RecommendedForYou() {
 
   return (
     <section style={{ paddingLeft: '1rem', paddingRight: '1rem', paddingTop: '1.5rem', paddingBottom: '1rem' }}>
-      <h2 className="text-lg font-bold text-white" style={{ marginBottom: '0.25rem' }}>⭐ Recommended For You</h2>
+      <h2 className="text-lg font-bold text-white" style={{ marginBottom: '0.25rem' }}>⭐ RECOMMENDED FOR YOU</h2>
       <p className="text-white text-xs" style={{ marginBottom: '1rem' }}>More stories you can enjoy with your free credits</p>
       
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
