@@ -12,7 +12,7 @@ Owner: Marc (Wonder Books Press / Drive Time Tales)
 Status: LOCKED - Universal Template
 
 PURPOSE:
-This is the official Continue Listening module for the DTT Home Page.
+This is the official CONTINUE LISTENING module for the DTT Home Page.
 Shows the user's most recently played uncompleted story with a progress bar
 and allows one-tap resume playback.
 
@@ -151,7 +151,7 @@ export default function ContinueListening() {
 
   return (
     <section style={{ paddingLeft: '1rem', paddingRight: '1rem', paddingTop: '1.5rem', paddingBottom: '1rem' }}>
-      <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>▶️ Continue Listening</h2>
+      <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>▶️ CONTINUE LISTENING</h2>
       
       {/* Entire card is clickable - navigates to play page with resume position */}
       <Link 
