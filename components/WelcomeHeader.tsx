@@ -46,7 +46,7 @@ export default function WelcomeHeader({ credits }: WelcomeHeaderProps) {
           }
         }
         .driving-vehicles {
-          animation: driveLeft 15s linear infinite;
+          animation: driveLeft 15s linear 2;
         }
       `}</style>
       
