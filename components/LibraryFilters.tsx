@@ -27,7 +27,7 @@ interface LibraryFiltersProps {
 }
 
 const durations = ['Any Length', '~15 min', '~30 min', '~1 hr']
-const genres = ['All Genres', 'Mystery', 'Drama', 'Sci-Fi', 'Horror', 'Thriller', 'Western', 'Comedy', 'Truckers', 'Children', 'Get Smart']
+const genres = ['All Genres', 'Mystery/Thriller', 'Drama', 'Sci-Fi', 'Horror', 'Comedy', 'Romance', 'Truckers', 'Children', 'Get Smart']
 const types = ['All', 'Singles', 'Series']
 
 export default function LibraryFilters({
