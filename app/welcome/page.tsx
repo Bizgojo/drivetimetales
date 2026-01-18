@@ -125,7 +125,7 @@ function WelcomeContent() {
   return (
     <div className="min-h-screen bg-slate-950 text-white">
 
-      <main style={{ maxWidth: '56rem', marginLeft: 'auto', marginRight: 'auto', padding: '1.5rem 1rem', paddingBottom: '12rem' }}>
+      <main style={{ maxWidth: '56rem', marginLeft: 'auto', marginRight: 'auto', padding: '1.5rem 1rem', paddingBottom: '6rem' }}>
 
         {/* W1: WelcomeHeader */}
         <WelcomeHeader credits={freeCredits} />
