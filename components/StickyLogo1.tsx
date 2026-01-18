@@ -15,7 +15,7 @@ export default function StickyLogo1({ userName = '' }: StickyLogo1Props) {
         <Link href="/home" className="flex items-center gap-2">
           <span className="text-4xl">🚛</span>
           <span className="text-4xl">🚗</span>
-          <span className="font-bold text-white text-xl whitespace-nowrap">
+          <span className="font-bold text-white text-xl italic whitespace-nowrap">
             Drive Time <span className="text-orange-400">Tales</span>
           </span>
         </Link>
