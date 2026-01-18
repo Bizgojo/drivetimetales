@@ -205,7 +205,6 @@ function WelcomeContent() {
             <span className="text-2xl">🚗</span>
             <span className="text-lg font-bold">Drive Time <span className="text-orange-500">Tales</span></span>
           </Link>
-        </div>
           <Link href="/signin" className="text-orange-400 hover:text-orange-300 font-medium">
             Sign In
           </Link>
