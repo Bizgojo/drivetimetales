@@ -11,7 +11,7 @@ Owner: Marc (Wonder Books Press / Drive Time Tales)
 Status: PROTECTED
 
 PURPOSE:
-New Releases section for Welcome page. Shows stories that cost 1-2 credits only,
+NEW RELEASES section for Welcome page. Shows stories that cost 1-2 credits only,
 so free users (who start with 2 credits) can afford them.
 
 KEY DIFFERENCE FROM MODULE 07:
@@ -111,7 +111,7 @@ export default function W3NewReleases() {
   if (loading) {
     return (
       <section style={{ paddingLeft: '1rem', paddingRight: '1rem', paddingTop: '1.5rem', paddingBottom: '1rem' }}>
-        <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>🆕 New Releases</h2>
+        <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>🆕 NEW RELEASES</h2>
         <p className="text-white text-xs" style={{ marginTop: '-0.75rem', marginBottom: '1rem' }}>Stories you can enjoy with your free credits</p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem' }}>
           {[1, 2].map((i) => (
@@ -140,7 +140,7 @@ export default function W3NewReleases() {
 
   return (
     <section style={{ paddingLeft: '1rem', paddingRight: '1rem', paddingTop: '1.5rem', paddingBottom: '1rem' }}>
-      <h2 className="text-lg font-bold text-white" style={{ marginBottom: '0.25rem' }}>🆕 New Releases</h2>
+      <h2 className="text-lg font-bold text-white" style={{ marginBottom: '0.25rem' }}>🆕 NEW RELEASES</h2>
       <p className="text-white text-xs" style={{ marginBottom: '1rem' }}>Stories you can enjoy with your free credits</p>
       
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem' }}>
