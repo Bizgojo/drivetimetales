@@ -94,7 +94,7 @@ function WelcomeLibraryContent() {
 
       {/* Page Title */}
       <div style={{ padding: '1rem 1rem 0.5rem 1rem' }}>
-        <h2 className="text-xl font-bold text-white">STORY LIBRARY</h2>
+        <h2 className="text-xl font-bold text-white">LIBRARY (Pick a duration, genre and type)</h2>
       </div>
 
       {/* WL01: Library Filters */}
