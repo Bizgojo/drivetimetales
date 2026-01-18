@@ -129,7 +129,7 @@ function WelcomeContent() {
         <WelcomeHeader credits={freeCredits} />
 
         {/* W2: NewsBriefings */}
-        <W2NewsBriefings newsEpisodes={newsEpisodes} userState="" />
+        <W2NewsBriefings newsEpisodes={newsEpisodes} credits={freeCredits} />
 
         {/* W3: NewReleases (1-2 credits only) - TODO */}
         <section style={{ marginTop: '2rem', padding: '1rem', background: '#1e293b', borderRadius: '0.75rem', textAlign: 'center' }}>
