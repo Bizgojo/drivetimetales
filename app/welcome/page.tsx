@@ -22,6 +22,7 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import WelcomeHeader from '@/components/WelcomeHeader'
 import { W2NewsBriefings } from '@/components/W2NewsBriefings'
+import W3NewReleases from '@/components/W3NewReleases'
 
 // =============================================================================
 // TYPES
@@ -131,10 +132,8 @@ function WelcomeContent() {
         {/* W2: NewsBriefings */}
         <W2NewsBriefings newsEpisodes={newsEpisodes} credits={freeCredits} />
 
-        {/* W3: NewReleases (1-2 credits only) - TODO */}
-        <section style={{ marginTop: '2rem', padding: '1rem', background: '#1e293b', borderRadius: '0.75rem', textAlign: 'center' }}>
-          <p className="text-slate-400">W3: NewReleases module (1-2 credits) coming soon</p>
-        </section>
+        {/* W3: NewReleases */}
+        <W3NewReleases />
 
         {/* W4: RecommendedForYou (1-2 credits only) - TODO */}
         <section style={{ marginTop: '2rem', padding: '1rem', background: '#1e293b', borderRadius: '0.75rem', textAlign: 'center' }}>
