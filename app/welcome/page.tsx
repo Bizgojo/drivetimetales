@@ -208,13 +208,11 @@ function WelcomeContent() {
           <Link href="/signin" className="text-orange-400 hover:text-orange-300 font-medium">
             Sign In
           </Link>
-        </div>
       </header>
 
       <main className="max-w-4xl mx-auto px-4 py-6 pb-48">
         {/* Welcome Header */}
         <WelcomeHeader credits={freeCredits} />
-        </div>
 
         {/* Daily News Briefings - 3x2 Grid */}
         <section className="mb-8">
@@ -359,7 +357,6 @@ function WelcomeContent() {
           >
             Subscribe Now and Get Two Months Free
           </Link>
-        </div>
       </div>
     </div>
   )
