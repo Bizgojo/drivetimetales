@@ -134,10 +134,10 @@ function WelcomeContent() {
         <W2NewsBriefings newsEpisodes={newsEpisodes} credits={freeCredits} />
 
         {/* W3: NewReleases */}
-        <W3NewReleases />
+        <W3NewReleases credits={freeCredits} />
 
         {/* W4: RecommendedForYou */}
-        <W4RecommendedForYou />
+        <W4RecommendedForYou credits={freeCredits} />
 
       </main>
 
