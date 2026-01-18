@@ -1,10 +1,10 @@
 /*
 ================================================================================
-🔒 PROTECTED MODULE - DO NOT MODIFY WITHOUT OWNER APPROVAL
+🔒 PROTECTED MODULE 01 - DO NOT MODIFY WITHOUT OWNER APPROVAL
 ================================================================================
-Module: HorizontalStoryCard
-Location: ~/DriveTimeFiles/WorkingCodeLibrary/02_HomePage/
-File: HorizontalStoryCard.protected.tsx
+Module: 01_HorizontalStoryCard
+Location: ~/DriveTimeFiles/WorkingCodeLibrary/00_SharedComponents/
+File: 01_HorizontalStoryCard.protected.tsx
 
 Created: January 16, 2026
 Owner: Marc (Wonder Books Press / Drive Time Tales)
