@@ -4,7 +4,6 @@ import { useState, useEffect, useRef, Suspense } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import WelcomeHeader from '@/components/WelcomeHeader'
 
 interface Story {
   id: string
@@ -213,7 +212,13 @@ function WelcomeContent() {
 
       <main className="max-w-4xl mx-auto px-4 py-6 pb-48">
         {/* Welcome Header */}
-        <WelcomeHeader credits={freeCredits} />
+        <div className="text-center mb-6">
+          <h1 className="text-2xl font-bold mb-2">Welcome To</h1>
+          <p className="text-lg text-orange-400 font-semibold">Start Listening To Your Free Story Now!</p>
+          <p className="text-slate-400 text-sm mt-2">
+            You have {freeCredits} free credits (News Briefings are Free)
+          </p>
+        </div>
 
         {/* Daily News Briefings - 3x2 Grid */}
         <section className="mb-8">
@@ -295,7 +300,6 @@ function WelcomeContent() {
                     <p className="text-slate-400 text-xs">{formatDuration(story)} • {formatCredits(story)}</p>
                   </div>
                 </Link>
-        </div>
               ))}
             </div>
           )}
@@ -338,7 +342,6 @@ function WelcomeContent() {
                     )}
                   </div>
                 </Link>
-        </div>
               ))}
             </div>
           )}
@@ -354,7 +357,6 @@ function WelcomeContent() {
           >
             Check Out Hundreds of Stories in Our Library
           </Link>
-        </div>
           <Link 
             href="/pricing" 
             className="block w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-4 rounded-xl text-center transition"
