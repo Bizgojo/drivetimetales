@@ -1,23 +1,28 @@
 /*
 ================================================================================
-🔒 PROTECTED MODULE 05 - PRODUCTION SAFE VERSION
+🔒 PROTECTED MODULE 05 - NEWS BRIEFINGS (HOME PAGE)
 ================================================================================
 Module: 05_NewsBriefings
 Location: ~/DriveTimeFiles/WorkingCodeLibrary/02_HomePage/
 File: 05_NewsBriefings.protected.tsx
 
 Created: January 16, 2026
-Updated: January 17, 2026 - Added inline styles for Tailwind purge protection
+Updated: January 18, 2026 - New horizontal button layout (matching W2)
 Owner: Marc (Wonder Books Press / Drive Time Tales)
 Status: PROTECTED
 
 DESCRIPTION:
-News Briefings section with 6 categories using color wheel colors (60° apart)
+News Briefings section for Home Page with horizontal button layout.
+For logged-in users with credits.
 
-PRODUCTION FIX:
-Critical layout and positioning properties use inline styles to prevent Tailwind CSS purging.
+LAYOUT (Updated Jan 18):
+- Wider horizontal buttons (not square)
+- Icon on LEFT side of button
+- Category name to RIGHT of icon
+- Status badge (New/Playing/Paused/Played) in top right corner
+- 3-column grid
 
-COLOR WHEEL ORDER:
+COLOR WHEEL ORDER (60° apart) - DO NOT CHANGE:
 - State: Red (0°) - #dc2626 to #991b1b
 - National: Orange (60°) - #f97316 to #c2410c
 - World: Yellow (120°) - #eab308 to #a16207
@@ -25,6 +30,7 @@ COLOR WHEEL ORDER:
 - Sports: Blue (240°) - #2563eb to #1e40af
 - Sci/Tech: Purple (300°) - #9333ea to #6b21a8
 
+⚠️  DO NOT MODIFY THIS DESIGN WITHOUT MARC'S EXPLICIT APPROVAL
 ================================================================================
 */
 
@@ -64,14 +70,14 @@ const NEWS_CATEGORIES = [
 ]
 
 // =============================================================================
-// STATUS BADGE STYLES - DO NOT CHANGE
+// STATUS BADGE STYLES
 // =============================================================================
 
 const STATUS_STYLES: Record<BriefingStatus, { backgroundColor: string; color: string }> = {
-  new: { backgroundColor: '#fbbf24', color: 'black' },
-  playing: { backgroundColor: '#34d399', color: 'black' },
-  paused: { backgroundColor: '#38bdf8', color: 'black' },
-  played: { backgroundColor: '#fb7185', color: 'black' },
+  new: { backgroundColor: '#f87171', color: 'white' },      // Coral/red for "New"
+  playing: { backgroundColor: '#34d399', color: 'black' },  // Green for "Playing"
+  paused: { backgroundColor: '#38bdf8', color: 'black' },   // Blue for "Paused"
+  played: { backgroundColor: '#a78bfa', color: 'black' },   // Purple for "Played"
 }
 
 const STATUS_LABELS: Record<BriefingStatus, string> = {
@@ -93,6 +99,7 @@ export function NewsBriefings({ newsEpisodes, userState }: NewsBriefingsProps) {
     const episode = newsEpisodes[categoryId]
     if (!episode?.audio_url) return
 
+    // Pause any other playing audio
     Object.entries(audioRefs.current).forEach(([id, audio]) => {
       if (id !== categoryId && !audio.paused) {
         audio.pause()
@@ -100,6 +107,7 @@ export function NewsBriefings({ newsEpisodes, userState }: NewsBriefingsProps) {
       }
     })
 
+    // Create audio element if it doesn't exist
     if (!audioRefs.current[categoryId]) {
       audioRefs.current[categoryId] = new Audio(episode.audio_url)
       audioRefs.current[categoryId].onended = () => {
@@ -127,7 +135,8 @@ export function NewsBriefings({ newsEpisodes, userState }: NewsBriefingsProps) {
       <h2 className="text-lg font-bold text-white" style={{ marginBottom: '0.25rem' }}>📰 NEWS BRIEFINGS</h2>
       <p className="text-white text-xs" style={{ marginBottom: '1rem' }}>Top stories updated throughout the day</p>
       
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem' }}>
+      {/* 3-column grid with horizontal buttons */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
         {NEWS_CATEGORIES.map((cat) => {
           const episode = newsEpisodes[cat.id]
           const hasEpisode = !!episode?.audio_url
@@ -145,31 +154,37 @@ export function NewsBriefings({ newsEpisodes, userState }: NewsBriefingsProps) {
               className="rounded-xl transition-all hover:scale-105"
               style={{
                 position: 'relative',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
                 padding: '0.75rem',
-                textAlign: 'center',
+                paddingRight: '2.5rem',
                 background: hasEpisode ? cat.gradient : '#1e293b',
                 opacity: hasEpisode ? 1 : 0.5,
                 cursor: hasEpisode ? 'pointer' : 'not-allowed',
                 border: 'none',
-                minHeight: '5rem'
+                minHeight: '3rem'
               }}
             >
-              {/* Icon TOP LEFT */}
-              <span style={{ 
-                position: 'absolute', 
-                top: '0.5rem', 
-                left: '0.5rem', 
-                fontSize: '1.125rem' 
-              }}>
+              {/* Icon on LEFT */}
+              <span style={{ fontSize: '1.25rem', flexShrink: 0 }}>
                 {cat.icon}
               </span>
               
-              {/* Status Flag TOP RIGHT */}
+              {/* Category name to RIGHT of icon */}
+              <span 
+                className="text-white font-semibold"
+                style={{ fontSize: '0.8rem', textAlign: 'left', lineHeight: '1.2' }}
+              >
+                {displayName}
+              </span>
+              
+              {/* Status Badge TOP RIGHT */}
               {hasEpisode && (
                 <span style={{
                   position: 'absolute',
-                  top: '0.375rem',
-                  right: '0.375rem',
+                  top: '-0.25rem',
+                  right: '-0.25rem',
                   fontSize: '9px',
                   paddingLeft: '0.375rem',
                   paddingRight: '0.375rem',
@@ -183,14 +198,6 @@ export function NewsBriefings({ newsEpisodes, userState }: NewsBriefingsProps) {
                   {STATUS_LABELS[status]}
                 </span>
               )}
-              
-              {/* Label centered below */}
-              <div 
-                className="text-white font-semibold"
-                style={{ marginTop: '1.5rem', fontSize: '0.875rem' }}
-              >
-                {displayName}
-              </div>
             </button>
           )
         })}
