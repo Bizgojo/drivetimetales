@@ -1,21 +1,16 @@
 /*
 ================================================================================
-🔒 WELCOME PAGE - Assembly of Protected Modules
+🔒 WELCOME PAGE - Drive Time Tales
 ================================================================================
-Page: WelcomePage
 Location: app/welcome/page.tsx
-
-Created: January 18, 2026
-Owner: Marc (Wonder Books Press / Drive Time Tales)
-Status: IN PROGRESS
+Updated: January 18, 2026
 
 MODULES:
-- W1: WelcomeHeader ✓ (animated vehicles, 3 credit states, secret code)
-- W2: NewsBriefings (TODO - copy from Module 05)
-- W3: NewReleases (TODO - copy from Module 07, filter 1-2 credits)
-- W4: RecommendedForYou (TODO - copy from Module 08, filter 1-2 credits)
-- W5: BottomStickyButtons (TODO - [Go To Library] + [Subscribe])
-
+- W1: WelcomeHeader (animated vehicles, credits, secret code)
+- W2: NewsBriefings (horizontal button layout)
+- W3: NewReleases (TODO - 1-2 credits only)
+- W4: RecommendedForYou (TODO - 1-2 credits only)
+- W5: BottomStickyButtons ([Go To Library] + [Subscribe])
 ================================================================================
 */
 
@@ -26,6 +21,7 @@ import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import WelcomeHeader from '@/components/WelcomeHeader'
+import { W2NewsBriefings } from '@/components/W2NewsBriefings'
 
 // =============================================================================
 // TYPES
@@ -45,28 +41,26 @@ interface NewsEpisode {
 function WelcomeContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  
+
   // Free credits for non-logged-in users (stored in localStorage)
   const [freeCredits, setFreeCredits] = useState(2)
-  
-  // News episodes for W2
   const [newsEpisodes, setNewsEpisodes] = useState<Record<string, NewsEpisode>>({})
 
   // =============================================================================
   // INITIALIZE: Check auth, load free credits
   // =============================================================================
-  
+
   useEffect(() => {
     async function initialize() {
       // Check if user is logged in - redirect to home if so
       const authTimeout = new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Auth timeout')), 3000)
       )
-      
+
       try {
         const authPromise = supabase.auth.getSession()
         const { data: { session } } = await Promise.race([authPromise, authTimeout]) as any
-        
+
         if (session) {
           console.log('[DTT Debug] User logged in, redirecting to /home')
           router.push('/home')
@@ -81,19 +75,19 @@ function WelcomeContent() {
       if (storedCredits !== null) {
         setFreeCredits(parseInt(storedCredits, 10))
       } else {
-        // First visit - give 2 free credits
+        // First visit - set 2 free credits
         localStorage.setItem('dtt_free_credits', '2')
         setFreeCredits(2)
       }
     }
-    
+
     initialize()
-  }, [router, searchParams])
+  }, [router])
 
   // =============================================================================
-  // FETCH NEWS EPISODES (for W2)
+  // FETCH NEWS EPISODES
   // =============================================================================
-  
+
   useEffect(() => {
     async function fetchNewsEpisodes() {
       try {
@@ -125,70 +119,66 @@ function WelcomeContent() {
   // =============================================================================
   // RENDER
   // =============================================================================
-
+  
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      
-      {/* Simple Header with Sign In (no sticky logo - W1 has the logo) */}
 
       <main style={{ maxWidth: '56rem', marginLeft: 'auto', marginRight: 'auto', padding: '1.5rem 1rem', paddingBottom: '12rem' }}>
-        
+
         {/* W1: WelcomeHeader */}
         <WelcomeHeader credits={freeCredits} />
-        
-        {/* W2: NewsBriefings - TODO */}
-        <section style={{ marginTop: '2rem', padding: '1rem', background: '#1e293b', borderRadius: '0.75rem', textAlign: 'center' }}>
-          <p className="text-slate-400">W2: NewsBriefings module coming next</p>
-        </section>
-        
+
+        {/* W2: NewsBriefings */}
+        <W2NewsBriefings newsEpisodes={newsEpisodes} userState="" />
+
         {/* W3: NewReleases (1-2 credits only) - TODO */}
         <section style={{ marginTop: '2rem', padding: '1rem', background: '#1e293b', borderRadius: '0.75rem', textAlign: 'center' }}>
           <p className="text-slate-400">W3: NewReleases module (1-2 credits) coming soon</p>
         </section>
-        
+
         {/* W4: RecommendedForYou (1-2 credits only) - TODO */}
         <section style={{ marginTop: '2rem', padding: '1rem', background: '#1e293b', borderRadius: '0.75rem', textAlign: 'center' }}>
           <p className="text-slate-400">W4: RecommendedForYou module (1-2 credits) coming soon</p>
         </section>
-        
+
       </main>
 
-      {/* W5: BottomStickyButtons - TODO (will be [Go To Library] + [Subscribe]) */}
-      <div 
+      {/* W5: BottomStickyButtons */}
+      <div
         className="bg-slate-950 border-t border-slate-800"
-        style={{ 
-          position: 'fixed', 
-          bottom: 0, 
-          left: 0, 
-          right: 0, 
+        style={{
+          position: 'fixed',
+          bottom: 0,
+          left: 0,
+          right: 0,
           padding: '0.75rem 1rem',
-          zIndex: 50 
+          zIndex: 50
         }}
       >
         <div style={{ display: 'flex', gap: '0.75rem', maxWidth: '56rem', marginLeft: 'auto', marginRight: 'auto' }}>
-          <Link 
-            href="/library" 
+          <Link
+            href="/library"
             className="hover:bg-orange-400 font-semibold rounded-xl transition"
-            style={{ 
-              flex: 1, 
-              padding: '1.25rem', 
-              textAlign: 'center', 
-              backgroundColor: '#f97316', 
-              color: 'white', 
+            style={{
+              flex: 1,
+              padding: '1.25rem',
+              textAlign: 'center',
+              backgroundColor: '#f97316',
+              color: 'white',
               fontSize: '1.125rem'
             }}
           >
             Go to Library
           </Link>
-          <Link 
-            href="/subscribe" 
+          <Link
+            href="/subscribe"
             className="hover:bg-green-400 font-semibold rounded-xl transition"
-            style={{ 
-              flex: 1, 
-              padding: '1.25rem', 
-              textAlign: 'center', 
-              backgroundColor: '#22c55e', 
-              color: 'black', 
+            style={{
+              flex: 1,
+              padding: '1.25rem',
+              textAlign: 'center',
+              backgroundColor: '#22c55e',
+              color: 'black',
               fontSize: '1.125rem'
             }}
           >
@@ -196,7 +186,7 @@ function WelcomeContent() {
           </Link>
         </div>
       </div>
-      
+
     </div>
   )
 }
