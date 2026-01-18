@@ -43,7 +43,7 @@ export default function Header({ showBackButton = false, userInitial = 'U' }: He
       {/* Center: Logo */}
       <div className="flex items-center gap-1">
         <span className="text-xl">🚗</span>
-        <span className="font-bold text-white text-sm">
+        <span className="font-bold text-white text-sm italic">
           Drive Time <span className="text-orange-400">Tales</span>
         </span>
       </div>
