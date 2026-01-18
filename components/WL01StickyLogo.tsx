@@ -36,7 +36,7 @@ export default function WL01StickyLogo({ credits }: WL01StickyLogoProps) {
         <DTTLogo size="md" />
         
         <div className="text-white" style={{ fontSize: '0.875rem' }}>
-          {credits} credits
+          You Have<br />{credits} Credits
         </div>
       </div>
     </header>
