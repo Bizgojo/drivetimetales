@@ -12,7 +12,7 @@ Owner: Marc (Wonder Books Press / Drive Time Tales)
 Status: PROTECTED
 
 PURPOSE:
-This is the official New Releases module for the DTT Home Page.
+This is the official NEW RELEASES module for the DTT Home Page.
 Shows the 2 most recently published stories in a 2-column grid with gray background.
 
 PRODUCTION FIX:
@@ -27,7 +27,7 @@ DISPLAY RULES:
 - Shows exactly 2 stories (most recent by published_on)
 - 2-column grid layout
 - Each card has bg-slate-800 background with p-2 padding
-- No flags on New Releases cards
+- No flags on NEW RELEASES cards
 - Entire card is clickable → /player/[id]
 
 DATA SOURCE:
@@ -118,7 +118,7 @@ export default function NewReleases() {
   if (loading) {
     return (
       <section style={{ paddingLeft: '1rem', paddingRight: '1rem', paddingTop: '1.5rem', paddingBottom: '1rem' }}>
-        <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>🆕 New Releases</h2>
+        <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>🆕 NEW RELEASES</h2>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem' }}>
           {[1, 2].map((i) => (
             <div key={i} className="animate-pulse bg-slate-800 rounded-xl" style={{ padding: '0.5rem' }}>
@@ -146,7 +146,7 @@ export default function NewReleases() {
 
   return (
     <section style={{ paddingLeft: '1rem', paddingRight: '1rem', paddingTop: '1.5rem', paddingBottom: '1rem' }}>
-      <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>🆕 New Releases</h2>
+      <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>🆕 NEW RELEASES</h2>
       
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem' }}>
         {stories.map((story) => (

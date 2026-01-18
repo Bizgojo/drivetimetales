@@ -12,7 +12,7 @@ Owner: Marc (Wonder Books Press / Drive Time Tales)
 Status: PROTECTED
 
 PURPOSE:
-This is the official Recommended For You module for the DTT Home Page.
+This is the official RECOMMENDED FOR YOU module for the DTT Home Page.
 Shows 3 randomly selected stories using HorizontalStoryCard format (Module 01).
 
 PRODUCTION FIX:
@@ -142,7 +142,7 @@ export default function RecommendedForYou() {
   if (loading) {
     return (
       <section style={{ paddingLeft: '1rem', paddingRight: '1rem', paddingTop: '1.5rem', paddingBottom: '1rem' }}>
-        <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>⭐ Recommended For You</h2>
+        <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>⭐ RECOMMENDED FOR YOU</h2>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           {[1, 2, 3].map((i) => (
             <div key={i} className="bg-slate-800 rounded-xl overflow-hidden animate-pulse" style={{ display: 'flex' }}>
@@ -168,7 +168,7 @@ export default function RecommendedForYou() {
   if (stories.length === 0) {
     return (
       <section style={{ paddingLeft: '1rem', paddingRight: '1rem', paddingTop: '1.5rem', paddingBottom: '1rem' }}>
-        <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>⭐ Recommended For You</h2>
+        <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>⭐ RECOMMENDED FOR YOU</h2>
         <p className="text-white text-sm">No recommendations yet.</p>
       </section>
     )
@@ -180,7 +180,7 @@ export default function RecommendedForYou() {
 
   return (
     <section style={{ paddingLeft: '1rem', paddingRight: '1rem', paddingTop: '1.5rem', paddingBottom: '1rem' }}>
-      <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>⭐ Recommended For You</h2>
+      <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>⭐ RECOMMENDED FOR YOU</h2>
       
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
         {stories.map((story) => (
