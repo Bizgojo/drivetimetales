@@ -118,7 +118,7 @@ export default function RecommendedForYou() {
           .from('stories')
           .select('id, title, genre, author, duration_mins, cover_url')
           .not('cover_url', 'is', null)
-          .limit(3)
+          .limit(5)
 
         if (error) {
           console.error('Error fetching recommendations:', error)
@@ -144,7 +144,7 @@ export default function RecommendedForYou() {
       <section style={{ paddingLeft: '1rem', paddingRight: '1rem', paddingTop: '1.5rem', paddingBottom: '1rem' }}>
         <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>⭐ RECOMMENDED FOR YOU</h2>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          {[1, 2, 3].map((i) => (
+          {[1, 2, 3, 4, 5].map((i) => (
             <div key={i} className="bg-slate-800 rounded-xl overflow-hidden animate-pulse" style={{ display: 'flex' }}>
               <div style={{ width: '7rem', height: '7rem', flexShrink: 0, padding: '0.5rem' }}>
                 <div className="rounded-lg bg-slate-700" style={{ width: '100%', height: '100%' }} />
