@@ -107,10 +107,6 @@ function WelcomeLibraryContent() {
         setSelectedType={setSelectedType}
       />
 
-      {/* Stories count */}
-      <div style={{ padding: '0.5rem 1rem' }}>
-        <p className="text-slate-400 text-sm">{filteredStories.length} stories found</p>
-      </div>
 
       {/* Story List - placeholder for WL02 */}
       <div style={{ padding: '0 1rem 6rem 1rem' }}>
