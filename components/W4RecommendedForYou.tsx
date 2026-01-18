@@ -73,7 +73,7 @@ export default function W4RecommendedForYou() {
           .select('id, title, genre, author, duration_mins, cover_url')
           .not('cover_url', 'is', null)
           .lt('duration_mins', 45)  // Only stories with 1-2 credits
-          .limit(3)
+          .limit(5)
 
         if (error) {
           console.error('Error fetching recommendations:', error)
