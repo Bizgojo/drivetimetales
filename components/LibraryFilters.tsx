@@ -27,7 +27,7 @@ interface LibraryFiltersProps {
 }
 
 const durations = ['Any Length', '~15 min', '~30 min', '~1 hr']
-const genres = ['All Genres', 'Mystery/Thriller', 'Drama', 'Sci-Fi', 'Horror', 'Comedy', 'Romance', 'Truckers', 'Children', 'Get Smart']
+const genres = ['📚 All', '🔍 Mystery', '🎭 Drama', '🚀 Sci-Fi', '👻 Horror', '😂 Comedy', '💕 Romance', '🚛 Truckers', '👶 Children', '🧠 Get Smart']
 const types = ['All', 'Singles', 'Series']
 
 export default function LibraryFilters({
@@ -68,7 +68,7 @@ export default function LibraryFilters({
       <div style={{ marginBottom: '1rem' }}>
         <p className="text-white text-sm font-semibold" style={{ marginBottom: '0.5rem' }}>What are you in the mood for?</p>
         <div className="bg-slate-800 rounded-xl" style={{ padding: '0.375rem' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.25rem' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
             {genres.map(g => (
               <button
                 key={g}
@@ -76,7 +76,7 @@ export default function LibraryFilters({
                 className={`rounded-xl text-sm ${selectedGenre === g ? 'bg-orange-500' : ''}`}
                 style={{ padding: '0.625rem 1rem', border: 'none', cursor: 'pointer', color: 'white' }}
               >
-                {g === 'All Genres' ? '📚 All' : g}
+                {g}
               </button>
             ))}
           </div>
