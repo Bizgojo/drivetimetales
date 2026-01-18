@@ -162,7 +162,7 @@ export default function WelcomeHeader({ credits }: WelcomeHeaderProps) {
       {credits > 0 && (
         <p style={{ 
           color: 'white', 
-          fontSize: '1rem', 
+          fontSize: '1.125rem', fontWeight: 'bold', 
           display: 'flex', 
           alignItems: 'center', 
           justifyContent: 'center', 
