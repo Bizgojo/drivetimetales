@@ -147,7 +147,7 @@ function WelcomeLibraryContent() {
             <p style={{ color: '#e2e8f0', fontSize: '18px', marginBottom: '0.75rem' }}>
               {getEmptyMessage()}
             </p>
-            <p style={{ color: '#94a3b8', fontSize: '16px' }}>
+            <p style={{ color: '#e2e8f0', fontSize: '16px' }}>
               We will make a request to our writers for this category.
             </p>
           </div>
