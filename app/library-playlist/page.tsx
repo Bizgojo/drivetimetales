@@ -16,9 +16,6 @@ interface Story {
   series_name?: string | null
   series_number?: number | null
   series_total?: number | null
-  rating?: number
-  review_count?: number
-  flag?: 'free' | 'editors-pick' | 'readers-choice' | 'trending' | null
 }
 
 interface PlaylistItem {
@@ -89,13 +86,15 @@ function LibraryPlaylistContent() {
 
   useEffect(() => {
     async function fetchData() {
-      const { data: storiesData } = await supabase
+      const { data: storiesData, error } = await supabase
         .from('stories')
-        .select('id, title, genre, author, duration_mins, cover_url, series_name, series_number, series_total, rating, review_count, flag')
+        .select('id, title, genre, author, duration_mins, cover_url, series_name, series_number, series_total')
         .not('cover_url', 'is', null)
-        .order('series_name', { ascending: true, nullsFirst: false })
-        .order('series_number', { ascending: true })
         .order('published_on', { ascending: false })
+      
+      if (error) {
+        console.error('Stories query error:', error)
+      }
       if (storiesData) setStories(storiesData)
       setLoading(false)
     }
@@ -527,9 +526,6 @@ function LibraryPlaylistContent() {
             duration_mins={story.duration_mins}
             credits={getCredits(story.duration_mins)}
             cover_url={story.cover_url}
-            rating={story.rating}
-            review_count={story.review_count}
-            flag={story.flag}
             series_number={story.series_number}
             series_total={story.series_total}
             play_status={getPlayStatus(story.id)}
