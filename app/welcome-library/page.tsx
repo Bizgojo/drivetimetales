@@ -100,6 +100,19 @@ function WelcomeLibraryContent() {
     return true
   })
 
+  // Build the empty state message
+  const getEmptyMessage = () => {
+    const parts = []
+    if (selectedDuration !== 'All Lengths') parts.push(selectedDuration)
+    if (selectedGenre !== 'All Categories') parts.push(selectedGenre)
+    if (selectedType !== 'Singles & Series') parts.push(selectedType.toLowerCase())
+    
+    if (parts.length === 0) {
+      return 'Sorry, we have no stories available right now.'
+    }
+    return `Sorry, we have no stories for your ${parts.join(', ')} selection.`
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
@@ -124,30 +137,46 @@ function WelcomeLibraryContent() {
       </div>
 
       <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-        {filteredStories.map((story) => {
-          const storyCost = getCredits(story.duration_mins)
-          const canAfford = freeCredits >= storyCost
-          const playStatus = getPlayStatus(story.id)
-          
-          return (
-            <HorizontalStoryCard
-              key={story.id}
-              id={story.id}
-              title={story.title}
-              genre={story.genre}
-              author={story.author || 'Drive Time Tales'}
-              duration_mins={story.duration_mins}
-              credits={storyCost}
-              cover_url={story.cover_url}
-              rating={4.0}
-              review_count={0}
-              flag={canAfford ? 'free' : null}
-              series_number={story.series_number}
-              series_total={story.series_total}
-              play_status={playStatus}
-            />
-          )
-        })}
+        {filteredStories.length === 0 ? (
+          <div style={{ 
+            backgroundColor: '#1e293b', 
+            borderRadius: '12px', 
+            padding: '2rem', 
+            textAlign: 'center' 
+          }}>
+            <p style={{ color: '#e2e8f0', fontSize: '18px', marginBottom: '0.75rem' }}>
+              {getEmptyMessage()}
+            </p>
+            <p style={{ color: '#94a3b8', fontSize: '16px' }}>
+              We will make a request to our writers for this category.
+            </p>
+          </div>
+        ) : (
+          filteredStories.map((story) => {
+            const storyCost = getCredits(story.duration_mins)
+            const canAfford = freeCredits >= storyCost
+            const playStatus = getPlayStatus(story.id)
+            
+            return (
+              <HorizontalStoryCard
+                key={story.id}
+                id={story.id}
+                title={story.title}
+                genre={story.genre}
+                author={story.author || 'Drive Time Tales'}
+                duration_mins={story.duration_mins}
+                credits={storyCost}
+                cover_url={story.cover_url}
+                rating={4.0}
+                review_count={0}
+                flag={canAfford ? 'free' : null}
+                series_number={story.series_number}
+                series_total={story.series_total}
+                play_status={playStatus}
+              />
+            )
+          })
+        )}
       </div>
     </div>
   )
