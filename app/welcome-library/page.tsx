@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import WL01StickyLogo from '@/components/WL01StickyLogo'
-import LibraryFilters from '@/components/LibraryFilters'
+import LibraryFiltersV2 from '@/components/LibraryFiltersV2'
 
 interface Story {
   id: string
@@ -55,7 +55,6 @@ function WelcomeLibraryContent() {
   const [selectedGenre, setSelectedGenre] = useState('All Categories')
   const [selectedType, setSelectedType] = useState('Singles & Series')
   
-  // Modal state
   const [showModal, setShowModal] = useState(false)
   const [selectedStory, setSelectedStory] = useState<Story | null>(null)
 
@@ -135,18 +134,15 @@ function WelcomeLibraryContent() {
     const canAfford = freeCredits >= storyCost
     
     if (canAfford) {
-      // Store return path for back button
       localStorage.setItem('dtt_return_path', '/welcome-library')
       router.push('/player/' + story.id)
     } else {
-      // Show purchase modal
       setSelectedStory(story)
       setShowModal(true)
     }
   }
 
   const handlePurchase = () => {
-    // Store return path and go to pricing/subscribe page
     localStorage.setItem('dtt_return_path', '/welcome-library')
     router.push('/subscribe')
   }
@@ -164,7 +160,7 @@ function WelcomeLibraryContent() {
       <WL01StickyLogo credits={freeCredits} />
       
       <div style={{ paddingTop: '1rem' }}>
-        <LibraryFilters
+        <LibraryFiltersV2
           selectedDuration={selectedDuration}
           setSelectedDuration={setSelectedDuration}
           selectedGenre={selectedGenre}
@@ -267,7 +263,6 @@ function WelcomeLibraryContent() {
         )}
       </div>
 
-      {/* Purchase Modal */}
       {showModal && selectedStory && (
         <div 
           style={{
