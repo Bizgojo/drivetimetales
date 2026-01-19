@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import WL01StickyLogo from '@/components/WL01StickyLogo'
+import HorizontalStoryCard from '@/components/HorizontalStoryCard'
 
 interface Story {
   id: string
@@ -15,6 +16,9 @@ interface Story {
   series_name?: string | null
   series_number?: number | null
   series_total?: number | null
+  rating?: number
+  review_count?: number
+  flag?: 'free' | 'editors-pick' | 'readers-choice' | 'trending' | null
 }
 
 interface PlaylistItem {
@@ -87,7 +91,7 @@ function LibraryPlaylistContent() {
     async function fetchData() {
       const { data: storiesData } = await supabase
         .from('stories')
-        .select('id, title, genre, author, duration_mins, cover_url, series_name, series_number, series_total')
+        .select('id, title, genre, author, duration_mins, cover_url, series_name, series_number, series_total, rating, review_count, flag')
         .not('cover_url', 'is', null)
         .order('series_name', { ascending: true, nullsFirst: false })
         .order('series_number', { ascending: true })
@@ -293,6 +297,14 @@ function LibraryPlaylistContent() {
     justifyContent: 'center',
   })
 
+  const getPlayStatus = (storyId: string): 'played' | 'continue' | null => {
+    const playlistIdx = playlist.findIndex(p => p.id === storyId)
+    if (playlistIdx < 0) return null
+    if (playlistIdx < currentIndex) return 'played'
+    if (playlistIdx === currentIndex && (currentIndex > 0 || currentProgress > 0)) return 'continue'
+    return null
+  }
+
   if (loading) {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -312,9 +324,9 @@ function LibraryPlaylistContent() {
         <div style={{ backgroundColor: '#1e293b', padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 50 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <div style={{ width: '10px', height: '10px', backgroundColor: '#22c55e', borderRadius: '50%', animation: 'pulse 1s infinite' }} />
-            <span style={{ color: '#e2e8f0', fontWeight: 600, fontSize: '14px' }}>Now Playing</span>
+            <span style={{ color: 'white', fontWeight: 600, fontSize: '14px' }}>Now Playing</span>
           </div>
-          <div style={{ color: '#94a3b8', fontSize: '13px' }}>{formatTime(remainingMins)} remaining</div>
+          <div style={{ color: 'white', fontSize: '14px', fontWeight: 500 }}>{formatTime(remainingMins)} remaining</div>
           <button onClick={handlePause} style={{ backgroundColor: '#f97316', color: 'white', padding: '0.5rem 1rem', borderRadius: '8px', fontSize: '14px', fontWeight: 500, border: 'none', cursor: 'pointer', minHeight: '40px' }}>
             ⏸️ Pause
           </button>
@@ -323,7 +335,7 @@ function LibraryPlaylistContent() {
         <div style={{ padding: '1rem' }}>
           <div style={{ backgroundColor: '#1e293b', borderRadius: '12px', padding: '1rem', marginBottom: '1rem' }}>
             <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1rem' }}>
-              <div style={{ width: '80px', height: '80px', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#334155', flexShrink: 0 }}>
+              <div style={{ width: '120px', height: '120px', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#334155', flexShrink: 0 }}>
                 {currentStory?.cover_url ? (
                   <img src={currentStory.cover_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 ) : (
@@ -331,15 +343,15 @@ function LibraryPlaylistContent() {
                 )}
               </div>
               <div style={{ flex: 1 }}>
-                <div style={{ color: '#e2e8f0', fontSize: '18px', fontWeight: 'bold', marginBottom: '4px' }}>{currentStory?.title}</div>
-                <div style={{ color: '#94a3b8', fontSize: '14px' }}>by {currentStory?.author}</div>
-                <div style={{ color: '#94a3b8', fontSize: '13px' }}>{currentStory?.genre} • Story {currentIndex + 1} of {playlist.length}</div>
+                <div style={{ color: 'white', fontSize: '20px', fontWeight: 'bold', marginBottom: '4px' }}>{currentStory?.title}</div>
+                <div style={{ color: 'white', fontSize: '16px' }}>by {currentStory?.author}</div>
+                <div style={{ color: 'white', fontSize: '16px' }}>{currentStory?.genre} • Story {currentIndex + 1} of {playlist.length}</div>
               </div>
             </div>
             <div style={{ backgroundColor: '#334155', height: '8px', borderRadius: '4px', overflow: 'hidden', marginBottom: '0.5rem' }}>
               <div style={{ backgroundColor: '#f97316', height: '100%', width: `${progressPercent}%`, borderRadius: '4px', transition: 'width 0.5s' }} />
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8', fontSize: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', color: 'white', fontSize: '16px', fontWeight: 500 }}>
               <span>{formatSeconds(currentProgress)}</span>
               <span>-{formatSeconds(storyDurationSecs - currentProgress)}</span>
             </div>
@@ -351,20 +363,20 @@ function LibraryPlaylistContent() {
 
           {currentIndex < playlist.length - 1 && (
             <div style={{ backgroundColor: '#1e293b', borderRadius: '12px', padding: '1rem' }}>
-              <div style={{ color: '#94a3b8', fontSize: '12px', textTransform: 'uppercase', marginBottom: '0.75rem' }}>Up Next</div>
+              <div style={{ color: 'white', fontSize: '16px', textTransform: 'uppercase', marginBottom: '0.75rem', fontWeight: 600 }}>Up Next</div>
               {playlist.slice(currentIndex + 1, currentIndex + 4).map((item, idx) => (
                 <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem 0', borderBottom: idx < Math.min(2, playlist.length - currentIndex - 2) ? '1px solid #334155' : 'none' }}>
-                  <span style={{ color: '#94a3b8', fontSize: '14px', width: '24px' }}>{currentIndex + idx + 2}</span>
-                  <div style={{ width: '44px', height: '44px', backgroundColor: '#334155', borderRadius: '6px', overflow: 'hidden', flexShrink: 0 }}>
+                  <span style={{ color: 'white', fontSize: '16px', width: '24px' }}>{currentIndex + idx + 2}</span>
+                  <div style={{ width: '50px', height: '50px', backgroundColor: '#334155', borderRadius: '6px', overflow: 'hidden', flexShrink: 0 }}>
                     {item.cover_url ? <img src={item.cover_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>{getGenreEmoji(item.genre)}</div>}
                   </div>
                   <div style={{ flex: 1 }}>
-                    <div style={{ color: '#e2e8f0', fontSize: '14px', fontWeight: 500 }}>{item.title}</div>
-                    <div style={{ color: '#94a3b8', fontSize: '12px' }}>{item.genre} • {item.duration_mins} min</div>
+                    <div style={{ color: 'white', fontSize: '16px', fontWeight: 500 }}>{item.title}</div>
+                    <div style={{ color: 'white', fontSize: '14px' }}>{item.genre} • {item.duration_mins} min</div>
                   </div>
                 </div>
               ))}
-              {playlist.length - currentIndex - 1 > 3 && <div style={{ color: '#94a3b8', fontSize: '12px', textAlign: 'center', marginTop: '0.5rem' }}>+ {playlist.length - currentIndex - 4} more</div>}
+              {playlist.length - currentIndex - 1 > 3 && <div style={{ color: 'white', fontSize: '14px', textAlign: 'center', marginTop: '0.5rem' }}>+ {playlist.length - currentIndex - 4} more</div>}
             </div>
           )}
         </div>
@@ -379,7 +391,7 @@ function LibraryPlaylistContent() {
       <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', paddingBottom: '80px' }}>
         <div style={{ backgroundColor: '#1e293b', padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <button onClick={() => { setIsSelectingStories(false); setPlaylist([]) }} style={{ background: 'none', border: 'none', color: 'white', fontSize: '20px', cursor: 'pointer' }}>←</button>
-          <span style={{ color: '#e2e8f0', fontWeight: 600, fontSize: '16px' }}>Select stories for your playlist</span>
+          <span style={{ color: 'white', fontWeight: 600, fontSize: '16px' }}>Select stories for your playlist</span>
         </div>
 
         <div style={{ padding: '0.75rem' }}>
@@ -399,8 +411,8 @@ function LibraryPlaylistContent() {
           </div>
 
           <div style={{ backgroundColor: '#1e293b', borderRadius: '10px', padding: '0.75rem 1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', position: 'sticky', top: 0, zIndex: 10 }}>
-            <div style={{ color: '#e2e8f0', fontSize: '16px', fontWeight: 'bold' }}>{playlist.length} stories • {formatTime(playlistTotal)}</div>
-            <div style={{ backgroundColor: creditsRemaining > 0 ? '#22c55e' : '#ef4444', color: 'white', padding: '0.35rem 0.75rem', borderRadius: '20px', fontSize: '13px', fontWeight: 600 }}>{creditsRemaining} credits left</div>
+            <div style={{ color: 'white', fontSize: '16px', fontWeight: 'bold' }}>{playlist.length} stories • {formatTime(playlistTotal)}</div>
+            <div style={{ backgroundColor: creditsRemaining > 0 ? '#22c55e' : '#ef4444', color: '#0f172a', padding: '0.35rem 0.75rem', borderRadius: '20px', fontSize: '13px', fontWeight: 700 }}>{creditsRemaining} credits left</div>
           </div>
 
           {sortedStories.map(story => {
@@ -428,17 +440,17 @@ function LibraryPlaylistContent() {
                   transform: isDragging ? 'scale(1.02)' : 'scale(1)', boxShadow: isDragging ? '0 8px 20px rgba(0,0,0,0.4)' : 'none', transition: 'transform 0.15s, box-shadow 0.15s'
                 }}
               >
-                {isSelected && <div style={{ color: '#94a3b8', fontSize: '16px', cursor: 'grab' }}>☰</div>}
+                {isSelected && <div style={{ color: 'white', fontSize: '16px', cursor: 'grab' }}>☰</div>}
                 {isSelected && <div style={{ backgroundColor: '#f97316', color: 'white', width: '24px', height: '24px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 'bold', flexShrink: 0 }}>{playlistIndex + 1}</div>}
-                <div style={{ width: '50px', height: '50px', backgroundColor: '#334155', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', flexShrink: 0, overflow: 'hidden' }}>
+                <div style={{ width: '60px', height: '60px', backgroundColor: '#334155', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', flexShrink: 0, overflow: 'hidden' }}>
                   {story.cover_url ? <img src={story.cover_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : getGenreEmoji(story.genre)}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ color: '#e2e8f0', fontSize: '14px', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <div style={{ color: 'white', fontSize: '16px', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {story.title}
                     {story.series_number && story.series_total && <span style={{ color: '#3b82f6', fontSize: '12px', marginLeft: '6px' }}>[{story.series_number}/{story.series_total}]</span>}
                   </div>
-                  <div style={{ color: '#94a3b8', fontSize: '12px' }}>{story.genre} • {story.duration_mins} min • {storyCost} {storyCost === 1 ? 'credit' : 'credits'}</div>
+                  <div style={{ color: 'white', fontSize: '14px' }}>{story.genre} • {story.duration_mins} min • {storyCost} {storyCost === 1 ? 'credit' : 'credits'}</div>
                 </div>
                 <div style={{ width: '28px', height: '28px', borderRadius: '50%', border: isSelected ? 'none' : '2px solid #475569', backgroundColor: isSelected ? '#22c55e' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', flexShrink: 0 }}>{isSelected && '✓'}</div>
               </div>
@@ -447,7 +459,7 @@ function LibraryPlaylistContent() {
         </div>
 
         <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: '#0f172a', padding: '0.75rem', borderTop: '1px solid #334155' }}>
-          <button onClick={savePlaylist} disabled={playlist.length === 0} style={{ backgroundColor: playlist.length > 0 ? '#22c55e' : '#475569', color: 'white', padding: '0.75rem 1rem', borderRadius: '10px', fontSize: '16px', fontWeight: 'bold', border: 'none', cursor: playlist.length > 0 ? 'pointer' : 'not-allowed', width: '100%' }}>
+          <button onClick={savePlaylist} disabled={playlist.length === 0} style={{ backgroundColor: playlist.length > 0 ? '#22c55e' : '#475569', color: playlist.length > 0 ? '#0f172a' : 'white', padding: '0.75rem 1rem', borderRadius: '10px', fontSize: '16px', fontWeight: 'bold', border: 'none', cursor: playlist.length > 0 ? 'pointer' : 'not-allowed', width: '100%' }}>
             💾 Save My Playlist ({playlist.length} stories • {formatTime(playlistTotal)})
           </button>
         </div>
@@ -455,7 +467,7 @@ function LibraryPlaylistContent() {
     )
   }
 
-  // MAIN LIBRARY STATE
+  // MAIN LIBRARY STATE - Using HorizontalStoryCard
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#0f172a' }}>
       <WL01StickyLogo credits={userCredits} />
@@ -483,8 +495,8 @@ function LibraryPlaylistContent() {
             <div style={{ marginTop: '0.35rem' }}>
               <div style={{ backgroundColor: '#334155', borderRadius: '8px', padding: '0.75rem', marginBottom: '0.5rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                  <span style={{ color: '#e2e8f0', fontSize: '14px', fontWeight: 600 }}>Your Playlist</span>
-                  <span style={{ color: '#94a3b8', fontSize: '13px' }}>{playlist.length} stories • {formatTime(remainingMins)} left</span>
+                  <span style={{ color: 'white', fontSize: '14px', fontWeight: 600 }}>Your Playlist</span>
+                  <span style={{ color: 'white', fontSize: '13px' }}>{playlist.length} stories • {formatTime(remainingMins)} left</span>
                 </div>
                 <div style={{ backgroundColor: '#1e293b', height: '6px', borderRadius: '3px', overflow: 'hidden' }}>
                   <div style={{ backgroundColor: '#f97316', height: '100%', width: `${playlistTotal > 0 ? ((playlistTotal - remainingMins) / playlistTotal) * 100 : 0}%`, borderRadius: '3px' }} />
@@ -495,7 +507,7 @@ function LibraryPlaylistContent() {
                   ▶️ Continue Playlist ({formatTime(remainingMins)} left)
                 </button>
               ) : (
-                <button onClick={handlePlay} style={{ backgroundColor: '#22c55e', color: 'white', padding: '0.6rem 1rem', borderRadius: '8px', fontSize: '15px', fontWeight: 500, border: 'none', cursor: 'pointer', width: '100%' }}>
+                <button onClick={handlePlay} style={{ backgroundColor: '#22c55e', color: '#0f172a', padding: '0.6rem 1rem', borderRadius: '8px', fontSize: '15px', fontWeight: 600, border: 'none', cursor: 'pointer', width: '100%' }}>
                   ▶️ Play Your Playlist ({formatTime(playlistTotal)})
                 </button>
               )}
@@ -505,44 +517,31 @@ function LibraryPlaylistContent() {
       </div>
 
       <div style={{ padding: '0 0.75rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-        {filteredStories.map(story => {
-          const storyCost = getCredits(story.duration_mins)
-          const isInPlaylist = playlist.some(p => p.id === story.id)
-          const playlistIdx = playlist.findIndex(p => p.id === story.id)
-          const isPlayedItem = playlistIdx >= 0 && playlistIdx < currentIndex
-          const isCurrent = playlistIdx === currentIndex && (currentIndex > 0 || currentProgress > 0)
-          
-          return (
-            <div key={story.id} onClick={() => { if (!isPlaying) { localStorage.setItem('dtt_return_path', '/library-playlist'); router.push('/player/' + story.id) }}}
-              style={{ display: 'flex', backgroundColor: isPlayedItem ? '#1e3a2f' : isCurrent ? '#2d3a4f' : '#1e293b', borderRadius: '12px', overflow: 'hidden', cursor: isPlaying ? 'default' : 'pointer', opacity: isPlayedItem ? 0.7 : 1, border: isCurrent ? '2px solid #f97316' : '2px solid transparent' }}>
-              <div style={{ width: '100px', height: '100px', flexShrink: 0, padding: '0.5rem', position: 'relative' }}>
-                <div style={{ width: '100%', height: '100%', borderRadius: '8px', overflow: 'hidden' }}>
-                  <img src={story.cover_url || '/images/default-cover.png'} alt={story.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                </div>
-                {isPlayedItem && <div style={{ position: 'absolute', top: '0.5rem', right: '0.5rem', backgroundColor: '#22c55e', borderRadius: '50%', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '14px' }}>✓</div>}
-                {isCurrent && <div style={{ position: 'absolute', top: '0.5rem', right: '0.5rem', backgroundColor: '#f97316', borderRadius: '4px', padding: '2px 6px', color: 'white', fontSize: '10px', fontWeight: 'bold' }}>PAUSED</div>}
-              </div>
-              <div style={{ flex: 1, padding: '0.5rem 0.75rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                <h3 style={{ color: '#e2e8f0', fontWeight: 'bold', fontSize: '16px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {story.title}{story.series_number && <span style={{ color: '#3b82f6', fontSize: '12px', marginLeft: '6px' }}>[{story.series_number}/{story.series_total}]</span>}
-                </h3>
-                <p style={{ color: '#e2e8f0', fontSize: '14px', margin: '2px 0' }}>{story.genre}</p>
-                <p style={{ color: '#e2e8f0', fontSize: '14px', margin: '2px 0' }}>{story.duration_mins} min • {storyCost} credits</p>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
-                  {isPlayedItem && <span style={{ backgroundColor: '#6b7280', color: 'white', fontSize: '11px', padding: '2px 8px', borderRadius: '4px' }}>PLAYED</span>}
-                  {isInPlaylist && !isPlayedItem && <span style={{ backgroundColor: '#3b82f6', color: 'white', fontSize: '11px', padding: '2px 8px', borderRadius: '4px' }}>IN PLAYLIST</span>}
-                </div>
-              </div>
-            </div>
-          )
-        })}
+        {filteredStories.map(story => (
+          <HorizontalStoryCard
+            key={story.id}
+            id={story.id}
+            title={story.title}
+            genre={story.genre}
+            author={story.author || 'Drive Time Tales'}
+            duration_mins={story.duration_mins}
+            credits={getCredits(story.duration_mins)}
+            cover_url={story.cover_url}
+            rating={story.rating}
+            review_count={story.review_count}
+            flag={story.flag}
+            series_number={story.series_number}
+            series_total={story.series_total}
+            play_status={getPlayStatus(story.id)}
+          />
+        ))}
       </div>
 
       {showSubscriberPopup && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '1rem' }} onClick={() => setShowSubscriberPopup(false)}>
           <div style={{ backgroundColor: '#1e293b', borderRadius: '12px', padding: '1.5rem', maxWidth: '400px', width: '100%' }} onClick={(e) => e.stopPropagation()}>
-            <h2 style={{ color: '#e2e8f0', fontSize: '20px', fontWeight: 'bold', marginBottom: '1rem' }}>Playlists for Subscribers</h2>
-            <p style={{ color: '#e2e8f0', fontSize: '16px', marginBottom: '1.5rem' }}>Playlists are only available for subscribers who have sufficient credits. Subscribe now to create your own driving playlists!</p>
+            <h2 style={{ color: 'white', fontSize: '20px', fontWeight: 'bold', marginBottom: '1rem' }}>Playlists for Subscribers</h2>
+            <p style={{ color: 'white', fontSize: '16px', marginBottom: '1.5rem' }}>Playlists are only available for subscribers who have sufficient credits. Subscribe now to create your own driving playlists!</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               <button onClick={() => { setShowSubscriberPopup(false); router.push('/subscribe') }} style={{ backgroundColor: '#f97316', color: 'white', padding: '0.75rem 1rem', borderRadius: '8px', fontSize: '16px', fontWeight: 500, border: 'none', cursor: 'pointer' }}>Subscribe Now</button>
               <button onClick={() => setShowSubscriberPopup(false)} style={{ backgroundColor: '#475569', color: 'white', padding: '0.75rem 1rem', borderRadius: '8px', fontSize: '16px', fontWeight: 500, border: 'none', cursor: 'pointer' }}>Maybe Later</button>
