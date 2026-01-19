@@ -46,7 +46,7 @@ export default function LibraryFilters({
 
   // Clock icon - green circle, red hands
   const ClockIcon = () => (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
       <circle cx="12" cy="12" r="10" stroke="#22c55e" strokeWidth="2.5"/>
       <path d="M12 6v6l4 2" stroke="#ef4444" strokeWidth="2.5" strokeLinecap="round"/>
     </svg>
@@ -54,7 +54,7 @@ export default function LibraryFilters({
 
   // Genre icon - 4 colored squares
   const GenreIcon = () => (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
       <rect x="3" y="3" width="8" height="8" rx="1" fill="#ef4444"/>
       <rect x="13" y="3" width="8" height="8" rx="1" fill="#22c55e"/>
       <rect x="3" y="13" width="8" height="8" rx="1" fill="#3b82f6"/>
@@ -66,28 +66,28 @@ export default function LibraryFilters({
   const TypeIcon = ({ type }: { type: string }) => {
     if (type === 'Singles Only') {
       return (
-        <div style={{ display: 'flex', gap: '2px', alignItems: 'flex-end' }}>
-          <div style={{ width: '10px', height: '22px', backgroundColor: '#22c55e', borderRadius: '1px' }}></div>
+        <div style={{ display: 'flex', gap: '2px', alignItems: 'flex-end', width: '26px', justifyContent: 'center' }}>
+          <div style={{ width: '12px', height: '24px', backgroundColor: '#22c55e', borderRadius: '1px' }}></div>
         </div>
       )
     }
     if (type === 'Series Only') {
       return (
-        <div style={{ display: 'flex', gap: '2px', alignItems: 'flex-end' }}>
-          <div style={{ width: '6px', height: '18px', backgroundColor: '#ef4444', borderRadius: '1px' }}></div>
-          <div style={{ width: '6px', height: '22px', backgroundColor: '#3b82f6', borderRadius: '1px' }}></div>
-          <div style={{ width: '6px', height: '20px', backgroundColor: '#f97316', borderRadius: '1px' }}></div>
+        <div style={{ display: 'flex', gap: '2px', alignItems: 'flex-end', width: '26px', justifyContent: 'center' }}>
+          <div style={{ width: '7px', height: '20px', backgroundColor: '#ef4444', borderRadius: '1px' }}></div>
+          <div style={{ width: '7px', height: '24px', backgroundColor: '#3b82f6', borderRadius: '1px' }}></div>
+          <div style={{ width: '7px', height: '22px', backgroundColor: '#f97316', borderRadius: '1px' }}></div>
         </div>
       )
     }
     // Singles & Series
     return (
-      <div style={{ display: 'flex', gap: '2px', alignItems: 'flex-end' }}>
-        <div style={{ width: '8px', height: '22px', backgroundColor: '#22c55e', borderRadius: '1px' }}></div>
-        <div style={{ width: '4px' }}></div>
-        <div style={{ width: '5px', height: '18px', backgroundColor: '#ef4444', borderRadius: '1px' }}></div>
-        <div style={{ width: '5px', height: '22px', backgroundColor: '#3b82f6', borderRadius: '1px' }}></div>
-        <div style={{ width: '5px', height: '20px', backgroundColor: '#f97316', borderRadius: '1px' }}></div>
+      <div style={{ display: 'flex', gap: '2px', alignItems: 'flex-end', width: '26px', justifyContent: 'center' }}>
+        <div style={{ width: '8px', height: '24px', backgroundColor: '#22c55e', borderRadius: '1px' }}></div>
+        <div style={{ width: '3px' }}></div>
+        <div style={{ width: '5px', height: '20px', backgroundColor: '#ef4444', borderRadius: '1px' }}></div>
+        <div style={{ width: '5px', height: '24px', backgroundColor: '#3b82f6', borderRadius: '1px' }}></div>
+        <div style={{ width: '5px', height: '22px', backgroundColor: '#f97316', borderRadius: '1px' }}></div>
       </div>
     )
   }
@@ -110,7 +110,7 @@ export default function LibraryFilters({
         
         {/* Duration Row */}
         <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center', position: 'relative' }}>
-          <div style={{ flex: 1, color: '#e2e8f0', fontSize: '18px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ flex: 1, color: '#e2e8f0', fontSize: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
             <ClockIcon />
             <span>Duration - {selectedDuration}</span>
           </div>
@@ -121,7 +121,7 @@ export default function LibraryFilters({
               color: 'white', 
               padding: '0.5rem 1rem', 
               borderRadius: '6px', 
-              fontSize: '16px', 
+              fontSize: '17px', 
               fontWeight: 500, 
               border: 'none',
               cursor: 'pointer'
@@ -155,7 +155,7 @@ export default function LibraryFilters({
                     color: 'white',
                     border: 'none',
                     cursor: 'pointer',
-                    fontSize: '16px'
+                    fontSize: '17px'
                   }}
                 >
                   {d}
@@ -167,7 +167,7 @@ export default function LibraryFilters({
 
         {/* Genre Row */}
         <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center', position: 'relative' }}>
-          <div style={{ flex: 1, color: '#e2e8f0', fontSize: '18px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ flex: 1, color: '#e2e8f0', fontSize: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
             <GenreIcon />
             <span>Genre - {selectedGenre}</span>
           </div>
@@ -178,7 +178,7 @@ export default function LibraryFilters({
               color: 'white', 
               padding: '0.5rem 1rem', 
               borderRadius: '6px', 
-              fontSize: '16px', 
+              fontSize: '17px', 
               fontWeight: 500, 
               border: 'none',
               cursor: 'pointer'
@@ -196,7 +196,7 @@ export default function LibraryFilters({
               borderRadius: '8px', 
               overflow: 'hidden',
               zIndex: 50,
-              minWidth: '150px',
+              minWidth: '160px',
               maxHeight: '250px',
               overflowY: 'auto',
               boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
@@ -214,7 +214,7 @@ export default function LibraryFilters({
                     color: 'white',
                     border: 'none',
                     cursor: 'pointer',
-                    fontSize: '16px'
+                    fontSize: '17px'
                   }}
                 >
                   {g}
@@ -226,7 +226,7 @@ export default function LibraryFilters({
 
         {/* Type Row */}
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', position: 'relative' }}>
-          <div style={{ flex: 1, color: '#e2e8f0', fontSize: '18px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ flex: 1, color: '#e2e8f0', fontSize: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
             <TypeIcon type={selectedType} />
             <span>Type - {selectedType}</span>
           </div>
@@ -237,7 +237,7 @@ export default function LibraryFilters({
               color: 'white', 
               padding: '0.5rem 1rem', 
               borderRadius: '6px', 
-              fontSize: '16px', 
+              fontSize: '17px', 
               fontWeight: 500, 
               border: 'none',
               cursor: 'pointer'
@@ -255,7 +255,7 @@ export default function LibraryFilters({
               borderRadius: '8px', 
               overflow: 'hidden',
               zIndex: 50,
-              minWidth: '170px',
+              minWidth: '180px',
               boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
             }}>
               {TYPES.map(t => (
@@ -271,7 +271,7 @@ export default function LibraryFilters({
                     color: 'white',
                     border: 'none',
                     cursor: 'pointer',
-                    fontSize: '16px'
+                    fontSize: '17px'
                   }}
                 >
                   {t}
@@ -281,7 +281,7 @@ export default function LibraryFilters({
           )}
         </div>
 
-        {/* Reset Button - only shows when filters are active */}
+        {/* Reset Button - only shows when filters are changed */}
         {isFiltered && (
           <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid #334155' }}>
             <button 
@@ -292,7 +292,7 @@ export default function LibraryFilters({
                 color: 'white', 
                 padding: '0.5rem', 
                 borderRadius: '6px', 
-                fontSize: '16px', 
+                fontSize: '17px', 
                 fontWeight: 500, 
                 border: 'none',
                 cursor: 'pointer'
