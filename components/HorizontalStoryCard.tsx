@@ -30,7 +30,7 @@ export default function HorizontalStoryCard({
       href={'/player/' + id}
       className="flex bg-slate-800 rounded-xl overflow-hidden hover:bg-slate-700 transition"
     >
-      <div style={{ width: '112px', height: '112px', flexShrink: 0, padding: '0.5rem' }}>
+      <div style={{ width: '140px', height: '140px', flexShrink: 0, padding: '0.5rem' }}>
         <div className="rounded-lg overflow-hidden cover-glow" style={{ width: '100%', height: '100%' }}>
           <img 
             src={cover_url || '/images/default-cover.png'} 
@@ -39,13 +39,13 @@ export default function HorizontalStoryCard({
           />
         </div>
       </div>
-      <div style={{ flex: 1, padding: '0.5rem 0.75rem 0.5rem 0', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-        <h3 className="text-sm font-bold text-white line-clamp-1">{title}</h3>
-        <p className="text-white text-xs">{genre}</p>
-        <p className="text-white text-xs">by {author}</p>
-        <p className="text-white text-xs">{duration_mins} min • {credits} credits</p>
+      <div style={{ flex: 1, padding: '0.75rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+        <h3 className="text-white font-bold line-clamp-1" style={{ fontSize: '20px', margin: 0 }}>{title}</h3>
+        <p className="text-white" style={{ fontSize: '17px', margin: '3px 0' }}>{genre}</p>
+        <p className="text-white" style={{ fontSize: '17px', margin: '3px 0' }}>by {author}</p>
+        <p className="text-white" style={{ fontSize: '17px', margin: '3px 0' }}>{duration_mins} min • {credits} credits</p>
         {rating !== undefined && (
-          <p className="text-white text-xs" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+          <p className="text-white" style={{ fontSize: '17px', margin: '3px 0', display: 'flex', alignItems: 'center', gap: '4px' }}>
             {rating.toFixed(1)}/5{' '}
             {renderStars(rating)}{' '}
             {review_count || 0}
@@ -55,9 +55,9 @@ export default function HorizontalStoryCard({
                 style={{ 
                   backgroundColor: flag === 'free' ? '#22c55e' : '#f97316', 
                   color: 'white', 
-                  fontSize: '9px',
-                  padding: '0.125rem 0.375rem',
-                  marginLeft: '0.25rem'
+                  fontSize: '12px',
+                  padding: '3px 10px',
+                  marginLeft: '6px'
                 }}
               >
                 {flag === 'free' ? 'FREE' : 
