@@ -43,7 +43,7 @@ function WelcomeLibraryContent() {
       try {
         const { data, error } = await supabase
           .from('stories')
-          .select('id, title, genre, author, duration_mins, cover_url, rating, review_count')
+          .select('id, title, genre, author, duration_mins, cover_url')
           .not('cover_url', 'is', null)
           .order('published_on', { ascending: false })
 
