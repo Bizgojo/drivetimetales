@@ -28,14 +28,10 @@ export default function HorizontalStoryCard({
   return (
     <Link 
       href={'/player/' + id}
-      className="bg-slate-800 rounded-xl overflow-hidden hover:bg-slate-700 transition"
-      style={{ display: 'flex', alignItems: 'stretch' }}
+      className="flex bg-slate-800 rounded-xl overflow-hidden hover:bg-slate-700 transition"
     >
-      <div style={{ flexShrink: 0, padding: '0.75rem 0 0.75rem 0.75rem', display: 'flex' }}>
-        <div 
-          className="rounded-lg overflow-hidden cover-glow" 
-          style={{ aspectRatio: '1', height: '100%' }}
-        >
+      <div style={{ width: '145px', height: '145px', flexShrink: 0, padding: '0.5rem' }}>
+        <div className="rounded-lg overflow-hidden cover-glow" style={{ width: '100%', height: '100%' }}>
           <img 
             src={cover_url || '/images/default-cover.png'} 
             alt={title}
@@ -43,7 +39,7 @@ export default function HorizontalStoryCard({
           />
         </div>
       </div>
-      <div style={{ flex: 1, padding: '0.75rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+      <div style={{ flex: 1, padding: '0.5rem 0.75rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
         <h3 className="text-white font-bold line-clamp-1" style={{ fontSize: '20px', margin: 0 }}>{title}</h3>
         <p className="text-white" style={{ fontSize: '17px', margin: '3px 0' }}>{genre}</p>
         <p className="text-white" style={{ fontSize: '17px', margin: '3px 0' }}>by {author}</p>
