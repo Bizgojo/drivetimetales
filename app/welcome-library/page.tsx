@@ -28,7 +28,7 @@ function WelcomeLibraryContent() {
   
   // Filter states
   const [selectedDuration, setSelectedDuration] = useState('Any Length')
-  const [selectedGenre, setSelectedGenre] = useState('All Genres')
+  const [selectedGenre, setSelectedGenre] = useState('📚 All')
   const [selectedType, setSelectedType] = useState('All')
 
   useEffect(() => {
@@ -72,7 +72,7 @@ function WelcomeLibraryContent() {
     }
     
     // Genre filter
-    if (selectedGenre !== 'All Genres') {
+    if (selectedGenre !== '📚 All') {
       const storyGenre = story.genre?.toLowerCase() || ''
       if (!storyGenre.includes(selectedGenre.toLowerCase())) return false
     }
