@@ -11,6 +11,9 @@ interface StoryCardProps {
   rating?: number
   review_count?: number
   flag?: 'free' | 'editors-pick' | 'readers-choice' | 'trending' | null
+  series_number?: number | null
+  series_total?: number | null
+  play_status?: 'played' | 'continue' | null
 }
 
 export default function HorizontalStoryCard({
@@ -24,6 +27,9 @@ export default function HorizontalStoryCard({
   rating,
   review_count,
   flag,
+  series_number,
+  series_total,
+  play_status,
 }: StoryCardProps) {
   return (
     <Link 
@@ -41,7 +47,35 @@ export default function HorizontalStoryCard({
       </div>
       <div style={{ flex: 1, padding: '0.5rem 0.75rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
         <h3 className="text-white font-bold line-clamp-1" style={{ fontSize: '20px', margin: 0 }}>{title}</h3>
-        <p className="text-white" style={{ fontSize: '17px', margin: '3px 0' }}>{genre}</p>
+        <p className="text-white" style={{ fontSize: '17px', margin: '3px 0', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+          {genre}
+          {series_number && series_total && (
+            <span 
+              className="font-bold rounded"
+              style={{ 
+                backgroundColor: '#3b82f6', 
+                color: 'white', 
+                fontSize: '11px',
+                padding: '2px 8px'
+              }}
+            >
+              Series {series_number} of {series_total}
+            </span>
+          )}
+          {play_status && (
+            <span 
+              className="font-bold rounded"
+              style={{ 
+                backgroundColor: play_status === 'played' ? '#6b7280' : '#f59e0b', 
+                color: 'white', 
+                fontSize: '11px',
+                padding: '2px 8px'
+              }}
+            >
+              {play_status === 'played' ? 'Played' : 'Continue'}
+            </span>
+          )}
+        </p>
         <p className="text-white" style={{ fontSize: '17px', margin: '3px 0' }}>by {author}</p>
         <p className="text-white" style={{ fontSize: '17px', margin: '3px 0' }}>{duration_mins} min • {credits} credits</p>
         <p className="text-white" style={{ fontSize: '17px', margin: '3px 0', display: 'flex', alignItems: 'center', gap: '4px' }}>
