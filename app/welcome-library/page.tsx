@@ -1,10 +1,10 @@
 'use client'
 
 import { useState, useEffect, Suspense } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import WL01StickyLogo from '@/components/WL01StickyLogo'
 import LibraryFilters from '@/components/LibraryFilters'
-import HorizontalStoryCard from '@/components/HorizontalStoryCard'
 
 interface Story {
   id: string
@@ -28,7 +28,24 @@ function getCredits(duration_mins: number): number {
   return Math.max(1, Math.floor(duration_mins / 15))
 }
 
+function renderStars(rating: number) {
+  const stars = []
+  const fullStars = Math.floor(rating)
+  const hasHalf = rating % 1 >= 0.5
+  for (let i = 0; i < 5; i++) {
+    if (i < fullStars) {
+      stars.push(<span key={i} className="text-yellow-400">★</span>)
+    } else if (i === fullStars && hasHalf) {
+      stars.push(<span key={i} className="star-half">★</span>)
+    } else {
+      stars.push(<span key={i} className="text-slate-600">★</span>)
+    }
+  }
+  return stars
+}
+
 function WelcomeLibraryContent() {
+  const router = useRouter()
   const [stories, setStories] = useState<Story[]>([])
   const [userLibrary, setUserLibrary] = useState<UserLibraryItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -37,6 +54,10 @@ function WelcomeLibraryContent() {
   const [selectedDuration, setSelectedDuration] = useState('All Lengths')
   const [selectedGenre, setSelectedGenre] = useState('All Categories')
   const [selectedType, setSelectedType] = useState('Singles & Series')
+  
+  // Modal state
+  const [showModal, setShowModal] = useState(false)
+  const [selectedStory, setSelectedStory] = useState<Story | null>(null)
 
   useEffect(() => {
     const storedCredits = localStorage.getItem('dtt_free_credits')
@@ -79,18 +100,15 @@ function WelcomeLibraryContent() {
   }
 
   const filteredStories = stories.filter(story => {
-    // Duration filter
     if (selectedDuration !== 'All Lengths') {
       const mins = story.duration_mins
       if (selectedDuration === '~15 min' && mins > 20) return false
       if (selectedDuration === '~30 min' && (mins < 20 || mins > 40)) return false
       if (selectedDuration === '~1 hr' && mins < 40) return false
     }
-    // Genre filter
     if (selectedGenre !== 'All Categories') {
       if (!story.genre?.toLowerCase().includes(selectedGenre.toLowerCase())) return false
     }
-    // Type filter
     if (selectedType === 'Singles Only') {
       if (story.series_number && story.series_total) return false
     }
@@ -100,7 +118,6 @@ function WelcomeLibraryContent() {
     return true
   })
 
-  // Build the empty state message
   const getEmptyMessage = () => {
     const parts = []
     if (selectedDuration !== 'All Lengths') parts.push(selectedDuration)
@@ -111,6 +128,27 @@ function WelcomeLibraryContent() {
       return 'Sorry, we have no stories available right now.'
     }
     return `Sorry, we have no stories for your ${parts.join(', ')} selection.`
+  }
+
+  const handleStoryClick = (story: Story) => {
+    const storyCost = getCredits(story.duration_mins)
+    const canAfford = freeCredits >= storyCost
+    
+    if (canAfford) {
+      // Store return path for back button
+      localStorage.setItem('dtt_return_path', '/welcome-library')
+      router.push('/player/' + story.id)
+    } else {
+      // Show purchase modal
+      setSelectedStory(story)
+      setShowModal(true)
+    }
+  }
+
+  const handlePurchase = () => {
+    // Store return path and go to pricing/subscribe page
+    localStorage.setItem('dtt_return_path', '/welcome-library')
+    router.push('/subscribe')
   }
 
   if (loading) {
@@ -158,26 +196,149 @@ function WelcomeLibraryContent() {
             const playStatus = getPlayStatus(story.id)
             
             return (
-              <HorizontalStoryCard
+              <div 
                 key={story.id}
-                id={story.id}
-                title={story.title}
-                genre={story.genre}
-                author={story.author || 'Drive Time Tales'}
-                duration_mins={story.duration_mins}
-                credits={storyCost}
-                cover_url={story.cover_url}
-                rating={4.0}
-                review_count={0}
-                flag={canAfford ? 'free' : null}
-                series_number={story.series_number}
-                series_total={story.series_total}
-                play_status={playStatus}
-              />
+                onClick={() => handleStoryClick(story)}
+                className="flex bg-slate-800 rounded-xl overflow-hidden hover:bg-slate-700 transition cursor-pointer"
+              >
+                <div style={{ width: '155px', height: '155px', flexShrink: 0, padding: '0.5rem' }}>
+                  <div className="rounded-lg overflow-hidden cover-glow" style={{ width: '100%', height: '100%' }}>
+                    <img 
+                      src={story.cover_url || '/images/default-cover.png'} 
+                      alt={story.title}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                  </div>
+                </div>
+                <div style={{ flex: 1, padding: '0.5rem 0.75rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  <h3 className="text-white font-bold line-clamp-1" style={{ fontSize: '20px', margin: 0 }}>{story.title}</h3>
+                  <p className="text-white" style={{ fontSize: '17px', margin: '3px 0', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                    {story.genre}
+                    {story.series_number && story.series_total && (
+                      <span 
+                        className="font-bold rounded"
+                        style={{ 
+                          backgroundColor: '#3b82f6', 
+                          color: 'white', 
+                          fontSize: '11px',
+                          padding: '2px 8px'
+                        }}
+                      >
+                        Series {story.series_number} of {story.series_total}
+                      </span>
+                    )}
+                    {playStatus && (
+                      <span 
+                        className="font-bold rounded"
+                        style={{ 
+                          backgroundColor: playStatus === 'played' ? '#6b7280' : '#f59e0b', 
+                          color: 'white', 
+                          fontSize: '11px',
+                          padding: '2px 8px'
+                        }}
+                      >
+                        {playStatus === 'played' ? 'Played' : 'Continue'}
+                      </span>
+                    )}
+                  </p>
+                  <p className="text-white" style={{ fontSize: '17px', margin: '3px 0' }}>by {story.author || 'Drive Time Tales'}</p>
+                  <p className="text-white" style={{ fontSize: '17px', margin: '3px 0' }}>{story.duration_mins} min • {storyCost} credits</p>
+                  <p className="text-white" style={{ fontSize: '17px', margin: '3px 0', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    4.0/5 {renderStars(4.0)} 0
+                    {canAfford && (
+                      <span 
+                        className="font-bold rounded"
+                        style={{ 
+                          backgroundColor: '#22c55e', 
+                          color: 'white', 
+                          fontSize: '12px',
+                          padding: '3px 10px',
+                          marginLeft: '6px'
+                        }}
+                      >
+                        FREE
+                      </span>
+                    )}
+                  </p>
+                </div>
+              </div>
             )
           })
         )}
       </div>
+
+      {/* Purchase Modal */}
+      {showModal && selectedStory && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 100,
+            padding: '1rem'
+          }}
+          onClick={() => setShowModal(false)}
+        >
+          <div 
+            style={{
+              backgroundColor: '#1e293b',
+              borderRadius: '12px',
+              padding: '1.5rem',
+              maxWidth: '400px',
+              width: '100%'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 style={{ color: '#e2e8f0', fontSize: '20px', fontWeight: 'bold', marginBottom: '1rem' }}>
+              Not Enough Credits
+            </h2>
+            <p style={{ color: '#e2e8f0', fontSize: '16px', marginBottom: '0.5rem' }}>
+              <strong>{selectedStory.title}</strong> requires {getCredits(selectedStory.duration_mins)} credits.
+            </p>
+            <p style={{ color: '#e2e8f0', fontSize: '16px', marginBottom: '1.5rem' }}>
+              You have {freeCredits} credits remaining.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <button
+                onClick={handlePurchase}
+                style={{
+                  backgroundColor: '#f97316',
+                  color: 'white',
+                  padding: '0.75rem 1rem',
+                  borderRadius: '8px',
+                  fontSize: '16px',
+                  fontWeight: 500,
+                  border: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                Get More Credits
+              </button>
+              <button
+                onClick={() => setShowModal(false)}
+                style={{
+                  backgroundColor: '#475569',
+                  color: 'white',
+                  padding: '0.75rem 1rem',
+                  borderRadius: '8px',
+                  fontSize: '16px',
+                  fontWeight: 500,
+                  border: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                Choose Another Story
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
