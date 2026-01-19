@@ -30,7 +30,7 @@ export default function HorizontalStoryCard({
       href={'/player/' + id}
       className="flex bg-slate-800 rounded-xl overflow-hidden hover:bg-slate-700 transition"
     >
-      <div style={{ width: '145px', height: '145px', flexShrink: 0, padding: '0.5rem' }}>
+      <div style={{ width: '155px', height: '155px', flexShrink: 0, padding: '0.5rem' }}>
         <div className="rounded-lg overflow-hidden cover-glow" style={{ width: '100%', height: '100%' }}>
           <img 
             src={cover_url || '/images/default-cover.png'} 
