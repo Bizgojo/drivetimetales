@@ -14,10 +14,9 @@ PURPOSE:
 This is the official horizontal story card template for ALL story card displays
 in DTT including: Recommended For You, Library, Search Results, Browse sections.
 
-⚠️  DO NOT MODIFY THIS DESIGN WITHOUT MARC'S EXPLICIT APPROVAL
-⚠️  DO NOT GUESS OR CREATE ALTERNATIVE DESIGNS
-⚠️  FETCH AND USE THIS EXACT TEMPLATE WHEN HORIZONTAL STORY CARDS ARE NEEDED
-
+⚠️ DO NOT MODIFY THIS DESIGN WITHOUT MARC'S EXPLICIT APPROVAL
+⚠️ DO NOT GUESS OR CREATE ALTERNATIVE DESIGNS
+⚠️ FETCH AND USE THIS EXACT TEMPLATE WHEN HORIZONTAL STORY CARDS ARE NEEDED
 ================================================================================
 */
 
@@ -35,39 +34,9 @@ interface StoryCardProps {
   duration_mins: number
   credits: number
   cover_url: string | null
-  rating?: number        // e.g. 4.5
-  review_count?: number  // e.g. 375
+  rating?: number
+  review_count?: number
   flag?: 'free' | 'editors-pick' | 'readers-choice' | 'trending' | null
-}
-
-// Flag color mapping
-const FLAG_STYLES: Record<string, string> = {
-  'free': 'bg-green-500 text-white',
-  'editors-pick': 'bg-purple-500 text-white',
-  'readers-choice': 'bg-blue-500 text-white',
-  'trending': 'bg-pink-500 text-white',
-}
-
-const FLAG_LABELS: Record<string, string> = {
-  'free': 'Free',
-  'editors-pick': "Editor's Pick",
-  'readers-choice': "Reader's Choice",
-  'trending': 'Trending',
-}
-
-// Star rating renderer
-function renderStars(rating: number) {
-  const fullStars = Math.floor(rating)
-  const hasHalf = rating % 1 >= 0.5
-  const emptyStars = 5 - fullStars - (hasHalf ? 1 : 0)
-  
-  return (
-    <>
-      <span className="text-yellow-400">{'★'.repeat(fullStars)}</span>
-      {hasHalf && <span className="star-half">★</span>}
-      {emptyStars > 0 && <span className="text-slate-600">{'★'.repeat(emptyStars)}</span>}
-    </>
-  )
 }
 
 export default function HorizontalStoryCard({
@@ -97,21 +66,33 @@ export default function HorizontalStoryCard({
           />
         </div>
       </div>
-      
+
       {/* Info */}
       <div className="flex-1 py-2 pr-3 flex flex-col justify-center">
         <h3 className="text-sm font-bold text-white line-clamp-1">{title}</h3>
         <p className="text-white text-xs">{genre}</p>
         <p className="text-white text-xs">by {author}</p>
         <p className="text-white text-xs">{duration_mins} min • {credits} credits</p>
-        
+
         {/* Rating line with optional flag */}
         {rating !== undefined && (
           <p className="text-white text-xs flex items-center gap-1">
-            {rating.toFixed(1)}/5 {renderStars(rating)} <span>{review_count?.toLocaleString()}</span>
+            {rating.toFixed(1)}/5{' '}
+            {renderStars(rating)}{' '}
+            {review_count || 0}
             {flag && (
-              <span className={`ml-1 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide rounded ${FLAG_STYLES[flag]}`}>
-                {FLAG_LABELS[flag]}
+              <span 
+                className="font-bold rounded ml-1"
+                style={{ 
+                  backgroundColor: flag === 'free' ? '#22c55e' : '#f97316', 
+                  color: 'white', 
+                  fontSize: '9px',
+                  padding: '0.125rem 0.375rem'
+                }}
+              >
+                {flag === 'free' ? 'FREE' : 
+                 flag === 'editors-pick' ? "EDITOR'S PICK" :
+                 flag === 'readers-choice' ? "READER'S CHOICE" : 'TRENDING'}
               </span>
             )}
           </p>
@@ -121,13 +102,33 @@ export default function HorizontalStoryCard({
   )
 }
 
+// =============================================================================
+// STAR RATING HELPER
+// =============================================================================
+
+function renderStars(rating: number) {
+  const stars = []
+  const fullStars = Math.floor(rating)
+  const hasHalf = rating % 1 >= 0.5
+
+  for (let i = 0; i < 5; i++) {
+    if (i < fullStars) {
+      stars.push(<span key={i} className="text-yellow-400">★</span>)
+    } else if (i === fullStars && hasHalf) {
+      stars.push(<span key={i} className="star-half">★</span>)
+    } else {
+      stars.push(<span key={i} className="text-slate-600">★</span>)
+    }
+  }
+  return stars
+}
 
 // =============================================================================
-// REQUIRED CSS (add to globals.css or component)
+// REQUIRED CSS (add to globals.css)
 // =============================================================================
 /*
 .cover-glow {
-  box-shadow: 0 0 15px rgba(255, 255, 255, 0.4);
+  box-shadow: 0 0 15px 2px rgba(255, 255, 255, 0.3);
 }
 
 .star-half {
@@ -136,57 +137,12 @@ export default function HorizontalStoryCard({
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
-*/
-
-
-// =============================================================================
-// SPECS REFERENCE (DO NOT CHANGE)
-// =============================================================================
-/*
-CONTAINER:
-- flex
-- bg-slate-800
-- rounded-xl
-- overflow-hidden
-- hover:bg-slate-700 transition
-
-COVER WRAPPER:
-- w-28 h-28 (112px x 112px)
-- flex-shrink-0
-- p-2 (8px padding around cover)
-
-COVER INNER:
-- w-full h-full
-- rounded-lg
-- overflow-hidden
-- cover-glow (box-shadow: 0 0 15px rgba(255,255,255,0.4))
-
-INFO AREA:
-- flex-1
-- py-2 pr-3
-- flex flex-col justify-center
-
-TYPOGRAPHY:
-- Title: text-sm font-bold text-white line-clamp-1
-- All meta lines: text-white text-xs
-- Rating line: flex items-center gap-1
-
-FLAG (optional, max 1 per card):
-- Position: ml-1 after review count
-- Size: px-1.5 py-0.5 text-[8px]
-- Style: font-bold uppercase tracking-wide rounded
-- Colors:
-  - Free: bg-green-500
-  - Editor's Pick: bg-purple-500
-  - Reader's Choice: bg-blue-500
-  - Trending: bg-pink-500
 
 STAR RATING:
 - Full star: text-yellow-400 ★
 - Half star: CSS gradient (yellow|slate-600)
 - Empty star: text-slate-600 ★
 */
-
 
 // =============================================================================
 // USAGE EXAMPLE
