@@ -1,6 +1,6 @@
 // =============================================================================
 // MODULE 01: HorizontalStoryCard (PROTECTED)
-// Title centered on top, cover bottom-aligned with stars, 90px cover
+// Title centered on top, cover bottom-aligned with stars, 90px cover, orange glow
 // =============================================================================
 import Link from 'next/link'
 
@@ -79,7 +79,7 @@ export default function HorizontalStoryCard({
         
         {/* Content row: cover left (bottom-aligned), text right */}
         <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-end' }}>
-          {/* Cover Image - 90px, bottom aligned */}
+          {/* Cover Image - 90px, bottom aligned, orange glow */}
           <div style={{ position: 'relative', flexShrink: 0 }}>
             <img
               src={cover_url || '/images/default-cover.png'}
@@ -89,7 +89,7 @@ export default function HorizontalStoryCard({
                 height: '90px',
                 objectFit: 'cover',
                 borderRadius: '0.375rem',
-                boxShadow: '0 0 15px rgba(251, 146, 60, 0.3)'
+                boxShadow: '0 0 20px rgba(251, 146, 60, 0.5)'
               }}
             />
             {(play_status === 'in_progress' || play_status === 'continue') && (
