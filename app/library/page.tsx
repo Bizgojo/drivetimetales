@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/components/AuthProvider'
 import HorizontalStoryCard from '@/components/HorizontalStoryCard'
 
 interface Story {
@@ -35,30 +36,21 @@ function getCredits(duration_mins: number): number {
   return Math.max(1, Math.floor(duration_mins / 15))
 }
 
-function WelcomeLibraryContent() {
+function LibraryContent() {
   const router = useRouter()
+  const { user } = useAuth()
   const [stories, setStories] = useState<Story[]>([])
   const [loading, setLoading] = useState(true)
-  const [userCredits, setUserCredits] = useState(2)
   const [userName, setUserName] = useState('Friend')
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   
   const [selectedDuration, setSelectedDuration] = useState('All')
   const [selectedType, setSelectedType] = useState('All')
   const [selectedGenre, setSelectedGenre] = useState('All')
   const [visibleGenres, setVisibleGenres] = useState<string[]>(DEFAULT_VISIBLE)
   const [showMoreDropdown, setShowMoreDropdown] = useState(false)
-  
-  const [showSubscriberPopup, setShowSubscriberPopup] = useState(false)
-  const [showCreditModal, setShowCreditModal] = useState(false)
-  const [selectedStory, setSelectedStory] = useState<Story | null>(null)
 
   useEffect(() => {
-    const storedCredits = localStorage.getItem('dtt_user_credits')
-    if (storedCredits !== null) setUserCredits(parseInt(storedCredits, 10))
-    
-    const storedName = localStorage.getItem('dtt_user_name')
-    if (storedName) setUserName(storedName)
-    
     const storedGenres = localStorage.getItem('dtt_recent_genres')
     if (storedGenres) {
       try {
@@ -72,17 +64,35 @@ function WelcomeLibraryContent() {
 
   useEffect(() => {
     async function fetchData() {
-      const { data: storiesData, error } = await supabase
+      // Fetch stories
+      const { data: storiesData, error: storiesError } = await supabase
         .from('stories')
         .select('id, title, genre, author, duration_mins, cover_url, series_name, series_number, series_total')
         .not('cover_url', 'is', null)
         .order('published_on', { ascending: false })
-      if (error) console.error('Stories query error:', error)
+      
+      if (storiesError) console.error('Stories query error:', storiesError)
       if (storiesData) setStories(storiesData)
+
+      // Fetch user data if logged in
+      if (user?.id) {
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('first_name, avatar_url')
+          .eq('id', user.id)
+          .single()
+        
+        if (userError) console.error('User query error:', userError)
+        if (userData) {
+          setUserName(userData.first_name || 'Friend')
+          setAvatarUrl(userData.avatar_url || null)
+        }
+      }
+      
       setLoading(false)
     }
     fetchData()
-  }, [])
+  }, [user])
 
   const selectGenre = (genreKey: string) => {
     setSelectedGenre(genreKey)
@@ -110,9 +120,7 @@ function WelcomeLibraryContent() {
   })
 
   const handleStoryClick = (story: Story) => {
-    const storyCost = getCredits(story.duration_mins)
-    if (storyCost <= userCredits) router.push('/player/' + story.id)
-    else { setSelectedStory(story); setShowCreditModal(true) }
+    router.push('/player/' + story.id)
   }
 
   const btnStyle = (active: boolean): React.CSSProperties => ({
@@ -131,7 +139,7 @@ function WelcomeLibraryContent() {
   const allBtnStyle = (active: boolean): React.CSSProperties => ({
     ...btnStyle(active),
     flex: 'none',
-    width: '40px'
+    width: '42px'
   })
 
   const getGenreLabel = (key: string) => {
@@ -148,20 +156,37 @@ function WelcomeLibraryContent() {
   )
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', paddingBottom: '55px' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: '#0f172a' }}>
       {/* Sticky Header + Filters */}
       <div style={{ position: 'sticky', top: 0, backgroundColor: '#0f172a', zIndex: 50 }}>
-        {/* Header with credits */}
+        {/* Header with avatar */}
         <div style={{ padding: '0.5rem 0.75rem', display: 'flex', alignItems: 'center', borderBottom: '1px solid #334155' }}>
-          <button onClick={() => router.push('/welcome')} style={{ backgroundColor: '#334155', color: 'white', padding: '0.35rem 0.6rem', borderRadius: '6px', fontSize: '13px', fontWeight: 500, border: 'none', cursor: 'pointer' }}>← Back</button>
+          <button onClick={() => router.push('/home')} style={{ backgroundColor: '#334155', color: 'white', padding: '0.35rem 0.6rem', borderRadius: '6px', fontSize: '13px', fontWeight: 500, border: 'none', cursor: 'pointer' }}>← Back</button>
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
             <span style={{ fontSize: '18px' }}>🚗</span><span style={{ fontSize: '18px' }}>🚙</span>
             <span style={{ color: 'white', fontSize: '16px', fontWeight: 'bold' }}>Drive Time</span>
             <span style={{ color: '#f97316', fontSize: '16px', fontWeight: 'bold' }}>Tales</span>
           </div>
-          <div style={{ backgroundColor: '#334155', padding: '0.35rem 0.6rem', borderRadius: '6px' }}>
-            <span style={{ color: '#f97316', fontWeight: 'bold', fontSize: '13px' }}>{userCredits}</span>
-            <span style={{ color: 'white', fontSize: '12px' }}> cr</span>
+          {/* Avatar */}
+          <div 
+            onClick={() => router.push('/profile')}
+            style={{ 
+              width: '36px', 
+              height: '36px', 
+              borderRadius: '50%', 
+              backgroundColor: '#334155',
+              overflow: 'hidden',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            {avatarUrl ? (
+              <img src={avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ) : (
+              <span style={{ color: '#f97316', fontSize: '16px', fontWeight: 'bold' }}>{userName.charAt(0).toUpperCase()}</span>
+            )}
           </div>
         </div>
         
@@ -200,8 +225,8 @@ function WelcomeLibraryContent() {
               )}
             </div>
           </div>
-          {/* Playlist button */}
-          <button onClick={() => setShowSubscriberPopup(true)} style={{ backgroundColor: '#3b82f6', color: 'white', padding: '0.45rem 1rem', borderRadius: '6px', fontSize: '14px', fontWeight: 500, border: 'none', cursor: 'pointer', width: '100%' }}>➕ Create a Playlist</button>
+          {/* Playlist button - goes directly to playlist page for subscribers */}
+          <button onClick={() => router.push('/library-playlist')} style={{ backgroundColor: '#3b82f6', color: 'white', padding: '0.45rem 1rem', borderRadius: '6px', fontSize: '14px', fontWeight: 500, border: 'none', cursor: 'pointer', width: '100%' }}>➕ Create a Playlist</button>
         </div>
       </div>
 
@@ -219,7 +244,6 @@ function WelcomeLibraryContent() {
         ) : (
           filteredStories.map(story => {
             const storyCost = getCredits(story.duration_mins)
-            const canAfford = storyCost <= userCredits
             return (
               <div key={story.id} onClick={() => handleStoryClick(story)} style={{ cursor: 'pointer' }}>
                 <HorizontalStoryCard 
@@ -232,56 +256,21 @@ function WelcomeLibraryContent() {
                   cover_url={story.cover_url} 
                   series_number={story.series_number} 
                   series_total={story.series_total}
-                  flag={canAfford ? 'free' : null}
                 />
               </div>
             )
           })
         )}
       </div>
-
-      {/* Bottom Button */}
-      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: '#0f172a', padding: '0.5rem 0.75rem', borderTop: '1px solid #334155', zIndex: 50 }}>
-        <button onClick={() => router.push('/subscribe')} style={{ backgroundColor: '#22c55e', color: '#0f172a', padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', width: '100%', fontSize: '15px', fontWeight: 'bold' }}>
-          Want more credits? Subscribe Now!
-        </button>
-      </div>
-
-      {showSubscriberPopup && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '1rem' }} onClick={() => setShowSubscriberPopup(false)}>
-          <div style={{ backgroundColor: '#1e293b', borderRadius: '12px', padding: '1.5rem', maxWidth: '400px', width: '100%' }} onClick={(e) => e.stopPropagation()}>
-            <h2 style={{ color: 'white', fontSize: '20px', fontWeight: 'bold', marginBottom: '1rem' }}>Playlists for Subscribers</h2>
-            <p style={{ color: 'white', fontSize: '16px', marginBottom: '1.5rem' }}>Playlists are only available for subscribers. Subscribe now to create your own hands-free driving playlists!</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              <button onClick={() => { setShowSubscriberPopup(false); router.push('/subscribe') }} style={{ backgroundColor: '#f97316', color: 'white', padding: '0.75rem 1rem', borderRadius: '8px', fontSize: '16px', fontWeight: 500, border: 'none', cursor: 'pointer' }}>Subscribe Now</button>
-              <button onClick={() => setShowSubscriberPopup(false)} style={{ backgroundColor: '#475569', color: 'white', padding: '0.75rem 1rem', borderRadius: '8px', fontSize: '16px', fontWeight: 500, border: 'none', cursor: 'pointer' }}>Maybe Later</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showCreditModal && selectedStory && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '1rem' }} onClick={() => setShowCreditModal(false)}>
-          <div style={{ backgroundColor: '#1e293b', borderRadius: '12px', padding: '1.5rem', maxWidth: '400px', width: '100%' }} onClick={(e) => e.stopPropagation()}>
-            <h2 style={{ color: 'white', fontSize: '20px', fontWeight: 'bold', marginBottom: '1rem' }}>Not Enough Credits</h2>
-            <p style={{ color: 'white', fontSize: '16px', marginBottom: '1rem' }}>This story requires {getCredits(selectedStory.duration_mins)} credits, but you only have {userCredits}.</p>
-            <p style={{ color: '#94a3b8', fontSize: '14px', marginBottom: '1.5rem' }}>Subscribe or buy more credits to listen to this story.</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              <button onClick={() => { setShowCreditModal(false); router.push('/subscribe') }} style={{ backgroundColor: '#f97316', color: 'white', padding: '0.75rem 1rem', borderRadius: '8px', fontSize: '16px', fontWeight: 500, border: 'none', cursor: 'pointer' }}>Subscribe Now</button>
-              <button onClick={() => setShowCreditModal(false)} style={{ backgroundColor: '#475569', color: 'white', padding: '0.75rem 1rem', borderRadius: '8px', fontSize: '16px', fontWeight: 500, border: 'none', cursor: 'pointer' }}>Maybe Later</button>
-            </div>
-          </div>
-        </div>
-      )}
       <style dangerouslySetInnerHTML={{ __html: '@keyframes spin { to { transform: rotate(360deg); } }' }} />
     </div>
   )
 }
 
-export default function WelcomeLibraryPage() {
+export default function LibraryPage() {
   return (
     <Suspense fallback={<div style={{ minHeight: '100vh', backgroundColor: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ width: '40px', height: '40px', border: '4px solid #f97316', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} /></div>}>
-      <WelcomeLibraryContent />
+      <LibraryContent />
     </Suspense>
   )
 }
