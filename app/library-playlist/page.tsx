@@ -51,6 +51,9 @@ function LibraryPlaylistContent() {
   const [stories, setStories] = useState<Story[]>([])
   const [loading, setLoading] = useState(true)
   const [userCredits, setUserCredits] = useState(4) // Testing with 4 credits
+  const [userName, setUserName] = useState('')
+  const [isSubscriber, setIsSubscriber] = useState(true) // Assume true for testing
+  const [showSubscriberPopup, setShowSubscriberPopup] = useState(false)
   
   const [selectedDuration, setSelectedDuration] = useState('All')
   const [selectedType, setSelectedType] = useState('All')
@@ -76,10 +79,16 @@ function LibraryPlaylistContent() {
       const { data: storiesData } = await supabase.from('stories').select('id, title, genre, author, duration_mins, cover_url, series_name, series_number, series_total').not('cover_url', 'is', null).order('published_on', { ascending: false })
       if (storiesData) setStories(storiesData)
       if (user?.id) {
-        const { data: userData } = await supabase.from('users').select('credits').eq('id', user.id).single()
+        const { data: userData } = await supabase.from('users').select('credits, first_name, subscription_status').eq('id', user.id).single()
         if (userData) {
           // Keep 4 for testing, uncomment below for production
           // setUserCredits(userData.credits || 0)
+          setUserName(userData.first_name || '')
+          const isActiveSub = userData.subscription_status === 'active' || userData.subscription_status === 'trialing'
+          setIsSubscriber(isActiveSub)
+          if (!isActiveSub) {
+            setShowSubscriberPopup(true)
+          }
         }
       }
       setLoading(false)
@@ -184,10 +193,25 @@ function LibraryPlaylistContent() {
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', paddingBottom: '80px' }}>
       <div style={{ position: 'sticky', top: 0, backgroundColor: '#0f172a', zIndex: 50 }}>
-        {/* Header */}
-        <div style={{ padding: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.75rem', borderBottom: '1px solid #334155' }}>
-          <button onClick={() => router.push('/library')} style={{ backgroundColor: 'transparent', color: 'white', padding: '0.25rem', border: 'none', cursor: 'pointer', fontSize: '18px' }}>←</button>
-          <span style={{ color: 'white', fontSize: '16px', fontWeight: 500 }}>Select stories for your playlist</span>
+        {/* Header - StickyLogo2 style: Back | Logo | Avatar */}
+        <div style={{ padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #1e293b' }}>
+          {/* Back button */}
+          <button onClick={() => router.push('/library')} style={{ backgroundColor: '#334155', color: 'white', padding: '0.4rem 0.75rem', borderRadius: '8px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '14px', fontWeight: 500 }}>
+            <span>←</span>
+            <span>Back</span>
+          </button>
+          
+          {/* Logo */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '24px' }}>🚛</span>
+            <span style={{ fontSize: '24px' }}>🚗</span>
+            <span style={{ color: 'white', fontSize: '18px', fontWeight: 'bold' }}>Drive Time <span style={{ color: '#fb923c' }}>Tales</span></span>
+          </div>
+          
+          {/* Avatar */}
+          <div onClick={() => router.push('/profile')} style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundColor: '#f97316', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+            <span style={{ color: 'black', fontSize: '18px', fontWeight: 'bold' }}>{userName?.charAt(0)?.toUpperCase() || '?'}</span>
+          </div>
         </div>
         
         {/* Filters - compact design matching library */}
@@ -299,6 +323,23 @@ function LibraryPlaylistContent() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               <button onClick={() => { setShowCreditsPopup(false); router.push('/buy-credits') }} style={{ backgroundColor: '#f97316', color: 'white', padding: '0.75rem 1rem', borderRadius: '8px', fontSize: '15px', fontWeight: 600, border: 'none', cursor: 'pointer' }}>Get More Credits</button>
               <button onClick={() => setShowCreditsPopup(false)} style={{ backgroundColor: '#475569', color: 'white', padding: '0.75rem 1rem', borderRadius: '8px', fontSize: '15px', fontWeight: 500, border: 'none', cursor: 'pointer' }}>Keep Building Playlist</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Subscriber-Only Popup */}
+      {showSubscriberPopup && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '1rem' }} onClick={() => { setShowSubscriberPopup(false); router.push('/library') }}>
+          <div style={{ backgroundColor: '#1e293b', borderRadius: '12px', padding: '1.5rem', maxWidth: '380px', width: '100%' }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontSize: '40px', textAlign: 'center', marginBottom: '1rem' }}>🎧</div>
+            <h2 style={{ color: 'white', fontSize: '20px', fontWeight: 'bold', marginBottom: '1rem', textAlign: 'center' }}>Playlists for Subscribers</h2>
+            <p style={{ color: '#cbd5e1', fontSize: '15px', marginBottom: '1.5rem', textAlign: 'center', lineHeight: 1.6 }}>
+              Playlists are only available for subscribers who have sufficient credits. Subscribe now to create your own driving playlists!
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <button onClick={() => { setShowSubscriberPopup(false); router.push('/subscribe') }} style={{ backgroundColor: '#f97316', color: 'white', padding: '0.85rem 1rem', borderRadius: '8px', fontSize: '16px', fontWeight: 600, border: 'none', cursor: 'pointer' }}>Subscribe Now</button>
+              <button onClick={() => { setShowSubscriberPopup(false); router.push('/library') }} style={{ backgroundColor: '#475569', color: 'white', padding: '0.75rem 1rem', borderRadius: '8px', fontSize: '15px', fontWeight: 500, border: 'none', cursor: 'pointer' }}>Maybe Later</button>
             </div>
           </div>
         </div>
