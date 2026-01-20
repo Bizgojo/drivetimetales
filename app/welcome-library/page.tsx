@@ -40,6 +40,7 @@ function WelcomeLibraryContent() {
   const [stories, setStories] = useState<Story[]>([])
   const [loading, setLoading] = useState(true)
   const [userCredits, setUserCredits] = useState(2)
+  const [userName, setUserName] = useState('Friend')
   
   const [selectedDuration, setSelectedDuration] = useState('All')
   const [selectedType, setSelectedType] = useState('All')
@@ -54,6 +55,9 @@ function WelcomeLibraryContent() {
   useEffect(() => {
     const storedCredits = localStorage.getItem('dtt_user_credits')
     if (storedCredits !== null) setUserCredits(parseInt(storedCredits, 10))
+    
+    const storedName = localStorage.getItem('dtt_user_name')
+    if (storedName) setUserName(storedName)
     
     const storedGenres = localStorage.getItem('dtt_recent_genres')
     if (storedGenres) {
@@ -84,11 +88,7 @@ function WelcomeLibraryContent() {
     setSelectedGenre(genreKey)
     setShowMoreDropdown(false)
     
-    if (genreKey !== 'All' && !visibleGenres.includes(genreKey)) {
-      const newVisible = [genreKey, ...visibleGenres.filter(g => g !== genreKey)].slice(0, 3)
-      setVisibleGenres(newVisible)
-      localStorage.setItem('dtt_recent_genres', JSON.stringify(newVisible))
-    } else if (genreKey !== 'All') {
+    if (genreKey !== 'All') {
       const newVisible = [genreKey, ...visibleGenres.filter(g => g !== genreKey)].slice(0, 3)
       setVisibleGenres(newVisible)
       localStorage.setItem('dtt_recent_genres', JSON.stringify(newVisible))
@@ -118,9 +118,9 @@ function WelcomeLibraryContent() {
   const btnStyle = (active: boolean): React.CSSProperties => ({
     backgroundColor: active ? '#f97316' : '#334155',
     color: 'white',
-    padding: '0.25rem 0.5rem',
-    borderRadius: '5px',
-    fontSize: '12px',
+    padding: '0.3rem 0.65rem',
+    borderRadius: '6px',
+    fontSize: '13px',
     fontWeight: 500,
     border: 'none',
     cursor: 'pointer'
@@ -153,16 +153,16 @@ function WelcomeLibraryContent() {
           </div>
         </div>
         
-        {/* Filters - sticky */}
-        <div style={{ padding: '0.4rem 0.75rem', backgroundColor: '#1e293b' }}>
+        {/* Filters - sticky with more space */}
+        <div style={{ padding: '0.5rem 1rem', backgroundColor: '#1e293b' }}>
           {/* Row 1: Duration + Type */}
-          <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '0.25rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+          <div style={{ display: 'flex', gap: '0.3rem', marginBottom: '0.3rem', flexWrap: 'wrap', justifyContent: 'center' }}>
             {['All', '15m', '30m', '1hr'].map(d => <button key={d} onClick={() => setSelectedDuration(d)} style={btnStyle(selectedDuration === d)}>{d}</button>)}
-            <span style={{ color: '#475569', padding: '0 2px', display: 'flex', alignItems: 'center', fontSize: '12px' }}>|</span>
+            <span style={{ color: '#475569', padding: '0 4px', display: 'flex', alignItems: 'center', fontSize: '12px' }}>|</span>
             {['All', 'Series'].map(t => <button key={t} onClick={() => setSelectedType(t)} style={btnStyle(selectedType === t)}>{t}</button>)}
           </div>
           {/* Row 2: Genre with dynamic buttons + More dropdown */}
-          <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '0.25rem', flexWrap: 'wrap', justifyContent: 'center', position: 'relative' }}>
+          <div style={{ display: 'flex', gap: '0.3rem', marginBottom: '0.3rem', flexWrap: 'wrap', justifyContent: 'center', position: 'relative' }}>
             <button onClick={() => selectGenre('All')} style={btnStyle(selectedGenre === 'All')}>All</button>
             {visibleGenres.map(g => (
               <button key={g} onClick={() => selectGenre(g)} style={btnStyle(selectedGenre === g)}>
@@ -185,26 +185,49 @@ function WelcomeLibraryContent() {
             </div>
           </div>
           {/* Playlist button */}
-          <button onClick={() => setShowSubscriberPopup(true)} style={{ backgroundColor: '#3b82f6', color: 'white', padding: '0.4rem 1rem', borderRadius: '6px', fontSize: '13px', fontWeight: 500, border: 'none', cursor: 'pointer', width: '100%' }}>➕ Create a Playlist</button>
+          <button onClick={() => setShowSubscriberPopup(true)} style={{ backgroundColor: '#3b82f6', color: 'white', padding: '0.45rem 1rem', borderRadius: '6px', fontSize: '14px', fontWeight: 500, border: 'none', cursor: 'pointer', width: '100%' }}>➕ Create a Playlist</button>
         </div>
       </div>
 
       {/* Click outside to close dropdown */}
       {showMoreDropdown && <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 40 }} onClick={() => setShowMoreDropdown(false)} />}
 
-      {/* Story Cards */}
+      {/* Story Cards or Empty State */}
       <div style={{ padding: '0.5rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-        {filteredStories.map(story => (
-          <div key={story.id} onClick={() => handleStoryClick(story)} style={{ cursor: 'pointer' }}>
-            <HorizontalStoryCard id={story.id} title={story.title} genre={story.genre} author={story.author || 'Drive Time Tales'} duration_mins={story.duration_mins} credits={getCredits(story.duration_mins)} cover_url={story.cover_url} series_number={story.series_number} series_total={story.series_total} />
+        {filteredStories.length === 0 ? (
+          <div style={{ backgroundColor: '#1e293b', borderRadius: '10px', padding: '2rem 1rem', textAlign: 'center' }}>
+            <div style={{ fontSize: '40px', marginBottom: '0.75rem' }}>😔</div>
+            <p style={{ color: 'white', fontSize: '16px', marginBottom: '0.5rem' }}>Sorry {userName}, we have no stories to match your request.</p>
+            <p style={{ color: '#94a3b8', fontSize: '14px' }}>But we will request this category to our writers!</p>
           </div>
-        ))}
+        ) : (
+          filteredStories.map(story => {
+            const storyCost = getCredits(story.duration_mins)
+            const canAfford = storyCost <= userCredits
+            return (
+              <div key={story.id} onClick={() => handleStoryClick(story)} style={{ cursor: 'pointer' }}>
+                <HorizontalStoryCard 
+                  id={story.id} 
+                  title={story.title} 
+                  genre={story.genre} 
+                  author={story.author || 'Drive Time Tales'} 
+                  duration_mins={story.duration_mins} 
+                  credits={storyCost} 
+                  cover_url={story.cover_url} 
+                  series_number={story.series_number} 
+                  series_total={story.series_total}
+                  flag={canAfford ? 'free' : null}
+                />
+              </div>
+            )
+          })
+        )}
       </div>
 
-      {/* Bottom Button - compact */}
+      {/* Bottom Button */}
       <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: '#0f172a', padding: '0.5rem 0.75rem', borderTop: '1px solid #334155', zIndex: 50 }}>
         <button onClick={() => router.push('/subscribe')} style={{ backgroundColor: '#22c55e', color: '#0f172a', padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-          <span style={{ fontSize: '12px' }}>You only have {userCredits} credits</span>
+          <span style={{ fontSize: '14px' }}>You have {userCredits} credits - want more?</span>
           <span style={{ fontSize: '16px', fontWeight: 'bold' }}>Subscribe Now!</span>
         </button>
       </div>
