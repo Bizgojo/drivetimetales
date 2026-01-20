@@ -1,160 +1,104 @@
-// =============================================================================
-// MODULE 01: HorizontalStoryCard (PROTECTED)
-// Title centered on top, cover bottom-aligned with stars, 90px cover, white glow
-// =============================================================================
 import Link from 'next/link'
 
-interface HorizontalStoryCardProps {
+interface StoryCardProps {
   id: string
   title: string
-  author: string
   genre: string
+  author: string
   duration_mins: number
+  credits: number
   cover_url: string | null
   rating?: number
-  reviews?: number
-  flag?: string | null
-  credits?: number
+  review_count?: number
+  flag?: 'free' | 'editors-pick' | 'readers-choice' | 'trending' | null
   series_number?: number | null
   series_total?: number | null
-  play_status?: string | null
-}
-
-// Generate consistent random number based on string (story id)
-function seededRandom(seed: string) {
-  let hash = 0
-  for (let i = 0; i < seed.length; i++) {
-    const char = seed.charCodeAt(i)
-    hash = ((hash << 5) - hash) + char
-    hash = hash & hash
-  }
-  return Math.abs(hash)
+  play_status?: 'played' | 'continue' | null
 }
 
 export default function HorizontalStoryCard({
   id,
   title,
-  author,
   genre,
+  author,
   duration_mins,
+  credits,
   cover_url,
   rating,
-  reviews,
-  flag = null,
-  credits,
+  review_count,
+  flag,
   series_number,
   series_total,
-  play_status
-}: HorizontalStoryCardProps) {
-  const displayCredits = credits ?? Math.ceil(duration_mins / 15)
-  
-  // Generate random rating 3.7-4.9 and reviews 3-99 based on story id
-  const seed = seededRandom(id)
-  const displayRating = rating ?? (3.7 + (seed % 13) / 10)
-  const displayReviews = reviews ?? (3 + (seed % 97))
-
+  play_status,
+}: StoryCardProps) {
   return (
-    <Link href={`/player/${id}`} style={{ textDecoration: 'none' }}>
-      <div style={{ 
-        cursor: 'pointer',
-        backgroundColor: '#1e293b',
-        padding: '0.75rem',
-        borderRadius: '0.5rem'
-      }}>
-        {/* Title centered across top */}
-        <h3
-          style={{
-            fontSize: '16px',
-            fontWeight: 'bold',
-            color: 'white',
-            marginBottom: '0.5rem',
-            textAlign: 'center',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap'
-          }}
-        >
-          {title}
-        </h3>
-        
-        {/* Content row: cover left (bottom-aligned), text right */}
-        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-end' }}>
-          {/* Cover Image - 90px, bottom aligned, white glow */}
-          <div style={{ position: 'relative', flexShrink: 0 }}>
-            <img
-              src={cover_url || '/images/default-cover.png'}
-              alt={title}
-              style={{
-                width: '90px',
-                height: '90px',
-                objectFit: 'cover',
-                borderRadius: '0.375rem',
-                boxShadow: '0 0 20px rgba(255, 255, 255, 0.5)'
-              }}
-            />
-            {(play_status === 'in_progress' || play_status === 'continue') && (
-              <div
-                style={{
-                  position: 'absolute',
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  height: '3px',
-                  backgroundColor: 'rgba(0,0,0,0.5)',
-                  borderBottomLeftRadius: '0.375rem',
-                  borderBottomRightRadius: '0.375rem'
-                }}
-              >
-                <div style={{ width: '50%', height: '100%', backgroundColor: '#f97316' }} />
-              </div>
-            )}
-          </div>
-
-          {/* Text content */}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            {/* Genre with flag flush right */}
-            <p style={{ fontSize: '14px', color: 'white', marginBottom: '0.125rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span>{genre}</span>
-              {flag && (
-                <span
-                  style={{
-                    backgroundColor: flag === 'free' ? '#22c55e' : '#f97316',
-                    color: 'white',
-                    fontSize: '9px',
-                    fontWeight: 'bold',
-                    padding: '0.125rem 0.375rem',
-                    borderRadius: '0.25rem',
-                    textTransform: 'uppercase'
-                  }}
-                >
-                  {flag}
-                </span>
-              )}
-            </p>
-            
-            <p style={{ fontSize: '14px', color: 'white', marginBottom: '0.125rem' }}>
-              by {author}
-            </p>
-            
-            <p style={{ fontSize: '14px', color: 'white', marginBottom: '0.25rem' }}>
-              {duration_mins} min • {displayCredits} cr
-              {series_number && series_total && ` • Part ${series_number}/${series_total}`}
-            </p>
-            
-            {/* Rating row */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span style={{ fontSize: '12px', color: 'white' }}>
-                {displayRating.toFixed(1)}/5
-              </span>
-              <span style={{ display: 'flex' }}>
-                {renderStars(displayRating)}
-              </span>
-              <span style={{ fontSize: '12px', color: 'white' }}>
-                {displayReviews}
-              </span>
-            </div>
-          </div>
+    <Link 
+      href={'/player/' + id}
+      className="flex bg-slate-800 rounded-xl overflow-hidden hover:bg-slate-700 transition"
+    >
+      <div style={{ width: '155px', height: '155px', flexShrink: 0, padding: '0.5rem' }}>
+        <div className="rounded-lg overflow-hidden cover-glow" style={{ width: '100%', height: '100%' }}>
+          <img 
+            src={cover_url || '/images/default-cover.png'} 
+            alt={title}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          />
         </div>
+      </div>
+      <div style={{ flex: 1, padding: '0.5rem 0.75rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+        <h3 className="text-white font-bold line-clamp-1" style={{ fontSize: '20px', margin: 0 }}>{title}</h3>
+        <p className="text-white" style={{ fontSize: '17px', margin: '3px 0', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+          {genre}
+          {series_number && series_total && (
+            <span 
+              className="font-bold rounded"
+              style={{ 
+                backgroundColor: '#3b82f6', 
+                color: 'white', 
+                fontSize: '11px',
+                padding: '2px 8px'
+              }}
+            >
+              Series {series_number} of {series_total}
+            </span>
+          )}
+          {play_status && (
+            <span 
+              className="font-bold rounded"
+              style={{ 
+                backgroundColor: play_status === 'played' ? '#6b7280' : '#f59e0b', 
+                color: 'white', 
+                fontSize: '11px',
+                padding: '2px 8px'
+              }}
+            >
+              {play_status === 'played' ? 'Played' : 'Continue'}
+            </span>
+          )}
+        </p>
+        <p className="text-white" style={{ fontSize: '17px', margin: '3px 0' }}>by {author}</p>
+        <p className="text-white" style={{ fontSize: '17px', margin: '3px 0' }}>{duration_mins} min • {credits} credits</p>
+        <p className="text-white" style={{ fontSize: '17px', margin: '3px 0', display: 'flex', alignItems: 'center', gap: '4px' }}>
+          {rating !== undefined ? rating.toFixed(1) : '4.0'}/5{' '}
+          {renderStars(rating || 4.0)}{' '}
+          {review_count || 0}
+          {flag && (
+            <span 
+              className="font-bold rounded"
+              style={{ 
+                backgroundColor: flag === 'free' ? '#22c55e' : '#f97316', 
+                color: 'white', 
+                fontSize: '12px',
+                padding: '3px 10px',
+                marginLeft: '6px'
+              }}
+            >
+              {flag === 'free' ? 'FREE' : 
+               flag === 'editors-pick' ? "EDITOR'S PICK" :
+               flag === 'readers-choice' ? "READER'S CHOICE" : 'TRENDING'}
+            </span>
+          )}
+        </p>
       </div>
     </Link>
   )
