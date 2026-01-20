@@ -7,20 +7,14 @@ Location: ~/DriveTimeFiles/WorkingCodeLibrary/01_WelcomePage/
 File: W4_RecommendedForYou.protected.tsx
 
 Created: January 18, 2026
-Updated: January 18, 2026 - Added insufficient credits popup
+Updated: January 20, 2026 - Now uses Module 01 HorizontalStoryCard
 Owner: Marc (Wonder Books Press / Drive Time Tales)
 Status: PROTECTED
 
 PURPOSE:
 Recommended For You section for Welcome page. Shows stories costing 1-3 credits.
+Uses Module 01 HorizontalStoryCard for display.
 If user doesn't have enough credits, shows popup with option to subscribe.
-
-BEHAVIOR:
-- Shows stories costing 1-3 credits (duration < 60 min)
-- If user clicks story they can afford → navigates to /player/[id]
-- If user clicks story they can't afford → shows popup
-- Popup has [Get More Credits] button → /subscribe
-- Popup closes on X, outside click, or escape key
 
 ⚠️  DO NOT MODIFY THIS DESIGN WITHOUT MARC'S EXPLICIT APPROVAL
 ================================================================================
@@ -32,6 +26,7 @@ import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import HorizontalStoryCard from '@/components/HorizontalStoryCard'
 
 // =============================================================================
 // TYPES
@@ -103,13 +98,14 @@ export default function W4RecommendedForYou({ credits }: W4RecommendedForYouProp
     return () => window.removeEventListener('keydown', handleEscape)
   }, [])
 
-  const handleStoryClick = (story: Story) => {
+  const handleCardClick = (e: React.MouseEvent, story: Story) => {
     const storyCost = getCredits(story.duration_mins)
-    if (credits >= storyCost) {
-      router.push(`/player/${story.id}`)
-    } else {
+    if (credits < storyCost) {
+      e.preventDefault()
+      e.stopPropagation()
       setShowPopup(true)
     }
+    // If user has enough credits, let the Link navigate naturally
   }
 
   // =============================================================================
@@ -124,13 +120,13 @@ export default function W4RecommendedForYou({ credits }: W4RecommendedForYouProp
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           {[1, 2, 3, 4, 5].map((i) => (
             <div key={i} className="bg-slate-800 rounded-xl overflow-hidden animate-pulse" style={{ display: 'flex' }}>
-              <div style={{ width: '7rem', height: '7rem', flexShrink: 0, padding: '0.5rem' }}>
+              <div style={{ width: '155px', height: '155px', flexShrink: 0, padding: '0.5rem' }}>
                 <div className="rounded-lg bg-slate-700" style={{ width: '100%', height: '100%' }} />
               </div>
-              <div style={{ flex: 1, paddingTop: '0.5rem', paddingBottom: '0.5rem', paddingRight: '0.75rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '0.5rem' }}>
-                <div className="bg-slate-700 rounded" style={{ height: '1rem', width: '75%' }} />
-                <div className="bg-slate-700 rounded" style={{ height: '0.75rem', width: '50%' }} />
-                <div className="bg-slate-700 rounded" style={{ height: '0.75rem', width: '66%' }} />
+              <div style={{ flex: 1, padding: '0.5rem 0.75rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '0.5rem' }}>
+                <div className="bg-slate-700 rounded" style={{ height: '1.25rem', width: '75%' }} />
+                <div className="bg-slate-700 rounded" style={{ height: '1rem', width: '50%' }} />
+                <div className="bg-slate-700 rounded" style={{ height: '1rem', width: '66%' }} />
               </div>
             </div>
           ))}
@@ -225,55 +221,28 @@ export default function W4RecommendedForYou({ credits }: W4RecommendedForYouProp
         <p className="text-white text-xs" style={{ marginBottom: '1rem' }}>More stories you can enjoy with your free credits</p>
         
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          {stories.map((story) => (
-            <button
-              key={story.id}
-              onClick={() => handleStoryClick(story)}
-              className="bg-slate-800 rounded-xl overflow-hidden hover:bg-slate-700 transition text-left"
-              style={{ display: 'flex', border: 'none', cursor: 'pointer' }}
-            >
-              {/* Cover: 112x112px (7rem) with 8px padding */}
-              <div style={{ width: '7rem', height: '7rem', flexShrink: 0, padding: '0.5rem' }}>
-                <div 
-                  className="rounded-lg overflow-hidden cover-glow"
-                  style={{ width: '100%', height: '100%' }}
-                >
-                  <img 
-                    src={story.cover_url || '/images/default-cover.png'} 
-                    alt={story.title}
-                    className="object-cover"
-                    style={{ width: '100%', height: '100%' }}
-                  />
-                </div>
+          {stories.map((story) => {
+            const storyCost = getCredits(story.duration_mins)
+            const canAfford = credits >= storyCost
+            
+            return (
+              <div 
+                key={story.id}
+                onClickCapture={(e) => handleCardClick(e, story)}
+              >
+                <HorizontalStoryCard
+                  id={story.id}
+                  title={story.title}
+                  genre={story.genre}
+                  author={story.author}
+                  duration_mins={story.duration_mins}
+                  credits={storyCost}
+                  cover_url={story.cover_url}
+                  flag={canAfford ? 'free' : null}
+                />
               </div>
-              
-              {/* Info */}
-              <div style={{ flex: 1, paddingTop: '0.5rem', paddingBottom: '0.5rem', paddingRight: '0.75rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                <h3 className="text-sm font-bold text-white line-clamp-1">{story.title}</h3>
-                <p className="text-white text-xs">{story.genre}</p>
-                <p className="text-white text-xs">by {story.author}</p>
-                <p className="text-white text-xs" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  {story.duration_mins} min • {getCredits(story.duration_mins)} credits
-                  {credits >= getCredits(story.duration_mins) && (
-                    <span 
-                      className="font-bold rounded"
-                      style={{ 
-                        backgroundColor: '#22c55e', 
-                        color: 'white', 
-                        fontSize: '9px',
-                        paddingLeft: '0.375rem',
-                        paddingRight: '0.375rem',
-                        paddingTop: '0.125rem',
-                        paddingBottom: '0.125rem'
-                      }}
-                    >
-                      FREE
-                    </span>
-                  )}
-                </p>
-              </div>
-            </button>
-          ))}
+            )
+          })}
         </div>
       </section>
     </>
