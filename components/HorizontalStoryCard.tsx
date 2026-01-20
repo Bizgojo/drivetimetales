@@ -1,6 +1,6 @@
 // =============================================================================
 // MODULE 01: HorizontalStoryCard (PROTECTED)
-// Title centered on top, cover bottom-aligned with stars, 90px cover, orange glow
+// Title centered on top, cover bottom-aligned with stars, 90px cover, white glow
 // =============================================================================
 import Link from 'next/link'
 
@@ -79,7 +79,7 @@ export default function HorizontalStoryCard({
         
         {/* Content row: cover left (bottom-aligned), text right */}
         <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-end' }}>
-          {/* Cover Image - 90px, bottom aligned, orange glow */}
+          {/* Cover Image - 90px, bottom aligned, white glow */}
           <div style={{ position: 'relative', flexShrink: 0 }}>
             <img
               src={cover_url || '/images/default-cover.png'}
@@ -89,7 +89,7 @@ export default function HorizontalStoryCard({
                 height: '90px',
                 objectFit: 'cover',
                 borderRadius: '0.375rem',
-                boxShadow: '0 0 20px rgba(251, 146, 60, 0.5)'
+                boxShadow: '0 0 20px rgba(255, 255, 255, 0.5)'
               }}
             />
             {(play_status === 'in_progress' || play_status === 'continue') && (
@@ -112,9 +112,9 @@ export default function HorizontalStoryCard({
 
           {/* Text content */}
           <div style={{ flex: 1, minWidth: 0 }}>
-            {/* Genre with flag */}
-            <p style={{ fontSize: '14px', color: 'white', marginBottom: '0.125rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              {genre}
+            {/* Genre with flag flush right */}
+            <p style={{ fontSize: '14px', color: 'white', marginBottom: '0.125rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span>{genre}</span>
               {flag && (
                 <span
                   style={{
