@@ -1,104 +1,108 @@
+// =============================================================================
+// MODULE 01: HorizontalStoryCard (PROTECTED)
+// Updated: 120px covers for mobile responsiveness
+// =============================================================================
 import Link from 'next/link'
 
-interface StoryCardProps {
+interface HorizontalStoryCardProps {
   id: string
   title: string
-  genre: string
   author: string
+  genre: string
   duration_mins: number
-  credits: number
-  cover_url: string | null
+  cover_image_url: string | null
   rating?: number
-  review_count?: number
-  flag?: 'free' | 'editors-pick' | 'readers-choice' | 'trending' | null
-  series_number?: number | null
-  series_total?: number | null
-  play_status?: 'played' | 'continue' | null
+  reviews?: number
+  flag?: string | null
+  credits?: number
 }
 
 export default function HorizontalStoryCard({
   id,
   title,
-  genre,
   author,
+  genre,
   duration_mins,
-  credits,
-  cover_url,
-  rating,
-  review_count,
-  flag,
-  series_number,
-  series_total,
-  play_status,
-}: StoryCardProps) {
+  cover_image_url,
+  rating = 0,
+  reviews = 0,
+  flag = null,
+  credits
+}: HorizontalStoryCardProps) {
+  const displayCredits = credits ?? Math.ceil(duration_mins / 15)
+
   return (
-    <Link 
-      href={'/player/' + id}
-      className="flex bg-slate-800 rounded-xl overflow-hidden hover:bg-slate-700 transition"
-    >
-      <div style={{ width: '155px', height: '155px', flexShrink: 0, padding: '0.5rem' }}>
-        <div className="rounded-lg overflow-hidden cover-glow" style={{ width: '100%', height: '100%' }}>
-          <img 
-            src={cover_url || '/images/default-cover.png'} 
+    <Link href={`/player/${id}`} style={{ textDecoration: 'none' }}>
+      <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', cursor: 'pointer' }}>
+        {/* Cover Image - 120px for mobile */}
+        <div style={{ position: 'relative', flexShrink: 0 }}>
+          <img
+            src={cover_image_url || '/images/default-cover.png'}
             alt={title}
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            style={{
+              width: '120px',
+              height: '120px',
+              objectFit: 'cover',
+              borderRadius: '0.5rem',
+              boxShadow: '0 0 20px rgba(251, 146, 60, 0.3)'
+            }}
           />
-        </div>
-      </div>
-      <div style={{ flex: 1, padding: '0.5rem 0.75rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-        <h3 className="text-white font-bold line-clamp-1" style={{ fontSize: '20px', margin: 0 }}>{title}</h3>
-        <p className="text-white" style={{ fontSize: '17px', margin: '3px 0', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-          {genre}
-          {series_number && series_total && (
-            <span 
-              className="font-bold rounded"
-              style={{ 
-                backgroundColor: '#3b82f6', 
-                color: 'white', 
-                fontSize: '11px',
-                padding: '2px 8px'
-              }}
-            >
-              Series {series_number} of {series_total}
-            </span>
-          )}
-          {play_status && (
-            <span 
-              className="font-bold rounded"
-              style={{ 
-                backgroundColor: play_status === 'played' ? '#6b7280' : '#f59e0b', 
-                color: 'white', 
-                fontSize: '11px',
-                padding: '2px 8px'
-              }}
-            >
-              {play_status === 'played' ? 'Played' : 'Continue'}
-            </span>
-          )}
-        </p>
-        <p className="text-white" style={{ fontSize: '17px', margin: '3px 0' }}>by {author}</p>
-        <p className="text-white" style={{ fontSize: '17px', margin: '3px 0' }}>{duration_mins} min • {credits} credits</p>
-        <p className="text-white" style={{ fontSize: '17px', margin: '3px 0', display: 'flex', alignItems: 'center', gap: '4px' }}>
-          {rating !== undefined ? rating.toFixed(1) : '4.0'}/5{' '}
-          {renderStars(rating || 4.0)}{' '}
-          {review_count || 0}
           {flag && (
-            <span 
-              className="font-bold rounded"
-              style={{ 
-                backgroundColor: flag === 'free' ? '#22c55e' : '#f97316', 
-                color: 'white', 
-                fontSize: '12px',
-                padding: '3px 10px',
-                marginLeft: '6px'
+            <span
+              style={{
+                position: 'absolute',
+                top: '0.5rem',
+                left: '0.5rem',
+                backgroundColor: flag === 'free' ? '#22c55e' : '#f97316',
+                color: 'white',
+                fontSize: '10px',
+                fontWeight: 'bold',
+                padding: '0.125rem 0.375rem',
+                borderRadius: '0.25rem',
+                textTransform: 'uppercase'
               }}
             >
-              {flag === 'free' ? 'FREE' : 
-               flag === 'editors-pick' ? "EDITOR'S PICK" :
-               flag === 'readers-choice' ? "READER'S CHOICE" : 'TRENDING'}
+              {flag}
             </span>
           )}
-        </p>
+        </div>
+
+        {/* Content */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <h3
+            style={{
+              fontSize: '20px',
+              fontWeight: 'bold',
+              color: 'white',
+              marginBottom: '0.25rem',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            {title}
+          </h3>
+          <p style={{ fontSize: '17px', color: '#94a3b8', marginBottom: '0.25rem' }}>
+            {genre}
+          </p>
+          <p style={{ fontSize: '17px', color: '#94a3b8', marginBottom: '0.25rem' }}>
+            by {author}
+          </p>
+          <p style={{ fontSize: '17px', color: '#94a3b8', marginBottom: '0.5rem' }}>
+            {duration_mins} min • {displayCredits} credits
+          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span style={{ fontSize: '14px', color: 'white' }}>
+              {rating.toFixed(1)}/5
+            </span>
+            <span style={{ display: 'flex' }}>
+              {renderStars(rating)}
+            </span>
+            <span style={{ fontSize: '14px', color: '#64748b' }}>
+              {reviews} reviews
+            </span>
+          </div>
+        </div>
       </div>
     </Link>
   )
