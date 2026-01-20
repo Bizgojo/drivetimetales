@@ -43,6 +43,7 @@ function LibraryContent() {
   const [loading, setLoading] = useState(true)
   const [userName, setUserName] = useState('Friend')
   const [userCredits, setUserCredits] = useState(0)
+  const [isUnlimited, setIsUnlimited] = useState(false)
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   
   const [selectedDuration, setSelectedDuration] = useState('All')
@@ -51,7 +52,7 @@ function LibraryContent() {
   const [visibleGenres, setVisibleGenres] = useState<string[]>(DEFAULT_VISIBLE)
   const [showMoreDropdown, setShowMoreDropdown] = useState(false)
 
-  const showLowCreditsButton = userCredits <= 3
+  const showLowCreditsButton = !isUnlimited && userCredits <= 3
 
   useEffect(() => {
     const storedGenres = localStorage.getItem('dtt_recent_genres')
@@ -81,7 +82,7 @@ function LibraryContent() {
       if (user?.id) {
         const { data: userData, error: userError } = await supabase
           .from('users')
-          .select('first_name, credits, avatar_url')
+          .select('first_name, credits, avatar_url, unlimited_credits')
           .eq('id', user.id)
           .single()
         
@@ -89,6 +90,7 @@ function LibraryContent() {
         if (userData) {
           setUserName(userData.first_name || 'Friend')
           setUserCredits(userData.credits || 0)
+          setIsUnlimited(userData.unlimited_credits || userData.credits >= 9999)
           setAvatarUrl(userData.avatar_url || null)
         }
       }
@@ -229,11 +231,12 @@ function LibraryContent() {
               )}
             </div>
           </div>
-          {/* Row 3: Credits + Playlist button */}
-          <div style={{ display: 'flex', gap: '0.3rem' }}>
-            <div style={{ backgroundColor: '#334155', padding: '0.45rem 0.6rem', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{ color: '#f97316', fontWeight: 'bold', fontSize: '14px' }}>{userCredits}</span>
-              <span style={{ color: 'white', fontSize: '12px' }}>cr</span>
+          {/* Row 3: Credits (large) + Playlist button */}
+          <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'stretch' }}>
+            <div style={{ backgroundColor: '#334155', padding: '0.3rem 0.75rem', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '60px' }}>
+              <span style={{ color: '#f97316', fontWeight: 'bold', fontSize: isUnlimited ? '22px' : '20px' }}>
+                {isUnlimited ? '∞' : userCredits}
+              </span>
             </div>
             <button onClick={() => router.push('/library-playlist')} style={{ backgroundColor: '#3b82f6', color: 'white', padding: '0.45rem 1rem', borderRadius: '6px', fontSize: '14px', fontWeight: 500, border: 'none', cursor: 'pointer', flex: 1 }}>➕ Create a Playlist</button>
           </div>
@@ -273,7 +276,7 @@ function LibraryContent() {
         )}
       </div>
 
-      {/* Low Credits Sticky Button - only shows when credits <= 3 */}
+      {/* Low Credits Sticky Button - only shows when credits <= 3 and not unlimited */}
       {showLowCreditsButton && (
         <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: '#0f172a', padding: '0.5rem 0.75rem', borderTop: '1px solid #334155', zIndex: 50 }}>
           <button onClick={() => router.push('/buy-credits')} style={{ backgroundColor: '#f97316', color: 'white', padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', width: '100%', fontSize: '15px', fontWeight: 'bold' }}>
