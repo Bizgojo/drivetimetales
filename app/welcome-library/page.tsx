@@ -126,6 +126,12 @@ function WelcomeLibraryContent() {
     cursor: 'pointer'
   })
 
+  const allBtnStyle = (active: boolean): React.CSSProperties => ({
+    ...btnStyle(active),
+    minWidth: '36px',
+    textAlign: 'center' as const
+  })
+
   const getGenreLabel = (key: string) => {
     const genre = ALL_GENRES.find(g => g.key === key)
     if (!genre) return key
@@ -153,17 +159,18 @@ function WelcomeLibraryContent() {
           </div>
         </div>
         
-        {/* Filters - sticky with more space */}
+        {/* Filters - sticky, left aligned */}
         <div style={{ padding: '0.5rem 1rem', backgroundColor: '#1e293b' }}>
           {/* Row 1: Duration + Type */}
-          <div style={{ display: 'flex', gap: '0.3rem', marginBottom: '0.3rem', flexWrap: 'wrap', justifyContent: 'center' }}>
-            {['All', '15m', '30m', '1hr'].map(d => <button key={d} onClick={() => setSelectedDuration(d)} style={btnStyle(selectedDuration === d)}>{d}</button>)}
+          <div style={{ display: 'flex', gap: '0.3rem', marginBottom: '0.3rem', flexWrap: 'wrap' }}>
+            <button onClick={() => setSelectedDuration('All')} style={allBtnStyle(selectedDuration === 'All')}>All</button>
+            {['15m', '30m', '1hr'].map(d => <button key={d} onClick={() => setSelectedDuration(d)} style={btnStyle(selectedDuration === d)}>{d}</button>)}
             <span style={{ color: '#475569', padding: '0 4px', display: 'flex', alignItems: 'center', fontSize: '12px' }}>|</span>
             {['All', 'Series'].map(t => <button key={t} onClick={() => setSelectedType(t)} style={btnStyle(selectedType === t)}>{t}</button>)}
           </div>
           {/* Row 2: Genre with dynamic buttons + More dropdown */}
-          <div style={{ display: 'flex', gap: '0.3rem', marginBottom: '0.3rem', flexWrap: 'wrap', justifyContent: 'center', position: 'relative' }}>
-            <button onClick={() => selectGenre('All')} style={btnStyle(selectedGenre === 'All')}>All</button>
+          <div style={{ display: 'flex', gap: '0.3rem', marginBottom: '0.3rem', flexWrap: 'wrap', position: 'relative' }}>
+            <button onClick={() => selectGenre('All')} style={allBtnStyle(selectedGenre === 'All')}>All</button>
             {visibleGenres.map(g => (
               <button key={g} onClick={() => selectGenre(g)} style={btnStyle(selectedGenre === g)}>
                 {getGenreLabel(g)}
