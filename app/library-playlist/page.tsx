@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, useRef, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
@@ -15,6 +15,16 @@ interface Story {
   series_name?: string | null
   series_number?: number | null
   series_total?: number | null
+}
+
+interface PlaylistItem {
+  id: string
+  title: string
+  duration_mins: number
+  genre: string
+  author: string
+  cover_url: string | null
+  credited: boolean
 }
 
 const ALL_GENRES = [
@@ -48,8 +58,12 @@ function LibraryPlaylistContent() {
   const [visibleGenres, setVisibleGenres] = useState<string[]>(DEFAULT_VISIBLE)
   const [showMoreDropdown, setShowMoreDropdown] = useState(false)
   
-  // Array to maintain selection order
-  const [playlistOrder, setPlaylistOrder] = useState<string[]>([])
+  const [playlist, setPlaylist] = useState<PlaylistItem[]>([])
+  
+  // Drag to reorder
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
+  const longPressTimer = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     const storedGenres = localStorage.getItem('dtt_recent_genres')
@@ -85,8 +99,6 @@ function LibraryPlaylistContent() {
   }
 
   const filteredStories = stories.filter(story => {
-    // Don't show already selected stories in the available list
-    if (playlistOrder.includes(story.id)) return false
     if (selectedDuration !== 'All') {
       if (selectedDuration === '15m' && story.duration_mins > 15) return false
       if (selectedDuration === '30m' && (story.duration_mins <= 15 || story.duration_mins > 30)) return false
@@ -97,33 +109,68 @@ function LibraryPlaylistContent() {
     return true
   })
 
-  const addToPlaylist = (storyId: string) => {
-    setPlaylistOrder([...playlistOrder, storyId])
+  // Sort: selected stories at top in playlist order, then unselected
+  const sortedStories = [...filteredStories].sort((a, b) => {
+    const aIndex = playlist.findIndex(p => p.id === a.id)
+    const bIndex = playlist.findIndex(p => p.id === b.id)
+    if (aIndex >= 0 && bIndex >= 0) return aIndex - bIndex
+    if (aIndex >= 0) return -1
+    if (bIndex >= 0) return 1
+    return 0
+  })
+
+  const playlistCreditsUsed = playlist.reduce((sum, item) => sum + getCredits(item.duration_mins), 0)
+  const creditsRemaining = userCredits - playlistCreditsUsed
+  const playlistTotal = playlist.reduce((sum, item) => sum + item.duration_mins, 0)
+
+  const toggleStorySelection = (story: Story) => {
+    const exists = playlist.find(p => p.id === story.id)
+    if (exists) {
+      setPlaylist(playlist.filter(p => p.id !== story.id))
+    } else {
+      const storyCost = getCredits(story.duration_mins)
+      if (storyCost > creditsRemaining) return
+      setPlaylist([...playlist, {
+        id: story.id,
+        title: story.title,
+        duration_mins: story.duration_mins,
+        genre: story.genre,
+        author: story.author || 'Drive Time Tales',
+        cover_url: story.cover_url,
+        credited: false
+      }])
+    }
   }
 
-  const removeFromPlaylist = (storyId: string) => {
-    setPlaylistOrder(playlistOrder.filter(id => id !== storyId))
+  const handleLongPressStart = (index: number) => {
+    longPressTimer.current = setTimeout(() => setDraggedIndex(index), 500)
   }
 
-  const moveUp = (index: number) => {
-    if (index === 0) return
-    const newOrder = [...playlistOrder]
-    ;[newOrder[index - 1], newOrder[index]] = [newOrder[index], newOrder[index - 1]]
-    setPlaylistOrder(newOrder)
+  const handleLongPressEnd = () => {
+    if (longPressTimer.current) clearTimeout(longPressTimer.current)
+    if (draggedIndex !== null && dragOverIndex !== null && draggedIndex !== dragOverIndex) {
+      const newPlaylist = [...playlist]
+      const [removed] = newPlaylist.splice(draggedIndex, 1)
+      newPlaylist.splice(dragOverIndex, 0, removed)
+      setPlaylist(newPlaylist)
+    }
+    setDraggedIndex(null)
+    setDragOverIndex(null)
   }
 
-  const moveDown = (index: number) => {
-    if (index === playlistOrder.length - 1) return
-    const newOrder = [...playlistOrder]
-    ;[newOrder[index], newOrder[index + 1]] = [newOrder[index + 1], newOrder[index]]
-    setPlaylistOrder(newOrder)
+  const savePlaylist = () => {
+    localStorage.setItem('dtt_playlist', JSON.stringify(playlist))
+    localStorage.setItem('dtt_playlist_index', '0')
+    localStorage.setItem('dtt_playlist_progress', '0')
+    router.push('/library')
   }
 
-  // Get selected stories in playlist order
-  const playlistStories = playlistOrder.map(id => stories.find(s => s.id === id)).filter(Boolean) as Story[]
-  const totalMinutes = playlistStories.reduce((sum, s) => sum + s.duration_mins, 0)
-  const totalCredits = playlistStories.reduce((sum, s) => sum + getCredits(s.duration_mins), 0)
-  const creditsLeft = userCredits - totalCredits
+  const formatTime = (mins: number) => {
+    if (mins < 60) return `${mins}min`
+    const hrs = Math.floor(mins / 60)
+    const m = mins % 60
+    return m > 0 ? `${hrs}hr ${m}min` : `${hrs}hr`
+  }
 
   const btnStyle = (active: boolean): React.CSSProperties => ({ backgroundColor: active ? '#f97316' : '#334155', color: 'white', padding: '0.3rem 0', borderRadius: '6px', fontSize: '13px', fontWeight: 500, border: 'none', cursor: 'pointer', flex: 1, textAlign: 'center' })
   const allBtnStyle = (active: boolean): React.CSSProperties => ({ ...btnStyle(active), flex: 'none', width: '42px' })
@@ -132,15 +179,15 @@ function LibraryPlaylistContent() {
   if (loading) return (<div style={{ minHeight: '100vh', backgroundColor: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ width: '40px', height: '40px', border: '4px solid #f97316', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} /><style dangerouslySetInnerHTML={{ __html: '@keyframes spin { to { transform: rotate(360deg); } }' }} /></div>)
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', paddingBottom: '70px' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', paddingBottom: '80px' }}>
       <div style={{ position: 'sticky', top: 0, backgroundColor: '#0f172a', zIndex: 50 }}>
         {/* Header */}
         <div style={{ padding: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.75rem', borderBottom: '1px solid #334155' }}>
           <button onClick={() => router.push('/library')} style={{ backgroundColor: 'transparent', color: 'white', padding: '0.25rem', border: 'none', cursor: 'pointer', fontSize: '18px' }}>←</button>
-          <span style={{ color: 'white', fontSize: '16px', fontWeight: 500 }}>Create Your Playlist</span>
+          <span style={{ color: 'white', fontSize: '16px', fontWeight: 500 }}>Select stories for your playlist</span>
         </div>
         
-        {/* Filters */}
+        {/* Filters - compact design matching library */}
         <div style={{ padding: '0.5rem 0.75rem', backgroundColor: '#1e293b' }}>
           <div style={{ display: 'flex', gap: '0.3rem', marginBottom: '0.3rem' }}>
             <button onClick={() => setSelectedDuration('All')} style={allBtnStyle(selectedDuration === 'All')}>All</button>
@@ -163,80 +210,79 @@ function LibraryPlaylistContent() {
 
         {/* Summary Bar */}
         <div style={{ padding: '0.5rem 0.75rem', backgroundColor: '#0f172a', borderBottom: '1px solid #334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ color: 'white', fontSize: '14px', fontWeight: 500 }}>{playlistOrder.length} stories • {totalMinutes}min</span>
-          <span style={{ backgroundColor: creditsLeft >= 0 ? '#22c55e' : '#ef4444', color: 'white', padding: '0.25rem 0.75rem', borderRadius: '999px', fontSize: '13px', fontWeight: 500 }}>{creditsLeft} credits left</span>
+          <span style={{ color: 'white', fontSize: '14px', fontWeight: 500 }}>{playlist.length} stories • {formatTime(playlistTotal)}</span>
+          <span style={{ backgroundColor: creditsRemaining >= 0 ? '#22c55e' : '#ef4444', color: creditsRemaining >= 0 ? '#0f172a' : 'white', padding: '0.25rem 0.75rem', borderRadius: '999px', fontSize: '13px', fontWeight: 600 }}>{creditsRemaining} credits left</span>
         </div>
       </div>
 
       {showMoreDropdown && <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 40 }} onClick={() => setShowMoreDropdown(false)} />}
 
+      {/* Story Cards */}
       <div style={{ padding: '0.5rem 0.75rem' }}>
-        {/* Selected Stories - Your Playlist */}
-        {playlistOrder.length > 0 && (
-          <>
-            <div style={{ color: '#f97316', fontSize: '13px', fontWeight: 600, marginBottom: '0.5rem', textTransform: 'uppercase' }}>Your Playlist (in play order)</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' }}>
-              {playlistStories.map((story, index) => {
-                const storyCost = getCredits(story.duration_mins)
-                return (
-                  <div key={story.id} style={{ backgroundColor: '#1e293b', borderRadius: '8px', padding: '0.5rem', display: 'flex', gap: '0.5rem', alignItems: 'center', border: '2px solid #f97316' }}>
-                    {/* Order number */}
-                    <div style={{ width: '24px', height: '24px', borderRadius: '50%', backgroundColor: '#f97316', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <span style={{ color: 'white', fontSize: '12px', fontWeight: 'bold' }}>{index + 1}</span>
-                    </div>
-                    {/* Cover */}
-                    <div style={{ width: '50px', height: '50px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0, backgroundColor: '#334155' }}>
-                      {story.cover_url ? <img src={story.cover_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}>📖</div>}
-                    </div>
-                    {/* Content */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ color: 'white', fontSize: '13px', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{story.title}</div>
-                      <div style={{ color: '#cbd5e1', fontSize: '11px' }}>{story.duration_mins} min • {storyCost} cr</div>
-                    </div>
-                    {/* Move buttons */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                      <button onClick={() => moveUp(index)} disabled={index === 0} style={{ backgroundColor: index === 0 ? '#475569' : '#334155', color: 'white', border: 'none', borderRadius: '4px', padding: '2px 6px', cursor: index === 0 ? 'default' : 'pointer', fontSize: '12px' }}>▲</button>
-                      <button onClick={() => moveDown(index)} disabled={index === playlistOrder.length - 1} style={{ backgroundColor: index === playlistOrder.length - 1 ? '#475569' : '#334155', color: 'white', border: 'none', borderRadius: '4px', padding: '2px 6px', cursor: index === playlistOrder.length - 1 ? 'default' : 'pointer', fontSize: '12px' }}>▼</button>
-                    </div>
-                    {/* Remove button */}
-                    <button onClick={() => removeFromPlaylist(story.id)} style={{ backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '14px', flexShrink: 0 }}>×</button>
-                  </div>
-                )
-              })}
-            </div>
-          </>
-        )}
+        {sortedStories.map(story => {
+          const isSelected = playlist.some(p => p.id === story.id)
+          const storyCost = getCredits(story.duration_mins)
+          const canAfford = storyCost <= creditsRemaining || isSelected
+          const playlistIndex = playlist.findIndex(p => p.id === story.id)
+          const isDragging = draggedIndex === playlistIndex
+          const isDragOver = dragOverIndex === playlistIndex && draggedIndex !== null
 
-        {/* Available Stories */}
-        <div style={{ color: '#94a3b8', fontSize: '13px', fontWeight: 600, marginBottom: '0.5rem', textTransform: 'uppercase' }}>Available Stories</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          {filteredStories.map(story => {
-            const storyCost = getCredits(story.duration_mins)
-            return (
-              <div key={story.id} onClick={() => addToPlaylist(story.id)} style={{ backgroundColor: '#1e293b', borderRadius: '8px', padding: '0.5rem', display: 'flex', gap: '0.6rem', alignItems: 'center', cursor: 'pointer', border: '2px solid transparent' }}>
-                {/* Cover */}
-                <div style={{ width: '60px', height: '60px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0, backgroundColor: '#334155' }}>
-                  {story.cover_url ? <img src={story.cover_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>📖</div>}
-                </div>
-                {/* Content */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ color: 'white', fontSize: '14px', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.2 }}>{story.title}</div>
-                  <div style={{ color: '#cbd5e1', fontSize: '12px', lineHeight: 1.3 }}>{story.genre}</div>
-                  <div style={{ color: '#cbd5e1', fontSize: '12px', lineHeight: 1.3 }}>{story.duration_mins} min • {storyCost} {storyCost === 1 ? 'credit' : 'credits'}</div>
-                </div>
-                {/* Add button */}
-                <div style={{ width: '28px', height: '28px', borderRadius: '50%', border: '2px solid #22c55e', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <span style={{ color: '#22c55e', fontSize: '18px', lineHeight: 1 }}>+</span>
-                </div>
+          return (
+            <div 
+              key={story.id}
+              onClick={() => canAfford && toggleStorySelection(story)}
+              onTouchStart={() => isSelected && handleLongPressStart(playlistIndex)}
+              onTouchEnd={handleLongPressEnd}
+              onMouseDown={() => isSelected && handleLongPressStart(playlistIndex)}
+              onMouseUp={handleLongPressEnd}
+              onMouseEnter={() => draggedIndex !== null && isSelected && setDragOverIndex(playlistIndex)}
+              style={{ 
+                backgroundColor: isSelected ? '#1e3a2f' : '#1e293b',
+                border: isDragOver ? '2px dashed #f97316' : isSelected ? '2px solid #22c55e' : '2px solid transparent',
+                borderRadius: '8px', 
+                padding: '0.5rem', 
+                marginBottom: '0.5rem', 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '0.5rem',
+                cursor: canAfford ? 'pointer' : 'not-allowed', 
+                opacity: canAfford ? 1 : 0.5,
+                transform: isDragging ? 'scale(1.02)' : 'scale(1)', 
+                boxShadow: isDragging ? '0 8px 20px rgba(0,0,0,0.4)' : 'none', 
+                transition: 'transform 0.15s, box-shadow 0.15s'
+              }}
+            >
+              {/* Drag handle + order number for selected */}
+              {isSelected && <div style={{ color: 'white', fontSize: '14px', cursor: 'grab' }}>☰</div>}
+              {isSelected && <div style={{ backgroundColor: '#f97316', color: 'white', width: '22px', height: '22px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 'bold', flexShrink: 0 }}>{playlistIndex + 1}</div>}
+              
+              {/* Cover */}
+              <div style={{ width: '55px', height: '55px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0, backgroundColor: '#334155' }}>
+                {story.cover_url ? <img src={story.cover_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>📖</div>}
               </div>
-            )
-          })}
-        </div>
+              
+              {/* Content */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ color: 'white', fontSize: '13px', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.2 }}>
+                  {story.title}
+                  {story.series_number && story.series_total && <span style={{ color: '#3b82f6', fontSize: '11px', marginLeft: '4px' }}>[{story.series_number}/{story.series_total}]</span>}
+                </div>
+                <div style={{ color: '#cbd5e1', fontSize: '11px', lineHeight: 1.3 }}>{story.genre}</div>
+                <div style={{ color: '#cbd5e1', fontSize: '11px', lineHeight: 1.3 }}>{story.duration_mins} min • {storyCost} {storyCost === 1 ? 'credit' : 'credits'}</div>
+              </div>
+              
+              {/* Checkbox */}
+              <div style={{ width: '24px', height: '24px', borderRadius: '50%', border: isSelected ? 'none' : '2px solid #475569', backgroundColor: isSelected ? '#22c55e' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', flexShrink: 0, fontSize: '14px' }}>{isSelected && '✓'}</div>
+            </div>
+          )
+        })}
       </div>
 
       {/* Save Button */}
       <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: '#0f172a', padding: '0.75rem', borderTop: '1px solid #334155', zIndex: 50 }}>
-        <button onClick={() => { if (playlistOrder.length > 0 && creditsLeft >= 0) alert('Saving playlist...') }} disabled={playlistOrder.length === 0 || creditsLeft < 0} style={{ backgroundColor: playlistOrder.length === 0 || creditsLeft < 0 ? '#475569' : '#3b82f6', color: 'white', padding: '0.75rem 1rem', borderRadius: '8px', border: 'none', cursor: playlistOrder.length === 0 || creditsLeft < 0 ? 'not-allowed' : 'pointer', width: '100%', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>💾 Save My Playlist ({playlistOrder.length} stories • {totalMinutes}min)</button>
+        <button onClick={savePlaylist} disabled={playlist.length === 0} style={{ backgroundColor: playlist.length > 0 ? '#22c55e' : '#475569', color: playlist.length > 0 ? '#0f172a' : 'white', padding: '0.75rem 1rem', borderRadius: '8px', border: 'none', cursor: playlist.length > 0 ? 'pointer' : 'not-allowed', width: '100%', fontSize: '15px', fontWeight: 'bold' }}>
+          💾 Save My Playlist ({playlist.length} stories • {formatTime(playlistTotal)})
+        </button>
       </div>
 
       <style dangerouslySetInnerHTML={{ __html: '@keyframes spin { to { transform: rotate(360deg); } }' }} />
