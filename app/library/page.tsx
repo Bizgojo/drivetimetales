@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { useAuth } from '@/components/AuthProvider'
+import { useAuth } from '@/contexts/AuthContext'
 import HorizontalStoryCard from '@/components/HorizontalStoryCard'
 
 interface Story {
