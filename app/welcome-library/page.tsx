@@ -17,6 +17,20 @@ interface Story {
   series_total?: number | null
 }
 
+const ALL_GENRES = [
+  { key: 'mystery', label: 'Mystery', emoji: '🔍' },
+  { key: 'thriller', label: 'Thriller', emoji: '😱' },
+  { key: 'romance', label: 'Romance', emoji: '💕' },
+  { key: 'horror', label: 'Horror', emoji: '👻' },
+  { key: 'comedy', label: 'Comedy', emoji: '😂' },
+  { key: 'truckers', label: 'Truckers', emoji: '🚛' },
+  { key: 'scifi', label: 'Sci-Fi', emoji: '🚀' },
+  { key: 'children', label: 'Children', emoji: '🧒' },
+  { key: 'learn', label: 'Learn', emoji: '🧠' }
+]
+
+const DEFAULT_VISIBLE = ['mystery', 'romance', 'horror']
+
 function getCredits(duration_mins: number): number {
   return Math.max(1, Math.floor(duration_mins / 15))
 }
@@ -28,8 +42,10 @@ function WelcomeLibraryContent() {
   const [userCredits, setUserCredits] = useState(2)
   
   const [selectedDuration, setSelectedDuration] = useState('All')
-  const [selectedType, setSelectedType] = useState('Both')
+  const [selectedType, setSelectedType] = useState('All')
   const [selectedGenre, setSelectedGenre] = useState('All')
+  const [visibleGenres, setVisibleGenres] = useState<string[]>(DEFAULT_VISIBLE)
+  const [showMoreDropdown, setShowMoreDropdown] = useState(false)
   
   const [showSubscriberPopup, setShowSubscriberPopup] = useState(false)
   const [showCreditModal, setShowCreditModal] = useState(false)
@@ -38,6 +54,16 @@ function WelcomeLibraryContent() {
   useEffect(() => {
     const storedCredits = localStorage.getItem('dtt_user_credits')
     if (storedCredits !== null) setUserCredits(parseInt(storedCredits, 10))
+    
+    const storedGenres = localStorage.getItem('dtt_recent_genres')
+    if (storedGenres) {
+      try {
+        const parsed = JSON.parse(storedGenres)
+        if (Array.isArray(parsed) && parsed.length >= 3) {
+          setVisibleGenres(parsed.slice(0, 3))
+        }
+      } catch (e) { /* use default */ }
+    }
   }, [])
 
   useEffect(() => {
@@ -54,22 +80,31 @@ function WelcomeLibraryContent() {
     fetchData()
   }, [])
 
+  const selectGenre = (genreKey: string) => {
+    setSelectedGenre(genreKey)
+    setShowMoreDropdown(false)
+    
+    if (genreKey !== 'All' && !visibleGenres.includes(genreKey)) {
+      const newVisible = [genreKey, ...visibleGenres.filter(g => g !== genreKey)].slice(0, 3)
+      setVisibleGenres(newVisible)
+      localStorage.setItem('dtt_recent_genres', JSON.stringify(newVisible))
+    } else if (genreKey !== 'All') {
+      const newVisible = [genreKey, ...visibleGenres.filter(g => g !== genreKey)].slice(0, 3)
+      setVisibleGenres(newVisible)
+      localStorage.setItem('dtt_recent_genres', JSON.stringify(newVisible))
+    }
+  }
+
   const filteredStories = stories.filter(story => {
     if (selectedDuration !== 'All') {
       if (selectedDuration === '15m' && story.duration_mins > 15) return false
       if (selectedDuration === '30m' && (story.duration_mins <= 15 || story.duration_mins > 30)) return false
       if (selectedDuration === '1hr' && story.duration_mins <= 30) return false
     }
-    if (selectedType === 'Singles' && story.series_name) return false
     if (selectedType === 'Series' && !story.series_name) return false
     if (selectedGenre !== 'All') {
       const g = story.genre?.toLowerCase() || ''
-      if (selectedGenre === 'Mystery' && !g.includes('mystery') && !g.includes('thriller')) return false
-      if (selectedGenre === 'Romance' && !g.includes('romance')) return false
-      if (selectedGenre === 'Sci-Fi' && !g.includes('sci-fi') && !g.includes('scifi')) return false
-      if (selectedGenre === 'Horror' && !g.includes('horror')) return false
-      if (selectedGenre === 'Comedy' && !g.includes('comedy')) return false
-      if (selectedGenre === 'Learn' && !g.includes('learn') && !g.includes('education')) return false
+      if (!g.includes(selectedGenre.toLowerCase())) return false
     }
     return true
   })
@@ -90,6 +125,12 @@ function WelcomeLibraryContent() {
     border: 'none',
     cursor: 'pointer'
   })
+
+  const getGenreLabel = (key: string) => {
+    const genre = ALL_GENRES.find(g => g.key === key)
+    if (!genre) return key
+    return genre.emoji + genre.label.substring(0, 4)
+  }
 
   if (loading) return (
     <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -118,20 +159,38 @@ function WelcomeLibraryContent() {
           <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '0.25rem', flexWrap: 'wrap', justifyContent: 'center' }}>
             {['All', '15m', '30m', '1hr'].map(d => <button key={d} onClick={() => setSelectedDuration(d)} style={btnStyle(selectedDuration === d)}>{d}</button>)}
             <span style={{ color: '#475569', padding: '0 2px', display: 'flex', alignItems: 'center', fontSize: '12px' }}>|</span>
-            {['Both', 'Singles', 'Series'].map(t => <button key={t} onClick={() => setSelectedType(t)} style={btnStyle(selectedType === t)}>{t}</button>)}
+            {['All', 'Series'].map(t => <button key={t} onClick={() => setSelectedType(t)} style={btnStyle(selectedType === t)}>{t}</button>)}
           </div>
-          {/* Row 2: Genre */}
-          <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '0.25rem', flexWrap: 'wrap', justifyContent: 'center' }}>
-            {['All', 'Mystery', 'Romance', 'Sci-Fi', 'Horror', 'Comedy', 'Learn'].map(g => (
-              <button key={g} onClick={() => setSelectedGenre(g)} style={btnStyle(selectedGenre === g)}>
-                {g === 'All' ? 'All' : g === 'Mystery' ? '🔍Myst' : g === 'Romance' ? '💕Rom' : g === 'Sci-Fi' ? '🚀SciFi' : g === 'Horror' ? '👻Horr' : g === 'Comedy' ? '😂Com' : '🧠Learn'}
+          {/* Row 2: Genre with dynamic buttons + More dropdown */}
+          <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '0.25rem', flexWrap: 'wrap', justifyContent: 'center', position: 'relative' }}>
+            <button onClick={() => selectGenre('All')} style={btnStyle(selectedGenre === 'All')}>All</button>
+            {visibleGenres.map(g => (
+              <button key={g} onClick={() => selectGenre(g)} style={btnStyle(selectedGenre === g)}>
+                {getGenreLabel(g)}
               </button>
             ))}
+            <div style={{ position: 'relative' }}>
+              <button onClick={() => setShowMoreDropdown(!showMoreDropdown)} style={{ ...btnStyle(showMoreDropdown), display: 'flex', alignItems: 'center', gap: '2px' }}>
+                More ▼
+              </button>
+              {showMoreDropdown && (
+                <div style={{ position: 'absolute', top: '100%', right: 0, backgroundColor: '#1e293b', border: '1px solid #475569', borderRadius: '8px', marginTop: '4px', minWidth: '140px', zIndex: 60, boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}>
+                  {ALL_GENRES.map(g => (
+                    <button key={g.key} onClick={() => selectGenre(g.key)} style={{ display: 'block', width: '100%', padding: '0.5rem 0.75rem', backgroundColor: selectedGenre === g.key ? '#f97316' : 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', fontSize: '13px' }}>
+                      {g.emoji} {g.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
           {/* Playlist button */}
           <button onClick={() => setShowSubscriberPopup(true)} style={{ backgroundColor: '#3b82f6', color: 'white', padding: '0.4rem 1rem', borderRadius: '6px', fontSize: '13px', fontWeight: 500, border: 'none', cursor: 'pointer', width: '100%' }}>➕ Create a Playlist</button>
         </div>
       </div>
+
+      {/* Click outside to close dropdown */}
+      {showMoreDropdown && <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 40 }} onClick={() => setShowMoreDropdown(false)} />}
 
       {/* Story Cards */}
       <div style={{ padding: '0.5rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
