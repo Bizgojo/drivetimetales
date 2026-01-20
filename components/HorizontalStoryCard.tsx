@@ -5,7 +5,7 @@ PROTECTED - DO NOT RECREATE - COPY WITH: cat ~/DriveTimeFiles/WorkingCodeLibrary
 Created: January 20, 2026
 PURPOSE:
 Compact horizontal story card for library pages with:
-- 70px cover on left
+- 70px cover on left with white glow
 - All white text on dark background
 - Title (bold), Genre, Author, Duration • Credits
 - FREE flag flush right
@@ -82,14 +82,15 @@ export default function HorizontalStoryCard({
       gap: '0.6rem',
       alignItems: 'center'
     }}>
-      {/* Cover - 70px */}
+      {/* Cover - 70px with white glow */}
       <div style={{
         width: '70px',
         height: '70px',
         borderRadius: '6px',
         overflow: 'hidden',
         flexShrink: 0,
-        backgroundColor: '#334155'
+        backgroundColor: '#334155',
+        boxShadow: '0 0 12px rgba(255, 255, 255, 0.3)'
       }}>
         {cover_url ? (
           <img src={cover_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
