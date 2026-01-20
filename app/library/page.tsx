@@ -42,6 +42,7 @@ function LibraryContent() {
   const [stories, setStories] = useState<Story[]>([])
   const [loading, setLoading] = useState(true)
   const [userName, setUserName] = useState('Friend')
+  const [userCredits, setUserCredits] = useState(0)
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   
   const [selectedDuration, setSelectedDuration] = useState('All')
@@ -78,13 +79,14 @@ function LibraryContent() {
       if (user?.id) {
         const { data: userData, error: userError } = await supabase
           .from('users')
-          .select('first_name, avatar_url')
+          .select('first_name, credits, avatar_url')
           .eq('id', user.id)
           .single()
         
         if (userError) console.error('User query error:', userError)
         if (userData) {
           setUserName(userData.first_name || 'Friend')
+          setUserCredits(userData.credits || 0)
           setAvatarUrl(userData.avatar_url || null)
         }
       }
@@ -167,14 +169,14 @@ function LibraryContent() {
             <span style={{ color: 'white', fontSize: '16px', fontWeight: 'bold' }}>Drive Time</span>
             <span style={{ color: '#f97316', fontSize: '16px', fontWeight: 'bold' }}>Tales</span>
           </div>
-          {/* Avatar */}
+          {/* Avatar - orange with white text */}
           <div 
             onClick={() => router.push('/profile')}
             style={{ 
               width: '36px', 
               height: '36px', 
               borderRadius: '50%', 
-              backgroundColor: '#334155',
+              backgroundColor: '#f97316',
               overflow: 'hidden',
               cursor: 'pointer',
               display: 'flex',
@@ -185,7 +187,7 @@ function LibraryContent() {
             {avatarUrl ? (
               <img src={avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             ) : (
-              <span style={{ color: '#f97316', fontSize: '16px', fontWeight: 'bold' }}>{userName.charAt(0).toUpperCase()}</span>
+              <span style={{ color: 'white', fontSize: '16px', fontWeight: 'bold' }}>{userName.charAt(0).toUpperCase()}</span>
             )}
           </div>
         </div>
@@ -225,8 +227,14 @@ function LibraryContent() {
               )}
             </div>
           </div>
-          {/* Playlist button - goes directly to playlist page for subscribers */}
-          <button onClick={() => router.push('/library-playlist')} style={{ backgroundColor: '#3b82f6', color: 'white', padding: '0.45rem 1rem', borderRadius: '6px', fontSize: '14px', fontWeight: 500, border: 'none', cursor: 'pointer', width: '100%' }}>➕ Create a Playlist</button>
+          {/* Row 3: Credits + Playlist button */}
+          <div style={{ display: 'flex', gap: '0.3rem' }}>
+            <div style={{ backgroundColor: '#334155', padding: '0.45rem 0.6rem', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ color: '#f97316', fontWeight: 'bold', fontSize: '14px' }}>{userCredits}</span>
+              <span style={{ color: 'white', fontSize: '12px' }}>cr</span>
+            </div>
+            <button onClick={() => router.push('/library-playlist')} style={{ backgroundColor: '#3b82f6', color: 'white', padding: '0.45rem 1rem', borderRadius: '6px', fontSize: '14px', fontWeight: 500, border: 'none', cursor: 'pointer', flex: 1 }}>➕ Create a Playlist</button>
+          </div>
         </div>
       </div>
 
