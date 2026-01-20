@@ -1,6 +1,6 @@
 // =============================================================================
 // MODULE 01: HorizontalStoryCard (PROTECTED)
-// Updated: 120px covers for mobile responsiveness
+// Updated: 120px covers, cover_url prop matches database
 // =============================================================================
 import Link from 'next/link'
 
@@ -10,7 +10,7 @@ interface HorizontalStoryCardProps {
   author: string
   genre: string
   duration_mins: number
-  cover_image_url: string | null
+  cover_url: string | null
   rating?: number
   reviews?: number
   flag?: string | null
@@ -23,7 +23,7 @@ export default function HorizontalStoryCard({
   author,
   genre,
   duration_mins,
-  cover_image_url,
+  cover_url,
   rating = 0,
   reviews = 0,
   flag = null,
@@ -37,7 +37,7 @@ export default function HorizontalStoryCard({
         {/* Cover Image - 120px for mobile */}
         <div style={{ position: 'relative', flexShrink: 0 }}>
           <img
-            src={cover_image_url || '/images/default-cover.png'}
+            src={cover_url || '/images/default-cover.png'}
             alt={title}
             style={{
               width: '120px',
