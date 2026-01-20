@@ -176,7 +176,7 @@ function LibraryPlaylistContent() {
   if (loading) return (<div style={{ minHeight: '100vh', backgroundColor: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ width: '40px', height: '40px', border: '4px solid #f97316', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} /><style dangerouslySetInnerHTML={{ __html: '@keyframes spin { to { transform: rotate(360deg); } }' }} /></div>)
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', paddingBottom: '80px' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', paddingBottom: '90px' }}>
       <div style={{ position: 'sticky', top: 0, backgroundColor: '#0f172a', zIndex: 50 }}>
         <div style={{ padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #1e293b' }}>
           <button onClick={() => router.push('/library')} style={{ backgroundColor: '#334155', color: 'white', padding: '0.4rem 0.75rem', borderRadius: '8px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '14px', fontWeight: 500 }}><span>←</span><span>Back</span></button>
@@ -233,8 +233,11 @@ function LibraryPlaylistContent() {
         })}
       </div>
 
-      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: '#0f172a', padding: '0.75rem', borderTop: '1px solid #334155', zIndex: 50 }}>
-        <button onClick={savePlaylist} disabled={playlist.length === 0} style={{ backgroundColor: playlist.length > 0 ? '#22c55e' : '#475569', color: playlist.length > 0 ? '#0f172a' : 'white', padding: '0.85rem 1rem', borderRadius: '10px', border: 'none', cursor: playlist.length > 0 ? 'pointer' : 'not-allowed', width: '100%', fontSize: '16px', fontWeight: 'bold' }}>💾 Save My Playlist ({playlist.length} stories • {formatTime(playlistTotal)})</button>
+      {/* GREEN STICKY SAVE BUTTON */}
+      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: '#0f172a', padding: '1rem', borderTop: '1px solid #334155', zIndex: 50 }}>
+        <button onClick={savePlaylist} disabled={playlist.length === 0} style={{ backgroundColor: playlist.length > 0 ? '#22c55e' : '#475569', color: playlist.length > 0 ? '#0f172a' : 'white', padding: '1rem', borderRadius: '10px', border: 'none', cursor: playlist.length > 0 ? 'pointer' : 'not-allowed', width: '100%', fontSize: '17px', fontWeight: 'bold' }}>
+          💾 Save My Playlist ({playlist.length} stories • {formatTime(playlistTotal)})
+        </button>
       </div>
 
       {showCreditsPopup && (
