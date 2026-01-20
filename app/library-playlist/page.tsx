@@ -103,7 +103,7 @@ function LibraryPlaylistContent() {
     }
   }
 
-  const filteredStories = stories.filter(story => {
+  const matchesFilter = (story: Story) => {
     if (selectedDuration !== 'All') {
       if (selectedDuration === '15m' && story.duration_mins > 15) return false
       if (selectedDuration === '30m' && (story.duration_mins <= 15 || story.duration_mins > 30)) return false
@@ -112,16 +112,20 @@ function LibraryPlaylistContent() {
     if (selectedType === 'Series' && !story.series_name) return false
     if (selectedGenre !== 'All' && !(story.genre?.toLowerCase() || '').includes(selectedGenre.toLowerCase())) return false
     return true
-  })
+  }
 
-  const sortedStories = [...filteredStories].sort((a, b) => {
-    const aIndex = playlist.findIndex(p => p.id === a.id)
-    const bIndex = playlist.findIndex(p => p.id === b.id)
-    if (aIndex >= 0 && bIndex >= 0) return aIndex - bIndex
-    if (aIndex >= 0) return -1
-    if (bIndex >= 0) return 1
-    return 0
-  })
+  // Selected stories ALWAYS show at top (regardless of filter)
+  const selectedStoryIds = new Set(playlist.map(p => p.id))
+  const selectedStories = stories.filter(s => selectedStoryIds.has(s.id))
+  
+  // Unselected stories that match current filter
+  const filteredUnselected = stories.filter(s => !selectedStoryIds.has(s.id) && matchesFilter(s))
+  
+  // Combine: selected first (in playlist order), then filtered unselected
+  const displayStories = [
+    ...playlist.map(p => stories.find(s => s.id === p.id)).filter(Boolean) as Story[],
+    ...filteredUnselected
+  ]
 
   const playlistCreditsUsed = playlist.reduce((sum, item) => sum + getCredits(item.duration_mins), 0)
   const creditsRemaining = userCredits - playlistCreditsUsed
@@ -179,45 +183,54 @@ function LibraryPlaylistContent() {
   const timeDisplay = formatTime(playlistTotal)
 
   return (
-    <>
-      <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', paddingBottom: '100px' }}>
-        <div style={{ position: 'sticky', top: 0, backgroundColor: '#0f172a', zIndex: 50 }}>
-          <div style={{ padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #1e293b' }}>
-            <button onClick={() => router.push('/library')} style={{ backgroundColor: '#334155', color: 'white', padding: '0.4rem 0.75rem', borderRadius: '8px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '14px', fontWeight: 500 }}><span>←</span><span>Back</span></button>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ fontSize: '24px' }}>🚛</span><span style={{ fontSize: '24px' }}>🚗</span><span style={{ color: 'white', fontSize: '18px', fontWeight: 'bold' }}>Drive Time <span style={{ color: '#fb923c' }}>Tales</span></span></div>
-            <div onClick={() => router.push('/profile')} style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundColor: '#f97316', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><span style={{ color: 'black', fontSize: '18px', fontWeight: 'bold' }}>{userName?.charAt(0)?.toUpperCase() || '?'}</span></div>
+    <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', display: 'flex', flexDirection: 'column' }}>
+      {/* STICKY HEADER */}
+      <div style={{ position: 'sticky', top: 0, backgroundColor: '#0f172a', zIndex: 50, flexShrink: 0 }}>
+        <div style={{ padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #1e293b' }}>
+          <button onClick={() => router.push('/library')} style={{ backgroundColor: '#334155', color: 'white', padding: '0.4rem 0.75rem', borderRadius: '8px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '14px', fontWeight: 500 }}><span>←</span><span>Back</span></button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ fontSize: '24px' }}>🚛</span><span style={{ fontSize: '24px' }}>🚗</span><span style={{ color: 'white', fontSize: '18px', fontWeight: 'bold' }}>Drive Time <span style={{ color: '#fb923c' }}>Tales</span></span></div>
+          <div onClick={() => router.push('/profile')} style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundColor: '#f97316', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><span style={{ color: 'black', fontSize: '18px', fontWeight: 'bold' }}>{userName?.charAt(0)?.toUpperCase() || '?'}</span></div>
+        </div>
+        
+        <div style={{ padding: '0.5rem 0.75rem', backgroundColor: '#1e293b' }}>
+          <div style={{ display: 'flex', gap: '0.3rem', marginBottom: '0.3rem' }}>
+            <button onClick={() => setSelectedDuration('All')} style={allBtnStyle(selectedDuration === 'All')}>All</button>
+            <button onClick={() => setSelectedDuration('15m')} style={btnStyle(selectedDuration === '15m')}>15m</button>
+            <button onClick={() => setSelectedDuration('30m')} style={btnStyle(selectedDuration === '30m')}>30m</button>
+            <button onClick={() => setSelectedDuration('1hr')} style={btnStyle(selectedDuration === '1hr')}>1hr</button>
+            <span style={{ color: '#475569', display: 'flex', alignItems: 'center', padding: '0 2px' }}>|</span>
+            <button onClick={() => setSelectedType('All')} style={btnStyle(selectedType === 'All')}>All</button>
+            <button onClick={() => setSelectedType('Series')} style={btnStyle(selectedType === 'Series')}>Series</button>
           </div>
-          
-          <div style={{ padding: '0.5rem 0.75rem', backgroundColor: '#1e293b' }}>
-            <div style={{ display: 'flex', gap: '0.3rem', marginBottom: '0.3rem' }}>
-              <button onClick={() => setSelectedDuration('All')} style={allBtnStyle(selectedDuration === 'All')}>All</button>
-              <button onClick={() => setSelectedDuration('15m')} style={btnStyle(selectedDuration === '15m')}>15m</button>
-              <button onClick={() => setSelectedDuration('30m')} style={btnStyle(selectedDuration === '30m')}>30m</button>
-              <button onClick={() => setSelectedDuration('1hr')} style={btnStyle(selectedDuration === '1hr')}>1hr</button>
-              <span style={{ color: '#475569', display: 'flex', alignItems: 'center', padding: '0 2px' }}>|</span>
-              <button onClick={() => setSelectedType('All')} style={btnStyle(selectedType === 'All')}>All</button>
-              <button onClick={() => setSelectedType('Series')} style={btnStyle(selectedType === 'Series')}>Series</button>
+          <div style={{ display: 'flex', gap: '0.3rem', position: 'relative' }}>
+            <button onClick={() => selectGenre('All')} style={allBtnStyle(selectedGenre === 'All')}>All</button>
+            {visibleGenres.map(g => <button key={g} onClick={() => selectGenre(g)} style={btnStyle(selectedGenre === g)}>{getGenreLabel(g)}</button>)}
+            <div style={{ position: 'relative', flex: 1.5 }}>
+              <button onClick={() => setShowMoreDropdown(!showMoreDropdown)} style={{ ...btnStyle(showMoreDropdown), width: '100%' }}>More ▼</button>
+              {showMoreDropdown && <div style={{ position: 'absolute', top: '100%', right: 0, backgroundColor: '#1e293b', border: '1px solid #475569', borderRadius: '8px', marginTop: '4px', minWidth: '140px', zIndex: 60, boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}>{ALL_GENRES.map(g => <button key={g.key} onClick={() => selectGenre(g.key)} style={{ display: 'block', width: '100%', padding: '0.5rem 0.75rem', backgroundColor: selectedGenre === g.key ? '#f97316' : 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', fontSize: '13px' }}>{g.emoji} {g.label}</button>)}</div>}
             </div>
-            <div style={{ display: 'flex', gap: '0.3rem', position: 'relative' }}>
-              <button onClick={() => selectGenre('All')} style={allBtnStyle(selectedGenre === 'All')}>All</button>
-              {visibleGenres.map(g => <button key={g} onClick={() => selectGenre(g)} style={btnStyle(selectedGenre === g)}>{getGenreLabel(g)}</button>)}
-              <div style={{ position: 'relative', flex: 1.5 }}>
-                <button onClick={() => setShowMoreDropdown(!showMoreDropdown)} style={{ ...btnStyle(showMoreDropdown), width: '100%' }}>More ▼</button>
-                {showMoreDropdown && <div style={{ position: 'absolute', top: '100%', right: 0, backgroundColor: '#1e293b', border: '1px solid #475569', borderRadius: '8px', marginTop: '4px', minWidth: '140px', zIndex: 60, boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}>{ALL_GENRES.map(g => <button key={g.key} onClick={() => selectGenre(g.key)} style={{ display: 'block', width: '100%', padding: '0.5rem 0.75rem', backgroundColor: selectedGenre === g.key ? '#f97316' : 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', fontSize: '13px' }}>{g.emoji} {g.label}</button>)}</div>}
-              </div>
-            </div>
-          </div>
-
-          <div style={{ padding: '0.75rem', backgroundColor: '#0f172a', borderBottom: '1px solid #334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ color: 'white', fontSize: '18px', fontWeight: 600 }}>{storyCount} stories • {timeDisplay}</span>
-            <span style={{ backgroundColor: creditsRemaining >= 0 ? '#22c55e' : '#ef4444', color: creditsRemaining >= 0 ? '#0f172a' : 'white', padding: '0.4rem 1rem', borderRadius: '999px', fontSize: '15px', fontWeight: 700 }}>{creditsRemaining} credits left</span>
           </div>
         </div>
 
-        {showMoreDropdown && <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 40 }} onClick={() => setShowMoreDropdown(false)} />}
+        <div style={{ padding: '0.75rem', backgroundColor: '#0f172a', borderBottom: '1px solid #334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ color: 'white', fontSize: '18px', fontWeight: 600 }}>{storyCount} stories • {timeDisplay}</span>
+          <span style={{ backgroundColor: creditsRemaining >= 0 ? '#22c55e' : '#ef4444', color: creditsRemaining >= 0 ? '#0f172a' : 'white', padding: '0.4rem 1rem', borderRadius: '999px', fontSize: '15px', fontWeight: 700 }}>{creditsRemaining} credits left</span>
+        </div>
+      </div>
 
+      {showMoreDropdown && <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 40 }} onClick={() => setShowMoreDropdown(false)} />}
+
+      {/* SCROLLABLE CONTENT */}
+      <div style={{ flex: 1, overflowY: 'auto', paddingBottom: '80px' }}>
         <div style={{ padding: '0.5rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          {sortedStories.map(story => {
+          {displayStories.length === 0 && playlist.length === 0 && (
+            <div style={{ backgroundColor: '#1e293b', borderRadius: '10px', padding: '2rem 1rem', textAlign: 'center', marginTop: '1rem' }}>
+              <div style={{ fontSize: '40px', marginBottom: '0.75rem' }}>🔍</div>
+              <p style={{ color: 'white', fontSize: '16px' }}>No stories match this filter</p>
+              <p style={{ color: '#94a3b8', fontSize: '14px', marginTop: '0.5rem' }}>Try a different category</p>
+            </div>
+          )}
+          {displayStories.map(story => {
             const isSelected = playlist.some(p => p.id === story.id)
             const storyCost = getCredits(story.duration_mins)
             const playlistIndex = playlist.findIndex(p => p.id === story.id)
@@ -236,44 +249,16 @@ function LibraryPlaylistContent() {
             )
           })}
         </div>
-
-        {showCreditsPopup && (
-          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '1rem' }} onClick={() => setShowCreditsPopup(false)}>
-            <div style={{ backgroundColor: '#1e293b', borderRadius: '12px', padding: '1.5rem', maxWidth: '340px', width: '100%' }} onClick={(e) => e.stopPropagation()}>
-              <div style={{ fontSize: '40px', textAlign: 'center', marginBottom: '1rem' }}>😔</div>
-              <h2 style={{ color: 'white', fontSize: '18px', fontWeight: 'bold', marginBottom: '0.75rem', textAlign: 'center' }}>Not Enough Credits</h2>
-              <p style={{ color: '#cbd5e1', fontSize: '14px', marginBottom: '1.5rem', textAlign: 'center', lineHeight: 1.5 }}>You don't have enough credits to add this story. You have <strong style={{ color: '#f97316' }}>{creditsRemaining} credits</strong> remaining.</p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                <button onClick={() => { setShowCreditsPopup(false); router.push('/buy-credits') }} style={{ backgroundColor: '#f97316', color: 'white', padding: '0.75rem 1rem', borderRadius: '8px', fontSize: '15px', fontWeight: 600, border: 'none', cursor: 'pointer' }}>Get More Credits</button>
-                <button onClick={() => setShowCreditsPopup(false)} style={{ backgroundColor: '#475569', color: 'white', padding: '0.75rem 1rem', borderRadius: '8px', fontSize: '15px', fontWeight: 500, border: 'none', cursor: 'pointer' }}>Keep Building Playlist</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {showSubscriberPopup && (
-          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '1rem' }} onClick={() => { setShowSubscriberPopup(false); router.push('/library') }}>
-            <div style={{ backgroundColor: '#1e293b', borderRadius: '12px', padding: '1.5rem', maxWidth: '380px', width: '100%' }} onClick={(e) => e.stopPropagation()}>
-              <div style={{ fontSize: '40px', textAlign: 'center', marginBottom: '1rem' }}>🎧</div>
-              <h2 style={{ color: 'white', fontSize: '20px', fontWeight: 'bold', marginBottom: '1rem', textAlign: 'center' }}>Playlists for Subscribers</h2>
-              <p style={{ color: '#cbd5e1', fontSize: '15px', marginBottom: '1.5rem', textAlign: 'center', lineHeight: 1.6 }}>Playlists are only available for subscribers who have sufficient credits. Subscribe now to create your own driving playlists!</p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                <button onClick={() => { setShowSubscriberPopup(false); router.push('/subscribe') }} style={{ backgroundColor: '#f97316', color: 'white', padding: '0.85rem 1rem', borderRadius: '8px', fontSize: '16px', fontWeight: 600, border: 'none', cursor: 'pointer' }}>Subscribe Now</button>
-                <button onClick={() => { setShowSubscriberPopup(false); router.push('/library') }} style={{ backgroundColor: '#475569', color: 'white', padding: '0.75rem 1rem', borderRadius: '8px', fontSize: '15px', fontWeight: 500, border: 'none', cursor: 'pointer' }}>Maybe Later</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <style dangerouslySetInnerHTML={{ __html: '@keyframes spin { to { transform: rotate(360deg); } }' }} />
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 bg-slate-950 p-4 border-t border-slate-700" style={{ zIndex: 100 }}>
+      {/* STICKY BOTTOM BUTTON - Always visible */}
+      <div style={{ position: 'sticky', bottom: 0, left: 0, right: 0, backgroundColor: '#0f172a', padding: '1rem', borderTop: '1px solid #334155', zIndex: 50, flexShrink: 0 }}>
         <button 
           onClick={savePlaylist} 
           disabled={storyCount === 0}
-          className={storyCount > 0 ? 'bg-green-500 text-slate-900' : 'bg-slate-600 text-white'}
           style={{ 
+            backgroundColor: storyCount > 0 ? '#22c55e' : '#475569', 
+            color: storyCount > 0 ? '#0f172a' : 'white', 
             width: '100%', 
             padding: '1rem', 
             borderRadius: '10px', 
@@ -286,7 +271,37 @@ function LibraryPlaylistContent() {
           💾 Save My Playlist ({storyCount} stories • {timeDisplay})
         </button>
       </div>
-    </>
+
+      {showCreditsPopup && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '1rem' }} onClick={() => setShowCreditsPopup(false)}>
+          <div style={{ backgroundColor: '#1e293b', borderRadius: '12px', padding: '1.5rem', maxWidth: '340px', width: '100%' }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontSize: '40px', textAlign: 'center', marginBottom: '1rem' }}>😔</div>
+            <h2 style={{ color: 'white', fontSize: '18px', fontWeight: 'bold', marginBottom: '0.75rem', textAlign: 'center' }}>Not Enough Credits</h2>
+            <p style={{ color: '#cbd5e1', fontSize: '14px', marginBottom: '1.5rem', textAlign: 'center', lineHeight: 1.5 }}>You don't have enough credits to add this story. You have <strong style={{ color: '#f97316' }}>{creditsRemaining} credits</strong> remaining.</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <button onClick={() => { setShowCreditsPopup(false); router.push('/buy-credits') }} style={{ backgroundColor: '#f97316', color: 'white', padding: '0.75rem 1rem', borderRadius: '8px', fontSize: '15px', fontWeight: 600, border: 'none', cursor: 'pointer' }}>Get More Credits</button>
+              <button onClick={() => setShowCreditsPopup(false)} style={{ backgroundColor: '#475569', color: 'white', padding: '0.75rem 1rem', borderRadius: '8px', fontSize: '15px', fontWeight: 500, border: 'none', cursor: 'pointer' }}>Keep Building Playlist</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSubscriberPopup && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '1rem' }} onClick={() => { setShowSubscriberPopup(false); router.push('/library') }}>
+          <div style={{ backgroundColor: '#1e293b', borderRadius: '12px', padding: '1.5rem', maxWidth: '380px', width: '100%' }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontSize: '40px', textAlign: 'center', marginBottom: '1rem' }}>🎧</div>
+            <h2 style={{ color: 'white', fontSize: '20px', fontWeight: 'bold', marginBottom: '1rem', textAlign: 'center' }}>Playlists for Subscribers</h2>
+            <p style={{ color: '#cbd5e1', fontSize: '15px', marginBottom: '1.5rem', textAlign: 'center', lineHeight: 1.6 }}>Playlists are only available for subscribers who have sufficient credits. Subscribe now to create your own driving playlists!</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <button onClick={() => { setShowSubscriberPopup(false); router.push('/subscribe') }} style={{ backgroundColor: '#f97316', color: 'white', padding: '0.85rem 1rem', borderRadius: '8px', fontSize: '16px', fontWeight: 600, border: 'none', cursor: 'pointer' }}>Subscribe Now</button>
+              <button onClick={() => { setShowSubscriberPopup(false); router.push('/library') }} style={{ backgroundColor: '#475569', color: 'white', padding: '0.75rem 1rem', borderRadius: '8px', fontSize: '15px', fontWeight: 500, border: 'none', cursor: 'pointer' }}>Maybe Later</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style dangerouslySetInnerHTML={{ __html: '@keyframes spin { to { transform: rotate(360deg); } }' }} />
+    </div>
   )
 }
 
