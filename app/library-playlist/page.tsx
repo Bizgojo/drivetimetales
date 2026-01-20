@@ -163,10 +163,10 @@ function LibraryPlaylistContent() {
   }
 
   const formatTime = (mins: number) => {
-    if (mins < 60) return `${mins}min`
+    if (mins < 60) return mins + 'min'
     const hrs = Math.floor(mins / 60)
     const m = mins % 60
-    return m > 0 ? `${hrs}hr ${m}min` : `${hrs}hr`
+    return m > 0 ? hrs + 'hr ' + m + 'min' : hrs + 'hr'
   }
 
   const btnStyle = (active: boolean): React.CSSProperties => ({ backgroundColor: active ? '#f97316' : '#334155', color: 'white', padding: '0.3rem 0', borderRadius: '6px', fontSize: '13px', fontWeight: 500, border: 'none', cursor: 'pointer', flex: 1, textAlign: 'center' })
@@ -233,7 +233,6 @@ function LibraryPlaylistContent() {
         })}
       </div>
 
-      {/* GREEN STICKY SAVE BUTTON */}
       <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: '#0f172a', padding: '1rem', borderTop: '1px solid #334155', zIndex: 50 }}>
         <button onClick={savePlaylist} disabled={playlist.length === 0} style={{ backgroundColor: playlist.length > 0 ? '#22c55e' : '#475569', color: playlist.length > 0 ? '#0f172a' : 'white', padding: '1rem', borderRadius: '10px', border: 'none', cursor: playlist.length > 0 ? 'pointer' : 'not-allowed', width: '100%', fontSize: '17px', fontWeight: 'bold' }}>
           💾 Save My Playlist ({playlist.length} stories • {formatTime(playlistTotal)})
