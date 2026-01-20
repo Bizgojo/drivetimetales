@@ -1,340 +1,287 @@
 'use client'
 
-import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { useState, useEffect, Suspense } from 'react'
-import { useAuth } from '@/contexts/AuthContext'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import HorizontalStoryCard from '@/components/HorizontalStoryCard'
 
 interface Story {
   id: string
   title: string
-  author: string | null
   genre: string
+  author: string
   duration_mins: number
   cover_url: string | null
-  credits: number
-  rating: number | null
-  review_count: number | null
-  is_free: boolean
-  is_new: boolean
-  is_dtt_pick: boolean
-  is_best_seller: boolean
+  series_name?: string | null
+  series_number?: number | null
+  series_total?: number | null
 }
 
-interface UserPreference {
-  story_id: string
-  wishlisted: boolean
-  not_for_me: boolean
-}
-
-interface LibraryEntry {
-  story_id: string
-  progress: number
-  completed: boolean
-}
-
-// Star Rating Component
-function StarRating({ rating, count }: { rating: number | null, count: number | null }) {
-  const r = rating || 0
-  const fullStars = Math.floor(r)
-  const hasHalf = r - fullStars >= 0.5
-  const emptyStars = 5 - fullStars - (hasHalf ? 1 : 0)
-  
-  return (
-    <div className="flex items-center gap-0.5">
-      <span className="text-orange-400 text-[10px]">{r.toFixed(1)}</span>
-      <span className="text-yellow-400 text-[10px]">{'★'.repeat(fullStars)}</span>
-      {hasHalf && <span className="text-yellow-400/50 text-[10px]">★</span>}
-      <span className="text-slate-500 text-[10px]">{'★'.repeat(emptyStars)}</span>
-      <span className="text-white text-[10px]">({count || 0})</span>
-    </div>
-  )
-}
-
-// Flag Badge Component
-function FlagBadge({ type }: { type: 'free' | 'new' | 'dtt_pick' | 'best_seller' | 'owned' | 'wishlist' | 'pass' }) {
-  const config = {
-    free: { bg: 'bg-green-500', text: 'text-black', label: 'FREE' },
-    new: { bg: 'bg-yellow-500', text: 'text-black', label: 'NEW' },
-    dtt_pick: { bg: 'bg-orange-500', text: 'text-black', label: '⭐ DTT PICK' },
-    best_seller: { bg: 'bg-blue-500', text: 'text-white', label: '🔥 BEST SELLER' },
-    owned: { bg: 'bg-green-500', text: 'text-black', label: 'OWNED' },
-    wishlist: { bg: 'bg-pink-500', text: 'text-white', label: '❤️ WISHLIST' },
-    pass: { bg: 'bg-red-600', text: 'text-white', label: '👎 PASS' },
-  }
-  const c = config[type]
-  return <span className={`${c.bg} ${c.text} text-[8px] font-bold px-1 py-0.5 rounded`}>{c.label}</span>
-}
-
-const genreOptions = [
-  { name: 'All', icon: '📚' },
-  { name: 'Mystery', icon: '🔍' },
-  { name: 'Drama', icon: '🎭' },
-  { name: 'Sci-Fi', icon: '🚀' },
-  { name: 'Horror', icon: '👻' },
-  { name: 'Thriller', icon: '😱' },
-  { name: 'Non-Fiction', icon: '📖' },
-  { name: 'Children', icon: '👶' },
-  { name: 'Comedy', icon: '😂' },
-  { name: 'Romance', icon: '💕' },
+const ALL_GENRES = [
+  { key: 'mystery', label: 'Mystery', emoji: '🔍' },
+  { key: 'thriller', label: 'Thriller', emoji: '😱' },
+  { key: 'romance', label: 'Romance', emoji: '💕' },
+  { key: 'horror', label: 'Horror', emoji: '👻' },
+  { key: 'comedy', label: 'Comedy', emoji: '😂' },
+  { key: 'truckers', label: 'Truckers', emoji: '🚛' },
+  { key: 'scifi', label: 'Sci-Fi', emoji: '🚀' },
+  { key: 'children', label: 'Children', emoji: '🧒' },
+  { key: 'learn', label: 'Learn', emoji: '🧠' }
 ]
 
-const durationOptions = [
-  { name: 'All', label: 'All' },
-  { name: '15', label: '~15 min' },
-  { name: '30', label: '~30 min' },
-  { name: '60', label: '~1 hr' },
-]
+const DEFAULT_VISIBLE = ['mystery', 'romance', 'horror']
 
-function LibraryContent() {
+function getCredits(duration_mins: number): number {
+  return Math.max(1, Math.floor(duration_mins / 15))
+}
+
+function WelcomeLibraryContent() {
   const router = useRouter()
-  const { user } = useAuth()
-  
   const [stories, setStories] = useState<Story[]>([])
-  const [preferences, setPreferences] = useState<Map<string, UserPreference>>(new Map())
-  const [library, setLibrary] = useState<Map<string, LibraryEntry>>(new Map())
   const [loading, setLoading] = useState(true)
-  const [selectedGenre, setSelectedGenre] = useState<string>('All')
-  const [selectedDuration, setSelectedDuration] = useState<string>('All')
+  const [userCredits, setUserCredits] = useState(2)
+  const [userName, setUserName] = useState('Friend')
+  
+  const [selectedDuration, setSelectedDuration] = useState('All')
+  const [selectedType, setSelectedType] = useState('All')
+  const [selectedGenre, setSelectedGenre] = useState('All')
+  const [visibleGenres, setVisibleGenres] = useState<string[]>(DEFAULT_VISIBLE)
+  const [showMoreDropdown, setShowMoreDropdown] = useState(false)
+  
+  const [showSubscriberPopup, setShowSubscriberPopup] = useState(false)
+  const [showCreditModal, setShowCreditModal] = useState(false)
+  const [selectedStory, setSelectedStory] = useState<Story | null>(null)
 
   useEffect(() => {
-    loadData()
-  }, [user])
+    const storedCredits = localStorage.getItem('dtt_user_credits')
+    if (storedCredits !== null) setUserCredits(parseInt(storedCredits, 10))
+    
+    const storedName = localStorage.getItem('dtt_user_name')
+    if (storedName) setUserName(storedName)
+    
+    const storedGenres = localStorage.getItem('dtt_recent_genres')
+    if (storedGenres) {
+      try {
+        const parsed = JSON.parse(storedGenres)
+        if (Array.isArray(parsed) && parsed.length >= 3) {
+          setVisibleGenres(parsed.slice(0, 3))
+        }
+      } catch (e) { /* use default */ }
+    }
+  }, [])
 
-  async function loadData() {
-    try {
-      // Load all stories
-      const { data: storiesData } = await supabase
+  useEffect(() => {
+    async function fetchData() {
+      const { data: storiesData, error } = await supabase
         .from('stories')
-        .select('*')
-        .order('created_at', { ascending: false })
-
+        .select('id, title, genre, author, duration_mins, cover_url, series_name, series_number, series_total')
+        .not('cover_url', 'is', null)
+        .order('published_on', { ascending: false })
+      if (error) console.error('Stories query error:', error)
       if (storiesData) setStories(storiesData)
-
-      // Load user preferences and library
-      if (user) {
-        const { data: prefsData } = await supabase
-          .from('user_preferences')
-          .select('story_id, wishlisted, not_for_me')
-          .eq('user_id', user.id)
-
-        if (prefsData) {
-          const prefsMap = new Map<string, UserPreference>()
-          prefsData.forEach(p => prefsMap.set(p.story_id, p))
-          setPreferences(prefsMap)
-        }
-
-        const { data: libData } = await supabase
-          .from('user_library')
-          .select('story_id, progress, completed')
-          .eq('user_id', user.id)
-
-        if (libData) {
-          const libMap = new Map<string, LibraryEntry>()
-          libData.forEach(l => libMap.set(l.story_id, l))
-          setLibrary(libMap)
-        }
-      }
-    } catch (error) {
-      console.error('Error loading data:', error)
-    } finally {
       setLoading(false)
+    }
+    fetchData()
+  }, [])
+
+  const selectGenre = (genreKey: string) => {
+    setSelectedGenre(genreKey)
+    setShowMoreDropdown(false)
+    
+    if (genreKey !== 'All') {
+      const newVisible = [genreKey, ...visibleGenres.filter(g => g !== genreKey)].slice(0, 3)
+      setVisibleGenres(newVisible)
+      localStorage.setItem('dtt_recent_genres', JSON.stringify(newVisible))
     }
   }
 
-  // Filter stories
   const filteredStories = stories.filter(story => {
-    // Genre filter
-    if (selectedGenre !== 'All') {
-      const storyGenre = story.genre?.toLowerCase() || ''
-      const filterGenre = selectedGenre.toLowerCase()
-      if (!storyGenre.includes(filterGenre) && filterGenre !== 'all') return false
-    }
-    
-    // Duration filter
     if (selectedDuration !== 'All') {
-      const mins = story.duration_mins
-      if (selectedDuration === '15' && mins > 20) return false
-      if (selectedDuration === '30' && (mins < 20 || mins > 45)) return false
-      if (selectedDuration === '60' && mins < 45) return false
+      if (selectedDuration === '15m' && story.duration_mins > 15) return false
+      if (selectedDuration === '30m' && (story.duration_mins <= 15 || story.duration_mins > 30)) return false
+      if (selectedDuration === '1hr' && story.duration_mins <= 30) return false
     }
-    
+    if (selectedType === 'Series' && !story.series_name) return false
+    if (selectedGenre !== 'All') {
+      const g = story.genre?.toLowerCase() || ''
+      if (!g.includes(selectedGenre.toLowerCase())) return false
+    }
     return true
   })
 
-  // Get flag for a story
-  const getFlag = (story: Story): 'free' | 'new' | 'dtt_pick' | 'best_seller' | 'owned' | 'wishlist' | 'pass' | null => {
-    const pref = preferences.get(story.id)
-    const libEntry = library.get(story.id)
-    
-    // User status flags take priority
-    if (libEntry) return 'owned'
-    if (pref?.wishlisted) return 'wishlist'
-    if (pref?.not_for_me) return 'pass'
-    
-    // Story flags
-    if (story.is_free || story.credits === 0) return 'free'
-    if (story.is_dtt_pick) return 'dtt_pick'
-    if (story.is_best_seller) return 'best_seller'
-    if (story.is_new) return 'new'
-    
-    return null
+  const handleStoryClick = (story: Story) => {
+    const storyCost = getCredits(story.duration_mins)
+    if (storyCost <= userCredits) router.push('/player/' + story.id)
+    else { setSelectedStory(story); setShowCreditModal(true) }
   }
 
-  const displayName = user?.display_name || user?.email?.split('@')[0]
-  const credits = user?.credits ?? 0
-  const isLowCredits = user && credits !== -1 && credits <= 3
+  const btnStyle = (active: boolean): React.CSSProperties => ({
+    backgroundColor: active ? '#f97316' : '#334155',
+    color: 'white',
+    padding: '0.3rem 0',
+    borderRadius: '6px',
+    fontSize: '13px',
+    fontWeight: 500,
+    border: 'none',
+    cursor: 'pointer',
+    flex: 1,
+    textAlign: 'center'
+  })
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
-      </div>
-    )
+  const allBtnStyle = (active: boolean): React.CSSProperties => ({
+    ...btnStyle(active),
+    flex: 'none',
+    width: '40px'
+  })
+
+  const getGenreLabel = (key: string) => {
+    const genre = ALL_GENRES.find(g => g.key === key)
+    if (!genre) return key
+    return genre.emoji + genre.label.substring(0, 4)
   }
+
+  if (loading) return (
+    <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ width: '40px', height: '40px', border: '4px solid #f97316', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+      <style dangerouslySetInnerHTML={{ __html: '@keyframes spin { to { transform: rotate(360deg); } }' }} />
+    </div>
+  )
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white flex flex-col">
-      {/* Header */}
-      <header className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
-        <button onClick={() => router.back()} className="text-white flex items-center gap-1">
-          <span>←</span>
-          <span className="text-sm">Back</span>
-        </button>
-        <div className="text-center">
-          <div className="flex items-center gap-1 justify-center">
-            <span className="text-lg">🚛</span>
-            <span className="text-lg">🚗</span>
-            <span className="font-bold text-white text-sm ml-1">Drive</span>
-            <span className="font-bold text-white text-sm">Time</span>
-            <span className="font-bold text-orange-400 text-sm">Tales</span>
+    <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', paddingBottom: '55px' }}>
+      {/* Sticky Header + Filters */}
+      <div style={{ position: 'sticky', top: 0, backgroundColor: '#0f172a', zIndex: 50 }}>
+        {/* Header with credits */}
+        <div style={{ padding: '0.5rem 0.75rem', display: 'flex', alignItems: 'center', borderBottom: '1px solid #334155' }}>
+          <button onClick={() => router.push('/welcome')} style={{ backgroundColor: '#334155', color: 'white', padding: '0.35rem 0.6rem', borderRadius: '6px', fontSize: '13px', fontWeight: 500, border: 'none', cursor: 'pointer' }}>← Back</button>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
+            <span style={{ fontSize: '18px' }}>🚗</span><span style={{ fontSize: '18px' }}>🚙</span>
+            <span style={{ color: 'white', fontSize: '16px', fontWeight: 'bold' }}>Drive Time</span>
+            <span style={{ color: '#f97316', fontSize: '16px', fontWeight: 'bold' }}>Tales</span>
           </div>
-          {user && (
-            <p className="text-white text-[10px]">
-              <span className="text-orange-400 font-bold">{credits === -1 ? 'unlimited' : credits} credits</span>
-            </p>
-          )}
+          <div style={{ backgroundColor: '#334155', padding: '0.35rem 0.6rem', borderRadius: '6px' }}>
+            <span style={{ color: '#f97316', fontWeight: 'bold', fontSize: '13px' }}>{userCredits}</span>
+            <span style={{ color: 'white', fontSize: '12px' }}> cr</span>
+          </div>
         </div>
-        {user ? (
-          <Link href="/account" className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-black font-bold text-sm hover:bg-orange-400 transition">
-            {displayName?.charAt(0).toUpperCase() || 'U'}
-          </Link>
-        ) : (
-          <Link href="/signin" className="text-orange-400 text-sm">Sign In</Link>
-        )}
-      </header>
-
-      {/* Low Credits Warning */}
-      {isLowCredits && (
-        <Link 
-          href="/pricing" 
-          className="mx-4 mt-3 bg-orange-500/20 border border-orange-500/50 rounded-xl px-4 py-3 flex items-center justify-between hover:bg-orange-500/30 transition"
-        >
-          <div>
-            <p className="text-orange-400 font-medium">Running low on credits!</p>
-            <p className="text-white text-sm">Get more to keep listening</p>
+        
+        {/* Filters - full width rows */}
+        <div style={{ padding: '0.5rem 0.75rem', backgroundColor: '#1e293b' }}>
+          {/* Row 1: Duration + Type */}
+          <div style={{ display: 'flex', gap: '0.3rem', marginBottom: '0.3rem' }}>
+            <button onClick={() => setSelectedDuration('All')} style={allBtnStyle(selectedDuration === 'All')}>All</button>
+            <button onClick={() => setSelectedDuration('15m')} style={btnStyle(selectedDuration === '15m')}>15m</button>
+            <button onClick={() => setSelectedDuration('30m')} style={btnStyle(selectedDuration === '30m')}>30m</button>
+            <button onClick={() => setSelectedDuration('1hr')} style={btnStyle(selectedDuration === '1hr')}>1hr</button>
+            <span style={{ color: '#475569', display: 'flex', alignItems: 'center', padding: '0 2px' }}>|</span>
+            <button onClick={() => setSelectedType('All')} style={btnStyle(selectedType === 'All')}>All</button>
+            <button onClick={() => setSelectedType('Series')} style={btnStyle(selectedType === 'Series')}>Series</button>
           </div>
-          <span className="text-orange-400 font-bold">Buy More →</span>
-        </Link>
+          {/* Row 2: Genre - All fixed width, others flex, More wider */}
+          <div style={{ display: 'flex', gap: '0.3rem', marginBottom: '0.3rem', position: 'relative' }}>
+            <button onClick={() => selectGenre('All')} style={allBtnStyle(selectedGenre === 'All')}>All</button>
+            {visibleGenres.map(g => (
+              <button key={g} onClick={() => selectGenre(g)} style={btnStyle(selectedGenre === g)}>
+                {getGenreLabel(g)}
+              </button>
+            ))}
+            <div style={{ position: 'relative', flex: 1.5 }}>
+              <button onClick={() => setShowMoreDropdown(!showMoreDropdown)} style={{ ...btnStyle(showMoreDropdown), width: '100%' }}>
+                More ▼
+              </button>
+              {showMoreDropdown && (
+                <div style={{ position: 'absolute', top: '100%', right: 0, backgroundColor: '#1e293b', border: '1px solid #475569', borderRadius: '8px', marginTop: '4px', minWidth: '140px', zIndex: 60, boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}>
+                  {ALL_GENRES.map(g => (
+                    <button key={g.key} onClick={() => selectGenre(g.key)} style={{ display: 'block', width: '100%', padding: '0.5rem 0.75rem', backgroundColor: selectedGenre === g.key ? '#f97316' : 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', fontSize: '13px' }}>
+                      {g.emoji} {g.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          {/* Playlist button */}
+          <button onClick={() => setShowSubscriberPopup(true)} style={{ backgroundColor: '#3b82f6', color: 'white', padding: '0.45rem 1rem', borderRadius: '6px', fontSize: '14px', fontWeight: 500, border: 'none', cursor: 'pointer', width: '100%' }}>➕ Create a Playlist</button>
+        </div>
+      </div>
+
+      {/* Click outside to close dropdown */}
+      {showMoreDropdown && <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 40 }} onClick={() => setShowMoreDropdown(false)} />}
+
+      {/* Story Cards or Empty State */}
+      <div style={{ padding: '0.5rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        {filteredStories.length === 0 ? (
+          <div style={{ backgroundColor: '#1e293b', borderRadius: '10px', padding: '2rem 1rem', textAlign: 'center' }}>
+            <div style={{ fontSize: '40px', marginBottom: '0.75rem' }}>😔</div>
+            <p style={{ color: 'white', fontSize: '16px', marginBottom: '0.5rem' }}>Sorry {userName}, we have no stories to match your request.</p>
+            <p style={{ color: '#94a3b8', fontSize: '14px' }}>But we will request this category to our writers!</p>
+          </div>
+        ) : (
+          filteredStories.map(story => {
+            const storyCost = getCredits(story.duration_mins)
+            const canAfford = storyCost <= userCredits
+            return (
+              <div key={story.id} onClick={() => handleStoryClick(story)} style={{ cursor: 'pointer' }}>
+                <HorizontalStoryCard 
+                  id={story.id} 
+                  title={story.title} 
+                  genre={story.genre} 
+                  author={story.author || 'Drive Time Tales'} 
+                  duration_mins={story.duration_mins} 
+                  credits={storyCost} 
+                  cover_url={story.cover_url} 
+                  series_number={story.series_number} 
+                  series_total={story.series_total}
+                  flag={canAfford ? 'free' : null}
+                />
+              </div>
+            )
+          })
+        )}
+      </div>
+
+      {/* Bottom Button */}
+      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: '#0f172a', padding: '0.5rem 0.75rem', borderTop: '1px solid #334155', zIndex: 50 }}>
+        <button onClick={() => router.push('/subscribe')} style={{ backgroundColor: '#22c55e', color: '#0f172a', padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', width: '100%', fontSize: '15px', fontWeight: 'bold' }}>
+          Want more credits? Subscribe Now!
+        </button>
+      </div>
+
+      {showSubscriberPopup && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '1rem' }} onClick={() => setShowSubscriberPopup(false)}>
+          <div style={{ backgroundColor: '#1e293b', borderRadius: '12px', padding: '1.5rem', maxWidth: '400px', width: '100%' }} onClick={(e) => e.stopPropagation()}>
+            <h2 style={{ color: 'white', fontSize: '20px', fontWeight: 'bold', marginBottom: '1rem' }}>Playlists for Subscribers</h2>
+            <p style={{ color: 'white', fontSize: '16px', marginBottom: '1.5rem' }}>Playlists are only available for subscribers. Subscribe now to create your own hands-free driving playlists!</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <button onClick={() => { setShowSubscriberPopup(false); router.push('/subscribe') }} style={{ backgroundColor: '#f97316', color: 'white', padding: '0.75rem 1rem', borderRadius: '8px', fontSize: '16px', fontWeight: 500, border: 'none', cursor: 'pointer' }}>Subscribe Now</button>
+              <button onClick={() => setShowSubscriberPopup(false)} style={{ backgroundColor: '#475569', color: 'white', padding: '0.75rem 1rem', borderRadius: '8px', fontSize: '16px', fontWeight: 500, border: 'none', cursor: 'pointer' }}>Maybe Later</button>
+            </div>
+          </div>
+        </div>
       )}
 
-      {/* Genre Filter */}
-      <div className="px-4 py-3 border-b border-slate-800">
-        <div className="flex flex-wrap justify-center gap-1">
-          {genreOptions.map(g => (
-            <button
-              key={g.name}
-              onClick={() => setSelectedGenre(g.name)}
-              className={`flex flex-col items-center px-2 py-1 rounded-lg transition ${
-                selectedGenre === g.name
-                  ? 'bg-orange-500 text-black'
-                  : 'bg-slate-700 text-white'
-              }`}
-            >
-              <span className="text-sm">{g.icon}</span>
-              <span className="text-[9px]">{g.name === 'Non-Fiction' ? 'Non-Fic' : g.name}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Duration Filter */}
-      <div className="px-4 py-2 border-b border-slate-800">
-        <div className="flex justify-center gap-2">
-          {durationOptions.map(d => (
-            <button
-              key={d.name}
-              onClick={() => setSelectedDuration(d.name)}
-              className={`px-3 py-1 rounded-full text-xs font-medium transition ${
-                selectedDuration === d.name
-                  ? 'bg-orange-500 text-black'
-                  : 'bg-slate-700 text-white border border-slate-600'
-              }`}
-            >
-              {d.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Story List */}
-      <div className="px-4 py-4 flex-1 space-y-3">
-        {filteredStories.map(story => {
-          const flag = getFlag(story)
-          const pref = preferences.get(story.id)
-          const isPass = pref?.not_for_me
-          
-          return (
-            <Link
-              key={story.id}
-              href={`/player/${story.id}`}
-              className={`bg-slate-700 rounded-xl p-3 flex gap-3 hover:bg-slate-600 transition ${isPass ? 'opacity-60' : ''}`}
-            >
-              <div className="w-20 h-20 rounded-lg overflow-hidden bg-slate-600 flex-shrink-0 relative shadow-[0_0_20px_rgba(255,255,255,0.6)]">
-                {story.cover_url ? (
-                  <img src={story.cover_url} alt={story.title} className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full bg-gradient-to-br from-orange-600 to-orange-900 flex items-center justify-center">
-                    <span className="text-2xl">🎧</span>
-                  </div>
-                )}
-                <span className="absolute bottom-0.5 right-0.5 bg-black/70 text-white text-[8px] px-1 rounded">
-                  {story.duration_mins}m
-                </span>
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-white font-bold text-sm truncate">{story.title}</p>
-                <p className="text-white text-xs">{story.genre} • {story.credits || 1} credit{(story.credits || 1) > 1 ? 's' : ''}</p>
-                <p className="text-slate-300 text-[10px]">by {story.author || 'Drive Time Tales'}</p>
-                <div className="flex items-center gap-2 mt-1">
-                  <StarRating rating={story.rating} count={story.review_count} />
-                  {flag && <FlagBadge type={flag} />}
-                </div>
-              </div>
-            </Link>
-          )
-        })}
-
-        {filteredStories.length === 0 && (
-          <div className="text-center py-12">
-            <p className="text-white">No stories found</p>
-            <p className="text-slate-300 text-sm mt-2">Try a different filter</p>
+      {showCreditModal && selectedStory && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '1rem' }} onClick={() => setShowCreditModal(false)}>
+          <div style={{ backgroundColor: '#1e293b', borderRadius: '12px', padding: '1.5rem', maxWidth: '400px', width: '100%' }} onClick={(e) => e.stopPropagation()}>
+            <h2 style={{ color: 'white', fontSize: '20px', fontWeight: 'bold', marginBottom: '1rem' }}>Not Enough Credits</h2>
+            <p style={{ color: 'white', fontSize: '16px', marginBottom: '1rem' }}>This story requires {getCredits(selectedStory.duration_mins)} credits, but you only have {userCredits}.</p>
+            <p style={{ color: '#94a3b8', fontSize: '14px', marginBottom: '1.5rem' }}>Subscribe or buy more credits to listen to this story.</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <button onClick={() => { setShowCreditModal(false); router.push('/subscribe') }} style={{ backgroundColor: '#f97316', color: 'white', padding: '0.75rem 1rem', borderRadius: '8px', fontSize: '16px', fontWeight: 500, border: 'none', cursor: 'pointer' }}>Subscribe Now</button>
+              <button onClick={() => setShowCreditModal(false)} style={{ backgroundColor: '#475569', color: 'white', padding: '0.75rem 1rem', borderRadius: '8px', fontSize: '16px', fontWeight: 500, border: 'none', cursor: 'pointer' }}>Maybe Later</button>
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
+      <style dangerouslySetInnerHTML={{ __html: '@keyframes spin { to { transform: rotate(360deg); } }' }} />
     </div>
   )
 }
 
-export default function LibraryPage() {
+export default function WelcomeLibraryPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
-      </div>
-    }>
-      <LibraryContent />
+    <Suspense fallback={<div style={{ minHeight: '100vh', backgroundColor: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ width: '40px', height: '40px', border: '4px solid #f97316', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} /></div>}>
+      <WelcomeLibraryContent />
     </Suspense>
   )
 }
