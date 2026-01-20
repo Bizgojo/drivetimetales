@@ -6,10 +6,9 @@ Created: January 20, 2026
 PURPOSE:
 Compact horizontal story card for library pages with:
 - 70px cover on left
-- Title (bold, white)
-- Genre (gray)
-- "by Author" (gray)
-- Duration • Credits + FREE flag (if flag='free')
+- All white text on dark background
+- Title (bold), Genre, Author, Duration • Credits
+- FREE flag flush right
 - Star rating below
 ================================================================================
 */
@@ -72,7 +71,6 @@ export default function HorizontalStoryCard({
     return stars
   }
 
-  // Show FREE flag if flag prop is 'free' OR if flag is not provided (default behavior)
   const showFreeFlag = flag === 'free' || flag === undefined
 
   return (
@@ -100,7 +98,7 @@ export default function HorizontalStoryCard({
         )}
       </div>
 
-      {/* Content - compact */}
+      {/* Content - compact, all white text */}
       <div style={{ flex: 1, minWidth: 0 }}>
         {/* Title */}
         <div style={{ color: 'white', fontSize: '14px', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.2 }}>
@@ -109,24 +107,24 @@ export default function HorizontalStoryCard({
         </div>
 
         {/* Genre */}
-        <div style={{ color: '#94a3b8', fontSize: '12px', lineHeight: 1.3 }}>{genre}</div>
+        <div style={{ color: 'white', fontSize: '12px', lineHeight: 1.3 }}>{genre}</div>
 
         {/* Author */}
-        <div style={{ color: '#94a3b8', fontSize: '12px', lineHeight: 1.3 }}>by {author}</div>
+        <div style={{ color: 'white', fontSize: '12px', lineHeight: 1.3 }}>by {author}</div>
 
-        {/* Duration + Credits + FREE */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', lineHeight: 1.3 }}>
-          <span style={{ color: '#94a3b8', fontSize: '12px' }}>{duration_mins} min • {credits} {credits === 1 ? 'credit' : 'credits'}</span>
+        {/* Duration + Credits + FREE flush right */}
+        <div style={{ display: 'flex', alignItems: 'center', lineHeight: 1.3 }}>
+          <span style={{ color: 'white', fontSize: '12px' }}>{duration_mins} min • {credits} {credits === 1 ? 'credit' : 'credits'}</span>
           {showFreeFlag && (
-            <span style={{ backgroundColor: '#22c55e', color: 'white', fontSize: '9px', fontWeight: 600, padding: '1px 5px', borderRadius: '3px' }}>FREE</span>
+            <span style={{ backgroundColor: '#22c55e', color: 'white', fontSize: '9px', fontWeight: 600, padding: '1px 5px', borderRadius: '3px', marginLeft: 'auto' }}>FREE</span>
           )}
         </div>
 
         {/* Star Rating */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '3px', marginTop: '1px' }}>
-          <span style={{ color: '#94a3b8', fontSize: '10px' }}>{rating}/5</span>
+          <span style={{ color: 'white', fontSize: '10px' }}>{rating}/5</span>
           <span style={{ fontSize: '10px', letterSpacing: '-1px' }}>{renderStars(rating)}</span>
-          <span style={{ color: '#64748b', fontSize: '10px' }}>{reviewCount}</span>
+          <span style={{ color: 'white', fontSize: '10px' }}>{reviewCount}</span>
         </div>
       </div>
     </div>
