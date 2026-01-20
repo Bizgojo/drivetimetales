@@ -83,9 +83,9 @@ function WelcomeLibraryContent() {
   const btnStyle = (active: boolean): React.CSSProperties => ({
     backgroundColor: active ? '#f97316' : '#334155',
     color: 'white',
-    padding: '0.35rem 0.6rem',
-    borderRadius: '6px',
-    fontSize: '13px',
+    padding: '0.25rem 0.5rem',
+    borderRadius: '5px',
+    fontSize: '12px',
     fontWeight: 500,
     border: 'none',
     cursor: 'pointer'
@@ -100,31 +100,29 @@ function WelcomeLibraryContent() {
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', paddingBottom: '70px' }}>
-      <div style={{ position: 'sticky', top: 0, backgroundColor: '#0f172a', padding: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #334155', zIndex: 50 }}>
+      <div style={{ position: 'sticky', top: 0, backgroundColor: '#0f172a', padding: '0.75rem', display: 'flex', alignItems: 'center', borderBottom: '1px solid #334155', zIndex: 50 }}>
         <button onClick={() => router.push('/welcome')} style={{ backgroundColor: '#334155', color: 'white', padding: '0.5rem 0.75rem', borderRadius: '8px', fontSize: '14px', fontWeight: 500, border: 'none', cursor: 'pointer' }}>← Back</button>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
           <span style={{ fontSize: '20px' }}>🚗</span><span style={{ fontSize: '20px' }}>🚙</span>
           <span style={{ color: 'white', fontSize: '18px', fontWeight: 'bold' }}>Drive Time</span>
           <span style={{ color: '#f97316', fontSize: '18px', fontWeight: 'bold' }}>Tales</span>
         </div>
-        <div style={{ color: 'white', fontSize: '13px', textAlign: 'right' }}>You Have<br /><span style={{ color: '#f97316', fontWeight: 'bold' }}>{userCredits} Credits</span></div>
       </div>
       
-      <div style={{ padding: '0.75rem' }}>
-        <div style={{ backgroundColor: '#1e293b', borderRadius: '12px', padding: '0.5rem' }}>
-          <div style={{ display: 'flex', gap: '0.35rem', marginBottom: '0.35rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+      <div style={{ padding: '0.5rem 0.75rem' }}>
+        <div style={{ backgroundColor: '#1e293b', borderRadius: '10px', padding: '0.4rem' }}>
+          <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '0.25rem', flexWrap: 'wrap', justifyContent: 'center' }}>
             {['All', '15m', '30m', '1hr'].map(d => <button key={d} onClick={() => setSelectedDuration(d)} style={btnStyle(selectedDuration === d)}>{d}</button>)}
-            <span style={{ color: '#475569', padding: '0 2px', display: 'flex', alignItems: 'center' }}>|</span>
+            <span style={{ color: '#475569', padding: '0 2px', display: 'flex', alignItems: 'center', fontSize: '12px' }}>|</span>
             {['Both', 'Singles', 'Series'].map(t => <button key={t} onClick={() => setSelectedType(t)} style={btnStyle(selectedType === t)}>{t}</button>)}
-          </div>
-          <div style={{ display: 'flex', gap: '0.35rem', marginBottom: '0.35rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+            <span style={{ color: '#475569', padding: '0 2px', display: 'flex', alignItems: 'center', fontSize: '12px' }}>|</span>
             {['All', 'Mystery', 'Romance', 'Sci-Fi', 'Horror', 'Comedy', 'Learn'].map(g => (
               <button key={g} onClick={() => setSelectedGenre(g)} style={btnStyle(selectedGenre === g)}>
                 {g === 'All' ? 'All' : g === 'Mystery' ? '🔍Myst' : g === 'Romance' ? '💕Rom' : g === 'Sci-Fi' ? '🚀SciFi' : g === 'Horror' ? '👻Horr' : g === 'Comedy' ? '😂Com' : '🧠Learn'}
               </button>
             ))}
           </div>
-          <button onClick={() => setShowSubscriberPopup(true)} style={{ backgroundColor: '#3b82f6', color: 'white', padding: '0.6rem 1rem', borderRadius: '8px', fontSize: '15px', fontWeight: 500, border: 'none', cursor: 'pointer', width: '100%', marginTop: '0.35rem' }}>➕ Create a Playlist</button>
+          <button onClick={() => setShowSubscriberPopup(true)} style={{ backgroundColor: '#3b82f6', color: 'white', padding: '0.5rem 1rem', borderRadius: '8px', fontSize: '14px', fontWeight: 500, border: 'none', cursor: 'pointer', width: '100%', marginTop: '0.25rem' }}>➕ Create a Playlist</button>
         </div>
       </div>
 
@@ -137,7 +135,7 @@ function WelcomeLibraryContent() {
       </div>
 
       <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: '#0f172a', padding: '0.75rem', borderTop: '1px solid #334155', zIndex: 50 }}>
-        <button onClick={() => router.push('/subscribe')} style={{ backgroundColor: '#22c55e', color: '#0f172a', padding: '0.75rem 1rem', borderRadius: '10px', fontSize: '16px', fontWeight: 'bold', border: 'none', cursor: 'pointer', width: '100%' }}>Subscribe or Buy More Credits</button>
+        <button onClick={() => router.push('/subscribe')} style={{ backgroundColor: '#22c55e', color: '#0f172a', padding: '0.75rem 1rem', borderRadius: '10px', fontSize: '16px', fontWeight: 'bold', border: 'none', cursor: 'pointer', width: '100%' }}>You Only Have {userCredits} Credits, Subscribe Now!</button>
       </div>
 
       {showSubscriberPopup && (
