@@ -7,7 +7,7 @@ PURPOSE:
 Compact horizontal story card for library pages with:
 - 70px cover on left
 - Title (bold, white)
-- Genre (gray, same line style)
+- Genre (gray)
 - "by Author" (gray)
 - Duration • Credits + FREE flag flush right
 - Star rating below
@@ -27,7 +27,7 @@ interface HorizontalStoryCardProps {
   cover_url: string | null
   series_number?: number | null
   series_total?: number | null
-  play_status?: 'not_started' | 'in_progress' | 'completed'
+  play_status?: string
 }
 
 export default function HorizontalStoryCard({
