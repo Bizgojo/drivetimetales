@@ -159,7 +159,7 @@ function WelcomeContent() {
             className="hover:bg-orange-400 font-semibold rounded-xl transition"
             style={{
               flex: 1,
-              padding: '1.25rem',
+              padding: '0.625rem',
               textAlign: 'center',
               backgroundColor: '#f97316',
               color: 'white',
@@ -173,7 +173,7 @@ function WelcomeContent() {
             className="hover:bg-green-400 font-semibold rounded-xl transition"
             style={{
               flex: 1,
-              padding: '1.25rem',
+              padding: '0.625rem',
               textAlign: 'center',
               backgroundColor: '#22c55e',
               color: 'black',
