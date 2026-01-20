@@ -114,7 +114,7 @@ export default function W4RecommendedForYou({ credits }: W4RecommendedForYouProp
 
   if (loading) {
     return (
-      <section style={{ paddingLeft: '1rem', paddingRight: '1rem', paddingTop: '1.5rem', paddingBottom: '1rem' }}>
+      <section style={{ paddingLeft: '0.5rem', paddingRight: '0.5rem', paddingTop: '1.5rem', paddingBottom: '1rem' }}>
         <h2 className="text-lg font-bold text-white" style={{ marginBottom: '0.25rem' }}>⭐ RECOMMENDED FOR YOU</h2>
         <p className="text-white text-xs" style={{ marginBottom: '1rem' }}>More stories you can enjoy with your free credits</p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -216,7 +216,7 @@ export default function W4RecommendedForYou({ credits }: W4RecommendedForYouProp
         </div>
       )}
 
-      <section style={{ paddingLeft: '1rem', paddingRight: '1rem', paddingTop: '1.5rem', paddingBottom: '1rem' }}>
+      <section style={{ paddingLeft: '0.5rem', paddingRight: '0.5rem', paddingTop: '1.5rem', paddingBottom: '1rem' }}>
         <h2 className="text-lg font-bold text-white" style={{ marginBottom: '0.25rem' }}>⭐ RECOMMENDED FOR YOU</h2>
         <p className="text-white text-xs" style={{ marginBottom: '1rem' }}>More stories you can enjoy with your free credits</p>
         
