@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, Suspense } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
@@ -60,11 +60,6 @@ function LibraryPlaylistContent() {
   
   const [playlist, setPlaylist] = useState<PlaylistItem[]>([])
   const [showCreditsPopup, setShowCreditsPopup] = useState(false)
-  
-  // Drag to reorder
-  const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
-  const longPressTimer = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     const storedGenres = localStorage.getItem('dtt_recent_genres')
@@ -152,20 +147,18 @@ function LibraryPlaylistContent() {
     }
   }
 
-  const handleLongPressStart = (index: number) => {
-    longPressTimer.current = setTimeout(() => setDraggedIndex(index), 500)
+  const moveUp = (index: number) => {
+    if (index <= 0) return
+    const newPlaylist = [...playlist]
+    ;[newPlaylist[index - 1], newPlaylist[index]] = [newPlaylist[index], newPlaylist[index - 1]]
+    setPlaylist(newPlaylist)
   }
 
-  const handleLongPressEnd = () => {
-    if (longPressTimer.current) clearTimeout(longPressTimer.current)
-    if (draggedIndex !== null && dragOverIndex !== null && draggedIndex !== dragOverIndex) {
-      const newPlaylist = [...playlist]
-      const [removed] = newPlaylist.splice(draggedIndex, 1)
-      newPlaylist.splice(dragOverIndex, 0, removed)
-      setPlaylist(newPlaylist)
-    }
-    setDraggedIndex(null)
-    setDragOverIndex(null)
+  const moveDown = (index: number) => {
+    if (index >= playlist.length - 1) return
+    const newPlaylist = [...playlist]
+    ;[newPlaylist[index], newPlaylist[index + 1]] = [newPlaylist[index + 1], newPlaylist[index]]
+    setPlaylist(newPlaylist)
   }
 
   const savePlaylist = () => {
@@ -233,35 +226,32 @@ function LibraryPlaylistContent() {
           const isSelected = playlist.some(p => p.id === story.id)
           const storyCost = getCredits(story.duration_mins)
           const playlistIndex = playlist.findIndex(p => p.id === story.id)
-          const isDragging = draggedIndex === playlistIndex
-          const isDragOver = dragOverIndex === playlistIndex && draggedIndex !== null
 
           return (
             <div 
               key={story.id}
               onClick={() => toggleStorySelection(story)}
-              onTouchStart={() => isSelected && handleLongPressStart(playlistIndex)}
-              onTouchEnd={handleLongPressEnd}
-              onMouseDown={() => isSelected && handleLongPressStart(playlistIndex)}
-              onMouseUp={handleLongPressEnd}
-              onMouseEnter={() => draggedIndex !== null && isSelected && setDragOverIndex(playlistIndex)}
               style={{ 
                 backgroundColor: isSelected ? '#1e3a2f' : '#1e293b',
-                border: isDragOver ? '2px dashed #f97316' : isSelected ? '2px solid #22c55e' : '2px solid transparent',
+                border: isSelected ? '2px solid #22c55e' : '2px solid transparent',
                 borderRadius: '10px', 
                 padding: '0.5rem', 
                 marginBottom: '0.5rem', 
                 display: 'flex', 
                 alignItems: 'center', 
                 gap: '0.6rem',
-                cursor: 'pointer',
-                transform: isDragging ? 'scale(1.02)' : 'scale(1)', 
-                boxShadow: isDragging ? '0 8px 20px rgba(0,0,0,0.4)' : 'none', 
-                transition: 'transform 0.15s, box-shadow 0.15s'
+                cursor: 'pointer'
               }}
             >
-              {/* Drag handle + order number for selected */}
-              {isSelected && <div style={{ color: 'white', fontSize: '16px', cursor: 'grab' }}>☰</div>}
+              {/* Move arrow + order number for selected */}
+              {isSelected && playlist.length > 1 && (
+                <button 
+                  onClick={(e) => { e.stopPropagation(); playlistIndex === 0 ? moveDown(0) : moveUp(playlistIndex) }}
+                  style={{ backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '4px', padding: '4px 8px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}
+                >
+                  {playlistIndex === 0 ? '▼' : '▲'}
+                </button>
+              )}
               {isSelected && <div style={{ backgroundColor: '#f97316', color: 'white', width: '24px', height: '24px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 'bold', flexShrink: 0 }}>{playlistIndex + 1}</div>}
               
               {/* Cover - matching HorizontalStoryCard */}
