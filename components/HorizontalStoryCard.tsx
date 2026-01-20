@@ -1,6 +1,6 @@
 // =============================================================================
 // MODULE 01: HorizontalStoryCard (PROTECTED)
-// Updated: 120px covers, cover_url prop matches database
+// Updated: 120px covers, all props for library-playlist compatibility
 // =============================================================================
 import Link from 'next/link'
 
@@ -15,6 +15,9 @@ interface HorizontalStoryCardProps {
   reviews?: number
   flag?: string | null
   credits?: number
+  series_number?: number | null
+  series_total?: number | null
+  play_status?: 'not_started' | 'in_progress' | 'completed' | null
 }
 
 export default function HorizontalStoryCard({
@@ -27,7 +30,10 @@ export default function HorizontalStoryCard({
   rating = 0,
   reviews = 0,
   flag = null,
-  credits
+  credits,
+  series_number,
+  series_total,
+  play_status
 }: HorizontalStoryCardProps) {
   const displayCredits = credits ?? Math.ceil(duration_mins / 15)
 
@@ -65,6 +71,22 @@ export default function HorizontalStoryCard({
               {flag}
             </span>
           )}
+          {play_status === 'in_progress' && (
+            <div
+              style={{
+                position: 'absolute',
+                bottom: 0,
+                left: 0,
+                right: 0,
+                height: '4px',
+                backgroundColor: 'rgba(0,0,0,0.5)',
+                borderBottomLeftRadius: '0.5rem',
+                borderBottomRightRadius: '0.5rem'
+              }}
+            >
+              <div style={{ width: '50%', height: '100%', backgroundColor: '#f97316' }} />
+            </div>
+          )}
         </div>
 
         {/* Content */}
@@ -90,6 +112,7 @@ export default function HorizontalStoryCard({
           </p>
           <p style={{ fontSize: '17px', color: '#94a3b8', marginBottom: '0.5rem' }}>
             {duration_mins} min • {displayCredits} credits
+            {series_number && series_total && ` • Part ${series_number}/${series_total}`}
           </p>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <span style={{ fontSize: '14px', color: 'white' }}>
