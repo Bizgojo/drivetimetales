@@ -51,6 +51,8 @@ function LibraryContent() {
   const [visibleGenres, setVisibleGenres] = useState<string[]>(DEFAULT_VISIBLE)
   const [showMoreDropdown, setShowMoreDropdown] = useState(false)
 
+  const showLowCreditsButton = userCredits <= 3
+
   useEffect(() => {
     const storedGenres = localStorage.getItem('dtt_recent_genres')
     if (storedGenres) {
@@ -158,7 +160,7 @@ function LibraryContent() {
   )
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#0f172a' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', paddingBottom: showLowCreditsButton ? '55px' : '0' }}>
       {/* Sticky Header + Filters */}
       <div style={{ position: 'sticky', top: 0, backgroundColor: '#0f172a', zIndex: 50 }}>
         {/* Header with avatar */}
@@ -270,6 +272,16 @@ function LibraryContent() {
           })
         )}
       </div>
+
+      {/* Low Credits Sticky Button - only shows when credits <= 3 */}
+      {showLowCreditsButton && (
+        <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: '#0f172a', padding: '0.5rem 0.75rem', borderTop: '1px solid #334155', zIndex: 50 }}>
+          <button onClick={() => router.push('/buy-credits')} style={{ backgroundColor: '#f97316', color: 'white', padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', width: '100%', fontSize: '15px', fontWeight: 'bold' }}>
+            You're Low On Credits - Click Here to Get More
+          </button>
+        </div>
+      )}
+
       <style dangerouslySetInnerHTML={{ __html: '@keyframes spin { to { transform: rotate(360deg); } }' }} />
     </div>
   )
