@@ -17,7 +17,7 @@ interface HorizontalStoryCardProps {
   credits?: number
   series_number?: number | null
   series_total?: number | null
-  play_status?: 'not_started' | 'in_progress' | 'completed' | null
+  play_status?: string | null
 }
 
 export default function HorizontalStoryCard({
@@ -71,7 +71,7 @@ export default function HorizontalStoryCard({
               {flag}
             </span>
           )}
-          {play_status === 'in_progress' && (
+          {(play_status === 'in_progress' || play_status === 'continue') && (
             <div
               style={{
                 position: 'absolute',
