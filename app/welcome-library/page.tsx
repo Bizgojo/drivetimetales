@@ -128,6 +128,12 @@ function WelcomeLibraryContent() {
     textAlign: 'center'
   })
 
+  const allBtnStyle = (active: boolean): React.CSSProperties => ({
+    ...btnStyle(active),
+    flex: 'none',
+    width: '42px'
+  })
+
   const getGenreLabel = (key: string) => {
     const genre = ALL_GENRES.find(g => g.key === key)
     if (!genre) return key
@@ -154,16 +160,16 @@ function WelcomeLibraryContent() {
             <span style={{ color: '#f97316', fontSize: '16px', fontWeight: 'bold' }}>Tales</span>
           </div>
           <div style={{ backgroundColor: '#334155', padding: '0.35rem 0.6rem', borderRadius: '6px' }}>
-            <span style={{ color: '#f97316', fontWeight: 'bold', fontSize: '13px' }}>{userCredits}</span>
-            <span style={{ color: 'white', fontSize: '12px' }}> cr</span>
+            <span style={{ color: '#f97316', fontWeight: 'bold', fontSize: '16px' }}>{userCredits}</span>
+            <span style={{ color: 'white', fontSize: '13px' }}> cr</span>
           </div>
         </div>
         
         {/* Filters - full width rows */}
         <div style={{ padding: '0.5rem 0.75rem', backgroundColor: '#1e293b' }}>
-          {/* Row 1: Duration + Type - all buttons flex to fill */}
+          {/* Row 1: Duration + Type */}
           <div style={{ display: 'flex', gap: '0.3rem', marginBottom: '0.3rem' }}>
-            <button onClick={() => setSelectedDuration('All')} style={btnStyle(selectedDuration === 'All')}>All</button>
+            <button onClick={() => setSelectedDuration('All')} style={allBtnStyle(selectedDuration === 'All')}>All</button>
             <button onClick={() => setSelectedDuration('15m')} style={btnStyle(selectedDuration === '15m')}>15m</button>
             <button onClick={() => setSelectedDuration('30m')} style={btnStyle(selectedDuration === '30m')}>30m</button>
             <button onClick={() => setSelectedDuration('1hr')} style={btnStyle(selectedDuration === '1hr')}>1hr</button>
@@ -171,15 +177,15 @@ function WelcomeLibraryContent() {
             <button onClick={() => setSelectedType('All')} style={btnStyle(selectedType === 'All')}>All</button>
             <button onClick={() => setSelectedType('Series')} style={btnStyle(selectedType === 'Series')}>Series</button>
           </div>
-          {/* Row 2: Genre - all buttons flex to fill */}
+          {/* Row 2: Genre - All fixed width, others flex, More wider */}
           <div style={{ display: 'flex', gap: '0.3rem', marginBottom: '0.3rem', position: 'relative' }}>
-            <button onClick={() => selectGenre('All')} style={btnStyle(selectedGenre === 'All')}>All</button>
+            <button onClick={() => selectGenre('All')} style={allBtnStyle(selectedGenre === 'All')}>All</button>
             {visibleGenres.map(g => (
               <button key={g} onClick={() => selectGenre(g)} style={btnStyle(selectedGenre === g)}>
                 {getGenreLabel(g)}
               </button>
             ))}
-            <div style={{ position: 'relative', flex: 1 }}>
+            <div style={{ position: 'relative', flex: 1.5 }}>
               <button onClick={() => setShowMoreDropdown(!showMoreDropdown)} style={{ ...btnStyle(showMoreDropdown), width: '100%' }}>
                 More ▼
               </button>
