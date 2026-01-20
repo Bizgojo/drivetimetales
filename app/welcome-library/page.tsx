@@ -118,18 +118,14 @@ function WelcomeLibraryContent() {
   const btnStyle = (active: boolean): React.CSSProperties => ({
     backgroundColor: active ? '#f97316' : '#334155',
     color: 'white',
-    padding: '0.3rem 0.65rem',
+    padding: '0.3rem 0',
     borderRadius: '6px',
     fontSize: '13px',
     fontWeight: 500,
     border: 'none',
-    cursor: 'pointer'
-  })
-
-  const allBtnStyle = (active: boolean): React.CSSProperties => ({
-    ...btnStyle(active),
-    minWidth: '36px',
-    textAlign: 'center' as const
+    cursor: 'pointer',
+    flex: 1,
+    textAlign: 'center'
   })
 
   const getGenreLabel = (key: string) => {
@@ -149,7 +145,7 @@ function WelcomeLibraryContent() {
     <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', paddingBottom: '55px' }}>
       {/* Sticky Header + Filters */}
       <div style={{ position: 'sticky', top: 0, backgroundColor: '#0f172a', zIndex: 50 }}>
-        {/* Header - compact */}
+        {/* Header with credits */}
         <div style={{ padding: '0.5rem 0.75rem', display: 'flex', alignItems: 'center', borderBottom: '1px solid #334155' }}>
           <button onClick={() => router.push('/welcome')} style={{ backgroundColor: '#334155', color: 'white', padding: '0.35rem 0.6rem', borderRadius: '6px', fontSize: '13px', fontWeight: 500, border: 'none', cursor: 'pointer' }}>← Back</button>
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
@@ -157,27 +153,34 @@ function WelcomeLibraryContent() {
             <span style={{ color: 'white', fontSize: '16px', fontWeight: 'bold' }}>Drive Time</span>
             <span style={{ color: '#f97316', fontSize: '16px', fontWeight: 'bold' }}>Tales</span>
           </div>
+          <div style={{ backgroundColor: '#334155', padding: '0.35rem 0.6rem', borderRadius: '6px' }}>
+            <span style={{ color: '#f97316', fontWeight: 'bold', fontSize: '13px' }}>{userCredits}</span>
+            <span style={{ color: 'white', fontSize: '12px' }}> cr</span>
+          </div>
         </div>
         
-        {/* Filters - sticky, left aligned */}
-        <div style={{ padding: '0.5rem 1rem', backgroundColor: '#1e293b' }}>
-          {/* Row 1: Duration + Type */}
-          <div style={{ display: 'flex', gap: '0.3rem', marginBottom: '0.3rem', flexWrap: 'wrap' }}>
-            <button onClick={() => setSelectedDuration('All')} style={allBtnStyle(selectedDuration === 'All')}>All</button>
-            {['15m', '30m', '1hr'].map(d => <button key={d} onClick={() => setSelectedDuration(d)} style={btnStyle(selectedDuration === d)}>{d}</button>)}
-            <span style={{ color: '#475569', padding: '0 4px', display: 'flex', alignItems: 'center', fontSize: '12px' }}>|</span>
-            {['All', 'Series'].map(t => <button key={t} onClick={() => setSelectedType(t)} style={btnStyle(selectedType === t)}>{t}</button>)}
+        {/* Filters - full width rows */}
+        <div style={{ padding: '0.5rem 0.75rem', backgroundColor: '#1e293b' }}>
+          {/* Row 1: Duration + Type - all buttons flex to fill */}
+          <div style={{ display: 'flex', gap: '0.3rem', marginBottom: '0.3rem' }}>
+            <button onClick={() => setSelectedDuration('All')} style={btnStyle(selectedDuration === 'All')}>All</button>
+            <button onClick={() => setSelectedDuration('15m')} style={btnStyle(selectedDuration === '15m')}>15m</button>
+            <button onClick={() => setSelectedDuration('30m')} style={btnStyle(selectedDuration === '30m')}>30m</button>
+            <button onClick={() => setSelectedDuration('1hr')} style={btnStyle(selectedDuration === '1hr')}>1hr</button>
+            <span style={{ color: '#475569', display: 'flex', alignItems: 'center', padding: '0 2px' }}>|</span>
+            <button onClick={() => setSelectedType('All')} style={btnStyle(selectedType === 'All')}>All</button>
+            <button onClick={() => setSelectedType('Series')} style={btnStyle(selectedType === 'Series')}>Series</button>
           </div>
-          {/* Row 2: Genre with dynamic buttons + More dropdown */}
-          <div style={{ display: 'flex', gap: '0.3rem', marginBottom: '0.3rem', flexWrap: 'wrap', position: 'relative' }}>
-            <button onClick={() => selectGenre('All')} style={allBtnStyle(selectedGenre === 'All')}>All</button>
+          {/* Row 2: Genre - all buttons flex to fill */}
+          <div style={{ display: 'flex', gap: '0.3rem', marginBottom: '0.3rem', position: 'relative' }}>
+            <button onClick={() => selectGenre('All')} style={btnStyle(selectedGenre === 'All')}>All</button>
             {visibleGenres.map(g => (
               <button key={g} onClick={() => selectGenre(g)} style={btnStyle(selectedGenre === g)}>
                 {getGenreLabel(g)}
               </button>
             ))}
-            <div style={{ position: 'relative' }}>
-              <button onClick={() => setShowMoreDropdown(!showMoreDropdown)} style={{ ...btnStyle(showMoreDropdown), display: 'flex', alignItems: 'center', gap: '2px' }}>
+            <div style={{ position: 'relative', flex: 1 }}>
+              <button onClick={() => setShowMoreDropdown(!showMoreDropdown)} style={{ ...btnStyle(showMoreDropdown), width: '100%' }}>
                 More ▼
               </button>
               {showMoreDropdown && (
@@ -233,9 +236,8 @@ function WelcomeLibraryContent() {
 
       {/* Bottom Button */}
       <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: '#0f172a', padding: '0.5rem 0.75rem', borderTop: '1px solid #334155', zIndex: 50 }}>
-        <button onClick={() => router.push('/subscribe')} style={{ backgroundColor: '#22c55e', color: '#0f172a', padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-          <span style={{ fontSize: '14px' }}>You have {userCredits} credits - want more?</span>
-          <span style={{ fontSize: '16px', fontWeight: 'bold' }}>Subscribe Now!</span>
+        <button onClick={() => router.push('/subscribe')} style={{ backgroundColor: '#22c55e', color: '#0f172a', padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', width: '100%', fontSize: '15px', fontWeight: 'bold' }}>
+          Want more credits? Subscribe Now!
         </button>
       </div>
 
