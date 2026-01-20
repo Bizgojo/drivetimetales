@@ -53,8 +53,8 @@ function WelcomeLibraryContent() {
   const [selectedStory, setSelectedStory] = useState<Story | null>(null)
 
   useEffect(() => {
-    const storedCredits = localStorage.getItem('dtt_user_credits')
-    if (storedCredits !== null) setUserCredits(parseInt(storedCredits, 10))
+    // Newcomers always have 2 credits
+    // No localStorage for welcome page
     
     const storedName = localStorage.getItem('dtt_user_name')
     if (storedName) setUserName(storedName)
