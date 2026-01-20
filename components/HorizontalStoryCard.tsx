@@ -1,6 +1,6 @@
 // =============================================================================
 // MODULE 01: HorizontalStoryCard (PROTECTED)
-// Updated: 120px covers, all props for library-playlist compatibility
+// 80px cover, white text, slate-800 background
 // =============================================================================
 import Link from 'next/link'
 
@@ -39,31 +39,39 @@ export default function HorizontalStoryCard({
 
   return (
     <Link href={`/player/${id}`} style={{ textDecoration: 'none' }}>
-      <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', cursor: 'pointer' }}>
-        {/* Cover Image - 120px for mobile */}
+      <div style={{ 
+        display: 'flex', 
+        gap: '0.75rem', 
+        alignItems: 'flex-start', 
+        cursor: 'pointer',
+        backgroundColor: '#1e293b',
+        padding: '0.75rem',
+        borderRadius: '0.5rem'
+      }}>
+        {/* Cover Image - 80px */}
         <div style={{ position: 'relative', flexShrink: 0 }}>
           <img
             src={cover_url || '/images/default-cover.png'}
             alt={title}
             style={{
-              width: '120px',
-              height: '120px',
+              width: '80px',
+              height: '80px',
               objectFit: 'cover',
-              borderRadius: '0.5rem',
-              boxShadow: '0 0 20px rgba(251, 146, 60, 0.3)'
+              borderRadius: '0.375rem',
+              boxShadow: '0 0 15px rgba(251, 146, 60, 0.3)'
             }}
           />
           {flag && (
             <span
               style={{
                 position: 'absolute',
-                top: '0.5rem',
-                left: '0.5rem',
+                top: '0.25rem',
+                left: '0.25rem',
                 backgroundColor: flag === 'free' ? '#22c55e' : '#f97316',
                 color: 'white',
-                fontSize: '10px',
+                fontSize: '9px',
                 fontWeight: 'bold',
-                padding: '0.125rem 0.375rem',
+                padding: '0.125rem 0.25rem',
                 borderRadius: '0.25rem',
                 textTransform: 'uppercase'
               }}
@@ -78,10 +86,10 @@ export default function HorizontalStoryCard({
                 bottom: 0,
                 left: 0,
                 right: 0,
-                height: '4px',
+                height: '3px',
                 backgroundColor: 'rgba(0,0,0,0.5)',
-                borderBottomLeftRadius: '0.5rem',
-                borderBottomRightRadius: '0.5rem'
+                borderBottomLeftRadius: '0.375rem',
+                borderBottomRightRadius: '0.375rem'
               }}
             >
               <div style={{ width: '50%', height: '100%', backgroundColor: '#f97316' }} />
@@ -93,10 +101,10 @@ export default function HorizontalStoryCard({
         <div style={{ flex: 1, minWidth: 0 }}>
           <h3
             style={{
-              fontSize: '20px',
+              fontSize: '16px',
               fontWeight: 'bold',
               color: 'white',
-              marginBottom: '0.25rem',
+              marginBottom: '0.125rem',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap'
@@ -104,24 +112,24 @@ export default function HorizontalStoryCard({
           >
             {title}
           </h3>
-          <p style={{ fontSize: '17px', color: '#94a3b8', marginBottom: '0.25rem' }}>
+          <p style={{ fontSize: '14px', color: 'white', marginBottom: '0.125rem' }}>
             {genre}
           </p>
-          <p style={{ fontSize: '17px', color: '#94a3b8', marginBottom: '0.25rem' }}>
+          <p style={{ fontSize: '14px', color: 'white', marginBottom: '0.125rem' }}>
             by {author}
           </p>
-          <p style={{ fontSize: '17px', color: '#94a3b8', marginBottom: '0.5rem' }}>
-            {duration_mins} min • {displayCredits} credits
+          <p style={{ fontSize: '14px', color: 'white', marginBottom: '0.25rem' }}>
+            {duration_mins} min • {displayCredits} cr
             {series_number && series_total && ` • Part ${series_number}/${series_total}`}
           </p>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span style={{ fontSize: '14px', color: 'white' }}>
+            <span style={{ fontSize: '12px', color: 'white' }}>
               {rating.toFixed(1)}/5
             </span>
             <span style={{ display: 'flex' }}>
               {renderStars(rating)}
             </span>
-            <span style={{ fontSize: '14px', color: '#64748b' }}>
+            <span style={{ fontSize: '12px', color: '#94a3b8' }}>
               {reviews} reviews
             </span>
           </div>
