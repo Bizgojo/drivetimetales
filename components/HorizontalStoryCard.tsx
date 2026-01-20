@@ -149,8 +149,8 @@ export default function HorizontalStoryCard({
               <span style={{ display: 'flex' }}>
                 {renderStars(displayRating)}
               </span>
-              <span style={{ fontSize: '12px', color: '#94a3b8' }}>
-                {displayReviews} reviews
+              <span style={{ fontSize: '12px', color: 'white' }}>
+                {displayReviews}
               </span>
             </div>
           </div>
