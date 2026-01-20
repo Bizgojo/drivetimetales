@@ -9,7 +9,7 @@ Compact horizontal story card for library pages with:
 - Title (bold, white)
 - Genre (gray)
 - "by Author" (gray)
-- Duration • Credits + FREE flag flush right
+- Duration • Credits + FREE flag (if flag='free')
 - Star rating below
 ================================================================================
 */
@@ -28,6 +28,7 @@ interface HorizontalStoryCardProps {
   series_number?: number | null
   series_total?: number | null
   play_status?: string
+  flag?: string | null
 }
 
 export default function HorizontalStoryCard({
@@ -40,7 +41,8 @@ export default function HorizontalStoryCard({
   cover_url,
   series_number,
   series_total,
-  play_status
+  play_status,
+  flag
 }: HorizontalStoryCardProps) {
   
   const { rating, reviewCount } = useMemo(() => {
@@ -69,6 +71,9 @@ export default function HorizontalStoryCard({
     }
     return stars
   }
+
+  // Show FREE flag if flag prop is 'free' OR if flag is not provided (default behavior)
+  const showFreeFlag = flag === 'free' || flag === undefined
 
   return (
     <div style={{
@@ -112,7 +117,9 @@ export default function HorizontalStoryCard({
         {/* Duration + Credits + FREE */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', lineHeight: 1.3 }}>
           <span style={{ color: '#94a3b8', fontSize: '12px' }}>{duration_mins} min • {credits} {credits === 1 ? 'credit' : 'credits'}</span>
-          <span style={{ backgroundColor: '#22c55e', color: 'white', fontSize: '9px', fontWeight: 600, padding: '1px 5px', borderRadius: '3px' }}>FREE</span>
+          {showFreeFlag && (
+            <span style={{ backgroundColor: '#22c55e', color: 'white', fontSize: '9px', fontWeight: 600, padding: '1px 5px', borderRadius: '3px' }}>FREE</span>
+          )}
         </div>
 
         {/* Star Rating */}
