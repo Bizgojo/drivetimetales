@@ -68,7 +68,6 @@ function LibraryContent() {
 
   useEffect(() => {
     async function fetchData() {
-      // Fetch stories
       const { data: storiesData, error: storiesError } = await supabase
         .from('stories')
         .select('id, title, genre, author, duration_mins, cover_url, series_name, series_number, series_total')
@@ -78,11 +77,10 @@ function LibraryContent() {
       if (storiesError) console.error('Stories query error:', storiesError)
       if (storiesData) setStories(storiesData)
 
-      // Fetch user data if logged in
       if (user?.id) {
         const { data: userData, error: userError } = await supabase
           .from('users')
-          .select('first_name, credits, avatar_url, unlimited_credits')
+          .select('first_name, credits, avatar_url')
           .eq('id', user.id)
           .single()
         
@@ -90,7 +88,7 @@ function LibraryContent() {
         if (userData) {
           setUserName(userData.first_name || 'Friend')
           setUserCredits(userData.credits || 0)
-          setIsUnlimited(userData.unlimited_credits || userData.credits >= 9999)
+          setIsUnlimited(userData.credits >= 9999)
           setAvatarUrl(userData.avatar_url || null)
         }
       }
@@ -163,9 +161,7 @@ function LibraryContent() {
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', paddingBottom: showLowCreditsButton ? '55px' : '0' }}>
-      {/* Sticky Header + Filters */}
       <div style={{ position: 'sticky', top: 0, backgroundColor: '#0f172a', zIndex: 50 }}>
-        {/* Header with avatar */}
         <div style={{ padding: '0.5rem 0.75rem', display: 'flex', alignItems: 'center', borderBottom: '1px solid #334155' }}>
           <button onClick={() => router.push('/home')} style={{ backgroundColor: '#334155', color: 'white', padding: '0.35rem 0.6rem', borderRadius: '6px', fontSize: '13px', fontWeight: 500, border: 'none', cursor: 'pointer' }}>← Back</button>
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
@@ -173,21 +169,7 @@ function LibraryContent() {
             <span style={{ color: 'white', fontSize: '16px', fontWeight: 'bold' }}>Drive Time</span>
             <span style={{ color: '#f97316', fontSize: '16px', fontWeight: 'bold' }}>Tales</span>
           </div>
-          {/* Avatar - orange with white text */}
-          <div 
-            onClick={() => router.push('/profile')}
-            style={{ 
-              width: '36px', 
-              height: '36px', 
-              borderRadius: '50%', 
-              backgroundColor: '#f97316',
-              overflow: 'hidden',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}
-          >
+          <div onClick={() => router.push('/profile')} style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#f97316', overflow: 'hidden', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             {avatarUrl ? (
               <img src={avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             ) : (
@@ -196,9 +178,7 @@ function LibraryContent() {
           </div>
         </div>
         
-        {/* Filters - full width rows */}
         <div style={{ padding: '0.5rem 0.75rem', backgroundColor: '#1e293b' }}>
-          {/* Row 1: Duration + Type */}
           <div style={{ display: 'flex', gap: '0.3rem', marginBottom: '0.3rem' }}>
             <button onClick={() => setSelectedDuration('All')} style={allBtnStyle(selectedDuration === 'All')}>All</button>
             <button onClick={() => setSelectedDuration('15m')} style={btnStyle(selectedDuration === '15m')}>15m</button>
@@ -208,45 +188,31 @@ function LibraryContent() {
             <button onClick={() => setSelectedType('All')} style={btnStyle(selectedType === 'All')}>All</button>
             <button onClick={() => setSelectedType('Series')} style={btnStyle(selectedType === 'Series')}>Series</button>
           </div>
-          {/* Row 2: Genre - All fixed width, others flex, More wider */}
           <div style={{ display: 'flex', gap: '0.3rem', marginBottom: '0.3rem', position: 'relative' }}>
             <button onClick={() => selectGenre('All')} style={allBtnStyle(selectedGenre === 'All')}>All</button>
             {visibleGenres.map(g => (
-              <button key={g} onClick={() => selectGenre(g)} style={btnStyle(selectedGenre === g)}>
-                {getGenreLabel(g)}
-              </button>
+              <button key={g} onClick={() => selectGenre(g)} style={btnStyle(selectedGenre === g)}>{getGenreLabel(g)}</button>
             ))}
             <div style={{ position: 'relative', flex: 1.5 }}>
-              <button onClick={() => setShowMoreDropdown(!showMoreDropdown)} style={{ ...btnStyle(showMoreDropdown), width: '100%' }}>
-                More ▼
-              </button>
+              <button onClick={() => setShowMoreDropdown(!showMoreDropdown)} style={{ ...btnStyle(showMoreDropdown), width: '100%' }}>More ▼</button>
               {showMoreDropdown && (
                 <div style={{ position: 'absolute', top: '100%', right: 0, backgroundColor: '#1e293b', border: '1px solid #475569', borderRadius: '8px', marginTop: '4px', minWidth: '140px', zIndex: 60, boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}>
                   {ALL_GENRES.map(g => (
-                    <button key={g.key} onClick={() => selectGenre(g.key)} style={{ display: 'block', width: '100%', padding: '0.5rem 0.75rem', backgroundColor: selectedGenre === g.key ? '#f97316' : 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', fontSize: '13px' }}>
-                      {g.emoji} {g.label}
-                    </button>
+                    <button key={g.key} onClick={() => selectGenre(g.key)} style={{ display: 'block', width: '100%', padding: '0.5rem 0.75rem', backgroundColor: selectedGenre === g.key ? '#f97316' : 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', fontSize: '13px' }}>{g.emoji} {g.label}</button>
                   ))}
                 </div>
               )}
             </div>
           </div>
-          {/* Row 3: Credits (large) + Playlist button */}
-          <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'stretch' }}>
-            <div style={{ backgroundColor: '#334155', padding: '0.3rem 0.75rem', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '60px' }}>
-              <span style={{ color: '#f97316', fontWeight: 'bold', fontSize: isUnlimited ? '22px' : '20px' }}>
-                {isUnlimited ? '∞' : userCredits}
-              </span>
-            </div>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <span style={{ color: '#f97316', fontWeight: 'bold', fontSize: '16px', whiteSpace: 'nowrap' }}>{isUnlimited ? '∞ Unlimited' : `${userCredits} Credits`}</span>
             <button onClick={() => router.push('/library-playlist')} style={{ backgroundColor: '#3b82f6', color: 'white', padding: '0.45rem 1rem', borderRadius: '6px', fontSize: '14px', fontWeight: 500, border: 'none', cursor: 'pointer', flex: 1 }}>➕ Create a Playlist</button>
           </div>
         </div>
       </div>
 
-      {/* Click outside to close dropdown */}
       {showMoreDropdown && <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 40 }} onClick={() => setShowMoreDropdown(false)} />}
 
-      {/* Story Cards or Empty State */}
       <div style={{ padding: '0.5rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
         {filteredStories.length === 0 ? (
           <div style={{ backgroundColor: '#1e293b', borderRadius: '10px', padding: '2rem 1rem', textAlign: 'center' }}>
@@ -259,29 +225,16 @@ function LibraryContent() {
             const storyCost = getCredits(story.duration_mins)
             return (
               <div key={story.id} onClick={() => handleStoryClick(story)} style={{ cursor: 'pointer' }}>
-                <HorizontalStoryCard 
-                  id={story.id} 
-                  title={story.title} 
-                  genre={story.genre} 
-                  author={story.author || 'Drive Time Tales'} 
-                  duration_mins={story.duration_mins} 
-                  credits={storyCost} 
-                  cover_url={story.cover_url} 
-                  series_number={story.series_number} 
-                  series_total={story.series_total}
-                />
+                <HorizontalStoryCard id={story.id} title={story.title} genre={story.genre} author={story.author || 'Drive Time Tales'} duration_mins={story.duration_mins} credits={storyCost} cover_url={story.cover_url} series_number={story.series_number} series_total={story.series_total} />
               </div>
             )
           })
         )}
       </div>
 
-      {/* Low Credits Sticky Button - only shows when credits <= 3 and not unlimited */}
       {showLowCreditsButton && (
         <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: '#0f172a', padding: '0.5rem 0.75rem', borderTop: '1px solid #334155', zIndex: 50 }}>
-          <button onClick={() => router.push('/buy-credits')} style={{ backgroundColor: '#f97316', color: 'white', padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', width: '100%', fontSize: '15px', fontWeight: 'bold' }}>
-            You're Low On Credits - Click Here to Get More
-          </button>
+          <button onClick={() => router.push('/buy-credits')} style={{ backgroundColor: '#f97316', color: 'white', padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', width: '100%', fontSize: '15px', fontWeight: 'bold' }}>You're Low On Credits - Click Here to Get More</button>
         </div>
       )}
 
