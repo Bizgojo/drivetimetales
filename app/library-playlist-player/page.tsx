@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import StickyLogo1 from '@/components/StickyLogo1'
@@ -68,7 +69,6 @@ function PlaylistPlayerContent() {
       const prog = savedProgress ? parseInt(savedProgress) : 0
       setCurrentIndex(idx)
       setCurrentProgress(prog)
-      // If there's progress, user has started before
       if (prog > 0 || idx > 0) {
         setHasStarted(true)
       }
@@ -133,7 +133,6 @@ function PlaylistPlayerContent() {
     setCurrentProgress(0)
     localStorage.setItem('dtt_playlist_index', '0')
     localStorage.setItem('dtt_playlist_progress', '0')
-    // Reset credited status
     const resetPlaylist = playlist.map(item => ({ ...item, credited: false }))
     setPlaylist(resetPlaylist)
     localStorage.setItem('dtt_playlist', JSON.stringify(resetPlaylist))
@@ -144,6 +143,7 @@ function PlaylistPlayerContent() {
   const handlePauseResume = () => {
     if (isPlaying) {
       setIsPlaying(false)
+      localStorage.setItem('dtt_playlist_progress', currentProgress.toString())
       console.log(`[PLAYBACK] Paused at ${currentProgress}s`)
     } else {
       const resumePoint = Math.max(0, currentProgress - 5)
@@ -171,13 +171,20 @@ function PlaylistPlayerContent() {
       localStorage.setItem('dtt_playlist_index', nextIndex.toString())
       localStorage.setItem('dtt_playlist_progress', '0')
     } else {
-      // Playlist complete - clear storage and go home immediately
       console.log(`[ANNOUNCEMENT] Your playlist is complete. Hope you enjoyed it, ${userName}!`)
       localStorage.removeItem('dtt_playlist')
       localStorage.removeItem('dtt_playlist_index')
       localStorage.removeItem('dtt_playlist_progress')
       router.push('/home')
     }
+  }
+
+  const handleBack = () => {
+    if (isPlaying) {
+      setIsPlaying(false)
+      localStorage.setItem('dtt_playlist_progress', currentProgress.toString())
+    }
+    router.push('/library')
   }
 
   if (loading) {
@@ -193,7 +200,10 @@ function PlaylistPlayerContent() {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: '#0f172a' }}>
         <StickyLogo1 userName={userName} />
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '3rem 1rem', textAlign: 'center' }}>
+        <div style={{ padding: '1rem' }}>
+          <button onClick={() => router.push('/library')} style={{ background: 'none', border: 'none', color: '#f97316', fontSize: '16px', fontWeight: '600', cursor: 'pointer', marginBottom: '1rem' }}>← Back to Library</button>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem 1rem', textAlign: 'center' }}>
           <span style={{ fontSize: '64px', marginBottom: '1rem' }}>🎵</span>
           <h2 style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', marginBottom: '0.5rem' }}>No Playlist Found</h2>
           <p style={{ color: '#cbd5e1', fontSize: '18px', marginBottom: '2rem' }}>Create a playlist first to start playing.</p>
@@ -203,13 +213,15 @@ function PlaylistPlayerContent() {
     )
   }
 
-  // Not started yet - show Start or Continue/Start Over
+  // Not started yet - show Start
   if (!isPlaying && !hasStarted) {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: '#0f172a' }}>
         <StickyLogo1 userName={userName} />
-        <div style={{ padding: '1.5rem 1rem' }}>
-          <h2 style={{ color: 'white', fontSize: '22px', fontWeight: 'bold', marginBottom: '1rem', textAlign: 'center' }}>🎧 Your Playlist</h2>
+        <div style={{ padding: '1rem' }}>
+          <button onClick={handleBack} style={{ background: 'none', border: 'none', color: '#f97316', fontSize: '16px', fontWeight: '600', cursor: 'pointer', marginBottom: '1rem' }}>← Back to Library</button>
+          
+          <h2 style={{ color: 'white', fontSize: '22px', fontWeight: 'bold', marginBottom: '0.5rem', textAlign: 'center' }}>🎧 Your Playlist</h2>
           <p style={{ color: '#cbd5e1', fontSize: '16px', textAlign: 'center', marginBottom: '1.5rem' }}>{playlist.length} stories ready to play</p>
           
           <button onClick={handleStart} style={{ width: '100%', backgroundColor: '#22c55e', color: 'white', padding: '1.25rem', borderRadius: '16px', border: 'none', cursor: 'pointer', fontSize: '20px', fontWeight: 'bold', marginBottom: '1.5rem' }}>
@@ -219,18 +231,11 @@ function PlaylistPlayerContent() {
           <h3 style={{ color: 'white', fontSize: '16px', fontWeight: 'bold', marginBottom: '0.75rem' }}>Stories in your playlist:</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             {playlist.map((item, idx) => (
-              <div key={item.id} style={{ opacity: 1 }}>
+              <div key={item.id}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
                   <span style={{ color: '#f97316', fontSize: '14px', fontWeight: 'bold' }}>{idx + 1}.</span>
                 </div>
-                <HorizontalStoryCard
-                  id={item.id}
-                  title={item.title}
-                  genre={item.genre}
-                  author={item.author}
-                  duration_mins={item.duration_mins}
-                  cover_url={item.cover_url}
-                />
+                <HorizontalStoryCard id={item.id} title={item.title} genre={item.genre} author={item.author} duration_mins={item.duration_mins} cover_url={item.cover_url} />
               </div>
             ))}
           </div>
@@ -239,27 +244,21 @@ function PlaylistPlayerContent() {
     )
   }
 
-  // Has started before but paused - show Continue / Start Over
+  // Has progress - show Continue / Start Over
   if (!isPlaying && hasStarted) {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: '#0f172a' }}>
         <StickyLogo1 userName={userName} />
-        <div style={{ padding: '1.5rem 1rem' }}>
-          <h2 style={{ color: 'white', fontSize: '22px', fontWeight: 'bold', marginBottom: '0.5rem', textAlign: 'center' }}>🎧 Welcome Back!</h2>
+        <div style={{ padding: '1rem' }}>
+          <button onClick={handleBack} style={{ background: 'none', border: 'none', color: '#f97316', fontSize: '16px', fontWeight: '600', cursor: 'pointer', marginBottom: '1rem' }}>← Back to Library</button>
+          
+          <h2 style={{ color: 'white', fontSize: '22px', fontWeight: 'bold', marginBottom: '0.5rem', textAlign: 'center' }}>🎧 Continue Your Playlist</h2>
           <p style={{ color: '#cbd5e1', fontSize: '16px', textAlign: 'center', marginBottom: '1.5rem' }}>
             Story {currentIndex + 1} of {playlist.length} • {formatSeconds(currentProgress)} in
           </p>
           
-          {/* Current story preview */}
           <div style={{ marginBottom: '1.5rem' }}>
-            <HorizontalStoryCard
-              id={currentStory.id}
-              title={currentStory.title}
-              genre={currentStory.genre}
-              author={currentStory.author}
-              duration_mins={currentStory.duration_mins}
-              cover_url={currentStory.cover_url}
-            />
+            <HorizontalStoryCard id={currentStory.id} title={currentStory.title} genre={currentStory.genre} author={currentStory.author} duration_mins={currentStory.duration_mins} cover_url={currentStory.cover_url} />
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -281,6 +280,7 @@ function PlaylistPlayerContent() {
       <StickyLogo1 userName={userName} />
 
       <div style={{ flex: 1, padding: '1rem', overflowY: 'auto', paddingBottom: '120px' }}>
+        <button onClick={handleBack} style={{ background: 'none', border: 'none', color: '#f97316', fontSize: '16px', fontWeight: '600', cursor: 'pointer', marginBottom: '1rem' }}>← Exit Player</button>
         
         {/* NOW PLAYING Banner */}
         <div style={{ backgroundColor: '#1e293b', borderRadius: '16px', padding: '1.25rem', marginBottom: '1rem' }}>
@@ -290,7 +290,6 @@ function PlaylistPlayerContent() {
             <span style={{ color: 'white', fontSize: '16px', fontWeight: '600', marginLeft: 'auto' }}>{currentIndex + 1} of {playlist.length}</span>
           </div>
 
-          {/* Cover and Info */}
           <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.25rem' }}>
             <div style={{ width: '100px', height: '100px', borderRadius: '12px', overflow: 'hidden', flexShrink: 0, boxShadow: '0 0 20px rgba(255,255,255,0.4)' }}>
               {currentStory?.cover_url ? (
@@ -308,21 +307,18 @@ function PlaylistPlayerContent() {
             </div>
           </div>
 
-          {/* Progress Bar - FAT */}
           <div style={{ marginBottom: '0.75rem' }}>
             <div style={{ backgroundColor: '#475569', height: '12px', borderRadius: '6px', overflow: 'hidden' }}>
               <div style={{ backgroundColor: '#f97316', height: '100%', width: `${Math.min(progressPercent, 100)}%`, borderRadius: '6px', transition: 'width 0.5s' }} />
             </div>
           </div>
 
-          {/* Time Display - BIG */}
           <div style={{ display: 'flex', justifyContent: 'space-between', color: 'white', fontSize: '18px', fontWeight: '600' }}>
             <span>{formatSeconds(currentProgress)}</span>
             <span>-{formatSeconds(Math.max(0, storyDurationSecs - currentProgress))}</span>
           </div>
         </div>
 
-        {/* Control Buttons - BIG */}
         <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
           <button onClick={handlePauseResume} style={{ flex: 1, backgroundColor: '#f97316', color: 'white', padding: '1.25rem', borderRadius: '16px', border: 'none', cursor: 'pointer', fontSize: '20px', fontWeight: 'bold' }}>
             ⏸️ Pause
@@ -332,27 +328,18 @@ function PlaylistPlayerContent() {
           </button>
         </div>
 
-        {/* Credit Info */}
         <div style={{ backgroundColor: '#1e3a5f', borderRadius: '12px', padding: '1rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <span style={{ fontSize: '20px' }}>💡</span>
           <span style={{ color: 'white', fontSize: '14px', fontWeight: '500' }}>Credits charged at 10% • Skip before 10% = free</span>
         </div>
 
-        {/* Up Next */}
         {playlist.length > currentIndex + 1 && (
           <div>
             <h3 style={{ color: 'white', fontSize: '18px', fontWeight: 'bold', marginBottom: '0.75rem' }}>📋 Up Next</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               {playlist.slice(currentIndex + 1, currentIndex + 4).map((item) => (
                 <div key={item.id} style={{ pointerEvents: 'none' }}>
-                  <HorizontalStoryCard
-                    id={item.id}
-                    title={item.title}
-                    genre={item.genre}
-                    author={item.author}
-                    duration_mins={item.duration_mins}
-                    cover_url={item.cover_url}
-                  />
+                  <HorizontalStoryCard id={item.id} title={item.title} genre={item.genre} author={item.author} duration_mins={item.duration_mins} cover_url={item.cover_url} />
                 </div>
               ))}
               {playlist.length - currentIndex - 1 > 3 && (
