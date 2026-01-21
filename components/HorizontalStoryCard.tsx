@@ -12,10 +12,25 @@ interface HorizontalStoryCardProps {
   credits?: number
   series_number?: number | null
   series_total?: number | null
+  flag?: 'free' | 'editors-pick' | 'readers-choice' | 'trending' | null
 }
 
 function getCredits(duration_mins: number): number {
   return Math.max(1, Math.floor(duration_mins / 15))
+}
+
+const FLAG_STYLES: Record<string, { bg: string, text: string }> = {
+  'free': { bg: '#22c55e', text: 'white' },
+  'editors-pick': { bg: '#a855f7', text: 'white' },
+  'readers-choice': { bg: '#3b82f6', text: 'white' },
+  'trending': { bg: '#ec4899', text: 'white' },
+}
+
+const FLAG_LABELS: Record<string, string> = {
+  'free': 'Free',
+  'editors-pick': "Editor's Pick",
+  'readers-choice': "Reader's Choice",
+  'trending': 'Trending',
 }
 
 export default function HorizontalStoryCard({
@@ -27,7 +42,8 @@ export default function HorizontalStoryCard({
   cover_url,
   credits,
   series_number,
-  series_total
+  series_total,
+  flag
 }: HorizontalStoryCardProps) {
   const displayCredits = credits ?? getCredits(duration_mins)
 
@@ -67,6 +83,20 @@ export default function HorizontalStoryCard({
           {duration_mins} min • {displayCredits} credit{displayCredits !== 1 ? 's' : ''}
           {series_number && series_total && (
             <span style={{ color: '#94a3b8', fontWeight: 400 }}> • Part {series_number}/{series_total}</span>
+          )}
+          {flag && FLAG_STYLES[flag] && (
+            <span style={{ 
+              marginLeft: '0.5rem',
+              backgroundColor: FLAG_STYLES[flag].bg,
+              color: FLAG_STYLES[flag].text,
+              padding: '2px 6px',
+              borderRadius: '4px',
+              fontSize: '10px',
+              fontWeight: 700,
+              textTransform: 'uppercase'
+            }}>
+              {FLAG_LABELS[flag]}
+            </span>
           )}
         </p>
       </div>
