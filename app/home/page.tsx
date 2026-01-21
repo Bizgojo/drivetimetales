@@ -1,6 +1,6 @@
 'use client'
 
-// C01 Home Page - Updated Jan 21, 2026 - Added YourPlaylist
+// C01 Home Page - Updated Jan 21, 2026 - Playlist priority over Continue Listening
 
 import StickyLogo1 from '@/components/StickyLogo1'
 import { WelcomeCredits } from '@/components/WelcomeCredits'
@@ -48,6 +48,20 @@ export default function HomePage() {
   const [userCredits, setUserCredits] = useState(0)
   const [userState, setUserState] = useState('')
   const [newsEpisodes, setNewsEpisodes] = useState<Record<string, NewsEpisode>>({})
+  const [hasPlaylist, setHasPlaylist] = useState(false)
+
+  // Check for playlist in localStorage
+  useEffect(() => {
+    const savedPlaylist = localStorage.getItem('dtt_playlist')
+    if (savedPlaylist) {
+      try {
+        const parsed = JSON.parse(savedPlaylist)
+        setHasPlaylist(Array.isArray(parsed) && parsed.length > 0)
+      } catch (e) {
+        setHasPlaylist(false)
+      }
+    }
+  }, [])
 
   useEffect(() => {
     async function fetchUserData() {
@@ -104,9 +118,11 @@ export default function HomePage() {
       <StickyLogo1 userName={displayName} />
       <main className="pb-24">
         <WelcomeCredits displayName={displayName} userCredits={userCredits} />
-        <YourPlaylist />
+        
+        {/* Show Playlist OR Continue Listening, not both */}
+        {hasPlaylist ? <YourPlaylist /> : <ContinueListening />}
+        
         <NewsBriefings newsEpisodes={newsEpisodes} userState={userState} />
-        <ContinueListening />
         <NewReleases />
         <RecommendedForYou />
       </main>
