@@ -17,6 +17,7 @@ export default function YourPlaylist() {
   const [playlist, setPlaylist] = useState<PlaylistItem[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
   const [progress, setProgress] = useState(0)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   useEffect(() => {
     const savedPlaylist = localStorage.getItem('dtt_playlist')
@@ -33,6 +34,28 @@ export default function YourPlaylist() {
       }
     }
   }, [])
+
+  const handleDeletePlaylist = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setShowDeleteConfirm(true)
+  }
+
+  const confirmDelete = () => {
+    localStorage.removeItem('dtt_playlist')
+    localStorage.removeItem('dtt_playlist_index')
+    localStorage.removeItem('dtt_playlist_progress')
+    setPlaylist([])
+    setShowDeleteConfirm(false)
+    // Force page reload to show ContinueListening if applicable
+    window.location.reload()
+  }
+
+  const cancelDelete = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setShowDeleteConfirm(false)
+  }
 
   if (playlist.length === 0) return null
 
@@ -52,7 +75,7 @@ export default function YourPlaylist() {
     : `${remainingMins} min remaining`
 
   return (
-    <section style={{ padding: '1rem', paddingTop: '0.5rem' }}>
+    <section style={{ padding: '1rem', paddingTop: '0.5rem', position: 'relative' }}>
       <Link 
         href="/library-playlist-player"
         style={{ 
@@ -61,11 +84,32 @@ export default function YourPlaylist() {
           borderRadius: '16px',
           padding: '1rem',
           textDecoration: 'none',
-          border: '2px solid #3b82f6'
+          border: '2px solid #3b82f6',
+          position: 'relative'
         }}
       >
-        {/* Header row with title, stories count, and remaining time */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+        {/* Delete button - upper right */}
+        <button
+          onClick={handleDeletePlaylist}
+          style={{
+            position: 'absolute',
+            top: '8px',
+            right: '8px',
+            background: 'none',
+            border: 'none',
+            color: '#94a3b8',
+            fontSize: '11px',
+            cursor: 'pointer',
+            padding: '4px 8px',
+            borderRadius: '4px',
+            zIndex: 10
+          }}
+        >
+          🗑️ Delete
+        </button>
+
+        {/* Header row with title and stories count */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem', paddingRight: '70px' }}>
           <span style={{ fontSize: '24px' }}>🎧</span>
           <span style={{ color: 'white', fontSize: '18px', fontWeight: 'bold' }}>Your Playlist</span>
           <span style={{ color: '#93c5fd', fontSize: '14px', marginLeft: 'auto' }}>{playlist.length} stories</span>
@@ -120,6 +164,72 @@ export default function YourPlaylist() {
           </div>
         </div>
       </Link>
+
+      {/* Delete confirmation popup */}
+      {showDeleteConfirm && (
+        <div 
+          style={{ 
+            position: 'fixed', 
+            inset: 0, 
+            backgroundColor: 'rgba(0,0,0,0.8)', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center', 
+            padding: '1rem', 
+            zIndex: 50 
+          }}
+          onClick={cancelDelete}
+        >
+          <div 
+            style={{ 
+              backgroundColor: '#1e293b', 
+              borderRadius: '16px', 
+              padding: '1.5rem', 
+              maxWidth: '300px', 
+              textAlign: 'center' 
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span style={{ fontSize: '48px', display: 'block', marginBottom: '1rem' }}>🗑️</span>
+            <h3 style={{ color: 'white', fontSize: '18px', fontWeight: 'bold', marginBottom: '0.5rem' }}>Delete Playlist?</h3>
+            <p style={{ color: '#94a3b8', marginBottom: '1.5rem' }}>Are you sure you want to delete your playlist? This cannot be undone.</p>
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <button 
+                onClick={cancelDelete} 
+                style={{ 
+                  flex: 1, 
+                  padding: '0.75rem', 
+                  borderRadius: '8px', 
+                  border: 'none', 
+                  backgroundColor: '#475569', 
+                  color: 'white', 
+                  cursor: 'pointer',
+                  fontSize: '15px',
+                  fontWeight: 500
+                }}
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={confirmDelete} 
+                style={{ 
+                  flex: 1, 
+                  padding: '0.75rem', 
+                  borderRadius: '8px', 
+                  border: 'none', 
+                  backgroundColor: '#dc2626', 
+                  color: 'white', 
+                  fontWeight: 'bold', 
+                  cursor: 'pointer',
+                  fontSize: '15px'
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   )
 }
