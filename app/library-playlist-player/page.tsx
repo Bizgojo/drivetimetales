@@ -14,6 +14,7 @@ interface PlaylistItem {
   genre: string
   author: string
   cover_url: string | null
+  audio_url?: string | null
   credited: boolean
 }
 
@@ -35,11 +36,13 @@ function PlaylistPlayerContent() {
   const [playlist, setPlaylist] = useState<PlaylistItem[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
   const [currentProgress, setCurrentProgress] = useState(0)
+  const [duration, setDuration] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
   const [hasStarted, setHasStarted] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [audioError, setAudioError] = useState<string | null>(null)
   
-  const intervalRef = useRef<NodeJS.Timeout | null>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
 
   useEffect(() => {
     async function loadUser() {
@@ -76,63 +79,112 @@ function PlaylistPlayerContent() {
   }, [])
 
   const currentStory = playlist[currentIndex]
-  const storyDurationSecs = (currentStory?.duration_mins || 1) * 60
-  const progressPercent = (currentProgress / storyDurationSecs) * 100
-  const tenPercentMark = storyDurationSecs * 0.1
-
-  // Calculate total playlist time
   const totalMins = playlist.reduce((sum, s) => sum + s.duration_mins, 0)
+  const progressPercent = duration > 0 ? (currentProgress / duration) * 100 : 0
+  const tenPercentMark = duration * 0.1
 
+  // Audio event handlers
   useEffect(() => {
-    if (isPlaying && currentStory) {
-      intervalRef.current = setInterval(() => {
-        setCurrentProgress(prev => {
-          const newProgress = prev + 1
-          
-          if (newProgress % 10 === 0) {
-            localStorage.setItem('dtt_playlist_progress', newProgress.toString())
-          }
+    const audio = audioRef.current
+    if (!audio) return
 
-          if (prev < tenPercentMark && newProgress >= tenPercentMark && !currentStory.credited) {
-            const credits = getCredits(currentStory.duration_mins)
-            console.log(`[CREDITS] Deducting ${credits} credit(s) for "${currentStory.title}"`)
-            const updatedPlaylist = [...playlist]
-            updatedPlaylist[currentIndex].credited = true
-            setPlaylist(updatedPlaylist)
-            localStorage.setItem('dtt_playlist', JSON.stringify(updatedPlaylist))
-          }
+    const handleTimeUpdate = () => {
+      setCurrentProgress(audio.currentTime)
+      
+      // Save progress every 10 seconds
+      if (Math.floor(audio.currentTime) % 10 === 0) {
+        localStorage.setItem('dtt_playlist_progress', Math.floor(audio.currentTime).toString())
+      }
 
-          if (newProgress >= storyDurationSecs) {
-            handleNextStory()
-            return 0
-          }
-
-          return newProgress
-        })
-      }, 1000)
-
-      return () => {
-        if (intervalRef.current) clearInterval(intervalRef.current)
+      // Check 10% credit mark
+      if (currentStory && !currentStory.credited && audio.currentTime >= tenPercentMark && tenPercentMark > 0) {
+        const credits = getCredits(currentStory.duration_mins)
+        console.log(`[CREDITS] Deducting ${credits} credit(s) for "${currentStory.title}"`)
+        const updatedPlaylist = [...playlist]
+        updatedPlaylist[currentIndex].credited = true
+        setPlaylist(updatedPlaylist)
+        localStorage.setItem('dtt_playlist', JSON.stringify(updatedPlaylist))
       }
     }
-  }, [isPlaying, currentIndex, currentStory, storyDurationSecs, tenPercentMark, playlist])
+
+    const handleLoadedMetadata = () => {
+      setDuration(audio.duration)
+      setAudioError(null)
+    }
+
+    const handleEnded = () => {
+      handleNextStory()
+    }
+
+    const handleError = () => {
+      setAudioError('Audio failed to load')
+      console.error('Audio error for:', currentStory?.audio_url)
+    }
+
+    audio.addEventListener('timeupdate', handleTimeUpdate)
+    audio.addEventListener('loadedmetadata', handleLoadedMetadata)
+    audio.addEventListener('ended', handleEnded)
+    audio.addEventListener('error', handleError)
+
+    return () => {
+      audio.removeEventListener('timeupdate', handleTimeUpdate)
+      audio.removeEventListener('loadedmetadata', handleLoadedMetadata)
+      audio.removeEventListener('ended', handleEnded)
+      audio.removeEventListener('error', handleError)
+    }
+  }, [currentIndex, currentStory, playlist, tenPercentMark])
+
+  // Load audio when story changes
+  useEffect(() => {
+    const audio = audioRef.current
+    if (!audio || !currentStory?.audio_url) return
+
+    audio.src = currentStory.audio_url
+    audio.load()
+    
+    if (isPlaying) {
+      audio.play().catch(e => console.error('Autoplay failed:', e))
+    }
+  }, [currentIndex, currentStory?.audio_url])
+
+  // Seek to saved progress when continuing
+  useEffect(() => {
+    const audio = audioRef.current
+    if (!audio || !hasStarted || currentProgress === 0) return
+
+    const handleCanPlay = () => {
+      if (currentProgress > 0 && audio.currentTime === 0) {
+        audio.currentTime = Math.max(0, currentProgress - 5) // Rewind 5 seconds
+      }
+    }
+
+    audio.addEventListener('canplay', handleCanPlay, { once: true })
+    return () => audio.removeEventListener('canplay', handleCanPlay)
+  }, [hasStarted, currentProgress])
 
   const handlePlayNow = () => {
     console.log(`[ANNOUNCEMENT] Hi ${userName}! Here is your first selection: "${playlist[0]?.title}"`)
     setHasStarted(true)
     setIsPlaying(true)
+    
+    const audio = audioRef.current
+    if (audio && currentStory?.audio_url) {
+      audio.play().catch(e => console.error('Play failed:', e))
+    }
   }
 
   const handleSaveForLater = () => {
-    // Playlist stays in localStorage, just go home
     router.push('/home')
   }
 
   const handleContinue = () => {
-    const resumePoint = Math.max(0, currentProgress - 5)
-    setCurrentProgress(resumePoint)
+    const audio = audioRef.current
+    if (audio) {
+      audio.currentTime = Math.max(0, currentProgress - 5) // Rewind 5 seconds
+      audio.play().catch(e => console.error('Play failed:', e))
+    }
     setIsPlaying(true)
-    console.log(`[PLAYBACK] Resuming from ${resumePoint}s (rewound 5 seconds)`)
+    console.log(`[PLAYBACK] Resuming from ${formatSeconds(Math.max(0, currentProgress - 5))}`)
   }
 
   const handleStartOver = () => {
@@ -143,32 +195,50 @@ function PlaylistPlayerContent() {
     const resetPlaylist = playlist.map(item => ({ ...item, credited: false }))
     setPlaylist(resetPlaylist)
     localStorage.setItem('dtt_playlist', JSON.stringify(resetPlaylist))
-    console.log(`[ANNOUNCEMENT] Hi ${userName}! Here is your first selection: "${playlist[0]?.title}"`)
+    
+    const audio = audioRef.current
+    if (audio) {
+      audio.currentTime = 0
+      audio.play().catch(e => console.error('Play failed:', e))
+    }
     setIsPlaying(true)
+    console.log(`[ANNOUNCEMENT] Hi ${userName}! Here is your first selection: "${playlist[0]?.title}"`)
   }
 
   const handlePauseResume = () => {
+    const audio = audioRef.current
+    if (!audio) return
+
     if (isPlaying) {
+      audio.pause()
       setIsPlaying(false)
-      localStorage.setItem('dtt_playlist_progress', currentProgress.toString())
-      console.log(`[PLAYBACK] Paused at ${currentProgress}s`)
+      localStorage.setItem('dtt_playlist_progress', Math.floor(audio.currentTime).toString())
+      console.log(`[PLAYBACK] Paused at ${formatSeconds(audio.currentTime)}`)
     } else {
-      const resumePoint = Math.max(0, currentProgress - 5)
-      setCurrentProgress(resumePoint)
+      const resumePoint = Math.max(0, audio.currentTime - 5)
+      audio.currentTime = resumePoint
+      audio.play().catch(e => console.error('Play failed:', e))
       setIsPlaying(true)
-      console.log(`[PLAYBACK] Resuming from ${resumePoint}s (rewound 5 seconds)`)
+      console.log(`[PLAYBACK] Resuming from ${formatSeconds(resumePoint)}`)
     }
   }
 
   const handleSkip = () => {
     if (!currentStory) return
-    if (currentProgress < tenPercentMark && !currentStory.credited) {
+    
+    const audio = audioRef.current
+    if (audio && audio.currentTime < tenPercentMark && !currentStory.credited) {
       console.log(`[CREDITS] Skipped before 10% - no charge for "${currentStory.title}"`)
     }
     handleNextStory()
   }
 
   const handleNextStory = () => {
+    const audio = audioRef.current
+    if (audio) {
+      audio.pause()
+    }
+
     if (currentIndex < playlist.length - 1) {
       const nextIndex = currentIndex + 1
       const nextStory = playlist[nextIndex]
@@ -187,15 +257,36 @@ function PlaylistPlayerContent() {
   }
 
   const handleBack = () => {
-    if (isPlaying) {
-      setIsPlaying(false)
-      localStorage.setItem('dtt_playlist_progress', currentProgress.toString())
+    const audio = audioRef.current
+    if (audio && isPlaying) {
+      audio.pause()
+      localStorage.setItem('dtt_playlist_progress', Math.floor(audio.currentTime).toString())
     }
+    setIsPlaying(false)
     router.push('/library')
   }
 
   const handleAddMore = () => {
+    const audio = audioRef.current
+    if (audio && isPlaying) {
+      audio.pause()
+      localStorage.setItem('dtt_playlist_progress', Math.floor(audio.currentTime).toString())
+    }
+    setIsPlaying(false)
     router.push('/library-playlist')
+  }
+
+  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+    const audio = audioRef.current
+    if (!audio || duration === 0) return
+
+    const rect = e.currentTarget.getBoundingClientRect()
+    const clickX = e.clientX - rect.left
+    const percent = clickX / rect.width
+    const newTime = percent * duration
+    
+    audio.currentTime = newTime
+    setCurrentProgress(newTime)
   }
 
   if (loading) {
@@ -224,10 +315,20 @@ function PlaylistPlayerContent() {
     )
   }
 
-  // READY STATE - Not started yet, show Play Now / Save for Later
+  // Hidden audio element
+  const audioElement = (
+    <audio 
+      ref={audioRef} 
+      preload="metadata"
+      style={{ display: 'none' }}
+    />
+  )
+
+  // READY STATE - Not started yet
   if (!isPlaying && !hasStarted) {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: '#0f172a' }}>
+        {audioElement}
         <StickyLogo1 userName={userName} />
         <div style={{ padding: '1rem' }}>
           <button onClick={handleAddMore} style={{ background: 'none', border: 'none', color: '#f97316', fontSize: '16px', fontWeight: '600', cursor: 'pointer', marginBottom: '1rem' }}>← Add More Stories</button>
@@ -235,7 +336,6 @@ function PlaylistPlayerContent() {
           <h2 style={{ color: 'white', fontSize: '22px', fontWeight: 'bold', marginBottom: '0.5rem', textAlign: 'center' }}>🎧 Your Playlist</h2>
           <p style={{ color: '#cbd5e1', fontSize: '16px', textAlign: 'center', marginBottom: '1.5rem' }}>{playlist.length} stories • {totalMins} min total</p>
           
-          {/* Two buttons: Play Now and Save for Later */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.5rem' }}>
             <button onClick={handlePlayNow} style={{ width: '100%', backgroundColor: '#22c55e', color: 'white', padding: '1.25rem', borderRadius: '16px', border: 'none', cursor: 'pointer', fontSize: '20px', fontWeight: 'bold' }}>
               ▶️ Play Now
@@ -251,6 +351,7 @@ function PlaylistPlayerContent() {
               <div key={item.id}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
                   <span style={{ color: '#f97316', fontSize: '14px', fontWeight: 'bold' }}>{idx + 1}.</span>
+                  {!item.audio_url && <span style={{ color: '#ef4444', fontSize: '10px' }}>No audio</span>}
                 </div>
                 <HorizontalStoryCard id={item.id} title={item.title} genre={item.genre} author={item.author} duration_mins={item.duration_mins} cover_url={item.cover_url} />
               </div>
@@ -261,10 +362,11 @@ function PlaylistPlayerContent() {
     )
   }
 
-  // CONTINUE STATE - Has progress, show Continue / Start Over
+  // CONTINUE STATE - Has progress
   if (!isPlaying && hasStarted) {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: '#0f172a' }}>
+        {audioElement}
         <StickyLogo1 userName={userName} />
         <div style={{ padding: '1rem' }}>
           <button onClick={handleBack} style={{ background: 'none', border: 'none', color: '#f97316', fontSize: '16px', fontWeight: '600', cursor: 'pointer', marginBottom: '1rem' }}>← Back to Library</button>
@@ -294,15 +396,30 @@ function PlaylistPlayerContent() {
   // PLAYING STATE
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', display: 'flex', flexDirection: 'column' }}>
+      {audioElement}
       <StickyLogo1 userName={userName} />
 
       <div style={{ flex: 1, padding: '1rem', overflowY: 'auto', paddingBottom: '120px' }}>
         <button onClick={handleBack} style={{ background: 'none', border: 'none', color: '#f97316', fontSize: '16px', fontWeight: '600', cursor: 'pointer', marginBottom: '1rem' }}>← Exit Player</button>
         
+        {/* Audio error message */}
+        {audioError && (
+          <div style={{ backgroundColor: '#7f1d1d', borderRadius: '8px', padding: '0.75rem', marginBottom: '1rem', color: '#fca5a5', fontSize: '14px' }}>
+            ⚠️ {audioError} - This story may not have audio uploaded yet.
+          </div>
+        )}
+
+        {/* No audio URL warning */}
+        {!currentStory?.audio_url && (
+          <div style={{ backgroundColor: '#7f1d1d', borderRadius: '8px', padding: '0.75rem', marginBottom: '1rem', color: '#fca5a5', fontSize: '14px' }}>
+            ⚠️ This story doesn't have audio uploaded yet. Tap Skip to go to the next story.
+          </div>
+        )}
+
         <div style={{ backgroundColor: '#1e293b', borderRadius: '16px', padding: '1.25rem', marginBottom: '1rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
-            <div style={{ width: '14px', height: '14px', borderRadius: '50%', backgroundColor: '#22c55e', animation: 'pulse 1.5s infinite' }} />
-            <span style={{ color: 'white', fontSize: '16px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px' }}>Now Playing</span>
+            <div style={{ width: '14px', height: '14px', borderRadius: '50%', backgroundColor: isPlaying ? '#22c55e' : '#f97316', animation: isPlaying ? 'pulse 1.5s infinite' : 'none' }} />
+            <span style={{ color: 'white', fontSize: '16px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px' }}>{isPlaying ? 'Now Playing' : 'Paused'}</span>
             <span style={{ color: 'white', fontSize: '16px', fontWeight: '600', marginLeft: 'auto' }}>{currentIndex + 1} of {playlist.length}</span>
           </div>
 
@@ -323,21 +440,25 @@ function PlaylistPlayerContent() {
             </div>
           </div>
 
-          <div style={{ marginBottom: '0.75rem' }}>
+          {/* Clickable progress bar */}
+          <div 
+            style={{ marginBottom: '0.75rem', cursor: 'pointer' }}
+            onClick={handleSeek}
+          >
             <div style={{ backgroundColor: '#475569', height: '12px', borderRadius: '6px', overflow: 'hidden' }}>
-              <div style={{ backgroundColor: '#f97316', height: '100%', width: `${Math.min(progressPercent, 100)}%`, borderRadius: '6px', transition: 'width 0.5s' }} />
+              <div style={{ backgroundColor: '#f97316', height: '100%', width: `${Math.min(progressPercent, 100)}%`, borderRadius: '6px', transition: 'width 0.3s' }} />
             </div>
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', color: 'white', fontSize: '18px', fontWeight: '600' }}>
             <span>{formatSeconds(currentProgress)}</span>
-            <span>-{formatSeconds(Math.max(0, storyDurationSecs - currentProgress))}</span>
+            <span>-{formatSeconds(Math.max(0, duration - currentProgress))}</span>
           </div>
         </div>
 
         <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
           <button onClick={handlePauseResume} style={{ flex: 1, backgroundColor: '#f97316', color: 'white', padding: '1.25rem', borderRadius: '16px', border: 'none', cursor: 'pointer', fontSize: '20px', fontWeight: 'bold' }}>
-            ⏸️ Pause
+            {isPlaying ? '⏸️ Pause' : '▶️ Resume'}
           </button>
           <button onClick={handleSkip} style={{ flex: 1, backgroundColor: '#3b82f6', color: 'white', padding: '1.25rem', borderRadius: '16px', border: 'none', cursor: 'pointer', fontSize: '20px', fontWeight: 'bold' }}>
             ⏭️ Skip
