@@ -1,6 +1,6 @@
 'use client'
 
-// C01 Home Page - Module 05 fix deployed Jan 17, 2026 12:45pm
+// C01 Home Page - Updated Jan 21, 2026 - Added YourPlaylist
 
 import StickyLogo1 from '@/components/StickyLogo1'
 import { WelcomeCredits } from '@/components/WelcomeCredits'
@@ -8,6 +8,7 @@ import { NewsBriefings } from '@/components/NewsBriefings'
 import ContinueListening from '@/components/ContinueListening'
 import NewReleases from '@/components/NewReleases'
 import RecommendedForYou from '@/components/RecommendedForYou'
+import YourPlaylist from '@/components/YourPlaylist'
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
@@ -20,7 +21,6 @@ interface NewsEpisode {
   is_live: boolean
 }
 
-// State name to abbreviation converter
 const STATE_ABBREVIATIONS: Record<string, string> = {
   'alabama': 'AL', 'alaska': 'AK', 'arizona': 'AZ', 'arkansas': 'AR', 'california': 'CA',
   'colorado': 'CO', 'connecticut': 'CT', 'delaware': 'DE', 'florida': 'FL', 'georgia': 'GA',
@@ -61,7 +61,6 @@ export default function HomePage() {
         if (profile) {
           setDisplayName(profile.first_name || user.email?.split('@')[0] || 'friend')
           setUserCredits(profile.credits || 0)
-          // Convert full state name to abbreviation
           setUserState(getStateAbbreviation(profile.state || ''))
         }
       } catch (err) {
@@ -100,14 +99,13 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-slate-950 w-full">
-      {/* Tailwind safelist - keeps dynamic classes from being purged */}
       <div className="hidden bg-amber-400 bg-emerald-400 bg-sky-400 bg-rose-400 from-red-600 to-red-800 from-orange-500 to-orange-700 from-yellow-500 to-yellow-700 from-green-600 to-green-800 from-blue-600 to-blue-800 from-purple-600 to-purple-800"></div>
       
       <StickyLogo1 userName={displayName} />
       <main className="pb-24">
         <WelcomeCredits displayName={displayName} userCredits={userCredits} />
+        <YourPlaylist />
         <NewsBriefings newsEpisodes={newsEpisodes} userState={userState} />
-
         <ContinueListening />
         <NewReleases />
         <RecommendedForYou />
