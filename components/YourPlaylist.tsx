@@ -64,11 +64,15 @@ export default function YourPlaylist() {
           border: '2px solid #3b82f6'
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+        {/* Header row with title, stories count, and remaining time */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
           <span style={{ fontSize: '24px' }}>🎧</span>
           <span style={{ color: 'white', fontSize: '18px', fontWeight: 'bold' }}>Your Playlist</span>
           <span style={{ color: '#93c5fd', fontSize: '14px', marginLeft: 'auto' }}>{playlist.length} stories</span>
         </div>
+        
+        {/* Remaining time - now directly under header */}
+        <p style={{ color: 'white', fontSize: '13px', fontWeight: '500', marginBottom: '0.75rem', paddingLeft: '36px' }}>{remainingText}</p>
 
         <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
           <div style={{ 
@@ -93,13 +97,12 @@ export default function YourPlaylist() {
                 <p style={{ color: '#93c5fd', fontSize: '12px', marginBottom: '0.25rem' }}>Continue • Story {currentIndex + 1} of {playlist.length}</p>
                 <p style={{ color: 'white', fontSize: '14px', fontWeight: '600' }}>{currentStory?.title}</p>
                 <p style={{ color: '#94a3b8', fontSize: '12px' }}>{progressMins}:{progressSecs.toString().padStart(2, '0')} in</p>
-                <p style={{ color: 'white', fontSize: '12px', fontWeight: '500' }}>{remainingText}</p>
               </>
             ) : (
               <>
                 <p style={{ color: '#93c5fd', fontSize: '12px', marginBottom: '0.25rem' }}>Ready to play</p>
                 <p style={{ color: 'white', fontSize: '14px', fontWeight: '600' }}>{currentStory?.title}</p>
-                <p style={{ color: 'white', fontSize: '12px', fontWeight: '500' }}>{remainingText}</p>
+                <p style={{ color: '#94a3b8', fontSize: '12px' }}>Tap to start</p>
               </>
             )}
           </div>
