@@ -9,21 +9,12 @@ Created: January 21, 2026
 Owner: Marc (Wonder Books Press / Drive Time Tales)
 Status: PROTECTED - Use this on ALL pages with story cards
 
-PURPOSE:
-Universal story card component for DTT. Use this everywhere:
-- Home page (NewReleases, RecommendedForYou, ContinueListening)
-- Browse page
-- Library page
-- Search results
-- Wishlist
-- Collections
-
 DESIGN:
 - Cover: 112x112px with 8px padding and white glow
 - Title: bold white, 1 line max
-- Genre: dimmed (slate-400)
-- Author: dimmed (slate-400)
-- Duration/Credits: bold white
+- Genre: dimmed gray (#94a3b8)
+- Author: dimmed gray (#94a3b8)
+- Duration/Credits: BOLD WHITE (fontWeight 600)
 - Whole card links to /player/[id]
 
 ⚠️  DO NOT MODIFY WITHOUT MARC'S APPROVAL
@@ -45,7 +36,7 @@ interface HorizontalStoryCardProps {
   author: string
   duration_mins: number
   cover_url: string | null
-  credits?: number  // Optional - will calculate from duration if not provided
+  credits?: number
 }
 
 // =============================================================================
@@ -102,56 +93,20 @@ export default function HorizontalStoryCard({
         flexDirection: 'column', 
         justifyContent: 'center' 
       }}>
+        {/* Title - bold white */}
         <h3 className="text-sm font-bold text-white line-clamp-1">{title}</h3>
-        <p className="text-slate-400 text-xs">{genre}</p>
-        <p className="text-slate-400 text-xs">by {author}</p>
-        <p className="text-white text-xs font-semibold">
+        
+        {/* Genre - dimmed gray */}
+        <p style={{ color: '#94a3b8', fontSize: '0.75rem' }}>{genre}</p>
+        
+        {/* Author - dimmed gray */}
+        <p style={{ color: '#94a3b8', fontSize: '0.75rem' }}>by {author}</p>
+        
+        {/* Duration/Credits - BOLD WHITE */}
+        <p style={{ color: '#ffffff', fontSize: '0.75rem', fontWeight: 600 }}>
           {duration_mins} min • {displayCredits} credit{displayCredits !== 1 ? 's' : ''}
         </p>
       </div>
     </Link>
   )
 }
-
-
-// =============================================================================
-// REQUIRED CSS (should already be in globals.css)
-// =============================================================================
-/*
-.cover-glow {
-  box-shadow: 0 0 15px rgba(255, 255, 255, 0.4);
-}
-*/
-
-
-// =============================================================================
-// USAGE EXAMPLE
-// =============================================================================
-/*
-import HorizontalStoryCard from '@/components/HorizontalStoryCard'
-
-// Single card
-<HorizontalStoryCard
-  id={story.id}
-  title={story.title}
-  genre={story.genre}
-  author={story.author}
-  duration_mins={story.duration_mins}
-  cover_url={story.cover_url}
-/>
-
-// List of cards
-<div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-  {stories.map((story) => (
-    <HorizontalStoryCard
-      key={story.id}
-      id={story.id}
-      title={story.title}
-      genre={story.genre}
-      author={story.author}
-      duration_mins={story.duration_mins}
-      cover_url={story.cover_url}
-    />
-  ))}
-</div>
-*/
