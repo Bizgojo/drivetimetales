@@ -41,6 +41,16 @@ export default function YourPlaylist() {
   const progressMins = Math.floor(progress / 60)
   const progressSecs = progress % 60
 
+  // Calculate total remaining time
+  const currentStoryRemaining = (currentStory?.duration_mins || 0) * 60 - progress
+  const futureStoriesTime = playlist.slice(currentIndex + 1).reduce((sum, s) => sum + s.duration_mins * 60, 0)
+  const totalRemainingSecs = currentStoryRemaining + futureStoriesTime
+  const remainingHours = Math.floor(totalRemainingSecs / 3600)
+  const remainingMins = Math.floor((totalRemainingSecs % 3600) / 60)
+  const remainingText = remainingHours > 0 
+    ? `${remainingHours}hr ${remainingMins}min remaining`
+    : `${remainingMins} min remaining`
+
   return (
     <section style={{ padding: '1rem', paddingTop: '0.5rem' }}>
       <Link 
@@ -83,12 +93,13 @@ export default function YourPlaylist() {
                 <p style={{ color: '#93c5fd', fontSize: '12px', marginBottom: '0.25rem' }}>Continue • Story {currentIndex + 1} of {playlist.length}</p>
                 <p style={{ color: 'white', fontSize: '14px', fontWeight: '600' }}>{currentStory?.title}</p>
                 <p style={{ color: '#94a3b8', fontSize: '12px' }}>{progressMins}:{progressSecs.toString().padStart(2, '0')} in</p>
+                <p style={{ color: 'white', fontSize: '12px', fontWeight: '500' }}>{remainingText}</p>
               </>
             ) : (
               <>
                 <p style={{ color: '#93c5fd', fontSize: '12px', marginBottom: '0.25rem' }}>Ready to play</p>
                 <p style={{ color: 'white', fontSize: '14px', fontWeight: '600' }}>{currentStory?.title}</p>
-                <p style={{ color: '#94a3b8', fontSize: '12px' }}>Tap to start</p>
+                <p style={{ color: 'white', fontSize: '12px', fontWeight: '500' }}>{remainingText}</p>
               </>
             )}
           </div>
