@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import HorizontalStoryCard from '@/components/HorizontalStoryCard'
+import PlaylistButton from '@/components/PlaylistButton'
 
 interface Story {
   id: string
@@ -138,7 +139,7 @@ function LibraryContent() {
               <div style={{ color: 'white', fontSize: '11px', fontWeight: 'normal' }}>You have</div>
               <div style={{ color: 'white', fontSize: '14px', fontWeight: 'normal' }}>{isUnlimited ? '∞ Unlimited' : `${userCredits} Credits`}</div>
             </div>
-            <button onClick={() => router.push('/library-playlist')} style={{ backgroundColor: '#3b82f6', color: 'white', padding: '0.45rem 1rem', borderRadius: '6px', fontSize: '14px', fontWeight: 500, border: 'none', cursor: 'pointer', flex: 1 }}>➕ Create a Playlist</button>
+            <PlaylistButton />
           </div>
         </div>
       </div>
