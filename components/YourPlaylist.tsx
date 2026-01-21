@@ -93,16 +93,16 @@ export default function YourPlaylist() {
           onClick={handleDeletePlaylist}
           style={{
             position: 'absolute',
-            top: '-8px',
-            right: '-8px',
+            top: '-6px',
+            right: '-6px',
             backgroundColor: '#dc2626',
             border: 'none',
             color: 'white',
-            fontSize: '10px',
+            fontSize: '9px',
             fontWeight: 'bold',
             cursor: 'pointer',
-            padding: '4px 8px',
-            borderRadius: '8px',
+            padding: '2px 6px',
+            borderRadius: '6px',
             zIndex: 10,
             boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
           }}
