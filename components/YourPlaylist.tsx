@@ -88,24 +88,26 @@ export default function YourPlaylist() {
           position: 'relative'
         }}
       >
-        {/* Delete button - upper right */}
+        {/* Delete button - red badge in upper right corner */}
         <button
           onClick={handleDeletePlaylist}
           style={{
             position: 'absolute',
-            top: '8px',
-            right: '8px',
-            background: 'none',
+            top: '-8px',
+            right: '-8px',
+            backgroundColor: '#dc2626',
             border: 'none',
-            color: '#94a3b8',
-            fontSize: '11px',
+            color: 'white',
+            fontSize: '10px',
+            fontWeight: 'bold',
             cursor: 'pointer',
             padding: '4px 8px',
-            borderRadius: '4px',
-            zIndex: 10
+            borderRadius: '8px',
+            zIndex: 10,
+            boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
           }}
         >
-          🗑️ Delete
+          Delete
         </button>
 
         {/* Header row with title and stories count */}
