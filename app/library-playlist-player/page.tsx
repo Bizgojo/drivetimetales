@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import StickyLogo1 from '@/components/StickyLogo1'
@@ -81,6 +80,9 @@ function PlaylistPlayerContent() {
   const progressPercent = (currentProgress / storyDurationSecs) * 100
   const tenPercentMark = storyDurationSecs * 0.1
 
+  // Calculate total playlist time
+  const totalMins = playlist.reduce((sum, s) => sum + s.duration_mins, 0)
+
   useEffect(() => {
     if (isPlaying && currentStory) {
       intervalRef.current = setInterval(() => {
@@ -115,10 +117,15 @@ function PlaylistPlayerContent() {
     }
   }, [isPlaying, currentIndex, currentStory, storyDurationSecs, tenPercentMark, playlist])
 
-  const handleStart = () => {
+  const handlePlayNow = () => {
     console.log(`[ANNOUNCEMENT] Hi ${userName}! Here is your first selection: "${playlist[0]?.title}"`)
     setHasStarted(true)
     setIsPlaying(true)
+  }
+
+  const handleSaveForLater = () => {
+    // Playlist stays in localStorage, just go home
+    router.push('/home')
   }
 
   const handleContinue = () => {
@@ -187,6 +194,10 @@ function PlaylistPlayerContent() {
     router.push('/library')
   }
 
+  const handleAddMore = () => {
+    router.push('/library-playlist')
+  }
+
   if (loading) {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -213,20 +224,26 @@ function PlaylistPlayerContent() {
     )
   }
 
-  // Not started yet - show Start
+  // READY STATE - Not started yet, show Play Now / Save for Later
   if (!isPlaying && !hasStarted) {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: '#0f172a' }}>
         <StickyLogo1 userName={userName} />
         <div style={{ padding: '1rem' }}>
-          <button onClick={handleBack} style={{ background: 'none', border: 'none', color: '#f97316', fontSize: '16px', fontWeight: '600', cursor: 'pointer', marginBottom: '1rem' }}>← Back to Library</button>
+          <button onClick={handleAddMore} style={{ background: 'none', border: 'none', color: '#f97316', fontSize: '16px', fontWeight: '600', cursor: 'pointer', marginBottom: '1rem' }}>← Add More Stories</button>
           
           <h2 style={{ color: 'white', fontSize: '22px', fontWeight: 'bold', marginBottom: '0.5rem', textAlign: 'center' }}>🎧 Your Playlist</h2>
-          <p style={{ color: '#cbd5e1', fontSize: '16px', textAlign: 'center', marginBottom: '1.5rem' }}>{playlist.length} stories ready to play</p>
+          <p style={{ color: '#cbd5e1', fontSize: '16px', textAlign: 'center', marginBottom: '1.5rem' }}>{playlist.length} stories • {totalMins} min total</p>
           
-          <button onClick={handleStart} style={{ width: '100%', backgroundColor: '#22c55e', color: 'white', padding: '1.25rem', borderRadius: '16px', border: 'none', cursor: 'pointer', fontSize: '20px', fontWeight: 'bold', marginBottom: '1.5rem' }}>
-            ▶️ Start Playlist
-          </button>
+          {/* Two buttons: Play Now and Save for Later */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.5rem' }}>
+            <button onClick={handlePlayNow} style={{ width: '100%', backgroundColor: '#22c55e', color: 'white', padding: '1.25rem', borderRadius: '16px', border: 'none', cursor: 'pointer', fontSize: '20px', fontWeight: 'bold' }}>
+              ▶️ Play Now
+            </button>
+            <button onClick={handleSaveForLater} style={{ width: '100%', backgroundColor: '#475569', color: 'white', padding: '1rem', borderRadius: '12px', border: 'none', cursor: 'pointer', fontSize: '16px', fontWeight: '600' }}>
+              💾 Save for Later
+            </button>
+          </div>
 
           <h3 style={{ color: 'white', fontSize: '16px', fontWeight: 'bold', marginBottom: '0.75rem' }}>Stories in your playlist:</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -244,7 +261,7 @@ function PlaylistPlayerContent() {
     )
   }
 
-  // Has progress - show Continue / Start Over
+  // CONTINUE STATE - Has progress, show Continue / Start Over
   if (!isPlaying && hasStarted) {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: '#0f172a' }}>
@@ -274,7 +291,7 @@ function PlaylistPlayerContent() {
     )
   }
 
-  // Playing state
+  // PLAYING STATE
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', display: 'flex', flexDirection: 'column' }}>
       <StickyLogo1 userName={userName} />
@@ -282,7 +299,6 @@ function PlaylistPlayerContent() {
       <div style={{ flex: 1, padding: '1rem', overflowY: 'auto', paddingBottom: '120px' }}>
         <button onClick={handleBack} style={{ background: 'none', border: 'none', color: '#f97316', fontSize: '16px', fontWeight: '600', cursor: 'pointer', marginBottom: '1rem' }}>← Exit Player</button>
         
-        {/* NOW PLAYING Banner */}
         <div style={{ backgroundColor: '#1e293b', borderRadius: '16px', padding: '1.25rem', marginBottom: '1rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
             <div style={{ width: '14px', height: '14px', borderRadius: '50%', backgroundColor: '#22c55e', animation: 'pulse 1.5s infinite' }} />
