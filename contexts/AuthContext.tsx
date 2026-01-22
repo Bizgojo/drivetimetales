@@ -12,6 +12,7 @@ interface DbUser {
   credits: number
   subscription_type: string | null
   subscription_status: string | null
+  subscription_ends_at: string | null
 }
 
 interface AuthContextType {
@@ -34,7 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function loadDbUser(authUser: User) {
     const { data } = await supabase
       .from('users')
-      .select('first_name, display_name, credits, subscription_type, subscription_status')
+      .select('first_name, display_name, credits, subscription_type, subscription_status, subscription_ends_at')
       .eq('id', authUser.id)
       .single()
     
