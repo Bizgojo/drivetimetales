@@ -63,7 +63,7 @@ export default function BillingPage() {
     }
   }
 
-  const displayName = user?.display_name || user?.email?.split('@')[0]
+  const displayName = user?.first_name || user?.email?.split('@')[0]
   const planKey = user?.subscription_type || 'test_driver'
   const plan = PLAN_DETAILS[planKey] || PLAN_DETAILS['test_driver']
   const displayCredits = user?.credits === -1 ? '∞' : user?.credits
