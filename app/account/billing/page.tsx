@@ -102,7 +102,7 @@ export default function BillingPage() {
 
   return (
     <div className="min-h-screen bg-slate-950">
-      <Header title="Billing" />
+      <Header />
       
       <main className="p-4 space-y-6 pb-24">
         <section className="bg-slate-800 rounded-xl p-4">
