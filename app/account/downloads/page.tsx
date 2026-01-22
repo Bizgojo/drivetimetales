@@ -78,7 +78,7 @@ export default function DownloadsPage() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
-      <Header isLoggedIn showBack userCredits={user.credits} />
+      <Header isLoggedIn showBack  />
       
       <div className="px-4 py-5">
         <h1 className="text-2xl font-bold text-white mb-2">📥 Downloads</h1>
