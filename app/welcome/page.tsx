@@ -169,7 +169,7 @@ function WelcomeContent() {
             See More Stories<br />Go To Library
           </Link>
           <Link
-            href="/subscribe"
+            href="/signup"
             className="hover:bg-green-400 font-semibold rounded-xl transition"
             style={{
               flex: 1,
