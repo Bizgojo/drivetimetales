@@ -74,7 +74,6 @@ function LibraryContent() {
           setUserName(userData.first_name || 'Friend')
           setIsUnlimited(userData.credits >= 9999)
           setUserCredits(userData.credits || 0)
-          setAvatarUrl(userData.avatar_url || null)
         }
       }
       if (user?.id) setLoading(false)
