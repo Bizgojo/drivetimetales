@@ -73,7 +73,7 @@ export default function HomePage() {
           .eq('id', user.id)
           .single()
         if (profile) {
-          setDisplayName(profile.first_name || profile.display_name || user.email?.split('@')[0] || 'friend')
+          setDisplayName(profile.first_name || profile.display_name || profile.display_name || user.email?.split('@')[0] || 'friend')
           setUserCredits(profile.credits || 0)
           setUserState(getStateAbbreviation(profile.state || ''))
         }
