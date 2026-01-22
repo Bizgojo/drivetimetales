@@ -7,7 +7,7 @@ import { useAuth } from '@/contexts/AuthContext'
 
 export default function PricingPage() {
   const router = useRouter()
-  const { user, loading: authLoading, refreshCredits } = useAuth()
+  const { user, loading: authLoading, refreshUser } = useAuth()
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly')
   const [processing, setProcessing] = useState<string | null>(null)
   const [confirmPack, setConfirmPack] = useState<{id: string, name: string, price: number, credits: number} | null>(null)
@@ -166,7 +166,7 @@ export default function PricingPage() {
       
       if (data.success) {
         // Payment succeeded - refresh credits and go back immediately
-        await refreshCredits()
+        await refreshUser()
         setConfirmPack(null)
         // Go back to previous page immediately
         window.history.back()
