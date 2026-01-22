@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 // US States for dropdown
@@ -24,17 +23,6 @@ const US_STATES = [
   { code: 'TX', name: 'Texas' }, { code: 'UT', name: 'Utah' }, { code: 'VT', name: 'Vermont' },
   { code: 'VA', name: 'Virginia' }, { code: 'WA', name: 'Washington' }, { code: 'WV', name: 'West Virginia' },
   { code: 'WI', name: 'Wisconsin' }, { code: 'WY', name: 'Wyoming' }
-]
-
-// Available ElevenLabs voices for narrator selection
-const AVAILABLE_VOICES = [
-  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah (Female)', description: 'Warm, professional' },
-  { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel (Female)', description: 'Clear, articulate' },
-  { id: 'AZnzlk1XvdvUeBnXmlld', name: 'Domi (Female)', description: 'Strong, confident' },
-  { id: 'ErXwobaYiN019PkySvjV', name: 'Antoni (Male)', description: 'Warm, friendly' },
-  { id: 'VR6AewLTigWG4xSOukaG', name: 'Arnold (Male)', description: 'Deep, authoritative' },
-  { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam (Male)', description: 'Clear, professional' },
-  { id: 'yoZ06aMxZJJ28mfd3POQ', name: 'Sam (Male)', description: 'Casual, engaging' },
 ]
 
 // News categories - Non-state categories (state is handled separately)
@@ -76,6 +64,13 @@ const NEWS_CATEGORIES = [
   },
 ]
 
+interface ElevenLabsVoice {
+  voice_id: string
+  name: string
+  category?: string
+  labels?: Record<string, string>
+}
+
 interface CategorySettings {
   enabled: boolean
   voice_id: string
@@ -108,7 +103,6 @@ interface NewsSettings {
 }
 
 export default function AdminNewsPage() {
-  const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [generating, setGenerating] = useState<Set<string>>(new Set())
@@ -117,13 +111,17 @@ export default function AdminNewsPage() {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   
+  // ElevenLabs voices from API
+  const [voices, setVoices] = useState<ElevenLabsVoice[]>([])
+  const [loadingVoices, setLoadingVoices] = useState(true)
+  
   // Member states from database
   const [memberStates, setMemberStates] = useState<StateNewsInfo[]>([])
   
   const [settings, setSettings] = useState<NewsSettings>({
     categories: {},
     state_news: {
-      voice_id: 'EXAVITQu4vr4xnSDxMaL',
+      voice_id: '',
       narrator_name: '',
       enabled: true
     },
@@ -143,7 +141,7 @@ export default function AdminNewsPage() {
       setLoading(false)
     }, 5000)
 
-    Promise.all([loadSettings(), loadMemberStates()]).finally(() => clearTimeout(timeout))
+    Promise.all([loadSettings(), loadMemberStates(), loadVoices()]).finally(() => clearTimeout(timeout))
     
     return () => clearTimeout(timeout)
   }, [])
@@ -161,9 +159,23 @@ export default function AdminNewsPage() {
     }
   }, [])
 
+  async function loadVoices() {
+    try {
+      setLoadingVoices(true)
+      const response = await fetch('/api/admin/elevenlabs-voices')
+      if (!response.ok) throw new Error('Failed to load voices')
+      const data = await response.json()
+      setVoices(data.voices || [])
+    } catch (error) {
+      console.error('Error loading voices:', error)
+      setMessage({ type: 'error', text: 'Failed to load ElevenLabs voices' })
+    } finally {
+      setLoadingVoices(false)
+    }
+  }
+
   async function loadMemberStates() {
     try {
-      // Get unique states from users table where state is not null
       const { data, error } = await supabase
         .from('users')
         .select('state')
@@ -171,7 +183,6 @@ export default function AdminNewsPage() {
       
       if (error) throw error
       
-      // Count members per state
       const stateCounts: Record<string, number> = {}
       data?.forEach(user => {
         if (user.state) {
@@ -179,14 +190,12 @@ export default function AdminNewsPage() {
         }
       })
       
-      // Load existing state news episodes info
       const { data: episodesData } = await supabase
         .from('news_episodes')
         .select('state, episode_number, audio_url, created_at')
         .not('state', 'is', null)
         .order('created_at', { ascending: false })
       
-      // Build state info array
       const stateInfos: StateNewsInfo[] = Object.entries(stateCounts).map(([stateName, count]) => {
         const latestEpisode = episodesData?.find(ep => ep.state === stateName)
         return {
@@ -196,7 +205,7 @@ export default function AdminNewsPage() {
           episode_number: latestEpisode?.episode_number || 0,
           audio_url: latestEpisode?.audio_url || null
         }
-      }).sort((a, b) => b.member_count - a.member_count) // Sort by member count
+      }).sort((a, b) => b.member_count - a.member_count)
       
       setMemberStates(stateInfos)
     } catch (error) {
@@ -206,7 +215,7 @@ export default function AdminNewsPage() {
 
   async function loadSettings() {
     try {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('news_settings')
         .select('*')
         .eq('id', 1)
@@ -220,7 +229,7 @@ export default function AdminNewsPage() {
           const dbCat = data.categories?.[catId] || {}
           mergedCategories[catId] = {
             enabled: dbCat.enabled ?? defaultCats[catId].enabled,
-            voice_id: dbCat.voice_id || 'EXAVITQu4vr4xnSDxMaL',
+            voice_id: dbCat.voice_id || '',
             narrator_name: dbCat.narrator_name || '',
             last_generated: dbCat.last_generated || null,
             episode_number: dbCat.episode_number || 1,
@@ -231,7 +240,7 @@ export default function AdminNewsPage() {
         setSettings({
           categories: mergedCategories,
           state_news: data.state_news || {
-            voice_id: 'EXAVITQu4vr4xnSDxMaL',
+            voice_id: '',
             narrator_name: '',
             enabled: true
           },
@@ -263,7 +272,7 @@ export default function AdminNewsPage() {
     NEWS_CATEGORIES.forEach(cat => {
       cats[cat.id] = {
         enabled: true,
-        voice_id: 'EXAVITQu4vr4xnSDxMaL',
+        voice_id: '',
         narrator_name: '',
         last_generated: null,
         episode_number: 1,
@@ -273,7 +282,6 @@ export default function AdminNewsPage() {
     return cats
   }
 
-  // Auto-save when voice or narrator changes (debounced)
   function updateStateNewsSetting(field: 'voice_id' | 'narrator_name', value: string) {
     setSettings(prev => ({
       ...prev,
@@ -352,7 +360,6 @@ export default function AdminNewsPage() {
     }
   }
 
-  // Generate state news for a specific state
   async function generateStateNews(stateName: string) {
     const genKey = `state-${stateName}`
     setGenerating(prev => new Set(prev).add(genKey))
@@ -376,8 +383,12 @@ export default function AdminNewsPage() {
         throw new Error(result.error || 'Generation failed')
       }
 
-      // Refresh member states to update last_generated
-      await loadMemberStates()
+      // Update local state with timestamp
+      setMemberStates(prev => prev.map(s => 
+        s.state_name === stateName 
+          ? { ...s, last_generated: new Date().toISOString(), audio_url: result.episode?.audioUrl || null }
+          : s
+      ))
 
       setMessage({ type: 'success', text: `${stateName} news briefing generated!` })
     } catch (error) {
@@ -392,7 +403,6 @@ export default function AdminNewsPage() {
     }
   }
 
-  // Generate state news for ALL member states
   async function generateAllStateNews() {
     if (memberStates.length === 0) {
       setMessage({ type: 'error', text: 'No member states found' })
@@ -407,7 +417,6 @@ export default function AdminNewsPage() {
     setMessage({ type: 'success', text: `All ${memberStates.length} state briefings generated!` })
   }
 
-  // Generate non-state category briefing
   async function generateCategoryBriefing(categoryId: string) {
     setGenerating(prev => new Set(prev).add(categoryId))
     
@@ -419,7 +428,7 @@ export default function AdminNewsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           category: categoryId,
-          voiceId: catSettings?.voice_id || 'EXAVITQu4vr4xnSDxMaL',
+          voiceId: catSettings?.voice_id || '',
           narratorName: catSettings?.narrator_name || '',
           state: null,
           storiesCount: settings.stories_per_category
@@ -432,7 +441,6 @@ export default function AdminNewsPage() {
         throw new Error(result.error || 'Generation failed')
       }
 
-      // Update local state
       setSettings(prev => ({
         ...prev,
         categories: {
@@ -459,7 +467,6 @@ export default function AdminNewsPage() {
     }
   }
 
-  // Generate EVERYTHING - all member states + all 5 categories
   async function generateAllBriefings() {
     const enabledCategories = NEWS_CATEGORIES.filter(cat => settings.categories[cat.id]?.enabled)
     const totalCount = memberStates.length + enabledCategories.length
@@ -469,9 +476,8 @@ export default function AdminNewsPage() {
       return
     }
 
-    setMessage({ type: 'success', text: `Generating ${totalCount} briefings (${memberStates.length} states + ${enabledCategories.length} categories)...` })
+    setMessage({ type: 'success', text: `Generating ${totalCount} briefings...` })
     
-    // Generate all state news + all category news concurrently
     const statePromises = memberStates.map(state => generateStateNews(state.state_name))
     const categoryPromises = enabledCategories.map(cat => generateCategoryBriefing(cat.id))
     
@@ -510,6 +516,10 @@ export default function AdminNewsPage() {
   }
 
   async function previewVoice(voiceId: string) {
+    if (!voiceId) {
+      setMessage({ type: 'error', text: 'Please select a voice first' })
+      return
+    }
     try {
       const response = await fetch('/api/admin/preview-voice', {
         method: 'POST',
@@ -528,36 +538,56 @@ export default function AdminNewsPage() {
     }
   }
 
-  function formatLastGenerated(dateStr: string | null) {
-    if (!dateStr) return 'Never'
+  function formatTimestamp(dateStr: string | null) {
+    if (!dateStr) return null
     const date = new Date(dateStr)
-    return date.toLocaleString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
-    })
+    return {
+      date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      time: date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+    }
   }
 
   function getColorClasses(color: string) {
-    const colors: Record<string, { bg: string; border: string; text: string }> = {
-      red: { bg: 'from-red-500/20 to-red-600/10', border: 'border-red-500/30', text: 'text-red-400' },
-      orange: { bg: 'from-orange-500/20 to-orange-600/10', border: 'border-orange-500/30', text: 'text-orange-400' },
-      yellow: { bg: 'from-yellow-500/20 to-yellow-600/10', border: 'border-yellow-500/30', text: 'text-yellow-400' },
-      green: { bg: 'from-green-500/20 to-green-600/10', border: 'border-green-500/30', text: 'text-green-400' },
-      blue: { bg: 'from-blue-500/20 to-blue-600/10', border: 'border-blue-500/30', text: 'text-blue-400' },
-      purple: { bg: 'from-purple-500/20 to-purple-600/10', border: 'border-purple-500/30', text: 'text-purple-400' },
+    const colors: Record<string, { bg: string; border: string }> = {
+      red: { bg: 'from-red-500/20 to-red-600/10', border: 'border-red-500/30' },
+      orange: { bg: 'from-orange-500/20 to-orange-600/10', border: 'border-orange-500/30' },
+      yellow: { bg: 'from-yellow-500/20 to-yellow-600/10', border: 'border-yellow-500/30' },
+      green: { bg: 'from-green-500/20 to-green-600/10', border: 'border-green-500/30' },
+      blue: { bg: 'from-blue-500/20 to-blue-600/10', border: 'border-blue-500/30' },
+      purple: { bg: 'from-purple-500/20 to-purple-600/10', border: 'border-purple-500/30' },
     }
     return colors[color] || colors.blue
+  }
+
+  // Big obvious spinner component
+  function GeneratingSpinner({ label }: { label: string }) {
+    return (
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm rounded-xl flex flex-col items-center justify-center z-10">
+        <div className="w-16 h-16 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mb-3" />
+        <span className="text-orange-400 font-bold text-lg animate-pulse">Generating...</span>
+        <span className="text-white/60 text-sm">{label}</span>
+      </div>
+    )
+  }
+
+  // Timestamp display component
+  function TimestampDisplay({ dateStr }: { dateStr: string | null }) {
+    const ts = formatTimestamp(dateStr)
+    if (!ts) return <span className="text-white/40">Never generated</span>
+    return (
+      <div className="text-center">
+        <div className="text-green-400 font-bold text-sm">✓ Generated</div>
+        <div className="text-white text-xs">{ts.date}</div>
+        <div className="text-white/60 text-xs">{ts.time}</div>
+      </div>
+    )
   }
 
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
         <div className="text-center">
-          <div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <div className="w-16 h-16 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
           <p className="text-slate-400">Loading news settings...</p>
         </div>
       </div>
@@ -571,7 +601,7 @@ export default function AdminNewsPage() {
   return (
     <div className="min-h-screen bg-slate-950 text-white pb-8">
       {/* Header */}
-      <div className="bg-slate-900 border-b border-slate-800 px-4 py-3 sticky top-0 z-10">
+      <div className="bg-slate-900 border-b border-slate-800 px-4 py-3 sticky top-0 z-20">
         <div className="flex items-center justify-between max-w-4xl mx-auto">
           <div className="flex items-center gap-3">
             <Link href="/admin" className="text-slate-400 hover:text-white">
@@ -579,26 +609,24 @@ export default function AdminNewsPage() {
             </Link>
             <h1 className="text-xl font-bold">📰 News Briefings</h1>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={generateAllBriefings}
-              disabled={isAnyGenerating || totalGenerateCount === 0}
-              className={`px-4 py-2 rounded-lg font-bold text-sm transition ${
-                isAnyGenerating
-                  ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
-                  : 'bg-orange-500 hover:bg-orange-400 text-black'
-              }`}
-            >
-              {isAnyGenerating ? (
-                <span className="flex items-center gap-2">
-                  <span className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
-                  Generating {generating.size}...
-                </span>
-              ) : (
-                `⚡ Generate All (${totalGenerateCount})`
-              )}
-            </button>
-          </div>
+          <button
+            onClick={generateAllBriefings}
+            disabled={isAnyGenerating || totalGenerateCount === 0}
+            className={`px-4 py-2 rounded-lg font-bold text-sm transition ${
+              isAnyGenerating
+                ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                : 'bg-orange-500 hover:bg-orange-400 text-black'
+            }`}
+          >
+            {isAnyGenerating ? (
+              <span className="flex items-center gap-2">
+                <span className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                Generating {generating.size}...
+              </span>
+            ) : (
+              `⚡ Generate All (${totalGenerateCount})`
+            )}
+          </button>
         </div>
       </div>
 
@@ -614,8 +642,16 @@ export default function AdminNewsPage() {
           </div>
         )}
 
+        {/* Voice Loading Indicator */}
+        {loadingVoices && (
+          <div className="mb-4 p-3 rounded-xl bg-blue-500/20 text-blue-400 border border-blue-500/30 text-sm flex items-center gap-2">
+            <span className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+            Loading ElevenLabs voices...
+          </div>
+        )}
+
         {/* ========== STATE NEWS SECTION ========== */}
-        <div className="bg-gradient-to-br from-red-500/20 to-red-600/10 rounded-xl p-4 mb-6 border border-red-500/30">
+        <div className="bg-gradient-to-br from-red-500/20 to-red-600/10 rounded-xl p-4 mb-6 border border-red-500/30 relative">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
               <span className="text-3xl">🏛️</span>
@@ -641,7 +677,7 @@ export default function AdminNewsPage() {
 
           {settings.state_news.enabled && (
             <>
-              {/* Voice Settings for ALL state news */}
+              {/* Voice Settings */}
               <div className="bg-black/20 rounded-lg p-3 mb-4">
                 <h3 className="text-sm font-semibold mb-2 text-white/80">Voice Settings (applies to all states)</h3>
                 <div className="grid grid-cols-2 gap-3">
@@ -653,15 +689,21 @@ export default function AdminNewsPage() {
                         onChange={(e) => updateStateNewsSetting('voice_id', e.target.value)}
                         className="flex-1 bg-black/30 border border-white/20 rounded-lg px-2 py-1.5 text-sm text-white"
                       >
-                        {AVAILABLE_VOICES.map(voice => (
-                          <option key={voice.id} value={voice.id}>
-                            {voice.name}
+                        <option value="">-- Select Voice --</option>
+                        {voices.map(voice => (
+                          <option key={voice.voice_id} value={voice.voice_id}>
+                            {voice.name} {voice.labels?.accent ? `(${voice.labels.accent})` : ''}
                           </option>
                         ))}
                       </select>
                       <button
                         onClick={() => previewVoice(settings.state_news.voice_id)}
-                        className="px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-sm"
+                        disabled={!settings.state_news.voice_id}
+                        className={`px-3 py-1.5 rounded-lg text-sm ${
+                          settings.state_news.voice_id 
+                            ? 'bg-white/20 hover:bg-white/30' 
+                            : 'bg-white/10 text-white/30 cursor-not-allowed'
+                        }`}
                       >
                         🔊
                       </button>
@@ -678,7 +720,7 @@ export default function AdminNewsPage() {
                     />
                   </div>
                 </div>
-                <p className="text-xs text-white/40 mt-2">Auto-saves when changed</p>
+                <p className="text-xs text-white/40 mt-2">✓ Auto-saves when changed</p>
               </div>
 
               {/* Member States Grid */}
@@ -690,7 +732,7 @@ export default function AdminNewsPage() {
                   <button
                     onClick={generateAllStateNews}
                     disabled={isAnyGenerating || memberStates.length === 0}
-                    className={`px-3 py-1 rounded-lg text-xs font-bold transition ${
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
                       isAnyGenerating
                         ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
                         : 'bg-red-500 hover:bg-red-400 text-white'
@@ -703,7 +745,7 @@ export default function AdminNewsPage() {
                 {memberStates.length === 0 ? (
                   <p className="text-white/40 text-sm">No members have set their state yet.</p>
                 ) : (
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {memberStates.map(state => {
                       const genKey = `state-${state.state_name}`
                       const isGeneratingThis = generating.has(genKey)
@@ -712,39 +754,38 @@ export default function AdminNewsPage() {
                       return (
                         <div 
                           key={state.state_name}
-                          className="bg-black/30 rounded-lg p-2 border border-white/10"
+                          className="bg-black/30 rounded-lg p-3 border border-white/10 relative overflow-hidden"
                         >
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="font-semibold text-sm">{state.state_name}</span>
-                            <span className="text-xs text-white/50">{state.member_count} member{state.member_count !== 1 ? 's' : ''}</span>
+                          {isGeneratingThis && <GeneratingSpinner label={state.state_name} />}
+                          
+                          <div className="flex items-start justify-between mb-2">
+                            <div>
+                              <span className="font-bold text-lg">{state.state_name}</span>
+                              <span className="text-xs text-white/50 ml-2">{state.member_count} member{state.member_count !== 1 ? 's' : ''}</span>
+                            </div>
+                            <TimestampDisplay dateStr={state.last_generated} />
                           </div>
-                          <div className="text-xs text-white/40 mb-2">
-                            Last: {formatLastGenerated(state.last_generated)}
-                          </div>
-                          <div className="flex gap-1">
+                          
+                          <div className="flex gap-2">
                             <button
                               onClick={() => generateStateNews(state.state_name)}
                               disabled={isGeneratingThis}
-                              className={`flex-1 py-1 rounded text-xs font-bold transition ${
-                                isGeneratingThis
-                                  ? 'bg-white/10 text-white/50 cursor-wait'
-                                  : 'bg-white text-black hover:bg-white/90'
-                              }`}
+                              className="flex-1 py-2 rounded-lg text-sm font-bold bg-white text-black hover:bg-white/90 transition"
                             >
-                              {isGeneratingThis ? '...' : '⚡'}
+                              ⚡ Generate
                             </button>
                             <button
                               onClick={() => togglePlay(state.audio_url, playKey)}
                               disabled={!state.audio_url}
-                              className={`px-2 py-1 rounded text-xs font-bold transition ${
+                              className={`px-4 py-2 rounded-lg text-sm font-bold transition ${
                                 playing === playKey
                                   ? 'bg-red-500 text-white'
                                   : state.audio_url
-                                    ? 'bg-green-500 text-black'
+                                    ? 'bg-green-500 text-black hover:bg-green-400'
                                     : 'bg-white/10 text-white/30 cursor-not-allowed'
                               }`}
                             >
-                              {playing === playKey ? '⏹' : '▶'}
+                              {playing === playKey ? '⏹ Stop' : '▶ Play'}
                             </button>
                           </div>
                         </div>
@@ -754,14 +795,14 @@ export default function AdminNewsPage() {
                 )}
               </div>
 
-              {/* Test State for Preview */}
+              {/* Test State */}
               <div className="bg-black/20 rounded-lg p-3 border-t border-white/10">
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-wrap">
                   <label className="text-xs text-white/60">Test/Preview State:</label>
                   <select
                     value={settings.test_state}
                     onChange={(e) => setSettings(prev => ({ ...prev, test_state: e.target.value }))}
-                    className="bg-black/30 border border-white/20 rounded-lg px-2 py-1 text-sm text-white"
+                    className="bg-black/30 border border-white/20 rounded-lg px-2 py-1.5 text-sm text-white"
                   >
                     {US_STATES.map(state => (
                       <option key={state.code} value={state.name}>{state.name}</option>
@@ -770,7 +811,7 @@ export default function AdminNewsPage() {
                   <button
                     onClick={() => generateStateNews(settings.test_state)}
                     disabled={generating.has(`state-${settings.test_state}`)}
-                    className="px-3 py-1 bg-orange-500 hover:bg-orange-400 text-black rounded-lg text-xs font-bold"
+                    className="px-4 py-1.5 bg-orange-500 hover:bg-orange-400 text-black rounded-lg text-sm font-bold"
                   >
                     Generate Test
                   </button>
@@ -790,8 +831,10 @@ export default function AdminNewsPage() {
             return (
               <div 
                 key={cat.id}
-                className={`bg-gradient-to-br ${colors.bg} rounded-xl p-4 border ${colors.border}`}
+                className={`bg-gradient-to-br ${colors.bg} rounded-xl p-4 border ${colors.border} relative overflow-hidden`}
               >
+                {isGeneratingThis && <GeneratingSpinner label={cat.name} />}
+                
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-3">
                     <span className="text-2xl">{cat.icon}</span>
@@ -825,17 +868,25 @@ export default function AdminNewsPage() {
                         <label className="text-xs text-white/80 block mb-1">Voice</label>
                         <div className="flex gap-2">
                           <select
-                            value={settings.categories[cat.id]?.voice_id || 'EXAVITQu4vr4xnSDxMaL'}
+                            value={settings.categories[cat.id]?.voice_id || ''}
                             onChange={(e) => updateCategorySetting(cat.id, 'voice_id', e.target.value)}
                             className="flex-1 bg-black/30 border border-white/20 rounded-lg px-2 py-1.5 text-sm text-white"
                           >
-                            {AVAILABLE_VOICES.map(voice => (
-                              <option key={voice.id} value={voice.id}>{voice.name}</option>
+                            <option value="">-- Select Voice --</option>
+                            {voices.map(voice => (
+                              <option key={voice.voice_id} value={voice.voice_id}>
+                                {voice.name} {voice.labels?.accent ? `(${voice.labels.accent})` : ''}
+                              </option>
                             ))}
                           </select>
                           <button
-                            onClick={() => previewVoice(settings.categories[cat.id]?.voice_id || 'EXAVITQu4vr4xnSDxMaL')}
-                            className="px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-sm"
+                            onClick={() => previewVoice(settings.categories[cat.id]?.voice_id || '')}
+                            disabled={!settings.categories[cat.id]?.voice_id}
+                            className={`px-3 py-1.5 rounded-lg text-sm ${
+                              settings.categories[cat.id]?.voice_id 
+                                ? 'bg-white/20 hover:bg-white/30' 
+                                : 'bg-white/10 text-white/30 cursor-not-allowed'
+                            }`}
                           >
                             🔊
                           </button>
@@ -853,34 +904,24 @@ export default function AdminNewsPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between bg-black/20 rounded-lg p-2 text-xs">
-                      <span className="text-white/60">Episode #{settings.categories[cat.id]?.episode_number || 1}</span>
-                      <span className="text-white/60">{formatLastGenerated(settings.categories[cat.id]?.last_generated)}</span>
+                    {/* Timestamp Display */}
+                    <div className="flex items-center justify-between bg-black/20 rounded-lg p-3">
+                      <span className="text-white/60 text-sm">Episode #{settings.categories[cat.id]?.episode_number || 1}</span>
+                      <TimestampDisplay dateStr={settings.categories[cat.id]?.last_generated || null} />
                     </div>
 
                     <div className="flex gap-2">
                       <button
                         onClick={() => generateCategoryBriefing(cat.id)}
                         disabled={isGeneratingThis}
-                        className={`flex-1 py-2 rounded-lg font-bold text-sm transition ${
-                          isGeneratingThis
-                            ? 'bg-white/20 text-white cursor-wait'
-                            : 'bg-white text-black hover:bg-white/90'
-                        }`}
+                        className="flex-1 py-2.5 rounded-lg font-bold text-sm bg-white text-black hover:bg-white/90 transition"
                       >
-                        {isGeneratingThis ? (
-                          <span className="flex items-center justify-center gap-2">
-                            <span className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
-                            Generating...
-                          </span>
-                        ) : (
-                          '⚡ Generate'
-                        )}
+                        ⚡ Generate
                       </button>
                       <button
                         onClick={() => togglePlay(settings.categories[cat.id]?.audio_url || null, cat.id)}
                         disabled={!settings.categories[cat.id]?.audio_url}
-                        className={`px-4 py-2 rounded-lg font-bold text-sm transition ${
+                        className={`px-6 py-2.5 rounded-lg font-bold text-sm transition ${
                           playing === cat.id
                             ? 'bg-red-500 text-white'
                             : settings.categories[cat.id]?.audio_url
@@ -888,7 +929,7 @@ export default function AdminNewsPage() {
                               : 'bg-white/20 text-white/50 cursor-not-allowed'
                         }`}
                       >
-                        {playing === cat.id ? '⏹ Stop' : '▶ Listen'}
+                        {playing === cat.id ? '⏹ Stop' : '▶ Play'}
                       </button>
                     </div>
                   </div>
@@ -917,7 +958,7 @@ export default function AdminNewsPage() {
           </div>
 
           {settings.auto_generate && (
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div>
                 <label className="text-sm text-slate-400 block mb-1">Morning</label>
                 <input
@@ -999,7 +1040,7 @@ export default function AdminNewsPage() {
                   +
                 </button>
               </div>
-              <span className="text-slate-500 text-sm">(2-6 stories per briefing)</span>
+              <span className="text-slate-500 text-sm">(2-6 stories)</span>
             </div>
           </div>
         </div>
