@@ -75,7 +75,7 @@ export default function AccountPage() {
   }
 
   // Get display name or fallback
-  const displayName = user.display_name || user.email.split('@')[0];
+  const displayName = user.first_name || user.email.split('@')[0];
   const initials = displayName.substring(0, 2).toUpperCase();
 
   // Format subscription type for display
