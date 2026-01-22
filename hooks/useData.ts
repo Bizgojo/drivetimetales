@@ -168,7 +168,7 @@ export function useOwnsStory(storyId: string) {
 
 // Hook to purchase a story
 export function usePurchaseStory() {
-  const { user, refreshCredits } = useAuth();
+  const { user, refreshUser } = useAuth();
   const [purchasing, setPurchasing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -205,7 +205,7 @@ export function usePurchaseStory() {
       }
 
       // Refresh user credits
-      await refreshCredits();
+      await refreshUser();
 
       return { success: true, data };
     } catch (err) {
