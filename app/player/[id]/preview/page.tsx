@@ -24,7 +24,7 @@ function PreviewContent() {
   const params = useParams()
   const router = useRouter()
   const storyId = params.id as string
-  const { user, refreshCredits } = useAuth()
+  const { user, refreshUser } = useAuth()
   
   const [story, setStory] = useState<Story | null>(null)
   const [loading, setLoading] = useState(true)
@@ -173,7 +173,7 @@ function PreviewContent() {
       
       if (libError) throw libError
       
-      await refreshCredits()
+      await refreshUser()
       localStorage.removeItem(`preview_${storyId}`)
       router.push(`/player/${storyId}/play?autoplay=true&resume=${Math.floor(currentTime)}`)
     } catch (err) {

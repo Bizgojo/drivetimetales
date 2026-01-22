@@ -7,14 +7,14 @@ import { useAuth } from '@/contexts/AuthContext'
 function PurchaseSuccessContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { refreshCredits } = useAuth()
+  const { refreshUser } = useAuth()
   
   const returnUrl = searchParams.get('returnUrl')
   const credits = searchParams.get('credits')
 
   useEffect(() => {
     // Refresh credits in auth context
-    refreshCredits()
+    refreshUser()
     
     // Redirect after a short delay to show success message
     const timer = setTimeout(() => {
@@ -27,7 +27,7 @@ function PurchaseSuccessContent() {
     }, 2000)
 
     return () => clearTimeout(timer)
-  }, [returnUrl, router, refreshCredits])
+  }, [returnUrl, router, refreshUser])
 
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center px-4">
