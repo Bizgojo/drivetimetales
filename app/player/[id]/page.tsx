@@ -37,7 +37,7 @@ function PlayerContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const storyId = params.id as string
-  const { user, refreshCredits } = useAuth()
+  const { user, refreshUser } = useAuth()
   
   const [story, setStory] = useState<Story | null>(null)
   const [loading, setLoading] = useState(true)
@@ -133,7 +133,7 @@ function PlayerContent() {
 
         if (libError) throw libError
 
-        await refreshCredits()
+        await refreshUser()
       }
 
       router.push(`/player/${storyId}/play?autoplay=true`)
@@ -188,7 +188,7 @@ function PlayerContent() {
 
         if (libError) throw libError
 
-        await refreshCredits()
+        await refreshUser()
       }
 
       const resumeTime = story.preview_end_time || Math.floor(story.duration_mins * 60 * 0.1)
