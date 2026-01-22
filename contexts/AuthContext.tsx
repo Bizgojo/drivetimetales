@@ -93,12 +93,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     
     if (!error && data.user) {
       // Insert user with BOTH first_name and display_name for compatibility
-      await supabase.from('users').insert({
+      const { error: insertError } = await supabase.from('users').insert({
         id: data.user.id,
         email: email,
         first_name: firstName,
         display_name: firstName,
-        credits: 0,
+      })
+      if (insertError) console.error("User insert failed:", insertError)        credits: 0,
         subscription_status: 'none'
       })
     }
