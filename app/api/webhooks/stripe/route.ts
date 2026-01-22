@@ -6,13 +6,22 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2023-10-16'
 })
 
-// Use service role for webhook operations
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const CREDITS_PER_MONTH = 10
+// Credit amounts for different products
+const CREDITS_MAP: Record<string, number> = {
+  // Subscriptions (monthly credits)
+  [process.env.STRIPE_PRICE_TEST_DRIVER_MONTHLY!]: 10,
+  [process.env.STRIPE_PRICE_COMMUTER_MONTHLY!]: 30,
+  [process.env.STRIPE_PRICE_ROAD_WARRIOR_MONTHLY!]: -1, // unlimited
+  // Credit packs (one-time)
+  [process.env.STRIPE_PRICE_PACK_SMALL!]: 5,
+  [process.env.STRIPE_PRICE_PACK_MEDIUM!]: 15,
+  [process.env.STRIPE_PRICE_PACK_LARGE!]: 30,
+}
 
 export async function POST(request: NextRequest) {
   const body = await request.text()
@@ -42,60 +51,93 @@ export async function POST(request: NextRequest) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session
         const userId = session.metadata?.userId || session.metadata?.user_id
-        
-        if (userId && session.subscription) {
-          // Get subscription details
+
+        if (!userId) {
+          console.error('No userId in session metadata')
+          break
+        }
+
+        // Handle subscription
+        if (session.mode === 'subscription' && session.subscription) {
           const subscription = await stripe.subscriptions.retrieve(session.subscription as string)
-          
-          // Update user with subscription info and add credits
-          const { error } = await supabase
+          const priceId = subscription.items.data[0]?.price.id
+          const credits = CREDITS_MAP[priceId] || 10
+
+          await supabase
             .from('users')
             .update({
               stripe_customer_id: session.customer as string,
               stripe_subscription_id: subscription.id,
               subscription_status: 'active',
-              credits: CREDITS_PER_MONTH,
-              subscription_period_end: new Date(subscription.current_period_end * 1000).toISOString()
+              subscription_type: getSubscriptionType(priceId),
+              credits: credits,
+              subscription_ends_at: new Date(subscription.current_period_end * 1000).toISOString()
             })
             .eq('id', userId)
 
-          if (error) {
-            console.error('Failed to update user after checkout:', error)
-          } else {
-            console.log(`User ${userId} subscribed, added ${CREDITS_PER_MONTH} credits`)
+          console.log(`User ${userId} subscribed, set ${credits} credits`)
+        }
+
+        // Handle one-time credit pack purchase
+        if (session.mode === 'payment') {
+          const lineItems = await stripe.checkout.sessions.listLineItems(session.id)
+          const priceId = lineItems.data[0]?.price?.id
+          const creditsToAdd = priceId ? (CREDITS_MAP[priceId] || 0) : 0
+
+          if (creditsToAdd > 0) {
+            // Get current credits first
+            const { data: user } = await supabase
+              .from('users')
+              .select('credits')
+              .eq('id', userId)
+              .single()
+
+            const currentCredits = user?.credits || 0
+            // Don't add to unlimited (-1)
+            const newCredits = currentCredits === -1 ? -1 : currentCredits + creditsToAdd
+
+            await supabase
+              .from('users')
+              .update({
+                credits: newCredits,
+                stripe_customer_id: session.customer as string
+              })
+              .eq('id', userId)
+
+            console.log(`User ${userId} bought ${creditsToAdd} credits, now has ${newCredits}`)
           }
         }
         break
       }
 
       case 'invoice.paid': {
-        // Monthly renewal - add credits
         const invoice = event.data.object as Stripe.Invoice
         const subscriptionId = invoice.subscription as string
-        
+
         if (subscriptionId && invoice.billing_reason === 'subscription_cycle') {
-          // Find user by subscription ID
-          const { data: user, error: findError } = await supabase
+          const { data: user } = await supabase
             .from('users')
-            .select('id, credits')
+            .select('id, credits, subscription_type')
             .eq('stripe_subscription_id', subscriptionId)
             .single()
 
-          if (user && !findError) {
-            // Add monthly credits
-            const { error } = await supabase
+          if (user) {
+            const subscription = await stripe.subscriptions.retrieve(subscriptionId)
+            const priceId = subscription.items.data[0]?.price.id
+            const monthlyCredits = CREDITS_MAP[priceId] || 10
+
+            // For unlimited, keep -1. Otherwise add monthly credits
+            const newCredits = user.credits === -1 ? -1 : (user.credits || 0) + monthlyCredits
+
+            await supabase
               .from('users')
               .update({
-                credits: (user.credits || 0) + CREDITS_PER_MONTH,
+                credits: newCredits,
                 subscription_status: 'active'
               })
               .eq('id', user.id)
 
-            if (error) {
-              console.error('Failed to add renewal credits:', error)
-            } else {
-              console.log(`User ${user.id} renewed, added ${CREDITS_PER_MONTH} credits`)
-            }
+            console.log(`User ${user.id} renewed, added ${monthlyCredits} credits`)
           }
         }
         break
@@ -103,8 +145,7 @@ export async function POST(request: NextRequest) {
 
       case 'customer.subscription.updated': {
         const subscription = event.data.object as Stripe.Subscription
-        
-        // Find user by subscription ID
+
         const { data: user } = await supabase
           .from('users')
           .select('id')
@@ -112,27 +153,26 @@ export async function POST(request: NextRequest) {
           .single()
 
         if (user) {
-          const status = subscription.status === 'active' || subscription.status === 'trialing' 
-            ? 'active' 
+          const status = subscription.status === 'active' || subscription.status === 'trialing'
+            ? 'active'
             : subscription.status
 
           await supabase
             .from('users')
             .update({
               subscription_status: status,
-              subscription_period_end: new Date(subscription.current_period_end * 1000).toISOString()
+              subscription_ends_at: new Date(subscription.current_period_end * 1000).toISOString()
             })
             .eq('id', user.id)
 
-          console.log(`User ${user.id} subscription updated to: ${status}`)
+          console.log(`User ${user.id} subscription updated: ${status}`)
         }
         break
       }
 
       case 'customer.subscription.deleted': {
         const subscription = event.data.object as Stripe.Subscription
-        
-        // Find user by subscription ID
+
         const { data: user } = await supabase
           .from('users')
           .select('id')
@@ -144,7 +184,8 @@ export async function POST(request: NextRequest) {
             .from('users')
             .update({
               subscription_status: 'canceled',
-              stripe_subscription_id: null
+              stripe_subscription_id: null,
+              subscription_type: null
             })
             .eq('id', user.id)
 
@@ -154,12 +195,19 @@ export async function POST(request: NextRequest) {
       }
 
       default:
-        console.log(`Unhandled event type: ${event.type}`)
+        console.log(`Unhandled event: ${event.type}`)
     }
 
     return NextResponse.json({ received: true })
   } catch (error) {
     console.error('Webhook processing error:', error)
-    return NextResponse.json({ error: 'Webhook processing failed' }, { status: 500 })
+    return NextResponse.json({ error: 'Webhook failed' }, { status: 500 })
   }
+}
+
+function getSubscriptionType(priceId: string): string {
+  if (priceId === process.env.STRIPE_PRICE_TEST_DRIVER_MONTHLY) return 'test_driver'
+  if (priceId === process.env.STRIPE_PRICE_COMMUTER_MONTHLY) return 'commuter'
+  if (priceId === process.env.STRIPE_PRICE_ROAD_WARRIOR_MONTHLY) return 'road_warrior'
+  return 'test_driver'
 }
