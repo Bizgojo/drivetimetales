@@ -65,7 +65,7 @@ function LibraryContent() {
   }, [])
 
   useEffect(() => {
-    async function fetchData() {
+    async function fetchData() { console.log("Library: fetchData called, user=", user);
       const { data: storiesData } = await supabase.from('stories').select('id, title, genre, author, duration_mins, cover_url, series_name, series_number, series_total').not('cover_url', 'is', null).order('published_on', { ascending: false })
       if (storiesData) setStories(storiesData)
       if (user?.id) { console.log("Library: fetching user", user.id);
