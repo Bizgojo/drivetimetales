@@ -1,68 +1,67 @@
-import { createClient } from '@supabase/supabase-js'
-import { NextResponse } from 'next/server'
-import type { NextRequest } from 'next/server'
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@supabase/supabase-js';
+import { cookies } from 'next/headers';
+import { NextRequest, NextResponse } from 'next/server';
+
+// Admin client for creating user profiles
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
 export async function GET(request: NextRequest) {
-  const requestUrl = new URL(request.url)
-  const code = requestUrl.searchParams.get('code')
-  const next = requestUrl.searchParams.get('next') || '/home'
-  const error = requestUrl.searchParams.get('error')
+  const requestUrl = new URL(request.url);
+  const code = requestUrl.searchParams.get('code');
+  const type = requestUrl.searchParams.get('type');
+  const next = requestUrl.searchParams.get('next');
 
-  // If there's an error, redirect to signin
-  if (error) {
-    return NextResponse.redirect(new URL('/signin?error=auth_failed', requestUrl.origin))
-  }
+  const supabase = createRouteHandlerClient({ cookies });
 
-  // If there's a code, exchange it for a session
   if (code) {
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    )
-    
     try {
-      const { data, error: authError } = await supabase.auth.exchangeCodeForSession(code)
+      const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
       
-      if (authError) {
-        console.error('Auth error:', authError)
-        return NextResponse.redirect(new URL('/signin?error=auth_failed', requestUrl.origin))
+      if (exchangeError) {
+        console.error('Code exchange error:', exchangeError);
+        return NextResponse.redirect(new URL('/signin?error=auth_failed', requestUrl.origin));
       }
-      
+
+      // PASSWORD RECOVERY: redirect to reset-password page
+      if (type === 'recovery' || next === '/reset-password') {
+        return NextResponse.redirect(new URL('/reset-password', requestUrl.origin));
+      }
+
+      // OAUTH: Check if new user needs profile created
       if (data.user) {
-        // Use service role for database operations
-        const supabaseAdmin = createClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.SUPABASE_SERVICE_ROLE_KEY!
-        )
-        
-        // Check if user profile exists
         const { data: existingUser } = await supabaseAdmin
           .from('users')
           .select('id')
           .eq('id', data.user.id)
-          .single()
-        
+          .single();
+
         if (!existingUser) {
-          // Create user profile for OAuth user
+          // Create user profile for OAuth user with 3 free credits
           await supabaseAdmin.from('users').insert({
             id: data.user.id,
             email: data.user.email,
             display_name: data.user.user_metadata?.full_name || data.user.user_metadata?.name || data.user.email?.split('@')[0],
-            credits: 3, // Give new OAuth users 3 free credits
+            credits: 3,
             subscription_type: null,
             created_at: new Date().toISOString()
-          })
+          });
+          console.log('Created user profile for OAuth user:', data.user.id);
         }
       }
-      
+
       // Redirect to home after successful OAuth
-      return NextResponse.redirect(new URL('/home', requestUrl.origin))
+      return NextResponse.redirect(new URL('/home', requestUrl.origin));
+
     } catch (err) {
-      console.error('Callback error:', err)
-      return NextResponse.redirect(new URL('/signin?error=auth_failed', requestUrl.origin))
+      console.error('Callback error:', err);
+      return NextResponse.redirect(new URL('/signin?error=auth_failed', requestUrl.origin));
     }
   }
 
   // No code, redirect to signin
-  return NextResponse.redirect(new URL('/signin?error=auth_failed', requestUrl.origin))
+  return NextResponse.redirect(new URL('/signin?error=auth_failed', requestUrl.origin));
 }
