@@ -1,686 +1,397 @@
-'use client'
+'use client';
 
-import { useState, useEffect, useRef } from 'react'
-import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import React, { useState, useEffect, useRef } from 'react';
+import { supabase } from '@/lib/supabase';
 
-// US States for dropdown
-const US_STATES = [
-  { code: 'AL', name: 'Alabama' }, { code: 'AK', name: 'Alaska' }, { code: 'AZ', name: 'Arizona' },
-  { code: 'AR', name: 'Arkansas' }, { code: 'CA', name: 'California' }, { code: 'CO', name: 'Colorado' },
-  { code: 'CT', name: 'Connecticut' }, { code: 'DE', name: 'Delaware' }, { code: 'FL', name: 'Florida' },
-  { code: 'GA', name: 'Georgia' }, { code: 'HI', name: 'Hawaii' }, { code: 'ID', name: 'Idaho' },
-  { code: 'IL', name: 'Illinois' }, { code: 'IN', name: 'Indiana' }, { code: 'IA', name: 'Iowa' },
-  { code: 'KS', name: 'Kansas' }, { code: 'KY', name: 'Kentucky' }, { code: 'LA', name: 'Louisiana' },
-  { code: 'ME', name: 'Maine' }, { code: 'MD', name: 'Maryland' }, { code: 'MA', name: 'Massachusetts' },
-  { code: 'MI', name: 'Michigan' }, { code: 'MN', name: 'Minnesota' }, { code: 'MS', name: 'Mississippi' },
-  { code: 'MO', name: 'Missouri' }, { code: 'MT', name: 'Montana' }, { code: 'NE', name: 'Nebraska' },
-  { code: 'NV', name: 'Nevada' }, { code: 'NH', name: 'New Hampshire' }, { code: 'NJ', name: 'New Jersey' },
-  { code: 'NM', name: 'New Mexico' }, { code: 'NY', name: 'New York' }, { code: 'NC', name: 'North Carolina' },
-  { code: 'ND', name: 'North Dakota' }, { code: 'OH', name: 'Ohio' }, { code: 'OK', name: 'Oklahoma' },
-  { code: 'OR', name: 'Oregon' }, { code: 'PA', name: 'Pennsylvania' }, { code: 'RI', name: 'Rhode Island' },
-  { code: 'SC', name: 'South Carolina' }, { code: 'SD', name: 'South Dakota' }, { code: 'TN', name: 'Tennessee' },
-  { code: 'TX', name: 'Texas' }, { code: 'UT', name: 'Utah' }, { code: 'VT', name: 'Vermont' },
-  { code: 'VA', name: 'Virginia' }, { code: 'WA', name: 'Washington' }, { code: 'WV', name: 'West Virginia' },
-  { code: 'WI', name: 'Wisconsin' }, { code: 'WY', name: 'Wyoming' }
-]
+// ============================================================================
+// TYPES
+// ============================================================================
 
-// Available ElevenLabs voices for narrator selection
-const AVAILABLE_VOICES = [
-  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah (Female)', description: 'Warm, professional' },
-  { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel (Female)', description: 'Clear, articulate' },
-  { id: 'AZnzlk1XvdvUeBnXmlld', name: 'Domi (Female)', description: 'Strong, confident' },
-  { id: 'ErXwobaYiN019PkySvjV', name: 'Antoni (Male)', description: 'Warm, friendly' },
-  { id: 'VR6AewLTigWG4xSOukaG', name: 'Arnold (Male)', description: 'Deep, authoritative' },
-  { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam (Male)', description: 'Clear, professional' },
-  { id: 'yoZ06aMxZJJ28mfd3POQ', name: 'Sam (Male)', description: 'Casual, engaging' },
-]
-
-// News categories - State News first, then others in order
-const NEWS_CATEGORIES = [
-  {
-    id: 'state',
-    name: 'State News',
-    icon: '🏛️',
-    color: 'red',
-    description: 'Weather, Political, Crime, Sports, Business news for your state'
-  },
-  {
-    id: 'national',
-    name: 'National News',
-    icon: '🇺🇸',
-    color: 'orange',
-    description: 'Top US news stories'
-  },
-  {
-    id: 'international',
-    name: 'International News',
-    icon: '🌍',
-    color: 'yellow',
-    description: 'World news and global events'
-  },
-  {
-    id: 'business',
-    name: 'Business & Finance',
-    icon: '💼',
-    color: 'green',
-    description: 'Markets, economy, business news'
-  },
-  {
-    id: 'sports',
-    name: 'Sports',
-    icon: '⚽',
-    color: 'blue',
-    description: 'Sports scores and highlights'
-  },
-  {
-    id: 'science',
-    name: 'Science & Technology',
-    icon: '🔬',
-    color: 'purple',
-    description: 'Tech news and scientific discoveries'
-  },
-]
-
-interface CategorySettings {
-  enabled: boolean
-  voice_id: string
-  narrator_name: string
-  last_generated: string | null
-  episode_number: number
-  audio_url: string | null
+interface Voice {
+  voice_id: string;
+  name: string;
+  preview_url?: string;
+  labels?: { accent?: string; gender?: string };
 }
 
-interface NewsSettings {
-  categories: Record<string, CategorySettings>
-  test_state: string
-  generation_times: string[]
-  auto_generate: boolean
-  stories_per_category: number
-  timezone: string
+interface Category {
+  id: string;
+  label: string;
+  voiceId: string;
+  narratorName: string;
+  lastGenerated: string | null;
+  episodeNumber: number;
+  audioUrl: string | null;
+  isGenerating: boolean;
 }
 
-export default function AdminNewsPage() {
-  const router = useRouter()
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [generating, setGenerating] = useState<string | null>(null)
-  const [playing, setPlaying] = useState<string | null>(null)
-  const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
-  const audioRef = useRef<HTMLAudioElement | null>(null)
-  
-  const [settings, setSettings] = useState<NewsSettings>({
-    categories: {},
-    test_state: 'TN',
-    generation_times: ['06:00', '12:00', '18:00'],
-    auto_generate: true,
-    stories_per_category: 5,
-    timezone: 'America/New_York'
-  })
+interface ScheduleSlot {
+  id: string;
+  label: string;
+  time: string;
+  enabled: boolean;
+}
 
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
+const INITIAL_CATEGORIES: Category[] = [
+  { id: 'local', label: 'Local News & Weather', voiceId: '', narratorName: '', lastGenerated: null, episodeNumber: 0, audioUrl: null, isGenerating: false },
+  { id: 'national', label: 'National News', voiceId: '', narratorName: '', lastGenerated: null, episodeNumber: 0, audioUrl: null, isGenerating: false },
+  { id: 'international', label: 'International News', voiceId: '', narratorName: '', lastGenerated: null, episodeNumber: 0, audioUrl: null, isGenerating: false },
+  { id: 'business', label: 'Business & Finance', voiceId: '', narratorName: '', lastGenerated: null, episodeNumber: 0, audioUrl: null, isGenerating: false },
+  { id: 'sports', label: 'Sports', voiceId: '', narratorName: '', lastGenerated: null, episodeNumber: 0, audioUrl: null, isGenerating: false },
+  { id: 'science', label: 'Science & Technology', voiceId: '', narratorName: '', lastGenerated: null, episodeNumber: 0, audioUrl: null, isGenerating: false },
+];
+
+const INITIAL_SCHEDULE: ScheduleSlot[] = [
+  { id: 'morning', label: 'Morning', time: '06:00', enabled: true },
+  { id: 'noon', label: 'Noon', time: '12:00', enabled: true },
+  { id: 'evening', label: 'Evening', time: '18:00', enabled: true },
+];
+
+// ============================================================================
+// COMPONENT
+// ============================================================================
+
+export default function NewsBriefingsPage() {
+  const [categories, setCategories] = useState<Category[]>(INITIAL_CATEGORIES);
+  const [voices, setVoices] = useState<Voice[]>([]);
+  const [testZipCode, setTestZipCode] = useState('');
+  const [automate, setAutomate] = useState(false);
+  const [schedule, setSchedule] = useState<ScheduleSlot[]>(INITIAL_SCHEDULE);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [previewingVoice, setPreviewingVoice] = useState<string | null>(null);
+  const [playingAudio, setPlayingAudio] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Load data on mount
   useEffect(() => {
-    const timeout = setTimeout(() => {
-      setSettings(prev => ({
-        ...prev,
-        categories: initializeCategories()
-      }))
-      setLoading(false)
-    }, 5000)
+    loadVoices();
+    loadSettings();
+  }, []);
 
-    loadSettings().finally(() => clearTimeout(timeout))
-    
-    return () => clearTimeout(timeout)
-  }, [])
-
-  // Cleanup audio on unmount
+  // Auto-dismiss messages
   useEffect(() => {
-    return () => {
-      if (audioRef.current) {
-        audioRef.current.pause()
-        audioRef.current = null
-      }
+    if (message) {
+      const timer = setTimeout(() => setMessage(null), 5000);
+      return () => clearTimeout(timer);
     }
-  }, [])
+  }, [message]);
+
+  // ============================================================================
+  // API FUNCTIONS
+  // ============================================================================
+
+  async function loadVoices() {
+    try {
+      const res = await fetch('/api/admin/elevenlabs-voices');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.voices?.length > 0) setVoices(data.voices);
+      }
+    } catch (e) {
+      console.error('Failed to load voices:', e);
+    }
+  }
 
   async function loadSettings() {
     try {
-      const { data, error } = await supabase
-        .from('news_settings')
-        .select('*')
-        .eq('id', 1)
-        .single()
-
-      if (data) {
-        const defaultCats = initializeCategories()
-        const mergedCategories: Record<string, CategorySettings> = {}
-        
-        Object.keys(defaultCats).forEach(catId => {
-          const dbCat = data.categories?.[catId] || {}
-          mergedCategories[catId] = {
-            enabled: dbCat.enabled ?? defaultCats[catId].enabled,
-            voice_id: dbCat.voice_id || 'EXAVITQu4vr4xnSDxMaL',
-            narrator_name: dbCat.narrator_name || '',
-            last_generated: dbCat.last_generated || null,
-            episode_number: dbCat.episode_number || 1,
-            audio_url: dbCat.audio_url || null
-          }
-        })
-        
-        setSettings({
-          categories: mergedCategories,
-          test_state: data.test_state || 'TN',
-          generation_times: data.generation_times || ['06:00', '12:00', '18:00'],
-          auto_generate: data.auto_generate ?? true,
-          stories_per_category: data.stories_per_category || 5,
-          timezone: data.timezone || 'America/New_York'
-        })
-      } else {
-        setSettings(prev => ({
-          ...prev,
-          categories: initializeCategories()
-        }))
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setLoading(false); return; }
+      const { data } = await supabase.from('news_settings').select('*').eq('user_id', user.id).single();
+      if (data?.settings) {
+        setCategories(data.settings.categories || INITIAL_CATEGORIES);
+        setTestZipCode(data.settings.testZipCode || '');
+        setAutomate(data.settings.automate || false);
+        setSchedule(data.settings.schedule || INITIAL_SCHEDULE);
       }
-    } catch (error) {
-      console.error('Error loading settings:', error)
-      setSettings(prev => ({
-        ...prev,
-        categories: initializeCategories()
-      }))
+    } catch (e) {
+      console.error('Failed to load settings:', e);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
-  function initializeCategories(): Record<string, CategorySettings> {
-    const cats: Record<string, CategorySettings> = {}
-    NEWS_CATEGORIES.forEach(cat => {
-      cats[cat.id] = {
-        enabled: true,
-        voice_id: 'EXAVITQu4vr4xnSDxMaL',
-        narrator_name: '',
-        last_generated: null,
-        episode_number: 1,
-        audio_url: null
-      }
-    })
-    return cats
-  }
-
   async function saveSettings() {
-    setSaving(true)
-    setMessage(null)
-    
+    setSaving(true);
     try {
-      const { error } = await supabase
-        .from('news_settings')
-        .upsert({
-          id: 1,
-          categories: settings.categories,
-          test_state: settings.test_state,
-          generation_times: settings.generation_times,
-          auto_generate: settings.auto_generate,
-          stories_per_category: settings.stories_per_category,
-          timezone: settings.timezone,
-          updated_at: new Date().toISOString()
-        })
-
-      if (error) throw error
-      setMessage({ type: 'success', text: 'Settings saved successfully!' })
-    } catch (error) {
-      console.error('Error saving settings:', error)
-      setMessage({ type: 'error', text: 'Failed to save settings' })
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+      await supabase.from('news_settings').upsert({
+        user_id: user.id,
+        settings: { categories, testZipCode, automate, schedule },
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'user_id' });
+      setMessage({ type: 'success', text: 'Settings saved!' });
+    } catch (e) {
+      setMessage({ type: 'error', text: 'Failed to save settings' });
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
   }
 
   async function generateBriefing(categoryId: string) {
-    setGenerating(categoryId)
-    setMessage(null)
-    
+    setCategories(prev => prev.map(c => c.id === categoryId ? { ...c, isGenerating: true } : c));
     try {
-      const catSettings = settings.categories[categoryId]
-      const stateName = categoryId === 'state' 
-        ? US_STATES.find(s => s.code === settings.test_state)?.name || settings.test_state
-        : null
-
-      const response = await fetch('/api/admin/generate-news', {
+      const cat = categories.find(c => c.id === categoryId);
+      if (!cat) throw new Error('Category not found');
+      const res = await fetch('/api/admin/generate-news', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          category: categoryId,
-          voiceId: catSettings?.voice_id || 'EXAVITQu4vr4xnSDxMaL',
-          narratorName: catSettings?.narrator_name || '',
-          state: stateName,
-          storiesCount: settings.stories_per_category
-        })
-      })
-
-      const result = await response.json()
-      
-      if (!response.ok) {
-        throw new Error(result.error || 'Generation failed')
+          categoryId,
+          voiceId: cat.voiceId,
+          narratorName: cat.narratorName,
+          zipCode: categoryId === 'local' ? testZipCode : undefined,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setCategories(prev => prev.map(c => c.id === categoryId ? {
+          ...c,
+          isGenerating: false,
+          lastGenerated: new Date().toISOString(),
+          episodeNumber: data.episodeNumber || c.episodeNumber + 1,
+          audioUrl: data.audioUrl,
+        } : c));
+        setMessage({ type: 'success', text: `${cat.label} generated!` });
+      } else {
+        throw new Error(data.error || 'Generation failed');
       }
-
-      // Update local state with new episode info
-      setSettings(prev => ({
-        ...prev,
-        categories: {
-          ...prev.categories,
-          [categoryId]: {
-            ...prev.categories[categoryId],
-            last_generated: new Date().toISOString(),
-            episode_number: (prev.categories[categoryId]?.episode_number || 0) + 1,
-            audio_url: result.episode?.audioUrl || null
-          }
-        }
-      }))
-
-      setMessage({ type: 'success', text: `${NEWS_CATEGORIES.find(c => c.id === categoryId)?.name} briefing generated!` })
-    } catch (error) {
-      console.error('Generation error:', error)
-      setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Generation failed' })
-    } finally {
-      setGenerating(null)
+    } catch (e) {
+      setMessage({ type: 'error', text: `Failed: ${e}` });
+      setCategories(prev => prev.map(c => c.id === categoryId ? { ...c, isGenerating: false } : c));
     }
   }
 
-  function togglePlay(categoryId: string) {
-    const audioUrl = settings.categories[categoryId]?.audio_url
+  // ============================================================================
+  // AUDIO FUNCTIONS
+  // ============================================================================
+
+  function previewVoice(voice: Voice) {
+    if (previewingVoice === voice.voice_id) {
+      if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+      setPreviewingVoice(null);
+      return;
+    }
+    setPreviewingVoice(voice.voice_id);
+    setPlayingAudio(null);
+    if (voice.preview_url) {
+      const audio = new Audio(voice.preview_url);
+      audioRef.current = audio;
+      audio.onended = () => setPreviewingVoice(null);
+      audio.play();
+    }
+  }
+
+  function togglePlayBriefing(categoryId: string, audioUrl: string | null) {
+    if (!audioUrl) return;
     
-    if (!audioUrl) {
-      setMessage({ type: 'error', text: 'No audio available. Generate a briefing first.' })
-      return
+    // If already playing this one, stop it
+    if (playingAudio === categoryId) {
+      if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+      setPlayingAudio(null);
+      return;
     }
-
-    if (playing === categoryId) {
-      // Stop playing
-      if (audioRef.current) {
-        audioRef.current.pause()
-        audioRef.current = null
-      }
-      setPlaying(null)
-    } else {
-      // Stop any current audio
-      if (audioRef.current) {
-        audioRef.current.pause()
-      }
-      
-      // Start playing new audio
-      const audio = new Audio(audioUrl + '?t=' + Date.now()) // Cache bust
-      audio.onended = () => setPlaying(null)
-      audio.onerror = () => {
-        setMessage({ type: 'error', text: 'Failed to play audio' })
-        setPlaying(null)
-      }
-      audio.play()
-      audioRef.current = audio
-      setPlaying(categoryId)
-    }
+    
+    // Stop any current audio
+    if (audioRef.current) { audioRef.current.pause(); }
+    setPreviewingVoice(null);
+    
+    // Play new audio
+    const audio = new Audio(audioUrl);
+    audioRef.current = audio;
+    audio.onended = () => setPlayingAudio(null);
+    audio.play();
+    setPlayingAudio(categoryId);
   }
 
-  async function previewVoice(voiceId: string) {
-    try {
-      const response = await fetch('/api/admin/preview-voice', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ voiceId, text: 'Hello, this is a voice preview for Drive Time Tales news briefings.' })
-      })
-      
-      if (!response.ok) throw new Error('Preview failed')
-      
-      const audioBlob = await response.blob()
-      const audioUrl = URL.createObjectURL(audioBlob)
-      const audio = new Audio(audioUrl)
-      audio.play()
-    } catch (error) {
-      setMessage({ type: 'error', text: 'Voice preview failed' })
-    }
+  // ============================================================================
+  // HELPER FUNCTIONS
+  // ============================================================================
+
+  function updateCategory(id: string, updates: Partial<Category>) {
+    setCategories(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
   }
 
-  function formatLastGenerated(dateStr: string | null) {
-    if (!dateStr) return 'Never'
-    const date = new Date(dateStr)
-    return date.toLocaleString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
-    })
+  function updateSchedule(id: string, updates: Partial<ScheduleSlot>) {
+    setSchedule(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
   }
 
-  function getCategoryColor(color: string) {
-    const colors: Record<string, string> = {
-      red: 'from-red-600 to-red-800 border-red-500',
-      orange: 'from-orange-600 to-orange-800 border-orange-500',
-      yellow: 'from-yellow-600 to-yellow-800 border-yellow-500',
-      green: 'from-green-600 to-green-800 border-green-500',
-      blue: 'from-blue-600 to-blue-800 border-blue-500',
-      purple: 'from-purple-600 to-purple-800 border-purple-500'
-    }
-    return colors[color] || colors.blue
+  function formatTime(iso: string | null): string {
+    if (!iso) return 'Never';
+    return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
   }
+
+  // ============================================================================
+  // RENDER
+  // ============================================================================
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
-      </div>
-    )
+    return <div className="min-h-screen bg-slate-950 flex items-center justify-center"><p className="text-white text-xl">Loading...</p></div>;
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white p-6">
-      <div className="max-w-6xl mx-auto">
+    <div className="min-h-screen bg-slate-950 p-6">
+      <div className="max-w-5xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold">📰 News Briefings Admin</h1>
-            <p className="text-slate-400 text-sm">Configure and generate news briefings for each category</p>
-          </div>
-          <Link href="/admin" className="text-orange-400 hover:text-orange-300">
-            ← Back to Admin
-          </Link>
+          <h1 className="text-2xl font-bold text-white">News Briefing Dashboard</h1>
+          <button onClick={saveSettings} disabled={saving} className="px-5 py-2 bg-orange-500 hover:bg-orange-600 disabled:bg-orange-500/50 text-black font-semibold rounded-lg">
+            {saving ? 'Saving...' : 'Save Settings'}
+          </button>
         </div>
 
-        {/* Message */}
+        {/* Status Message */}
         {message && (
-          <div className={`mb-4 p-3 rounded-lg ${
-            message.type === 'success' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
-          }`}>
+          <div className={`mb-4 p-3 rounded-lg ${message.type === 'success' ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
             {message.text}
           </div>
         )}
 
-        {/* Test State Selector (for State News) */}
-        <div className="bg-slate-900 rounded-xl p-4 mb-6 border border-slate-800">
-          <h2 className="text-lg font-bold mb-3">🏛️ State News Configuration</h2>
-          <div className="flex items-center gap-4">
-            <label className="text-sm text-slate-400">Test State:</label>
-            <select
-              value={settings.test_state}
-              onChange={(e) => setSettings(prev => ({ ...prev, test_state: e.target.value }))}
-              className="bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white"
-            >
-              {US_STATES.map(state => (
-                <option key={state.code} value={state.code}>
-                  {state.name}
-                </option>
-              ))}
-            </select>
-            <span className="text-slate-500 text-sm">
-              State news will cover Weather, Political, Crime, Sports & Business for this state
-            </span>
-          </div>
-        </div>
+        {/* Category Grid - 2 wide x 3 deep */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-8">
+          {categories.map(cat => (
+            <div key={cat.id} className="bg-slate-900 border border-slate-700 rounded-xl p-5">
+              {/* a. Category Label */}
+              <h2 className="text-lg font-bold text-white mb-1">{cat.label}</h2>
+              
+              {/* b. Last Updated */}
+              <p className="text-sm text-slate-400 mb-4">Last Updated: {formatTime(cat.lastGenerated)}</p>
 
-        {/* News Categories Grid - 3x2 */}
-        <div className="grid grid-cols-3 gap-4 mb-6">
-          {NEWS_CATEGORIES.map(cat => (
-            <div 
-              key={cat.id}
-              className={`bg-gradient-to-br ${getCategoryColor(cat.color)} rounded-xl p-4 border-2`}
-            >
-              {/* Category Header */}
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl">{cat.icon}</span>
-                  <div>
-                    <h3 className="font-bold">
-                      {cat.id === 'state' 
-                        ? `${US_STATES.find(s => s.code === settings.test_state)?.name || 'State'} News`
-                        : cat.name
-                      }
-                    </h3>
-                    <p className="text-xs text-white/70">{cat.description}</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setSettings(prev => ({
-                    ...prev,
-                    categories: {
-                      ...prev.categories,
-                      [cat.id]: {
-                        ...prev.categories[cat.id],
-                        enabled: !prev.categories[cat.id]?.enabled
-                      }
-                    }
-                  }))}
-                  className={`w-12 h-6 rounded-full transition relative ${
-                    settings.categories[cat.id]?.enabled ? 'bg-green-500' : 'bg-slate-600'
-                  }`}
-                >
-                  <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${
-                    settings.categories[cat.id]?.enabled ? 'left-7' : 'left-1'
-                  }`} />
-                </button>
-              </div>
-
-              {settings.categories[cat.id]?.enabled && (
-                <div className="space-y-3">
-                  {/* Narrator Voice */}
-                  <div>
-                    <label className="text-xs text-white/80 block mb-1">Narrator Voice</label>
-                    <div className="flex gap-2">
-                      <select
-                        value={settings.categories[cat.id]?.voice_id || 'EXAVITQu4vr4xnSDxMaL'}
-                        onChange={(e) => setSettings(prev => ({
-                          ...prev,
-                          categories: {
-                            ...prev.categories,
-                            [cat.id]: { ...prev.categories[cat.id], voice_id: e.target.value }
-                          }
-                        }))}
-                        className="flex-1 bg-black/30 border border-white/20 rounded-lg px-2 py-1.5 text-sm text-white"
-                      >
-                        {AVAILABLE_VOICES.map(voice => (
-                          <option key={voice.id} value={voice.id}>
-                            {voice.name}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        onClick={() => previewVoice(settings.categories[cat.id]?.voice_id || 'EXAVITQu4vr4xnSDxMaL')}
-                        className="px-2 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-sm"
-                        title="Preview Voice"
-                      >
-                        🔊
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Narrator Name */}
-                  <div>
-                    <label className="text-xs text-white/80 block mb-1">Narrator's Name (optional)</label>
-                    <input
-                      type="text"
-                      value={settings.categories[cat.id]?.narrator_name || ''}
-                      onChange={(e) => setSettings(prev => ({
-                        ...prev,
-                        categories: {
-                          ...prev.categories,
-                          [cat.id]: { ...prev.categories[cat.id], narrator_name: e.target.value }
-                        }
-                      }))}
-                      placeholder="e.g., Sarah"
-                      className="w-full bg-black/30 border border-white/20 rounded-lg px-2 py-1.5 text-sm text-white placeholder-white/40"
-                    />
-                  </div>
-
-                  {/* Episode Info */}
-                  <div className="bg-black/20 rounded-lg p-2 text-xs">
-                    <div className="flex justify-between">
-                      <span className="text-white/60">Episode:</span>
-                      <span className="font-bold">#{settings.categories[cat.id]?.episode_number || 1}</span>
-                    </div>
-                    <div className="flex justify-between mt-1">
-                      <span className="text-white/60">Last Updated:</span>
-                      <span>{formatLastGenerated(settings.categories[cat.id]?.last_generated)}</span>
-                    </div>
-                  </div>
-
-                  {/* Action Buttons */}
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => generateBriefing(cat.id)}
-                      disabled={generating !== null}
-                      className={`flex-1 py-2 rounded-lg font-bold text-sm transition ${
-                        generating === cat.id
-                          ? 'bg-white/20 text-white cursor-wait'
-                          : 'bg-white text-black hover:bg-white/90'
-                      }`}
-                    >
-                      {generating === cat.id ? (
-                        <span className="flex items-center justify-center gap-2">
-                          <span className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
-                          Generating...
-                        </span>
-                      ) : (
-                        '⚡ Generate'
-                      )}
-                    </button>
-                    <button
-                      onClick={() => togglePlay(cat.id)}
-                      disabled={!settings.categories[cat.id]?.audio_url}
-                      className={`px-4 py-2 rounded-lg font-bold text-sm transition ${
-                        playing === cat.id
-                          ? 'bg-red-500 text-white'
-                          : settings.categories[cat.id]?.audio_url
-                            ? 'bg-green-500 text-black hover:bg-green-400'
-                            : 'bg-white/20 text-white/50 cursor-not-allowed'
-                      }`}
-                    >
-                      {playing === cat.id ? '⏹ Stop' : '▶ Listen'}
-                    </button>
-                  </div>
+              {/* Zip Code - Only for Local News */}
+              {cat.id === 'local' && (
+                <div className="mb-4">
+                  <label className="block text-sm text-slate-400 mb-1">Test Zip Code (50mi radius)</label>
+                  <input
+                    type="text"
+                    value={testZipCode}
+                    onChange={e => setTestZipCode(e.target.value.replace(/\D/g, '').slice(0, 5))}
+                    placeholder="e.g. 28801"
+                    maxLength={5}
+                    className="w-32 px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white"
+                  />
                 </div>
               )}
+
+              {/* c. Narrator's Name */}
+              <div className="mb-4">
+                <label className="block text-sm text-slate-400 mb-1">Narrator's Name</label>
+                <input
+                  type="text"
+                  value={cat.narratorName}
+                  onChange={e => updateCategory(cat.id, { narratorName: e.target.value })}
+                  placeholder="How narrator introduces themselves"
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white"
+                />
+              </div>
+
+              {/* d. Narrator's Voice + Preview */}
+              <div className="mb-4">
+                <label className="block text-sm text-slate-400 mb-1">Narrator's Voice</label>
+                <div className="flex gap-2">
+                  <select
+                    value={cat.voiceId}
+                    onChange={e => updateCategory(cat.id, { voiceId: e.target.value })}
+                    className="flex-1 px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white max-h-40 overflow-y-auto"
+                  >
+                    <option value="">Select voice...</option>
+                    {voices.map(v => (
+                      <option key={v.voice_id} value={v.voice_id}>{v.name} {v.labels?.accent ? `(${v.labels.accent})` : ''}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => {
+                      const voice = voices.find(v => v.voice_id === cat.voiceId);
+                      if (voice) previewVoice(voice);
+                    }}
+                    disabled={!cat.voiceId}
+                    className="px-3 py-2 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:text-slate-500 text-white rounded-lg text-sm"
+                  >
+                    {previewingVoice === cat.voiceId ? '⏹ Stop' : '▶ Preview'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Episode Number */}
+              {cat.episodeNumber > 0 && (
+                <p className="text-xs text-slate-500 mb-3">Episode #{cat.episodeNumber}</p>
+              )}
+
+              {/* e. Generate Button & f. Listen Button */}
+              <div className="flex gap-3 pt-3 border-t border-slate-700">
+                <button
+                  onClick={() => generateBriefing(cat.id)}
+                  disabled={cat.isGenerating || !cat.voiceId}
+                  className="flex-1 px-4 py-2 bg-orange-500 hover:bg-orange-600 disabled:bg-slate-700 disabled:text-slate-500 text-black font-semibold rounded-lg"
+                >
+                  {cat.isGenerating ? '⏳ Generating...' : 'Generate'}
+                </button>
+                <button
+                  onClick={() => togglePlayBriefing(cat.id, cat.audioUrl)}
+                  disabled={!cat.audioUrl}
+                  className={`flex-1 px-4 py-2 font-semibold rounded-lg ${
+                    playingAudio === cat.id 
+                      ? 'bg-red-600 hover:bg-red-500 text-white' 
+                      : 'bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-500 text-white'
+                  }`}
+                >
+                  {playingAudio === cat.id ? '⏹ Stop' : '🔊 Listen'}
+                </button>
+              </div>
             </div>
           ))}
         </div>
 
-        {/* Schedule Section */}
-        <div className="bg-slate-900 rounded-xl p-4 mb-6 border border-slate-800">
-          <h2 className="text-lg font-bold mb-3">⏰ Auto-Generation Schedule</h2>
-          
+        {/* Bottom Section - Automation */}
+        <div className="bg-slate-900 border border-slate-700 rounded-xl p-5">
           <div className="flex items-center justify-between mb-4">
-            <span>Enable Auto-Generation</span>
+            <div>
+              <h2 className="text-lg font-bold text-white">Automation</h2>
+              <p className="text-sm text-slate-400">Auto-generate briefings at scheduled times (all US time zones)</p>
+            </div>
             <button
-              onClick={() => setSettings(prev => ({ ...prev, auto_generate: !prev.auto_generate }))}
-              className={`w-12 h-6 rounded-full transition relative ${
-                settings.auto_generate ? 'bg-green-500' : 'bg-slate-600'
-              }`}
+              onClick={() => setAutomate(!automate)}
+              className={`relative w-14 h-7 rounded-full transition-colors ${automate ? 'bg-orange-500' : 'bg-slate-700'}`}
             >
-              <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${
-                settings.auto_generate ? 'left-7' : 'left-1'
-              }`} />
+              <span className={`absolute top-1 w-5 h-5 bg-white rounded-full transition-all ${automate ? 'left-8' : 'left-1'}`} />
             </button>
           </div>
 
-          {settings.auto_generate && (
-            <div className="grid grid-cols-4 gap-4">
-              <div>
-                <label className="text-sm text-slate-400 block mb-1">Morning</label>
+          {/* Time Slots */}
+          <div className="grid grid-cols-3 gap-4">
+            {schedule.map(slot => (
+              <div key={slot.id} className={`p-4 rounded-lg border ${slot.enabled ? 'bg-slate-800 border-orange-500/50' : 'bg-slate-800/50 border-slate-700 opacity-60'}`}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-white font-medium">{slot.label}</span>
+                  <button
+                    onClick={() => updateSchedule(slot.id, { enabled: !slot.enabled })}
+                    className={`w-10 h-5 rounded-full transition-colors ${slot.enabled ? 'bg-orange-500' : 'bg-slate-600'}`}
+                  >
+                    <span className={`block w-4 h-4 bg-white rounded-full transition-all ${slot.enabled ? 'ml-5' : 'ml-0.5'}`} />
+                  </button>
+                </div>
                 <input
                   type="time"
-                  value={settings.generation_times[0] || '06:00'}
-                  onChange={(e) => {
-                    const times = [...settings.generation_times]
-                    times[0] = e.target.value
-                    setSettings(prev => ({ ...prev, generation_times: times }))
-                  }}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white"
+                  value={slot.time}
+                  onChange={e => updateSchedule(slot.id, { time: e.target.value })}
+                  disabled={!slot.enabled}
+                  className="w-full px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white text-center disabled:opacity-50"
                 />
               </div>
-              <div>
-                <label className="text-sm text-slate-400 block mb-1">Noon</label>
-                <input
-                  type="time"
-                  value={settings.generation_times[1] || '12:00'}
-                  onChange={(e) => {
-                    const times = [...settings.generation_times]
-                    times[1] = e.target.value
-                    setSettings(prev => ({ ...prev, generation_times: times }))
-                  }}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white"
-                />
-              </div>
-              <div>
-                <label className="text-sm text-slate-400 block mb-1">Evening</label>
-                <input
-                  type="time"
-                  value={settings.generation_times[2] || '18:00'}
-                  onChange={(e) => {
-                    const times = [...settings.generation_times]
-                    times[2] = e.target.value
-                    setSettings(prev => ({ ...prev, generation_times: times }))
-                  }}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white"
-                />
-              </div>
-              <div>
-                <label className="text-sm text-slate-400 block mb-1">Timezone</label>
-                <select
-                  value={settings.timezone}
-                  onChange={(e) => setSettings(prev => ({ ...prev, timezone: e.target.value }))}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white"
-                >
-                  <option value="America/New_York">Eastern (ET)</option>
-                  <option value="America/Chicago">Central (CT)</option>
-                  <option value="America/Denver">Mountain (MT)</option>
-                  <option value="America/Los_Angeles">Pacific (PT)</option>
-                  <option value="America/Anchorage">Alaska (AKT)</option>
-                  <option value="Pacific/Honolulu">Hawaii (HT)</option>
-                </select>
-              </div>
-            </div>
-          )}
-
-          <div className="mt-4 pt-4 border-t border-slate-700">
-            <div className="flex items-center gap-3">
-              <label className="text-sm text-slate-400">Stories per briefing:</label>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setSettings(prev => ({ 
-                    ...prev, 
-                    stories_per_category: Math.max(2, prev.stories_per_category - 1) 
-                  }))}
-                  className="w-8 h-8 bg-slate-800 hover:bg-slate-700 rounded-lg font-bold"
-                >
-                  -
-                </button>
-                <span className="w-8 text-center font-bold">{settings.stories_per_category}</span>
-                <button
-                  onClick={() => setSettings(prev => ({ 
-                    ...prev, 
-                    stories_per_category: Math.min(6, prev.stories_per_category + 1) 
-                  }))}
-                  className="w-8 h-8 bg-slate-800 hover:bg-slate-700 rounded-lg font-bold"
-                >
-                  +
-                </button>
-              </div>
-              <span className="text-slate-500 text-sm">(2-6 stories per briefing)</span>
-            </div>
+            ))}
           </div>
         </div>
 
-        {/* Save Button */}
-        <button
-          onClick={saveSettings}
-          disabled={saving}
-          className={`w-full py-4 rounded-xl font-bold transition ${
-            saving
-              ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
-              : 'bg-green-500 hover:bg-green-400 text-black'
-          }`}
-        >
-          {saving ? 'Saving...' : '💾 Save All Settings'}
-        </button>
+        {/* Footer */}
+        <div className="mt-6 text-center text-slate-600 text-xs">
+          News Briefings Admin v2.0 • Drive Time Tales
+        </div>
       </div>
     </div>
-  )
+  );
 }
