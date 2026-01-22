@@ -71,7 +71,7 @@ function LibraryContent() {
       if (user?.id) { console.log("Library: fetching user", user.id);
         const { data: userData, error: userError } = await supabase.from('users').select('first_name, display_name, credits').eq('id', user.id).single()
         console.log("Library: userData=", userData, "error=", userError); if (userData) { console.log("Library: got userData", userData);
-          setUserName(userData.first_name || userData.display_name || 'Friend')
+          setUserName(userData.first_name || userData.display_name || userData.display_name || 'Friend')
           setIsUnlimited(userData.credits >= 9999)
           setUserCredits(userData.credits || 0)
         }
