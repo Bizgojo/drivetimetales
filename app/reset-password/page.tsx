@@ -1,65 +1,152 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { Suspense } from 'react'
 
-export default function ResetPasswordPage() {
+function ResetPasswordContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  const [isReady, setIsReady] = useState(false)
+  const [sessionError, setSessionError] = useState(false)
 
+  // Handle the code from URL on mount
   useEffect(() => {
-    // Check if we have a valid session from the reset link
-    supabase.auth.onAuthStateChange((event) => {
-      if (event === 'PASSWORD_RECOVERY') {
-        // User clicked the reset link
+    async function handleCode() {
+      const code = searchParams.get('code')
+      
+      if (code) {
+        try {
+          // Exchange the code for a session
+          const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+          
+          if (error) {
+            console.error('Code exchange error:', error)
+            setSessionError(true)
+          } else if (data.session) {
+            // Session established successfully
+            setIsReady(true)
+            return
+          }
+        } catch (err) {
+          console.error('Exchange failed:', err)
+          setSessionError(true)
+        }
       }
-    })
-  }, [])
+      
+      // Check if we already have a session
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session) {
+        setIsReady(true)
+      } else {
+        setSessionError(true)
+      }
+    }
+    
+    handleCode()
+  }, [searchParams])
+
+  // Password validation
+  const validatePassword = (pwd: string): string | null => {
+    if (pwd.length < 6) {
+      return 'Password must be at least 6 characters'
+    }
+    if (!/[A-Z]/.test(pwd)) {
+      return 'Password must contain at least 1 capital letter'
+    }
+    if (!/[0-9]/.test(pwd)) {
+      return 'Password must contain at least 1 number'
+    }
+    return null
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError('')
-
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters')
+    setError(null)
+    
+    const passwordError = validatePassword(password)
+    if (passwordError) {
+      setError(passwordError)
       return
     }
+    
     if (password !== confirmPassword) {
       setError('Passwords do not match')
       return
     }
-
-    setLoading(true)
-
-    const { error } = await supabase.auth.updateUser({ password })
-
-    if (error) {
-      setError(error.message)
-    } else {
+    
+    setIsSubmitting(true)
+    
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: password
+      })
+      
+      if (error) {
+        setError(error.message)
+        setIsSubmitting(false)
+        return
+      }
+      
       setSuccess(true)
-      setTimeout(() => router.push('/signin'), 2000)
+      
+      setTimeout(() => {
+        router.push('/home')
+      }, 1500)
+      
+    } catch (err) {
+      setError('An error occurred. Please try again.')
+      setIsSubmitting(false)
     }
-    setLoading(false)
   }
 
-  if (success) {
+  // Loading state while checking code
+  if (!isReady && !sessionError) {
     return (
-      <div style={{ minHeight: '100vh', backgroundColor: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
-        <div style={{ width: '100%', maxWidth: '400px', textAlign: 'center' }}>
-          <div style={{ backgroundColor: '#0f172a', borderRadius: '12px', padding: '32px', border: '1px solid #1e293b' }}>
-            <div style={{ fontSize: '48px', marginBottom: '16px' }}>✅</div>
-            <h1 style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', marginBottom: '16px' }}>
-              Password Updated
-            </h1>
-            <p style={{ color: '#94a3b8' }}>
-              Redirecting to sign in...
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="inline-block w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  // Session error - show expired message
+  if (sessionError) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-white">
+        <div className="max-w-md mx-auto px-4 py-8">
+          <div className="flex justify-center mb-8">
+            <Link href="/welcome" className="flex items-center gap-2">
+              <span className="text-3xl">🚛</span>
+              <span className="text-3xl">🚗</span>
+              <div className="flex items-baseline ml-1">
+                <span className="text-lg font-bold text-white">Drive Time </span>
+                <span className="text-lg font-bold text-orange-500">Tales</span>
+              </div>
+            </Link>
+          </div>
+          
+          <div className="text-center">
+            <div className="text-5xl mb-4">⚠️</div>
+            <h1 className="text-2xl font-bold mb-2">Link Expired</h1>
+            <p className="text-slate-400 mb-6">
+              This password reset link has expired or is invalid.
+            </p>
+            <Link 
+              href="/signin"
+              className="px-6 py-3 bg-orange-500 hover:bg-orange-400 text-black font-bold rounded-xl inline-block"
+            >
+              Go to Sign In
+            </Link>
+            <p className="text-slate-500 text-sm mt-4">
+              Click "Forgot password?" to request a new link
             </p>
           </div>
         </div>
@@ -67,118 +154,113 @@ export default function ResetPasswordPage() {
     )
   }
 
+  // Success state
+  if (success) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center">
+        <div className="text-center px-4">
+          <div className="text-5xl mb-4">✅</div>
+          <h1 className="text-2xl font-bold mb-2">Password Updated!</h1>
+          <p className="text-slate-400">Taking you to your stories...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Reset form
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
-      <div style={{ width: '100%', maxWidth: '400px' }}>
-        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <Link href="/">
-            <img 
-              src="/images/dtt-logo.png" 
-              alt="Drive Time Tales" 
-              style={{ height: '60px', margin: '0 auto' }}
-            />
+    <div className="min-h-screen bg-slate-950 text-white">
+      <div className="max-w-md mx-auto px-4 py-8">
+        
+        <div className="flex justify-center mb-8">
+          <Link href="/welcome" className="flex items-center gap-2">
+            <span className="text-3xl">🚛</span>
+            <span className="text-3xl">🚗</span>
+            <div className="flex items-baseline ml-1">
+              <span className="text-lg font-bold text-white">Drive Time </span>
+              <span className="text-lg font-bold text-orange-500">Tales</span>
+            </div>
           </Link>
         </div>
 
-        <div style={{ backgroundColor: '#0f172a', borderRadius: '12px', padding: '32px', border: '1px solid #1e293b' }}>
-          <h1 style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', textAlign: 'center', marginBottom: '24px' }}>
-            Set New Password
+        <div className="bg-slate-900 rounded-2xl p-6 border border-slate-800">
+          <h1 className="text-xl font-bold text-white text-center mb-2">
+            Reset Your Password
           </h1>
-
-          {error && (
-            <div style={{ backgroundColor: '#7f1d1d', color: '#fecaca', padding: '12px', borderRadius: '8px', marginBottom: '16px', fontSize: '14px' }}>
-              {error}
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit}>
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', color: '#94a3b8', fontSize: '14px', marginBottom: '6px' }}>
-                New Password
-              </label>
-              <div style={{ position: 'relative' }}>
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  minLength={6}
-                  style={{
-                    width: '100%',
-                    padding: '12px',
-                    paddingRight: '48px',
-                    backgroundColor: '#1e293b',
-                    border: '1px solid #334155',
-                    borderRadius: '8px',
-                    color: 'white',
-                    fontSize: '16px',
-                    boxSizing: 'border-box'
-                  }}
-                  placeholder="At least 6 characters"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  style={{
-                    position: 'absolute',
-                    right: '12px',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    background: 'none',
-                    border: 'none',
-                    color: '#64748b',
-                    cursor: 'pointer',
-                    padding: '4px'
-                  }}
-                >
-                  {showPassword ? '🙈' : '👁️'}
-                </button>
-              </div>
-            </div>
-
-            <div style={{ marginBottom: '24px' }}>
-              <label style={{ display: 'block', color: '#94a3b8', fontSize: '14px', marginBottom: '6px' }}>
-                Confirm Password
-              </label>
+          <p className="text-slate-400 text-sm text-center mb-6">
+            Enter your new password below
+          </p>
+          
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">New Password</label>
               <input
-                type={showPassword ? 'text' : 'password'}
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-orange-500"
+                autoComplete="new-password"
+              />
+              <p className="text-slate-500 text-xs mt-1">
+                Must be 6+ characters with 1 capital letter and 1 number
+              </p>
+            </div>
+            
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Confirm New Password</label>
+              <input
+                type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                required
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  backgroundColor: '#1e293b',
-                  border: '1px solid #334155',
-                  borderRadius: '8px',
-                  color: 'white',
-                  fontSize: '16px',
-                  boxSizing: 'border-box'
-                }}
                 placeholder="••••••••"
+                className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-orange-500"
+                autoComplete="new-password"
               />
             </div>
-
+            
+            {error && (
+              <div className="p-3 bg-red-500/20 border border-red-500/30 rounded-lg">
+                <p className="text-red-400 text-sm text-center">{error}</p>
+              </div>
+            )}
+            
             <button
               type="submit"
-              disabled={loading}
-              style={{
-                width: '100%',
-                padding: '14px',
-                backgroundColor: loading ? '#92400e' : '#f97316',
-                color: 'white',
-                border: 'none',
-                borderRadius: '8px',
-                fontSize: '16px',
-                fontWeight: '600',
-                cursor: loading ? 'not-allowed' : 'pointer'
-              }}
+              disabled={isSubmitting}
+              className={`w-full py-3 rounded-xl font-bold text-base transition-colors ${
+                isSubmitting
+                  ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                  : 'bg-orange-500 hover:bg-orange-400 text-black'
+              }`}
             >
-              {loading ? 'Updating...' : 'Update Password'}
+              {isSubmitting ? 'Updating Password...' : 'Update Password'}
             </button>
           </form>
         </div>
+
+        <p className="text-center mt-6">
+          <Link href="/signin" className="text-slate-500 text-sm hover:text-white">
+            ← Back to Sign In
+          </Link>
+        </p>
       </div>
     </div>
+  )
+}
+
+function LoadingFallback() {
+  return (
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+      <div className="inline-block w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <ResetPasswordContent />
+    </Suspense>
   )
 }
