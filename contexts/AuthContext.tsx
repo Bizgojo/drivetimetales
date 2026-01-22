@@ -1,207 +1,77 @@
 'use client'
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import { User, Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
-
-interface User {
-  id: string
-  email: string
-  display_name: string | null
-  credits: number
-  subscription_type: string
-  subscription_ends_at: string | null
-  created_at: string
-  referral_code: string | null
-  referral_count: number
-  first_name?: string | null
-  state?: string | null
-}
 
 interface AuthContextType {
   user: User | null
+  session: Session | null
   loading: boolean
-  signIn: (email: string, password: string) => Promise<{ error: any }>
+  signIn: (email: string, password: string) => Promise<{ error: Error | null }>
+  signUp: (email: string, password: string, firstName: string) => Promise<{ error: Error | null, user: User | null }>
   signOut: () => Promise<void>
-  refreshUser: () => Promise<void>
-  refreshCredits: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
+  const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Don't block on getSession - just set loading false quickly
-    // The onAuthStateChange listener will update the user when ready
-    const initTimeout = setTimeout(() => {
-      setLoading(false)
-    }, 1000)
-
-    // Listen for auth changes - this will fire if user is already logged in
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('[Auth] State change:', event, session?.user?.id)
-      
-      if (session?.user) {
-        await loadUserProfile(session.user.id)
-      } else if (event === 'SIGNED_OUT') {
-        setUser(null)
-      }
-      setLoading(false)
-    })
-
-    // Also try to get session in background (non-blocking)
+    // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
-      console.log('[Auth] getSession result:', session ? 'Has session' : 'No session')
-      if (session?.user) {
-        loadUserProfile(session.user.id)
-      }
-    }).catch(err => {
-      console.log('[Auth] getSession error:', err)
+      setSession(session)
+      setUser(session?.user ?? null)
+      setLoading(false)
     })
 
-    return () => {
-      clearTimeout(initTimeout)
-      subscription.unsubscribe()
-    }
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session)
+      setUser(session?.user ?? null)
+      setLoading(false)
+    })
+
+    return () => subscription.unsubscribe()
   }, [])
 
-  async function checkUser() {
-    console.log('[Auth] Checking user session...')
+  const signIn = async (email: string, password: string) => {
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    return { error }
+  }
+
+  const signUp = async (email: string, password: string, firstName: string) => {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { first_name: firstName }
+      }
+    })
     
-    try {
-      // Increased timeout to 30 seconds for slow connections
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Auth timeout')), 30000)
-      )
-      
-      const sessionPromise = supabase.auth.getSession()
-      
-      const result = await Promise.race([sessionPromise, timeoutPromise]) as any
-      const session = result?.data?.session
-      
-      console.log('[Auth] Session check result:', session ? 'Has session' : 'No session')
-      
-      if (session?.user) {
-        await loadUserProfile(session.user.id)
-      }
-    } catch (error) {
-      console.error('[Auth] Error checking user:', error)
-      // Don't block the app - just continue without user
-      // User can try signing in again
-    } finally {
-      setLoading(false)
+    if (!error && data.user) {
+      // Create user record in users table
+      await supabase.from('users').insert({
+        id: data.user.id,
+        email: email,
+        first_name: firstName,
+        credits: 0,
+        subscription_status: 'none'
+      })
     }
-  }
-
-  async function loadUserProfile(userId: string) {
-    console.log('[Auth] Loading profile for:', userId)
     
-    try {
-      // Add timeout for profile loading too
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Profile load timeout')), 10000)
-      )
-      
-      const profilePromise = supabase
-        .from('users')
-        .select('id, email, display_name, credits, subscription_type, subscription_ends_at, created_at, first_name, state')
-        .eq('id', userId)
-        .single()
-      
-      const { data, error } = await Promise.race([profilePromise, timeoutPromise]) as any
-
-      if (error) {
-        console.error('[Auth] Profile load error:', error)
-        // If user doesn't exist in users table, create minimal entry
-        if (error.code === 'PGRST116') {
-          console.log('[Auth] User not in users table, will be created on next action')
-        }
-        throw error
-      }
-      
-      console.log('[Auth] Profile loaded:', data?.email)
-      
-      // Set user with default values for optional fields
-      setUser({
-        ...data,
-        referral_code: (data as any).referral_code || null,
-        referral_count: (data as any).referral_count || 0,
-      })
-    } catch (error) {
-      console.error('[Auth] Error loading profile:', error)
-      // Still set loading to false so the app can continue
-    }
+    return { error, user: data.user ?? null }
   }
 
-  async function signIn(email: string, password: string): Promise<{ error: any }> {
-    console.log('[Auth] signIn called for:', email)
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password: password,
-      })
-      
-      if (error) {
-        console.error('[Auth] signIn error:', error)
-        return { error }
-      }
-      
-      if (data.user) {
-        await loadUserProfile(data.user.id)
-      }
-      
-      return { error: null }
-    } catch (err) {
-      console.error('[Auth] signIn catch:', err)
-      return { error: err }
-    }
-  }
-
-  async function signOut() {
-    console.log('[Auth] Signing out...')
-    try {
-      await supabase.auth.signOut()
-      setUser(null)
-      // Force redirect to welcome
-      window.location.href = '/welcome'
-    } catch (error) {
-      console.error('[Auth] Sign out error:', error)
-      // Force clear anyway
-      setUser(null)
-      window.location.href = '/welcome'
-    }
-  }
-
-  async function refreshUser() {
-    console.log('[Auth] Refreshing user...')
-    if (user?.id) {
-      await loadUserProfile(user.id)
-    }
-  }
-
-  async function refreshCredits() {
-    console.log('[Auth] Refreshing credits...')
-    if (user?.id) {
-      try {
-        const { data, error } = await supabase
-          .from('users')
-          .select('credits')
-          .eq('id', user.id)
-          .single()
-        
-        if (!error && data) {
-          setUser(prev => prev ? { ...prev, credits: data.credits } : null)
-        }
-      } catch (err) {
-        console.error('[Auth] Error refreshing credits:', err)
-      }
-    }
+  const signOut = async () => {
+    await supabase.auth.signOut()
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signOut, refreshUser, refreshCredits }}>
+    <AuthContext.Provider value={{ user, session, loading, signIn, signUp, signOut }}>
       {children}
     </AuthContext.Provider>
   )

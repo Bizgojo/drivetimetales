@@ -1,432 +1,253 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, Suspense } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
-
-// US States for dropdown
-const US_STATES = [
-  { code: 'AL', name: 'Alabama' }, { code: 'AK', name: 'Alaska' }, { code: 'AZ', name: 'Arizona' },
-  { code: 'AR', name: 'Arkansas' }, { code: 'CA', name: 'California' }, { code: 'CO', name: 'Colorado' },
-  { code: 'CT', name: 'Connecticut' }, { code: 'DE', name: 'Delaware' }, { code: 'FL', name: 'Florida' },
-  { code: 'GA', name: 'Georgia' }, { code: 'HI', name: 'Hawaii' }, { code: 'ID', name: 'Idaho' },
-  { code: 'IL', name: 'Illinois' }, { code: 'IN', name: 'Indiana' }, { code: 'IA', name: 'Iowa' },
-  { code: 'KS', name: 'Kansas' }, { code: 'KY', name: 'Kentucky' }, { code: 'LA', name: 'Louisiana' },
-  { code: 'ME', name: 'Maine' }, { code: 'MD', name: 'Maryland' }, { code: 'MA', name: 'Massachusetts' },
-  { code: 'MI', name: 'Michigan' }, { code: 'MN', name: 'Minnesota' }, { code: 'MS', name: 'Mississippi' },
-  { code: 'MO', name: 'Missouri' }, { code: 'MT', name: 'Montana' }, { code: 'NE', name: 'Nebraska' },
-  { code: 'NV', name: 'Nevada' }, { code: 'NH', name: 'New Hampshire' }, { code: 'NJ', name: 'New Jersey' },
-  { code: 'NM', name: 'New Mexico' }, { code: 'NY', name: 'New York' }, { code: 'NC', name: 'North Carolina' },
-  { code: 'ND', name: 'North Dakota' }, { code: 'OH', name: 'Ohio' }, { code: 'OK', name: 'Oklahoma' },
-  { code: 'OR', name: 'Oregon' }, { code: 'PA', name: 'Pennsylvania' }, { code: 'RI', name: 'Rhode Island' },
-  { code: 'SC', name: 'South Carolina' }, { code: 'SD', name: 'South Dakota' }, { code: 'TN', name: 'Tennessee' },
-  { code: 'TX', name: 'Texas' }, { code: 'UT', name: 'Utah' }, { code: 'VT', name: 'Vermont' },
-  { code: 'VA', name: 'Virginia' }, { code: 'WA', name: 'Washington' }, { code: 'WV', name: 'West Virginia' },
-  { code: 'WI', name: 'Wisconsin' }, { code: 'WY', name: 'Wyoming' }
-]
+import { useAuth } from '@/contexts/AuthContext'
 
 function SignUpContent() {
   const router = useRouter()
-  const searchParams = useSearchParams()
+  const { signUp } = useAuth()
   
-  const [name, setName] = useState('')
-  const [nickname, setNickname] = useState('')
+  const [firstName, setFirstName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [state, setState] = useState('')
-  const [referralCode, setReferralCode] = useState('')
-  const [referrerName, setReferrerName] = useState<string | null>(null)
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  
-  const planId = searchParams.get('plan') || 'premium'
-  const billing = searchParams.get('billing') || 'monthly'
-  const priceId = searchParams.get('priceId') || ''
-  const refCode = searchParams.get('ref') || ''
-
-  useEffect(() => {
-    if (refCode) {
-      setReferralCode(refCode)
-      validateReferralCode(refCode)
-    }
-  }, [refCode])
-
-  // Auto-fill nickname from first word of name
-  useEffect(() => {
-    if (name && !nickname) {
-      const firstName = name.trim().split(' ')[0]
-      setNickname(firstName)
-    }
-  }, [name, nickname])
-
-  async function validateReferralCode(code: string) {
-    if (!code) {
-      setReferrerName(null)
-      return
-    }
-    try {
-      const res = await fetch(`/api/referral?code=${code}`)
-      const data = await res.json()
-      if (data.valid) {
-        setReferrerName(data.referrer_name)
-      } else {
-        setReferrerName(null)
-      }
-    } catch (err) {
-      console.error('Error validating referral code:', err)
-      setReferrerName(null)
-    }
-  }
-
-  const planNames: Record<string, string> = {
-    basic: 'Basic',
-    premium: 'Premium',
-    unlimited: 'Unlimited'
-  }
+  const [showPassword, setShowPassword] = useState(false)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError(null)
-    
-    if (!name.trim()) {
-      setError('Please enter your name')
-      return
-    }
+    setError('')
 
-    if (!nickname.trim()) {
-      setError('Please enter what you\'d like to be called')
-      return
-    }
-    
-    if (!email.trim()) {
-      setError('Please enter your email')
-      return
-    }
-    
+    // Validation
     if (password.length < 6) {
       setError('Password must be at least 6 characters')
       return
     }
-    
     if (password !== confirmPassword) {
       setError('Passwords do not match')
       return
     }
 
-    if (!state) {
-      setError('Please select your state')
+    setLoading(true)
+
+    // Create account
+    const { error: signUpError, user } = await signUp(email, password, firstName)
+    
+    if (signUpError) {
+      setError(signUpError.message)
+      setLoading(false)
       return
     }
-    
-    setIsSubmitting(true)
-    
+
+    if (!user) {
+      setError('Failed to create account')
+      setLoading(false)
+      return
+    }
+
+    // Redirect to Stripe Checkout for subscription
     try {
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: email.trim(),
-        password: password,
-        options: {
-          data: {
-            display_name: name.trim(),
-          }
-        }
-      })
-      
-      if (authError) {
-        if (authError.message.includes('already registered')) {
-          setError('This email is already registered. Please sign in instead.')
-        } else {
-          setError(authError.message)
-        }
-        setIsSubmitting(false)
-        return
-      }
-      
-      if (!authData.user) {
-        setError('Failed to create account. Please try again.')
-        setIsSubmitting(false)
-        return
-      }
-
-      const stateName = US_STATES.find(s => s.code === state)?.name || state
-      
-      const { error: profileError } = await supabase
-        .from('users')
-        .insert({
-          id: authData.user.id,
-          email: email.trim(),
-          display_name: name.trim(),
-          first_name: nickname.trim(),
-          state: stateName,
-          subscription_status: 'pending',
-          subscription_plan: planId,
-          credits: 0,
-          created_at: new Date().toISOString()
-        })
-      
-      if (profileError) {
-        console.error('Profile creation error:', profileError)
-      }
-
-      if (referralCode && referrerName) {
-        try {
-          await fetch('/api/referral', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              referral_code: referralCode,
-              referred_user_id: authData.user.id
-            })
-          })
-        } catch (refError) {
-          console.error('Referral processing error:', refError)
-        }
-      }
-      
       const response = await fetch('/api/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          priceId: priceId,
-          userId: authData.user.id,
-          email: email.trim(),
-          plan: planId,
-          billing: billing
-        }),
+          userId: user.id,
+          email: email,
+          priceId: process.env.NEXT_PUBLIC_STRIPE_PRICE_TEST_DRIVER_MONTHLY
+        })
       })
+
+      const data = await response.json()
       
-      const checkoutData = await response.json()
-      
-      if (checkoutData.error) {
-        setError('Failed to create checkout session. Please try again.')
-        setIsSubmitting(false)
-        return
+      if (data.url) {
+        window.location.href = data.url
+      } else {
+        // If checkout creation fails, still redirect to library
+        router.push('/library?welcome=true')
       }
-      
-      if (checkoutData.url) {
-        window.location.href = checkoutData.url
-      }
-      
-    } catch (err) {
-      console.error('Signup error:', err)
-      setError('An error occurred. Please try again.')
-      setIsSubmitting(false)
+    } catch {
+      // If checkout fails, still let them in
+      router.push('/library?welcome=true')
     }
   }
 
-  const Logo = () => (
-    <div className="flex items-center justify-center gap-2">
-      <svg width="50" height="30" viewBox="0 0 80 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <g>
-          <rect x="45" y="24" width="30" height="14" rx="3" fill="#f97316"/>
-          <path d="M52 24 L56 16 L68 16 L72 24" fill="#f97316"/>
-          <path d="M54 23 L57 17 L67 17 L70 23" fill="#1e293b"/>
-          <circle cx="54" cy="38" r="5" fill="#334155"/>
-          <circle cx="54" cy="38" r="2.5" fill="#64748b"/>
-          <circle cx="68" cy="38" r="5" fill="#334155"/>
-          <circle cx="68" cy="38" r="2.5" fill="#64748b"/>
-          <rect x="73" y="28" width="3" height="4" rx="1" fill="#fef08a"/>
-        </g>
-        <g>
-          <rect x="2" y="20" width="18" height="18" rx="3" fill="#3b82f6"/>
-          <path d="M5 20 L8 12 L17 12 L20 20" fill="#3b82f6"/>
-          <path d="M7 19 L9 13 L16 13 L18 19" fill="#1e293b"/>
-          <rect x="20" y="18" width="22" height="20" rx="2" fill="#60a5fa"/>
-          <circle cx="10" cy="38" r="5" fill="#334155"/>
-          <circle cx="10" cy="38" r="2.5" fill="#64748b"/>
-          <circle cx="32" cy="38" r="5" fill="#334155"/>
-          <circle cx="32" cy="38" r="2.5" fill="#64748b"/>
-        </g>
-      </svg>
-      <div className="flex items-baseline">
-        <span className="text-lg font-bold text-white">Drive Time </span>
-        <span className="text-lg font-bold text-orange-500">Tales</span>
-      </div>
-    </div>
-  )
-
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
-      <div className="max-w-md mx-auto px-4 py-6">
-        
-        <div className="flex justify-center mb-6">
-          <Link href="/welcome">
-            <Logo />
+    <div style={{ minHeight: '100vh', backgroundColor: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+      <div style={{ width: '100%', maxWidth: '400px' }}>
+        {/* Logo */}
+        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+          <Link href="/">
+            <img 
+              src="/images/dtt-logo.png" 
+              alt="Drive Time Tales" 
+              style={{ height: '60px', margin: '0 auto' }}
+            />
           </Link>
         </div>
 
-        <div className="bg-orange-500/20 border border-orange-500/50 rounded-xl p-3 mb-6 text-center">
-          <p className="text-orange-400 text-sm">
-            Selected Plan: <span className="font-bold">{planNames[planId] || 'Premium'}</span>
-            <span className="text-orange-300"> ({billing})</span>
-          </p>
-          <Link href="/pricing" className="text-orange-300 text-xs hover:underline">
-            Change plan
-          </Link>
-        </div>
-
-        <div className="bg-slate-900 rounded-2xl p-6 border border-slate-800">
-          <h1 className="text-xl font-bold text-white text-center mb-2">
-            Create Your Account
+        {/* Card */}
+        <div style={{ backgroundColor: '#0f172a', borderRadius: '12px', padding: '32px', border: '1px solid #1e293b' }}>
+          <h1 style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', textAlign: 'center', marginBottom: '8px' }}>
+            Start Your Journey
           </h1>
-          <p className="text-slate-400 text-sm text-center mb-6">
-            Then proceed to payment
+          <p style={{ color: '#94a3b8', textAlign: 'center', fontSize: '14px', marginBottom: '24px' }}>
+            $2.99/month • 10 credits • Cancel anytime
           </p>
-          
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Full Name */}
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Your Name</label>
+
+          {error && (
+            <div style={{ backgroundColor: '#7f1d1d', color: '#fecaca', padding: '12px', borderRadius: '8px', marginBottom: '16px', fontSize: '14px' }}>
+              {error}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit}>
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', color: '#94a3b8', fontSize: '14px', marginBottom: '6px' }}>
+                First Name
+              </label>
               <input
                 type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="John Smith"
-                className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-orange-500"
-                autoComplete="name"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                required
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  backgroundColor: '#1e293b',
+                  border: '1px solid #334155',
+                  borderRadius: '8px',
+                  color: 'white',
+                  fontSize: '16px',
+                  boxSizing: 'border-box'
+                }}
+                placeholder="What should we call you?"
               />
             </div>
 
-            {/* Nickname - NEW FIELD */}
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">What should we call you?</label>
-              <input
-                type="text"
-                value={nickname}
-                onChange={(e) => setNickname(e.target.value)}
-                placeholder="John"
-                className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-orange-500"
-                autoComplete="given-name"
-              />
-              <p className="text-slate-500 text-xs mt-1">Used for personalized greetings in news briefings</p>
-            </div>
-            
-            {/* Email */}
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Email Address</label>
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', color: '#94a3b8', fontSize: '14px', marginBottom: '6px' }}>
+                Email
+              </label>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                required
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  backgroundColor: '#1e293b',
+                  border: '1px solid #334155',
+                  borderRadius: '8px',
+                  color: 'white',
+                  fontSize: '16px',
+                  boxSizing: 'border-box'
+                }}
                 placeholder="you@example.com"
-                className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-orange-500"
-                autoComplete="email"
               />
             </div>
 
-            {/* State */}
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Your State</label>
-              <select
-                value={state}
-                onChange={(e) => setState(e.target.value)}
-                className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-orange-500"
-              >
-                <option value="">Select your state...</option>
-                {US_STATES.map(s => (
-                  <option key={s.code} value={s.code}>{s.name}</option>
-                ))}
-              </select>
-              <p className="text-slate-500 text-xs mt-1">Used for personalized State News briefings</p>
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', color: '#94a3b8', fontSize: '14px', marginBottom: '6px' }}>
+                Password
+              </label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  minLength={6}
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    paddingRight: '48px',
+                    backgroundColor: '#1e293b',
+                    border: '1px solid #334155',
+                    borderRadius: '8px',
+                    color: 'white',
+                    fontSize: '16px',
+                    boxSizing: 'border-box'
+                  }}
+                  placeholder="At least 6 characters"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  style={{
+                    position: 'absolute',
+                    right: '12px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    color: '#64748b',
+                    cursor: 'pointer',
+                    padding: '4px'
+                  }}
+                >
+                  {showPassword ? '🙈' : '👁️'}
+                </button>
+              </div>
             </div>
-            
-            {/* Password */}
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Create Password</label>
+
+            <div style={{ marginBottom: '24px' }}>
+              <label style={{ display: 'block', color: '#94a3b8', fontSize: '14px', marginBottom: '6px' }}>
+                Confirm Password
+              </label>
               <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-orange-500"
-                autoComplete="new-password"
-              />
-            </div>
-            
-            {/* Confirm Password */}
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Confirm Password</label>
-              <input
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  backgroundColor: '#1e293b',
+                  border: '1px solid #334155',
+                  borderRadius: '8px',
+                  color: 'white',
+                  fontSize: '16px',
+                  boxSizing: 'border-box'
+                }}
                 placeholder="••••••••"
-                className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-orange-500"
-                autoComplete="new-password"
               />
             </div>
 
-            {/* Referral Code */}
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">
-                Referral Code <span className="text-slate-500">(optional)</span>
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={referralCode}
-                  onChange={(e) => {
-                    setReferralCode(e.target.value.toUpperCase())
-                    validateReferralCode(e.target.value)
-                  }}
-                  placeholder="FRIEND123"
-                  className={`w-full px-4 py-3 bg-slate-800 border rounded-xl text-white focus:outline-none ${
-                    referrerName 
-                      ? 'border-green-500' 
-                      : referralCode && !referrerName 
-                        ? 'border-red-500' 
-                        : 'border-slate-700 focus:border-orange-500'
-                  }`}
-                />
-                {referrerName && (
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-green-400">✓</span>
-                )}
-              </div>
-              {referrerName && (
-                <p className="text-green-400 text-sm mt-1">
-                  🎉 Referred by {referrerName} - You will get 3 free credits!
-                </p>
-              )}
-              {referralCode && !referrerName && (
-                <p className="text-slate-500 text-xs mt-1">
-                  Invalid code - but you can still sign up!
-                </p>
-              )}
-            </div>
-            
-            {/* Error Message */}
-            {error && (
-              <div className="p-3 bg-red-500/20 border border-red-500/30 rounded-lg">
-                <p className="text-red-400 text-sm text-center">{error}</p>
-              </div>
-            )}
-            
-            {/* Submit Button */}
             <button
               type="submit"
-              disabled={isSubmitting}
-              className={`w-full py-3 rounded-xl font-bold text-base transition-colors ${
-                isSubmitting
-                  ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
-                  : 'bg-orange-500 hover:bg-orange-400 text-black'
-              }`}
+              disabled={loading}
+              style={{
+                width: '100%',
+                padding: '14px',
+                backgroundColor: loading ? '#92400e' : '#f97316',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                fontSize: '16px',
+                fontWeight: '600',
+                cursor: loading ? 'not-allowed' : 'pointer',
+                transition: 'background-color 0.2s'
+              }}
             >
-              {isSubmitting ? 'Creating Account...' : 'Continue to Payment'}
+              {loading ? 'Creating Account...' : 'Continue to Payment'}
             </button>
           </form>
-          
-          <p className="text-slate-500 text-xs text-center mt-4">
-            By creating an account, you agree to our{' '}
-            <Link href="/terms" className="text-orange-400 hover:underline">Terms of Service</Link>
-            {' '}and{' '}
-            <Link href="/privacy" className="text-orange-400 hover:underline">Privacy Policy</Link>
+
+          <p style={{ color: '#64748b', fontSize: '12px', textAlign: 'center', marginTop: '16px' }}>
+            By signing up, you agree to our Terms of Service
           </p>
         </div>
 
-        <p className="text-slate-400 text-sm text-center mt-6">
+        {/* Sign In Link */}
+        <p style={{ textAlign: 'center', color: '#94a3b8', marginTop: '24px', fontSize: '14px' }}>
           Already have an account?{' '}
-          <Link href="/signin" className="text-orange-400 hover:underline font-medium">Sign In</Link>
+          <Link href="/signin" style={{ color: '#f97316', textDecoration: 'none', fontWeight: '600' }}>
+            Sign In
+          </Link>
         </p>
       </div>
     </div>
@@ -435,8 +256,9 @@ function SignUpContent() {
 
 function LoadingFallback() {
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-      <div className="inline-block w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+    <div style={{ minHeight: '100vh', backgroundColor: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ width: '32px', height: '32px', border: '4px solid #f97316', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
 }
