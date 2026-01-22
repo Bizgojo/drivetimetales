@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
           quantity: 1
         }
       ],
-      metadata: {
+      metadata: { plan: "test_driver",
         userId: userId,
         user_id: userId
       },
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
     // Add subscription-specific metadata
     if (checkoutMode === 'subscription') {
       sessionConfig.subscription_data = {
-        metadata: {
+        metadata: { plan: "test_driver",
           userId: userId,
           user_id: userId
         }
