@@ -92,16 +92,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })
     
     if (!error && data.user) {
-      // Insert user with BOTH first_name and display_name for compatibility
-      const { error: insertError } = await supabase.from('users').insert({
-        id: data.user.id,
-        email: email,
-        first_name: firstName,
-        display_name: firstName,
-      })
-      if (insertError) console.error("User insert failed:", insertError)        credits: 0,
-        subscription_status: 'none'
-      })
+      // Use API route with service role key to bypass RLS
+      try {
+        const response = await fetch('/api/user/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: data.user.id,
+            email: email,
+            firstName: firstName
+          })
+        })
+        
+        if (!response.ok) {
+          const result = await response.json()
+          console.error('User profile creation failed:', result.error)
+        }
+      } catch (err) {
+        console.error('User profile creation error:', err)
+      }
     }
     
     return { error, user: data.user ?? null }
