@@ -77,7 +77,7 @@ function LibraryContent() {
           setAvatarUrl(userData.avatar_url || null)
         }
       }
-      setLoading(false)
+      if (user?.id) setLoading(false)
     }
     fetchData()
   }, [user])
