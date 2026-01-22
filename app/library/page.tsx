@@ -69,8 +69,8 @@ function LibraryContent() {
       const { data: storiesData } = await supabase.from('stories').select('id, title, genre, author, duration_mins, cover_url, series_name, series_number, series_total').not('cover_url', 'is', null).order('published_on', { ascending: false })
       if (storiesData) setStories(storiesData)
       if (user?.id) { console.log("Library: fetching user", user.id);
-        const { data: userData } = await supabase.from('users').select('first_name, credits, avatar_url').eq('id', user.id).single()
-        if (userData) { console.log("Library: got userData", userData);
+        const { data: userData, error: userError } = await supabase.from('users').select('first_name, credits, avatar_url').eq('id', user.id).single()
+        console.log("Library: userData=", userData, "error=", userError); if (userData) { console.log("Library: got userData", userData);
           setUserName(userData.first_name || 'Friend')
           setIsUnlimited(userData.credits >= 9999)
           setUserCredits(userData.credits || 0)
