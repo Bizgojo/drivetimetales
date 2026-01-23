@@ -25,7 +25,7 @@ const ALL_CATEGORIES = [
 ]
 
 interface Voice { voice_id: string; name: string; labels?: Record<string, string> }
-interface CatSettings { voice_id: string; narrator_name: string; last_generated: string | null; audio_url: string | null }
+interface CatSettings { voice_id: string; narrator_name: string; last_generated: string | null; audio_url: string | null; duration: string | null }
 
 export default function AdminNewsPage() {
   const [loading, setLoading] = useState(true)
@@ -101,7 +101,7 @@ export default function AdminNewsPage() {
   }
 
   async function generate(catId: string) {
-    const catSettings = settings[catId] || { voice_id: '', narrator_name: '', last_generated: null, audio_url: null }
+    const catSettings = settings[catId] || { voice_id: '', narrator_name: '', last_generated: null, audio_url: null, duration: null }
     if (!catSettings.voice_id) {
       setMessage({ type: 'error', text: 'Please select a voice first' })
       return
@@ -130,7 +130,12 @@ export default function AdminNewsPage() {
       setSettings(prev => {
         const updated = {
           ...prev,
-          [catId]: { ...prev[catId], last_generated: new Date().toISOString(), audio_url: result.episode?.audioUrl }
+          [catId]: { 
+            ...prev[catId], 
+            last_generated: new Date().toISOString(), 
+            audio_url: result.episode?.audioUrl,
+            duration: result.episode?.duration || null
+          }
         }
         saveToDb(updated)
         return updated
@@ -217,7 +222,7 @@ export default function AdminNewsPage() {
         {/* 2x3 Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {ALL_CATEGORIES.map(cat => {
-            const catSettings = settings[cat.id] || { voice_id: '', narrator_name: '', last_generated: null, audio_url: null }
+            const catSettings = settings[cat.id] || { voice_id: '', narrator_name: '', last_generated: null, audio_url: null, duration: null }
             const isGenerating = generating === cat.id
             const isPlaying = playing === cat.id
 
@@ -289,9 +294,12 @@ export default function AdminNewsPage() {
                   </div>
                 </div>
 
-                {/* Last Generated */}
+                {/* Last Generated & Duration */}
                 <p className="text-sm text-gray-600 mb-4">
                   Last updated: <span className="font-medium text-gray-900">{formatDate(catSettings.last_generated)}</span>
+                  {catSettings.duration && (
+                    <span className="ml-4 text-gray-600">Duration: <span className="font-medium text-gray-900">{catSettings.duration} min</span></span>
+                  )}
                 </p>
 
                 {/* Buttons */}
