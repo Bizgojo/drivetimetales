@@ -244,7 +244,8 @@ async function generateCleanScript(
   config: CategoryConfig,
   narrator: string,
   state: string | null,
-  listenerName: string = 'friend'
+  listenerName: string = 'friend',
+  categoryId: string = 'national'
 ): Promise<string> {
   const hour = new Date().getHours();
   let timeGreeting = 'morning';
@@ -312,7 +313,7 @@ async function generateCleanScript(
 When mentioning companies, briefly introduce them (location + what they do).`
   };
 
-  const guidance = categoryGuidance[state ? 'state' : config.id] || '';
+  const guidance = categoryGuidance[state ? 'state' : categoryId] || '';
 
   // CRITICAL: This prompt does NOT use web search, so Claude outputs clean script only
   const prompt = `You are ${narrator}, a seasoned professional radio news broadcaster. Write a broadcast script for these ${label} stories.
@@ -462,7 +463,7 @@ export async function POST(request: NextRequest) {
     // ========================================
     // PHASE 2: Generate clean script (no web search!)
     // ========================================
-    const script = await generateCleanScript(stories, config, narrator, state, listenerName);
+    const script = await generateCleanScript(stories, config, narrator, state, listenerName, category);
     console.log(`[Generate News] Script generated (${script.length} chars)`);
 
     // ========================================
