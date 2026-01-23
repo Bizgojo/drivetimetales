@@ -1,327 +1,676 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
-const US_STATES = [
-  'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado', 'Connecticut',
-  'Delaware', 'Florida', 'Georgia', 'Hawaii', 'Idaho', 'Illinois', 'Indiana', 'Iowa',
-  'Kansas', 'Kentucky', 'Louisiana', 'Maine', 'Maryland', 'Massachusetts', 'Michigan',
-  'Minnesota', 'Mississippi', 'Missouri', 'Montana', 'Nebraska', 'Nevada', 'New Hampshire',
-  'New Jersey', 'New Mexico', 'New York', 'North Carolina', 'North Dakota', 'Ohio',
-  'Oklahoma', 'Oregon', 'Pennsylvania', 'Rhode Island', 'South Carolina', 'South Dakota',
-  'Tennessee', 'Texas', 'Utah', 'Vermont', 'Virginia', 'Washington', 'West Virginia',
-  'Wisconsin', 'Wyoming'
+// Available ElevenLabs voices for narrator selection
+const AVAILABLE_VOICES = [
+  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah (Female)', description: 'Warm, professional' },
+  { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel (Female)', description: 'Clear, articulate' },
+  { id: 'AZnzlk1XvdvUeBnXmlld', name: 'Domi (Female)', description: 'Strong, confident' },
+  { id: 'ErXwobaYiN019PkySvjV', name: 'Antoni (Male)', description: 'Warm, friendly' },
+  { id: 'VR6AewLTigWG4xSOukaG', name: 'Arnold (Male)', description: 'Deep, authoritative' },
+  { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam (Male)', description: 'Clear, professional' },
+  { id: 'yoZ06aMxZJJ28mfd3POQ', name: 'Sam (Male)', description: 'Casual, engaging' },
 ]
 
-const ALL_CATEGORIES = [
-  { id: 'state', name: 'State News', icon: '🏛️' },
-  { id: 'national', name: 'National News', icon: '🇺🇸' },
-  { id: 'international', name: 'International', icon: '🌍' },
-  { id: 'business', name: 'Business', icon: '💼' },
-  { id: 'sports', name: 'Sports', icon: '⚽' },
-  { id: 'science', name: 'Science & Tech', icon: '🔬' },
+// News categories with default RSS feeds
+const NEWS_CATEGORIES = [
+  {
+    id: 'national',
+    name: 'National News',
+    icon: '🇺🇸',
+    color: 'blue',
+    defaultFeeds: [
+      'https://feeds.npr.org/1001/rss.xml',
+      'https://rss.nytimes.com/services/xml/rss/nyt/US.xml',
+    ]
+  },
+  {
+    id: 'international',
+    name: 'International News',
+    icon: '🌍',
+    color: 'green',
+    defaultFeeds: [
+      'https://feeds.npr.org/1004/rss.xml',
+      'https://rss.nytimes.com/services/xml/rss/nyt/World.xml',
+    ]
+  },
+  {
+    id: 'business',
+    name: 'Business & Finance',
+    icon: '💼',
+    color: 'yellow',
+    defaultFeeds: [
+      'https://feeds.npr.org/1006/rss.xml',
+      'https://rss.nytimes.com/services/xml/rss/nyt/Business.xml',
+    ]
+  },
+  {
+    id: 'sports',
+    name: 'Sports',
+    icon: '⚽',
+    color: 'red',
+    defaultFeeds: [
+      'https://www.espn.com/espn/rss/news',
+      'https://rss.nytimes.com/services/xml/rss/nyt/Sports.xml',
+    ]
+  },
+  {
+    id: 'science',
+    name: 'Science & Technology',
+    icon: '🔬',
+    color: 'purple',
+    defaultFeeds: [
+      'https://feeds.npr.org/1007/rss.xml',
+      'https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml',
+    ]
+  },
 ]
 
-interface Voice { voice_id: string; name: string; labels?: Record<string, string> }
-interface CatSettings { voice_id: string; narrator_name: string; last_generated: string | null; audio_url: string | null }
+interface CategorySettings {
+  enabled: boolean
+  feeds: string[]
+  voice_id: string
+  last_generated: string | null
+}
+
+interface NewsSettings {
+  categories: Record<string, CategorySettings>
+  narrator_voice_id: string
+  narrator_voice_name: string
+  generation_times: string[]
+  auto_generate: boolean
+  stories_per_category: number
+}
+
+interface NewsEpisode {
+  id: string
+  title: string
+  category: string
+  edition: string
+  is_live: boolean
+  audio_url: string | null
+  created_at: string
+  published_at: string | null
+}
 
 export default function AdminNewsPage() {
+  const router = useRouter()
   const [loading, setLoading] = useState(true)
-  const [voices, setVoices] = useState<Voice[]>([])
+  const [saving, setSaving] = useState(false)
   const [generating, setGenerating] = useState<string | null>(null)
-  const [playing, setPlaying] = useState<string | null>(null)
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
-  const [selectedState, setSelectedState] = useState('South Carolina')
-  const [settings, setSettings] = useState<Record<string, CatSettings>>({})
-  const audioRef = useRef<HTMLAudioElement | null>(null)
-  const saveTimeout = useRef<NodeJS.Timeout | null>(null)
+  const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
+  
+  const [settings, setSettings] = useState<NewsSettings>({
+    categories: {},
+    narrator_voice_id: 'EXAVITQu4vr4xnSDxMaL',
+    narrator_voice_name: 'Sarah (Female)',
+    generation_times: ['06:00', '12:00', '18:00'],
+    auto_generate: true,
+    stories_per_category: 5,
+  })
+
+  const [episodes, setEpisodes] = useState<NewsEpisode[]>([])
+  const [activeTab, setActiveTab] = useState<'settings' | 'episodes'>('settings')
 
   useEffect(() => {
-    Promise.all([loadVoices(), loadSettings()]).finally(() => setLoading(false))
-    return () => { audioRef.current?.pause(); if (saveTimeout.current) clearTimeout(saveTimeout.current) }
-  }, [])
+    // Set a max timeout to prevent infinite loading
+    const timeout = setTimeout(() => {
+      console.log('[News] Loading timeout - showing page with defaults')
+      setSettings(prev => ({
+        ...prev,
+        categories: initializeCategories()
+      }))
+      setLoading(false)
+    }, 5000)
 
-  async function loadVoices() {
-    try {
-      const res = await fetch('/api/admin/elevenlabs-voices')
-      const data = await res.json()
-      setVoices(data.voices || [])
-    } catch (e) { console.error(e) }
-  }
+    loadSettings().finally(() => clearTimeout(timeout))
+    loadEpisodes()
+    
+    return () => clearTimeout(timeout)
+  }, [])
 
   async function loadSettings() {
     try {
-      const { data } = await supabase.from('news_settings').select('*').eq('id', '1').single()
-      if (data?.settings) {
-        setSettings(data.settings.categories || {})
-        setSelectedState(data.settings.selected_state || 'South Carolina')
+      const { data, error } = await supabase
+        .from('news_settings')
+        .select('*')
+        .eq('id', 1)
+        .single()
+
+      if (data) {
+        setSettings({
+          categories: data.categories || initializeCategories(),
+          narrator_voice_id: data.narrator_voice_id || 'EXAVITQu4vr4xnSDxMaL',
+          narrator_voice_name: data.narrator_voice_name || 'Sarah (Female)',
+          generation_times: data.generation_times || ['06:00', '18:00'],
+          auto_generate: data.auto_generate ?? true,
+          stories_per_category: data.stories_per_category || 5,
+        })
+      } else {
+        // Initialize with defaults
+        setSettings(prev => ({
+          ...prev,
+          categories: initializeCategories()
+        }))
       }
-    } catch (e) { console.error(e) }
-  }
-
-  function saveToDb(newSettings: Record<string, CatSettings>, state?: string) {
-    if (saveTimeout.current) clearTimeout(saveTimeout.current)
-    saveTimeout.current = setTimeout(async () => {
-      await supabase.from('news_settings').upsert({
-        id: '1',
-        settings: { categories: newSettings, selected_state: state || selectedState },
-        updated_at: new Date().toISOString()
-      })
-    }, 500)
-  }
-
-  function updateSetting(catId: string, field: string, value: string) {
-    setSettings(prev => {
-      const updated = { ...prev, [catId]: { ...prev[catId], [field]: value } }
-      saveToDb(updated)
-      return updated
-    })
-  }
-
-  function updateState(state: string) {
-    setSelectedState(state)
-    saveToDb(settings, state)
-  }
-
-  async function previewVoice(voiceId: string) {
-    if (!voiceId) return
-    try {
-      const res = await fetch('/api/admin/preview-voice', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ voiceId, text: 'Hello, this is a voice preview for Drive Time Tales.' })
-      })
-      if (res.ok) {
-        const blob = await res.blob()
-        new Audio(URL.createObjectURL(blob)).play()
-      }
-    } catch (e) { console.error(e) }
-  }
-
-  async function generate(catId: string) {
-    const catSettings = settings[catId] || { voice_id: '', narrator_name: '', last_generated: null, audio_url: null }
-    if (!catSettings.voice_id) {
-      setMessage({ type: 'error', text: 'Please select a voice first' })
-      return
+    } catch (error) {
+      console.error('Error loading settings:', error)
+      setSettings(prev => ({
+        ...prev,
+        categories: initializeCategories()
+      }))
+    } finally {
+      setLoading(false)
     }
+  }
 
-    setGenerating(catId)
+  function initializeCategories(): Record<string, CategorySettings> {
+    const cats: Record<string, CategorySettings> = {}
+    NEWS_CATEGORIES.forEach(cat => {
+      cats[cat.id] = {
+        enabled: true,
+        feeds: cat.defaultFeeds,
+        voice_id: 'EXAVITQu4vr4xnSDxMaL', // Default to Sarah
+        last_generated: null
+      }
+    })
+    return cats
+  }
+
+  async function loadEpisodes() {
+    try {
+      const { data } = await supabase
+        .from('news_episodes')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(20)
+
+      if (data) {
+        setEpisodes(data)
+      }
+    } catch (error) {
+      console.error('Error loading episodes:', error)
+    }
+  }
+
+  async function saveSettings() {
+    setSaving(true)
     setMessage(null)
 
     try {
-      const res = await fetch('/api/admin/generate-news', {
+      const { error } = await supabase
+        .from('news_settings')
+        .upsert({
+          id: 1,
+          categories: settings.categories,
+          narrator_voice_id: settings.narrator_voice_id,
+          narrator_voice_name: settings.narrator_voice_name,
+          generation_times: settings.generation_times,
+          auto_generate: settings.auto_generate,
+          stories_per_category: settings.stories_per_category,
+          updated_at: new Date().toISOString(),
+        })
+
+      if (error) throw error
+      setMessage({ type: 'success', text: 'Settings saved successfully!' })
+    } catch (error) {
+      console.error('Error saving settings:', error)
+      setMessage({ type: 'error', text: 'Failed to save settings' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function generateCategory(categoryId: string) {
+    setGenerating(categoryId)
+    setMessage(null)
+
+    try {
+      const response = await fetch('/api/admin/generate-news', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          category: catId === 'state' ? 'state' : catId,
-          voiceId: catSettings.voice_id,
-          narratorName: catSettings.narrator_name || 'Your Host',
-          state: catId === 'state' ? selectedState : null,
-          storiesCount: 5
+        body: JSON.stringify({ 
+          category: categoryId,
+          voice_id: settings.categories[categoryId]?.voice_id
         })
       })
 
-      const result = await res.json()
-      if (!res.ok) throw new Error(result.error || 'Generation failed')
+      const result = await response.json()
 
-      setSettings(prev => {
-        const updated = {
+      if (result.success) {
+        // Update last_generated timestamp
+        setSettings(prev => ({
           ...prev,
-          [catId]: { ...prev[catId], last_generated: new Date().toISOString(), audio_url: result.episode?.audioUrl }
-        }
-        saveToDb(updated)
-        return updated
-      })
-
-      setMessage({ type: 'success', text: `${ALL_CATEGORIES.find(c => c.id === catId)?.name} generated!` })
-    } catch (e) {
-      setMessage({ type: 'error', text: e instanceof Error ? e.message : 'Generation failed' })
+          categories: {
+            ...prev.categories,
+            [categoryId]: {
+              ...prev.categories[categoryId],
+              last_generated: new Date().toISOString()
+            }
+          }
+        }))
+        setMessage({ type: 'success', text: `${getCategoryName(categoryId)} briefing generated!` })
+        loadEpisodes()
+      } else {
+        throw new Error(result.error || 'Generation failed')
+      }
+    } catch (error: any) {
+      setMessage({ type: 'error', text: error.message || 'Failed to generate briefing' })
     } finally {
       setGenerating(null)
     }
   }
 
-  async function generateAll() {
-    for (const cat of ALL_CATEGORIES) {
-      if (settings[cat.id]?.voice_id) {
-        await generate(cat.id)
+  async function generateAllCategories() {
+    setGenerating('all')
+    setMessage(null)
+
+    const enabledCategories = NEWS_CATEGORIES.filter(cat => 
+      settings.categories[cat.id]?.enabled
+    )
+
+    let successCount = 0
+    let failCount = 0
+
+    for (const cat of enabledCategories) {
+      try {
+        const response = await fetch('/api/admin/generate-news', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ category: cat.id })
+        })
+
+        const result = await response.json()
+        if (result.success) successCount++
+        else failCount++
+      } catch {
+        failCount++
       }
     }
+
+    setMessage({
+      type: failCount === 0 ? 'success' : 'error',
+      text: `Generated ${successCount}/${enabledCategories.length} briefings${failCount > 0 ? ` (${failCount} failed)` : ''}`
+    })
+    
+    loadEpisodes()
+    setGenerating(null)
   }
 
-  function togglePlay(catId: string) {
-    const url = settings[catId]?.audio_url
-    if (!url) return
+  function getCategoryName(id: string): string {
+    return NEWS_CATEGORIES.find(c => c.id === id)?.name || id
+  }
 
-    if (playing === catId) {
-      audioRef.current?.pause()
-      audioRef.current = null
-      setPlaying(null)
-    } else {
-      audioRef.current?.pause()
-      const audio = new Audio(url + '?t=' + Date.now())
-      audio.onended = () => setPlaying(null)
-      audio.play()
-      audioRef.current = audio
-      setPlaying(catId)
+  function getCategoryIcon(id: string): string {
+    return NEWS_CATEGORIES.find(c => c.id === id)?.icon || '📰'
+  }
+
+  function formatLastGenerated(timestamp: string | null): string {
+    if (!timestamp) return 'Never'
+    const date = new Date(timestamp)
+    return date.toLocaleString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: 'America/New_York'
+    }) + ' EST'
+  }
+
+  function toggleCategory(categoryId: string) {
+    setSettings(prev => ({
+      ...prev,
+      categories: {
+        ...prev.categories,
+        [categoryId]: {
+          ...prev.categories[categoryId],
+          enabled: !prev.categories[categoryId]?.enabled
+        }
+      }
+    }))
+  }
+
+  function updateCategoryFeeds(categoryId: string, feeds: string[]) {
+    setSettings(prev => ({
+      ...prev,
+      categories: {
+        ...prev.categories,
+        [categoryId]: {
+          ...prev.categories[categoryId],
+          feeds
+        }
+      }
+    }))
+  }
+
+  function updateCategoryVoice(categoryId: string, voiceId: string) {
+    setSettings(prev => ({
+      ...prev,
+      categories: {
+        ...prev.categories,
+        [categoryId]: {
+          ...prev.categories[categoryId],
+          voice_id: voiceId
+        }
+      }
+    }))
+  }
+
+  function selectVoice(voiceId: string) {
+    const voice = AVAILABLE_VOICES.find(v => v.id === voiceId)
+    if (voice) {
+      setSettings(prev => ({
+        ...prev,
+        narrator_voice_id: voice.id,
+        narrator_voice_name: voice.name
+      }))
     }
   }
 
-  function formatDate(d: string | null): string {
-    if (!d) return 'Never'
-    return new Date(d).toLocaleString('en-US', {
-      month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true
+  function updateGenerationTime(index: number, time: string) {
+    setSettings(prev => {
+      const newTimes = [...prev.generation_times]
+      newTimes[index] = time
+      return { ...prev, generation_times: newTimes }
     })
   }
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-        <div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-white text-sm">Loading news settings...</p>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-slate-900 p-6">
-      <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-4">
-            <Link href="/admin" className="text-white/60 hover:text-white text-sm">← Back</Link>
-            <h1 className="text-2xl font-bold text-white">📰 News Briefings</h1>
+    <div className="min-h-screen bg-slate-950 text-white">
+      {/* Header */}
+      <header className="bg-slate-900 border-b border-slate-800 px-4 py-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Link href="/admin" className="text-slate-400 hover:text-white transition">
+              ← Back
+            </Link>
+            <h1 className="text-xl font-bold">📰 News Briefings</h1>
           </div>
+        </div>
+      </header>
+
+      {/* Tabs */}
+      <div className="border-b border-slate-800">
+        <div className="flex">
           <button
-            onClick={generateAll}
-            disabled={generating !== null}
-            className="px-6 py-2.5 bg-orange-500 hover:bg-orange-400 disabled:opacity-50 rounded-lg font-bold text-white flex items-center gap-2"
+            onClick={() => setActiveTab('settings')}
+            className={`px-6 py-3 font-medium transition ${
+              activeTab === 'settings'
+                ? 'text-orange-400 border-b-2 border-orange-400'
+                : 'text-slate-400 hover:text-white'
+            }`}
           >
-            {generating ? (
-              <><span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> Generating...</>
-            ) : (
-              '⚡ Generate All'
-            )}
+            ⚙️ Settings
+          </button>
+          <button
+            onClick={() => setActiveTab('episodes')}
+            className={`px-6 py-3 font-medium transition ${
+              activeTab === 'episodes'
+                ? 'text-orange-400 border-b-2 border-orange-400'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            🎙️ Episodes ({episodes.length})
           </button>
         </div>
+      </div>
 
+      <div className="p-4 max-w-4xl mx-auto">
         {/* Message */}
         {message && (
-          <div className={`mb-6 p-4 rounded-lg font-medium ${message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+          <div className={`mb-4 p-3 rounded-lg ${
+            message.type === 'success'
+              ? 'bg-green-500/20 border border-green-500/30 text-green-400'
+              : 'bg-red-500/20 border border-red-500/30 text-red-400'
+          }`}>
             {message.text}
           </div>
         )}
 
-        {/* 2x3 Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {ALL_CATEGORIES.map(cat => {
-            const catSettings = settings[cat.id] || { voice_id: '', narrator_name: '', last_generated: null, audio_url: null }
-            const isGenerating = generating === cat.id
-            const isPlaying = playing === cat.id
-
-            return (
-              <div key={cat.id} className="bg-gray-100 rounded-xl p-5 relative overflow-hidden">
-                {/* Generating Overlay */}
-                {isGenerating && (
-                  <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center z-10 rounded-xl">
-                    <div className="w-14 h-14 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mb-3" />
-                    <span className="text-white font-bold">Generating...</span>
+        {activeTab === 'settings' && (
+          <div className="space-y-6">
+            {/* Categories */}
+            <div className="bg-slate-900 rounded-xl p-4 border border-slate-800">
+              <h2 className="text-lg font-bold mb-3">📁 Categories</h2>
+              <div className="space-y-3">
+                {NEWS_CATEGORIES.map(cat => (
+                  <div key={cat.id} className="bg-slate-800 rounded-lg p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xl">{cat.icon}</span>
+                        <div>
+                          <span className="font-medium">{cat.name}</span>
+                          <p className="text-xs text-slate-500">
+                            Last generated: {formatLastGenerated(settings.categories[cat.id]?.last_generated)}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {settings.categories[cat.id]?.enabled && (
+                          <button
+                            onClick={() => generateCategory(cat.id)}
+                            disabled={generating !== null}
+                            className={`px-3 py-1 rounded-lg text-sm font-medium transition ${
+                              generating === cat.id
+                                ? 'bg-orange-500/50 text-white'
+                                : 'bg-orange-500 hover:bg-orange-400 text-black'
+                            }`}
+                          >
+                            {generating === cat.id ? (
+                              <span className="flex items-center gap-1">
+                                <span className="w-3 h-3 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                                Generating...
+                              </span>
+                            ) : (
+                              '▶ Generate Now'
+                            )}
+                          </button>
+                        )}
+                        <button
+                          onClick={() => toggleCategory(cat.id)}
+                          className={`w-12 h-6 rounded-full transition relative ${
+                            settings.categories[cat.id]?.enabled
+                              ? 'bg-green-500'
+                              : 'bg-slate-600'
+                          }`}
+                        >
+                          <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${
+                            settings.categories[cat.id]?.enabled ? 'left-7' : 'left-1'
+                          }`} />
+                        </button>
+                      </div>
+                    </div>
+                    {settings.categories[cat.id]?.enabled && (
+                      <div className="mt-2 space-y-3">
+                        <div>
+                          <label className="text-xs text-slate-400 block mb-1">Narrator Voice</label>
+                          <select
+                            value={settings.categories[cat.id]?.voice_id || 'EXAVITQu4vr4xnSDxMaL'}
+                            onChange={(e) => updateCategoryVoice(cat.id, e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                          >
+                            {AVAILABLE_VOICES.map(voice => (
+                              <option key={voice.id} value={voice.id}>
+                                {voice.name} - {voice.description}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-xs text-slate-400 block mb-1">RSS Feeds (one per line)</label>
+                          <textarea
+                            value={settings.categories[cat.id]?.feeds?.join('\n') || ''}
+                            onChange={(e) => updateCategoryFeeds(cat.id, e.target.value.split('\n').filter(f => f.trim()))}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white resize-none"
+                            rows={2}
+                            placeholder="Enter RSS feed URLs..."
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
+                ))}
+              </div>
+            </div>
 
-                {/* Header */}
-                <div className="flex items-center gap-2 mb-4">
-                  <span className="text-2xl">{cat.icon}</span>
-                  <h2 className="text-lg font-bold text-gray-900">{cat.name}</h2>
-                </div>
+            {/* Schedule */}
+            <div className="bg-slate-900 rounded-xl p-4 border border-slate-800">
+              <h2 className="text-lg font-bold mb-3">⏰ Auto-Generation Schedule</h2>
+              
+              <div className="flex items-center justify-between mb-4">
+                <span>Enable Auto-Generation</span>
+                <button
+                  onClick={() => setSettings(prev => ({ ...prev, auto_generate: !prev.auto_generate }))}
+                  className={`w-12 h-6 rounded-full transition relative ${
+                    settings.auto_generate ? 'bg-green-500' : 'bg-slate-600'
+                  }`}
+                >
+                  <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${
+                    settings.auto_generate ? 'left-7' : 'left-1'
+                  }`} />
+                </button>
+              </div>
 
-                {/* State Dropdown (only for State News) */}
-                {cat.id === 'state' && (
-                  <div className="mb-3">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Select State</label>
-                    <select
-                      value={selectedState}
-                      onChange={(e) => updateState(e.target.value)}
-                      className="w-full bg-gray-600 text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                    >
-                      {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
+              {settings.auto_generate && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <label className="text-sm text-slate-400 w-24">Morning:</label>
+                    <input
+                      type="time"
+                      value={settings.generation_times[0] || '06:00'}
+                      onChange={(e) => updateGenerationTime(0, e.target.value)}
+                      className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white"
+                    />
                   </div>
-                )}
-
-                {/* Narrator Name */}
-                <div className="mb-3">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Narrator Name</label>
-                  <input
-                    type="text"
-                    value={catSettings.narrator_name || ''}
-                    onChange={(e) => updateSetting(cat.id, 'narrator_name', e.target.value)}
-                    placeholder="e.g., Sarah Mitchell"
-                    className="w-full bg-gray-600 text-white placeholder-gray-400 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  />
+                  <div className="flex items-center gap-3">
+                    <label className="text-sm text-slate-400 w-24">Noon:</label>
+                    <input
+                      type="time"
+                      value={settings.generation_times[1] || '12:00'}
+                      onChange={(e) => updateGenerationTime(1, e.target.value)}
+                      className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white"
+                    />
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <label className="text-sm text-slate-400 w-24">Evening:</label>
+                    <input
+                      type="time"
+                      value={settings.generation_times[2] || '18:00'}
+                      onChange={(e) => updateGenerationTime(2, e.target.value)}
+                      className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white"
+                    />
+                  </div>
+                  <p className="text-xs text-slate-500 mt-2">Times are in EST (Eastern Standard Time)</p>
                 </div>
+              )}
 
-                {/* Voice */}
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Voice</label>
-                  <div className="flex gap-2">
-                    <select
-                      value={catSettings.voice_id || ''}
-                      onChange={(e) => updateSetting(cat.id, 'voice_id', e.target.value)}
-                      className="flex-1 bg-gray-600 text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                    >
-                      <option value="">Select voice...</option>
-                      {voices.map(v => (
-                        <option key={v.voice_id} value={v.voice_id}>
-                          {v.name} {v.labels?.accent ? `(${v.labels.accent})` : ''}
-                        </option>
-                      ))}
-                    </select>
+              <div className="mt-4 pt-4 border-t border-slate-700">
+                <div className="flex items-center gap-3">
+                  <label className="text-sm text-slate-400">Stories per category:</label>
+                  <div className="flex items-center gap-2">
                     <button
-                      onClick={() => previewVoice(catSettings.voice_id || '')}
-                      disabled={!catSettings.voice_id}
-                      className={`px-3 py-2 rounded-lg font-medium transition ${catSettings.voice_id ? 'bg-blue-500 hover:bg-blue-400 text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
+                      onClick={() => setSettings(prev => ({ ...prev, stories_per_category: Math.max(3, prev.stories_per_category - 1) }))}
+                      className="w-8 h-8 bg-slate-800 hover:bg-slate-700 rounded-lg font-bold"
                     >
-                      ▶ Test
+                      -
+                    </button>
+                    <span className="w-8 text-center font-bold">{settings.stories_per_category}</span>
+                    <button
+                      onClick={() => setSettings(prev => ({ ...prev, stories_per_category: Math.min(10, prev.stories_per_category + 1) }))}
+                      className="w-8 h-8 bg-slate-800 hover:bg-slate-700 rounded-lg font-bold"
+                    >
+                      +
                     </button>
                   </div>
                 </div>
-
-                {/* Last Generated */}
-                <p className="text-sm text-gray-600 mb-4">
-                  Last updated: <span className="font-medium text-gray-900">{formatDate(catSettings.last_generated)}</span>
-                </p>
-
-                {/* Buttons */}
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => generate(cat.id)}
-                    disabled={generating !== null || !catSettings.voice_id}
-                    className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-400 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed rounded-lg font-bold text-white transition"
-                  >
-                    ⚡ Generate
-                  </button>
-                  <button
-                    onClick={() => togglePlay(cat.id)}
-                    disabled={!catSettings.audio_url}
-                    className={`flex-1 py-2.5 rounded-lg font-bold transition ${
-                      !catSettings.audio_url
-                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                        : isPlaying
-                          ? 'bg-red-500 text-white'
-                          : 'bg-green-500 hover:bg-green-400 text-white'
-                    }`}
-                  >
-                    {isPlaying ? '⏹ Stop' : '▶ Play'}
-                  </button>
-                </div>
               </div>
-            )
-          })}
-        </div>
+            </div>
 
-        <p className="text-gray-500 text-sm text-center mt-8">Settings auto-save when changed</p>
+            {/* Save Button */}
+            <button
+              onClick={saveSettings}
+              disabled={saving}
+              className={`w-full py-4 rounded-xl font-bold transition ${
+                saving
+                  ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                  : 'bg-green-500 hover:bg-green-400 text-black'
+              }`}
+            >
+              {saving ? 'Saving...' : '💾 Save Settings'}
+            </button>
+          </div>
+        )}
+
+        {activeTab === 'episodes' && (
+          <div className="space-y-3">
+            {episodes.length === 0 ? (
+              <div className="bg-slate-900 rounded-xl p-8 text-center border border-slate-800">
+                <p className="text-slate-400">No episodes generated yet</p>
+                <button
+                  onClick={() => setActiveTab('settings')}
+                  className="mt-3 text-orange-400 hover:text-orange-300"
+                >
+                  Go to Settings to generate →
+                </button>
+              </div>
+            ) : (
+              episodes.map(ep => (
+                <div
+                  key={ep.id}
+                  className="bg-slate-900 rounded-xl p-4 border border-slate-800 flex items-center gap-4"
+                >
+                  <div className="text-3xl">
+                    {getCategoryIcon(ep.category)}
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium">{ep.title}</p>
+                      {ep.is_live && (
+                        <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full font-bold animate-pulse">
+                          LIVE
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-slate-400">
+                      {getCategoryName(ep.category)} • {new Date(ep.created_at).toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {ep.audio_url ? (
+                      <a
+                        href={ep.audio_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-2 bg-green-500/20 text-green-400 rounded-lg hover:bg-green-500/30 transition"
+                      >
+                        🎧 Play
+                      </a>
+                    ) : (
+                      <span className="text-xs text-slate-500">No audio</span>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
