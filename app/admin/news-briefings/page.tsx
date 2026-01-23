@@ -476,7 +476,7 @@ export default function AdminNewsPage() {
         <div className="grid gap-4">
           {NEWS_CATEGORIES.map(cat => {
             const colors = getColorClasses(cat.color)
-            const catSettings = settings.categories[cat.id] || {}
+            const catSettings = settings.categories[cat.id] || { enabled: true, voice_id: '', narrator_name: '', last_generated: null, episode_number: 1, audio_url: null }
             const isGeneratingThis = generating.has(cat.id)
 
             return (
