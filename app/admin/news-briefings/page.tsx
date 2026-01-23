@@ -101,7 +101,7 @@ export default function AdminNewsPage() {
   }
 
   async function generate(catId: string) {
-    const catSettings = settings[catId] || {}
+    const catSettings = settings[catId] || { voice_id: '', narrator_name: '', last_generated: null, audio_url: null }
     if (!catSettings.voice_id) {
       setMessage({ type: 'error', text: 'Please select a voice first' })
       return
