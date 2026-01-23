@@ -15,10 +15,6 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-// ============================================================================
-// CATEGORY CONFIGURATION
-// ============================================================================
-
 interface CategoryConfig {
   label: string;
   gdeltQuery: string;
@@ -62,33 +58,11 @@ const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
   }
 };
 
-// State codes for GDELT geo filtering
-const STATE_FIPS: Record<string, string> = {
-  'Alabama': 'US01', 'Alaska': 'US02', 'Arizona': 'US04', 'Arkansas': 'US05',
-  'California': 'US06', 'Colorado': 'US08', 'Connecticut': 'US09', 'Delaware': 'US10',
-  'Florida': 'US12', 'Georgia': 'US13', 'Hawaii': 'US15', 'Idaho': 'US16',
-  'Illinois': 'US17', 'Indiana': 'US18', 'Iowa': 'US19', 'Kansas': 'US20',
-  'Kentucky': 'US21', 'Louisiana': 'US22', 'Maine': 'US23', 'Maryland': 'US24',
-  'Massachusetts': 'US25', 'Michigan': 'US26', 'Minnesota': 'US27', 'Mississippi': 'US28',
-  'Missouri': 'US29', 'Montana': 'US30', 'Nebraska': 'US31', 'Nevada': 'US32',
-  'New Hampshire': 'US33', 'New Jersey': 'US34', 'New Mexico': 'US35', 'New York': 'US36',
-  'North Carolina': 'US37', 'North Dakota': 'US38', 'Ohio': 'US39', 'Oklahoma': 'US40',
-  'Oregon': 'US41', 'Pennsylvania': 'US42', 'Rhode Island': 'US44', 'South Carolina': 'US45',
-  'South Dakota': 'US46', 'Tennessee': 'US47', 'Texas': 'US48', 'Utah': 'US49',
-  'Vermont': 'US50', 'Virginia': 'US51', 'Washington': 'US53', 'West Virginia': 'US54',
-  'Wisconsin': 'US55', 'Wyoming': 'US56'
-};
-
-// ============================================================================
-// GDELT NEWS FETCHER
-// ============================================================================
-
 interface GdeltArticle {
   title: string;
   url: string;
   source: string;
   seendate: string;
-  socialimage?: string;
 }
 
 interface NewsStory {
@@ -106,29 +80,47 @@ async function fetchGdeltNews(
     const config = CATEGORY_CONFIG[category];
     if (!config) throw new Error(`Unknown category: ${category}`);
 
-    // Build GDELT DOC 2.0 API query
-    // Documentation: https://blog.gdeltproject.org/gdelt-doc-2-0-api-debuts/
     let query = config.gdeltQuery;
     
-    // For state news, search for state name in articles from US sources
-    // Include both general news and sports
     if (category === 'state' && state) {
-      // GDELT searches for the state name as a keyword in US English news
-      // This gives us articles that specifically mention the state, including sports
       query = `("${state}" OR "${state} sports" OR "${state} football" OR "${state} basketball") sourcecountry:US sourcelang:english`;
     }
 
-    // Build the GDELT API URL (note: GDELT doesn't use standard URLSearchParams encoding)
-    // Format: query goes first, then &mode=, &maxrecords=, etc.
     const encodedQuery = encodeURIComponent(query);
-    const maxRecords = Math.min(count * 3, 75); // GDELT default max is 75, can go to 250
+    const maxRecords = Math.min(count * 3, 75);
     
     const gdeltUrl = `https://api.gdeltproject.org/api/v2/doc/doc?query=${encodedQuery}&mode=ArtList&maxrecords=${maxRecords}&format=json&sort=DateDesc&timespan=24h`;
     console.log('[GDELT] Fetching:', gdeltUrl);
 
     const response = await fetch(gdeltUrl, {
       headers: { 'Accept': 'application/json' },
-      signal: AbortSignal.timeout(10000) // 10 second timeout
+      signal: AbortSignal.timeout(100
+cat >> ~/Projects/drivetimetales/app/api/admin/generate-news/route.ts << 'CHUNK2'
+
+async function fetchGdeltNews(
+  category: string,
+  state: string | null,
+  count: number
+): Promise<NewsStory[]> {
+  try {
+    const config = CATEGORY_CONFIG[category];
+    if (!config) throw new Error(`Unknown category: ${category}`);
+
+    let query = config.gdeltQuery;
+    
+    if (category === 'state' && state) {
+      query = `("${state}" OR "${state} sports" OR "${state} football" OR "${state} basketball") sourcecountry:US sourcelang:english`;
+    }
+
+    const encodedQuery = encodeURIComponent(query);
+    const maxRecords = Math.min(count * 3, 75);
+    
+    const gdeltUrl = `https://api.gdeltproject.org/api/v2/doc/doc?query=${encodedQuery}&mode=ArtList&maxrecords=${maxRecords}&format=json&sort=DateDesc&timespan=24h`;
+    console.log('[GDELT] Fetching:', gdeltUrl);
+
+    const response = await fetch(gdeltUrl, {
+      headers: { 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(10000)
     });
 
     if (!response.ok) {
@@ -145,21 +137,19 @@ async function fetchGdeltNews(
 
     console.log(`[GDELT] Found ${articles.length} articles`);
 
-    // Deduplicate by title similarity and convert to NewsStory format
     const seen = new Set<string>();
     const stories: NewsStory[] = [];
 
     for (const article of articles) {
       if (stories.length >= count) break;
       
-      // Simple deduplication by normalized title
       const normalizedTitle = article.title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 50);
       if (seen.has(normalizedTitle)) continue;
       seen.add(normalizedTitle);
 
       stories.push({
         headline: article.title,
-        summary: '', // GDELT doesn't provide summaries, Claude will expand
+        summary: '',
         source: article.source || 'News'
       });
     }
@@ -168,13 +158,9 @@ async function fetchGdeltNews(
 
   } catch (error) {
     console.error('[GDELT] Fetch error:', error);
-    return []; // Return empty to trigger fallback
+    return [];
   }
 }
-
-// ============================================================================
-// FALLBACK: WEB SEARCH (only if GDELT fails)
-// ============================================================================
 
 async function fetchNewsViaWebSearch(
   category: string,
@@ -189,55 +175,41 @@ async function fetchNewsViaWebSearch(
     searchQuery = searchQuery.replace('STATE_NAME', state);
   }
 
-  console.log('[Fallback] Using web search:', searchQuery);
-
   try {
-    // Use Claude with web search just to get headlines, not to write the script
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1500,
-      system: `You are a news researcher. Output ONLY a JSON array of news stories. No commentary, no markdown, just valid JSON.`,
-      tools: [{ type: 'web_search_20250305' as const, name: 'web_search' as const }],
+      tools: [{
+        type: 'web_search_20250305',
+        name: 'web_search',
+        max_uses: 1
+      }],
       messages: [{
         role: 'user',
-        content: `Search for: ${searchQuery}
-
-Return ONLY a JSON array with exactly ${count} items in this format:
-[
-  {"headline": "Story title", "summary": "1-2 sentence summary", "source": "Source name"},
-  ...
-]
-
-Output ONLY the JSON array, nothing else.`
-      }],
+        content: `Search for: ${searchQuery}\n\nReturn ONLY a JSON array of ${count} news headlines, nothing else. Format: [{"headline": "...", "source": "..."}]`
+      }]
     });
 
-    // Extract JSON from response
-    let jsonText = '';
+    let text = '';
     for (const block of response.content) {
-      if (block.type === 'text') jsonText += block.text;
+      if (block.type === 'text') text += block.text;
     }
 
-    // Clean up and parse JSON
-    jsonText = jsonText.trim();
-    const jsonMatch = jsonText.match(/\[[\s\S]*\]/);
-    if (!jsonMatch) {
-      console.error('[Fallback] No JSON found in response');
-      return [];
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      return parsed.map((item: { headline: string; source?: string }) => ({
+        headline: item.headline,
+        summary: '',
+        source: item.source || 'News'
+      }));
     }
-
-    const stories: NewsStory[] = JSON.parse(jsonMatch[0]);
-    return stories.slice(0, count);
-
+    return [];
   } catch (error) {
-    console.error('[Fallback] Web search error:', error);
+    console.error('[Fallback Search] Error:', error);
     return [];
   }
 }
-
-// ============================================================================
-// SCRIPT GENERATOR (No web search = No thinking in output!)
-// ============================================================================
 
 async function generateCleanScript(
   stories: NewsStory[],
@@ -254,12 +226,10 @@ async function generateCleanScript(
 
   const label = state ? `${state} News` : config.label;
 
-  // Format stories for the prompt
   const storiesText = stories.map((s, i) => 
     `${i + 1}. ${s.headline}${s.summary ? ` - ${s.summary}` : ''}`
   ).join('\n');
 
-  // Category-specific content guidance
   const categoryGuidance: Record<string, string> = {
     state: `STATE NEWS FOCUS for ${state}:
 - State government actions and legislation
@@ -320,7 +290,6 @@ When mentioning companies, briefly introduce them (location + what they do).`
 
   const guidance = categoryGuidance[state ? 'state' : categoryId] || '';
 
-  // CRITICAL: This prompt does NOT use web search, so Claude outputs clean script only
   const prompt = `You are ${narrator}, a seasoned professional radio news broadcaster. Write a broadcast script for these ${label} stories.
 
 NEWS DEFINITION: Information about recent events, developments, or issues that are important, relevant, or interesting to the public. News aims to inform audiences with accurate, timely, and verified facts. It should be the fresh pulse of the world - clear, concise, and grounded in verified information.
@@ -335,26 +304,18 @@ SCRIPT REQUIREMENTS:
 1. OPENING (vary naturally - never sound stale or canned):
    - Greet the listener by name: "${listenerName}"
    - Introduce yourself as ${narrator}
-   - Examples of varied openings:
-     * "Good ${timeGreeting}, ${listenerName}! I'm ${narrator}, bringing you your ${label} briefing."
-     * "Hey ${listenerName}, good ${timeGreeting}! ${narrator} here with your ${label} update."
-     * "Welcome, ${listenerName}! I'm ${narrator}, and this is your ${label} for today."
 
 2. STORY COVERAGE (target 3-5 minutes total):
    - Place more important and newer stories FIRST and give them MORE time
    - Each story: 3-5 sentences in conversational broadcast style
    - Add color and context - explain WHY stories matter
-   - When mentioning companies: briefly note where they're located and what they do
+   - When mentioning companies: briefly note where they are located and what they do
    - Use smooth transitions between stories
    - NEVER hallucinate, exaggerate, or make up events
 
 3. CLOSING (vary naturally):
-   - Mention the listener's name: "${listenerName}"
+   - Mention the listener name: "${listenerName}"
    - Sign off with your name: ${narrator}
-   - Examples:
-     * "That's your ${label} update, ${listenerName}. I'm ${narrator}. Thanks for listening, and drive safe!"
-     * "And that's the latest, ${listenerName}. ${narrator} here, wishing you a great ${timeGreeting}."
-     * "That wraps up your briefing, ${listenerName}. I'm ${narrator}. We'll catch you next time!"
 
 STYLE RULES:
 - Be warm, conversational, and engaging - like a trusted friend delivering the news
@@ -367,7 +328,6 @@ STYLE RULES:
     model: 'claude-sonnet-4-20250514',
     max_tokens: 3000,
     messages: [{ role: 'user', content: prompt }],
-    // NO tools = NO web search = NO thinking in output!
   });
 
   let script = '';
@@ -375,39 +335,34 @@ STYLE RULES:
     if (block.type === 'text') script += block.text;
   }
 
-  // Minimal cleanup - should be clean already since no web search
-  script = script.trim();
-  
-  // Ensure it starts with the greeting
-  const greetingMatch = script.match(/Good (morning|afternoon|evening)/i);
-  if (greetingMatch && greetingMatch.index && greetingMatch.index > 0) {
-    script = script.substring(greetingMatch.index);
-  }
-
-  return script;
+  return script.trim();
 }
 
-// ============================================================================
-// AUDIO GENERATOR (ElevenLabs)
-// ============================================================================
-
 async function generateAudio(script: string, voiceId: string): Promise<Buffer> {
-  const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
-    method: 'POST',
-    headers: {
-      'Accept': 'audio/mpeg',
-      'Content-Type': 'application/json',
-      'xi-api-key': process.env.ELEVENLABS_API_KEY!
-    },
-    body: JSON.stringify({
-      text: script,
-      model_id: 'eleven_monolingual_v1',
-      voice_settings: {
-        stability: 0.5,
-        similarity_boost: 0.75
-      }
-    }),
-  });
+  const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
+  if (!ELEVENLABS_API_KEY) {
+    throw new Error('ElevenLabs API key not configured');
+  }
+
+  const response = await fetch(
+    `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
+    {
+      method: 'POST',
+      headers: {
+        'Accept': 'audio/mpeg',
+        'Content-Type': 'application/json',
+        'xi-api-key': ELEVENLABS_API_KEY,
+      },
+      body: JSON.stringify({
+        text: script,
+        model_id: 'eleven_multilingual_v2',
+        voice_settings: {
+          stability: 0.5,
+          similarity_boost: 0.75,
+        },
+      }),
+    }
+  );
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -417,10 +372,6 @@ async function generateAudio(script: string, voiceId: string): Promise<Buffer> {
   const arrayBuffer = await response.arrayBuffer();
   return Buffer.from(arrayBuffer);
 }
-
-// ============================================================================
-// MAIN API HANDLER
-// ============================================================================
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
@@ -443,11 +394,9 @@ export async function POST(request: NextRequest) {
     }
 
     const narrator = narratorName || 'Your Host';
-    console.log(`[Generate News] Starting: ${category}${state ? ` (${state})` : ''}, narrator: ${narrator}, listener: ${listenerName}, stories: ${storiesCount}`);
+    console.log(`[Generate News] Starting: ${category}${state ? ` (${state})` : ''}, narrator: ${narrator}`);
 
-    // ========================================
     // PHASE 1: Fetch news (GDELT or fallback)
-    // ========================================
     let stories = await fetchGdeltNews(category, state, storiesCount);
     
     if (stories.length < storiesCount) {
@@ -459,21 +408,57 @@ export async function POST(request: NextRequest) {
     if (stories.length === 0) {
       return NextResponse.json({ 
         error: 'Could not fetch news stories. Please try again.',
-        details: 'Both GDELT and fallback search returned no results.'
+      }, { status: 500 });
+    }
+
+    console.log(`[Generate News] Got ${stories.length} stories, generating script...`)
+cat >> ~/Projects/drivetimetales/app/api/admin/generate-news/route.ts << 'CHUNK6'
+
+export async function POST(request: NextRequest) {
+  const startTime = Date.now();
+  
+  try {
+    const body = await request.json();
+    const { category, voiceId, narratorName, state, storiesCount = 5, listenerName = 'Marc' } = body;
+
+    if (!category) {
+      return NextResponse.json({ error: 'Category is required' }, { status: 400 });
+    }
+
+    const config = CATEGORY_CONFIG[category];
+    if (!config) {
+      return NextResponse.json({ error: 'Invalid category' }, { status: 400 });
+    }
+
+    if (category === 'state' && !state) {
+      return NextResponse.json({ error: 'State is required for local news' }, { status: 400 });
+    }
+
+    const narrator = narratorName || 'Your Host';
+    console.log(`[Generate News] Starting: ${category}${state ? ` (${state})` : ''}, narrator: ${narrator}`);
+
+    // PHASE 1: Fetch news (GDELT or fallback)
+    let stories = await fetchGdeltNews(category, state, storiesCount);
+    
+    if (stories.length < storiesCount) {
+      console.log(`[Generate News] GDELT returned ${stories.length} stories, using fallback`);
+      const fallbackStories = await fetchNewsViaWebSearch(category, state, storiesCount - stories.length);
+      stories = [...stories, ...fallbackStories];
+    }
+
+    if (stories.length === 0) {
+      return NextResponse.json({ 
+        error: 'Could not fetch news stories. Please try again.',
       }, { status: 500 });
     }
 
     console.log(`[Generate News] Got ${stories.length} stories, generating script...`);
 
-    // ========================================
     // PHASE 2: Generate clean script (no web search!)
-    // ========================================
     const script = await generateCleanScript(stories, config, narrator, state, listenerName, category);
     console.log(`[Generate News] Script generated (${script.length} chars)`);
 
-    // ========================================
     // PHASE 3: Generate audio (if voice selected)
-    // ========================================
     let audioUrl: string | null = null;
     let audioDuration: string | null = null;
     
@@ -482,11 +467,9 @@ export async function POST(request: NextRequest) {
         console.log(`[Generate News] Generating audio with voice: ${voiceId}`);
         const audioBuffer = await generateAudio(script, voiceId);
         
-        // Calculate duration (MP3 at ~128kbps ≈ 16000 bytes per second)
         const durationSeconds = Math.round(audioBuffer.length / 16000);
         const durationMinutes = (durationSeconds / 60).toFixed(1);
         audioDuration = durationMinutes;
-        console.log(`[Generate News] Audio duration: ${durationMinutes} minutes`);
         
         const fileName = `news-${category}${state ? `-${state.toLowerCase().replace(/\s+/g, '-')}` : ''}-${Date.now()}.mp3`;
         
@@ -506,15 +489,10 @@ export async function POST(request: NextRequest) {
         }
       } catch (audioError) {
         console.error('[Generate News] Audio generation error:', audioError);
-        // Continue without audio rather than failing entirely
       }
     }
 
-    // ========================================
     // PHASE 4: Save to database
-    // ========================================
-    
-    // Update news_settings
     const { data: settingsRow } = await supabase
       .from('news_settings')
       .select('settings')
@@ -548,20 +526,61 @@ export async function POST(request: NextRequest) {
       })
       .eq('id', '1');
 
-    // Insert into news_episodes
-    if (audioUrl) {
-      await supabase.from('news_episodes').insert({
+    const elapsed = Date.now() - startTime;
+    console.log(`[Generate News] Complete in ${elapsed}ms`);
+
+    return NextResponse.json({
+      success: true,
+      episode: {
         category,
-        state: state || null,
-        episode_number: newEpisode,
-        script_text: script,
-        audio_url: audioUrl,
-        narrator_name: narratorName,
-        voice_id: voiceId,
-        is_live: true,
-        created_at: new Date().toISOString()
-      });
-    }
+        state,
+        episodeNumber: newEpisode,
+        script,
+        audioUrl,
+        duration: audioDuration,
+        storiesUsed: stories.length,
+        generatedAt: new Date().toISOString(),
+        generationTimeMs: elapsed
+      }
+    });
+
+  } catch (error) {
+    console.error('[Generate News] Error:', error
+cat >> ~/Projects/drivetimetales/app/api/admin/generate-news/route.ts << 'CHUNK7'
+
+    // PHASE 4: Save to database
+    const { data: settingsRow } = await supabase
+      .from('news_settings')
+      .select('settings')
+      .eq('id', '1')
+      .single();
+
+    const currentSettings = settingsRow?.settings || {};
+    const currentCategories = currentSettings.categories || {};
+    const currentEpisode = currentCategories[category]?.episode_number || 0;
+    const newEpisode = currentEpisode + 1;
+
+    const updatedSettings = {
+      ...currentSettings,
+      categories: {
+        ...currentCategories,
+        [category]: {
+          ...currentCategories[category],
+          last_generated: new Date().toISOString(),
+          episode_number: newEpisode,
+          audio_url: audioUrl,
+          duration: audioDuration
+        }
+      }
+    };
+
+    await supabase
+      .from('news_settings')
+      .update({
+        settings: updatedSettings,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', '1');
 
     const elapsed = Date.now() - startTime;
     console.log(`[Generate News] Complete in ${elapsed}ms`);
@@ -595,6 +614,6 @@ export async function GET() {
     status: 'ok',
     endpoint: 'generate-news',
     version: '2.0',
-    features: ['gdelt-integration', 'two-phase-generation', 'no-thinking-bug']
+    features: ['gdelt-integration', 'two-phase-generation', 'duration-tracking']
   });
 }
