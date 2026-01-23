@@ -256,27 +256,47 @@ async function generateCleanScript(
     `${i + 1}. ${s.headline}${s.summary ? ` - ${s.summary}` : ''}`
   ).join('\n');
 
+  // Varied greeting examples to avoid sounding canned
+  const greetingExamples = [
+    `Good ${timeGreeting}, I'm ${narrator}, and you're listening to your ${label} briefing.`,
+    `Hey there, good ${timeGreeting}! I'm ${narrator} with your ${label} update.`,
+    `Good ${timeGreeting}, folks. ${narrator} here with your ${label} briefing.`,
+    `Welcome back! I'm ${narrator}, and this is your ${label} update for this ${timeGreeting}.`,
+    `Good ${timeGreeting}! ${narrator} here, bringing you the latest in ${label}.`,
+    `Hello and good ${timeGreeting}. I'm ${narrator} with today's ${label} briefing.`,
+  ];
+
+  // Varied closing examples
+  const closingExamples = [
+    `That's your ${label} update. I'm ${narrator}. Thanks for listening, and have a great ${timeGreeting}.`,
+    `And that wraps up your ${label} briefing. I'm ${narrator}. Stay safe out there.`,
+    `That's all for now. I'm ${narrator}. Thanks for tuning in, and we'll catch you next time.`,
+    `That's your update. ${narrator} here, wishing you a great rest of your ${timeGreeting}. Drive safe!`,
+    `And that's the latest. I'm ${narrator}. Thanks for listening, and take care out there.`,
+  ];
+
   // CRITICAL: This prompt does NOT use web search, so Claude outputs clean script only
   const prompt = `You are ${narrator}, a professional radio news broadcaster. Write a broadcast script for these ${label} stories:
 
 ${storiesText}
 
-FORMAT YOUR SCRIPT EXACTLY LIKE THIS:
+REQUIREMENTS:
+1. START with a warm, natural greeting that introduces yourself as ${narrator}. Pick a style like one of these (but vary it naturally):
+${greetingExamples.map(g => `   - "${g}"`).join('\n')}
 
-Good ${timeGreeting}, I'm ${narrator} with your ${label} briefing.
+2. COVER each story in 3-5 sentences using broadcast style - conversational, clear, and engaging. Flow naturally between stories with transitions.
 
-[Write 3-5 sentences for each story in broadcast style - conversational, clear, engaging]
-
-That's your ${label} update. Thanks for listening, and have a great ${timeGreeting}. Be safe out there.
+3. END with a friendly sign-off that mentions your name (${narrator}). Pick a style like one of these (but vary it naturally):
+${closingExamples.map(c => `   - "${c}"`).join('\n')}
 
 RULES:
-- Start with "Good ${timeGreeting}" exactly
-- Each story should be 3-5 sentences, smoothly flowing
-- Use broadcast style - conversational, not robotic
+- ALWAYS introduce yourself by name (${narrator}) at the start
+- ALWAYS mention your name (${narrator}) in the closing
+- Be conversational and warm, not robotic or stiff
 - NO URLs, citations, or "according to" phrases
 - NO meta-commentary about writing or searching
 - Use Fahrenheit for temperatures, US measurements
-- End with the closing exactly as shown above`;
+- Vary your style naturally - don't sound canned or repetitive`;
 
   const response = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
