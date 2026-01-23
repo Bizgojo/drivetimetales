@@ -1,58 +1,32 @@
-// app/api/news/subscribers-only-audio/route.ts
-// Generates audio message for non-subscribers trying to access State News
-
 import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 
-export async function POST(request: NextRequest) {
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+export async function GET(request: NextRequest) {
   try {
-    const body = await request.json().catch(() => ({}));
-    const voiceId = body.voiceId || 'EXAVITQu4vr4xnSDxMaL';
-    
-    const elevenLabsKey = process.env.ELEVENLABS_API_KEY;
-    
-    if (!elevenLabsKey) {
-      return NextResponse.json({ error: 'ElevenLabs API key not configured' }, { status: 500 });
-    }
+    const { searchParams } = new URL(request.url);
+    const userId = searchParams.get('userId');
+    const episodeId = searchParams.get('episodeId');
+    if (!userId || !episodeId) return NextResponse.json({ error: 'userId and episodeId required' }, { status: 400 });
 
-    const message = "State news is only available for subscribers. You can subscribe by clicking the button on the bottom of this page.";
+    const { data: user, error: userError } = await supabase.from('users').select('credits, subscription_status').eq('id', userId).single();
+    if (userError || !user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
 
-    // Generate audio with ElevenLabs
-    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'xi-api-key': elevenLabsKey
-      },
-      body: JSON.stringify({
-        text: message,
-        model_id: 'eleven_monolingual_v1',
-        voice_settings: {
-          stability: 0.5,
-          similarity_boost: 0.75
-        }
-      })
-    });
+    const isSubscriber = user.subscription_status === 'active';
+    if (!isSubscriber) return NextResponse.json({ error: 'Subscription required', requiresSubscription: true }, { status: 403 });
 
-    if (!response.ok) {
-      const error = await response.text();
-      console.error('[Subscribers Only Audio] ElevenLabs error:', error);
-      return NextResponse.json({ error: 'Failed to generate audio' }, { status: 500 });
-    }
+    const { data: episode, error: episodeError } = await supabase.from('news_episodes').select('*').eq('id', episodeId).single();
+    if (episodeError || !episode) return NextResponse.json({ error: 'Episode not found' }, { status: 404 });
 
-    const audioBuffer = await response.arrayBuffer();
-    
-    return new NextResponse(audioBuffer, {
-      headers: {
-        'Content-Type': 'audio/mpeg',
-        'Content-Length': audioBuffer.byteLength.toString()
-      }
-    });
+    await supabase.from('news_access').insert({ user_id: userId, episode_id: episodeId, accessed_at: new Date().toISOString(), acquired_via: 'subscription' });
 
+    return NextResponse.json({ success: true, audioUrl: episode.audio_url, episode });
   } catch (error) {
-    console.error('[Subscribers Only Audio] Error:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Generation failed' },
-      { status: 500 }
-    );
+    console.error('[Subscribers Audio API] Error:', error);
+    return NextResponse.json({ error: 'Failed to get audio' }, { status: 500 });
   }
 }

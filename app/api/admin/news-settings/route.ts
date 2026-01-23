@@ -6,63 +6,26 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-// GET - Load news briefing settings
 export async function GET() {
   try {
-    const { data, error } = await supabase
-      .from('news_settings')
-      .select('*')
-      .eq('id', 'main')
-      .single();
-
-    if (error && error.code !== 'PGRST116') {
-      // PGRST116 = no rows returned, which is fine for first load
-      throw error;
-    }
-
-    return NextResponse.json({
-      success: true,
-      settings: data?.settings || null,
-    });
+    const { data, error } = await supabase.from('news_settings').select('*').eq('id', '1').single();
+    if (error && error.code !== 'PGRST116') throw error;
+    return NextResponse.json({ success: true, settings: data?.settings || {}, test_state: data?.test_state || 'South Carolina', timezone: data?.timezone || 'America/New_York' });
   } catch (error) {
     console.error('[News Settings] GET error:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to load settings' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to load settings' }, { status: 500 });
   }
 }
 
-// POST - Save news briefing settings
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { settings } = body;
-
-    if (!settings) {
-      return NextResponse.json(
-        { success: false, error: 'No settings provided' },
-        { status: 400 }
-      );
-    }
-
-    // Upsert settings (insert or update)
-    const { error } = await supabase
-      .from('news_settings')
-      .upsert({
-        id: 'main',
-        settings: settings,
-        updated_at: new Date().toISOString(),
-      });
-
+    const { settings, test_state, timezone } = body;
+    const { error } = await supabase.from('news_settings').upsert({ id: '1', settings: settings, test_state: test_state || 'South Carolina', timezone: timezone || 'America/New_York', updated_at: new Date().toISOString() });
     if (error) throw error;
-
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('[News Settings] POST error:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to save settings' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to save settings' }, { status: 500 });
   }
 }
