@@ -4,6 +4,7 @@ import { useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext'
+import { supabase } from '@/lib/supabase'
 
 function SignInContent() {
   const router = useRouter()
@@ -15,6 +16,7 @@ function SignInContent() {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [socialLoading, setSocialLoading] = useState<string | null>(null)
 
   const returnTo = searchParams.get('returnTo') || '/library'
 
@@ -22,9 +24,7 @@ function SignInContent() {
     e.preventDefault()
     setError('')
     setLoading(true)
-
     const { error } = await signIn(email, password)
-    
     if (error) {
       setError(error.message)
       setLoading(false)
@@ -33,136 +33,60 @@ function SignInContent() {
     }
   }
 
+  const handleSocialLogin = async (provider: 'google' | 'apple') => {
+    setSocialLoading(provider)
+    setError('')
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: { redirectTo: `${window.location.origin}/auth/callback` }
+    })
+    if (error) {
+      setError(error.message)
+      setSocialLoading(null)
+    }
+  }
+
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
       <div style={{ width: '100%', maxWidth: '400px' }}>
-        {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <Link href="/">
-            <img 
-              src="/images/dtt-logo.png" 
-              alt="Drive Time Tales" 
-              style={{ height: '60px', margin: '0 auto' }}
-            />
-          </Link>
+          <Link href="/"><img src="/images/dtt-logo.png" alt="Drive Time Tales" style={{ height: '60px', margin: '0 auto' }} /></Link>
         </div>
-
-        {/* Card */}
         <div style={{ backgroundColor: '#0f172a', borderRadius: '12px', padding: '32px', border: '1px solid #1e293b' }}>
-          <h1 style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', textAlign: 'center', marginBottom: '24px' }}>
-            Welcome Back
-          </h1>
-
-          {error && (
-            <div style={{ backgroundColor: '#7f1d1d', color: '#fecaca', padding: '12px', borderRadius: '8px', marginBottom: '16px', fontSize: '14px' }}>
-              {error}
-            </div>
-          )}
-
+          <h1 style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', textAlign: 'center', marginBottom: '24px' }}>Welcome Back</h1>
+          {error && <div style={{ backgroundColor: '#7f1d1d', color: '#fecaca', padding: '12px', borderRadius: '8px', marginBottom: '16px', fontSize: '14px' }}>{error}</div>}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '24px' }}>
+            <button type="button" onClick={() => handleSocialLogin('google')} disabled={socialLoading !== null} style={{ width: '100%', padding: '12px', backgroundColor: '#ffffff', color: '#1f2937', border: 'none', borderRadius: '8px', fontSize: '16px', fontWeight: '500', cursor: socialLoading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
+              <svg width="20" height="20" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+              {socialLoading === 'google' ? 'Connecting...' : 'Continue with Google'}
+            </button>
+            <button type="button" onClick={() => handleSocialLogin('apple')} disabled={socialLoading !== null} style={{ width: '100%', padding: '12px', backgroundColor: '#000000', color: '#ffffff', border: 'none', borderRadius: '8px', fontSize: '16px', fontWeight: '500', cursor: socialLoading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09l.01-.01zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/></svg>
+              {socialLoading === 'apple' ? 'Connecting...' : 'Continue with Apple'}
+            </button>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '24px' }}>
+            <div style={{ flex: 1, height: '1px', backgroundColor: '#334155' }}></div>
+            <span style={{ padding: '0 16px', color: '#64748b', fontSize: '14px' }}>or</span>
+            <div style={{ flex: 1, height: '1px', backgroundColor: '#334155' }}></div>
+          </div>
           <form onSubmit={handleSubmit}>
             <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', color: '#94a3b8', fontSize: '14px', marginBottom: '6px' }}>
-                Email
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  backgroundColor: '#1e293b',
-                  border: '1px solid #334155',
-                  borderRadius: '8px',
-                  color: 'white',
-                  fontSize: '16px',
-                  boxSizing: 'border-box'
-                }}
-                placeholder="you@example.com"
-              />
+              <label style={{ display: 'block', color: '#94a3b8', fontSize: '14px', marginBottom: '6px' }}>Email</label>
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required style={{ width: '100%', padding: '12px', backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: 'white', fontSize: '16px', boxSizing: 'border-box' }} placeholder="you@example.com" />
             </div>
-
             <div style={{ marginBottom: '24px' }}>
-              <label style={{ display: 'block', color: '#94a3b8', fontSize: '14px', marginBottom: '6px' }}>
-                Password
-              </label>
+              <label style={{ display: 'block', color: '#94a3b8', fontSize: '14px', marginBottom: '6px' }}>Password</label>
               <div style={{ position: 'relative' }}>
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  style={{
-                    width: '100%',
-                    padding: '12px',
-                    paddingRight: '48px',
-                    backgroundColor: '#1e293b',
-                    border: '1px solid #334155',
-                    borderRadius: '8px',
-                    color: 'white',
-                    fontSize: '16px',
-                    boxSizing: 'border-box'
-                  }}
-                  placeholder="••••••••"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  style={{
-                    position: 'absolute',
-                    right: '12px',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    background: 'none',
-                    border: 'none',
-                    color: '#64748b',
-                    cursor: 'pointer',
-                    padding: '4px'
-                  }}
-                >
-                  {showPassword ? '🙈' : '👁️'}
-                </button>
+                <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} required style={{ width: '100%', padding: '12px', paddingRight: '48px', backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: 'white', fontSize: '16px', boxSizing: 'border-box' }} placeholder="••••••••" />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: '4px', fontSize: '18px' }}>{showPassword ? '🙈' : '👁️'}</button>
               </div>
             </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              style={{
-                width: '100%',
-                padding: '14px',
-                backgroundColor: loading ? '#92400e' : '#f97316',
-                color: 'white',
-                border: 'none',
-                borderRadius: '8px',
-                fontSize: '16px',
-                fontWeight: '600',
-                cursor: loading ? 'not-allowed' : 'pointer',
-                transition: 'background-color 0.2s'
-              }}
-            >
-              {loading ? 'Signing In...' : 'Sign In'}
-            </button>
+            <button type="submit" disabled={loading || socialLoading !== null} style={{ width: '100%', padding: '14px', backgroundColor: loading ? '#92400e' : '#f97316', color: 'white', border: 'none', borderRadius: '8px', fontSize: '16px', fontWeight: '600', cursor: loading ? 'not-allowed' : 'pointer' }}>{loading ? 'Signing In...' : 'Sign In'}</button>
           </form>
-
-          <div style={{ marginTop: '24px', textAlign: 'center' }}>
-            <Link 
-              href="/forgot-password"
-              style={{ color: '#f97316', fontSize: '14px', textDecoration: 'none' }}
-            >
-              Forgot your password?
-            </Link>
-          </div>
+          <div style={{ marginTop: '24px', textAlign: 'center' }}><Link href="/forgot-password" style={{ color: '#f97316', fontSize: '14px', textDecoration: 'none' }}>Forgot your password?</Link></div>
         </div>
-
-        {/* Sign Up Link */}
-        <p style={{ textAlign: 'center', color: '#94a3b8', marginTop: '24px', fontSize: '14px' }}>
-          Don't have an account?{' '}
-          <Link href="/signup" style={{ color: '#f97316', textDecoration: 'none', fontWeight: '600' }}>
-            Sign Up
-          </Link>
-        </p>
+        <p style={{ textAlign: 'center', color: '#94a3b8', marginTop: '24px', fontSize: '14px' }}>Don't have an account?{' '}<Link href="/signup" style={{ color: '#f97316', textDecoration: 'none', fontWeight: '600' }}>Sign Up</Link></p>
       </div>
     </div>
   )
@@ -178,9 +102,5 @@ function LoadingFallback() {
 }
 
 export default function SignInPage() {
-  return (
-    <Suspense fallback={<LoadingFallback />}>
-      <SignInContent />
-    </Suspense>
-  )
+  return (<Suspense fallback={<LoadingFallback />}><SignInContent /></Suspense>)
 }
