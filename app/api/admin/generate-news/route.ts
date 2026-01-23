@@ -111,10 +111,11 @@ async function fetchGdeltNews(
     let query = config.gdeltQuery;
     
     // For state news, search for state name in articles from US sources
+    // Include both general news and sports
     if (category === 'state' && state) {
       // GDELT searches for the state name as a keyword in US English news
-      // This gives us articles that specifically mention the state
-      query = `"${state}" sourcecountry:US sourcelang:english`;
+      // This gives us articles that specifically mention the state, including sports
+      query = `("${state}" OR "${state} sports" OR "${state} football" OR "${state} basketball") sourcecountry:US sourcelang:english`;
     }
 
     // Build the GDELT API URL (note: GDELT doesn't use standard URLSearchParams encoding)
@@ -242,61 +243,119 @@ async function generateCleanScript(
   stories: NewsStory[],
   config: CategoryConfig,
   narrator: string,
-  state: string | null
+  state: string | null,
+  listenerName: string = 'friend'
 ): Promise<string> {
   const hour = new Date().getHours();
   let timeGreeting = 'morning';
   if (hour >= 12 && hour < 17) timeGreeting = 'afternoon';
   else if (hour >= 17) timeGreeting = 'evening';
 
-  const label = state ? `${state} Local News` : config.label;
+  const label = state ? `${state} News` : config.label;
 
   // Format stories for the prompt
   const storiesText = stories.map((s, i) => 
     `${i + 1}. ${s.headline}${s.summary ? ` - ${s.summary}` : ''}`
   ).join('\n');
 
-  // Varied greeting examples to avoid sounding canned
-  const greetingExamples = [
-    `Good ${timeGreeting}, I'm ${narrator}, and you're listening to your ${label} briefing.`,
-    `Hey there, good ${timeGreeting}! I'm ${narrator} with your ${label} update.`,
-    `Good ${timeGreeting}, folks. ${narrator} here with your ${label} briefing.`,
-    `Welcome back! I'm ${narrator}, and this is your ${label} update for this ${timeGreeting}.`,
-    `Good ${timeGreeting}! ${narrator} here, bringing you the latest in ${label}.`,
-    `Hello and good ${timeGreeting}. I'm ${narrator} with today's ${label} briefing.`,
-  ];
+  // Category-specific content guidance
+  const categoryGuidance: Record<string, string> = {
+    state: `STATE NEWS FOCUS for ${state}:
+- State government actions and legislation
+- State crime reports and public safety updates  
+- Community events and school happenings
+- Weather impacts and emergency alerts
+- Statewide elections and political updates
+- Environmental and infrastructure issues
+- State-level economic performance
+- Public health updates and state agency reports
+- Local sports teams and college athletics
+- Major incidents affecting the state`,
+    
+    national: `NATIONAL NEWS FOCUS:
+- Federal government decisions and policies
+- National elections, political debates, Supreme Court actions
+- Nationwide economic trends and employment data
+- Major court cases and national security updates
+- Countrywide social issues
+- Weather ONLY if it covers multiple states and is unusual or dangerous`,
+    
+    international: `INTERNATIONAL NEWS FOCUS:
+- Foreign elections and geopolitical developments
+- International conflicts or peace agreements
+- Global economic trends and diplomatic relations
+- Worldwide health, climate, and humanitarian issues
+- Major cultural or scientific events abroad`,
+    
+    sports: `SPORTS NEWS FOCUS:
+- Game results and highlights
+- Player trades, injuries, and profiles
+- Tournament standings and championship coverage
+- College sports updates
+- Analysis and commentary on performance and strategy`,
+    
+    science: `SCIENCE & TECH NEWS FOCUS:
+- New scientific studies and breakthroughs
+- Space exploration updates
+- Advances in medicine and health research
+- Consumer technology announcements
+- Artificial intelligence and cybersecurity updates
+- Climate and environmental science reports`,
+    
+    business: `BUSINESS NEWS FOCUS:
+- Stock market movement and economic indicators
+- Corporate earnings and leadership changes
+- Small-business trends
+- Real estate and housing market updates
+- Consumer spending and product shifts
+- Global trade and industry analysis
+When mentioning companies, briefly introduce them (location + what they do).`
+  };
 
-  // Varied closing examples
-  const closingExamples = [
-    `That's your ${label} update. I'm ${narrator}. Thanks for listening, and have a great ${timeGreeting}.`,
-    `And that wraps up your ${label} briefing. I'm ${narrator}. Stay safe out there.`,
-    `That's all for now. I'm ${narrator}. Thanks for tuning in, and we'll catch you next time.`,
-    `That's your update. ${narrator} here, wishing you a great rest of your ${timeGreeting}. Drive safe!`,
-    `And that's the latest. I'm ${narrator}. Thanks for listening, and take care out there.`,
-  ];
+  const guidance = categoryGuidance[state ? 'state' : config.id] || '';
 
   // CRITICAL: This prompt does NOT use web search, so Claude outputs clean script only
-  const prompt = `You are ${narrator}, a professional radio news broadcaster. Write a broadcast script for these ${label} stories:
+  const prompt = `You are ${narrator}, a seasoned professional radio news broadcaster. Write a broadcast script for these ${label} stories.
 
+NEWS DEFINITION: Information about recent events, developments, or issues that are important, relevant, or interesting to the public. News aims to inform audiences with accurate, timely, and verified facts. It should be the fresh pulse of the world - clear, concise, and grounded in verified information.
+
+${guidance}
+
+STORIES TO COVER:
 ${storiesText}
 
-REQUIREMENTS:
-1. START with a warm, natural greeting that introduces yourself as ${narrator}. Pick a style like one of these (but vary it naturally):
-${greetingExamples.map(g => `   - "${g}"`).join('\n')}
+SCRIPT REQUIREMENTS:
 
-2. COVER each story in 3-5 sentences using broadcast style - conversational, clear, and engaging. Flow naturally between stories with transitions.
+1. OPENING (vary naturally - never sound stale or canned):
+   - Greet the listener by name: "${listenerName}"
+   - Introduce yourself as ${narrator}
+   - Examples of varied openings:
+     * "Good ${timeGreeting}, ${listenerName}! I'm ${narrator}, bringing you your ${label} briefing."
+     * "Hey ${listenerName}, good ${timeGreeting}! ${narrator} here with your ${label} update."
+     * "Welcome, ${listenerName}! I'm ${narrator}, and this is your ${label} for today."
 
-3. END with a friendly sign-off that mentions your name (${narrator}). Pick a style like one of these (but vary it naturally):
-${closingExamples.map(c => `   - "${c}"`).join('\n')}
+2. STORY COVERAGE (target 3-5 minutes total):
+   - Place more important and newer stories FIRST and give them MORE time
+   - Each story: 3-5 sentences in conversational broadcast style
+   - Add color and context - explain WHY stories matter
+   - When mentioning companies: briefly note where they're located and what they do
+   - Use smooth transitions between stories
+   - NEVER hallucinate, exaggerate, or make up events
 
-RULES:
-- ALWAYS introduce yourself by name (${narrator}) at the start
-- ALWAYS mention your name (${narrator}) in the closing
-- Be conversational and warm, not robotic or stiff
-- NO URLs, citations, or "according to" phrases
+3. CLOSING (vary naturally):
+   - Mention the listener's name: "${listenerName}"
+   - Sign off with your name: ${narrator}
+   - Examples:
+     * "That's your ${label} update, ${listenerName}. I'm ${narrator}. Thanks for listening, and drive safe!"
+     * "And that's the latest, ${listenerName}. ${narrator} here, wishing you a great ${timeGreeting}."
+     * "That wraps up your briefing, ${listenerName}. I'm ${narrator}. We'll catch you next time!"
+
+STYLE RULES:
+- Be warm, conversational, and engaging - like a trusted friend delivering the news
+- NO URLs, citations, or "according to" phrases  
 - NO meta-commentary about writing or searching
 - Use Fahrenheit for temperatures, US measurements
-- Vary your style naturally - don't sound canned or repetitive`;
+- Keep it factual and grounded - never sensationalize`;
 
   const response = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
@@ -362,7 +421,7 @@ export async function POST(request: NextRequest) {
   
   try {
     const body = await request.json();
-    const { category, voiceId, narratorName, state, storiesCount = 5 } = body;
+    const { category, voiceId, narratorName, state, storiesCount = 5, listenerName = 'Marc' } = body;
 
     if (!category) {
       return NextResponse.json({ error: 'Category is required' }, { status: 400 });
@@ -378,7 +437,7 @@ export async function POST(request: NextRequest) {
     }
 
     const narrator = narratorName || 'Your Host';
-    console.log(`[Generate News] Starting: ${category}${state ? ` (${state})` : ''}, narrator: ${narrator}, stories: ${storiesCount}`);
+    console.log(`[Generate News] Starting: ${category}${state ? ` (${state})` : ''}, narrator: ${narrator}, listener: ${listenerName}, stories: ${storiesCount}`);
 
     // ========================================
     // PHASE 1: Fetch news (GDELT or fallback)
@@ -403,7 +462,7 @@ export async function POST(request: NextRequest) {
     // ========================================
     // PHASE 2: Generate clean script (no web search!)
     // ========================================
-    const script = await generateCleanScript(stories, config, narrator, state);
+    const script = await generateCleanScript(stories, config, narrator, state, listenerName);
     console.log(`[Generate News] Script generated (${script.length} chars)`);
 
     // ========================================
