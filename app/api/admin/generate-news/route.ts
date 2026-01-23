@@ -1,260 +1,318 @@
 // app/api/admin/generate-news/route.ts
-// API endpoint to generate news episodes by category
-// Uses Claude with web search to get REAL current news
-// Updated: Added State News support
+// FIXED: Two-phase architecture - fetch news first, then write script (eliminates thinking bug)
+// NEW: GDELT integration for reliable state-specific news
 
 import { NextRequest, NextResponse } from 'next/server';
+import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@supabase/supabase-js';
 
-// Initialize Supabase with service role for admin operations
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY!,
+});
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-export const maxDuration = 300; // 5 minute timeout for long generation
+// ============================================================================
+// CATEGORY CONFIGURATION
+// ============================================================================
 
-const CATEGORY_NAMES: Record<string, string> = {
-  state: 'State News',
-  national: 'National News',
-  international: 'International News',
-  business: 'Business & Finance',
-  sports: 'Sports',
-  science: 'Science & Technology',
+interface CategoryConfig {
+  label: string;
+  gdeltQuery: string;
+  gdeltTheme?: string;
+  fallbackSearchQuery: string;
+}
+
+const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
+  national: {
+    label: 'National News',
+    gdeltQuery: 'sourcecountry:US sourcelang:english',
+    fallbackSearchQuery: 'top US national news today'
+  },
+  international: {
+    label: 'International News',
+    gdeltQuery: '-sourcecountry:US sourcelang:english',
+    fallbackSearchQuery: 'top international world news today'
+  },
+  business: {
+    label: 'Business & Finance',
+    gdeltQuery: 'theme:ECON sourcelang:english',
+    gdeltTheme: 'ECON_STOCKMARKET,ECON_INFLATION,BUSINESS',
+    fallbackSearchQuery: 'top business finance market news today'
+  },
+  sports: {
+    label: 'Sports',
+    gdeltQuery: 'theme:SPORTS sourcelang:english',
+    gdeltTheme: 'SPORTS',
+    fallbackSearchQuery: 'top sports news scores today'
+  },
+  science: {
+    label: 'Science & Technology',
+    gdeltQuery: '(theme:SCIENCE OR theme:TECHNOLOGY) sourcelang:english',
+    gdeltTheme: 'SCIENCE,TECHNOLOGY',
+    fallbackSearchQuery: 'top science technology tech news today'
+  },
+  state: {
+    label: 'Local News',
+    gdeltQuery: 'sourcecountry:US sourcelang:english',
+    fallbackSearchQuery: 'STATE_NAME news today weather politics crime sports'
+  }
 };
 
-const CATEGORY_SEARCH_QUERIES: Record<string, string> = {
-  national: 'breaking news today US America CNN ABC CBS Fox NBC',
-  international: 'world news today international global CNN ABC CBS Fox NBC',
-  business: 'business news today stock market economy finance CNBC Bloomberg Fox Business',
-  sports: 'sports news today NFL NBA MLB ESPN CBS Sports Fox Sports',
-  science: 'science technology news today CNN NBC CBS Wired TechCrunch',
+// State codes for GDELT geo filtering
+const STATE_FIPS: Record<string, string> = {
+  'Alabama': 'US01', 'Alaska': 'US02', 'Arizona': 'US04', 'Arkansas': 'US05',
+  'California': 'US06', 'Colorado': 'US08', 'Connecticut': 'US09', 'Delaware': 'US10',
+  'Florida': 'US12', 'Georgia': 'US13', 'Hawaii': 'US15', 'Idaho': 'US16',
+  'Illinois': 'US17', 'Indiana': 'US18', 'Iowa': 'US19', 'Kansas': 'US20',
+  'Kentucky': 'US21', 'Louisiana': 'US22', 'Maine': 'US23', 'Maryland': 'US24',
+  'Massachusetts': 'US25', 'Michigan': 'US26', 'Minnesota': 'US27', 'Mississippi': 'US28',
+  'Missouri': 'US29', 'Montana': 'US30', 'Nebraska': 'US31', 'Nevada': 'US32',
+  'New Hampshire': 'US33', 'New Jersey': 'US34', 'New Mexico': 'US35', 'New York': 'US36',
+  'North Carolina': 'US37', 'North Dakota': 'US38', 'Ohio': 'US39', 'Oklahoma': 'US40',
+  'Oregon': 'US41', 'Pennsylvania': 'US42', 'Rhode Island': 'US44', 'South Carolina': 'US45',
+  'South Dakota': 'US46', 'Tennessee': 'US47', 'Texas': 'US48', 'Utah': 'US49',
+  'Vermont': 'US50', 'Virginia': 'US51', 'Washington': 'US53', 'West Virginia': 'US54',
+  'Wisconsin': 'US55', 'Wyoming': 'US56'
 };
 
-function getTimeOfDay(): 'morning' | 'afternoon' | 'evening' {
-  const hour = new Date().getHours();
-  if (hour < 12) return 'morning';
-  if (hour < 17) return 'afternoon';
-  return 'evening';
+// ============================================================================
+// GDELT NEWS FETCHER
+// ============================================================================
+
+interface GdeltArticle {
+  title: string;
+  url: string;
+  source: string;
+  seendate: string;
+  socialimage?: string;
 }
 
-function getGreeting(): string {
-  const timeOfDay = getTimeOfDay();
-  return `Good ${timeOfDay}`;
+interface NewsStory {
+  headline: string;
+  summary: string;
+  source: string;
 }
 
-async function generateStateNewsScript(
-  state: string,
-  apiKey: string,
-  storiesCount: number,
-  narratorName: string
-): Promise<{ script: string; title: string }> {
-  const now = new Date();
-  const dateStr = now.toLocaleDateString('en-US', { 
-    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' 
-  });
-  const greeting = getGreeting();
-
-  const prompt = `You are a news researcher and radio script writer for Drive Time Tales, an audio platform for drivers.
-
-YOUR TASK:
-1. Search the web for current news specifically about ${state} state
-2. Find the ${storiesCount} biggest REAL news stories from ${state} covering these categories:
-   - Weather conditions and forecasts for ${state}
-   - Political news (state government, elections, legislation)
-   - Crime and public safety
-   - Sports (local teams, college sports)
-   - Business and economy news specific to ${state}
-3. Write a radio news briefing script reporting ONLY news from ${state} - no other states
-
-CRITICAL REQUIREMENTS:
-- Search for "${state} news today" and "${state} weather today"
-- Report ONLY real, actual news stories from ${state}
-- Include real names, real places, real numbers from actual news coverage
-- Do NOT make up or fabricate any news - only report what you find
-- Do NOT report news from other states
-- Each story should be 2-3 sentences with specific factual details
-- Start with weather, then cover 4-5 other stories from the categories above
-
-SCRIPT FORMAT:
-Start: "${greeting}${narratorName ? ', ' + narratorName : ''}, here is your latest news for the great state of ${state}. Today is ${dateStr}."
-
-Then START WITH WEATHER: "Let's begin with your ${state} weather forecast..."
-
-Then report ${storiesCount - 1} more real news stories with transitions like:
-- "In political news from the state capitol..."
-- "In crime news..."
-- "On the sports front..."
-- "In business news..."
-- "Also making headlines in ${state}..."
-
-End: "That's your ${state} news update. Stay safe out there, and we'll see you next time on Drive Time Tales."
-
-Search for real ${state} news and write the script now:`;
-
-  console.log(`[News Generator] Calling Claude API with web search for ${state} news...`);
-
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01'
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 3000,
-      tools: [
-        {
-          type: 'web_search_20250305',
-          name: 'web_search'
-        }
-      ],
-      messages: [{ role: 'user', content: prompt }]
-    })
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('[News Generator] Claude API error:', errorText);
-    throw new Error(`Claude API error: ${response.status} - ${errorText}`);
-  }
-
-  const data = await response.json();
-  
-  let script = '';
-  for (const block of data.content) {
-    if (block.type === 'text') {
-      script += block.text;
-    }
-  }
-  
-  if (!script) {
-    throw new Error('No script generated from Claude');
-  }
-
-  script = script
-    .replace(/```[\s\S]*?```/g, '')
-    .replace(/\*\*/g, '')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-
-  console.log(`[News Generator] State news script generated: ${script.length} chars`);
-  
-  return {
-    script,
-    title: `${state} News - ${dateStr}`
-  };
-}
-
-async function generateScriptWithRealNews(
+async function fetchGdeltNews(
   category: string,
-  apiKey: string,
-  storiesCount: number = 5,
-  narratorName: string = ''
-): Promise<{ script: string; title: string }> {
-  const categoryName = CATEGORY_NAMES[category] || category;
-  const searchQuery = CATEGORY_SEARCH_QUERIES[category];
-  const now = new Date();
-  const dateStr = now.toLocaleDateString('en-US', { 
-    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' 
-  });
-  const greeting = getGreeting();
+  state: string | null,
+  count: number
+): Promise<NewsStory[]> {
+  try {
+    const config = CATEGORY_CONFIG[category];
+    if (!config) throw new Error(`Unknown category: ${category}`);
 
-  const prompt = `You are a news researcher and radio script writer for Drive Time Tales, an audio platform for drivers.
-
-YOUR TASK:
-1. Search the web for: "${searchQuery}"
-2. Find the ${storiesCount} biggest REAL news stories being covered RIGHT NOW by major news outlets
-3. Write a radio news briefing script reporting these REAL stories
-
-CRITICAL REQUIREMENTS:
-- Search for and report ONLY real, actual news stories happening today
-- Include real names, real places, real numbers from actual news coverage
-- Do NOT make up or fabricate any news - only report what you find in your search
-- Each story should be 2-3 sentences with specific factual details
-
-SCRIPT FORMAT:
-Start: "${greeting}${narratorName ? ' ' + narratorName : ''}, drivers. This is your ${categoryName} briefing for ${dateStr}..."
-
-Then report the ${storiesCount} real news stories with transitions like:
-- "Our top story..."
-- "In other news..."
-- "Meanwhile..."
-- "Also making headlines today..."
-- "And finally..."
-
-End: "That's your ${categoryName} update. Stay safe out there, and we'll see you next time on Drive Time Tales."
-
-Search for real news and write the script now:`;
-
-  console.log(`[News Generator] Calling Claude API with web search for real ${category} news...`);
-
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01'
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 3000,
-      tools: [
-        {
-          type: 'web_search_20250305',
-          name: 'web_search'
-        }
-      ],
-      messages: [{ role: 'user', content: prompt }]
-    })
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('[News Generator] Claude API error:', errorText);
-    throw new Error(`Claude API error: ${response.status} - ${errorText}`);
-  }
-
-  const data = await response.json();
-  
-  let script = '';
-  for (const block of data.content) {
-    if (block.type === 'text') {
-      script += block.text;
+    // Build GDELT DOC 2.0 API query
+    // Documentation: https://blog.gdeltproject.org/gdelt-doc-2-0-api-debuts/
+    let query = config.gdeltQuery;
+    
+    // For state news, search for state name in articles from US sources
+    if (category === 'state' && state) {
+      // GDELT searches for the state name as a keyword in US English news
+      // This gives us articles that specifically mention the state
+      query = `"${state}" sourcecountry:US sourcelang:english`;
     }
-  }
-  
-  if (!script) {
-    throw new Error('No script generated from Claude');
-  }
 
-  script = script
-    .replace(/```[\s\S]*?```/g, '')
-    .replace(/\*\*/g, '')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+    // Build the GDELT API URL (note: GDELT doesn't use standard URLSearchParams encoding)
+    // Format: query goes first, then &mode=, &maxrecords=, etc.
+    const encodedQuery = encodeURIComponent(query);
+    const maxRecords = Math.min(count * 3, 75); // GDELT default max is 75, can go to 250
+    
+    const gdeltUrl = `https://api.gdeltproject.org/api/v2/doc/doc?query=${encodedQuery}&mode=ArtList&maxrecords=${maxRecords}&format=json&sort=DateDesc&timespan=24h`;
+    console.log('[GDELT] Fetching:', gdeltUrl);
 
-  console.log(`[News Generator] Script generated with real news: ${script.length} chars`);
-  
-  return {
-    script,
-    title: `${categoryName} - ${dateStr}`
-  };
+    const response = await fetch(gdeltUrl, {
+      headers: { 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(10000) // 10 second timeout
+    });
+
+    if (!response.ok) {
+      throw new Error(`GDELT API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const articles: GdeltArticle[] = data.articles || [];
+
+    if (articles.length === 0) {
+      console.log('[GDELT] No articles found, will use fallback');
+      return [];
+    }
+
+    console.log(`[GDELT] Found ${articles.length} articles`);
+
+    // Deduplicate by title similarity and convert to NewsStory format
+    const seen = new Set<string>();
+    const stories: NewsStory[] = [];
+
+    for (const article of articles) {
+      if (stories.length >= count) break;
+      
+      // Simple deduplication by normalized title
+      const normalizedTitle = article.title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 50);
+      if (seen.has(normalizedTitle)) continue;
+      seen.add(normalizedTitle);
+
+      stories.push({
+        headline: article.title,
+        summary: '', // GDELT doesn't provide summaries, Claude will expand
+        source: article.source || 'News'
+      });
+    }
+
+    return stories;
+
+  } catch (error) {
+    console.error('[GDELT] Fetch error:', error);
+    return []; // Return empty to trigger fallback
+  }
 }
 
-async function generateAudioWithElevenLabs(
-  script: string,
-  voiceId: string,
-  apiKey: string
-): Promise<{ audioBuffer: Buffer; durationSeconds: number }> {
-  console.log(`[News Generator] Calling ElevenLabs API with voice ${voiceId}...`);
+// ============================================================================
+// FALLBACK: WEB SEARCH (only if GDELT fails)
+// ============================================================================
+
+async function fetchNewsViaWebSearch(
+  category: string,
+  state: string | null,
+  count: number
+): Promise<NewsStory[]> {
+  const config = CATEGORY_CONFIG[category];
+  if (!config) return [];
+
+  let searchQuery = config.fallbackSearchQuery;
+  if (category === 'state' && state) {
+    searchQuery = searchQuery.replace('STATE_NAME', state);
+  }
+
+  console.log('[Fallback] Using web search:', searchQuery);
+
+  try {
+    // Use Claude with web search just to get headlines, not to write the script
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1500,
+      system: `You are a news researcher. Output ONLY a JSON array of news stories. No commentary, no markdown, just valid JSON.`,
+      tools: [{ type: 'web_search_20250305' as const, name: 'web_search' as const }],
+      messages: [{
+        role: 'user',
+        content: `Search for: ${searchQuery}
+
+Return ONLY a JSON array with exactly ${count} items in this format:
+[
+  {"headline": "Story title", "summary": "1-2 sentence summary", "source": "Source name"},
+  ...
+]
+
+Output ONLY the JSON array, nothing else.`
+      }],
+    });
+
+    // Extract JSON from response
+    let jsonText = '';
+    for (const block of response.content) {
+      if (block.type === 'text') jsonText += block.text;
+    }
+
+    // Clean up and parse JSON
+    jsonText = jsonText.trim();
+    const jsonMatch = jsonText.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) {
+      console.error('[Fallback] No JSON found in response');
+      return [];
+    }
+
+    const stories: NewsStory[] = JSON.parse(jsonMatch[0]);
+    return stories.slice(0, count);
+
+  } catch (error) {
+    console.error('[Fallback] Web search error:', error);
+    return [];
+  }
+}
+
+// ============================================================================
+// SCRIPT GENERATOR (No web search = No thinking in output!)
+// ============================================================================
+
+async function generateCleanScript(
+  stories: NewsStory[],
+  config: CategoryConfig,
+  narrator: string,
+  state: string | null
+): Promise<string> {
+  const hour = new Date().getHours();
+  let timeGreeting = 'morning';
+  if (hour >= 12 && hour < 17) timeGreeting = 'afternoon';
+  else if (hour >= 17) timeGreeting = 'evening';
+
+  const label = state ? `${state} Local News` : config.label;
+
+  // Format stories for the prompt
+  const storiesText = stories.map((s, i) => 
+    `${i + 1}. ${s.headline}${s.summary ? ` - ${s.summary}` : ''}`
+  ).join('\n');
+
+  // CRITICAL: This prompt does NOT use web search, so Claude outputs clean script only
+  const prompt = `You are ${narrator}, a professional radio news broadcaster. Write a broadcast script for these ${label} stories:
+
+${storiesText}
+
+FORMAT YOUR SCRIPT EXACTLY LIKE THIS:
+
+Good ${timeGreeting}, I'm ${narrator} with your ${label} briefing.
+
+[Write 3-5 sentences for each story in broadcast style - conversational, clear, engaging]
+
+That's your ${label} update. Thanks for listening, and have a great ${timeGreeting}. Be safe out there.
+
+RULES:
+- Start with "Good ${timeGreeting}" exactly
+- Each story should be 3-5 sentences, smoothly flowing
+- Use broadcast style - conversational, not robotic
+- NO URLs, citations, or "according to" phrases
+- NO meta-commentary about writing or searching
+- Use Fahrenheit for temperatures, US measurements
+- End with the closing exactly as shown above`;
+
+  const response = await anthropic.messages.create({
+    model: 'claude-sonnet-4-20250514',
+    max_tokens: 3000,
+    messages: [{ role: 'user', content: prompt }],
+    // NO tools = NO web search = NO thinking in output!
+  });
+
+  let script = '';
+  for (const block of response.content) {
+    if (block.type === 'text') script += block.text;
+  }
+
+  // Minimal cleanup - should be clean already since no web search
+  script = script.trim();
   
+  // Ensure it starts with the greeting
+  const greetingMatch = script.match(/Good (morning|afternoon|evening)/i);
+  if (greetingMatch && greetingMatch.index && greetingMatch.index > 0) {
+    script = script.substring(greetingMatch.index);
+  }
+
+  return script;
+}
+
+// ============================================================================
+// AUDIO GENERATOR (ElevenLabs)
+// ============================================================================
+
+async function generateAudio(script: string, voiceId: string): Promise<Buffer> {
   const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
     method: 'POST',
     headers: {
+      'Accept': 'audio/mpeg',
       'Content-Type': 'application/json',
-      'xi-api-key': apiKey
+      'xi-api-key': process.env.ELEVENLABS_API_KEY!
     },
     body: JSON.stringify({
       text: script,
@@ -263,192 +321,174 @@ async function generateAudioWithElevenLabs(
         stability: 0.5,
         similarity_boost: 0.75
       }
-    })
+    }),
   });
 
   if (!response.ok) {
-    const error = await response.text();
-    console.error('[News Generator] ElevenLabs error:', error);
-    throw new Error(`ElevenLabs API error: ${error}`);
+    const errorText = await response.text();
+    throw new Error(`ElevenLabs API error: ${response.status} - ${errorText}`);
   }
 
   const arrayBuffer = await response.arrayBuffer();
-  const audioBuffer = Buffer.from(arrayBuffer);
-  
-  const estimatedWords = script.length / 5;
-  const durationSeconds = (estimatedWords / 150) * 60;
-  
-  console.log(`[News Generator] Audio generated: ${audioBuffer.length} bytes, ~${durationSeconds.toFixed(0)}s`);
-  
-  return { audioBuffer, durationSeconds };
+  return Buffer.from(arrayBuffer);
 }
 
+// ============================================================================
+// MAIN API HANDLER
+// ============================================================================
+
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
+  
   try {
-    const body = await request.json().catch(() => ({}));
-    const category = body.category || 'national';
-    const voiceId = body.voiceId || 'EXAVITQu4vr4xnSDxMaL';
-    const narratorName = body.narratorName || '';
-    const state = body.state || null; // For state news
-    const storiesCount = body.storiesCount || 5;
-    
-    // Validate category
-    if (!CATEGORY_NAMES[category]) {
+    const body = await request.json();
+    const { category, voiceId, narratorName, state, storiesCount = 5 } = body;
+
+    if (!category) {
+      return NextResponse.json({ error: 'Category is required' }, { status: 400 });
+    }
+
+    const config = CATEGORY_CONFIG[category];
+    if (!config) {
       return NextResponse.json({ error: 'Invalid category' }, { status: 400 });
     }
 
-    // For state news, state is required
     if (category === 'state' && !state) {
-      return NextResponse.json({ error: 'State is required for state news' }, { status: 400 });
+      return NextResponse.json({ error: 'State is required for local news' }, { status: 400 });
     }
 
-    console.log(`[News Generator] ========================================`);
-    console.log(`[News Generator] Starting ${category} briefing generation...`);
-    if (state) console.log(`[News Generator] State: ${state}`);
+    const narrator = narratorName || 'Your Host';
+    console.log(`[Generate News] Starting: ${category}${state ? ` (${state})` : ''}, narrator: ${narrator}, stories: ${storiesCount}`);
 
-    const anthropicKey = process.env.ANTHROPIC_API_KEY;
-    const elevenLabsKey = process.env.ELEVENLABS_API_KEY;
-
-    if (!anthropicKey) {
-      console.error('[News Generator] Missing ANTHROPIC_API_KEY');
-      return NextResponse.json({ error: 'Anthropic API key not configured' }, { status: 500 });
-    }
-    if (!elevenLabsKey) {
-      console.error('[News Generator] Missing ELEVENLABS_API_KEY');
-      return NextResponse.json({ error: 'ElevenLabs API key not configured' }, { status: 500 });
-    }
-
-    // Step 1: Generate script
-    console.log(`[News Generator] Step 1: Generating script...`);
-    let scriptResult: { script: string; title: string };
+    // ========================================
+    // PHASE 1: Fetch news (GDELT or fallback)
+    // ========================================
+    let stories = await fetchGdeltNews(category, state, storiesCount);
     
-    if (category === 'state' && state) {
-      scriptResult = await generateStateNewsScript(state, anthropicKey, storiesCount, narratorName);
-    } else {
-      scriptResult = await generateScriptWithRealNews(category, anthropicKey, storiesCount, narratorName);
+    if (stories.length < storiesCount) {
+      console.log(`[Generate News] GDELT returned ${stories.length} stories, using fallback`);
+      const fallbackStories = await fetchNewsViaWebSearch(category, state, storiesCount - stories.length);
+      stories = [...stories, ...fallbackStories];
     }
 
-    // Step 2: Generate audio
-    console.log('[News Generator] Step 2: Generating audio...');
-    const { audioBuffer, durationSeconds } = await generateAudioWithElevenLabs(
-      scriptResult.script, 
-      voiceId, 
-      elevenLabsKey
-    );
-
-    // Step 3: Upload to Supabase Storage
-    console.log('[News Generator] Step 3: Uploading audio to storage...');
-    const now = new Date();
-    const dateStr = now.toISOString().split('T')[0];
-    const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-');
-    const audioFileName = category === 'state' && state
-      ? `news/state-${state.toLowerCase().replace(/\s+/g, '-')}-${dateStr}-${timeStr}.mp3`
-      : `news/${category}-${dateStr}-${timeStr}.mp3`;
-
-    const { error: uploadError } = await supabase.storage
-      .from('audio')
-      .upload(audioFileName, audioBuffer, {
-        contentType: 'audio/mpeg',
-        upsert: true
-      });
-
-    if (uploadError) {
-      console.error('[News Generator] Upload error:', uploadError);
+    if (stories.length === 0) {
+      return NextResponse.json({ 
+        error: 'Could not fetch news stories. Please try again.',
+        details: 'Both GDELT and fallback search returned no results.'
+      }, { status: 500 });
     }
 
-    const { data: publicUrl } = supabase.storage
-      .from('audio')
-      .getPublicUrl(audioFileName);
+    console.log(`[Generate News] Got ${stories.length} stories, generating script...`);
 
-    // Step 4: Create episode record
-    console.log('[News Generator] Step 4: Saving episode to database...');
+    // ========================================
+    // PHASE 2: Generate clean script (no web search!)
+    // ========================================
+    const script = await generateCleanScript(stories, config, narrator, state);
+    console.log(`[Generate News] Script generated (${script.length} chars)`);
+
+    // ========================================
+    // PHASE 3: Generate audio (if voice selected)
+    // ========================================
+    let audioUrl: string | null = null;
     
-    // Get current episode number for this category
-    const { data: lastEpisode } = await supabase
-      .from('news_episodes')
-      .select('episode_number')
-      .eq('category', category)
-      .order('episode_number', { ascending: false })
-      .limit(1)
+    if (voiceId) {
+      try {
+        console.log(`[Generate News] Generating audio with voice: ${voiceId}`);
+        const audioBuffer = await generateAudio(script, voiceId);
+        
+        const fileName = `news-${category}${state ? `-${state.toLowerCase().replace(/\s+/g, '-')}` : ''}-${Date.now()}.mp3`;
+        
+        const { error: uploadError } = await supabase.storage
+          .from('news-audio')
+          .upload(fileName, audioBuffer, {
+            contentType: 'audio/mpeg',
+            upsert: true
+          });
+
+        if (uploadError) {
+          console.error('[Generate News] Upload error:', uploadError);
+        } else {
+          const { data: urlData } = supabase.storage.from('news-audio').getPublicUrl(fileName);
+          audioUrl = urlData.publicUrl;
+          console.log(`[Generate News] Audio uploaded: ${audioUrl}`);
+        }
+      } catch (audioError) {
+        console.error('[Generate News] Audio generation error:', audioError);
+        // Continue without audio rather than failing entirely
+      }
+    }
+
+    // ========================================
+    // PHASE 4: Save to database
+    // ========================================
+    
+    // Update news_settings
+    const { data: settingsRow } = await supabase
+      .from('news_settings')
+      .select('settings')
+      .eq('id', '1')
       .single();
-    
-    const episodeNumber = (lastEpisode?.episode_number || 0) + 1;
 
-    const { data: episode, error: insertError } = await supabase
-      .from('news_episodes')
-      .insert({
-        title: scriptResult.title,
+    const currentSettings = settingsRow?.settings || {};
+    const currentCategories = currentSettings.categories || {};
+    const currentEpisode = currentCategories[category]?.episode_number || 0;
+    const newEpisode = currentEpisode + 1;
+
+    const updatedSettings = {
+      ...currentSettings,
+      categories: {
+        ...currentCategories,
+        [category]: {
+          ...currentCategories[category],
+          last_generated: new Date().toISOString(),
+          episode_number: newEpisode,
+          audio_url: audioUrl
+        }
+      }
+    };
+
+    await supabase
+      .from('news_settings')
+      .update({
+        settings: updatedSettings,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', '1');
+
+    // Insert into news_episodes
+    if (audioUrl) {
+      await supabase.from('news_episodes').insert({
         category,
         state: state || null,
-        episode_number: episodeNumber,
-        script_text: scriptResult.script,
-        audio_url: uploadError ? null : publicUrl.publicUrl,
-        voice_id: voiceId,
+        episode_number: newEpisode,
+        script_text: script,
+        audio_url: audioUrl,
         narrator_name: narratorName,
-        duration_mins: Math.ceil(durationSeconds / 60),
+        voice_id: voiceId,
         is_live: true,
-        published_at: new Date().toISOString()
-      })
-      .select()
-      .single();
-
-    if (insertError) {
-      console.error('[News Generator] Database insert error:', insertError);
-      return NextResponse.json({ error: 'Failed to save episode' }, { status: 500 });
+        created_at: new Date().toISOString()
+      });
     }
 
-    // Step 5: Set this as the live episode for this category (unset others)
-    await supabase
-      .from('news_episodes')
-      .update({ is_live: false })
-      .eq('category', category)
-      .neq('id', episode.id);
-
-    // Step 6: Update category settings with last_generated and audio_url
-    const { data: currentSettings } = await supabase
-      .from('news_settings')
-      .select('categories')
-      .eq('id', 1)
-      .single();
-
-    if (currentSettings) {
-      const updatedCategories = {
-        ...currentSettings.categories,
-        [category]: {
-          ...currentSettings.categories?.[category],
-          last_generated: new Date().toISOString(),
-          episode_number: episodeNumber,
-          audio_url: publicUrl.publicUrl
-        }
-      };
-
-      await supabase
-        .from('news_settings')
-        .update({ categories: updatedCategories })
-        .eq('id', 1);
-    }
-
-    console.log(`[News Generator] ✅ SUCCESS: ${category} briefing published!`);
-    console.log(`[News Generator] Episode ID: ${episode.id}`);
-    console.log(`[News Generator] Audio URL: ${publicUrl.publicUrl}`);
-    console.log(`[News Generator] ========================================`);
+    const elapsed = Date.now() - startTime;
+    console.log(`[Generate News] Complete in ${elapsed}ms`);
 
     return NextResponse.json({
       success: true,
       episode: {
-        id: episode.id,
-        title: scriptResult.title,
         category,
         state,
-        episodeNumber,
-        audioUrl: publicUrl.publicUrl,
-        durationMins: Math.ceil(durationSeconds / 60),
-        storiesCount
+        episodeNumber: newEpisode,
+        script,
+        audioUrl,
+        storiesUsed: stories.length,
+        generatedAt: new Date().toISOString(),
+        generationTimeMs: elapsed
       }
     });
 
   } catch (error) {
-    console.error('[News Generator] ❌ ERROR:', error);
+    console.error('[Generate News] Error:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Generation failed' },
       { status: 500 }
@@ -456,27 +496,11 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// GET endpoint to check status or get live episodes
-export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const category = searchParams.get('category');
-
-  if (category) {
-    const { data: episode } = await supabase
-      .from('news_episodes')
-      .select('*')
-      .eq('category', category)
-      .eq('is_live', true)
-      .single();
-
-    return NextResponse.json({ episode });
-  }
-
-  const { data: episodes } = await supabase
-    .from('news_episodes')
-    .select('*')
-    .eq('is_live', true)
-    .order('category');
-
-  return NextResponse.json({ episodes });
+export async function GET() {
+  return NextResponse.json({
+    status: 'ok',
+    endpoint: 'generate-news',
+    version: '2.0',
+    features: ['gdelt-integration', 'two-phase-generation', 'no-thinking-bug']
+  });
 }
