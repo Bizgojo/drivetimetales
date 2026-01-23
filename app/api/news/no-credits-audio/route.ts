@@ -1,63 +1,34 @@
-// app/api/news/no-credits-audio/route.ts
-// Generates audio message for users with no credits trying to play briefings
-
 import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 
-export async function POST(request: NextRequest) {
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
+
+export async function GET(request: NextRequest) {
   try {
-    const body = await request.json().catch(() => ({}));
-    const voiceId = body.voiceId || 'EXAVITQu4vr4xnSDxMaL';
-    const userName = body.userName || '';
-    
-    const elevenLabsKey = process.env.ELEVENLABS_API_KEY;
-    
-    if (!elevenLabsKey) {
-      return NextResponse.json({ error: 'ElevenLabs API key not configured' }, { status: 500 });
+    const supabase = getSupabase();
+    const { searchParams } = new URL(request.url);
+    const userId = searchParams.get('userId');
+    const episodeId = searchParams.get('episodeId');
+    if (!episodeId) return NextResponse.json({ error: 'episodeId required' }, { status: 400 });
+
+    const { data: episode, error: episodeError } = await supabase.from('news_episodes').select('*').eq('id', episodeId).single();
+    if (episodeError || !episode) return NextResponse.json({ error: 'Episode not found' }, { status: 404 });
+
+    const isFree = episode.is_free || episode.category === 'preview';
+    if (!isFree) return NextResponse.json({ error: 'This episode requires credits or subscription', requiresPayment: true }, { status: 403 });
+
+    if (userId) {
+      await supabase.from('news_access').insert({ user_id: userId, episode_id: episodeId, accessed_at: new Date().toISOString(), acquired_via: 'free' });
     }
 
-    // Build the message
-    const nameGreeting = userName ? `Sorry ${userName}, but` : 'Sorry, but';
-    const nameClosing = userName ? `Hope to see you later ${userName}.` : 'Hope to see you later.';
-    
-    const message = `${nameGreeting} you need at least one credit in your account to play this news briefing. You can buy more credits or upgrade your subscription by clicking the subscribe button at the bottom of this page. ${nameClosing}`;
-
-    // Generate audio with ElevenLabs
-    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'xi-api-key': elevenLabsKey
-      },
-      body: JSON.stringify({
-        text: message,
-        model_id: 'eleven_monolingual_v1',
-        voice_settings: {
-          stability: 0.5,
-          similarity_boost: 0.75
-        }
-      })
-    });
-
-    if (!response.ok) {
-      const error = await response.text();
-      console.error('[No Credits Audio] ElevenLabs error:', error);
-      return NextResponse.json({ error: 'Failed to generate audio' }, { status: 500 });
-    }
-
-    const audioBuffer = await response.arrayBuffer();
-    
-    return new NextResponse(audioBuffer, {
-      headers: {
-        'Content-Type': 'audio/mpeg',
-        'Content-Length': audioBuffer.byteLength.toString()
-      }
-    });
-
+    return NextResponse.json({ success: true, audioUrl: episode.audio_url, episode });
   } catch (error) {
-    console.error('[No Credits Audio] Error:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Generation failed' },
-      { status: 500 }
-    );
+    console.error('[No Credits Audio API] Error:', error);
+    return NextResponse.json({ error: 'Failed to get audio' }, { status: 500 });
   }
 }

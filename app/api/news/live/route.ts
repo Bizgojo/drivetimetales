@@ -6,43 +6,45 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-// GET - Get live news briefings for all categories
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const category = searchParams.get('category');
+    const state = searchParams.get('state');
 
     let query = supabase
       .from('news_episodes')
       .select('*')
-      .eq('is_live', true)
       .order('created_at', { ascending: false });
 
-    // If specific category requested
     if (category) {
-      query = query.eq('category', category).limit(1);
+      query = query.eq('category', category);
     }
 
-    const { data, error } = await query;
+    if (state) {
+      query = query.eq('state', state);
+    }
 
-    if (error) throw error;
+    const { data, error } = await query.limit(20);
 
-    // If requesting single category, return single object
+    if (error) {
+      console.error('[News Live] Query error:', error);
+      return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    }
+
     if (category) {
       return NextResponse.json({
         success: true,
-        briefing: data?.[0] || null,
+        briefings: data,
       });
     }
 
-    // Otherwise, return all live briefings grouped by category
     const briefingsByCategory: Record<string, any> = {};
     for (const briefing of data || []) {
       if (!briefingsByCategory[briefing.category]) {
         briefingsByCategory[briefing.category] = briefing;
       }
     }
-
     return NextResponse.json({
       success: true,
       briefings: briefingsByCategory,
