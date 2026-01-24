@@ -19,6 +19,16 @@ const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
   state: { label: 'Local News', gdeltQuery: 'sourcecountry:US sourcelang:english', fallbackSearchQuery: 'STATE_NAME news today' }
 };
 
+// Prompts for each category - exported so UI can display them
+export const CATEGORY_PROMPTS: Record<string, string> = {
+  state: `Focus on state government actions, local crime and safety, community events, weather impacts, local elections, and regional sports. Emphasize how news affects local residents.`,
+  national: `Focus on the President and White House actions, Congressional legislation, Supreme Court decisions, federal policy changes, national elections, and major social issues affecting Americans.`,
+  international: `Focus on foreign elections and leadership changes, international conflicts and diplomacy, global economic trends, trade agreements, and humanitarian issues.`,
+  sports: `Focus on game results and scores, player trades and signings, championship races, playoff standings, college sports highlights, and upcoming major matchups.`,
+  science: `Focus on scientific discoveries and breakthroughs, space exploration news, medical advances and health research, new technology releases, AI developments, and environmental science.`,
+  business: `Focus on stock market movements, corporate earnings reports, mergers and acquisitions, small business trends, real estate market updates, and economic indicators. When mentioning companies, briefly note where they're based and what they do.`
+};
+
 async function fetchGdeltNews(category: string, state: string | null, count: number): Promise<NewsStory[]> {
   try {
     const config = CATEGORY_CONFIG[category];
@@ -45,33 +55,54 @@ async function fetchGdeltNews(category: string, state: string | null, count: num
   } catch { return []; }
 }
 
+function getCurrentDateInfo(): { dateStr: string; year: number; month: string; day: number } {
+  const now = new Date();
+  const options: Intl.DateTimeFormatOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+  return {
+    dateStr: now.toLocaleDateString('en-US', options),
+    year: now.getFullYear(),
+    month: now.toLocaleDateString('en-US', { month: 'long' }),
+    day: now.getDate()
+  };
+}
+
 async function generateScript(stories: NewsStory[], config: CategoryConfig, narrator: string, state: string | null, listenerName: string, categoryId: string): Promise<string> {
   const hour = new Date().getHours();
   const timeGreeting = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
   const label = state ? `${state} News` : config.label;
   const storiesText = stories.map((s, i) => `${i + 1}. ${s.headline}`).join('\n');
+  const dateInfo = getCurrentDateInfo();
   
-  const guidance: Record<string, string> = {
-    state: `Focus on ${state} state government, local crime, community events, weather, elections, sports.`,
-    national: `Focus on the President, White House, Congress, Supreme Court, federal policy, national elections, social issues.`,
-    international: `Focus on foreign elections, international conflicts, global economics, diplomacy.`,
-    sports: `Focus on game results, player trades, championships, college sports.`,
-    science: `Focus on scientific breakthroughs, space, medicine, technology, AI.`,
-    business: `Focus on markets, corporate earnings, small business, real estate. Introduce companies with location and what they do.`
-  };
+  const guidance = CATEGORY_PROMPTS[state ? 'state' : categoryId] || '';
 
-  const prompt = `You are ${narrator}, a radio news broadcaster. Write a 600-800 word script (about 4-5 minutes when read aloud) for these ${label} stories.
+  const prompt = `You are ${narrator}, a professional radio news broadcaster. Today is ${dateInfo.dateStr}. The current year is ${dateInfo.year}.
 
-${guidance[state ? 'state' : categoryId] || ''}
+Write a 600-800 word news script (about 4-5 minutes when read aloud) for these ${label} headlines from the LAST 24 HOURS.
 
-STORIES:
+CATEGORY FOCUS:
+${guidance}
+
+TODAY'S HEADLINES:
 ${storiesText}
 
-REQUIREMENTS:
-1. Greet listener "${listenerName}" by name and introduce yourself as ${narrator}
-2. Cover each story in 3-5 sentences, most important first
-3. Sign off mentioning ${listenerName} and your name ${narrator}
-4. Be warm and conversational. NO URLs or citations.`;
+SCRIPT REQUIREMENTS:
+1. Open with a warm ${timeGreeting} greeting to "${listenerName}" and introduce yourself as ${narrator}
+2. State today's date (${dateInfo.month} ${dateInfo.day}, ${dateInfo.year}) in your opening
+3. Cover ALL ${stories.length} stories with substantive detail (4-6 sentences each):
+   - What happened
+   - Who is involved
+   - Why it matters
+   - Any immediate implications
+4. Prioritize the most important/impactful stories first
+5. Use smooth transitions between stories
+6. Close with a brief sign-off mentioning ${listenerName} and your name
+
+STYLE GUIDELINES:
+- Be warm, professional, and conversational
+- NO filler phrases like "stay tuned" or "more on that later"
+- NO URLs, citations, or source attributions
+- NO speculation - stick to the facts in the headlines
+- Speak as if broadcasting live on ${dateInfo.dateStr}`;
 
   const response = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
@@ -98,7 +129,7 @@ async function generateAudio(script: string, voiceId: string): Promise<Buffer> {
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
   try {
-    const { category, voiceId, narratorName, state, storiesCount = 5, listenerName = 'Marc' } = await request.json();
+    const { category, voiceId, narratorName, state, storiesCount = 5, listenerName = 'listener' } = await request.json();
     if (!category) return NextResponse.json({ error: 'Category required' }, { status: 400 });
     const config = CATEGORY_CONFIG[category];
     if (!config) return NextResponse.json({ error: 'Invalid category' }, { status: 400 });
@@ -133,6 +164,24 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET() {
-  return NextResponse.json({ status: 'ok', version: '2.0', features: ['gdelt', 'duration'] });
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const category = searchParams.get('category');
+  
+  // If category provided, return the prompt for that category
+  if (category) {
+    const prompt = CATEGORY_PROMPTS[category];
+    if (prompt) {
+      return NextResponse.json({ category, prompt });
+    }
+    return NextResponse.json({ error: 'Invalid category' }, { status: 400 });
+  }
+  
+  // Return all prompts
+  return NextResponse.json({ 
+    status: 'ok', 
+    version: '3.0', 
+    features: ['gdelt', 'duration', 'date-aware', 'prompts'],
+    prompts: CATEGORY_PROMPTS
+  });
 }
