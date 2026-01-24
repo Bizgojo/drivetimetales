@@ -15,7 +15,6 @@ const US_STATES = [
   'Wisconsin', 'Wyoming'
 ]
 
-// State abbreviation lookup
 const STATE_ABBREV: Record<string, string> = {
   'Alabama': 'AL', 'Alaska': 'AK', 'Arizona': 'AZ', 'Arkansas': 'AR', 'California': 'CA',
   'Colorado': 'CO', 'Connecticut': 'CT', 'Delaware': 'DE', 'Florida': 'FL', 'Georgia': 'GA',
@@ -29,7 +28,6 @@ const STATE_ABBREV: Record<string, string> = {
   'Virginia': 'VA', 'Washington': 'WA', 'West Virginia': 'WV', 'Wisconsin': 'WI', 'Wyoming': 'WY'
 }
 
-// Reverse lookup (abbrev to full name)
 const ABBREV_TO_STATE: Record<string, string> = Object.fromEntries(
   Object.entries(STATE_ABBREV).map(([k, v]) => [v, k])
 )
@@ -43,15 +41,11 @@ const ALL_CATEGORIES = [
   { id: 'science', name: 'Science & Tech', icon: '🔬' },
 ]
 
-// Cost per briefing (ElevenLabs: ~4000 chars at $0.30/1000 chars)
 const COST_PER_BRIEFING = 1.20
 
 interface Voice { voice_id: string; name: string; labels?: Record<string, string> }
 interface CatSettings { voice_id: string; narrator_name: string; last_generated: string | null; audio_url: string | null; duration: string | null }
-interface ScheduleSettings { 
-  enabled: boolean
-  times: string[]  // ["06:00", "12:00", "18:00"]
-}
+interface ScheduleSettings { enabled: boolean; times: string[] }
 
 export default function AdminNewsPage() {
   const [loading, setLoading] = useState(true)
@@ -81,8 +75,9 @@ export default function AdminNewsPage() {
 
   async function loadSettings() {
     try {
-      const { data } = await supabase.from('news_settings').select('*').eq('id', '1').single()
-      if (data?.settings) {
+      const res = await fetch('/api/admin/news-settings')
+      const data = await res.json()
+      if (data.settings) {
         setSettings(data.settings.categories || {})
         setSelectedState(data.settings.selected_state || 'South Carolina')
         if (data.settings.schedule) {
@@ -96,11 +91,9 @@ export default function AdminNewsPage() {
     try {
       const { data } = await supabase.from('users').select('state').not('state', 'is', null)
       if (data) {
-        // Normalize states (could be "SC" or "South Carolina")
         const stateSet = new Set<string>()
         data.forEach(u => {
           if (u.state) {
-            // If it's an abbreviation, convert to full name
             const fullName = ABBREV_TO_STATE[u.state.toUpperCase()] || u.state
             if (US_STATES.includes(fullName)) {
               stateSet.add(fullName)
@@ -115,15 +108,18 @@ export default function AdminNewsPage() {
   function saveToDb(newSettings: Record<string, CatSettings>, state?: string, newSchedule?: ScheduleSettings) {
     if (saveTimeout.current) clearTimeout(saveTimeout.current)
     saveTimeout.current = setTimeout(async () => {
-      await supabase.from('news_settings').upsert({
-        id: '1',
-        settings: { 
-          categories: newSettings, 
-          selected_state: state || selectedState,
-          schedule: newSchedule || schedule
-        },
-        updated_at: new Date().toISOString()
-      })
+      try {
+        const res = await fetch('/api/admin/news-settings')
+        const data = await res.json()
+        const existing = data.settings || {}
+        await fetch('/api/admin/news-settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            settings: { ...existing, categories: newSettings, selected_state: state || selectedState, schedule: newSchedule || schedule }
+          })
+        })
+      } catch (e) { console.error('Save error:', e) }
     }, 500)
   }
 
@@ -186,7 +182,7 @@ export default function AdminNewsPage() {
           narratorName: catSettings.narrator_name || 'Your Host',
           state: catId === 'state' ? selectedState : null,
           storiesCount: 5,
-          listenerName: 'Marc' // Test name for admin - real users get their actual name
+          listenerName: 'Marc'
         })
       })
 
@@ -255,11 +251,9 @@ export default function AdminNewsPage() {
     return `${h12}:${m.toString().padStart(2, '0')} ${ampm}`
   }
 
-  // Cost calculations
   const numStates = Math.max(subscriberStates.length, 1)
-  const numCategories = 5 // national, international, business, sports, science
-  const totalBriefingsPerCycle = numCategories + numStates
-  const costPerCycle = totalBriefingsPerCycle * COST_PER_BRIEFING
+  const numCategories = 5
+  const costPerCycle = (numCategories + numStates) * COST_PER_BRIEFING
   const costDaily = costPerCycle * 3
   const costMonthly = costDaily * 30
 
@@ -274,7 +268,6 @@ export default function AdminNewsPage() {
   return (
     <div className="min-h-screen bg-slate-900 p-6">
       <div className="max-w-6xl mx-auto">
-        {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">
             <Link href="/admin" className="text-white/60 hover:text-white text-sm">← Back</Link>
@@ -293,14 +286,12 @@ export default function AdminNewsPage() {
           </button>
         </div>
 
-        {/* Message */}
         {message && (
           <div className={`mb-6 p-4 rounded-lg font-medium ${message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
             {message.text}
           </div>
         )}
 
-        {/* 2x3 Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {ALL_CATEGORIES.map(cat => {
             const catSettings = settings[cat.id] || { voice_id: '', narrator_name: '', last_generated: null, audio_url: null, duration: null }
@@ -309,7 +300,6 @@ export default function AdminNewsPage() {
 
             return (
               <div key={cat.id} className="bg-gray-100 rounded-xl p-5 relative overflow-hidden">
-                {/* Generating Overlay */}
                 {isGenerating && (
                   <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center z-10 rounded-xl">
                     <div className="w-14 h-14 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mb-3" />
@@ -317,13 +307,11 @@ export default function AdminNewsPage() {
                   </div>
                 )}
 
-                {/* Header */}
                 <div className="flex items-center gap-2 mb-4">
                   <span className="text-2xl">{cat.icon}</span>
                   <h2 className="text-lg font-bold text-gray-900">{cat.name}</h2>
                 </div>
 
-                {/* State Dropdown (only for State News) */}
                 {cat.id === 'state' && (
                   <div className="mb-3">
                     <label className="block text-sm font-medium text-gray-700 mb-1">Select State</label>
@@ -337,7 +325,6 @@ export default function AdminNewsPage() {
                   </div>
                 )}
 
-                {/* Narrator Name */}
                 <div className="mb-3">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Narrator Name</label>
                   <input
@@ -349,7 +336,6 @@ export default function AdminNewsPage() {
                   />
                 </div>
 
-                {/* Voice */}
                 <div className="mb-4">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Voice</label>
                   <div className="flex gap-2">
@@ -360,9 +346,7 @@ export default function AdminNewsPage() {
                     >
                       <option value="">Select voice...</option>
                       {voices.map(v => (
-                        <option key={v.voice_id} value={v.voice_id}>
-                          {v.name}
-                        </option>
+                        <option key={v.voice_id} value={v.voice_id}>{v.name}</option>
                       ))}
                     </select>
                     <button
@@ -375,7 +359,6 @@ export default function AdminNewsPage() {
                   </div>
                 </div>
 
-                {/* Last Generated & Duration */}
                 <p className="text-sm text-gray-600 mb-4">
                   Last updated: <span className="font-medium text-gray-900">{formatDate(catSettings.last_generated)}</span>
                   {catSettings.duration && (
@@ -383,7 +366,6 @@ export default function AdminNewsPage() {
                   )}
                 </p>
 
-                {/* Buttons */}
                 <div className="flex gap-3">
                   <button
                     onClick={() => generate(cat.id)}
@@ -413,7 +395,6 @@ export default function AdminNewsPage() {
 
         <p className="text-gray-500 text-sm text-center mt-8">Settings auto-save when changed</p>
 
-        {/* Auto-Generate Schedule Section */}
         <div className="mt-10 bg-slate-800 rounded-xl p-6 border border-slate-700">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
@@ -424,13 +405,10 @@ export default function AdminNewsPage() {
               onClick={() => updateSchedule({ ...schedule, enabled: !schedule.enabled })}
               className={`relative w-14 h-8 rounded-full transition-colors ${schedule.enabled ? 'bg-green-500' : 'bg-gray-600'}`}
             >
-              <span 
-                className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-transform ${schedule.enabled ? 'left-7' : 'left-1'}`}
-              />
+              <span className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-transform ${schedule.enabled ? 'left-7' : 'left-1'}`} />
             </button>
           </div>
 
-          {/* Generation Times */}
           <div className="mb-6">
             <label className="block text-sm font-medium text-white/80 mb-3">Generation Times (EST)</label>
             <div className="flex gap-4 flex-wrap">
@@ -448,7 +426,6 @@ export default function AdminNewsPage() {
             </div>
           </div>
 
-          {/* Subscriber States */}
           <div className="mb-6">
             <label className="block text-sm font-medium text-white/80 mb-2">Subscriber States</label>
             <div className="flex flex-wrap gap-2">
@@ -467,7 +444,6 @@ export default function AdminNewsPage() {
             </p>
           </div>
 
-          {/* Cost Estimate */}
           <div className="bg-slate-900 rounded-lg p-4">
             <div className="flex items-center gap-2 mb-3">
               <span className="text-xl">💰</span>
@@ -497,7 +473,6 @@ export default function AdminNewsPage() {
             </div>
           </div>
 
-          {/* Status */}
           <div className="mt-4 text-center">
             {schedule.enabled ? (
               <p className="text-green-400 font-medium">
