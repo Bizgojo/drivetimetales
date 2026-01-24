@@ -19,8 +19,8 @@ const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
   state: { label: 'Local News', gdeltQuery: 'sourcecountry:US sourcelang:english' }
 };
 
-// Comprehensive prompts for each category
-const CATEGORY_PROMPTS: Record<string, string> = {
+// Default prompts for each category (used if no custom prompt in database)
+const DEFAULT_PROMPTS: Record<string, string> = {
   state: `You are delivering STATE/LOCAL NEWS for a specific U.S. state.
 
 WHAT IS STATE/LOCAL NEWS:
@@ -159,6 +159,20 @@ TONE AND STYLE:
 - Connect business news to how it affects consumers and workers`
 };
 
+// Get prompt for category - check database first, then fall back to default
+async function getCategoryPrompt(category: string): Promise<string> {
+  try {
+    const { data } = await supabase.from('news_settings').select('settings').eq('id', '1').single();
+    const customPrompts = data?.settings?.prompts || {};
+    if (customPrompts[category]) {
+      return customPrompts[category];
+    }
+  } catch (e) {
+    console.error('Error fetching custom prompt:', e);
+  }
+  return DEFAULT_PROMPTS[category] || '';
+}
+
 async function fetchGdeltNews(category: string, state: string | null, count: number): Promise<NewsStory[]> {
   try {
     const config = CATEGORY_CONFIG[category];
@@ -232,7 +246,8 @@ async function generateScript(stories: NewsStory[], config: CategoryConfig, narr
   const label = state ? `${state} News` : config.label;
   const storiesText = stories.map((s, i) => `${i + 1}. ${s.headline}`).join('\n');
   
-  const categoryGuidance = CATEGORY_PROMPTS[state ? 'state' : categoryId] || '';
+  // Get prompt from database or default
+  const categoryGuidance = await getCategoryPrompt(state ? 'state' : categoryId);
 
   const prompt = `${categoryGuidance}
 
@@ -324,7 +339,50 @@ async function generateAudio(script: string, voiceId: string): Promise<Buffer> {
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
   try {
-    const { category, voiceId, narratorName, state, storiesCount = 5, listenerName = 'listener', timezone = 'America/New_York' } = await request.json();
+    const body = await request.json();
+    
+    // Handle prompt save
+    if (body.action === 'save-prompt') {
+      const { category, prompt } = body;
+      if (!category || !prompt) {
+        return NextResponse.json({ error: 'Category and prompt required' }, { status: 400 });
+      }
+      
+      const { data: row } = await supabase.from('news_settings').select('settings').eq('id', '1').single();
+      const settings = row?.settings || {};
+      const prompts = settings.prompts || {};
+      prompts[category] = prompt;
+      
+      await supabase.from('news_settings').update({
+        settings: { ...settings, prompts },
+        updated_at: new Date().toISOString()
+      }).eq('id', '1');
+      
+      return NextResponse.json({ success: true, message: 'Prompt saved' });
+    }
+    
+    // Handle reset to default
+    if (body.action === 'reset-prompt') {
+      const { category } = body;
+      if (!category) {
+        return NextResponse.json({ error: 'Category required' }, { status: 400 });
+      }
+      
+      const { data: row } = await supabase.from('news_settings').select('settings').eq('id', '1').single();
+      const settings = row?.settings || {};
+      const prompts = settings.prompts || {};
+      delete prompts[category];
+      
+      await supabase.from('news_settings').update({
+        settings: { ...settings, prompts },
+        updated_at: new Date().toISOString()
+      }).eq('id', '1');
+      
+      return NextResponse.json({ success: true, message: 'Prompt reset to default', defaultPrompt: DEFAULT_PROMPTS[category] });
+    }
+    
+    // Regular generation
+    const { category, voiceId, narratorName, state, storiesCount = 5, listenerName = 'listener', timezone = 'America/New_York' } = body;
     if (!category) return NextResponse.json({ error: 'Category required' }, { status: 400 });
     const config = CATEGORY_CONFIG[category];
     if (!config) return NextResponse.json({ error: 'Invalid category' }, { status: 400 });
@@ -364,17 +422,27 @@ export async function GET(request: NextRequest) {
   const category = searchParams.get('category');
   
   if (category) {
-    const prompt = CATEGORY_PROMPTS[category];
-    if (prompt) {
-      return NextResponse.json({ category, prompt });
-    }
-    return NextResponse.json({ error: 'Invalid category' }, { status: 400 });
+    const prompt = await getCategoryPrompt(category);
+    const isCustom = prompt !== DEFAULT_PROMPTS[category];
+    return NextResponse.json({ 
+      category, 
+      prompt,
+      isCustom,
+      defaultPrompt: DEFAULT_PROMPTS[category]
+    });
+  }
+  
+  // Return all prompts
+  const allPrompts: Record<string, string> = {};
+  for (const cat of Object.keys(DEFAULT_PROMPTS)) {
+    allPrompts[cat] = await getCategoryPrompt(cat);
   }
   
   return NextResponse.json({ 
     status: 'ok', 
-    version: '4.0', 
-    features: ['gdelt', 'duration', 'date-aware', 'timezone-aware', 'comprehensive-prompts'],
-    prompts: CATEGORY_PROMPTS
+    version: '5.0', 
+    features: ['gdelt', 'duration', 'date-aware', 'timezone-aware', 'editable-prompts'],
+    prompts: allPrompts,
+    defaultPrompts: DEFAULT_PROMPTS
   });
 }
