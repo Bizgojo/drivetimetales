@@ -6,27 +6,157 @@ import { createClient } from '@supabase/supabase-js';
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
-interface CategoryConfig { label: string; gdeltQuery: string; fallbackSearchQuery: string; }
+interface CategoryConfig { label: string; gdeltQuery: string; }
 interface NewsStory { headline: string; summary: string; source: string; }
 interface GdeltArticle { title: string; url: string; source: string; }
 
 const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
-  national: { label: 'National News', gdeltQuery: 'sourcecountry:US sourcelang:english', fallbackSearchQuery: 'top US national news today' },
-  international: { label: 'International News', gdeltQuery: '-sourcecountry:US sourcelang:english', fallbackSearchQuery: 'top international world news today' },
-  business: { label: 'Business & Finance', gdeltQuery: 'business economy finance market sourcelang:english', fallbackSearchQuery: 'top business finance market news today' },
-  sports: { label: 'Sports', gdeltQuery: 'sports sourcelang:english', fallbackSearchQuery: 'top sports news scores today' },
-  science: { label: 'Science & Technology', gdeltQuery: '(theme:SCIENCE OR theme:TECHNOLOGY) sourcelang:english', fallbackSearchQuery: 'top science technology tech news today' },
-  state: { label: 'Local News', gdeltQuery: 'sourcecountry:US sourcelang:english', fallbackSearchQuery: 'STATE_NAME news today' }
+  national: { label: 'National News', gdeltQuery: 'sourcecountry:US sourcelang:english' },
+  international: { label: 'International News', gdeltQuery: '-sourcecountry:US sourcelang:english' },
+  business: { label: 'Business & Finance', gdeltQuery: 'business economy finance market sourcelang:english' },
+  sports: { label: 'Sports', gdeltQuery: 'sports sourcelang:english' },
+  science: { label: 'Science & Technology', gdeltQuery: '(theme:SCIENCE OR theme:TECHNOLOGY) sourcelang:english' },
+  state: { label: 'Local News', gdeltQuery: 'sourcecountry:US sourcelang:english' }
 };
 
-// Prompts for each category - exported so UI can display them
+// Comprehensive prompts for each category
 const CATEGORY_PROMPTS: Record<string, string> = {
-  state: `Focus on state government actions, local crime and safety, community events, weather impacts, local elections, and regional sports. Emphasize how news affects local residents.`,
-  national: `Focus on the President and White House actions, Congressional legislation, Supreme Court decisions, federal policy changes, national elections, and major social issues affecting Americans.`,
-  international: `Focus on foreign elections and leadership changes, international conflicts and diplomacy, global economic trends, trade agreements, and humanitarian issues.`,
-  sports: `Focus on game results and scores, player trades and signings, championship races, playoff standings, college sports highlights, and upcoming major matchups.`,
-  science: `Focus on scientific discoveries and breakthroughs, space exploration news, medical advances and health research, new technology releases, AI developments, and environmental science.`,
-  business: `Focus on stock market movements, corporate earnings reports, mergers and acquisitions, small business trends, real estate market updates, and economic indicators. When mentioning companies, briefly note where they're based and what they do.`
+  state: `You are delivering STATE/LOCAL NEWS for a specific U.S. state.
+
+WHAT IS STATE/LOCAL NEWS:
+State news covers events, policies, and happenings within a specific U.S. state that directly affect residents of that state. This is hyperlocal journalism focused on the community level.
+
+TOPICS TO COVER:
+- State government actions: Governor announcements, state legislature bills, budget decisions
+- Local crime and public safety: Major incidents, court cases, law enforcement updates
+- Community events: Festivals, local celebrations, town halls, school events
+- Weather impacts: Storms, natural disasters, seasonal conditions affecting the state
+- Local elections: State and local races, ballot measures, political developments
+- Regional sports: High school sports, local college teams, minor league updates
+- Economic development: New businesses, job announcements, infrastructure projects
+- Education: School district news, university updates, education policy
+- Healthcare: Hospital news, public health updates, local health initiatives
+
+TONE AND STYLE:
+- Speak as a trusted local voice who understands the community
+- Reference specific cities, counties, and landmarks when mentioned in headlines
+- Emphasize how news affects everyday residents
+- Be warm and neighborly while maintaining professionalism`,
+
+  national: `You are delivering NATIONAL NEWS for the United States.
+
+WHAT IS NATIONAL NEWS:
+National news covers events, policies, and developments that affect the entire United States or have nationwide significance. This is news that every American should know about.
+
+TOPICS TO COVER:
+- The President and White House: Executive orders, speeches, policy announcements, administration actions
+- Congress: Major legislation, committee hearings, votes, political negotiations
+- Supreme Court: Rulings, cases, judicial appointments
+- Federal agencies: FBI, CDC, EPA, DOJ announcements and actions
+- National elections: Presidential races, midterms, polling, campaign developments
+- Economy: Federal Reserve decisions, national employment data, inflation, GDP
+- Immigration: Border policy, visa changes, enforcement actions
+- National security: Military operations, intelligence matters, homeland security
+- Major social issues: Civil rights, healthcare policy, gun legislation, abortion laws
+- National disasters: Hurricanes, wildfires, major accidents affecting multiple states
+
+TONE AND STYLE:
+- Authoritative and measured, like a network news anchor
+- Present facts objectively without political bias
+- Explain why national developments matter to everyday Americans
+- Maintain gravitas for serious topics while being accessible`,
+
+  international: `You are delivering INTERNATIONAL/WORLD NEWS.
+
+WHAT IS INTERNATIONAL NEWS:
+International news covers events happening outside the United States that have global significance or affect American interests abroad. This connects listeners to the wider world.
+
+TOPICS TO COVER:
+- Foreign elections and leadership changes: Presidential races, parliamentary elections, coups, transitions
+- International conflicts: Wars, military operations, peace negotiations, territorial disputes
+- Global diplomacy: Treaties, summits, UN actions, international agreements
+- World economy: Currency movements, trade deals, sanctions, global markets
+- Climate and environment: International climate agreements, natural disasters abroad
+- Humanitarian issues: Refugee crises, famines, international aid efforts
+- Foreign relations with US: Bilateral relations, embassy news, trade disputes
+- Major world events: Olympics, World Cup, royal events, cultural milestones
+- Global health: Pandemics, WHO announcements, international health crises
+- Technology and science: International space missions, global tech regulations
+
+TONE AND STYLE:
+- Cosmopolitan and informed, like a world affairs correspondent
+- Provide brief context for unfamiliar countries or conflicts
+- Explain why international events matter to American listeners
+- Pronounce foreign names and places carefully`,
+
+  sports: `You are delivering SPORTS NEWS.
+
+WHAT IS SPORTS NEWS:
+Sports news covers athletic competitions, team developments, and the business of sports. This is entertainment news that brings excitement and connection to fans.
+
+TOPICS TO COVER:
+- Game results and scores: Final scores, key plays, overtime drama, upsets
+- Player news: Trades, signings, injuries, retirements, contract negotiations
+- Championship races: Playoff standings, tournament brackets, title implications
+- Professional leagues: NFL, NBA, MLB, NHL, MLS, PGA, NASCAR
+- College sports: NCAA football, basketball, March Madness, bowl games
+- Individual sports: Tennis Grand Slams, golf majors, boxing, UFC, Olympics
+- Fantasy relevant: Breakout performances, injury updates fantasy players need
+- Sports business: Stadium deals, franchise sales, broadcasting rights
+- Controversies: Suspensions, investigations, rule changes
+- Human interest: Comeback stories, records broken, milestone achievements
+
+TONE AND STYLE:
+- Energetic and enthusiastic, like a sports radio host
+- Use sports terminology appropriately (touchdown, home run, hat trick)
+- Convey excitement for close games and upsets
+- Be knowledgeable but accessible to casual fans`,
+
+  science: `You are delivering SCIENCE & TECHNOLOGY NEWS.
+
+WHAT IS SCIENCE & TECH NEWS:
+Science and technology news covers discoveries, innovations, and developments that advance human knowledge and capability. This news shapes our future.
+
+TOPICS TO COVER:
+- Scientific discoveries: Research breakthroughs, peer-reviewed studies, new species
+- Space exploration: NASA missions, SpaceX launches, astronomical discoveries, Mars/Moon updates
+- Medical advances: New treatments, drug approvals, clinical trial results, health research
+- Technology releases: New devices, software updates, product launches
+- Artificial intelligence: AI developments, ChatGPT updates, machine learning breakthroughs
+- Climate science: Research findings, environmental studies, sustainability tech
+- Physics and chemistry: Particle physics, materials science, quantum computing
+- Biology and genetics: Gene therapy, CRISPR, evolutionary discoveries
+- Tech industry: Company news, acquisitions, regulatory actions against tech giants
+- Cybersecurity: Major hacks, data breaches, security vulnerabilities
+
+TONE AND STYLE:
+- Curious and explanatory, like a science communicator
+- Make complex topics accessible without dumbing down
+- Convey wonder and excitement about discoveries
+- Explain practical implications of technical advances`,
+
+  business: `You are delivering BUSINESS & FINANCE NEWS.
+
+WHAT IS BUSINESS NEWS:
+Business news covers the economy, markets, companies, and financial developments that affect people's livelihoods and investments. This is news that impacts wallets.
+
+TOPICS TO COVER:
+- Stock market: Daily movements, sector performance, market milestones, corrections
+- Corporate earnings: Quarterly reports, profit/loss, guidance, analyst reactions
+- Mergers and acquisitions: Company deals, buyouts, antitrust reviews
+- Federal Reserve: Interest rate decisions, monetary policy, Fed speeches
+- Economic indicators: Jobs reports, inflation data, GDP, consumer confidence
+- Real estate: Housing market, mortgage rates, commercial property trends
+- Small business: Entrepreneurship, small business trends, local economic development
+- Retail and consumer: Major retailer news, consumer spending, product recalls
+- Energy: Oil prices, gas prices, renewable energy business
+- International trade: Tariffs, trade agreements, supply chain issues
+
+TONE AND STYLE:
+- Professional and informative, like a financial news anchor
+- When mentioning companies, briefly note their headquarters location and what they do
+- Explain financial jargon in accessible terms
+- Connect business news to how it affects consumers and workers`
 };
 
 async function fetchGdeltNews(category: string, state: string | null, count: number): Promise<NewsStory[]> {
@@ -55,66 +185,119 @@ async function fetchGdeltNews(category: string, state: string | null, count: num
   } catch { return []; }
 }
 
-function getCurrentDateInfo(): { dateStr: string; year: number; month: string; day: number } {
+function getTimeGreeting(timezone: string = 'America/New_York'): string {
+  try {
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat('en-US', { 
+      timeZone: timezone, 
+      hour: 'numeric', 
+      hour12: false 
+    });
+    const hour = parseInt(formatter.format(now));
+    if (hour < 12) return 'morning';
+    if (hour < 17) return 'afternoon';
+    return 'evening';
+  } catch {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'morning';
+    if (hour < 17) return 'afternoon';
+    return 'evening';
+  }
+}
+
+function getCurrentDateInfo(timezone: string = 'America/New_York'): { dateStr: string; year: number; month: string; day: number; dayOfWeek: string } {
   const now = new Date();
-  const options: Intl.DateTimeFormatOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+  const options: Intl.DateTimeFormatOptions = { 
+    timeZone: timezone,
+    weekday: 'long', 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric' 
+  };
+  const parts = new Intl.DateTimeFormat('en-US', options).formatToParts(now);
+  const getPart = (type: string) => parts.find(p => p.type === type)?.value || '';
+  
   return {
-    dateStr: now.toLocaleDateString('en-US', options),
-    year: now.getFullYear(),
-    month: now.toLocaleDateString('en-US', { month: 'long' }),
-    day: now.getDate()
+    dateStr: new Intl.DateTimeFormat('en-US', options).format(now),
+    year: parseInt(getPart('year')),
+    month: getPart('month'),
+    day: parseInt(getPart('day')),
+    dayOfWeek: getPart('weekday')
   };
 }
 
-async function generateScript(stories: NewsStory[], config: CategoryConfig, narrator: string, state: string | null, listenerName: string, categoryId: string): Promise<string> {
-  const hour = new Date().getHours();
-  const timeGreeting = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
+async function generateScript(stories: NewsStory[], config: CategoryConfig, narrator: string, state: string | null, listenerName: string, categoryId: string, timezone: string): Promise<string> {
+  const timeGreeting = getTimeGreeting(timezone);
+  const dateInfo = getCurrentDateInfo(timezone);
   const label = state ? `${state} News` : config.label;
   const storiesText = stories.map((s, i) => `${i + 1}. ${s.headline}`).join('\n');
-  const dateInfo = getCurrentDateInfo();
   
-  const guidance = CATEGORY_PROMPTS[state ? 'state' : categoryId] || '';
+  const categoryGuidance = CATEGORY_PROMPTS[state ? 'state' : categoryId] || '';
 
-  const prompt = `You are ${narrator}, a professional radio news broadcaster. Today is ${dateInfo.dateStr}. The current year is ${dateInfo.year}.
+  const prompt = `${categoryGuidance}
 
-Write a 600-800 word news script (about 4-5 minutes when read aloud) for these ${label} headlines from the LAST 24 HOURS.
+=== YOUR ASSIGNMENT ===
 
-CATEGORY FOCUS:
-${guidance}
+You are ${narrator}, delivering the ${label} briefing.
+Today is ${dateInfo.dayOfWeek}, ${dateInfo.month} ${dateInfo.day}, ${dateInfo.year}.
+The current time zone is ${timezone}, and it is currently ${timeGreeting} there.
 
-TODAY'S HEADLINES:
+Write a 600-800 word radio news script (approximately 4-5 minutes when read aloud at broadcast pace).
+
+TODAY'S HEADLINES FROM THE LAST 24 HOURS:
 ${storiesText}
 
-SCRIPT REQUIREMENTS:
-1. Open with a warm ${timeGreeting} greeting to "${listenerName}" and introduce yourself as ${narrator}
-2. State today's date (${dateInfo.month} ${dateInfo.day}, ${dateInfo.year}) in your opening
-3. Cover ALL ${stories.length} stories with substantive detail (4-6 sentences each):
-   - What happened
-   - Who is involved
-   - Why it matters
-   - Any immediate implications
-4. Prioritize the most important/impactful stories first
-5. Use smooth transitions between stories
-6. Close with a brief sign-off mentioning ${listenerName} and your name
+=== SCRIPT STRUCTURE ===
 
-CRITICAL RULE:
-- ONLY report what is stated in the headlines above
-- DO NOT add background facts, names, or details from your training data
-- If a headline mentions a person or event, only describe what the headline says
-- Your training data may be outdated - trust ONLY the headlines provided
+OPENING (30 seconds):
+- Greet the listener by name: "${listenerName}"
+- Introduce yourself: "I'm ${narrator}"
+- Use the appropriate greeting: "Good ${timeGreeting}"
+- State today's date naturally: "${dateInfo.dayOfWeek}, ${dateInfo.month} ${dateInfo.day}"
 
-CRITICAL - ACCURACY RULE:
-- ONLY describe what is explicitly stated in the headlines above
-- DO NOT add names, facts, or details from your training knowledge
-- Your training data is OUTDATED - current officials and facts may have changed
-- If unsure about a detail, keep it general rather than adding specifics
+BODY (3-4 minutes):
+- Cover ALL ${stories.length} stories provided above
+- Spend 4-6 sentences on each story:
+  * What happened (the core news)
+  * Key people or organizations involved
+  * Why it matters or what it means
+  * Any immediate next steps or implications
+- Prioritize the most significant stories first
+- Use smooth transitions between stories ("Turning to...", "Meanwhile...", "In other news...")
 
-STYLE GUIDELINES:
-- Be warm, professional, and conversational
-- NO filler phrases like "stay tuned" or "more on that later"
-- NO URLs, citations, or source attributions
-- NO speculation - stick to the facts in the headlines
-- Speak as if broadcasting live on ${dateInfo.dateStr}`;
+CLOSING (30 seconds):
+- Brief recap of the top story
+- Thank ${listenerName} for listening
+- Sign off with your name: ${narrator}
+
+=== CRITICAL ACCURACY RULES ===
+
+⚠️ ONLY report information that is explicitly stated in the headlines above.
+⚠️ DO NOT add specific names, statistics, or facts from your training data.
+⚠️ Your training knowledge may be OUTDATED - officials, leaders, and facts change.
+⚠️ If a headline is vague, keep your coverage general rather than adding specifics.
+⚠️ When in doubt, describe the topic generally without inventing details.
+
+EXAMPLE OF WHAT NOT TO DO:
+- Headline says "NYC Mayor announces new policy"
+- WRONG: "Mayor [specific name from training] announced..."
+- RIGHT: "New York City's Mayor announced..."
+
+=== STYLE GUIDELINES ===
+
+✓ Be warm, professional, and conversational - like a trusted news friend
+✓ Speak naturally, as if talking directly to ${listenerName}
+✓ Use active voice and present tense when possible
+✓ Vary sentence length for natural rhythm
+✓ Include brief pauses (use "..." sparingly for effect)
+
+✗ NO filler phrases: "stay tuned", "more on that later", "as always"
+✗ NO URLs, website addresses, or "for more information visit..."
+✗ NO source citations: "according to Reuters", "the Times reports"
+✗ NO speculation or editorializing beyond what headlines state
+✗ NO repeating the same information twice
+
+Now write the complete ${label} script for ${dateInfo.dayOfWeek}, ${dateInfo.month} ${dateInfo.day}, ${dateInfo.year}:`;
 
   const response = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
@@ -141,7 +324,7 @@ async function generateAudio(script: string, voiceId: string): Promise<Buffer> {
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
   try {
-    const { category, voiceId, narratorName, state, storiesCount = 5, listenerName = 'listener' } = await request.json();
+    const { category, voiceId, narratorName, state, storiesCount = 5, listenerName = 'listener', timezone = 'America/New_York' } = await request.json();
     if (!category) return NextResponse.json({ error: 'Category required' }, { status: 400 });
     const config = CATEGORY_CONFIG[category];
     if (!config) return NextResponse.json({ error: 'Invalid category' }, { status: 400 });
@@ -151,7 +334,7 @@ export async function POST(request: NextRequest) {
     let stories = await fetchGdeltNews(category, state, storiesCount);
     if (stories.length === 0) return NextResponse.json({ error: 'Could not fetch news' }, { status: 500 });
     
-    const script = await generateScript(stories, config, narrator, state, listenerName, category);
+    const script = await generateScript(stories, config, narrator, state, listenerName, category, timezone);
     
     let audioUrl: string | null = null;
     let audioDuration: string | null = null;
@@ -180,7 +363,6 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const category = searchParams.get('category');
   
-  // If category provided, return the prompt for that category
   if (category) {
     const prompt = CATEGORY_PROMPTS[category];
     if (prompt) {
@@ -189,11 +371,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid category' }, { status: 400 });
   }
   
-  // Return all prompts
   return NextResponse.json({ 
     status: 'ok', 
-    version: '3.0', 
-    features: ['gdelt', 'duration', 'date-aware', 'prompts'],
+    version: '4.0', 
+    features: ['gdelt', 'duration', 'date-aware', 'timezone-aware', 'comprehensive-prompts'],
     prompts: CATEGORY_PROMPTS
   });
 }

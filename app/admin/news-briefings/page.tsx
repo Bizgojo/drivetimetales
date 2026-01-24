@@ -508,18 +508,24 @@ export default function AdminNewsPage() {
         </div>
       </div>
 
-      {/* Prompt Modal */}
+      {/* Prompt Modal - Off-white background with black text */}
       {promptModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={() => setPromptModal(null)}>
-          <div className="bg-slate-800 rounded-xl p-6 max-w-2xl w-full max-h-[80vh] overflow-auto" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-bold text-white">📝 {promptModal.name} Prompt</h3>
-              <button onClick={() => setPromptModal(null)} className="text-white/60 hover:text-white text-2xl">&times;</button>
+          <div 
+            className="rounded-xl p-6 max-w-3xl w-full max-h-[85vh] overflow-auto shadow-2xl" 
+            style={{ backgroundColor: '#f8f5f0' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4 border-b pb-4" style={{ borderColor: '#d4c4b0' }}>
+              <h3 className="text-xl font-bold" style={{ color: '#1a1a1a' }}>📝 {promptModal.name} - Category Guidance</h3>
+              <button onClick={() => setPromptModal(null)} className="text-2xl font-bold" style={{ color: '#666' }}>&times;</button>
             </div>
-            <div className="bg-slate-900 rounded-lg p-4">
-              <p className="text-white/90 whitespace-pre-wrap leading-relaxed">{promptModal.prompt}</p>
+            <div className="rounded-lg p-5 border" style={{ backgroundColor: '#fff', borderColor: '#e8e0d5' }}>
+              <pre className="whitespace-pre-wrap leading-relaxed text-sm" style={{ color: '#1a1a1a', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace' }}>{promptModal.prompt}</pre>
             </div>
-            <p className="text-white/50 text-sm mt-4">This prompt guides the AI in generating your {promptModal.name.toLowerCase()} briefings.</p>
+            <p className="text-sm mt-4 italic" style={{ color: '#666' }}>
+              This guidance is combined with today&apos;s headlines to generate your {promptModal.name.toLowerCase()} briefings. The full prompt also includes date/time awareness, script structure, and accuracy rules.
+            </p>
           </div>
         </div>
       )}
