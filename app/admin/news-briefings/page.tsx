@@ -57,6 +57,7 @@ export default function AdminNewsPage() {
   const [settings, setSettings] = useState<Record<string, CatSettings>>({})
   const [schedule, setSchedule] = useState<ScheduleSettings>({ enabled: false, times: ['06:00', '12:00', '18:00'] })
   const [subscriberStates, setSubscriberStates] = useState<string[]>([])
+  const [promptModal, setPromptModal] = useState<{ category: string; name: string; prompt: string } | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const saveTimeout = useRef<NodeJS.Timeout | null>(null)
 
@@ -160,6 +161,17 @@ export default function AdminNewsPage() {
         new Audio(URL.createObjectURL(blob)).play()
       }
     } catch (e) { console.error(e) }
+  }
+
+  async function showPrompt(catId: string, catName: string) {
+    try {
+      const res = await fetch(`/api/admin/generate-news?category=${catId}`)
+      const data = await res.json()
+      setPromptModal({ category: catId, name: catName, prompt: data.prompt || 'Prompt not found' })
+    } catch (e) {
+      console.error(e)
+      setMessage({ type: 'error', text: 'Could not load prompt' })
+    }
   }
 
   async function generate(catId: string) {
@@ -307,9 +319,18 @@ export default function AdminNewsPage() {
                   </div>
                 )}
 
-                <div className="flex items-center gap-2 mb-4">
-                  <span className="text-2xl">{cat.icon}</span>
-                  <h2 className="text-lg font-bold text-gray-900">{cat.name}</h2>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl">{cat.icon}</span>
+                    <h2 className="text-lg font-bold text-gray-900">{cat.name}</h2>
+                  </div>
+                  <button
+                    onClick={() => showPrompt(cat.id, cat.name)}
+                    className="text-xs px-2 py-1 bg-gray-200 hover:bg-gray-300 text-gray-600 rounded transition"
+                    title="View prompt"
+                  >
+                    📝 Prompt
+                  </button>
                 </div>
 
                 {cat.id === 'state' && (
@@ -486,6 +507,22 @@ export default function AdminNewsPage() {
           </div>
         </div>
       </div>
+
+      {/* Prompt Modal */}
+      {promptModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={() => setPromptModal(null)}>
+          <div className="bg-slate-800 rounded-xl p-6 max-w-2xl w-full max-h-[80vh] overflow-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-white">📝 {promptModal.name} Prompt</h3>
+              <button onClick={() => setPromptModal(null)} className="text-white/60 hover:text-white text-2xl">&times;</button>
+            </div>
+            <div className="bg-slate-900 rounded-lg p-4">
+              <p className="text-white/90 whitespace-pre-wrap leading-relaxed">{promptModal.prompt}</p>
+            </div>
+            <p className="text-white/50 text-sm mt-4">This prompt guides the AI in generating your {promptModal.name.toLowerCase()} briefings.</p>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
