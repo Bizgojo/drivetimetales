@@ -19,6 +19,29 @@ const US_STATES = Object.values(ABBREV_TO_STATE);
 const CATEGORIES = ['national', 'international', 'business', 'sports', 'science'];
 
 export async function GET(request: NextRequest) {
+  const results: { category: string;
+cat > ~/Projects/drivetimetales/app/api/cron/generate-news/route.ts << 'ENDOFFILE'
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+
+const ABBREV_TO_STATE: Record<string, string> = {
+  'AL': 'Alabama', 'AK': 'Alaska', 'AZ': 'Arizona', 'AR': 'Arkansas', 'CA': 'California',
+  'CO': 'Colorado', 'CT': 'Connecticut', 'DE': 'Delaware', 'FL': 'Florida', 'GA': 'Georgia',
+  'HI': 'Hawaii', 'ID': 'Idaho', 'IL': 'Illinois', 'IN': 'Indiana', 'IA': 'Iowa',
+  'KS': 'Kansas', 'KY': 'Kentucky', 'LA': 'Louisiana', 'ME': 'Maine', 'MD': 'Maryland',
+  'MA': 'Massachusetts', 'MI': 'Michigan', 'MN': 'Minnesota', 'MS': 'Mississippi', 'MO': 'Missouri',
+  'MT': 'Montana', 'NE': 'Nebraska', 'NV': 'Nevada', 'NH': 'New Hampshire', 'NJ': 'New Jersey',
+  'NM': 'New Mexico', 'NY': 'New York', 'NC': 'North Carolina', 'ND': 'North Dakota', 'OH': 'Ohio',
+  'OK': 'Oklahoma', 'OR': 'Oregon', 'PA': 'Pennsylvania', 'RI': 'Rhode Island', 'SC': 'South Carolina',
+  'SD': 'South Dakota', 'TN': 'Tennessee', 'TX': 'Texas', 'UT': 'Utah', 'VT': 'Vermont',
+  'VA': 'Virginia', 'WA': 'Washington', 'WV': 'West Virginia', 'WI': 'Wisconsin', 'WY': 'Wyoming'
+};
+const US_STATES = Object.values(ABBREV_TO_STATE);
+const CATEGORIES = ['national', 'international', 'business', 'sports', 'science'];
+
+export async function GET(request: NextRequest) {
   const results: { category: string; state?: string; success: boolean; error?: string }[] = [];
   try {
     const authHeader = request.headers.get('authorization');
@@ -27,8 +50,8 @@ export async function GET(request: NextRequest) {
     }
     const { data: settingsRow } = await supabase.from('news_settings').select('settings').eq('id', '1').single();
     const settings = settingsRow?.settings || {};
-    const schedule = settings.schedule || { enabled: false };
-    if (!schedule.enabled) {
+    const isEnabled = settings.schedule?.enabled || settings.auto_generate || false;
+    if (!isEnabled) {
       return NextResponse.json({ success: true, message: 'Auto-generation is disabled', skipped: true });
     }
     const categorySettings = settings.categories || {};
@@ -54,7 +77,7 @@ export async function GET(request: NextRequest) {
         results.push({ category, success: res.ok, error: res.ok ? undefined : 'Generation failed' });
       } catch (e) { results.push({ category, success: false, error: String(e) }); }
     }
-    const stateSettings = categorySettings['state'];
+    const stateSettings = categorySettings['state'] || settings.state_news || {};
     if (stateSettings?.voice_id) {
       for (const state of subscriberStates) {
         try {
