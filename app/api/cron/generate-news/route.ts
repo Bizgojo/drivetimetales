@@ -14,10 +14,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { data: settingsData } = await supabase.from('news_settings').select('*').eq('id', '1').single();
+    if (!settings.schedule?.enabled && !settings.auto_generate) {
     const settings = settingsData?.settings || {};
     
-    if (!settings.auto_generate) {
+    if (!settings.schedule?.enabled || settings.auto_generate) {
       return NextResponse.json({ success: true, message: 'Auto-generation disabled', generated: 0 });
     }
 
