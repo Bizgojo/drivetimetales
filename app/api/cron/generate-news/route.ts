@@ -25,31 +25,31 @@ export async function GET(request: NextRequest) {
 
     const categories = settings.categories || {};
     const selectedState = settings.selected_state || 'South Carolina';
-    const results: Array<{ category: string; success: boolean; error?: string }> = [];
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://drivetimetales.vercel.app';
 
-    for (const categoryId of CATEGORIES) {
-      const catSettings = categories[categoryId];
-      if (!catSettings?.voice_id) continue;
+    // Build list of categories to generate
+    const toGenerate = CATEGORIES.filter(catId => categories[catId]?.voice_id);
 
-      try {
-        const response = await fetch(baseUrl + '/api/admin/generate-news', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            category: categoryId,
-            voiceId: catSettings.voice_id,
-            narratorName: catSettings.narrator_name || 'Your Host',
-            state: categoryId === 'state' ? selectedState : null,
-            storiesCount: 5,
-            listenerName: 'listener'
-          })
-        });
-        results.push({ category: categoryId, success: response.ok });
-      } catch (err) {
-        results.push({ category: categoryId, success: false, error: String(err) });
-      }
-    }
+    // Generate all in parallel (fire and forget style)
+    const promises = toGenerate.map(categoryId => {
+      const catSettings = categories[categoryId];
+      return fetch(baseUrl + '/api/admin/generate-news', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category: categoryId,
+          voiceId: catSettings.voice_id,
+          narratorName: catSettings.narrator_name || 'Your Host',
+          state: categoryId === 'state' ? selectedState : null,
+          storiesCount: 5,
+          listenerName: 'listener'
+        })
+      }).then(r => ({ category: categoryId, success: r.ok }))
+        .catch(err => ({ category: categoryId, success: false, error: String(err) }));
+    });
+
+    // Wait for all with a 60 second timeout per request
+    const results = await Promise.all(promises);
 
     return NextResponse.json({
       success: true,
