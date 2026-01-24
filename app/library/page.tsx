@@ -1,149 +1,156 @@
 'use client'
 
-import Link from 'next/link'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
+import { useRouter } from 'next/navigation'
+import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/contexts/AuthContext'
+import HorizontalStoryCard from '@/components/HorizontalStoryCard'
+import PlaylistButton from '@/components/PlaylistButton'
 
-type Story = {
+interface Story {
   id: string
   title: string
-  author: string
   genre: string
-  description: string
+  author: string
   duration_mins: number
-  duration_label: string
-  price_cents: number
-  audio_url: string
-  cover_url: string
-  is_new: boolean
-  created_at: string
+  cover_url: string | null
+  series_name?: string | null
+  series_number?: number | null
+  series_total?: number | null
 }
 
-const SUPABASE_URL = 'https://vmyhlfeouzslixtkmddy.supabase.co'
-const SUPABASE_KEY = 'sb_publishable_WQc18u_qDrwCe_g0DGFvkQ_1qIus5kK'
+const ALL_GENRES = [
+  { key: 'mystery', label: 'Mystery', emoji: '🔍' },
+  { key: 'thriller', label: 'Thriller', emoji: '😱' },
+  { key: 'romance', label: 'Romance', emoji: '💕' },
+  { key: 'horror', label: 'Horror', emoji: '👻' },
+  { key: 'comedy', label: 'Comedy', emoji: '😂' },
+  { key: 'truckers', label: 'Truckers', emoji: '🚛' },
+  { key: 'scifi', label: 'Sci-Fi', emoji: '🚀' },
+  { key: 'children', label: 'Children', emoji: '🧒' },
+  { key: 'learn', label: 'Learn', emoji: '🧠' }
+]
 
-const genres = ['All', 'Mystery', 'Drama', 'Sci-Fi', 'Horror', 'Comedy', 'Romance', 'Adventure', 'Trucker Stories', 'mystery/thriller']
+const DEFAULT_VISIBLE = ['mystery', 'romance', 'horror']
 
-const genreColors: Record<string, string> = {
-  'Mystery': 'from-purple-600 to-purple-900',
-  'Drama': 'from-orange-600 to-orange-900',
-  'Sci-Fi': 'from-cyan-600 to-cyan-900',
-  'Horror': 'from-red-600 to-red-900',
-  'Comedy': 'from-yellow-600 to-yellow-900',
-  'Romance': 'from-pink-600 to-pink-900',
-  'Adventure': 'from-green-600 to-green-900',
-  'Trucker Stories': 'from-amber-600 to-amber-900',
-  'mystery/thriller': 'from-indigo-600 to-indigo-900',
+function getCredits(duration_mins: number): number {
+  return Math.max(1, Math.floor(duration_mins / 15))
 }
 
-export default function LibraryPage() {
+function LibraryContent() {
+  const router = useRouter()
+  const { user } = useAuth()
   const [stories, setStories] = useState<Story[]>([])
   const [loading, setLoading] = useState(true)
-  const [genre, setGenre] = useState('All')
-  const [search, setSearch] = useState('')
+  const [userName, setUserName] = useState('Friend')
+  const [userCredits, setUserCredits] = useState(4)
+  const [isUnlimited, setIsUnlimited] = useState(false)
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
+  const [selectedDuration, setSelectedDuration] = useState('All')
+  const [selectedType, setSelectedType] = useState('All')
+  const [selectedGenre, setSelectedGenre] = useState('All')
+  const [visibleGenres, setVisibleGenres] = useState<string[]>(DEFAULT_VISIBLE)
+  const [showMoreDropdown, setShowMoreDropdown] = useState(false)
+
+  const showLowCreditsButton = !isUnlimited && userCredits <= 3
 
   useEffect(() => {
-    fetchStories()
+    const storedGenres = localStorage.getItem('dtt_recent_genres')
+    if (storedGenres) {
+      try {
+        const parsed = JSON.parse(storedGenres)
+        if (Array.isArray(parsed) && parsed.length >= 3) setVisibleGenres(parsed.slice(0, 3))
+      } catch (e) {}
+    }
   }, [])
 
-  const fetchStories = async () => {
-    try {
-      const response = await fetch(`${SUPABASE_URL}/rest/v1/stories?select=*&order=created_at.desc`, {
-        headers: {
-          'apikey': SUPABASE_KEY,
-          'Authorization': `Bearer ${SUPABASE_KEY}`,
+  useEffect(() => {
+    async function fetchData() { console.log("Library: fetchData called, user=", user);
+      const { data: storiesData } = await supabase.from('stories').select('id, title, genre, author, duration_mins, cover_url, series_name, series_number, series_total').not('cover_url', 'is', null).order('published_on', { ascending: false })
+      if (storiesData) setStories(storiesData)
+      if (user?.id) { console.log("Library: fetching user", user.id);
+        const { data: userData, error: userError } = await supabase.from('users').select('first_name, display_name, credits').eq('id', user.id).single()
+        console.log("Library: userData=", userData, "error=", userError); if (userData) { console.log("Library: got userData", userData);
+          setUserName(userData.first_name || userData.display_name || userData.display_name || 'Friend')
+          setIsUnlimited(userData.credits >= 9999)
+          setUserCredits(userData.credits || 0)
         }
-      })
-      const data = await response.json()
-      setStories(data)
-    } catch (error) {
-      console.error('Error fetching stories:', error)
-    } finally {
-      setLoading(false)
+      }
+      if (user?.id) setLoading(false)
+    }
+    fetchData()
+  }, [user])
+
+  const selectGenre = (genreKey: string) => {
+    setSelectedGenre(genreKey)
+    setShowMoreDropdown(false)
+    if (genreKey !== 'All') {
+      const newVisible = [genreKey, ...visibleGenres.filter(g => g !== genreKey)].slice(0, 3)
+      setVisibleGenres(newVisible)
+      localStorage.setItem('dtt_recent_genres', JSON.stringify(newVisible))
     }
   }
 
-  const filtered = stories.filter(s => {
-    if (genre !== 'All' && s.genre !== genre) return false
-    if (search && !s.title.toLowerCase().includes(search.toLowerCase())) return false
+  const filteredStories = stories.filter(story => {
+    if (selectedDuration !== 'All') {
+      if (selectedDuration === '15m' && story.duration_mins > 15) return false
+      if (selectedDuration === '30m' && (story.duration_mins <= 15 || story.duration_mins > 30)) return false
+      if (selectedDuration === '1hr' && story.duration_mins <= 30) return false
+    }
+    if (selectedType === 'Series' && !story.series_name) return false
+    if (selectedGenre !== 'All' && !(story.genre?.toLowerCase() || '').includes(selectedGenre.toLowerCase())) return false
     return true
   })
 
-  if (loading) {
-    return (
-      <main className="min-h-screen bg-slate-950 py-8 px-4">
-        <div className="max-w-6xl mx-auto text-center">
-          <p className="text-white">Loading stories...</p>
-        </div>
-      </main>
-    )
-  }
+  const btnStyle = (active: boolean): React.CSSProperties => ({ backgroundColor: active ? '#f97316' : '#334155', color: 'white', padding: '0.3rem 0', borderRadius: '6px', fontSize: '13px', fontWeight: 500, border: 'none', cursor: 'pointer', flex: 1, textAlign: 'center' })
+  const allBtnStyle = (active: boolean): React.CSSProperties => ({ ...btnStyle(active), flex: 'none', width: '42px' })
+  const getGenreLabel = (key: string) => { const genre = ALL_GENRES.find(g => g.key === key); return genre ? genre.emoji + genre.label.substring(0, 4) : key }
+
+  if (loading) return (<div style={{ minHeight: '100vh', backgroundColor: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ width: '40px', height: '40px', border: '4px solid #f97316', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} /><style dangerouslySetInnerHTML={{ __html: '@keyframes spin { to { transform: rotate(360deg); } }' }} /></div>)
 
   return (
-    <main className="min-h-screen bg-slate-950 py-8 px-4">
-      <div className="max-w-6xl mx-auto">
-        <h1 className="text-3xl font-bold text-white mb-2">DTT Library</h1>
-        <p className="text-slate-400 mb-8">Browse our complete collection of audio stories</p>
-
-        <div className="flex flex-col md:flex-row gap-4 mb-8">
-          <input
-            type="text"
-            placeholder="Search stories..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="flex-1 px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-orange-500"
-          />
-          <select
-            value={genre}
-            onChange={(e) => setGenre(e.target.value)}
-            className="px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white"
-          >
-            {genres.map(g => <option key={g}>{g}</option>)}
-          </select>
+    <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', paddingBottom: showLowCreditsButton ? '55px' : '0' }}>
+      <div style={{ position: 'sticky', top: 0, backgroundColor: '#0f172a', zIndex: 50 }}>
+        <div style={{ padding: '0.5rem 0.75rem', display: 'flex', alignItems: 'center', borderBottom: '1px solid #334155' }}>
+          <button onClick={() => router.push('/home')} style={{ backgroundColor: '#334155', color: 'white', padding: '0.35rem 0.6rem', borderRadius: '6px', fontSize: '13px', fontWeight: 500, border: 'none', cursor: 'pointer' }}>← Back</button>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}><span style={{ fontSize: '18px' }}>🚗</span><span style={{ fontSize: '18px' }}>🚙</span><span style={{ color: 'white', fontSize: '16px', fontWeight: 'bold' }}>Drive Time</span><span style={{ color: '#f97316', fontSize: '16px', fontWeight: 'bold' }}>Tales</span></div>
+          <div onClick={() => router.push('/profile')} style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#f97316', overflow: 'hidden', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{avatarUrl ? <img src={avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ color: 'white', fontSize: '16px', fontWeight: 'bold' }}>{loading ? "..." : userName.charAt(0).toUpperCase()}</span>}</div>
         </div>
-
-        <p className="text-slate-400 mb-6">{filtered.length} stories found</p>
-
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
-          {filtered.map((story) => (
-            <Link key={story.id} href={`/story/${story.id}`} className="group">
-              <div className="aspect-square rounded-xl relative overflow-hidden mb-3 group-hover:scale-105 transition-transform">
-                {story.cover_url ? (
-                  <img 
-                    src={story.cover_url} 
-                    alt={story.title}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className={`w-full h-full bg-gradient-to-br ${genreColors[story.genre] || 'from-slate-600 to-slate-800'}`} />
-                )}
-                
-                <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/40 transition-all">
-                  <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center group-hover:bg-white/40 transition-all">
-                    <div className="w-0 h-0 border-l-[14px] border-l-white border-y-[8px] border-y-transparent ml-1" />
-                  </div>
-                </div>
-                
-                {story.is_new && (
-                  <div className="absolute top-2 left-2 px-2 py-0.5 bg-green-500 text-black text-xs font-semibold rounded">
-                    NEW
-                  </div>
-                )}
-                <div className="absolute bottom-2 right-2 px-2 py-0.5 bg-black/50 text-white text-xs rounded">
-                  {story.duration_label || `${story.duration_mins} min`}
-                </div>
-              </div>
-              <h3 className="font-semibold text-white text-sm group-hover:text-orange-400 line-clamp-2">{story.title}</h3>
-              <p className="text-xs text-orange-400">{story.genre}</p>
-              <p className="text-xs text-slate-400">{story.author}</p>
-              <p className="text-xs text-slate-500">{story.duration_label || `${story.duration_mins} min`}</p>
-              
-              <div className="mt-2 w-full py-2 bg-orange-500 hover:bg-orange-400 text-black text-xs font-semibold rounded-lg transition-all text-center">
-                ▶ Play Free
-              </div>
-            </Link>
-          ))}
+        <div style={{ padding: '0.5rem 0.75rem', backgroundColor: '#1e293b' }}>
+          <div style={{ display: 'flex', gap: '0.3rem', marginBottom: '0.3rem' }}>
+            <button onClick={() => setSelectedDuration('All')} style={allBtnStyle(selectedDuration === 'All')}>All</button>
+            <button onClick={() => setSelectedDuration('15m')} style={btnStyle(selectedDuration === '15m')}>15m</button>
+            <button onClick={() => setSelectedDuration('30m')} style={btnStyle(selectedDuration === '30m')}>30m</button>
+            <button onClick={() => setSelectedDuration('1hr')} style={btnStyle(selectedDuration === '1hr')}>1hr</button>
+            <span style={{ color: '#475569', display: 'flex', alignItems: 'center', padding: '0 2px' }}>|</span>
+            <button onClick={() => setSelectedType('All')} style={btnStyle(selectedType === 'All')}>All</button>
+            <button onClick={() => setSelectedType('Series')} style={btnStyle(selectedType === 'Series')}>Series</button>
+          </div>
+          <div style={{ display: 'flex', gap: '0.3rem', marginBottom: '0.3rem', position: 'relative' }}>
+            <button onClick={() => selectGenre('All')} style={allBtnStyle(selectedGenre === 'All')}>All</button>
+            {visibleGenres.map(g => <button key={g} onClick={() => selectGenre(g)} style={btnStyle(selectedGenre === g)}>{getGenreLabel(g)}</button>)}
+            <div style={{ position: 'relative', flex: 1.5 }}>
+              <button onClick={() => setShowMoreDropdown(!showMoreDropdown)} style={{ ...btnStyle(showMoreDropdown), width: '100%' }}>More ▼</button>
+              {showMoreDropdown && <div style={{ position: 'absolute', top: '100%', right: 0, backgroundColor: '#1e293b', border: '1px solid #475569', borderRadius: '8px', marginTop: '4px', minWidth: '140px', zIndex: 60, boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}>{ALL_GENRES.map(g => <button key={g.key} onClick={() => selectGenre(g.key)} style={{ display: 'block', width: '100%', padding: '0.5rem 0.75rem', backgroundColor: selectedGenre === g.key ? '#f97316' : 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', fontSize: '13px' }}>{g.emoji} {g.label}</button>)}</div>}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <div style={{ backgroundColor: '#0f172a', padding: '0.25rem 0.6rem', borderRadius: '6px', textAlign: 'center', lineHeight: 1.2 }}>
+              <div style={{ color: 'white', fontSize: '11px', fontWeight: 'normal' }}>You have</div>
+              <div style={{ color: 'white', fontSize: '14px', fontWeight: 'normal' }}>{isUnlimited ? '∞ Unlimited' : `${userCredits} Credits`}</div>
+            </div>
+            <PlaylistButton />
+          </div>
         </div>
       </div>
-    </main>
+      {showMoreDropdown && <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 40 }} onClick={() => setShowMoreDropdown(false)} />}
+      <div style={{ padding: '0.5rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        {filteredStories.length === 0 ? <div style={{ backgroundColor: '#1e293b', borderRadius: '10px', padding: '2rem 1rem', textAlign: 'center' }}><div style={{ fontSize: '40px', marginBottom: '0.75rem' }}>😔</div><p style={{ color: 'white', fontSize: '16px', marginBottom: '0.5rem' }}>Sorry {userName}, we have no stories to match your request.</p><p style={{ color: '#94a3b8', fontSize: '14px' }}>But we will request this category to our writers!</p></div> : filteredStories.map(story => <div key={story.id} onClick={() => router.push('/player/' + story.id)} style={{ cursor: 'pointer' }}><HorizontalStoryCard id={story.id} title={story.title} genre={story.genre} author={story.author || 'Drive Time Tales'} duration_mins={story.duration_mins} credits={getCredits(story.duration_mins)} cover_url={story.cover_url} series_number={story.series_number} series_total={story.series_total} /></div>)}
+      </div>
+      {showLowCreditsButton && <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: '#0f172a', padding: '0.5rem 0.75rem', borderTop: '1px solid #334155', zIndex: 50 }}><button onClick={() => router.push('/buy-credits')} style={{ backgroundColor: '#f97316', color: 'white', padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', width: '100%', fontSize: '15px', fontWeight: 'bold' }}>You're Low On Credits - Click Here to Get More</button></div>}
+      <style dangerouslySetInnerHTML={{ __html: '@keyframes spin { to { transform: rotate(360deg); } }' }} />
+    </div>
   )
 }
+
+export default function LibraryPage() { return <Suspense fallback={<div style={{ minHeight: '100vh', backgroundColor: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ width: '40px', height: '40px', border: '4px solid #f97316', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} /></div>}><LibraryContent /></Suspense> }
