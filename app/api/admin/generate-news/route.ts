@@ -60,7 +60,7 @@ async function generateScript(stories: NewsStory[], config: CategoryConfig, narr
     business: `Focus on markets, corporate earnings, small business, real estate. Introduce companies with location and what they do.`
   };
 
-  const prompt = `You are ${narrator}, a radio news broadcaster. Write a 3-5 minute script for these ${label} stories.
+  const prompt = `You are ${narrator}, a radio news broadcaster. Write a 600-800 word script (about 4-5 minutes when read aloud) for these ${label} stories.
 
 ${guidance[state ? 'state' : categoryId] || ''}
 
