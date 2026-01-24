@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
+import { LogoStacked } from '@/components/ui/Logo'
 
 function SignInContent() {
   const router = useRouter()
@@ -50,7 +51,7 @@ function SignInContent() {
     <div style={{ minHeight: '100vh', backgroundColor: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
       <div style={{ width: '100%', maxWidth: '400px' }}>
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <Link href="/"><span style={{ color: '#f97316', fontSize: '24px', fontWeight: 'bold' }}>Drive Time Tales</span></Link>
+          <LogoStacked size="lg" />
         </div>
         <div style={{ backgroundColor: '#0f172a', borderRadius: '12px', padding: '32px', border: '1px solid #1e293b' }}>
           <h1 style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', textAlign: 'center', marginBottom: '24px' }}>Welcome Back</h1>
