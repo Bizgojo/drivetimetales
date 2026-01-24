@@ -13,8 +13,8 @@ interface GdeltArticle { title: string; url: string; source: string; }
 const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
   national: { label: 'National News', gdeltQuery: 'sourcecountry:US sourcelang:english', fallbackSearchQuery: 'top US national news today' },
   international: { label: 'International News', gdeltQuery: '-sourcecountry:US sourcelang:english', fallbackSearchQuery: 'top international world news today' },
-  business: { label: 'Business & Finance', gdeltQuery: 'theme:ECON sourcelang:english', fallbackSearchQuery: 'top business finance market news today' },
-  sports: { label: 'Sports', gdeltQuery: 'theme:SPORTS sourcelang:english', fallbackSearchQuery: 'top sports news scores today' },
+  business: { label: 'Business & Finance', gdeltQuery: 'business economy finance market sourcelang:english', fallbackSearchQuery: 'top business finance market news today' },
+  sports: { label: 'Sports', gdeltQuery: 'sports NFL NBA soccer football sourcelang:english', fallbackSearchQuery: 'top sports news scores today' },
   science: { label: 'Science & Technology', gdeltQuery: '(theme:SCIENCE OR theme:TECHNOLOGY) sourcelang:english', fallbackSearchQuery: 'top science technology tech news today' },
   state: { label: 'Local News', gdeltQuery: 'sourcecountry:US sourcelang:english', fallbackSearchQuery: 'STATE_NAME news today' }
 };
