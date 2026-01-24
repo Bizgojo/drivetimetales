@@ -432,7 +432,7 @@ export default function AdminNewsPage() {
 
           {/* Generation Times */}
           <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-400 mb-3">Generation Times (EST)</label>
+            <label className="block text-sm font-medium text-white/80 mb-3">Generation Times (EST)</label>
             <div className="flex gap-4 flex-wrap">
               {schedule.times.map((time, i) => (
                 <div key={i} className="flex flex-col items-center">
@@ -442,7 +442,7 @@ export default function AdminNewsPage() {
                     onChange={(e) => updateScheduleTime(i, e.target.value)}
                     className="bg-slate-700 text-white rounded-lg px-4 py-3 text-center font-mono text-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
                   />
-                  <span className="text-gray-500 text-sm mt-1">{formatTime12(time)} EST</span>
+                  <span className="text-white/60 text-sm mt-1">{formatTime12(time)} EST</span>
                 </div>
               ))}
             </div>
@@ -450,7 +450,7 @@ export default function AdminNewsPage() {
 
           {/* Subscriber States */}
           <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-400 mb-2">Subscriber States</label>
+            <label className="block text-sm font-medium text-white/80 mb-2">Subscriber States</label>
             <div className="flex flex-wrap gap-2">
               {subscriberStates.length > 0 ? (
                 subscriberStates.map(s => (
@@ -459,10 +459,10 @@ export default function AdminNewsPage() {
                   </span>
                 ))
               ) : (
-                <span className="text-gray-500 text-sm">No subscribers with state data yet</span>
+                <span className="text-white/60 text-sm">No subscribers with state data yet</span>
               )}
             </div>
-            <p className="text-gray-500 text-sm mt-2">
+            <p className="text-white/60 text-sm mt-2">
               {subscriberStates.length} state{subscriberStates.length !== 1 ? 's' : ''} with active subscribers
             </p>
           </div>
@@ -473,24 +473,24 @@ export default function AdminNewsPage() {
               <span className="text-xl">💰</span>
               <h3 className="text-lg font-semibold text-white">Estimated ElevenLabs Cost</h3>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-              <div className="flex justify-between text-gray-400">
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between text-white/80">
                 <span>5 standard categories × ${COST_PER_BRIEFING.toFixed(2)}</span>
-                <span className="text-white">${(numCategories * COST_PER_BRIEFING).toFixed(2)}</span>
+                <span className="text-white font-medium">${(numCategories * COST_PER_BRIEFING).toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-gray-400">
-                <span>{numStates} state{numStates !== 1 ? 's' : ''} × ${COST_PER_BRIEFING.toFixed(2)}</span>
-                <span className="text-white">${(numStates * COST_PER_BRIEFING).toFixed(2)}</span>
+              <div className="flex justify-between text-white/80">
+                <span>{numStates} state briefing{numStates !== 1 ? 's' : ''} × ${COST_PER_BRIEFING.toFixed(2)}</span>
+                <span className="text-white font-medium">${(numStates * COST_PER_BRIEFING).toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-gray-400 border-t border-slate-700 pt-2">
+              <div className="flex justify-between text-white/80 border-t border-slate-700 pt-2 mt-2">
                 <span>Per generation cycle</span>
                 <span className="text-orange-400 font-semibold">${costPerCycle.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-gray-400 border-t border-slate-700 pt-2">
+              <div className="flex justify-between text-white/80">
                 <span>Daily (3 cycles)</span>
                 <span className="text-orange-400 font-semibold">${costDaily.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-gray-400 md:col-span-2 border-t border-slate-700 pt-2">
+              <div className="flex justify-between text-white/80 border-t border-slate-700 pt-2 mt-2">
                 <span>Monthly estimate (30 days)</span>
                 <span className="text-orange-400 font-bold text-lg">~${costMonthly.toFixed(0)}</span>
               </div>
@@ -504,7 +504,7 @@ export default function AdminNewsPage() {
                 ✓ Auto-generation is ON — Briefings will generate at {schedule.times.map(t => formatTime12(t)).join(', ')} EST
               </p>
             ) : (
-              <p className="text-gray-500">
+              <p className="text-white/60">
                 Auto-generation is OFF — Turn on to automatically generate briefings
               </p>
             )}
