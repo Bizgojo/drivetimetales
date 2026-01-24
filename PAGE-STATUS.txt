@@ -1,0 +1,82 @@
+DRIVE TIME TALES - PAGE STATUS
+Last Updated: January 24, 2026
+===============================================
+
+DTT PAGES
+---------
+
+  COMPLETED
+  ---------
+    Home (/)
+      File: app/page.tsx
+      Components: StickyLogo1, WelcomeCredits, NewsBriefings, 
+                  ContinueListening, NewReleases, RecommendedForYou
+    
+    Welcome (/welcome)
+      File: app/welcome/page.tsx
+      Components: W1_WelcomeHeader
+    
+    Welcome-Library (/welcome-library)
+      File: app/welcome-library/page.tsx
+      Components: WL01StickyLogo, LibraryFiltersV2, HorizontalStoryCard
+    
+    Library (/library)
+      File: app/library/page.tsx
+      Components: StickyLogo1, LibraryFiltersV2, HorizontalStoryCard
+
+  IN PROGRESS
+  -----------
+    Library-Playlist (/library-playlist)
+      File: app/library-playlist/page.tsx
+      Git Tag: working-library-playlist-v3-2026-01-24
+      Components: HorizontalStoryCard
+      
+      Done:
+        - Header (Back, Logo, Avatar)
+        - 2-row filters
+        - Stats bar (credits, time)
+        - Select stories (green border)
+        - Reorder arrows
+        - Start Drive button
+      
+      TODO:
+        - Subscriber popup
+        - Credits exceeded popup
+        - Player page
+        - Audio announcements
+
+  NOT STARTED
+  -----------
+    Wishlist (/wishlist)
+    Library-Playlist-Player (/library-playlist-player)
+
+
+ADMIN PAGES
+-----------
+
+  COMPLETED
+  ---------
+    Admin Dashboard (/admin)
+      File: app/admin/page.tsx
+      Sections: Dashboard, Finance, Users, Stories
+    
+    News Briefings
+      Component: NewsBriefings
+      Categories: State, National, World, Business, Sports, Sci/Tech
+
+
+HOW TO RESTORE A PAGE
+---------------------
+  git checkout [tag-name] -- app/[page]/page.tsx
+  
+  Example:
+  git checkout working-library-playlist-v3-2026-01-24 -- app/library-playlist/page.tsx
+
+
+COMPONENTS (in /components/)
+----------------------------
+  HorizontalStoryCard.tsx
+  StickyLogo1.tsx
+  StickyLogo2.tsx
+  LibraryFiltersV2.tsx
+  WL01StickyLogo.tsx
