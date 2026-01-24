@@ -48,6 +48,14 @@ function getCredits(duration_mins: number): number {
   return Math.max(1, Math.floor(duration_mins / 15))
 }
 
+function formatTime(mins: number): string {
+  if (mins < 60) return `${mins} min`
+  const hours = Math.floor(mins / 60)
+  const remaining = mins % 60
+  if (remaining === 0) return `${hours} hr`
+  return `${hours} hr ${remaining} min`
+}
+
 function LibraryPlaylistContent() {
   const router = useRouter()
   const { user } = useAuth()
@@ -148,8 +156,24 @@ function LibraryPlaylistContent() {
 
   // Sort: Selected stories at top (in playlist order), then filtered unselected
   const sortedStories = [
-    // Selected stories in playlist order
-    ...playlist.map(p => stories.find(s => s.id === p.id)).filter(Boolean) as Story[],
+    // Selected stories in playlist order - use playlist data if story not found
+    ...playlist.map(p => {
+      const found = stories.find(s => s.id === p.id)
+      if (found) return found
+      // Fallback to playlist data if story not in database
+      return {
+        id: p.id,
+        title: p.title,
+        genre: p.genre,
+        author: p.author,
+        duration_mins: p.duration_mins,
+        cover_url: p.cover_url,
+        audio_url: p.audio_url,
+        series_name: null,
+        series_number: null,
+        series_total: null
+      } as Story
+    }),
     // Unselected stories that match filter
     ...stories.filter(s => !playlist.some(p => p.id === s.id) && filterStory(s))
   ]
@@ -362,8 +386,9 @@ function LibraryPlaylistContent() {
             <span> credits</span>
           </div>
           <div style={{ color: 'white', fontSize: '14px' }}>
-            <span style={{ color: '#22c55e', fontWeight: 'bold' }}>{playlistMins} min</span>
-            <span style={{ color: 'white' }}> • {playlist.length} stories</span>
+            <span>Playlist: </span>
+            <span style={{ color: '#22c55e', fontWeight: 'bold' }}>{formatTime(playlistMins)}</span>
+            <span> ({playlist.length} stories)</span>
           </div>
         </div>
       </div>
@@ -513,7 +538,7 @@ function LibraryPlaylistContent() {
               fontWeight: 'bold'
             }}
           >
-            🚗 Start Drive ({playlist.length} stories • {playlistMins} min)
+            🚗 Start Drive ({playlist.length} stories • {formatTime(playlistMins)})
           </button>
         </div>
       )}
