@@ -1,56 +1,42 @@
 # MASTER RULES - Drive Time Tales & Audio Drama Maker
 **Owner:** Marc (Wonder Books Press / Drive Time Tales)
-**Last Updated:** January 18, 2026
+**Last Updated:** January 24, 2026
 
 ---
 
-## 🚨 CRITICAL RULES - READ FIRST
+## 🚨 RULE ZERO - READ FIRST
 
-### Working Code Library (WCL) Rules
-1. **NEVER recreate protected modules from memory** - always use `cat` to copy exactly
-2. **NEVER modify protected files without Marc's explicit permission**
-3. **ALWAYS fetch from WCL instead of making up code**
-4. **Show diff/changes before deploying** - get approval first
-5. **Use inline styles for layout-critical CSS** (position, width, height, flex, grid) to prevent Tailwind purging
-6. **Keep Tailwind for colors/hover/text** - these don't get purged
-7. **One deployment = one purpose** - don't combine multiple fixes
+### Source of Truth
+**Everything is in `~/Projects/drivetimetales/`** - Git is the only backup system.
+
+### After ANY Working Deploy
+```bash
+git tag working-[page]-[date]
+git push origin --tags
+```
+
+### To Restore a Page
+```bash
+git checkout working-[page]-[date] -- app/[page]/page.tsx
+```
+
+### Page Status Reference
+**See `PAGE-STATUS.txt`** in project root for list of all pages, components, and git tags.
+
+---
+
+## 🚨 CRITICAL RULES
+
+1. **Show diff/changes before deploying** - get approval first
+2. **Use inline styles for layout-critical CSS** (position, width, height, flex, grid)
+3. **Keep Tailwind for colors/hover/text only**
+4. **One deployment = one purpose** - don't combine multiple fixes
+5. **ALL text must be white** - no gray text ever
 
 ### If a Deploy Fails
 1. STOP making more edits
-2. Restore from git: `git checkout [last-working-commit] -- [file]`
-3. Verify restored: `sed -n '1,50p' [file]`
-4. Start fresh with a proper plan
-
-### File Management
-- After creating DTT/ADM/Admin files, remind Marc to run: `~/DriveTimeFiles/sync-all.sh`
-- Never leave files in Downloads, Documents, or Desktop
-- All project files go to `~/DriveTimeFiles/` organized structure
-
----
-
-## 📁 Master Filing System
-
-```
-~/DriveTimeFiles/
-├── ADM/
-│   ├── Current/           ← Latest audio_drama_maker.py ONLY
-│   └── Archive/           ← All older versions
-├── DTT/
-│   ├── Current/           ← Symlink to ~/Projects/drivetimetales
-│   ├── Archive/           ← Old mockups, prototypes
-│   └── WorkingCodeLibrary/
-├── Admin/
-│   ├── Current/
-│   └── Archive/
-├── Assets/
-│   ├── Music/
-│   ├── SFX/
-│   └── Voices/
-├── Audio Dramas/          ← Symlink to ~/Desktop/Audio Dramas
-├── Documentation/
-├── Bible/                 ← Project documentation
-└── Backups/
-```
+2. Restore from git tag: `git checkout [tag] -- [file]`
+3. Start fresh with a proper plan
 
 ---
 
@@ -62,29 +48,30 @@
 - **Hosting:** Vercel
 - **GitHub:** https://github.com/Bizgojo/drivetimetales
 - **Live Site:** https://drivetimetales.vercel.app
+- **Project Location:** ~/Projects/drivetimetales/
 
 ### Design System
-- **Background:** slate-950 (dark theme)
-- **Accent:** orange-400, orange-500
+- **Background:** slate-950 (#020617)
+- **Accent:** orange-400, orange-500 (#f97316)
 - **Cards:** slate-800 with cover-glow effect
+- **Selected:** green border (#22c55e), green tint (#1e3a2f)
 - **Cover Glow:** `box-shadow: 0 0 15px rgba(255, 255, 255, 0.4)`
-- **Text:** ALL text must be white (text-white). NO gray text (no text-slate-400, text-gray-400, etc.)
+- **Text:** ALL text must be white. NO gray text.
 
 ### Database Tables - CRITICAL
 
 #### `users`
 | Column | Type | Notes |
 |--------|------|-------|
-| id | uuid | Primary key (matches auth.users.id) |
+| id | uuid | Primary key |
 | email | text | |
-| first_name | text | **This is the nickname from signup** |
+| first_name | text | Nickname from signup |
 | display_name | text | |
 | credits | int | Current credit balance |
-| state | text | Can be "SC" or "South Carolina" |
+| state | text | "SC" or "South Carolina" |
 | subscription_type | text | 'road_warrior', 'commuter', etc. |
-| subscription_ends_at | timestamp | |
 
-**⚠️ users table does NOT have:** address, city, zip columns
+**⚠️ users table does NOT have:** address, city, zip, subscription_status
 
 #### `stories`
 | Column | Type | Notes |
@@ -94,68 +81,57 @@
 | author | text | |
 | genre | text | |
 | duration_mins | int4 | |
-| credits | int | Cost in credits |
 | cover_url | text | |
 | audio_url | text | |
 | is_free | boolean | |
-| published_on | timestamp | |
+| series_name | text | |
+| series_number | int | |
+| series_total | int | |
 
-**⚠️ stories table does NOT have:** rating, created_at columns
+**⚠️ stories table does NOT have:** rating, created_at
 
 #### `user_library` - USE THIS FOR CONTINUE LISTENING
 | Column | Type | Notes |
 |--------|------|-------|
-| id | uuid | |
 | user_id | uuid | FK to users |
 | story_id | uuid | FK to stories |
 | progress | int4 | Playback position in seconds |
 | last_played | timestamp | |
 | completed | boolean | |
 
-**⚠️ DO NOT USE:** play_history or user_stories for Continue Listening
+**⚠️ DO NOT USE:** play_history or user_stories
 
-#### `news_episodes`
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | |
-| category | text | state, national, international, business, sports, science |
-| audio_url | text | |
-| is_live | boolean | |
+### Components (in /components/)
 
-### Protected Modules (WCL)
+| Component | Purpose |
+|-----------|---------|
+| HorizontalStoryCard | Story cards with cover, title, duration |
+| StickyLogo1 | Header: logo center, avatar right |
+| StickyLogo2 | Header: back, logo, avatar |
+| LibraryFiltersV2 | 2-row filter buttons |
 
-#### Shared Components (00_SharedComponents/)
-- **01_HorizontalStoryCard** - Universal template for story cards
-- **02_StickyLogo1** - Home page header (logo centered, avatar right)
-- **03_StickyLogo2** - Other pages header (back button, logo, avatar)
-
-#### Home Page (02_HomePage/)
-- **04_WelcomeCredits** - Welcome message + credits display
-- **05_NewsBriefings** - 6 categories, color wheel colors
-- **06_ContinueListening** - Most recent uncompleted story
-- **07_NewReleases** - 2 stories, 2-column grid
-- **08_RecommendedForYou** - 3 stories, horizontal cards
-- **09_BottomStickyButtons** - Library + Recommend buttons
-
-#### Welcome Page (01_WelcomePage/)
-- **W1_WelcomeHeader** - Animated vehicles, 3 credit states, secret code
+### HorizontalStoryCard Props (CURRENT)
+```typescript
+id: string
+title: string
+genre: string
+author: string
+duration_mins: number
+cover_url: string | null
+credits?: number
+series_number?: number | null
+series_total?: number | null
+flag?: 'free' | 'editors-pick' | 'readers-choice' | 'trending' | null
+```
+**⚠️ Does NOT have:** play_status, rating
 
 ### News Briefings Colors (DO NOT CHANGE)
-Color wheel order (60° apart):
-- State: Red (#dc2626 to #991b1b)
-- National: Orange (#f97316 to #c2410c)
-- World: Yellow (#eab308 to #a16207)
-- Business: Green (#16a34a to #166534)
-- Sports: Blue (#2563eb to #1e40af)
-- Sci/Tech: Purple (#9333ea to #6b21a8)
-
-### Webhook Rules
-- Check BOTH `user_id` AND `userId` (legacy support)
-
-### Admin Panel
-- Location: /admin
-- Sections: Dashboard, Finance, Users, Stories
-- Partners/Analytics/Sales are placeholders
+- State: Red (#dc2626)
+- National: Orange (#f97316)
+- World: Yellow (#eab308)
+- Business: Green (#16a34a)
+- Sports: Blue (#2563eb)
+- Sci/Tech: Purple (#9333ea)
 
 ---
 
@@ -164,21 +140,14 @@ Color wheel order (60° apart):
 ### Current Version
 **v8.23.14** (January 9, 2026)
 
+### Location
+`~/DriveTimeFiles/ADM/Current/audio_drama_maker.py`
+
 ### Structure
 - 10 tabs (0-9)
 - Python/Tkinter application
-- Location: `~/DriveTimeFiles/ADM/Current/audio_drama_maker.py`
 
-### Known Issues (v8.23.14)
-1. Tab 6 default voice not selecting Belle
-2. Preview has no sound
-3. Wrong voice in mix
-4. Story audio too loud vs announcer
-
-### Voice Lookup
-- Uses `_tab6_voice_map` priority for voice selection
-
-### Master Filing System for Audio Dramas
+### Audio Drama Files
 ```
 ~/Desktop/Audio Dramas/[Story Title]/
 ├── Script/
@@ -188,52 +157,29 @@ Color wheel order (60° apart):
 └── Export/
 ```
 
-### Announcer Script Format
-- Two-column layout
-- Placeholders supported
-- Promo script included
-
----
-
-## 📝 Audio Drama Script Rules
-
-### Formatting
-- **Narrator announces every speaker** for audio clarity
-- **No asterisks** - use ALL CAPS for emphasis
-- Target length: ~15 minutes (~2,200 words)
-
-### Structure
-- Clear scene breaks
-- Sound effects in brackets [SFX: door creaks]
-- Music cues in brackets [MUSIC: tension builds]
-
 ---
 
 ## 🔧 Common Commands
 
-### DTT Deployment
+### Deploy
 ```bash
 cd ~/Projects/drivetimetales && git add . && git commit -m "message" && git push
 ```
 
-### Restore from Git
+### Tag Working Version
 ```bash
-git checkout [commit] -- [file]
+git tag working-[page]-[date]
+git push origin --tags
 ```
 
-### View File Section
+### Restore from Tag
 ```bash
-sed -n 'START,ENDp' [file]
+git checkout [tag] -- app/[page]/page.tsx
 ```
 
-### Find Pattern
+### List All Tags
 ```bash
-grep -n "pattern" [file]
-```
-
-### Sync Files
-```bash
-~/DriveTimeFiles/sync-all.sh
+git tag -l "working-*"
 ```
 
 ---
@@ -245,48 +191,49 @@ grep -n "pattern" [file]
 credits = Math.max(1, Math.floor(duration_mins / 15))
 ```
 
-### State Abbreviation
-- Store as 2-letter code OR full name
-- Convert with STATE_ABBREVIATIONS lookup
-
-### Continue Listening Query
+### Time Format
 ```typescript
-supabase
-  .from('user_library')
-  .select(`story_id, progress, last_played, completed, stories(...)`)
-  .eq('user_id', userId)
-  .eq('completed', false)
-  .gt('progress', 0)
-  .order('last_played', { ascending: false })
-  .limit(1)
-  .single()
+function formatTime(mins: number): string {
+  if (mins < 60) return `${mins} min`
+  const hours = Math.floor(mins / 60)
+  const remaining = mins % 60
+  if (remaining === 0) return `${hours} hr`
+  return `${hours} hr ${remaining} min`
+}
 ```
 
 ---
 
 ## ⚠️ Things Claude Should Never Do
 
-1. Recreate protected modules from memory
-2. Use play_history or user_stories for Continue Listening
-3. Assume stories table has rating or created_at
-4. Use Tailwind classes for position/width/height/flex/grid (use inline styles)
+1. Use play_history or user_stories for Continue Listening
+2. Assume stories table has rating or created_at
+3. Assume HorizontalStoryCard has play_status prop
+4. Use Tailwind for position/width/height/flex/grid
 5. Deploy without showing changes first
 6. Keep patching a broken file (restore from git first)
-7. Leave files in Downloads/Documents/Desktop
-8. Use gray text (text-slate-400, text-gray-400) - ALL text must be white
+7. Use gray text - ALL text must be white
 
 ---
 
 ## ✅ Things Claude Should Always Do
 
-1. Read SKILL.md files before creating documents
-2. Use `cat` to copy protected modules exactly
-3. Show diff before deploying
-4. Remind Marc to run sync-all.sh after creating files
-5. Use inline styles for layout-critical properties
-6. Check database schema before writing queries
-7. Restore from git if a deploy fails
+1. Check PAGE-STATUS.txt for current page info
+2. Show diff before deploying
+3. Use inline styles for layout-critical properties
+4. Check database schema before writing queries
+5. Restore from git tag if a deploy fails
+6. Tag working versions after successful deploy
+7. Update PAGE-STATUS.txt when pages change
 
 ---
 
-*Give this file to Claude at the start of each new chat for consistent behavior.*
+## Current Git Tags
+
+```
+working-library-playlist-v3-2026-01-24
+```
+
+---
+
+*Give this file to Claude at the start of each new chat.*
