@@ -51,6 +51,9 @@ function LibraryContent() {
   const [selectedGenre, setSelectedGenre] = useState('All')
   const [visibleGenres, setVisibleGenres] = useState<string[]>(DEFAULT_VISIBLE)
   const [showMoreDropdown, setShowMoreDropdown] = useState(false)
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchType, setSearchType] = useState<'title' | 'author'>('title')
 
   const showLowCreditsButton = !isUnlimited && userCredits <= 3
 
@@ -65,13 +68,13 @@ function LibraryContent() {
   }, [])
 
   useEffect(() => {
-    async function fetchData() { console.log("Library: fetchData called, user=", user);
+    async function fetchData() {
       const { data: storiesData } = await supabase.from('stories').select('id, title, genre, author, duration_mins, cover_url, series_name, series_number, series_total').not('cover_url', 'is', null).order('published_on', { ascending: false })
       if (storiesData) setStories(storiesData)
-      if (user?.id) { console.log("Library: fetching user", user.id);
-        const { data: userData, error: userError } = await supabase.from('users').select('first_name, display_name, credits').eq('id', user.id).single()
-        console.log("Library: userData=", userData, "error=", userError); if (userData) { console.log("Library: got userData", userData);
-          setUserName(userData.first_name || userData.display_name || userData.display_name || 'Friend')
+      if (user?.id) {
+        const { data: userData } = await supabase.from('users').select('first_name, display_name, credits').eq('id', user.id).single()
+        if (userData) {
+          setUserName(userData.first_name || userData.display_name || 'Friend')
           setIsUnlimited(userData.credits >= 9999)
           setUserCredits(userData.credits || 0)
         }
@@ -92,6 +95,13 @@ function LibraryContent() {
   }
 
   const filteredStories = stories.filter(story => {
+    // Search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase()
+      if (searchType === 'title' && !story.title.toLowerCase().includes(query)) return false
+      if (searchType === 'author' && !(story.author || '').toLowerCase().includes(query)) return false
+    }
+    // Duration filter
     if (selectedDuration !== 'All') {
       if (selectedDuration === '15m' && story.duration_mins > 15) return false
       if (selectedDuration === '30m' && (story.duration_mins <= 15 || story.duration_mins > 30)) return false
@@ -101,6 +111,11 @@ function LibraryContent() {
     if (selectedGenre !== 'All' && !(story.genre?.toLowerCase() || '').includes(selectedGenre.toLowerCase())) return false
     return true
   })
+
+  const clearSearch = () => {
+    setSearchQuery('')
+    setShowSearchDropdown(false)
+  }
 
   const btnStyle = (active: boolean): React.CSSProperties => ({ backgroundColor: active ? '#f97316' : '#334155', color: 'white', padding: '0.3rem 0', borderRadius: '6px', fontSize: '13px', fontWeight: 500, border: 'none', cursor: 'pointer', flex: 1, textAlign: 'center' })
   const allBtnStyle = (active: boolean): React.CSSProperties => ({ ...btnStyle(active), flex: 'none', width: '42px' })
@@ -134,18 +149,138 @@ function LibraryContent() {
               {showMoreDropdown && <div style={{ position: 'absolute', top: '100%', right: 0, backgroundColor: '#1e293b', border: '1px solid #475569', borderRadius: '8px', marginTop: '4px', minWidth: '140px', zIndex: 60, boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}>{ALL_GENRES.map(g => <button key={g.key} onClick={() => selectGenre(g.key)} style={{ display: 'block', width: '100%', padding: '0.5rem 0.75rem', backgroundColor: selectedGenre === g.key ? '#f97316' : 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', fontSize: '13px' }}>{g.emoji} {g.label}</button>)}</div>}
             </div>
           </div>
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <div style={{ backgroundColor: '#0f172a', padding: '0.25rem 0.6rem', borderRadius: '6px', textAlign: 'center', lineHeight: 1.2 }}>
-              <div style={{ color: 'white', fontSize: '11px', fontWeight: 'normal' }}>You have</div>
-              <div style={{ color: 'white', fontSize: '14px', fontWeight: 'normal' }}>{isUnlimited ? '∞ Unlimited' : `${userCredits} Credits`}</div>
+          {/* Credits | Search | Playlist row */}
+          <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+            <div style={{ backgroundColor: '#0f172a', padding: '0.25rem 0.5rem', borderRadius: '6px', textAlign: 'center', lineHeight: 1.2 }}>
+              <div style={{ color: 'white', fontSize: '10px', fontWeight: 'normal' }}>You have</div>
+              <div style={{ color: 'white', fontSize: '13px', fontWeight: 'normal' }}>{isUnlimited ? '∞' : `${userCredits} Cr`}</div>
             </div>
-            <PlaylistButton />
+            {/* Search button */}
+            <div style={{ position: 'relative' }}>
+              <button 
+                onClick={() => { setShowSearchDropdown(!showSearchDropdown); setShowMoreDropdown(false); }}
+                style={{ 
+                  backgroundColor: showSearchDropdown || searchQuery ? '#f97316' : '#334155', 
+                  color: 'white', 
+                  padding: '0.4rem 0.6rem', 
+                  borderRadius: '6px', 
+                  fontSize: '13px', 
+                  fontWeight: 500, 
+                  border: 'none', 
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.3rem'
+                }}
+              >
+                🔍 Search
+              </button>
+              {/* Search dropdown */}
+              {showSearchDropdown && (
+                <div style={{ 
+                  position: 'absolute', 
+                  top: '100%', 
+                  left: 0, 
+                  backgroundColor: '#1e293b', 
+                  border: '1px solid #475569', 
+                  borderRadius: '8px', 
+                  marginTop: '4px', 
+                  padding: '0.75rem',
+                  minWidth: '220px', 
+                  zIndex: 70, 
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.5)' 
+                }}>
+                  {/* Search type toggle */}
+                  <div style={{ display: 'flex', gap: '0.3rem', marginBottom: '0.5rem' }}>
+                    <button 
+                      onClick={() => setSearchType('title')}
+                      style={{ 
+                        flex: 1, 
+                        padding: '0.3rem', 
+                        borderRadius: '4px', 
+                        border: 'none', 
+                        cursor: 'pointer',
+                        backgroundColor: searchType === 'title' ? '#f97316' : '#334155',
+                        color: 'white',
+                        fontSize: '12px'
+                      }}
+                    >
+                      Title
+                    </button>
+                    <button 
+                      onClick={() => setSearchType('author')}
+                      style={{ 
+                        flex: 1, 
+                        padding: '0.3rem', 
+                        borderRadius: '4px', 
+                        border: 'none', 
+                        cursor: 'pointer',
+                        backgroundColor: searchType === 'author' ? '#f97316' : '#334155',
+                        color: 'white',
+                        fontSize: '12px'
+                      }}
+                    >
+                      Author
+                    </button>
+                  </div>
+                  {/* Search input */}
+                  <input
+                    type="text"
+                    placeholder={`Search by ${searchType}...`}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.5rem',
+                      borderRadius: '6px',
+                      border: '1px solid #475569',
+                      backgroundColor: '#0f172a',
+                      color: 'white',
+                      fontSize: '14px',
+                      outline: 'none'
+                    }}
+                    autoFocus
+                  />
+                  {/* Clear button */}
+                  {searchQuery && (
+                    <button
+                      onClick={clearSearch}
+                      style={{
+                        marginTop: '0.5rem',
+                        width: '100%',
+                        padding: '0.4rem',
+                        borderRadius: '6px',
+                        border: 'none',
+                        backgroundColor: '#dc2626',
+                        color: 'white',
+                        fontSize: '12px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Clear Search
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+            {/* Playlist button - flex 1 to fill remaining space */}
+            <div style={{ flex: 1 }}>
+              <PlaylistButton />
+            </div>
           </div>
         </div>
       </div>
-      {showMoreDropdown && <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 40 }} onClick={() => setShowMoreDropdown(false)} />}
+      {/* Click-away for dropdowns */}
+      {(showMoreDropdown || showSearchDropdown) && <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 40 }} onClick={() => { setShowMoreDropdown(false); setShowSearchDropdown(false); }} />}
       <div style={{ padding: '0.5rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-        {filteredStories.length === 0 ? <div style={{ backgroundColor: '#1e293b', borderRadius: '10px', padding: '2rem 1rem', textAlign: 'center' }}><div style={{ fontSize: '40px', marginBottom: '0.75rem' }}>😔</div><p style={{ color: 'white', fontSize: '16px', marginBottom: '0.5rem' }}>Sorry {userName}, we have no stories to match your request.</p><p style={{ color: '#94a3b8', fontSize: '14px' }}>But we will request this category to our writers!</p></div> : filteredStories.map(story => <div key={story.id} onClick={() => router.push('/player/' + story.id)} style={{ cursor: 'pointer' }}><HorizontalStoryCard id={story.id} title={story.title} genre={story.genre} author={story.author || 'Drive Time Tales'} duration_mins={story.duration_mins} credits={getCredits(story.duration_mins)} cover_url={story.cover_url} series_number={story.series_number} series_total={story.series_total} /></div>)}
+        {/* Show search active indicator */}
+        {searchQuery && (
+          <div style={{ backgroundColor: '#334155', borderRadius: '6px', padding: '0.5rem 0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ color: 'white', fontSize: '13px' }}>Searching {searchType}: "{searchQuery}" ({filteredStories.length} results)</span>
+            <button onClick={clearSearch} style={{ backgroundColor: '#dc2626', color: 'white', border: 'none', borderRadius: '4px', padding: '0.2rem 0.5rem', fontSize: '12px', cursor: 'pointer' }}>✕</button>
+          </div>
+        )}
+        {filteredStories.length === 0 ? <div style={{ backgroundColor: '#1e293b', borderRadius: '10px', padding: '2rem 1rem', textAlign: 'center' }}><div style={{ fontSize: '40px', marginBottom: '0.75rem' }}>😔</div><p style={{ color: 'white', fontSize: '16px', marginBottom: '0.5rem' }}>Sorry {userName}, we have no stories to match your request.</p><p style={{ color: 'white', fontSize: '14px' }}>Try a different search or filter!</p></div> : filteredStories.map(story => <div key={story.id} onClick={() => router.push('/player/' + story.id)} style={{ cursor: 'pointer' }}><HorizontalStoryCard id={story.id} title={story.title} genre={story.genre} author={story.author || 'Drive Time Tales'} duration_mins={story.duration_mins} credits={getCredits(story.duration_mins)} cover_url={story.cover_url} series_number={story.series_number} series_total={story.series_total} /></div>)}
       </div>
       {showLowCreditsButton && <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: '#0f172a', padding: '0.5rem 0.75rem', borderTop: '1px solid #334155', zIndex: 50 }}><button onClick={() => router.push('/buy-credits')} style={{ backgroundColor: '#f97316', color: 'white', padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', width: '100%', fontSize: '15px', fontWeight: 'bold' }}>You're Low On Credits - Click Here to Get More</button></div>}
       <style dangerouslySetInnerHTML={{ __html: '@keyframes spin { to { transform: rotate(360deg); } }' }} />
