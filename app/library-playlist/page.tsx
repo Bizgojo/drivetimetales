@@ -131,26 +131,28 @@ function LibraryPlaylistContent() {
   const playlistCredits = playlist.reduce((sum, s) => sum + getCredits(s.duration_mins), 0)
   const creditsRemaining = userCredits - playlistCredits
 
-  // Filter stories
-  const filteredStories = stories.filter(story => {
-    if (playlist.some(p => p.id === story.id)) return false
-    
+  // Filter stories (but selected always show)
+  const filterStory = (story: Story) => {
     if (selectedDuration !== 'All') {
       if (selectedDuration === '15m' && story.duration_mins > 15) return false
       if (selectedDuration === '30m' && (story.duration_mins <= 15 || story.duration_mins > 30)) return false
       if (selectedDuration === '1hr' && story.duration_mins <= 30) return false
     }
-    
     if (selectedType === 'Series' && !story.series_name) return false
-    if (selectedType === 'Singles' && story.series_name) return false
-    
     if (selectedGenre !== 'All') {
       const storyGenre = story.genre?.toLowerCase() || ''
       if (!storyGenre.includes(selectedGenre.toLowerCase())) return false
     }
-    
     return true
-  })
+  }
+
+  // Sort: Selected stories at top (in playlist order), then filtered unselected
+  const sortedStories = [
+    // Selected stories in playlist order
+    ...playlist.map(p => stories.find(s => s.id === p.id)).filter(Boolean) as Story[],
+    // Unselected stories that match filter
+    ...stories.filter(s => !playlist.some(p => p.id === s.id) && filterStory(s))
+  ]
 
   const toggleStory = (story: Story) => {
     const exists = playlist.find(p => p.id === story.id)
@@ -172,6 +174,24 @@ function LibraryPlaylistContent() {
         audio_url: story.audio_url,
       }])
     }
+  }
+
+  const moveUp = (index: number) => {
+    if (index <= 0) return
+    const newPlaylist = [...playlist]
+    const temp = newPlaylist[index - 1]
+    newPlaylist[index - 1] = newPlaylist[index]
+    newPlaylist[index] = temp
+    setPlaylist(newPlaylist)
+  }
+
+  const moveDown = (index: number) => {
+    if (index >= playlist.length - 1) return
+    const newPlaylist = [...playlist]
+    const temp = newPlaylist[index + 1]
+    newPlaylist[index + 1] = newPlaylist[index]
+    newPlaylist[index] = temp
+    setPlaylist(newPlaylist)
   }
 
   const handleStartDrive = () => {
@@ -339,34 +359,58 @@ function LibraryPlaylistContent() {
             <span style={{ color: '#f97316', fontWeight: 'bold' }}>{playlistCredits}</span>
             <span> of </span>
             <span style={{ fontWeight: 'bold' }}>{userCredits}</span>
-            <span> credits used</span>
+            <span> credits</span>
           </div>
           <div style={{ color: 'white', fontSize: '14px' }}>
-            <span>Playlist: </span>
             <span style={{ color: '#22c55e', fontWeight: 'bold' }}>{playlistMins} min</span>
-            <span style={{ color: '#94a3b8' }}> ({playlist.length} stories)</span>
+            <span style={{ color: 'white' }}> • {playlist.length} stories</span>
           </div>
         </div>
       </div>
 
       {/* STORY LIST */}
       <div style={{ padding: '0.75rem', paddingBottom: playlist.length > 0 ? '100px' : '1rem' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          {filteredStories.map(story => {
-            const inPlaylist = playlist.some(p => p.id === story.id)
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          {sortedStories.map(story => {
+            const isSelected = playlist.some(p => p.id === story.id)
+            const playlistIndex = playlist.findIndex(p => p.id === story.id)
             const cost = getCredits(story.duration_mins)
             const canAfford = cost <= creditsRemaining
             
             return (
               <div 
-                key={story.id} 
-                onClick={() => toggleStory(story)}
+                key={story.id}
+                onClick={() => !isSelected && toggleStory(story)}
                 style={{ 
-                  cursor: 'pointer',
-                  opacity: !canAfford && !inPlaylist ? 0.5 : 1,
+                  backgroundColor: isSelected ? '#1e3a2f' : '#1e293b',
+                  border: isSelected ? '2px solid #22c55e' : '2px solid transparent',
+                  borderRadius: '12px',
+                  padding: '0.5rem',
+                  cursor: isSelected ? 'default' : 'pointer',
+                  opacity: !canAfford && !isSelected ? 0.5 : 1,
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  {/* Order number for selected */}
+                  {isSelected && (
+                    <div style={{ 
+                      backgroundColor: '#f97316', 
+                      color: 'white', 
+                      width: '28px', 
+                      height: '28px', 
+                      borderRadius: '50%', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'center', 
+                      fontSize: '14px', 
+                      fontWeight: 'bold',
+                      flexShrink: 0
+                    }}>
+                      {playlistIndex + 1}
+                    </div>
+                  )}
+                  
+                  {/* Story card */}
                   <div style={{ flex: 1, pointerEvents: 'none' }}>
                     <HorizontalStoryCard
                       id={story.id}
@@ -379,25 +423,63 @@ function LibraryPlaylistContent() {
                       series_total={story.series_total}
                     />
                   </div>
-                  <div style={{
-                    width: '32px',
-                    height: '32px',
-                    borderRadius: '50%',
-                    border: inPlaylist ? 'none' : '2px solid #64748b',
-                    backgroundColor: inPlaylist ? '#22c55e' : 'transparent',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0
-                  }}>
-                    {inPlaylist && <span style={{ color: 'white', fontSize: '16px' }}>✓</span>}
-                  </div>
+                  
+                  {/* Arrow button for selected OR checkbox for unselected */}
+                  {isSelected ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      {/* Up/Down arrow based on position */}
+                      {playlist.length > 1 && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); playlistIndex === 0 ? moveDown(0) : moveUp(playlistIndex); }}
+                          style={{ 
+                            backgroundColor: '#334155', 
+                            color: 'white', 
+                            border: 'none', 
+                            borderRadius: '6px', 
+                            padding: '6px 10px', 
+                            cursor: 'pointer', 
+                            fontSize: '14px', 
+                            fontWeight: 'bold' 
+                          }}
+                        >
+                          {playlistIndex === 0 ? '▼' : '▲'}
+                        </button>
+                      )}
+                      {/* Remove button */}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setPlaylist(playlist.filter(p => p.id !== story.id)); }}
+                        style={{ 
+                          backgroundColor: '#dc2626', 
+                          color: 'white', 
+                          border: 'none', 
+                          borderRadius: '6px', 
+                          padding: '6px 10px', 
+                          cursor: 'pointer', 
+                          fontSize: '12px'
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: '50%',
+                      border: '2px solid #64748b',
+                      backgroundColor: 'transparent',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0
+                    }} />
+                  )}
                 </div>
               </div>
             )
           })}
           
-          {filteredStories.length === 0 && (
+          {sortedStories.length === 0 && (
             <div style={{ textAlign: 'center', padding: '2rem', color: 'white' }}>
               <p>No stories match your filters</p>
             </div>
