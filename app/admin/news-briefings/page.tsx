@@ -46,6 +46,16 @@ const COST_PER_BRIEFING = 1.20
 interface Voice { voice_id: string; name: string; labels?: Record<string, string> }
 interface CatSettings { voice_id: string; narrator_name: string; last_generated: string | null; audio_url: string | null; duration: string | null }
 interface ScheduleSettings { enabled: boolean; times: string[] }
+interface PromptModalData { 
+  category: string
+  name: string
+  prompt: string
+  defaultPrompt: string
+  isCustom: boolean
+  isEditing: boolean
+  editedPrompt: string
+  isSaving: boolean
+}
 
 export default function AdminNewsPage() {
   const [loading, setLoading] = useState(true)
@@ -57,7 +67,7 @@ export default function AdminNewsPage() {
   const [settings, setSettings] = useState<Record<string, CatSettings>>({})
   const [schedule, setSchedule] = useState<ScheduleSettings>({ enabled: false, times: ['06:00', '12:00', '18:00'] })
   const [subscriberStates, setSubscriberStates] = useState<string[]>([])
-  const [promptModal, setPromptModal] = useState<{ category: string; name: string; prompt: string } | null>(null)
+  const [promptModal, setPromptModal] = useState<PromptModalData | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const saveTimeout = useRef<NodeJS.Timeout | null>(null)
 
@@ -167,10 +177,91 @@ export default function AdminNewsPage() {
     try {
       const res = await fetch(`/api/admin/generate-news?category=${catId}`)
       const data = await res.json()
-      setPromptModal({ category: catId, name: catName, prompt: data.prompt || 'Prompt not found' })
+      setPromptModal({ 
+        category: catId, 
+        name: catName, 
+        prompt: data.prompt || 'Prompt not found',
+        defaultPrompt: data.defaultPrompt || data.prompt || '',
+        isCustom: data.isCustom || false,
+        isEditing: false,
+        editedPrompt: data.prompt || '',
+        isSaving: false
+      })
     } catch (e) {
       console.error(e)
       setMessage({ type: 'error', text: 'Could not load prompt' })
+    }
+  }
+
+  async function savePrompt() {
+    if (!promptModal) return
+    
+    setPromptModal(prev => prev ? { ...prev, isSaving: true } : null)
+    
+    try {
+      const res = await fetch('/api/admin/generate-news', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'save-prompt',
+          category: promptModal.category,
+          prompt: promptModal.editedPrompt
+        })
+      })
+      
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to save')
+      
+      setPromptModal(prev => prev ? { 
+        ...prev, 
+        prompt: prev.editedPrompt,
+        isCustom: true,
+        isEditing: false,
+        isSaving: false
+      } : null)
+      
+      setMessage({ type: 'success', text: `${promptModal.name} prompt saved!` })
+    } catch (e) {
+      console.error(e)
+      setMessage({ type: 'error', text: e instanceof Error ? e.message : 'Failed to save prompt' })
+      setPromptModal(prev => prev ? { ...prev, isSaving: false } : null)
+    }
+  }
+
+  async function resetPrompt() {
+    if (!promptModal) return
+    
+    if (!confirm(`Reset ${promptModal.name} prompt to default? Your custom changes will be lost.`)) return
+    
+    setPromptModal(prev => prev ? { ...prev, isSaving: true } : null)
+    
+    try {
+      const res = await fetch('/api/admin/generate-news', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'reset-prompt',
+          category: promptModal.category
+        })
+      })
+      
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to reset')
+      
+      setPromptModal(prev => prev ? { 
+        ...prev, 
+        prompt: data.defaultPrompt || prev.defaultPrompt,
+        editedPrompt: data.defaultPrompt || prev.defaultPrompt,
+        isCustom: false,
+        isEditing: false,
+        isSaving: false
+      } : null)
+      
+      setMessage({ type: 'success', text: `${promptModal.name} prompt reset to default` })
+    } catch (e) {
+      console.error(e)
+      setMessage({ type: 'error', text: e instanceof Error ? e.message : 'Failed to reset prompt' })
+      setPromptModal(prev => prev ? { ...prev, isSaving: false } : null)
     }
   }
 
@@ -327,7 +418,7 @@ export default function AdminNewsPage() {
                   <button
                     onClick={() => showPrompt(cat.id, cat.name)}
                     className="text-xs px-2 py-1 bg-gray-200 hover:bg-gray-300 text-gray-600 rounded transition"
-                    title="View prompt"
+                    title="View/Edit prompt"
                   >
                     📝 Prompt
                   </button>
@@ -508,24 +599,115 @@ export default function AdminNewsPage() {
         </div>
       </div>
 
-      {/* Prompt Modal - Off-white background with black text */}
+      {/* Prompt Modal - View & Edit */}
       {promptModal && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={() => setPromptModal(null)}>
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={() => !promptModal.isSaving && setPromptModal(null)}>
           <div 
-            className="rounded-xl p-6 max-w-3xl w-full max-h-[85vh] overflow-auto shadow-2xl" 
+            className="rounded-xl p-6 max-w-4xl w-full max-h-[90vh] overflow-auto shadow-2xl" 
             style={{ backgroundColor: '#f8f5f0' }}
             onClick={e => e.stopPropagation()}
           >
+            {/* Header */}
             <div className="flex items-center justify-between mb-4 border-b pb-4" style={{ borderColor: '#d4c4b0' }}>
-              <h3 className="text-xl font-bold" style={{ color: '#1a1a1a' }}>📝 {promptModal.name} - Category Guidance</h3>
-              <button onClick={() => setPromptModal(null)} className="text-2xl font-bold" style={{ color: '#666' }}>&times;</button>
+              <div className="flex items-center gap-3">
+                <h3 className="text-xl font-bold" style={{ color: '#1a1a1a' }}>
+                  📝 {promptModal.name} Prompt
+                </h3>
+                {promptModal.isCustom && (
+                  <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-full font-medium">
+                    Customized
+                  </span>
+                )}
+              </div>
+              <button 
+                onClick={() => !promptModal.isSaving && setPromptModal(null)} 
+                className="text-2xl font-bold" 
+                style={{ color: '#666' }}
+                disabled={promptModal.isSaving}
+              >
+                &times;
+              </button>
             </div>
-            <div className="rounded-lg p-5 border" style={{ backgroundColor: '#fff', borderColor: '#e8e0d5' }}>
-              <pre className="whitespace-pre-wrap leading-relaxed text-sm" style={{ color: '#1a1a1a', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace' }}>{promptModal.prompt}</pre>
-            </div>
-            <p className="text-sm mt-4 italic" style={{ color: '#666' }}>
-              This guidance is combined with today&apos;s headlines to generate your {promptModal.name.toLowerCase()} briefings. The full prompt also includes date/time awareness, script structure, and accuracy rules.
-            </p>
+
+            {/* Content */}
+            {promptModal.isEditing ? (
+              // Edit Mode
+              <div>
+                <textarea
+                  value={promptModal.editedPrompt}
+                  onChange={(e) => setPromptModal(prev => prev ? { ...prev, editedPrompt: e.target.value } : null)}
+                  className="w-full h-96 p-4 rounded-lg border text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  style={{ 
+                    backgroundColor: '#fff', 
+                    borderColor: '#e8e0d5', 
+                    color: '#1a1a1a' 
+                  }}
+                  disabled={promptModal.isSaving}
+                />
+                <div className="flex items-center justify-between mt-4">
+                  <button
+                    onClick={() => setPromptModal(prev => prev ? { ...prev, isEditing: false, editedPrompt: prev.prompt } : null)}
+                    className="px-4 py-2 rounded-lg font-medium transition"
+                    style={{ backgroundColor: '#e5e0d8', color: '#666' }}
+                    disabled={promptModal.isSaving}
+                  >
+                    Cancel
+                  </button>
+                  <div className="flex gap-3">
+                    {promptModal.isCustom && (
+                      <button
+                        onClick={resetPrompt}
+                        className="px-4 py-2 bg-red-100 text-red-700 rounded-lg font-medium hover:bg-red-200 transition"
+                        disabled={promptModal.isSaving}
+                      >
+                        Reset to Default
+                      </button>
+                    )}
+                    <button
+                      onClick={savePrompt}
+                      className="px-6 py-2 bg-orange-500 text-white rounded-lg font-bold hover:bg-orange-400 transition flex items-center gap-2"
+                      disabled={promptModal.isSaving}
+                    >
+                      {promptModal.isSaving ? (
+                        <>
+                          <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        'Save Prompt'
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              // View Mode
+              <div>
+                <div className="rounded-lg p-5 border" style={{ backgroundColor: '#fff', borderColor: '#e8e0d5' }}>
+                  <pre 
+                    className="whitespace-pre-wrap leading-relaxed text-sm" 
+                    style={{ 
+                      color: '#1a1a1a', 
+                      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace' 
+                    }}
+                  >
+                    {promptModal.prompt}
+                  </pre>
+                </div>
+                
+                <div className="flex items-center justify-between mt-4">
+                  <p className="text-sm italic" style={{ color: '#666' }}>
+                    This guidance is combined with today&apos;s headlines to generate briefings.
+                  </p>
+                  <button
+                    onClick={() => setPromptModal(prev => prev ? { ...prev, isEditing: true } : null)}
+                    className="px-6 py-2 bg-orange-500 text-white rounded-lg font-bold hover:bg-orange-400 transition"
+                  >
+                    ✏️ Edit Prompt
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
