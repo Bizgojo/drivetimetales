@@ -149,38 +149,39 @@ function LibraryContent() {
               {showMoreDropdown && <div style={{ position: 'absolute', top: '100%', right: 0, backgroundColor: '#1e293b', border: '1px solid #475569', borderRadius: '8px', marginTop: '4px', minWidth: '140px', zIndex: 60, boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}>{ALL_GENRES.map(g => <button key={g.key} onClick={() => selectGenre(g.key)} style={{ display: 'block', width: '100%', padding: '0.5rem 0.75rem', backgroundColor: selectedGenre === g.key ? '#f97316' : 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', fontSize: '13px' }}>{g.emoji} {g.label}</button>)}</div>}
             </div>
           </div>
-          {/* Credits | Search | Playlist row */}
+          {/* Credits | Playlist | Search row */}
           <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
             <div style={{ backgroundColor: '#0f172a', padding: '0.25rem 0.5rem', borderRadius: '6px', textAlign: 'center', lineHeight: 1.2 }}>
-              <div style={{ color: 'white', fontSize: '10px', fontWeight: 'normal' }}>You have</div>
-              <div style={{ color: 'white', fontSize: '13px', fontWeight: 'normal' }}>{isUnlimited ? '∞' : `${userCredits} Cr`}</div>
+              <div style={{ color: 'white', fontSize: '10px', fontWeight: 'normal' }}>Credits</div>
+              <div style={{ color: 'white', fontSize: '13px', fontWeight: 'normal' }}>{isUnlimited ? '∞' : userCredits}</div>
             </div>
-            {/* Search button */}
+            {/* Playlist button - smaller */}
+            <div style={{ flex: 1 }}>
+              <PlaylistButton />
+            </div>
+            {/* Search button - no emoji, on right */}
             <div style={{ position: 'relative' }}>
               <button 
                 onClick={() => { setShowSearchDropdown(!showSearchDropdown); setShowMoreDropdown(false); }}
                 style={{ 
                   backgroundColor: showSearchDropdown || searchQuery ? '#f97316' : '#334155', 
                   color: 'white', 
-                  padding: '0.4rem 0.6rem', 
+                  padding: '0.4rem 0.75rem', 
                   borderRadius: '6px', 
                   fontSize: '13px', 
                   fontWeight: 500, 
                   border: 'none', 
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.3rem'
+                  cursor: 'pointer'
                 }}
               >
-                🔍 Search
+                Search
               </button>
               {/* Search dropdown */}
               {showSearchDropdown && (
                 <div style={{ 
                   position: 'absolute', 
                   top: '100%', 
-                  left: 0, 
+                  right: 0, 
                   backgroundColor: '#1e293b', 
                   border: '1px solid #475569', 
                   borderRadius: '8px', 
@@ -262,10 +263,6 @@ function LibraryContent() {
                   )}
                 </div>
               )}
-            </div>
-            {/* Playlist button - flex 1 to fill remaining space */}
-            <div style={{ flex: 1 }}>
-              <PlaylistButton />
             </div>
           </div>
         </div>
