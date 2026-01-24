@@ -20,7 +20,7 @@ const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
 };
 
 // Prompts for each category - exported so UI can display them
-export const CATEGORY_PROMPTS: Record<string, string> = {
+const CATEGORY_PROMPTS: Record<string, string> = {
   state: `Focus on state government actions, local crime and safety, community events, weather impacts, local elections, and regional sports. Emphasize how news affects local residents.`,
   national: `Focus on the President and White House actions, Congressional legislation, Supreme Court decisions, federal policy changes, national elections, and major social issues affecting Americans.`,
   international: `Focus on foreign elections and leadership changes, international conflicts and diplomacy, global economic trends, trade agreements, and humanitarian issues.`,
