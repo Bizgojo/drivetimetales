@@ -6,6 +6,8 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+const CATEGORIES = ['national', 'international', 'business', 'sports', 'science', 'state'];
+
 export async function GET(request: NextRequest) {
   try {
     const authHeader = request.headers.get('authorization');
@@ -22,23 +24,25 @@ export async function GET(request: NextRequest) {
     }
 
     const categories = settings.categories || {};
-    const enabledCategories = Object.entries(categories)
-      .filter(([_, cat]: [string, any]) => cat.enabled)
-      .map(([id]) => id);
-
+    const selectedState = settings.selected_state || 'South Carolina';
     const results: Array<{ category: string; success: boolean; error?: string }> = [];
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://drivetimetales.vercel.app';
 
-    for (const categoryId of enabledCategories) {
+    for (const categoryId of CATEGORIES) {
+      const catSettings = categories[categoryId];
+      if (!catSettings?.voice_id) continue;
+
       try {
-        const catSettings = categories[categoryId] || {};
-        const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/admin/generate-news`, {
+        const response = await fetch(baseUrl + '/api/admin/generate-news', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             category: categoryId,
-            voiceId: catSettings.voice_id || '',
+            voiceId: catSettings.voice_id,
             narratorName: catSettings.narrator_name || 'Your Host',
-            storiesCount: settings.stories_per_category || 5
+            state: categoryId === 'state' ? selectedState : null,
+            storiesCount: 5,
+            listenerName: 'listener'
           })
         });
         results.push({ category: categoryId, success: response.ok });
