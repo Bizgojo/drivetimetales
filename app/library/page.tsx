@@ -1,180 +1,149 @@
 'use client'
 
-import { useState, useEffect, useCallback, Suspense } from 'react'
-import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
-import { useAuth } from '@/contexts/AuthContext'
-import HorizontalStoryCard from '@/components/HorizontalStoryCard'
-import LibraryFiltersWithSearch from '@/components/LibraryFiltersWithSearch'
+import Link from 'next/link'
+import { useState, useEffect } from 'react'
 
-interface Story {
+type Story = {
   id: string
   title: string
-  genre: string
   author: string
+  genre: string
+  description: string
   duration_mins: number
-  cover_url: string | null
-  series_name?: string | null
-  series_number?: number | null
-  series_total?: number | null
+  duration_label: string
+  price_cents: number
+  audio_url: string
+  cover_url: string
+  is_new: boolean
+  created_at: string
 }
 
-function getCredits(duration_mins: number): number {
-  return Math.max(1, Math.floor(duration_mins / 15))
-}
+const SUPABASE_URL = 'https://vmyhlfeouzslixtkmddy.supabase.co'
+const SUPABASE_KEY = 'sb_publishable_WQc18u_qDrwCe_g0DGFvkQ_1qIus5kK'
 
-function LibraryContent() {
-  const router = useRouter()
-  const { user } = useAuth()
-  const [stories, setStories] = useState<Story[]>([])
-  const [loading, setLoading] = useState(true)
-  const [userName, setUserName] = useState('Friend')
-  const [userCredits, setUserCredits] = useState(4)
-  const [isUnlimited, setIsUnlimited] = useState(false)
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
-  
-  // Filter state from component
-  const [filters, setFilters] = useState({
-    duration: 'All',
-    type: 'All',
-    genre: 'All',
-    searchQuery: '',
-    searchType: 'title' as 'title' | 'author'
-  })
+const genres = ['All', 'Mystery', 'Drama', 'Sci-Fi', 'Horror', 'Comedy', 'Romance', 'Adventure', 'Trucker Stories', 'mystery/thriller']
 
-  const showLowCreditsButton = !isUnlimited && userCredits <= 3
-
-  useEffect(() => {
-    async function fetchData() {
-      const { data: storiesData } = await supabase
-        .from('stories')
-        .select('id, title, genre, author, duration_mins, cover_url, series_name, series_number, series_total')
-        .not('cover_url', 'is', null)
-        .order('published_on', { ascending: false })
-      if (storiesData) setStories(storiesData)
-      
-      if (user?.id) {
-        const { data: userData } = await supabase
-          .from('users')
-          .select('first_name, display_name, credits')
-          .eq('id', user.id)
-          .single()
-        if (userData) {
-          setUserName(userData.first_name || userData.display_name || 'Friend')
-          setIsUnlimited(userData.credits >= 9999)
-          setUserCredits(userData.credits || 0)
-        }
-        setLoading(false)
-      }
-    }
-    fetchData()
-  }, [user])
-
-  const handleFilterChange = useCallback((newFilters: typeof filters) => {
-    setFilters(newFilters)
-  }, [])
-
-  const filteredStories = stories.filter(story => {
-    // Search filter
-    if (filters.searchQuery.trim()) {
-      const query = filters.searchQuery.toLowerCase()
-      if (filters.searchType === 'title' && !story.title.toLowerCase().includes(query)) return false
-      if (filters.searchType === 'author' && !(story.author || '').toLowerCase().includes(query)) return false
-    }
-    // Duration filter
-    if (filters.duration !== 'All') {
-      if (filters.duration === '15m' && story.duration_mins > 15) return false
-      if (filters.duration === '30m' && (story.duration_mins <= 15 || story.duration_mins > 30)) return false
-      if (filters.duration === '1hr' && story.duration_mins <= 30) return false
-    }
-    if (filters.type === 'Series' && !story.series_name) return false
-    if (filters.genre !== 'All' && !(story.genre?.toLowerCase() || '').includes(filters.genre.toLowerCase())) return false
-    return true
-  })
-
-  if (loading) return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ width: '40px', height: '40px', border: '4px solid #f97316', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-      <style dangerouslySetInnerHTML={{ __html: '@keyframes spin { to { transform: rotate(360deg); } }' }} />
-    </div>
-  )
-
-  return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', paddingBottom: showLowCreditsButton ? '55px' : '0' }}>
-      {/* Sticky header */}
-      <div style={{ position: 'sticky', top: 0, backgroundColor: '#0f172a', zIndex: 50 }}>
-        {/* Header row */}
-        <div style={{ padding: '0.5rem 0.75rem', display: 'flex', alignItems: 'center', borderBottom: '1px solid #334155' }}>
-          <button onClick={() => router.push('/home')} style={{ backgroundColor: '#334155', color: 'white', padding: '0.35rem 0.6rem', borderRadius: '6px', fontSize: '13px', fontWeight: 500, border: 'none', cursor: 'pointer' }}>← Back</button>
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
-            <span style={{ fontSize: '18px' }}>🚗</span>
-            <span style={{ fontSize: '18px' }}>🚙</span>
-            <span style={{ color: 'white', fontSize: '16px', fontWeight: 'bold' }}>Drive Time</span>
-            <span style={{ color: '#f97316', fontSize: '16px', fontWeight: 'bold' }}>Tales</span>
-          </div>
-          <div onClick={() => router.push('/profile')} style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#f97316', overflow: 'hidden', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            {avatarUrl ? <img src={avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ color: 'white', fontSize: '16px', fontWeight: 'bold' }}>{userName.charAt(0).toUpperCase()}</span>}
-          </div>
-        </div>
-
-        {/* Filters with search */}
-        <LibraryFiltersWithSearch
-          userCredits={userCredits}
-          isUnlimited={isUnlimited}
-          showPlaylistButton={true}
-          onFilterChange={handleFilterChange}
-        />
-      </div>
-
-      {/* Story list */}
-      <div style={{ padding: '0.5rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-        {filteredStories.length === 0 ? (
-          <div style={{ backgroundColor: '#1e293b', borderRadius: '10px', padding: '2rem 1rem', textAlign: 'center' }}>
-            <div style={{ fontSize: '40px', marginBottom: '0.75rem' }}>😔</div>
-            <p style={{ color: 'white', fontSize: '16px', marginBottom: '0.5rem' }}>Sorry {userName}, we have no stories to match your request.</p>
-            <p style={{ color: 'white', fontSize: '14px' }}>Try a different search or filter!</p>
-          </div>
-        ) : (
-          filteredStories.map(story => (
-            <div key={story.id} onClick={() => router.push('/player/' + story.id)} style={{ cursor: 'pointer' }}>
-              <HorizontalStoryCard
-                id={story.id}
-                title={story.title}
-                genre={story.genre}
-                author={story.author || 'Drive Time Tales'}
-                duration_mins={story.duration_mins}
-                credits={getCredits(story.duration_mins)}
-                cover_url={story.cover_url}
-                series_number={story.series_number}
-                series_total={story.series_total}
-              />
-            </div>
-          ))
-        )}
-      </div>
-
-      {/* Low credits button */}
-      {showLowCreditsButton && (
-        <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: '#0f172a', padding: '0.5rem 0.75rem', borderTop: '1px solid #334155', zIndex: 50 }}>
-          <button onClick={() => router.push('/buy-credits')} style={{ backgroundColor: '#f97316', color: 'white', padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', width: '100%', fontSize: '15px', fontWeight: 'bold' }}>
-            You're Low On Credits - Click Here to Get More
-          </button>
-        </div>
-      )}
-
-      <style dangerouslySetInnerHTML={{ __html: '@keyframes spin { to { transform: rotate(360deg); } }' }} />
-    </div>
-  )
+const genreColors: Record<string, string> = {
+  'Mystery': 'from-purple-600 to-purple-900',
+  'Drama': 'from-orange-600 to-orange-900',
+  'Sci-Fi': 'from-cyan-600 to-cyan-900',
+  'Horror': 'from-red-600 to-red-900',
+  'Comedy': 'from-yellow-600 to-yellow-900',
+  'Romance': 'from-pink-600 to-pink-900',
+  'Adventure': 'from-green-600 to-green-900',
+  'Trucker Stories': 'from-amber-600 to-amber-900',
+  'mystery/thriller': 'from-indigo-600 to-indigo-900',
 }
 
 export default function LibraryPage() {
+  const [stories, setStories] = useState<Story[]>([])
+  const [loading, setLoading] = useState(true)
+  const [genre, setGenre] = useState('All')
+  const [search, setSearch] = useState('')
+
+  useEffect(() => {
+    fetchStories()
+  }, [])
+
+  const fetchStories = async () => {
+    try {
+      const response = await fetch(`${SUPABASE_URL}/rest/v1/stories?select=*&order=created_at.desc`, {
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`,
+        }
+      })
+      const data = await response.json()
+      setStories(data)
+    } catch (error) {
+      console.error('Error fetching stories:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const filtered = stories.filter(s => {
+    if (genre !== 'All' && s.genre !== genre) return false
+    if (search && !s.title.toLowerCase().includes(search.toLowerCase())) return false
+    return true
+  })
+
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-slate-950 py-8 px-4">
+        <div className="max-w-6xl mx-auto text-center">
+          <p className="text-white">Loading stories...</p>
+        </div>
+      </main>
+    )
+  }
+
   return (
-    <Suspense fallback={
-      <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ width: '40px', height: '40px', border: '4px solid #f97316', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+    <main className="min-h-screen bg-slate-950 py-8 px-4">
+      <div className="max-w-6xl mx-auto">
+        <h1 className="text-3xl font-bold text-white mb-2">DTT Library</h1>
+        <p className="text-slate-400 mb-8">Browse our complete collection of audio stories</p>
+
+        <div className="flex flex-col md:flex-row gap-4 mb-8">
+          <input
+            type="text"
+            placeholder="Search stories..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="flex-1 px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-orange-500"
+          />
+          <select
+            value={genre}
+            onChange={(e) => setGenre(e.target.value)}
+            className="px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white"
+          >
+            {genres.map(g => <option key={g}>{g}</option>)}
+          </select>
+        </div>
+
+        <p className="text-slate-400 mb-6">{filtered.length} stories found</p>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
+          {filtered.map((story) => (
+            <Link key={story.id} href={`/story/${story.id}`} className="group">
+              <div className="aspect-square rounded-xl relative overflow-hidden mb-3 group-hover:scale-105 transition-transform">
+                {story.cover_url ? (
+                  <img 
+                    src={story.cover_url} 
+                    alt={story.title}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className={`w-full h-full bg-gradient-to-br ${genreColors[story.genre] || 'from-slate-600 to-slate-800'}`} />
+                )}
+                
+                <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/40 transition-all">
+                  <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center group-hover:bg-white/40 transition-all">
+                    <div className="w-0 h-0 border-l-[14px] border-l-white border-y-[8px] border-y-transparent ml-1" />
+                  </div>
+                </div>
+                
+                {story.is_new && (
+                  <div className="absolute top-2 left-2 px-2 py-0.5 bg-green-500 text-black text-xs font-semibold rounded">
+                    NEW
+                  </div>
+                )}
+                <div className="absolute bottom-2 right-2 px-2 py-0.5 bg-black/50 text-white text-xs rounded">
+                  {story.duration_label || `${story.duration_mins} min`}
+                </div>
+              </div>
+              <h3 className="font-semibold text-white text-sm group-hover:text-orange-400 line-clamp-2">{story.title}</h3>
+              <p className="text-xs text-orange-400">{story.genre}</p>
+              <p className="text-xs text-slate-400">{story.author}</p>
+              <p className="text-xs text-slate-500">{story.duration_label || `${story.duration_mins} min`}</p>
+              
+              <div className="mt-2 w-full py-2 bg-orange-500 hover:bg-orange-400 text-black text-xs font-semibold rounded-lg transition-all text-center">
+                ▶ Play Free
+              </div>
+            </Link>
+          ))}
+        </div>
       </div>
-    }>
-      <LibraryContent />
-    </Suspense>
+    </main>
   )
 }
