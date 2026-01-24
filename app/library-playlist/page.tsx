@@ -137,13 +137,15 @@ function LibraryPlaylistContent() {
         const { data, error } = await supabase
           .from('stories')
           .select('id, title, genre, author, duration_mins, cover_url, audio_url, series_name, series_number, series_total')
+          .not('cover_url', 'is', null)
           .order('published_on', { ascending: false })
         
         if (error) {
           console.error('Error fetching stories:', error)
         } else if (data) {
-          // Include all stories (removed the cover_url filter that was hiding some)
-          setStories(data)
+          // Filter out stories with empty string cover_url
+          const validStories = data.filter(s => s.cover_url && s.cover_url.trim() !== '')
+          setStories(validStories)
         }
       } catch (err) {
         console.error('Error:', err)
@@ -170,6 +172,10 @@ function LibraryPlaylistContent() {
       if (selectedDuration === '30m' && (story.duration_mins <= 15 || story.duration_mins > 30)) return false
       if (selectedDuration === '1hr' && story.duration_mins <= 30) return false
     }
+    
+    // Type filter (Series/Singles)
+    if (selectedType === 'Series' && !story.series_name) return false
+    if (selectedType === 'Singles' && story.series_name) return false
     
     // Genre filter
     if (selectedGenre !== 'All') {
@@ -335,6 +341,26 @@ function LibraryPlaylistContent() {
                 {dur}
               </button>
             ))}
+            {/* Type filter - Series/Singles */}
+            <span style={{ color: 'white', alignSelf: 'center', margin: '0 0.25rem' }}>|</span>
+            {['All', 'Series', 'Singles'].map(type => (
+              <button
+                key={type}
+                onClick={() => setSelectedType(type)}
+                style={{
+                  padding: '0.4rem 0.75rem',
+                  borderRadius: '6px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  fontWeight: 500,
+                  backgroundColor: selectedType === type ? '#f97316' : '#334155',
+                  color: 'white'
+                }}
+              >
+                {type}
+              </button>
+            ))}
           </div>
           
           {/* Genre filters - FIX #3: Fixed dropdown z-index and click handling */}
@@ -467,6 +493,8 @@ function LibraryPlaylistContent() {
                       author={story.author || 'Drive Time Tales'}
                       duration_mins={story.duration_mins}
                       cover_url={story.cover_url}
+                      series_number={story.series_number}
+                      series_total={story.series_total}
                     />
                   </div>
                   {/* Checkbox circle */}
@@ -485,22 +513,6 @@ function LibraryPlaylistContent() {
                     {inPlaylist && <span style={{ color: 'white', fontSize: '16px' }}>✓</span>}
                   </div>
                 </div>
-                {/* Series badge */}
-                {story.series_name && (
-                  <div style={{
-                    position: 'absolute',
-                    top: '4px',
-                    right: '48px',
-                    backgroundColor: '#6366f1',
-                    color: 'white',
-                    fontSize: '10px',
-                    padding: '2px 6px',
-                    borderRadius: '4px',
-                    fontWeight: 'bold'
-                  }}>
-                    {story.series_number}/{story.series_total}
-                  </div>
-                )}
               </div>
             )
           })}
