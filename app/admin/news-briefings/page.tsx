@@ -116,7 +116,7 @@ export default function AdminNewsPage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            settings: { ...existing, categories: newSettings, selected_state: state || selectedState, schedule: newSchedule || schedule }
+            settings: { ...existing, categories: { ...existing.categories, ...newSettings }, selected_state: state || selectedState, schedule: newSchedule || schedule }
           })
         })
       } catch (e) { console.error('Save error:', e) }
