@@ -528,7 +528,6 @@ function LibraryPlaylistContent() {
             cover_url={story.cover_url}
             series_number={story.series_number}
             series_total={story.series_total}
-            play_status={getPlayStatus(story.id)}
           />
         ))}
       </div>
