@@ -33,11 +33,13 @@ export async function GET(request: NextRequest) {
     }
     const categorySettings = settings.categories || {};
     const { data: usersData } = await supabase.from('users').select('state').not('state', 'is', null);
-    const subscriberStates = new Set<string>();
+    const subscriberStates: string[] = [];
     usersData?.forEach(u => {
       if (u.state) {
         const fullName = ABBREV_TO_STATE[u.state.toUpperCase()] || u.state;
-        if (US_STATES.includes(fullName)) subscriberStates.add(fullName);
+        if (US_STATES.includes(fullName) && !subscriberStates.includes(fullName)) {
+          subscriberStates.push(fullName);
+        }
       }
     });
     const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
