@@ -15,6 +15,25 @@ const US_STATES = [
   'Wisconsin', 'Wyoming'
 ]
 
+// State abbreviation lookup
+const STATE_ABBREV: Record<string, string> = {
+  'Alabama': 'AL', 'Alaska': 'AK', 'Arizona': 'AZ', 'Arkansas': 'AR', 'California': 'CA',
+  'Colorado': 'CO', 'Connecticut': 'CT', 'Delaware': 'DE', 'Florida': 'FL', 'Georgia': 'GA',
+  'Hawaii': 'HI', 'Idaho': 'ID', 'Illinois': 'IL', 'Indiana': 'IN', 'Iowa': 'IA',
+  'Kansas': 'KS', 'Kentucky': 'KY', 'Louisiana': 'LA', 'Maine': 'ME', 'Maryland': 'MD',
+  'Massachusetts': 'MA', 'Michigan': 'MI', 'Minnesota': 'MN', 'Mississippi': 'MS', 'Missouri': 'MO',
+  'Montana': 'MT', 'Nebraska': 'NE', 'Nevada': 'NV', 'New Hampshire': 'NH', 'New Jersey': 'NJ',
+  'New Mexico': 'NM', 'New York': 'NY', 'North Carolina': 'NC', 'North Dakota': 'ND', 'Ohio': 'OH',
+  'Oklahoma': 'OK', 'Oregon': 'OR', 'Pennsylvania': 'PA', 'Rhode Island': 'RI', 'South Carolina': 'SC',
+  'South Dakota': 'SD', 'Tennessee': 'TN', 'Texas': 'TX', 'Utah': 'UT', 'Vermont': 'VT',
+  'Virginia': 'VA', 'Washington': 'WA', 'West Virginia': 'WV', 'Wisconsin': 'WI', 'Wyoming': 'WY'
+}
+
+// Reverse lookup (abbrev to full name)
+const ABBREV_TO_STATE: Record<string, string> = Object.fromEntries(
+  Object.entries(STATE_ABBREV).map(([k, v]) => [v, k])
+)
+
 const ALL_CATEGORIES = [
   { id: 'state', name: 'State News', icon: '🏛️' },
   { id: 'national', name: 'National News', icon: '🇺🇸' },
@@ -24,8 +43,15 @@ const ALL_CATEGORIES = [
   { id: 'science', name: 'Science & Tech', icon: '🔬' },
 ]
 
+// Cost per briefing (ElevenLabs: ~4000 chars at $0.30/1000 chars)
+const COST_PER_BRIEFING = 1.20
+
 interface Voice { voice_id: string; name: string; labels?: Record<string, string> }
 interface CatSettings { voice_id: string; narrator_name: string; last_generated: string | null; audio_url: string | null; duration: string | null }
+interface ScheduleSettings { 
+  enabled: boolean
+  times: string[]  // ["06:00", "12:00", "18:00"]
+}
 
 export default function AdminNewsPage() {
   const [loading, setLoading] = useState(true)
@@ -35,11 +61,13 @@ export default function AdminNewsPage() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [selectedState, setSelectedState] = useState('South Carolina')
   const [settings, setSettings] = useState<Record<string, CatSettings>>({})
+  const [schedule, setSchedule] = useState<ScheduleSettings>({ enabled: false, times: ['06:00', '12:00', '18:00'] })
+  const [subscriberStates, setSubscriberStates] = useState<string[]>([])
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const saveTimeout = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
-    Promise.all([loadVoices(), loadSettings()]).finally(() => setLoading(false))
+    Promise.all([loadVoices(), loadSettings(), loadSubscriberStates()]).finally(() => setLoading(false))
     return () => { audioRef.current?.pause(); if (saveTimeout.current) clearTimeout(saveTimeout.current) }
   }, [])
 
@@ -57,16 +85,43 @@ export default function AdminNewsPage() {
       if (data?.settings) {
         setSettings(data.settings.categories || {})
         setSelectedState(data.settings.selected_state || 'South Carolina')
+        if (data.settings.schedule) {
+          setSchedule(data.settings.schedule)
+        }
       }
     } catch (e) { console.error(e) }
   }
 
-  function saveToDb(newSettings: Record<string, CatSettings>, state?: string) {
+  async function loadSubscriberStates() {
+    try {
+      const { data } = await supabase.from('users').select('state').not('state', 'is', null)
+      if (data) {
+        // Normalize states (could be "SC" or "South Carolina")
+        const stateSet = new Set<string>()
+        data.forEach(u => {
+          if (u.state) {
+            // If it's an abbreviation, convert to full name
+            const fullName = ABBREV_TO_STATE[u.state.toUpperCase()] || u.state
+            if (US_STATES.includes(fullName)) {
+              stateSet.add(fullName)
+            }
+          }
+        })
+        setSubscriberStates(Array.from(stateSet).sort())
+      }
+    } catch (e) { console.error(e) }
+  }
+
+  function saveToDb(newSettings: Record<string, CatSettings>, state?: string, newSchedule?: ScheduleSettings) {
     if (saveTimeout.current) clearTimeout(saveTimeout.current)
     saveTimeout.current = setTimeout(async () => {
       await supabase.from('news_settings').upsert({
         id: '1',
-        settings: { categories: newSettings, selected_state: state || selectedState },
+        settings: { 
+          categories: newSettings, 
+          selected_state: state || selectedState,
+          schedule: newSchedule || schedule
+        },
         updated_at: new Date().toISOString()
       })
     }, 500)
@@ -83,6 +138,17 @@ export default function AdminNewsPage() {
   function updateState(state: string) {
     setSelectedState(state)
     saveToDb(settings, state)
+  }
+
+  function updateSchedule(newSchedule: ScheduleSettings) {
+    setSchedule(newSchedule)
+    saveToDb(settings, selectedState, newSchedule)
+  }
+
+  function updateScheduleTime(index: number, time: string) {
+    const newTimes = [...schedule.times]
+    newTimes[index] = time
+    updateSchedule({ ...schedule, times: newTimes })
   }
 
   async function previewVoice(voiceId: string) {
@@ -181,6 +247,21 @@ export default function AdminNewsPage() {
       month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true
     })
   }
+
+  function formatTime12(time24: string): string {
+    const [h, m] = time24.split(':').map(Number)
+    const ampm = h >= 12 ? 'PM' : 'AM'
+    const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h
+    return `${h12}:${m.toString().padStart(2, '0')} ${ampm}`
+  }
+
+  // Cost calculations
+  const numStates = Math.max(subscriberStates.length, 1)
+  const numCategories = 5 // national, international, business, sports, science
+  const totalBriefingsPerCycle = numCategories + numStates
+  const costPerCycle = totalBriefingsPerCycle * COST_PER_BRIEFING
+  const costDaily = costPerCycle * 3
+  const costMonthly = costDaily * 30
 
   if (loading) {
     return (
@@ -331,6 +412,104 @@ export default function AdminNewsPage() {
         </div>
 
         <p className="text-gray-500 text-sm text-center mt-8">Settings auto-save when changed</p>
+
+        {/* Auto-Generate Schedule Section */}
+        <div className="mt-10 bg-slate-800 rounded-xl p-6 border border-slate-700">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">⏰</span>
+              <h2 className="text-xl font-bold text-white">Auto-Generate Schedule</h2>
+            </div>
+            <button
+              onClick={() => updateSchedule({ ...schedule, enabled: !schedule.enabled })}
+              className={`relative w-14 h-8 rounded-full transition-colors ${schedule.enabled ? 'bg-green-500' : 'bg-gray-600'}`}
+            >
+              <span 
+                className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-transform ${schedule.enabled ? 'left-7' : 'left-1'}`}
+              />
+            </button>
+          </div>
+
+          {/* Generation Times */}
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-400 mb-3">Generation Times (EST)</label>
+            <div className="flex gap-4 flex-wrap">
+              {schedule.times.map((time, i) => (
+                <div key={i} className="flex flex-col items-center">
+                  <input
+                    type="time"
+                    value={time}
+                    onChange={(e) => updateScheduleTime(i, e.target.value)}
+                    className="bg-slate-700 text-white rounded-lg px-4 py-3 text-center font-mono text-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+                  <span className="text-gray-500 text-sm mt-1">{formatTime12(time)} EST</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Subscriber States */}
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-400 mb-2">Subscriber States</label>
+            <div className="flex flex-wrap gap-2">
+              {subscriberStates.length > 0 ? (
+                subscriberStates.map(s => (
+                  <span key={s} className="bg-slate-700 text-white px-3 py-1 rounded-full text-sm">
+                    {STATE_ABBREV[s] || s}
+                  </span>
+                ))
+              ) : (
+                <span className="text-gray-500 text-sm">No subscribers with state data yet</span>
+              )}
+            </div>
+            <p className="text-gray-500 text-sm mt-2">
+              {subscriberStates.length} state{subscriberStates.length !== 1 ? 's' : ''} with active subscribers
+            </p>
+          </div>
+
+          {/* Cost Estimate */}
+          <div className="bg-slate-900 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-xl">💰</span>
+              <h3 className="text-lg font-semibold text-white">Estimated ElevenLabs Cost</h3>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+              <div className="flex justify-between text-gray-400">
+                <span>5 standard categories × ${COST_PER_BRIEFING.toFixed(2)}</span>
+                <span className="text-white">${(numCategories * COST_PER_BRIEFING).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-gray-400">
+                <span>{numStates} state{numStates !== 1 ? 's' : ''} × ${COST_PER_BRIEFING.toFixed(2)}</span>
+                <span className="text-white">${(numStates * COST_PER_BRIEFING).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-gray-400 border-t border-slate-700 pt-2">
+                <span>Per generation cycle</span>
+                <span className="text-orange-400 font-semibold">${costPerCycle.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-gray-400 border-t border-slate-700 pt-2">
+                <span>Daily (3 cycles)</span>
+                <span className="text-orange-400 font-semibold">${costDaily.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-gray-400 md:col-span-2 border-t border-slate-700 pt-2">
+                <span>Monthly estimate (30 days)</span>
+                <span className="text-orange-400 font-bold text-lg">~${costMonthly.toFixed(0)}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Status */}
+          <div className="mt-4 text-center">
+            {schedule.enabled ? (
+              <p className="text-green-400 font-medium">
+                ✓ Auto-generation is ON — Briefings will generate at {schedule.times.map(t => formatTime12(t)).join(', ')} EST
+              </p>
+            ) : (
+              <p className="text-gray-500">
+                Auto-generation is OFF — Turn on to automatically generate briefings
+              </p>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   )
