@@ -29,20 +29,19 @@ interface PlaylistItem {
   audio_url?: string | null
 }
 
-const VISIBLE_GENRES = [
-  { key: 'mystery', label: 'Myst', emoji: '🔍' },
-  { key: 'romance', label: 'Roma', emoji: '💕' },
-  { key: 'horror', label: 'Horr', emoji: '👻' },
+const ALL_GENRES = [
+  { key: 'mystery', label: 'Mystery', emoji: '🔍' },
+  { key: 'thriller', label: 'Thriller', emoji: '😱' },
+  { key: 'romance', label: 'Romance', emoji: '💕' },
+  { key: 'horror', label: 'Horror', emoji: '👻' },
+  { key: 'comedy', label: 'Comedy', emoji: '😂' },
+  { key: 'truckers', label: 'Truckers', emoji: '🚛' },
+  { key: 'scifi', label: 'Sci-Fi', emoji: '🚀' },
+  { key: 'children', label: 'Children', emoji: '🧒' },
+  { key: 'learn', label: 'Learn', emoji: '🧠' }
 ]
 
-const MORE_GENRES = [
-  { key: 'thriller', label: 'Thriller', emoji: '😱' },
-  { key: 'comedy', label: 'Comedy', emoji: '😂' },
-  { key: 'scifi', label: 'Sci-Fi', emoji: '🚀' },
-  { key: 'children', label: 'Kids', emoji: '🧒' },
-  { key: 'truckers', label: 'Truckers', emoji: '🚛' },
-  { key: 'learn', label: 'Learn', emoji: '🧠' },
-]
+const DEFAULT_VISIBLE = ['mystery', 'romance', 'horror']
 
 function getCredits(duration_mins: number): number {
   return Math.max(1, Math.floor(duration_mins / 15))
@@ -59,19 +58,28 @@ function formatTime(mins: number): string {
 function LibraryPlaylistContent() {
   const router = useRouter()
   const { user } = useAuth()
-  
   const [stories, setStories] = useState<Story[]>([])
   const [loading, setLoading] = useState(true)
+  const [userName, setUserName] = useState('Friend')
   const [userCredits, setUserCredits] = useState(0)
-  const [userName, setUserName] = useState('')
   const [userInitial, setUserInitial] = useState('?')
-  
   const [selectedDuration, setSelectedDuration] = useState('All')
   const [selectedType, setSelectedType] = useState('All')
   const [selectedGenre, setSelectedGenre] = useState('All')
+  const [visibleGenres, setVisibleGenres] = useState<string[]>(DEFAULT_VISIBLE)
   const [showMoreDropdown, setShowMoreDropdown] = useState(false)
-  
   const [playlist, setPlaylist] = useState<PlaylistItem[]>([])
+
+  // Load saved genres from localStorage
+  useEffect(() => {
+    const storedGenres = localStorage.getItem('dtt_recent_genres')
+    if (storedGenres) {
+      try {
+        const parsed = JSON.parse(storedGenres)
+        if (Array.isArray(parsed) && parsed.length >= 3) setVisibleGenres(parsed.slice(0, 3))
+      } catch (e) {}
+    }
+  }, [])
 
   // Load existing playlist from localStorage
   useEffect(() => {
@@ -89,57 +97,50 @@ function LibraryPlaylistContent() {
     localStorage.setItem('dtt_playlist', JSON.stringify(playlist))
   }, [playlist])
 
-  // Fetch user data
+  // Fetch user and stories
   useEffect(() => {
-    async function fetchUser() {
-      if (!user) return
-      try {
-        const { data } = await supabase
+    async function fetchData() {
+      const { data: storiesData } = await supabase
+        .from('stories')
+        .select('id, title, genre, author, duration_mins, cover_url, audio_url, series_name, series_number, series_total')
+        .not('cover_url', 'is', null)
+        .order('published_on', { ascending: false })
+      if (storiesData) setStories(storiesData)
+      
+      if (user?.id) {
+        const { data: userData } = await supabase
           .from('users')
-          .select('first_name, display_name, credits, subscription_type')
+          .select('first_name, display_name, credits')
           .eq('id', user.id)
           .single()
-        if (data) {
-          const name = data.display_name || data.first_name || 'Friend'
+        if (userData) {
+          const name = userData.display_name || userData.first_name || 'Friend'
           setUserName(name)
           setUserInitial(name.charAt(0).toUpperCase())
-          setUserCredits(data.credits || 0)
+          setUserCredits(userData.credits || 0)
         }
-      } catch (err) {
-        console.error('Error fetching user:', err)
-      }
-    }
-    fetchUser()
-  }, [user])
-
-  // Fetch stories
-  useEffect(() => {
-    async function fetchStories() {
-      try {
-        const { data, error } = await supabase
-          .from('stories')
-          .select('id, title, genre, author, duration_mins, cover_url, audio_url, series_name, series_number, series_total')
-          .not('cover_url', 'is', null)
-          .order('published_on', { ascending: false })
-        
-        if (data) {
-          setStories(data.filter(s => s.cover_url && s.cover_url.trim() !== ''))
-        }
-      } catch (err) {
-        console.error('Error:', err)
-      } finally {
         setLoading(false)
       }
     }
-    fetchStories()
-  }, [])
+    fetchData()
+  }, [user])
+
+  const selectGenre = (genreKey: string) => {
+    setSelectedGenre(genreKey)
+    setShowMoreDropdown(false)
+    if (genreKey !== 'All') {
+      const newVisible = [genreKey, ...visibleGenres.filter(g => g !== genreKey)].slice(0, 3)
+      setVisibleGenres(newVisible)
+      localStorage.setItem('dtt_recent_genres', JSON.stringify(newVisible))
+    }
+  }
 
   // Calculate playlist stats
   const playlistMins = playlist.reduce((sum, s) => sum + s.duration_mins, 0)
   const playlistCredits = playlist.reduce((sum, s) => sum + getCredits(s.duration_mins), 0)
   const creditsRemaining = userCredits - playlistCredits
 
-  // Filter stories (but selected always show)
+  // Filter stories (but selected always show at top)
   const filterStory = (story: Story) => {
     if (selectedDuration !== 'All') {
       if (selectedDuration === '15m' && story.duration_mins > 15) return false
@@ -147,34 +148,17 @@ function LibraryPlaylistContent() {
       if (selectedDuration === '1hr' && story.duration_mins <= 30) return false
     }
     if (selectedType === 'Series' && !story.series_name) return false
-    if (selectedGenre !== 'All') {
-      const storyGenre = story.genre?.toLowerCase() || ''
-      if (!storyGenre.includes(selectedGenre.toLowerCase())) return false
-    }
+    if (selectedGenre !== 'All' && !(story.genre?.toLowerCase() || '').includes(selectedGenre.toLowerCase())) return false
     return true
   }
 
   // Sort: Selected stories at top (in playlist order), then filtered unselected
   const sortedStories = [
-    // Selected stories in playlist order - use playlist data if story not found
     ...playlist.map(p => {
       const found = stories.find(s => s.id === p.id)
       if (found) return found
-      // Fallback to playlist data if story not in database
-      return {
-        id: p.id,
-        title: p.title,
-        genre: p.genre,
-        author: p.author,
-        duration_mins: p.duration_mins,
-        cover_url: p.cover_url,
-        audio_url: p.audio_url,
-        series_name: null,
-        series_number: null,
-        series_total: null
-      } as Story
+      return { id: p.id, title: p.title, genre: p.genre, author: p.author, duration_mins: p.duration_mins, cover_url: p.cover_url, audio_url: p.audio_url, series_name: null, series_number: null, series_total: null } as Story
     }),
-    // Unselected stories that match filter
     ...stories.filter(s => !playlist.some(p => p.id === s.id) && filterStory(s))
   ]
 
@@ -224,331 +208,203 @@ function LibraryPlaylistContent() {
     router.push('/library-playlist-player')
   }
 
-  const btnStyle = (active: boolean) => ({
-    padding: '0.4rem 0.6rem',
-    borderRadius: '6px',
-    border: 'none',
-    cursor: 'pointer',
-    fontSize: '13px',
-    fontWeight: 500,
-    backgroundColor: active ? '#f97316' : '#334155',
-    color: 'white',
-    minHeight: '36px',
-  } as React.CSSProperties)
+  // Same button styles as Library page
+  const btnStyle = (active: boolean): React.CSSProperties => ({ backgroundColor: active ? '#f97316' : '#334155', color: 'white', padding: '0.3rem 0', borderRadius: '6px', fontSize: '13px', fontWeight: 500, border: 'none', cursor: 'pointer', flex: 1, textAlign: 'center' })
+  const allBtnStyle = (active: boolean): React.CSSProperties => ({ ...btnStyle(active), flex: 'none', width: '42px' })
+  const getGenreLabel = (key: string) => { const genre = ALL_GENRES.find(g => g.key === key); return genre ? genre.emoji + genre.label.substring(0, 4) : key }
 
-  if (loading) {
-    return (
-      <div style={{ minHeight: '100vh', backgroundColor: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ width: '40px', height: '40px', border: '4px solid #f97316', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-        <style dangerouslySetInnerHTML={{ __html: '@keyframes spin { to { transform: rotate(360deg); } }' }} />
-      </div>
-    )
-  }
+  if (loading) return (
+    <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ width: '40px', height: '40px', border: '4px solid #f97316', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+      <style dangerouslySetInnerHTML={{ __html: '@keyframes spin { to { transform: rotate(360deg); } }' }} />
+    </div>
+  )
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#020617' }}>
-      {/* HEADER: Back | Logo | Avatar */}
-      <div style={{ 
-        position: 'sticky', 
-        top: 0, 
-        zIndex: 50, 
-        backgroundColor: '#020617', 
-        padding: '0.75rem 1rem',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        borderBottom: '1px solid #1e293b'
-      }}>
-        <button 
-          onClick={() => router.push('/library')}
-          style={{ 
-            background: '#1e293b', 
-            border: 'none', 
-            color: 'white', 
-            fontSize: '14px', 
-            cursor: 'pointer',
-            padding: '0.5rem 0.75rem',
-            borderRadius: '8px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.25rem'
-          }}
-        >
-          ← Back
-        </button>
-        
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <span style={{ fontSize: '20px' }}>🚛</span>
-          <span style={{ fontSize: '20px' }}>🚗</span>
-          <span style={{ color: 'white', fontWeight: 'bold', fontSize: '16px' }}>Drive Time </span>
-          <span style={{ color: '#f97316', fontWeight: 'bold', fontSize: '16px' }}>Tales</span>
+    <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', paddingBottom: playlist.length > 0 ? '70px' : '0' }}>
+      {/* STICKY HEADER - Same as Library */}
+      <div style={{ position: 'sticky', top: 0, backgroundColor: '#0f172a', zIndex: 50 }}>
+        {/* Header row */}
+        <div style={{ padding: '0.5rem 0.75rem', display: 'flex', alignItems: 'center', borderBottom: '1px solid #334155' }}>
+          <button onClick={() => router.push('/library')} style={{ backgroundColor: '#334155', color: 'white', padding: '0.35rem 0.6rem', borderRadius: '6px', fontSize: '13px', fontWeight: 500, border: 'none', cursor: 'pointer' }}>← Back</button>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
+            <span style={{ fontSize: '18px' }}>🚗</span>
+            <span style={{ fontSize: '18px' }}>🚙</span>
+            <span style={{ color: 'white', fontSize: '16px', fontWeight: 'bold' }}>Drive Time</span>
+            <span style={{ color: '#f97316', fontSize: '16px', fontWeight: 'bold' }}>Tales</span>
+          </div>
+          <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#f97316', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <span style={{ color: 'white', fontSize: '16px', fontWeight: 'bold' }}>{userInitial}</span>
+          </div>
         </div>
-        
-        <div style={{
-          width: '36px',
-          height: '36px',
-          borderRadius: '50%',
-          backgroundColor: '#f97316',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: 'white',
-          fontWeight: 'bold',
-          fontSize: '16px'
-        }}>
-          {userInitial}
-        </div>
-      </div>
 
-      {/* STICKY FILTERS */}
-      <div style={{ 
-        position: 'sticky', 
-        top: '57px', 
-        zIndex: 40, 
-        backgroundColor: '#020617', 
-        padding: '0.5rem 0.75rem'
-      }}>
-        {/* Row 1: Duration + Type */}
-        <div style={{ display: 'flex', gap: '0.35rem', marginBottom: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          {['All', '15m', '30m', '1hr'].map(d => (
-            <button key={d} onClick={() => setSelectedDuration(d)} style={btnStyle(selectedDuration === d)}>{d}</button>
-          ))}
-          <span style={{ color: '#475569', padding: '0 4px' }}>|</span>
-          {['All', 'Series'].map(t => (
-            <button key={t} onClick={() => setSelectedType(t === 'All' ? 'All' : t)} style={btnStyle(selectedType === t)}>{t}</button>
-          ))}
-        </div>
-        
-        {/* Row 2: Genres + More dropdown */}
-        <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          <button onClick={() => setSelectedGenre('All')} style={btnStyle(selectedGenre === 'All')}>All</button>
-          {VISIBLE_GENRES.map(g => (
-            <button key={g.key} onClick={() => setSelectedGenre(g.key)} style={btnStyle(selectedGenre === g.key)}>
-              {g.emoji}{g.label}
-            </button>
-          ))}
-          <div style={{ position: 'relative' }}>
-            <button onClick={() => setShowMoreDropdown(!showMoreDropdown)} style={btnStyle(false)}>
-              More {showMoreDropdown ? '▲' : '▼'}
-            </button>
-            {showMoreDropdown && (
-              <div style={{ 
-                position: 'absolute', 
-                top: '100%', 
-                right: 0, 
-                marginTop: '0.25rem', 
-                backgroundColor: '#1e293b', 
-                borderRadius: '8px', 
-                padding: '0.5rem', 
-                zIndex: 100,
-                minWidth: '140px',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.5)'
-              }}>
-                {MORE_GENRES.map(g => (
-                  <button
-                    key={g.key}
-                    onClick={() => { setSelectedGenre(g.key); setShowMoreDropdown(false); }}
-                    style={{ 
-                      display: 'block', 
-                      width: '100%', 
-                      textAlign: 'left', 
-                      padding: '0.5rem', 
-                      background: selectedGenre === g.key ? '#f97316' : 'transparent', 
-                      border: 'none', 
-                      color: 'white', 
-                      fontSize: '14px', 
-                      cursor: 'pointer',
-                      borderRadius: '4px'
-                    }}
-                  >
-                    {g.emoji} {g.label}
-                  </button>
-                ))}
+        {/* Filter section - Same as Library */}
+        <div style={{ padding: '0.5rem 0.75rem', backgroundColor: '#1e293b' }}>
+          {/* Row 1: Duration + Type */}
+          <div style={{ display: 'flex', gap: '0.3rem', marginBottom: '0.3rem' }}>
+            <button onClick={() => setSelectedDuration('All')} style={allBtnStyle(selectedDuration === 'All')}>All</button>
+            <button onClick={() => setSelectedDuration('15m')} style={btnStyle(selectedDuration === '15m')}>15m</button>
+            <button onClick={() => setSelectedDuration('30m')} style={btnStyle(selectedDuration === '30m')}>30m</button>
+            <button onClick={() => setSelectedDuration('1hr')} style={btnStyle(selectedDuration === '1hr')}>1hr</button>
+            <span style={{ color: '#475569', display: 'flex', alignItems: 'center', padding: '0 2px' }}>|</span>
+            <button onClick={() => setSelectedType('All')} style={btnStyle(selectedType === 'All')}>All</button>
+            <button onClick={() => setSelectedType('Series')} style={btnStyle(selectedType === 'Series')}>Series</button>
+          </div>
+
+          {/* Row 2: Genres + More dropdown */}
+          <div style={{ display: 'flex', gap: '0.3rem', marginBottom: '0.3rem', position: 'relative' }}>
+            <button onClick={() => selectGenre('All')} style={allBtnStyle(selectedGenre === 'All')}>All</button>
+            {visibleGenres.map(g => (
+              <button key={g} onClick={() => selectGenre(g)} style={btnStyle(selectedGenre === g)}>{getGenreLabel(g)}</button>
+            ))}
+            <div style={{ position: 'relative', flex: 1.5 }}>
+              <button onClick={() => setShowMoreDropdown(!showMoreDropdown)} style={{ ...btnStyle(showMoreDropdown), width: '100%' }}>More ▼</button>
+              {showMoreDropdown && (
+                <div style={{ position: 'absolute', top: '100%', right: 0, backgroundColor: '#1e293b', border: '1px solid #475569', borderRadius: '8px', marginTop: '4px', minWidth: '140px', zIndex: 60, boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}>
+                  {ALL_GENRES.map(g => (
+                    <button key={g.key} onClick={() => selectGenre(g.key)} style={{ display: 'block', width: '100%', padding: '0.5rem 0.75rem', backgroundColor: selectedGenre === g.key ? '#f97316' : 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', fontSize: '13px' }}>
+                      {g.emoji} {g.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Row 3: Playlist stats (replaces Credits + PlaylistButton) */}
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <div style={{ backgroundColor: '#0f172a', padding: '0.25rem 0.6rem', borderRadius: '6px', textAlign: 'center', lineHeight: 1.2 }}>
+              <div style={{ color: 'white', fontSize: '11px', fontWeight: 'normal' }}>Credits</div>
+              <div style={{ color: 'white', fontSize: '14px', fontWeight: 'normal' }}>
+                <span style={{ color: '#f97316' }}>{playlistCredits}</span> of {userCredits}
               </div>
-            )}
-          </div>
-        </div>
-
-        {/* Playlist Stats Bar */}
-        <div style={{ 
-          marginTop: '0.75rem',
-          padding: '0.5rem 0.75rem', 
-          backgroundColor: '#1e293b', 
-          borderRadius: '8px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center'
-        }}>
-          <div style={{ color: 'white', fontSize: '14px' }}>
-            <span style={{ color: '#f97316', fontWeight: 'bold' }}>{playlistCredits}</span>
-            <span> of </span>
-            <span style={{ fontWeight: 'bold' }}>{userCredits}</span>
-            <span> credits</span>
-          </div>
-          <div style={{ color: 'white', fontSize: '14px' }}>
-            <span>Playlist: </span>
-            <span style={{ color: '#22c55e', fontWeight: 'bold' }}>{formatTime(playlistMins)}</span>
-            <span> ({playlist.length} stories)</span>
+            </div>
+            <div style={{ backgroundColor: '#0f172a', padding: '0.25rem 0.6rem', borderRadius: '6px', textAlign: 'center', lineHeight: 1.2, flex: 1 }}>
+              <div style={{ color: 'white', fontSize: '11px', fontWeight: 'normal' }}>Playlist</div>
+              <div style={{ color: '#22c55e', fontSize: '14px', fontWeight: 'normal' }}>
+                {formatTime(playlistMins)} <span style={{ color: 'white' }}>({playlist.length} stories)</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Click-away for dropdown */}
+      {showMoreDropdown && <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 40 }} onClick={() => setShowMoreDropdown(false)} />}
 
       {/* STORY LIST */}
-      <div style={{ padding: '0.75rem', paddingBottom: playlist.length > 0 ? '100px' : '1rem' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          {sortedStories.map(story => {
-            const isSelected = playlist.some(p => p.id === story.id)
-            const playlistIndex = playlist.findIndex(p => p.id === story.id)
-            const cost = getCredits(story.duration_mins)
-            const canAfford = cost <= creditsRemaining
-            
-            return (
-              <div 
-                key={story.id}
-                onClick={() => !isSelected && toggleStory(story)}
-                style={{ 
-                  backgroundColor: isSelected ? '#1e3a2f' : '#1e293b',
-                  border: isSelected ? '2px solid #22c55e' : '2px solid transparent',
-                  borderRadius: '12px',
-                  padding: '0.5rem',
-                  cursor: isSelected ? 'default' : 'pointer',
-                  opacity: !canAfford && !isSelected ? 0.5 : 1,
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  {/* Order number for selected */}
-                  {isSelected && (
-                    <div style={{ 
-                      backgroundColor: '#f97316', 
-                      color: 'white', 
-                      width: '28px', 
-                      height: '28px', 
-                      borderRadius: '50%', 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      justifyContent: 'center', 
-                      fontSize: '14px', 
-                      fontWeight: 'bold',
-                      flexShrink: 0
-                    }}>
-                      {playlistIndex + 1}
-                    </div>
-                  )}
-                  
-                  {/* Story card */}
-                  <div style={{ flex: 1, pointerEvents: 'none' }}>
-                    <HorizontalStoryCard
-                      id={story.id}
-                      title={story.title}
-                      genre={story.genre}
-                      author={story.author || 'Drive Time Tales'}
-                      duration_mins={story.duration_mins}
-                      cover_url={story.cover_url}
-                      series_number={story.series_number}
-                      series_total={story.series_total}
-                    />
+      <div style={{ padding: '0.5rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        {sortedStories.map(story => {
+          const isSelected = playlist.some(p => p.id === story.id)
+          const playlistIndex = playlist.findIndex(p => p.id === story.id)
+          const cost = getCredits(story.duration_mins)
+          const canAfford = cost <= creditsRemaining
+
+          return (
+            <div
+              key={story.id}
+              onClick={() => !isSelected && toggleStory(story)}
+              style={{
+                backgroundColor: isSelected ? '#1e3a2f' : '#1e293b',
+                border: isSelected ? '2px solid #22c55e' : '2px solid transparent',
+                borderRadius: '12px',
+                padding: '0.5rem',
+                cursor: isSelected ? 'default' : 'pointer',
+                opacity: !canAfford && !isSelected ? 0.5 : 1,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                {/* Order number for selected */}
+                {isSelected && (
+                  <div style={{
+                    backgroundColor: '#f97316',
+                    color: 'white',
+                    width: '28px',
+                    height: '28px',
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '14px',
+                    fontWeight: 'bold',
+                    flexShrink: 0
+                  }}>
+                    {playlistIndex + 1}
                   </div>
-                  
-                  {/* Arrow button for selected OR checkbox for unselected */}
-                  {isSelected ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                      {/* Up/Down arrow based on position */}
-                      {playlist.length > 1 && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); playlistIndex === 0 ? moveDown(0) : moveUp(playlistIndex); }}
-                          style={{ 
-                            backgroundColor: '#334155', 
-                            color: 'white', 
-                            border: 'none', 
-                            borderRadius: '6px', 
-                            padding: '6px 10px', 
-                            cursor: 'pointer', 
-                            fontSize: '14px', 
-                            fontWeight: 'bold' 
-                          }}
-                        >
-                          {playlistIndex === 0 ? '▼' : '▲'}
-                        </button>
-                      )}
-                      {/* Remove button */}
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setPlaylist(playlist.filter(p => p.id !== story.id)); }}
-                        style={{ 
-                          backgroundColor: '#dc2626', 
-                          color: 'white', 
-                          border: 'none', 
-                          borderRadius: '6px', 
-                          padding: '6px 10px', 
-                          cursor: 'pointer', 
-                          fontSize: '12px'
-                        }}
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ) : (
-                    <div style={{
-                      width: '32px',
-                      height: '32px',
-                      borderRadius: '50%',
-                      border: '2px solid #64748b',
-                      backgroundColor: 'transparent',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flexShrink: 0
-                    }} />
-                  )}
+                )}
+
+                {/* Story card */}
+                <div style={{ flex: 1, pointerEvents: 'none' }}>
+                  <HorizontalStoryCard
+                    id={story.id}
+                    title={story.title}
+                    genre={story.genre}
+                    author={story.author || 'Drive Time Tales'}
+                    duration_mins={story.duration_mins}
+                    credits={getCredits(story.duration_mins)}
+                    cover_url={story.cover_url}
+                    series_number={story.series_number}
+                    series_total={story.series_total}
+                  />
                 </div>
+
+                {/* Arrow/remove buttons for selected OR checkbox for unselected */}
+                {isSelected ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    {playlist.length > 1 && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); playlistIndex === 0 ? moveDown(0) : moveUp(playlistIndex); }}
+                        style={{ backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '6px', padding: '6px 10px', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}
+                      >
+                        {playlistIndex === 0 ? '▼' : '▲'}
+                      </button>
+                    )}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setPlaylist(playlist.filter(p => p.id !== story.id)); }}
+                      style={{ backgroundColor: '#dc2626', color: 'white', border: 'none', borderRadius: '6px', padding: '6px 10px', cursor: 'pointer', fontSize: '12px' }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '50%',
+                    border: '2px solid #64748b',
+                    backgroundColor: 'transparent',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0
+                  }} />
+                )}
               </div>
-            )
-          })}
-          
-          {sortedStories.length === 0 && (
-            <div style={{ textAlign: 'center', padding: '2rem', color: 'white' }}>
-              <p>No stories match your filters</p>
             </div>
-          )}
-        </div>
+          )
+        })}
       </div>
 
       {/* BOTTOM STICKY: Start Drive */}
       {playlist.length > 0 && (
-        <div style={{ 
-          position: 'fixed', 
-          bottom: 0, 
-          left: 0, 
-          right: 0, 
-          backgroundColor: '#0f172a', 
-          padding: '0.75rem 1rem', 
-          borderTop: '1px solid #334155',
-          zIndex: 40
-        }}>
+        <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: '#0f172a', padding: '0.5rem 0.75rem', borderTop: '1px solid #334155', zIndex: 50 }}>
           <button
             onClick={handleStartDrive}
             style={{
               width: '100%',
               backgroundColor: '#22c55e',
               color: 'white',
-              padding: '1rem',
-              borderRadius: '12px',
+              padding: '0.75rem 1rem',
+              borderRadius: '8px',
               border: 'none',
               cursor: 'pointer',
-              fontSize: '18px',
+              fontSize: '16px',
               fontWeight: 'bold'
             }}
           >
             🚗 Start Drive ({playlist.length} stories • {formatTime(playlistMins)})
           </button>
         </div>
-      )}
-
-      {/* Click-away for dropdown */}
-      {showMoreDropdown && (
-        <div 
-          style={{ position: 'fixed', inset: 0, zIndex: 90 }} 
-          onClick={() => setShowMoreDropdown(false)} 
-        />
       )}
 
       <style dangerouslySetInnerHTML={{ __html: '@keyframes spin { to { transform: rotate(360deg); } }' }} />
@@ -559,9 +415,8 @@ function LibraryPlaylistContent() {
 export default function LibraryPlaylistPage() {
   return (
     <Suspense fallback={
-      <div style={{ minHeight: '100vh', backgroundColor: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ width: '40px', height: '40px', border: '4px solid #f97316', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-        <style dangerouslySetInnerHTML={{ __html: '@keyframes spin { to { transform: rotate(360deg); } }' }} />
       </div>
     }>
       <LibraryPlaylistContent />
