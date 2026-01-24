@@ -7,17 +7,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import HorizontalStoryCard from '@/components/HorizontalStoryCard'
 import PlaylistButton from '@/components/PlaylistButton'
 
-interface Story {
-  id: string
-  title: string
-  genre: string
-  author: string
-  duration_mins: number
-  cover_url: string | null
-  series_name?: string | null
-  series_number?: number | null
-  series_total?: number | null
-}
+interface Story { id: string; title: string; genre: string; author: string; duration_mins: number; cover_url: string | null; series_name?: string | null; series_number?: number | null; series_total?: number | null }
 
 const ALL_GENRES = [
   { key: 'mystery', label: 'Mystery', emoji: '🔍' },
@@ -33,9 +23,7 @@ const ALL_GENRES = [
 
 const DEFAULT_VISIBLE = ['mystery', 'romance', 'horror']
 
-function getCredits(duration_mins: number): number {
-  return Math.max(1, Math.floor(duration_mins / 15))
-}
+function getCredits(duration_mins: number): number { return Math.max(1, Math.floor(duration_mins / 15)) }
 
 function LibraryContent() {
   const router = useRouter()
@@ -56,25 +44,16 @@ function LibraryContent() {
 
   useEffect(() => {
     const storedGenres = localStorage.getItem('dtt_recent_genres')
-    if (storedGenres) {
-      try {
-        const parsed = JSON.parse(storedGenres)
-        if (Array.isArray(parsed) && parsed.length >= 3) setVisibleGenres(parsed.slice(0, 3))
-      } catch (e) {}
-    }
+    if (storedGenres) { try { const parsed = JSON.parse(storedGenres); if (Array.isArray(parsed) && parsed.length >= 3) setVisibleGenres(parsed.slice(0, 3)) } catch (e) {} }
   }, [])
 
   useEffect(() => {
-    async function fetchData() { console.log("Library: fetchData called, user=", user);
+    async function fetchData() {
       const { data: storiesData } = await supabase.from('stories').select('id, title, genre, author, duration_mins, cover_url, series_name, series_number, series_total').not('cover_url', 'is', null).order('published_on', { ascending: false })
       if (storiesData) setStories(storiesData)
-      if (user?.id) { console.log("Library: fetching user", user.id);
-        const { data: userData, error: userError } = await supabase.from('users').select('first_name, display_name, credits').eq('id', user.id).single()
-        console.log("Library: userData=", userData, "error=", userError); if (userData) { console.log("Library: got userData", userData);
-          setUserName(userData.first_name || userData.display_name || userData.display_name || 'Friend')
-          setIsUnlimited(userData.credits >= 9999)
-          setUserCredits(userData.credits || 0)
-        }
+      if (user?.id) {
+        const { data: userData } = await supabase.from('users').select('first_name, display_name, credits').eq('id', user.id).single()
+        if (userData) { setUserName(userData.first_name || userData.display_name || 'Friend'); setIsUnlimited(userData.credits >= 9999); setUserCredits(userData.credits || 0) }
       }
       if (user?.id) setLoading(false)
     }
@@ -82,21 +61,12 @@ function LibraryContent() {
   }, [user])
 
   const selectGenre = (genreKey: string) => {
-    setSelectedGenre(genreKey)
-    setShowMoreDropdown(false)
-    if (genreKey !== 'All') {
-      const newVisible = [genreKey, ...visibleGenres.filter(g => g !== genreKey)].slice(0, 3)
-      setVisibleGenres(newVisible)
-      localStorage.setItem('dtt_recent_genres', JSON.stringify(newVisible))
-    }
+    setSelectedGenre(genreKey); setShowMoreDropdown(false)
+    if (genreKey !== 'All') { const newVisible = [genreKey, ...visibleGenres.filter(g => g !== genreKey)].slice(0, 3); setVisibleGenres(newVisible); localStorage.setItem('dtt_recent_genres', JSON.stringify(newVisible)) }
   }
 
   const filteredStories = stories.filter(story => {
-    if (selectedDuration !== 'All') {
-      if (selectedDuration === '15m' && story.duration_mins > 15) return false
-      if (selectedDuration === '30m' && (story.duration_mins <= 15 || story.duration_mins > 30)) return false
-      if (selectedDuration === '1hr' && story.duration_mins <= 30) return false
-    }
+    if (selectedDuration !== 'All') { if (selectedDuration === '15m' && story.duration_mins > 15) return false; if (selectedDuration === '30m' && (story.duration_mins <= 15 || story.duration_mins > 30)) return false; if (selectedDuration === '1hr' && story.duration_mins <= 30) return false }
     if (selectedType === 'Series' && !story.series_name) return false
     if (selectedGenre !== 'All' && !(story.genre?.toLowerCase() || '').includes(selectedGenre.toLowerCase())) return false
     return true
@@ -114,7 +84,7 @@ function LibraryContent() {
         <div style={{ padding: '0.5rem 0.75rem', display: 'flex', alignItems: 'center', borderBottom: '1px solid #334155' }}>
           <button onClick={() => router.push('/home')} style={{ backgroundColor: '#334155', color: 'white', padding: '0.35rem 0.6rem', borderRadius: '6px', fontSize: '13px', fontWeight: 500, border: 'none', cursor: 'pointer' }}>← Back</button>
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}><span style={{ fontSize: '18px' }}>🚗</span><span style={{ fontSize: '18px' }}>🚙</span><span style={{ color: 'white', fontSize: '16px', fontWeight: 'bold' }}>Drive Time</span><span style={{ color: '#f97316', fontSize: '16px', fontWeight: 'bold' }}>Tales</span></div>
-          <div onClick={() => router.push('/profile')} style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#f97316', overflow: 'hidden', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{avatarUrl ? <img src={avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ color: 'white', fontSize: '16px', fontWeight: 'bold' }}>{loading ? "..." : userName.charAt(0).toUpperCase()}</span>}</div>
+          <div onClick={() => router.push('/profile')} style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#f97316', overflow: 'hidden', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{avatarUrl ? <img src={avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ color: 'white', fontSize: '16px', fontWeight: 'bold' }}>{userName.charAt(0).toUpperCase()}</span>}</div>
         </div>
         <div style={{ padding: '0.5rem 0.75rem', backgroundColor: '#1e293b' }}>
           <div style={{ display: 'flex', gap: '0.3rem', marginBottom: '0.3rem' }}>
@@ -134,12 +104,13 @@ function LibraryContent() {
               {showMoreDropdown && <div style={{ position: 'absolute', top: '100%', right: 0, backgroundColor: '#1e293b', border: '1px solid #475569', borderRadius: '8px', marginTop: '4px', minWidth: '140px', zIndex: 60, boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}>{ALL_GENRES.map(g => <button key={g.key} onClick={() => selectGenre(g.key)} style={{ display: 'block', width: '100%', padding: '0.5rem 0.75rem', backgroundColor: selectedGenre === g.key ? '#f97316' : 'transparent', color: 'white', border: 'none', textAlign: 'left', cursor: 'pointer', fontSize: '13px' }}>{g.emoji} {g.label}</button>)}</div>}
             </div>
           </div>
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <div style={{ backgroundColor: '#0f172a', padding: '0.25rem 0.6rem', borderRadius: '6px', textAlign: 'center', lineHeight: 1.2 }}>
-              <div style={{ color: 'white', fontSize: '11px', fontWeight: 'normal' }}>You have</div>
-              <div style={{ color: 'white', fontSize: '14px', fontWeight: 'normal' }}>{isUnlimited ? '∞ Unlimited' : `${userCredits} Credits`}</div>
+          <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+            <div style={{ backgroundColor: '#0f172a', padding: '0.25rem 0.5rem', borderRadius: '6px', textAlign: 'center', lineHeight: 1.2 }}>
+              <div style={{ color: 'white', fontSize: '10px', fontWeight: 'normal' }}>Credits</div>
+              <div style={{ color: 'white', fontSize: '13px', fontWeight: 'normal' }}>{isUnlimited ? '∞' : userCredits}</div>
             </div>
-            <PlaylistButton />
+            <div style={{ flex: 1 }}><PlaylistButton /></div>
+            <button onClick={() => router.push('/library-search')} style={{ backgroundColor: '#334155', color: 'white', padding: '0.4rem 0.75rem', borderRadius: '6px', fontSize: '13px', fontWeight: 500, border: 'none', cursor: 'pointer' }}>Search</button>
           </div>
         </div>
       </div>
