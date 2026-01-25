@@ -32,6 +32,7 @@ interface Story {
   pct_skipped: number
   free_start_date?: string | null
   free_end_date?: string | null
+  description?: string
 }
 
 interface EditForm {
