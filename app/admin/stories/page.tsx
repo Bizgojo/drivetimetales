@@ -30,7 +30,8 @@ interface Story {
   total_plays: number
   pct_finished: number
   pct_skipped: number
-  description?: string
+  free_start_date?: string | null
+  free_end_date?: string | null
 }
 
 interface EditForm {
@@ -43,6 +44,17 @@ interface EditForm {
   series_number: number | null
   series_total: number | null
   cover_url: string
+  flag: string | null
+  free_start_date: string
+  free_end_date: string
+}
+
+interface FlagStat {
+  flag: string
+  story_count: number
+  total_downloads: number
+  avg_downloads_per_story: number
+  avg_completion_rate: number
 }
 
 const FLAG_OPTIONS = [
@@ -81,9 +93,11 @@ export default function AdminStoriesPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [flagDropdown, setFlagDropdown] = useState<string | null>(null)
   const [showComparisonGrid, setShowComparisonGrid] = useState(false)
+  const [showFlagAnalytics, setShowFlagAnalytics] = useState(false)
   const [editingStory, setEditingStory] = useState<Story | null>(null)
   const [editForm, setEditForm] = useState<EditForm | null>(null)
   const [saving, setSaving] = useState(false)
+  const [flagStats, setFlagStats] = useState<FlagStat[]>([])
 
   const bg = '#FAF9F6'
   const cardBg = '#FFFFFF'
@@ -91,21 +105,29 @@ export default function AdminStoriesPage() {
   const textSecondary = '#4a4a4a'
   const border = '#e0e0e0'
 
-  useEffect(() => { fetchStories() }, [])
+  useEffect(() => { fetchStories(); fetchFlagStats() }, [])
 
   async function fetchStories() {
     setLoading(true)
     const { data, error } = await supabase.from('story_analytics').select('*')
-    if (data) setStories(data)
+    if (data) {
+      // Also fetch free dates from stories table
+      const { data: storyDates } = await supabase.from('stories').select('id, free_start_date, free_end_date')
+      const datesMap = new Map(storyDates?.map(s => [s.id, { free_start_date: s.free_start_date, free_end_date: s.free_end_date }]) || [])
+      setStories(data.map(s => ({ ...s, ...datesMap.get(s.id) })))
+    }
     if (error) console.error('Error fetching stories:', error)
     setLoading(false)
   }
 
-  // Get unique genres and series
+  async function fetchFlagStats() {
+    const { data } = await supabase.from('flag_analytics').select('*')
+    if (data) setFlagStats(data)
+  }
+
   const genres = useMemo(() => ['All', ...Array.from(new Set(stories.map(s => s.genre).filter(Boolean))).sort()], [stories])
   const seriesList = useMemo(() => ['All', ...Array.from(new Set(stories.map(s => s.series_name).filter(Boolean))).sort()], [stories])
 
-  // Filter stories
   const filteredStories = useMemo(() => {
     return stories.filter(s => {
       const matchesSearch = search === '' || 
@@ -135,7 +157,6 @@ export default function AdminStoriesPage() {
     })
   }, [stories, search, filterTab, genreFilter, seriesFilter, durationFilter, sortBy, sortDir])
 
-  // Stats based on filtered stories
   const stats = useMemo(() => ({
     totalStories: filteredStories.length,
     totalDownloads: filteredStories.reduce((sum, s) => sum + (s.downloads_total || 0), 0),
@@ -143,7 +164,6 @@ export default function AdminStoriesPage() {
     withFlags: filteredStories.filter(s => s.flag).length
   }), [filteredStories])
 
-  // Comparison grid data
   const comparisonData = useMemo(() => {
     const genreStats: Record<string, { downloads: number, completion: number, count: number }> = {}
     const durationStats: Record<string, { downloads: number, completion: number, count: number }> = {}
@@ -169,7 +189,6 @@ export default function AdminStoriesPage() {
   }, [stories])
 
   async function openEditModal(story: Story) {
-    // Fetch full story data including description
     const { data } = await supabase.from('stories').select('*').eq('id', story.id).single()
     if (data) {
       setEditingStory({ ...story, description: data.description })
@@ -182,7 +201,10 @@ export default function AdminStoriesPage() {
         series_name: data.series_name || '',
         series_number: data.series_number,
         series_total: data.series_total,
-        cover_url: data.cover_url || ''
+        cover_url: data.cover_url || '',
+        flag: data.flag || null,
+        free_start_date: data.free_start_date || '',
+        free_end_date: data.free_end_date || ''
       })
     }
   }
@@ -200,13 +222,18 @@ export default function AdminStoriesPage() {
       series_name: editForm.series_name || null,
       series_number: editForm.series_number,
       series_total: editForm.series_total,
-      cover_url: editForm.cover_url || null
+      cover_url: editForm.cover_url || null,
+      flag: editForm.flag,
+      is_free: editForm.flag === 'free',
+      free_start_date: editForm.flag === 'free' && editForm.free_start_date ? editForm.free_start_date : null,
+      free_end_date: editForm.flag === 'free' && editForm.free_end_date ? editForm.free_end_date : null
     }).eq('id', editingStory.id)
     
     if (!error) {
       setEditingStory(null)
       setEditForm(null)
       fetchStories()
+      fetchFlagStats()
     } else {
       alert('Error saving: ' + error.message)
     }
@@ -217,6 +244,7 @@ export default function AdminStoriesPage() {
     await supabase.from('stories').update({ flag, is_free: flag === 'free' }).eq('id', storyId)
     setFlagDropdown(null)
     fetchStories()
+    fetchFlagStats()
   }
 
   async function deleteStory(storyId: string) {
@@ -243,6 +271,10 @@ export default function AdminStoriesPage() {
     if (!dateStr) return '-'
     return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })
   }
+
+  // Get baseline (unflagged) stats for comparison
+  const baselineStats = flagStats.find(f => f.flag === 'none')
+  const baselineAvgDownloads = baselineStats?.avg_downloads_per_story || 0
 
   if (loading) return (<div style={{ minHeight: '100vh', backgroundColor: bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ width: '40px', height: '40px', border: '4px solid #f97316', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} /><style dangerouslySetInnerHTML={{ __html: '@keyframes spin { to { transform: rotate(360deg); } }' }} /></div>)
 
@@ -298,8 +330,36 @@ export default function AdminStoriesPage() {
               {/* Credits (calculated) */}
               <div style={{ backgroundColor: '#f5f5f5', borderRadius: '6px', padding: '0.75rem', display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: textSecondary, fontSize: '13px' }}>Credits (auto-calculated)</span>
-                <span style={{ color: '#f97316', fontWeight: 'bold', fontSize: '14px' }}>{Math.max(1, Math.floor(editForm.duration_mins / 15))}</span>
+                <span style={{ color: editForm.flag === 'free' ? '#22c55e' : '#f97316', fontWeight: 'bold', fontSize: '14px' }}>
+                  {editForm.flag === 'free' ? '0 (FREE)' : Math.max(1, Math.floor(editForm.duration_mins / 15))}
+                </span>
               </div>
+              
+              {/* Flag Selection */}
+              <div>
+                <label style={{ display: 'block', color: textSecondary, fontSize: '12px', marginBottom: '4px' }}>Promotional Flag</label>
+                <select value={editForm.flag || ''} onChange={e => setEditForm({ ...editForm, flag: e.target.value || null })} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: `1px solid ${border}`, backgroundColor: 'white', color: textPrimary, fontSize: '14px' }}>
+                  {FLAG_OPTIONS.map(f => <option key={f.value || 'none'} value={f.value || ''}>{f.label}</option>)}
+                </select>
+              </div>
+              
+              {/* Free Today Date Range */}
+              {editForm.flag === 'free' && (
+                <div style={{ backgroundColor: '#dcfce7', borderRadius: '8px', padding: '1rem', border: '1px solid #22c55e' }}>
+                  <div style={{ color: '#166534', fontSize: '13px', fontWeight: 600, marginBottom: '0.75rem' }}>🎁 Free Today Settings</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                    <div>
+                      <label style={{ display: 'block', color: '#166534', fontSize: '11px', marginBottom: '4px' }}>Start Date</label>
+                      <input type="date" value={editForm.free_start_date} onChange={e => setEditForm({ ...editForm, free_start_date: e.target.value })} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid #22c55e', backgroundColor: 'white', color: textPrimary, fontSize: '13px' }} />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', color: '#166534', fontSize: '11px', marginBottom: '4px' }}>End Date</label>
+                      <input type="date" value={editForm.free_end_date} onChange={e => setEditForm({ ...editForm, free_end_date: e.target.value })} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid #22c55e', backgroundColor: 'white', color: textPrimary, fontSize: '13px' }} />
+                    </div>
+                  </div>
+                  <div style={{ color: '#166534', fontSize: '11px', marginTop: '0.5rem' }}>Story will cost 0 credits during these dates.</div>
+                </div>
+              )}
               
               {/* Series */}
               <div>
@@ -343,10 +403,69 @@ export default function AdminStoriesPage() {
           <h1 style={{ color: textPrimary, fontSize: '24px', fontWeight: 'bold' }}>Stories Management</h1>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button onClick={() => setShowFlagAnalytics(!showFlagAnalytics)} style={{ backgroundColor: showFlagAnalytics ? '#a855f7' : '#e5e5e5', color: showFlagAnalytics ? 'white' : textPrimary, padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 500 }}>🏷️ Flag Analytics</button>
           <button onClick={() => setShowComparisonGrid(!showComparisonGrid)} style={{ backgroundColor: showComparisonGrid ? '#3b82f6' : '#e5e5e5', color: showComparisonGrid ? 'white' : textPrimary, padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 500 }}>📊 Compare</button>
           <button onClick={() => router.push('/admin/stories/new')} style={{ backgroundColor: '#f97316', color: 'white', padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 600 }}>+ Add Story</button>
         </div>
       </div>
+
+      {/* Flag Analytics Panel */}
+      {showFlagAnalytics && (
+        <div style={{ backgroundColor: cardBg, borderRadius: '12px', padding: '1rem', marginBottom: '1rem', border: `1px solid ${border}` }}>
+          <h3 style={{ color: textPrimary, fontSize: '16px', fontWeight: 'bold', marginBottom: '1rem' }}>🏷️ Flag Performance Analysis</h3>
+          <p style={{ color: textSecondary, fontSize: '12px', marginBottom: '1rem' }}>Compare how different flags impact downloads and completion rates vs unflagged stories.</p>
+          
+          <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom: `2px solid ${border}` }}>
+                <th style={{ textAlign: 'left', padding: '0.6rem', color: textSecondary }}>Flag</th>
+                <th style={{ textAlign: 'center', padding: '0.6rem', color: textSecondary }}>Stories</th>
+                <th style={{ textAlign: 'center', padding: '0.6rem', color: textSecondary }}>Total Downloads</th>
+                <th style={{ textAlign: 'center', padding: '0.6rem', color: textSecondary }}>Avg Downloads/Story</th>
+                <th style={{ textAlign: 'center', padding: '0.6rem', color: textSecondary }}>vs Baseline</th>
+                <th style={{ textAlign: 'center', padding: '0.6rem', color: textSecondary }}>Avg Completion</th>
+              </tr>
+            </thead>
+            <tbody>
+              {flagStats.map(stat => {
+                const flagOption = FLAG_OPTIONS.find(f => f.value === stat.flag || (f.value === null && stat.flag === 'none'))
+                const vsBaseline = baselineAvgDownloads > 0 ? ((stat.avg_downloads_per_story - baselineAvgDownloads) / baselineAvgDownloads * 100) : 0
+                const isBaseline = stat.flag === 'none'
+                
+                return (
+                  <tr key={stat.flag} style={{ borderBottom: `1px solid ${border}`, backgroundColor: isBaseline ? '#f5f5f5' : 'transparent' }}>
+                    <td style={{ padding: '0.6rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '50%', backgroundColor: flagOption?.color || '#6b7280' }}></span>
+                        <span style={{ color: textPrimary, fontWeight: isBaseline ? 600 : 400 }}>{flagOption?.label || stat.flag}{isBaseline ? ' (Baseline)' : ''}</span>
+                      </div>
+                    </td>
+                    <td style={{ padding: '0.6rem', textAlign: 'center', color: textPrimary }}>{stat.story_count}</td>
+                    <td style={{ padding: '0.6rem', textAlign: 'center', color: '#2563eb', fontWeight: 600 }}>{stat.total_downloads}</td>
+                    <td style={{ padding: '0.6rem', textAlign: 'center', color: textPrimary }}>{Number(stat.avg_downloads_per_story).toFixed(1)}</td>
+                    <td style={{ padding: '0.6rem', textAlign: 'center' }}>
+                      {isBaseline ? (
+                        <span style={{ color: textSecondary }}>—</span>
+                      ) : (
+                        <span style={{ color: vsBaseline > 0 ? '#16a34a' : vsBaseline < 0 ? '#dc2626' : textSecondary, fontWeight: 600 }}>
+                          {vsBaseline > 0 ? '+' : ''}{vsBaseline.toFixed(0)}%
+                        </span>
+                      )}
+                    </td>
+                    <td style={{ padding: '0.6rem', textAlign: 'center', color: Number(stat.avg_completion_rate) > 50 ? '#16a34a' : textPrimary }}>{Number(stat.avg_completion_rate).toFixed(0)}%</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+          
+          {flagStats.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '2rem', color: textSecondary }}>
+              No flag data yet. Add flags to stories to see analytics.
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Comparison Grid */}
       {showComparisonGrid && (
