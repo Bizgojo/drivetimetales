@@ -15,6 +15,7 @@ interface Story {
   series_name?: string | null
   series_number?: number | null
   series_total?: number | null
+  flag?: string | null
 }
 
 const ALL_GENRES = [
@@ -74,7 +75,7 @@ function WelcomeLibraryContent() {
     async function fetchData() {
       const { data: storiesData, error } = await supabase
         .from('stories')
-        .select('id, title, genre, author, duration_mins, cover_url, series_name, series_number, series_total')
+        .select('id, title, genre, author, duration_mins, cover_url, series_name, series_number, series_total, flag')
         .not('cover_url', 'is', null)
         .order('published_on', { ascending: false })
       if (error) console.error('Stories query error:', error)
@@ -232,7 +233,7 @@ function WelcomeLibraryContent() {
                   cover_url={story.cover_url} 
                   series_number={story.series_number} 
                   series_total={story.series_total}
-                  flag={canAfford ? 'free' : null}
+                  flag={story.flag}
                 />
               </div>
             )
