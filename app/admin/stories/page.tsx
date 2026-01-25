@@ -1,414 +1,284 @@
-'use client';
+'use client'
 
-import React, { useEffect, useState } from 'react';
-import Link from 'next/link';
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { supabase } from '@/lib/supabase'
 
 interface Story {
-  id: string;
-  title: string;
-  author: string;
-  genre: string;
-  description?: string;
-  duration_mins: number;
-  credits: number;
-  play_count: number;
-  is_new: boolean;
-  is_featured: boolean;
-  is_free?: boolean;
-  audio_url?: string;
-  cover_url?: string;
-  created_at: string;
+  id: string
+  title: string
+  author: string
+  genre: string
+  duration_mins: number
+  cover_url: string | null
+  series_name: string | null
+  series_number: number | null
+  series_total: number | null
+  flag: string | null
+  is_free: boolean
+  rating: number
+  review_count: number
+  credits: number
+  downloads_day: number
+  downloads_week: number
+  downloads_month: number
+  downloads_ytd: number
+  downloads_total: number
+  started_count: number
+  finished_count: number
+  skipped_count: number
+  total_plays: number
+  pct_started: number
+  pct_finished: number
+  pct_skipped: number
 }
 
-export default function StoriesPage() {
-  const [stories, setStories] = useState<Story[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [genreFilter, setGenreFilter] = useState('all');
-  const [selectedStory, setSelectedStory] = useState<Story | null>(null);
-  const [deleting, setDeleting] = useState(false);
+const FLAG_OPTIONS = [
+  { value: null, label: 'No Flag', color: '#6b7280' },
+  { value: 'free', label: 'Free Today', color: '#22c55e' },
+  { value: 'editors-pick', label: "Editor's Pick", color: '#a855f7' },
+  { value: 'readers-choice', label: "Reader's Choice", color: '#3b82f6' },
+  { value: 'trending', label: 'Trending', color: '#ec4899' },
+  { value: 'new', label: 'New', color: '#f97316' },
+  { value: 'staff-favorite', label: 'Staff Favorite', color: '#eab308' },
+]
 
-  const genres = ['all', 'Mystery', 'Drama', 'Sci-Fi', 'Horror', 'Comedy', 'Romance', 'Trucker Stories', 'Thriller'];
+const GENRES = ['All', 'Mystery', 'Drama', 'Sci-Fi', 'Horror', 'Thriller', 'Non-Fiction', 'Children', 'Comedy', 'Romance', 'Trucker Stories']
 
-  useEffect(() => {
-    fetchStories();
-  }, []);
+export default function AdminStoriesPage() {
+  const router = useRouter()
+  const [stories, setStories] = useState<Story[]>([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [genreFilter, setGenreFilter] = useState('All')
+  const [sortBy, setSortBy] = useState<'title' | 'genre' | 'duration_mins' | 'series_name' | 'downloads_total' | 'pct_finished' | 'rating'>('title')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+  const [flagDropdown, setFlagDropdown] = useState<string | null>(null)
+
+  const bg = '#FAF9F6'
+  const cardBg = '#FFFFFF'
+  const textPrimary = '#1a1a1a'
+  const textSecondary = '#4a4a4a'
+  const border = '#e0e0e0'
+
+  useEffect(() => { fetchStories() }, [])
 
   async function fetchStories() {
-    try {
-      const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-      if (!url || !key) {
-        setLoading(false);
-        return;
-      }
-
-      const response = await fetch(
-        `${url}/rest/v1/stories?select=*&order=created_at.desc`,
-        {
-          headers: {
-            'apikey': key,
-            'Authorization': `Bearer ${key}`,
-          },
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        setStories(data || []);
-      }
-    } catch (error) {
-      console.error('Error fetching stories:', error);
-    } finally {
-      setLoading(false);
-    }
+    setLoading(true)
+    const { data, error } = await supabase.from('story_analytics').select('*')
+    if (data) setStories(data)
+    if (error) console.error('Error fetching stories:', error)
+    setLoading(false)
   }
 
-  async function toggleFeatured(story: Story) {
-    try {
-      const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-      if (!url || !key) return;
-
-      const response = await fetch(
-        `${url}/rest/v1/stories?id=eq.${story.id}`,
-        {
-          method: 'PATCH',
-          headers: {
-            'apikey': key,
-            'Authorization': `Bearer ${key}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ is_featured: !story.is_featured }),
-        }
-      );
-
-      if (response.ok) {
-        setStories(stories.map(s => 
-          s.id === story.id ? { ...s, is_featured: !s.is_featured } : s
-        ));
-      }
-    } catch (error) {
-      console.error('Error updating story:', error);
-    }
+  async function updateFlag(storyId: string, flag: string | null) {
+    await supabase.from('stories').update({ flag, is_free: flag === 'free' }).eq('id', storyId)
+    setFlagDropdown(null)
+    fetchStories()
   }
 
   async function deleteStory(storyId: string) {
-    if (!confirm('Are you sure you want to delete this story? This cannot be undone.')) {
-      return;
-    }
+    await supabase.from('stories').delete().eq('id', storyId)
+    setDeleteConfirm(null)
+    fetchStories()
+  }
 
-    setDeleting(true);
-    try {
-      const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-      if (!url || !key) return;
-
-      const response = await fetch(
-        `${url}/rest/v1/stories?id=eq.${storyId}`,
-        {
-          method: 'DELETE',
-          headers: {
-            'apikey': key,
-            'Authorization': `Bearer ${key}`,
-          },
-        }
-      );
-
-      if (response.ok) {
-        setStories(stories.filter(s => s.id !== storyId));
-        setSelectedStory(null);
-        alert('Story deleted successfully');
-      } else {
-        alert('Failed to delete story');
-      }
-    } catch (error) {
-      console.error('Error deleting story:', error);
-      alert('Error deleting story');
-    } finally {
-      setDeleting(false);
+  function handleSort(column: typeof sortBy) {
+    if (sortBy === column) {
+      setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortBy(column)
+      setSortDir('asc')
     }
   }
 
-  const filteredStories = stories.filter(story => {
-    const matchesSearch = 
-      story.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      story.author.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesGenre = genreFilter === 'all' || story.genre === genreFilter;
+  const filteredStories = stories
+    .filter(s => {
+      const matchesSearch = search === '' || 
+        s.title.toLowerCase().includes(search.toLowerCase()) ||
+        s.author.toLowerCase().includes(search.toLowerCase())
+      const matchesGenre = genreFilter === 'All' || s.genre === genreFilter
+      return matchesSearch && matchesGenre
+    })
+    .sort((a, b) => {
+      let aVal = a[sortBy]
+      let bVal = b[sortBy]
+      if (aVal === null) aVal = ''
+      if (bVal === null) bVal = ''
+      if (typeof aVal === 'string') aVal = aVal.toLowerCase()
+      if (typeof bVal === 'string') bVal = bVal.toLowerCase()
+      if (sortDir === 'asc') return aVal > bVal ? 1 : -1
+      return aVal < bVal ? 1 : -1
+    })
 
-    return matchesSearch && matchesGenre;
-  });
+  const totalStories = stories.length
+  const totalDownloads = stories.reduce((sum, s) => sum + (s.downloads_total || 0), 0)
+  const avgCompletion = stories.length > 0 ? Math.round(stories.reduce((sum, s) => sum + (s.pct_finished || 0), 0) / stories.length) : 0
 
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  };
-
-  if (loading) {
-    return (
-      <div className="p-8 flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="inline-block w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mb-4" />
-          <p className="text-gray-400">Loading stories...</p>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return (<div style={{ minHeight: '100vh', backgroundColor: bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ width: '40px', height: '40px', border: '4px solid #f97316', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} /><style dangerouslySetInnerHTML={{ __html: '@keyframes spin { to { transform: rotate(360deg); } }' }} /></div>)
 
   return (
-    <div className="p-8">
+    <div style={{ minHeight: '100vh', backgroundColor: bg, padding: '1rem' }}>
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-white mb-2">📚 Stories</h1>
-          <p className="text-gray-400">Manage your audio drama library</p>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <button onClick={() => router.push('/admin')} style={{ backgroundColor: '#e5e5e5', color: textPrimary, padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 500 }}>← Back</button>
+          <h1 style={{ color: textPrimary, fontSize: '24px', fontWeight: 'bold' }}>Stories Management</h1>
         </div>
-        <Link
-          href="/admin/stories/new"
-          className="px-4 py-2 bg-orange-500 hover:bg-orange-400 text-black font-bold rounded-xl transition-colors flex items-center gap-2"
-        >
-          <span>➕</span> Add Story
-        </Link>
+        <button onClick={() => router.push('/admin/stories/new')} style={{ backgroundColor: '#f97316', color: 'white', padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 600 }}>+ Add Story</button>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-          <span className="text-gray-400 text-sm">Total Stories</span>
-          <p className="text-2xl font-bold text-white">{stories.length}</p>
+      {/* Summary Stats */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
+        <div style={{ backgroundColor: cardBg, borderRadius: '8px', padding: '1rem', border: `1px solid ${border}`, textAlign: 'center' }}>
+          <div style={{ color: textSecondary, fontSize: '12px' }}>Total Stories</div>
+          <div style={{ color: textPrimary, fontSize: '28px', fontWeight: 'bold' }}>{totalStories}</div>
         </div>
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-          <span className="text-gray-400 text-sm">Featured</span>
-          <p className="text-2xl font-bold text-orange-400">
-            {stories.filter(s => s.is_featured).length}
-          </p>
+        <div style={{ backgroundColor: cardBg, borderRadius: '8px', padding: '1rem', border: `1px solid ${border}`, textAlign: 'center' }}>
+          <div style={{ color: textSecondary, fontSize: '12px' }}>Total Downloads</div>
+          <div style={{ color: '#2563eb', fontSize: '28px', fontWeight: 'bold' }}>{totalDownloads}</div>
         </div>
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-          <span className="text-gray-400 text-sm">Total Plays</span>
-          <p className="text-2xl font-bold text-white">
-            {stories.reduce((sum, s) => sum + (s.play_count || 0), 0).toLocaleString()}
-          </p>
+        <div style={{ backgroundColor: cardBg, borderRadius: '8px', padding: '1rem', border: `1px solid ${border}`, textAlign: 'center' }}>
+          <div style={{ color: textSecondary, fontSize: '12px' }}>Avg Completion</div>
+          <div style={{ color: '#16a34a', fontSize: '28px', fontWeight: 'bold' }}>{avgCompletion}%</div>
         </div>
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-          <span className="text-gray-400 text-sm">Avg Duration</span>
-          <p className="text-2xl font-bold text-white">
-            {Math.round(stories.reduce((sum, s) => sum + (s.duration_mins || 0), 0) / (stories.length || 1))} min
-          </p>
+        <div style={{ backgroundColor: cardBg, borderRadius: '8px', padding: '1rem', border: `1px solid ${border}`, textAlign: 'center' }}>
+          <div style={{ color: textSecondary, fontSize: '12px' }}>With Flags</div>
+          <div style={{ color: '#a855f7', fontSize: '28px', fontWeight: 'bold' }}>{stories.filter(s => s.flag).length}</div>
         </div>
       </div>
 
-      {/* Search and Filter */}
-      <div className="flex flex-col md:flex-row gap-4 mb-6">
-        <div className="flex-1">
-          <input
-            type="text"
-            placeholder="Search by title or author..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full px-4 py-2 bg-gray-900 border border-gray-800 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-orange-500"
-          />
-        </div>
-        <select
-          value={genreFilter}
-          onChange={(e) => setGenreFilter(e.target.value)}
-          className="px-4 py-2 bg-gray-900 border border-gray-800 rounded-xl text-white focus:outline-none focus:border-orange-500"
-        >
-          {genres.map(genre => (
-            <option key={genre} value={genre}>
-              {genre === 'all' ? 'All Genres' : genre}
-            </option>
-          ))}
+      {/* Filters */}
+      <div style={{ backgroundColor: cardBg, borderRadius: '12px', padding: '1rem', marginBottom: '1rem', border: `1px solid ${border}`, display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        <input 
+          type="text" 
+          placeholder="Search by title or author..." 
+          value={search} 
+          onChange={(e) => setSearch(e.target.value)}
+          style={{ flex: 1, minWidth: '200px', padding: '0.5rem 0.75rem', borderRadius: '6px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px' }}
+        />
+        <select value={genreFilter} onChange={(e) => setGenreFilter(e.target.value)} style={{ padding: '0.5rem 0.75rem', borderRadius: '6px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px' }}>
+          {GENRES.map(g => <option key={g} value={g}>{g}</option>)}
+        </select>
+        <select value={`${sortBy}-${sortDir}`} onChange={(e) => { const [col, dir] = e.target.value.split('-'); setSortBy(col as typeof sortBy); setSortDir(dir as 'asc' | 'desc') }} style={{ padding: '0.5rem 0.75rem', borderRadius: '6px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px' }}>
+          <option value="title-asc">Title A-Z</option>
+          <option value="title-desc">Title Z-A</option>
+          <option value="genre-asc">Genre A-Z</option>
+          <option value="series_name-asc">Series A-Z</option>
+          <option value="duration_mins-asc">Duration ↑</option>
+          <option value="duration_mins-desc">Duration ↓</option>
+          <option value="downloads_total-desc">Most Downloads</option>
+          <option value="pct_finished-desc">Best Completion</option>
+          <option value="rating-desc">Highest Rated</option>
         </select>
       </div>
 
-      {/* Stories Grid */}
-      {filteredStories.length === 0 ? (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-8 text-center">
-          <span className="text-4xl mb-4 block">📭</span>
-          <p className="text-gray-400">No stories found</p>
-          <Link href="/admin/stories/new" className="text-orange-400 hover:underline mt-2 inline-block">
-            Add your first story →
-          </Link>
+      {/* Stories Table */}
+      <div style={{ backgroundColor: cardBg, borderRadius: '12px', border: `1px solid ${border}`, overflow: 'hidden' }}>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+            <thead>
+              <tr style={{ backgroundColor: '#f5f5f5', borderBottom: `2px solid ${border}` }}>
+                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'left', color: textSecondary, fontWeight: 600, width: '40px' }}></th>
+                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'left', color: textSecondary, fontWeight: 600, minWidth: '50px' }}>Cover</th>
+                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'left', color: textSecondary, fontWeight: 600, minWidth: '150px', cursor: 'pointer' }} onClick={() => handleSort('title')}>Title {sortBy === 'title' && (sortDir === 'asc' ? '↑' : '↓')}</th>
+                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'left', color: textSecondary, fontWeight: 600, minWidth: '80px', cursor: 'pointer' }} onClick={() => handleSort('genre')}>Genre {sortBy === 'genre' && (sortDir === 'asc' ? '↑' : '↓')}</th>
+                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600 }}>Dur</th>
+                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600 }}>Cr</th>
+                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'left', color: textSecondary, fontWeight: 600, minWidth: '80px', cursor: 'pointer' }} onClick={() => handleSort('series_name')}>Series {sortBy === 'series_name' && (sortDir === 'asc' ? '↑' : '↓')}</th>
+                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600 }}>Day</th>
+                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600 }}>Week</th>
+                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600 }}>Month</th>
+                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600 }}>YTD</th>
+                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600, cursor: 'pointer' }} onClick={() => handleSort('downloads_total')}>Total {sortBy === 'downloads_total' && (sortDir === 'asc' ? '↑' : '↓')}</th>
+                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600 }}>Start%</th>
+                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600, cursor: 'pointer' }} onClick={() => handleSort('pct_finished')}>Fin% {sortBy === 'pct_finished' && (sortDir === 'asc' ? '↑' : '↓')}</th>
+                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600 }}>Skip%</th>
+                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600, cursor: 'pointer' }} onClick={() => handleSort('rating')}>Rating {sortBy === 'rating' && (sortDir === 'asc' ? '↑' : '↓')}</th>
+                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600, minWidth: '100px' }}>Flag</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredStories.map((story, i) => (
+                <tr key={story.id} style={{ borderBottom: `1px solid ${border}`, backgroundColor: i % 2 === 0 ? 'transparent' : '#fafafa' }}>
+                  {/* Delete */}
+                  <td style={{ padding: '0.5rem', position: 'relative' }}>
+                    <button onClick={() => setDeleteConfirm(deleteConfirm === story.id ? null : story.id)} style={{ backgroundColor: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: '4px', padding: '4px 6px', cursor: 'pointer', fontSize: '10px' }}>🗑</button>
+                    {deleteConfirm === story.id && (
+                      <div style={{ position: 'absolute', top: '100%', left: 0, backgroundColor: cardBg, border: `1px solid ${border}`, borderRadius: '6px', padding: '0.5rem', zIndex: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', minWidth: '120px' }}>
+                        <div style={{ color: textPrimary, fontSize: '11px', marginBottom: '0.5rem' }}>Delete this story?</div>
+                        <div style={{ display: 'flex', gap: '0.25rem' }}>
+                          <button onClick={() => deleteStory(story.id)} style={{ flex: 1, backgroundColor: '#dc2626', color: 'white', border: 'none', borderRadius: '4px', padding: '4px', cursor: 'pointer', fontSize: '10px' }}>Yes</button>
+                          <button onClick={() => setDeleteConfirm(null)} style={{ flex: 1, backgroundColor: '#e5e5e5', color: textPrimary, border: 'none', borderRadius: '4px', padding: '4px', cursor: 'pointer', fontSize: '10px' }}>No</button>
+                        </div>
+                      </div>
+                    )}
+                  </td>
+                  {/* Cover */}
+                  <td style={{ padding: '0.5rem' }}>
+                    <div style={{ width: '40px', height: '40px', borderRadius: '6px', overflow: 'hidden', backgroundColor: '#e5e5e5' }}>
+                      <img src={story.cover_url || '/images/default-cover.png'} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    </div>
+                  </td>
+                  {/* Title & Author */}
+                  <td style={{ padding: '0.5rem' }}>
+                    <div style={{ color: textPrimary, fontWeight: 600, fontSize: '13px', lineHeight: 1.2 }}>{story.title}</div>
+                    <div style={{ color: textSecondary, fontSize: '11px' }}>by {story.author}</div>
+                  </td>
+                  {/* Genre */}
+                  <td style={{ padding: '0.5rem', color: textSecondary }}>{story.genre}</td>
+                  {/* Duration */}
+                  <td style={{ padding: '0.5rem', textAlign: 'center', color: textPrimary }}>{story.duration_mins}m</td>
+                  {/* Credits */}
+                  <td style={{ padding: '0.5rem', textAlign: 'center', color: '#f97316', fontWeight: 600 }}>{story.credits}</td>
+                  {/* Series */}
+                  <td style={{ padding: '0.5rem', color: textSecondary, fontSize: '11px' }}>
+                    {story.series_name ? `${story.series_name} #${story.series_number}` : '-'}
+                  </td>
+                  {/* Downloads */}
+                  <td style={{ padding: '0.5rem', textAlign: 'center', color: textPrimary }}>{story.downloads_day || 0}</td>
+                  <td style={{ padding: '0.5rem', textAlign: 'center', color: textPrimary }}>{story.downloads_week || 0}</td>
+                  <td style={{ padding: '0.5rem', textAlign: 'center', color: textPrimary }}>{story.downloads_month || 0}</td>
+                  <td style={{ padding: '0.5rem', textAlign: 'center', color: textPrimary }}>{story.downloads_ytd || 0}</td>
+                  <td style={{ padding: '0.5rem', textAlign: 'center', color: '#2563eb', fontWeight: 600 }}>{story.downloads_total || 0}</td>
+                  {/* Percentages */}
+                  <td style={{ padding: '0.5rem', textAlign: 'center', color: story.pct_started > 70 ? '#16a34a' : textPrimary }}>{story.pct_started || 0}%</td>
+                  <td style={{ padding: '0.5rem', textAlign: 'center', color: story.pct_finished > 50 ? '#16a34a' : story.pct_finished < 20 ? '#dc2626' : textPrimary, fontWeight: 600 }}>{story.pct_finished || 0}%</td>
+                  <td style={{ padding: '0.5rem', textAlign: 'center', color: story.pct_skipped > 30 ? '#dc2626' : textPrimary }}>{story.pct_skipped || 0}%</td>
+                  {/* Rating */}
+                  <td style={{ padding: '0.5rem', textAlign: 'center' }}>
+                    <span style={{ color: '#eab308' }}>★</span>
+                    <span style={{ color: textPrimary, fontWeight: 600 }}>{story.rating || '-'}</span>
+                    <span style={{ color: textSecondary, fontSize: '10px' }}> ({story.review_count || 0})</span>
+                  </td>
+                  {/* Flag */}
+                  <td style={{ padding: '0.5rem', position: 'relative' }}>
+                    <button onClick={() => setFlagDropdown(flagDropdown === story.id ? null : story.id)} style={{ backgroundColor: FLAG_OPTIONS.find(f => f.value === story.flag)?.color || '#e5e5e5', color: 'white', border: 'none', borderRadius: '4px', padding: '4px 8px', cursor: 'pointer', fontSize: '10px', fontWeight: 600, minWidth: '80px' }}>
+                      {FLAG_OPTIONS.find(f => f.value === story.flag)?.label || 'Set Flag'}
+                    </button>
+                    {flagDropdown === story.id && (
+                      <div style={{ position: 'absolute', top: '100%', right: 0, backgroundColor: cardBg, border: `1px solid ${border}`, borderRadius: '6px', padding: '0.25rem', zIndex: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', minWidth: '120px' }}>
+                        {FLAG_OPTIONS.map(flag => (
+                          <button key={flag.value || 'none'} onClick={() => updateFlag(story.id, flag.value)} style={{ display: 'block', width: '100%', textAlign: 'left', backgroundColor: story.flag === flag.value ? '#f5f5f5' : 'transparent', color: textPrimary, border: 'none', padding: '6px 8px', cursor: 'pointer', fontSize: '11px', borderRadius: '4px' }}>
+                            <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', backgroundColor: flag.color, marginRight: '6px' }}></span>
+                            {flag.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredStories.map((story) => (
-            <div
-              key={story.id}
-              className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden hover:border-gray-700 transition-colors"
-            >
-              {/* Cover */}
-              <div className="h-40 bg-gray-800 relative">
-                {story.cover_url ? (
-                  <img
-                    src={story.cover_url}
-                    alt={story.title}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <span className="text-4xl opacity-30">🎧</span>
-                  </div>
-                )}
-                
-                {/* Badges */}
-                <div className="absolute top-2 left-2 flex gap-2">
-                  {story.is_featured && (
-                    <span className="px-2 py-1 bg-orange-500 text-black text-xs font-bold rounded">
-                      Featured
-                    </span>
-                  )}
-                  {story.is_new && (
-                    <span className="px-2 py-1 bg-green-500 text-black text-xs font-bold rounded">
-                      New
-                    </span>
-                  )}
-                </div>
-
-                {/* Play count */}
-                <div className="absolute bottom-2 right-2 px-2 py-1 bg-black/70 text-white text-xs rounded">
-                  ▶ {story.play_count?.toLocaleString() || 0}
-                </div>
-              </div>
-
-              {/* Info */}
-              <div className="p-4">
-                <h3 className="text-white font-bold truncate">{story.title}</h3>
-                <p className="text-gray-400 text-sm">{story.author}</p>
-                <div className="flex items-center gap-2 mt-2 text-xs text-gray-500">
-                  <span>{story.genre}</span>
-                  <span>•</span>
-                  <span>{story.duration_mins} min</span>
-                  <span>•</span>
-                  <span>{story.credits} credit{story.credits !== 1 ? 's' : ''}</span>
-                </div>
-
-                {/* Actions */}
-                <div className="flex gap-2 mt-4">
-                  <button
-                    onClick={() => toggleFeatured(story)}
-                    className={`flex-1 py-2 rounded-lg text-sm transition-colors ${
-                      story.is_featured
-                        ? 'bg-orange-500/20 text-orange-400'
-                        : 'bg-gray-800 text-gray-400 hover:text-white'
-                    }`}
-                  >
-                    {story.is_featured ? '⭐ Featured' : '☆ Feature'}
-                  </button>
-                  <button
-                    onClick={() => setSelectedStory(story)}
-                    className="flex-1 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-sm transition-colors"
-                  >
-                    View
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Story Detail Modal */}
-      {selectedStory && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 border border-gray-800 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            {/* Cover */}
-            <div className="h-48 bg-gray-800 relative">
-              {selectedStory.cover_url ? (
-                <img
-                  src={selectedStory.cover_url}
-                  alt={selectedStory.title}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center">
-                  <span className="text-6xl opacity-30">🎧</span>
-                </div>
-              )}
-              <button
-                onClick={() => setSelectedStory(null)}
-                className="absolute top-4 right-4 w-8 h-8 bg-black/50 hover:bg-black/70 text-white rounded-full flex items-center justify-center"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Content */}
-            <div className="p-6">
-              <h2 className="text-2xl font-bold text-white mb-1">{selectedStory.title}</h2>
-              <p className="text-gray-400 mb-4">by {selectedStory.author}</p>
-
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div className="bg-gray-800 rounded-lg p-3">
-                  <span className="text-gray-400 text-sm">Genre</span>
-                  <p className="text-white font-medium">{selectedStory.genre}</p>
-                </div>
-                <div className="bg-gray-800 rounded-lg p-3">
-                  <span className="text-gray-400 text-sm">Duration</span>
-                  <p className="text-white font-medium">{selectedStory.duration_mins} minutes</p>
-                </div>
-                <div className="bg-gray-800 rounded-lg p-3">
-                  <span className="text-gray-400 text-sm">Credits</span>
-                  <p className="text-white font-medium">{selectedStory.credits}</p>
-                </div>
-                <div className="bg-gray-800 rounded-lg p-3">
-                  <span className="text-gray-400 text-sm">Play Count</span>
-                  <p className="text-white font-medium">{selectedStory.play_count?.toLocaleString() || 0}</p>
-                </div>
-              </div>
-
-              {selectedStory.description && (
-                <div className="mb-4">
-                  <span className="text-gray-400 text-sm">Description</span>
-                  <p className="text-white mt-1">{selectedStory.description}</p>
-                </div>
-              )}
-
-              <div className="mb-4">
-                <span className="text-gray-400 text-sm">Created</span>
-                <p className="text-white">{formatDate(selectedStory.created_at)}</p>
-              </div>
-
-              {selectedStory.audio_url && (
-                <div className="mb-4">
-                  <span className="text-gray-400 text-sm">Audio</span>
-                  <audio controls className="w-full mt-2">
-                    <source src={selectedStory.audio_url} type="audio/mpeg" />
-                  </audio>
-                </div>
-              )}
-
-              {/* Actions */}
-              <div className="flex gap-3 mt-6 pt-4 border-t border-gray-800">
-                <button
-                  onClick={() => toggleFeatured(selectedStory)}
-                  className={`flex-1 py-2 rounded-xl transition-colors ${
-                    selectedStory.is_featured
-                      ? 'bg-orange-500 text-black font-bold'
-                      : 'bg-gray-800 text-white'
-                  }`}
-                >
-                  {selectedStory.is_featured ? '⭐ Featured' : '☆ Add to Featured'}
-                </button>
-                <button
-                  onClick={() => deleteStory(selectedStory.id)}
-                  disabled={deleting}
-                  className="px-6 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-xl transition-colors disabled:opacity-50"
-                >
-                  {deleting ? 'Deleting...' : '🗑️ Delete'}
-                </button>
-              </div>
-            </div>
+        {filteredStories.length === 0 && (
+          <div style={{ padding: '3rem', textAlign: 'center', color: textSecondary }}>
+            No stories found matching your filters.
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
-  );
+  )
 }
