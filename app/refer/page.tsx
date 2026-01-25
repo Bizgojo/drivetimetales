@@ -30,7 +30,6 @@ export default function ReferPage() {
   async function fetchReferralData() {
     setLoading(true)
     
-    // Get user data and referral code
     const { data: userData } = await supabase
       .from('users')
       .select('referral_code, first_name, display_name')
@@ -38,20 +37,20 @@ export default function ReferPage() {
       .single()
     
     if (userData) {
-      setUserName(userData.first_name || userData.display_name || 'Friend')
+      const firstName = userData.first_name || userData.display_name || 'Friend'
+      setUserName(firstName)
       
       if (userData.referral_code) {
         setReferralCode(userData.referral_code)
       } else {
-        // Generate code if none exists
-        const name = userData.first_name || userData.display_name || 'USER'
-        const newCode = name.substring(0, 4).toUpperCase() + Math.random().toString(36).substring(2, 5).toUpperCase()
+        // Generate short code: FirstName + 3 random chars (e.g., Marc7X2)
+        const rand3 = Math.random().toString(36).substring(2, 5).toUpperCase()
+        const newCode = firstName + rand3
         await supabase.from('users').update({ referral_code: newCode }).eq('id', user?.id)
         setReferralCode(newCode)
       }
     }
 
-    // Get referral stats
     const { data: referrals } = await supabase
       .from('referrals')
       .select('status')
@@ -72,7 +71,7 @@ export default function ReferPage() {
   }
 
   const referralLink = `https://drivetimetales.vercel.app/signup?ref=${referralCode}`
-  const shareText = `Join me on Drive Time Tales! Audio stories for your commute. Use my link to sign up and we both get 1 month free when you subscribe: ${referralLink}`
+  const shareText = `Join me on Drive Time Tales! Audio stories for your commute. Sign up with my link and we both get 1 month free: ${referralLink}`
 
   const copyLink = async () => {
     await navigator.clipboard.writeText(referralLink)
@@ -100,7 +99,6 @@ export default function ReferPage() {
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#0f172a' }}>
-      {/* Header */}
       <div style={{ position: 'sticky', top: 0, backgroundColor: '#0f172a', zIndex: 50 }}>
         <div style={{ padding: '0.5rem 0.75rem', display: 'flex', alignItems: 'center', borderBottom: '1px solid #334155' }}>
           <button onClick={() => router.push('/home')} style={{ backgroundColor: '#334155', color: 'white', padding: '0.35rem 0.6rem', borderRadius: '6px', fontSize: '13px', fontWeight: 500, border: 'none', cursor: 'pointer' }}>← Back</button>
@@ -116,24 +114,20 @@ export default function ReferPage() {
         </div>
       </div>
 
-      {/* Content */}
       <div style={{ padding: '1.5rem 1rem', maxWidth: '400px', margin: '0 auto' }}>
-        {/* Title */}
         <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
           <div style={{ fontSize: '48px', marginBottom: '0.5rem' }}>❤️</div>
           <h1 style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', marginBottom: '0.5rem' }}>Help a Friend</h1>
           <p style={{ color: '#94a3b8', fontSize: '14px', lineHeight: 1.5 }}>
-            Share your link with friends. When they subscribe, you <strong style={{ color: '#22c55e' }}>both</strong> get 1 month free!
+            Share your link. When they subscribe, you <strong style={{ color: '#22c55e' }}>both</strong> get 1 month free!
           </p>
         </div>
 
-        {/* Referral Code */}
         <div style={{ backgroundColor: '#1e293b', borderRadius: '12px', padding: '1.25rem', marginBottom: '1.5rem', textAlign: 'center' }}>
-          <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '0.25rem' }}>Your Referral Code</div>
-          <div style={{ color: '#f97316', fontSize: '28px', fontWeight: 'bold', letterSpacing: '3px' }}>{referralCode}</div>
+          <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '0.25rem' }}>Your Code</div>
+          <div style={{ color: '#f97316', fontSize: '28px', fontWeight: 'bold', letterSpacing: '2px' }}>{referralCode}</div>
         </div>
 
-        {/* Share Buttons */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.5rem' }}>
           <button onClick={copyLink} style={{ backgroundColor: copied ? '#22c55e' : '#334155', color: 'white', padding: '1rem', borderRadius: '12px', border: 'none', cursor: 'pointer', fontSize: '16px', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
             {copied ? '✓ Copied!' : '🔗 Copy Link'}
@@ -146,9 +140,8 @@ export default function ReferPage() {
           </button>
         </div>
 
-        {/* Stats */}
         <div style={{ backgroundColor: '#1e293b', borderRadius: '12px', padding: '1.25rem' }}>
-          <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '0.75rem', textAlign: 'center' }}>Your Referral Stats</div>
+          <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '0.75rem', textAlign: 'center' }}>Your Referrals</div>
           <div style={{ display: 'flex', justifyContent: 'space-around' }}>
             <div style={{ textAlign: 'center' }}>
               <div style={{ color: 'white', fontSize: '24px', fontWeight: 'bold' }}>{stats.invited + stats.signed_up}</div>
@@ -160,7 +153,7 @@ export default function ReferPage() {
             </div>
             <div style={{ textAlign: 'center' }}>
               <div style={{ color: '#f97316', fontSize: '24px', fontWeight: 'bold' }}>{stats.rewarded}</div>
-              <div style={{ color: '#94a3b8', fontSize: '11px' }}>Months Free</div>
+              <div style={{ color: '#94a3b8', fontSize: '11px' }}>Free Months</div>
             </div>
           </div>
         </div>
