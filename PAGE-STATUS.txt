@@ -80,3 +80,18 @@ COMPONENTS (in /components/)
   StickyLogo2.tsx
   LibraryFiltersV2.tsx
   WL01StickyLogo.tsx
+
+## Admin Stories (v4) - 2026-01-25
+- Edit modal with full fields
+- Flag system with date picker for FREE Today
+- Flag Analytics panel
+- Comparison grid (genre/duration)
+- Sortable columns, filter tabs
+Tag: working-admin-stories-v4-2026-01-25
+
+## Player FREE Today - 2026-01-25
+- Checks free_start_date/free_end_date
+- Shows FREE TODAY banner
+- Zero credits during free period
+Tag: working-player-free-today-2026-01-25
+
