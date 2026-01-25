@@ -30,6 +30,19 @@ interface Story {
   total_plays: number
   pct_finished: number
   pct_skipped: number
+  description?: string
+}
+
+interface EditForm {
+  title: string
+  author: string
+  genre: string
+  duration_mins: number
+  description: string
+  series_name: string
+  series_number: number | null
+  series_total: number | null
+  cover_url: string
 }
 
 const FLAG_OPTIONS = [
@@ -41,6 +54,8 @@ const FLAG_OPTIONS = [
   { value: 'new', label: 'New', color: '#f97316' },
   { value: 'staff-favorite', label: 'Staff Favorite', color: '#eab308' },
 ]
+
+const GENRES = ['Mystery', 'Drama', 'Sci-Fi', 'Horror', 'Thriller', 'Non-Fiction', 'Children', 'Comedy', 'Romance', 'Trucker Stories']
 
 const DURATION_RANGES = [
   { label: 'All Durations', min: 0, max: 9999 },
@@ -66,6 +81,9 @@ export default function AdminStoriesPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [flagDropdown, setFlagDropdown] = useState<string | null>(null)
   const [showComparisonGrid, setShowComparisonGrid] = useState(false)
+  const [editingStory, setEditingStory] = useState<Story | null>(null)
+  const [editForm, setEditForm] = useState<EditForm | null>(null)
+  const [saving, setSaving] = useState(false)
 
   const bg = '#FAF9F6'
   const cardBg = '#FFFFFF'
@@ -90,12 +108,10 @@ export default function AdminStoriesPage() {
   // Filter stories
   const filteredStories = useMemo(() => {
     return stories.filter(s => {
-      // Search filter
       const matchesSearch = search === '' || 
         s.title.toLowerCase().includes(search.toLowerCase()) ||
         s.author.toLowerCase().includes(search.toLowerCase())
       
-      // Tab-specific filters
       let matchesTabFilter = true
       if (filterTab === 'genre' && genreFilter !== 'All') {
         matchesTabFilter = s.genre === genreFilter
@@ -133,13 +149,11 @@ export default function AdminStoriesPage() {
     const durationStats: Record<string, { downloads: number, completion: number, count: number }> = {}
     
     stories.forEach(s => {
-      // Genre stats
       if (!genreStats[s.genre]) genreStats[s.genre] = { downloads: 0, completion: 0, count: 0 }
       genreStats[s.genre].downloads += s.downloads_total || 0
       genreStats[s.genre].completion += s.pct_finished || 0
       genreStats[s.genre].count++
       
-      // Duration stats
       let durLabel = '60+ min'
       if (s.duration_mins <= 15) durLabel = '0-15 min'
       else if (s.duration_mins <= 30) durLabel = '16-30 min'
@@ -153,6 +167,51 @@ export default function AdminStoriesPage() {
     
     return { genreStats, durationStats }
   }, [stories])
+
+  async function openEditModal(story: Story) {
+    // Fetch full story data including description
+    const { data } = await supabase.from('stories').select('*').eq('id', story.id).single()
+    if (data) {
+      setEditingStory({ ...story, description: data.description })
+      setEditForm({
+        title: data.title || '',
+        author: data.author || '',
+        genre: data.genre || '',
+        duration_mins: data.duration_mins || 0,
+        description: data.description || '',
+        series_name: data.series_name || '',
+        series_number: data.series_number,
+        series_total: data.series_total,
+        cover_url: data.cover_url || ''
+      })
+    }
+  }
+
+  async function saveEdit() {
+    if (!editingStory || !editForm) return
+    setSaving(true)
+    
+    const { error } = await supabase.from('stories').update({
+      title: editForm.title,
+      author: editForm.author,
+      genre: editForm.genre,
+      duration_mins: editForm.duration_mins,
+      description: editForm.description,
+      series_name: editForm.series_name || null,
+      series_number: editForm.series_number,
+      series_total: editForm.series_total,
+      cover_url: editForm.cover_url || null
+    }).eq('id', editingStory.id)
+    
+    if (!error) {
+      setEditingStory(null)
+      setEditForm(null)
+      fetchStories()
+    } else {
+      alert('Error saving: ' + error.message)
+    }
+    setSaving(false)
+  }
 
   async function updateFlag(storyId: string, flag: string | null) {
     await supabase.from('stories').update({ flag, is_free: flag === 'free' }).eq('id', storyId)
@@ -171,7 +230,7 @@ export default function AdminStoriesPage() {
       setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
     } else {
       setSortBy(column)
-      setSortDir('desc') // Default to high-to-low for numbers
+      setSortDir('desc')
     }
   }
 
@@ -189,6 +248,94 @@ export default function AdminStoriesPage() {
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: bg, padding: '1rem' }}>
+      {/* Edit Modal */}
+      {editingStory && editForm && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }} onClick={() => { setEditingStory(null); setEditForm(null) }}>
+          <div style={{ backgroundColor: cardBg, borderRadius: '16px', padding: '1.5rem', maxWidth: '500px', width: '90%', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h2 style={{ color: textPrimary, fontSize: '18px', fontWeight: 'bold' }}>Edit Story</h2>
+              <button onClick={() => { setEditingStory(null); setEditForm(null) }} style={{ backgroundColor: 'transparent', border: 'none', fontSize: '20px', cursor: 'pointer', color: textSecondary }}>×</button>
+            </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {/* Cover Preview */}
+              <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
+                <div style={{ width: '80px', height: '80px', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#e5e5e5', flexShrink: 0 }}>
+                  <img src={editForm.cover_url || '/images/default-cover.png'} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: 'block', color: textSecondary, fontSize: '12px', marginBottom: '4px' }}>Cover URL</label>
+                  <input type="text" value={editForm.cover_url} onChange={e => setEditForm({ ...editForm, cover_url: e.target.value })} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: `1px solid ${border}`, color: textPrimary, fontSize: '13px' }} placeholder="https://..." />
+                </div>
+              </div>
+              
+              {/* Title */}
+              <div>
+                <label style={{ display: 'block', color: textSecondary, fontSize: '12px', marginBottom: '4px' }}>Title *</label>
+                <input type="text" value={editForm.title} onChange={e => setEditForm({ ...editForm, title: e.target.value })} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px' }} />
+              </div>
+              
+              {/* Author */}
+              <div>
+                <label style={{ display: 'block', color: textSecondary, fontSize: '12px', marginBottom: '4px' }}>Author *</label>
+                <input type="text" value={editForm.author} onChange={e => setEditForm({ ...editForm, author: e.target.value })} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px' }} />
+              </div>
+              
+              {/* Genre & Duration */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', color: textSecondary, fontSize: '12px', marginBottom: '4px' }}>Genre</label>
+                  <select value={editForm.genre} onChange={e => setEditForm({ ...editForm, genre: e.target.value })} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px' }}>
+                    {GENRES.map(g => <option key={g} value={g}>{g}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: 'block', color: textSecondary, fontSize: '12px', marginBottom: '4px' }}>Duration (mins)</label>
+                  <input type="number" value={editForm.duration_mins} onChange={e => setEditForm({ ...editForm, duration_mins: Number(e.target.value) })} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px' }} />
+                </div>
+              </div>
+              
+              {/* Credits (calculated) */}
+              <div style={{ backgroundColor: '#f5f5f5', borderRadius: '6px', padding: '0.75rem', display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: textSecondary, fontSize: '13px' }}>Credits (auto-calculated)</span>
+                <span style={{ color: '#f97316', fontWeight: 'bold', fontSize: '14px' }}>{Math.max(1, Math.floor(editForm.duration_mins / 15))}</span>
+              </div>
+              
+              {/* Series */}
+              <div>
+                <label style={{ display: 'block', color: textSecondary, fontSize: '12px', marginBottom: '4px' }}>Series Name (optional)</label>
+                <input type="text" value={editForm.series_name} onChange={e => setEditForm({ ...editForm, series_name: e.target.value })} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px' }} placeholder="e.g., The Dark Woods Trilogy" />
+              </div>
+              
+              {editForm.series_name && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <div>
+                    <label style={{ display: 'block', color: textSecondary, fontSize: '12px', marginBottom: '4px' }}>Part # in Series</label>
+                    <input type="number" value={editForm.series_number || ''} onChange={e => setEditForm({ ...editForm, series_number: Number(e.target.value) || null })} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px' }} />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', color: textSecondary, fontSize: '12px', marginBottom: '4px' }}>Total in Series</label>
+                    <input type="number" value={editForm.series_total || ''} onChange={e => setEditForm({ ...editForm, series_total: Number(e.target.value) || null })} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px' }} />
+                  </div>
+                </div>
+              )}
+              
+              {/* Description */}
+              <div>
+                <label style={{ display: 'block', color: textSecondary, fontSize: '12px', marginBottom: '4px' }}>Description</label>
+                <textarea value={editForm.description} onChange={e => setEditForm({ ...editForm, description: e.target.value })} rows={4} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px', resize: 'vertical' }} placeholder="Story description..." />
+              </div>
+              
+              {/* Buttons */}
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
+                <button onClick={() => { setEditingStory(null); setEditForm(null) }} style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', border: `1px solid ${border}`, backgroundColor: 'transparent', color: textPrimary, cursor: 'pointer', fontWeight: 500 }}>Cancel</button>
+                <button onClick={saveEdit} disabled={saving || !editForm.title || !editForm.author} style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', border: 'none', backgroundColor: saving ? '#ccc' : '#f97316', color: 'white', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 600 }}>{saving ? 'Saving...' : 'Save Changes'}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -204,7 +351,6 @@ export default function AdminStoriesPage() {
       {/* Comparison Grid */}
       {showComparisonGrid && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-          {/* Genre Comparison */}
           <div style={{ backgroundColor: cardBg, borderRadius: '12px', padding: '1rem', border: `1px solid ${border}` }}>
             <h3 style={{ color: textPrimary, fontSize: '14px', fontWeight: 'bold', marginBottom: '0.75rem' }}>📚 By Genre</h3>
             <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse' }}>
@@ -229,7 +375,6 @@ export default function AdminStoriesPage() {
             </table>
           </div>
           
-          {/* Duration Comparison */}
           <div style={{ backgroundColor: cardBg, borderRadius: '12px', padding: '1rem', border: `1px solid ${border}` }}>
             <h3 style={{ color: textPrimary, fontSize: '14px', fontWeight: 'bold', marginBottom: '0.75rem' }}>⏱️ By Duration</h3>
             <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse' }}>
@@ -259,7 +404,7 @@ export default function AdminStoriesPage() {
         </div>
       )}
 
-      {/* Stats Cards - Updated based on filter */}
+      {/* Stats Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '1rem' }}>
         <div style={{ backgroundColor: cardBg, borderRadius: '8px', padding: '1rem', border: `1px solid ${border}`, textAlign: 'center' }}>
           <div style={{ color: textSecondary, fontSize: '12px' }}>Total Stories</div>
@@ -289,13 +434,7 @@ export default function AdminStoriesPage() {
         </div>
         
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          <input 
-            type="text" 
-            placeholder="Search by title or author..." 
-            value={search} 
-            onChange={(e) => setSearch(e.target.value)}
-            style={{ flex: 1, minWidth: '200px', padding: '0.5rem 0.75rem', borderRadius: '6px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px' }}
-          />
+          <input type="text" placeholder="Search by title or author..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ flex: 1, minWidth: '200px', padding: '0.5rem 0.75rem', borderRadius: '6px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px' }} />
           
           {filterTab === 'genre' && (
             <select value={genreFilter} onChange={(e) => setGenreFilter(e.target.value)} style={{ padding: '0.5rem 0.75rem', borderRadius: '6px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px', minWidth: '150px' }}>
@@ -323,7 +462,7 @@ export default function AdminStoriesPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
             <thead>
               <tr style={{ backgroundColor: '#f5f5f5', borderBottom: `2px solid ${border}` }}>
-                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'left', color: textSecondary, fontWeight: 600, width: '40px' }}></th>
+                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'left', color: textSecondary, fontWeight: 600, width: '60px' }}>Actions</th>
                 <th style={{ padding: '0.75rem 0.5rem', textAlign: 'left', color: textSecondary, fontWeight: 600, width: '50px' }}>Cover</th>
                 <th onClick={() => handleSort('title')} style={{ padding: '0.75rem 0.5rem', textAlign: 'left', color: textSecondary, fontWeight: 600, cursor: 'pointer', minWidth: '140px' }}>Title<SortArrow field="title" /></th>
                 <th onClick={() => handleSort('published_at')} style={{ padding: '0.75rem 0.5rem', textAlign: 'left', color: textSecondary, fontWeight: 600, cursor: 'pointer' }}>Published<SortArrow field="published_at" /></th>
@@ -345,9 +484,12 @@ export default function AdminStoriesPage() {
             <tbody>
               {filteredStories.map((story, i) => (
                 <tr key={story.id} style={{ borderBottom: `1px solid ${border}`, backgroundColor: i % 2 === 0 ? 'transparent' : '#fafafa' }}>
-                  {/* Delete */}
+                  {/* Actions */}
                   <td style={{ padding: '0.5rem', position: 'relative' }}>
-                    <button onClick={() => setDeleteConfirm(deleteConfirm === story.id ? null : story.id)} style={{ backgroundColor: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: '4px', padding: '4px 6px', cursor: 'pointer', fontSize: '10px' }}>🗑</button>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      <button onClick={() => openEditModal(story)} style={{ backgroundColor: '#dbeafe', color: '#2563eb', border: 'none', borderRadius: '4px', padding: '4px 6px', cursor: 'pointer', fontSize: '10px' }} title="Edit">✏️</button>
+                      <button onClick={() => setDeleteConfirm(deleteConfirm === story.id ? null : story.id)} style={{ backgroundColor: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: '4px', padding: '4px 6px', cursor: 'pointer', fontSize: '10px' }} title="Delete">🗑</button>
+                    </div>
                     {deleteConfirm === story.id && (
                       <div style={{ position: 'absolute', top: '100%', left: 0, backgroundColor: cardBg, border: `1px solid ${border}`, borderRadius: '6px', padding: '0.5rem', zIndex: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', minWidth: '100px' }}>
                         <div style={{ color: textPrimary, fontSize: '10px', marginBottom: '0.4rem' }}>Delete?</div>
