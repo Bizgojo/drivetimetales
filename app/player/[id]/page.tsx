@@ -17,6 +17,9 @@ interface Story {
   audio_url: string
   credits: number
   preview_end_time?: number
+  free_start_date?: string | null
+  free_end_date?: string | null
+  flag?: string | null
 }
 
 interface LibraryEntry {
@@ -30,6 +33,22 @@ interface UserPreference {
   story_id: string
   wishlisted: boolean
   not_for_me: boolean
+}
+
+// Helper function to check if story is currently free
+function isStoryCurrentlyFree(story: Story): boolean {
+  if (!story.free_start_date || !story.free_end_date) return false
+  
+  const today = new Date()
+  today.setHours(0, 0, 0, 0) // Normalize to start of day
+  
+  const startDate = new Date(story.free_start_date)
+  startDate.setHours(0, 0, 0, 0)
+  
+  const endDate = new Date(story.free_end_date)
+  endDate.setHours(23, 59, 59, 999) // End of day
+  
+  return today >= startDate && today <= endDate
 }
 
 function PlayerContent() {
@@ -106,21 +125,26 @@ function PlayerContent() {
     setActionLoading(true)
     try {
       if (!libraryEntry) {
-        const creditCost = story.credits || 1
+        // Check if story is currently free
+        const isFreeToday = isStoryCurrentlyFree(story)
+        const creditCost = isFreeToday ? 0 : (story.credits || 1)
         
-        if (user.credits < creditCost && user.credits !== -1) {
+        if (creditCost > 0 && user.credits < creditCost && user.credits !== -1) {
           alert('Not enough credits. Please purchase more credits.')
           setActionLoading(false)
           return
         }
 
-        const newCredits = user.credits === -1 ? -1 : user.credits - creditCost
-        const { error: creditError } = await supabase
-          .from('users')
-          .update({ credits: newCredits })
-          .eq('id', user.id)
+        // Only deduct credits if there's a cost
+        if (creditCost > 0) {
+          const newCredits = user.credits === -1 ? -1 : user.credits - creditCost
+          const { error: creditError } = await supabase
+            .from('users')
+            .update({ credits: newCredits })
+            .eq('id', user.id)
 
-        if (creditError) throw creditError
+          if (creditError) throw creditError
+        }
 
         const { error: libError } = await supabase
           .from('user_library')
@@ -160,21 +184,26 @@ function PlayerContent() {
     setActionLoading(true)
     try {
       if (!libraryEntry) {
-        const creditCost = story.credits || 1
+        // Check if story is currently free
+        const isFreeToday = isStoryCurrentlyFree(story)
+        const creditCost = isFreeToday ? 0 : (story.credits || 1)
         
-        if (user.credits < creditCost && user.credits !== -1) {
+        if (creditCost > 0 && user.credits < creditCost && user.credits !== -1) {
           alert('Not enough credits. Please purchase more credits.')
           setActionLoading(false)
           return
         }
 
-        const newCredits = user.credits === -1 ? -1 : user.credits - creditCost
-        const { error: creditError } = await supabase
-          .from('users')
-          .update({ credits: newCredits })
-          .eq('id', user.id)
+        // Only deduct credits if there's a cost
+        if (creditCost > 0) {
+          const newCredits = user.credits === -1 ? -1 : user.credits - creditCost
+          const { error: creditError } = await supabase
+            .from('users')
+            .update({ credits: newCredits })
+            .eq('id', user.id)
 
-        if (creditError) throw creditError
+          if (creditError) throw creditError
+        }
 
         const previewEnd = story.preview_end_time || Math.floor(story.duration_mins * 60 * 0.1)
         const { error: libError } = await supabase
@@ -237,7 +266,7 @@ function PlayerContent() {
           not_for_me: true
         })
       
-      router.push('/library?toast=notforme')
+      router.push('/library?toast=passed')
     } catch (err) {
       console.error('Error marking not for me:', err)
     } finally {
@@ -270,8 +299,12 @@ function PlayerContent() {
   }
 
   const displayName = user?.display_name || user?.email?.split('@')[0]
-  const creditCost = story.credits || 1
-  const hasEnoughCredits = user && (user.credits >= creditCost || user.credits === -1)
+  
+  // Check if story is currently free
+  const isFreeToday = isStoryCurrentlyFree(story)
+  const creditCost = isFreeToday ? 0 : (story.credits || 1)
+  const hasEnoughCredits = user && (creditCost === 0 || user.credits >= creditCost || user.credits === -1)
+  
   const ownsStory = !!libraryEntry
   const progressPercent = libraryEntry 
     ? Math.round((libraryEntry.progress / (story.duration_mins * 60)) * 100) 
@@ -303,6 +336,13 @@ function PlayerContent() {
         )}
       </header>
 
+      {/* FREE TODAY Banner */}
+      {isFreeToday && !ownsStory && (
+        <div className="bg-green-500 text-black text-center py-2 font-bold">
+          🎉 FREE TODAY - No credits needed!
+        </div>
+      )}
+
       {/* Main Content */}
       <main className="flex-1 px-4 pt-4 pb-6 flex flex-col">
         {/* Full Width Cover Image with Glow */}
@@ -324,6 +364,9 @@ function PlayerContent() {
           {/* Genre and Flags on same line */}
           <div className="flex items-center justify-center gap-2 mb-1">
             <span className="text-orange-400 text-sm">{story.genre}</span>
+            {isFreeToday && !ownsStory && (
+              <span className="bg-green-500 text-black text-xs font-bold px-2 py-0.5 rounded">FREE TODAY</span>
+            )}
             {ownsStory && (
               <span className="bg-green-500 text-black text-xs font-bold px-2 py-0.5 rounded">OWNED</span>
             )}
@@ -333,7 +376,7 @@ function PlayerContent() {
           </div>
           
           <p className="text-slate-400 text-sm">
-            {story.duration_mins} min • {ownsStory ? 'In Library' : `${creditCost} credit${creditCost > 1 ? 's' : ''}`}
+            {story.duration_mins} min • {ownsStory ? 'In Library' : isFreeToday ? 'FREE' : `${creditCost} credit${creditCost > 1 ? 's' : ''}`}
           </p>
         </div>
 
@@ -405,9 +448,13 @@ function PlayerContent() {
               <button
                 onClick={handleResume}
                 disabled={actionLoading || !hasEnoughCredits}
-                className="w-full py-4 bg-orange-500 hover:bg-orange-400 text-black rounded-xl font-bold transition disabled:opacity-50 disabled:bg-slate-600 disabled:text-slate-400"
+                className={`w-full py-4 rounded-xl font-bold transition disabled:opacity-50 ${
+                  isFreeToday 
+                    ? 'bg-green-500 hover:bg-green-400 text-black' 
+                    : 'bg-orange-500 hover:bg-orange-400 text-black disabled:bg-slate-600 disabled:text-slate-400'
+                }`}
               >
-                {actionLoading ? 'Processing...' : `▶ Resume (${creditCost} credit${creditCost > 1 ? 's' : ''})`}
+                {actionLoading ? 'Processing...' : isFreeToday ? '▶ Resume FREE' : `▶ Resume (${creditCost} credit${creditCost > 1 ? 's' : ''})`}
               </button>
               <button
                 onClick={handlePlayNow}
@@ -416,7 +463,7 @@ function PlayerContent() {
               >
                 ↺ Start from Beginning
               </button>
-              {!hasEnoughCredits && (
+              {!hasEnoughCredits && !isFreeToday && (
                 <p className="text-red-400 text-sm text-center">
                   Not enough credits. <Link href="/pricing" className="text-orange-400 hover:underline">Get more</Link>
                 </p>
@@ -438,10 +485,14 @@ function PlayerContent() {
                 <button
                   onClick={handlePlayNow}
                   disabled={actionLoading || !hasEnoughCredits}
-                  className="flex-1 py-4 bg-orange-500 hover:bg-orange-400 text-black rounded-xl font-bold text-base transition disabled:opacity-50 disabled:bg-slate-600 disabled:text-slate-400"
+                  className={`flex-1 py-4 rounded-xl font-bold text-base transition disabled:opacity-50 ${
+                    isFreeToday
+                      ? 'bg-green-500 hover:bg-green-400 text-black'
+                      : 'bg-orange-500 hover:bg-orange-400 text-black disabled:bg-slate-600 disabled:text-slate-400'
+                  }`}
                 >
                   ▶ Play Now<br/>
-                  <span className="text-sm font-normal opacity-80">{creditCost} credit{creditCost > 1 ? 's' : ''}</span>
+                  <span className="text-sm font-normal opacity-80">{isFreeToday ? 'FREE!' : `${creditCost} credit${creditCost > 1 ? 's' : ''}`}</span>
                 </button>
               </div>
               {!user && (
@@ -449,7 +500,7 @@ function PlayerContent() {
                   <Link href="/signin" className="text-orange-400 hover:underline">Sign in</Link> to purchase
                 </p>
               )}
-              {user && !hasEnoughCredits && (
+              {user && !hasEnoughCredits && !isFreeToday && (
                 <p className="text-red-400 text-sm text-center">
                   Not enough credits. <Link href="/pricing" className="text-orange-400 hover:underline">Get more</Link>
                 </p>
