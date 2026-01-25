@@ -7,7 +7,8 @@ import { useAuth } from '@/contexts/AuthContext'
 import HorizontalStoryCard from '@/components/HorizontalStoryCard'
 import PlaylistButton from '@/components/PlaylistButton'
 
-interface Story { id: string; title: string; genre: string; author: string; duration_mins: number; cover_url: string | null; series_name?: string | null; series_number?: number | null; series_total?: number | null }
+interface Story { id: string; title: string; genre: string; author: string; duration_mins: number; cover_url: string | null; series_name?: string | null; series_number?: number | null; series_total?: number | null
+  flag?: string | null }
 
 const ALL_GENRES = [
   { key: 'mystery', label: 'Mystery', emoji: '🔍' },
@@ -49,7 +50,7 @@ function LibraryContent() {
 
   useEffect(() => {
     async function fetchData() {
-      const { data: storiesData } = await supabase.from('stories').select('id, title, genre, author, duration_mins, cover_url, series_name, series_number, series_total').not('cover_url', 'is', null).order('published_on', { ascending: false })
+      const { data: storiesData } = await supabase.from('stories').select('id, title, genre, author, duration_mins, cover_url, series_name, series_number, series_total, flag').not('cover_url', 'is', null).order('published_on', { ascending: false })
       if (storiesData) setStories(storiesData)
       if (user?.id) {
         const { data: userData } = await supabase.from('users').select('first_name, display_name, credits').eq('id', user.id).single()
@@ -116,7 +117,7 @@ function LibraryContent() {
       </div>
       {showMoreDropdown && <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 40 }} onClick={() => setShowMoreDropdown(false)} />}
       <div style={{ padding: '0.5rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-        {filteredStories.length === 0 ? <div style={{ backgroundColor: '#1e293b', borderRadius: '10px', padding: '2rem 1rem', textAlign: 'center' }}><div style={{ fontSize: '40px', marginBottom: '0.75rem' }}>😔</div><p style={{ color: 'white', fontSize: '16px', marginBottom: '0.5rem' }}>Sorry {userName}, we have no stories to match your request.</p><p style={{ color: '#94a3b8', fontSize: '14px' }}>But we will request this category to our writers!</p></div> : filteredStories.map(story => <div key={story.id} onClick={() => router.push('/player/' + story.id)} style={{ cursor: 'pointer' }}><HorizontalStoryCard id={story.id} title={story.title} genre={story.genre} author={story.author || 'Drive Time Tales'} duration_mins={story.duration_mins} credits={getCredits(story.duration_mins)} cover_url={story.cover_url} series_number={story.series_number} series_total={story.series_total} /></div>)}
+        {filteredStories.length === 0 ? <div style={{ backgroundColor: '#1e293b', borderRadius: '10px', padding: '2rem 1rem', textAlign: 'center' }}><div style={{ fontSize: '40px', marginBottom: '0.75rem' }}>😔</div><p style={{ color: 'white', fontSize: '16px', marginBottom: '0.5rem' }}>Sorry {userName}, we have no stories to match your request.</p><p style={{ color: '#94a3b8', fontSize: '14px' }}>But we will request this category to our writers!</p></div> : filteredStories.map(story => <div key={story.id} onClick={() => router.push('/player/' + story.id)} style={{ cursor: 'pointer' }}><HorizontalStoryCard id={story.id} title={story.title} genre={story.genre} author={story.author || 'Drive Time Tales'} duration_mins={story.duration_mins} credits={getCredits(story.duration_mins)} cover_url={story.cover_url} series_number={story.series_number} series_total={story.series_total} flag={story.flag} /></div>)}
       </div>
       {showLowCreditsButton && <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: '#0f172a', padding: '0.5rem 0.75rem', borderTop: '1px solid #334155', zIndex: 50 }}><button onClick={() => router.push('/buy-credits')} style={{ backgroundColor: '#f97316', color: 'white', padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', width: '100%', fontSize: '15px', fontWeight: 'bold' }}>You're Low On Credits - Click Here to Get More</button></div>}
       <style dangerouslySetInnerHTML={{ __html: '@keyframes spin { to { transform: rotate(360deg); } }' }} />
