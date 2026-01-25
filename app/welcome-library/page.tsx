@@ -233,7 +233,7 @@ function WelcomeLibraryContent() {
                   cover_url={story.cover_url} 
                   series_number={story.series_number} 
                   series_total={story.series_total}
-                  flag={story.flag}
+                  flag={story.flag as 'free' | 'editors-pick' | 'readers-choice' | 'trending' | null}
                 />
               </div>
             )
