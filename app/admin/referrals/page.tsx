@@ -77,6 +77,7 @@ export default function AdminReferralsPage() {
   const textPrimary = '#1a1a1a'
   const textSecondary = '#4a4a4a'
   const border = '#e0e0e0'
+  const inputBg = '#FFFFFF'
 
   useEffect(() => { fetchData() }, [])
 
@@ -246,7 +247,7 @@ export default function AdminReferralsPage() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                       <label style={{ color: textSecondary, fontSize: '12px' }}>Weight:</label>
-                      <input type="number" value={offer.weight || 100} onChange={(e) => updateWeight(offer.id, parseInt(e.target.value) || 0)} min="0" max="1000" style={{ width: '70px', padding: '0.4rem', borderRadius: '6px', border: `1px solid ${border}`, textAlign: 'center', color: textPrimary }} />
+                      <input type="number" value={offer.weight || 100} onChange={(e) => updateWeight(offer.id, parseInt(e.target.value) || 0)} min="0" max="1000" style={{ width: '70px', padding: '0.4rem', borderRadius: '6px', border: `1px solid ${border}`, textAlign: 'center', color: textPrimary, backgroundColor: inputBg }} />
                       <span style={{ color: textSecondary, fontSize: '12px' }}>({totalWeight > 0 ? Math.round((offer.weight || 100) / totalWeight * 100) : 0}%)</span>
                     </div>
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -269,7 +270,7 @@ export default function AdminReferralsPage() {
             <button onClick={bulkAssignRandom} style={{ backgroundColor: '#3b82f6', color: 'white', padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '13px' }}>🎲 Randomly Assign Unassigned</button>
           </div>
           <p style={{ color: textSecondary, fontSize: '13px', marginBottom: '1rem' }}>Assign specific offers to users or let them be randomly assigned based on weights.</p>
-          <input type="text" value={userSearch} onChange={(e) => setUserSearch(e.target.value)} placeholder="Search by email, name, or code..." style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: `1px solid ${border}`, marginBottom: '1rem', color: textPrimary }} />
+          <input type="text" value={userSearch} onChange={(e) => setUserSearch(e.target.value)} placeholder="Search by email, name, or code..." style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: `1px solid ${border}`, marginBottom: '1rem', color: textPrimary, backgroundColor: inputBg }} />
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '500px', overflowY: 'auto' }}>
             {filteredUsers.map(user => (
               <div key={user.id} style={{ backgroundColor: '#f5f5f5', borderRadius: '8px', padding: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -292,12 +293,39 @@ export default function AdminReferralsPage() {
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ backgroundColor: cardBg, borderRadius: '16px', padding: '1.5rem', maxWidth: '400px', width: '100%', margin: '1rem', boxShadow: '0 10px 40px rgba(0,0,0,0.2)' }}>
             <h2 style={{ color: textPrimary, fontSize: '20px', fontWeight: 'bold', marginBottom: '1.5rem' }}>Create New Offer</h2>
-            <div style={{ marginBottom: '1rem' }}><label style={{ color: textSecondary, fontSize: '14px', display: 'block', marginBottom: '0.5rem' }}>Offer Name</label><input type="text" value={newOffer.name} onChange={(e) => setNewOffer({...newOffer, name: e.target.value})} placeholder="e.g., 2 Weeks Free" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: `1px solid ${border}`, color: textPrimary }} /></div>
-            <div style={{ marginBottom: '1rem' }}><label style={{ color: textSecondary, fontSize: '14px', display: 'block', marginBottom: '0.5rem' }}>Description</label><input type="text" value={newOffer.description} onChange={(e) => setNewOffer({...newOffer, description: e.target.value})} placeholder="Both get 2 weeks free" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: `1px solid ${border}`, color: textPrimary }} /></div>
-            <div style={{ marginBottom: '1rem' }}><label style={{ color: textSecondary, fontSize: '14px', display: 'block', marginBottom: '0.5rem' }}>Reward Type</label><select value={newOffer.offer_type} onChange={(e) => setNewOffer({...newOffer, offer_type: e.target.value})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: `1px solid ${border}`, color: textPrimary }}><option value="free_days">Free Days</option><option value="credits">Credits</option></select></div>
-            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}><div style={{ flex: 1 }}><label style={{ color: textSecondary, fontSize: '14px', display: 'block', marginBottom: '0.5rem' }}>Referrer Reward</label><input type="number" value={newOffer.referrer_reward} onChange={(e) => setNewOffer({...newOffer, referrer_reward: parseInt(e.target.value)})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: `1px solid ${border}`, color: textPrimary }} /></div><div style={{ flex: 1 }}><label style={{ color: textSecondary, fontSize: '14px', display: 'block', marginBottom: '0.5rem' }}>Referred Reward</label><input type="number" value={newOffer.referred_reward} onChange={(e) => setNewOffer({...newOffer, referred_reward: parseInt(e.target.value)})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: `1px solid ${border}`, color: textPrimary }} /></div></div>
-            <div style={{ marginBottom: '1.5rem' }}><label style={{ color: textSecondary, fontSize: '14px', display: 'block', marginBottom: '0.5rem' }}>Weight (for random assignment)</label><input type="number" value={newOffer.weight} onChange={(e) => setNewOffer({...newOffer, weight: parseInt(e.target.value)})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: `1px solid ${border}`, color: textPrimary }} /></div>
-            <div style={{ display: 'flex', gap: '0.75rem' }}><button onClick={() => setShowCreateModal(false)} style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', border: 'none', backgroundColor: '#e5e5e5', color: textPrimary, cursor: 'pointer', fontWeight: 500 }}>Cancel</button><button onClick={createOffer} disabled={!newOffer.name} style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', border: 'none', backgroundColor: newOffer.name ? '#f97316' : '#ccc', color: 'white', cursor: newOffer.name ? 'pointer' : 'not-allowed', fontWeight: 600 }}>Create Offer</button></div>
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ color: textSecondary, fontSize: '14px', display: 'block', marginBottom: '0.5rem' }}>Offer Name</label>
+              <input type="text" value={newOffer.name} onChange={(e) => setNewOffer({...newOffer, name: e.target.value})} placeholder="e.g., 2 Weeks Free" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: `1px solid ${border}`, color: textPrimary, backgroundColor: inputBg }} />
+            </div>
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ color: textSecondary, fontSize: '14px', display: 'block', marginBottom: '0.5rem' }}>Description</label>
+              <input type="text" value={newOffer.description} onChange={(e) => setNewOffer({...newOffer, description: e.target.value})} placeholder="Both get 2 weeks free" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: `1px solid ${border}`, color: textPrimary, backgroundColor: inputBg }} />
+            </div>
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ color: textSecondary, fontSize: '14px', display: 'block', marginBottom: '0.5rem' }}>Reward Type</label>
+              <select value={newOffer.offer_type} onChange={(e) => setNewOffer({...newOffer, offer_type: e.target.value})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: `1px solid ${border}`, color: textPrimary, backgroundColor: inputBg }}>
+                <option value="free_days">Free Days</option>
+                <option value="credits">Credits</option>
+              </select>
+            </div>
+            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ color: textSecondary, fontSize: '14px', display: 'block', marginBottom: '0.5rem' }}>Referrer Reward</label>
+                <input type="number" value={newOffer.referrer_reward} onChange={(e) => setNewOffer({...newOffer, referrer_reward: parseInt(e.target.value)})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: `1px solid ${border}`, color: textPrimary, backgroundColor: inputBg }} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ color: textSecondary, fontSize: '14px', display: 'block', marginBottom: '0.5rem' }}>Referred Reward</label>
+                <input type="number" value={newOffer.referred_reward} onChange={(e) => setNewOffer({...newOffer, referred_reward: parseInt(e.target.value)})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: `1px solid ${border}`, color: textPrimary, backgroundColor: inputBg }} />
+              </div>
+            </div>
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ color: textSecondary, fontSize: '14px', display: 'block', marginBottom: '0.5rem' }}>Weight (for random assignment)</label>
+              <input type="number" value={newOffer.weight} onChange={(e) => setNewOffer({...newOffer, weight: parseInt(e.target.value)})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: `1px solid ${border}`, color: textPrimary, backgroundColor: inputBg }} />
+            </div>
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <button onClick={() => setShowCreateModal(false)} style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', border: 'none', backgroundColor: '#e5e5e5', color: textPrimary, cursor: 'pointer', fontWeight: 500 }}>Cancel</button>
+              <button onClick={createOffer} disabled={!newOffer.name} style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', border: 'none', backgroundColor: newOffer.name ? '#f97316' : '#ccc', color: 'white', cursor: newOffer.name ? 'pointer' : 'not-allowed', fontWeight: 600 }}>Create Offer</button>
+            </div>
           </div>
         </div>
       )}
