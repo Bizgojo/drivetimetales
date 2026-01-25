@@ -265,33 +265,33 @@ export default function AdminStoriesPage() {
                 </div>
                 <div style={{ flex: 1 }}>
                   <label style={{ display: 'block', color: textSecondary, fontSize: '12px', marginBottom: '4px' }}>Cover URL</label>
-                  <input type="text" value={editForm.cover_url} onChange={e => setEditForm({ ...editForm, cover_url: e.target.value })} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: `1px solid ${border}`, color: textPrimary, fontSize: '13px' }} placeholder="https://..." />
+                  <input type="text" value={editForm.cover_url} onChange={e => setEditForm({ ...editForm, cover_url: e.target.value })} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: `1px solid ${border}`, backgroundColor: 'white', color: textPrimary, fontSize: '13px' }} placeholder="https://..." />
                 </div>
               </div>
               
               {/* Title */}
               <div>
                 <label style={{ display: 'block', color: textSecondary, fontSize: '12px', marginBottom: '4px' }}>Title *</label>
-                <input type="text" value={editForm.title} onChange={e => setEditForm({ ...editForm, title: e.target.value })} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px' }} />
+                <input type="text" value={editForm.title} onChange={e => setEditForm({ ...editForm, title: e.target.value })} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: `1px solid ${border}`, backgroundColor: 'white', color: textPrimary, fontSize: '14px' }} />
               </div>
               
               {/* Author */}
               <div>
                 <label style={{ display: 'block', color: textSecondary, fontSize: '12px', marginBottom: '4px' }}>Author *</label>
-                <input type="text" value={editForm.author} onChange={e => setEditForm({ ...editForm, author: e.target.value })} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px' }} />
+                <input type="text" value={editForm.author} onChange={e => setEditForm({ ...editForm, author: e.target.value })} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: `1px solid ${border}`, backgroundColor: 'white', color: textPrimary, fontSize: '14px' }} />
               </div>
               
               {/* Genre & Duration */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                 <div>
                   <label style={{ display: 'block', color: textSecondary, fontSize: '12px', marginBottom: '4px' }}>Genre</label>
-                  <select value={editForm.genre} onChange={e => setEditForm({ ...editForm, genre: e.target.value })} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px' }}>
+                  <select value={editForm.genre} onChange={e => setEditForm({ ...editForm, genre: e.target.value })} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: `1px solid ${border}`, backgroundColor: 'white', color: textPrimary, fontSize: '14px' }}>
                     {GENRES.map(g => <option key={g} value={g}>{g}</option>)}
                   </select>
                 </div>
                 <div>
                   <label style={{ display: 'block', color: textSecondary, fontSize: '12px', marginBottom: '4px' }}>Duration (mins)</label>
-                  <input type="number" value={editForm.duration_mins} onChange={e => setEditForm({ ...editForm, duration_mins: Number(e.target.value) })} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px' }} />
+                  <input type="number" value={editForm.duration_mins} onChange={e => setEditForm({ ...editForm, duration_mins: Number(e.target.value) })} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: `1px solid ${border}`, backgroundColor: 'white', color: textPrimary, fontSize: '14px' }} />
                 </div>
               </div>
               
@@ -304,18 +304,18 @@ export default function AdminStoriesPage() {
               {/* Series */}
               <div>
                 <label style={{ display: 'block', color: textSecondary, fontSize: '12px', marginBottom: '4px' }}>Series Name (optional)</label>
-                <input type="text" value={editForm.series_name} onChange={e => setEditForm({ ...editForm, series_name: e.target.value })} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px' }} placeholder="e.g., The Dark Woods Trilogy" />
+                <input type="text" value={editForm.series_name} onChange={e => setEditForm({ ...editForm, series_name: e.target.value })} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: `1px solid ${border}`, backgroundColor: 'white', color: textPrimary, fontSize: '14px' }} placeholder="e.g., The Dark Woods Trilogy" />
               </div>
               
               {editForm.series_name && (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                   <div>
                     <label style={{ display: 'block', color: textSecondary, fontSize: '12px', marginBottom: '4px' }}>Part # in Series</label>
-                    <input type="number" value={editForm.series_number || ''} onChange={e => setEditForm({ ...editForm, series_number: Number(e.target.value) || null })} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px' }} />
+                    <input type="number" value={editForm.series_number || ''} onChange={e => setEditForm({ ...editForm, series_number: Number(e.target.value) || null })} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: `1px solid ${border}`, backgroundColor: 'white', color: textPrimary, fontSize: '14px' }} />
                   </div>
                   <div>
                     <label style={{ display: 'block', color: textSecondary, fontSize: '12px', marginBottom: '4px' }}>Total in Series</label>
-                    <input type="number" value={editForm.series_total || ''} onChange={e => setEditForm({ ...editForm, series_total: Number(e.target.value) || null })} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px' }} />
+                    <input type="number" value={editForm.series_total || ''} onChange={e => setEditForm({ ...editForm, series_total: Number(e.target.value) || null })} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: `1px solid ${border}`, backgroundColor: 'white', color: textPrimary, fontSize: '14px' }} />
                   </div>
                 </div>
               )}
@@ -323,7 +323,7 @@ export default function AdminStoriesPage() {
               {/* Description */}
               <div>
                 <label style={{ display: 'block', color: textSecondary, fontSize: '12px', marginBottom: '4px' }}>Description</label>
-                <textarea value={editForm.description} onChange={e => setEditForm({ ...editForm, description: e.target.value })} rows={4} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px', resize: 'vertical' }} placeholder="Story description..." />
+                <textarea value={editForm.description} onChange={e => setEditForm({ ...editForm, description: e.target.value })} rows={4} style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: `1px solid ${border}`, backgroundColor: 'white', color: textPrimary, fontSize: '14px', resize: 'vertical' }} placeholder="Story description..." />
               </div>
               
               {/* Buttons */}
@@ -434,22 +434,22 @@ export default function AdminStoriesPage() {
         </div>
         
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          <input type="text" placeholder="Search by title or author..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ flex: 1, minWidth: '200px', padding: '0.5rem 0.75rem', borderRadius: '6px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px' }} />
+          <input type="text" placeholder="Search by title or author..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ flex: 1, minWidth: '200px', padding: '0.5rem 0.75rem', borderRadius: '6px', border: `1px solid ${border}`, backgroundColor: 'white', color: textPrimary, fontSize: '14px' }} />
           
           {filterTab === 'genre' && (
-            <select value={genreFilter} onChange={(e) => setGenreFilter(e.target.value)} style={{ padding: '0.5rem 0.75rem', borderRadius: '6px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px', minWidth: '150px' }}>
+            <select value={genreFilter} onChange={(e) => setGenreFilter(e.target.value)} style={{ padding: '0.5rem 0.75rem', borderRadius: '6px', border: `1px solid ${border}`, backgroundColor: 'white', color: textPrimary, fontSize: '14px', minWidth: '150px' }}>
               {genres.map(g => <option key={g} value={g}>{g}</option>)}
             </select>
           )}
           
           {filterTab === 'series' && (
-            <select value={seriesFilter} onChange={(e) => setSeriesFilter(e.target.value)} style={{ padding: '0.5rem 0.75rem', borderRadius: '6px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px', minWidth: '150px' }}>
+            <select value={seriesFilter} onChange={(e) => setSeriesFilter(e.target.value)} style={{ padding: '0.5rem 0.75rem', borderRadius: '6px', border: `1px solid ${border}`, backgroundColor: 'white', color: textPrimary, fontSize: '14px', minWidth: '150px' }}>
               {seriesList.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           )}
           
           {filterTab === 'duration' && (
-            <select value={durationFilter} onChange={(e) => setDurationFilter(Number(e.target.value))} style={{ padding: '0.5rem 0.75rem', borderRadius: '6px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px', minWidth: '150px' }}>
+            <select value={durationFilter} onChange={(e) => setDurationFilter(Number(e.target.value))} style={{ padding: '0.5rem 0.75rem', borderRadius: '6px', border: `1px solid ${border}`, backgroundColor: 'white', color: textPrimary, fontSize: '14px', minWidth: '150px' }}>
               {DURATION_RANGES.map((r, i) => <option key={i} value={i}>{r.label}</option>)}
             </select>
           )}
