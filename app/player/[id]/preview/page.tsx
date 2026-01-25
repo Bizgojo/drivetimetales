@@ -18,6 +18,24 @@ interface Story {
   preview_audio_url?: string
   preview_end_time?: number
   credits: number
+  free_start_date?: string | null
+  free_end_date?: string | null
+}
+
+// Helper function to check if story is currently free
+function isStoryCurrentlyFree(story: Story): boolean {
+  if (!story.free_start_date || !story.free_end_date) return false
+  
+  const today = new Date()
+  today.setHours(0, 0, 0, 0) // Normalize to start of day
+  
+  const startDate = new Date(story.free_start_date)
+  startDate.setHours(0, 0, 0, 0)
+  
+  const endDate = new Date(story.free_end_date)
+  endDate.setHours(23, 59, 59, 999) // End of day
+  
+  return today >= startDate && today <= endDate
 }
 
 function PreviewContent() {
@@ -141,9 +159,11 @@ function PreviewContent() {
   const handleBuyNow = async () => {
     if (!user || !story) return
     
-    const creditCost = story.credits || 1
+    // Check if story is currently free
+    const isFreeToday = isStoryCurrentlyFree(story)
+    const creditCost = isFreeToday ? 0 : (story.credits || 1)
     
-    if (user.credits < creditCost && user.credits !== -1) {
+    if (creditCost > 0 && user.credits < creditCost && user.credits !== -1) {
       alert('Not enough credits. Please purchase more credits.')
       return
     }
@@ -154,13 +174,16 @@ function PreviewContent() {
         audioRef.current.pause()
       }
       
-      const newCredits = user.credits === -1 ? -1 : user.credits - creditCost
-      const { error: creditError } = await supabase
-        .from('users')
-        .update({ credits: newCredits })
-        .eq('id', user.id)
-      
-      if (creditError) throw creditError
+      // Only deduct credits if there's a cost
+      if (creditCost > 0) {
+        const newCredits = user.credits === -1 ? -1 : user.credits - creditCost
+        const { error: creditError } = await supabase
+          .from('users')
+          .update({ credits: newCredits })
+          .eq('id', user.id)
+        
+        if (creditError) throw creditError
+      }
       
       const { error: libError } = await supabase
         .from('user_library')
@@ -217,6 +240,11 @@ function PreviewContent() {
     )
   }
 
+  // Check if story is currently free
+  const isFreeToday = isStoryCurrentlyFree(story)
+  const creditCost = isFreeToday ? 0 : (story.credits || 1)
+  const hasEnoughCredits = user && (creditCost === 0 || user.credits >= creditCost || user.credits === -1)
+
   return (
     <div className="min-h-screen bg-slate-950 text-white flex flex-col">
       {/* Hidden Audio Element */}
@@ -251,6 +279,13 @@ function PreviewContent() {
         )}
       </header>
 
+      {/* FREE TODAY Banner */}
+      {isFreeToday && (
+        <div className="bg-green-500 text-black text-center py-2 font-bold">
+          🎉 FREE TODAY - No credits needed!
+        </div>
+      )}
+
       {/* Main Content */}
       <main className="flex-1 px-4 pt-4 pb-6 flex flex-col">
         {/* Full Width Cover with Glow */}
@@ -268,7 +303,12 @@ function PreviewContent() {
         <div className="text-center mb-3">
           <h1 className="text-lg font-bold mb-1">{story.title}</h1>
           <p className="text-white text-sm mb-1">by {story.author || 'Unknown Author'}</p>
-          <p className="text-orange-400 text-sm">{story.genre} • Preview</p>
+          <div className="flex items-center justify-center gap-2">
+            <p className="text-orange-400 text-sm">{story.genre} • Preview</p>
+            {isFreeToday && (
+              <span className="bg-green-500 text-black text-xs font-bold px-2 py-0.5 rounded">FREE TODAY</span>
+            )}
+          </div>
         </div>
 
         {/* Orange Player Controls Box */}
@@ -342,10 +382,14 @@ function PreviewContent() {
           {user && (
             <button
               onClick={handleBuyNow}
-              disabled={buying || (user.credits < (story.credits || 1) && user.credits !== -1)}
-              className="w-full py-4 bg-green-500 hover:bg-green-400 text-black rounded-xl font-bold text-base transition disabled:opacity-50 disabled:bg-slate-600 disabled:text-slate-400"
+              disabled={buying || !hasEnoughCredits}
+              className={`w-full py-4 rounded-xl font-bold text-base transition disabled:opacity-50 ${
+                isFreeToday
+                  ? 'bg-green-500 hover:bg-green-400 text-black'
+                  : 'bg-green-500 hover:bg-green-400 text-black disabled:bg-slate-600 disabled:text-slate-400'
+              }`}
             >
-              {buying ? 'Processing...' : `▶ Buy Now & Continue (${story.credits || 1} credit${(story.credits || 1) > 1 ? 's' : ''})`}
+              {buying ? 'Processing...' : isFreeToday ? '▶ Get FREE & Continue' : `▶ Buy Now & Continue (${creditCost} credit${creditCost > 1 ? 's' : ''})`}
             </button>
           )}
 
