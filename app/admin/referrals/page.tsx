@@ -4,314 +4,155 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
-interface ReferralStats {
-  total_referrals: number
-  successful_referrals: number
-  pending_referrals: number
-  total_rewards_given: number
-  conversion_rate: number
-}
-
-interface TopReferrer {
+interface Offer {
   id: string
-  display_name: string
-  email: string
-  referral_code: string
-  referral_count: number
-  successful_referrals: number
-  total_earnings: number
-}
-
-interface RecentReferral {
-  id: string
-  referrer_name: string
-  referred_name: string
-  referred_email: string
-  status: string
+  name: string
+  description: string
+  offer_type: 'free_days' | 'credits'
+  referrer_reward: number
+  referred_reward: number
+  is_default: boolean
+  is_active: boolean
   created_at: string
-  converted_at: string | null
+}
+
+interface OfferStats {
+  offer_id: string
+  offer_name: string
+  offer_type: string
+  referrer_reward: number
+  referred_reward: number
+  total_referrals: number
+  total_opened: number
+  total_signed_up: number
+  total_subscribed: number
+  total_rewarded: number
+  open_rate: number
+  signup_rate: number
+  subscribe_rate: number
+}
+
+interface PlatformStats {
+  total_users_with_codes: number
+  users_who_referred: number
+  pct_users_referring: number
+  total_referrals_sent: number
+  total_opened: number
+  total_signed_up: number
+  total_subscribed: number
+  total_rewarded: number
 }
 
 export default function AdminReferralsPage() {
   const router = useRouter()
+  const [offers, setOffers] = useState<Offer[]>([])
+  const [offerStats, setOfferStats] = useState<OfferStats[]>([])
+  const [platformStats, setPlatformStats] = useState<PlatformStats | null>(null)
   const [loading, setLoading] = useState(true)
-  const [stats, setStats] = useState<ReferralStats>({
-    total_referrals: 0,
-    successful_referrals: 0,
-    pending_referrals: 0,
-    total_rewards_given: 0,
-    conversion_rate: 0
-  })
-  const [topReferrers, setTopReferrers] = useState<TopReferrer[]>([])
-  const [recentReferrals, setRecentReferrals] = useState<RecentReferral[]>([])
-  const [timeRange, setTimeRange] = useState<'7d' | '30d' | '90d' | 'all'>('30d')
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [newOffer, setNewOffer] = useState({ name: '', description: '', offer_type: 'free_days', referrer_reward: 14, referred_reward: 14 })
 
-  const bg = '#0f172a'
-  const cardBg = '#1e293b'
-  const textPrimary = '#ffffff'
-  const textSecondary = '#94a3b8'
-  const border = '#334155'
-  const orange = '#f97316'
-  const green = '#22c55e'
-
-  useEffect(() => {
-    fetchData()
-  }, [timeRange])
+  useEffect(() => { fetchData() }, [])
 
   async function fetchData() {
     setLoading(true)
-    
-    try {
-      // Fetch referral stats
-      const { data: referrals } = await supabase
-        .from('referrals')
-        .select('*')
-      
-      if (referrals) {
-        const successful = referrals.filter(r => r.status === 'completed' || r.converted_at)
-        const pending = referrals.filter(r => r.status === 'pending' || (!r.converted_at && r.status !== 'completed'))
-        
-        setStats({
-          total_referrals: referrals.length,
-          successful_referrals: successful.length,
-          pending_referrals: pending.length,
-          total_rewards_given: successful.length * 30, // 30 days free per referral
-          conversion_rate: referrals.length > 0 ? Math.round((successful.length / referrals.length) * 100) : 0
-        })
-      }
-
-      // Fetch top referrers
-      const { data: users } = await supabase
-        .from('users')
-        .select('id, display_name, email, referral_code, referral_count')
-        .not('referral_code', 'is', null)
-        .order('referral_count', { ascending: false })
-        .limit(10)
-      
-      if (users) {
-        setTopReferrers(users.map(u => ({
-          id: u.id,
-          display_name: u.display_name || 'Unknown',
-          email: u.email,
-          referral_code: u.referral_code,
-          referral_count: u.referral_count || 0,
-          successful_referrals: u.referral_count || 0,
-          total_earnings: (u.referral_count || 0) * 30 // 30 days per referral
-        })))
-      }
-
-      // Fetch recent referrals
-      const { data: recent } = await supabase
-        .from('referrals')
-        .select(`
-          id,
-          status,
-          created_at,
-          converted_at,
-          referrer:referrer_id(display_name),
-          referred:referred_id(display_name, email)
-        `)
-        .order('created_at', { ascending: false })
-        .limit(20)
-      
-      if (recent) {
-        setRecentReferrals(recent.map((r: any) => ({
-          id: r.id,
-          referrer_name: r.referrer?.display_name || 'Unknown',
-          referred_name: r.referred?.display_name || 'Unknown',
-          referred_email: r.referred?.email || '',
-          status: r.converted_at ? 'completed' : (r.status || 'pending'),
-          created_at: r.created_at,
-          converted_at: r.converted_at
-        })))
-      }
-    } catch (err) {
-      console.error('Error fetching referral data:', err)
-    }
-    
+    const { data: offersData } = await supabase.from('referral_offers').select('*').order('created_at', { ascending: false })
+    if (offersData) setOffers(offersData)
+    const { data: statsData } = await supabase.from('referral_stats_by_offer').select('*')
+    if (statsData) setOfferStats(statsData)
+    const { data: platformData } = await supabase.from('referral_platform_stats').select('*').single()
+    if (platformData) setPlatformStats(platformData)
     setLoading(false)
   }
 
-  function formatDate(dateStr: string) {
-    if (!dateStr) return '-'
-    return new Date(dateStr).toLocaleDateString('en-US', { 
-      month: 'short', 
-      day: 'numeric',
-      year: '2-digit',
-      hour: 'numeric',
-      minute: '2-digit'
-    })
+  async function createOffer() {
+    const { error } = await supabase.from('referral_offers').insert({ name: newOffer.name, description: newOffer.description, offer_type: newOffer.offer_type, referrer_reward: newOffer.referrer_reward, referred_reward: newOffer.referred_reward })
+    if (!error) { setShowCreateModal(false); setNewOffer({ name: '', description: '', offer_type: 'free_days', referrer_reward: 14, referred_reward: 14 }); fetchData() }
   }
 
-  if (loading) {
-    return (
-      <div style={{ minHeight: '100vh', backgroundColor: bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ width: '40px', height: '40px', border: '4px solid #f97316', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-        <style dangerouslySetInnerHTML={{ __html: '@keyframes spin { to { transform: rotate(360deg); } }' }} />
-      </div>
-    )
+  async function setDefault(offerId: string) {
+    await supabase.from('referral_offers').update({ is_default: false }).neq('id', offerId)
+    await supabase.from('referral_offers').update({ is_default: true }).eq('id', offerId)
+    fetchData()
   }
+
+  async function toggleActive(offerId: string, currentState: boolean) {
+    await supabase.from('referral_offers').update({ is_active: !currentState }).eq('id', offerId)
+    fetchData()
+  }
+
+  function exportCSV() {
+    const headers = ['Offer Name', 'Type', 'Referrer Reward', 'Referred Reward', 'Total Sent', 'Opened', 'Open Rate %', 'Signed Up', 'Signup Rate %', 'Subscribed', 'Subscribe Rate %', 'Rewarded']
+    const rows = offerStats.map(s => [s.offer_name, s.offer_type, s.referrer_reward, s.referred_reward, s.total_referrals, s.total_opened, s.open_rate || 0, s.total_signed_up, s.signup_rate || 0, s.total_subscribed, s.subscribe_rate || 0, s.total_rewarded])
+    const csv = [headers, ...rows].map(r => r.join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a'); a.href = url; a.download = 'referral-stats-' + new Date().toISOString().split('T')[0] + '.csv'; a.click()
+  }
+
+  // Colors
+  const bg = '#FAF9F6'  // Off-white background
+  const cardBg = '#FFFFFF'  // White cards
+  const textPrimary = '#1a1a1a'  // Near black
+  const textSecondary = '#4a4a4a'  // Dark gray
+  const border = '#e0e0e0'  // Light border
+
+  if (loading) return (<div style={{ minHeight: '100vh', backgroundColor: bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ width: '40px', height: '40px', border: '4px solid #f97316', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} /><style dangerouslySetInnerHTML={{ __html: '@keyframes spin { to { transform: rotate(360deg); } }' }} /></div>)
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: bg, padding: '1.5rem' }}>
-      {/* Header */}
+    <div style={{ minHeight: '100vh', backgroundColor: bg, padding: '1rem' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
-        <div>
-          <h1 style={{ color: textPrimary, fontSize: '24px', fontWeight: 'bold', marginBottom: '0.25rem' }}>🎁 Referrals</h1>
-          <p style={{ color: textSecondary, fontSize: '14px' }}>Track referral program performance and rewards</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <button onClick={() => router.push('/admin')} style={{ backgroundColor: '#e5e5e5', color: textPrimary, padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 500 }}>← Back</button>
+          <h1 style={{ color: textPrimary, fontSize: '24px', fontWeight: 'bold' }}>Referral Management</h1>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
-          {(['7d', '30d', '90d', 'all'] as const).map(range => (
-            <button
-              key={range}
-              onClick={() => setTimeRange(range)}
-              style={{
-                padding: '0.5rem 1rem',
-                borderRadius: '8px',
-                border: 'none',
-                backgroundColor: timeRange === range ? orange : cardBg,
-                color: timeRange === range ? 'black' : textPrimary,
-                cursor: 'pointer',
-                fontWeight: 600,
-                fontSize: '13px'
-              }}
-            >
-              {range === 'all' ? 'All Time' : range === '7d' ? '7 Days' : range === '30d' ? '30 Days' : '90 Days'}
-            </button>
-          ))}
+          <button onClick={exportCSV} style={{ backgroundColor: '#22c55e', color: 'white', padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 600 }}>📊 Export CSV</button>
+          <button onClick={() => setShowCreateModal(true)} style={{ backgroundColor: '#f97316', color: 'white', padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 600 }}>+ New Offer</button>
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
-        <div style={{ backgroundColor: cardBg, borderRadius: '12px', padding: '1.25rem', border: `1px solid ${border}` }}>
-          <div style={{ color: textSecondary, fontSize: '12px', marginBottom: '0.5rem' }}>Total Referrals</div>
-          <div style={{ color: textPrimary, fontSize: '32px', fontWeight: 'bold' }}>{stats.total_referrals}</div>
-        </div>
-        <div style={{ backgroundColor: cardBg, borderRadius: '12px', padding: '1.25rem', border: `1px solid ${border}` }}>
-          <div style={{ color: textSecondary, fontSize: '12px', marginBottom: '0.5rem' }}>Successful</div>
-          <div style={{ color: green, fontSize: '32px', fontWeight: 'bold' }}>{stats.successful_referrals}</div>
-        </div>
-        <div style={{ backgroundColor: cardBg, borderRadius: '12px', padding: '1.25rem', border: `1px solid ${border}` }}>
-          <div style={{ color: textSecondary, fontSize: '12px', marginBottom: '0.5rem' }}>Pending</div>
-          <div style={{ color: orange, fontSize: '32px', fontWeight: 'bold' }}>{stats.pending_referrals}</div>
-        </div>
-        <div style={{ backgroundColor: cardBg, borderRadius: '12px', padding: '1.25rem', border: `1px solid ${border}` }}>
-          <div style={{ color: textSecondary, fontSize: '12px', marginBottom: '0.5rem' }}>Conversion Rate</div>
-          <div style={{ color: stats.conversion_rate > 50 ? green : textPrimary, fontSize: '32px', fontWeight: 'bold' }}>{stats.conversion_rate}%</div>
-        </div>
-        <div style={{ backgroundColor: cardBg, borderRadius: '12px', padding: '1.25rem', border: `1px solid ${border}` }}>
-          <div style={{ color: textSecondary, fontSize: '12px', marginBottom: '0.5rem' }}>Free Days Given</div>
-          <div style={{ color: '#a855f7', fontSize: '32px', fontWeight: 'bold' }}>{stats.total_rewards_given}</div>
-        </div>
-      </div>
-
-      {/* Two Column Layout */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
-        {/* Top Referrers */}
-        <div style={{ backgroundColor: cardBg, borderRadius: '12px', padding: '1.25rem', border: `1px solid ${border}` }}>
-          <h2 style={{ color: textPrimary, fontSize: '16px', fontWeight: 'bold', marginBottom: '1rem' }}>🏆 Top Referrers</h2>
-          
-          {topReferrers.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '2rem', color: textSecondary }}>
-              No referrers yet
-            </div>
-          ) : (
-            <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ borderBottom: `1px solid ${border}` }}>
-                  <th style={{ textAlign: 'left', padding: '0.5rem', color: textSecondary }}>#</th>
-                  <th style={{ textAlign: 'left', padding: '0.5rem', color: textSecondary }}>User</th>
-                  <th style={{ textAlign: 'center', padding: '0.5rem', color: textSecondary }}>Code</th>
-                  <th style={{ textAlign: 'center', padding: '0.5rem', color: textSecondary }}>Referrals</th>
-                  <th style={{ textAlign: 'center', padding: '0.5rem', color: textSecondary }}>Days Earned</th>
-                </tr>
-              </thead>
-              <tbody>
-                {topReferrers.map((referrer, i) => (
-                  <tr key={referrer.id} style={{ borderBottom: `1px solid ${border}` }}>
-                    <td style={{ padding: '0.5rem', color: i < 3 ? orange : textPrimary, fontWeight: i < 3 ? 'bold' : 'normal' }}>
-                      {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}
-                    </td>
-                    <td style={{ padding: '0.5rem' }}>
-                      <div style={{ color: textPrimary, fontWeight: 500 }}>{referrer.display_name}</div>
-                      <div style={{ color: textSecondary, fontSize: '10px' }}>{referrer.email}</div>
-                    </td>
-                    <td style={{ padding: '0.5rem', textAlign: 'center' }}>
-                      <span style={{ backgroundColor: '#1e3a5f', color: '#60a5fa', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontFamily: 'monospace' }}>
-                        {referrer.referral_code}
-                      </span>
-                    </td>
-                    <td style={{ padding: '0.5rem', textAlign: 'center', color: green, fontWeight: 'bold' }}>
-                      {referrer.referral_count}
-                    </td>
-                    <td style={{ padding: '0.5rem', textAlign: 'center', color: '#a855f7', fontWeight: 'bold' }}>
-                      {referrer.total_earnings}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-
-        {/* Recent Referrals */}
-        <div style={{ backgroundColor: cardBg, borderRadius: '12px', padding: '1.25rem', border: `1px solid ${border}` }}>
-          <h2 style={{ color: textPrimary, fontSize: '16px', fontWeight: 'bold', marginBottom: '1rem' }}>📋 Recent Referrals</h2>
-          
-          {recentReferrals.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '2rem', color: textSecondary }}>
-              No referrals yet
-            </div>
-          ) : (
-            <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-              {recentReferrals.map(referral => (
-                <div key={referral.id} style={{ padding: '0.75rem', borderBottom: `1px solid ${border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <div style={{ color: textPrimary, fontSize: '13px' }}>
-                      <span style={{ fontWeight: 500 }}>{referral.referrer_name}</span>
-                      <span style={{ color: textSecondary }}> → </span>
-                      <span style={{ fontWeight: 500 }}>{referral.referred_name}</span>
-                    </div>
-                    <div style={{ color: textSecondary, fontSize: '11px' }}>{formatDate(referral.created_at)}</div>
-                  </div>
-                  <div>
-                    <span style={{
-                      padding: '3px 8px',
-                      borderRadius: '4px',
-                      fontSize: '10px',
-                      fontWeight: 600,
-                      backgroundColor: referral.status === 'completed' ? '#166534' : '#854d0e',
-                      color: referral.status === 'completed' ? '#86efac' : '#fde047'
-                    }}>
-                      {referral.status === 'completed' ? '✓ Completed' : '⏳ Pending'}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Referral Program Info */}
-      <div style={{ backgroundColor: cardBg, borderRadius: '12px', padding: '1.25rem', border: `1px solid ${border}`, marginTop: '1.5rem' }}>
-        <h2 style={{ color: textPrimary, fontSize: '16px', fontWeight: 'bold', marginBottom: '1rem' }}>ℹ️ Referral Program Details</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
-          <div style={{ backgroundColor: bg, borderRadius: '8px', padding: '1rem' }}>
-            <div style={{ color: orange, fontSize: '14px', fontWeight: 600, marginBottom: '0.5rem' }}>Referrer Reward</div>
-            <div style={{ color: textPrimary, fontSize: '13px' }}>30 days free added to subscription for each successful referral</div>
+      {platformStats && (
+        <div style={{ backgroundColor: cardBg, borderRadius: '12px', padding: '1.25rem', marginBottom: '1.5rem', border: `1px solid ${border}` }}>
+          <h2 style={{ color: textPrimary, fontSize: '18px', fontWeight: 'bold', marginBottom: '1rem' }}>Platform Overview</h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
+            <div style={{ backgroundColor: '#f5f5f5', borderRadius: '8px', padding: '1rem', textAlign: 'center' }}><div style={{ color: textSecondary, fontSize: '12px' }}>Users with Codes</div><div style={{ color: textPrimary, fontSize: '28px', fontWeight: 'bold' }}>{platformStats.total_users_with_codes}</div></div>
+            <div style={{ backgroundColor: '#f5f5f5', borderRadius: '8px', padding: '1rem', textAlign: 'center' }}><div style={{ color: textSecondary, fontSize: '12px' }}>Users Who Referred</div><div style={{ color: '#2563eb', fontSize: '28px', fontWeight: 'bold' }}>{platformStats.users_who_referred}</div><div style={{ color: textSecondary, fontSize: '12px' }}>{platformStats.pct_users_referring || 0}% of users</div></div>
+            <div style={{ backgroundColor: '#f5f5f5', borderRadius: '8px', padding: '1rem', textAlign: 'center' }}><div style={{ color: textSecondary, fontSize: '12px' }}>Total Referrals Sent</div><div style={{ color: textPrimary, fontSize: '28px', fontWeight: 'bold' }}>{platformStats.total_referrals_sent}</div></div>
+            <div style={{ backgroundColor: '#f5f5f5', borderRadius: '8px', padding: '1rem', textAlign: 'center' }}><div style={{ color: textSecondary, fontSize: '12px' }}>Total Rewarded</div><div style={{ color: '#16a34a', fontSize: '28px', fontWeight: 'bold' }}>{platformStats.total_rewarded}</div></div>
           </div>
-          <div style={{ backgroundColor: bg, borderRadius: '8px', padding: '1rem' }}>
-            <div style={{ color: green, fontSize: '14px', fontWeight: 600, marginBottom: '0.5rem' }}>New User Reward</div>
-            <div style={{ color: textPrimary, fontSize: '13px' }}>30-day free trial when signing up with a referral code</div>
-          </div>
-          <div style={{ backgroundColor: bg, borderRadius: '8px', padding: '1rem' }}>
-            <div style={{ color: '#a855f7', fontSize: '14px', fontWeight: 600, marginBottom: '0.5rem' }}>No Limits</div>
-            <div style={{ color: textPrimary, fontSize: '13px' }}>Unlimited referrals - users can earn unlimited free subscription time</div>
+          <div style={{ marginTop: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#f5f5f5', borderRadius: '8px', padding: '1rem' }}>
+            <div style={{ textAlign: 'center', flex: 1 }}><div style={{ color: textPrimary, fontSize: '20px', fontWeight: 'bold' }}>{platformStats.total_referrals_sent}</div><div style={{ color: textSecondary, fontSize: '11px' }}>Sent</div></div>
+            <div style={{ color: '#999' }}>→</div>
+            <div style={{ textAlign: 'center', flex: 1 }}><div style={{ color: textPrimary, fontSize: '20px', fontWeight: 'bold' }}>{platformStats.total_opened}</div><div style={{ color: textSecondary, fontSize: '11px' }}>Opened</div><div style={{ color: '#ea580c', fontSize: '10px', fontWeight: 600 }}>{platformStats.total_referrals_sent > 0 ? Math.round(platformStats.total_opened / platformStats.total_referrals_sent * 100) : 0}%</div></div>
+            <div style={{ color: '#999' }}>→</div>
+            <div style={{ textAlign: 'center', flex: 1 }}><div style={{ color: textPrimary, fontSize: '20px', fontWeight: 'bold' }}>{platformStats.total_signed_up}</div><div style={{ color: textSecondary, fontSize: '11px' }}>Signed Up</div><div style={{ color: '#ea580c', fontSize: '10px', fontWeight: 600 }}>{platformStats.total_opened > 0 ? Math.round(platformStats.total_signed_up / platformStats.total_opened * 100) : 0}%</div></div>
+            <div style={{ color: '#999' }}>→</div>
+            <div style={{ textAlign: 'center', flex: 1 }}><div style={{ color: textPrimary, fontSize: '20px', fontWeight: 'bold' }}>{platformStats.total_subscribed}</div><div style={{ color: textSecondary, fontSize: '11px' }}>Subscribed</div><div style={{ color: '#ea580c', fontSize: '10px', fontWeight: 600 }}>{platformStats.total_signed_up > 0 ? Math.round(platformStats.total_subscribed / platformStats.total_signed_up * 100) : 0}%</div></div>
+            <div style={{ color: '#999' }}>→</div>
+            <div style={{ textAlign: 'center', flex: 1 }}><div style={{ color: '#16a34a', fontSize: '20px', fontWeight: 'bold' }}>{platformStats.total_rewarded}</div><div style={{ color: textSecondary, fontSize: '11px' }}>Rewarded</div></div>
           </div>
         </div>
+      )}
+
+      <div style={{ backgroundColor: cardBg, borderRadius: '12px', padding: '1.25rem', marginBottom: '1.5rem', border: `1px solid ${border}` }}>
+        <h2 style={{ color: textPrimary, fontSize: '18px', fontWeight: 'bold', marginBottom: '1rem' }}>A/B Test Comparison</h2>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+            <thead><tr style={{ borderBottom: `2px solid ${border}` }}><th style={{ color: textSecondary, textAlign: 'left', padding: '0.75rem 0.5rem' }}>Offer</th><th style={{ color: textSecondary, textAlign: 'center', padding: '0.75rem 0.5rem' }}>Type</th><th style={{ color: textSecondary, textAlign: 'center', padding: '0.75rem 0.5rem' }}>Reward</th><th style={{ color: textSecondary, textAlign: 'center', padding: '0.75rem 0.5rem' }}>Sent</th><th style={{ color: textSecondary, textAlign: 'center', padding: '0.75rem 0.5rem' }}>Opened</th><th style={{ color: textSecondary, textAlign: 'center', padding: '0.75rem 0.5rem' }}>Open %</th><th style={{ color: textSecondary, textAlign: 'center', padding: '0.75rem 0.5rem' }}>Signed Up</th><th style={{ color: textSecondary, textAlign: 'center', padding: '0.75rem 0.5rem' }}>Signup %</th><th style={{ color: textSecondary, textAlign: 'center', padding: '0.75rem 0.5rem' }}>Subscribed</th><th style={{ color: textSecondary, textAlign: 'center', padding: '0.75rem 0.5rem' }}>Sub %</th><th style={{ color: textSecondary, textAlign: 'center', padding: '0.75rem 0.5rem' }}>Rewarded</th></tr></thead>
+            <tbody>{offerStats.map((stat, i) => (<tr key={stat.offer_id} style={{ borderBottom: `1px solid ${border}`, backgroundColor: i % 2 === 0 ? 'transparent' : '#fafafa' }}><td style={{ color: textPrimary, padding: '0.75rem 0.5rem', fontWeight: 500 }}>{stat.offer_name}</td><td style={{ color: textSecondary, textAlign: 'center', padding: '0.75rem 0.5rem' }}>{stat.offer_type === 'free_days' ? '📅 Days' : '🎫 Credits'}</td><td style={{ color: '#ea580c', textAlign: 'center', padding: '0.75rem 0.5rem', fontWeight: 600 }}>{stat.referrer_reward}/{stat.referred_reward}</td><td style={{ color: textPrimary, textAlign: 'center', padding: '0.75rem 0.5rem' }}>{stat.total_referrals}</td><td style={{ color: textPrimary, textAlign: 'center', padding: '0.75rem 0.5rem' }}>{stat.total_opened}</td><td style={{ color: stat.open_rate > 50 ? '#16a34a' : '#ea580c', textAlign: 'center', padding: '0.75rem 0.5rem', fontWeight: 600 }}>{stat.open_rate || 0}%</td><td style={{ color: textPrimary, textAlign: 'center', padding: '0.75rem 0.5rem' }}>{stat.total_signed_up}</td><td style={{ color: stat.signup_rate > 30 ? '#16a34a' : '#ea580c', textAlign: 'center', padding: '0.75rem 0.5rem', fontWeight: 600 }}>{stat.signup_rate || 0}%</td><td style={{ color: textPrimary, textAlign: 'center', padding: '0.75rem 0.5rem' }}>{stat.total_subscribed}</td><td style={{ color: stat.subscribe_rate > 20 ? '#16a34a' : '#ea580c', textAlign: 'center', padding: '0.75rem 0.5rem', fontWeight: 600 }}>{stat.subscribe_rate || 0}%</td><td style={{ color: '#16a34a', textAlign: 'center', padding: '0.75rem 0.5rem', fontWeight: 600 }}>{stat.total_rewarded}</td></tr>))}</tbody>
+          </table>
+        </div>
       </div>
+
+      <div style={{ backgroundColor: cardBg, borderRadius: '12px', padding: '1.25rem', border: `1px solid ${border}` }}>
+        <h2 style={{ color: textPrimary, fontSize: '18px', fontWeight: 'bold', marginBottom: '1rem' }}>Manage Offers</h2>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          {offers.map(offer => (<div key={offer.id} style={{ backgroundColor: '#f5f5f5', borderRadius: '8px', padding: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: offer.is_default ? '2px solid #16a34a' : `1px solid ${border}` }}><div><div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><span style={{ color: textPrimary, fontWeight: 600 }}>{offer.name}</span>{offer.is_default && <span style={{ backgroundColor: '#16a34a', color: 'white', fontSize: '10px', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>DEFAULT</span>}{!offer.is_active && <span style={{ backgroundColor: '#dc2626', color: 'white', fontSize: '10px', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>INACTIVE</span>}</div><div style={{ color: textSecondary, fontSize: '13px', marginTop: '0.25rem' }}>{offer.offer_type === 'free_days' ? offer.referrer_reward + ' days free' : offer.referrer_reward + ' credits'} each</div></div><div style={{ display: 'flex', gap: '0.5rem' }}>{!offer.is_default && (<button onClick={() => setDefault(offer.id)} style={{ backgroundColor: '#e5e5e5', color: textPrimary, padding: '0.4rem 0.75rem', borderRadius: '6px', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 500 }}>Set Default</button>)}<button onClick={() => toggleActive(offer.id, offer.is_active)} style={{ backgroundColor: offer.is_active ? '#dc2626' : '#16a34a', color: 'white', padding: '0.4rem 0.75rem', borderRadius: '6px', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 500 }}>{offer.is_active ? 'Deactivate' : 'Activate'}</button></div></div>))}
+        </div>
+      </div>
+
+      {showCreateModal && (<div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ backgroundColor: cardBg, borderRadius: '16px', padding: '1.5rem', maxWidth: '400px', width: '100%', margin: '1rem', boxShadow: '0 10px 40px rgba(0,0,0,0.2)' }}><h2 style={{ color: textPrimary, fontSize: '20px', fontWeight: 'bold', marginBottom: '1.5rem' }}>Create New Offer</h2><div style={{ marginBottom: '1rem' }}><label style={{ color: textSecondary, fontSize: '14px', display: 'block', marginBottom: '0.5rem' }}>Offer Name</label><input type="text" value={newOffer.name} onChange={(e) => setNewOffer({...newOffer, name: e.target.value})} placeholder="e.g., 2 Weeks Free" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: `1px solid ${border}`, backgroundColor: cardBg, color: textPrimary, fontSize: '14px' }} /></div><div style={{ marginBottom: '1rem' }}><label style={{ color: textSecondary, fontSize: '14px', display: 'block', marginBottom: '0.5rem' }}>Description</label><input type="text" value={newOffer.description} onChange={(e) => setNewOffer({...newOffer, description: e.target.value})} placeholder="Both get 2 weeks free" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: `1px solid ${border}`, backgroundColor: cardBg, color: textPrimary, fontSize: '14px' }} /></div><div style={{ marginBottom: '1rem' }}><label style={{ color: textSecondary, fontSize: '14px', display: 'block', marginBottom: '0.5rem' }}>Reward Type</label><select value={newOffer.offer_type} onChange={(e) => setNewOffer({...newOffer, offer_type: e.target.value})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: `1px solid ${border}`, backgroundColor: cardBg, color: textPrimary, fontSize: '14px' }}><option value="free_days">Free Days</option><option value="credits">Credits</option></select></div><div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}><div style={{ flex: 1 }}><label style={{ color: textSecondary, fontSize: '14px', display: 'block', marginBottom: '0.5rem' }}>Referrer Reward</label><input type="number" value={newOffer.referrer_reward} onChange={(e) => setNewOffer({...newOffer, referrer_reward: parseInt(e.target.value)})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: `1px solid ${border}`, backgroundColor: cardBg, color: textPrimary, fontSize: '14px' }} /></div><div style={{ flex: 1 }}><label style={{ color: textSecondary, fontSize: '14px', display: 'block', marginBottom: '0.5rem' }}>Referred Reward</label><input type="number" value={newOffer.referred_reward} onChange={(e) => setNewOffer({...newOffer, referred_reward: parseInt(e.target.value)})} style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: `1px solid ${border}`, backgroundColor: cardBg, color: textPrimary, fontSize: '14px' }} /></div></div><div style={{ display: 'flex', gap: '0.75rem' }}><button onClick={() => setShowCreateModal(false)} style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', border: 'none', backgroundColor: '#e5e5e5', color: textPrimary, fontSize: '14px', cursor: 'pointer', fontWeight: 500 }}>Cancel</button><button onClick={createOffer} disabled={!newOffer.name} style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', border: 'none', backgroundColor: newOffer.name ? '#f97316' : '#ccc', color: 'white', fontSize: '14px', cursor: newOffer.name ? 'pointer' : 'not-allowed', fontWeight: 600 }}>Create Offer</button></div></div></div>)}
     </div>
   )
 }
