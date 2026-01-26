@@ -1,4 +1,5 @@
 'use client'
+import StickyHeaderHome from '@/components/StickyHeaderHome'
 
 // C01 Home Page - Updated Jan 21, 2026 - Playlist priority over Continue Listening
 
