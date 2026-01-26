@@ -20,7 +20,7 @@ import { useState, useEffect, Suspense } from 'react'
 import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import WelcomeHeader from '@/components/WelcomeHeader'
+
 import { W2NewsBriefings } from '@/components/W2NewsBriefings'
 import W3NewReleases from '@/components/W3NewReleases'
 import W4RecommendedForYou from '@/components/W4RecommendedForYou'
@@ -128,7 +128,7 @@ function WelcomeContent() {
       <main style={{ maxWidth: '56rem', marginLeft: 'auto', marginRight: 'auto', padding: '1.5rem 1rem', paddingBottom: '6rem' }}>
 
         {/* W1: WelcomeHeader */}
-        <WelcomeHeader credits={freeCredits} />
+        
 
         {/* W2: NewsBriefings */}
         <W2NewsBriefings newsEpisodes={newsEpisodes} credits={freeCredits} />
