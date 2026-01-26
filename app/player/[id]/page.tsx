@@ -212,40 +212,51 @@ function PlayerContent() {
     <div className="h-screen bg-slate-950 text-white flex flex-col overflow-hidden">
       <audio ref={audioRef} src={audioSrc || undefined} onTimeUpdate={handleTimeUpdate} onLoadedMetadata={handleLoadedMetadata} onEnded={handleEnded} preload="auto" />
       <StickyHeaderFull />
-      <main className="flex-1 px-4 py-3 flex flex-col" style={{ maxHeight: 'calc(100vh - 60px)' }}>
-        <div className="flex-1 min-h-0 mb-2">
-          <div className="w-full h-full max-h-[45vh] mx-auto aspect-square rounded-xl overflow-hidden bg-slate-800 shadow-[0_0_20px_rgba(255,255,255,0.3)]">
-            {story.cover_url ? (
-              <img src={story.cover_url} alt={story.title} className="w-full h-full object-cover" />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-orange-600 to-orange-900">
-                <span className="text-6xl opacity-50">🎧</span>
-              </div>
-            )}
-          </div>
+      <main className="flex-1 px-4 py-2 flex flex-col" style={{ maxHeight: 'calc(100vh - 60px)' }}>
+        {/* Smaller Cover */}
+        <div className="w-full max-w-[200px] mx-auto aspect-square rounded-xl overflow-hidden bg-slate-800 shadow-[0_0_20px_rgba(255,255,255,0.3)] mb-2">
+          {story.cover_url ? (
+            <img src={story.cover_url} alt={story.title} className="w-full h-full object-cover" />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-orange-600 to-orange-900">
+              <span className="text-5xl opacity-50">🎧</span>
+            </div>
+          )}
         </div>
-        <h1 className="text-lg font-bold text-center mb-1 line-clamp-1">{story.title}</h1>
-        <p className="text-slate-400 text-xs text-center mb-2">
+        
+        {/* Title - white */}
+        <h1 className="text-lg font-bold text-center text-white mb-1 line-clamp-1">{story.title}</h1>
+        
+        {/* Meta - white */}
+        <p className="text-white text-xs text-center mb-1">
           {story.genre} • {story.author || 'Unknown'} • {story.duration_mins} min • {charged ? '✓ Owned' : `${creditCost} credit${creditCost > 1 ? 's' : ''}`}
         </p>
-        <p className="text-slate-300 text-xs text-center mb-3 line-clamp-2">{truncateDescription(story.description)}</p>
-        <div className="mb-3">
+        
+        {/* Description - white */}
+        <p className="text-white text-xs text-center mb-2 line-clamp-2">{truncateDescription(story.description)}</p>
+        
+        {/* Progress Bar */}
+        <div className="mb-2">
           <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
             <div className="h-full bg-orange-500 transition-all duration-300" style={{ width: `${progressPercent}%` }} />
           </div>
-          <div className="flex justify-between text-xs text-slate-400 mt-1">
+          <div className="flex justify-between text-xs text-white mt-1">
             <span>{formatTime(currentTime)}</span>
             <span>{isCached ? '📥' : isDownloading ? `⬇️ ${downloadProgress}%` : '📡'}</span>
             <span>{formatTime(duration)}</span>
           </div>
         </div>
-        <button onClick={handlePlayPause} className="w-full py-4 bg-orange-500 hover:bg-orange-400 text-black rounded-xl font-bold text-lg mb-3 transition flex items-center justify-center gap-2">
+        
+        {/* Play/Pause Button */}
+        <button onClick={handlePlayPause} className="w-full py-3 bg-orange-500 hover:bg-orange-400 text-black rounded-xl font-bold text-lg mb-2 transition flex items-center justify-center gap-2">
           {isPlaying ? <>❚❚ Pause</> : <>▶ {libraryEntry && libraryEntry.progress > 0 ? 'Continue' : 'Play'}</>}
         </button>
-        <div className="h-12" style={{ visibility: showButtons ? 'visible' : 'hidden' }}>
-          <div className="flex gap-3">
-            <button onClick={handleReserve} className="flex-1 py-3 bg-pink-600 hover:bg-pink-500 text-white rounded-xl font-semibold text-sm transition">📖 Reserve for Later</button>
-            <button onClick={handleNotForMe} className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-semibold text-sm transition">👎 Not For Me</button>
+        
+        {/* Bottom Buttons - Only show for non-owned stories */}
+        <div style={{ height: '48px', visibility: showButtons ? 'visible' : 'hidden' }}>
+          <div className="flex gap-2">
+            <button onClick={handleReserve} className="flex-1 py-2.5 bg-pink-600 hover:bg-pink-500 text-white rounded-xl font-semibold text-sm transition">📖 Reserve for Later</button>
+            <button onClick={handleNotForMe} className="flex-1 py-2.5 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-semibold text-sm transition">👎 Not For Me</button>
           </div>
         </div>
       </main>
