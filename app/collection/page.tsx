@@ -31,6 +31,9 @@ export default function CollectionPage() {
   const [userProgress, setUserProgress] = useState<Record<string, UserStory>>({})
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('All')
+  const [search, setSearch] = useState('')
+  const [genreFilter, setGenreFilter] = useState('All')
+  const [genres, setGenres] = useState<string[]>([])
 
   useEffect(() => {
     if (user?.id) fetchCollection()
@@ -38,7 +41,6 @@ export default function CollectionPage() {
 
   const fetchCollection = async () => {
     try {
-      // Fetch user's library (purchased/played stories)
       const { data: libraryData } = await supabase
         .from('user_library')
         .select('story_id, progress, completed, last_played')
@@ -46,16 +48,11 @@ export default function CollectionPage() {
         .order('last_played', { ascending: false })
 
       if (libraryData && libraryData.length > 0) {
-        // Build progress lookup
         const progressLookup: Record<string, UserStory> = {}
         libraryData.forEach(p => {
-          progressLookup[p.story_id] = {
-            ...p,
-            reviewed: false // Will update below
-          }
+          progressLookup[p.story_id] = { ...p, reviewed: false }
         })
 
-        // Check for reviews
         const { data: reviewsData } = await supabase
           .from('reviews')
           .select('story_id')
@@ -72,7 +69,6 @@ export default function CollectionPage() {
 
         setUserProgress(progressLookup)
 
-        // Fetch story details
         const storyIds = libraryData.map(p => p.story_id)
         const { data: storiesData } = await supabase
           .from('stories')
@@ -80,13 +76,13 @@ export default function CollectionPage() {
           .in('id', storyIds)
 
         if (storiesData) {
-          // Sort by last played
-          const sorted = storiesData.sort((a, b) => {
-            const aTime = progressLookup[a.id]?.last_played || ''
-            const bTime = progressLookup[b.id]?.last_played || ''
-            return bTime.localeCompare(aTime)
-          })
+          // Sort alphabetically by title
+          const sorted = storiesData.sort((a, b) => a.title.localeCompare(b.title))
           setStories(sorted)
+          
+          // Extract unique genres
+          const uniqueGenres = [...new Set(storiesData.map(s => s.genre).filter(Boolean))]
+          setGenres(uniqueGenres.sort())
         }
       }
     } catch (err) {
@@ -99,24 +95,33 @@ export default function CollectionPage() {
   // Filter stories
   const filteredStories = stories.filter(story => {
     const progress = userProgress[story.id]
-    if (filter === 'In Progress') {
-      return progress && !progress.completed && progress.progress > 0
+    
+    // Status filter
+    if (filter === 'In Progress' && !(progress && !progress.completed && progress.progress > 0)) return false
+    if (filter === 'Completed' && !progress?.completed) return false
+    if (filter === 'Not Started' && progress && progress.progress > 0) return false
+    
+    // Genre filter
+    if (genreFilter !== 'All' && story.genre !== genreFilter) return false
+    
+    // Search filter
+    if (search) {
+      const searchLower = search.toLowerCase()
+      if (!story.title.toLowerCase().includes(searchLower) && 
+          !story.author.toLowerCase().includes(searchLower)) {
+        return false
+      }
     }
-    if (filter === 'Completed') {
-      return progress?.completed
-    }
-    if (filter === 'Not Started') {
-      return !progress || progress.progress === 0
-    }
+    
     return true
   })
 
   const btnStyle = (active: boolean): React.CSSProperties => ({
     backgroundColor: active ? '#f97316' : '#334155',
     color: 'white',
-    padding: '0.5rem 1rem',
+    padding: '0.4rem 0.75rem',
     borderRadius: '8px',
-    fontSize: '13px',
+    fontSize: '12px',
     fontWeight: 500,
     border: 'none',
     cursor: 'pointer'
@@ -130,9 +135,7 @@ export default function CollectionPage() {
           <span className="text-5xl block mb-4">🔒</span>
           <h2 className="text-xl font-bold mb-3">Sign In Required</h2>
           <p className="text-slate-400 mb-6">Sign in to see your collection</p>
-          <Link href="/signin" className="px-6 py-3 bg-orange-500 text-black font-semibold rounded-lg inline-block">
-            Sign In
-          </Link>
+          <Link href="/signin" className="px-6 py-3 bg-orange-500 text-black font-semibold rounded-lg inline-block">Sign In</Link>
         </div>
       </div>
     )
@@ -156,6 +159,31 @@ export default function CollectionPage() {
       {/* Sticky Filters */}
       <div className="sticky top-[60px] z-40 bg-slate-800 px-4 py-3">
         <h1 className="text-xl font-bold text-white mb-3">📚 My Collection</h1>
+        
+        {/* Search */}
+        <div className="mb-3">
+          <input
+            type="text"
+            placeholder="Search by title or author..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white text-sm placeholder-slate-400 focus:outline-none focus:border-orange-500"
+          />
+        </div>
+        
+        {/* Genre Dropdown */}
+        <div className="mb-3">
+          <select
+            value={genreFilter}
+            onChange={(e) => setGenreFilter(e.target.value)}
+            className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white text-sm focus:outline-none focus:border-orange-500"
+          >
+            <option value="All">All Genres</option>
+            {genres.map(g => <option key={g} value={g}>{g}</option>)}
+          </select>
+        </div>
+        
+        {/* Status Filters */}
         <div className="flex gap-2 flex-wrap">
           <button onClick={() => setFilter('All')} style={btnStyle(filter === 'All')}>All ({stories.length})</button>
           <button onClick={() => setFilter('In Progress')} style={btnStyle(filter === 'In Progress')}>In Progress</button>
@@ -170,15 +198,13 @@ export default function CollectionPage() {
           <div className="text-center py-12 bg-slate-800 rounded-xl">
             <span className="text-5xl block mb-4">📚</span>
             <h2 className="text-xl font-bold text-white mb-2">
-              {filter === 'All' ? 'No Stories Yet' : `No ${filter} Stories`}
+              {stories.length === 0 ? 'No Stories Yet' : 'No Matches Found'}
             </h2>
             <p className="text-slate-400 mb-6">
-              {filter === 'All' ? 'Start listening to build your collection!' : 'Try a different filter'}
+              {stories.length === 0 ? 'Start listening to build your collection!' : 'Try a different filter or search'}
             </p>
-            {filter === 'All' && (
-              <Link href="/library" className="px-6 py-3 bg-orange-500 text-black font-semibold rounded-lg inline-block">
-                Browse Stories
-              </Link>
+            {stories.length === 0 && (
+              <Link href="/library" className="px-6 py-3 bg-orange-500 text-black font-semibold rounded-lg inline-block">Browse Stories</Link>
             )}
           </div>
         ) : (
@@ -186,9 +212,7 @@ export default function CollectionPage() {
             {filteredStories.map(story => {
               const progress = userProgress[story.id]
               const progressPercent = progress 
-                ? progress.completed 
-                  ? 100 
-                  : Math.round((progress.progress / (story.duration_mins * 60)) * 100)
+                ? progress.completed ? 100 : Math.round((progress.progress / (story.duration_mins * 60)) * 100)
                 : 0
               const hasReviewed = progress?.reviewed
 
@@ -199,7 +223,6 @@ export default function CollectionPage() {
                   className="bg-slate-800 rounded-xl overflow-hidden hover:bg-slate-700 transition cursor-pointer"
                 >
                   <div style={{ display: 'flex' }}>
-                    {/* Cover */}
                     <div style={{ width: '90px', height: '90px', flexShrink: 0, padding: '0.5rem' }}>
                       <div className="rounded-lg overflow-hidden" style={{ width: '100%', height: '100%', position: 'relative' }}>
                         {story.cover_url ? (
@@ -217,41 +240,25 @@ export default function CollectionPage() {
                       </div>
                     </div>
                     
-                    {/* Info */}
                     <div style={{ flex: 1, padding: '0.5rem 0.75rem 0.5rem 0', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                       <h3 className="text-white font-bold text-sm line-clamp-1 mb-1">{story.title}</h3>
                       <p className="text-slate-400 text-xs mb-1">{story.genre} • {story.author}</p>
                       <p className="text-white text-xs mb-2">{story.duration_mins} min</p>
                       
-                      {/* Progress Bar */}
                       <div style={{ height: '6px', backgroundColor: '#1e293b', borderRadius: '3px', overflow: 'hidden', marginBottom: '6px' }}>
-                        <div style={{ 
-                          height: '100%', 
-                          width: `${progressPercent}%`, 
-                          backgroundColor: progress?.completed ? '#22c55e' : '#f97316',
-                          borderRadius: '3px',
-                          transition: 'width 0.3s'
-                        }} />
+                        <div style={{ height: '100%', width: `${progressPercent}%`, backgroundColor: progress?.completed ? '#22c55e' : '#f97316', borderRadius: '3px', transition: 'width 0.3s' }} />
                       </div>
                       
-                      {/* Status & Review */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span className="text-slate-400 text-xs">
                           {progress?.completed ? 'Completed' : `${progressPercent}% complete`}
                         </span>
                         
-                        {/* Review prompt/status */}
                         {progress?.completed && (
                           <span 
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              router.push(`/review/${story.id}`)
-                            }}
+                            onClick={(e) => { e.stopPropagation(); router.push(`/review/${story.id}`) }}
                             className="text-xs"
-                            style={{ 
-                              color: hasReviewed ? '#22c55e' : '#f97316',
-                              cursor: 'pointer'
-                            }}
+                            style={{ color: hasReviewed ? '#22c55e' : '#f97316', cursor: 'pointer' }}
                           >
                             {hasReviewed ? '⭐ Reviewed' : '⭐ Leave Review'}
                           </span>
