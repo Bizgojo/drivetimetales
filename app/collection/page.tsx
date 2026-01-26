@@ -79,10 +79,10 @@ export default function CollectionPage() {
           const sorted = storiesData.sort((a, b) => a.title.localeCompare(b.title))
           setStories(sorted)
           
-          // Count genres
+          // Count genres - filter out invalid genres
           const counts: Record<string, number> = {}
           storiesData.forEach(s => {
-            if (s.genre) {
+            if (s.genre && !s.genre.includes('not set') && !s.genre.includes('Tab')) {
               counts[s.genre] = (counts[s.genre] || 0) + 1
             }
           })
@@ -146,7 +146,6 @@ export default function CollectionPage() {
     )
   }
 
-  // Get sorted genres with counts
   const sortedGenres = Object.entries(genreCounts).sort((a, b) => a[0].localeCompare(b[0]))
 
   return (
@@ -156,21 +155,18 @@ export default function CollectionPage() {
       <div className="sticky top-[60px] z-40 bg-slate-800 px-4 py-3">
         <h1 className="text-xl font-bold text-white mb-3">📚 My Collection</h1>
         
-        {/* Search & Genre on same line */}
         <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
           <input
             type="text"
             placeholder="Search title/author..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            style={{ color: 'white' }}
-            className="flex-1 px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-sm placeholder-slate-400 focus:outline-none focus:border-orange-500"
+            style={{ color: 'white', backgroundColor: '#334155', border: '1px solid #475569', borderRadius: '8px', padding: '8px 12px', fontSize: '14px', flex: 1 }}
           />
           <select
             value={genreFilter}
             onChange={(e) => setGenreFilter(e.target.value)}
-            className="px-2 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white text-sm focus:outline-none focus:border-orange-500"
-            style={{ minWidth: '110px' }}
+            style={{ color: 'white', backgroundColor: '#334155', border: '1px solid #475569', borderRadius: '8px', padding: '8px', fontSize: '14px', minWidth: '110px' }}
           >
             <option value="All">All ({stories.length})</option>
             {sortedGenres.map(([genre, count]) => (
@@ -179,7 +175,6 @@ export default function CollectionPage() {
           </select>
         </div>
         
-        {/* Status Filters - all on one line */}
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'nowrap' }}>
           <button onClick={() => setFilter('All')} style={btnStyle(filter === 'All')}>All ({stories.length})</button>
           <button onClick={() => setFilter('In Progress')} style={btnStyle(filter === 'In Progress')}>In Progress</button>
@@ -202,6 +197,7 @@ export default function CollectionPage() {
               const progress = userProgress[story.id]
               const progressPercent = progress ? progress.completed ? 100 : Math.round((progress.progress / (story.duration_mins * 60)) * 100) : 0
               const hasReviewed = progress?.reviewed
+              const displayGenre = story.genre && !story.genre.includes('not set') ? story.genre : 'Drama'
 
               return (
                 <div key={story.id} onClick={() => router.push(`/player/${story.id}`)} className="bg-slate-800 rounded-xl overflow-hidden hover:bg-slate-700 transition cursor-pointer">
@@ -223,7 +219,7 @@ export default function CollectionPage() {
                     
                     <div style={{ flex: 1, padding: '0.5rem 0.75rem 0.5rem 0', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                       <h3 className="text-white font-bold text-sm line-clamp-1 mb-1">{story.title}</h3>
-                      <p className="text-slate-400 text-xs mb-1">{story.genre} • {story.author}</p>
+                      <p className="text-slate-400 text-xs mb-1">{displayGenre} • {story.author}</p>
                       <p className="text-white text-xs mb-2">{story.duration_mins} min</p>
                       
                       <div style={{ height: '6px', backgroundColor: '#1e293b', borderRadius: '3px', overflow: 'hidden', marginBottom: '6px' }}>
