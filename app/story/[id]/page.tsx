@@ -6,7 +6,7 @@ import { useState, useEffect, useRef, Suspense } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { createClient } from '@supabase/supabase-js'
 import { getStory, Story } from '@/lib/supabase'
-import { Header } from '@/components/ui/Header'
+import StickyHeaderFull from '@/components/StickyHeaderFull'
 
 // Supabase client for saving play history
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -164,7 +164,7 @@ function StoryContent() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      <Header isLoggedIn={!!user} showBack userName={displayName} userCredits={user?.credits} />
+      <StickyHeaderFull />
       
       <div className="py-4 px-4 max-w-3xl mx-auto">
         <div className="flex flex-col md:flex-row gap-6">
