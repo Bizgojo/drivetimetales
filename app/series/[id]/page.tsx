@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { Header } from '@/components/ui/Header';
+import StickyHeaderFull from '@/components/StickyHeaderFull';
 import { StoryModal } from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase, Story } from '@/lib/supabase';
@@ -71,7 +71,7 @@ export default function SeriesDetailPage() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
-      <Header isLoggedIn={!!user} showBack userCredits={user?.credits} />
+      <StickyHeaderFull />
       <div className="px-4 py-5">
         <div className="flex gap-4 mb-6">
           <div className="w-24 h-24 rounded-xl flex items-center justify-center text-4xl" style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)' }}>📺</div>
