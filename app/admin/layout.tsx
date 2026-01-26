@@ -1,94 +1,196 @@
-'use client';
+'use client'
 
-import React, { useState } from 'react';
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-
-const navItems = [
-  { href: '/admin', label: 'Dashboard', icon: '📊' },
-  { href: '/admin/news-briefings', label: 'News Briefings', icon: '📰' },
-  { href: '/admin/finance', label: 'Finance', icon: '💰' },
-  { href: '/admin/users', label: 'Users', icon: '👥' },
-  { href: '/admin/stories', label: 'Stories', icon: '📚' },
-  { href: '/admin/referrals', label: 'Referrals', icon: '🎁' },
-  { href: '/admin/partners', label: 'Partners', icon: '🤝' },
-  { href: '/admin/analytics', label: 'Analytics', icon: '📈' },
-  { href: '/admin/sales', label: 'Sales & Promos', icon: '🏷️' },
-];
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 
 export default function AdminLayout({
   children,
 }: {
-  children: React.ReactNode;
+  children: React.ReactNode
 }) {
-  const pathname = usePathname();
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const pathname = usePathname()
+
+  const menuItems = [
+    { href: '/admin', label: 'Dashboard', icon: '📊' },
+    { href: '/admin/stories', label: 'Stories', icon: '📚' },
+    { href: '/admin/users', label: 'Users', icon: '👥' },
+    { href: '/admin/analytics', label: 'Analytics', icon: '📈' },
+    { href: '/admin/subscriptions', label: 'Subscriptions', icon: '💳' },
+    { href: '/admin/referrals', label: 'Referrals', icon: '🎁' },
+    { href: '/admin/marketing', label: 'Marketing', icon: '📱' },
+    { href: '/admin/finance', label: 'Finance', icon: '💰' },
+  ]
+
+  // Theme colors (light theme for admin)
+  const sidebarBg = '#1e293b'
+  const sidebarText = '#e2e8f0'
+  const sidebarActive = '#f97316'
+  const mainBg = '#FAF9F6'
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white flex">
+    <div style={{ display: 'flex', minHeight: '100vh' }}>
       {/* Sidebar */}
-      <aside className={`${sidebarOpen ? 'w-64' : 'w-16'} bg-gray-900 border-r border-gray-800 transition-all duration-300 flex flex-col`}>
+      <aside style={{ 
+        width: '220px', 
+        backgroundColor: sidebarBg, 
+        padding: '1rem',
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        bottom: 0,
+        overflowY: 'auto'
+      }}>
         {/* Logo */}
-        <div className="p-4 border-b border-gray-800">
-          <div className="flex items-center gap-2">
-            <span className="text-2xl">🚛</span>
-            {sidebarOpen && (
+        <div style={{ padding: '0.5rem', marginBottom: '1.5rem' }}>
+          <Link href="/admin" style={{ textDecoration: 'none' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span style={{ fontSize: '24px' }}>🚗</span>
               <div>
-                <span className="font-bold text-white">DTT</span>
-                <span className="font-bold text-orange-500"> Admin</span>
+                <div style={{ color: 'white', fontWeight: 'bold', fontSize: '14px' }}>Drive Time Tales</div>
+                <div style={{ color: '#f97316', fontSize: '11px', fontWeight: 500 }}>Admin Panel</div>
               </div>
-            )}
-          </div>
+            </div>
+          </Link>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-2">
-          {navItems.map((item) => {
+        <nav style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+          {menuItems.map((item) => {
             const isActive = pathname === item.href || 
-              (item.href !== '/admin' && pathname?.startsWith(item.href));
+              (item.href !== '/admin' && pathname.startsWith(item.href))
             
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex items-center gap-3 px-3 py-2 rounded-lg mb-1 transition-colors ${
-                  isActive
-                    ? 'bg-orange-500 text-black'
-                    : 'text-gray-400 hover:bg-gray-800 hover:text-white'
-                }`}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.75rem',
+                  padding: '0.75rem 1rem',
+                  borderRadius: '8px',
+                  backgroundColor: isActive ? sidebarActive : 'transparent',
+                  color: isActive ? 'black' : sidebarText,
+                  textDecoration: 'none',
+                  fontWeight: isActive ? 600 : 400,
+                  fontSize: '14px',
+                  transition: 'all 0.15s ease'
+                }}
               >
-                <span className="text-xl">{item.icon}</span>
-                {sidebarOpen && <span className="font-medium">{item.label}</span>}
+                <span style={{ fontSize: '18px' }}>{item.icon}</span>
+                {item.label}
               </Link>
-            );
+            )
           })}
         </nav>
 
-        {/* Footer */}
-        <div className="p-4 border-t border-gray-800">
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 text-gray-400 hover:text-white rounded-lg hover:bg-gray-800 transition-colors"
+        {/* Quick Links */}
+        <div style={{ marginTop: '2rem', borderTop: '1px solid #334155', paddingTop: '1rem' }}>
+          <div style={{ color: '#64748b', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.75rem', paddingLeft: '1rem' }}>
+            External Tools
+          </div>
+          <a 
+            href="https://dashboard.stripe.com" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem',
+              padding: '0.5rem 1rem',
+              color: sidebarText,
+              textDecoration: 'none',
+              fontSize: '13px',
+              opacity: 0.8
+            }}
           >
-            <span>{sidebarOpen ? '◀' : '▶'}</span>
-            {sidebarOpen && <span className="text-sm">Collapse</span>}
-          </button>
-          
-          {sidebarOpen && (
-            <Link
-              href="/"
-              className="mt-2 w-full flex items-center justify-center gap-2 px-3 py-2 text-gray-500 hover:text-white text-sm"
-            >
-              ← Back to Site
-            </Link>
-          )}
+            <span>💳</span> Stripe Dashboard
+          </a>
+          <a 
+            href="https://vercel.com/dashboard" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem',
+              padding: '0.5rem 1rem',
+              color: sidebarText,
+              textDecoration: 'none',
+              fontSize: '13px',
+              opacity: 0.8
+            }}
+          >
+            <span>▲</span> Vercel
+          </a>
+          <a 
+            href="https://buffer.com/publish" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem',
+              padding: '0.5rem 1rem',
+              color: sidebarText,
+              textDecoration: 'none',
+              fontSize: '13px',
+              opacity: 0.8
+            }}
+          >
+            <span>📱</span> Buffer
+          </a>
+          <a 
+            href="https://supabase.com/dashboard" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem',
+              padding: '0.5rem 1rem',
+              color: sidebarText,
+              textDecoration: 'none',
+              fontSize: '13px',
+              opacity: 0.8
+            }}
+          >
+            <span>🗄️</span> Supabase
+          </a>
+        </div>
+
+        {/* Back to Site */}
+        <div style={{ position: 'absolute', bottom: '1rem', left: '1rem', right: '1rem' }}>
+          <Link 
+            href="/" 
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.5rem',
+              padding: '0.75rem',
+              backgroundColor: '#334155',
+              color: 'white',
+              textDecoration: 'none',
+              borderRadius: '8px',
+              fontSize: '13px',
+              fontWeight: 500
+            }}
+          >
+            ← Back to Site
+          </Link>
         </div>
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-auto">
+      <main style={{ 
+        flex: 1, 
+        marginLeft: '220px',
+        backgroundColor: mainBg,
+        minHeight: '100vh'
+      }}>
         {children}
       </main>
     </div>
-  );
+  )
 }
