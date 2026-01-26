@@ -23,14 +23,14 @@ interface Story {
   flag?: string | null
 }
 
-interface SeriesGroup {
+interface Series {
   id: string
-  series_name: string
-  genre: string
+  title: string
+  description: string
   author: string
-  episode_count: number
-  total_duration_mins: number
-  cover_url: string | null
+  category: string
+  cover_image: string | null
+  total_episodes: number
 }
 
 const ALL_GENRES = [
@@ -55,6 +55,7 @@ function LibraryContent() {
   const router = useRouter()
   const { user } = useAuth()
   const [stories, setStories] = useState<Story[]>([])
+  const [seriesList, setSeriesList] = useState<Series[]>([])
   const [loading, setLoading] = useState(true)
   const [userName, setUserName] = useState('Friend')
   const [userCredits, setUserCredits] = useState(4)
@@ -79,12 +80,20 @@ function LibraryContent() {
 
   useEffect(() => {
     async function fetchData() {
+      // Fetch stories
       const { data: storiesData } = await supabase
         .from('stories')
         .select('id, title, genre, author, duration_mins, cover_url, series_id, series_name, series_number, series_total, flag')
         .not('cover_url', 'is', null)
         .order('published_on', { ascending: false })
       if (storiesData) setStories(storiesData)
+      
+      // Fetch series from series table
+      const { data: seriesData } = await supabase
+        .from('series')
+        .select('id, title, description, author, category, cover_image, total_episodes')
+        .order('created_at', { ascending: false })
+      if (seriesData) setSeriesList(seriesData)
       
       if (user?.id) {
         const { data: userData } = await supabase
@@ -113,6 +122,7 @@ function LibraryContent() {
     }
   }
 
+  // Filter stories
   const filteredStories = stories.filter(story => {
     if (selectedDuration !== 'All') {
       if (selectedDuration === '15m' && story.duration_mins > 15) return false
@@ -123,32 +133,11 @@ function LibraryContent() {
     return true
   })
 
-  const seriesGroups: SeriesGroup[] = []
-  if (selectedType === 'Series') {
-    const seriesMap = new Map<string, SeriesGroup>()
-    filteredStories.forEach(story => {
-      if (story.series_id && story.series_name) {
-        const existing = seriesMap.get(story.series_id)
-        if (existing) {
-          existing.episode_count += 1
-          existing.total_duration_mins += story.duration_mins || 0
-        } else {
-          seriesMap.set(story.series_id, {
-            id: story.series_id,
-            series_name: story.series_name,
-            genre: story.genre || '',
-            author: story.author || 'Drive Time Tales',
-            episode_count: 1,
-            total_duration_mins: story.duration_mins || 0,
-            cover_url: story.cover_url
-          })
-        }
-      }
-    })
-    seriesMap.forEach(series => seriesGroups.push(series))
-  }
-
-  const displayStories = selectedType === 'Series' ? [] : filteredStories.filter(s => !s.series_id)
+  // Filter series by genre
+  const filteredSeries = seriesList.filter(series => {
+    if (selectedGenre !== 'All' && !(series.category?.toLowerCase() || '').includes(selectedGenre.toLowerCase())) return false
+    return true
+  })
 
   const btnStyle = (active: boolean): React.CSSProperties => ({
     backgroundColor: active ? '#f97316' : '#334155',
@@ -224,29 +213,38 @@ function LibraryContent() {
       <div className="px-3 py-2 flex flex-col gap-2">
         {selectedType === 'Series' && (
           <>
-            {seriesGroups.length === 0 ? (
+            {filteredSeries.length === 0 ? (
               <div className="bg-slate-800 rounded-xl p-8 text-center">
                 <div className="text-4xl mb-3">📺</div>
                 <p className="text-white text-base mb-2">No series found</p>
                 <p className="text-slate-400 text-sm">Try a different filter</p>
               </div>
             ) : (
-              seriesGroups.map(series => (
-                <SeriesCard key={series.id} id={series.id} series_name={series.series_name} genre={series.genre} author={series.author} episode_count={series.episode_count} total_duration_mins={series.total_duration_mins} cover_url={series.cover_url} />
+              filteredSeries.map(series => (
+                <SeriesCard 
+                  key={series.id} 
+                  id={series.id} 
+                  series_name={series.title} 
+                  genre={series.category} 
+                  author={series.author} 
+                  episode_count={series.total_episodes || 0} 
+                  total_duration_mins={series.total_episodes * 15} 
+                  cover_url={series.cover_image} 
+                />
               ))
             )}
           </>
         )}
         {selectedType === 'All' && (
           <>
-            {displayStories.length === 0 ? (
+            {filteredStories.length === 0 ? (
               <div className="bg-slate-800 rounded-xl p-8 text-center">
                 <div className="text-4xl mb-3">😔</div>
                 <p className="text-white text-base mb-2">Sorry {userName}, no stories match your request.</p>
                 <p className="text-slate-400 text-sm">Try a different filter</p>
               </div>
             ) : (
-              displayStories.map(story => (
+              filteredStories.map(story => (
                 <div key={story.id} onClick={() => router.push('/player/' + story.id)} className="cursor-pointer">
                   <HorizontalStoryCard id={story.id} title={story.title} genre={story.genre} author={story.author || 'Drive Time Tales'} duration_mins={story.duration_mins} credits={getCredits(story.duration_mins)} cover_url={story.cover_url} series_number={story.series_number} series_total={story.series_total} flag={story.flag as 'free' | 'editors-pick' | 'readers-choice' | 'trending' | null} />
                 </div>
