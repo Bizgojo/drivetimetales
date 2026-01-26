@@ -145,7 +145,7 @@ export default function AdminAnalyticsPage() {
 
   // Vercel Analytics Link
   const openVercelAnalytics = () => {
-    window.open('https://vercel.com/marcs-projects/drivetimetales/analytics', '_blank')
+    window.open('https://vercel.com/dashboard/analytics', '_blank')
   }
 
   if (loading) {
@@ -255,7 +255,7 @@ export default function AdminAnalyticsPage() {
                 <div style={{ fontWeight: 600 }}>Stripe Billing</div>
                 <div style={{ fontSize: '12px', opacity: 0.9 }}>MRR, Churn, Revenue charts</div>
               </a>
-              <a href="https://vercel.com/marcs-projects/drivetimetales/analytics" target="_blank" rel="noopener noreferrer" style={{ backgroundColor: '#000', color: 'white', padding: '1rem', borderRadius: '8px', textDecoration: 'none', display: 'block' }}>
+              <a href="https://vercel.com/dashboard/analytics" target="_blank" rel="noopener noreferrer" style={{ backgroundColor: '#000', color: 'white', padding: '1rem', borderRadius: '8px', textDecoration: 'none', display: 'block' }}>
                 <div style={{ fontSize: '20px', marginBottom: '0.5rem' }}>▲</div>
                 <div style={{ fontWeight: 600 }}>Vercel Analytics</div>
                 <div style={{ fontSize: '12px', opacity: 0.9 }}>Page views, visitors, performance</div>
