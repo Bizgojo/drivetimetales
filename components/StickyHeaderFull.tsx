@@ -26,7 +26,7 @@ export default function StickyHeaderFull() {
         </button>
 
         {/* Logo - Links to Home */}
-        <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+        <Link href="/home" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
           <div className="flex items-center gap-0.5">
             <span className="text-xl">🚗</span>
             <span className="text-2xl">🚛</span>
