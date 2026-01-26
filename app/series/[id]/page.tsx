@@ -1,21 +1,10 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 import StickyHeaderFull from '@/components/StickyHeaderFull'
-import SeriesEpisodeCard from '@/components/SeriesEpisodeCard'
-
-interface Series {
-  id: string
-  title: string
-  description: string
-  author: string
-  genre: string
-  cover_url?: string
-}
 
 interface Episode {
   id: string
@@ -25,7 +14,15 @@ interface Episode {
   credits: number
   cover_url?: string
   episode_number: number
-  series_id: string
+  series_name: string
+  genre: string
+  author: string
+}
+
+interface UserProgress {
+  story_id: string
+  progress_seconds: number
+  completed: boolean
 }
 
 export default function SeriesDetailPage() {
@@ -34,10 +31,17 @@ export default function SeriesDetailPage() {
   const seriesId = params.id as string
   const { user } = useAuth()
   
-  const [series, setSeries] = useState<Series | null>(null)
   const [episodes, setEpisodes] = useState<Episode[]>([])
   const [loading, setLoading] = useState(true)
-  const [userProgress, setUserProgress] = useState<Record<string, { percent: number, completed: boolean }>>({})
+  const [userProgress, setUserProgress] = useState<Record<string, UserProgress>>({})
+  const [selectedEpisodes, setSelectedEpisodes] = useState<Set<string>>(new Set())
+  const [seriesInfo, setSeriesInfo] = useState<{
+    name: string
+    description: string
+    genre: string
+    author: string
+    cover_url: string | null
+  } | null>(null)
 
   useEffect(() => {
     if (seriesId) fetchSeriesData()
@@ -45,37 +49,71 @@ export default function SeriesDetailPage() {
 
   const fetchSeriesData = async () => {
     try {
-      const { data: seriesData } = await supabase
-        .from('series')
-        .select('id, title, description, author, genre, cover_url')
-        .eq('id', seriesId)
-        .single()
-      setSeries(seriesData)
-
-      const { data: episodesData } = await supabase
+      let { data: episodesData } = await supabase
         .from('stories')
-        .select('id, title, description, duration_mins, credits, cover_url, episode_number, series_id')
+        .select('id, title, description, duration_mins, credits, cover_url, episode_number, series_name, genre, author')
         .eq('series_id', seriesId)
         .order('episode_number', { ascending: true })
-      setEpisodes(episodesData || [])
 
-      if (user?.id && episodesData) {
-        const { data: progressData } = await supabase
-          .from('user_stories')
-          .select('story_id, progress_seconds, completed')
-          .eq('user_id', user.id)
-          .in('story_id', episodesData.map(e => e.id))
+      if (!episodesData || episodesData.length === 0) {
+        const { data: storyData } = await supabase
+          .from('stories')
+          .select('series_name')
+          .eq('id', seriesId)
+          .single()
         
-        if (progressData) {
-          const progress: Record<string, { percent: number, completed: boolean }> = {}
-          progressData.forEach(p => {
-            const episode = episodesData.find(e => e.id === p.story_id)
-            if (episode) {
-              const percent = p.completed ? 100 : Math.round((p.progress_seconds / (episode.duration_mins * 60)) * 100)
-              progress[p.story_id] = { percent, completed: p.completed }
-            }
-          })
-          setUserProgress(progress)
+        if (storyData?.series_name) {
+          const { data: seriesEpisodes } = await supabase
+            .from('stories')
+            .select('id, title, description, duration_mins, credits, cover_url, episode_number, series_name, genre, author')
+            .eq('series_name', storyData.series_name)
+            .order('episode_number', { ascending: true })
+          episodesData = seriesEpisodes
+        }
+      }
+
+      if (episodesData && episodesData.length > 0) {
+        const sorted = episodesData.sort((a, b) => {
+          if (a.episode_number === null) return 1
+          if (b.episode_number === null) return -1
+          return (a.episode_number || 0) - (b.episode_number || 0)
+        })
+        
+        const withNumbers = sorted.map((ep, idx) => ({
+          ...ep,
+          episode_number: ep.episode_number || idx + 1,
+          credits: ep.credits || Math.max(1, Math.floor((ep.duration_mins || 15) / 15))
+        }))
+        
+        setEpisodes(withNumbers)
+        
+        const first = withNumbers[0]
+        setSeriesInfo({
+          name: first.series_name || first.title,
+          description: first.description || `A ${first.genre || 'drama'} series from Drive Time Tales.`,
+          genre: first.genre || 'Drama',
+          author: first.author || 'Drive Time Tales',
+          cover_url: first.cover_url || null
+        })
+
+        if (user?.id) {
+          const { data: progressData } = await supabase
+            .from('user_library')
+            .select('story_id, progress, completed')
+            .eq('user_id', user.id)
+            .in('story_id', withNumbers.map(e => e.id))
+          
+          if (progressData) {
+            const progress: Record<string, UserProgress> = {}
+            progressData.forEach(p => {
+              progress[p.story_id] = {
+                story_id: p.story_id,
+                progress_seconds: p.progress || 0,
+                completed: p.completed || false
+              }
+            })
+            setUserProgress(progress)
+          }
         }
       }
     } catch (error) {
@@ -85,18 +123,52 @@ export default function SeriesDetailPage() {
     }
   }
 
+  const toggleEpisodeSelection = (episodeId: string) => {
+    const newSelected = new Set(selectedEpisodes)
+    if (newSelected.has(episodeId)) {
+      newSelected.delete(episodeId)
+    } else {
+      newSelected.add(episodeId)
+    }
+    setSelectedEpisodes(newSelected)
+  }
+
+  const playAllUnfinished = () => {
+    const unfinished = episodes.filter(ep => !userProgress[ep.id]?.completed)
+    if (unfinished.length > 0) {
+      const playlist = unfinished.map(ep => ({
+        id: ep.id,
+        title: ep.title,
+        episode_number: ep.episode_number,
+        series_name: seriesInfo?.name
+      }))
+      localStorage.setItem('dtt_series_playlist', JSON.stringify(playlist))
+      router.push(`/player/${unfinished[0].id}?series=true`)
+    }
+  }
+
+  const playSelected = () => {
+    if (selectedEpisodes.size === 0) return
+    const selected = episodes.filter(ep => selectedEpisodes.has(ep.id))
+    const playlist = selected.map(ep => ({
+      id: ep.id,
+      title: ep.title,
+      episode_number: ep.episode_number,
+      series_name: seriesInfo?.name
+    }))
+    localStorage.setItem('dtt_series_playlist', JSON.stringify(playlist))
+    router.push(`/player/${selected[0].id}?series=true`)
+  }
+
   const totalEpisodes = episodes.length
   const totalDuration = episodes.reduce((sum, ep) => sum + (ep.duration_mins || 0), 0)
   const hours = Math.floor(totalDuration / 60)
   const mins = totalDuration % 60
   const durationText = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`
-
-  const shortDescription = series?.description 
-    ? series.description.split(' ').slice(0, 30).join(' ') + (series.description.split(' ').length > 30 ? '...' : '')
+  const unfinishedCount = episodes.filter(ep => !userProgress[ep.id]?.completed).length
+  const shortDescription = seriesInfo?.description 
+    ? seriesInfo.description.split(' ').slice(0, 30).join(' ') + (seriesInfo.description.split(' ').length > 30 ? '...' : '')
     : ''
-
-  const completedCount = Object.values(userProgress).filter(p => p.completed).length
-  const nextEpisode = episodes.find(ep => !userProgress[ep.id]?.completed)
 
   if (loading) {
     return (
@@ -109,7 +181,7 @@ export default function SeriesDetailPage() {
     )
   }
 
-  if (!series) {
+  if (!seriesInfo || episodes.length === 0) {
     return (
       <div className="min-h-screen bg-slate-950">
         <StickyHeaderFull />
@@ -117,7 +189,7 @@ export default function SeriesDetailPage() {
           <div className="text-center">
             <div className="text-5xl mb-4">😢</div>
             <h2 className="text-white text-xl mb-2">Series Not Found</h2>
-            <Link href="/library" className="text-orange-400 hover:underline">← Back to Library</Link>
+            <button onClick={() => router.push('/library')} className="text-orange-400 hover:underline">← Back to Library</button>
           </div>
         </div>
       </div>
@@ -130,46 +202,24 @@ export default function SeriesDetailPage() {
       
       <div className="sticky top-[60px] z-40 bg-slate-900 border-b border-slate-700">
         <div className="px-4 py-4">
-          <div className="flex gap-4">
-            <div className="w-20 h-20 rounded-xl overflow-hidden flex-shrink-0">
-              {series.cover_url ? (
-                <img src={series.cover_url} alt={series.title} className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full bg-gradient-to-br from-violet-600 to-violet-900 flex items-center justify-center">
-                  <span className="text-2xl">📺</span>
-                </div>
-              )}
-            </div>
-            
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="px-2 py-0.5 bg-violet-600 text-white text-xs rounded font-semibold">SERIES</span>
-              </div>
-              <h1 className="text-lg font-bold text-white truncate">{series.title}</h1>
-              <p className="text-slate-400 text-sm">{series.genre} • by {series.author}</p>
-              <p className="text-slate-300 text-xs mt-1">{totalEpisodes} episodes • {durationText}</p>
-            </div>
+          <h1 className="text-xl font-bold text-white mb-2">{seriesInfo.name}</h1>
+          <p className="text-slate-300 text-sm leading-relaxed mb-3">{shortDescription}</p>
+          <div className="flex items-center gap-4 text-sm text-slate-400 mb-3">
+            <span>{totalEpisodes} episode{totalEpisodes !== 1 ? 's' : ''}</span>
+            <span>•</span>
+            <span>{durationText} total</span>
+            <span>•</span>
+            <span className="text-orange-400">{seriesInfo.genre}</span>
           </div>
-          
-          {shortDescription && (
-            <p className="text-slate-300 text-sm mt-3 leading-relaxed">{shortDescription}</p>
-          )}
-          
-          <div className="mt-3 flex items-center gap-3">
-            {completedCount > 0 && (
-              <div className="flex items-center gap-2 flex-1">
-                <div className="flex-1 h-2 bg-slate-700 rounded-full overflow-hidden">
-                  <div className="h-full bg-orange-500 rounded-full" style={{ width: `${(completedCount / totalEpisodes) * 100}%` }} />
-                </div>
-                <span className="text-xs text-slate-400">{completedCount}/{totalEpisodes}</span>
-              </div>
+          <div className="flex gap-2">
+            {unfinishedCount > 0 && (
+              <button onClick={playAllUnfinished} className="flex-1 px-4 py-2.5 bg-orange-500 hover:bg-orange-400 text-black font-bold rounded-lg text-sm transition-colors">
+                ▶ Play All Unfinished ({unfinishedCount})
+              </button>
             )}
-            {nextEpisode && (
-              <button
-                onClick={() => router.push(`/player/${nextEpisode.id}`)}
-                className="px-4 py-2 bg-orange-500 hover:bg-orange-400 text-black font-bold rounded-lg text-sm transition-colors whitespace-nowrap"
-              >
-                ▶ {completedCount > 0 ? 'Continue' : 'Start'} Ep {nextEpisode.episode_number}
+            {selectedEpisodes.size > 0 && (
+              <button onClick={playSelected} className="px-4 py-2.5 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-lg text-sm transition-colors">
+                Play Selected ({selectedEpisodes.size})
               </button>
             )}
           </div>
@@ -177,33 +227,45 @@ export default function SeriesDetailPage() {
       </div>
 
       <div className="px-4 py-4">
-        <h2 className="text-white font-bold text-lg mb-3">Episodes</h2>
         <div className="space-y-3">
           {episodes.map((ep) => {
             const progress = userProgress[ep.id]
+            const progressPercent = progress ? progress.completed ? 100 : Math.round((progress.progress_seconds / (ep.duration_mins * 60)) * 100) : 0
+            const isSelected = selectedEpisodes.has(ep.id)
+            const epDescription = ep.description ? ep.description.split(' ').slice(0, 15).join(' ') + (ep.description.split(' ').length > 15 ? '...' : '') : ''
+
             return (
-              <SeriesEpisodeCard
-                key={ep.id}
-                id={ep.id}
-                episode_number={ep.episode_number}
-                title={ep.title}
-                description={ep.description}
-                duration_mins={ep.duration_mins}
-                credits={ep.credits || 1}
-                cover_url={ep.cover_url || series.cover_url || null}
-                progress_percent={progress?.percent || 0}
-                is_completed={progress?.completed || false}
-              />
+              <div key={ep.id} className={`bg-slate-800 rounded-xl overflow-hidden transition-all ${isSelected ? 'ring-2 ring-orange-500' : ''}`}>
+                <div style={{ display: 'flex' }}>
+                  <div onClick={() => router.push(`/player/${ep.id}`)} className="cursor-pointer" style={{ width: '100px', flexShrink: 0, position: 'relative' }}>
+                    <div style={{ width: '100px', height: '100px', position: 'relative' }}>
+                      <img src={ep.cover_url || seriesInfo.cover_url || '/images/default-cover.png'} alt={ep.title} className="object-cover" style={{ width: '100%', height: '100%' }} />
+                      <div style={{ position: 'absolute', top: '6px', left: '6px', backgroundColor: progress?.completed ? '#22c55e' : '#f97316', color: progress?.completed ? 'white' : 'black', width: '26px', height: '26px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 700 }}>
+                        {progress?.completed ? '✓' : ep.episode_number}
+                      </div>
+                    </div>
+                    <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '4px', backgroundColor: '#1e293b' }}>
+                      <div style={{ height: '100%', width: `${progressPercent}%`, backgroundColor: progress?.completed ? '#22c55e' : '#f97316', transition: 'width 0.3s' }} />
+                    </div>
+                  </div>
+                  
+                  <div onClick={() => router.push(`/player/${ep.id}`)} className="flex-1 p-3 cursor-pointer" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                    <div className="text-white text-xs font-medium mb-1">Episode {ep.episode_number}</div>
+                    <h3 className="text-white font-bold text-sm mb-1 line-clamp-1">{ep.title}</h3>
+                    {epDescription && <p className="text-slate-300 text-xs mb-2 line-clamp-2">{epDescription}</p>}
+                    <div className="text-white text-xs font-semibold">{ep.duration_mins} min • {ep.credits} credit{ep.credits !== 1 ? 's' : ''}</div>
+                  </div>
+                  
+                  <div className="flex items-end p-3" onClick={(e) => { e.stopPropagation(); toggleEpisodeSelection(ep.id) }}>
+                    <div style={{ width: '24px', height: '24px', borderRadius: '6px', border: isSelected ? '2px solid #f97316' : '2px solid #475569', backgroundColor: isSelected ? '#f97316' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s' }}>
+                      {isSelected && <span style={{ color: 'black', fontSize: '14px', fontWeight: 'bold' }}>✓</span>}
+                    </div>
+                  </div>
+                </div>
+              </div>
             )
           })}
         </div>
-
-        {episodes.length === 0 && (
-          <div className="text-center py-12 bg-slate-800 rounded-xl">
-            <span className="text-4xl block mb-3">📺</span>
-            <p className="text-slate-400">No episodes available yet</p>
-          </div>
-        )}
       </div>
     </div>
   )
