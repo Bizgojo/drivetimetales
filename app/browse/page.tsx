@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { Header } from '@/components/ui/Header';
+import StickyHeaderFull from '@/components/StickyHeaderFull';
 import { useAuth } from '@/contexts/AuthContext';
 
 const categories = [
@@ -34,7 +34,7 @@ export default function BrowsePage() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      <Header isLoggedIn={!!user} showBack userName={displayName} userCredits={user?.credits} />
+      <StickyHeaderFull />
       
       <div className="px-4 py-5">
         <h1 className="text-2xl font-bold text-white mb-1">📂 Browse</h1>

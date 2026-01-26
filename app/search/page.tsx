@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Header } from '@/components/ui/Header';
+import StickyHeaderFull from '@/components/StickyHeaderFull';
 import { StoryCard } from '@/components/ui/StoryCard';
 import { Story } from '@/lib/supabase';
 import { StoryModal } from '@/components/ui/Modal';

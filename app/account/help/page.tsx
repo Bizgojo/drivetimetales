@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { Header } from '@/components/ui/Header';
+import StickyHeaderFull from '@/components/StickyHeaderFull';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface FAQItem {
@@ -49,7 +49,7 @@ export default function HelpPage() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
-      <Header showBack isLoggedIn={!!user} userCredits={user?.credits} />
+      <StickyHeaderFull />
       <div className="px-4 py-5 pb-24 max-w-2xl mx-auto">
         <div className="text-center mb-8">
           <span className="text-5xl mb-4 block">🎧</span>

@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
-import { Header } from '@/components/ui/Header'
+import StickyHeaderFull from '@/components/StickyHeaderFull'
 import { supabase } from '@/lib/supabase'
 
 interface Invoice {
@@ -102,7 +102,7 @@ export default function BillingPage() {
 
   return (
     <div className="min-h-screen bg-slate-950">
-      <Header />
+      <StickyHeaderFull />
       
       <main className="p-4 space-y-6 pb-24">
         <section className="bg-slate-800 rounded-xl p-4">
