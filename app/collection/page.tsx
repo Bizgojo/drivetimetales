@@ -81,7 +81,7 @@ export default function CollectionPage() {
           setStories(sorted)
           
           // Extract unique genres
-          const uniqueGenres = [...new Set(storiesData.map(s => s.genre).filter(Boolean))]
+          const uniqueGenres = Array.from(new Set(storiesData.map(s => s.genre).filter(Boolean)))
           setGenres(uniqueGenres.sort())
         }
       }
