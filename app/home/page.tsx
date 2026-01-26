@@ -2,7 +2,7 @@
 
 // C01 Home Page - Updated Jan 21, 2026 - Playlist priority over Continue Listening
 
-import StickyLogo1 from '@/components/StickyLogo1'
+import StickyHeaderFull from '@/components/StickyHeaderFull'
 import { WelcomeCredits } from '@/components/WelcomeCredits'
 import { NewsBriefings } from '@/components/NewsBriefings'
 import ContinueListening from '@/components/ContinueListening'

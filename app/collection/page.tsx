@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { Header } from '@/components/ui/Header';
+import StickyHeaderFull from '@/components/StickyHeaderFull';
 
 interface CollectionStory {
   id: string;
@@ -45,7 +45,7 @@ export default function CollectionPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      <Header isLoggedIn showBack userCredits={userCredits} />
+      <StickyHeaderFull />
       
       <div className="px-4 py-5">
         <h1 className="text-2xl font-bold text-white mb-4">📚 My Collection</h1>

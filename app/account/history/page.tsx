@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { Header } from '@/components/ui/Header';
+import StickyHeaderFull from '@/components/StickyHeaderFull';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface HistoryItem {
@@ -62,7 +62,7 @@ export default function HistoryPage() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
-      <Header isLoggedIn={!!user} showBack userCredits={user?.credits} />
+      <StickyHeaderFull />
       
       <div className="px-4 py-5">
         <div className="flex justify-between items-start mb-6">

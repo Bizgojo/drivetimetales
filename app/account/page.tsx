@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Header } from '@/components/ui/Header';
+import StickyHeaderFull from '@/components/StickyHeaderFull';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 
@@ -97,7 +97,7 @@ export default function AccountPage() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
-      <Header showBack isLoggedIn userCredits={user.credits} />
+      <StickyHeaderFull />
       
       <div className="px-4 py-5">
         {/* Profile Header */}

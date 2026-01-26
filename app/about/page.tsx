@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Header } from '@/components/ui/Header';
+import StickyHeaderFull from '@/components/StickyHeaderFull';
 import { LogoStacked } from '@/components/ui/Logo';
 
 const faqs = [
@@ -36,7 +36,7 @@ export default function AboutPage() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
-      <Header showBack />
+      <StickyHeaderFull />
       
       <div className="px-4 py-5">
         {/* Hero */}
