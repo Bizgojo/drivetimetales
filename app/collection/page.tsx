@@ -33,7 +33,7 @@ export default function CollectionPage() {
   const [filter, setFilter] = useState('All')
   const [search, setSearch] = useState('')
   const [genreFilter, setGenreFilter] = useState('All')
-  const [genres, setGenres] = useState<string[]>([])
+  const [genreCounts, setGenreCounts] = useState<Record<string, number>>({})
 
   useEffect(() => {
     if (user?.id) fetchCollection()
@@ -78,8 +78,15 @@ export default function CollectionPage() {
         if (storiesData) {
           const sorted = storiesData.sort((a, b) => a.title.localeCompare(b.title))
           setStories(sorted)
-          const uniqueGenres = Array.from(new Set(storiesData.map(s => s.genre).filter(Boolean)))
-          setGenres(uniqueGenres.sort())
+          
+          // Count genres
+          const counts: Record<string, number> = {}
+          storiesData.forEach(s => {
+            if (s.genre) {
+              counts[s.genre] = (counts[s.genre] || 0) + 1
+            }
+          })
+          setGenreCounts(counts)
         }
       }
     } catch (err) {
@@ -139,6 +146,9 @@ export default function CollectionPage() {
     )
   }
 
+  // Get sorted genres with counts
+  const sortedGenres = Object.entries(genreCounts).sort((a, b) => a[0].localeCompare(b[0]))
+
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       <StickyHeaderFull />
@@ -153,16 +163,19 @@ export default function CollectionPage() {
             placeholder="Search title/author..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="flex-1 px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white text-sm placeholder-slate-400 focus:outline-none focus:border-orange-500"
+            style={{ color: 'white' }}
+            className="flex-1 px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-sm placeholder-slate-400 focus:outline-none focus:border-orange-500"
           />
           <select
             value={genreFilter}
             onChange={(e) => setGenreFilter(e.target.value)}
             className="px-2 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white text-sm focus:outline-none focus:border-orange-500"
-            style={{ minWidth: '100px' }}
+            style={{ minWidth: '110px' }}
           >
-            <option value="All">All Genres</option>
-            {genres.map(g => <option key={g} value={g}>{g}</option>)}
+            <option value="All">All ({stories.length})</option>
+            {sortedGenres.map(([genre, count]) => (
+              <option key={genre} value={genre}>{genre} ({count})</option>
+            ))}
           </select>
         </div>
         
