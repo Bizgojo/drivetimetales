@@ -1,154 +1,270 @@
-'use client';
+'use client'
 
-import React, { useState } from 'react';
-import Link from 'next/link';
-import StickyHeaderFull from '@/components/StickyHeaderFull';
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { useAuth } from '@/contexts/AuthContext'
+import { supabase } from '@/lib/supabase'
+import StickyHeaderFull from '@/components/StickyHeaderFull'
 
-interface CollectionStory {
-  id: string;
-  title: string;
-  author: string;
-  category: string;
-  duration: number;
-  rating: number;
-  progress: number;
-  lastPlayed: string;
-  completed: boolean;
-  cover_url?: string;
+interface Story {
+  id: string
+  title: string
+  genre: string
+  author: string
+  duration_mins: number
+  cover_url: string | null
 }
 
-const collectionStories: CollectionStory[] = [
-  { id: '1', title: 'The Last Mile', author: 'Jack Morrison', category: 'Trucker Stories', duration: 30, rating: 4.8, progress: 65, lastPlayed: '2 hours ago', completed: false },
-  { id: '2', title: 'Midnight Diner', author: 'Sarah Chen', category: 'Drama', duration: 45, rating: 4.9, progress: 100, lastPlayed: 'Yesterday', completed: true },
-  { id: '5', title: 'The Long Haul', author: 'Tom Bradley', category: 'Mystery', duration: 35, rating: 4.5, progress: 30, lastPlayed: '3 days ago', completed: false },
-];
-
-const CATEGORY_ICONS: Record<string, string> = {
-  'Trucker Stories': '🚛',
-  'Drama': '🎭',
-  'Mystery': '🔍',
-};
+interface UserStory {
+  story_id: string
+  progress: number
+  completed: boolean
+  last_played: string
+  reviewed: boolean
+}
 
 export default function CollectionPage() {
-  const [filter, setFilter] = useState<'all' | 'progress' | 'completed'>('all');
-  
-  const userCredits = 3;
-  
-  const inProgress = collectionStories.filter(s => !s.completed);
-  const completed = collectionStories.filter(s => s.completed);
-  
-  const filteredStories = filter === 'all' 
-    ? collectionStories 
-    : filter === 'progress' 
-      ? inProgress 
-      : completed;
+  const router = useRouter()
+  const { user } = useAuth()
+  const [stories, setStories] = useState<Story[]>([])
+  const [userProgress, setUserProgress] = useState<Record<string, UserStory>>({})
+  const [loading, setLoading] = useState(true)
+  const [filter, setFilter] = useState('All')
+
+  useEffect(() => {
+    if (user?.id) fetchCollection()
+  }, [user])
+
+  const fetchCollection = async () => {
+    try {
+      // Fetch user's library (purchased/played stories)
+      const { data: libraryData } = await supabase
+        .from('user_library')
+        .select('story_id, progress, completed, last_played')
+        .eq('user_id', user?.id)
+        .order('last_played', { ascending: false })
+
+      if (libraryData && libraryData.length > 0) {
+        // Build progress lookup
+        const progressLookup: Record<string, UserStory> = {}
+        libraryData.forEach(p => {
+          progressLookup[p.story_id] = {
+            ...p,
+            reviewed: false // Will update below
+          }
+        })
+
+        // Check for reviews
+        const { data: reviewsData } = await supabase
+          .from('reviews')
+          .select('story_id')
+          .eq('user_id', user?.id)
+          .in('story_id', libraryData.map(l => l.story_id))
+
+        if (reviewsData) {
+          reviewsData.forEach(r => {
+            if (progressLookup[r.story_id]) {
+              progressLookup[r.story_id].reviewed = true
+            }
+          })
+        }
+
+        setUserProgress(progressLookup)
+
+        // Fetch story details
+        const storyIds = libraryData.map(p => p.story_id)
+        const { data: storiesData } = await supabase
+          .from('stories')
+          .select('id, title, genre, author, duration_mins, cover_url')
+          .in('id', storyIds)
+
+        if (storiesData) {
+          // Sort by last played
+          const sorted = storiesData.sort((a, b) => {
+            const aTime = progressLookup[a.id]?.last_played || ''
+            const bTime = progressLookup[b.id]?.last_played || ''
+            return bTime.localeCompare(aTime)
+          })
+          setStories(sorted)
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching collection:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Filter stories
+  const filteredStories = stories.filter(story => {
+    const progress = userProgress[story.id]
+    if (filter === 'In Progress') {
+      return progress && !progress.completed && progress.progress > 0
+    }
+    if (filter === 'Completed') {
+      return progress?.completed
+    }
+    if (filter === 'Not Started') {
+      return !progress || progress.progress === 0
+    }
+    return true
+  })
+
+  const btnStyle = (active: boolean): React.CSSProperties => ({
+    backgroundColor: active ? '#f97316' : '#334155',
+    color: 'white',
+    padding: '0.5rem 1rem',
+    borderRadius: '8px',
+    fontSize: '13px',
+    fontWeight: 500,
+    border: 'none',
+    cursor: 'pointer'
+  })
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-white">
+        <StickyHeaderFull />
+        <div className="text-center py-12 px-4">
+          <span className="text-5xl block mb-4">🔒</span>
+          <h2 className="text-xl font-bold mb-3">Sign In Required</h2>
+          <p className="text-slate-400 mb-6">Sign in to see your collection</p>
+          <Link href="/signin" className="px-6 py-3 bg-orange-500 text-black font-semibold rounded-lg inline-block">
+            Sign In
+          </Link>
+        </div>
+      </div>
+    )
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-950">
+        <StickyHeaderFull />
+        <div className="py-12 flex justify-center">
+          <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       <StickyHeaderFull />
       
-      <div className="px-4 py-5">
-        <h1 className="text-2xl font-bold text-white mb-4">📚 My Collection</h1>
-
-        <div className="flex gap-3 mb-6">
-          <div className="flex-1 bg-orange-500/20 border border-orange-500/30 rounded-xl p-3 text-center">
-            <p className="text-2xl font-bold text-orange-400">{inProgress.length}</p>
-            <p className="text-white text-xs">In Progress</p>
-          </div>
-          <div className="flex-1 bg-green-500/20 border border-green-500/30 rounded-xl p-3 text-center">
-            <p className="text-2xl font-bold text-green-400">{completed.length}</p>
-            <p className="text-white text-xs">Completed</p>
-          </div>
+      {/* Sticky Filters */}
+      <div className="sticky top-[60px] z-40 bg-slate-800 px-4 py-3">
+        <h1 className="text-xl font-bold text-white mb-3">📚 My Collection</h1>
+        <div className="flex gap-2 flex-wrap">
+          <button onClick={() => setFilter('All')} style={btnStyle(filter === 'All')}>All ({stories.length})</button>
+          <button onClick={() => setFilter('In Progress')} style={btnStyle(filter === 'In Progress')}>In Progress</button>
+          <button onClick={() => setFilter('Completed')} style={btnStyle(filter === 'Completed')}>Completed</button>
+          <button onClick={() => setFilter('Not Started')} style={btnStyle(filter === 'Not Started')}>Not Started</button>
         </div>
+      </div>
 
-        <div className="flex gap-2 mb-6">
-          {[
-            { id: 'all', label: `All (${collectionStories.length})` },
-            { id: 'progress', label: `In Progress (${inProgress.length})` },
-            { id: 'completed', label: `Completed (${completed.length})` },
-          ].map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setFilter(tab.id as 'all' | 'progress' | 'completed')}
-              className={`px-4 py-2 rounded-lg text-sm ${
-                filter === tab.id 
-                  ? 'bg-orange-500 text-black font-bold' 
-                  : 'bg-slate-700 text-white'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {filteredStories.length > 0 ? (
-          <div className="space-y-3">
-            {filteredStories.map((story) => (
-              <div 
-                key={story.id}
-                className="p-3 bg-slate-700 rounded-xl"
-              >
-                <div className="flex gap-3">
-                  <div 
-                    className={`w-20 h-20 rounded-lg flex items-center justify-center text-2xl flex-shrink-0 shadow-[0_0_20px_rgba(255,255,255,0.6)] ${
-                      story.completed ? 'bg-green-600' : ''
-                    }`}
-                    style={!story.completed ? { background: 'linear-gradient(135deg, #ea580c 0%, #c2410c 100%)' } : {}}
-                  >
-                    {story.completed ? '✓' : (CATEGORY_ICONS[story.category] || '📚')}
-                  </div>
-                  
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-white font-bold truncate">{story.title}</h3>
-                    <p className="text-slate-300 text-sm">{story.author}</p>
-                    <p className="text-slate-400 text-xs mt-1">Last played: {story.lastPlayed}</p>
-                    
-                    {!story.completed && (
-                      <div className="mt-2">
-                        <div className="flex justify-between text-xs mb-1">
-                          <span className="text-orange-400">{story.progress}% complete</span>
-                          <span className="text-slate-300">{Math.round(story.duration * (1 - story.progress / 100))} min left</span>
-                        </div>
-                        <div className="h-1.5 bg-slate-600 rounded-full">
-                          <div 
-                            className="h-full bg-orange-500 rounded-full"
-                            style={{ width: `${story.progress}%` }}
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                
-                <Link 
-                  href={`/player/${story.id}`}
-                  className={`block w-full mt-3 py-2 rounded-lg text-center font-medium ${
-                    story.completed 
-                      ? 'bg-slate-600 text-white hover:bg-slate-500' 
-                      : 'bg-orange-500 text-black hover:bg-orange-400'
-                  } transition`}
-                >
-                  {story.completed ? '🔄 Listen Again' : '▶ Continue'}
-                </Link>
-              </div>
-            ))}
+      {/* Stories List */}
+      <div className="px-4 py-4">
+        {filteredStories.length === 0 ? (
+          <div className="text-center py-12 bg-slate-800 rounded-xl">
+            <span className="text-5xl block mb-4">📚</span>
+            <h2 className="text-xl font-bold text-white mb-2">
+              {filter === 'All' ? 'No Stories Yet' : `No ${filter} Stories`}
+            </h2>
+            <p className="text-slate-400 mb-6">
+              {filter === 'All' ? 'Start listening to build your collection!' : 'Try a different filter'}
+            </p>
+            {filter === 'All' && (
+              <Link href="/library" className="px-6 py-3 bg-orange-500 text-black font-semibold rounded-lg inline-block">
+                Browse Stories
+              </Link>
+            )}
           </div>
         ) : (
-          <div className="text-center py-12">
-            <div className="text-5xl mb-4">📚</div>
-            <h2 className="text-white text-lg font-bold mb-2">No Stories Yet</h2>
-            <p className="text-slate-400 text-sm mb-6">
-              Start listening to build your collection.
-            </p>
-            <Link 
-              href="/library"
-              className="inline-block px-6 py-3 bg-orange-500 text-black rounded-xl font-medium"
-            >
-              Browse Stories
-            </Link>
+          <div className="space-y-3">
+            {filteredStories.map(story => {
+              const progress = userProgress[story.id]
+              const progressPercent = progress 
+                ? progress.completed 
+                  ? 100 
+                  : Math.round((progress.progress / (story.duration_mins * 60)) * 100)
+                : 0
+              const hasReviewed = progress?.reviewed
+
+              return (
+                <div
+                  key={story.id}
+                  onClick={() => router.push(`/player/${story.id}`)}
+                  className="bg-slate-800 rounded-xl overflow-hidden hover:bg-slate-700 transition cursor-pointer"
+                >
+                  <div style={{ display: 'flex' }}>
+                    {/* Cover */}
+                    <div style={{ width: '90px', height: '90px', flexShrink: 0, padding: '0.5rem' }}>
+                      <div className="rounded-lg overflow-hidden" style={{ width: '100%', height: '100%', position: 'relative' }}>
+                        {story.cover_url ? (
+                          <img src={story.cover_url} alt={story.title} className="object-cover" style={{ width: '100%', height: '100%' }} />
+                        ) : (
+                          <div className="w-full h-full bg-gradient-to-br from-orange-600 to-orange-900 flex items-center justify-center">
+                            <span className="text-2xl">🎧</span>
+                          </div>
+                        )}
+                        {progress?.completed && (
+                          <div style={{ position: 'absolute', top: '4px', right: '4px', backgroundColor: '#22c55e', borderRadius: '50%', width: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <span style={{ color: 'white', fontSize: '12px' }}>✓</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* Info */}
+                    <div style={{ flex: 1, padding: '0.5rem 0.75rem 0.5rem 0', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                      <h3 className="text-white font-bold text-sm line-clamp-1 mb-1">{story.title}</h3>
+                      <p className="text-slate-400 text-xs mb-1">{story.genre} • {story.author}</p>
+                      <p className="text-white text-xs mb-2">{story.duration_mins} min</p>
+                      
+                      {/* Progress Bar */}
+                      <div style={{ height: '6px', backgroundColor: '#1e293b', borderRadius: '3px', overflow: 'hidden', marginBottom: '6px' }}>
+                        <div style={{ 
+                          height: '100%', 
+                          width: `${progressPercent}%`, 
+                          backgroundColor: progress?.completed ? '#22c55e' : '#f97316',
+                          borderRadius: '3px',
+                          transition: 'width 0.3s'
+                        }} />
+                      </div>
+                      
+                      {/* Status & Review */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span className="text-slate-400 text-xs">
+                          {progress?.completed ? 'Completed' : `${progressPercent}% complete`}
+                        </span>
+                        
+                        {/* Review prompt/status */}
+                        {progress?.completed && (
+                          <span 
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              router.push(`/review/${story.id}`)
+                            }}
+                            className="text-xs"
+                            style={{ 
+                              color: hasReviewed ? '#22c55e' : '#f97316',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            {hasReviewed ? '⭐ Reviewed' : '⭐ Leave Review'}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
           </div>
         )}
       </div>
     </div>
-  );
+  )
 }
