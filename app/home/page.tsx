@@ -115,7 +115,7 @@ export default function HomePage() {
     <div className="min-h-screen bg-slate-950 w-full">
       <div className="hidden bg-amber-400 bg-emerald-400 bg-sky-400 bg-rose-400 from-red-600 to-red-800 from-orange-500 to-orange-700 from-yellow-500 to-yellow-700 from-green-600 to-green-800 from-blue-600 to-blue-800 from-purple-600 to-purple-800"></div>
       
-      <StickyLogo1 userName={displayName} />
+      <StickyHeaderHome />
       <main className="pb-24">
         <WelcomeCredits displayName={displayName} userCredits={userCredits} />
         
