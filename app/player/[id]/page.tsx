@@ -40,6 +40,7 @@ function PlayerContent() {
   const [duration, setDuration] = useState(0)
   const [showExtras, setShowExtras] = useState(true)
   const [charged, setCharged] = useState(false)
+  const [audioReady, setAudioReady] = useState(false)
   
   const { audioSrc, isCached, isDownloading, downloadProgress } = useAudioCache(story?.audio_url)
   
@@ -89,8 +90,14 @@ function PlayerContent() {
         audioRef.current.currentTime = libraryEntry.progress
         setCurrentTime(libraryEntry.progress)
       }
-      audioRef.current.play().catch(console.error)
-      setIsPlaying(true)
+      setAudioReady(true)
+      // Try to autoplay - if blocked, user will need to tap play
+      audioRef.current.play()
+        .then(() => setIsPlaying(true))
+        .catch(() => {
+          // Autoplay blocked - user needs to tap play
+          setIsPlaying(false)
+        })
     }
   }, [audioSrc, story, libraryEntry])
 
@@ -145,8 +152,15 @@ function PlayerContent() {
 
   const handlePlayPause = () => {
     if (!audioRef.current) return
-    if (isPlaying) { audioRef.current.pause(); setIsPlaying(false); if (charged) saveProgress() }
-    else { audioRef.current.play(); setIsPlaying(true) }
+    if (isPlaying) { 
+      audioRef.current.pause()
+      setIsPlaying(false)
+      if (charged) saveProgress()
+    } else { 
+      audioRef.current.play()
+        .then(() => setIsPlaying(true))
+        .catch(err => console.error('Play failed:', err))
+    }
   }
 
   const handleTimeUpdate = () => { if (audioRef.current) setCurrentTime(audioRef.current.currentTime) }
@@ -250,9 +264,15 @@ function PlayerContent() {
           </div>
         </div>
         
-        {/* Play/Pause Button */}
-        <button onClick={handlePlayPause} className="w-full py-4 bg-orange-500 hover:bg-orange-400 text-black rounded-xl font-bold text-lg mb-3 transition flex items-center justify-center gap-2">
-          {isPlaying ? <>❚❚ Pause</> : <>▶ {libraryEntry && libraryEntry.progress > 0 ? 'Continue' : 'Play'}</>}
+        {/* Play/Pause Button - shows "Tap to Play" if not playing and audio ready */}
+        <button onClick={handlePlayPause} className={`w-full py-4 rounded-xl font-bold text-lg mb-3 transition flex items-center justify-center gap-2 ${!isPlaying && audioReady ? 'bg-green-500 hover:bg-green-400 animate-pulse' : 'bg-orange-500 hover:bg-orange-400'} text-black`}>
+          {isPlaying ? (
+            <>❚❚ Pause</>
+          ) : audioReady ? (
+            <>▶ Tap to Play</>
+          ) : (
+            <>Loading...</>
+          )}
         </button>
         
         {/* Bottom Buttons - only when showExtras */}
