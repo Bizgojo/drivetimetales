@@ -79,7 +79,6 @@ export default function CollectionPage() {
           const sorted = storiesData.sort((a, b) => a.title.localeCompare(b.title))
           setStories(sorted)
           
-          // Count genres - filter out invalid genres
           const counts: Record<string, number> = {}
           storiesData.forEach(s => {
             if (s.genre && !s.genre.includes('not set') && !s.genre.includes('Tab')) {
@@ -150,6 +149,12 @@ export default function CollectionPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
+      <style jsx>{`
+        .white-placeholder::placeholder {
+          color: white;
+          opacity: 0.7;
+        }
+      `}</style>
       <StickyHeaderFull />
       
       <div className="sticky top-[60px] z-40 bg-slate-800 px-4 py-3">
@@ -161,7 +166,8 @@ export default function CollectionPage() {
             placeholder="Search title/author..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            style={{ color: 'white', backgroundColor: '#334155', border: '1px solid #475569', borderRadius: '8px', padding: '8px 12px', fontSize: '14px', flex: 1 }}
+            className="white-placeholder"
+            style={{ color: 'white', backgroundColor: '#334155', border: '1px solid #475569', borderRadius: '8px', padding: '8px 12px', fontSize: '14px', flex: 1, outline: 'none' }}
           />
           <select
             value={genreFilter}
