@@ -149,12 +149,11 @@ export default function CollectionPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      <style jsx>{`
-        .white-placeholder::placeholder {
-          color: white;
-          opacity: 0.7;
+      <style dangerouslySetInnerHTML={{ __html: `
+        #collection-search::placeholder {
+          color: rgba(255, 255, 255, 0.7) !important;
         }
-      `}</style>
+      `}} />
       <StickyHeaderFull />
       
       <div className="sticky top-[60px] z-40 bg-slate-800 px-4 py-3">
@@ -162,11 +161,11 @@ export default function CollectionPage() {
         
         <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
           <input
+            id="collection-search"
             type="text"
             placeholder="Search title/author..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="white-placeholder"
             style={{ color: 'white', backgroundColor: '#334155', border: '1px solid #475569', borderRadius: '8px', padding: '8px 12px', fontSize: '14px', flex: 1, outline: 'none' }}
           />
           <select
