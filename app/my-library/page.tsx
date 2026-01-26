@@ -4,13 +4,11 @@ import { useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext'
-import { useStories, createStoryLookup } from '@/hooks/useStories'
 
 export default function MyLibraryPage() {
   const params = useSearchParams()
   const [tab, setTab] = useState(params.get('tab') || 'library')
   const { user } = useAuth()
-  const { stories, loading, error } = useStories()
   const storyLookup = createStoryLookup(stories)
 
   if (!user) {
