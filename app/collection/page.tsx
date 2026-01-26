@@ -76,11 +76,8 @@ export default function CollectionPage() {
           .in('id', storyIds)
 
         if (storiesData) {
-          // Sort alphabetically by title
           const sorted = storiesData.sort((a, b) => a.title.localeCompare(b.title))
           setStories(sorted)
-          
-          // Extract unique genres
           const uniqueGenres = Array.from(new Set(storiesData.map(s => s.genre).filter(Boolean)))
           setGenres(uniqueGenres.sort())
         }
@@ -92,39 +89,29 @@ export default function CollectionPage() {
     }
   }
 
-  // Filter stories
   const filteredStories = stories.filter(story => {
     const progress = userProgress[story.id]
-    
-    // Status filter
     if (filter === 'In Progress' && !(progress && !progress.completed && progress.progress > 0)) return false
     if (filter === 'Completed' && !progress?.completed) return false
     if (filter === 'Not Started' && progress && progress.progress > 0) return false
-    
-    // Genre filter
     if (genreFilter !== 'All' && story.genre !== genreFilter) return false
-    
-    // Search filter
     if (search) {
       const searchLower = search.toLowerCase()
-      if (!story.title.toLowerCase().includes(searchLower) && 
-          !story.author.toLowerCase().includes(searchLower)) {
-        return false
-      }
+      if (!story.title.toLowerCase().includes(searchLower) && !story.author.toLowerCase().includes(searchLower)) return false
     }
-    
     return true
   })
 
   const btnStyle = (active: boolean): React.CSSProperties => ({
     backgroundColor: active ? '#f97316' : '#334155',
     color: 'white',
-    padding: '0.4rem 0.75rem',
+    padding: '0.4rem 0.6rem',
     borderRadius: '8px',
-    fontSize: '12px',
+    fontSize: '11px',
     fontWeight: 500,
     border: 'none',
-    cursor: 'pointer'
+    cursor: 'pointer',
+    whiteSpace: 'nowrap'
   })
 
   if (!user) {
@@ -156,35 +143,31 @@ export default function CollectionPage() {
     <div className="min-h-screen bg-slate-950 text-white">
       <StickyHeaderFull />
       
-      {/* Sticky Filters */}
       <div className="sticky top-[60px] z-40 bg-slate-800 px-4 py-3">
         <h1 className="text-xl font-bold text-white mb-3">📚 My Collection</h1>
         
-        {/* Search */}
-        <div className="mb-3">
+        {/* Search & Genre on same line */}
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
           <input
             type="text"
-            placeholder="Search by title or author..."
+            placeholder="Search title/author..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white text-sm placeholder-slate-400 focus:outline-none focus:border-orange-500"
+            className="flex-1 px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white text-sm placeholder-slate-400 focus:outline-none focus:border-orange-500"
           />
-        </div>
-        
-        {/* Genre Dropdown */}
-        <div className="mb-3">
           <select
             value={genreFilter}
             onChange={(e) => setGenreFilter(e.target.value)}
-            className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white text-sm focus:outline-none focus:border-orange-500"
+            className="px-2 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white text-sm focus:outline-none focus:border-orange-500"
+            style={{ minWidth: '100px' }}
           >
             <option value="All">All Genres</option>
             {genres.map(g => <option key={g} value={g}>{g}</option>)}
           </select>
         </div>
         
-        {/* Status Filters */}
-        <div className="flex gap-2 flex-wrap">
+        {/* Status Filters - all on one line */}
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'nowrap' }}>
           <button onClick={() => setFilter('All')} style={btnStyle(filter === 'All')}>All ({stories.length})</button>
           <button onClick={() => setFilter('In Progress')} style={btnStyle(filter === 'In Progress')}>In Progress</button>
           <button onClick={() => setFilter('Completed')} style={btnStyle(filter === 'Completed')}>Completed</button>
@@ -192,45 +175,30 @@ export default function CollectionPage() {
         </div>
       </div>
 
-      {/* Stories List */}
       <div className="px-4 py-4">
         {filteredStories.length === 0 ? (
           <div className="text-center py-12 bg-slate-800 rounded-xl">
             <span className="text-5xl block mb-4">📚</span>
-            <h2 className="text-xl font-bold text-white mb-2">
-              {stories.length === 0 ? 'No Stories Yet' : 'No Matches Found'}
-            </h2>
-            <p className="text-slate-400 mb-6">
-              {stories.length === 0 ? 'Start listening to build your collection!' : 'Try a different filter or search'}
-            </p>
-            {stories.length === 0 && (
-              <Link href="/library" className="px-6 py-3 bg-orange-500 text-black font-semibold rounded-lg inline-block">Browse Stories</Link>
-            )}
+            <h2 className="text-xl font-bold text-white mb-2">{stories.length === 0 ? 'No Stories Yet' : 'No Matches Found'}</h2>
+            <p className="text-slate-400 mb-6">{stories.length === 0 ? 'Start listening to build your collection!' : 'Try a different filter or search'}</p>
+            {stories.length === 0 && <Link href="/library" className="px-6 py-3 bg-orange-500 text-black font-semibold rounded-lg inline-block">Browse Stories</Link>}
           </div>
         ) : (
           <div className="space-y-3">
             {filteredStories.map(story => {
               const progress = userProgress[story.id]
-              const progressPercent = progress 
-                ? progress.completed ? 100 : Math.round((progress.progress / (story.duration_mins * 60)) * 100)
-                : 0
+              const progressPercent = progress ? progress.completed ? 100 : Math.round((progress.progress / (story.duration_mins * 60)) * 100) : 0
               const hasReviewed = progress?.reviewed
 
               return (
-                <div
-                  key={story.id}
-                  onClick={() => router.push(`/player/${story.id}`)}
-                  className="bg-slate-800 rounded-xl overflow-hidden hover:bg-slate-700 transition cursor-pointer"
-                >
+                <div key={story.id} onClick={() => router.push(`/player/${story.id}`)} className="bg-slate-800 rounded-xl overflow-hidden hover:bg-slate-700 transition cursor-pointer">
                   <div style={{ display: 'flex' }}>
                     <div style={{ width: '90px', height: '90px', flexShrink: 0, padding: '0.5rem' }}>
                       <div className="rounded-lg overflow-hidden" style={{ width: '100%', height: '100%', position: 'relative' }}>
                         {story.cover_url ? (
                           <img src={story.cover_url} alt={story.title} className="object-cover" style={{ width: '100%', height: '100%' }} />
                         ) : (
-                          <div className="w-full h-full bg-gradient-to-br from-orange-600 to-orange-900 flex items-center justify-center">
-                            <span className="text-2xl">🎧</span>
-                          </div>
+                          <div className="w-full h-full bg-gradient-to-br from-orange-600 to-orange-900 flex items-center justify-center"><span className="text-2xl">🎧</span></div>
                         )}
                         {progress?.completed && (
                           <div style={{ position: 'absolute', top: '4px', right: '4px', backgroundColor: '#22c55e', borderRadius: '50%', width: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -250,16 +218,9 @@ export default function CollectionPage() {
                       </div>
                       
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span className="text-slate-400 text-xs">
-                          {progress?.completed ? 'Completed' : `${progressPercent}% complete`}
-                        </span>
-                        
+                        <span className="text-slate-400 text-xs">{progress?.completed ? 'Completed' : `${progressPercent}% complete`}</span>
                         {progress?.completed && (
-                          <span 
-                            onClick={(e) => { e.stopPropagation(); router.push(`/review/${story.id}`) }}
-                            className="text-xs"
-                            style={{ color: hasReviewed ? '#22c55e' : '#f97316', cursor: 'pointer' }}
-                          >
+                          <span onClick={(e) => { e.stopPropagation(); router.push(`/review/${story.id}`) }} className="text-xs" style={{ color: hasReviewed ? '#22c55e' : '#f97316', cursor: 'pointer' }}>
                             {hasReviewed ? '⭐ Reviewed' : '⭐ Leave Review'}
                           </span>
                         )}
