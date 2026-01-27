@@ -181,29 +181,30 @@ function LibraryPlaylistContent() {
     <div style={{ minHeight: '100vh', backgroundColor: '#020617', color: 'white', display: 'flex', flexDirection: 'column' }}>
       <StickyHeaderFull />
       
-      {/* Use the shared LibraryFiltersV2 component */}
-      <LibraryFiltersV2
-        selectedDuration={selectedDuration}
-        setSelectedDuration={setSelectedDuration}
-        selectedGenre={selectedGenre}
-        setSelectedGenre={setSelectedGenre}
-        selectedType={selectedType}
-        setSelectedType={setSelectedType}
-      />
-      
-      {/* Credits and Duration - Sticky */}
-      <div style={{ 
-        position: 'sticky', 
-        top: '160px', 
-        zIndex: 35, 
-        backgroundColor: '#020617', 
-        padding: '8px 16px',
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center'
-      }}>
-        <span style={{ fontSize: '14px' }}>Credits <span style={{ color: '#22c55e', fontWeight: 'bold' }}>{playlistCredits}</span> of {userCredits}</span>
-        <span style={{ color: 'white', fontWeight: 'bold', fontSize: '16px' }}>{formatDuration(playlistDuration)} ({playlist.length} {playlist.length === 1 ? 'story' : 'stories'})</span>
+      {/* Sticky container for filters + credits - override LibraryFiltersV2's internal sticky */}
+      <div style={{ position: 'sticky', top: '60px', zIndex: 40, backgroundColor: '#020617' }}>
+        {/* Filters - wrapped in div to reset its internal sticky */}
+        <div style={{ position: 'relative' }}>
+          <LibraryFiltersV2
+            selectedDuration={selectedDuration}
+            setSelectedDuration={setSelectedDuration}
+            selectedGenre={selectedGenre}
+            setSelectedGenre={setSelectedGenre}
+            selectedType={selectedType}
+            setSelectedType={setSelectedType}
+          />
+        </div>
+        
+        {/* Credits and Duration */}
+        <div style={{ 
+          padding: '8px 16px',
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center'
+        }}>
+          <span style={{ fontSize: '14px' }}>Credits <span style={{ color: '#22c55e', fontWeight: 'bold' }}>{playlistCredits}</span> of {userCredits}</span>
+          <span style={{ color: 'white', fontWeight: 'bold', fontSize: '16px' }}>{formatDuration(playlistDuration)} ({playlist.length} {playlist.length === 1 ? 'story' : 'stories'})</span>
+        </div>
       </div>
       
       <main style={{ flex: 1, padding: '12px 16px', paddingBottom: '140px' }}>
