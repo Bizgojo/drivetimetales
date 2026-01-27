@@ -15,6 +15,17 @@ interface Story {
   cover_url: string | null
   description?: string | null
   credits?: number
+  series_name?: string | null
+  series_number?: number | null
+  series_total?: number | null
+}
+
+function formatDuration(mins: number): string {
+  if (mins < 60) return `${mins} min`
+  const hours = Math.floor(mins / 60)
+  const remaining = mins % 60
+  if (remaining === 0) return `${hours} hr`
+  return `${hours} hr ${remaining} min`
 }
 
 function LibraryPlaylistContent() {
@@ -27,6 +38,7 @@ function LibraryPlaylistContent() {
   const [selectedStory, setSelectedStory] = useState<Story | null>(null)
   const [durationFilter, setDurationFilter] = useState('All')
   const [genreFilter, setGenreFilter] = useState('All')
+  const [typeFilter, setTypeFilter] = useState('All')
   const [userCredits, setUserCredits] = useState(0)
 
   // Load stories and existing playlist
@@ -69,7 +81,7 @@ function LibraryPlaylistContent() {
   const playlistDuration = playlist.reduce((sum, s) => sum + (s.duration_mins || 0), 0)
   const playlistCredits = playlist.reduce((sum, s) => sum + (s.credits || Math.max(1, Math.floor(s.duration_mins / 15))), 0)
 
-  // Add to playlist
+  // Add to playlist - always start from beginning
   const addToPlaylist = (story: Story) => {
     if (!playlist.find(s => s.id === story.id)) {
       const newPlaylist = [...playlist, story]
@@ -104,8 +116,23 @@ function LibraryPlaylistContent() {
     localStorage.setItem('dtt_playlist', JSON.stringify(newPlaylist))
   }
 
-  // Begin playlist
-  const beginPlaylist = () => {
+  // Begin playlist - reset all progress to start from beginning
+  const beginPlaylist = async () => {
+    // Reset progress for all playlist stories to start from beginning
+    if (user) {
+      for (const story of playlist) {
+        await supabase
+          .from('user_library')
+          .upsert({
+            user_id: user.id,
+            story_id: story.id,
+            progress: 0,
+            completed: false,
+            last_played: new Date().toISOString()
+          }, { onConflict: 'user_id,story_id' })
+      }
+    }
+    
     localStorage.setItem('dtt_playlist_index', '0')
     localStorage.setItem('dtt_playlist_autoplay', 'true')
     router.push('/player/playlist')
@@ -121,6 +148,9 @@ function LibraryPlaylistContent() {
     // Exclude stories already in playlist
     if (playlist.find(s => s.id === story.id)) return false
     
+    // Type filter (All, Series)
+    if (typeFilter === 'Series' && !story.series_name) return false
+    
     // Duration filter
     if (durationFilter !== 'All') {
       const mins = story.duration_mins
@@ -130,13 +160,24 @@ function LibraryPlaylistContent() {
     }
     
     // Genre filter
-    if (genreFilter !== 'All' && !story.genre?.toLowerCase().includes(genreFilter.toLowerCase())) return false
+    if (genreFilter !== 'All') {
+      const genreLower = story.genre?.toLowerCase() || ''
+      if (genreFilter === 'Myst' && !genreLower.includes('mystery')) return false
+      if (genreFilter === 'Roma' && !genreLower.includes('romance')) return false
+      if (genreFilter === 'Horr' && !genreLower.includes('horror')) return false
+      if (genreFilter === 'Thri' && !genreLower.includes('thriller')) return false
+      if (genreFilter === 'SciFi' && !genreLower.includes('sci-fi') && !genreLower.includes('scifi')) return false
+      if (genreFilter === 'Drama' && !genreLower.includes('drama')) return false
+      if (genreFilter === 'Comedy' && !genreLower.includes('comedy')) return false
+      if (genreFilter === 'NonFic' && !genreLower.includes('non-fiction') && !genreLower.includes('nonfiction')) return false
+    }
     
     return true
   })
 
-  const genres = ['All', 'Myst', 'Roma', 'Horr', 'More ▼']
   const durations = ['All', '15m', '30m', '1hr']
+  const types = ['All', 'Series']
+  const genres = ['All', 'Myst', 'Roma', 'Horr', 'More ▼']
 
   if (loading) return (
     <div style={{ minHeight: '100vh', backgroundColor: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -150,19 +191,19 @@ function LibraryPlaylistContent() {
       <StickyHeaderFull />
       
       <main style={{ flex: 1, padding: '12px 16px', paddingBottom: '140px' }}>
-        {/* Filters */}
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
+        {/* Filters Row 1: Duration + Type */}
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', alignItems: 'center' }}>
           {durations.map(d => (
             <button
               key={d}
               onClick={() => setDurationFilter(d)}
               style={{
-                padding: '6px 12px',
+                padding: '8px 14px',
                 borderRadius: '8px',
                 border: 'none',
                 backgroundColor: durationFilter === d ? '#f97316' : '#334155',
                 color: durationFilter === d ? 'black' : 'white',
-                fontSize: '13px',
+                fontSize: '14px',
                 fontWeight: 600,
                 cursor: 'pointer'
               }}
@@ -170,31 +211,56 @@ function LibraryPlaylistContent() {
               {d}
             </button>
           ))}
-          <div style={{ width: '1px', backgroundColor: '#475569', margin: '0 4px' }} />
+          <div style={{ width: '1px', height: '24px', backgroundColor: '#475569', margin: '0 4px' }} />
+          {types.map(t => (
+            <button
+              key={t}
+              onClick={() => setTypeFilter(t)}
+              style={{
+                padding: '8px 14px',
+                borderRadius: '8px',
+                border: 'none',
+                backgroundColor: typeFilter === t ? '#f97316' : '#334155',
+                color: typeFilter === t ? 'black' : 'white',
+                fontSize: '14px',
+                fontWeight: 600,
+                cursor: 'pointer'
+              }}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+
+        {/* Filters Row 2: Genre */}
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
           {genres.map(g => (
             <button
               key={g}
               onClick={() => setGenreFilter(g === 'All' ? 'All' : g)}
               style={{
-                padding: '6px 12px',
+                padding: '8px 14px',
                 borderRadius: '8px',
                 border: 'none',
                 backgroundColor: genreFilter === g ? '#f97316' : '#334155',
                 color: genreFilter === g ? 'black' : 'white',
-                fontSize: '13px',
+                fontSize: '14px',
                 fontWeight: 600,
                 cursor: 'pointer'
               }}
             >
+              {g === 'Myst' && '🔍 '}
+              {g === 'Roma' && '💕 '}
+              {g === 'Horr' && '☠️ '}
               {g}
             </button>
           ))}
         </div>
 
         {/* Credits and Duration */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', fontSize: '14px' }}>
-          <span>Credits <span style={{ color: '#22c55e', fontWeight: 'bold' }}>{playlistCredits}</span> of {userCredits}</span>
-          <span style={{ color: 'white', fontWeight: 'bold', fontSize: '18px' }}>{playlistDuration} min</span>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+          <span style={{ fontSize: '14px' }}>Credits <span style={{ color: '#22c55e', fontWeight: 'bold' }}>{playlistCredits}</span> of {userCredits}</span>
+          <span style={{ color: 'white', fontWeight: 'bold', fontSize: '22px' }}>{formatDuration(playlistDuration)}</span>
         </div>
 
         {/* Playlist */}
@@ -241,7 +307,10 @@ function LibraryPlaylistContent() {
                   <p style={{ fontWeight: 'bold', fontSize: '14px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{story.title}</p>
                   <p style={{ fontSize: '12px', color: '#94a3b8' }}>{story.genre}</p>
                   <p style={{ fontSize: '12px', color: '#94a3b8' }}>by {story.author}</p>
-                  <p style={{ fontSize: '12px', color: 'white' }}>{story.duration_mins} min • {story.credits || Math.max(1, Math.floor(story.duration_mins / 15))} credit{(story.credits || 1) !== 1 ? 's' : ''}</p>
+                  <p style={{ fontSize: '12px', color: 'white' }}>
+                    {story.duration_mins} min • {story.credits || Math.max(1, Math.floor(story.duration_mins / 15))} credit{(story.credits || 1) !== 1 ? 's' : ''}
+                    {story.series_name && <span style={{ color: '#f97316' }}> • Part {story.series_number}/{story.series_total}</span>}
+                  </p>
                 </div>
                 
                 {/* Controls */}
@@ -304,7 +373,10 @@ function LibraryPlaylistContent() {
                 <p style={{ fontWeight: 'bold', fontSize: '14px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{story.title}</p>
                 <p style={{ fontSize: '12px', color: '#94a3b8' }}>{story.genre}</p>
                 <p style={{ fontSize: '12px', color: '#94a3b8' }}>by {story.author}</p>
-                <p style={{ fontSize: '12px', color: 'white' }}>{story.duration_mins} min • {story.credits || Math.max(1, Math.floor(story.duration_mins / 15))} credit{(story.credits || 1) !== 1 ? 's' : ''}</p>
+                <p style={{ fontSize: '12px', color: 'white' }}>
+                  {story.duration_mins} min • {story.credits || Math.max(1, Math.floor(story.duration_mins / 15))} credit{(story.credits || 1) !== 1 ? 's' : ''}
+                  {story.series_name && <span style={{ color: '#f97316' }}> • Part {story.series_number}/{story.series_total}</span>}
+                </p>
               </div>
             </div>
           ))}
@@ -387,20 +459,21 @@ function LibraryPlaylistContent() {
               backgroundColor: '#1e293b',
               borderRadius: '16px',
               padding: '20px',
-              maxWidth: '340px',
+              maxWidth: '360px',
               width: '100%'
             }}
           >
-            {/* Cover */}
-            <div style={{ width: '120px', height: '120px', margin: '0 auto 12px', borderRadius: '12px', overflow: 'hidden' }}>
+            {/* Cover - Larger */}
+            <div style={{ width: '160px', height: '160px', margin: '0 auto 16px', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 0 20px rgba(255,255,255,0.2)' }}>
               <img src={selectedStory.cover_url || '/images/default-cover.png'} alt={selectedStory.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             </div>
             
-            <h2 style={{ fontSize: '18px', fontWeight: 'bold', textAlign: 'center', marginBottom: '8px' }}>{selectedStory.title}</h2>
-            <p style={{ fontSize: '13px', color: '#94a3b8', textAlign: 'center', marginBottom: '8px' }}>
+            <h2 style={{ fontSize: '20px', fontWeight: 'bold', textAlign: 'center', marginBottom: '8px' }}>{selectedStory.title}</h2>
+            <p style={{ fontSize: '14px', color: '#94a3b8', textAlign: 'center', marginBottom: '12px' }}>
               {selectedStory.genre} • {selectedStory.author} • {selectedStory.duration_mins} min • {selectedStory.credits || Math.max(1, Math.floor(selectedStory.duration_mins / 15))} credit
+              {selectedStory.series_name && <><br /><span style={{ color: '#f97316' }}>Part {selectedStory.series_number} of {selectedStory.series_total}</span></>}
             </p>
-            <p style={{ fontSize: '14px', color: 'white', textAlign: 'center', marginBottom: '16px', lineHeight: '1.5' }}>
+            <p style={{ fontSize: '15px', color: 'white', textAlign: 'center', marginBottom: '20px', lineHeight: '1.5' }}>
               {selectedStory.description || 'A gripping tale of mystery and suspense that will keep you on the edge of your seat during your commute.'}
             </p>
             
@@ -409,13 +482,13 @@ function LibraryPlaylistContent() {
                 onClick={() => addToPlaylist(selectedStory)}
                 style={{
                   flex: 1,
-                  padding: '12px',
+                  padding: '14px',
                   backgroundColor: '#22c55e',
                   border: 'none',
                   borderRadius: '12px',
                   color: 'black',
                   fontWeight: 'bold',
-                  fontSize: '14px',
+                  fontSize: '15px',
                   cursor: 'pointer'
                 }}
               >
@@ -425,13 +498,13 @@ function LibraryPlaylistContent() {
                 onClick={() => setSelectedStory(null)}
                 style={{
                   flex: 1,
-                  padding: '12px',
+                  padding: '14px',
                   backgroundColor: '#334155',
                   border: 'none',
                   borderRadius: '12px',
                   color: 'white',
                   fontWeight: 'bold',
-                  fontSize: '14px',
+                  fontSize: '15px',
                   cursor: 'pointer'
                 }}
               >
