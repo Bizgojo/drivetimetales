@@ -191,12 +191,22 @@ function LibraryPlaylistContent() {
         setSelectedType={setSelectedType}
       />
       
+      {/* Credits and Duration - Sticky */}
+      <div style={{ 
+        position: 'sticky', 
+        top: '160px', 
+        zIndex: 35, 
+        backgroundColor: '#020617', 
+        padding: '8px 16px',
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center'
+      }}>
+        <span style={{ fontSize: '14px' }}>Credits <span style={{ color: '#22c55e', fontWeight: 'bold' }}>{playlistCredits}</span> of {userCredits}</span>
+        <span style={{ color: 'white', fontWeight: 'bold', fontSize: '16px' }}>{formatDuration(playlistDuration)} ({playlist.length} {playlist.length === 1 ? 'story' : 'stories'})</span>
+      </div>
+      
       <main style={{ flex: 1, padding: '12px 16px', paddingBottom: '140px' }}>
-        {/* Credits and Duration */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-          <span style={{ fontSize: '14px' }}>Credits <span style={{ color: '#22c55e', fontWeight: 'bold' }}>{playlistCredits}</span> of {userCredits}</span>
-          <span style={{ color: 'white', fontWeight: 'bold', fontSize: '16px' }}>{formatDuration(playlistDuration)} ({playlist.length} {playlist.length === 1 ? 'story' : 'stories'})</span>
-        </div>
 
         {/* Playlist */}
         {playlist.length > 0 && (
