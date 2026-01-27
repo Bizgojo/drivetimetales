@@ -205,7 +205,7 @@ function LibraryPlaylistContent() {
   const handleStartDrive = () => {
     localStorage.setItem('dtt_playlist', JSON.stringify(playlist))
     localStorage.setItem('dtt_playlist_index', '0')
-    router.push('/library-playlist-player')
+    router.push('/player/playlist')
   }
 
   // Same button styles as Library page
