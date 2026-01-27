@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import StickyHeaderFull from '@/components/StickyHeaderFull'
-import LibraryFiltersV2 from '@/components/LibraryFiltersV2'
 
 interface Story {
   id: string
@@ -38,12 +37,34 @@ function LibraryPlaylistContent() {
   const [loading, setLoading] = useState(true)
   const [selectedStory, setSelectedStory] = useState<Story | null>(null)
   
-  // Filter states matching LibraryFiltersV2 props
-  const [selectedDuration, setSelectedDuration] = useState('All Lengths')
-  const [selectedGenre, setSelectedGenre] = useState('All Categories')
-  const [selectedType, setSelectedType] = useState('Singles & Series')
+  // Filter states
+  const [selectedDuration, setSelectedDuration] = useState('All')
+  const [selectedGenre, setSelectedGenre] = useState('All')
+  const [selectedType, setSelectedType] = useState('All')
   
   const [userCredits, setUserCredits] = useState(0)
+
+  const durations = ['All', '15m', '30m', '1hr']
+  const types = ['All', 'Series']
+  const genres = [
+    { value: 'All', label: 'All', emoji: '' },
+    { value: 'Myst', label: 'Myst', emoji: '🔍' },
+    { value: 'Rom', label: 'Rom', emoji: '💕' },
+    { value: 'Horr', label: 'Horr', emoji: '☠️' },
+    { value: 'More', label: 'More ▼', emoji: '' },
+  ]
+
+  const btnStyle = (isActive: boolean) => ({
+    backgroundColor: isActive ? '#f97316' : '#334155',
+    color: 'white',
+    padding: '8px 12px',
+    borderRadius: '8px',
+    fontSize: '14px',
+    fontWeight: 600,
+    border: 'none',
+    cursor: 'pointer',
+    minHeight: '40px',
+  } as React.CSSProperties)
 
   // Load stories and existing playlist
   useEffect(() => {
@@ -153,26 +174,22 @@ function LibraryPlaylistContent() {
     if (playlist.find(s => s.id === story.id)) return false
     
     // Type filter
-    if (selectedType === 'Singles Only' && story.series_name) return false
-    if (selectedType === 'Series Only' && !story.series_name) return false
+    if (selectedType === 'Series' && !story.series_name) return false
     
     // Duration filter
-    if (selectedDuration !== 'All Lengths') {
+    if (selectedDuration !== 'All') {
       const mins = story.duration_mins
-      if (selectedDuration === '~15 min' && mins > 20) return false
-      if (selectedDuration === '~30 min' && (mins < 20 || mins > 45)) return false
-      if (selectedDuration === '~1 hr' && mins < 45) return false
+      if (selectedDuration === '15m' && mins > 20) return false
+      if (selectedDuration === '30m' && (mins < 20 || mins > 45)) return false
+      if (selectedDuration === '1hr' && mins < 45) return false
     }
     
     // Genre filter
-    if (selectedGenre !== 'All Categories') {
+    if (selectedGenre !== 'All' && selectedGenre !== 'More') {
       const genreLower = story.genre?.toLowerCase() || ''
-      if (selectedGenre === 'Mystery' && !genreLower.includes('mystery')) return false
-      if (selectedGenre === 'Romance' && !genreLower.includes('romance')) return false
-      if (selectedGenre === 'Sci-Fi' && !genreLower.includes('sci-fi') && !genreLower.includes('scifi')) return false
-      if (selectedGenre === 'Horror' && !genreLower.includes('horror')) return false
-      if (selectedGenre === 'Comedy' && !genreLower.includes('comedy')) return false
-      if (selectedGenre === 'Learn' && !genreLower.includes('learn') && !genreLower.includes('non-fiction') && !genreLower.includes('educational')) return false
+      if (selectedGenre === 'Myst' && !genreLower.includes('mystery')) return false
+      if (selectedGenre === 'Rom' && !genreLower.includes('romance')) return false
+      if (selectedGenre === 'Horr' && !genreLower.includes('horror')) return false
     }
     
     return true
@@ -189,21 +206,31 @@ function LibraryPlaylistContent() {
     <div style={{ minHeight: '100vh', backgroundColor: '#020617', color: 'white', display: 'flex', flexDirection: 'column' }}>
       <StickyHeaderFull />
       
-      {/* Filters */}
-      <LibraryFiltersV2
-        selectedDuration={selectedDuration}
-        setSelectedDuration={setSelectedDuration}
-        selectedGenre={selectedGenre}
-        setSelectedGenre={setSelectedGenre}
-        selectedType={selectedType}
-        setSelectedType={setSelectedType}
-      />
+      {/* Filters - 2 rows */}
+      <div style={{ padding: '8px 16px', backgroundColor: '#1e293b', margin: '0 16px', borderRadius: '12px' }}>
+        {/* Row 1: Duration + Type */}
+        <div style={{ display: 'flex', gap: '6px', marginBottom: '6px', alignItems: 'center', justifyContent: 'center' }}>
+          {durations.map(d => (
+            <button key={d} onClick={() => setSelectedDuration(d)} style={btnStyle(selectedDuration === d)}>{d}</button>
+          ))}
+          <div style={{ width: '1px', height: '24px', backgroundColor: '#475569', margin: '0 4px' }} />
+          {types.map(t => (
+            <button key={t} onClick={() => setSelectedType(t)} style={btnStyle(selectedType === t)}>{t}</button>
+          ))}
+        </div>
+        {/* Row 2: Genre */}
+        <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+          {genres.map(g => (
+            <button key={g.value} onClick={() => setSelectedGenre(g.value)} style={btnStyle(selectedGenre === g.value)}>{g.emoji}{g.label}</button>
+          ))}
+        </div>
+      </div>
       
-      <main style={{ flex: 1, padding: '12px 16px', paddingBottom: '140px' }}>
+      <main style={{ flex: 1, padding: '12px 16px', paddingBottom: '140px', marginTop: '8px' }}>
         {/* Credits and Duration */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
           <span style={{ fontSize: '14px' }}>Credits <span style={{ color: '#22c55e', fontWeight: 'bold' }}>{playlistCredits}</span> of {userCredits}</span>
-          <span style={{ color: 'white', fontWeight: 'bold', fontSize: '22px' }}>{formatDuration(playlistDuration)}</span>
+          <span style={{ color: 'white', fontWeight: 'bold', fontSize: '16px' }}>{formatDuration(playlistDuration)} ({playlist.length} {playlist.length === 1 ? 'story' : 'stories'})</span>
         </div>
 
         {/* Playlist */}
