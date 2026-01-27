@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 import StickyHeaderFull from '@/components/StickyHeaderFull'
+import Link from 'next/link'
 
 interface PlaylistStory {
   id: string
@@ -29,11 +30,9 @@ function PlaylistPlayerContent() {
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
-  const [showButtons, setShowButtons] = useState(true)
   const [charged, setCharged] = useState(false)
   const [audioReady, setAudioReady] = useState(false)
   const [playingAnnouncement, setPlayingAnnouncement] = useState(false)
-  const [announcementReady, setAnnouncementReady] = useState(false)
   
   const audioRef = useRef<HTMLAudioElement>(null)
   const announcementRef = useRef<HTMLAudioElement>(null)
@@ -46,6 +45,7 @@ function PlaylistPlayerContent() {
   useEffect(() => {
     const savedPlaylist = localStorage.getItem('dtt_playlist')
     const savedIndex = localStorage.getItem('dtt_playlist_index')
+    const autoplay = localStorage.getItem('dtt_playlist_autoplay')
     
     if (savedPlaylist) {
       try {
@@ -59,7 +59,20 @@ function PlaylistPlayerContent() {
       }
     }
     setLoading(false)
+    
+    // Clear autoplay flag
+    localStorage.removeItem('dtt_playlist_autoplay')
   }, [])
+
+  // Auto-play when audio is ready
+  useEffect(() => {
+    if (audioReady && audioRef.current && !isPlaying && playlist.length > 0) {
+      audioRef.current.play().catch(err => {
+        console.error('Autoplay failed:', err)
+      })
+      setIsPlaying(true)
+    }
+  }, [audioReady, playlist.length])
 
   // Check if current story is already in user's library (already charged)
   useEffect(() => {
@@ -75,11 +88,9 @@ function PlaylistPlayerContent() {
       
       if (data) {
         setCharged(true)
-        setShowButtons(false)
         setCurrentTime(data.progress || 0)
       } else {
         setCharged(false)
-        setShowButtons(true)
         setCurrentTime(0)
       }
     }
@@ -145,11 +156,9 @@ function PlaylistPlayerContent() {
       announcementRef.current.src = nextStory.announcement_url
       announcementRef.current.play().catch(err => {
         console.error('Announcement playback failed:', err)
-        // If announcement fails, just go to next story
         goToNextStory()
       })
     } else {
-      // No announcement, go directly to next story
       goToNextStory()
     }
   }
@@ -158,6 +167,20 @@ function PlaylistPlayerContent() {
   const handleAnnouncementEnded = () => {
     setPlayingAnnouncement(false)
     goToNextStory()
+  }
+
+  // Skip (go to announcement/next story)
+  const handleSkip = () => {
+    if (audioRef.current) {
+      audioRef.current.pause()
+    }
+    setIsPlaying(false)
+    
+    if (!isLastStory && nextStory) {
+      playNextAnnouncement()
+    } else {
+      router.push('/library')
+    }
   }
 
   // Skip announcement
@@ -175,7 +198,6 @@ function PlaylistPlayerContent() {
     setCurrentTime(0)
     setDuration(0)
     setCharged(false)
-    setShowButtons(true)
     setCurrentIndex(prev => prev + 1)
   }
 
@@ -191,14 +213,12 @@ function PlaylistPlayerContent() {
     
     const creditCost = currentStory.credits || Math.max(1, Math.floor(currentStory.duration_mins / 15))
     
-    // Deduct credits
     const { error: creditError } = await supabase
       .from('users')
       .update({ credits: (user.credits || 0) - creditCost })
       .eq('id', user.id)
 
     if (!creditError) {
-      // Add to library
       await supabase
         .from('user_library')
         .upsert({
@@ -210,7 +230,6 @@ function PlaylistPlayerContent() {
         }, { onConflict: 'user_id,story_id' })
 
       setCharged(true)
-      setShowButtons(false)
       refreshUser()
     }
   }
@@ -248,44 +267,6 @@ function PlaylistPlayerContent() {
     return () => clearInterval(interval)
   }, [user, currentStory, isPlaying, currentTime])
 
-  // Reserve for later
-  const handleReserve = async () => {
-    if (!user || !currentStory) return
-    await supabase
-      .from('user_reserved')
-      .upsert({
-        user_id: user.id,
-        story_id: currentStory.id,
-        reserved_at: new Date().toISOString()
-      }, { onConflict: 'user_id,story_id' })
-    
-    // Skip to next or exit
-    if (!isLastStory) {
-      goToNextStory()
-    } else {
-      router.push('/library')
-    }
-  }
-
-  // Not for me
-  const handleNotForMe = async () => {
-    if (!user || !currentStory) return
-    await supabase
-      .from('user_not_for_me')
-      .upsert({
-        user_id: user.id,
-        story_id: currentStory.id,
-        marked_at: new Date().toISOString()
-      }, { onConflict: 'user_id,story_id' })
-    
-    // Skip to next or exit
-    if (!isLastStory) {
-      goToNextStory()
-    } else {
-      router.push('/library')
-    }
-  }
-
   // Format time display
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
@@ -294,13 +275,6 @@ function PlaylistPlayerContent() {
   }
 
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0
-  const creditCost = currentStory?.credits || 1
-
-  // Test description if none exists
-  const getDescription = (desc: string | null) => {
-    if (desc && desc.length > 0) return desc
-    return "A gripping tale of mystery and suspense that will keep you on the edge of your seat during your commute. Perfect for drivers who love unexpected twists and dramatic endings."
-  }
 
   // Loading state
   if (loading) return (
@@ -328,7 +302,7 @@ function PlaylistPlayerContent() {
         <h1 style={{ fontSize: '24px', color: 'white', marginBottom: '8px' }}>🎉 Playlist Complete!</h1>
         <p style={{ color: '#94a3b8', fontSize: '14px', marginBottom: '24px' }}>You've finished all {playlist.length} stories.</p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <button onClick={() => { setCurrentIndex(0); setCharged(false); setShowButtons(true); }} style={{ backgroundColor: '#f97316', color: 'black', padding: '14px 24px', borderRadius: '12px', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '16px' }}>↻ Play Again</button>
+          <button onClick={() => { setCurrentIndex(0); setCharged(false); }} style={{ backgroundColor: '#f97316', color: 'black', padding: '14px 24px', borderRadius: '12px', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '16px' }}>↻ Play Again</button>
           <button onClick={() => router.push('/library')} style={{ backgroundColor: '#334155', color: 'white', padding: '14px 24px', borderRadius: '12px', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '16px' }}>Back to Library</button>
         </div>
       </div>
@@ -341,11 +315,10 @@ function PlaylistPlayerContent() {
       <audio 
         ref={announcementRef}
         onEnded={handleAnnouncementEnded}
-        onCanPlayThrough={() => setAnnouncementReady(true)}
       />
       <StickyHeaderFull />
       <main style={{ flex: 1, padding: '16px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
-        <p style={{ color: '#f97316', fontSize: '14px', marginBottom: '16px' }}>Up Next...</p>
+        <p style={{ color: '#f97316', fontSize: '16px', fontWeight: 'bold', marginBottom: '16px' }}>Up Next...</p>
         
         {/* Next story cover */}
         <div style={{ 
@@ -367,10 +340,7 @@ function PlaylistPlayerContent() {
           )}
         </div>
         
-        <h1 style={{ fontSize: '20px', fontWeight: 'bold', textAlign: 'center', color: 'white', marginBottom: '8px' }}>{nextStory.title}</h1>
-        <p style={{ color: 'white', fontSize: '14px', textAlign: 'center', marginBottom: '24px' }}>
-          {nextStory.genre} • {nextStory.author || 'Unknown'}
-        </p>
+        <h1 style={{ fontSize: '20px', fontWeight: 'bold', textAlign: 'center', color: 'white', marginBottom: '24px' }}>{nextStory.title}</h1>
         
         {/* Skip button */}
         <button 
@@ -389,7 +359,6 @@ function PlaylistPlayerContent() {
           Skip →
         </button>
       </main>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
 
@@ -410,17 +379,27 @@ function PlaylistPlayerContent() {
       <StickyHeaderFull />
 
       {/* Main Content */}
-      <main style={{ flex: 1, padding: '12px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+      <main style={{ flex: 1, padding: '12px 16px', display: 'flex', flexDirection: 'column' }}>
         
-        {/* Playlist indicator */}
-        <p style={{ color: '#f97316', fontSize: '14px', textAlign: 'center', marginBottom: '8px' }}>
-          Story {currentIndex + 1} of {playlist.length}
-        </p>
+        {/* Now Playing Flag */}
+        <div style={{ textAlign: 'center', marginBottom: '8px' }}>
+          <span style={{
+            backgroundColor: '#dc2626',
+            color: 'white',
+            padding: '4px 12px',
+            borderRadius: '4px',
+            fontSize: '12px',
+            fontWeight: 'bold',
+            textTransform: 'uppercase'
+          }}>
+            Now Playing
+          </span>
+        </div>
         
         {/* Cover */}
         <div style={{ 
           width: '100%', 
-          maxWidth: '200px', 
+          maxWidth: '180px', 
           margin: '0 auto 12px', 
           aspectRatio: '1', 
           borderRadius: '12px', 
@@ -437,18 +416,8 @@ function PlaylistPlayerContent() {
           )}
         </div>
         
-        {/* Title */}
-        <h1 style={{ fontSize: '20px', fontWeight: 'bold', textAlign: 'center', color: 'white', marginBottom: '6px' }}>{currentStory.title}</h1>
-        
-        {/* Meta */}
-        <p style={{ color: 'white', fontSize: '13px', textAlign: 'center', marginBottom: '6px' }}>
-          {currentStory.genre} • {currentStory.author || 'Unknown'} • {currentStory.duration_mins} min • {creditCost} credit{creditCost > 1 ? 's' : ''}
-        </p>
-        
-        {/* Description */}
-        <p style={{ color: 'white', fontSize: '15px', textAlign: 'center', marginBottom: '12px', lineHeight: '1.4', maxWidth: '340px', marginLeft: 'auto', marginRight: 'auto' }}>
-          {getDescription(currentStory.description)}
-        </p>
+        {/* Title only */}
+        <h1 style={{ fontSize: '20px', fontWeight: 'bold', textAlign: 'center', color: 'white', marginBottom: '12px' }}>{currentStory.title}</h1>
         
         {/* Progress Bar */}
         <div style={{ marginBottom: '12px' }}>
@@ -461,68 +430,96 @@ function PlaylistPlayerContent() {
           </div>
         </div>
         
-        {/* Play/Pause Button */}
-        <button 
-          onClick={handlePlayPause} 
-          style={{ 
-            width: '100%',
-            padding: '16px',
-            borderRadius: '12px', 
-            backgroundColor: !isPlaying && audioReady ? '#22c55e' : '#f97316', 
-            border: 'none', 
-            color: 'black', 
-            fontSize: '18px', 
-            fontWeight: 'bold', 
-            cursor: 'pointer',
-            marginBottom: '10px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '10px',
-            animation: !isPlaying && audioReady ? 'pulse 2s infinite' : 'none'
-          }}
-        >
-          {isPlaying ? (
-            <>❚❚ Pause</>
-          ) : audioReady ? (
-            <>▶ Tap to Play</>
-          ) : (
-            <>Loading...</>
-          )}
-        </button>
-
-        {/* Bottom Buttons - visibility hidden after 3 min */}
-        <div style={{ 
-          display: 'flex', 
-          gap: '8px',
-          visibility: showButtons ? 'visible' : 'hidden'
-        }}>
+        {/* Play/Pause and Skip Buttons */}
+        <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
           <button 
-            onClick={handleReserve} 
-            style={{ flex: 1, padding: '12px', backgroundColor: '#db2777', border: 'none', borderRadius: '12px', color: 'white', fontWeight: '600', fontSize: '14px', cursor: 'pointer' }}
+            onClick={handlePlayPause} 
+            style={{ 
+              flex: 1,
+              padding: '16px',
+              borderRadius: '12px', 
+              backgroundColor: isPlaying ? '#334155' : '#22c55e', 
+              border: 'none', 
+              color: isPlaying ? 'white' : 'black', 
+              fontSize: '18px', 
+              fontWeight: 'bold', 
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px'
+            }}
           >
-            📖 Reserve for Later
+            {isPlaying ? '❚❚ Pause' : '▶ Play'}
           </button>
           <button 
-            onClick={handleNotForMe} 
-            style={{ flex: 1, padding: '12px', backgroundColor: '#334155', border: 'none', borderRadius: '12px', color: 'white', fontWeight: '600', fontSize: '14px', cursor: 'pointer' }}
+            onClick={handleSkip} 
+            style={{ 
+              flex: 1,
+              padding: '16px',
+              borderRadius: '12px', 
+              backgroundColor: '#334155', 
+              border: 'none', 
+              color: 'white', 
+              fontSize: '18px', 
+              fontWeight: 'bold', 
+              cursor: 'pointer'
+            }}
           >
-            👎 Not For Me
+            Skip →
           </button>
         </div>
 
+        {/* Next Up */}
+        {nextStory && (
+          <div>
+            <p style={{ color: '#f97316', fontSize: '14px', fontWeight: 'bold', marginBottom: '8px' }}>Next Up</p>
+            <Link 
+              href={`/player/${nextStory.id}`}
+              style={{
+                display: 'flex',
+                backgroundColor: '#1e293b',
+                borderRadius: '12px',
+                overflow: 'hidden',
+                textDecoration: 'none'
+              }}
+            >
+              <div style={{ width: '80px', height: '80px', flexShrink: 0, padding: '8px' }}>
+                <div style={{ width: '100%', height: '100%', borderRadius: '8px', overflow: 'hidden' }}>
+                  <img 
+                    src={nextStory.cover_url || '/images/default-cover.png'} 
+                    alt={nextStory.title}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
+                </div>
+              </div>
+              <div style={{ 
+                flex: 1, 
+                padding: '8px 12px 8px 0', 
+                display: 'flex', 
+                flexDirection: 'column', 
+                justifyContent: 'center' 
+              }}>
+                <p style={{ color: 'white', fontSize: '14px', fontWeight: 'bold', marginBottom: '2px' }}>{nextStory.title}</p>
+                <p style={{ color: '#94a3b8', fontSize: '12px' }}>{nextStory.genre}</p>
+                <p style={{ color: '#94a3b8', fontSize: '12px' }}>by {nextStory.author}</p>
+                <p style={{ color: 'white', fontSize: '12px' }}>
+                  {nextStory.duration_mins} min • {nextStory.credits || Math.max(1, Math.floor(nextStory.duration_mins / 15))} credit
+                </p>
+              </div>
+            </Link>
+          </div>
+        )}
+
         {/* Charge countdown */}
         {!charged && currentTime > 0 && currentTime < 180 && (
-          <p style={{ textAlign: 'center', color: '#64748b', fontSize: '12px', marginTop: '8px' }}>
+          <p style={{ textAlign: 'center', color: '#64748b', fontSize: '12px', marginTop: '12px' }}>
             Credits charged in {Math.ceil((180 - currentTime) / 60)} min
           </p>
         )}
       </main>
 
-      <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
-      `}</style>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
 }
