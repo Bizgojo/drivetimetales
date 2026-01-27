@@ -1,296 +1,102 @@
 'use client'
 
-import { useParams, useRouter } from 'next/navigation'
-import { useState, useEffect, useRef, Suspense } from 'react'
+import { useState, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
-import { useAudioCache } from '@/hooks/useAudioCache'
-import StickyHeaderFull from '@/components/StickyHeaderFull'
 
-interface Story {
-  id: string
-  title: string
-  author: string
-  description: string
-  genre: string
-  duration_mins: number
-  cover_url: string | null
-  audio_url: string
-  credits: number
-}
-
-interface LibraryEntry {
-  story_id: string
-  progress: number
-  completed: boolean
-}
-
-function PlayerContent() {
-  const params = useParams()
+function SignInContent() {
   const router = useRouter()
-  const storyId = params.id as string
-  const { user, refreshUser } = useAuth()
+  const searchParams = useSearchParams()
+  const { signIn } = useAuth()
   
-  const [story, setStory] = useState<Story | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [libraryEntry, setLibraryEntry] = useState<LibraryEntry | null>(null)
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [currentTime, setCurrentTime] = useState(0)
-  const [duration, setDuration] = useState(0)
-  const [showExtras, setShowExtras] = useState(true)
-  const [charged, setCharged] = useState(false)
-  const [audioReady, setAudioReady] = useState(false)
-  
-  const { audioSrc, isCached, isDownloading, downloadProgress } = useAudioCache(story?.audio_url)
-  
-  const audioRef = useRef<HTMLAudioElement>(null)
-  const progressSaveInterval = useRef<NodeJS.Timeout | null>(null)
-  const chargeTimeout = useRef<NodeJS.Timeout | null>(null)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [socialLoading, setSocialLoading] = useState<string | null>(null)
 
-  useEffect(() => {
-    async function loadData() {
-      try {
-        const { data: storyData, error: storyError } = await supabase
-          .from('stories')
-          .select('*')
-          .eq('id', storyId)
-          .single()
-        
-        if (storyError) throw storyError
-        setStory(storyData)
+  const returnTo = searchParams.get('returnTo') || '/library'
 
-        if (user) {
-          const { data: libData } = await supabase
-            .from('user_library')
-            .select('story_id, progress, completed')
-            .eq('user_id', user.id)
-            .eq('story_id', storyId)
-            .single()
-          
-          if (libData) {
-            setLibraryEntry(libData)
-            setShowExtras(false)
-            setCharged(true)
-          }
-        }
-      } catch (err) {
-        console.error('Error loading story:', err)
-        setError('Story not found')
-      } finally {
-        setLoading(false)
-      }
-    }
-    loadData()
-  }, [storyId, user])
-
-  useEffect(() => {
-    if (audioSrc && audioRef.current && story) {
-      if (libraryEntry && libraryEntry.progress > 0) {
-        audioRef.current.currentTime = libraryEntry.progress
-        setCurrentTime(libraryEntry.progress)
-      }
-      setAudioReady(true)
-      // Try to autoplay - if blocked, user will need to tap play
-      audioRef.current.play()
-        .then(() => setIsPlaying(true))
-        .catch(() => {
-          // Autoplay blocked - user needs to tap play
-          setIsPlaying(false)
-        })
-    }
-  }, [audioSrc, story, libraryEntry])
-
-  useEffect(() => {
-    if (isPlaying && !charged && user && showExtras) {
-      chargeTimeout.current = setTimeout(async () => {
-        await chargeCredits()
-      }, 180000)
-    }
-    return () => {
-      if (chargeTimeout.current) clearTimeout(chargeTimeout.current)
-    }
-  }, [isPlaying, charged, user, showExtras])
-
-  useEffect(() => {
-    if (user && isPlaying && charged) {
-      progressSaveInterval.current = setInterval(() => saveProgress(), 10000)
-    }
-    return () => {
-      if (progressSaveInterval.current) clearInterval(progressSaveInterval.current)
-    }
-  }, [user, isPlaying, charged])
-
-  const chargeCredits = async () => {
-    if (!user || !story || charged) return
-    const creditCost = story.credits || 1
-    if (user.credits < creditCost && user.credits !== -1) {
-      if (audioRef.current) audioRef.current.pause()
-      setIsPlaying(false)
-      alert('Not enough credits. Please purchase more credits.')
-      router.push('/pricing')
-      return
-    }
-    try {
-      const newCredits = user.credits === -1 ? -1 : user.credits - creditCost
-      await supabase.from('users').update({ credits: newCredits }).eq('id', user.id)
-      await supabase.from('user_library').insert({ user_id: user.id, story_id: storyId, progress: Math.floor(currentTime), completed: false })
-      await refreshUser()
-      setCharged(true)
-      setShowExtras(false)
-    } catch (err) {
-      console.error('Error charging credits:', err)
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
+    setLoading(true)
+    const { error } = await signIn(email, password)
+    if (error) {
+      setError(error.message)
+      setLoading(false)
+    } else {
+      router.push(returnTo)
     }
   }
 
-  const saveProgress = async () => {
-    if (!user || !audioRef.current || !charged) return
-    try {
-      await supabase.from('user_library').update({ progress: Math.floor(audioRef.current.currentTime), last_played: new Date().toISOString() }).eq('user_id', user.id).eq('story_id', storyId)
-    } catch (err) { console.error('Error saving progress:', err) }
-  }
-
-  const handlePlayPause = () => {
-    if (!audioRef.current) return
-    if (isPlaying) { 
-      audioRef.current.pause()
-      setIsPlaying(false)
-      if (charged) saveProgress()
-    } else { 
-      audioRef.current.play()
-        .then(() => setIsPlaying(true))
-        .catch(err => console.error('Play failed:', err))
+  const handleGoogleLogin = async () => {
+    setSocialLoading('google')
+    setError('')
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: `${window.location.origin}/auth/callback` }
+    })
+    if (error) {
+      setError(error.message)
+      setSocialLoading(null)
     }
   }
 
-  const handleTimeUpdate = () => { if (audioRef.current) setCurrentTime(audioRef.current.currentTime) }
-  const handleLoadedMetadata = () => { if (audioRef.current) setDuration(audioRef.current.duration) }
-
-  const handleEnded = async () => {
-    setIsPlaying(false)
-    if (user && charged) {
-      try { await supabase.from('user_library').update({ progress: Math.floor(duration), completed: true, last_played: new Date().toISOString() }).eq('user_id', user.id).eq('story_id', storyId) }
-      catch (err) { console.error('Error marking complete:', err) }
-    }
-  }
-
-  const handleReserve = async () => {
-    if (!user) { router.push('/signin'); return }
-    try {
-      await supabase.from('user_preferences').upsert({ user_id: user.id, story_id: storyId, wishlisted: true, not_for_me: false })
-      if (audioRef.current) audioRef.current.pause()
-      router.push('/wishlist?toast=reserved')
-    } catch (err) { console.error('Error reserving:', err) }
-  }
-
-  const handleNotForMe = async () => {
-    if (!user) { router.push('/signin'); return }
-    try {
-      await supabase.from('user_preferences').upsert({ user_id: user.id, story_id: storyId, wishlisted: false, not_for_me: true })
-      if (audioRef.current) audioRef.current.pause()
-      router.push('/library')
-    } catch (err) { console.error('Error:', err) }
-  }
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60)
-    const secs = Math.floor(seconds % 60)
-    return `${mins}:${secs.toString().padStart(2, '0')}`
-  }
-
-  const truncateDescription = (text: string, wordLimit: number = 30) => {
-    const words = text?.split(' ') || []
-    if (words.length <= wordLimit) return text
-    return words.slice(0, wordLimit).join(' ') + '...'
-  }
-
-  const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0
-  const creditCost = story?.credits || 1
-
-  if (loading) return (
-    <div className="h-screen bg-slate-950 flex items-center justify-center">
-      <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
-    </div>
-  )
-
-  if (error || !story) return (
-    <div className="h-screen bg-slate-950 flex items-center justify-center px-4">
-      <div className="text-center">
-        <h1 className="text-xl text-white mb-4">Story not found</h1>
-        <button onClick={() => router.push('/library')} className="text-orange-400">← Back to Library</button>
+  return (
+    <div style={{ minHeight: '100vh', backgroundColor: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+      <div style={{ width: '100%', maxWidth: '400px' }}>
+        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+          <Link href="/"><span style={{ color: '#f97316', fontSize: '24px', fontWeight: 'bold' }}>Drive Time Tales</span></Link>
+        </div>
+        <div style={{ backgroundColor: '#0f172a', borderRadius: '12px', padding: '32px', border: '1px solid #1e293b' }}>
+          <h1 style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', textAlign: 'center', marginBottom: '24px' }}>Welcome Back</h1>
+          {error && <div style={{ backgroundColor: '#7f1d1d', color: '#fecaca', padding: '12px', borderRadius: '8px', marginBottom: '16px', fontSize: '14px' }}>{error}</div>}
+          <div style={{ marginBottom: '24px' }}>
+            <button type="button" onClick={handleGoogleLogin} disabled={socialLoading !== null} style={{ width: '100%', padding: '12px', backgroundColor: '#ffffff', color: '#1f2937', border: 'none', borderRadius: '8px', fontSize: '16px', fontWeight: '500', cursor: socialLoading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
+              <svg width="20" height="20" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+              {socialLoading === 'google' ? 'Connecting...' : 'Continue with Google'}
+            </button>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '24px' }}>
+            <div style={{ flex: 1, height: '1px', backgroundColor: '#334155' }}></div>
+            <span style={{ padding: '0 16px', color: '#64748b', fontSize: '14px' }}>or</span>
+            <div style={{ flex: 1, height: '1px', backgroundColor: '#334155' }}></div>
+          </div>
+          <form onSubmit={handleSubmit}>
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', color: '#94a3b8', fontSize: '14px', marginBottom: '6px' }}>Email</label>
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required style={{ width: '100%', padding: '12px', backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: 'white', fontSize: '16px', boxSizing: 'border-box' }} placeholder="you@example.com" />
+            </div>
+            <div style={{ marginBottom: '24px' }}>
+              <label style={{ display: 'block', color: '#94a3b8', fontSize: '14px', marginBottom: '6px' }}>Password</label>
+              <div style={{ position: 'relative' }}>
+                <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} required style={{ width: '100%', padding: '12px', paddingRight: '48px', backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: 'white', fontSize: '16px', boxSizing: 'border-box' }} placeholder="••••••••" />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: '4px', fontSize: '18px' }}>{showPassword ? '🙈' : '👁️'}</button>
+              </div>
+            </div>
+            <button type="submit" disabled={loading || socialLoading !== null} style={{ width: '100%', padding: '14px', backgroundColor: loading ? '#92400e' : '#f97316', color: 'white', border: 'none', borderRadius: '8px', fontSize: '16px', fontWeight: '600', cursor: loading ? 'not-allowed' : 'pointer' }}>{loading ? 'Signing In...' : 'Sign In'}</button>
+          </form>
+          <div style={{ marginTop: '24px', textAlign: 'center' }}><Link href="/forgot-password" style={{ color: '#f97316', fontSize: '14px', textDecoration: 'none' }}>Forgot your password?</Link></div>
+        </div>
+        <p style={{ textAlign: 'center', color: '#94a3b8', marginTop: '24px', fontSize: '14px' }}>Don't have an account?{' '}<Link href="/signup" style={{ color: '#f97316', textDecoration: 'none', fontWeight: '600' }}>Sign Up</Link></p>
       </div>
     </div>
   )
+}
 
+function LoadingFallback() {
   return (
-    <div className="h-screen bg-slate-950 text-white flex flex-col overflow-hidden">
-      <audio ref={audioRef} src={audioSrc || undefined} onTimeUpdate={handleTimeUpdate} onLoadedMetadata={handleLoadedMetadata} onEnded={handleEnded} preload="auto" />
-      <StickyHeaderFull />
-      <main className="flex-1 px-4 py-2 flex flex-col justify-center" style={{ maxHeight: 'calc(100vh - 60px)' }}>
-        
-        {/* Cover - larger when simplified */}
-        <div className={`w-full mx-auto aspect-square rounded-xl overflow-hidden bg-slate-800 shadow-[0_0_20px_rgba(255,255,255,0.3)] mb-3 ${showExtras ? 'max-w-[180px]' : 'max-w-[280px]'}`}>
-          {story.cover_url ? (
-            <img src={story.cover_url} alt={story.title} className="w-full h-full object-cover" />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-orange-600 to-orange-900">
-              <span className="text-5xl opacity-50">🎧</span>
-            </div>
-          )}
-        </div>
-        
-        {/* Title - always visible, white */}
-        <h1 className="text-xl font-bold text-center text-white mb-2 line-clamp-2">{story.title}</h1>
-        
-        {/* Meta & Description - only when showExtras */}
-        {showExtras && (
-          <>
-            <p className="text-white text-xs text-center mb-1">
-              {story.genre} • {story.author || 'Unknown'} • {story.duration_mins} min • {creditCost} credit{creditCost > 1 ? 's' : ''}
-            </p>
-            <p className="text-white text-xs text-center mb-3 line-clamp-2">{truncateDescription(story.description)}</p>
-          </>
-        )}
-        
-        {/* Progress Bar */}
-        <div className="mb-3">
-          <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
-            <div className="h-full bg-orange-500 transition-all duration-300" style={{ width: `${progressPercent}%` }} />
-          </div>
-          <div className="flex justify-between text-xs text-white mt-1">
-            <span>{formatTime(currentTime)}</span>
-            <span>{isCached ? '📥' : isDownloading ? `⬇️ ${downloadProgress}%` : '📡'}</span>
-            <span>{formatTime(duration)}</span>
-          </div>
-        </div>
-        
-        {/* Play/Pause Button - shows "Tap to Play" if not playing and audio ready */}
-        <button onClick={handlePlayPause} className={`w-full py-4 rounded-xl font-bold text-lg mb-3 transition flex items-center justify-center gap-2 ${!isPlaying && audioReady ? 'bg-green-500 hover:bg-green-400 animate-pulse' : 'bg-orange-500 hover:bg-orange-400'} text-black`}>
-          {isPlaying ? (
-            <>❚❚ Pause</>
-          ) : audioReady ? (
-            <>▶ Tap to Play</>
-          ) : (
-            <>Loading...</>
-          )}
-        </button>
-        
-        {/* Bottom Buttons - only when showExtras */}
-        {showExtras && (
-          <div className="flex gap-2">
-            <button onClick={handleReserve} className="flex-1 py-3 bg-pink-600 hover:bg-pink-500 text-white rounded-xl font-semibold text-sm transition">📖 Reserve for Later</button>
-            <button onClick={handleNotForMe} className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-semibold text-sm transition">👎 Not For Me</button>
-          </div>
-        )}
-      </main>
+    <div style={{ minHeight: '100vh', backgroundColor: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ width: '32px', height: '32px', border: '4px solid #f97316', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
 }
 
-export default function PlayerPage() {
-  return (
-    <Suspense fallback={<div className="h-screen bg-slate-950 flex items-center justify-center"><div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" /></div>}>
-      <PlayerContent />
-    </Suspense>
-  )
+export default function SignInPage() {
+  return (<Suspense fallback={<LoadingFallback />}><SignInContent /></Suspense>)
 }
