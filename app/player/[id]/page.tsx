@@ -4,7 +4,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { useState, useEffect, useRef, Suspense } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
-import Link from 'next/link'
+import StickyHeaderFull from '@/components/StickyHeaderFull'
 
 interface Story {
   id: string
@@ -37,7 +37,7 @@ function PlayerContent() {
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
-  const [showExtras, setShowExtras] = useState(true)
+  const [showButtons, setShowButtons] = useState(true)
   const [charged, setCharged] = useState(false)
   const [audioReady, setAudioReady] = useState(false)
   
@@ -80,8 +80,9 @@ function PlayerContent() {
           if (libData) {
             setLibraryEntry(libData)
             setCurrentTime(libData.progress || 0)
+            // If already in library, they've already been charged
             setCharged(true)
-            setShowExtras(false)
+            setShowButtons(false)
           }
         }
 
@@ -160,7 +161,7 @@ function PlayerContent() {
         }, { onConflict: 'user_id,story_id' })
 
       setCharged(true)
-      setShowExtras(false)
+      setShowButtons(false)
       refreshUser()
     }
   }
@@ -271,23 +272,12 @@ function PlayerContent() {
       />
       
       {/* Header */}
-      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid #1e293b' }}>
-        <button onClick={() => router.back()} style={{ color: 'white', background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px' }}>← Back</button>
-        <Link href="/home" style={{ display: 'flex', alignItems: 'center', gap: '6px', textDecoration: 'none' }}>
-          <span>🚛</span>
-          <span>🚗</span>
-          <span style={{ color: 'white', fontWeight: 'bold' }}>Drive Time</span>
-          <span style={{ color: '#fb923c', fontWeight: 'bold' }}>Tales</span>
-        </Link>
-        <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#f97316', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', color: 'black' }}>
-          {user?.email?.charAt(0).toUpperCase() || 'U'}
-        </div>
-      </header>
+      <StickyHeaderFull />
 
       {/* Main Content */}
       <main style={{ flex: 1, padding: '16px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
         
-        {/* Cover - Larger */}
+        {/* Cover - Large */}
         <div style={{ 
           width: '100%', 
           maxWidth: '280px', 
@@ -315,8 +305,8 @@ function PlayerContent() {
           {story.genre} • {story.author || 'Unknown'} • {story.duration_mins} min • {creditCost} credit{creditCost > 1 ? 's' : ''}
         </p>
         
-        {/* Description */}
-        <p style={{ color: 'white', fontSize: '13px', textAlign: 'center', marginBottom: '16px', lineHeight: '1.4' }}>
+        {/* Description - Larger text */}
+        <p style={{ color: 'white', fontSize: '15px', textAlign: 'center', marginBottom: '16px', lineHeight: '1.5', maxWidth: '340px', marginLeft: 'auto', marginRight: 'auto' }}>
           {getDescription(story.description)}
         </p>
         
@@ -361,23 +351,25 @@ function PlayerContent() {
           )}
         </button>
 
-        {/* Bottom Buttons - only when showExtras */}
-        {showExtras && (
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button 
-              onClick={handleReserve} 
-              style={{ flex: 1, padding: '14px', backgroundColor: '#db2777', border: 'none', borderRadius: '12px', color: 'white', fontWeight: '600', fontSize: '14px', cursor: 'pointer' }}
-            >
-              📖 Reserve for Later
-            </button>
-            <button 
-              onClick={handleNotForMe} 
-              style={{ flex: 1, padding: '14px', backgroundColor: '#334155', border: 'none', borderRadius: '12px', color: 'white', fontWeight: '600', fontSize: '14px', cursor: 'pointer' }}
-            >
-              👎 Not For Me
-            </button>
-          </div>
-        )}
+        {/* Bottom Buttons - visibility hidden after 3 min so layout doesn't shift */}
+        <div style={{ 
+          display: 'flex', 
+          gap: '8px',
+          visibility: showButtons ? 'visible' : 'hidden'
+        }}>
+          <button 
+            onClick={handleReserve} 
+            style={{ flex: 1, padding: '14px', backgroundColor: '#db2777', border: 'none', borderRadius: '12px', color: 'white', fontWeight: '600', fontSize: '14px', cursor: 'pointer' }}
+          >
+            📖 Reserve for Later
+          </button>
+          <button 
+            onClick={handleNotForMe} 
+            style={{ flex: 1, padding: '14px', backgroundColor: '#334155', border: 'none', borderRadius: '12px', color: 'white', fontWeight: '600', fontSize: '14px', cursor: 'pointer' }}
+          >
+            👎 Not For Me
+          </button>
+        </div>
 
         {/* Charge countdown */}
         {!charged && currentTime > 0 && currentTime < 180 && (
