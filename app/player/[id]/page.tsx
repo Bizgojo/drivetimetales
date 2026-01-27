@@ -179,13 +179,6 @@ function PlayerContent() {
     }
   }
 
-  // Skip forward/backward
-  const handleSkip = (seconds: number) => {
-    if (audioRef.current) {
-      audioRef.current.currentTime = Math.max(0, Math.min(duration, currentTime + seconds))
-    }
-  }
-
   // Save progress periodically
   useEffect(() => {
     if (!user || !story || !isPlaying) return
@@ -238,14 +231,14 @@ function PlayerContent() {
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
-  // Truncate description
-  const truncateDescription = (desc: string | null) => {
-    if (!desc) return ''
-    return desc.length > 120 ? desc.substring(0, 120) + '...' : desc
-  }
-
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0
   const creditCost = story?.credits || 1
+
+  // Test description if none exists
+  const getDescription = (desc: string | null) => {
+    if (desc && desc.length > 0) return desc
+    return "A gripping tale of mystery and suspense that will keep you on the edge of your seat during your commute. Perfect for drivers who love unexpected twists and dramatic endings."
+  }
 
   // Loading state
   if (loading) return (
@@ -292,13 +285,13 @@ function PlayerContent() {
       </header>
 
       {/* Main Content */}
-      <main style={{ flex: 1, padding: '16px', display: 'flex', flexDirection: 'column', justifyContent: 'center', maxHeight: 'calc(100vh - 60px)' }}>
+      <main style={{ flex: 1, padding: '16px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
         
-        {/* Cover */}
+        {/* Cover - Larger */}
         <div style={{ 
           width: '100%', 
-          maxWidth: showExtras ? '180px' : '280px', 
-          margin: '0 auto 12px', 
+          maxWidth: '280px', 
+          margin: '0 auto 16px', 
           aspectRatio: '1', 
           borderRadius: '12px', 
           overflow: 'hidden', 
@@ -315,20 +308,20 @@ function PlayerContent() {
         </div>
         
         {/* Title */}
-        <h1 style={{ fontSize: '20px', fontWeight: 'bold', textAlign: 'center', color: 'white', marginBottom: '8px' }}>{story.title}</h1>
+        <h1 style={{ fontSize: '22px', fontWeight: 'bold', textAlign: 'center', color: 'white', marginBottom: '8px' }}>{story.title}</h1>
         
-        {/* Meta & Description - only when showExtras */}
-        {showExtras && (
-          <>
-            <p style={{ color: 'white', fontSize: '12px', textAlign: 'center', marginBottom: '4px' }}>
-              {story.genre} • {story.author || 'Unknown'} • {story.duration_mins} min • {creditCost} credit{creditCost > 1 ? 's' : ''}
-            </p>
-            <p style={{ color: 'white', fontSize: '12px', textAlign: 'center', marginBottom: '12px' }}>{truncateDescription(story.description)}</p>
-          </>
-        )}
+        {/* Meta */}
+        <p style={{ color: 'white', fontSize: '14px', textAlign: 'center', marginBottom: '8px' }}>
+          {story.genre} • {story.author || 'Unknown'} • {story.duration_mins} min • {creditCost} credit{creditCost > 1 ? 's' : ''}
+        </p>
+        
+        {/* Description */}
+        <p style={{ color: 'white', fontSize: '13px', textAlign: 'center', marginBottom: '16px', lineHeight: '1.4' }}>
+          {getDescription(story.description)}
+        </p>
         
         {/* Progress Bar */}
-        <div style={{ marginBottom: '12px' }}>
+        <div style={{ marginBottom: '16px' }}>
           <div style={{ height: '8px', backgroundColor: '#334155', borderRadius: '9999px', overflow: 'hidden' }}>
             <div style={{ height: '100%', backgroundColor: '#f97316', width: `${progressPercent}%`, transition: 'width 0.3s' }} />
           </div>
@@ -338,56 +331,48 @@ function PlayerContent() {
           </div>
         </div>
         
-        {/* Playback Controls */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px', marginBottom: '12px' }}>
-          <button 
-            onClick={() => handleSkip(-30)} 
-            style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: '#334155', border: 'none', color: 'white', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}
-          >
-            -30
-          </button>
-          <button 
-            onClick={handlePlayPause} 
-            style={{ 
-              width: '64px', 
-              height: '64px', 
-              borderRadius: '50%', 
-              backgroundColor: !isPlaying && audioReady ? '#22c55e' : '#f97316', 
-              border: 'none', 
-              color: 'black', 
-              fontSize: '24px', 
-              fontWeight: 'bold', 
-              cursor: 'pointer',
-              animation: !isPlaying && audioReady ? 'pulse 2s infinite' : 'none'
-            }}
-          >
-            {isPlaying ? '❚❚' : '▶'}
-          </button>
-          <button 
-            onClick={() => handleSkip(30)} 
-            style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: '#334155', border: 'none', color: 'white', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}
-          >
-            +30
-          </button>
-        </div>
+        {/* Large Play/Pause Button - Full Width */}
+        <button 
+          onClick={handlePlayPause} 
+          style={{ 
+            width: '100%',
+            padding: '18px',
+            borderRadius: '12px', 
+            backgroundColor: !isPlaying && audioReady ? '#22c55e' : '#f97316', 
+            border: 'none', 
+            color: 'black', 
+            fontSize: '20px', 
+            fontWeight: 'bold', 
+            cursor: 'pointer',
+            marginBottom: '12px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '10px',
+            animation: !isPlaying && audioReady ? 'pulse 2s infinite' : 'none'
+          }}
+        >
+          {isPlaying ? (
+            <>❚❚ Pause</>
+          ) : audioReady ? (
+            <>▶ Tap to Play</>
+          ) : (
+            <>Loading...</>
+          )}
+        </button>
 
-        {/* Loading audio indicator */}
-        {!audioReady && !isPlaying && (
-          <p style={{ textAlign: 'center', color: '#fb923c', fontSize: '12px', marginBottom: '8px' }}>Loading audio...</p>
-        )}
-        
         {/* Bottom Buttons - only when showExtras */}
         {showExtras && (
           <div style={{ display: 'flex', gap: '8px' }}>
             <button 
               onClick={handleReserve} 
-              style={{ flex: 1, padding: '12px', backgroundColor: '#db2777', border: 'none', borderRadius: '12px', color: 'white', fontWeight: '600', fontSize: '14px', cursor: 'pointer' }}
+              style={{ flex: 1, padding: '14px', backgroundColor: '#db2777', border: 'none', borderRadius: '12px', color: 'white', fontWeight: '600', fontSize: '14px', cursor: 'pointer' }}
             >
               📖 Reserve for Later
             </button>
             <button 
               onClick={handleNotForMe} 
-              style={{ flex: 1, padding: '12px', backgroundColor: '#334155', border: 'none', borderRadius: '12px', color: 'white', fontWeight: '600', fontSize: '14px', cursor: 'pointer' }}
+              style={{ flex: 1, padding: '14px', backgroundColor: '#334155', border: 'none', borderRadius: '12px', color: 'white', fontWeight: '600', fontSize: '14px', cursor: 'pointer' }}
             >
               👎 Not For Me
             </button>
@@ -396,7 +381,7 @@ function PlayerContent() {
 
         {/* Charge countdown */}
         {!charged && currentTime > 0 && currentTime < 180 && (
-          <p style={{ textAlign: 'center', color: '#64748b', fontSize: '12px', marginTop: '8px' }}>
+          <p style={{ textAlign: 'center', color: '#64748b', fontSize: '12px', marginTop: '12px' }}>
             Credits charged in {Math.ceil((180 - currentTime) / 60)} min
           </p>
         )}
