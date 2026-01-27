@@ -8,6 +8,7 @@ import StickyHeaderFull from '@/components/StickyHeaderFull'
 import HorizontalStoryCard from '@/components/HorizontalStoryCard'
 import SeriesCard from '@/components/SeriesCard'
 import PlaylistButton from '@/components/PlaylistButton'
+import LibraryFiltersV2 from '@/components/LibraryFiltersV2'
 
 interface Story {
   id: string
@@ -33,20 +34,6 @@ interface SeriesGroup {
   cover_url: string | null
 }
 
-const ALL_GENRES = [
-  { key: 'mystery', label: 'Mystery', emoji: '🔍' },
-  { key: 'thriller', label: 'Thriller', emoji: '😱' },
-  { key: 'romance', label: 'Romance', emoji: '💕' },
-  { key: 'horror', label: 'Horror', emoji: '👻' },
-  { key: 'comedy', label: 'Comedy', emoji: '😂' },
-  { key: 'truckers', label: 'Truckers', emoji: '🚛' },
-  { key: 'scifi', label: 'Sci-Fi', emoji: '🚀' },
-  { key: 'children', label: 'Children', emoji: '🧒' },
-  { key: 'learn', label: 'Learn', emoji: '🧠' }
-]
-
-const DEFAULT_VISIBLE = ['mystery', 'romance', 'horror']
-
 function getCredits(duration_mins: number): number {
   return Math.max(1, Math.floor(duration_mins / 15))
 }
@@ -59,23 +46,13 @@ function LibraryContent() {
   const [userName, setUserName] = useState('Friend')
   const [userCredits, setUserCredits] = useState(4)
   const [isUnlimited, setIsUnlimited] = useState(false)
-  const [selectedDuration, setSelectedDuration] = useState('All')
-  const [selectedType, setSelectedType] = useState('All')
-  const [selectedGenre, setSelectedGenre] = useState('All')
-  const [visibleGenres, setVisibleGenres] = useState<string[]>(DEFAULT_VISIBLE)
-  const [showMoreDropdown, setShowMoreDropdown] = useState(false)
+  
+  // Filter states - matching LibraryFiltersV2 expected values
+  const [selectedDuration, setSelectedDuration] = useState('All Lengths')
+  const [selectedGenre, setSelectedGenre] = useState('All Categories')
+  const [selectedType, setSelectedType] = useState('Singles & Series')
 
   const showLowCreditsButton = !isUnlimited && userCredits <= 3
-
-  useEffect(() => {
-    const storedGenres = localStorage.getItem('dtt_recent_genres')
-    if (storedGenres) {
-      try {
-        const parsed = JSON.parse(storedGenres)
-        if (Array.isArray(parsed) && parsed.length >= 3) setVisibleGenres(parsed.slice(0, 3))
-      } catch (e) {}
-    }
-  }, [])
 
   useEffect(() => {
     async function fetchData() {
@@ -103,30 +80,35 @@ function LibraryContent() {
     fetchData()
   }, [user])
 
-  const selectGenre = (genreKey: string) => {
-    setSelectedGenre(genreKey)
-    setShowMoreDropdown(false)
-    if (genreKey !== 'All') {
-      const newVisible = [genreKey, ...visibleGenres.filter(g => g !== genreKey)].slice(0, 3)
-      setVisibleGenres(newVisible)
-      localStorage.setItem('dtt_recent_genres', JSON.stringify(newVisible))
-    }
-  }
-
   // Filter stories
   const filteredStories = stories.filter(story => {
-    if (selectedDuration !== 'All') {
-      if (selectedDuration === '15m' && story.duration_mins > 15) return false
-      if (selectedDuration === '30m' && (story.duration_mins <= 15 || story.duration_mins > 30)) return false
-      if (selectedDuration === '1hr' && story.duration_mins <= 30) return false
+    // Duration filter
+    if (selectedDuration !== 'All Lengths') {
+      if (selectedDuration === '~15 min' && story.duration_mins > 20) return false
+      if (selectedDuration === '~30 min' && (story.duration_mins <= 20 || story.duration_mins > 45)) return false
+      if (selectedDuration === '~1 hr' && story.duration_mins <= 45) return false
     }
-    if (selectedGenre !== 'All' && !(story.genre?.toLowerCase() || '').includes(selectedGenre.toLowerCase())) return false
+    
+    // Genre filter
+    if (selectedGenre !== 'All Categories') {
+      const genreLower = story.genre?.toLowerCase() || ''
+      if (selectedGenre === 'Mystery' && !genreLower.includes('mystery')) return false
+      if (selectedGenre === 'Romance' && !genreLower.includes('romance')) return false
+      if (selectedGenre === 'Sci-Fi' && !genreLower.includes('sci-fi') && !genreLower.includes('scifi')) return false
+      if (selectedGenre === 'Horror' && !genreLower.includes('horror')) return false
+      if (selectedGenre === 'Comedy' && !genreLower.includes('comedy')) return false
+      if (selectedGenre === 'Learn' && !genreLower.includes('learn') && !genreLower.includes('educational')) return false
+      if (selectedGenre === 'Thriller' && !genreLower.includes('thriller')) return false
+      if (selectedGenre === 'Truckers' && !genreLower.includes('trucker')) return false
+      if (selectedGenre === 'Children' && !genreLower.includes('child') && !genreLower.includes('kids')) return false
+    }
+    
     return true
   })
 
-  // Group stories by series_name (from stories table, not series table)
+  // Group stories by series_name
   const seriesGroups: SeriesGroup[] = []
-  if (selectedType === 'Series') {
+  if (selectedType === 'Series Only') {
     const seriesMap = new Map<string, SeriesGroup>()
     filteredStories.forEach(story => {
       if (story.series_name) {
@@ -150,32 +132,12 @@ function LibraryContent() {
     seriesMap.forEach(series => seriesGroups.push(series))
   }
 
-  // For "All" view, show stories without series_name OR all stories
-  const displayStories = selectedType === 'Series' ? [] : filteredStories
-
-  const btnStyle = (active: boolean): React.CSSProperties => ({
-    backgroundColor: active ? '#f97316' : '#334155',
-    color: 'white',
-    padding: '0.3rem 0',
-    borderRadius: '6px',
-    fontSize: '13px',
-    fontWeight: 500,
-    border: 'none',
-    cursor: 'pointer',
-    flex: 1,
-    textAlign: 'center'
-  })
-
-  const allBtnStyle = (active: boolean): React.CSSProperties => ({
-    ...btnStyle(active),
-    flex: 'none',
-    width: '42px'
-  })
-
-  const getGenreLabel = (key: string) => {
-    const genre = ALL_GENRES.find(g => g.key === key)
-    return genre ? genre.emoji + genre.label.substring(0, 4) : key
-  }
+  // Type filter for display
+  const displayStories = selectedType === 'Series Only' 
+    ? [] 
+    : selectedType === 'Singles Only'
+      ? filteredStories.filter(s => !s.series_name)
+      : filteredStories
 
   if (loading) {
     return (
@@ -188,34 +150,21 @@ function LibraryContent() {
   return (
     <div className="min-h-screen bg-slate-950" style={{ paddingBottom: showLowCreditsButton ? '55px' : '0' }}>
       <StickyHeaderFull />
-      <div className="sticky top-[60px] z-40 bg-slate-800 px-3 py-2">
-        <div className="flex gap-1.5 mb-1.5">
-          <button onClick={() => setSelectedDuration('All')} style={allBtnStyle(selectedDuration === 'All')}>All</button>
-          <button onClick={() => setSelectedDuration('15m')} style={btnStyle(selectedDuration === '15m')}>15m</button>
-          <button onClick={() => setSelectedDuration('30m')} style={btnStyle(selectedDuration === '30m')}>30m</button>
-          <button onClick={() => setSelectedDuration('1hr')} style={btnStyle(selectedDuration === '1hr')}>1hr</button>
-          <span className="text-slate-600 flex items-center px-0.5">|</span>
-          <button onClick={() => setSelectedType('All')} style={btnStyle(selectedType === 'All')}>All</button>
-          <button onClick={() => setSelectedType('Series')} style={btnStyle(selectedType === 'Series')}>Series</button>
-        </div>
-        <div className="flex gap-1.5 mb-1.5 relative">
-          <button onClick={() => selectGenre('All')} style={allBtnStyle(selectedGenre === 'All')}>All</button>
-          {visibleGenres.map(g => (
-            <button key={g} onClick={() => selectGenre(g)} style={btnStyle(selectedGenre === g)}>{getGenreLabel(g)}</button>
-          ))}
-          <div className="relative flex-[1.5]">
-            <button onClick={() => setShowMoreDropdown(!showMoreDropdown)} style={{ ...btnStyle(showMoreDropdown), width: '100%' }}>More ▼</button>
-            {showMoreDropdown && (
-              <div className="absolute top-full right-0 bg-slate-800 border border-slate-600 rounded-lg mt-1 min-w-[140px] z-60 shadow-lg">
-                {ALL_GENRES.map(g => (
-                  <button key={g.key} onClick={() => selectGenre(g.key)} className="block w-full px-3 py-2 text-left text-white text-sm hover:bg-slate-700" style={{ backgroundColor: selectedGenre === g.key ? '#f97316' : 'transparent' }}>{g.emoji} {g.label}</button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+      
+      {/* Use shared LibraryFiltersV2 component */}
+      <LibraryFiltersV2
+        selectedDuration={selectedDuration}
+        setSelectedDuration={setSelectedDuration}
+        selectedGenre={selectedGenre}
+        setSelectedGenre={setSelectedGenre}
+        selectedType={selectedType}
+        setSelectedType={setSelectedType}
+      />
+      
+      {/* Credits, Playlist, Search row */}
+      <div className="px-4 py-2">
         <div className="flex gap-2 items-center">
-          <div className="bg-slate-950 px-2 py-1 rounded-md text-center leading-tight">
+          <div className="bg-slate-950 px-2 py-1 rounded-md text-center leading-tight border border-slate-700">
             <div className="text-white text-[10px]">Credits</div>
             <div className="text-white text-sm">{isUnlimited ? '∞' : userCredits}</div>
           </div>
@@ -223,9 +172,9 @@ function LibraryContent() {
           <button onClick={() => router.push('/library-search')} className="bg-slate-700 text-white px-3 py-2 rounded-md text-sm font-medium">Search</button>
         </div>
       </div>
-      {showMoreDropdown && <div className="fixed inset-0 z-30" onClick={() => setShowMoreDropdown(false)} />}
+      
       <div className="px-3 py-2 flex flex-col gap-2">
-        {selectedType === 'Series' && (
+        {selectedType === 'Series Only' && (
           <>
             {seriesGroups.length === 0 ? (
               <div className="bg-slate-800 rounded-xl p-8 text-center">
@@ -240,7 +189,7 @@ function LibraryContent() {
             )}
           </>
         )}
-        {selectedType === 'All' && (
+        {selectedType !== 'Series Only' && (
           <>
             {displayStories.length === 0 ? (
               <div className="bg-slate-800 rounded-xl p-8 text-center">
