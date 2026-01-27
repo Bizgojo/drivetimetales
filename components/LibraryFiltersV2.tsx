@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 interface LibraryFiltersV2Props {
   selectedDuration: string
@@ -18,7 +18,7 @@ const DURATIONS = [
   { value: '~1 hr', label: '1hr' },
 ]
 
-const GENRES = [
+const ALL_GENRES = [
   { value: 'All Categories', label: 'All', emoji: '' },
   { value: 'Mystery', label: 'Myst', emoji: '🔍' },
   { value: 'Romance', label: 'Rom', emoji: '💕' },
@@ -34,6 +34,9 @@ const TYPES = [
   { value: 'Series Only', label: 'Series' },
 ]
 
+// Default visible genres (excluding 'All Categories' which is always first)
+const DEFAULT_VISIBLE = ['Mystery', 'Romance', 'Horror']
+
 export default function LibraryFiltersV2({
   selectedDuration,
   setSelectedDuration,
@@ -42,6 +45,10 @@ export default function LibraryFiltersV2({
   selectedType,
   setSelectedType,
 }: LibraryFiltersV2Props) {
+  
+  // Track which genres are visible in the row (not including 'All Categories')
+  const [visibleGenres, setVisibleGenres] = useState<string[]>(DEFAULT_VISIBLE)
+  const [showMoreMenu, setShowMoreMenu] = useState(false)
 
   const btnStyle = (isActive: boolean) => ({
     backgroundColor: isActive ? '#f97316' : '#334155',
@@ -57,6 +64,42 @@ export default function LibraryFiltersV2({
     alignItems: 'center',
     justifyContent: 'center',
   } as React.CSSProperties)
+
+  // Get genre object by value
+  const getGenre = (value: string) => ALL_GENRES.find(g => g.value === value)
+
+  // Handle clicking a visible genre button
+  const handleVisibleGenreClick = (genreValue: string) => {
+    setSelectedGenre(genreValue)
+  }
+
+  // Handle selecting from More menu
+  const handleMoreSelect = (genreValue: string) => {
+    if (selectedGenre === 'All Categories') {
+      // If on All, put new genre in first slot
+      const newVisible = [genreValue, ...visibleGenres.slice(1)]
+      setVisibleGenres(newVisible)
+    } else {
+      // Replace the currently selected genre's position
+      const currentIndex = visibleGenres.indexOf(selectedGenre)
+      if (currentIndex !== -1) {
+        const newVisible = [...visibleGenres]
+        newVisible[currentIndex] = genreValue
+        setVisibleGenres(newVisible)
+      } else {
+        // If current selection isn't in visible (shouldn't happen), put in first slot
+        const newVisible = [genreValue, ...visibleGenres.slice(1)]
+        setVisibleGenres(newVisible)
+      }
+    }
+    setSelectedGenre(genreValue)
+    setShowMoreMenu(false)
+  }
+
+  // Genres available in More menu (not currently visible)
+  const moreGenres = ALL_GENRES.filter(
+    g => g.value !== 'All Categories' && !visibleGenres.includes(g.value)
+  )
 
   return (
     <div style={{ position: 'sticky', top: '60px', zIndex: 40, padding: '0 1rem' }}>
@@ -76,16 +119,79 @@ export default function LibraryFiltersV2({
         </div>
 
         {/* Genre Row */}
-        <div style={{ display: 'flex', gap: '0.35rem', marginBottom: '0.35rem', flexWrap: 'wrap', justifyContent: 'center' }}>
-          {GENRES.map(g => (
+        <div style={{ display: 'flex', gap: '0.35rem', marginBottom: '0.35rem', flexWrap: 'wrap', justifyContent: 'center', position: 'relative' }}>
+          {/* All button - always first */}
+          <button
+            onClick={() => handleVisibleGenreClick('All Categories')}
+            style={btnStyle(selectedGenre === 'All Categories')}
+          >
+            All
+          </button>
+          
+          {/* Visible genre buttons */}
+          {visibleGenres.map(genreValue => {
+            const genre = getGenre(genreValue)
+            if (!genre) return null
+            return (
+              <button
+                key={genre.value}
+                onClick={() => handleVisibleGenreClick(genre.value)}
+                style={btnStyle(selectedGenre === genre.value)}
+              >
+                {genre.emoji}{genre.label}
+              </button>
+            )
+          })}
+          
+          {/* More button */}
+          <div style={{ position: 'relative' }}>
             <button
-              key={g.value}
-              onClick={() => setSelectedGenre(g.value)}
-              style={btnStyle(selectedGenre === g.value)}
+              onClick={() => setShowMoreMenu(!showMoreMenu)}
+              style={btnStyle(false)}
             >
-              {g.emoji}{g.label}
+              More ▼
             </button>
-          ))}
+            
+            {/* More dropdown menu */}
+            {showMoreMenu && (
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                right: 0,
+                marginTop: '4px',
+                backgroundColor: '#1e293b',
+                border: '1px solid #475569',
+                borderRadius: '8px',
+                padding: '8px',
+                zIndex: 50,
+                minWidth: '140px',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
+              }}>
+                {moreGenres.map(genre => (
+                  <button
+                    key={genre.value}
+                    onClick={() => handleMoreSelect(genre.value)}
+                    style={{
+                      display: 'block',
+                      width: '100%',
+                      padding: '10px 12px',
+                      backgroundColor: 'transparent',
+                      border: 'none',
+                      color: 'white',
+                      fontSize: '14px',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      borderRadius: '4px',
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#334155'}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                  >
+                    {genre.emoji} {genre.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Type Row */}
@@ -102,6 +208,14 @@ export default function LibraryFiltersV2({
         </div>
 
       </div>
+      
+      {/* Click outside to close menu */}
+      {showMoreMenu && (
+        <div 
+          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 40 }}
+          onClick={() => setShowMoreMenu(false)}
+        />
+      )}
     </div>
   )
 }
