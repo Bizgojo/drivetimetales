@@ -75,6 +75,7 @@ function PlaylistPlayerContent() {
   }, [audioReady, playlist.length])
 
   // Check if current story is already in user's library (already charged)
+  // But always start from beginning for playlist playback
   useEffect(() => {
     async function checkLibrary() {
       if (!user || !currentStory) return
@@ -88,7 +89,8 @@ function PlaylistPlayerContent() {
       
       if (data) {
         setCharged(true)
-        setCurrentTime(data.progress || 0)
+        // Always start from beginning for playlist - don't restore progress
+        setCurrentTime(0)
       } else {
         setCharged(false)
         setCurrentTime(0)
@@ -110,9 +112,8 @@ function PlaylistPlayerContent() {
     if (audioRef.current) {
       setDuration(audioRef.current.duration)
       setAudioReady(true)
-      if (currentTime > 0) {
-        audioRef.current.currentTime = currentTime
-      }
+      // Always start from beginning for playlist
+      audioRef.current.currentTime = 0
     }
   }
 
