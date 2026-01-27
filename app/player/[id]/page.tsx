@@ -275,13 +275,13 @@ function PlayerContent() {
       <StickyHeaderFull />
 
       {/* Main Content */}
-      <main style={{ flex: 1, padding: '16px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+      <main style={{ flex: 1, padding: '12px 16px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
         
-        {/* Cover - Large */}
+        {/* Cover - Reduced size to fit everything on screen */}
         <div style={{ 
           width: '100%', 
-          maxWidth: '280px', 
-          margin: '0 auto 16px', 
+          maxWidth: '200px', 
+          margin: '0 auto 12px', 
           aspectRatio: '1', 
           borderRadius: '12px', 
           overflow: 'hidden', 
@@ -298,20 +298,20 @@ function PlayerContent() {
         </div>
         
         {/* Title */}
-        <h1 style={{ fontSize: '22px', fontWeight: 'bold', textAlign: 'center', color: 'white', marginBottom: '8px' }}>{story.title}</h1>
+        <h1 style={{ fontSize: '20px', fontWeight: 'bold', textAlign: 'center', color: 'white', marginBottom: '6px' }}>{story.title}</h1>
         
         {/* Meta */}
-        <p style={{ color: 'white', fontSize: '14px', textAlign: 'center', marginBottom: '8px' }}>
+        <p style={{ color: 'white', fontSize: '13px', textAlign: 'center', marginBottom: '6px' }}>
           {story.genre} • {story.author || 'Unknown'} • {story.duration_mins} min • {creditCost} credit{creditCost > 1 ? 's' : ''}
         </p>
         
-        {/* Description - Larger text */}
-        <p style={{ color: 'white', fontSize: '15px', textAlign: 'center', marginBottom: '16px', lineHeight: '1.5', maxWidth: '340px', marginLeft: 'auto', marginRight: 'auto' }}>
+        {/* Description - 15px with 3 lines max */}
+        <p style={{ color: 'white', fontSize: '15px', textAlign: 'center', marginBottom: '12px', lineHeight: '1.4', maxWidth: '340px', marginLeft: 'auto', marginRight: 'auto' }}>
           {getDescription(story.description)}
         </p>
         
         {/* Progress Bar */}
-        <div style={{ marginBottom: '16px' }}>
+        <div style={{ marginBottom: '12px' }}>
           <div style={{ height: '8px', backgroundColor: '#334155', borderRadius: '9999px', overflow: 'hidden' }}>
             <div style={{ height: '100%', backgroundColor: '#f97316', width: `${progressPercent}%`, transition: 'width 0.3s' }} />
           </div>
@@ -326,15 +326,15 @@ function PlayerContent() {
           onClick={handlePlayPause} 
           style={{ 
             width: '100%',
-            padding: '18px',
+            padding: '16px',
             borderRadius: '12px', 
             backgroundColor: !isPlaying && audioReady ? '#22c55e' : '#f97316', 
             border: 'none', 
             color: 'black', 
-            fontSize: '20px', 
+            fontSize: '18px', 
             fontWeight: 'bold', 
             cursor: 'pointer',
-            marginBottom: '12px',
+            marginBottom: '10px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -359,13 +359,13 @@ function PlayerContent() {
         }}>
           <button 
             onClick={handleReserve} 
-            style={{ flex: 1, padding: '14px', backgroundColor: '#db2777', border: 'none', borderRadius: '12px', color: 'white', fontWeight: '600', fontSize: '14px', cursor: 'pointer' }}
+            style={{ flex: 1, padding: '12px', backgroundColor: '#db2777', border: 'none', borderRadius: '12px', color: 'white', fontWeight: '600', fontSize: '14px', cursor: 'pointer' }}
           >
             📖 Reserve for Later
           </button>
           <button 
             onClick={handleNotForMe} 
-            style={{ flex: 1, padding: '14px', backgroundColor: '#334155', border: 'none', borderRadius: '12px', color: 'white', fontWeight: '600', fontSize: '14px', cursor: 'pointer' }}
+            style={{ flex: 1, padding: '12px', backgroundColor: '#334155', border: 'none', borderRadius: '12px', color: 'white', fontWeight: '600', fontSize: '14px', cursor: 'pointer' }}
           >
             👎 Not For Me
           </button>
@@ -373,7 +373,7 @@ function PlayerContent() {
 
         {/* Charge countdown */}
         {!charged && currentTime > 0 && currentTime < 180 && (
-          <p style={{ textAlign: 'center', color: '#64748b', fontSize: '12px', marginTop: '12px' }}>
+          <p style={{ textAlign: 'center', color: '#64748b', fontSize: '12px', marginTop: '8px' }}>
             Credits charged in {Math.ceil((180 - currentTime) / 60)} min
           </p>
         )}
