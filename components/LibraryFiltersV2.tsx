@@ -19,16 +19,16 @@ const DURATIONS = [
 ]
 
 const ALL_GENRES = [
-  { value: 'All Categories', label: 'All', emoji: '' },
-  { value: 'Mystery', label: 'Myst', emoji: '🔍' },
-  { value: 'Romance', label: 'Rom', emoji: '💕' },
-  { value: 'Sci-Fi', label: 'SciFi', emoji: '🚀' },
-  { value: 'Horror', label: 'Horr', emoji: '👻' },
-  { value: 'Comedy', label: 'Com', emoji: '😂' },
-  { value: 'Learn', label: 'Learn', emoji: '🧠' },
-  { value: 'Thriller', label: 'Thrill', emoji: '😱' },
-  { value: 'Truckers', label: 'Truck', emoji: '🚛' },
-  { value: 'Children', label: 'Kids', emoji: '👶' },
+  { value: 'All Categories', label: 'All', shortLabel: 'All', emoji: '' },
+  { value: 'Mystery', label: 'Mystery', shortLabel: 'Myst', emoji: '🔍' },
+  { value: 'Romance', label: 'Romance', shortLabel: 'Rom', emoji: '💕' },
+  { value: 'Sci-Fi', label: 'Sci-Fi', shortLabel: 'SciFi', emoji: '🚀' },
+  { value: 'Horror', label: 'Horror', shortLabel: 'Horr', emoji: '👻' },
+  { value: 'Comedy', label: 'Comedy', shortLabel: 'Com', emoji: '😂' },
+  { value: 'Learn', label: 'Learn', shortLabel: 'Learn', emoji: '🧠' },
+  { value: 'Thriller', label: 'Thriller', shortLabel: 'Thrill', emoji: '😱' },
+  { value: 'Truckers', label: 'Truckers', shortLabel: 'Truck', emoji: '🚛' },
+  { value: 'Children', label: 'Children', shortLabel: 'Kids', emoji: '👶' },
 ]
 
 const TYPES = [
@@ -109,8 +109,8 @@ export default function LibraryFiltersV2({
     <div style={{ position: 'sticky', top: '60px', zIndex: 40, padding: '0 1rem' }}>
       <div style={{ backgroundColor: '#1e293b', borderRadius: '12px', padding: '0.5rem' }}>
         
-        {/* Duration Row */}
-        <div style={{ display: 'flex', gap: '0.35rem', marginBottom: '0.35rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+        {/* Row 1: Duration | Genre + More */}
+        <div style={{ display: 'flex', gap: '0.35rem', marginBottom: '0.35rem', alignItems: 'center', justifyContent: 'center' }}>
           {DURATIONS.map(d => (
             <button
               key={d.value}
@@ -120,19 +120,13 @@ export default function LibraryFiltersV2({
               {d.label}
             </button>
           ))}
-        </div>
-
-        {/* Genre Row */}
-        <div style={{ display: 'flex', gap: '0.35rem', marginBottom: '0.35rem', flexWrap: 'wrap', justifyContent: 'center', position: 'relative' }}>
-          {/* All button - always first */}
+          <span style={{ color: '#475569', padding: '0 2px' }}>|</span>
           <button
             onClick={() => handleVisibleGenreClick('All Categories')}
             style={btnStyle(selectedGenre === 'All Categories')}
           >
             All
           </button>
-          
-          {/* Visible genre buttons - clicking just moves highlight */}
           {visibleGenres.map(genreValue => {
             const genre = getGenre(genreValue)
             if (!genre) return null
@@ -142,12 +136,10 @@ export default function LibraryFiltersV2({
                 onClick={() => handleVisibleGenreClick(genre.value)}
                 style={btnStyle(selectedGenre === genre.value)}
               >
-                {genre.emoji}{genre.label}
+                {genre.emoji}{genre.shortLabel}
               </button>
             )
           })}
-          
-          {/* More button */}
           <div style={{ position: 'relative' }}>
             <button
               onClick={() => setShowMoreMenu(!showMoreMenu)}
@@ -155,8 +147,6 @@ export default function LibraryFiltersV2({
             >
               More ▼
             </button>
-            
-            {/* More dropdown menu */}
             {showMoreMenu && (
               <div style={{
                 position: 'absolute',
@@ -198,8 +188,8 @@ export default function LibraryFiltersV2({
           </div>
         </div>
 
-        {/* Type Row */}
-        <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+        {/* Row 2: Type */}
+        <div style={{ display: 'flex', gap: '0.35rem', justifyContent: 'center' }}>
           {TYPES.map(t => (
             <button
               key={t.value}
