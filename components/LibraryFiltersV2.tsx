@@ -109,7 +109,7 @@ export default function LibraryFiltersV2({
     <div style={{ position: 'sticky', top: '60px', zIndex: 40, padding: '0 1rem' }}>
       <div style={{ backgroundColor: '#1e293b', borderRadius: '12px', padding: '0.5rem' }}>
         
-        {/* Row 1: Duration | Genre + More */}
+        {/* Row 1: Duration | Type */}
         <div style={{ display: 'flex', gap: '0.35rem', marginBottom: '0.35rem', alignItems: 'center', justifyContent: 'center' }}>
           {DURATIONS.map(d => (
             <button
@@ -121,6 +121,19 @@ export default function LibraryFiltersV2({
             </button>
           ))}
           <span style={{ color: '#475569', padding: '0 2px' }}>|</span>
+          {TYPES.map(t => (
+            <button
+              key={t.value}
+              onClick={() => setSelectedType(t.value)}
+              style={btnStyle(selectedType === t.value)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Row 2: Genre + More */}
+        <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', justifyContent: 'center' }}>
           <button
             onClick={() => handleVisibleGenreClick('All Categories')}
             style={btnStyle(selectedGenre === 'All Categories')}
@@ -186,19 +199,6 @@ export default function LibraryFiltersV2({
               </div>
             )}
           </div>
-        </div>
-
-        {/* Row 2: Type */}
-        <div style={{ display: 'flex', gap: '0.35rem', justifyContent: 'center' }}>
-          {TYPES.map(t => (
-            <button
-              key={t.value}
-              onClick={() => setSelectedType(t.value)}
-              style={btnStyle(selectedType === t.value)}
-            >
-              {t.label}
-            </button>
-          ))}
         </div>
 
       </div>
