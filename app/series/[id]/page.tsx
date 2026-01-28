@@ -265,8 +265,8 @@ export default function SeriesDetailPage() {
           )}
           
           {/* Instruction text */}
-          <p className="text-white text-sm text-center" style={{ opacity: 0.8 }}>
-            Or select episodes (chapters) individually
+          <p className="text-white text-sm text-center font-bold">
+            Or select episodes individually
           </p>
         </div>
       </div>
@@ -332,9 +332,6 @@ export default function SeriesDetailPage() {
                         </div>
                       )}
                     </div>
-                    <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '4px', backgroundColor: '#1e293b' }}>
-                      <div style={{ height: '100%', width: `${progressPercent}%`, backgroundColor: progress?.completed ? '#22c55e' : '#f97316', transition: 'width 0.3s' }} />
-                    </div>
                   </div>
                   
                   <div style={{ flex: 1, padding: '12px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
@@ -343,6 +340,17 @@ export default function SeriesDetailPage() {
                     {epDescription && <p className="text-white text-xs" style={{ marginBottom: '8px', opacity: 0.8 }}>{epDescription}</p>}
                     <div className="text-white text-xs font-semibold">{ep.duration_mins} min • {ep.credits} credit{ep.credits !== 1 ? 's' : ''}</div>
                   </div>
+                </div>
+                
+                {/* Progress bar at bottom of card */}
+                <div style={{ height: '4px', backgroundColor: '#334155', borderRadius: '0 0 10px 10px' }}>
+                  <div style={{ 
+                    height: '100%', 
+                    width: `${progressPercent}%`, 
+                    backgroundColor: progress?.completed ? '#22c55e' : '#f97316', 
+                    borderRadius: '0 0 10px 10px',
+                    transition: 'width 0.3s' 
+                  }} />
                 </div>
               </div>
             )
