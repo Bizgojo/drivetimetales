@@ -3,7 +3,6 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Header } from '@/components/ui/Header';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 
@@ -13,7 +12,7 @@ export default function AccountPage() {
   const [stats, setStats] = useState({ completed: 0, inProgress: 0 });
   const [statsLoading, setStatsLoading] = useState(true);
 
-  // Fetch user story stats
+  // Fetch user story stats from user_library table
   useEffect(() => {
     async function fetchStats() {
       if (!user?.id) return;
@@ -25,7 +24,7 @@ export default function AccountPage() {
         if (!url || !key) return;
         
         const response = await fetch(
-          `${url}/rest/v1/user_stories?user_id=eq.${user.id}&select=completed,progress_seconds`,
+          `${url}/rest/v1/user_library?user_id=eq.${user.id}&select=completed,progress`,
           {
             headers: {
               'apikey': key,
@@ -36,8 +35,8 @@ export default function AccountPage() {
         
         if (response.ok) {
           const data = await response.json();
-          const completed = data.filter((s: any) => s.completed).length;
-          const inProgress = data.filter((s: any) => !s.completed && s.progress_seconds > 0).length;
+          const completed = data.filter((s: any) => s.completed === true).length;
+          const inProgress = data.filter((s: any) => s.completed !== true && s.progress > 0).length;
           setStats({ completed, inProgress });
         }
       } catch (error) {
@@ -75,7 +74,7 @@ export default function AccountPage() {
   }
 
   // Get display name or fallback
-  const displayName = user.display_name || user.email.split('@')[0];
+  const displayName = user.first_name || user.email.split('@')[0];
   const initials = displayName.substring(0, 2).toUpperCase();
 
   // Format subscription type for display
@@ -97,7 +96,60 @@ export default function AccountPage() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
-      <Header showBack isLoggedIn userCredits={user.credits} />
+      {/* Custom Header for Account Page - No clickable avatar */}
+      <header style={{
+        position: 'sticky',
+        top: 0,
+        zIndex: 50,
+        backgroundColor: '#030712',
+        borderBottom: '1px solid #1f2937',
+        padding: '12px 16px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          {/* Back button */}
+          <button 
+            onClick={() => router.back()}
+            style={{
+              width: '44px',
+              height: '44px',
+              borderRadius: '50%',
+              backgroundColor: '#1f2937',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0
+            }}
+          >
+            <span style={{ color: 'white', fontSize: '20px' }}>‹</span>
+          </button>
+          
+          {/* Logo */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '20px' }}>🚛</span>
+            <span style={{ fontSize: '20px' }}>🚗</span>
+            <span style={{ color: 'white', fontWeight: 'bold', marginLeft: '4px' }}>Drive Time </span>
+            <span style={{ color: '#fb923c', fontWeight: 'bold' }}>Tales</span>
+          </div>
+          
+          {/* Avatar - NOT clickable on account page */}
+          <div
+            style={{
+              width: '44px',
+              height: '44px',
+              borderRadius: '50%',
+              backgroundColor: '#f97316',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0
+            }}
+          >
+            <span style={{ color: 'black', fontWeight: 'bold', fontSize: '18px' }}>{initials.charAt(0)}</span>
+          </div>
+        </div>
+      </header>
       
       <div className="px-4 py-5">
         {/* Profile Header */}
