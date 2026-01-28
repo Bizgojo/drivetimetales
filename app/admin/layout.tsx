@@ -20,6 +20,7 @@ export default function AdminLayout({
     { href: '/admin/referrals', label: 'Referrals', icon: '🎁' },
     { href: '/admin/marketing', label: 'Marketing', icon: '📱' },
     { href: '/admin/finance', label: 'Finance', icon: '💰' },
+    { href: '/admin/settings', label: 'Settings', icon: '⚙️' },
   ]
 
   // Theme colors (light theme for admin)
