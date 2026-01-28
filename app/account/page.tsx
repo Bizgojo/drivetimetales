@@ -35,10 +35,11 @@ export default function AccountPage() {
 
   // Get display name - prefer first_name + last_name (from Stripe), then display_name, then email prefix
   let displayName = '';
+  const userAny = user as any; // Type assertion to access potential last_name field
   if (user.first_name) {
     displayName = user.first_name;
-    if (user.last_name) {
-      displayName += ' ' + user.last_name;
+    if (userAny.last_name) {
+      displayName += ' ' + userAny.last_name;
     }
   } else if (user.display_name) {
     displayName = user.display_name;
