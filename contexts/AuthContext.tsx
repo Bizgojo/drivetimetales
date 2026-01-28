@@ -45,7 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     
     try {
-      const apiUrl = `${url}/rest/v1/users?id=eq.${authUser.id}&select=first_name,last_name,display_name,credits,subscription_type,subscription_status,subscription_ends_at`
+      const apiUrl = `${url}/rest/v1/users?id=eq.${authUser.id}&select=first_name,last_name,display_name,credits,plan,subscription_type,subscription_ends_at`
       console.log('[AuthContext] Fetching user data from:', apiUrl.substring(0, 80) + '...')
       
       const response = await fetch(apiUrl, {
