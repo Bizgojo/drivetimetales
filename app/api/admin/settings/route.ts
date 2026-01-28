@@ -1,0 +1,42 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+export async function POST(request: NextRequest) {
+  try {
+    const { settings } = await request.json();
+
+    if (!settings || typeof settings !== 'object') {
+      return NextResponse.json({ error: 'Settings object required' }, { status: 400 });
+    }
+
+    // Update each setting
+    for (const [key, value] of Object.entries(settings)) {
+      const { error } = await supabaseAdmin
+        .from('dtt_settings')
+        .upsert({
+          key,
+          value: String(value),
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'key'
+        });
+
+      if (error) {
+        console.error(`[Settings] Error updating ${key}:`, error);
+        return NextResponse.json({ error: `Failed to update ${key}` }, { status: 500 });
+      }
+    }
+
+    console.log('[Settings] Updated:', Object.keys(settings));
+    return NextResponse.json({ success: true });
+
+  } catch (error) {
+    console.error('[Settings] Error:', error);
+    return NextResponse.json({ error: 'Failed to save settings' }, { status: 500 });
+  }
+}
