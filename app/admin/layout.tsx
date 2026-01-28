@@ -14,6 +14,7 @@ export default function AdminLayout({
     { href: '/admin', label: 'Dashboard', icon: '📊' },
     { href: '/admin/stories', label: 'Stories', icon: '📚' },
     { href: '/admin/users', label: 'Users', icon: '👥' },
+    { href: '/admin/support', label: 'Support', icon: '💬' },
     { href: '/admin/analytics', label: 'Analytics', icon: '📈' },
     { href: '/admin/subscriptions', label: 'Subscriptions', icon: '💳' },
     { href: '/admin/referrals', label: 'Referrals', icon: '🎁' },
@@ -23,7 +24,7 @@ export default function AdminLayout({
 
   // Theme colors (light theme for admin)
   const sidebarBg = '#1e293b'
-  const sidebarText = '#e2e8f0'
+  const sidebarText = '#ffffff'
   const sidebarActive = '#f97316'
   const mainBg = '#FAF9F6'
 
@@ -72,8 +73,8 @@ export default function AdminLayout({
                   backgroundColor: isActive ? sidebarActive : 'transparent',
                   color: isActive ? 'black' : sidebarText,
                   textDecoration: 'none',
-                  fontWeight: isActive ? 600 : 400,
-                  fontSize: '14px',
+                  fontWeight: 600,
+                  fontSize: '16px',
                   transition: 'all 0.15s ease'
                 }}
               >
