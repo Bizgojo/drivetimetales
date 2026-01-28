@@ -117,10 +117,10 @@ export default function HelpPage() {
             <h3 className="text-green-400 font-bold mb-2">Message Sent!</h3>
             <p className="text-gray-300 mb-4">We typically respond within 24-48 hours.</p>
             <button 
-              onClick={() => setSubmitted(false)} 
-              className="text-orange-400 text-sm underline"
+              onClick={() => router.push('/')} 
+              className="px-6 py-3 bg-orange-500 text-black font-bold rounded-xl"
             >
-              Send another message
+              Go to Home
             </button>
           </div>
         ) : (
