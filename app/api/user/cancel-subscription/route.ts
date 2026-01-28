@@ -1,71 +1,65 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { stripe, cancelSubscription } from '@/lib/stripe';
+import Stripe from 'stripe';
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: '2023-10-16',
+});
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-// POST /api/user/cancel-subscription - Cancel user's subscription
 export async function POST(request: NextRequest) {
   try {
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const { userId } = await request.json();
+
+    if (!userId) {
+      return NextResponse.json({ error: 'User ID required' }, { status: 400 });
     }
 
-    const token = authHeader.substring(7);
-    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
-    
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
-    }
-
-    // Get user's Stripe customer ID
-    const { data: userData, error: userError } = await supabaseAdmin
+    // Get user's Stripe subscription ID
+    const { data: user, error: userError } = await supabaseAdmin
       .from('users')
-      .select('stripe_customer_id, stripe_subscription_id, subscription_type')
-      .eq('id', user.id)
+      .select('stripe_subscription_id, stripe_customer_id')
+      .eq('id', userId)
       .single();
 
-    if (userError || !userData) {
+    if (userError || !user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    if (userData.subscription_type === 'free') {
-      return NextResponse.json({ error: 'No active subscription' }, { status: 400 });
+    if (!user.stripe_subscription_id) {
+      return NextResponse.json({ error: 'No active subscription found' }, { status: 400 });
     }
 
-    if (!userData.stripe_subscription_id) {
-      // Try to find subscription from Stripe
-      if (userData.stripe_customer_id) {
-        const subscriptions = await stripe.subscriptions.list({
-          customer: userData.stripe_customer_id,
-          status: 'active',
-          limit: 1,
-        });
+    // Cancel the subscription at period end (user keeps access until billing period ends)
+    const subscription = await stripe.subscriptions.update(user.stripe_subscription_id, {
+      cancel_at_period_end: true,
+    });
 
-        if (subscriptions.data.length === 0) {
-          return NextResponse.json({ error: 'No active subscription found' }, { status: 400 });
-        }
+    // Update user in database
+    await supabaseAdmin
+      .from('users')
+      .update({
+        subscription_status: 'cancelling',
+        subscription_ends_at: new Date(subscription.current_period_end * 1000).toISOString(),
+      })
+      .eq('id', userId);
 
-        // Cancel the subscription
-        await cancelSubscription(subscriptions.data[0].id);
-      } else {
-        return NextResponse.json({ error: 'No subscription to cancel' }, { status: 400 });
-      }
-    } else {
-      // Cancel using stored subscription ID
-      await cancelSubscription(userData.stripe_subscription_id);
-    }
+    console.log('[Cancel] Subscription cancelled for user:', userId);
 
     return NextResponse.json({ 
-      success: true, 
-      message: 'Subscription will be canceled at the end of the billing period' 
+      success: true,
+      endsAt: subscription.current_period_end 
     });
+
   } catch (error) {
-    console.error('Error canceling subscription:', error);
-    return NextResponse.json({ error: 'Failed to cancel subscription' }, { status: 500 });
+    console.error('[Cancel] Error:', error);
+    return NextResponse.json(
+      { error: 'Failed to cancel subscription' },
+      { status: 500 }
+    );
   }
 }
