@@ -35,6 +35,8 @@ export default function SeriesDetailPage() {
   const [loading, setLoading] = useState(true)
   const [userProgress, setUserProgress] = useState<Record<string, UserProgress>>({})
   const [selectedEpisodes, setSelectedEpisodes] = useState<Set<string>>(new Set())
+  const [userCredits, setUserCredits] = useState(0)
+  const [showInsufficientCredits, setShowInsufficientCredits] = useState(false)
   const [seriesInfo, setSeriesInfo] = useState<{
     name: string
     description: string
@@ -49,6 +51,16 @@ export default function SeriesDetailPage() {
 
   const fetchSeriesData = async () => {
     try {
+      // Get user credits
+      if (user?.id) {
+        const { data: userData } = await supabase
+          .from('users')
+          .select('credits')
+          .eq('id', user.id)
+          .single()
+        if (userData) setUserCredits(userData.credits || 0)
+      }
+
       let { data: episodesData } = await supabase
         .from('stories')
         .select('id, title, description, duration_mins, credits, cover_url, episode_number, series_name, genre, author')
@@ -133,22 +145,39 @@ export default function SeriesDetailPage() {
     setSelectedEpisodes(newSelected)
   }
 
-  const playAllUnfinished = () => {
-    const unfinished = episodes.filter(ep => !userProgress[ep.id]?.completed)
-    if (unfinished.length > 0) {
-      const playlist = unfinished.map(ep => ({
-        id: ep.id,
-        title: ep.title,
-        episode_number: ep.episode_number,
-        series_name: seriesInfo?.name
-      }))
-      localStorage.setItem('dtt_series_playlist', JSON.stringify(playlist))
-      router.push(`/player/${unfinished[0].id}?series=true`)
+  // Calculate unfinished episodes stats
+  const unfinishedEpisodes = episodes.filter(ep => !userProgress[ep.id]?.completed)
+  const unfinishedCount = unfinishedEpisodes.length
+  const unfinishedCredits = unfinishedEpisodes.reduce((sum, ep) => sum + ep.credits, 0)
+  const unfinishedMins = unfinishedEpisodes.reduce((sum, ep) => sum + ep.duration_mins, 0)
+  const unfinishedHours = Math.floor(unfinishedMins / 60)
+  const unfinishedRemMins = unfinishedMins % 60
+  const unfinishedTimeText = unfinishedHours > 0 
+    ? `${unfinishedHours}h ${unfinishedRemMins}m` 
+    : `${unfinishedRemMins}m`
+
+  // Calculate selected episodes stats
+  const selectedArray = episodes.filter(ep => selectedEpisodes.has(ep.id))
+  const selectedCredits = selectedArray.reduce((sum, ep) => sum + ep.credits, 0)
+
+  const selectAllUnfinished = () => {
+    if (userCredits < unfinishedCredits) {
+      setShowInsufficientCredits(true)
+      return
     }
+    const unfinishedIds = new Set(unfinishedEpisodes.map(ep => ep.id))
+    setSelectedEpisodes(unfinishedIds)
   }
 
-  const playSelected = () => {
+  const goToPlayer = () => {
     if (selectedEpisodes.size === 0) return
+    
+    // Check credits
+    if (userCredits < selectedCredits) {
+      setShowInsufficientCredits(true)
+      return
+    }
+    
     const selected = episodes.filter(ep => selectedEpisodes.has(ep.id))
     const playlist = selected.map(ep => ({
       id: ep.id,
@@ -165,10 +194,12 @@ export default function SeriesDetailPage() {
   const hours = Math.floor(totalDuration / 60)
   const mins = totalDuration % 60
   const durationText = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`
-  const unfinishedCount = episodes.filter(ep => !userProgress[ep.id]?.completed).length
   const shortDescription = seriesInfo?.description 
     ? seriesInfo.description.split(' ').slice(0, 30).join(' ') + (seriesInfo.description.split(' ').length > 30 ? '...' : '')
     : ''
+
+  // Check if anything is selected (for sticky button)
+  const hasSelection = selectedEpisodes.size > 0
 
   if (loading) {
     return (
@@ -197,37 +228,51 @@ export default function SeriesDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
+    <div className="min-h-screen bg-slate-950 text-white" style={{ paddingBottom: hasSelection ? '80px' : '0' }}>
       <StickyHeaderFull />
       
       <div className="sticky top-[60px] z-40 bg-slate-900 border-b border-slate-700">
         <div className="px-4 py-4">
           <h1 className="text-xl font-bold text-white mb-2">{seriesInfo.name}</h1>
-          <p className="text-slate-300 text-sm leading-relaxed mb-3">{shortDescription}</p>
-          <div className="flex items-center gap-4 text-sm text-slate-400 mb-3">
-            <span>{totalEpisodes} episode{totalEpisodes !== 1 ? 's' : ''}</span>
-            <span>•</span>
-            <span>{durationText} total</span>
-            <span>•</span>
-            <span className="text-orange-400">{seriesInfo.genre}</span>
+          <p className="text-white text-sm leading-relaxed mb-3">{shortDescription}</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '12px' }}>
+            <span className="text-white text-sm">{totalEpisodes} episode{totalEpisodes !== 1 ? 's' : ''}</span>
+            <span className="text-white text-sm">•</span>
+            <span className="text-white text-sm">{durationText} total</span>
+            <span className="text-white text-sm">•</span>
+            <span className="text-orange-400 text-sm">{seriesInfo.genre}</span>
           </div>
-          <div className="flex gap-2">
-            {unfinishedCount > 0 && (
-              <button onClick={playAllUnfinished} className="flex-1 px-4 py-2.5 bg-orange-500 hover:bg-orange-400 text-black font-bold rounded-lg text-sm transition-colors">
-                ▶ Play All Unfinished ({unfinishedCount})
-              </button>
-            )}
-            {selectedEpisodes.size > 0 && (
-              <button onClick={playSelected} className="px-4 py-2.5 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-lg text-sm transition-colors">
-                Play Selected ({selectedEpisodes.size})
-              </button>
-            )}
-          </div>
+          
+          {/* Select All Unfinished Button */}
+          {unfinishedCount > 0 && (
+            <button 
+              onClick={selectAllUnfinished} 
+              style={{
+                width: '100%',
+                padding: '14px 16px',
+                backgroundColor: '#f97316',
+                color: 'black',
+                fontWeight: 700,
+                borderRadius: '12px',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '15px',
+                marginBottom: '8px'
+              }}
+            >
+              ▶ Select All Unfinished ({unfinishedCount}) • {unfinishedCredits} credit{unfinishedCredits !== 1 ? 's' : ''} • {unfinishedTimeText}
+            </button>
+          )}
+          
+          {/* Instruction text */}
+          <p className="text-white text-sm text-center" style={{ opacity: 0.8 }}>
+            Or select episodes (chapters) individually
+          </p>
         </div>
       </div>
 
       <div className="px-4 py-4">
-        <div className="space-y-3">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {episodes.map((ep) => {
             const progress = userProgress[ep.id]
             const progressPercent = progress ? progress.completed ? 100 : Math.round((progress.progress_seconds / (ep.duration_mins * 60)) * 100) : 0
@@ -235,31 +280,68 @@ export default function SeriesDetailPage() {
             const epDescription = ep.description ? ep.description.split(' ').slice(0, 15).join(' ') + (ep.description.split(' ').length > 15 ? '...' : '') : ''
 
             return (
-              <div key={ep.id} className={`bg-slate-800 rounded-xl overflow-hidden transition-all ${isSelected ? 'ring-2 ring-orange-500' : ''}`}>
+              <div 
+                key={ep.id} 
+                onClick={() => toggleEpisodeSelection(ep.id)}
+                style={{
+                  backgroundColor: isSelected ? '#1e3a2f' : '#1e293b',
+                  borderRadius: '12px',
+                  overflow: 'hidden',
+                  cursor: 'pointer',
+                  border: isSelected ? '2px solid #22c55e' : '2px solid transparent',
+                  transition: 'all 0.2s'
+                }}
+              >
                 <div style={{ display: 'flex' }}>
-                  <div onClick={() => router.push(`/player/${ep.id}`)} className="cursor-pointer" style={{ width: '100px', flexShrink: 0, position: 'relative' }}>
+                  <div style={{ width: '100px', flexShrink: 0, position: 'relative' }}>
                     <div style={{ width: '100px', height: '100px', position: 'relative' }}>
-                      <img src={ep.cover_url || seriesInfo.cover_url || '/images/default-cover.png'} alt={ep.title} className="object-cover" style={{ width: '100%', height: '100%' }} />
-                      <div style={{ position: 'absolute', top: '6px', left: '6px', backgroundColor: progress?.completed ? '#22c55e' : '#f97316', color: progress?.completed ? 'white' : 'black', width: '26px', height: '26px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 700 }}>
+                      <img src={ep.cover_url || seriesInfo.cover_url || '/images/default-cover.png'} alt={ep.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <div style={{ 
+                        position: 'absolute', 
+                        top: '6px', 
+                        left: '6px', 
+                        backgroundColor: progress?.completed ? '#22c55e' : '#f97316', 
+                        color: progress?.completed ? 'white' : 'black', 
+                        width: '26px', 
+                        height: '26px', 
+                        borderRadius: '50%', 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'center', 
+                        fontSize: '12px', 
+                        fontWeight: 700 
+                      }}>
                         {progress?.completed ? '✓' : ep.episode_number}
                       </div>
+                      
+                      {/* Selection indicator */}
+                      {isSelected && (
+                        <div style={{
+                          position: 'absolute',
+                          top: '6px',
+                          right: '6px',
+                          backgroundColor: '#22c55e',
+                          width: '24px',
+                          height: '24px',
+                          borderRadius: '50%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}>
+                          <span style={{ color: 'white', fontSize: '14px', fontWeight: 'bold' }}>✓</span>
+                        </div>
+                      )}
                     </div>
                     <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '4px', backgroundColor: '#1e293b' }}>
                       <div style={{ height: '100%', width: `${progressPercent}%`, backgroundColor: progress?.completed ? '#22c55e' : '#f97316', transition: 'width 0.3s' }} />
                     </div>
                   </div>
                   
-                  <div onClick={() => router.push(`/player/${ep.id}`)} className="flex-1 p-3 cursor-pointer" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                    <div className="text-white text-xs font-medium mb-1">Episode {ep.episode_number}</div>
-                    <h3 className="text-white font-bold text-sm mb-1 line-clamp-1">{ep.title}</h3>
-                    {epDescription && <p className="text-slate-300 text-xs mb-2 line-clamp-2">{epDescription}</p>}
+                  <div style={{ flex: 1, padding: '12px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                    <div className="text-white text-xs font-medium" style={{ marginBottom: '4px' }}>Episode {ep.episode_number}</div>
+                    <h3 className="text-white font-bold text-sm" style={{ marginBottom: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ep.title}</h3>
+                    {epDescription && <p className="text-white text-xs" style={{ marginBottom: '8px', opacity: 0.8 }}>{epDescription}</p>}
                     <div className="text-white text-xs font-semibold">{ep.duration_mins} min • {ep.credits} credit{ep.credits !== 1 ? 's' : ''}</div>
-                  </div>
-                  
-                  <div className="flex items-end p-3" onClick={(e) => { e.stopPropagation(); toggleEpisodeSelection(ep.id) }}>
-                    <div style={{ width: '24px', height: '24px', borderRadius: '6px', border: isSelected ? '2px solid #f97316' : '2px solid #475569', backgroundColor: isSelected ? '#f97316' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s' }}>
-                      {isSelected && <span style={{ color: 'black', fontSize: '14px', fontWeight: 'bold' }}>✓</span>}
-                    </div>
                   </div>
                 </div>
               </div>
@@ -267,6 +349,105 @@ export default function SeriesDetailPage() {
           })}
         </div>
       </div>
+
+      {/* Sticky Go to Player Button */}
+      {hasSelection && (
+        <div style={{
+          position: 'fixed',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          backgroundColor: '#020617',
+          padding: '16px',
+          borderTop: '1px solid #334155',
+          zIndex: 50
+        }}>
+          <button
+            onClick={goToPlayer}
+            style={{
+              width: '100%',
+              padding: '16px',
+              borderRadius: '12px',
+              backgroundColor: '#22c55e',
+              color: 'white',
+              fontWeight: 700,
+              fontSize: '18px',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px'
+            }}
+          >
+            <span>▶</span>
+            <span>Go to Player ({selectedEpisodes.size} selected • {selectedCredits} credit{selectedCredits !== 1 ? 's' : ''})</span>
+          </button>
+        </div>
+      )}
+
+      {/* Insufficient Credits Modal */}
+      {showInsufficientCredits && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.8)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 100,
+          padding: '20px'
+        }}>
+          <div style={{
+            backgroundColor: '#1e293b',
+            borderRadius: '16px',
+            padding: '24px',
+            maxWidth: '320px',
+            width: '100%',
+            textAlign: 'center'
+          }}>
+            <p className="text-white text-lg font-semibold" style={{ marginBottom: '16px' }}>
+              Sorry, you have insufficient credits to play all this series
+            </p>
+            <p className="text-white" style={{ marginBottom: '24px', opacity: 0.8 }}>
+              You need {unfinishedCredits} credits but only have {userCredits}
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <button
+                onClick={() => router.push('/buy-credits')}
+                style={{
+                  padding: '14px 24px',
+                  borderRadius: '25px',
+                  backgroundColor: '#f97316',
+                  color: 'black',
+                  fontWeight: 600,
+                  border: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                Get More Credits
+              </button>
+              <button
+                onClick={() => setShowInsufficientCredits(false)}
+                style={{
+                  padding: '14px 24px',
+                  borderRadius: '25px',
+                  backgroundColor: '#334155',
+                  color: 'white',
+                  fontWeight: 500,
+                  border: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
