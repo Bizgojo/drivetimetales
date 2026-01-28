@@ -32,6 +32,19 @@ interface SupportMessage {
   admin_response?: string;
 }
 
+interface Payment {
+  id: string;
+  paymentIntentId: string;
+  amount: number;
+  amountRefunded: number;
+  refundable: number;
+  currency: string;
+  description: string;
+  date: string;
+  refunded: boolean;
+  receiptUrl: string;
+}
+
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,6 +57,15 @@ export default function UsersPage() {
   const [userMessages, setUserMessages] = useState<SupportMessage[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [selectedMessage, setSelectedMessage] = useState<SupportMessage | null>(null);
+  
+  // Refund state
+  const [showRefund, setShowRefund] = useState(false);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [loadingPayments, setLoadingPayments] = useState(false);
+  const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
+  const [refundAmount, setRefundAmount] = useState<string>('');
+  const [refundReason, setRefundReason] = useState('');
+  const [processingRefund, setProcessingRefund] = useState(false);
 
   useEffect(() => {
     fetchUsers();
@@ -214,6 +236,82 @@ export default function UsersPage() {
       alert('Error updating credits');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function fetchUserPayments(userId: string) {
+    setLoadingPayments(true);
+    setPayments([]);
+    try {
+      const response = await fetch('/api/admin/payments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setPayments(data.payments || []);
+      } else {
+        const data = await response.json();
+        alert(data.error || 'Failed to load payments');
+      }
+    } catch (error) {
+      console.error('Error fetching payments:', error);
+      alert('Error loading payment history');
+    } finally {
+      setLoadingPayments(false);
+    }
+  }
+
+  async function processRefund() {
+    if (!selectedPayment || !selectedUser || !refundAmount) return;
+    
+    const amountCents = Math.round(parseFloat(refundAmount) * 100);
+    
+    if (isNaN(amountCents) || amountCents <= 0) {
+      alert('Please enter a valid refund amount');
+      return;
+    }
+    
+    if (amountCents > selectedPayment.refundable) {
+      alert(`Cannot refund more than $${(selectedPayment.refundable / 100).toFixed(2)}`);
+      return;
+    }
+
+    setProcessingRefund(true);
+    try {
+      const response = await fetch('/api/admin/refund', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chargeId: selectedPayment.id,
+          amount: amountCents,
+          userId: selectedUser.id,
+          reason: refundReason
+        })
+      });
+
+      if (response.ok) {
+        alert(`Refund of $${refundAmount} processed successfully!`);
+        // Update local state
+        setPayments(payments.map(p => 
+          p.id === selectedPayment.id 
+            ? { ...p, amountRefunded: p.amountRefunded + amountCents, refundable: p.refundable - amountCents }
+            : p
+        ));
+        setSelectedPayment(null);
+        setRefundAmount('');
+        setRefundReason('');
+      } else {
+        const data = await response.json();
+        alert(data.error || 'Failed to process refund');
+      }
+    } catch (error) {
+      console.error('Error processing refund:', error);
+      alert('Error processing refund');
+    } finally {
+      setProcessingRefund(false);
     }
   }
 
@@ -473,24 +571,48 @@ export default function UsersPage() {
                         )}
                       </td>
                       <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                        <button
-                          onClick={() => {
-                            setSelectedUser(user);
-                            setEditCredits(user.credits);
-                            setShowMessages(false);
-                          }}
-                          style={{
-                            padding: '6px 14px',
-                            backgroundColor: '#1e293b',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '6px',
-                            fontSize: '13px',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          Edit
-                        </button>
+                        <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                          <button
+                            onClick={() => {
+                              setSelectedUser(user);
+                              setEditCredits(user.credits);
+                              setShowMessages(false);
+                              setShowRefund(false);
+                            }}
+                            style={{
+                              padding: '6px 12px',
+                              backgroundColor: '#1e293b',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '6px',
+                              fontSize: '13px',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            Edit
+                          </button>
+                          {user.stripe_customer_id && (
+                            <button
+                              onClick={() => {
+                                setSelectedUser(user);
+                                setShowRefund(true);
+                                setShowMessages(false);
+                                fetchUserPayments(user.id);
+                              }}
+                              style={{
+                                padding: '6px 12px',
+                                backgroundColor: '#dc2626',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '6px',
+                                fontSize: '13px',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              Refund
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -771,6 +893,192 @@ export default function UsersPage() {
                 {saving ? 'Saving...' : 'Save Changes'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Refund Modal */}
+      {selectedUser && showRefund && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 50,
+          padding: '1rem'
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '16px',
+            padding: '1.5rem',
+            maxWidth: '600px',
+            width: '100%',
+            maxHeight: '80vh',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h2 style={{ fontSize: '18px', fontWeight: 600, color: '#1e293b' }}>
+                💳 Refund - {getUserName(selectedUser)}
+              </h2>
+              <button
+                onClick={() => {
+                  setShowRefund(false);
+                  setSelectedUser(null);
+                  setSelectedPayment(null);
+                  setRefundAmount('');
+                  setRefundReason('');
+                }}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#f1f5f9',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  color: '#64748b'
+                }}
+              >
+                Close
+              </button>
+            </div>
+
+            <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '1rem' }}>{selectedUser.email}</p>
+
+            {loadingPayments ? (
+              <p style={{ color: '#64748b', textAlign: 'center', padding: '2rem' }}>Loading payment history...</p>
+            ) : payments.length === 0 ? (
+              <p style={{ color: '#64748b', textAlign: 'center', padding: '2rem' }}>No payments found for this user.</p>
+            ) : (
+              <div style={{ flex: 1, overflowY: 'auto' }}>
+                <h3 style={{ fontWeight: 600, color: '#1e293b', marginBottom: '0.75rem', fontSize: '14px' }}>Payment History</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' }}>
+                  {payments.map(payment => (
+                    <div
+                      key={payment.id}
+                      onClick={() => {
+                        if (payment.refundable > 0) {
+                          setSelectedPayment(payment);
+                          setRefundAmount((payment.refundable / 100).toFixed(2));
+                        }
+                      }}
+                      style={{
+                        padding: '0.75rem',
+                        backgroundColor: selectedPayment?.id === payment.id ? '#fef3c7' : '#f8fafc',
+                        border: `2px solid ${selectedPayment?.id === payment.id ? '#f59e0b' : '#e2e8f0'}`,
+                        borderRadius: '8px',
+                        cursor: payment.refundable > 0 ? 'pointer' : 'default',
+                        opacity: payment.refundable > 0 ? 1 : 0.6
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                        <span style={{ fontWeight: 600, color: '#1e293b' }}>${(payment.amount / 100).toFixed(2)}</span>
+                        <span style={{ fontSize: '12px', color: '#64748b' }}>{formatDate(payment.date)}</span>
+                      </div>
+                      <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '4px' }}>{payment.description}</div>
+                      <div style={{ display: 'flex', gap: '0.5rem', fontSize: '11px' }}>
+                        {payment.amountRefunded > 0 && (
+                          <span style={{ color: '#dc2626' }}>
+                            Refunded: ${(payment.amountRefunded / 100).toFixed(2)}
+                          </span>
+                        )}
+                        {payment.refundable > 0 ? (
+                          <span style={{ color: '#16a34a' }}>
+                            Refundable: ${(payment.refundable / 100).toFixed(2)}
+                          </span>
+                        ) : (
+                          <span style={{ color: '#94a3b8' }}>Fully refunded</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Refund Form */}
+                {selectedPayment && (
+                  <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '1rem' }}>
+                    <h3 style={{ fontWeight: 600, color: '#1e293b', marginBottom: '0.75rem', fontSize: '14px' }}>
+                      Process Refund
+                    </h3>
+                    <div style={{ marginBottom: '0.75rem' }}>
+                      <label style={{ display: 'block', fontSize: '13px', color: '#64748b', marginBottom: '4px' }}>
+                        Refund Amount (max ${(selectedPayment.refundable / 100).toFixed(2)})
+                      </label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span style={{ color: '#1e293b', fontWeight: 600 }}>$</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0.01"
+                          max={(selectedPayment.refundable / 100).toFixed(2)}
+                          value={refundAmount}
+                          onChange={(e) => setRefundAmount(e.target.value)}
+                          style={{
+                            padding: '8px 12px',
+                            border: '1px solid #e2e8f0',
+                            borderRadius: '6px',
+                            fontSize: '14px',
+                            width: '120px',
+                            color: '#1e293b'
+                          }}
+                        />
+                        <button
+                          onClick={() => setRefundAmount((selectedPayment.refundable / 100).toFixed(2))}
+                          style={{
+                            padding: '8px 12px',
+                            backgroundColor: '#f1f5f9',
+                            border: 'none',
+                            borderRadius: '6px',
+                            fontSize: '12px',
+                            cursor: 'pointer',
+                            color: '#64748b'
+                          }}
+                        >
+                          Full Amount
+                        </button>
+                      </div>
+                    </div>
+                    <div style={{ marginBottom: '1rem' }}>
+                      <label style={{ display: 'block', fontSize: '13px', color: '#64748b', marginBottom: '4px' }}>
+                        Reason (optional)
+                      </label>
+                      <input
+                        type="text"
+                        value={refundReason}
+                        onChange={(e) => setRefundReason(e.target.value)}
+                        placeholder="e.g., Customer request, Service issue"
+                        style={{
+                          width: '100%',
+                          padding: '8px 12px',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: '6px',
+                          fontSize: '14px',
+                          color: '#1e293b'
+                        }}
+                      />
+                    </div>
+                    <button
+                      onClick={processRefund}
+                      disabled={processingRefund || !refundAmount}
+                      style={{
+                        width: '100%',
+                        padding: '12px',
+                        backgroundColor: processingRefund ? '#fca5a5' : '#dc2626',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '8px',
+                        fontWeight: 600,
+                        cursor: processingRefund ? 'not-allowed' : 'pointer'
+                      }}
+                    >
+                      {processingRefund ? 'Processing...' : `Refund $${refundAmount || '0.00'}`}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
