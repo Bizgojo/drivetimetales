@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext'
-import { supabase } from '@/lib/supabase'
 import StickyHeaderFull from '@/components/StickyHeaderFull'
 
 interface Story {
@@ -41,26 +40,36 @@ export default function CollectionPage() {
 
   const fetchCollection = async () => {
     try {
-      const { data: libraryData } = await supabase
-        .from('user_library')
-        .select('story_id, progress, completed, last_played')
-        .eq('user_id', user?.id)
-        .order('last_played', { ascending: false })
+      const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+      const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+      if (!url || !key || !user?.id) return
+
+      // Fetch user library
+      const libraryResponse = await fetch(
+        `${url}/rest/v1/user_library?user_id=eq.${user.id}&select=story_id,progress,completed,last_played&order=last_played.desc`,
+        { headers: { 'apikey': key, 'Authorization': `Bearer ${key}` } }
+      )
+
+      if (!libraryResponse.ok) return
+      const libraryData = await libraryResponse.json()
 
       if (libraryData && libraryData.length > 0) {
         const progressLookup: Record<string, UserStory> = {}
-        libraryData.forEach(p => {
+        libraryData.forEach((p: any) => {
           progressLookup[p.story_id] = { ...p, reviewed: false }
         })
 
-        const { data: reviewsData } = await supabase
-          .from('reviews')
-          .select('story_id')
-          .eq('user_id', user?.id)
-          .in('story_id', libraryData.map(l => l.story_id))
+        // Fetch reviews for these stories
+        const storyIds = libraryData.map((l: any) => l.story_id)
+        const reviewsResponse = await fetch(
+          `${url}/rest/v1/reviews?user_id=eq.${user.id}&select=story_id`,
+          { headers: { 'apikey': key, 'Authorization': `Bearer ${key}` } }
+        )
 
-        if (reviewsData) {
-          reviewsData.forEach(r => {
+        if (reviewsResponse.ok) {
+          const reviewsData = await reviewsResponse.json()
+          console.log('[Collection] Reviews found:', reviewsData)
+          reviewsData.forEach((r: any) => {
             if (progressLookup[r.story_id]) {
               progressLookup[r.story_id].reviewed = true
             }
@@ -69,18 +78,19 @@ export default function CollectionPage() {
 
         setUserProgress(progressLookup)
 
-        const storyIds = libraryData.map(p => p.story_id)
-        const { data: storiesData } = await supabase
-          .from('stories')
-          .select('id, title, genre, author, duration_mins, cover_url')
-          .in('id', storyIds)
+        // Fetch story details
+        const storiesResponse = await fetch(
+          `${url}/rest/v1/stories?id=in.(${storyIds.map((id: string) => `"${id}"`).join(',')})&select=id,title,genre,author,duration_mins,cover_url`,
+          { headers: { 'apikey': key, 'Authorization': `Bearer ${key}` } }
+        )
 
-        if (storiesData) {
-          const sorted = storiesData.sort((a, b) => a.title.localeCompare(b.title))
+        if (storiesResponse.ok) {
+          const storiesData = await storiesResponse.json()
+          const sorted = storiesData.sort((a: Story, b: Story) => a.title.localeCompare(b.title))
           setStories(sorted)
           
           const counts: Record<string, number> = {}
-          storiesData.forEach(s => {
+          storiesData.forEach((s: Story) => {
             if (s.genre && !s.genre.includes('not set') && !s.genre.includes('Tab')) {
               counts[s.genre] = (counts[s.genre] || 0) + 1
             }
@@ -205,8 +215,12 @@ export default function CollectionPage() {
               const displayGenre = story.genre && !story.genre.includes('not set') ? story.genre : 'Drama'
 
               return (
-                <div key={story.id} onClick={() => router.push(`/player/${story.id}`)} className="bg-slate-800 rounded-xl overflow-hidden hover:bg-slate-700 transition cursor-pointer">
-                  <div style={{ display: 'flex' }}>
+                <div key={story.id} className="bg-slate-800 rounded-xl overflow-hidden">
+                  <div 
+                    onClick={() => router.push(`/player/${story.id}`)} 
+                    className="hover:bg-slate-700 transition cursor-pointer"
+                    style={{ display: 'flex' }}
+                  >
                     <div style={{ width: '90px', height: '90px', flexShrink: 0, padding: '0.5rem' }}>
                       <div className="rounded-lg overflow-hidden" style={{ width: '100%', height: '100%', position: 'relative' }}>
                         {story.cover_url ? (
@@ -231,16 +245,39 @@ export default function CollectionPage() {
                         <div style={{ height: '100%', width: `${progressPercent}%`, backgroundColor: progress?.completed ? '#22c55e' : '#f97316', borderRadius: '3px', transition: 'width 0.3s' }} />
                       </div>
                       
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span className="text-slate-400 text-xs">{progress?.completed ? 'Completed' : `${progressPercent}% complete`}</span>
-                        {progress?.completed && (
-                          <span onClick={(e) => { e.stopPropagation(); router.push(`/review/${story.id}`) }} className="text-xs" style={{ color: hasReviewed ? '#22c55e' : '#f97316', cursor: 'pointer' }}>
-                            {hasReviewed ? '⭐ Reviewed' : '⭐ Leave Review'}
-                          </span>
-                        )}
-                      </div>
+                      <span className="text-slate-400 text-xs">{progress?.completed ? 'Completed' : `${progressPercent}% complete`}</span>
                     </div>
                   </div>
+                  
+                  {/* Review Button - More Prominent */}
+                  {progress?.completed && (
+                    <div 
+                      onClick={(e) => { e.stopPropagation(); router.push(`/review/${story.id}`) }}
+                      style={{ 
+                        borderTop: '1px solid #334155',
+                        padding: '10px 12px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px',
+                        cursor: 'pointer',
+                        backgroundColor: hasReviewed ? '#1e3a2f' : '#3d2814',
+                        transition: 'background-color 0.2s'
+                      }}
+                    >
+                      {hasReviewed ? (
+                        <>
+                          <span style={{ color: '#22c55e', fontSize: '14px' }}>✓ Reviewed</span>
+                          <span style={{ color: '#22c55e' }}>⭐⭐⭐⭐⭐</span>
+                        </>
+                      ) : (
+                        <>
+                          <span style={{ color: '#f97316', fontWeight: 600, fontSize: '14px' }}>⭐ Leave a Review</span>
+                          <span style={{ color: '#94a3b8', fontSize: '12px' }}>• Earn 2 credits!</span>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
               )
             })}
