@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
@@ -8,6 +8,12 @@ import { useAuth } from '@/contexts/AuthContext';
 export default function AccountPage() {
   const { user, signOut, loading } = useAuth();
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
+
+  // Wait for client-side mount
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Handle sign out
   const handleSignOut = async () => {
@@ -15,8 +21,8 @@ export default function AccountPage() {
     router.push('/');
   };
 
-  // Show loading state while auth is initializing
-  if (loading) {
+  // Show loading state while auth is initializing or not yet mounted
+  if (!mounted || loading) {
     return (
       <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
         <div className="text-center">
@@ -27,12 +33,9 @@ export default function AccountPage() {
     );
   }
 
-  // Only redirect if definitely not logged in (after loading completes)
-  if (!loading && !user) {
-    // Use useEffect for redirect to avoid hydration issues
-    if (typeof window !== 'undefined') {
-      router.push('/auth/login');
-    }
+  // Only redirect if definitely not logged in (after loading completes and mounted)
+  if (!user) {
+    router.push('/auth/login');
     return (
       <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
         <div className="text-center">
@@ -42,22 +45,9 @@ export default function AccountPage() {
     );
   }
 
-  // If still no user after all checks, show nothing
-  if (!user) {
-    return null;
-  }
-
-  // Get display name - prefer first_name + last_name (from Stripe), then display_name, then email prefix
+  // Get display name - prefer first_name + last_name, then display_name, then email prefix
   let displayName = '';
-  const userAny = user as any; // Type assertion to access potential last_name field
-  
-  // Debug logging
-  console.log('User object:', { 
-    first_name: user.first_name, 
-    last_name: userAny.last_name, 
-    display_name: user.display_name,
-    email: user.email 
-  });
+  const userAny = user as any;
   
   if (user.first_name) {
     displayName = user.first_name;
