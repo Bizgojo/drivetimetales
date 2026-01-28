@@ -6,12 +6,30 @@ interface User {
   id: string;
   email: string;
   display_name?: string;
+  first_name?: string;
+  last_name?: string;
   credits: number;
+  plan?: string;
   subscription_type?: string;
   subscription_ends_at?: string;
   stripe_customer_id?: string;
   created_at: string;
   last_login?: string;
+  // Extended stats
+  supportMessageCount?: number;
+  listening7d?: number;
+  listening30d?: number;
+  listening365d?: number;
+  memberDays?: number;
+}
+
+interface SupportMessage {
+  id: string;
+  subject: string;
+  message: string;
+  status: string;
+  created_at: string;
+  admin_response?: string;
 }
 
 export default function UsersPage() {
@@ -22,6 +40,10 @@ export default function UsersPage() {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [editCredits, setEditCredits] = useState<number>(0);
   const [saving, setSaving] = useState(false);
+  const [showMessages, setShowMessages] = useState(false);
+  const [userMessages, setUserMessages] = useState<SupportMessage[]>([]);
+  const [loadingMessages, setLoadingMessages] = useState(false);
+  const [selectedMessage, setSelectedMessage] = useState<SupportMessage | null>(null);
 
   useEffect(() => {
     fetchUsers();
@@ -37,6 +59,7 @@ export default function UsersPage() {
         return;
       }
 
+      // Fetch users
       const response = await fetch(
         `${url}/rest/v1/users?select=*&order=created_at.desc`,
         {
@@ -49,12 +72,109 @@ export default function UsersPage() {
 
       if (response.ok) {
         const data = await response.json();
-        setUsers(data || []);
+        
+        // Fetch support message counts for all users
+        const msgResponse = await fetch(
+          `${url}/rest/v1/support_messages?select=email`,
+          {
+            headers: {
+              'apikey': key,
+              'Authorization': `Bearer ${key}`,
+            },
+          }
+        );
+        
+        let messageCounts: Record<string, number> = {};
+        if (msgResponse.ok) {
+          const messages = await msgResponse.json();
+          messages.forEach((m: { email: string }) => {
+            messageCounts[m.email] = (messageCounts[m.email] || 0) + 1;
+          });
+        }
+
+        // Fetch listening stats from user_library
+        const statsResponse = await fetch(
+          `${url}/rest/v1/user_library?select=user_id,progress,updated_at`,
+          {
+            headers: {
+              'apikey': key,
+              'Authorization': `Bearer ${key}`,
+            },
+          }
+        );
+
+        let listeningStats: Record<string, { d7: number; d30: number; d365: number }> = {};
+        if (statsResponse.ok) {
+          const stats = await statsResponse.json();
+          const now = new Date();
+          const d7ago = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          const d30ago = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+          const d365ago = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+
+          stats.forEach((s: { user_id: string; progress: number; updated_at: string }) => {
+            if (!listeningStats[s.user_id]) {
+              listeningStats[s.user_id] = { d7: 0, d30: 0, d365: 0 };
+            }
+            const updated = new Date(s.updated_at);
+            const minutes = Math.floor((s.progress || 0) / 60);
+            
+            if (updated >= d7ago) listeningStats[s.user_id].d7 += minutes;
+            if (updated >= d30ago) listeningStats[s.user_id].d30 += minutes;
+            if (updated >= d365ago) listeningStats[s.user_id].d365 += minutes;
+          });
+        }
+
+        // Combine data
+        const enrichedUsers = data.map((user: User) => {
+          const now = new Date();
+          const created = new Date(user.created_at);
+          const memberDays = Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
+          
+          return {
+            ...user,
+            supportMessageCount: messageCounts[user.email] || 0,
+            listening7d: listeningStats[user.id]?.d7 || 0,
+            listening30d: listeningStats[user.id]?.d30 || 0,
+            listening365d: listeningStats[user.id]?.d365 || 0,
+            memberDays
+          };
+        });
+
+        setUsers(enrichedUsers);
       }
     } catch (error) {
       console.error('Error fetching users:', error);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function fetchUserMessages(email: string) {
+    setLoadingMessages(true);
+    try {
+      const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+      if (!url || !key) return;
+
+      const response = await fetch(
+        `${url}/rest/v1/support_messages?email=eq.${encodeURIComponent(email)}&order=created_at.desc&select=*`,
+        {
+          headers: {
+            'apikey': key,
+            'Authorization': `Bearer ${key}`,
+          },
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        setUserMessages(data);
+      }
+    } catch (error) {
+      console.error('Error fetching messages:', error);
+    } finally {
+      setLoadingMessages(false);
     }
   }
 
@@ -81,7 +201,6 @@ export default function UsersPage() {
       );
 
       if (response.ok) {
-        // Update local state
         setUsers(users.map(u => 
           u.id === userId ? { ...u, credits: newCredits } : u
         ));
@@ -99,16 +218,16 @@ export default function UsersPage() {
   }
 
   const filteredUsers = users.filter(user => {
-    // Search filter
     const matchesSearch = 
       user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (user.display_name?.toLowerCase().includes(searchTerm.toLowerCase()));
+      (user.display_name?.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (user.first_name?.toLowerCase().includes(searchTerm.toLowerCase()));
     
-    // Type filter
+    const plan = user.plan || user.subscription_type;
     const matchesType = 
       filterType === 'all' ||
-      (filterType === 'free' && (!user.subscription_type || user.subscription_type === 'free')) ||
-      (filterType === 'subscribed' && user.subscription_type && user.subscription_type !== 'free');
+      (filterType === 'free' && (!plan || plan === 'free')) ||
+      (filterType === 'subscribed' && plan && plan !== 'free');
 
     return matchesSearch && matchesType;
   });
@@ -122,93 +241,135 @@ export default function UsersPage() {
     });
   };
 
-  const getSubscriptionBadge = (type?: string) => {
-    if (!type || type === 'free') {
-      return <span className="px-2 py-1 bg-gray-700 text-gray-300 rounded-full text-xs">Free</span>;
+  const formatListeningTime = (minutes: number) => {
+    if (minutes < 60) return `${minutes}m`;
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+  };
+
+  const getUserName = (user: User) => {
+    if (user.first_name) {
+      return user.last_name ? `${user.first_name} ${user.last_name}` : user.first_name;
     }
-    const colors: Record<string, string> = {
-      test_driver: 'bg-blue-500/20 text-blue-400',
-      commuter: 'bg-purple-500/20 text-purple-400',
-      road_warrior: 'bg-orange-500/20 text-orange-400',
-    };
+    return user.display_name || 'No name';
+  };
+
+  const getPlanDisplay = (user: User) => {
+    const plan = user.plan || user.subscription_type;
+    if (!plan || plan === 'free') return 'Free';
     const names: Record<string, string> = {
       test_driver: 'Test Driver',
       commuter: 'Commuter',
       road_warrior: 'Road Warrior',
     };
-    return (
-      <span className={`px-2 py-1 rounded-full text-xs ${colors[type] || 'bg-gray-700 text-gray-300'}`}>
-        {names[type] || type}
-      </span>
-    );
+    return names[plan] || plan;
+  };
+
+  const getPlanColor = (user: User) => {
+    const plan = user.plan || user.subscription_type;
+    if (!plan || plan === 'free') return { bg: '#e2e8f0', text: '#64748b' };
+    const colors: Record<string, { bg: string; text: string }> = {
+      test_driver: { bg: '#dbeafe', text: '#2563eb' },
+      commuter: { bg: '#f3e8ff', text: '#9333ea' },
+      road_warrior: { bg: '#ffedd5', text: '#ea580c' },
+    };
+    return colors[plan] || { bg: '#e2e8f0', text: '#64748b' };
   };
 
   if (loading) {
     return (
-      <div className="p-8 flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="inline-block w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mb-4" />
-          <p className="text-gray-400">Loading users...</p>
+      <div style={{ padding: '2rem', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ 
+            width: '32px', 
+            height: '32px', 
+            border: '4px solid #f97316', 
+            borderTopColor: 'transparent', 
+            borderRadius: '50%', 
+            animation: 'spin 1s linear infinite',
+            margin: '0 auto 1rem'
+          }} />
+          <p style={{ color: '#64748b' }}>Loading users...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="p-8">
+    <div style={{ padding: '2rem', backgroundColor: '#FAF9F6', minHeight: '100vh' }}>
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-white mb-2">👥 Users</h1>
-        <p className="text-gray-400">Manage user accounts and credits</p>
+      <div style={{ marginBottom: '2rem' }}>
+        <h1 style={{ fontSize: '28px', fontWeight: 'bold', color: '#1e293b', marginBottom: '0.5rem' }}>👥 Users</h1>
+        <p style={{ color: '#64748b' }}>Manage user accounts and credits</p>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-          <span className="text-gray-400 text-sm">Total Users</span>
-          <p className="text-2xl font-bold text-white">{users.length}</p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '2rem' }}>
+        <div style={{ backgroundColor: 'white', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1rem' }}>
+          <span style={{ color: '#64748b', fontSize: '14px' }}>Total Users</span>
+          <p style={{ fontSize: '28px', fontWeight: 'bold', color: '#1e293b' }}>{users.length}</p>
         </div>
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-          <span className="text-gray-400 text-sm">Free Users</span>
-          <p className="text-2xl font-bold text-white">
-            {users.filter(u => !u.subscription_type || u.subscription_type === 'free').length}
+        <div style={{ backgroundColor: 'white', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1rem' }}>
+          <span style={{ color: '#64748b', fontSize: '14px' }}>Free Users</span>
+          <p style={{ fontSize: '28px', fontWeight: 'bold', color: '#1e293b' }}>
+            {users.filter(u => {
+              const plan = u.plan || u.subscription_type;
+              return !plan || plan === 'free';
+            }).length}
           </p>
         </div>
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-          <span className="text-gray-400 text-sm">Subscribers</span>
-          <p className="text-2xl font-bold text-white">
-            {users.filter(u => u.subscription_type && u.subscription_type !== 'free').length}
+        <div style={{ backgroundColor: 'white', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1rem' }}>
+          <span style={{ color: '#64748b', fontSize: '14px' }}>Subscribers</span>
+          <p style={{ fontSize: '28px', fontWeight: 'bold', color: '#1e293b' }}>
+            {users.filter(u => {
+              const plan = u.plan || u.subscription_type;
+              return plan && plan !== 'free';
+            }).length}
           </p>
         </div>
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-          <span className="text-gray-400 text-sm">Total Credits (all users)</span>
-          <p className="text-2xl font-bold text-orange-400">
-            {users.reduce((sum, u) => sum + (u.credits || 0), 0)}
+        <div style={{ backgroundColor: 'white', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1rem' }}>
+          <span style={{ color: '#64748b', fontSize: '14px' }}>Total Credits</span>
+          <p style={{ fontSize: '28px', fontWeight: 'bold', color: '#f97316' }}>
+            {users.reduce((sum, u) => sum + (u.credits > 0 ? u.credits : 0), 0)}
           </p>
         </div>
       </div>
 
       {/* Search and Filter */}
-      <div className="flex flex-col md:flex-row gap-4 mb-6">
-        <div className="flex-1">
+      <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
+        <div style={{ flex: 1 }}>
           <input
             type="text"
             placeholder="Search by email or name..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full px-4 py-2 bg-gray-900 border border-gray-800 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-orange-500"
+            style={{
+              width: '100%',
+              padding: '0.75rem 1rem',
+              backgroundColor: 'white',
+              border: '1px solid #e2e8f0',
+              borderRadius: '8px',
+              color: '#1e293b',
+              fontSize: '14px'
+            }}
           />
         </div>
-        <div className="flex gap-2">
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
           {(['all', 'free', 'subscribed'] as const).map((type) => (
             <button
               key={type}
               onClick={() => setFilterType(type)}
-              className={`px-4 py-2 rounded-xl text-sm transition-colors ${
-                filterType === type
-                  ? 'bg-orange-500 text-black'
-                  : 'bg-gray-800 text-gray-400 hover:text-white'
-              }`}
+              style={{
+                padding: '0.75rem 1rem',
+                borderRadius: '8px',
+                border: 'none',
+                cursor: 'pointer',
+                backgroundColor: filterType === type ? '#f97316' : 'white',
+                color: filterType === type ? 'white' : '#64748b',
+                fontWeight: filterType === type ? 600 : 400,
+                fontSize: '14px'
+              }}
             >
               {type.charAt(0).toUpperCase() + type.slice(1)}
             </button>
@@ -217,95 +378,315 @@ export default function UsersPage() {
       </div>
 
       {/* Users Table */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+      <div style={{ backgroundColor: 'white', border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden' }}>
         {filteredUsers.length === 0 ? (
-          <div className="p-8 text-center">
-            <span className="text-4xl mb-4 block">🔍</span>
-            <p className="text-gray-400">No users found</p>
+          <div style={{ padding: '3rem', textAlign: 'center' }}>
+            <span style={{ fontSize: '48px', display: 'block', marginBottom: '1rem' }}>🔍</span>
+            <p style={{ color: '#64748b' }}>No users found</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-800">
-                <tr>
-                  <th className="px-4 py-3 text-left text-gray-400 text-sm font-medium">User</th>
-                  <th className="px-4 py-3 text-left text-gray-400 text-sm font-medium">Plan</th>
-                  <th className="px-4 py-3 text-center text-gray-400 text-sm font-medium">Credits</th>
-                  <th className="px-4 py-3 text-left text-gray-400 text-sm font-medium">Joined</th>
-                  <th className="px-4 py-3 text-left text-gray-400 text-sm font-medium">Last Login</th>
-                  <th className="px-4 py-3 text-center text-gray-400 text-sm font-medium">Actions</th>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ backgroundColor: '#f8fafc' }}>
+                  <th style={{ padding: '12px 16px', textAlign: 'left', color: '#64748b', fontSize: '13px', fontWeight: 600, borderBottom: '1px solid #e2e8f0' }}>User</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'center', color: '#64748b', fontSize: '13px', fontWeight: 600, borderBottom: '1px solid #e2e8f0' }}>Plan</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'center', color: '#64748b', fontSize: '13px', fontWeight: 600, borderBottom: '1px solid #e2e8f0' }}>Credits</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'center', color: '#64748b', fontSize: '13px', fontWeight: 600, borderBottom: '1px solid #e2e8f0' }}>Listening (7d/30d/All)</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'center', color: '#64748b', fontSize: '13px', fontWeight: 600, borderBottom: '1px solid #e2e8f0' }}>Joined</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'center', color: '#64748b', fontSize: '13px', fontWeight: 600, borderBottom: '1px solid #e2e8f0' }}>Messages</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'center', color: '#64748b', fontSize: '13px', fontWeight: 600, borderBottom: '1px solid #e2e8f0' }}>Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-800">
-                {filteredUsers.map((user) => (
-                  <tr key={user.id} className="hover:bg-gray-800/50">
-                    <td className="px-4 py-3">
-                      <div>
-                        <p className="text-white font-medium">{user.display_name || 'No name'}</p>
-                        <p className="text-gray-400 text-sm">{user.email}</p>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      {getSubscriptionBadge(user.subscription_type)}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <span className="text-orange-400 font-bold">
-                        {user.credits === -1 ? '∞' : user.credits}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-gray-400 text-sm">
-                      {formatDate(user.created_at)}
-                    </td>
-                    <td className="px-4 py-3 text-gray-400 text-sm">
-                      {formatDate(user.last_login || '')}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <button
-                        onClick={() => {
-                          setSelectedUser(user);
-                          setEditCredits(user.credits);
-                        }}
-                        className="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm transition-colors"
-                      >
-                        Edit
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+              <tbody>
+                {filteredUsers.map((user) => {
+                  const planColors = getPlanColor(user);
+                  return (
+                    <tr key={user.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '12px 16px' }}>
+                        <div>
+                          <p style={{ color: '#1e293b', fontWeight: 600, marginBottom: '2px' }}>{getUserName(user)}</p>
+                          <p style={{ color: '#64748b', fontSize: '13px' }}>{user.email}</p>
+                        </div>
+                      </td>
+                      <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                        <span style={{
+                          padding: '4px 10px',
+                          borderRadius: '20px',
+                          fontSize: '12px',
+                          fontWeight: 500,
+                          backgroundColor: planColors.bg,
+                          color: planColors.text
+                        }}>
+                          {getPlanDisplay(user)}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                        <span style={{ color: '#f97316', fontWeight: 700, fontSize: '16px' }}>
+                          {user.credits === -1 ? '∞' : user.credits}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                        <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', fontSize: '13px' }}>
+                          <span style={{ color: '#1e293b' }}>{formatListeningTime(user.listening7d || 0)}</span>
+                          <span style={{ color: '#94a3b8' }}>/</span>
+                          <span style={{ color: '#1e293b' }}>{formatListeningTime(user.listening30d || 0)}</span>
+                          <span style={{ color: '#94a3b8' }}>/</span>
+                          <span style={{ color: '#1e293b' }}>
+                            {formatListeningTime(user.listening365d || 0)}
+                            {user.memberDays && user.memberDays < 365 && (
+                              <span style={{ color: '#94a3b8', fontSize: '11px' }}> ({user.memberDays}d)</span>
+                            )}
+                          </span>
+                        </div>
+                      </td>
+                      <td style={{ padding: '12px 16px', textAlign: 'center', color: '#64748b', fontSize: '13px' }}>
+                        {formatDate(user.created_at)}
+                      </td>
+                      <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                        {(user.supportMessageCount || 0) > 0 ? (
+                          <button
+                            onClick={() => {
+                              setSelectedUser(user);
+                              setShowMessages(true);
+                              fetchUserMessages(user.email);
+                            }}
+                            style={{
+                              padding: '4px 10px',
+                              borderRadius: '20px',
+                              border: 'none',
+                              cursor: 'pointer',
+                              backgroundColor: '#fef2f2',
+                              color: '#dc2626',
+                              fontSize: '12px',
+                              fontWeight: 600,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              margin: '0 auto'
+                            }}
+                          >
+                            💬 {user.supportMessageCount}
+                          </button>
+                        ) : (
+                          <span style={{ color: '#cbd5e1', fontSize: '13px' }}>-</span>
+                        )}
+                      </td>
+                      <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                        <button
+                          onClick={() => {
+                            setSelectedUser(user);
+                            setEditCredits(user.credits);
+                            setShowMessages(false);
+                          }}
+                          style={{
+                            padding: '6px 14px',
+                            backgroundColor: '#1e293b',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '6px',
+                            fontSize: '13px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Edit
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
       </div>
 
+      {/* Messages Modal */}
+      {selectedUser && showMessages && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 50,
+          padding: '1rem'
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '16px',
+            padding: '1.5rem',
+            maxWidth: '700px',
+            width: '100%',
+            maxHeight: '80vh',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h2 style={{ fontSize: '18px', fontWeight: 600, color: '#1e293b' }}>
+                💬 Messages from {getUserName(selectedUser)}
+              </h2>
+              <button
+                onClick={() => {
+                  setShowMessages(false);
+                  setSelectedUser(null);
+                  setSelectedMessage(null);
+                }}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#f1f5f9',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  color: '#64748b'
+                }}
+              >
+                Close
+              </button>
+            </div>
+
+            {loadingMessages ? (
+              <p style={{ color: '#64748b', textAlign: 'center', padding: '2rem' }}>Loading messages...</p>
+            ) : (
+              <div style={{ display: 'flex', gap: '1rem', flex: 1, overflow: 'hidden' }}>
+                {/* Message List */}
+                <div style={{ width: '250px', overflowY: 'auto', borderRight: '1px solid #e2e8f0', paddingRight: '1rem' }}>
+                  {userMessages.map(msg => (
+                    <div
+                      key={msg.id}
+                      onClick={() => setSelectedMessage(msg)}
+                      style={{
+                        padding: '0.75rem',
+                        backgroundColor: selectedMessage?.id === msg.id ? '#fff7ed' : '#f8fafc',
+                        border: `1px solid ${selectedMessage?.id === msg.id ? '#f97316' : '#e2e8f0'}`,
+                        borderRadius: '8px',
+                        marginBottom: '0.5rem',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <div style={{ fontWeight: 600, color: '#1e293b', fontSize: '13px', marginBottom: '4px' }}>
+                        {msg.subject}
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#64748b' }}>
+                        {formatDate(msg.created_at)}
+                      </div>
+                      <div style={{
+                        marginTop: '4px',
+                        fontSize: '10px',
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        display: 'inline-block',
+                        backgroundColor: msg.status === 'answered' ? '#dcfce7' : msg.status === 'read' ? '#fef9c3' : '#fef2f2',
+                        color: msg.status === 'answered' ? '#16a34a' : msg.status === 'read' ? '#ca8a04' : '#dc2626'
+                      }}>
+                        {msg.status.toUpperCase()}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Message Detail */}
+                <div style={{ flex: 1, overflowY: 'auto' }}>
+                  {selectedMessage ? (
+                    <div>
+                      <h3 style={{ fontWeight: 600, color: '#1e293b', marginBottom: '0.5rem' }}>
+                        {selectedMessage.subject}
+                      </h3>
+                      <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '1rem' }}>
+                        {formatDate(selectedMessage.created_at)}
+                      </p>
+                      <div style={{
+                        padding: '1rem',
+                        backgroundColor: '#f8fafc',
+                        borderRadius: '8px',
+                        marginBottom: '1rem'
+                      }}>
+                        <p style={{ color: '#334155', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+                          {selectedMessage.message}
+                        </p>
+                      </div>
+                      {selectedMessage.admin_response && (
+                        <div style={{
+                          padding: '1rem',
+                          backgroundColor: '#f0fdf4',
+                          borderRadius: '8px',
+                          borderLeft: '4px solid #22c55e'
+                        }}>
+                          <div style={{ fontSize: '12px', color: '#16a34a', fontWeight: 600, marginBottom: '0.5rem' }}>
+                            YOUR RESPONSE
+                          </div>
+                          <p style={{ color: '#334155', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+                            {selectedMessage.admin_response}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <p style={{ color: '#94a3b8', textAlign: 'center', padding: '2rem' }}>
+                      Select a message to view
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Edit User Modal */}
-      {selectedUser && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 max-w-md w-full">
-            <h2 className="text-xl font-bold text-white mb-4">Edit User</h2>
+      {selectedUser && !showMessages && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 50,
+          padding: '1rem'
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '16px',
+            padding: '1.5rem',
+            maxWidth: '400px',
+            width: '100%'
+          }}>
+            <h2 style={{ fontSize: '18px', fontWeight: 600, color: '#1e293b', marginBottom: '1.5rem' }}>Edit User</h2>
             
-            <div className="space-y-4">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div>
-                <label className="block text-gray-400 text-sm mb-1">Email</label>
-                <p className="text-white">{selectedUser.email}</p>
+                <label style={{ display: 'block', color: '#64748b', fontSize: '13px', marginBottom: '4px' }}>Email</label>
+                <p style={{ color: '#1e293b' }}>{selectedUser.email}</p>
               </div>
               
               <div>
-                <label className="block text-gray-400 text-sm mb-1">Name</label>
-                <p className="text-white">{selectedUser.display_name || '-'}</p>
+                <label style={{ display: 'block', color: '#64748b', fontSize: '13px', marginBottom: '4px' }}>Name</label>
+                <p style={{ color: '#1e293b' }}>{getUserName(selectedUser)}</p>
               </div>
               
               <div>
-                <label className="block text-gray-400 text-sm mb-1">Plan</label>
-                <p>{getSubscriptionBadge(selectedUser.subscription_type)}</p>
+                <label style={{ display: 'block', color: '#64748b', fontSize: '13px', marginBottom: '4px' }}>Plan</label>
+                <p style={{ color: '#1e293b' }}>{getPlanDisplay(selectedUser)}</p>
               </div>
               
               <div>
-                <label className="block text-gray-400 text-sm mb-1">Credits</label>
-                <div className="flex items-center gap-2">
+                <label style={{ display: 'block', color: '#64748b', fontSize: '13px', marginBottom: '8px' }}>Credits</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <button
                     onClick={() => setEditCredits(Math.max(0, editCredits - 1))}
-                    className="w-10 h-10 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-xl"
+                    style={{
+                      width: '40px',
+                      height: '40px',
+                      backgroundColor: '#f1f5f9',
+                      border: 'none',
+                      borderRadius: '8px',
+                      fontSize: '18px',
+                      cursor: 'pointer',
+                      color: '#1e293b'
+                    }}
                   >
                     -
                   </button>
@@ -313,17 +694,43 @@ export default function UsersPage() {
                     type="number"
                     value={editCredits}
                     onChange={(e) => setEditCredits(parseInt(e.target.value) || 0)}
-                    className="w-24 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-center"
+                    style={{
+                      width: '80px',
+                      padding: '8px',
+                      backgroundColor: 'white',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '8px',
+                      textAlign: 'center',
+                      color: '#1e293b',
+                      fontSize: '16px'
+                    }}
                   />
                   <button
                     onClick={() => setEditCredits(editCredits + 1)}
-                    className="w-10 h-10 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-xl"
+                    style={{
+                      width: '40px',
+                      height: '40px',
+                      backgroundColor: '#f1f5f9',
+                      border: 'none',
+                      borderRadius: '8px',
+                      fontSize: '18px',
+                      cursor: 'pointer',
+                      color: '#1e293b'
+                    }}
                   >
                     +
                   </button>
                   <button
                     onClick={() => setEditCredits(-1)}
-                    className="px-3 py-2 bg-orange-500/20 text-orange-400 rounded-lg text-sm"
+                    style={{
+                      padding: '8px 12px',
+                      backgroundColor: '#fff7ed',
+                      border: 'none',
+                      borderRadius: '8px',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                      color: '#ea580c'
+                    }}
                   >
                     ∞ Unlimited
                   </button>
@@ -331,17 +738,35 @@ export default function UsersPage() {
               </div>
             </div>
 
-            <div className="flex gap-3 mt-6">
+            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.5rem' }}>
               <button
                 onClick={() => setSelectedUser(null)}
-                className="flex-1 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-xl transition-colors"
+                style={{
+                  flex: 1,
+                  padding: '12px',
+                  backgroundColor: '#f1f5f9',
+                  border: 'none',
+                  borderRadius: '8px',
+                  color: '#64748b',
+                  cursor: 'pointer'
+                }}
               >
                 Cancel
               </button>
               <button
                 onClick={() => updateUserCredits(selectedUser.id, editCredits)}
                 disabled={saving}
-                className="flex-1 py-2 bg-orange-500 hover:bg-orange-400 text-black font-bold rounded-xl transition-colors disabled:opacity-50"
+                style={{
+                  flex: 1,
+                  padding: '12px',
+                  backgroundColor: '#f97316',
+                  border: 'none',
+                  borderRadius: '8px',
+                  color: 'white',
+                  fontWeight: 600,
+                  cursor: saving ? 'not-allowed' : 'pointer',
+                  opacity: saving ? 0.5 : 1
+                }}
               >
                 {saving ? 'Saving...' : 'Save Changes'}
               </button>
