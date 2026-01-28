@@ -62,17 +62,19 @@ export async function POST(request: NextRequest) {
     });
 
     // Log the refund in our database
-    await supabaseAdmin.from('refund_log').insert({
-      user_id: userId,
-      stripe_charge_id: chargeId,
-      stripe_refund_id: refund.id,
-      amount: amount,
-      reason: reason || 'Admin initiated refund',
-      status: refund.status,
-    }).catch(err => {
+    try {
+      await supabaseAdmin.from('refund_log').insert({
+        user_id: userId,
+        stripe_charge_id: chargeId,
+        stripe_refund_id: refund.id,
+        amount: amount,
+        reason: reason || 'Admin initiated refund',
+        status: refund.status,
+      });
+    } catch (err: any) {
       // Table might not exist yet, log but don't fail
       console.log('[Refund] Could not log to refund_log table:', err.message);
-    });
+    }
 
     console.log('[Refund] Processed:', {
       refundId: refund.id,
