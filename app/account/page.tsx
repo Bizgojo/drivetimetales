@@ -33,8 +33,19 @@ export default function AccountPage() {
     return null;
   }
 
-  // Get display name - prefer display_name, then first_name, then email prefix
-  const displayName = user.display_name || user.first_name || user.email.split('@')[0];
+  // Get display name - prefer first_name + last_name (from Stripe), then display_name, then email prefix
+  let displayName = '';
+  if (user.first_name) {
+    displayName = user.first_name;
+    if (user.last_name) {
+      displayName += ' ' + user.last_name;
+    }
+  } else if (user.display_name) {
+    displayName = user.display_name;
+  } else {
+    displayName = user.email.split('@')[0];
+  }
+  
   const initials = displayName.substring(0, 1).toUpperCase();
 
   // Format member since date
@@ -42,7 +53,6 @@ export default function AccountPage() {
 
   const menuItems = [
     { href: '/account/billing', icon: '💎', label: 'Billing & Credits', desc: `${user.credits} credits available` },
-    { href: '/account/settings', icon: '⚙️', label: 'Settings', desc: 'Preferences & notifications' },
     { href: '/account/help', icon: '💬', label: 'Help & Support', desc: 'Contact us' },
     { href: '/account/faqs', icon: '❓', label: 'FAQs', desc: 'Common questions' },
   ];
