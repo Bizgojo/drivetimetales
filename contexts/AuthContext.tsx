@@ -8,6 +8,7 @@ interface DbUser {
   id: string
   email: string
   first_name: string | null
+  last_name: string | null
   display_name: string | null
   credits: number
   subscription_type: string | null
@@ -35,7 +36,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function loadDbUser(authUser: User) {
     const { data } = await supabase
       .from('users')
-      .select('first_name, display_name, credits, subscription_type, subscription_status, subscription_ends_at')
+      .select('first_name, last_name, display_name, credits, subscription_type, subscription_status, subscription_ends_at')
       .eq('id', authUser.id)
       .single()
     
