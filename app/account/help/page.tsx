@@ -1,109 +1,191 @@
 'use client';
 
 import React, { useState } from 'react';
-import Link from 'next/link';
-import StickyHeaderFull from '@/components/StickyHeaderFull';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-
-interface FAQItem {
-  question: string;
-  answer: string;
-}
-
-const faqs: FAQItem[] = [
-  {
-    question: "How do credits work?",
-    answer: "Credits are used to unlock stories. Each story costs 1-4 credits depending on length. Once you unlock a story, it's yours forever and you can listen as many times as you want."
-  },
-  {
-    question: "What's included in each subscription plan?",
-    answer: "Test Driver ($4.99/mo): 5 credits/month. Commuter ($9.99/mo): 12 credits/month. Road Warrior ($19.99/mo): Unlimited listening to all stories."
-  },
-  {
-    question: "How do I cancel my subscription?",
-    answer: "Go to Account → Billing & Credits → Manage Subscription. You can cancel anytime and keep access until the end of your billing period."
-  },
-  {
-    question: "Why won't my audio play?",
-    answer: "Check your device volume and make sure silent mode is off. Try closing and reopening the app. If using Bluetooth, ensure your device is connected."
-  },
-  {
-    question: "How do I request a refund?",
-    answer: "Contact us within 7 days of purchase for a full refund on credit packs. Email support@drivetimetales.com."
-  }
-];
 
 export default function HelpPage() {
   const { user } = useAuth();
-  const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
-  const [formData, setFormData] = useState({ name: '', email: '', subject: 'General Question', message: '' });
-  const [formSubmitted, setFormSubmitted] = useState(false);
+  const router = useRouter();
+  const [formData, setFormData] = useState({ 
+    name: '', 
+    email: '', 
+    subject: 'General Question', 
+    message: '' 
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Pre-fill email if user is logged in
+  React.useEffect(() => {
+    if (user?.email && !formData.email) {
+      setFormData(prev => ({ ...prev, email: user.email }));
+    }
+    if (user?.first_name && !formData.name) {
+      const fullName = user.first_name + (user.last_name ? ' ' + user.last_name : '');
+      setFormData(prev => ({ ...prev, name: fullName }));
+    }
+  }, [user]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const subject = encodeURIComponent(`[DTT Support] ${formData.subject}`);
-    const body = encodeURIComponent(`Name: ${formData.name}\nEmail: ${formData.email}\n\nMessage:\n${formData.message}`);
-    window.location.href = `mailto:support@drivetimetales.com?subject=${subject}&body=${body}`;
-    setFormSubmitted(true);
+    setSubmitting(true);
+    setError('');
+
+    try {
+      const response = await fetch('/api/support', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user?.id || null,
+          name: formData.name,
+          email: formData.email,
+          subject: formData.subject,
+          message: formData.message
+        })
+      });
+
+      if (response.ok) {
+        setSubmitted(true);
+        setFormData({ name: '', email: '', subject: 'General Question', message: '' });
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Failed to send message');
+      }
+    } catch (err) {
+      setError('Failed to send message. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
-      <StickyHeaderFull />
+      {/* Header */}
+      <header style={{
+        position: 'sticky',
+        top: 0,
+        zIndex: 50,
+        backgroundColor: '#030712',
+        borderBottom: '1px solid #1f2937',
+        padding: '12px 16px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <button 
+            onClick={() => router.back()}
+            style={{
+              width: '44px',
+              height: '44px',
+              borderRadius: '50%',
+              backgroundColor: '#1f2937',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            <span style={{ color: 'white', fontSize: '20px' }}>‹</span>
+          </button>
+          
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '20px' }}>🚛</span>
+            <span style={{ fontSize: '20px' }}>🚗</span>
+            <span style={{ color: 'white', fontWeight: 'bold', marginLeft: '4px' }}>Drive Time </span>
+            <span style={{ color: '#fb923c', fontWeight: 'bold' }}>Tales</span>
+          </div>
+          
+          <div style={{ width: '44px' }} />
+        </div>
+      </header>
+
       <div className="px-4 py-5 pb-24 max-w-2xl mx-auto">
+        {/* Page Header */}
         <div className="text-center mb-8">
           <span className="text-5xl mb-4 block">🎧</span>
           <h1 className="text-2xl font-bold text-white mb-2">Help & Support</h1>
-          <p className="text-gray-400">Find answers or get in touch</p>
+          <p className="text-gray-400">We're here to help</p>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 mb-8">
-          <a href="mailto:support@drivetimetales.com" className="flex flex-col items-center p-4 bg-gray-900 border border-gray-800 rounded-xl">
-            <span className="text-2xl mb-2">📧</span>
-            <span className="text-sm text-white">Email Us</span>
-          </a>
-          <Link href="/account/billing" className="flex flex-col items-center p-4 bg-gray-900 border border-gray-800 rounded-xl">
-            <span className="text-2xl mb-2">💳</span>
-            <span className="text-sm text-white">Billing Help</span>
-          </Link>
-        </div>
-
-        <h2 className="text-lg font-bold text-white mb-4">❓ FAQs</h2>
-        <div className="space-y-2 mb-10">
-          {faqs.map((faq, index) => (
-            <div key={index} className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-              <button onClick={() => setExpandedIndex(expandedIndex === index ? null : index)} className="w-full px-4 py-3 text-left flex items-center justify-between">
-                <span className="text-white text-sm font-medium pr-4">{faq.question}</span>
-                <span className={`text-orange-500 transition-transform ${expandedIndex === index ? 'rotate-180' : ''}`}>▼</span>
-              </button>
-              {expandedIndex === index && <div className="px-4 pb-4"><p className="text-gray-400 text-sm">{faq.answer}</p></div>}
-            </div>
-          ))}
-        </div>
-
+        {/* Contact Form */}
         <h2 className="text-lg font-bold text-white mb-4">💬 Contact Us</h2>
-        {formSubmitted ? (
+        
+        {submitted ? (
           <div className="bg-green-900/30 border border-green-500/50 rounded-xl p-6 text-center">
             <span className="text-4xl mb-3 block">✅</span>
-            <p className="text-green-400">Email client opened! We respond within 24-48 hours.</p>
-            <button onClick={() => setFormSubmitted(false)} className="mt-4 text-orange-400 text-sm underline">Send another</button>
+            <h3 className="text-green-400 font-bold mb-2">Message Sent!</h3>
+            <p className="text-gray-300 mb-4">We typically respond within 24-48 hours.</p>
+            <button 
+              onClick={() => setSubmitted(false)} 
+              className="text-orange-400 text-sm underline"
+            >
+              Send another message
+            </button>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
-            <input type="text" placeholder="Your Name" required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full px-4 py-3 bg-gray-900 border border-gray-800 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-orange-500" />
-            <input type="email" placeholder="Email Address" required value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full px-4 py-3 bg-gray-900 border border-gray-800 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-orange-500" />
-            <select value={formData.subject} onChange={e => setFormData({...formData, subject: e.target.value})} className="w-full px-4 py-3 bg-gray-900 border border-gray-800 rounded-xl text-white focus:outline-none focus:border-orange-500">
+            {error && (
+              <div className="bg-red-900/30 border border-red-500/50 rounded-xl p-4 text-red-400 text-sm">
+                {error}
+              </div>
+            )}
+            
+            <input 
+              type="text" 
+              placeholder="Your Name" 
+              required 
+              value={formData.name} 
+              onChange={e => setFormData({...formData, name: e.target.value})} 
+              className="w-full px-4 py-3 bg-gray-900 border border-gray-800 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-orange-500" 
+            />
+            
+            <input 
+              type="email" 
+              placeholder="Email Address" 
+              required 
+              value={formData.email} 
+              onChange={e => setFormData({...formData, email: e.target.value})} 
+              className="w-full px-4 py-3 bg-gray-900 border border-gray-800 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-orange-500" 
+            />
+            
+            <select 
+              value={formData.subject} 
+              onChange={e => setFormData({...formData, subject: e.target.value})} 
+              className="w-full px-4 py-3 bg-gray-900 border border-gray-800 rounded-xl text-white focus:outline-none focus:border-orange-500"
+            >
               <option>General Question</option>
               <option>Billing Issue</option>
               <option>Technical Problem</option>
-              <option>Feedback</option>
+              <option>Feature Request</option>
+              <option>Other</option>
             </select>
-            <textarea placeholder="Your message..." required rows={4} value={formData.message} onChange={e => setFormData({...formData, message: e.target.value})} className="w-full px-4 py-3 bg-gray-900 border border-gray-800 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-orange-500 resize-none" />
-            <button type="submit" className="w-full py-3 bg-orange-500 hover:bg-orange-400 text-black font-bold rounded-xl">Send Message</button>
+            
+            <textarea 
+              placeholder="How can we help?" 
+              required 
+              rows={5} 
+              value={formData.message} 
+              onChange={e => setFormData({...formData, message: e.target.value})} 
+              className="w-full px-4 py-3 bg-gray-900 border border-gray-800 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-orange-500 resize-none" 
+            />
+            
+            <button 
+              type="submit" 
+              disabled={submitting}
+              className="w-full py-3 bg-orange-500 hover:bg-orange-400 disabled:bg-orange-700 text-black font-bold rounded-xl transition-colors"
+            >
+              {submitting ? 'Sending...' : 'Send Message'}
+            </button>
           </form>
         )}
 
-        <p className="text-center text-gray-500 text-sm mt-8">Email: <a href="mailto:support@drivetimetales.com" className="text-orange-400">support@drivetimetales.com</a></p>
+        <p className="text-center text-gray-500 text-sm mt-8">
+          You can also email us directly at{' '}
+          <a href="mailto:support@drivetimetales.com" className="text-orange-400">
+            support@drivetimetales.com
+          </a>
+        </p>
       </div>
     </div>
   );
