@@ -15,7 +15,7 @@ export default function AccountPage() {
     router.push('/');
   };
 
-  // Show loading state
+  // Show loading state while auth is initializing
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
@@ -27,9 +27,23 @@ export default function AccountPage() {
     );
   }
 
-  // Redirect if not logged in
+  // Only redirect if definitely not logged in (after loading completes)
+  if (!loading && !user) {
+    // Use useEffect for redirect to avoid hydration issues
+    if (typeof window !== 'undefined') {
+      router.push('/auth/login');
+    }
+    return (
+      <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
+        <div className="text-center">
+          <p>Redirecting to login...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // If still no user after all checks, show nothing
   if (!user) {
-    router.push('/auth/login');
     return null;
   }
 
