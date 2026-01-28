@@ -11,8 +11,8 @@ interface DbUser {
   last_name: string | null
   display_name: string | null
   credits: number
+  plan: string | null
   subscription_type: string | null
-  subscription_status: string | null
   subscription_ends_at: string | null
 }
 
@@ -33,7 +33,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
 
-  async function loadDbUser(authUser: User) {
+  async function loadDbUser(authUser: User): Promise<void> {
     // Use direct fetch to bypass Supabase client issues
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL
     const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -46,7 +46,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     
     try {
       const apiUrl = `${url}/rest/v1/users?id=eq.${authUser.id}&select=first_name,last_name,display_name,credits,plan,subscription_type,subscription_ends_at`
-      console.log('[AuthContext] Fetching user data from:', apiUrl.substring(0, 80) + '...')
       
       const response = await fetch(apiUrl, {
         headers: {
@@ -63,18 +62,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       
       const data = await response.json()
-      console.log('[AuthContext] User data received:', data)
       
       if (data && data.length > 0) {
         const dbUser = data[0]
-        console.log('[AuthContext] Setting user with:', { 
-          first_name: dbUser.first_name, 
-          last_name: dbUser.last_name,
-          display_name: dbUser.display_name 
-        })
         setUser({ ...authUser, ...dbUser })
       } else {
-        console.log('[AuthContext] No user data found in DB')
         setUser(authUser)
       }
     } catch (err) {
@@ -84,27 +76,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    let isMounted = true
+    
+    async function initAuth() {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        
+        if (!isMounted) return
+        
+        setSession(session)
+        
+        if (session?.user) {
+          await loadDbUser(session.user)
+        } else {
+          setUser(null)
+        }
+      } catch (err) {
+        console.error('[AuthContext] Init error:', err)
+      } finally {
+        if (isMounted) {
+          setLoading(false)
+        }
+      }
+    }
+    
+    initAuth()
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (!isMounted) return
+      
       setSession(session)
+      
       if (session?.user) {
-        loadDbUser(session.user)
+        await loadDbUser(session.user)
       } else {
         setUser(null)
       }
+      
       setLoading(false)
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session)
-      if (session?.user) {
-        loadDbUser(session.user)
-      } else {
-        setUser(null)
-      }
-      setLoading(false)
-    })
-
-    return () => subscription.unsubscribe()
+    return () => {
+      isMounted = false
+      subscription.unsubscribe()
+    }
   }, [])
 
   const refreshUser = async () => {
@@ -155,6 +170,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     await supabase.auth.signOut()
+    setUser(null)
+    setSession(null)
   }
 
   return (
