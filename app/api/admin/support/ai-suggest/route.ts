@@ -1,109 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
-import { promises as fs } from 'fs';
-import path from 'path';
+import { createClient } from '@supabase/supabase-js';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-// DTT Knowledge Base - embedded for reliability
-const DTT_KNOWLEDGE = `
-# Drive Time Tales - Support Knowledge Base
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
-## What is Drive Time Tales?
-Drive Time Tales (DTT) is a premium audio storytelling platform designed specifically for drivers and commuters. We offer professionally produced audio dramas, stories, and serialized content that transforms drive time into entertainment time.
+// Default knowledge if database is empty
+const DEFAULT_KNOWLEDGE = `
+# Drive Time Tales - Basic Info
 
-## Subscription Plans
+Drive Time Tales (DTT) is a premium audio storytelling platform for drivers and commuters.
 
-### Free Plan
-- 2 free credits upon signup
-- Access to free sample stories
-- No monthly fee
+## Plans
+- Free: 2 credits on signup
+- Test Driver ($2.99/mo): 10 credits/month
+- Commuter ($7.99/mo): 30 credits/month
+- Road Warrior ($14.99/mo): Unlimited listening
 
-### Test Driver - $2.99/month
-- 10 credits per month
-- Access to full story library
-- Best for occasional listeners
+## Credits
+- Stories cost 1-4 credits based on length
+- Credits charged after 3 minutes of listening
+- Once unlocked, listen unlimited times
+- Credits refresh monthly, don't roll over
 
-### Commuter - $7.99/month
-- 30 credits per month
-- Access to full story library
-- Best for daily commuters
-
-### Road Warrior - $14.99/month
-- Unlimited listening
-- Access to entire catalog
-- Best for long-haul drivers and frequent travelers
-
-## How Credits Work
-- Each story costs 1-4 credits depending on length
-- Credits are charged after 3 minutes of listening (to allow sampling)
-- Once unlocked, a story is yours forever - listen unlimited times
-- Credits refresh monthly on your billing date
-- Unused credits do NOT roll over to the next month
-
-## Story Types
-- **Single Stories**: Standalone audio dramas (15-60 minutes)
-- **Series**: Multi-episode stories with continuing narratives
-- **Book Chapters**: Serialized audiobook-style content
-
-## Features
-- **Continue Listening**: Pick up where you left off
-- **Playlists**: Queue multiple stories for long drives
-- **Series Mode**: Auto-play episodes in order
-- **Progress Tracking**: See completion percentage for all stories
-- **Offline Mode**: Download stories for areas without signal (coming soon)
-
-## Account Management
-- Access account settings from the avatar icon
-- View credits balance in Account > Billing & Credits
-- Cancel subscription anytime - keeps access until billing period ends
-- Sign out from Account page
-
-## Common Issues & Solutions
-
-### Audio won't play
-1. Check device volume and ensure not on silent
-2. Check Bluetooth connection if using car audio
-3. Try closing and reopening the app
-4. Clear browser cache if using web version
-
-### Credits not showing
-1. Try signing out and back in
-2. Check if subscription is active in Billing
-3. Credits update may take a few minutes after payment
-
-### Story progress not saving
-1. Ensure stable internet connection
-2. Progress saves automatically every 30 seconds
-3. Try refreshing the page
-
-### Can't access purchased story
-1. Check My Collection page
-2. Ensure signed into correct account
-3. Contact support if issue persists
-
-## Billing & Payments
-
-### Payment Methods
-- Credit/Debit cards via Stripe
-- Manage payment methods in Account > Billing & Credits
-
-### Refund Policy
-- Contact support within 7 days of purchase for credit pack refunds
-- Subscription refunds evaluated case-by-case
-- No refunds for individual story purchases once listened past 3 minutes
-
-### Cancellation
-- Cancel anytime from Account > Billing & Credits
-- Access continues until end of current billing period
-- No partial refunds for unused portion of month
-
-## Contact Information
+## Support
 - Email: m.postlewaite@gmail.com
 - Response time: 24-48 hours
-- Support available 7 days a week
 `;
 
 export async function POST(request: NextRequest) {
@@ -114,9 +42,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 });
     }
 
+    // Load knowledge base from database
+    let knowledgeBase = DEFAULT_KNOWLEDGE;
+    try {
+      const { data } = await supabaseAdmin
+        .from('dtt_settings')
+        .select('value')
+        .eq('key', 'support_knowledge_base')
+        .single();
+      
+      if (data?.value) {
+        knowledgeBase = data.value;
+      }
+    } catch (err) {
+      console.log('[AI] Using default knowledge base');
+    }
+
     const prompt = `You are a friendly customer support agent for Drive Time Tales. Use the following knowledge base to answer questions accurately:
 
-${DTT_KNOWLEDGE}
+${knowledgeBase}
 
 ---
 
