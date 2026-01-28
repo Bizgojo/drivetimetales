@@ -34,15 +34,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   async function loadDbUser(authUser: User) {
-    const { data } = await supabase
-      .from('users')
-      .select('first_name, last_name, display_name, credits, subscription_type, subscription_status, subscription_ends_at')
-      .eq('id', authUser.id)
-      .single()
+    // Use direct fetch to bypass Supabase client issues
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
     
-    if (data) {
-      setUser({ ...authUser, ...data })
-    } else {
+    if (!url || !key) {
+      console.error('[AuthContext] Missing Supabase env vars')
+      setUser(authUser)
+      return
+    }
+    
+    try {
+      const apiUrl = `${url}/rest/v1/users?id=eq.${authUser.id}&select=first_name,last_name,display_name,credits,subscription_type,subscription_status,subscription_ends_at`
+      console.log('[AuthContext] Fetching user data from:', apiUrl.substring(0, 80) + '...')
+      
+      const response = await fetch(apiUrl, {
+        headers: {
+          'apikey': key,
+          'Authorization': `Bearer ${key}`,
+          'Content-Type': 'application/json'
+        }
+      })
+      
+      if (!response.ok) {
+        console.error('[AuthContext] Fetch error:', response.status)
+        setUser(authUser)
+        return
+      }
+      
+      const data = await response.json()
+      console.log('[AuthContext] User data received:', data)
+      
+      if (data && data.length > 0) {
+        const dbUser = data[0]
+        console.log('[AuthContext] Setting user with:', { 
+          first_name: dbUser.first_name, 
+          last_name: dbUser.last_name,
+          display_name: dbUser.display_name 
+        })
+        setUser({ ...authUser, ...dbUser })
+      } else {
+        console.log('[AuthContext] No user data found in DB')
+        setUser(authUser)
+      }
+    } catch (err) {
+      console.error('[AuthContext] Exception:', err)
       setUser(authUser)
     }
   }
