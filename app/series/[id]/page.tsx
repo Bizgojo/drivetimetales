@@ -186,7 +186,8 @@ export default function SeriesDetailPage() {
       series_name: seriesInfo?.name
     }))
     localStorage.setItem('dtt_series_playlist', JSON.stringify(playlist))
-    router.push(`/player/${selected[0].id}?series=true`)
+    localStorage.setItem('dtt_series_index', '0')
+    router.push('/player/series')
   }
 
   const totalEpisodes = episodes.length
@@ -343,13 +344,14 @@ export default function SeriesDetailPage() {
                 </div>
                 
                 {/* Progress bar at bottom of card */}
-                <div style={{ height: '4px', backgroundColor: '#334155', borderRadius: '0 0 10px 10px' }}>
+                <div style={{ height: '6px', backgroundColor: '#475569', borderRadius: '0 0 10px 10px' }}>
                   <div style={{ 
                     height: '100%', 
-                    width: `${progressPercent}%`, 
+                    width: `${Math.max(progressPercent, 0)}%`, 
                     backgroundColor: progress?.completed ? '#22c55e' : '#f97316', 
-                    borderRadius: '0 0 10px 10px',
-                    transition: 'width 0.3s' 
+                    borderRadius: progressPercent > 95 ? '0 0 10px 10px' : '0 0 0 10px',
+                    transition: 'width 0.3s',
+                    minWidth: progressPercent > 0 ? '8px' : '0'
                   }} />
                 </div>
               </div>
@@ -389,7 +391,7 @@ export default function SeriesDetailPage() {
             }}
           >
             <span>▶</span>
-            <span>Go to Player ({selectedEpisodes.size} selected • {selectedCredits} credit{selectedCredits !== 1 ? 's' : ''})</span>
+            <span>Go to Player ({selectedEpisodes.size} • {selectedCredits} cr)</span>
           </button>
         </div>
       )}
