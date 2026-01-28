@@ -473,7 +473,7 @@ Example:
                 resize: 'none',
                 minHeight: '400px',
                 backgroundColor: 'white',
-                color: '#1e293b'
+                color: '#000000'
               }}
             />
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem' }}>
