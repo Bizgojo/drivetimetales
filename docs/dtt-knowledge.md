@@ -1,14 +1,3 @@
-import { NextRequest, NextResponse } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
-import { promises as fs } from 'fs';
-import path from 'path';
-
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
-
-// DTT Knowledge Base - embedded for reliability
-const DTT_KNOWLEDGE = `
 # Drive Time Tales - Support Knowledge Base
 
 ## What is Drive Time Tales?
@@ -104,67 +93,11 @@ Drive Time Tales (DTT) is a premium audio storytelling platform designed specifi
 - Email: m.postlewaite@gmail.com
 - Response time: 24-48 hours
 - Support available 7 days a week
-`;
 
-export async function POST(request: NextRequest) {
-  try {
-    const { subject, message, userName, userPlan } = await request.json();
-
-    if (!message) {
-      return NextResponse.json({ error: 'Message is required' }, { status: 400 });
-    }
-
-    const prompt = `You are a friendly customer support agent for Drive Time Tales. Use the following knowledge base to answer questions accurately:
-
-${DTT_KNOWLEDGE}
-
----
-
-A user named ${userName} (currently on the ${userPlan} plan) has sent a support message:
-
-Subject: ${subject}
-Message: ${message}
-
----
-
-Write a helpful, friendly, and professional response based on the knowledge base above. 
-
-Guidelines:
-- Be concise but thorough (under 150 words)
-- If it's a technical issue, offer specific troubleshooting steps from the knowledge base
-- If it's about billing/credits, explain clearly using the actual plan details
-- If it's feedback or a feature request, thank them warmly and say you'll pass it to the team
-- If you don't know something specific, say you'll look into it and get back to them
-- Don't make up features or policies not in the knowledge base
-
-Start directly with the response (no greeting needed as the system adds "Hi ${userName},").
-
-Sign off with:
-Best regards,
-The Drive Time Tales Team`;
-
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 500,
-      messages: [
-        { role: 'user', content: prompt }
-      ]
-    });
-
-    const suggestion = response.content[0].type === 'text' 
-      ? response.content[0].text 
-      : 'Unable to generate response';
-
-    // Prepend greeting
-    const fullResponse = `Hi ${userName},\n\n${suggestion}`;
-
-    return NextResponse.json({ suggestion: fullResponse });
-
-  } catch (error) {
-    console.error('[AI Suggest] Error:', error);
-    return NextResponse.json(
-      { error: 'Failed to generate AI response' },
-      { status: 500 }
-    );
-  }
-}
+## Response Tone Guidelines
+- Be friendly and conversational
+- Show empathy for frustrations
+- Offer clear, actionable solutions
+- Thank users for their feedback
+- Keep responses concise but helpful
+- Sign off with "Best regards, The Drive Time Tales Team"
