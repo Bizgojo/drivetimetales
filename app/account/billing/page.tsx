@@ -2,9 +2,8 @@
 
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
-import StickyHeaderFull from '@/components/StickyHeaderFull'
-import { supabase } from '@/lib/supabase'
 
 interface Invoice {
   id: string
@@ -13,13 +12,8 @@ interface Invoice {
   description: string
 }
 
-interface DbUser {
-  first_name: string | null
-  credits: number
-  subscription_type: string | null
-}
-
 const PLAN_DETAILS: Record<string, { name: string; price: string; credits: number }> = {
+  'free': { name: 'Free', price: '$0', credits: 0 },
   'test_driver': { name: 'Test Driver', price: '$2.99', credits: 10 },
   'commuter': { name: 'Commuter', price: '$7.99', credits: 30 },
   'road_warrior': { name: 'Road Warrior', price: '$14.99', credits: -1 },
@@ -27,28 +21,16 @@ const PLAN_DETAILS: Record<string, { name: string; price: string; credits: numbe
 
 export default function BillingPage() {
   const { user } = useAuth()
-  const [dbUser, setDbUser] = useState<DbUser | null>(null)
-  const [showCancelModal, setShowCancelModal] = useState(false)
+  const router = useRouter()
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [totalSpent, setTotalSpent] = useState(0)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     if (user) {
-      loadUserData()
       loadInvoices()
     }
   }, [user])
-
-  async function loadUserData() {
-    if (!user) return
-    const { data } = await supabase
-      .from('users')
-      .select('first_name, credits, subscription_type')
-      .eq('id', user.id)
-      .single()
-    if (data) setDbUser(data)
-  }
 
   async function loadInvoices() {
     try {
@@ -82,17 +64,18 @@ export default function BillingPage() {
     }
   }
 
-  const displayName = dbUser?.first_name || user?.email?.split('@')[0]
-  const planKey = dbUser?.subscription_type || 'test_driver'
-  const plan = PLAN_DETAILS[planKey] || PLAN_DETAILS['test_driver']
-  const displayCredits = dbUser?.credits === -1 ? '∞' : dbUser?.credits
+  const userAny = user as any
+  const planKey = userAny?.plan || userAny?.subscription_type || 'free'
+  const plan = PLAN_DETAILS[planKey] || PLAN_DETAILS['free']
+  const displayCredits = userAny?.credits === -1 ? '∞' : userAny?.credits ?? 0
+  const hasSubscription = planKey && planKey !== 'free'
 
   if (!user) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
         <div className="text-center">
           <p className="text-slate-400 mb-4">Please sign in to view billing</p>
-          <Link href="/signin" className="text-orange-400 hover:text-orange-300">
+          <Link href="/auth/login" className="text-orange-400 hover:text-orange-300">
             Sign In
           </Link>
         </div>
@@ -102,7 +85,43 @@ export default function BillingPage() {
 
   return (
     <div className="min-h-screen bg-slate-950">
-      <StickyHeaderFull />
+      {/* Header */}
+      <header style={{
+        position: 'sticky',
+        top: 0,
+        zIndex: 50,
+        backgroundColor: '#030712',
+        borderBottom: '1px solid #1f2937',
+        padding: '12px 16px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <button 
+            onClick={() => router.back()}
+            style={{
+              width: '44px',
+              height: '44px',
+              borderRadius: '50%',
+              backgroundColor: '#1f2937',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            <span style={{ color: 'white', fontSize: '20px' }}>‹</span>
+          </button>
+          
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '20px' }}>🚛</span>
+            <span style={{ fontSize: '20px' }}>🚗</span>
+            <span style={{ color: 'white', fontWeight: 'bold', marginLeft: '4px' }}>Drive Time </span>
+            <span style={{ color: '#fb923c', fontWeight: 'bold' }}>Tales</span>
+          </div>
+          
+          <div style={{ width: '44px' }} />
+        </div>
+      </header>
       
       <main className="p-4 space-y-6 pb-24">
         <section className="bg-slate-800 rounded-xl p-4">
@@ -113,7 +132,7 @@ export default function BillingPage() {
               <p className="text-slate-400 text-sm">{plan.price}/month</p>
             </div>
             <div className="text-right">
-              <p className="text-white font-bold text-2xl">{displayCredits ?? 0}</p>
+              <p className="text-white font-bold text-2xl">{displayCredits}</p>
               <p className="text-slate-400 text-sm">credits</p>
             </div>
           </div>
@@ -155,6 +174,18 @@ export default function BillingPage() {
             <p className="text-slate-500 text-center py-4">No purchase history yet</p>
           )}
         </section>
+
+        {/* Cancel Subscription Link */}
+        {hasSubscription && (
+          <div className="pt-4 text-center">
+            <Link 
+              href="/account/cancel"
+              className="text-red-400 text-sm hover:text-red-300"
+            >
+              Cancel Subscription
+            </Link>
+          </div>
+        )}
       </main>
     </div>
   )
