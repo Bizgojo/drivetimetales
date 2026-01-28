@@ -456,29 +456,29 @@ export default function AdminSupportPage() {
                   <p style={{ color: '#94a3b8' }}>Loading user details...</p>
                 ) : userDetails ? (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
-                    <div style={{ backgroundColor: '#334155', padding: '0.75rem', borderRadius: '8px' }}>
-                      <div style={{ color: '#94a3b8', fontSize: '11px', marginBottom: '0.25rem' }}>MEMBER FOR</div>
-                      <div style={{ fontWeight: 600 }}>{formatMemberSince(userDetails.created_at)}</div>
+                    <div style={{ backgroundColor: 'white', padding: '0.75rem', borderRadius: '8px' }}>
+                      <div style={{ color: '#64748b', fontSize: '11px', marginBottom: '0.25rem' }}>MEMBER FOR</div>
+                      <div style={{ fontWeight: 600, color: '#1e293b' }}>{formatMemberSince(userDetails.created_at)}</div>
                     </div>
-                    <div style={{ backgroundColor: '#334155', padding: '0.75rem', borderRadius: '8px' }}>
-                      <div style={{ color: '#94a3b8', fontSize: '11px', marginBottom: '0.25rem' }}>PLAN</div>
+                    <div style={{ backgroundColor: 'white', padding: '0.75rem', borderRadius: '8px' }}>
+                      <div style={{ color: '#64748b', fontSize: '11px', marginBottom: '0.25rem' }}>PLAN</div>
                       <div style={{ fontWeight: 600, color: '#f97316' }}>{getPlanDisplay(userDetails.plan, userDetails.subscription_type)}</div>
                     </div>
-                    <div style={{ backgroundColor: '#334155', padding: '0.75rem', borderRadius: '8px' }}>
-                      <div style={{ color: '#94a3b8', fontSize: '11px', marginBottom: '0.25rem' }}>CREDITS</div>
-                      <div style={{ fontWeight: 600 }}>{userDetails.credits}</div>
+                    <div style={{ backgroundColor: 'white', padding: '0.75rem', borderRadius: '8px' }}>
+                      <div style={{ color: '#64748b', fontSize: '11px', marginBottom: '0.25rem' }}>CREDITS</div>
+                      <div style={{ fontWeight: 600, color: '#1e293b' }}>{userDetails.credits}</div>
                     </div>
-                    <div style={{ backgroundColor: '#334155', padding: '0.75rem', borderRadius: '8px' }}>
-                      <div style={{ color: '#94a3b8', fontSize: '11px', marginBottom: '0.25rem' }}>MESSAGES SENT</div>
-                      <div style={{ fontWeight: 600 }}>{userDetails.messageCount}</div>
+                    <div style={{ backgroundColor: 'white', padding: '0.75rem', borderRadius: '8px' }}>
+                      <div style={{ color: '#64748b', fontSize: '11px', marginBottom: '0.25rem' }}>MESSAGES SENT</div>
+                      <div style={{ fontWeight: 600, color: '#1e293b' }}>{userDetails.messageCount}</div>
                     </div>
-                    <div style={{ backgroundColor: '#334155', padding: '0.75rem', borderRadius: '8px' }}>
-                      <div style={{ color: '#94a3b8', fontSize: '11px', marginBottom: '0.25rem' }}>STORIES (30 DAYS)</div>
-                      <div style={{ fontWeight: 600 }}>{userDetails.completedLast30}</div>
+                    <div style={{ backgroundColor: 'white', padding: '0.75rem', borderRadius: '8px' }}>
+                      <div style={{ color: '#64748b', fontSize: '11px', marginBottom: '0.25rem' }}>STORIES (30 DAYS)</div>
+                      <div style={{ fontWeight: 600, color: '#1e293b' }}>{userDetails.completedLast30}</div>
                     </div>
-                    <div style={{ backgroundColor: '#334155', padding: '0.75rem', borderRadius: '8px' }}>
-                      <div style={{ color: '#94a3b8', fontSize: '11px', marginBottom: '0.25rem' }}>STORIES (LIFETIME)</div>
-                      <div style={{ fontWeight: 600 }}>{userDetails.completedLifetime}</div>
+                    <div style={{ backgroundColor: 'white', padding: '0.75rem', borderRadius: '8px' }}>
+                      <div style={{ color: '#64748b', fontSize: '11px', marginBottom: '0.25rem' }}>STORIES (LIFETIME)</div>
+                      <div style={{ fontWeight: 600, color: '#1e293b' }}>{userDetails.completedLifetime}</div>
                     </div>
                   </div>
                 ) : null}
