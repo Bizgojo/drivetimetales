@@ -386,12 +386,10 @@ export default function SeriesDetailPage() {
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
-              gap: '8px'
+              justifyContent: 'center'
             }}
           >
-            <span>▶</span>
-            <span>Go to Player ({selectedEpisodes.size} • {selectedCredits} cr)</span>
+            Play {selectedEpisodes.size} episode{selectedEpisodes.size !== 1 ? 's' : ''}, {selectedCredits} Credit{selectedCredits !== 1 ? 's' : ''}
           </button>
         </div>
       )}
