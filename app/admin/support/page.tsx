@@ -42,10 +42,64 @@ export default function AdminSupportPage() {
   const [sending, setSending] = useState(false)
   const [generatingAI, setGeneratingAI] = useState(false)
   const [loadingUser, setLoadingUser] = useState(false)
+  
+  // Knowledge base state
+  const [showKnowledgeEditor, setShowKnowledgeEditor] = useState(false)
+  const [knowledgeBase, setKnowledgeBase] = useState('')
+  const [knowledgeUpdatedAt, setKnowledgeUpdatedAt] = useState<string | null>(null)
+  const [savingKnowledge, setSavingKnowledge] = useState(false)
 
   useEffect(() => {
     loadMessages()
+    loadKnowledgeBase()
   }, [])
+
+  async function loadKnowledgeBase() {
+    try {
+      const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+      const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+      if (!url || !key) return
+
+      const response = await fetch(
+        `${url}/rest/v1/dtt_settings?key=eq.support_knowledge_base&select=*`,
+        { headers: { 'apikey': key, 'Authorization': `Bearer ${key}` } }
+      )
+      
+      if (response.ok) {
+        const data = await response.json()
+        if (data && data.length > 0) {
+          setKnowledgeBase(data[0].value || '')
+          setKnowledgeUpdatedAt(data[0].updated_at)
+        }
+      }
+    } catch (error) {
+      console.error('Error loading knowledge base:', error)
+    }
+  }
+
+  async function saveKnowledgeBase() {
+    setSavingKnowledge(true)
+    try {
+      const response = await fetch('/api/admin/support/knowledge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ knowledge: knowledgeBase })
+      })
+      
+      if (response.ok) {
+        setKnowledgeUpdatedAt(new Date().toISOString())
+        alert('Knowledge base saved successfully!')
+        setShowKnowledgeEditor(false)
+      } else {
+        alert('Failed to save knowledge base')
+      }
+    } catch (error) {
+      console.error('Error saving knowledge base:', error)
+      alert('Failed to save knowledge base')
+    } finally {
+      setSavingKnowledge(false)
+    }
+  }
 
   async function loadMessages() {
     try {
@@ -255,12 +309,10 @@ export default function AdminSupportPage() {
       })
       
       if (response.ok) {
-        setMessages(msgs => msgs.map(m => 
-          m.id === selectedMessage.id 
-            ? { ...m, status: 'answered', admin_response: replyText, responded_at: new Date().toISOString() } 
-            : m
-        ))
-        setSelectedMessage(prev => prev ? { ...prev, status: 'answered', admin_response: replyText } : null)
+        // Remove the message from the list and clear selection
+        setMessages(msgs => msgs.filter(m => m.id !== selectedMessage.id))
+        setSelectedMessage(null)
+        setUserDetails(null)
         setReplyText('')
         alert('Reply sent successfully!')
       } else {
@@ -322,9 +374,141 @@ export default function AdminSupportPage() {
 
   return (
     <div style={{ padding: '2rem' }}>
-      <h1 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '1.5rem', color: '#1e293b' }}>
-        💬 Support Messages
-      </h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+        <h1 style={{ fontSize: '24px', fontWeight: 'bold', color: '#1e293b' }}>
+          💬 Support Messages
+        </h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          {knowledgeUpdatedAt && (
+            <span style={{ fontSize: '12px', color: '#64748b' }}>
+              Knowledge Base Updated: {new Date(knowledgeUpdatedAt).toLocaleDateString()}
+            </span>
+          )}
+          <button
+            onClick={() => setShowKnowledgeEditor(true)}
+            style={{
+              padding: '0.5rem 1rem',
+              backgroundColor: '#8b5cf6',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              fontSize: '13px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem'
+            }}
+          >
+            📚 Edit Knowledge Base
+          </button>
+        </div>
+      </div>
+
+      {/* Knowledge Base Editor Modal */}
+      {showKnowledgeEditor && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 100,
+          padding: '2rem'
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '16px',
+            padding: '1.5rem',
+            width: '100%',
+            maxWidth: '900px',
+            maxHeight: '90vh',
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h2 style={{ fontSize: '18px', fontWeight: 600, color: '#1e293b' }}>
+                📚 AI Knowledge Base
+              </h2>
+              <button
+                onClick={() => setShowKnowledgeEditor(false)}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#f1f5f9',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  color: '#64748b'
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+            <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '1rem' }}>
+              This knowledge base is used by AI to generate accurate support responses. Include information about plans, pricing, features, policies, and common issues.
+            </p>
+            <textarea
+              value={knowledgeBase}
+              onChange={(e) => setKnowledgeBase(e.target.value)}
+              placeholder="Enter DTT knowledge base content here...
+
+Example:
+# Drive Time Tales Knowledge Base
+
+## Subscription Plans
+- Free: 2 credits on signup
+- Test Driver ($2.99/mo): 10 credits/month
+- Commuter ($7.99/mo): 30 credits/month
+- Road Warrior ($14.99/mo): Unlimited
+
+## How Credits Work
+..."
+              style={{
+                flex: 1,
+                padding: '1rem',
+                border: '1px solid #e2e8f0',
+                borderRadius: '8px',
+                fontSize: '14px',
+                fontFamily: 'monospace',
+                resize: 'none',
+                minHeight: '400px',
+                backgroundColor: 'white',
+                color: '#1e293b'
+              }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem' }}>
+              <button
+                onClick={() => setShowKnowledgeEditor(false)}
+                style={{
+                  padding: '10px 20px',
+                  backgroundColor: '#f1f5f9',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  color: '#64748b'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveKnowledgeBase}
+                disabled={savingKnowledge}
+                style={{
+                  padding: '10px 20px',
+                  backgroundColor: savingKnowledge ? '#cbd5e1' : '#8b5cf6',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontWeight: 600,
+                  cursor: savingKnowledge ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {savingKnowledge ? 'Saving...' : 'Save Knowledge Base'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Filter Tabs */}
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
