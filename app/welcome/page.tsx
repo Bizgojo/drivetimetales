@@ -21,7 +21,7 @@ import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
-import { W2NewsBriefings } from '@/components/W2NewsBriefings'
+import { Welcome_NewsBriefings } from '@/components/Welcome_NewsBriefings'
 import W3NewReleases from '@/components/W3NewReleases'
 import W4RecommendedForYou from '@/components/W4RecommendedForYou'
 import WelcomeHeader from '@/components/WelcomeHeader'
@@ -133,7 +133,7 @@ function WelcomeContent() {
         
 
         {/* W2: NewsBriefings */}
-        <W2NewsBriefings newsEpisodes={newsEpisodes} credits={freeCredits} />
+        <Welcome_NewsBriefings newsEpisodes={newsEpisodes} credits={freeCredits} />
 
         {/* W3: NewReleases */}
         <W3NewReleases credits={freeCredits} />
