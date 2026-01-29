@@ -37,7 +37,7 @@ function PlayerContent() {
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
-  const [showExtras, setShowExtras] = useState(true)
+  const [showButtons, setShowButtons] = useState(true)
   const [charged, setCharged] = useState(false)
   const [audioReady, setAudioReady] = useState(false)
   
@@ -47,7 +47,7 @@ function PlayerContent() {
   useEffect(() => {
     async function fetchData() {
       if (!storyId) {
-        setError('No story ID provided')
+        setError('No story ID')
         setLoading(false)
         return
       }
@@ -60,34 +60,28 @@ function PlayerContent() {
           .eq('id', storyId)
           .single()
 
-        if (storyError) {
-          setError('Story not found')
-          setLoading(false)
-          return
-        }
-
+        if (storyError) throw storyError
         setStory(storyData)
 
-        // Fetch library entry if user is logged in
+        // Check if user has this in library
         if (user) {
           const { data: libData } = await supabase
             .from('user_library')
-            .select('*')
+            .select('story_id, progress, completed')
             .eq('user_id', user.id)
             .eq('story_id', storyId)
-            .maybeSingle()
+            .single()
 
           if (libData) {
             setLibraryEntry(libData)
-            setCurrentTime(libData.progress || 0)
-            setCharged(true)
-            setShowExtras(false)
+            setCharged(true) // Already in library = already charged
+            setShowButtons(false)
           }
         }
-
-        setLoading(false)
       } catch (err) {
-        setError('Failed to load story')
+        console.error('Error fetching story:', err)
+        setError('Story not found')
+      } finally {
         setLoading(false)
       }
     }
@@ -95,14 +89,11 @@ function PlayerContent() {
     fetchData()
   }, [storyId, user])
 
-  // Handle audio metadata loaded
-  const handleLoadedMetadata = () => {
+  // Handle audio loaded
+  const handleCanPlay = () => {
+    setAudioReady(true)
     if (audioRef.current) {
       setDuration(audioRef.current.duration)
-      setAudioReady(true)
-      if (currentTime > 0) {
-        audioRef.current.currentTime = currentTime
-      }
     }
   }
 
@@ -141,28 +132,33 @@ function PlayerContent() {
     
     const creditCost = story.credits || Math.max(1, Math.floor(story.duration_mins / 15))
     
-    // Deduct credits
-    const { error: creditError } = await supabase
-      .from('users')
-      .update({ credits: (user.credits || 0) - creditCost })
-      .eq('id', user.id)
+    // Deduct credits (skip if unlimited = -1)
+    if (user.credits !== -1) {
+      const { error: creditError } = await supabase
+        .from('users')
+        .update({ credits: (user.credits || 0) - creditCost })
+        .eq('id', user.id)
 
-    if (!creditError) {
-      // Add to library
-      await supabase
-        .from('user_library')
-        .upsert({
-          user_id: user.id,
-          story_id: story.id,
-          progress: Math.floor(currentTime),
-          completed: false,
-          last_played: new Date().toISOString()
-        }, { onConflict: 'user_id,story_id' })
-
-      setCharged(true)
-      setShowExtras(false)
-      refreshUser()
+      if (creditError) {
+        console.error('Error deducting credits:', creditError)
+        return
+      }
     }
+
+    // Add to library
+    await supabase
+      .from('user_library')
+      .upsert({
+        user_id: user.id,
+        story_id: story.id,
+        progress: Math.floor(currentTime),
+        completed: false,
+        last_played: new Date().toISOString()
+      }, { onConflict: 'user_id,story_id' })
+
+    setCharged(true)
+    setShowButtons(false)
+    refreshUser()
   }
 
   // Play/Pause toggle
@@ -179,56 +175,34 @@ function PlayerContent() {
     }
   }
 
-  // Skip forward/backward
-  const handleSkip = (seconds: number) => {
-    if (audioRef.current) {
-      audioRef.current.currentTime = Math.max(0, Math.min(duration, currentTime + seconds))
-    }
-  }
-
-  // Save progress periodically
-  useEffect(() => {
-    if (!user || !story || !isPlaying) return
-    
-    const interval = setInterval(async () => {
-      await supabase
-        .from('user_library')
-        .upsert({
-          user_id: user.id,
-          story_id: story.id,
-          progress: Math.floor(currentTime),
-          completed: false,
-          last_played: new Date().toISOString()
-        }, { onConflict: 'user_id,story_id' })
-    }, 30000)
-
-    return () => clearInterval(interval)
-  }, [user, story, isPlaying, currentTime])
-
-  // Reserve for later
+  // Reserve for later (add to wishlist)
   const handleReserve = async () => {
     if (!user || !story) return
+    
     await supabase
-      .from('user_reserved')
+      .from('wishlists')
       .upsert({
         user_id: user.id,
         story_id: story.id,
-        reserved_at: new Date().toISOString()
+        created_at: new Date().toISOString()
       }, { onConflict: 'user_id,story_id' })
-    router.push('/library')
+    
+    router.push('/reserved')
   }
 
-  // Not for me
+  // Not for me (mark as passed)
   const handleNotForMe = async () => {
     if (!user || !story) return
+    
     await supabase
-      .from('user_not_for_me')
+      .from('user_passes')
       .upsert({
         user_id: user.id,
         story_id: story.id,
-        marked_at: new Date().toISOString()
+        created_at: new Date().toISOString()
       }, { onConflict: 'user_id,story_id' })
-    router.push('/library')
+    
+    router.back()
   }
 
   // Format time display
@@ -238,165 +212,173 @@ function PlayerContent() {
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
-  // Truncate description
-  const truncateDescription = (desc: string | null) => {
-    if (!desc) return ''
-    return desc.length > 120 ? desc.substring(0, 120) + '...' : desc
-  }
-
-  const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0
-  const creditCost = story?.credits || 1
+  // Get display name for header
+  const displayName = user?.display_name || user?.email?.split('@')[0] || 'U'
 
   // Loading state
-  if (loading) return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ width: '40px', height: '40px', border: '4px solid #f97316', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-    </div>
-  )
+  if (loading) {
+    return (
+      <div style={{ minHeight: '100vh', backgroundColor: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ width: '40px', height: '40px', border: '4px solid #f97316', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    )
+  }
 
   // Error state
-  if (error || !story) return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
-      <div style={{ textAlign: 'center' }}>
-        <h1 style={{ fontSize: '20px', color: 'white', marginBottom: '16px' }}>Story not found</h1>
-        <p style={{ color: '#ef4444', fontSize: '14px', marginBottom: '16px' }}>{error}</p>
-        <button onClick={() => router.push('/library')} style={{ color: '#f97316', background: 'none', border: 'none', cursor: 'pointer' }}>← Back to Library</button>
+  if (error || !story) {
+    return (
+      <div style={{ minHeight: '100vh', backgroundColor: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '16px' }}>
+        <p style={{ color: 'white', fontSize: '18px' }}>Story not found</p>
+        <Link href="/home" style={{ color: '#f97316' }}>← Back to Home</Link>
       </div>
-    </div>
-  )
+    )
+  }
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#020617', color: 'white', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <audio 
-        ref={audioRef} 
-        src={story.audio_url || undefined} 
-        onTimeUpdate={handleTimeUpdate} 
-        onLoadedMetadata={handleLoadedMetadata} 
-        onEnded={handleEnded} 
-        preload="auto" 
+    <div style={{ minHeight: '100vh', backgroundColor: '#020617', color: 'white', display: 'flex', flexDirection: 'column' }}>
+      {/* Hidden audio element */}
+      <audio
+        ref={audioRef}
+        src={story.audio_url}
+        onCanPlay={handleCanPlay}
+        onTimeUpdate={handleTimeUpdate}
+        onEnded={handleEnded}
+        preload="auto"
       />
-      
+
       {/* Header */}
-      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid #1e293b' }}>
-        <button onClick={() => router.back()} style={{ color: 'white', background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px' }}>← Back</button>
-        <Link href="/home" style={{ display: 'flex', alignItems: 'center', gap: '6px', textDecoration: 'none' }}>
-          <span>🚛</span>
-          <span>🚗</span>
-          <span style={{ color: 'white', fontWeight: 'bold' }}>Drive Time</span>
-          <span style={{ color: '#fb923c', fontWeight: 'bold' }}>Tales</span>
+      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid #334155' }}>
+        <button onClick={() => router.back()} style={{ color: '#f97316', background: 'none', border: 'none', fontSize: '16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+          ← Back
+        </button>
+        
+        <Link href="/home" style={{ display: 'flex', alignItems: 'center', gap: '8px', textDecoration: 'none' }}>
+          <span style={{ fontSize: '18px' }}>🚛</span>
+          <span style={{ fontSize: '18px' }}>🚗</span>
+          <span style={{ fontWeight: 'bold', color: 'white', fontSize: '14px' }}>Drive Time </span>
+          <span style={{ fontWeight: 'bold', color: '#f97316', fontSize: '14px' }}>Tales</span>
         </Link>
-        <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#f97316', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', color: 'black' }}>
-          {user?.email?.charAt(0).toUpperCase() || 'U'}
-        </div>
+        
+        {user && (
+          <Link href="/account" style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#f97316', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'black', fontWeight: 'bold', fontSize: '14px', textDecoration: 'none' }}>
+            {displayName.charAt(0).toUpperCase()}
+          </Link>
+        )}
       </header>
 
-      {/* Main Content */}
-      <main style={{ flex: 1, padding: '16px', display: 'flex', flexDirection: 'column', justifyContent: 'center', maxHeight: 'calc(100vh - 60px)' }}>
+      {/* Main content */}
+      <main style={{ flex: 1, padding: '16px', display: 'flex', flexDirection: 'column' }}>
         
-        {/* Cover */}
+        {/* Cover - larger when buttons hidden */}
         <div style={{ 
-          width: '100%', 
-          maxWidth: showExtras ? '180px' : '280px', 
-          margin: '0 auto 12px', 
-          aspectRatio: '1', 
+          width: showButtons ? '200px' : '280px', 
+          height: showButtons ? '200px' : '280px', 
+          margin: '0 auto 16px', 
           borderRadius: '12px', 
-          overflow: 'hidden', 
-          backgroundColor: '#1e293b',
-          boxShadow: '0 0 20px rgba(255,255,255,0.3)'
+          overflow: 'hidden',
+          boxShadow: '0 0 30px rgba(255, 255, 255, 0.3)',
+          transition: 'all 0.3s ease'
         }}>
           {story.cover_url ? (
             <img src={story.cover_url} alt={story.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           ) : (
-            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(to bottom right, #ea580c, #7c2d12)' }}>
-              <span style={{ fontSize: '48px', opacity: 0.5 }}>🎧</span>
-            </div>
+            <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, #475569, #1e293b)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '64px' }}>🎧</div>
           )}
         </div>
-        
-        {/* Title */}
-        <h1 style={{ fontSize: '20px', fontWeight: 'bold', textAlign: 'center', color: 'white', marginBottom: '8px' }}>{story.title}</h1>
-        
-        {/* Meta & Description - only when showExtras */}
-        {showExtras && (
-          <>
-            <p style={{ color: 'white', fontSize: '12px', textAlign: 'center', marginBottom: '4px' }}>
-              {story.genre} • {story.author || 'Unknown'} • {story.duration_mins} min • {creditCost} credit{creditCost > 1 ? 's' : ''}
-            </p>
-            <p style={{ color: 'white', fontSize: '12px', textAlign: 'center', marginBottom: '12px' }}>{truncateDescription(story.description)}</p>
-          </>
+
+        {/* Title and info - hide some after charge */}
+        <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+          <h1 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '4px' }}>{story.title}</h1>
+          {showButtons && (
+            <>
+              <p style={{ color: '#94a3b8', fontSize: '14px', marginBottom: '4px' }}>{story.genre} • {story.duration_mins} min • {story.credits} credit{story.credits !== 1 ? 's' : ''}</p>
+              <p style={{ color: 'white', fontSize: '14px' }}>by {story.author || 'Unknown Author'}</p>
+            </>
+          )}
+        </div>
+
+        {/* Description - only when showButtons */}
+        {showButtons && story.description && (
+          <p style={{ color: 'white', fontSize: '14px', textAlign: 'center', marginBottom: '16px', lineHeight: 1.5 }}>
+            {story.description}
+          </p>
         )}
-        
-        {/* Progress Bar */}
+
+        {/* Spacer */}
+        <div style={{ flex: 1 }} />
+
+        {/* Progress bar */}
         <div style={{ marginBottom: '12px' }}>
-          <div style={{ height: '8px', backgroundColor: '#334155', borderRadius: '9999px', overflow: 'hidden' }}>
-            <div style={{ height: '100%', backgroundColor: '#f97316', width: `${progressPercent}%`, transition: 'width 0.3s' }} />
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'white', marginTop: '4px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>
             <span>{formatTime(currentTime)}</span>
             <span>{formatTime(duration)}</span>
           </div>
-        </div>
-        
-        {/* Playback Controls */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px', marginBottom: '12px' }}>
-          <button 
-            onClick={() => handleSkip(-30)} 
-            style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: '#334155', border: 'none', color: 'white', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}
-          >
-            -30
-          </button>
-          <button 
-            onClick={handlePlayPause} 
-            style={{ 
-              width: '64px', 
-              height: '64px', 
-              borderRadius: '50%', 
-              backgroundColor: !isPlaying && audioReady ? '#22c55e' : '#f97316', 
-              border: 'none', 
-              color: 'black', 
-              fontSize: '24px', 
-              fontWeight: 'bold', 
-              cursor: 'pointer',
-              animation: !isPlaying && audioReady ? 'pulse 2s infinite' : 'none'
-            }}
-          >
-            {isPlaying ? '❚❚' : '▶'}
-          </button>
-          <button 
-            onClick={() => handleSkip(30)} 
-            style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: '#334155', border: 'none', color: 'white', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}
-          >
-            +30
-          </button>
+          <div style={{ height: '6px', backgroundColor: '#334155', borderRadius: '3px', overflow: 'hidden' }}>
+            <div style={{ 
+              height: '100%', 
+              backgroundColor: '#f97316', 
+              width: duration > 0 ? `${(currentTime / duration) * 100}%` : '0%',
+              transition: 'width 0.1s'
+            }} />
+          </div>
         </div>
 
-        {/* Loading audio indicator */}
-        {!audioReady && !isPlaying && (
-          <p style={{ textAlign: 'center', color: '#fb923c', fontSize: '12px', marginBottom: '8px' }}>Loading audio...</p>
-        )}
-        
-        {/* Bottom Buttons - only when showExtras */}
-        {showExtras && (
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button 
-              onClick={handleReserve} 
-              style={{ flex: 1, padding: '12px', backgroundColor: '#db2777', border: 'none', borderRadius: '12px', color: 'white', fontWeight: '600', fontSize: '14px', cursor: 'pointer' }}
-            >
-              📖 Reserve for Later
-            </button>
-            <button 
-              onClick={handleNotForMe} 
-              style={{ flex: 1, padding: '12px', backgroundColor: '#334155', border: 'none', borderRadius: '12px', color: 'white', fontWeight: '600', fontSize: '14px', cursor: 'pointer' }}
-            >
-              👎 Not For Me
-            </button>
-          </div>
-        )}
+        {/* Play/Pause button */}
+        <button
+          onClick={handlePlayPause}
+          style={{
+            width: '100%',
+            padding: '16px',
+            border: 'none',
+            borderRadius: '12px',
+            fontSize: '18px',
+            fontWeight: 'bold',
+            cursor: 'pointer',
+            marginBottom: '12px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+            backgroundColor: !isPlaying && audioReady ? '#22c55e' : '#f97316',
+            color: 'black',
+            animation: !isPlaying && audioReady ? 'pulse 2s infinite' : 'none'
+          }}
+        >
+          {isPlaying ? (
+            <>❚❚ Pause</>
+          ) : audioReady ? (
+            <>▶ Tap to Play</>
+          ) : (
+            <>Loading...</>
+          )}
+        </button>
+
+        {/* Bottom Buttons - visibility hidden after 3 min so layout doesn't shift */}
+        <div style={{ 
+          display: 'flex', 
+          gap: '8px',
+          visibility: showButtons ? 'visible' : 'hidden',
+          height: showButtons ? 'auto' : '0',
+          overflow: 'hidden'
+        }}>
+          <button 
+            onClick={handleReserve} 
+            style={{ flex: 1, padding: '14px', backgroundColor: '#db2777', border: 'none', borderRadius: '12px', color: 'white', fontWeight: '600', fontSize: '14px', cursor: 'pointer' }}
+          >
+            📖 Reserve for Later
+          </button>
+          <button 
+            onClick={handleNotForMe} 
+            style={{ flex: 1, padding: '14px', backgroundColor: '#334155', border: 'none', borderRadius: '12px', color: 'white', fontWeight: '600', fontSize: '14px', cursor: 'pointer' }}
+          >
+            👎 Not For Me
+          </button>
+        </div>
 
         {/* Charge countdown */}
         {!charged && currentTime > 0 && currentTime < 180 && (
-          <p style={{ textAlign: 'center', color: '#64748b', fontSize: '12px', marginTop: '8px' }}>
+          <p style={{ textAlign: 'center', color: '#64748b', fontSize: '12px', marginTop: '12px' }}>
             Credits charged in {Math.ceil((180 - currentTime) / 60)} min
           </p>
         )}
