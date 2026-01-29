@@ -17,7 +17,7 @@ interface CategoryInfo {
 }
 
 const CATEGORIES: CategoryInfo[] = [
-  { id: 'local', label: 'Local', icon: '🏠' },
+  { id: 'state', label: 'State', icon: '🏠' },
   { id: 'national', label: 'National', icon: '🇺🇸' },
   { id: 'international', label: 'World', icon: '🌍' },
   { id: 'business', label: 'Business', icon: '📈' },
