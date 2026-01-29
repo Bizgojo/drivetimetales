@@ -5,7 +5,7 @@ import StickyHeaderHome from '@/components/StickyHeaderHome'
 
 import StickyHeaderFull from '@/components/StickyHeaderFull'
 import { WelcomeCredits } from '@/components/WelcomeCredits'
-import { NewsBriefings } from '@/components/NewsBriefings'
+import NewsBriefingsSection from '@/components/NewsBriefingsSection'
 import ContinueListening from '@/components/ContinueListening'
 import NewReleases from '@/components/NewReleases'
 import RecommendedForYou from '@/components/RecommendedForYou'
@@ -123,7 +123,7 @@ export default function HomePage() {
         {/* Show Playlist OR Continue Listening, not both */}
         {hasPlaylist ? <YourPlaylist /> : <ContinueListening />}
         
-        <NewsBriefings newsEpisodes={newsEpisodes} userState={userState} />
+        <NewsBriefingsSection />
         <NewReleases />
         <RecommendedForYou />
       </main>
