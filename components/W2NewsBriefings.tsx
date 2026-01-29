@@ -189,10 +189,35 @@ export function W2NewsBriefings({ newsEpisodes, credits }: W2NewsBriefingsProps)
     setPendingState(null)
     setShowStateDropdown(false)
     
-    // Play the state news
-    setTimeout(() => {
-      handlePlayBriefing('state')
-    }, 100)
+    // Play state news directly (don't call handlePlayBriefing which checks selectedState)
+    const episode = newsEpisodes['state']
+    
+    if (credits <= 0) {
+      playNoCreditsMessage('state')
+      return
+    }
+    
+    if (!episode?.audio_url) return
+    
+    // Pause any other playing audio
+    Object.entries(audioRefs.current).forEach(([id, audio]) => {
+      if (id !== 'state' && !audio.paused) {
+        audio.pause()
+        setBriefingStatus(prev => ({ ...prev, [id]: 'paused' }))
+      }
+    })
+    
+    if (!audioRefs.current['state']) {
+      audioRefs.current['state'] = new Audio(episode.audio_url)
+      audioRefs.current['state'].onended = () => {
+        setBriefingStatus(prev => ({ ...prev, ['state']: 'played' }))
+      }
+    }
+    
+    const audio = audioRefs.current['state']
+    audio.currentTime = 0
+    audio.play()
+    setBriefingStatus(prev => ({ ...prev, ['state']: 'playing' }))
   }
 
   // Cancel state selection - return to state list
