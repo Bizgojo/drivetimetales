@@ -25,6 +25,7 @@ STATES:
 
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
 
 interface WelcomeHeaderProps {
@@ -32,6 +33,8 @@ interface WelcomeHeaderProps {
 }
 
 export default function WelcomeHeader({ credits }: WelcomeHeaderProps) {
+  const [animationDone, setAnimationDone] = useState(false)
+  
   return (
     <div style={{ textAlign: 'center', paddingTop: '2rem', paddingBottom: '1rem', overflow: 'hidden' }}>
       
@@ -80,29 +83,31 @@ export default function WelcomeHeader({ credits }: WelcomeHeaderProps) {
         </span>
       </div>
       
-      {/* Animated Vehicles */}
-      <div style={{ 
-        position: 'relative', 
-        height: '3rem', 
-        marginBottom: '1rem',
-        overflow: 'hidden',
-        width: '100%'
-      }}>
-        <div className="driving-vehicles" style={{ 
-          position: 'absolute',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8rem',
-          top: 0
+      {/* Animated Vehicles - hidden after animation completes */}
+      {!animationDone && (
+        <div style={{ 
+          position: 'relative', 
+          height: '3rem', 
+          marginBottom: '1rem',
+          overflow: 'hidden',
+          width: '100%'
         }}>
-          <span style={{ fontSize: '2.5rem' }}>🛻</span>
-          <span style={{ fontSize: '2.5rem' }}>🚕</span>
-          <span style={{ fontSize: '2.5rem' }}>🚚</span>
-          <span style={{ fontSize: '2.5rem' }}>🚙</span>
-          <span style={{ fontSize: '2.5rem' }}>🚐</span>
-          <span style={{ fontSize: '2.5rem' }}>🏎️</span>
+          <div className="driving-vehicles" onAnimationEnd={() => setAnimationDone(true)} style={{ 
+            position: 'absolute',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8rem',
+            top: 0
+          }}>
+            <span style={{ fontSize: '2.5rem' }}>🛻</span>
+            <span style={{ fontSize: '2.5rem' }}>🚕</span>
+            <span style={{ fontSize: '2.5rem' }}>🚚</span>
+            <span style={{ fontSize: '2.5rem' }}>🚙</span>
+            <span style={{ fontSize: '2.5rem' }}>🚐</span>
+            <span style={{ fontSize: '2.5rem' }}>🏎️</span>
+          </div>
         </div>
-      </div>
+      )}
       
       {/* Tagline */}
       <p style={{ 
