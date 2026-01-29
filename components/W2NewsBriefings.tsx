@@ -57,15 +57,9 @@ const NEWS_CATEGORIES = [
   { id: 'scitech', label: 'Sci/Tech', color: '#8b5cf6', icon: '🔬' }
 ]
 
-interface NewsEpisode {
-  id: string
-  title: string
-  audio_url: string
-  duration?: number
-}
 
 interface W2NewsBriefingsProps {
-  newsEpisodes: Record<string, NewsEpisode>
+  newsEpisodes: Record<string, { id: string; category: string; audio_url: string | null; is_live: boolean }>
   credits: number
 }
 
