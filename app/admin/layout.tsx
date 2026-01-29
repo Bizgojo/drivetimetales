@@ -12,6 +12,7 @@ export default function AdminLayout({
 
   const menuItems = [
     { href: '/admin', label: 'Dashboard', icon: '📊' },
+    { href: '/admin/news-briefings', label: 'News Briefings', icon: '📰' },
     { href: '/admin/stories', label: 'Stories', icon: '📚' },
     { href: '/admin/users', label: 'Users', icon: '👥' },
     { href: '/admin/analytics', label: 'Analytics', icon: '📈' },
