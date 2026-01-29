@@ -1,27 +1,27 @@
 /*
 ================================================================================
-🔒 PROTECTED MODULE W2 - NEWS BRIEFINGS (WELCOME PAGE)
+🔒 PROTECTED MODULE - HOME NEWS BRIEFINGS
 ================================================================================
-Module: W2_NewsBriefings
-Location: ~/DriveTimeFiles/WorkingCodeLibrary/01_WelcomePage/
-File: W2_NewsBriefings.protected.tsx
+Module: Home_NewsBriefings
+Location: ~/Projects/drivetimetales/components/
+File: Home_NewsBriefings.tsx
 
-Created: January 18, 2026
-Updated: January 18, 2026 - Added state selection dropdown, no-credits handling
+Created: January 29, 2026
 Owner: Marc (Wonder Books Press / Drive Time Tales)
 Status: PROTECTED
 
 PURPOSE:
-News Briefings section for Welcome page with horizontal button layout.
+News Briefings section for HOME page with horizontal button layout.
+State is passed as prop from user profile (set during signup/Stripe).
 
 SCENARIOS:
 1. User has 1+ credits: Plays the actual news briefing
 2. User has 0 credits: Plays "no credits" message from narrator
-3. State News first click: Shows dropdown to select state, then plays
+3. State already set from user profile - no dropdown needed
 
 FEATURES:
-- First click on State News shows state dropdown
-- Selected state saved to localStorage
+- State passed as prop (from profile.state)
+- No dropdown - state already selected during signup/checkout
 - State abbreviation becomes label (e.g., "TN News")
 - No-credits handling plays narrator message
 
@@ -54,7 +54,7 @@ import { useState, useRef, useEffect } from 'react'
 
 type BriefingStatus = 'new' | 'playing' | 'paused' | 'played'
 
-interface W2NewsBriefingsProps {
+interface HomeNewsBriefingsProps {
   newsEpisodes: Record<string, {
     id: string
     category: string
@@ -62,65 +62,8 @@ interface W2NewsBriefingsProps {
     is_live: boolean
   }>
   credits: number
+  userState: string  // State from user profile (set during signup/Stripe)
 }
-
-// =============================================================================
-// US STATES
-// =============================================================================
-
-const US_STATES = [
-  { abbrev: 'AL', name: 'Alabama' },
-  { abbrev: 'AK', name: 'Alaska' },
-  { abbrev: 'AZ', name: 'Arizona' },
-  { abbrev: 'AR', name: 'Arkansas' },
-  { abbrev: 'CA', name: 'California' },
-  { abbrev: 'CO', name: 'Colorado' },
-  { abbrev: 'CT', name: 'Connecticut' },
-  { abbrev: 'DE', name: 'Delaware' },
-  { abbrev: 'FL', name: 'Florida' },
-  { abbrev: 'GA', name: 'Georgia' },
-  { abbrev: 'HI', name: 'Hawaii' },
-  { abbrev: 'ID', name: 'Idaho' },
-  { abbrev: 'IL', name: 'Illinois' },
-  { abbrev: 'IN', name: 'Indiana' },
-  { abbrev: 'IA', name: 'Iowa' },
-  { abbrev: 'KS', name: 'Kansas' },
-  { abbrev: 'KY', name: 'Kentucky' },
-  { abbrev: 'LA', name: 'Louisiana' },
-  { abbrev: 'ME', name: 'Maine' },
-  { abbrev: 'MD', name: 'Maryland' },
-  { abbrev: 'MA', name: 'Massachusetts' },
-  { abbrev: 'MI', name: 'Michigan' },
-  { abbrev: 'MN', name: 'Minnesota' },
-  { abbrev: 'MS', name: 'Mississippi' },
-  { abbrev: 'MO', name: 'Missouri' },
-  { abbrev: 'MT', name: 'Montana' },
-  { abbrev: 'NE', name: 'Nebraska' },
-  { abbrev: 'NV', name: 'Nevada' },
-  { abbrev: 'NH', name: 'New Hampshire' },
-  { abbrev: 'NJ', name: 'New Jersey' },
-  { abbrev: 'NM', name: 'New Mexico' },
-  { abbrev: 'NY', name: 'New York' },
-  { abbrev: 'NC', name: 'North Carolina' },
-  { abbrev: 'ND', name: 'North Dakota' },
-  { abbrev: 'OH', name: 'Ohio' },
-  { abbrev: 'OK', name: 'Oklahoma' },
-  { abbrev: 'OR', name: 'Oregon' },
-  { abbrev: 'PA', name: 'Pennsylvania' },
-  { abbrev: 'RI', name: 'Rhode Island' },
-  { abbrev: 'SC', name: 'South Carolina' },
-  { abbrev: 'SD', name: 'South Dakota' },
-  { abbrev: 'TN', name: 'Tennessee' },
-  { abbrev: 'TX', name: 'Texas' },
-  { abbrev: 'UT', name: 'Utah' },
-  { abbrev: 'VT', name: 'Vermont' },
-  { abbrev: 'VA', name: 'Virginia' },
-  { abbrev: 'WA', name: 'Washington' },
-  { abbrev: 'WV', name: 'West Virginia' },
-  { abbrev: 'WI', name: 'Wisconsin' },
-  { abbrev: 'WY', name: 'Wyoming' },
-  { abbrev: 'DC', name: 'Washington D.C.' },
-]
 
 // =============================================================================
 // NEWS CATEGORIES - COLOR WHEEL (60° apart) - DO NOT CHANGE
@@ -157,74 +100,14 @@ const STATUS_LABELS: Record<BriefingStatus, string> = {
 // COMPONENT
 // =============================================================================
 
-export function W2NewsBriefings({ newsEpisodes, credits }: W2NewsBriefingsProps) {
+export function Home_NewsBriefings({ newsEpisodes, credits, userState }: HomeNewsBriefingsProps) {
   const [briefingStatus, setBriefingStatus] = useState<Record<string, BriefingStatus>>({})
   const [noCreditsPlaying, setNoCreditsPlaying] = useState(false)
-  const [showStateDropdown, setShowStateDropdown] = useState(false)
-  const [selectedState, setSelectedState] = useState<string>('')
-  const [pendingState, setPendingState] = useState<string | null>(null)
   const audioRefs = useRef<Record<string, HTMLAudioElement>>({})
   const noCreditsAudioRef = useRef<HTMLAudioElement | null>(null)
 
-  // Load saved state from localStorage on mount
-  useEffect(() => {
-    const savedState = localStorage.getItem('dtt_user_state')
-    if (savedState) {
-      setSelectedState(savedState)
-    }
-  }, [])
-
-  // Handle state selection - show confirmation popup
-  const handleStateSelect = (stateAbbrev: string) => {
-    setPendingState(stateAbbrev)
-    // Keep dropdown open behind confirmation
-  }
-
-  // Confirm state selection - close everything and play
-  const confirmStateSelection = () => {
-    if (!pendingState) return
-    const stateToPlay = pendingState
-    setSelectedState(stateToPlay)
-    localStorage.setItem('dtt_user_state', stateToPlay)
-    setPendingState(null)
-    setShowStateDropdown(false)
-    
-    // Play state news directly (don't call handlePlayBriefing which checks selectedState)
-    const episode = newsEpisodes['state']
-    
-    if (credits <= 0) {
-      playNoCreditsMessage('state')
-      return
-    }
-    
-    if (!episode?.audio_url) return
-    
-    // Pause any other playing audio
-    Object.entries(audioRefs.current).forEach(([id, audio]) => {
-      if (id !== 'state' && !audio.paused) {
-        audio.pause()
-        setBriefingStatus(prev => ({ ...prev, [id]: 'paused' }))
-      }
-    })
-    
-    if (!audioRefs.current['state']) {
-      audioRefs.current['state'] = new Audio(episode.audio_url)
-      audioRefs.current['state'].onended = () => {
-        setBriefingStatus(prev => ({ ...prev, ['state']: 'played' }))
-      }
-    }
-    
-    const audio = audioRefs.current['state']
-    audio.currentTime = 0
-    audio.play()
-    setBriefingStatus(prev => ({ ...prev, ['state']: 'playing' }))
-  }
-
-  // Cancel state selection - return to state list
-  const cancelStateSelection = () => {
-    setPendingState(null)
-    // Keep showStateDropdown true so user can pick again
-  }
+  // State comes from props (user profile), not localStorage or dropdown
+  const selectedState = userState
 
   // Handle playing the "no credits" message
   const playNoCreditsMessage = async (categoryId: string) => {
@@ -267,12 +150,7 @@ export function W2NewsBriefings({ newsEpisodes, credits }: W2NewsBriefingsProps)
   }
 
   const handlePlayBriefing = (categoryId: string) => {
-    // Special handling for state news - show dropdown if no state selected
-    if (categoryId === 'state' && !selectedState) {
-      setShowStateDropdown(true)
-      return
-    }
-
+    // No dropdown needed - state comes from user profile
     const episode = newsEpisodes[categoryId]
     
     // If user has no credits, play the "no credits" message instead
@@ -324,134 +202,6 @@ export function W2NewsBriefings({ newsEpisodes, credits }: W2NewsBriefingsProps)
       <h2 className="text-lg font-bold text-white" style={{ marginBottom: '0.25rem' }}>📰 NEWS BRIEFINGS</h2>
       <p className="text-white text-xs" style={{ marginBottom: '1rem' }}>Top stories updated throughout the day</p>
       
-      {/* State Selection Dropdown */}
-      {showStateDropdown && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.7)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 100
-        }}>
-          <div style={{
-            backgroundColor: '#1e293b',
-            borderRadius: '1rem',
-            padding: '1.5rem',
-            maxWidth: '20rem',
-            width: '90%',
-            maxHeight: '70vh',
-            overflow: 'hidden',
-            display: 'flex',
-            flexDirection: 'column'
-          }}>
-            <h3 className="text-white font-bold" style={{ fontSize: '1.125rem', marginBottom: '0.5rem', textAlign: 'center' }}>
-              Select Your State
-            </h3>
-            <p className="text-slate-400" style={{ fontSize: '0.75rem', marginBottom: '1rem', textAlign: 'center' }}>
-              Choose your state to hear local news
-            </p>
-            <div style={{ 
-              overflowY: 'auto', 
-              flex: 1,
-              display: 'grid',
-              gridTemplateColumns: 'repeat(2, 1fr)',
-              gap: '0.5rem'
-            }}>
-              {US_STATES.map((state) => (
-                <button
-                  key={state.abbrev}
-                  onClick={() => handleStateSelect(state.abbrev)}
-                  className="hover:bg-slate-600 transition rounded-lg"
-                  style={{
-                    padding: '0.5rem',
-                    backgroundColor: '#334155',
-                    color: 'white',
-                    border: 'none',
-                    cursor: 'pointer',
-                    fontSize: '0.75rem',
-                    textAlign: 'left'
-                  }}
-                >
-                  <span style={{ fontWeight: 'bold' }}>{state.abbrev}</span> - {state.name}
-                </button>
-              ))}
-            </div>
-            <button
-              onClick={() => setShowStateDropdown(false)}
-              className="text-slate-400 hover:text-white transition"
-              style={{ marginTop: '1rem', fontSize: '0.875rem', background: 'none', border: 'none', cursor: 'pointer' }}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* State Selection Confirmation Popup */}
-      {pendingState && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.85)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 110
-        }}>
-          <div style={{
-            backgroundColor: '#1e293b',
-            borderRadius: '1rem',
-            padding: '1.5rem',
-            maxWidth: '320px',
-            width: '90%',
-            textAlign: 'center'
-          }}>
-            <p style={{ color: 'white', fontSize: '1.25rem', marginBottom: '1rem' }}>
-              Play <strong>{pendingState}</strong> News?
-            </p>
-            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
-              <button
-                onClick={cancelStateSelection}
-                style={{
-                  padding: '0.75rem 1.5rem',
-                  backgroundColor: '#475569',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '0.5rem',
-                  cursor: 'pointer',
-                  fontSize: '1rem'
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmStateSelection}
-                style={{
-                  padding: '0.75rem 1.5rem',
-                  backgroundColor: '#22c55e',
-                  color: 'black',
-                  border: 'none',
-                  borderRadius: '0.5rem',
-                  cursor: 'pointer',
-                  fontWeight: 'bold',
-                  fontSize: '1rem'
-                }}
-              >
-                Play Now
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* 3-column grid with horizontal buttons */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
         {NEWS_CATEGORIES.map((cat) => {
