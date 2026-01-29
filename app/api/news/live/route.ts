@@ -33,10 +33,14 @@ export async function GET(request: NextRequest) {
     }
 
     if (category) {
-      return NextResponse.json({
+      const response = NextResponse.json({
         success: true,
         briefings: data,
       });
+      response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+      response.headers.set('Pragma', 'no-cache');
+      response.headers.set('Expires', '0');
+      return response;
     }
 
     const briefingsByCategory: Record<string, any> = {};
@@ -45,10 +49,15 @@ export async function GET(request: NextRequest) {
         briefingsByCategory[briefing.category] = briefing;
       }
     }
-    return NextResponse.json({
+    
+    const response = NextResponse.json({
       success: true,
       briefings: briefingsByCategory,
     });
+    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Expires', '0');
+    return response;
   } catch (error) {
     console.error('[News Live] Error:', error);
     return NextResponse.json(
