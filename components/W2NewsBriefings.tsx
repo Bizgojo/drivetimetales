@@ -163,6 +163,7 @@ export function W2NewsBriefings({ newsEpisodes, credits }: W2NewsBriefingsProps)
   const [briefingStatus, setBriefingStatus] = useState<Record<string, BriefingStatus>>({})
   const [noCreditsPlaying, setNoCreditsPlaying] = useState(false)
   const [showStateDropdown, setShowStateDropdown] = useState(false)
+  const [pendingState, setPendingState] = useState<string | null>(null)
   const [selectedState, setSelectedState] = useState<string>('')
   const audioRefs = useRef<Record<string, HTMLAudioElement>>({})
   const noCreditsAudioRef = useRef<HTMLAudioElement | null>(null)
@@ -177,6 +178,25 @@ export function W2NewsBriefings({ newsEpisodes, credits }: W2NewsBriefingsProps)
 
   // Handle state selection
   const handleStateSelect = (stateAbbrev: string) => {
+    setPendingState(stateAbbrev)
+    setShowStateDropdown(false)
+  }
+
+  const confirmStateSelection = () => {
+    if (!pendingState) return
+    setSelectedState(pendingState)
+    localStorage.setItem('dtt_user_state', pendingState)
+    setPendingState(null)
+    setTimeout(() => {
+      handlePlayBriefing('state')
+    }, 100)
+  }
+
+  const cancelStateSelection = () => {
+    setPendingState(null)
+  }
+
+  const handleStateSelectOLD = (stateAbbrev: string) => {
     setSelectedState(stateAbbrev)
     localStorage.setItem('dtt_user_state', stateAbbrev)
     setShowStateDropdown(false)
@@ -313,14 +333,14 @@ export function W2NewsBriefings({ newsEpisodes, credits }: W2NewsBriefingsProps)
             <h3 className="text-white font-bold" style={{ fontSize: '1.125rem', marginBottom: '0.5rem', textAlign: 'center' }}>
               Select Your State
             </h3>
-            <p className="text-slate-400" style={{ fontSize: '0.75rem', marginBottom: '1rem', textAlign: 'center' }}>
+            <p className="text-slate-400" style={{ fontSize: '1rem', marginBottom: '1rem', textAlign: 'center' }}>
               Choose your state to hear local news
             </p>
             <div style={{ 
               overflowY: 'auto', 
               flex: 1,
               display: 'grid',
-              gridTemplateColumns: 'repeat(2, 1fr)',
+              gridTemplateColumns: '1fr',
               gap: '0.5rem'
             }}>
               {US_STATES.map((state) => (
@@ -334,7 +354,7 @@ export function W2NewsBriefings({ newsEpisodes, credits }: W2NewsBriefingsProps)
                     color: 'white',
                     border: 'none',
                     cursor: 'pointer',
-                    fontSize: '0.75rem',
+                    fontSize: '1rem',
                     textAlign: 'left'
                   }}
                 >
@@ -349,6 +369,66 @@ export function W2NewsBriefings({ newsEpisodes, credits }: W2NewsBriefingsProps)
             >
               Cancel
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* State Selection Confirmation Popup */}
+      {pendingState && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.8)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 60
+        }}>
+          <div style={{
+            backgroundColor: '#1e293b',
+            borderRadius: '1rem',
+            padding: '1.5rem',
+            maxWidth: '320px',
+            width: '90%',
+            textAlign: 'center'
+          }}>
+            <p style={{ color: 'white', fontSize: '1.25rem', marginBottom: '1rem' }}>
+              Play <strong>{pendingState}</strong> News?
+            </p>
+            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+              <button
+                onClick={cancelStateSelection}
+                style={{
+                  padding: '0.75rem 1.5rem',
+                  backgroundColor: '#475569',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '0.5rem',
+                  cursor: 'pointer',
+                  fontSize: '1rem'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmStateSelection}
+                style={{
+                  padding: '0.75rem 1.5rem',
+                  backgroundColor: '#22c55e',
+                  color: 'black',
+                  border: 'none',
+                  borderRadius: '0.5rem',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  fontSize: '1rem'
+                }}
+              >
+                Play Now
+              </button>
+            </div>
           </div>
         </div>
       )}
