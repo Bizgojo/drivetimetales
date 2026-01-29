@@ -1,28 +1,38 @@
 /*
 ================================================================================
-🔒 PROTECTED MODULE 06 - PRODUCTION SAFE VERSION
+🔒 PROTECTED MODULE 06 - DO NOT MODIFY WITHOUT OWNER APPROVAL
 ================================================================================
 Module: 06_ContinueListening
 Location: ~/DriveTimeFiles/WorkingCodeLibrary/02_HomePage/
-File: 06_ContinueListening.production.tsx
+File: 06_ContinueListening.protected.tsx
 
 Created: January 16, 2026
-Updated: January 17, 2026 - Added inline styles for Tailwind purge protection
 Owner: Marc (Wonder Books Press / Drive Time Tales)
 Status: LOCKED - Universal Template
 
 PURPOSE:
-This is the official CONTINUE LISTENING module for the DTT Home Page.
+This is the official Continue Listening module for the DTT Home Page.
 Shows the user's most recently played uncompleted story with a progress bar
 and allows one-tap resume playback.
-
-PRODUCTION FIX:
-Critical layout properties use inline styles to prevent Tailwind CSS purging.
-Colors, hover states, and text remain as Tailwind classes (these don't purge).
 
 ⚠️  DO NOT MODIFY THIS DESIGN WITHOUT MARC'S EXPLICIT APPROVAL
 ⚠️  DO NOT GUESS OR CREATE ALTERNATIVE DESIGNS
 ⚠️  ALWAYS CALL THIS MODULE WHEN BUILDING THE HOME PAGE
+
+DISPLAY RULES:
+- Only shows if user has an uncompleted story (completed = FALSE)
+- Shows only ONE story (most recent by last_played)
+- If no uncompleted story exists, this module does NOT render
+
+CLICK BEHAVIOR:
+- Entire card is clickable (cover, text, AND play button)
+- Click navigates to /player/[id]/play
+- Audio resumes at (progress - 5 seconds) to rewind to sentence start
+
+DATA SOURCE:
+- Table: user_library
+- Query: WHERE user_id = [user] AND completed = FALSE ORDER BY last_played DESC LIMIT 1
+- Join: stories table for title, genre, author, duration_mins, cover_url
 
 ================================================================================
 */
@@ -146,47 +156,42 @@ export default function ContinueListening() {
   const resumePosition = Math.max(0, story.progress - 5)
 
   // =============================================================================
-  // RENDER - WITH INLINE STYLES FOR PRODUCTION SAFETY
+  // RENDER
   // =============================================================================
 
   return (
-    <section style={{ paddingLeft: '1rem', paddingRight: '1rem', paddingTop: '1.5rem', paddingBottom: '1rem' }}>
-      <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>▶️ CONTINUE LISTENING</h2>
+    <section className="px-4 pt-6 pb-4">
+      <h2 className="text-lg font-bold text-white mb-4">▶️ Continue Listening</h2>
       
       {/* Entire card is clickable - navigates to play page with resume position */}
       <Link 
         href={`/player/${story.story_id}/play?resume=${resumePosition}`}
-        className="bg-slate-800 rounded-xl overflow-hidden hover:bg-slate-700 transition"
-        style={{ display: 'flex' }}
+        className="flex bg-slate-800 rounded-xl overflow-hidden hover:bg-slate-700 transition"
       >
-        {/* Cover: 112x112px (7rem) with 8px padding */}
-        <div style={{ width: '7rem', height: '7rem', flexShrink: 0, padding: '0.5rem' }}>
-          <div 
-            className="rounded-lg overflow-hidden cover-glow"
-            style={{ width: '100%', height: '100%' }}
-          >
+        {/* Cover: w-28 h-28 with p-2 padding (matches HorizontalStoryCard template) */}
+        <div className="w-28 h-28 flex-shrink-0 p-2">
+          <div className="w-full h-full rounded-lg overflow-hidden cover-glow">
             <img 
               src={story.cover_url || '/images/default-cover.png'} 
               alt={story.title}
-              className="object-cover"
-              style={{ width: '100%', height: '100%' }}
+              className="w-full h-full object-cover" 
             />
           </div>
         </div>
         
         {/* Info */}
-        <div style={{ flex: 1, paddingTop: '0.5rem', paddingBottom: '0.5rem', paddingRight: '0.75rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+        <div className="flex-1 py-2 pr-3 flex flex-col justify-center">
           <h3 className="text-sm font-bold text-white line-clamp-1">{story.title}</h3>
           <p className="text-white text-xs">{story.genre}</p>
           <p className="text-white text-xs">by {story.author}</p>
           <p className="text-white text-xs">{story.duration_mins} min • {minsRemaining} min left</p>
           
           {/* Progress bar */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem' }}>
-            <div className="bg-slate-700 rounded-full" style={{ flex: 1, height: '0.375rem' }}>
+          <div className="flex items-center gap-2 mt-1">
+            <div className="flex-1 h-1.5 bg-slate-700 rounded-full">
               <div 
-                className="bg-orange-500 rounded-full" 
-                style={{ height: '0.375rem', width: `${progressPercent}%` }}
+                className="h-1.5 bg-orange-500 rounded-full" 
+                style={{ width: `${progressPercent}%` }}
               />
             </div>
             <span className="text-white text-xs">{progressPercent}%</span>
@@ -194,17 +199,9 @@ export default function ContinueListening() {
         </div>
         
         {/* Play button */}
-        <div style={{ paddingRight: '0.75rem', display: 'flex', alignItems: 'center' }}>
-          <div 
-            className="bg-orange-500 rounded-full hover:bg-orange-400 transition"
-            style={{ width: '2.5rem', height: '2.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          >
-            <svg 
-              className="text-black" 
-              fill="currentColor" 
-              viewBox="0 0 20 20"
-              style={{ width: '1.25rem', height: '1.25rem', marginLeft: '0.125rem' }}
-            >
+        <div className="pr-3 flex items-center">
+          <div className="w-10 h-10 bg-orange-500 rounded-full flex items-center justify-center hover:bg-orange-400 transition">
+            <svg className="w-5 h-5 text-black ml-0.5" fill="currentColor" viewBox="0 0 20 20">
               <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
             </svg>
           </div>
@@ -226,42 +223,106 @@ export default function ContinueListening() {
 
 
 // =============================================================================
-// INLINE STYLE CONVERSION REFERENCE
+// SPECS REFERENCE (DO NOT CHANGE)
 // =============================================================================
 /*
-TAILWIND → INLINE STYLE CONVERSIONS:
+SECTION CONTAINER:
+- px-4 pt-6 pb-4
 
-px-4        → paddingLeft: '1rem', paddingRight: '1rem'
-pt-6        → paddingTop: '1.5rem'
-pb-4        → paddingBottom: '1rem'
-mb-4        → marginBottom: '1rem'
-flex        → display: 'flex'
-w-28        → width: '7rem' (112px)
-h-28        → height: '7rem' (112px)
-flex-shrink-0 → flexShrink: 0
-p-2         → padding: '0.5rem'
-w-full      → width: '100%'
-h-full      → height: '100%'
-flex-1      → flex: 1
-py-2        → paddingTop: '0.5rem', paddingBottom: '0.5rem'
-pr-3        → paddingRight: '0.75rem'
-flex-col    → flexDirection: 'column'
-justify-center → justifyContent: 'center'
-items-center → alignItems: 'center'
-gap-2       → gap: '0.5rem'
-mt-1        → marginTop: '0.25rem'
-h-1.5       → height: '0.375rem'
-w-10        → width: '2.5rem' (40px)
-h-10        → height: '2.5rem' (40px)
-w-5         → width: '1.25rem' (20px)
-h-5         → height: '1.25rem' (20px)
-ml-0.5      → marginLeft: '0.125rem'
+SECTION TITLE:
+- text-lg font-bold text-white mb-4
+- Emoji: ▶️
 
-KEPT AS TAILWIND (don't get purged):
-- Colors: bg-slate-800, bg-slate-700, bg-orange-500, text-white, text-black
-- Borders: rounded-xl, rounded-lg, rounded-full
-- Text: text-lg, text-sm, text-xs, font-bold, line-clamp-1
-- Interactions: hover:bg-slate-700, hover:bg-orange-400, transition
-- Overflow: overflow-hidden
-- Object fit: object-cover
+CARD CONTAINER:
+- flex
+- bg-slate-800
+- rounded-xl
+- overflow-hidden
+- hover:bg-slate-700 transition
+- Entire card wrapped in Link (clickable)
+
+COVER WRAPPER:
+- w-28 h-28 (112px x 112px)
+- flex-shrink-0
+- p-2 (8px padding around cover)
+
+COVER INNER:
+- w-full h-full
+- rounded-lg
+- overflow-hidden
+- cover-glow (box-shadow: 0 0 15px rgba(255,255,255,0.4))
+
+INFO AREA:
+- flex-1
+- py-2 pr-3
+- flex flex-col justify-center
+
+TYPOGRAPHY:
+- Title: text-sm font-bold text-white line-clamp-1
+- Genre: text-white text-xs
+- Author: text-white text-xs (prefixed with "by ")
+- Duration line: text-white text-xs ("{duration} min • {remaining} min left")
+
+PROGRESS BAR:
+- Container: flex items-center gap-2 mt-1
+- Track: flex-1 h-1.5 bg-slate-700 rounded-full
+- Fill: h-1.5 bg-orange-500 rounded-full, width = progress %
+- Percentage: text-white text-xs
+
+PLAY BUTTON:
+- Container: pr-3 flex items-center
+- Button: w-10 h-10 bg-orange-500 rounded-full flex items-center justify-center
+- Hover: hover:bg-orange-400 transition
+- Icon: w-5 h-5 text-black ml-0.5 (play triangle SVG)
+
+NAVIGATION:
+- Route: /player/[story_id]/play?resume=[resumePosition]
+- Resume position: progress - 5 seconds (minimum 0)
+
+DATA QUERY:
+- Table: user_library JOIN stories
+- Filter: user_id = current user, completed = FALSE
+- Order: last_played DESC
+- Limit: 1
+*/
+
+
+// =============================================================================
+// USAGE IN HOME PAGE
+// =============================================================================
+/*
+import ContinueListening from '@/components/ContinueListening'
+
+export default function HomePage() {
+  return (
+    <div>
+      <ContinueListening />
+      
+      <NewReleases />
+      <RecommendedForYou />
+    </div>
+  )
+}
+
+NOTE: ContinueListening automatically hides itself if no uncompleted story exists.
+No conditional rendering needed in the parent component.
+*/
+
+
+// =============================================================================
+// PLAY PAGE MUST HANDLE RESUME PARAMETER
+// =============================================================================
+/*
+The /player/[id]/play page must read the ?resume= query parameter and set
+the audio currentTime on load:
+
+// In /player/[id]/play/page.tsx
+const searchParams = useSearchParams()
+const resumeTime = parseInt(searchParams.get('resume') || '0', 10)
+
+useEffect(() => {
+  if (audioRef.current && resumeTime > 0) {
+    audioRef.current.currentTime = resumeTime
+  }
+}, [resumeTime])
 */
