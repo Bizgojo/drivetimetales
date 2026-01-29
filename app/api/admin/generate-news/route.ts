@@ -245,23 +245,12 @@ async function generateCleanScript(
   narrator: string,
   state: string | null,
   listenerName: string = 'friend',
-  categoryId: string = 'national',
-  targetDuration: string = '3-5 minutes'
+  categoryId: string = 'national'
 ): Promise<string> {
-  const now = new Date();
-  const hour = now.getHours();
+  const hour = new Date().getHours();
   let timeGreeting = 'morning';
   if (hour >= 12 && hour < 17) timeGreeting = 'afternoon';
   else if (hour >= 17) timeGreeting = 'evening';
-
-  // Format date like "Wednesday, January 29th"
-  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-  const dayName = days[now.getDay()];
-  const monthName = months[now.getMonth()];
-  const date = now.getDate();
-  const suffix = date === 1 || date === 21 || date === 31 ? 'st' : date === 2 || date === 22 ? 'nd' : date === 3 || date === 23 ? 'rd' : 'th';
-  const formattedDate = `${dayName}, ${monthName} ${date}${suffix}`;
 
   const label = state ? `${state} News` : config.label;
 
@@ -346,20 +335,18 @@ SCRIPT REQUIREMENTS:
 1. OPENING (vary naturally - never sound stale or canned):
    - Greet the listener by name: "${listenerName}"
    - Introduce yourself as ${narrator}
-   - ALWAYS mention today's date: "${formattedDate}"
    - Examples of varied openings:
-     * "Good ${timeGreeting}, ${listenerName}! I'm ${narrator}. It's ${formattedDate}, and here's your ${label} briefing."
-     * "Hey ${listenerName}, good ${timeGreeting}! ${narrator} here with your ${label} update for ${formattedDate}."
-     * "Welcome, ${listenerName}! I'm ${narrator}. Today is ${formattedDate}, and this is your ${label}."
+     * "Good ${timeGreeting}, ${listenerName}! I'm ${narrator}, bringing you your ${label} briefing."
+     * "Hey ${listenerName}, good ${timeGreeting}! ${narrator} here with your ${label} update."
+     * "Welcome, ${listenerName}! I'm ${narrator}, and this is your ${label} for today."
 
-2. STORY COVERAGE (target ${targetDuration} when read aloud):
+2. STORY COVERAGE (target 3-5 minutes total):
    - Place more important and newer stories FIRST and give them MORE time
    - Each story: 3-5 sentences in conversational broadcast style
    - Add color and context - explain WHY stories matter
    - When mentioning companies: briefly note where they're located and what they do
    - Use smooth transitions between stories
    - NEVER hallucinate, exaggerate, or make up events
-   - Expand on stories to fill the ${targetDuration} target duration
 
 3. CLOSING (vary naturally):
    - Mention the listener's name: "${listenerName}"
@@ -440,7 +427,7 @@ export async function POST(request: NextRequest) {
   
   try {
     const body = await request.json();
-    const { category, voiceId, narratorName, state, storiesCount = 5, listenerName = 'Marc', duration = '3-5 minutes' } = body;
+    const { category, voiceId, narratorName, state, storiesCount = 5, listenerName = 'Marc' } = body;
 
     if (!category) {
       return NextResponse.json({ error: 'Category is required' }, { status: 400 });
@@ -456,7 +443,7 @@ export async function POST(request: NextRequest) {
     }
 
     const narrator = narratorName || 'Your Host';
-    console.log(`[Generate News] Starting: ${category}${state ? ` (${state})` : ''}, narrator: ${narrator}, listener: ${listenerName}, stories: ${storiesCount}, duration: ${duration}`);
+    console.log(`[Generate News] Starting: ${category}${state ? ` (${state})` : ''}, narrator: ${narrator}, listener: ${listenerName}, stories: ${storiesCount}`);
 
     // ========================================
     // PHASE 1: Fetch news (GDELT or fallback)
@@ -481,7 +468,7 @@ export async function POST(request: NextRequest) {
     // ========================================
     // PHASE 2: Generate clean script (no web search!)
     // ========================================
-    const script = await generateCleanScript(stories, config, narrator, state, listenerName, category, duration);
+    const script = await generateCleanScript(stories, config, narrator, state, listenerName, category);
     console.log(`[Generate News] Script generated (${script.length} chars)`);
 
     // ========================================

@@ -44,7 +44,7 @@ const ALL_CATEGORIES = [
 const COST_PER_BRIEFING = 1.20
 
 interface Voice { voice_id: string; name: string; labels?: Record<string, string> }
-interface CatSettings { voice_id: string; narrator_name: string; last_generated: string | null; audio_url: string | null; duration: string | null }
+interface CatSettings { voice_id: string; narrator_name: string; last_generated: string | null; audio_url: string | null; duration: string | null; target_duration: string }
 interface ScheduleSettings { enabled: boolean; times: string[] }
 interface PromptModalData { 
   category: string
@@ -266,7 +266,7 @@ export default function AdminNewsPage() {
   }
 
   async function generate(catId: string) {
-    const catSettings = settings[catId] || { voice_id: '', narrator_name: '', last_generated: null, audio_url: null, duration: null }
+    const catSettings = settings[catId] || { voice_id: '', narrator_name: '', last_generated: null, audio_url: null, duration: null, target_duration: '3-5 minutes' }
     if (!catSettings.voice_id) {
       setMessage({ type: 'error', text: 'Please select a voice first' })
       return
@@ -285,7 +285,8 @@ export default function AdminNewsPage() {
           narratorName: catSettings.narrator_name || 'Your Host',
           state: catId === 'state' ? selectedState : null,
           storiesCount: 5,
-          listenerName: 'Marc'
+          listenerName: 'Marc',
+          duration: catSettings.target_duration || '3-5 minutes'
         })
       })
 
@@ -397,7 +398,7 @@ export default function AdminNewsPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {ALL_CATEGORIES.map(cat => {
-            const catSettings = settings[cat.id] || { voice_id: '', narrator_name: '', last_generated: null, audio_url: null, duration: null }
+            const catSettings = settings[cat.id] || { voice_id: '', narrator_name: '', last_generated: null, audio_url: null, duration: null, target_duration: '3-5 minutes' }
             const isGenerating = generating === cat.id
             const isPlaying = playing === cat.id
 
@@ -469,6 +470,21 @@ export default function AdminNewsPage() {
                       Test
                     </button>
                   </div>
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Target Duration</label>
+                  <select
+                    value={catSettings.target_duration || '3-5 minutes'}
+                    onChange={(e) => updateSetting(cat.id, 'target_duration', e.target.value)}
+                    className="w-full bg-gray-600 text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  >
+                    <option value="1-2 minutes">1-2 minutes (Quick)</option>
+                    <option value="2-3 minutes">2-3 minutes (Short)</option>
+                    <option value="3-5 minutes">3-5 minutes (Standard)</option>
+                    <option value="5-7 minutes">5-7 minutes (Extended)</option>
+                    <option value="7-10 minutes">7-10 minutes (Long)</option>
+                  </select>
                 </div>
 
                 <p className="text-sm text-gray-600 mb-4">
