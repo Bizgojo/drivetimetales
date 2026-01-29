@@ -1,134 +1,285 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
 import Link from 'next/link'
-import { useRouter, useParams } from 'next/navigation'
-import { supabase, getStory, Story } from '@/lib/supabase'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
+import { useState, useEffect, Suspense } from 'react'
+import { useAuth } from '@/contexts/AuthContext'
+import { supabase } from '@/lib/supabase'
+
+interface Story {
+  id: string
+  title: string
+  author: string
+  description: string
+  genre: string
+  duration_mins: number
+  cover_url: string | null
+  audio_url: string
+  credits: number
+  preview_end_time?: number
+  free_start_date?: string | null
+  free_end_date?: string | null
+  flag?: string | null
+}
+
+interface LibraryEntry {
+  story_id: string
+  progress: number
+  last_played: string
+  completed: boolean
+}
+
+interface UserPreference {
+  story_id: string
+  wishlisted: boolean
+  not_for_me: boolean
+}
+
+// Helper function to check if story is currently free
+function isStoryCurrentlyFree(story: Story): boolean {
+  if (!story.free_start_date || !story.free_end_date) return false
+  
+  const today = new Date()
+  today.setHours(0, 0, 0, 0) // Normalize to start of day
+  
+  const startDate = new Date(story.free_start_date)
+  startDate.setHours(0, 0, 0, 0)
+  
+  const endDate = new Date(story.free_end_date)
+  endDate.setHours(23, 59, 59, 999) // End of day
+  
+  return today >= startDate && today <= endDate
+}
 
 function PlayerContent() {
-  const router = useRouter()
   const params = useParams()
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const storyId = params.id as string
+  const { user, refreshUser } = useAuth()
   
   const [story, setStory] = useState<Story | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [isInLibrary, setIsInLibrary] = useState(false)
-  const [lastPlayed, setLastPlayed] = useState<string | null>(null)
-  const [freeCredits, setFreeCredits] = useState(0)
-  const [screenHeight, setScreenHeight] = useState(0)
-  const [screenWidth, setScreenWidth] = useState(0)
+  const [libraryEntry, setLibraryEntry] = useState<LibraryEntry | null>(null)
+  const [userPreference, setUserPreference] = useState<UserPreference | null>(null)
+  const [previewCompleted, setPreviewCompleted] = useState(false)
+  const [actionLoading, setActionLoading] = useState(false)
+  
+  const fromPreview = searchParams.get('fromPreview') === 'true'
 
   useEffect(() => {
-    // Get screen dimensions
-    const updateDimensions = () => {
-      setScreenHeight(window.innerHeight)
-      setScreenWidth(window.innerWidth)
-    }
-    updateDimensions()
-    window.addEventListener('resize', updateDimensions)
-    return () => window.removeEventListener('resize', updateDimensions)
-  }, [])
-
-  useEffect(() => {
-    async function loadStory() {
+    async function loadData() {
       try {
-        // Check free credits from localStorage
-        const storedCredits = localStorage.getItem('dtt_free_credits')
-        if (storedCredits) {
-          setFreeCredits(parseInt(storedCredits))
-        }
+        const { data: storyData, error: storyError } = await supabase
+          .from('stories')
+          .select('*')
+          .eq('id', storyId)
+          .single()
+        
+        if (storyError) throw storyError
+        setStory(storyData)
 
-        // Check if story is in user's library
-        const libraryData = localStorage.getItem('dtt_library')
-        if (libraryData) {
-          const library = JSON.parse(libraryData)
-          const libraryItem = library.find((item: any) => item.storyId === storyId)
-          if (libraryItem) {
-            setIsInLibrary(true)
-            setLastPlayed(libraryItem.lastPlayed)
+        if (user) {
+          const { data: libData } = await supabase
+            .from('user_library')
+            .select('story_id, progress, last_played, completed')
+            .eq('user_id', user.id)
+            .eq('story_id', storyId)
+            .single()
+          
+          if (libData) setLibraryEntry(libData)
+
+          const { data: prefData } = await supabase
+            .from('user_preferences')
+            .select('story_id, wishlisted, not_for_me')
+            .eq('user_id', user.id)
+            .eq('story_id', storyId)
+            .single()
+          
+          if (prefData) setUserPreference(prefData)
+
+          const previewKey = `preview_${storyId}`
+          const previewStatus = localStorage.getItem(previewKey)
+          if (previewStatus === 'completed' || fromPreview) {
+            setPreviewCompleted(true)
           }
         }
-
-        // Fetch story details
-        const storyData = await getStory(storyId)
-        setStory(storyData)
       } catch (err) {
+        console.error('Error loading story:', err)
         setError('Story not found')
       } finally {
         setLoading(false)
       }
     }
-    
-    if (storyId) {
-      loadStory()
-    }
-  }, [storyId])
-
-  // Calculate cover size dynamically
-  // Fixed elements: back button (~50px) + title/info (~70px) + buttons (~120px) + padding (~60px) = ~300px
-  const availableForCover = Math.min(screenWidth - 32, screenHeight - 300)
-  const coverSize = Math.max(120, Math.min(availableForCover, 320))
-
-  const handlePlay = () => {
-    // Add to library if not already there
-    if (!isInLibrary) {
-      const libraryData = localStorage.getItem('dtt_library')
-      const library = libraryData ? JSON.parse(libraryData) : []
-      library.push({
-        storyId: storyId,
-        lastPlayed: new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
-        progress: 0
-      })
-      localStorage.setItem('dtt_library', JSON.stringify(library))
-    }
-    
-    // Navigate to player screen
-    router.push(`/player/${storyId}/play`)
-  }
+    loadData()
+  }, [storyId, user, fromPreview])
 
   const handlePreview = () => {
     router.push(`/player/${storyId}/preview`)
   }
 
-  // Logo component
-  const Logo = () => (
-    <div className="flex items-center justify-center gap-2">
-      <svg width="40" height="24" viewBox="0 0 80 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <g>
-          <rect x="45" y="24" width="30" height="14" rx="3" fill="#f97316"/>
-          <path d="M52 24 L56 16 L68 16 L72 24" fill="#f97316"/>
-          <path d="M54 23 L57 17 L67 17 L70 23" fill="#1e293b"/>
-          <circle cx="54" cy="38" r="5" fill="#334155"/>
-          <circle cx="54" cy="38" r="2.5" fill="#64748b"/>
-          <circle cx="68" cy="38" r="5" fill="#334155"/>
-          <circle cx="68" cy="38" r="2.5" fill="#64748b"/>
-          <rect x="73" y="28" width="3" height="4" rx="1" fill="#fef08a"/>
-        </g>
-        <g>
-          <rect x="2" y="20" width="18" height="18" rx="3" fill="#3b82f6"/>
-          <path d="M5 20 L8 12 L17 12 L20 20" fill="#3b82f6"/>
-          <path d="M7 19 L9 13 L16 13 L18 19" fill="#1e293b"/>
-          <rect x="20" y="18" width="22" height="20" rx="2" fill="#60a5fa"/>
-          <circle cx="10" cy="38" r="5" fill="#334155"/>
-          <circle cx="10" cy="38" r="2.5" fill="#64748b"/>
-          <circle cx="32" cy="38" r="5" fill="#334155"/>
-          <circle cx="32" cy="38" r="2.5" fill="#64748b"/>
-        </g>
-      </svg>
-      <div className="flex items-baseline">
-        <span className="text-sm font-bold text-white">Drive Time </span>
-        <span className="text-sm font-bold text-orange-500">Tales</span>
-      </div>
-    </div>
-  )
+  const handlePlayNow = async () => {
+    if (!user || !story) return
+    
+    setActionLoading(true)
+    try {
+      if (!libraryEntry) {
+        // Check if story is currently free
+        const isFreeToday = isStoryCurrentlyFree(story)
+        const creditCost = isFreeToday ? 0 : (story.credits || 1)
+        
+        if (creditCost > 0 && user.credits < creditCost && user.credits !== -1) {
+          alert('Not enough credits. Please purchase more credits.')
+          setActionLoading(false)
+          return
+        }
+
+        // Only deduct credits if there's a cost
+        if (creditCost > 0) {
+          const newCredits = user.credits === -1 ? -1 : user.credits - creditCost
+          const { error: creditError } = await supabase
+            .from('users')
+            .update({ credits: newCredits })
+            .eq('id', user.id)
+
+          if (creditError) throw creditError
+        }
+
+        const { error: libError } = await supabase
+          .from('user_library')
+          .insert({
+            user_id: user.id,
+            story_id: storyId,
+            progress: 0,
+            completed: false
+          })
+
+        if (libError) throw libError
+
+        await refreshUser()
+      }
+
+      router.push(`/player/${storyId}/play?autoplay=true`)
+    } catch (err) {
+      console.error('Error starting playback:', err)
+      alert('Failed to start playback. Please try again.')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const handleContinue = () => {
+    const resumeTime = libraryEntry?.progress || 0
+    router.push(`/player/${storyId}/play?autoplay=true&resume=${resumeTime}`)
+  }
+
+  const handleStartOver = () => {
+    router.push(`/player/${storyId}/play?autoplay=true`)
+  }
+
+  const handleResume = async () => {
+    if (!user || !story) return
+    
+    setActionLoading(true)
+    try {
+      if (!libraryEntry) {
+        // Check if story is currently free
+        const isFreeToday = isStoryCurrentlyFree(story)
+        const creditCost = isFreeToday ? 0 : (story.credits || 1)
+        
+        if (creditCost > 0 && user.credits < creditCost && user.credits !== -1) {
+          alert('Not enough credits. Please purchase more credits.')
+          setActionLoading(false)
+          return
+        }
+
+        // Only deduct credits if there's a cost
+        if (creditCost > 0) {
+          const newCredits = user.credits === -1 ? -1 : user.credits - creditCost
+          const { error: creditError } = await supabase
+            .from('users')
+            .update({ credits: newCredits })
+            .eq('id', user.id)
+
+          if (creditError) throw creditError
+        }
+
+        const previewEnd = story.preview_end_time || Math.floor(story.duration_mins * 60 * 0.1)
+        const { error: libError } = await supabase
+          .from('user_library')
+          .insert({
+            user_id: user.id,
+            story_id: storyId,
+            progress: previewEnd,
+            completed: false
+          })
+
+        if (libError) throw libError
+
+        await refreshUser()
+      }
+
+      const resumeTime = story.preview_end_time || Math.floor(story.duration_mins * 60 * 0.1)
+      router.push(`/player/${storyId}/play?autoplay=true&resume=${resumeTime}`)
+    } catch (err) {
+      console.error('Error resuming:', err)
+      alert('Failed to resume. Please try again.')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const handleWishlist = async () => {
+    if (!user) return
+    
+    setActionLoading(true)
+    try {
+      await supabase
+        .from('user_preferences')
+        .upsert({
+          user_id: user.id,
+          story_id: storyId,
+          wishlisted: true,
+          not_for_me: false
+        })
+      
+      router.push('/library?toast=wishlisted')
+    } catch (err) {
+      console.error('Error adding to wishlist:', err)
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const handleNotForMe = async () => {
+    if (!user) return
+    
+    setActionLoading(true)
+    try {
+      await supabase
+        .from('user_preferences')
+        .upsert({
+          user_id: user.id,
+          story_id: storyId,
+          wishlisted: false,
+          not_for_me: true
+        })
+      
+      router.push('/library?toast=passed')
+    } catch (err) {
+      console.error('Error marking not for me:', err)
+    } finally {
+      setActionLoading(false)
+    }
+  }
 
   if (loading) {
     return (
-      <div className="h-screen bg-slate-950 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
         <div className="text-center">
-          <div className="inline-block w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mb-4" />
-          <p className="text-white">Loading story...</p>
+          <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-slate-400">Loading story...</p>
         </div>
       </div>
     )
@@ -136,124 +287,239 @@ function PlayerContent() {
 
   if (error || !story) {
     return (
-      <div className="h-screen bg-slate-950 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center px-4">
         <div className="text-center">
-          <p className="text-white text-xl mb-4">Story not found</p>
-          <Link href="/library" className="text-orange-400">← Back to Library</Link>
+          <h1 className="text-xl text-white mb-4">Story not found</h1>
+          <Link href="/library" className="text-orange-400 hover:text-orange-300">
+            ← Back to Library
+          </Link>
         </div>
       </div>
     )
   }
 
-  const canPlayFree = story.credits <= 2 && freeCredits > 0
+  const displayName = user?.display_name || user?.email?.split('@')[0]
+  
+  // Check if story is currently free
+  const isFreeToday = isStoryCurrentlyFree(story)
+  const creditCost = isFreeToday ? 0 : (story.credits || 1)
+  const hasEnoughCredits = user && (creditCost === 0 || user.credits >= creditCost || user.credits === -1)
+  
+  const ownsStory = !!libraryEntry
+  const progressPercent = libraryEntry 
+    ? Math.round((libraryEntry.progress / (story.duration_mins * 60)) * 100) 
+    : 0
+  const previewMins = Math.ceil((story.preview_end_time || story.duration_mins * 60 * 0.1) / 60)
 
   return (
-    <div className="h-screen bg-slate-950 text-white flex flex-col overflow-hidden">
-      <div className="px-4 h-full flex flex-col">
+    <div className="min-h-screen bg-slate-950 text-white flex flex-col">
+      {/* Header */}
+      <header className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
+        <Link href="/library" className="text-white hover:text-orange-400 flex items-center gap-2 font-medium">
+          <span className="text-lg">←</span>
+          <span>Back</span>
+        </Link>
         
-        {/* Back button */}
-        <button 
-          onClick={() => router.back()}
-          className="px-3 py-1.5 bg-slate-800 rounded-lg self-start mt-3 mb-3"
-        >
-          <span className="text-orange-400 text-sm font-medium">← Back</span>
-        </button>
+        <Link href="/home" className="flex items-center gap-1">
+          <span className="text-lg">🚛</span>
+          <span className="text-lg">🚗</span>
+          <span className="font-bold text-white ml-1">Drive Time</span>
+          <span className="font-bold text-orange-400">Tales</span>
+        </Link>
+        
+        {user ? (
+          <Link href="/account" className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-black font-bold text-sm">
+            {displayName?.charAt(0).toUpperCase() || 'U'}
+          </Link>
+        ) : (
+          <div className="w-8" />
+        )}
+      </header>
 
-        {/* Large centered cover */}
-        <div 
-          className="mx-auto rounded-xl overflow-hidden border-4 border-white flex-shrink-0"
-          style={{ width: coverSize, height: coverSize }}
-        >
+      {/* FREE TODAY Banner */}
+      {isFreeToday && !ownsStory && (
+        <div className="bg-green-500 text-black text-center py-2 font-bold">
+          🎉 FREE TODAY - No credits needed!
+        </div>
+      )}
+
+      {/* Main Content */}
+      <main className="flex-1 px-4 pt-4 pb-6 flex flex-col">
+        {/* Full Width Cover Image with Glow */}
+        <div className="w-full aspect-square rounded-xl overflow-hidden bg-slate-800 mb-3 shadow-[0_0_30px_rgba(255,255,255,0.5)]">
           {story.cover_url ? (
-            <img 
-              src={story.cover_url} 
-              alt={story.title} 
-              className="w-full h-full object-cover"
-            />
+            <img src={story.cover_url} alt={story.title} className="w-full h-full object-cover" />
           ) : (
-            <div className="w-full h-full bg-gradient-to-br from-slate-700 to-slate-800 flex items-center justify-center">
-              <span className="text-4xl">🎧</span>
+            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-orange-600 to-orange-900">
+              <span className="text-8xl opacity-50">🎧</span>
             </div>
           )}
         </div>
 
-        {/* Title + Info */}
-        <div className="text-center mt-3 mb-2">
-          <h1 className="font-bold text-white text-lg leading-tight">{story.title}</h1>
-          <p className="text-slate-400 text-xs mt-1">
-            {story.author} • {story.genre} • {story.duration_mins} min • {story.credits} credit{story.credits !== 1 ? 's' : ''}
+        {/* Story Info - Author under title */}
+        <div className="text-center mb-2">
+          <h1 className="text-xl font-bold mb-1">{story.title}</h1>
+          <p className="text-white text-sm mb-1">by {story.author || 'Unknown Author'}</p>
+          
+          {/* Genre and Flags on same line */}
+          <div className="flex items-center justify-center gap-2 mb-1">
+            <span className="text-orange-400 text-sm">{story.genre}</span>
+            {isFreeToday && !ownsStory && (
+              <span className="bg-green-500 text-black text-xs font-bold px-2 py-0.5 rounded">FREE TODAY</span>
+            )}
+            {ownsStory && (
+              <span className="bg-green-500 text-black text-xs font-bold px-2 py-0.5 rounded">OWNED</span>
+            )}
+            {userPreference?.wishlisted && !ownsStory && (
+              <span className="bg-pink-500 text-white text-xs font-bold px-2 py-0.5 rounded">❤️ WISHLIST</span>
+            )}
+          </div>
+          
+          <p className="text-slate-400 text-sm">
+            {story.duration_mins} min • {ownsStory ? 'In Library' : isFreeToday ? 'FREE' : `${creditCost} credit${creditCost > 1 ? 's' : ''}`}
           </p>
         </div>
 
-        {/* Description - only show if enough space */}
-        {screenHeight > 600 && story.description && (
-          <p className="text-white text-xs leading-relaxed text-center px-2 line-clamp-2 mb-2">
-            {story.description}
-          </p>
+        {/* Progress Bar (if owned and has progress) */}
+        {ownsStory && libraryEntry && libraryEntry.progress > 0 && (
+          <div className="mb-2">
+            <div className="h-1 bg-slate-700 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-orange-500 rounded-full transition-all"
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
+            <p className="text-slate-400 text-xs text-center mt-1">{progressPercent}% complete</p>
+          </div>
         )}
 
-        {/* Spacer */}
-        <div className="flex-1" />
+        {/* Description */}
+        <p className="text-slate-300 text-sm leading-relaxed mb-3 text-center">
+          {story.description}
+        </p>
 
-        {/* Buttons */}
-        <div className="pb-6">
-          {/* Preview + Wishlist */}
-          <div className="flex gap-2 mb-3">
-            <button 
-              onClick={handlePreview}
-              className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-400 rounded-xl transition-colors"
-            >
-              <span className="text-black font-semibold text-sm">Preview</span>
-            </button>
-            <button className="flex-1 py-2.5 bg-blue-500 hover:bg-blue-400 rounded-xl transition-colors">
-              <span className="text-white font-semibold text-sm">Save to Wishlist</span>
-            </button>
-          </div>
+        {/* Action Buttons - No blank space */}
+        <div className="space-y-3">
+          
+          {/* STATE 1: User owns story */}
+          {ownsStory && (
+            <>
+              <div className="flex gap-3">
+                <button
+                  onClick={handleContinue}
+                  disabled={actionLoading}
+                  className="flex-1 py-4 bg-orange-500 hover:bg-orange-400 text-black rounded-xl font-bold text-lg transition disabled:opacity-50"
+                >
+                  {libraryEntry.progress > 0 ? '▶ Continue' : '▶ Play'}
+                </button>
+                {libraryEntry.progress > 0 && (
+                  <button
+                    onClick={handleStartOver}
+                    disabled={actionLoading}
+                    className="px-6 py-4 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-medium transition disabled:opacity-50"
+                  >
+                    ↺ Start Over
+                  </button>
+                )}
+              </div>
+              <p className="text-slate-500 text-sm text-center">No additional credits needed</p>
+            </>
+          )}
 
-          {/* Play button - varies based on user status */}
-          {canPlayFree ? (
-            <button 
-              onClick={handlePlay}
-              className="w-full py-3 bg-green-500 hover:bg-green-400 rounded-xl transition-colors"
-            >
-              <span className="text-black font-bold text-base">
-                {isInLibrary ? 'Resume Story' : 'Play Free'}
-              </span>
-            </button>
-          ) : freeCredits > 0 ? (
-            <button 
-              onClick={handlePlay}
-              className="w-full py-3 bg-green-500 hover:bg-green-400 rounded-xl transition-colors"
-            >
-              <span className="text-black font-bold text-base">
-                {isInLibrary ? 'Resume Story' : 'Play Story'}
-              </span>
-            </button>
-          ) : (
-            <Link 
-              href="/pricing"
-              className="w-full py-3 bg-yellow-500 hover:bg-yellow-400 rounded-xl transition-colors block text-center"
-            >
-              <span className="text-black font-bold text-sm">Insufficient credits - Subscribe</span>
-            </Link>
+          {/* STATE 2: Preview completed but not owned */}
+          {!ownsStory && previewCompleted && (
+            <>
+              <div className="flex gap-3">
+                <button
+                  onClick={handleWishlist}
+                  disabled={actionLoading}
+                  className="flex-1 py-3 bg-pink-500 hover:bg-pink-400 text-white rounded-xl font-semibold transition disabled:opacity-50"
+                >
+                  ❤️ Wishlist
+                </button>
+                <button
+                  onClick={handleNotForMe}
+                  disabled={actionLoading}
+                  className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-semibold transition disabled:opacity-50"
+                >
+                  👎 Pass
+                </button>
+              </div>
+              <button
+                onClick={handleResume}
+                disabled={actionLoading || !hasEnoughCredits}
+                className={`w-full py-4 rounded-xl font-bold transition disabled:opacity-50 ${
+                  isFreeToday 
+                    ? 'bg-green-500 hover:bg-green-400 text-black' 
+                    : 'bg-orange-500 hover:bg-orange-400 text-black disabled:bg-slate-600 disabled:text-slate-400'
+                }`}
+              >
+                {actionLoading ? 'Processing...' : isFreeToday ? '▶ Resume FREE' : `▶ Resume (${creditCost} credit${creditCost > 1 ? 's' : ''})`}
+              </button>
+              <button
+                onClick={handlePlayNow}
+                disabled={actionLoading || !hasEnoughCredits}
+                className="w-full py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-medium transition disabled:opacity-50"
+              >
+                ↺ Start from Beginning
+              </button>
+              {!hasEnoughCredits && !isFreeToday && (
+                <p className="text-red-400 text-sm text-center">
+                  Not enough credits. <Link href="/pricing" className="text-orange-400 hover:underline">Get more</Link>
+                </p>
+              )}
+            </>
+          )}
+
+          {/* STATE 3: New story */}
+          {!ownsStory && !previewCompleted && (
+            <>
+              <div className="flex gap-3">
+                <button
+                  onClick={handlePreview}
+                  className="flex-1 py-4 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-bold text-base transition"
+                >
+                  🎧 Preview<br/>
+                  <span className="text-sm font-normal opacity-80">{previewMins} min sample</span>
+                </button>
+                <button
+                  onClick={handlePlayNow}
+                  disabled={actionLoading || !hasEnoughCredits}
+                  className={`flex-1 py-4 rounded-xl font-bold text-base transition disabled:opacity-50 ${
+                    isFreeToday
+                      ? 'bg-green-500 hover:bg-green-400 text-black'
+                      : 'bg-orange-500 hover:bg-orange-400 text-black disabled:bg-slate-600 disabled:text-slate-400'
+                  }`}
+                >
+                  ▶ Play Now<br/>
+                  <span className="text-sm font-normal opacity-80">{isFreeToday ? 'FREE!' : `${creditCost} credit${creditCost > 1 ? 's' : ''}`}</span>
+                </button>
+              </div>
+              {!user && (
+                <p className="text-slate-500 text-sm text-center">
+                  <Link href="/signin" className="text-orange-400 hover:underline">Sign in</Link> to purchase
+                </p>
+              )}
+              {user && !hasEnoughCredits && !isFreeToday && (
+                <p className="text-red-400 text-sm text-center">
+                  Not enough credits. <Link href="/pricing" className="text-orange-400 hover:underline">Get more</Link>
+                </p>
+              )}
+            </>
           )}
         </div>
-      </div>
-    </div>
-  )
-}
-
-function LoadingFallback() {
-  return (
-    <div className="h-screen bg-slate-950 flex items-center justify-center">
-      <div className="inline-block w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+      </main>
     </div>
   )
 }
 
 export default function PlayerPage() {
   return (
-    <Suspense fallback={<LoadingFallback />}>
+    <Suspense fallback={
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    }>
       <PlayerContent />
     </Suspense>
   )
