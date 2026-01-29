@@ -76,7 +76,7 @@ export default function NewsBriefingsSection() {
 
     // Play the briefing immediately
     setPlayingCategory(categoryId);
-    audioRef.current = new Audio(briefing.audio_url);
+    audioRef.current = new Audio(briefing.audio_url + "?t=" + Date.now());
     audioRef.current.onended = () => {
       setPlayingCategory(null);
       audioRef.current = null;
