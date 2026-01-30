@@ -13,12 +13,12 @@ const supabase = createClient(
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!
 
-// Credit amounts per plan
+// Credit amounts per plan - matches plan values in DB
 const planCredits: { [key: string]: number } = {
   free: 2,
   test_driver: 10,
   commuter: 25,
-  road_warrior: -1,
+  road_warrior: -1, // -1 means unlimited
 }
 
 export async function POST(request: NextRequest) {
@@ -39,9 +39,12 @@ export async function POST(request: NextRequest) {
 
   console.log('Webhook event received:', event.type)
 
+  // Handle the event
   switch (event.type) {
     case 'checkout.session.completed': {
       const session = event.data.object as Stripe.Checkout.Session
+      
+      // Check for user_id (one-time purchase) or userId (subscription)
       const userId = session.metadata?.user_id || session.metadata?.userId
       const packId = session.metadata?.pack_id
       const creditsToAdd = session.metadata?.credits ? parseInt(session.metadata.credits) : null
@@ -54,9 +57,11 @@ export async function POST(request: NextRequest) {
         break
       }
 
+      // ONE-TIME PURCHASE (Freedom Packs)
       if (session.mode === 'payment' && creditsToAdd) {
         console.log(`Adding ${creditsToAdd} credits to user ${userId}`)
         
+        // Get current credits
         const { data: userData, error: fetchError } = await supabase
           .from('users')
           .select('credits')
@@ -85,13 +90,14 @@ export async function POST(request: NextRequest) {
           console.log(`Successfully updated credits: ${currentCredits} -> ${newCredits}`)
         }
       }
+      // SUBSCRIPTION
       else if (session.mode === 'subscription') {
         console.log(`Setting up subscription ${plan} for user ${userId}`)
         
         const { error: updateError } = await supabase
           .from('users')
           .update({
-            plan: plan,
+            plan: plan,  // ✅ FIXED: was 'subscription_type'
             stripe_customer_id: session.customer as string,
             stripe_subscription_id: session.subscription as string,
             credits: planCredits[plan] || 25,
@@ -108,6 +114,7 @@ export async function POST(request: NextRequest) {
     }
 
     case 'invoice.paid': {
+      // Monthly renewal - add credits
       const invoice = event.data.object as Stripe.Invoice
       const subscription = await stripe.subscriptions.retrieve(invoice.subscription as string)
       const userId = subscription.metadata?.userId || subscription.metadata?.user_id
@@ -116,6 +123,7 @@ export async function POST(request: NextRequest) {
       console.log('Invoice paid - monthly renewal:', { userId, plan })
       
       if (userId) {
+        // Add monthly credits
         const { data: userData } = await supabase
           .from('users')
           .select('credits')
@@ -140,6 +148,7 @@ export async function POST(request: NextRequest) {
     }
 
     case 'customer.subscription.deleted': {
+      // Subscription cancelled
       const subscription = event.data.object as Stripe.Subscription
       const userId = subscription.metadata?.userId || subscription.metadata?.user_id
       
@@ -149,7 +158,7 @@ export async function POST(request: NextRequest) {
         const { error: updateError } = await supabase
           .from('users')
           .update({
-            plan: 'free',
+            plan: 'free',  // ✅ FIXED: was 'subscription_type'
             credits: 0,
           })
           .eq('id', userId)
@@ -164,6 +173,7 @@ export async function POST(request: NextRequest) {
     }
 
     case 'customer.subscription.updated': {
+      // Subscription changed (upgrade/downgrade)
       const subscription = event.data.object as Stripe.Subscription
       const userId = subscription.metadata?.userId || subscription.metadata?.user_id
       const plan = subscription.metadata?.plan
@@ -174,7 +184,7 @@ export async function POST(request: NextRequest) {
         const { error: updateError } = await supabase
           .from('users')
           .update({
-            plan: plan,
+            plan: plan,  // ✅ FIXED: was 'subscription_type'
             credits: planCredits[plan] || 25,
           })
           .eq('id', userId)
