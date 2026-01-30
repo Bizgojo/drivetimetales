@@ -50,9 +50,9 @@ export default function PricingPage() {
       name: 'Road Warrior',
       monthlyPrice: 14.99,
       yearlyPrice: 149.99,
-      credits: -1, // -1 means unlimited
+      credits: 100,
       features: [
-        'Unlimited credits',
+        '100 credits per month',
         'Access to all stories',
         'Save to wishlist',
         'Track your progress',
@@ -211,46 +211,26 @@ export default function PricingPage() {
       </svg>
       <div className="flex items-baseline">
         <span className="text-lg font-bold text-white">Drive Time </span>
-        <span className="text-lg font-bold text-orange-500">Tales</span>
+        <span className="text-lg font-bold text-orange-400">Tales</span>
       </div>
     </div>
   )
 
-  // Show loading while auth is being checked
-  if (authLoading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-slate-400">Loading...</p>
-        </div>
-      </div>
-    )
-  }
-
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
-      <div className="max-w-4xl mx-auto px-4 py-6">
-        
-        {/* Header with Back button */}
-        <div className="flex items-center justify-between mb-6">
-          <button 
-            onClick={() => window.history.back()}
-            className="px-3 py-1.5 bg-slate-800 border border-slate-700 text-white text-xs font-medium rounded-lg hover:bg-slate-700 transition-colors"
-          >
-            ← Back
-          </button>
-          <Link href="/welcome">
-            <Logo />
-          </Link>
-          <div className="w-16" /> {/* Spacer for centering */}
+    <div className="min-h-screen bg-slate-950 pb-8">
+      {/* Header */}
+      <header className="sticky top-0 z-50 bg-slate-950/95 backdrop-blur border-b border-slate-800">
+        <div className="px-4 py-3">
+          <Logo />
         </div>
+      </header>
 
-        {/* Show logged in status */}
+      <div className="px-4 py-6 max-w-md mx-auto">
+        {/* Logged in indicator */}
         {user && (
           <div className="bg-green-900/30 border border-green-700 rounded-lg px-4 py-2 mb-4 text-center">
             <p className="text-green-400 text-sm">
-              Signed in as <span className="font-bold">{user.email}</span> • {user.credits === -1 ? 'Unlimited' : user.credits} credits
+              Signed in as <span className="font-bold">{user.email}</span> • {user.credits} credits
             </p>
           </div>
         )}
@@ -317,7 +297,7 @@ export default function PricingPage() {
                   <div>
                     <h3 className="text-lg font-bold text-white">{plan.name}</h3>
                     <p className="text-slate-400 text-sm">
-                      {plan.credits === -1 ? 'Unlimited' : plan.credits} credits/month
+                      {plan.credits} credits/month
                     </p>
                   </div>
                   

@@ -36,13 +36,13 @@ export const PRODUCTS = {
     road_warrior_monthly: {
       priceId: process.env.STRIPE_PRICE_ROAD_WARRIOR_MONTHLY!,
       name: 'Road Warrior',
-      credits: -1, // Unlimited
+      credits: 100,
       interval: 'month' as const,
     },
     road_warrior_annual: {
       priceId: process.env.STRIPE_PRICE_ROAD_WARRIOR_ANNUAL!,
       name: 'Road Warrior (Annual)',
-      credits: -1, // Unlimited
+      credits: 100,
       interval: 'year' as const,
     },
   },
