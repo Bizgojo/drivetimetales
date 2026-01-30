@@ -122,14 +122,13 @@ function LibraryContent() {
   const [loading, setLoading] = useState(true)
   const [userName, setUserName] = useState('Friend')
   const [userCredits, setUserCredits] = useState(4)
-  const [isUnlimited, setIsUnlimited] = useState(false)
   
   // Filter states - matching LibraryFiltersV2 expected values
   const [selectedDuration, setSelectedDuration] = useState('All Lengths')
   const [selectedGenre, setSelectedGenre] = useState('All Categories')
   const [selectedType, setSelectedType] = useState('Singles & Series')
 
-  const showLowCreditsButton = !isUnlimited && userCredits <= 3
+  const showLowCreditsButton = userCredits <= 3
 
   useEffect(() => {
     async function fetchData() {
@@ -150,7 +149,6 @@ function LibraryContent() {
           .single()
         if (userData) {
           setUserName(userData.first_name || userData.display_name || 'Friend')
-          setIsUnlimited(userData.credits >= 9999)
           setUserCredits(userData.credits || 0)
         }
         
@@ -260,7 +258,7 @@ function LibraryContent() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <div className="bg-slate-950 px-2 py-1 rounded-md text-center leading-tight border border-slate-700">
               <div className="text-white text-[10px]">Credits</div>
-              <div className="text-white text-sm">{isUnlimited ? '∞' : userCredits}</div>
+              <div className="text-white text-sm">{userCredits}</div>
             </div>
             <div style={{ flex: 1, textAlign: 'center' }}>
               <p className="text-white text-sm">Select any series to expand</p>
@@ -271,7 +269,7 @@ function LibraryContent() {
           <div className="flex gap-2 items-center">
             <div className="bg-slate-950 px-2 py-1 rounded-md text-center leading-tight border border-slate-700">
               <div className="text-white text-[10px]">Credits</div>
-              <div className="text-white text-sm">{isUnlimited ? '∞' : userCredits}</div>
+              <div className="text-white text-sm">{userCredits}</div>
             </div>
             <div className="flex-1"><PlaylistButton /></div>
             <button onClick={() => router.push('/library-search')} className="bg-slate-700 text-white px-3 py-2 rounded-md text-sm font-medium">Search</button>
