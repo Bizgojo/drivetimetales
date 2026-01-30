@@ -1,6 +1,6 @@
 // app/api/admin/generate-generic-intros/route.ts
 // Generates generic intro variations for non-logged-in users (Welcome page)
-// Run this once from admin, or when narrator voices change
+// Pass ?category=state to generate one category at a time to avoid timeout
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
@@ -59,6 +59,9 @@ async function generateAudio(script: string, voiceId: string): Promise<Buffer> {
 
 export async function POST(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url);
+    const singleCategory = searchParams.get('category');
+
     // Get news settings for narrator names and voice IDs
     const { data: settingsData } = await supabase
       .from('news_settings')
@@ -76,8 +79,16 @@ export async function POST(request: NextRequest) {
 
     // Generate for morning, afternoon, and evening
     const greetings = ['morning', 'afternoon', 'evening'];
+    
+    // If single category specified, only do that one
+    const categoriesToGenerate = singleCategory ? [singleCategory] : CATEGORIES;
 
-    for (const category of CATEGORIES) {
+    for (const category of categoriesToGenerate) {
+      if (!CATEGORIES.includes(category)) {
+        results[category] = { success: false, error: 'Invalid category' };
+        continue;
+      }
+
       const catSettings = categorySettings[category];
       
       if (!catSettings?.voice_id) {
@@ -138,7 +149,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       message: `Generated ${totalVariations} generic intro variations`,
-      results
+      results,
+      next: singleCategory ? getNextCategory(singleCategory) : null
     });
 
   } catch (error) {
@@ -150,13 +162,21 @@ export async function POST(request: NextRequest) {
   }
 }
 
+function getNextCategory(current: string): string | null {
+  const idx = CATEGORIES.indexOf(current);
+  if (idx === -1 || idx >= CATEGORIES.length - 1) return null;
+  return CATEGORIES[idx + 1];
+}
+
 export async function GET() {
   return NextResponse.json({
     status: 'ok',
     endpoint: 'generate-generic-intros',
-    description: 'POST to generate generic news intro variations for non-logged-in users',
+    description: 'POST to generate generic news intro variations. Add ?category=state to do one at a time.',
+    categories: CATEGORIES,
     templates: GENERIC_INTRO_TEMPLATES.length,
     greetings: ['morning', 'afternoon', 'evening'],
-    totalPerCategory: GENERIC_INTRO_TEMPLATES.length * 3
+    totalPerCategory: GENERIC_INTRO_TEMPLATES.length * 3,
+    usage: 'curl -X POST "URL?category=state" then ?category=national, etc.'
   });
 }
