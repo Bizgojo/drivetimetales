@@ -114,24 +114,17 @@ export async function POST(request: NextRequest) {
     }
 
     case 'invoice.paid': {
-      // Monthly renewal - add credits
+      // Monthly/annual renewal - RESET credits to plan amount (no rollover)
       const invoice = event.data.object as Stripe.Invoice
       const subscription = await stripe.subscriptions.retrieve(invoice.subscription as string)
       const userId = subscription.metadata?.userId || subscription.metadata?.user_id
       const plan = subscription.metadata?.plan || 'commuter'
       
-      console.log('Invoice paid - monthly renewal:', { userId, plan })
+      console.log('Invoice paid - subscription renewal:', { userId, plan })
       
       if (userId) {
-        // Add monthly credits
-        const { data: userData } = await supabase
-          .from('users')
-          .select('credits')
-          .eq('id', userId)
-          .single()
-        
-        const currentCredits = userData?.credits || 0
-        const newCredits = currentCredits + planCredits[plan]
+        // Reset credits to plan amount (unused credits do not roll over)
+        const newCredits = planCredits[plan]
         
         const { error: updateError } = await supabase
           .from('users')
@@ -139,9 +132,9 @@ export async function POST(request: NextRequest) {
           .eq('id', userId)
         
         if (updateError) {
-          console.error('Error adding monthly credits:', updateError)
+          console.error('Error resetting credits:', updateError)
         } else {
-          console.log(`Monthly credits added: ${currentCredits} -> ${newCredits}`)
+          console.log(`Credits reset to ${newCredits} for ${plan} plan`)
         }
       }
       break
