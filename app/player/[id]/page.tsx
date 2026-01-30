@@ -179,6 +179,22 @@ function PlayerContent() {
             {story.genre} • {story.duration_mins} min • {story.credits} credit{story.credits !== 1 ? 's' : ''}
           </p>
           <p style={{ color: 'white', fontSize: '14px' }}>by {story.author || 'Drive Time Tales'}</p>
+          
+          {/* Ownership flag - shows after 3-min charge */}
+          {charged && (
+            <div style={{ 
+              display: 'inline-block',
+              marginTop: '8px',
+              padding: '4px 12px',
+              borderRadius: '12px',
+              fontSize: '12px',
+              fontWeight: '600',
+              backgroundColor: currentTime > 0 && !libraryEntry?.completed ? '#3b82f6' : '#f97316',
+              color: 'white'
+            }}>
+              {currentTime > 0 && !libraryEntry?.completed ? 'Continue' : 'Owned'}
+            </div>
+          )}
         </div>
         
         {/* Description - expands/contracts based on content */}
