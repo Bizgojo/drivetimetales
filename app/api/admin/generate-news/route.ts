@@ -282,7 +282,7 @@ async function generateCleanScript(
 - Environmental and infrastructure issues
 - State-level economic performance
 - Public health updates and state agency reports
-- Local sports teams and college athletics
+- State college sports: Basketball and Football scores, game results, rankings, and team news
 - Major incidents affecting the state`,
     
     national: `NATIONAL NEWS FOCUS:
@@ -353,7 +353,7 @@ SCRIPT REQUIREMENTS:
      * "Hey ${listenerName}, good ${timeGreeting}! It's ${dateStr}. ${narrator} here with your ${label} update."
      * "Welcome, ${listenerName}! It's ${dateStr}. I'm ${narrator}, and this is your ${label} for today."
 
-2. STORY COVERAGE (target 3-5 minutes total):
+2. STORY COVERAGE (target ${targetDuration} minutes total):
    - Place more important and newer stories FIRST and give them MORE time
    - Each story: 3-5 sentences in conversational broadcast style
    - Add color and context - explain WHY stories matter
@@ -440,7 +440,7 @@ export async function POST(request: NextRequest) {
   
   try {
     const body = await request.json();
-    const { category, voiceId, narratorName, state, storiesCount = 5, listenerName = 'Marc' } = body;
+    const { category, voiceId, narratorName, state, storiesCount = 5, listenerName = 'Marc', targetDuration = '3-5' } = body;
 
     if (!category) {
       return NextResponse.json({ error: 'Category is required' }, { status: 400 });
