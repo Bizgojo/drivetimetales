@@ -39,6 +39,8 @@ interface HorizontalStoryCardProps {
   series_total?: number | null
   // New: array of flags (max 3 will be displayed)
   flags?: string[]
+  // OLD: single flag for backward compatibility
+  flag?: 'free' | 'editors-pick' | 'readers-choice' | 'trending' | null
 }
 
 function getCredits(duration_mins: number): number {
@@ -96,9 +98,27 @@ export default function HorizontalStoryCard({
   series_number,
   series_total,
   flags = [],
+  flag, // OLD prop for backward compatibility
 }: HorizontalStoryCardProps) {
   const displayCredits = credits ?? getCredits(duration_mins)
-  const displayFlags = getDisplayFlags(flags)
+  
+  // Handle backward compatibility: if old flag prop is passed, convert to array
+  let finalFlags = flags
+  if ((!flags || flags.length === 0) && flag) {
+    // Map old flag values to new system
+    const flagMap: Record<string, string> = {
+      'free': 'free',
+      'editors-pick': 'editors-pick',
+      'readers-choice': 'listeners-pick', // map old name to new
+      'trending': 'trending',
+    }
+    const mappedFlag = flagMap[flag]
+    if (mappedFlag) {
+      finalFlags = [mappedFlag]
+    }
+  }
+  
+  const displayFlags = getDisplayFlags(finalFlags)
   
   // Assign flags to rows (row 2, 3, 4)
   const flag1 = displayFlags[0] || null
