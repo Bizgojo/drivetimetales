@@ -1,117 +1,136 @@
+// app/api/admin/generate-no-credits-audio/route.ts
+// Generates "sorry, you need credits" audio for each category's narrator
+// Run this once from the admin panel, or when you change narrators
+
 import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 
-// API Key for publishing from Audio Drama Maker
-const VALID_API_KEY = '0d35da1c324ce568d61bcdf23b2e9505c8f064afcac01db289d12226f8e60e7e';
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
-export async function GET(request: NextRequest) {
-  // Test endpoint - just check if API key is valid
-  const apiKey = request.headers.get('x-api-key') || request.nextUrl.searchParams.get('api_key');
-  
-  if (apiKey === VALID_API_KEY) {
-    return NextResponse.json({ status: 'connected', message: 'Ready to publish' });
+const CATEGORIES = ['state', 'national', 'international', 'business', 'sports', 'science'];
+
+const CATEGORY_LABELS: Record<string, string> = {
+  state: 'State News',
+  national: 'National News',
+  international: 'International News',
+  business: 'Business News',
+  sports: 'Sports News',
+  science: 'Science & Technology News'
+};
+
+async function generateAudio(script: string, voiceId: string): Promise<Buffer> {
+  const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+    method: 'POST',
+    headers: {
+      'Accept': 'audio/mpeg',
+      'Content-Type': 'application/json',
+      'xi-api-key': process.env.ELEVENLABS_API_KEY!
+    },
+    body: JSON.stringify({
+      text: script,
+      model_id: 'eleven_monolingual_v1',
+      voice_settings: {
+        stability: 0.5,
+        similarity_boost: 0.75
+      }
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`ElevenLabs API error: ${response.status} - ${errorText}`);
   }
-  
-  return NextResponse.json({ status: 'ok', message: 'Drive Time Tales API' });
+
+  const arrayBuffer = await response.arrayBuffer();
+  return Buffer.from(arrayBuffer);
 }
 
 export async function POST(request: NextRequest) {
   try {
-    // Check API key
-    const apiKey = request.headers.get('x-api-key');
-    
-    if (!apiKey || apiKey !== VALID_API_KEY) {
-      return NextResponse.json(
-        { error: 'Invalid API key' },
-        { status: 401 }
-      );
+    // Get news settings to find narrator names and voice IDs
+    const { data: settingsData, error: settingsError } = await supabase
+      .from('news_settings')
+      .select('settings')
+      .eq('id', '1')
+      .single();
+
+    if (settingsError || !settingsData) {
+      return NextResponse.json({ error: 'Could not load news settings' }, { status: 500 });
     }
 
-    // Parse the form data
-    const formData = await request.formData();
-    
-    const title = formData.get('title') as string;
-    const author = formData.get('author') as string;
-    const genre = formData.get('genre') as string;
-    const description = formData.get('description') as string;
-    const duration_seconds = formData.get('duration_seconds') as string;
-    const credits = formData.get('credits') as string;
-    const audioFile = formData.get('audio') as File | null;
-    const coverFile = formData.get('cover') as File | null;
+    const settings = settingsData.settings || {};
+    const categories = settings.categories || {};
+    const results: Record<string, { success: boolean; audioUrl?: string; error?: string }> = {};
 
-    console.log('Publishing story:', { title, author, genre, description, duration_seconds });
+    for (const category of CATEGORIES) {
+      const catSettings = categories[category] || {};
+      const narratorName = catSettings.narrator_name || 'Your Host';
+      const voiceId = catSettings.voice_id;
 
-    // Validate required fields
-    if (!title) {
-      return NextResponse.json({ error: 'Title is required' }, { status: 400 });
+      if (!voiceId) {
+        results[category] = { success: false, error: 'No voice configured' };
+        continue;
+      }
+
+      try {
+        // Generate the "sorry" script for this narrator
+        const label = CATEGORY_LABELS[category] || category;
+        const script = `I'm sorry, but while ${label} briefings are free to listen to, you need to have at least one credit in your account to verify you're an active member of Drive Time Tales. You can tap the orange button above to get more credits. I'm ${narratorName}, and I look forward to bringing you the news next time. Take care and drive safe!`;
+
+        console.log(`[No Credits Audio] Generating for ${category} with voice ${voiceId}`);
+        const audioBuffer = await generateAudio(script, voiceId);
+
+        // Upload to Supabase storage
+        const fileName = `no-credits-${category}.mp3`;
+        
+        const { error: uploadError } = await supabase.storage
+          .from('news-audio')
+          .upload(fileName, audioBuffer, {
+            contentType: 'audio/mpeg',
+            upsert: true // Overwrite if exists
+          });
+
+        if (uploadError) {
+          console.error(`[No Credits Audio] Upload error for ${category}:`, uploadError);
+          results[category] = { success: false, error: uploadError.message };
+          continue;
+        }
+
+        const { data: urlData } = supabase.storage.from('news-audio').getPublicUrl(fileName);
+        const audioUrl = urlData.publicUrl;
+
+        console.log(`[No Credits Audio] Generated for ${category}: ${audioUrl}`);
+        results[category] = { success: true, audioUrl };
+
+      } catch (err) {
+        console.error(`[No Credits Audio] Error for ${category}:`, err);
+        results[category] = { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+      }
     }
-
-    // Calculate duration label
-    const seconds = parseInt(duration_seconds) || 0;
-    let duration_label = '30 min';
-    let duration_category = '30min';
-    if (seconds > 3600) {
-      duration_label = `${Math.round(seconds / 3600)} hr`;
-      duration_category = '3hr';
-    } else if (seconds > 1800) {
-      duration_label = '1 hr';
-      duration_category = '1hr';
-    } else {
-      duration_label = `${Math.round(seconds / 60)} min`;
-      duration_category = '30min';
-    }
-
-    // Calculate price based on duration
-    let price_cents = 99; // Default 99 cents
-    if (seconds <= 900) { // 15 min or less
-      price_cents = 69;
-    } else if (seconds <= 1800) { // 30 min or less
-      price_cents = 129;
-    } else if (seconds <= 3600) { // 1 hour or less
-      price_cents = 249;
-    } else { // Over 1 hour
-      price_cents = 699;
-    }
-
-    // For now, just log success and return
-    // In production, you would:
-    // 1. Upload audio file to R2/S3
-    // 2. Upload cover image to R2/S3
-    // 3. Insert record into Supabase database
-
-    const storyId = `story_${Date.now()}`;
-    
-    console.log('Story published successfully:', {
-      id: storyId,
-      title,
-      author,
-      genre,
-      duration_label,
-      price_cents,
-      hasAudio: !!audioFile,
-      hasCover: !!coverFile
-    });
 
     return NextResponse.json({
       success: true,
-      message: 'Story published successfully!',
-      story: {
-        id: storyId,
-        title,
-        author,
-        genre,
-        duration: duration_category,
-        duration_label,
-        price_cents,
-        description,
-        credits
-      }
+      message: 'No-credits audio generation complete',
+      results
     });
 
   } catch (error) {
-    console.error('Publish error:', error);
+    console.error('[No Credits Audio] Error:', error);
     return NextResponse.json(
-      { error: 'Failed to publish story' },
+      { error: error instanceof Error ? error.message : 'Generation failed' },
       { status: 500 }
     );
   }
+}
+
+export async function GET() {
+  return NextResponse.json({
+    status: 'ok',
+    endpoint: 'generate-no-credits-audio',
+    description: 'POST to generate "sorry, you need credits" audio for all category narrators',
+    usage: 'Call this after changing narrator voices in news settings'
+  });
 }
