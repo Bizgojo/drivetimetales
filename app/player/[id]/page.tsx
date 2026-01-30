@@ -236,10 +236,10 @@ function PlayerContent() {
             gap: '8px', 
             backgroundColor: isPlaying ? '#f97316' : '#22c55e', 
             color: 'black', 
-            animation: !isPlaying && audioReady ? 'pulse 2s infinite' : 'none' 
+            animation: !isPlaying && audioReady && currentTime === 0 && !charged ? 'pulse 2s infinite' : 'none' 
           }}
         >
-          {!audioReady ? 'Loading...' : isPlaying ? 'Playing' : 'Tap to Play'}
+          {!audioReady ? 'Loading...' : isPlaying ? 'Pause' : charged ? (libraryEntry?.completed ? 'Play Again' : (currentTime > 0 || (libraryEntry?.progress ?? 0) > 0) ? 'Continue' : 'Play') : currentTime > 0 ? 'Continue' : 'Tap to Play'}
         </button>
         
         {/* Reserve/Not For Me buttons - only show before 3 min charge */}
