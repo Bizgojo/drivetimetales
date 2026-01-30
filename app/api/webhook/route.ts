@@ -18,7 +18,7 @@ const planCredits: { [key: string]: number } = {
   free: 2,
   test_driver: 10,
   commuter: 25,
-  road_warrior: -1, // -1 means unlimited
+  road_warrior: 100,
 }
 
 export async function POST(request: NextRequest) {
@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
         }
         
         const currentCredits = userData?.credits || 0
-        const newCredits = currentCredits === -1 ? -1 : currentCredits + creditsToAdd
+        const newCredits = currentCredits + creditsToAdd
         
         const { error: updateError } = await supabase
           .from('users')
@@ -131,7 +131,7 @@ export async function POST(request: NextRequest) {
           .single()
         
         const currentCredits = userData?.credits || 0
-        const newCredits = planCredits[plan] === -1 ? -1 : currentCredits + planCredits[plan]
+        const newCredits = currentCredits + planCredits[plan]
         
         const { error: updateError } = await supabase
           .from('users')
