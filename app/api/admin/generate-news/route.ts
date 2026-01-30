@@ -247,22 +247,10 @@ async function generateCleanScript(
   listenerName: string = 'friend',
   categoryId: string = 'national'
 ): Promise<string> {
-  // Use EST timezone for greeting (server may be in UTC)
-  const estTime = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
-  const estDate = new Date(estTime);
-  const hour = estDate.getHours();
+  const hour = new Date().getHours();
   let timeGreeting = 'morning';
   if (hour >= 12 && hour < 17) timeGreeting = 'afternoon';
   else if (hour >= 17) timeGreeting = 'evening';
-
-  // Format date for announcement (e.g., "Thursday, January 30th")
-  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-  const dayName = days[estDate.getDay()];
-  const monthName = months[estDate.getMonth()];
-  const dateNum = estDate.getDate();
-  const suffix = (dateNum === 1 || dateNum === 21 || dateNum === 31) ? 'st' : (dateNum === 2 || dateNum === 22) ? 'nd' : (dateNum === 3 || dateNum === 23) ? 'rd' : 'th';
-  const dateStr = `${dayName}, ${monthName} ${dateNum}${suffix}`;
 
   const label = state ? `${state} News` : config.label;
 
@@ -282,7 +270,7 @@ async function generateCleanScript(
 - Environmental and infrastructure issues
 - State-level economic performance
 - Public health updates and state agency reports
-- State college sports: Basketball and Football scores, game results, rankings, and team news
+- Local sports teams and college athletics
 - Major incidents affecting the state`,
     
     national: `NATIONAL NEWS FOCUS:
@@ -346,14 +334,13 @@ SCRIPT REQUIREMENTS:
 
 1. OPENING (vary naturally - never sound stale or canned):
    - Greet the listener by name: "${listenerName}"
-   - ALWAYS announce today's date: "${dateStr}"
    - Introduce yourself as ${narrator}
    - Examples of varied openings:
-     * "Good ${timeGreeting}, ${listenerName}! It's ${dateStr}. I'm ${narrator}, bringing you your ${label} briefing."
-     * "Hey ${listenerName}, good ${timeGreeting}! It's ${dateStr}. ${narrator} here with your ${label} update."
-     * "Welcome, ${listenerName}! It's ${dateStr}. I'm ${narrator}, and this is your ${label} for today."
+     * "Good ${timeGreeting}, ${listenerName}! I'm ${narrator}, bringing you your ${label} briefing."
+     * "Hey ${listenerName}, good ${timeGreeting}! ${narrator} here with your ${label} update."
+     * "Welcome, ${listenerName}! I'm ${narrator}, and this is your ${label} for today."
 
-2. STORY COVERAGE (target ${targetDuration} minutes total):
+2. STORY COVERAGE (target 3-5 minutes total):
    - Place more important and newer stories FIRST and give them MORE time
    - Each story: 3-5 sentences in conversational broadcast style
    - Add color and context - explain WHY stories matter
@@ -440,7 +427,7 @@ export async function POST(request: NextRequest) {
   
   try {
     const body = await request.json();
-    const { category, voiceId, narratorName, state, storiesCount = 5, listenerName = 'Marc', targetDuration = '3-5' } = body;
+    const { category, voiceId, narratorName, state, storiesCount = 5, listenerName = 'Marc' } = body;
 
     if (!category) {
       return NextResponse.json({ error: 'Category is required' }, { status: 400 });
