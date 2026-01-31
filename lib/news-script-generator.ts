@@ -18,7 +18,7 @@ interface ScriptLine {
 
 export interface NewsScript {
   title: string;
-  edition: 'morning' | 'evening';
+  edition: 'morning' | 'afternoon' | 'evening';
   date: string;
   sections: ScriptSection[];
   estimatedDuration: number; // minutes
@@ -30,6 +30,34 @@ export interface NewsScript {
   };
 }
 
+// Helper function to get current time in Eastern timezone
+function getEasternTime(): Date {
+  const now = new Date();
+  // Convert to Eastern time string, then parse back
+  const easternString = now.toLocaleString('en-US', { timeZone: 'America/New_York' });
+  return new Date(easternString);
+}
+
+// Helper function to get greeting based on hour
+function getGreetingForHour(hour: number): { greeting: string; edition: 'morning' | 'afternoon' | 'evening' } {
+  if (hour < 12) {
+    return {
+      greeting: "Good morning, and welcome to your Drive Time Tales Daily Briefing",
+      edition: 'morning'
+    };
+  } else if (hour < 17) {
+    return {
+      greeting: "Good afternoon, and welcome to your Drive Time Tales Daily Briefing",
+      edition: 'afternoon'
+    };
+  } else {
+    return {
+      greeting: "Good evening, and welcome to your Drive Time Tales Daily Briefing",
+      edition: 'evening'
+    };
+  }
+}
+
 // Generate the full news script
 export async function generateNewsScript(
   stories: {
@@ -37,23 +65,37 @@ export async function generateNewsScript(
     science: NewsStory[];
     sports: NewsStory[];
   },
-  edition: 'morning' | 'evening',
+  edition: 'morning' | 'afternoon' | 'evening' | null, // null = auto-detect
   anthropicApiKey: string
 ): Promise<NewsScript> {
   const client = new Anthropic({ apiKey: anthropicApiKey });
   
-  const today = new Date();
-  const dateStr = today.toLocaleDateString('en-US', {
+  // Use Eastern timezone for date and time
+  const easternNow = getEasternTime();
+  const currentHour = easternNow.getHours();
+  
+  // Format date in Eastern timezone
+  const dateStr = easternNow.toLocaleDateString('en-US', {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
     day: 'numeric'
   });
   
-  const editionLabel = edition === 'morning' ? 'Morning' : 'Evening';
-  const greeting = edition === 'morning' 
-    ? "Good morning, and welcome to your Drive Time Tales Daily Briefing"
-    : "Good evening, and welcome to your Drive Time Tales Daily Briefing";
+  // Auto-detect edition and greeting if not specified
+  const { greeting, edition: detectedEdition } = edition 
+    ? { 
+        greeting: edition === 'morning' 
+          ? "Good morning, and welcome to your Drive Time Tales Daily Briefing"
+          : edition === 'afternoon'
+          ? "Good afternoon, and welcome to your Drive Time Tales Daily Briefing"
+          : "Good evening, and welcome to your Drive Time Tales Daily Briefing",
+        edition 
+      }
+    : getGreetingForHour(currentHour);
+  
+  const finalEdition = edition || detectedEdition;
+  const editionLabel = finalEdition === 'morning' ? 'Morning' : finalEdition === 'afternoon' ? 'Afternoon' : 'Evening';
 
   // Build the prompt with all stories
   const prompt = buildPrompt(stories, dateStr, editionLabel, greeting);
@@ -83,10 +125,13 @@ export async function generateNewsScript(
   }, 0);
   const estimatedDuration = Math.ceil(totalWords / 150);
 
+  // Get date in Eastern timezone for the date field
+  const easternDateStr = easternNow.toLocaleDateString('en-CA'); // YYYY-MM-DD format
+
   return {
     title: `Daily Briefing - ${dateStr} ${editionLabel}`,
-    edition,
-    date: today.toISOString().split('T')[0],
+    edition: finalEdition,
+    date: easternDateStr,
     sections,
     estimatedDuration,
     generatedAt: new Date().toISOString(),
