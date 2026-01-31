@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
         console.error('[Cron News] Error fetching subscriber states:', statesError);
       } else {
         // Get unique states
-        const uniqueStates = [...new Set(subscriberStates?.map(u => u.state).filter(Boolean))] as string[];
+        const uniqueStates = Array.from(new Set(subscriberStates?.map(u => u.state).filter(Boolean))) as string[];
         
         console.log(`[Cron News] Generating state news for ${uniqueStates.length} states:`, uniqueStates);
 
