@@ -6,8 +6,6 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const CATEGORIES = ['national', 'international', 'business', 'sports', 'science', 'state'];
-
 export async function GET(request: NextRequest) {
   try {
     const authHeader = request.headers.get('authorization');
@@ -19,37 +17,35 @@ export async function GET(request: NextRequest) {
     const { data: settingsData } = await supabase.from('news_settings').select('*').eq('id', '1').single();
     const settings = settingsData?.settings || {};
     
-    if (!settings.schedule?.enabled && !settings.auto_generate) {
+    if (!settings.auto_generate) {
       return NextResponse.json({ success: true, message: 'Auto-generation disabled', generated: 0 });
     }
 
     const categories = settings.categories || {};
-    const selectedState = settings.selected_state || 'South Carolina';
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://drivetimetales.vercel.app';
+    const enabledCategories = Object.entries(categories)
+      .filter(([_, cat]: [string, any]) => cat.enabled)
+      .map(([id]) => id);
 
-    // Build list of categories to generate
-    const toGenerate = CATEGORIES.filter(catId => categories[catId]?.voice_id);
+    const results: Array<{ category: string; success: boolean; error?: string }> = [];
 
-    // Generate all in parallel (fire and forget style)
-    const promises = toGenerate.map(categoryId => {
-      const catSettings = categories[categoryId];
-      return fetch(baseUrl + '/api/admin/generate-news', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          category: categoryId,
-          voiceId: catSettings.voice_id,
-          narratorName: catSettings.narrator_name || 'Your Host',
-          state: categoryId === 'state' ? selectedState : null,
-          storiesCount: 5,
-          listenerName: 'listener'
-        })
-      }).then(r => ({ category: categoryId, success: r.ok }))
-        .catch(err => ({ category: categoryId, success: false, error: String(err) }));
-    });
-
-    // Wait for all with a 60 second timeout per request
-    const results = await Promise.all(promises);
+    for (const categoryId of enabledCategories) {
+      try {
+        const catSettings = categories[categoryId] || {};
+        const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/admin/generate-news`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            category: categoryId,
+            voiceId: catSettings.voice_id || '',
+            narratorName: catSettings.narrator_name || 'Your Host',
+            storiesCount: settings.stories_per_category || 5
+          })
+        });
+        results.push({ category: categoryId, success: response.ok });
+      } catch (err) {
+        results.push({ category: categoryId, success: false, error: String(err) });
+      }
+    }
 
     return NextResponse.json({
       success: true,

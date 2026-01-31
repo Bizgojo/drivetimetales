@@ -1,6 +1,7 @@
 // app/api/admin/generate-news/route.ts
 // UPDATED: Integrates with /lib/news-prompts.ts for editable prompts
 // HYBRID: GDELT for state news, World News API for national/world/business/sports/scitech
+// FIXED: personalGreeting parameter for neutral (welcome page) vs personal (home page) greetings
 
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
@@ -423,7 +424,8 @@ async function generateCleanScript(
   listenerName: string,
   categoryId: string,
   targetDuration: string = '3-5',
-  customPrompt?: string
+  customPrompt?: string,
+  personalGreeting: boolean = true
 ): Promise<string> {
   const timeGreeting = getTimeGreeting();
   const todayDate = getEasternDateFormatted();
@@ -445,7 +447,8 @@ async function generateCleanScript(
       .replace(/{LISTENER_NAME}/g, listenerName)
       .replace(/{LABEL}/g, label)
       .replace(/{TIME_GREETING}/g, timeGreeting)
-      .replace(/{TODAY_DATE}/g, todayDate)      .replace(/{STATE}/g, state || '');
+      .replace(/{TODAY_DATE}/g, todayDate)
+      .replace(/{STATE}/g, state || '');
   } else {
     // Use the built-in default prompt
     const categoryGuidance: Record<string, string> = {
@@ -523,6 +526,48 @@ When mentioning companies, briefly introduce them (location + what they do).`
 
     const guidance = categoryGuidance[state ? 'state' : categoryId] || '';
 
+    // Different openings and closings based on personalGreeting
+    let openingSection: string;
+    let closingSection: string;
+
+    if (personalGreeting) {
+      // Personal greeting for Home page (knows user's name and uses time greeting)
+      openingSection = `1. OPENING (vary naturally - never sound stale or canned):
+   - Greet the listener by name: "${listenerName}"
+   - Introduce yourself as ${narrator}
+   - Examples of varied openings:
+     * "Good ${timeGreeting}, ${listenerName}! I'm ${narrator}, and it's ${todayDate}. Here's your ${label} briefing."
+     * "Hey ${listenerName}, good ${timeGreeting}! ${narrator} here on this ${todayDate} with your ${label} update."
+     * "Welcome, ${listenerName}! I'm ${narrator}. Today is ${todayDate}, and this is your ${label}."`;
+
+      closingSection = `3. CLOSING (vary naturally):
+   - Mention the listener's name: "${listenerName}"
+   - Sign off with your name: ${narrator}
+   - Examples:
+     * "That's your ${label} update, ${listenerName}. I'm ${narrator}. Thanks for listening, and drive safe!"
+     * "And that's the latest, ${listenerName}. ${narrator} here, wishing you a great ${timeGreeting}."
+     * "That wraps up your briefing, ${listenerName}. I'm ${narrator}. We'll catch you next time!"`;
+    } else {
+      // Neutral greeting for Welcome page (no user name, no time-of-day greeting)
+      openingSection = `1. OPENING (vary naturally - never sound stale or canned):
+   - Welcome the listener to Drive Time Tales
+   - Introduce yourself as ${narrator}
+   - Always mention today's date: ${todayDate}
+   - DO NOT use "Good morning/afternoon/evening" - just use a neutral welcome
+   - Examples of varied openings:
+     * "Welcome to Drive Time Tales! It's ${todayDate}. I'm ${narrator}, and here's your ${label} briefing."
+     * "Hey there! ${narrator} here on this ${todayDate} with your ${label} update."
+     * "Welcome to your ${label}! I'm ${narrator}, and today is ${todayDate}."`;
+
+      closingSection = `3. CLOSING (vary naturally):
+   - Sign off with your name: ${narrator}
+   - DO NOT use time-of-day phrases like "have a great morning/afternoon/evening"
+   - Examples:
+     * "That's your ${label} update. I'm ${narrator}. Thanks for listening, and drive safe!"
+     * "And that's the latest. ${narrator} here. Thanks for tuning in!"
+     * "That wraps up your briefing. I'm ${narrator}. We'll catch you next time!"`;
+    }
+
     prompt = `You are ${narrator}, a seasoned professional radio news broadcaster. Write a broadcast script for these ${label} stories.
 
 NEWS DEFINITION: Information about recent events, developments, or issues that are important, relevant, or interesting to the public. News aims to inform audiences with accurate, timely, and verified facts. It should be the fresh pulse of the world - clear, concise, and grounded in verified information.
@@ -534,13 +579,7 @@ ${storiesText}
 
 SCRIPT REQUIREMENTS:
 
-1. OPENING (vary naturally - never sound stale or canned):
-   - Greet the listener by name: "${listenerName}"
-   - Introduce yourself as ${narrator}
-   - Examples of varied openings:
-     * "Good ${timeGreeting}, ${listenerName}! I'm ${narrator}, and it's ${todayDate}. Here's your ${label} briefing."
-     * "Hey ${listenerName}, good ${timeGreeting}! ${narrator} here on this ${todayDate} with your ${label} update."
-     * "Welcome, ${listenerName}! I'm ${narrator}. Today is ${todayDate}, and this is your ${label}."
+${openingSection}
 
 2. STORY COVERAGE (target ${targetDuration} minutes total):
    - Place more important and newer stories FIRST and give them MORE time
@@ -550,13 +589,7 @@ SCRIPT REQUIREMENTS:
    - Use smooth transitions between stories
    - NEVER hallucinate, exaggerate, or make up events
 
-3. CLOSING (vary naturally):
-   - Mention the listener's name: "${listenerName}"
-   - Sign off with your name: ${narrator}
-   - Examples:
-     * "That's your ${label} update, ${listenerName}. I'm ${narrator}. Thanks for listening, and drive safe!"
-     * "And that's the latest, ${listenerName}. ${narrator} here, wishing you a great ${timeGreeting}."
-     * "That wraps up your briefing, ${listenerName}. I'm ${narrator}. We'll catch you next time!"
+${closingSection}
 
 STYLE RULES:
 - Be warm, conversational, and engaging - like a trusted friend delivering the news
@@ -579,9 +612,18 @@ STYLE RULES:
 
   script = script.trim();
   
-  const greetingMatch = script.match(/Good (morning|afternoon|evening)/i);
-  if (greetingMatch && greetingMatch.index && greetingMatch.index > 0) {
-    script = script.substring(greetingMatch.index);
+  // For personal greetings, trim to start at "Good morning/afternoon/evening"
+  // For neutral greetings, trim to start at "Welcome"
+  if (personalGreeting) {
+    const greetingMatch = script.match(/Good (morning|afternoon|evening)/i);
+    if (greetingMatch && greetingMatch.index && greetingMatch.index > 0) {
+      script = script.substring(greetingMatch.index);
+    }
+  } else {
+    const welcomeMatch = script.match(/Welcome|Hey there/i);
+    if (welcomeMatch && welcomeMatch.index && welcomeMatch.index > 0) {
+      script = script.substring(welcomeMatch.index);
+    }
   }
 
   return script;
@@ -631,8 +673,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       status: 'ok',
       endpoint: 'generate-news',
-      version: '3.0',
-      features: ['gdelt-state-news', 'worldnews-api', 'editable-prompts', 'hybrid-sources']
+      version: '3.1',
+      features: ['gdelt-state-news', 'worldnews-api', 'editable-prompts', 'hybrid-sources', 'personal-greeting-toggle']
     });
   }
 
@@ -685,7 +727,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Handle news generation
-    const { category, voiceId, narratorName, state, storiesCount = 5, listenerName = 'Marc', targetDuration = '3-5' } = body;
+    // personalGreeting: true = Home page (user name + time greeting)
+    // personalGreeting: false = Welcome page (neutral, date only)
+    const { category, voiceId, narratorName, state, storiesCount = 5, listenerName = 'Marc', targetDuration = '3-5', personalGreeting = true } = body;
 
     if (!category) {
       return NextResponse.json({ error: 'Category is required' }, { status: 400 });
@@ -701,7 +745,7 @@ export async function POST(request: NextRequest) {
     }
 
     const narrator = narratorName || 'Your Host';
-    console.log(`[Generate News] Starting: ${category}${state ? ` (${state})` : ''}, source: ${config.source}`);
+    console.log(`[Generate News] Starting: ${category}${state ? ` (${state})` : ''}, source: ${config.source}, personalGreeting: ${personalGreeting}`);
 
     // Fetch news from appropriate source
     const stories = await fetchNews(category, state, storiesCount);
@@ -719,7 +763,7 @@ export async function POST(request: NextRequest) {
     const { prompt: customPrompt } = await getPromptForCategory(category);
 
     // Generate script
-    const script = await generateCleanScript(stories, config, narrator, state, listenerName, category, targetDuration, customPrompt);
+    const script = await generateCleanScript(stories, config, narrator, state, listenerName, category, targetDuration, customPrompt, personalGreeting);
     console.log(`[Generate News] Script generated (${script.length} chars)`);
 
     // Generate audio if voice selected
