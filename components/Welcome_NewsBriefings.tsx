@@ -7,7 +7,7 @@ Location: ~/Projects/drivetimetales/components/
 File: Welcome_NewsBriefings.tsx
 
 Created: January 18, 2026
-Updated: January 29, 2026 - Added state selection confirmation popup
+Updated: January 31, 2026 - Added stitch API for intro/outro playback
 Owner: Marc (Wonder Books Press / Drive Time Tales)
 Status: PROTECTED
 
@@ -16,7 +16,7 @@ News Briefings section for WELCOME page with horizontal button layout.
 User selects state from dropdown with confirmation popup.
 
 SCENARIOS:
-1. User has 1+ credits: Plays the actual news briefing
+1. User has 1+ credits: Plays intro → news → outro via stitch API (generic clips)
 2. User has 0 credits: Plays "no credits" message from narrator
 3. State News first click: Shows dropdown to select state, then plays
 
@@ -26,6 +26,7 @@ FEATURES:
 - Selected state saved to localStorage
 - State abbreviation becomes label (e.g., "TN News")
 - No-credits handling plays narrator message
+- Stitch API integration for generic intros/outros
 
 LAYOUT:
 - Wider horizontal buttons (not square)
@@ -54,7 +55,12 @@ import { useState, useRef, useEffect } from 'react'
 // TYPES
 // =============================================================================
 
-type BriefingStatus = 'new' | 'playing' | 'paused' | 'played'
+type BriefingStatus = 'new' | 'loading' | 'playing' | 'paused' | 'played'
+
+interface PlaylistItem {
+  type: 'intro' | 'news' | 'outro'
+  url: string
+}
 
 interface WelcomeNewsBriefingsProps {
   newsEpisodes: Record<string, {
@@ -143,6 +149,7 @@ const NEWS_CATEGORIES = [
 
 const STATUS_STYLES: Record<BriefingStatus, { backgroundColor: string; color: string }> = {
   new: { backgroundColor: '#f87171', color: 'white' },
+  loading: { backgroundColor: '#fbbf24', color: 'black' },
   playing: { backgroundColor: '#34d399', color: 'black' },
   paused: { backgroundColor: '#38bdf8', color: 'black' },
   played: { backgroundColor: '#a78bfa', color: 'black' },
@@ -150,6 +157,7 @@ const STATUS_STYLES: Record<BriefingStatus, { backgroundColor: string; color: st
 
 const STATUS_LABELS: Record<BriefingStatus, string> = {
   new: 'New',
+  loading: '...',
   playing: 'Playing',
   paused: 'Paused',
   played: 'Played',
@@ -165,7 +173,10 @@ export function Welcome_NewsBriefings({ newsEpisodes, credits }: WelcomeNewsBrie
   const [showStateDropdown, setShowStateDropdown] = useState(false)
   const [selectedState, setSelectedState] = useState<string>('')
   const [pendingState, setPendingState] = useState<string | null>(null)
-  const audioRefs = useRef<Record<string, HTMLAudioElement>>({})
+  const [currentPlaylist, setCurrentPlaylist] = useState<PlaylistItem[]>([])
+  const [currentPlaylistIndex, setCurrentPlaylistIndex] = useState(0)
+  const [activeBriefingId, setActiveBriefingId] = useState<string | null>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
   const noCreditsAudioRef = useRef<HTMLAudioElement | null>(null)
 
   // Load saved state from localStorage on mount
@@ -176,14 +187,61 @@ export function Welcome_NewsBriefings({ newsEpisodes, credits }: WelcomeNewsBrie
     }
   }, [])
 
-  // Handle state selection - show confirmation popup
-  const handleStateSelect = (stateAbbrev: string) => {
-    setPendingState(stateAbbrev)
-    // Keep dropdown open behind confirmation
+  // =============================================================================
+  // PLAYLIST PLAYBACK - plays intro → news → outro in sequence
+  // =============================================================================
+
+  useEffect(() => {
+    if (currentPlaylist.length > 0 && activeBriefingId) {
+      playCurrentTrack()
+    }
+  }, [currentPlaylist, currentPlaylistIndex])
+
+  const playCurrentTrack = () => {
+    if (currentPlaylistIndex >= currentPlaylist.length) {
+      // Playlist finished
+      if (activeBriefingId) {
+        setBriefingStatus(prev => ({ ...prev, [activeBriefingId]: 'played' }))
+      }
+      setActiveBriefingId(null)
+      setCurrentPlaylist([])
+      setCurrentPlaylistIndex(0)
+      return
+    }
+
+    const track = currentPlaylist[currentPlaylistIndex]
+    
+    if (audioRef.current) {
+      audioRef.current.pause()
+    }
+    
+    const audio = new Audio(track.url)
+    audioRef.current = audio
+    
+    audio.onended = () => {
+      setCurrentPlaylistIndex(prev => prev + 1)
+    }
+    
+    audio.onerror = () => {
+      console.error('[Welcome_NewsBriefings] Audio error, skipping track')
+      setCurrentPlaylistIndex(prev => prev + 1)
+    }
+    
+    audio.play().catch(err => {
+      console.error('[Welcome_NewsBriefings] Play error:', err)
+      setCurrentPlaylistIndex(prev => prev + 1)
+    })
   }
 
-  // Confirm state selection - close everything and play
-  const confirmStateSelection = () => {
+  // =============================================================================
+  // STATE SELECTION HANDLERS
+  // =============================================================================
+
+  const handleStateSelect = (stateAbbrev: string) => {
+    setPendingState(stateAbbrev)
+  }
+
+  const confirmStateSelection = async () => {
     if (!pendingState) return
     const stateToPlay = pendingState
     setSelectedState(stateToPlay)
@@ -191,48 +249,22 @@ export function Welcome_NewsBriefings({ newsEpisodes, credits }: WelcomeNewsBrie
     setPendingState(null)
     setShowStateDropdown(false)
     
-    // Play state news directly (don't call handlePlayBriefing which checks selectedState)
-    const episode = newsEpisodes['state']
-    
-    if (credits <= 0) {
-      playNoCreditsMessage('state')
-      return
-    }
-    
-    if (!episode?.audio_url) return
-    
-    // Pause any other playing audio
-    Object.entries(audioRefs.current).forEach(([id, audio]) => {
-      if (id !== 'state' && !audio.paused) {
-        audio.pause()
-        setBriefingStatus(prev => ({ ...prev, [id]: 'paused' }))
-      }
-    })
-    
-    if (!audioRefs.current['state']) {
-      audioRefs.current['state'] = new Audio(episode.audio_url)
-      audioRefs.current['state'].onended = () => {
-        setBriefingStatus(prev => ({ ...prev, ['state']: 'played' }))
-      }
-    }
-    
-    const audio = audioRefs.current['state']
-    audio.currentTime = 0
-    audio.play()
-    setBriefingStatus(prev => ({ ...prev, ['state']: 'playing' }))
+    // Play state news with stitch API
+    await playBriefingWithStitch('state', stateToPlay)
   }
 
-  // Cancel state selection - return to state list
   const cancelStateSelection = () => {
     setPendingState(null)
-    // Keep showStateDropdown true so user can pick again
   }
 
-  // Handle playing the "no credits" message
+  // =============================================================================
+  // NO CREDITS MESSAGE
+  // =============================================================================
+
   const playNoCreditsMessage = async (categoryId: string) => {
-    Object.values(audioRefs.current).forEach(audio => {
-      if (!audio.paused) audio.pause()
-    })
+    if (audioRef.current && !audioRef.current.paused) {
+      audioRef.current.pause()
+    }
     
     if (noCreditsAudioRef.current && !noCreditsAudioRef.current.paused) {
       noCreditsAudioRef.current.pause()
@@ -268,58 +300,118 @@ export function Welcome_NewsBriefings({ newsEpisodes, credits }: WelcomeNewsBrie
     }
   }
 
-  const handlePlayBriefing = (categoryId: string) => {
-    // Special handling for state news - show dropdown if no state selected
+  // =============================================================================
+  // STITCH API PLAYBACK
+  // =============================================================================
+
+  const playBriefingWithStitch = async (categoryId: string, stateOverride?: string) => {
+    const episode = newsEpisodes[categoryId]
+    
+    if (credits <= 0) {
+      playNoCreditsMessage(categoryId)
+      return
+    }
+    
+    if (!episode?.audio_url) return
+
+    // Stop any other playing audio
+    if (audioRef.current) {
+      audioRef.current.pause()
+    }
+    if (noCreditsAudioRef.current && !noCreditsAudioRef.current.paused) {
+      noCreditsAudioRef.current.pause()
+      setNoCreditsPlaying(false)
+    }
+    if (activeBriefingId && activeBriefingId !== categoryId) {
+      setBriefingStatus(prev => ({ ...prev, [activeBriefingId]: 'paused' }))
+    }
+
+    // Set loading state
+    setBriefingStatus(prev => ({ ...prev, [categoryId]: 'loading' }))
+    setActiveBriefingId(categoryId)
+
+    try {
+      // Call stitch API for GENERIC clips (type=welcome, no userId)
+      const stateParam = (stateOverride || selectedState) ? `&state=${encodeURIComponent(stateOverride || selectedState)}` : ''
+      const response = await fetch(
+        `/api/audio/stitch?type=welcome&category=${categoryId}${stateParam}`
+      )
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch audio playlist')
+      }
+      
+      const data = await response.json()
+      
+      if (!data.playlist || data.playlist.length === 0) {
+        throw new Error('Empty playlist returned')
+      }
+      
+      // Set playlist and start playing
+      setCurrentPlaylist(data.playlist)
+      setCurrentPlaylistIndex(0)
+      setBriefingStatus(prev => ({ ...prev, [categoryId]: 'playing' }))
+      
+    } catch (error) {
+      console.error('[Welcome_NewsBriefings] Stitch API error:', error)
+      
+      // Fallback: play just the news body directly (old behavior)
+      const audio = new Audio(episode.audio_url)
+      audioRef.current = audio
+      
+      audio.onended = () => {
+        setBriefingStatus(prev => ({ ...prev, [categoryId]: 'played' }))
+        setActiveBriefingId(null)
+      }
+      
+      audio.play().catch(err => {
+        console.error('[Welcome_NewsBriefings] Fallback play error:', err)
+        setBriefingStatus(prev => ({ ...prev, [categoryId]: 'new' }))
+        setActiveBriefingId(null)
+      })
+      
+      setBriefingStatus(prev => ({ ...prev, [categoryId]: 'playing' }))
+    }
+  }
+
+  // =============================================================================
+  // MAIN PLAY HANDLER
+  // =============================================================================
+
+  const handlePlayBriefing = async (categoryId: string) => {
+    // For state news, show dropdown if no state selected
     if (categoryId === 'state' && !selectedState) {
       setShowStateDropdown(true)
       return
     }
 
-    const episode = newsEpisodes[categoryId]
-    
-    // If user has no credits, play the "no credits" message instead
-    if (credits <= 0) {
-      playNoCreditsMessage(categoryId)
+    const currentStatus = briefingStatus[categoryId] || 'new'
+
+    // If this briefing is currently playing, pause it
+    if (currentStatus === 'playing' && activeBriefingId === categoryId) {
+      if (audioRef.current) {
+        audioRef.current.pause()
+      }
+      setBriefingStatus(prev => ({ ...prev, [categoryId]: 'paused' }))
       return
     }
 
-    if (!episode?.audio_url) return
-
-    // Pause any other playing audio
-    Object.entries(audioRefs.current).forEach(([id, audio]) => {
-      if (id !== categoryId && !audio.paused) {
-        audio.pause()
-        setBriefingStatus(prev => ({ ...prev, [id]: 'paused' }))
+    // If this briefing is paused, resume it
+    if (currentStatus === 'paused' && activeBriefingId === categoryId) {
+      if (audioRef.current) {
+        audioRef.current.play()
       }
-    })
-
-    // Stop no-credits audio if playing
-    if (noCreditsAudioRef.current && !noCreditsAudioRef.current.paused) {
-      noCreditsAudioRef.current.pause()
-      setNoCreditsPlaying(false)
-    }
-
-    if (!audioRefs.current[categoryId]) {
-      audioRefs.current[categoryId] = new Audio(episode.audio_url)
-      audioRefs.current[categoryId].onended = () => {
-        setBriefingStatus(prev => ({ ...prev, [categoryId]: 'played' }))
-      }
-    }
-
-    const audio = audioRefs.current[categoryId]
-    const currentStatus = briefingStatus[categoryId] || 'new'
-
-    if (currentStatus === 'playing') {
-      audio.pause()
-      setBriefingStatus(prev => ({ ...prev, [categoryId]: 'paused' }))
-    } else {
-      if (currentStatus === 'played') {
-        audio.currentTime = 0
-      }
-      audio.play()
       setBriefingStatus(prev => ({ ...prev, [categoryId]: 'playing' }))
+      return
     }
+
+    // Play with stitch API
+    await playBriefingWithStitch(categoryId)
   }
+
+  // =============================================================================
+  // RENDER - UNCHANGED FROM ORIGINAL
+  // =============================================================================
 
   return (
     <section style={{ paddingLeft: '1rem', paddingRight: '1rem', marginTop: '1.5rem' }}>
