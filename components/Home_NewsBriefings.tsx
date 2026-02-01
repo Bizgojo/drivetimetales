@@ -1,7 +1,7 @@
 // components/Home_NewsBriefings.tsx
 // DTT News Briefings - Home Page Component
 // FRESH BUILD - February 2026
-// FIXED: Use standard Supabase client
+// FIXED: Named export to match existing imports
 
 'use client';
 
@@ -30,19 +30,17 @@ interface UserInfo {
   credits: number;
 }
 
-export default function Home_NewsBriefings() {
+export function Home_NewsBriefings() {
   const [user, setUser] = useState<UserInfo | null>(null);
   const [playing, setPlaying] = useState<string | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Load user info on mount
   useEffect(() => {
     async function loadUser() {
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        
         if (!session?.user) {
           console.log('[Home] No session');
           return;
@@ -71,7 +69,6 @@ export default function Home_NewsBriefings() {
     loadUser();
   }, []);
 
-  // Stop audio playback
   function stopAudio() {
     if (audioRef.current) {
       audioRef.current.pause();
@@ -80,30 +77,21 @@ export default function Home_NewsBriefings() {
     setPlaying(null);
   }
 
-  // Play audio from URL
   function playAudio(url: string, category: string) {
     stopAudio();
-
     const audio = new Audio(url);
     audioRef.current = audio;
-
-    audio.onended = () => {
-      setPlaying(null);
-    };
-
+    audio.onended = () => setPlaying(null);
     audio.onerror = () => {
       console.error('[Home] Audio playback error');
       setPlaying(null);
     };
-
     audio.play();
     setPlaying(category);
   }
 
-  // Generate and play no-credits message
   async function playNoCreditsMessage(category: string) {
     setLoading(category);
-    
     try {
       const response = await fetch('/api/news/no-credits-message', {
         method: 'POST',
@@ -113,9 +101,7 @@ export default function Home_NewsBriefings() {
           userName: user?.firstName || 'there'
         })
       });
-
       const data = await response.json();
-
       if (data.audioUrl) {
         playAudio(data.audioUrl, category);
       } else {
@@ -129,15 +115,11 @@ export default function Home_NewsBriefings() {
     }
   }
 
-  // Handle category click
   async function handleCategoryClick(category: string) {
-    // If already playing this category, stop it
     if (playing === category) {
       stopAudio();
       return;
     }
-
-    // Stop any other playing audio
     stopAudio();
 
     // CREDIT CHECK - only interaction with main DTT app
@@ -146,19 +128,15 @@ export default function Home_NewsBriefings() {
       return;
     }
 
-    // State News - need user's state
     if (category === 'state') {
       if (!user.state) {
         alert('Please set your state in your profile to receive state news.');
         return;
       }
-
       setLoading(category);
-      
       try {
         const response = await fetch(`/api/news/briefing?category=state&state=${encodeURIComponent(user.state)}`);
         const data = await response.json();
-
         if (response.ok && data.episode?.audioUrl) {
           playAudio(data.episode.audioUrl, category);
         } else if (data.notFound) {
@@ -175,13 +153,10 @@ export default function Home_NewsBriefings() {
       return;
     }
 
-    // Other categories - fetch and play
     setLoading(category);
-    
     try {
       const response = await fetch(`/api/news/briefing?category=${category}`);
       const data = await response.json();
-
       if (response.ok && data.episode?.audioUrl) {
         playAudio(data.episode.audioUrl, category);
       } else {
@@ -197,7 +172,6 @@ export default function Home_NewsBriefings() {
 
   return (
     <div style={{ width: '100%' }}>
-      {/* Section Title */}
       <h2 style={{
         fontSize: '18px',
         fontWeight: 'bold',
@@ -207,7 +181,6 @@ export default function Home_NewsBriefings() {
         📻 News Briefings
       </h2>
 
-      {/* Category Buttons Grid */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(3, 1fr)',
@@ -236,10 +209,7 @@ export default function Home_NewsBriefings() {
                 opacity: isLoading ? 0.7 : 1
               }}
             >
-              <span style={{ 
-                fontSize: '24px',
-                marginBottom: '4px'
-              }}>
+              <span style={{ fontSize: '24px', marginBottom: '4px' }}>
                 {isLoading ? '⏳' : isPlaying ? '⏹️' : cat.icon}
               </span>
               <span style={{
@@ -254,7 +224,6 @@ export default function Home_NewsBriefings() {
         })}
       </div>
 
-      {/* Now Playing Indicator */}
       {playing && (
         <div style={{
           marginTop: '12px',
@@ -271,13 +240,9 @@ export default function Home_NewsBriefings() {
             width: '8px',
             height: '8px',
             backgroundColor: '#22c55e',
-            borderRadius: '50%',
-            animation: 'pulse 1.5s infinite'
+            borderRadius: '50%'
           }} />
-          <span style={{ 
-            fontSize: '14px', 
-            color: 'white' 
-          }}>
+          <span style={{ fontSize: '14px', color: 'white' }}>
             Now Playing: {CATEGORIES.find(c => c.id === playing)?.label}
           </span>
           <button
@@ -298,7 +263,6 @@ export default function Home_NewsBriefings() {
         </div>
       )}
 
-      {/* User State Display (for state news) */}
       {user?.state && (
         <div style={{
           marginTop: '8px',
@@ -310,14 +274,8 @@ export default function Home_NewsBriefings() {
           State News: {user.state}
         </div>
       )}
-
-      {/* Pulse animation style */}
-      <style jsx>{`
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.5; }
-        }
-      `}</style>
     </div>
   );
 }
+
+export default Home_NewsBriefings;
