@@ -1,732 +1,678 @@
-'use client'
+// app/admin/news-briefings/page.tsx
+// DTT News Briefings - Admin Page
+// FRESH BUILD - February 2026
+//
+// Features:
+// - 6 category cards with narrator/voice/duration settings
+// - Generate and Play buttons per category
+// - Auto-generation toggle with 3 time slots
+// - Settings persist to news_settings table
 
-import { useState, useEffect, useRef } from 'react'
-import Link from 'next/link'
-import { supabase } from '@/lib/supabase'
+'use client';
 
-const US_STATES = [
-  'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado', 'Connecticut',
-  'Delaware', 'Florida', 'Georgia', 'Hawaii', 'Idaho', 'Illinois', 'Indiana', 'Iowa',
-  'Kansas', 'Kentucky', 'Louisiana', 'Maine', 'Maryland', 'Massachusetts', 'Michigan',
-  'Minnesota', 'Mississippi', 'Missouri', 'Montana', 'Nebraska', 'Nevada', 'New Hampshire',
-  'New Jersey', 'New Mexico', 'New York', 'North Carolina', 'North Dakota', 'Ohio',
-  'Oklahoma', 'Oregon', 'Pennsylvania', 'Rhode Island', 'South Carolina', 'South Dakota',
-  'Tennessee', 'Texas', 'Utah', 'Vermont', 'Virginia', 'Washington', 'West Virginia',
-  'Wisconsin', 'Wyoming'
-]
+import { useState, useEffect, useRef } from 'react';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
-const STATE_ABBREV: Record<string, string> = {
-  'Alabama': 'AL', 'Alaska': 'AK', 'Arizona': 'AZ', 'Arkansas': 'AR', 'California': 'CA',
-  'Colorado': 'CO', 'Connecticut': 'CT', 'Delaware': 'DE', 'Florida': 'FL', 'Georgia': 'GA',
-  'Hawaii': 'HI', 'Idaho': 'ID', 'Illinois': 'IL', 'Indiana': 'IN', 'Iowa': 'IA',
-  'Kansas': 'KS', 'Kentucky': 'KY', 'Louisiana': 'LA', 'Maine': 'ME', 'Maryland': 'MD',
-  'Massachusetts': 'MA', 'Michigan': 'MI', 'Minnesota': 'MN', 'Mississippi': 'MS', 'Missouri': 'MO',
-  'Montana': 'MT', 'Nebraska': 'NE', 'Nevada': 'NV', 'New Hampshire': 'NH', 'New Jersey': 'NJ',
-  'New Mexico': 'NM', 'New York': 'NY', 'North Carolina': 'NC', 'North Dakota': 'ND', 'Ohio': 'OH',
-  'Oklahoma': 'OK', 'Oregon': 'OR', 'Pennsylvania': 'PA', 'Rhode Island': 'RI', 'South Carolina': 'SC',
-  'South Dakota': 'SD', 'Tennessee': 'TN', 'Texas': 'TX', 'Utah': 'UT', 'Vermont': 'VT',
-  'Virginia': 'VA', 'Washington': 'WA', 'West Virginia': 'WV', 'Wisconsin': 'WI', 'Wyoming': 'WY'
+// Category configuration with colors (DO NOT CHANGE COLORS)
+const CATEGORIES = [
+  { id: 'state', label: 'State News', icon: '🏛️', color: '#dc2626' },
+  { id: 'national', label: 'National News', icon: '🇺🇸', color: '#f97316' },
+  { id: 'world', label: 'World News', icon: '🌍', color: '#eab308' },
+  { id: 'business', label: 'Business News', icon: '💼', color: '#16a34a' },
+  { id: 'sports', label: 'Sports News', icon: '⚽', color: '#2563eb' },
+  { id: 'science', label: 'Science & Tech', icon: '🔬', color: '#9333ea' }
+];
+
+const DURATION_OPTIONS = [
+  { value: '1-2', label: '1-2 min' },
+  { value: '2-3', label: '2-3 min' },
+  { value: '3-5', label: '3-5 min' },
+  { value: '5-7', label: '5-7 min' },
+  { value: '7-10', label: '7-10 min' }
+];
+
+interface CategorySettings {
+  narratorName: string;
+  voiceId: string;
+  targetDuration: string;
 }
 
-const ABBREV_TO_STATE: Record<string, string> = Object.fromEntries(
-  Object.entries(STATE_ABBREV).map(([k, v]) => [v, k])
-)
-
-const ALL_CATEGORIES = [
-  { id: 'state', name: 'State News', icon: '🏛️' },
-  { id: 'national', name: 'National News', icon: '🇺🇸' },
-  { id: 'international', name: 'International', icon: '🌍' },
-  { id: 'business', name: 'Business', icon: '💼' },
-  { id: 'sports', name: 'Sports', icon: '⚽' },
-  { id: 'science', name: 'Science & Tech', icon: '🔬' },
-]
-
-const COST_PER_BRIEFING = 1.20
-
-interface Voice { voice_id: string; name: string; labels?: Record<string, string> }
-interface CatSettings { voice_id: string; narrator_name: string; last_generated: string | null; audio_url: string | null; duration: string | null; target_duration: string }
-interface ScheduleSettings { enabled: boolean; times: string[] }
-interface PromptModalData { 
-  category: string
-  name: string
-  prompt: string
-  defaultPrompt: string
-  isCustom: boolean
-  isEditing: boolean
-  editedPrompt: string
-  isSaving: boolean
+interface ElevenLabsVoice {
+  voice_id: string;
+  name: string;
 }
 
-export default function AdminNewsPage() {
-  const [loading, setLoading] = useState(true)
-  const [voices, setVoices] = useState<Voice[]>([])
-  const [generating, setGenerating] = useState<string | null>(null)
-  const [playing, setPlaying] = useState<string | null>(null)
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
-  const [selectedState, setSelectedState] = useState('South Carolina')
-  const [settings, setSettings] = useState<Record<string, CatSettings>>({})
-  const [schedule, setSchedule] = useState<ScheduleSettings>({ enabled: false, times: ['06:00', '12:00', '18:00'] })
-  const [subscriberStates, setSubscriberStates] = useState<string[]>([])
-  const [promptModal, setPromptModal] = useState<PromptModalData | null>(null)
-  const audioRef = useRef<HTMLAudioElement | null>(null)
-  const saveTimeout = useRef<NodeJS.Timeout | null>(null)
+interface EpisodeInfo {
+  audioUrl: string;
+  createdAt: string;
+  duration?: string;
+}
 
+export default function NewsBriefingsAdmin() {
+  const supabase = createClientComponentClient();
+  
+  // State for each category's settings
+  const [settings, setSettings] = useState<Record<string, CategorySettings>>({});
+  const [episodes, setEpisodes] = useState<Record<string, EpisodeInfo>>({});
+  const [generating, setGenerating] = useState<Record<string, boolean>>({});
+  const [playing, setPlaying] = useState<string | null>(null);
+  
+  // ElevenLabs voices
+  const [voices, setVoices] = useState<ElevenLabsVoice[]>([]);
+  const [loadingVoices, setLoadingVoices] = useState(true);
+  
+  // Auto-generation settings
+  const [autoGenerate, setAutoGenerate] = useState(false);
+  const [timeSlot1, setTimeSlot1] = useState('06:00');
+  const [timeSlot2, setTimeSlot2] = useState('12:00');
+  const [timeSlot3, setTimeSlot3] = useState('18:00');
+  
+  // Audio refs
+  const audioRefs = useRef<Record<string, HTMLAudioElement | null>>({});
+
+  // Load voices from ElevenLabs
   useEffect(() => {
-    Promise.all([loadVoices(), loadSettings(), loadSubscriberStates()]).finally(() => setLoading(false))
-    return () => { audioRef.current?.pause(); if (saveTimeout.current) clearTimeout(saveTimeout.current) }
-  }, [])
-
-  async function loadVoices() {
-    try {
-      const res = await fetch('/api/admin/elevenlabs-voices')
-      const data = await res.json()
-      setVoices(data.voices || [])
-    } catch (e) { console.error(e) }
-  }
-
-  async function loadSettings() {
-    try {
-      const res = await fetch('/api/admin/news-settings')
-      const data = await res.json()
-      if (data.settings) {
-        setSettings(data.settings.categories || {})
-        setSelectedState(data.settings.selected_state || 'South Carolina')
-        if (data.settings.schedule) {
-          setSchedule(data.settings.schedule)
-        }
-      }
-    } catch (e) { console.error(e) }
-  }
-
-  async function loadSubscriberStates() {
-    try {
-      const { data } = await supabase.from('users').select('state').not('state', 'is', null)
-      if (data) {
-        const stateSet = new Set<string>()
-        data.forEach(u => {
-          if (u.state) {
-            const fullName = ABBREV_TO_STATE[u.state.toUpperCase()] || u.state
-            if (US_STATES.includes(fullName)) {
-              stateSet.add(fullName)
-            }
-          }
-        })
-        setSubscriberStates(Array.from(stateSet).sort())
-      }
-    } catch (e) { console.error(e) }
-  }
-
-  function saveToDb(newSettings: Record<string, CatSettings>, state?: string, newSchedule?: ScheduleSettings) {
-    if (saveTimeout.current) clearTimeout(saveTimeout.current)
-    saveTimeout.current = setTimeout(async () => {
+    async function loadVoices() {
       try {
-        const res = await fetch('/api/admin/news-settings')
-        const data = await res.json()
-        const existing = data.settings || {}
-        await fetch('/api/admin/news-settings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            settings: { ...existing, categories: { ...existing.categories, ...newSettings }, selected_state: state || selectedState, schedule: newSchedule || schedule }
-          })
-        })
-      } catch (e) { console.error('Save error:', e) }
-    }, 500)
-  }
-
-  function updateSetting(catId: string, field: string, value: string) {
-    setSettings(prev => {
-      const updated = { ...prev, [catId]: { ...prev[catId], [field]: value } }
-      saveToDb(updated)
-      return updated
-    })
-  }
-
-  function updateState(state: string) {
-    setSelectedState(state)
-    saveToDb(settings, state)
-  }
-
-  function updateSchedule(newSchedule: ScheduleSettings) {
-    setSchedule(newSchedule)
-    saveToDb(settings, selectedState, newSchedule)
-  }
-
-  function updateScheduleTime(index: number, time: string) {
-    const newTimes = [...schedule.times]
-    newTimes[index] = time
-    updateSchedule({ ...schedule, times: newTimes })
-  }
-
-  async function previewVoice(voiceId: string) {
-    if (!voiceId) return
-    try {
-      const res = await fetch('/api/admin/preview-voice', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ voiceId, text: 'Hello, this is a voice preview for Drive Time Tales.' })
-      })
-      if (res.ok) {
-        const blob = await res.blob()
-        new Audio(URL.createObjectURL(blob)).play()
+        const response = await fetch('/api/elevenlabs/voices');
+        if (response.ok) {
+          const data = await response.json();
+          setVoices(data.voices || []);
+        }
+      } catch (error) {
+        console.error('Failed to load voices:', error);
+      } finally {
+        setLoadingVoices(false);
       }
-    } catch (e) { console.error(e) }
-  }
-
-  async function showPrompt(catId: string, catName: string) {
-    try {
-      const res = await fetch(`/api/admin/generate-news?category=${catId}`)
-      const data = await res.json()
-      setPromptModal({ 
-        category: catId, 
-        name: catName, 
-        prompt: data.prompt || 'Prompt not found',
-        defaultPrompt: data.defaultPrompt || data.prompt || '',
-        isCustom: data.isCustom || false,
-        isEditing: false,
-        editedPrompt: data.prompt || '',
-        isSaving: false
-      })
-    } catch (e) {
-      console.error(e)
-      setMessage({ type: 'error', text: 'Could not load prompt' })
     }
-  }
+    loadVoices();
+  }, []);
 
-  async function savePrompt() {
-    if (!promptModal) return
-    
-    setPromptModal(prev => prev ? { ...prev, isSaving: true } : null)
-    
-    try {
-      const res = await fetch('/api/admin/generate-news', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'save-prompt',
-          category: promptModal.category,
-          prompt: promptModal.editedPrompt
-        })
-      })
-      
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to save')
-      
-      setPromptModal(prev => prev ? { 
-        ...prev, 
-        prompt: prev.editedPrompt,
-        isCustom: true,
-        isEditing: false,
-        isSaving: false
-      } : null)
-      
-      setMessage({ type: 'success', text: `${promptModal.name} prompt saved!` })
-    } catch (e) {
-      console.error(e)
-      setMessage({ type: 'error', text: e instanceof Error ? e.message : 'Failed to save prompt' })
-      setPromptModal(prev => prev ? { ...prev, isSaving: false } : null)
-    }
-  }
+  // Load settings from database
+  useEffect(() => {
+    async function loadSettings() {
+      try {
+        const { data, error } = await supabase
+          .from('news_settings')
+          .select('*');
+        
+        if (error) {
+          console.error('Failed to load settings:', error);
+          return;
+        }
 
-  async function resetPrompt() {
-    if (!promptModal) return
-    
-    if (!confirm(`Reset ${promptModal.name} prompt to default? Your custom changes will be lost.`)) return
-    
-    setPromptModal(prev => prev ? { ...prev, isSaving: true } : null)
-    
-    try {
-      const res = await fetch('/api/admin/generate-news', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'reset-prompt',
-          category: promptModal.category
-        })
-      })
-      
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to reset')
-      
-      setPromptModal(prev => prev ? { 
-        ...prev, 
-        prompt: data.defaultPrompt || prev.defaultPrompt,
-        editedPrompt: data.defaultPrompt || prev.defaultPrompt,
-        isCustom: false,
-        isEditing: false,
-        isSaving: false
-      } : null)
-      
-      setMessage({ type: 'success', text: `${promptModal.name} prompt reset to default` })
-    } catch (e) {
-      console.error(e)
-      setMessage({ type: 'error', text: e instanceof Error ? e.message : 'Failed to reset prompt' })
-      setPromptModal(prev => prev ? { ...prev, isSaving: false } : null)
-    }
-  }
+        const loadedSettings: Record<string, CategorySettings> = {};
+        let loadedAutoGenerate = false;
+        let loadedTimes = ['06:00', '12:00', '18:00'];
 
-  async function generate(catId: string) {
-    const catSettings = settings[catId] || { voice_id: '', narrator_name: '', last_generated: null, audio_url: null, duration: null, target_duration: '3-5 minutes' }
-    if (!catSettings.voice_id) {
-      setMessage({ type: 'error', text: 'Please select a voice first' })
-      return
-    }
-
-    setGenerating(catId)
-    setMessage(null)
-
-    try {
-      const res = await fetch('/api/admin/generate-news', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          category: catId === 'state' ? 'state' : catId,
-          voiceId: catSettings.voice_id,
-          narratorName: catSettings.narrator_name || 'Your Host',
-          state: catId === 'state' ? selectedState : null,
-          storiesCount: 5,
-          listenerName: 'Marc',
-          duration: catSettings.target_duration || '3-5 minutes'
-        })
-      })
-
-      const result = await res.json()
-      if (!res.ok) throw new Error(result.error || 'Generation failed')
-
-      setSettings(prev => {
-        const updated = {
-          ...prev,
-          [catId]: { 
-            ...prev[catId], 
-            last_generated: new Date().toISOString(), 
-            audio_url: result.episode?.audioUrl,
-            duration: result.episode?.duration || null
+        for (const row of data || []) {
+          loadedSettings[row.category] = {
+            narratorName: row.narrator_name || '',
+            voiceId: row.voice_id || '',
+            targetDuration: row.target_duration || '3-5'
+          };
+          
+          // Load auto-generate settings from any row (they should be the same)
+          if (row.auto_generate !== undefined) {
+            loadedAutoGenerate = row.auto_generate;
+          }
+          if (row.schedule_times && row.schedule_times.length === 3) {
+            loadedTimes = row.schedule_times;
           }
         }
-        saveToDb(updated)
-        return updated
-      })
 
-      setMessage({ type: 'success', text: `${ALL_CATEGORIES.find(c => c.id === catId)?.name} generated!` })
-    } catch (e) {
-      setMessage({ type: 'error', text: e instanceof Error ? e.message : 'Generation failed' })
-    } finally {
-      setGenerating(null)
-    }
-  }
+        // Initialize missing categories with defaults
+        for (const cat of CATEGORIES) {
+          if (!loadedSettings[cat.id]) {
+            loadedSettings[cat.id] = {
+              narratorName: '',
+              voiceId: '',
+              targetDuration: '3-5'
+            };
+          }
+        }
 
-  async function generateAll() {
-    for (const cat of ALL_CATEGORIES) {
-      if (settings[cat.id]?.voice_id) {
-        await generate(cat.id)
+        setSettings(loadedSettings);
+        setAutoGenerate(loadedAutoGenerate);
+        setTimeSlot1(loadedTimes[0]);
+        setTimeSlot2(loadedTimes[1]);
+        setTimeSlot3(loadedTimes[2]);
+      } catch (error) {
+        console.error('Failed to load settings:', error);
       }
     }
-  }
+    loadSettings();
+  }, [supabase]);
 
-  function togglePlay(catId: string) {
-    const url = settings[catId]?.audio_url
-    if (!url) return
+  // Load latest episodes for each category
+  useEffect(() => {
+    async function loadEpisodes() {
+      try {
+        const { data, error } = await supabase
+          .from('news_episodes')
+          .select('*')
+          .eq('is_live', true);
+        
+        if (error) {
+          console.error('Failed to load episodes:', error);
+          return;
+        }
 
-    if (playing === catId) {
-      audioRef.current?.pause()
-      audioRef.current = null
-      setPlaying(null)
-    } else {
-      audioRef.current?.pause()
-      const audio = new Audio(url + '?t=' + Date.now())
-      audio.onended = () => setPlaying(null)
-      audio.play()
-      audioRef.current = audio
-      setPlaying(catId)
+        const loadedEpisodes: Record<string, EpisodeInfo> = {};
+        for (const ep of data || []) {
+          const key = ep.state ? `${ep.category}-${ep.state}` : ep.category;
+          loadedEpisodes[key] = {
+            audioUrl: ep.audio_url,
+            createdAt: ep.created_at
+          };
+        }
+        setEpisodes(loadedEpisodes);
+      } catch (error) {
+        console.error('Failed to load episodes:', error);
+      }
+    }
+    loadEpisodes();
+  }, [supabase]);
+
+  // Save settings to database
+  async function saveSettings(category: string, newSettings: CategorySettings) {
+    try {
+      const { error } = await supabase
+        .from('news_settings')
+        .upsert({
+          category,
+          narrator_name: newSettings.narratorName,
+          voice_id: newSettings.voiceId,
+          target_duration: newSettings.targetDuration,
+          auto_generate: autoGenerate,
+          schedule_times: [timeSlot1, timeSlot2, timeSlot3]
+        }, {
+          onConflict: 'category'
+        });
+
+      if (error) {
+        console.error('Failed to save settings:', error);
+      }
+    } catch (error) {
+      console.error('Failed to save settings:', error);
     }
   }
 
-  function formatDate(d: string | null): string {
-    if (!d) return 'Never'
-    return new Date(d).toLocaleString('en-US', {
-      month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true
-    })
+  // Save auto-generation settings
+  async function saveAutoGenerateSettings() {
+    try {
+      // Update all categories with the auto-generate settings
+      for (const cat of CATEGORIES) {
+        await supabase
+          .from('news_settings')
+          .upsert({
+            category: cat.id,
+            narrator_name: settings[cat.id]?.narratorName || '',
+            voice_id: settings[cat.id]?.voiceId || '',
+            target_duration: settings[cat.id]?.targetDuration || '3-5',
+            auto_generate: autoGenerate,
+            schedule_times: [timeSlot1, timeSlot2, timeSlot3]
+          }, {
+            onConflict: 'category'
+          });
+      }
+    } catch (error) {
+      console.error('Failed to save auto-generate settings:', error);
+    }
   }
 
-  function formatTime12(time24: string): string {
-    const [h, m] = time24.split(':').map(Number)
-    const ampm = h >= 12 ? 'PM' : 'AM'
-    const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h
-    return `${h12}:${m.toString().padStart(2, '0')} ${ampm}`
+  // Update setting for a category
+  function updateSetting(category: string, field: keyof CategorySettings, value: string) {
+    const newSettings = {
+      ...settings,
+      [category]: {
+        ...settings[category],
+        [field]: value
+      }
+    };
+    setSettings(newSettings);
+    saveSettings(category, newSettings[category]);
   }
 
-  const numStates = Math.max(subscriberStates.length, 1)
-  const numCategories = 5
-  const costPerCycle = (numCategories + numStates) * COST_PER_BRIEFING
-  const costDaily = costPerCycle * 3
-  const costMonthly = costDaily * 30
+  // Generate briefing for a category
+  async function handleGenerate(category: string) {
+    const catSettings = settings[category];
+    if (!catSettings?.narratorName || !catSettings?.voiceId) {
+      alert('Please set narrator name and voice before generating.');
+      return;
+    }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-        <div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
-      </div>
-    )
+    setGenerating(prev => ({ ...prev, [category]: true }));
+
+    try {
+      const response = await fetch('/api/admin/generate-news', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category,
+          narratorName: catSettings.narratorName,
+          voiceId: catSettings.voiceId,
+          targetDuration: catSettings.targetDuration,
+          isPersonalized: false // Admin preview uses generic greeting
+        })
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        setEpisodes(prev => ({
+          ...prev,
+          [category]: {
+            audioUrl: data.episode.audioUrl,
+            createdAt: data.episode.createdAt,
+            duration: data.episode.duration
+          }
+        }));
+        alert(`Generated successfully! Duration: ${data.episode.duration} minutes`);
+      } else {
+        alert(`Generation failed: ${data.error}`);
+      }
+    } catch (error) {
+      console.error('Generation error:', error);
+      alert('Generation failed. Check console for details.');
+    } finally {
+      setGenerating(prev => ({ ...prev, [category]: false }));
+    }
+  }
+
+  // Play/pause audio
+  function handlePlay(category: string) {
+    const episode = episodes[category];
+    if (!episode?.audioUrl) return;
+
+    // Stop any currently playing audio
+    if (playing && playing !== category) {
+      const prevAudio = audioRefs.current[playing];
+      if (prevAudio) {
+        prevAudio.pause();
+        prevAudio.currentTime = 0;
+      }
+    }
+
+    let audio = audioRefs.current[category];
+    
+    if (!audio) {
+      audio = new Audio(episode.audioUrl);
+      audioRefs.current[category] = audio;
+      
+      audio.onended = () => setPlaying(null);
+      audio.onerror = () => {
+        alert('Failed to play audio');
+        setPlaying(null);
+      };
+    }
+
+    if (playing === category) {
+      audio.pause();
+      setPlaying(null);
+    } else {
+      audio.play();
+      setPlaying(category);
+    }
+  }
+
+  // Format timestamp
+  function formatTime(isoString: string): string {
+    const date = new Date(isoString);
+    return date.toLocaleString('en-US', {
+      timeZone: 'America/New_York',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    }) + ' EST';
   }
 
   return (
-    <div className="min-h-screen bg-slate-900 p-6">
-      <div className="max-w-6xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-4">
-            <Link href="/admin" className="text-white/60 hover:text-white text-sm">← Back</Link>
-            <h1 className="text-2xl font-bold text-white">📰 News Briefings</h1>
-          </div>
-          <button
-            onClick={generateAll}
-            disabled={generating !== null}
-            className="px-6 py-2.5 bg-orange-500 hover:bg-orange-400 disabled:opacity-50 rounded-lg font-bold text-white flex items-center gap-2"
-          >
-            {generating ? (
-              <><span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> Generating...</>
-            ) : (
-              '⚡ Generate All'
-            )}
-          </button>
-        </div>
+    <div style={{ 
+      minHeight: '100vh', 
+      backgroundColor: '#020617', 
+      color: 'white',
+      padding: '24px'
+    }}>
+      {/* Header */}
+      <div style={{ marginBottom: '32px' }}>
+        <h1 style={{ 
+          fontSize: '28px', 
+          fontWeight: 'bold', 
+          marginBottom: '8px',
+          color: 'white'
+        }}>
+          🎙️ News Briefings Admin
+        </h1>
+        <p style={{ color: 'white', opacity: 0.8 }}>
+          Manage news generation settings and preview briefings
+        </p>
+      </div>
 
-        {message && (
-          <div className={`mb-6 p-4 rounded-lg font-medium ${message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-            {message.text}
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {ALL_CATEGORIES.map(cat => {
-            const catSettings = settings[cat.id] || { voice_id: '', narrator_name: '', last_generated: null, audio_url: null, duration: null, target_duration: '3-5 minutes' }
-            const isGenerating = generating === cat.id
-            const isPlaying = playing === cat.id
-
-            return (
-              <div key={cat.id} className="bg-gray-100 rounded-xl p-5 relative overflow-hidden">
-                {isGenerating && (
-                  <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center z-10 rounded-xl">
-                    <div className="w-14 h-14 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mb-3" />
-                    <span className="text-white font-bold">Generating...</span>
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl">{cat.icon}</span>
-                    <h2 className="text-lg font-bold text-gray-900">{cat.name}</h2>
-                  </div>
-                  <button
-                    onClick={() => showPrompt(cat.id, cat.name)}
-                    className="text-xs px-2 py-1 bg-gray-200 hover:bg-gray-300 text-gray-600 rounded transition"
-                    title="View/Edit prompt"
-                  >
-                    📝 Prompt
-                  </button>
-                </div>
-
-                {cat.id === 'state' && (
-                  <div className="mb-3">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Select State</label>
-                    <select
-                      value={selectedState}
-                      onChange={(e) => updateState(e.target.value)}
-                      className="w-full bg-gray-600 text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                    >
-                      {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                  </div>
-                )}
-
-                <div className="mb-3">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Narrator Name</label>
-                  <input
-                    type="text"
-                    value={catSettings.narrator_name || ''}
-                    onChange={(e) => updateSetting(cat.id, 'narrator_name', e.target.value)}
-                    placeholder="e.g., Sarah Mitchell"
-                    className="w-full bg-gray-600 text-white placeholder-gray-400 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  />
-                </div>
-
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Voice</label>
-                  <div className="flex gap-2">
-                    <select
-                      value={catSettings.voice_id || ''}
-                      onChange={(e) => updateSetting(cat.id, 'voice_id', e.target.value)}
-                      className="flex-1 min-w-0 bg-gray-600 text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500 truncate"
-                    >
-                      <option value="">Select voice...</option>
-                      {voices.map(v => (
-                        <option key={v.voice_id} value={v.voice_id}>{v.name}</option>
-                      ))}
-                    </select>
-                    <button
-                      onClick={() => previewVoice(catSettings.voice_id || '')}
-                      disabled={!catSettings.voice_id}
-                      className={`px-3 py-2 rounded-lg font-medium transition flex-shrink-0 ${catSettings.voice_id ? 'bg-blue-500 hover:bg-blue-400 text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
-                    >
-                      Test
-                    </button>
-                  </div>
-                </div>
-
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Target Duration</label>
-                  <select
-                    value={catSettings.target_duration || '3-5 minutes'}
-                    onChange={(e) => updateSetting(cat.id, 'target_duration', e.target.value)}
-                    className="w-full bg-gray-600 text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  >
-                    <option value="1-2 minutes">1-2 minutes (Quick)</option>
-                    <option value="2-3 minutes">2-3 minutes (Short)</option>
-                    <option value="3-5 minutes">3-5 minutes (Standard)</option>
-                    <option value="5-7 minutes">5-7 minutes (Extended)</option>
-                    <option value="7-10 minutes">7-10 minutes (Long)</option>
-                  </select>
-                </div>
-
-                <p className="text-sm text-gray-600 mb-4">
-                  Last updated: <span className="font-medium text-gray-900">{formatDate(catSettings.last_generated)}</span>
-                  {catSettings.duration && (
-                    <span className="ml-4 text-gray-600">Duration: <span className="font-medium text-gray-900">{catSettings.duration} min</span></span>
-                  )}
-                </p>
-
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => generate(cat.id)}
-                    disabled={generating !== null || !catSettings.voice_id}
-                    className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-400 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed rounded-lg font-bold text-white transition"
-                  >
-                    ⚡ Generate
-                  </button>
-                  <button
-                    onClick={() => togglePlay(cat.id)}
-                    disabled={!catSettings.audio_url}
-                    className={`flex-1 py-2.5 rounded-lg font-bold transition ${
-                      !catSettings.audio_url
-                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                        : isPlaying
-                          ? 'bg-red-500 text-white'
-                          : 'bg-green-500 hover:bg-green-400 text-white'
-                    }`}
-                  >
-                    {isPlaying ? '⏹ Stop' : '▶ Play'}
-                  </button>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-
-        <p className="text-gray-500 text-sm text-center mt-8">Settings auto-save when changed</p>
-
-        <div className="mt-10 bg-slate-800 rounded-xl p-6 border border-slate-700">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <span className="text-2xl">⏰</span>
-              <h2 className="text-xl font-bold text-white">Auto-Generate Schedule</h2>
-            </div>
-            <button
-              onClick={() => updateSchedule({ ...schedule, enabled: !schedule.enabled })}
-              className={`relative w-14 h-8 rounded-full transition-colors ${schedule.enabled ? 'bg-green-500' : 'bg-gray-600'}`}
+      {/* Auto-Generation Settings */}
+      <div style={{
+        backgroundColor: '#1e293b',
+        borderRadius: '12px',
+        padding: '20px',
+        marginBottom: '24px'
+      }}>
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'space-between',
+          marginBottom: '16px'
+        }}>
+          <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: 'white' }}>
+            ⏰ Auto-Generation
+          </h2>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+            <span style={{ color: 'white' }}>{autoGenerate ? 'ON' : 'OFF'}</span>
+            <div
+              onClick={() => {
+                setAutoGenerate(!autoGenerate);
+                setTimeout(saveAutoGenerateSettings, 100);
+              }}
+              style={{
+                width: '48px',
+                height: '24px',
+                backgroundColor: autoGenerate ? '#16a34a' : '#475569',
+                borderRadius: '12px',
+                position: 'relative',
+                cursor: 'pointer',
+                transition: 'background-color 0.2s'
+              }}
             >
-              <span className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-transform ${schedule.enabled ? 'left-7' : 'left-1'}`} />
-            </button>
-          </div>
-
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-white/80 mb-3">Generation Times (EST)</label>
-            <div className="flex gap-4 flex-wrap">
-              {schedule.times.map((time, i) => (
-                <div key={i} className="flex flex-col items-center">
-                  <input
-                    type="time"
-                    value={time}
-                    onChange={(e) => updateScheduleTime(i, e.target.value)}
-                    className="bg-slate-700 text-white rounded-lg px-4 py-3 text-center font-mono text-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  />
-                  <span className="text-white/60 text-sm mt-1">{formatTime12(time)} EST</span>
-                </div>
-              ))}
+              <div style={{
+                width: '20px',
+                height: '20px',
+                backgroundColor: 'white',
+                borderRadius: '50%',
+                position: 'absolute',
+                top: '2px',
+                left: autoGenerate ? '26px' : '2px',
+                transition: 'left 0.2s'
+              }} />
             </div>
-          </div>
+          </label>
+        </div>
 
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-white/80 mb-2">Subscriber States</label>
-            <div className="flex flex-wrap gap-2">
-              {subscriberStates.length > 0 ? (
-                subscriberStates.map(s => (
-                  <span key={s} className="bg-slate-700 text-white px-3 py-1 rounded-full text-sm">
-                    {STATE_ABBREV[s] || s}
-                  </span>
-                ))
-              ) : (
-                <span className="text-white/60 text-sm">No subscribers with state data yet</span>
-              )}
-            </div>
-            <p className="text-white/60 text-sm mt-2">
-              {subscriberStates.length} state{subscriberStates.length !== 1 ? 's' : ''} with active subscribers
-            </p>
+        <div style={{ 
+          display: 'flex', 
+          gap: '16px', 
+          flexWrap: 'wrap',
+          opacity: autoGenerate ? 1 : 0.5
+        }}>
+          <div>
+            <label style={{ display: 'block', marginBottom: '4px', fontSize: '14px', color: 'white' }}>
+              Time Slot 1
+            </label>
+            <input
+              type="time"
+              value={timeSlot1}
+              onChange={(e) => {
+                setTimeSlot1(e.target.value);
+                setTimeout(saveAutoGenerateSettings, 100);
+              }}
+              disabled={!autoGenerate}
+              style={{
+                backgroundColor: '#334155',
+                color: 'white',
+                border: '1px solid #475569',
+                borderRadius: '6px',
+                padding: '8px 12px',
+                fontSize: '14px'
+              }}
+            />
           </div>
-
-          <div className="bg-slate-900 rounded-lg p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <span className="text-xl">💰</span>
-              <h3 className="text-lg font-semibold text-white">Estimated ElevenLabs Cost</h3>
-            </div>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between text-white/80">
-                <span>5 standard categories × ${COST_PER_BRIEFING.toFixed(2)}</span>
-                <span className="text-white font-medium">${(numCategories * COST_PER_BRIEFING).toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-white/80">
-                <span>{numStates} state briefing{numStates !== 1 ? 's' : ''} × ${COST_PER_BRIEFING.toFixed(2)}</span>
-                <span className="text-white font-medium">${(numStates * COST_PER_BRIEFING).toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-white/80 border-t border-slate-700 pt-2 mt-2">
-                <span>Per generation cycle</span>
-                <span className="text-orange-400 font-semibold">${costPerCycle.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-white/80">
-                <span>Daily (3 cycles)</span>
-                <span className="text-orange-400 font-semibold">${costDaily.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-white/80 border-t border-slate-700 pt-2 mt-2">
-                <span>Monthly estimate (30 days)</span>
-                <span className="text-orange-400 font-bold text-lg">~${costMonthly.toFixed(0)}</span>
-              </div>
-            </div>
+          <div>
+            <label style={{ display: 'block', marginBottom: '4px', fontSize: '14px', color: 'white' }}>
+              Time Slot 2
+            </label>
+            <input
+              type="time"
+              value={timeSlot2}
+              onChange={(e) => {
+                setTimeSlot2(e.target.value);
+                setTimeout(saveAutoGenerateSettings, 100);
+              }}
+              disabled={!autoGenerate}
+              style={{
+                backgroundColor: '#334155',
+                color: 'white',
+                border: '1px solid #475569',
+                borderRadius: '6px',
+                padding: '8px 12px',
+                fontSize: '14px'
+              }}
+            />
           </div>
-
-          <div className="mt-4 text-center">
-            {schedule.enabled ? (
-              <p className="text-green-400 font-medium">
-                ✓ Auto-generation is ON — Briefings will generate at {schedule.times.map(t => formatTime12(t)).join(', ')} EST
-              </p>
-            ) : (
-              <p className="text-white/60">
-                Auto-generation is OFF — Turn on to automatically generate briefings
-              </p>
-            )}
+          <div>
+            <label style={{ display: 'block', marginBottom: '4px', fontSize: '14px', color: 'white' }}>
+              Time Slot 3
+            </label>
+            <input
+              type="time"
+              value={timeSlot3}
+              onChange={(e) => {
+                setTimeSlot3(e.target.value);
+                setTimeout(saveAutoGenerateSettings, 100);
+              }}
+              disabled={!autoGenerate}
+              style={{
+                backgroundColor: '#334155',
+                color: 'white',
+                border: '1px solid #475569',
+                borderRadius: '6px',
+                padding: '8px 12px',
+                fontSize: '14px'
+              }}
+            />
+          </div>
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'flex-end',
+            fontSize: '14px',
+            color: 'white',
+            opacity: 0.7
+          }}>
+            (EST timezone)
           </div>
         </div>
       </div>
 
-      {/* Prompt Modal - View & Edit */}
-      {promptModal && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={() => !promptModal.isSaving && setPromptModal(null)}>
-          <div 
-            className="rounded-xl p-6 max-w-4xl w-full max-h-[90vh] overflow-auto shadow-2xl" 
-            style={{ backgroundColor: '#f8f5f0' }}
-            onClick={e => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between mb-4 border-b pb-4" style={{ borderColor: '#d4c4b0' }}>
-              <div className="flex items-center gap-3">
-                <h3 className="text-xl font-bold" style={{ color: '#1a1a1a' }}>
-                  📝 {promptModal.name} Prompt
-                </h3>
-                {promptModal.isCustom && (
-                  <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-full font-medium">
-                    Customized
-                  </span>
-                )}
-              </div>
-              <button 
-                onClick={() => !promptModal.isSaving && setPromptModal(null)} 
-                className="text-2xl font-bold" 
-                style={{ color: '#666' }}
-                disabled={promptModal.isSaving}
-              >
-                &times;
-              </button>
-            </div>
+      {/* Category Cards Grid */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
+        gap: '20px'
+      }}>
+        {CATEGORIES.map((cat) => {
+          const catSettings = settings[cat.id] || { narratorName: '', voiceId: '', targetDuration: '3-5' };
+          const episode = episodes[cat.id];
+          const isGenerating = generating[cat.id];
+          const isPlaying = playing === cat.id;
 
-            {/* Content */}
-            {promptModal.isEditing ? (
-              // Edit Mode
-              <div>
-                <textarea
-                  value={promptModal.editedPrompt}
-                  onChange={(e) => setPromptModal(prev => prev ? { ...prev, editedPrompt: e.target.value } : null)}
-                  className="w-full h-96 p-4 rounded-lg border text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  style={{ 
-                    backgroundColor: '#fff', 
-                    borderColor: '#e8e0d5', 
-                    color: '#1a1a1a' 
+          return (
+            <div
+              key={cat.id}
+              style={{
+                backgroundColor: '#1e293b',
+                borderRadius: '12px',
+                padding: '20px',
+                borderLeft: `4px solid ${cat.color}`
+              }}
+            >
+              {/* Category Header */}
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '10px',
+                marginBottom: '16px'
+              }}>
+                <span style={{ fontSize: '24px' }}>{cat.icon}</span>
+                <h3 style={{ 
+                  fontSize: '18px', 
+                  fontWeight: 'bold',
+                  color: cat.color
+                }}>
+                  {cat.label}
+                </h3>
+              </div>
+
+              {/* Narrator Name */}
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ 
+                  display: 'block', 
+                  marginBottom: '4px', 
+                  fontSize: '14px',
+                  color: 'white'
+                }}>
+                  Narrator Name
+                </label>
+                <input
+                  type="text"
+                  value={catSettings.narratorName}
+                  onChange={(e) => updateSetting(cat.id, 'narratorName', e.target.value)}
+                  placeholder="e.g., Sarah Mitchell"
+                  style={{
+                    width: '100%',
+                    backgroundColor: '#334155',
+                    color: 'white',
+                    border: '1px solid #475569',
+                    borderRadius: '6px',
+                    padding: '8px 12px',
+                    fontSize: '14px'
                   }}
-                  disabled={promptModal.isSaving}
                 />
-                <div className="flex items-center justify-between mt-4">
-                  <button
-                    onClick={() => setPromptModal(prev => prev ? { ...prev, isEditing: false, editedPrompt: prev.prompt } : null)}
-                    className="px-4 py-2 rounded-lg font-medium transition"
-                    style={{ backgroundColor: '#e5e0d8', color: '#666' }}
-                    disabled={promptModal.isSaving}
-                  >
-                    Cancel
-                  </button>
-                  <div className="flex gap-3">
-                    {promptModal.isCustom && (
-                      <button
-                        onClick={resetPrompt}
-                        className="px-4 py-2 bg-red-100 text-red-700 rounded-lg font-medium hover:bg-red-200 transition"
-                        disabled={promptModal.isSaving}
-                      >
-                        Reset to Default
-                      </button>
-                    )}
-                    <button
-                      onClick={savePrompt}
-                      className="px-6 py-2 bg-orange-500 text-white rounded-lg font-bold hover:bg-orange-400 transition flex items-center gap-2"
-                      disabled={promptModal.isSaving}
-                    >
-                      {promptModal.isSaving ? (
-                        <>
-                          <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          Saving...
-                        </>
-                      ) : (
-                        'Save Prompt'
-                      )}
-                    </button>
-                  </div>
-                </div>
               </div>
-            ) : (
-              // View Mode
-              <div>
-                <div className="rounded-lg p-5 border" style={{ backgroundColor: '#fff', borderColor: '#e8e0d5' }}>
-                  <pre 
-                    className="whitespace-pre-wrap leading-relaxed text-sm" 
-                    style={{ 
-                      color: '#1a1a1a', 
-                      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace' 
-                    }}
-                  >
-                    {promptModal.prompt}
-                  </pre>
-                </div>
-                
-                <div className="flex items-center justify-between mt-4">
-                  <p className="text-sm italic" style={{ color: '#666' }}>
-                    This guidance is combined with today&apos;s headlines to generate briefings.
-                  </p>
-                  <button
-                    onClick={() => setPromptModal(prev => prev ? { ...prev, isEditing: true } : null)}
-                    className="px-6 py-2 bg-orange-500 text-white rounded-lg font-bold hover:bg-orange-400 transition"
-                  >
-                    ✏️ Edit Prompt
-                  </button>
-                </div>
+
+              {/* Voice Selection */}
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ 
+                  display: 'block', 
+                  marginBottom: '4px', 
+                  fontSize: '14px',
+                  color: 'white'
+                }}>
+                  Voice
+                </label>
+                <select
+                  value={catSettings.voiceId}
+                  onChange={(e) => updateSetting(cat.id, 'voiceId', e.target.value)}
+                  disabled={loadingVoices}
+                  style={{
+                    width: '100%',
+                    backgroundColor: '#334155',
+                    color: 'white',
+                    border: '1px solid #475569',
+                    borderRadius: '6px',
+                    padding: '8px 12px',
+                    fontSize: '14px'
+                  }}
+                >
+                  <option value="">
+                    {loadingVoices ? 'Loading voices...' : 'Select a voice'}
+                  </option>
+                  {voices.map((voice) => (
+                    <option key={voice.voice_id} value={voice.voice_id}>
+                      {voice.name}
+                    </option>
+                  ))}
+                </select>
               </div>
-            )}
-          </div>
-        </div>
-      )}
+
+              {/* Duration Selection */}
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ 
+                  display: 'block', 
+                  marginBottom: '4px', 
+                  fontSize: '14px',
+                  color: 'white'
+                }}>
+                  Duration
+                </label>
+                <select
+                  value={catSettings.targetDuration}
+                  onChange={(e) => updateSetting(cat.id, 'targetDuration', e.target.value)}
+                  style={{
+                    width: '100%',
+                    backgroundColor: '#334155',
+                    color: 'white',
+                    border: '1px solid #475569',
+                    borderRadius: '6px',
+                    padding: '8px 12px',
+                    fontSize: '14px'
+                  }}
+                >
+                  {DURATION_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Action Buttons */}
+              <div style={{ 
+                display: 'flex', 
+                gap: '10px',
+                marginBottom: '12px'
+              }}>
+                <button
+                  onClick={() => handleGenerate(cat.id)}
+                  disabled={isGenerating || !catSettings.narratorName || !catSettings.voiceId}
+                  style={{
+                    flex: 1,
+                    backgroundColor: isGenerating ? '#475569' : cat.color,
+                    color: cat.id === 'world' ? 'black' : 'white',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '10px 16px',
+                    fontSize: '14px',
+                    fontWeight: 'bold',
+                    cursor: isGenerating ? 'not-allowed' : 'pointer',
+                    opacity: (!catSettings.narratorName || !catSettings.voiceId) ? 0.5 : 1
+                  }}
+                >
+                  {isGenerating ? '⏳ Generating...' : '🎬 Generate'}
+                </button>
+                <button
+                  onClick={() => handlePlay(cat.id)}
+                  disabled={!episode?.audioUrl}
+                  style={{
+                    flex: 1,
+                    backgroundColor: episode?.audioUrl ? (isPlaying ? '#dc2626' : '#475569') : '#1e293b',
+                    color: 'white',
+                    border: episode?.audioUrl ? 'none' : '1px solid #475569',
+                    borderRadius: '6px',
+                    padding: '10px 16px',
+                    fontSize: '14px',
+                    fontWeight: 'bold',
+                    cursor: episode?.audioUrl ? 'pointer' : 'not-allowed',
+                    opacity: episode?.audioUrl ? 1 : 0.5
+                  }}
+                >
+                  {isPlaying ? '⏹️ Stop' : '▶️ Play'}
+                </button>
+              </div>
+
+              {/* Status */}
+              {episode && (
+                <div style={{ 
+                  fontSize: '12px', 
+                  color: 'white',
+                  opacity: 0.7
+                }}>
+                  Last generated: {formatTime(episode.createdAt)}
+                  {episode.duration && ` • ${episode.duration} min`}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
-  )
+  );
 }

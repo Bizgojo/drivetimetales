@@ -1,416 +1,260 @@
-/*
-================================================================================
-🔒 PROTECTED MODULE - WELCOME NEWS BRIEFINGS
-================================================================================
-Module: Welcome_NewsBriefings
-Location: ~/Projects/drivetimetales/components/
-File: Welcome_NewsBriefings.tsx
+// components/Welcome_NewsBriefings.tsx
+// DTT News Briefings - Welcome Page Component
+// FRESH BUILD - February 2026
+//
+// Features:
+// - 6 category buttons with designated colors
+// - Plays generic briefings (no personalization)
+// - State News shows upsell message instead of news
+// - Does NOT change page layout or colors
 
-Created: January 18, 2026
-Updated: February 1, 2026 - Removed state dropdown, added upsell message for State News
-Owner: Marc (Wonder Books Press / Drive Time Tales)
-Status: PROTECTED
+'use client';
 
-PURPOSE:
-News Briefings section for WELCOME page with horizontal button layout.
-State News plays upsell message (subscriber-only feature).
+import { useState, useRef, useEffect } from 'react';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
-SCENARIOS:
-1. User clicks State News: Plays upsell message encouraging subscription
-2. User clicks other categories: Plays intro → news → outro via stitch API
-3. User has 0 credits: Plays "no credits" message from narrator
+// Category configuration with colors (DO NOT CHANGE)
+const CATEGORIES = [
+  { id: 'state', label: 'State', icon: '🏛️', color: '#dc2626' },
+  { id: 'national', label: 'National', icon: '🇺🇸', color: '#f97316' },
+  { id: 'world', label: 'World', icon: '🌍', color: '#eab308' },
+  { id: 'business', label: 'Business', icon: '💼', color: '#16a34a' },
+  { id: 'sports', label: 'Sports', icon: '⚽', color: '#2563eb' },
+  { id: 'science', label: 'Sci/Tech', icon: '🔬', color: '#9333ea' }
+];
 
-FEATURES:
-- State News is locked (plays upsell message)
-- Other categories play via stitch API with generic intros/outros
-- No state dropdown on Welcome page (that's a subscriber feature)
+export default function Welcome_NewsBriefings() {
+  const supabase = createClientComponentClient();
+  
+  const [playing, setPlaying] = useState<string | null>(null);
+  const [loading, setLoading] = useState<string | null>(null);
+  const [stateUpsellUrl, setStateUpsellUrl] = useState<string | null>(null);
+  
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
-LAYOUT:
-- Wider horizontal buttons (not square)
-- Icon on LEFT side of button
-- Category name to RIGHT of icon
-- Status badge (New/Playing/Paused/Played) in top right corner
-- 3-column grid
-
-COLOR WHEEL ORDER:
-- State: Red (0°) - #dc2626 to #991b1b
-- National: Orange (60°) - #f97316 to #c2410c
-- World: Yellow (120°) - #eab308 to #a16207
-- Business: Green (180°) - #16a34a to #166534
-- Sports: Blue (240°) - #2563eb to #1e40af
-- Sci/Tech: Purple (300°) - #9333ea to #6b21a8
-
-⚠️  DO NOT MODIFY THIS DESIGN WITHOUT MARC'S EXPLICIT APPROVAL
-================================================================================
-*/
-
-'use client'
-
-import { useState, useRef, useEffect } from 'react'
-
-// =============================================================================
-// TYPES
-// =============================================================================
-
-type BriefingStatus = 'new' | 'loading' | 'playing' | 'paused' | 'played'
-
-interface PlaylistItem {
-  type: 'intro' | 'news' | 'outro'
-  url: string
-}
-
-interface WelcomeNewsBriefingsProps {
-  newsEpisodes: Record<string, {
-    id: string
-    category: string
-    audio_url: string | null
-    is_live: boolean
-  }>
-  credits: number
-}
-
-// =============================================================================
-// NEWS CATEGORIES - COLOR WHEEL (60° apart) - DO NOT CHANGE
-// =============================================================================
-
-const NEWS_CATEGORIES = [
-  { id: 'state', name: 'News', icon: '🏛️', gradient: 'linear-gradient(to bottom right, #dc2626, #991b1b)' },
-  { id: 'national', name: 'National', icon: '🇺🇸', gradient: 'linear-gradient(to bottom right, #f97316, #c2410c)' },
-  { id: 'international', name: 'World', icon: '🌍', gradient: 'linear-gradient(to bottom right, #eab308, #a16207)' },
-  { id: 'business', name: 'Business', icon: '💼', gradient: 'linear-gradient(to bottom right, #16a34a, #166534)' },
-  { id: 'sports', name: 'Sports', icon: '⚽', gradient: 'linear-gradient(to bottom right, #2563eb, #1e40af)' },
-  { id: 'science', name: 'Sci/Tech', icon: '🔬', gradient: 'linear-gradient(to bottom right, #9333ea, #6b21a8)' },
-]
-
-// =============================================================================
-// STATUS BADGE STYLES
-// =============================================================================
-
-const STATUS_STYLES: Record<BriefingStatus, { backgroundColor: string; color: string }> = {
-  new: { backgroundColor: '#f87171', color: 'white' },
-  loading: { backgroundColor: '#fbbf24', color: 'black' },
-  playing: { backgroundColor: '#34d399', color: 'black' },
-  paused: { backgroundColor: '#38bdf8', color: 'black' },
-  played: { backgroundColor: '#a78bfa', color: 'black' },
-}
-
-const STATUS_LABELS: Record<BriefingStatus, string> = {
-  new: 'New',
-  loading: '...',
-  playing: 'Playing',
-  paused: 'Paused',
-  played: 'Played',
-}
-
-// =============================================================================
-// COMPONENT
-// =============================================================================
-
-export function Welcome_NewsBriefings({ newsEpisodes, credits }: WelcomeNewsBriefingsProps) {
-  const [briefingStatus, setBriefingStatus] = useState<Record<string, BriefingStatus>>({})
-  const [currentPlaylist, setCurrentPlaylist] = useState<PlaylistItem[]>([])
-  const [currentPlaylistIndex, setCurrentPlaylistIndex] = useState(0)
-  const [activeBriefingId, setActiveBriefingId] = useState<string | null>(null)
-  const audioRef = useRef<HTMLAudioElement | null>(null)
-  const noCreditsAudioRef = useRef<HTMLAudioElement | null>(null)
-
-  // =============================================================================
-  // PLAYLIST PLAYBACK - plays intro → news → outro in sequence
-  // =============================================================================
-
+  // Load state upsell audio URL on mount
   useEffect(() => {
-    if (currentPlaylist.length > 0 && activeBriefingId) {
-      playCurrentTrack()
-    }
-  }, [currentPlaylist, currentPlaylistIndex])
-
-  const playCurrentTrack = () => {
-    if (currentPlaylistIndex >= currentPlaylist.length) {
-      // Playlist finished
-      if (activeBriefingId) {
-        setBriefingStatus(prev => ({ ...prev, [activeBriefingId]: 'played' }))
+    async function loadStateUpsell() {
+      try {
+        // Check for pre-generated state upsell message
+        const { data } = await supabase
+          .from('news_episodes')
+          .select('audio_url')
+          .eq('category', 'state-upsell')
+          .eq('is_live', true)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
+        
+        if (data?.audio_url) {
+          setStateUpsellUrl(data.audio_url);
+        }
+      } catch (error) {
+        // Upsell not found - will generate on demand
+        console.log('[Welcome] State upsell not pre-generated');
       }
-      setActiveBriefingId(null)
-      setCurrentPlaylist([])
-      setCurrentPlaylistIndex(0)
-      return
     }
+    loadStateUpsell();
+  }, [supabase]);
 
-    const track = currentPlaylist[currentPlaylistIndex]
-    
+  // Stop audio playback
+  function stopAudio() {
     if (audioRef.current) {
-      audioRef.current.pause()
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
     }
-    
-    const audio = new Audio(track.url)
-    audioRef.current = audio
-    
+    setPlaying(null);
+  }
+
+  // Play audio from URL
+  function playAudio(url: string, category: string) {
+    // Stop any currently playing audio
+    stopAudio();
+
+    const audio = new Audio(url);
+    audioRef.current = audio;
+
     audio.onended = () => {
-      setCurrentPlaylistIndex(prev => prev + 1)
-    }
-    
+      setPlaying(null);
+    };
+
     audio.onerror = () => {
-      console.error('[Welcome_NewsBriefings] Audio error, skipping track')
-      setCurrentPlaylistIndex(prev => prev + 1)
-    }
-    
-    audio.play().catch(err => {
-      console.error('[Welcome_NewsBriefings] Play error:', err)
-      setCurrentPlaylistIndex(prev => prev + 1)
-    })
+      console.error('[Welcome] Audio playback error');
+      setPlaying(null);
+    };
+
+    audio.play();
+    setPlaying(category);
   }
 
-  // =============================================================================
-  // STATE NEWS UPSELL MESSAGE (subscriber-only feature)
-  // =============================================================================
-
-  const playStateUpsellMessage = () => {
-    // Stop any other audio
-    if (audioRef.current) {
-      audioRef.current.pause()
+  // Handle category click
+  async function handleCategoryClick(category: string) {
+    // If already playing this category, stop it
+    if (playing === category) {
+      stopAudio();
+      return;
     }
-    if (activeBriefingId && activeBriefingId !== 'state') {
-      setBriefingStatus(prev => ({ ...prev, [activeBriefingId]: 'paused' }))
-    }
-    
-    // Play the pre-generated Tanya voice upsell
-    const audio = new Audio('https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/news-audio/welcome-clips/state-upsell-1769961512519.mp3')
-    audioRef.current = audio
-    
-    setActiveBriefingId('state')
-    setBriefingStatus(prev => ({ ...prev, state: 'playing' }))
-    
-    audio.onended = () => {
-      setBriefingStatus(prev => ({ ...prev, state: 'played' }))
-      setActiveBriefingId(null)
-    }
-    
-    audio.onerror = () => {
-      setBriefingStatus(prev => ({ ...prev, state: 'new' }))
-      setActiveBriefingId(null)
-    }
-    
-    audio.play().catch(err => {
-      console.error('Error playing upsell:', err)
-      setBriefingStatus(prev => ({ ...prev, state: 'new' }))
-    })
-  }
-
-  // =============================================================================
-  // NO CREDITS MESSAGE
-  // =============================================================================
-
-  const playNoCreditsMessage = async (categoryId: string) => {
-    // Stop any other audio
-    if (audioRef.current) {
-      audioRef.current.pause()
-    }
-    if ('speechSynthesis' in window) {
-      speechSynthesis.cancel()
-    }
-    
-    if (noCreditsAudioRef.current && !noCreditsAudioRef.current.paused) {
-      noCreditsAudioRef.current.pause()
-      setBriefingStatus(prev => ({ ...prev, [categoryId]: 'paused' }))
-      return
-    }
-
-    try {
-      const response = await fetch(`/api/news/no-credits-audio?category=${categoryId}`)
-      
-      if (!response.ok) {
-        console.error('Failed to fetch no-credits audio')
-        return
-      }
-
-      const audioBlob = await response.blob()
-      const audioUrl = URL.createObjectURL(audioBlob)
-      
-      noCreditsAudioRef.current = new Audio(audioUrl)
-      noCreditsAudioRef.current.onended = () => {
-        setBriefingStatus(prev => ({ ...prev, [categoryId]: 'played' }))
-        URL.revokeObjectURL(audioUrl)
-      }
-      
-      noCreditsAudioRef.current.play()
-      setBriefingStatus(prev => ({ ...prev, [categoryId]: 'playing' }))
-      
-    } catch (err) {
-      console.error('Error playing no-credits message:', err)
-    }
-  }
-
-  // =============================================================================
-  // DIRECT NEWS PLAYBACK (no intro/outro for Welcome page)
-  // =============================================================================
-
-  const playBriefingDirect = async (categoryId: string) => {
-    const episode = newsEpisodes[categoryId]
-    
-    if (credits <= 0) {
-      playNoCreditsMessage(categoryId)
-      return
-    }
-    
-    if (!episode?.audio_url) return
 
     // Stop any other playing audio
-    if (audioRef.current) {
-      audioRef.current.pause()
-    }
-    if ('speechSynthesis' in window) {
-      speechSynthesis.cancel()
-    }
-    if (activeBriefingId && activeBriefingId !== categoryId) {
-      setBriefingStatus(prev => ({ ...prev, [activeBriefingId]: 'paused' }))
-    }
+    stopAudio();
 
-    // Set loading state
-    setBriefingStatus(prev => ({ ...prev, [categoryId]: 'loading' }))
-    setActiveBriefingId(categoryId)
-
-    // Play news audio directly - no intro/outro on Welcome page
-    // The narrator already introduces themselves and states the date in the audio
-    const audio = new Audio(episode.audio_url)
-    audioRef.current = audio
-    
-    audio.onended = () => {
-      setBriefingStatus(prev => ({ ...prev, [categoryId]: 'played' }))
-      setActiveBriefingId(null)
-    }
-    
-    audio.onerror = () => {
-      console.error('[Welcome_NewsBriefings] Audio error')
-      setBriefingStatus(prev => ({ ...prev, [categoryId]: 'new' }))
-      setActiveBriefingId(null)
-    }
-    
-    audio.play()
-      .then(() => {
-        setBriefingStatus(prev => ({ ...prev, [categoryId]: 'playing' }))
-      })
-      .catch(err => {
-        console.error('[Welcome_NewsBriefings] Play error:', err)
-        setBriefingStatus(prev => ({ ...prev, [categoryId]: 'new' }))
-        setActiveBriefingId(null)
-      })
-  }
-
-  // =============================================================================
-  // MAIN PLAY HANDLER
-  // =============================================================================
-
-  const handlePlayBriefing = async (categoryId: string) => {
-    // State news is subscriber-only on Welcome page
-    if (categoryId === 'state') {
-      playStateUpsellMessage()
-      return
-    }
-
-    const currentStatus = briefingStatus[categoryId] || 'new'
-
-    // If this briefing is currently playing, pause it
-    if (currentStatus === 'playing' && activeBriefingId === categoryId) {
-      if (audioRef.current) {
-        audioRef.current.pause()
+    // State News - play upsell message
+    if (category === 'state') {
+      if (stateUpsellUrl) {
+        playAudio(stateUpsellUrl, category);
+      } else {
+        // Generate upsell on demand if not pre-generated
+        setLoading(category);
+        try {
+          const response = await fetch('/api/news/state-upsell');
+          const data = await response.json();
+          
+          if (data.audioUrl) {
+            setStateUpsellUrl(data.audioUrl);
+            playAudio(data.audioUrl, category);
+          } else {
+            alert('State news is available for subscribers only!');
+          }
+        } catch (error) {
+          console.error('[Welcome] Failed to get state upsell:', error);
+          alert('State news is available for subscribers only!');
+        } finally {
+          setLoading(null);
+        }
       }
-      setBriefingStatus(prev => ({ ...prev, [categoryId]: 'paused' }))
-      return
+      return;
     }
 
-    // If this briefing is paused, resume it
-    if (currentStatus === 'paused' && activeBriefingId === categoryId) {
-      if (audioRef.current) {
-        audioRef.current.play()
+    // Other categories - fetch and play the briefing
+    setLoading(category);
+    
+    try {
+      const response = await fetch(`/api/news/briefing?category=${category}`);
+      const data = await response.json();
+
+      if (response.ok && data.episode?.audioUrl) {
+        playAudio(data.episode.audioUrl, category);
+      } else {
+        alert(data.error || 'Briefing not available yet. Please try again later.');
       }
-      setBriefingStatus(prev => ({ ...prev, [categoryId]: 'playing' }))
-      return
+    } catch (error) {
+      console.error('[Welcome] Failed to fetch briefing:', error);
+      alert('Failed to load briefing. Please try again.');
+    } finally {
+      setLoading(null);
     }
-
-    // Play news directly (no intro/outro on Welcome page)
-    await playBriefingDirect(categoryId)
   }
-
-  // =============================================================================
-  // RENDER
-  // =============================================================================
 
   return (
-    <section style={{ paddingLeft: '1rem', paddingRight: '1rem', marginTop: '1.5rem' }}>
-      <h2 className="text-lg font-bold text-white" style={{ marginBottom: '0.25rem' }}>📰 NEWS BRIEFINGS</h2>
-      <p className="text-white text-xs" style={{ marginBottom: '1rem' }}>Top stories updated throughout the day</p>
-      
-      {/* 3-column grid with horizontal buttons */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
-        {NEWS_CATEGORIES.map((cat) => {
-          const episode = newsEpisodes[cat.id]
-          const hasEpisode = !!episode?.audio_url
-          const status: BriefingStatus = briefingStatus[cat.id] || 'new'
-          
-          // State news is always clickable (plays upsell), others need episode or no credits
-          const isClickable = cat.id === 'state' || hasEpisode || credits <= 0
-          
-          // Display name - State News always shows "State News" on Welcome page
-          const displayName = cat.id === 'state' ? 'State News' : cat.name
+    <div style={{ width: '100%' }}>
+      {/* Section Title */}
+      <h2 style={{
+        fontSize: '18px',
+        fontWeight: 'bold',
+        color: 'white',
+        marginBottom: '12px'
+      }}>
+        📻 News Briefings
+      </h2>
 
+      {/* Category Buttons Grid */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(3, 1fr)',
+        gap: '10px'
+      }}>
+        {CATEGORIES.map((cat) => {
+          const isPlaying = playing === cat.id;
+          const isLoading = loading === cat.id;
+          
           return (
             <button
               key={cat.id}
-              onClick={() => isClickable && handlePlayBriefing(cat.id)}
-              disabled={!isClickable}
-              className="rounded-xl transition-all hover:scale-105"
+              onClick={() => handleCategoryClick(cat.id)}
+              disabled={isLoading}
               style={{
-                position: 'relative',
                 display: 'flex',
+                flexDirection: 'column',
                 alignItems: 'center',
-                gap: '0.5rem',
-                padding: '0.75rem',
-                paddingRight: '2.5rem',
-                background: cat.id === 'state' ? cat.gradient : (hasEpisode ? cat.gradient : '#1e293b'),
-                opacity: isClickable ? 1 : 0.5,
-                cursor: isClickable ? 'pointer' : 'not-allowed',
-                border: 'none',
-                minHeight: '3rem'
+                justifyContent: 'center',
+                padding: '12px 8px',
+                backgroundColor: isPlaying ? cat.color : '#1e293b',
+                border: `2px solid ${cat.color}`,
+                borderRadius: '10px',
+                cursor: isLoading ? 'wait' : 'pointer',
+                transition: 'all 0.2s ease',
+                opacity: isLoading ? 0.7 : 1
               }}
             >
-              {/* Icon on LEFT */}
-              <span style={{ fontSize: '1.25rem', flexShrink: 0 }}>
-                {cat.icon}
+              <span style={{ 
+                fontSize: '24px',
+                marginBottom: '4px'
+              }}>
+                {isLoading ? '⏳' : isPlaying ? '⏹️' : cat.icon}
               </span>
-              
-              {/* Category name to RIGHT of icon */}
-              <span 
-                className="text-white font-semibold"
-                style={{ fontSize: '0.8rem', textAlign: 'left', lineHeight: '1.2' }}
-              >
-                {displayName}
+              <span style={{
+                fontSize: '12px',
+                fontWeight: '600',
+                color: isPlaying ? (cat.id === 'world' ? 'black' : 'white') : 'white'
+              }}>
+                {cat.label}
               </span>
-              
-              {/* Status Badge TOP RIGHT */}
-              {(cat.id === 'state' || hasEpisode || credits <= 0) && (
-                <span style={{
-                  position: 'absolute',
-                  top: '-0.25rem',
-                  right: '-0.25rem',
-                  fontSize: '9px',
-                  paddingLeft: '0.375rem',
-                  paddingRight: '0.375rem',
-                  paddingTop: '0.125rem',
-                  paddingBottom: '0.125rem',
-                  borderRadius: '9999px',
-                  fontWeight: 'bold',
-                  backgroundColor: STATUS_STYLES[status].backgroundColor,
-                  color: STATUS_STYLES[status].color
-                }}>
-                  {STATUS_LABELS[status]}
-                </span>
-              )}
             </button>
-          )
+          );
         })}
       </div>
-    </section>
-  )
-}
 
-export { NEWS_CATEGORIES }
+      {/* Now Playing Indicator */}
+      {playing && (
+        <div style={{
+          marginTop: '12px',
+          padding: '8px 12px',
+          backgroundColor: '#1e293b',
+          borderRadius: '8px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '8px'
+        }}>
+          <span style={{ 
+            display: 'inline-block',
+            width: '8px',
+            height: '8px',
+            backgroundColor: '#22c55e',
+            borderRadius: '50%',
+            animation: 'pulse 1.5s infinite'
+          }} />
+          <span style={{ 
+            fontSize: '14px', 
+            color: 'white' 
+          }}>
+            Now Playing: {CATEGORIES.find(c => c.id === playing)?.label}
+          </span>
+          <button
+            onClick={stopAudio}
+            style={{
+              marginLeft: '8px',
+              padding: '4px 8px',
+              backgroundColor: '#dc2626',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              fontSize: '12px',
+              cursor: 'pointer'
+            }}
+          >
+            Stop
+          </button>
+        </div>
+      )}
+
+      {/* Pulse animation style */}
+      <style jsx>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+        }
+      `}</style>
+    </div>
+  );
+}
