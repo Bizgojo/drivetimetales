@@ -274,16 +274,11 @@ async function generateCleanScript(
 - Major incidents affecting the state`,
     
     national: `NATIONAL NEWS FOCUS:
-- President of the United States: actions, statements, executive orders, travel
-- White House announcements and administration updates
-- Congress: legislation, debates, hearings, votes
-- National elections, political campaigns, polling
-- Supreme Court decisions and federal court rulings
-- National political controversies and social movements
-- Federal government policies affecting Americans
-- National security and defense updates
+- Federal government decisions and policies
+- National elections, political debates, Supreme Court actions
 - Nationwide economic trends and employment data
-- Major social issues and cultural debates
+- Major court cases and national security updates
+- Countrywide social issues
 - Weather ONLY if it covers multiple states and is unusual or dangerous`,
     
     international: `INTERNATIONAL NEWS FOCUS:
@@ -475,18 +470,11 @@ export async function POST(request: NextRequest) {
     // PHASE 3: Generate audio (if voice selected)
     // ========================================
     let audioUrl: string | null = null;
-    let audioDuration: string | null = null;
     
     if (voiceId) {
       try {
         console.log(`[Generate News] Generating audio with voice: ${voiceId}`);
         const audioBuffer = await generateAudio(script, voiceId);
-        
-        // Calculate duration (MP3 at ~128kbps ≈ 16000 bytes per second)
-        const durationSeconds = Math.round(audioBuffer.length / 16000);
-        const durationMinutes = (durationSeconds / 60).toFixed(1);
-        audioDuration = durationMinutes;
-        console.log(`[Generate News] Audio duration: ${durationMinutes} minutes`);
         
         const fileName = `news-${category}${state ? `-${state.toLowerCase().replace(/\s+/g, '-')}` : ''}-${Date.now()}.mp3`;
         
@@ -534,8 +522,7 @@ export async function POST(request: NextRequest) {
           ...currentCategories[category],
           last_generated: new Date().toISOString(),
           episode_number: newEpisode,
-          audio_url: audioUrl,
-          duration: audioDuration
+          audio_url: audioUrl
         }
       }
     };
@@ -574,7 +561,6 @@ export async function POST(request: NextRequest) {
         episodeNumber: newEpisode,
         script,
         audioUrl,
-        duration: audioDuration,
         storiesUsed: stories.length,
         generatedAt: new Date().toISOString(),
         generationTimeMs: elapsed
