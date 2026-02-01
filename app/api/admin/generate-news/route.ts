@@ -355,6 +355,13 @@ export async function POST(request: NextRequest) {
     
     // Insert into news_episodes table
     if (audioUrl) {
+      // First, mark old episodes for this category as not live
+      await supabase.from('news_episodes')
+        .update({ is_live: false })
+        .eq('category', category)
+        .eq('is_live', true);
+      
+      // Then insert the new episode
       const { error: insertError } = await supabase.from('news_episodes').insert({
         category: category,
         state: state || null,
