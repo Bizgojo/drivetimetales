@@ -1,19 +1,7 @@
 // app/api/cron/news-generation/route.ts
 // DTT News Briefings - Auto-Generation Cron Job
 // FRESH BUILD - February 2026
-//
-// This route is called by Vercel Cron at scheduled times
-// It generates briefings for all categories and subscriber states
-//
-// Vercel cron config (add to vercel.json):
-// {
-//   "crons": [
-//     {
-//       "path": "/api/cron/news-generation",
-//       "schedule": "0 6,12,18 * * *"
-//     }
-//   ]
-// }
+// FIXED: TypeScript Set iteration
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
@@ -106,8 +94,15 @@ async function getSubscriberStates(): Promise<string[]> {
       return [];
     }
 
-    // Get unique states
-    const states = [...new Set(data?.map(u => u.state).filter(Boolean))] as string[];
+    // Get unique states using Array.from instead of spread
+    const stateSet = new Set<string>();
+    for (const u of data || []) {
+      if (u.state) {
+        stateSet.add(u.state);
+      }
+    }
+    const states = Array.from(stateSet);
+    
     console.log(`[Cron] Found ${states.length} states with subscribers:`, states);
     
     return states;
