@@ -174,7 +174,7 @@ export function Welcome_NewsBriefings({ newsEpisodes, credits }: WelcomeNewsBrie
     }
     
     // Play the pre-generated Tanya voice upsell
-    const audio = new Audio('https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/news-audio/welcome-clips/state-upsell-1769960343663.mp3')
+    const audio = new Audio('https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/news-audio/welcome-clips/state-upsell-1769961512519.mp3')
     audioRef.current = audio
     
     setActiveBriefingId('state')
