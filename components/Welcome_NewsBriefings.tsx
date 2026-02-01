@@ -7,23 +7,25 @@ Location: ~/Projects/drivetimetales/components/
 File: Welcome_NewsBriefings.tsx
 
 Created: January 18, 2026
-Updated: February 1, 2026 - Removed state dropdown, added upsell message for State News
+Updated: January 29, 2026 - Added state selection confirmation popup
 Owner: Marc (Wonder Books Press / Drive Time Tales)
 Status: PROTECTED
 
 PURPOSE:
 News Briefings section for WELCOME page with horizontal button layout.
-State News plays upsell message (subscriber-only feature).
+User selects state from dropdown with confirmation popup.
 
 SCENARIOS:
-1. User clicks State News: Plays upsell message encouraging subscription
-2. User clicks other categories: Plays intro → news → outro via stitch API
-3. User has 0 credits: Plays "no credits" message from narrator
+1. User has 1+ credits: Plays the actual news briefing
+2. User has 0 credits: Plays "no credits" message from narrator
+3. State News first click: Shows dropdown to select state, then plays
 
 FEATURES:
-- State News is locked (plays upsell message)
-- Other categories play via stitch API with generic intros/outros
-- No state dropdown on Welcome page (that's a subscriber feature)
+- First click on State News shows state dropdown
+- Confirmation popup before playing
+- Selected state saved to localStorage
+- State abbreviation becomes label (e.g., "TN News")
+- No-credits handling plays narrator message
 
 LAYOUT:
 - Wider horizontal buttons (not square)
@@ -52,12 +54,7 @@ import { useState, useRef, useEffect } from 'react'
 // TYPES
 // =============================================================================
 
-type BriefingStatus = 'new' | 'loading' | 'playing' | 'paused' | 'played'
-
-interface PlaylistItem {
-  type: 'intro' | 'news' | 'outro'
-  url: string
-}
+type BriefingStatus = 'new' | 'playing' | 'paused' | 'played'
 
 interface WelcomeNewsBriefingsProps {
   newsEpisodes: Record<string, {
@@ -68,6 +65,64 @@ interface WelcomeNewsBriefingsProps {
   }>
   credits: number
 }
+
+// =============================================================================
+// US STATES
+// =============================================================================
+
+const US_STATES = [
+  { abbrev: 'AL', name: 'Alabama' },
+  { abbrev: 'AK', name: 'Alaska' },
+  { abbrev: 'AZ', name: 'Arizona' },
+  { abbrev: 'AR', name: 'Arkansas' },
+  { abbrev: 'CA', name: 'California' },
+  { abbrev: 'CO', name: 'Colorado' },
+  { abbrev: 'CT', name: 'Connecticut' },
+  { abbrev: 'DE', name: 'Delaware' },
+  { abbrev: 'FL', name: 'Florida' },
+  { abbrev: 'GA', name: 'Georgia' },
+  { abbrev: 'HI', name: 'Hawaii' },
+  { abbrev: 'ID', name: 'Idaho' },
+  { abbrev: 'IL', name: 'Illinois' },
+  { abbrev: 'IN', name: 'Indiana' },
+  { abbrev: 'IA', name: 'Iowa' },
+  { abbrev: 'KS', name: 'Kansas' },
+  { abbrev: 'KY', name: 'Kentucky' },
+  { abbrev: 'LA', name: 'Louisiana' },
+  { abbrev: 'ME', name: 'Maine' },
+  { abbrev: 'MD', name: 'Maryland' },
+  { abbrev: 'MA', name: 'Massachusetts' },
+  { abbrev: 'MI', name: 'Michigan' },
+  { abbrev: 'MN', name: 'Minnesota' },
+  { abbrev: 'MS', name: 'Mississippi' },
+  { abbrev: 'MO', name: 'Missouri' },
+  { abbrev: 'MT', name: 'Montana' },
+  { abbrev: 'NE', name: 'Nebraska' },
+  { abbrev: 'NV', name: 'Nevada' },
+  { abbrev: 'NH', name: 'New Hampshire' },
+  { abbrev: 'NJ', name: 'New Jersey' },
+  { abbrev: 'NM', name: 'New Mexico' },
+  { abbrev: 'NY', name: 'New York' },
+  { abbrev: 'NC', name: 'North Carolina' },
+  { abbrev: 'ND', name: 'North Dakota' },
+  { abbrev: 'OH', name: 'Ohio' },
+  { abbrev: 'OK', name: 'Oklahoma' },
+  { abbrev: 'OR', name: 'Oregon' },
+  { abbrev: 'PA', name: 'Pennsylvania' },
+  { abbrev: 'RI', name: 'Rhode Island' },
+  { abbrev: 'SC', name: 'South Carolina' },
+  { abbrev: 'SD', name: 'South Dakota' },
+  { abbrev: 'TN', name: 'Tennessee' },
+  { abbrev: 'TX', name: 'Texas' },
+  { abbrev: 'UT', name: 'Utah' },
+  { abbrev: 'VT', name: 'Vermont' },
+  { abbrev: 'VA', name: 'Virginia' },
+  { abbrev: 'WA', name: 'Washington' },
+  { abbrev: 'WV', name: 'West Virginia' },
+  { abbrev: 'WI', name: 'Wisconsin' },
+  { abbrev: 'WY', name: 'Wyoming' },
+  { abbrev: 'DC', name: 'Washington D.C.' },
+]
 
 // =============================================================================
 // NEWS CATEGORIES - COLOR WHEEL (60° apart) - DO NOT CHANGE
@@ -88,7 +143,6 @@ const NEWS_CATEGORIES = [
 
 const STATUS_STYLES: Record<BriefingStatus, { backgroundColor: string; color: string }> = {
   new: { backgroundColor: '#f87171', color: 'white' },
-  loading: { backgroundColor: '#fbbf24', color: 'black' },
   playing: { backgroundColor: '#34d399', color: 'black' },
   paused: { backgroundColor: '#38bdf8', color: 'black' },
   played: { backgroundColor: '#a78bfa', color: 'black' },
@@ -96,7 +150,6 @@ const STATUS_STYLES: Record<BriefingStatus, { backgroundColor: string; color: st
 
 const STATUS_LABELS: Record<BriefingStatus, string> = {
   new: 'New',
-  loading: '...',
   playing: 'Playing',
   paused: 'Paused',
   played: 'Played',
@@ -108,112 +161,82 @@ const STATUS_LABELS: Record<BriefingStatus, string> = {
 
 export function Welcome_NewsBriefings({ newsEpisodes, credits }: WelcomeNewsBriefingsProps) {
   const [briefingStatus, setBriefingStatus] = useState<Record<string, BriefingStatus>>({})
-  const [currentPlaylist, setCurrentPlaylist] = useState<PlaylistItem[]>([])
-  const [currentPlaylistIndex, setCurrentPlaylistIndex] = useState(0)
-  const [activeBriefingId, setActiveBriefingId] = useState<string | null>(null)
-  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const [noCreditsPlaying, setNoCreditsPlaying] = useState(false)
+  const [showStateDropdown, setShowStateDropdown] = useState(false)
+  const [selectedState, setSelectedState] = useState<string>('')
+  const [pendingState, setPendingState] = useState<string | null>(null)
+  const audioRefs = useRef<Record<string, HTMLAudioElement>>({})
   const noCreditsAudioRef = useRef<HTMLAudioElement | null>(null)
 
-  // =============================================================================
-  // PLAYLIST PLAYBACK - plays intro → news → outro in sequence
-  // =============================================================================
-
+  // Load saved state from localStorage on mount
   useEffect(() => {
-    if (currentPlaylist.length > 0 && activeBriefingId) {
-      playCurrentTrack()
+    const savedState = localStorage.getItem('dtt_user_state')
+    if (savedState) {
+      setSelectedState(savedState)
     }
-  }, [currentPlaylist, currentPlaylistIndex])
+  }, [])
 
-  const playCurrentTrack = () => {
-    if (currentPlaylistIndex >= currentPlaylist.length) {
-      // Playlist finished
-      if (activeBriefingId) {
-        setBriefingStatus(prev => ({ ...prev, [activeBriefingId]: 'played' }))
-      }
-      setActiveBriefingId(null)
-      setCurrentPlaylist([])
-      setCurrentPlaylistIndex(0)
+  // Handle state selection - show confirmation popup
+  const handleStateSelect = (stateAbbrev: string) => {
+    setPendingState(stateAbbrev)
+    // Keep dropdown open behind confirmation
+  }
+
+  // Confirm state selection - close everything and play
+  const confirmStateSelection = () => {
+    if (!pendingState) return
+    const stateToPlay = pendingState
+    setSelectedState(stateToPlay)
+    localStorage.setItem('dtt_user_state', stateToPlay)
+    setPendingState(null)
+    setShowStateDropdown(false)
+    
+    // Play state news directly (don't call handlePlayBriefing which checks selectedState)
+    const episode = newsEpisodes['state']
+    
+    if (credits <= 0) {
+      playNoCreditsMessage('state')
       return
     }
-
-    const track = currentPlaylist[currentPlaylistIndex]
     
-    if (audioRef.current) {
-      audioRef.current.pause()
-    }
+    if (!episode?.audio_url) return
     
-    const audio = new Audio(track.url)
-    audioRef.current = audio
-    
-    audio.onended = () => {
-      setCurrentPlaylistIndex(prev => prev + 1)
-    }
-    
-    audio.onerror = () => {
-      console.error('[Welcome_NewsBriefings] Audio error, skipping track')
-      setCurrentPlaylistIndex(prev => prev + 1)
-    }
-    
-    audio.play().catch(err => {
-      console.error('[Welcome_NewsBriefings] Play error:', err)
-      setCurrentPlaylistIndex(prev => prev + 1)
+    // Pause any other playing audio
+    Object.entries(audioRefs.current).forEach(([id, audio]) => {
+      if (id !== 'state' && !audio.paused) {
+        audio.pause()
+        setBriefingStatus(prev => ({ ...prev, [id]: 'paused' }))
+      }
     })
+    
+    if (!audioRefs.current['state']) {
+      audioRefs.current['state'] = new Audio(episode.audio_url)
+      audioRefs.current['state'].onended = () => {
+        setBriefingStatus(prev => ({ ...prev, ['state']: 'played' }))
+      }
+    }
+    
+    const audio = audioRefs.current['state']
+    audio.currentTime = 0
+    audio.play()
+    setBriefingStatus(prev => ({ ...prev, ['state']: 'playing' }))
   }
 
-  // =============================================================================
-  // STATE NEWS UPSELL MESSAGE (subscriber-only feature)
-  // =============================================================================
-
-  const playStateUpsellMessage = () => {
-    const message = "State news is available exclusively for Drive Time Tales subscribers. Sign up for a free trial and get personalized news for your state, delivered fresh every day. We'd love to have you!"
-    
-    // Stop any other audio
-    if (audioRef.current) {
-      audioRef.current.pause()
-    }
-    if (activeBriefingId && activeBriefingId !== 'state') {
-      setBriefingStatus(prev => ({ ...prev, [activeBriefingId]: 'paused' }))
-    }
-    
-    // Cancel any ongoing speech
-    if ('speechSynthesis' in window) {
-      speechSynthesis.cancel()
-    }
-    
-    if ('speechSynthesis' in window) {
-      const utterance = new SpeechSynthesisUtterance(message)
-      utterance.rate = 1.0
-      utterance.onstart = () => {
-        setActiveBriefingId('state')
-        setBriefingStatus(prev => ({ ...prev, state: 'playing' }))
-      }
-      utterance.onend = () => {
-        setBriefingStatus(prev => ({ ...prev, state: 'played' }))
-        setActiveBriefingId(null)
-      }
-      utterance.onerror = () => {
-        setBriefingStatus(prev => ({ ...prev, state: 'new' }))
-        setActiveBriefingId(null)
-      }
-      speechSynthesis.speak(utterance)
-    }
+  // Cancel state selection - return to state list
+  const cancelStateSelection = () => {
+    setPendingState(null)
+    // Keep showStateDropdown true so user can pick again
   }
 
-  // =============================================================================
-  // NO CREDITS MESSAGE
-  // =============================================================================
-
+  // Handle playing the "no credits" message
   const playNoCreditsMessage = async (categoryId: string) => {
-    // Stop any other audio
-    if (audioRef.current) {
-      audioRef.current.pause()
-    }
-    if ('speechSynthesis' in window) {
-      speechSynthesis.cancel()
-    }
+    Object.values(audioRefs.current).forEach(audio => {
+      if (!audio.paused) audio.pause()
+    })
     
     if (noCreditsAudioRef.current && !noCreditsAudioRef.current.paused) {
       noCreditsAudioRef.current.pause()
+      setNoCreditsPlaying(false)
       setBriefingStatus(prev => ({ ...prev, [categoryId]: 'paused' }))
       return
     }
@@ -231,11 +254,13 @@ export function Welcome_NewsBriefings({ newsEpisodes, credits }: WelcomeNewsBrie
       
       noCreditsAudioRef.current = new Audio(audioUrl)
       noCreditsAudioRef.current.onended = () => {
+        setNoCreditsPlaying(false)
         setBriefingStatus(prev => ({ ...prev, [categoryId]: 'played' }))
         URL.revokeObjectURL(audioUrl)
       }
       
       noCreditsAudioRef.current.play()
+      setNoCreditsPlaying(true)
       setBriefingStatus(prev => ({ ...prev, [categoryId]: 'playing' }))
       
     } catch (err) {
@@ -243,122 +268,192 @@ export function Welcome_NewsBriefings({ newsEpisodes, credits }: WelcomeNewsBrie
     }
   }
 
-  // =============================================================================
-  // STITCH API PLAYBACK
-  // =============================================================================
+  const handlePlayBriefing = (categoryId: string) => {
+    // Special handling for state news - show dropdown if no state selected
+    if (categoryId === 'state' && !selectedState) {
+      setShowStateDropdown(true)
+      return
+    }
 
-  const playBriefingWithStitch = async (categoryId: string) => {
     const episode = newsEpisodes[categoryId]
     
+    // If user has no credits, play the "no credits" message instead
     if (credits <= 0) {
       playNoCreditsMessage(categoryId)
       return
     }
-    
+
     if (!episode?.audio_url) return
 
-    // Stop any other playing audio
-    if (audioRef.current) {
-      audioRef.current.pause()
-    }
-    if ('speechSynthesis' in window) {
-      speechSynthesis.cancel()
-    }
-    if (activeBriefingId && activeBriefingId !== categoryId) {
-      setBriefingStatus(prev => ({ ...prev, [activeBriefingId]: 'paused' }))
+    // Pause any other playing audio
+    Object.entries(audioRefs.current).forEach(([id, audio]) => {
+      if (id !== categoryId && !audio.paused) {
+        audio.pause()
+        setBriefingStatus(prev => ({ ...prev, [id]: 'paused' }))
+      }
+    })
+
+    // Stop no-credits audio if playing
+    if (noCreditsAudioRef.current && !noCreditsAudioRef.current.paused) {
+      noCreditsAudioRef.current.pause()
+      setNoCreditsPlaying(false)
     }
 
-    // Set loading state
-    setBriefingStatus(prev => ({ ...prev, [categoryId]: 'loading' }))
-    setActiveBriefingId(categoryId)
-
-    try {
-      // Call stitch API for GENERIC clips (type=welcome, no userId)
-      const response = await fetch(
-        `/api/audio/stitch?type=welcome&category=${categoryId}`
-      )
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch audio playlist')
-      }
-      
-      const data = await response.json()
-      
-      if (!data.playlist || data.playlist.length === 0) {
-        throw new Error('Empty playlist returned')
-      }
-      
-      // Set playlist and start playing
-      setCurrentPlaylist(data.playlist)
-      setCurrentPlaylistIndex(0)
-      setBriefingStatus(prev => ({ ...prev, [categoryId]: 'playing' }))
-      
-    } catch (error) {
-      console.error('[Welcome_NewsBriefings] Stitch API error:', error)
-      
-      // Fallback: play just the news body directly (old behavior)
-      const audio = new Audio(episode.audio_url)
-      audioRef.current = audio
-      
-      audio.onended = () => {
+    if (!audioRefs.current[categoryId]) {
+      audioRefs.current[categoryId] = new Audio(episode.audio_url)
+      audioRefs.current[categoryId].onended = () => {
         setBriefingStatus(prev => ({ ...prev, [categoryId]: 'played' }))
-        setActiveBriefingId(null)
       }
-      
-      audio.play().catch(err => {
-        console.error('[Welcome_NewsBriefings] Fallback play error:', err)
-        setBriefingStatus(prev => ({ ...prev, [categoryId]: 'new' }))
-        setActiveBriefingId(null)
-      })
-      
-      setBriefingStatus(prev => ({ ...prev, [categoryId]: 'playing' }))
-    }
-  }
-
-  // =============================================================================
-  // MAIN PLAY HANDLER
-  // =============================================================================
-
-  const handlePlayBriefing = async (categoryId: string) => {
-    // State news is subscriber-only on Welcome page
-    if (categoryId === 'state') {
-      playStateUpsellMessage()
-      return
     }
 
+    const audio = audioRefs.current[categoryId]
     const currentStatus = briefingStatus[categoryId] || 'new'
 
-    // If this briefing is currently playing, pause it
-    if (currentStatus === 'playing' && activeBriefingId === categoryId) {
-      if (audioRef.current) {
-        audioRef.current.pause()
-      }
+    if (currentStatus === 'playing') {
+      audio.pause()
       setBriefingStatus(prev => ({ ...prev, [categoryId]: 'paused' }))
-      return
-    }
-
-    // If this briefing is paused, resume it
-    if (currentStatus === 'paused' && activeBriefingId === categoryId) {
-      if (audioRef.current) {
-        audioRef.current.play()
+    } else {
+      if (currentStatus === 'played') {
+        audio.currentTime = 0
       }
+      audio.play()
       setBriefingStatus(prev => ({ ...prev, [categoryId]: 'playing' }))
-      return
     }
-
-    // Play with stitch API
-    await playBriefingWithStitch(categoryId)
   }
-
-  // =============================================================================
-  // RENDER
-  // =============================================================================
 
   return (
     <section style={{ paddingLeft: '1rem', paddingRight: '1rem', marginTop: '1.5rem' }}>
       <h2 className="text-lg font-bold text-white" style={{ marginBottom: '0.25rem' }}>📰 NEWS BRIEFINGS</h2>
       <p className="text-white text-xs" style={{ marginBottom: '1rem' }}>Top stories updated throughout the day</p>
       
+      {/* State Selection Dropdown */}
+      {showStateDropdown && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.7)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 100
+        }}>
+          <div style={{
+            backgroundColor: '#1e293b',
+            borderRadius: '1rem',
+            padding: '1.5rem',
+            maxWidth: '20rem',
+            width: '90%',
+            maxHeight: '70vh',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
+            <h3 className="text-white font-bold" style={{ fontSize: '1.125rem', marginBottom: '0.5rem', textAlign: 'center' }}>
+              Select Your State
+            </h3>
+            <p className="text-slate-400" style={{ fontSize: '0.75rem', marginBottom: '1rem', textAlign: 'center' }}>
+              Choose your state to hear local news
+            </p>
+            <div style={{ 
+              overflowY: 'auto', 
+              flex: 1,
+              display: 'grid',
+              gridTemplateColumns: 'repeat(2, 1fr)',
+              gap: '0.5rem'
+            }}>
+              {US_STATES.map((state) => (
+                <button
+                  key={state.abbrev}
+                  onClick={() => handleStateSelect(state.abbrev)}
+                  className="hover:bg-slate-600 transition rounded-lg"
+                  style={{
+                    padding: '0.5rem',
+                    backgroundColor: '#334155',
+                    color: 'white',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: '0.75rem',
+                    textAlign: 'left'
+                  }}
+                >
+                  <span style={{ fontWeight: 'bold' }}>{state.abbrev}</span> - {state.name}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setShowStateDropdown(false)}
+              className="text-slate-400 hover:text-white transition"
+              style={{ marginTop: '1rem', fontSize: '0.875rem', background: 'none', border: 'none', cursor: 'pointer' }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* State Selection Confirmation Popup */}
+      {pendingState && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.85)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 110
+        }}>
+          <div style={{
+            backgroundColor: '#1e293b',
+            borderRadius: '1rem',
+            padding: '1.5rem',
+            maxWidth: '320px',
+            width: '90%',
+            textAlign: 'center'
+          }}>
+            <p style={{ color: 'white', fontSize: '1.25rem', marginBottom: '1rem' }}>
+              Play <strong>{pendingState}</strong> News?
+            </p>
+            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+              <button
+                onClick={cancelStateSelection}
+                style={{
+                  padding: '0.75rem 1.5rem',
+                  backgroundColor: '#475569',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '0.5rem',
+                  cursor: 'pointer',
+                  fontSize: '1rem'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmStateSelection}
+                style={{
+                  padding: '0.75rem 1.5rem',
+                  backgroundColor: '#22c55e',
+                  color: 'black',
+                  border: 'none',
+                  borderRadius: '0.5rem',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  fontSize: '1rem'
+                }}
+              >
+                Play Now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 3-column grid with horizontal buttons */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
         {NEWS_CATEGORIES.map((cat) => {
@@ -366,11 +461,13 @@ export function Welcome_NewsBriefings({ newsEpisodes, credits }: WelcomeNewsBrie
           const hasEpisode = !!episode?.audio_url
           const status: BriefingStatus = briefingStatus[cat.id] || 'new'
           
-          // State news is always clickable (plays upsell), others need episode or no credits
-          const isClickable = cat.id === 'state' || hasEpisode || credits <= 0
+          const isClickable = hasEpisode || credits <= 0 || cat.id === 'state'
           
-          // Display name - State News always shows "State News" on Welcome page
-          const displayName = cat.id === 'state' ? 'State News' : cat.name
+          // For state news, show "XX News" if state selected, otherwise "State News"
+          let displayName = cat.name
+          if (cat.id === 'state') {
+            displayName = selectedState ? `${selectedState} News` : 'State News'
+          }
 
           return (
             <button
@@ -385,7 +482,7 @@ export function Welcome_NewsBriefings({ newsEpisodes, credits }: WelcomeNewsBrie
                 gap: '0.5rem',
                 padding: '0.75rem',
                 paddingRight: '2.5rem',
-                background: cat.id === 'state' ? cat.gradient : (hasEpisode ? cat.gradient : '#1e293b'),
+                background: hasEpisode ? cat.gradient : '#1e293b',
                 opacity: isClickable ? 1 : 0.5,
                 cursor: isClickable ? 'pointer' : 'not-allowed',
                 border: 'none',
@@ -406,7 +503,7 @@ export function Welcome_NewsBriefings({ newsEpisodes, credits }: WelcomeNewsBrie
               </span>
               
               {/* Status Badge TOP RIGHT */}
-              {(cat.id === 'state' || hasEpisode || credits <= 0) && (
+              {(hasEpisode || credits <= 0) && (
                 <span style={{
                   position: 'absolute',
                   top: '-0.25rem',
