@@ -1,17 +1,18 @@
 // app/admin/news-briefings/page.tsx
 // DTT News Briefings - Admin Page
 // FRESH BUILD - February 2026
-//
-// Features:
-// - 6 category cards with narrator/voice/duration settings
-// - Generate and Play buttons per category
-// - Auto-generation toggle with 3 time slots
-// - Settings persist to news_settings table
+// FIXED: Use standard Supabase client
 
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@supabase/supabase-js';
+
+// Initialize Supabase client
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 // Category configuration with colors (DO NOT CHANGE COLORS)
 const CATEGORIES = [
@@ -49,8 +50,6 @@ interface EpisodeInfo {
 }
 
 export default function NewsBriefingsAdmin() {
-  const supabase = createClientComponentClient();
-  
   // State for each category's settings
   const [settings, setSettings] = useState<Record<string, CategorySettings>>({});
   const [episodes, setEpisodes] = useState<Record<string, EpisodeInfo>>({});
@@ -142,7 +141,7 @@ export default function NewsBriefingsAdmin() {
       }
     }
     loadSettings();
-  }, [supabase]);
+  }, []);
 
   // Load latest episodes for each category
   useEffect(() => {
@@ -172,7 +171,7 @@ export default function NewsBriefingsAdmin() {
       }
     }
     loadEpisodes();
-  }, [supabase]);
+  }, []);
 
   // Save settings to database
   async function saveSettings(category: string, newSettings: CategorySettings) {

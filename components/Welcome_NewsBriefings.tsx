@@ -1,17 +1,18 @@
 // components/Welcome_NewsBriefings.tsx
 // DTT News Briefings - Welcome Page Component
 // FRESH BUILD - February 2026
-//
-// Features:
-// - 6 category buttons with designated colors
-// - Plays generic briefings (no personalization)
-// - State News shows upsell message instead of news
-// - Does NOT change page layout or colors
+// FIXED: Use standard Supabase client
 
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@supabase/supabase-js';
+
+// Initialize Supabase client
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 // Category configuration with colors (DO NOT CHANGE)
 const CATEGORIES = [
@@ -24,8 +25,6 @@ const CATEGORIES = [
 ];
 
 export default function Welcome_NewsBriefings() {
-  const supabase = createClientComponentClient();
-  
   const [playing, setPlaying] = useState<string | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
   const [stateUpsellUrl, setStateUpsellUrl] = useState<string | null>(null);
@@ -55,7 +54,7 @@ export default function Welcome_NewsBriefings() {
       }
     }
     loadStateUpsell();
-  }, [supabase]);
+  }, []);
 
   // Stop audio playback
   function stopAudio() {
