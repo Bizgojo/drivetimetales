@@ -1,7 +1,7 @@
 // components/Welcome_NewsBriefings.tsx
 // DTT News Briefings - Welcome Page Component
 // FRESH BUILD - February 2026
-// FIXED: Named export to match existing imports
+// FIXED: Accept props from welcome/page.tsx
 
 'use client';
 
@@ -24,7 +24,20 @@ const CATEGORIES = [
   { id: 'science', label: 'Sci/Tech', icon: '🔬', color: '#9333ea' }
 ];
 
-export function Welcome_NewsBriefings() {
+interface NewsEpisode {
+  audio_url?: string;
+  audioUrl?: string;
+}
+
+interface Welcome_NewsBriefingsProps {
+  newsEpisodes?: Record<string, NewsEpisode>;
+  credits?: number;
+}
+
+export function Welcome_NewsBriefings({ 
+  newsEpisodes = {}, 
+  credits = 0 
+}: Welcome_NewsBriefingsProps) {
   const [playing, setPlaying] = useState<string | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
   const [stateUpsellUrl, setStateUpsellUrl] = useState<string | null>(null);
@@ -82,6 +95,7 @@ export function Welcome_NewsBriefings() {
     }
     stopAudio();
 
+    // State News - play upsell message for non-subscribers
     if (category === 'state') {
       if (stateUpsellUrl) {
         playAudio(stateUpsellUrl, category);
@@ -106,6 +120,16 @@ export function Welcome_NewsBriefings() {
       return;
     }
 
+    // Check if we have a pre-loaded episode from props
+    const episode = newsEpisodes[category];
+    const episodeUrl = episode?.audio_url || episode?.audioUrl;
+    
+    if (episodeUrl) {
+      playAudio(episodeUrl, category);
+      return;
+    }
+
+    // Fetch from API
     setLoading(category);
     try {
       const response = await fetch(`/api/news/briefing?category=${category}`);
