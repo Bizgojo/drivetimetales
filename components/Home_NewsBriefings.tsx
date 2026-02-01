@@ -1,11 +1,11 @@
 // components/Home_NewsBriefings.tsx
 // DTT News Briefings - Home Page Component
 // FRESH BUILD - February 2026
-// FIXED: Named export to match existing imports
+// FIXED: Accept props from home/page.tsx
 
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
 // Initialize Supabase client
@@ -24,50 +24,28 @@ const CATEGORIES = [
   { id: 'science', label: 'Sci/Tech', icon: '🔬', color: '#9333ea' }
 ];
 
-interface UserInfo {
-  firstName: string;
-  state: string | null;
-  credits: number;
+interface NewsEpisode {
+  audio_url?: string;
+  audioUrl?: string;
 }
 
-export function Home_NewsBriefings() {
-  const [user, setUser] = useState<UserInfo | null>(null);
+interface Home_NewsBriefingsProps {
+  newsEpisodes?: Record<string, NewsEpisode>;
+  credits?: number;
+  userState?: string;
+  userName?: string;
+}
+
+export function Home_NewsBriefings({ 
+  newsEpisodes = {}, 
+  credits = 0, 
+  userState = '',
+  userName = 'there'
+}: Home_NewsBriefingsProps) {
   const [playing, setPlaying] = useState<string | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
-
-  useEffect(() => {
-    async function loadUser() {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.user) {
-          console.log('[Home] No session');
-          return;
-        }
-
-        const { data: userData, error } = await supabase
-          .from('users')
-          .select('first_name, state, credits')
-          .eq('id', session.user.id)
-          .single();
-
-        if (error) {
-          console.error('[Home] Failed to load user:', error);
-          return;
-        }
-
-        setUser({
-          firstName: userData.first_name || 'there',
-          state: userData.state,
-          credits: userData.credits || 0
-        });
-      } catch (error) {
-        console.error('[Home] Error loading user:', error);
-      }
-    }
-    loadUser();
-  }, []);
 
   function stopAudio() {
     if (audioRef.current) {
@@ -98,7 +76,7 @@ export function Home_NewsBriefings() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           category,
-          userName: user?.firstName || 'there'
+          userName: userName || 'there'
         })
       });
       const data = await response.json();
@@ -123,24 +101,34 @@ export function Home_NewsBriefings() {
     stopAudio();
 
     // CREDIT CHECK - only interaction with main DTT app
-    if (!user || user.credits < 1) {
+    if (credits < 1) {
       await playNoCreditsMessage(category);
       return;
     }
 
+    // Check if we have a pre-loaded episode from props
+    const episode = newsEpisodes[category];
+    const episodeUrl = episode?.audio_url || episode?.audioUrl;
+    
+    if (episodeUrl) {
+      playAudio(episodeUrl, category);
+      return;
+    }
+
+    // State News - need user's state
     if (category === 'state') {
-      if (!user.state) {
+      if (!userState) {
         alert('Please set your state in your profile to receive state news.');
         return;
       }
       setLoading(category);
       try {
-        const response = await fetch(`/api/news/briefing?category=state&state=${encodeURIComponent(user.state)}`);
+        const response = await fetch(`/api/news/briefing?category=state&state=${encodeURIComponent(userState)}`);
         const data = await response.json();
         if (response.ok && data.episode?.audioUrl) {
           playAudio(data.episode.audioUrl, category);
         } else if (data.notFound) {
-          alert(`State news for ${user.state} is not available yet. Please check back later.`);
+          alert(`State news for ${userState} is not available yet. Please check back later.`);
         } else {
           alert(data.error || 'Failed to load state news.');
         }
@@ -153,6 +141,7 @@ export function Home_NewsBriefings() {
       return;
     }
 
+    // Other categories - fetch from API
     setLoading(category);
     try {
       const response = await fetch(`/api/news/briefing?category=${category}`);
@@ -263,7 +252,7 @@ export function Home_NewsBriefings() {
         </div>
       )}
 
-      {user?.state && (
+      {userState && (
         <div style={{
           marginTop: '8px',
           fontSize: '12px',
@@ -271,7 +260,7 @@ export function Home_NewsBriefings() {
           opacity: 0.7,
           textAlign: 'center'
         }}>
-          State News: {user.state}
+          State News: {userState}
         </div>
       )}
     </div>
