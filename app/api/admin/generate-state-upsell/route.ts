@@ -1,116 +1,136 @@
+// app/api/admin/generate-state-upsell/route.ts
+// One-time generation of the state news upsell audio clip for Welcome page
+
 import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 
-// API Key for publishing from Audio Drama Maker
-const VALID_API_KEY = '0d35da1c324ce568d61bcdf23b2e9505c8f064afcac01db289d12226f8e60e7e';
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
-export async function GET(request: NextRequest) {
-  // Test endpoint - just check if API key is valid
-  const apiKey = request.headers.get('x-api-key') || request.nextUrl.searchParams.get('api_key');
-  
-  if (apiKey === VALID_API_KEY) {
-    return NextResponse.json({ status: 'connected', message: 'Ready to publish' });
+const STATE_UPSELL_TEXT = "State news is available exclusively for Drive Time Tales subscribers. Sign up for a free trial and get personalized news for your state, delivered fresh every day. We'd love to have you!";
+
+async function generateAudioClip(text: string, voiceId: string): Promise<Buffer> {
+  const response = await fetch(
+    `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
+    {
+      method: 'POST',
+      headers: {
+        'Accept': 'audio/mpeg',
+        'Content-Type': 'application/json',
+        'xi-api-key': process.env.ELEVENLABS_API_KEY!
+      },
+      body: JSON.stringify({
+        text: text,
+        model_id: 'eleven_multilingual_v2',
+        voice_settings: {
+          stability: 0.75,
+          similarity_boost: 0.9
+        }
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`ElevenLabs API error: ${response.status} - ${errorText}`);
   }
-  
-  return NextResponse.json({ status: 'ok', message: 'Drive Time Tales API' });
+
+  const arrayBuffer = await response.arrayBuffer();
+  return Buffer.from(arrayBuffer);
 }
 
 export async function POST(request: NextRequest) {
   try {
-    // Check API key
-    const apiKey = request.headers.get('x-api-key');
+    const body = await request.json().catch(() => ({}));
+    const { forceRegenerate = false } = body;
+
+    // Tanya - Upbeat and Expressive
+    const voice = 'Bwff1jnzl1s94AEcntUq';
+
+    console.log('[Generate State Upsell] Starting with Tanya voice...');
+
+    // Check if upsell clip already exists
+    const { data: existingFiles } = await supabase.storage
+      .from('news-audio')
+      .list('welcome-clips', { search: 'state-upsell' });
+
+    if (existingFiles && existingFiles.length > 0 && !forceRegenerate) {
+      const { data: urlData } = supabase.storage
+        .from('news-audio')
+        .getPublicUrl(`welcome-clips/${existingFiles[0].name}`);
+      
+      return NextResponse.json({ 
+        success: false, 
+        message: 'State upsell clip already exists. Set forceRegenerate=true to regenerate.',
+        audioUrl: urlData.publicUrl
+      });
+    }
+
+    // Generate the audio clip
+    console.log('[Generate State Upsell] Generating audio...');
+    const audioBuffer = await generateAudioClip(STATE_UPSELL_TEXT, voice);
     
-    if (!apiKey || apiKey !== VALID_API_KEY) {
-      return NextResponse.json(
-        { error: 'Invalid API key' },
-        { status: 401 }
-      );
-    }
-
-    // Parse the form data
-    const formData = await request.formData();
+    const fileName = `welcome-clips/state-upsell-${Date.now()}.mp3`;
     
-    const title = formData.get('title') as string;
-    const author = formData.get('author') as string;
-    const genre = formData.get('genre') as string;
-    const description = formData.get('description') as string;
-    const duration_seconds = formData.get('duration_seconds') as string;
-    const credits = formData.get('credits') as string;
-    const audioFile = formData.get('audio') as File | null;
-    const coverFile = formData.get('cover') as File | null;
+    const { error: uploadError } = await supabase.storage
+      .from('news-audio')
+      .upload(fileName, audioBuffer, {
+        contentType: 'audio/mpeg',
+        upsert: true
+      });
 
-    console.log('Publishing story:', { title, author, genre, description, duration_seconds });
-
-    // Validate required fields
-    if (!title) {
-      return NextResponse.json({ error: 'Title is required' }, { status: 400 });
+    if (uploadError) {
+      throw new Error(`Upload error: ${uploadError.message}`);
     }
 
-    // Calculate duration label
-    const seconds = parseInt(duration_seconds) || 0;
-    let duration_label = '30 min';
-    let duration_category = '30min';
-    if (seconds > 3600) {
-      duration_label = `${Math.round(seconds / 3600)} hr`;
-      duration_category = '3hr';
-    } else if (seconds > 1800) {
-      duration_label = '1 hr';
-      duration_category = '1hr';
-    } else {
-      duration_label = `${Math.round(seconds / 60)} min`;
-      duration_category = '30min';
-    }
-
-    // Calculate price based on duration
-    let price_cents = 99; // Default 99 cents
-    if (seconds <= 900) { // 15 min or less
-      price_cents = 69;
-    } else if (seconds <= 1800) { // 30 min or less
-      price_cents = 129;
-    } else if (seconds <= 3600) { // 1 hour or less
-      price_cents = 249;
-    } else { // Over 1 hour
-      price_cents = 699;
-    }
-
-    // For now, just log success and return
-    // In production, you would:
-    // 1. Upload audio file to R2/S3
-    // 2. Upload cover image to R2/S3
-    // 3. Insert record into Supabase database
-
-    const storyId = `story_${Date.now()}`;
+    const { data: urlData } = supabase.storage.from('news-audio').getPublicUrl(fileName);
     
-    console.log('Story published successfully:', {
-      id: storyId,
-      title,
-      author,
-      genre,
-      duration_label,
-      price_cents,
-      hasAudio: !!audioFile,
-      hasCover: !!coverFile
-    });
+    console.log('[Generate State Upsell] Complete!', urlData.publicUrl);
 
     return NextResponse.json({
       success: true,
-      message: 'Story published successfully!',
-      story: {
-        id: storyId,
-        title,
-        author,
-        genre,
-        duration: duration_category,
-        duration_label,
-        price_cents,
-        description,
-        credits
-      }
+      audioUrl: urlData.publicUrl,
+      scriptText: STATE_UPSELL_TEXT
     });
 
   } catch (error) {
-    console.error('Publish error:', error);
+    console.error('[Generate State Upsell] Error:', error);
     return NextResponse.json(
-      { error: 'Failed to publish story' },
+      { error: error instanceof Error ? error.message : 'Generation failed' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    const { data: files } = await supabase.storage
+      .from('news-audio')
+      .list('welcome-clips', { search: 'state-upsell' });
+
+    if (!files || files.length === 0) {
+      return NextResponse.json({ 
+        exists: false,
+        message: 'State upsell clip not found. Call POST to generate it.'
+      });
+    }
+
+    const { data: urlData } = supabase.storage
+      .from('news-audio')
+      .getPublicUrl(`welcome-clips/${files[0].name}`);
+
+    return NextResponse.json({
+      exists: true,
+      audioUrl: urlData.publicUrl,
+      fileName: files[0].name
+    });
+
+  } catch (error) {
+    console.error('[Get State Upsell] Error:', error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to fetch' },
       { status: 500 }
     );
   }
