@@ -241,10 +241,10 @@ export function Welcome_NewsBriefings({ newsEpisodes, credits }: WelcomeNewsBrie
   }
 
   // =============================================================================
-  // STITCH API PLAYBACK
+  // DIRECT NEWS PLAYBACK (no intro/outro for Welcome page)
   // =============================================================================
 
-  const playBriefingWithStitch = async (categoryId: string) => {
+  const playBriefingDirect = async (categoryId: string) => {
     const episode = newsEpisodes[categoryId]
     
     if (credits <= 0) {
@@ -269,47 +269,31 @@ export function Welcome_NewsBriefings({ newsEpisodes, credits }: WelcomeNewsBrie
     setBriefingStatus(prev => ({ ...prev, [categoryId]: 'loading' }))
     setActiveBriefingId(categoryId)
 
-    try {
-      // Call stitch API for GENERIC clips (type=welcome, no userId)
-      const response = await fetch(
-        `/api/audio/stitch?type=welcome&category=${categoryId}`
-      )
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch audio playlist')
-      }
-      
-      const data = await response.json()
-      
-      if (!data.playlist || data.playlist.length === 0) {
-        throw new Error('Empty playlist returned')
-      }
-      
-      // Set playlist and start playing
-      setCurrentPlaylist(data.playlist)
-      setCurrentPlaylistIndex(0)
-      setBriefingStatus(prev => ({ ...prev, [categoryId]: 'playing' }))
-      
-    } catch (error) {
-      console.error('[Welcome_NewsBriefings] Stitch API error:', error)
-      
-      // Fallback: play just the news body directly (old behavior)
-      const audio = new Audio(episode.audio_url)
-      audioRef.current = audio
-      
-      audio.onended = () => {
-        setBriefingStatus(prev => ({ ...prev, [categoryId]: 'played' }))
-        setActiveBriefingId(null)
-      }
-      
-      audio.play().catch(err => {
-        console.error('[Welcome_NewsBriefings] Fallback play error:', err)
+    // Play news audio directly - no intro/outro on Welcome page
+    // The narrator already introduces themselves and states the date in the audio
+    const audio = new Audio(episode.audio_url)
+    audioRef.current = audio
+    
+    audio.onended = () => {
+      setBriefingStatus(prev => ({ ...prev, [categoryId]: 'played' }))
+      setActiveBriefingId(null)
+    }
+    
+    audio.onerror = () => {
+      console.error('[Welcome_NewsBriefings] Audio error')
+      setBriefingStatus(prev => ({ ...prev, [categoryId]: 'new' }))
+      setActiveBriefingId(null)
+    }
+    
+    audio.play()
+      .then(() => {
+        setBriefingStatus(prev => ({ ...prev, [categoryId]: 'playing' }))
+      })
+      .catch(err => {
+        console.error('[Welcome_NewsBriefings] Play error:', err)
         setBriefingStatus(prev => ({ ...prev, [categoryId]: 'new' }))
         setActiveBriefingId(null)
       })
-      
-      setBriefingStatus(prev => ({ ...prev, [categoryId]: 'playing' }))
-    }
   }
 
   // =============================================================================
@@ -343,8 +327,8 @@ export function Welcome_NewsBriefings({ newsEpisodes, credits }: WelcomeNewsBrie
       return
     }
 
-    // Play with stitch API
-    await playBriefingWithStitch(categoryId)
+    // Play news directly (no intro/outro on Welcome page)
+    await playBriefingDirect(categoryId)
   }
 
   // =============================================================================
