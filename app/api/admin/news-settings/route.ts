@@ -6,55 +6,59 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const { data, error } = await supabase
-      .from('news_settings')
-      .select('*')
-      .eq('id', '1')
-      .single();
+    const { searchParams } = new URL(request.url);
+    const category = searchParams.get('category');
 
-    if (error && error.code !== 'PGRST116') {
-      throw error;
+    let query = supabase.from('news_settings').select('*');
+    if (category) query = query.eq('category', category);
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('[Settings] Load error:', error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({
-      success: true,
-      settings: data?.settings || {},
-      test_state: data?.test_state || 'South Carolina',
-      timezone: data?.timezone || 'America/New_York',
-    });
+    return NextResponse.json({ settings: data || [] });
   } catch (error) {
-    console.error('[News Settings] GET error:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to load settings' },
-      { status: 500 }
-    );
+    console.error('[Settings] Error:', error);
+    return NextResponse.json({ error: 'Failed to load' }, { status: 500 });
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { settings, test_state, timezone } = body;
+    const { category, narrator_name, voice_id, auto_generate, schedule_times, prompt_data } = body;
+
+    if (!category) {
+      return NextResponse.json({ error: 'Category required' }, { status: 400 });
+    }
+
+    console.log(`[Settings] Saving ${category}`);
+
+    const updateData: Record<string, unknown> = { category };
+    if (narrator_name !== undefined) updateData.narrator_name = narrator_name;
+    if (voice_id !== undefined) updateData.voice_id = voice_id;
+    if (auto_generate !== undefined) updateData.auto_generate = auto_generate;
+    if (schedule_times !== undefined) updateData.schedule_times = schedule_times;
+    if (prompt_data !== undefined) updateData.prompt_data = prompt_data;
 
     const { error } = await supabase
       .from('news_settings')
-      .upsert({
-        id: '1',
-        settings: settings,
-        test_state: test_state || 'South Carolina',
-        timezone: timezone || 'America/New_York',
-        updated_at: new Date().toISOString(),
-      });
+      .upsert(updateData, { onConflict: 'category' });
 
-    if (error) throw error;
+    if (error) {
+      console.error('[Settings] Save error:', error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    console.log(`[Settings] Saved ${category}`);
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('[News Settings] POST error:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to save settings' },
-      { status: 500 }
-    );
+    console.error('[Settings] Error:', error);
+    return NextResponse.json({ error: 'Failed to save' }, { status: 500 });
   }
 }
