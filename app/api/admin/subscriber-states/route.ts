@@ -20,7 +20,7 @@ export async function GET() {
       return NextResponse.json({ states: [] });
     }
 
-    // Get unique states using filter (not Set spread to avoid TypeScript issues)
+    // Get unique states using filter (NOT Set spread - causes TypeScript error)
     const allStates = (data || []).map(u => u.state).filter(Boolean);
     const uniqueStates = allStates.filter((state, index) => allStates.indexOf(state) === index);
     const sortedStates = uniqueStates.sort();
