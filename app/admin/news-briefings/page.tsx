@@ -13,6 +13,31 @@ const CATEGORIES = [
   { id: 'science', label: 'Science & Tech', icon: '🔬', color: '#9333ea' }
 ];
 
+// Spinning wheel component
+function Spinner() {
+  return (
+    <span style={{
+      display: 'inline-block',
+      width: '20px',
+      height: '20px',
+      border: '3px solid #ffffff',
+      borderTopColor: 'transparent',
+      borderRadius: '50%',
+      animation: 'spin 1s linear infinite',
+      marginRight: '8px',
+      verticalAlign: 'middle'
+    }} />
+  );
+}
+
+// Add keyframes for spinner
+const spinnerStyles = `
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+`;
+
 interface Voice { voice_id: string; name: string; }
 interface Settings { narratorName: string; voiceId: string; }
 interface Episode { audioUrl: string; createdAt: string; duration?: string; }
@@ -23,6 +48,7 @@ export default function NewsBriefingsAdmin() {
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [episodes, setEpisodes] = useState<Record<string, Episode>>({});
   const [generating, setGenerating] = useState<Record<string, boolean>>({});
+  const [testingVoice, setTestingVoice] = useState<Record<string, boolean>>({});
   const [playing, setPlaying] = useState<string | null>(null);
   const [voices, setVoices] = useState<Voice[]>([]);
   const [loadingVoices, setLoadingVoices] = useState(true);
@@ -99,13 +125,14 @@ export default function NewsBriefingsAdmin() {
   }
 
   // Test voice
-  async function handleTestVoice(voiceId: string, narratorName: string) {
+  async function handleTestVoice(category: string, voiceId: string, narratorName: string) {
     if (!voiceId) { alert('Please select a voice first'); return; }
+    setTestingVoice(p => ({ ...p, [category]: true }));
     try {
       const r = await fetch('/api/elevenlabs/test-voice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ voiceId, text: `Hello, I am ${narratorName || 'your narrator'}. This is a voice test for Drive Time Tales.` })
+        body: JSON.stringify({ voiceId, text: `Hello, I'm ${narratorName || 'your narrator'}. This is a voice test for Drive Time Tales news briefings.` })
       });
       if (r.ok) {
         const blob = await r.blob();
@@ -116,6 +143,8 @@ export default function NewsBriefingsAdmin() {
     } catch (error) {
       console.error('Test voice error:', error);
       alert('Voice test failed');
+    } finally {
+      setTestingVoice(p => ({ ...p, [category]: false }));
     }
   }
 
@@ -137,9 +166,9 @@ export default function NewsBriefingsAdmin() {
       const d = await r.json();
       if (r.ok && d.success) {
         setEpisodes(p => ({ ...p, [key]: { audioUrl: d.episode.audioUrl, createdAt: d.episode.createdAt, duration: d.episode.duration } }));
-        alert(`Generated! Duration: ${d.episode.duration || 'N/A'} min`);
+        alert(`Generated successfully! Duration: ${d.episode.duration || 'N/A'} min`);
       } else {
-        alert(`Failed: ${d.error || 'Unknown error'}`);
+        alert(`Generation failed: ${d.error || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Generate error:', error);
@@ -166,9 +195,9 @@ export default function NewsBriefingsAdmin() {
       const d = await r.json();
       if (r.ok && d.audioUrl) {
         setStateUpsell({ exists: true, audioUrl: d.audioUrl });
-        alert('State Upsell generated!');
+        alert('State Upsell generated successfully!');
       } else {
-        alert(`Failed: ${d.error || 'Unknown error'}`);
+        alert(`Generation failed: ${d.error || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Upsell error:', error);
@@ -199,17 +228,23 @@ export default function NewsBriefingsAdmin() {
   if (!settingsLoaded) {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <p style={{ fontSize: '20px', fontWeight: 'bold', color: '#000000' }}>Loading settings...</p>
+        <style>{spinnerStyles}</style>
+        <div style={{ textAlign: 'center' }}>
+          <Spinner />
+          <p style={{ fontSize: '20px', fontWeight: 'bold', color: '#000000', marginTop: '16px' }}>Loading settings...</p>
+        </div>
       </div>
     );
   }
 
   const inputStyle: React.CSSProperties = { width: '100%', padding: '12px', fontSize: '16px', border: '2px solid #000000', borderRadius: '6px', backgroundColor: '#ffffff', color: '#000000', boxSizing: 'border-box' };
-  const selectStyle: React.CSSProperties = { padding: '12px', fontSize: '16px', border: '2px solid #000000', borderRadius: '6px', backgroundColor: '#ffffff', color: '#000000' };
-  const btnStyle: React.CSSProperties = { padding: '12px 20px', fontSize: '16px', fontWeight: 'bold', border: '2px solid #000000', borderRadius: '6px', cursor: 'pointer' };
+  const selectStyle: React.CSSProperties = { padding: '12px', fontSize: '16px', border: '2px solid #000000', borderRadius: '6px', backgroundColor: '#ffffff', color: '#000000', flex: 1 };
+  const btnStyle: React.CSSProperties = { padding: '12px 20px', fontSize: '16px', fontWeight: 'bold', border: '2px solid #000000', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' };
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#ffffff', color: '#000000', padding: '24px', fontFamily: 'Arial, sans-serif' }}>
+      <style>{spinnerStyles}</style>
+      
       <Link href="/admin" style={{ display: 'inline-block', marginBottom: '16px', color: '#3b82f6', fontSize: '16px', textDecoration: 'none' }}>← Back to Admin</Link>
       <h1 style={{ fontSize: '28px', fontWeight: 'bold', marginBottom: '8px', color: '#000000' }}>🎙️ News Briefings Admin</h1>
       <p style={{ marginBottom: '24px', fontSize: '16px', color: '#000000' }}>Configure narrators, voices, and prompts. Settings save automatically.</p>
@@ -220,12 +255,14 @@ export default function NewsBriefingsAdmin() {
           const episodeKey = cat.id === 'state' ? `state-${selectedState}` : cat.id;
           const ep = episodes[episodeKey];
           const isGenerating = generating[episodeKey];
+          const isTestingVoice = testingVoice[cat.id];
           const isPlaying = playing === episodeKey;
 
           return (
             <div key={cat.id} style={{ backgroundColor: '#ffffff', border: '2px solid #000000', borderRadius: '12px', padding: '20px', borderTop: `6px solid ${cat.color}` }}>
               <h2 style={{ fontSize: '22px', fontWeight: 'bold', marginBottom: '16px', color: '#000000' }}>{cat.icon} {cat.label}</h2>
 
+              {/* Narrator Name */}
               <label style={{ display: 'block', marginBottom: '6px', fontSize: '16px', fontWeight: 'bold', color: '#000000' }}>Narrator Name</label>
               <input
                 type="text"
@@ -236,48 +273,145 @@ export default function NewsBriefingsAdmin() {
                 style={{ ...inputStyle, marginBottom: '16px' }}
               />
 
+              {/* Voice + Test Button */}
               <label style={{ display: 'block', marginBottom: '6px', fontSize: '16px', fontWeight: 'bold', color: '#000000' }}>Voice</label>
               <div style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
                 <select
                   value={s.voiceId}
                   onChange={e => { const v = e.target.value; setSettings(p => ({ ...p, [cat.id]: { ...p[cat.id], voiceId: v } })); saveSettings(cat.id, s.narratorName, v); }}
-                  style={{ ...selectStyle, flex: 1 }}
+                  style={selectStyle}
                 >
-                  <option value="">{loadingVoices ? 'Loading...' : 'Select voice'}</option>
+                  <option value="">{loadingVoices ? 'Loading voices...' : 'Select a voice'}</option>
                   {voices.map(v => <option key={v.voice_id} value={v.voice_id}>{v.name}</option>)}
                 </select>
-                <button onClick={() => handleTestVoice(s.voiceId, s.narratorName)} disabled={!s.voiceId} style={{ ...btnStyle, backgroundColor: s.voiceId ? '#3b82f6' : '#cccccc', color: '#ffffff' }}>🔊 Test</button>
+                <button 
+                  onClick={() => handleTestVoice(cat.id, s.voiceId, s.narratorName)} 
+                  disabled={!s.voiceId || isTestingVoice} 
+                  style={{ 
+                    ...btnStyle, 
+                    backgroundColor: (!s.voiceId || isTestingVoice) ? '#cccccc' : '#3b82f6', 
+                    color: '#ffffff',
+                    minWidth: '100px'
+                  }}
+                >
+                  {isTestingVoice ? <><Spinner /> Testing</> : '🔊 Test'}
+                </button>
               </div>
 
-              <button onClick={() => router.push(`/admin/news-briefings/prompts/${cat.id}`)} style={{ ...btnStyle, width: '100%', backgroundColor: '#ffffff', marginBottom: '16px' }}>📝 Edit Prompt</button>
+              {/* Edit Prompt Button */}
+              <button 
+                onClick={() => router.push(`/admin/news-briefings/prompts/${cat.id}`)} 
+                style={{ ...btnStyle, width: '100%', backgroundColor: '#f5f5f5', marginBottom: '16px', color: '#000000' }}
+              >
+                📝 Edit Prompt
+              </button>
 
               {cat.id === 'state' ? (
                 <>
+                  {/* State Dropdown */}
                   <label style={{ display: 'block', marginBottom: '6px', fontSize: '16px', fontWeight: 'bold', color: '#000000' }}>Select State (Subscribers Only)</label>
-                  <select value={selectedState} onChange={e => setSelectedState(e.target.value)} style={{ ...selectStyle, width: '100%', marginBottom: '16px' }}>
+                  <select value={selectedState} onChange={e => setSelectedState(e.target.value)} style={{ ...inputStyle, marginBottom: '16px' }}>
                     {subscriberStates.length === 0 ? <option value="">No subscriber states yet</option> : subscriberStates.map(st => <option key={st} value={st}>{st}</option>)}
                   </select>
 
+                  {/* Generate + Play for selected state */}
                   <div style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
-                    <button onClick={() => handleGenerate('state', selectedState)} disabled={isGenerating || !s.narratorName || !s.voiceId || !selectedState} style={{ ...btnStyle, flex: 1, backgroundColor: (isGenerating || !s.narratorName || !s.voiceId || !selectedState) ? '#cccccc' : cat.color, color: '#ffffff' }}>{isGenerating ? '⏳ Generating...' : `🎬 Generate ${selectedState || 'State'}`}</button>
-                    <button onClick={() => handlePlay(episodeKey)} disabled={!ep?.audioUrl} style={{ ...btnStyle, flex: 1, backgroundColor: ep?.audioUrl ? (isPlaying ? '#dc2626' : '#10b981') : '#cccccc', color: '#ffffff' }}>{isPlaying ? '⏹️ Stop' : '▶️ Play'}</button>
+                    <button 
+                      onClick={() => handleGenerate('state', selectedState)} 
+                      disabled={isGenerating || !s.narratorName || !s.voiceId || !selectedState} 
+                      style={{ 
+                        ...btnStyle, 
+                        flex: 1, 
+                        backgroundColor: (isGenerating || !s.narratorName || !s.voiceId || !selectedState) ? '#cccccc' : cat.color, 
+                        color: '#ffffff' 
+                      }}
+                    >
+                      {isGenerating ? <><Spinner /> Generating...</> : `🎬 Generate ${selectedState || 'State'}`}
+                    </button>
+                    <button 
+                      onClick={() => handlePlay(episodeKey)} 
+                      disabled={!ep?.audioUrl} 
+                      style={{ 
+                        ...btnStyle, 
+                        flex: 1, 
+                        backgroundColor: ep?.audioUrl ? (isPlaying ? '#dc2626' : '#10b981') : '#cccccc', 
+                        color: '#ffffff' 
+                      }}
+                    >
+                      {isPlaying ? '⏹️ Stop' : '▶️ Play'}
+                    </button>
                   </div>
 
                   {ep && <div style={{ fontSize: '14px', fontWeight: 'bold', backgroundColor: '#f5f5f5', padding: '10px', borderRadius: '6px', marginBottom: '16px', color: '#000000' }}>{selectedState}: {formatTime(ep.createdAt)} {ep.duration ? `• ${ep.duration} min` : ''}</div>}
 
+                  {/* Upsell Section */}
                   <div style={{ backgroundColor: '#fffbeb', border: '2px solid #000000', borderRadius: '8px', padding: '12px' }}>
                     <p style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '10px', color: '#000000' }}>Welcome Page Upsell (uses State News voice)</p>
                     <div style={{ display: 'flex', gap: '10px' }}>
-                      <button onClick={handleGenerateUpsell} disabled={generatingUpsell || !s.narratorName || !s.voiceId} style={{ ...btnStyle, flex: 1, backgroundColor: (generatingUpsell || !s.narratorName || !s.voiceId) ? '#cccccc' : (stateUpsell.exists ? '#10b981' : '#dc2626'), color: '#ffffff' }}>{generatingUpsell ? '⏳...' : stateUpsell.exists ? '✅ Regenerate' : '⚠️ Generate Upsell'}</button>
-                      <button onClick={() => { if (playingUpsell) { if (audioRef.current) audioRef.current.pause(); setPlayingUpsell(false); setPlaying(null); } else if (stateUpsell.audioUrl) { handlePlay('upsell', stateUpsell.audioUrl); setPlayingUpsell(true); } }} disabled={!stateUpsell.audioUrl} style={{ ...btnStyle, flex: 1, backgroundColor: stateUpsell.audioUrl ? (playingUpsell ? '#dc2626' : '#10b981') : '#cccccc', color: '#ffffff' }}>{playingUpsell ? '⏹️ Stop' : '▶️ Play Upsell'}</button>
+                      <button 
+                        onClick={handleGenerateUpsell} 
+                        disabled={generatingUpsell || !s.narratorName || !s.voiceId} 
+                        style={{ 
+                          ...btnStyle, 
+                          flex: 1, 
+                          backgroundColor: (generatingUpsell || !s.narratorName || !s.voiceId) ? '#cccccc' : (stateUpsell.exists ? '#10b981' : '#dc2626'), 
+                          color: '#ffffff' 
+                        }}
+                      >
+                        {generatingUpsell ? <><Spinner /> Generating...</> : stateUpsell.exists ? '✅ Regenerate' : '⚠️ Generate Upsell'}
+                      </button>
+                      <button 
+                        onClick={() => { 
+                          if (playingUpsell) { 
+                            if (audioRef.current) audioRef.current.pause(); 
+                            setPlayingUpsell(false); 
+                            setPlaying(null); 
+                          } else if (stateUpsell.audioUrl) { 
+                            handlePlay('upsell', stateUpsell.audioUrl); 
+                            setPlayingUpsell(true); 
+                          } 
+                        }} 
+                        disabled={!stateUpsell.audioUrl} 
+                        style={{ 
+                          ...btnStyle, 
+                          flex: 1, 
+                          backgroundColor: stateUpsell.audioUrl ? (playingUpsell ? '#dc2626' : '#10b981') : '#cccccc', 
+                          color: '#ffffff' 
+                        }}
+                      >
+                        {playingUpsell ? '⏹️ Stop' : '▶️ Play Upsell'}
+                      </button>
                     </div>
                   </div>
                 </>
               ) : (
                 <>
+                  {/* Generate + Play for other categories */}
                   <div style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
-                    <button onClick={() => handleGenerate(cat.id)} disabled={isGenerating || !s.narratorName || !s.voiceId} style={{ ...btnStyle, flex: 1, backgroundColor: (isGenerating || !s.narratorName || !s.voiceId) ? '#cccccc' : cat.color, color: cat.id === 'world' ? '#000000' : '#ffffff' }}>{isGenerating ? '⏳ Generating...' : '🎬 Generate'}</button>
-                    <button onClick={() => handlePlay(cat.id)} disabled={!ep?.audioUrl} style={{ ...btnStyle, flex: 1, backgroundColor: ep?.audioUrl ? (isPlaying ? '#dc2626' : '#10b981') : '#cccccc', color: '#ffffff' }}>{isPlaying ? '⏹️ Stop' : '▶️ Play'}</button>
+                    <button 
+                      onClick={() => handleGenerate(cat.id)} 
+                      disabled={isGenerating || !s.narratorName || !s.voiceId} 
+                      style={{ 
+                        ...btnStyle, 
+                        flex: 1, 
+                        backgroundColor: (isGenerating || !s.narratorName || !s.voiceId) ? '#cccccc' : cat.color, 
+                        color: cat.id === 'world' ? '#000000' : '#ffffff' 
+                      }}
+                    >
+                      {isGenerating ? <><Spinner /> Generating...</> : '🎬 Generate'}
+                    </button>
+                    <button 
+                      onClick={() => handlePlay(cat.id)} 
+                      disabled={!ep?.audioUrl} 
+                      style={{ 
+                        ...btnStyle, 
+                        flex: 1, 
+                        backgroundColor: ep?.audioUrl ? (isPlaying ? '#dc2626' : '#10b981') : '#cccccc', 
+                        color: '#ffffff' 
+                      }}
+                    >
+                      {isPlaying ? '⏹️ Stop' : '▶️ Play'}
+                    </button>
                   </div>
                   {ep && <div style={{ fontSize: '14px', fontWeight: 'bold', backgroundColor: '#f5f5f5', padding: '10px', borderRadius: '6px', color: '#000000' }}>Last: {formatTime(ep.createdAt)} {ep.duration ? `• ${ep.duration} min` : ''}</div>}
                 </>
