@@ -1,18 +1,17 @@
 // components/Welcome_NewsBriefings.tsx
 // DTT News Briefings - Welcome Page Component
 // FRESH BUILD - February 2026
-// FIXED: Accept props from welcome/page.tsx
+//
+// Features:
+// - 6 category buttons with designated colors
+// - Plays generic briefings (no personalization)
+// - State News shows upsell message instead of news
+// - Does NOT change page layout or colors
 
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
-
-// Initialize Supabase client
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
 // Category configuration with colors (DO NOT CHANGE)
 const CATEGORIES = [
@@ -24,20 +23,9 @@ const CATEGORIES = [
   { id: 'science', label: 'Sci/Tech', icon: '🔬', color: '#9333ea' }
 ];
 
-interface NewsEpisode {
-  audio_url?: string;
-  audioUrl?: string;
-}
-
-interface Welcome_NewsBriefingsProps {
-  newsEpisodes?: Record<string, NewsEpisode>;
-  credits?: number;
-}
-
-export function Welcome_NewsBriefings({ 
-  newsEpisodes = {}, 
-  credits = 0 
-}: Welcome_NewsBriefingsProps) {
+export default function Welcome_NewsBriefings() {
+  const supabase = createClientComponentClient();
+  
   const [playing, setPlaying] = useState<string | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
   const [stateUpsellUrl, setStateUpsellUrl] = useState<string | null>(null);
@@ -48,6 +36,7 @@ export function Welcome_NewsBriefings({
   useEffect(() => {
     async function loadStateUpsell() {
       try {
+        // Check for pre-generated state upsell message
         const { data } = await supabase
           .from('news_episodes')
           .select('audio_url')
@@ -61,12 +50,14 @@ export function Welcome_NewsBriefings({
           setStateUpsellUrl(data.audio_url);
         }
       } catch (error) {
+        // Upsell not found - will generate on demand
         console.log('[Welcome] State upsell not pre-generated');
       }
     }
     loadStateUpsell();
-  }, []);
+  }, [supabase]);
 
+  // Stop audio playback
   function stopAudio() {
     if (audioRef.current) {
       audioRef.current.pause();
@@ -75,35 +66,49 @@ export function Welcome_NewsBriefings({
     setPlaying(null);
   }
 
+  // Play audio from URL
   function playAudio(url: string, category: string) {
+    // Stop any currently playing audio
     stopAudio();
+
     const audio = new Audio(url);
     audioRef.current = audio;
-    audio.onended = () => setPlaying(null);
+
+    audio.onended = () => {
+      setPlaying(null);
+    };
+
     audio.onerror = () => {
       console.error('[Welcome] Audio playback error');
       setPlaying(null);
     };
+
     audio.play();
     setPlaying(category);
   }
 
+  // Handle category click
   async function handleCategoryClick(category: string) {
+    // If already playing this category, stop it
     if (playing === category) {
       stopAudio();
       return;
     }
+
+    // Stop any other playing audio
     stopAudio();
 
-    // State News - play upsell message for non-subscribers
+    // State News - play upsell message
     if (category === 'state') {
       if (stateUpsellUrl) {
         playAudio(stateUpsellUrl, category);
       } else {
+        // Generate upsell on demand if not pre-generated
         setLoading(category);
         try {
           const response = await fetch('/api/news/state-upsell');
           const data = await response.json();
+          
           if (data.audioUrl) {
             setStateUpsellUrl(data.audioUrl);
             playAudio(data.audioUrl, category);
@@ -120,20 +125,13 @@ export function Welcome_NewsBriefings({
       return;
     }
 
-    // Check if we have a pre-loaded episode from props
-    const episode = newsEpisodes[category];
-    const episodeUrl = episode?.audio_url || episode?.audioUrl;
-    
-    if (episodeUrl) {
-      playAudio(episodeUrl, category);
-      return;
-    }
-
-    // Fetch from API
+    // Other categories - fetch and play the briefing
     setLoading(category);
+    
     try {
       const response = await fetch(`/api/news/briefing?category=${category}`);
       const data = await response.json();
+
       if (response.ok && data.episode?.audioUrl) {
         playAudio(data.episode.audioUrl, category);
       } else {
@@ -149,6 +147,7 @@ export function Welcome_NewsBriefings({
 
   return (
     <div style={{ width: '100%' }}>
+      {/* Section Title */}
       <h2 style={{
         fontSize: '18px',
         fontWeight: 'bold',
@@ -158,6 +157,7 @@ export function Welcome_NewsBriefings({
         📻 News Briefings
       </h2>
 
+      {/* Category Buttons Grid */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(3, 1fr)',
@@ -186,7 +186,10 @@ export function Welcome_NewsBriefings({
                 opacity: isLoading ? 0.7 : 1
               }}
             >
-              <span style={{ fontSize: '24px', marginBottom: '4px' }}>
+              <span style={{ 
+                fontSize: '24px',
+                marginBottom: '4px'
+              }}>
                 {isLoading ? '⏳' : isPlaying ? '⏹️' : cat.icon}
               </span>
               <span style={{
@@ -201,6 +204,7 @@ export function Welcome_NewsBriefings({
         })}
       </div>
 
+      {/* Now Playing Indicator */}
       {playing && (
         <div style={{
           marginTop: '12px',
@@ -217,9 +221,13 @@ export function Welcome_NewsBriefings({
             width: '8px',
             height: '8px',
             backgroundColor: '#22c55e',
-            borderRadius: '50%'
+            borderRadius: '50%',
+            animation: 'pulse 1.5s infinite'
           }} />
-          <span style={{ fontSize: '14px', color: 'white' }}>
+          <span style={{ 
+            fontSize: '14px', 
+            color: 'white' 
+          }}>
             Now Playing: {CATEGORIES.find(c => c.id === playing)?.label}
           </span>
           <button
@@ -239,8 +247,14 @@ export function Welcome_NewsBriefings({
           </button>
         </div>
       )}
+
+      {/* Pulse animation style */}
+      <style jsx>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+        }
+      `}</style>
     </div>
   );
 }
-
-export default Welcome_NewsBriefings;
