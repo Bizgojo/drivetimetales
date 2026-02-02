@@ -1,7 +1,3 @@
-// app/api/elevenlabs/test-voice/route.ts
-// DTT News Briefings - Test Voice API
-// February 2026
-
 import { NextRequest, NextResponse } from 'next/server';
 
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY!;
@@ -24,23 +20,19 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({
         text,
         model_id: 'eleven_multilingual_v2',
-        voice_settings: {
-          stability: 0.5,
-          similarity_boost: 0.75
-        }
+        voice_settings: { stability: 0.5, similarity_boost: 0.75 }
       })
     });
 
     if (!response.ok) {
+      console.error('[Test Voice] ElevenLabs error:', response.status);
       return NextResponse.json({ error: 'Voice test failed' }, { status: 500 });
     }
 
     const audioBuffer = await response.arrayBuffer();
 
     return new NextResponse(audioBuffer, {
-      headers: {
-        'Content-Type': 'audio/mpeg'
-      }
+      headers: { 'Content-Type': 'audio/mpeg' }
     });
   } catch (error) {
     console.error('[Test Voice] Error:', error);
