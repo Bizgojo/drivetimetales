@@ -1,5 +1,5 @@
 // app/api/elevenlabs/test-voice/route.ts
-// Test voice with ElevenLabs
+// DTT News Briefings - Test Voice API
 // February 2026
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -32,7 +32,6 @@ export async function POST(request: NextRequest) {
     });
 
     if (!response.ok) {
-      console.error('[Test Voice] ElevenLabs error:', response.status);
       return NextResponse.json({ error: 'Voice test failed' }, { status: 500 });
     }
 
