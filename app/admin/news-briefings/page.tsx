@@ -1,13 +1,12 @@
 // app/admin/news-briefings/page.tsx
 // DTT News Briefings - Admin Page
-// Version 2.1 - February 2026
+// Version 2.2 - February 2026
 //
 // Features:
-// - 6 category cards with narrator/voice settings
-// - State Upsell generation button (on State card only)
-// - Prompt Editor button for each category
-// - Auto-generation toggle with time slots
-// - No duration dropdown (moved to prompt editor)
+// - White background, black text for readability
+// - Persistent narrator/voice settings
+// - State card only has Upsell button (no Generate)
+// - Edit Prompt button for each category
 
 'use client';
 
@@ -84,13 +83,16 @@ export default function NewsBriefingsAdmin() {
     loadVoices();
   }, []);
 
-  // Load settings
+  // Load settings from database
   useEffect(() => {
     async function loadSettings() {
       try {
         const { data, error } = await supabase.from('news_settings').select('*');
         
-        if (error) return;
+        if (error) {
+          console.error('Failed to load settings:', error);
+          return;
+        }
 
         const loaded: Record<string, CategorySettings> = {};
         let loadedAutoGenerate = false;
@@ -105,6 +107,7 @@ export default function NewsBriefingsAdmin() {
           if (row.schedule_times?.length === 3) loadedTimes = row.schedule_times;
         }
 
+        // Initialize empty settings for categories not in DB
         for (const cat of CATEGORIES) {
           if (!loaded[cat.id]) {
             loaded[cat.id] = { narratorName: '', voiceId: '' };
@@ -158,16 +161,20 @@ export default function NewsBriefingsAdmin() {
     loadEpisodes();
   }, []);
 
-  // Save settings
+  // Save settings to database (called on every change)
   async function saveSettings(category: string, newSettings: CategorySettings) {
     try {
-      await supabase.from('news_settings').upsert({
+      const { error } = await supabase.from('news_settings').upsert({
         category,
         narrator_name: newSettings.narratorName,
         voice_id: newSettings.voiceId,
         auto_generate: autoGenerate,
         schedule_times: [timeSlot1, timeSlot2, timeSlot3]
       }, { onConflict: 'category' });
+      
+      if (error) {
+        console.error('Failed to save settings:', error);
+      }
     } catch (error) {
       console.error('Failed to save settings:', error);
     }
@@ -186,7 +193,7 @@ export default function NewsBriefingsAdmin() {
     }
   }
 
-  // Update setting
+  // Update setting and save immediately
   function updateSetting(category: string, field: keyof CategorySettings, value: string) {
     const newSettings = {
       ...settings,
@@ -346,34 +353,41 @@ export default function NewsBriefingsAdmin() {
     }) + ' EST';
   }
 
+  // Get voice name by ID
+  function getVoiceName(voiceId: string): string {
+    const voice = voices.find(v => v.voice_id === voiceId);
+    return voice?.name || 'Select voice';
+  }
+
   return (
     <div style={{ 
       minHeight: '100vh', 
-      backgroundColor: '#020617', 
-      color: 'white',
+      backgroundColor: '#ffffff', 
+      color: '#000000',
       padding: '24px'
     }}>
       {/* Header */}
-      <div style={{ marginBottom: '32px' }}>
-        <h1 style={{ fontSize: '28px', fontWeight: 'bold', marginBottom: '8px' }}>
+      <div style={{ marginBottom: '32px', borderBottom: '2px solid #e5e7eb', paddingBottom: '16px' }}>
+        <h1 style={{ fontSize: '28px', fontWeight: 'bold', marginBottom: '8px', color: '#000000' }}>
           🎙️ News Briefings Admin
         </h1>
-        <p style={{ opacity: 0.8 }}>
-          Configure narrators, voices, and prompts for each news category
+        <p style={{ color: '#666666' }}>
+          Configure narrators, voices, and prompts for each news category. Settings are saved automatically.
         </p>
       </div>
 
       {/* Auto-Generation Settings */}
       <div style={{
-        backgroundColor: '#1e293b',
+        backgroundColor: '#f8fafc',
+        border: '1px solid #e5e7eb',
         borderRadius: '12px',
         padding: '20px',
         marginBottom: '24px'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-          <h2 style={{ fontSize: '18px', fontWeight: 'bold' }}>⏰ Auto-Generation</h2>
+          <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: '#000000' }}>⏰ Auto-Generation</h2>
           <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-            <span>{autoGenerate ? 'ON' : 'OFF'}</span>
+            <span style={{ color: '#000000', fontWeight: 'bold' }}>{autoGenerate ? 'ON' : 'OFF'}</span>
             <div
               onClick={() => {
                 setAutoGenerate(!autoGenerate);
@@ -382,7 +396,7 @@ export default function NewsBriefingsAdmin() {
               style={{
                 width: '48px',
                 height: '24px',
-                backgroundColor: autoGenerate ? '#16a34a' : '#475569',
+                backgroundColor: autoGenerate ? '#16a34a' : '#9ca3af',
                 borderRadius: '12px',
                 position: 'relative',
                 cursor: 'pointer'
@@ -396,7 +410,8 @@ export default function NewsBriefingsAdmin() {
                 position: 'absolute',
                 top: '2px',
                 left: autoGenerate ? '26px' : '2px',
-                transition: 'left 0.2s'
+                transition: 'left 0.2s',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
               }} />
             </div>
           </label>
@@ -409,23 +424,23 @@ export default function NewsBriefingsAdmin() {
             { label: 'Slot 3', value: timeSlot3, set: setTimeSlot3 }
           ].map(slot => (
             <div key={slot.label}>
-              <label style={{ display: 'block', marginBottom: '4px', fontSize: '14px' }}>{slot.label}</label>
+              <label style={{ display: 'block', marginBottom: '4px', fontSize: '14px', color: '#000000', fontWeight: '500' }}>{slot.label}</label>
               <input
                 type="time"
                 value={slot.value}
                 onChange={(e) => { slot.set(e.target.value); setTimeout(saveAutoSettings, 100); }}
                 disabled={!autoGenerate}
                 style={{
-                  backgroundColor: '#334155',
-                  color: 'white',
-                  border: '1px solid #475569',
+                  backgroundColor: '#ffffff',
+                  color: '#000000',
+                  border: '1px solid #d1d5db',
                   borderRadius: '6px',
                   padding: '8px 12px'
                 }}
               />
             </div>
           ))}
-          <div style={{ display: 'flex', alignItems: 'flex-end', fontSize: '14px', opacity: 0.7 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-end', fontSize: '14px', color: '#666666' }}>
             (EST timezone)
           </div>
         </div>
@@ -434,7 +449,7 @@ export default function NewsBriefingsAdmin() {
       {/* Category Cards */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(400px, 1fr))',
         gap: '20px'
       }}>
         {CATEGORIES.map((cat) => {
@@ -447,21 +462,25 @@ export default function NewsBriefingsAdmin() {
             <div
               key={cat.id}
               style={{
-                backgroundColor: '#1e293b',
+                backgroundColor: '#ffffff',
+                border: '1px solid #e5e7eb',
                 borderRadius: '12px',
                 padding: '20px',
-                borderLeft: `4px solid ${cat.color}`
+                borderTop: `4px solid ${cat.color}`,
+                boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
               }}
             >
               {/* Header */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-                <span style={{ fontSize: '24px' }}>{cat.icon}</span>
-                <h3 style={{ fontSize: '18px', fontWeight: 'bold', color: cat.color }}>{cat.label}</h3>
+                <span style={{ fontSize: '28px' }}>{cat.icon}</span>
+                <h3 style={{ fontSize: '20px', fontWeight: 'bold', color: cat.color }}>{cat.label}</h3>
               </div>
 
               {/* Narrator Name */}
-              <div style={{ marginBottom: '12px' }}>
-                <label style={{ display: 'block', marginBottom: '4px', fontSize: '14px' }}>Narrator Name</label>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', marginBottom: '6px', fontSize: '14px', fontWeight: '600', color: '#000000' }}>
+                  Narrator Name
+                </label>
                 <input
                   type="text"
                   value={catSettings.narratorName}
@@ -469,18 +488,21 @@ export default function NewsBriefingsAdmin() {
                   placeholder="e.g., Sarah Mitchell"
                   style={{
                     width: '100%',
-                    backgroundColor: '#334155',
-                    color: 'white',
-                    border: '1px solid #475569',
+                    backgroundColor: '#ffffff',
+                    color: '#000000',
+                    border: '1px solid #d1d5db',
                     borderRadius: '6px',
-                    padding: '8px 12px'
+                    padding: '10px 12px',
+                    fontSize: '14px'
                   }}
                 />
               </div>
 
               {/* Voice + Test */}
-              <div style={{ marginBottom: '12px' }}>
-                <label style={{ display: 'block', marginBottom: '4px', fontSize: '14px' }}>Voice</label>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', marginBottom: '6px', fontSize: '14px', fontWeight: '600', color: '#000000' }}>
+                  Voice
+                </label>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <select
                     value={catSettings.voiceId}
@@ -488,14 +510,15 @@ export default function NewsBriefingsAdmin() {
                     disabled={loadingVoices}
                     style={{
                       flex: 1,
-                      backgroundColor: '#334155',
-                      color: 'white',
-                      border: '1px solid #475569',
+                      backgroundColor: '#ffffff',
+                      color: '#000000',
+                      border: '1px solid #d1d5db',
                       borderRadius: '6px',
-                      padding: '8px 12px'
+                      padding: '10px 12px',
+                      fontSize: '14px'
                     }}
                   >
-                    <option value="">{loadingVoices ? 'Loading...' : 'Select voice'}</option>
+                    <option value="">{loadingVoices ? 'Loading voices...' : 'Select voice'}</option>
                     {voices.map(v => (
                       <option key={v.voice_id} value={v.voice_id}>{v.name}</option>
                     ))}
@@ -504,13 +527,13 @@ export default function NewsBriefingsAdmin() {
                     onClick={() => testVoice(catSettings.voiceId, catSettings.narratorName)}
                     disabled={!catSettings.voiceId}
                     style={{
-                      backgroundColor: '#475569',
-                      color: 'white',
+                      backgroundColor: catSettings.voiceId ? '#3b82f6' : '#e5e7eb',
+                      color: catSettings.voiceId ? 'white' : '#9ca3af',
                       border: 'none',
                       borderRadius: '6px',
-                      padding: '8px 12px',
+                      padding: '10px 16px',
                       cursor: catSettings.voiceId ? 'pointer' : 'not-allowed',
-                      opacity: catSettings.voiceId ? 1 : 0.5
+                      fontWeight: '500'
                     }}
                   >
                     🔊 Test
@@ -518,41 +541,42 @@ export default function NewsBriefingsAdmin() {
                 </div>
               </div>
 
-              {/* Action Buttons Row 1: Edit Prompt */}
-              <div style={{ marginBottom: '12px' }}>
+              {/* Edit Prompt Button */}
+              <div style={{ marginBottom: '16px' }}>
                 <button
                   onClick={() => router.push(`/admin/news-briefings/prompts/${cat.id}`)}
                   style={{
                     width: '100%',
-                    backgroundColor: '#334155',
-                    color: 'white',
-                    border: '1px solid #475569',
+                    backgroundColor: '#f3f4f6',
+                    color: '#000000',
+                    border: '1px solid #d1d5db',
                     borderRadius: '6px',
-                    padding: '10px 16px',
+                    padding: '12px 16px',
                     cursor: 'pointer',
-                    fontWeight: 'bold'
+                    fontWeight: '600',
+                    fontSize: '14px'
                   }}
                 >
                   📝 Edit Prompt
                 </button>
               </div>
 
-              {/* Action Buttons Row 2: Generate + Play (NOT for State - state uses auto-generation) */}
+              {/* Generate + Play Buttons (NOT for State) */}
               {cat.id !== 'state' && (
-                <div style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>
+                <div style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
                   <button
                     onClick={() => handleGenerate(cat.id)}
                     disabled={isGenerating || !catSettings.narratorName || !catSettings.voiceId}
                     style={{
                       flex: 1,
-                      backgroundColor: isGenerating ? '#475569' : cat.color,
-                      color: cat.id === 'world' ? 'black' : 'white',
+                      backgroundColor: (isGenerating || !catSettings.narratorName || !catSettings.voiceId) ? '#e5e7eb' : cat.color,
+                      color: (isGenerating || !catSettings.narratorName || !catSettings.voiceId) ? '#9ca3af' : (cat.id === 'world' ? '#000000' : '#ffffff'),
                       border: 'none',
                       borderRadius: '6px',
-                      padding: '10px 16px',
-                      fontWeight: 'bold',
-                      cursor: isGenerating ? 'not-allowed' : 'pointer',
-                      opacity: (!catSettings.narratorName || !catSettings.voiceId) ? 0.5 : 1
+                      padding: '12px 16px',
+                      fontWeight: '600',
+                      cursor: (isGenerating || !catSettings.narratorName || !catSettings.voiceId) ? 'not-allowed' : 'pointer',
+                      fontSize: '14px'
                     }}
                   >
                     {isGenerating ? '⏳ Generating...' : '🎬 Generate'}
@@ -562,14 +586,14 @@ export default function NewsBriefingsAdmin() {
                     disabled={!episode?.audioUrl}
                     style={{
                       flex: 1,
-                      backgroundColor: episode?.audioUrl ? (isPlaying ? '#dc2626' : '#475569') : '#1e293b',
-                      color: 'white',
-                      border: episode?.audioUrl ? 'none' : '1px solid #475569',
+                      backgroundColor: episode?.audioUrl ? (isPlaying ? '#dc2626' : '#10b981') : '#e5e7eb',
+                      color: episode?.audioUrl ? '#ffffff' : '#9ca3af',
+                      border: 'none',
                       borderRadius: '6px',
-                      padding: '10px 16px',
-                      fontWeight: 'bold',
+                      padding: '12px 16px',
+                      fontWeight: '600',
                       cursor: episode?.audioUrl ? 'pointer' : 'not-allowed',
-                      opacity: episode?.audioUrl ? 1 : 0.5
+                      fontSize: '14px'
                     }}
                   >
                     {isPlaying ? '⏹️ Stop' : '▶️ Play'}
@@ -577,25 +601,31 @@ export default function NewsBriefingsAdmin() {
                 </div>
               )}
 
-              {/* State Upsell Button (State card only) */}
+              {/* State Upsell Section (State card only) */}
               {cat.id === 'state' && (
-                <div style={{ marginBottom: '12px' }}>
-                  <p style={{ fontSize: '12px', opacity: 0.7, marginBottom: '8px' }}>
-                    State news is auto-generated for subscriber states. Use this button to generate the Welcome page upsell message.
+                <div style={{ 
+                  backgroundColor: '#fef3c7', 
+                  border: '1px solid #f59e0b',
+                  borderRadius: '8px', 
+                  padding: '12px',
+                  marginBottom: '16px'
+                }}>
+                  <p style={{ fontSize: '13px', color: '#92400e', marginBottom: '10px' }}>
+                    <strong>Note:</strong> State news is auto-generated for subscriber states. Use this button to generate the Welcome page upsell message.
                   </p>
                   <button
                     onClick={handleGenerateUpsell}
                     disabled={generatingUpsell || !catSettings.narratorName || !catSettings.voiceId}
                     style={{
                       width: '100%',
-                      backgroundColor: generatingUpsell ? '#475569' : (stateUpsellExists ? '#334155' : '#dc2626'),
-                      color: 'white',
-                      border: stateUpsellExists ? '1px solid #475569' : 'none',
+                      backgroundColor: (generatingUpsell || !catSettings.narratorName || !catSettings.voiceId) ? '#e5e7eb' : (stateUpsellExists ? '#10b981' : '#dc2626'),
+                      color: (generatingUpsell || !catSettings.narratorName || !catSettings.voiceId) ? '#9ca3af' : '#ffffff',
+                      border: 'none',
                       borderRadius: '6px',
-                      padding: '10px 16px',
+                      padding: '12px 16px',
                       cursor: (generatingUpsell || !catSettings.narratorName || !catSettings.voiceId) ? 'not-allowed' : 'pointer',
-                      fontWeight: 'bold',
-                      opacity: (!catSettings.narratorName || !catSettings.voiceId) ? 0.5 : 1
+                      fontWeight: '600',
+                      fontSize: '14px'
                     }}
                   >
                     {generatingUpsell ? '⏳ Generating Upsell...' : 
@@ -607,8 +637,14 @@ export default function NewsBriefingsAdmin() {
 
               {/* Status */}
               {episode && (
-                <div style={{ fontSize: '12px', opacity: 0.7 }}>
-                  Last generated: {formatTime(episode.createdAt)}
+                <div style={{ 
+                  fontSize: '13px', 
+                  color: '#666666',
+                  backgroundColor: '#f9fafb',
+                  padding: '8px 12px',
+                  borderRadius: '6px'
+                }}>
+                  <strong>Last generated:</strong> {formatTime(episode.createdAt)}
                   {episode.duration && ` • ${episode.duration} min`}
                 </div>
               )}
