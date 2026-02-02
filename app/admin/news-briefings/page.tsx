@@ -110,7 +110,7 @@ export default function NewsBriefingsAdmin() {
       .then(data => {
         if (data.states?.length > 0) {
           setSubscriberStates(prev => {
-            const combined = [...new Set([...prev, ...data.states])].sort();
+            const combined = Array.from(new Set([...prev, ...data.states])).sort();
             if (!selectedState && combined.length > 0) setSelectedState(combined[0]);
             return combined;
           });
