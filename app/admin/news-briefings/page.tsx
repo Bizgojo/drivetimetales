@@ -1,20 +1,12 @@
 // app/admin/news-briefings/page.tsx
-// DTT News Briefings - Admin Page
-// Version 2.5 - February 2026
-//
-// Features:
-// - White background, ALL BLACK text
-// - Settings persist via API route (service role)
-// - Test Voice button on each card
-// - State dropdown to select/generate specific state news
-// - Edit Prompt button for each category
+// DTT News Briefings Admin - Version 2.6
+// February 2026
 
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 
-// Category configuration (DO NOT CHANGE COLORS)
 const CATEGORIES = [
   { id: 'state', label: 'State News', icon: '🏛️', color: '#dc2626' },
   { id: 'national', label: 'National News', icon: '🇺🇸', color: '#f97316' },
@@ -24,7 +16,6 @@ const CATEGORIES = [
   { id: 'science', label: 'Science & Tech', icon: '🔬', color: '#9333ea' }
 ];
 
-// All US States
 const US_STATES = [
   'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado', 'Connecticut',
   'Delaware', 'Florida', 'Georgia', 'Hawaii', 'Idaho', 'Illinois', 'Indiana', 'Iowa',
@@ -36,778 +27,286 @@ const US_STATES = [
   'Wisconsin', 'Wyoming'
 ];
 
-interface CategorySettings {
-  narratorName: string;
-  voiceId: string;
-}
-
-interface ElevenLabsVoice {
-  voice_id: string;
-  name: string;
-}
-
-interface EpisodeInfo {
-  audioUrl: string;
-  createdAt: string;
-  duration?: string;
-}
-
 export default function NewsBriefingsAdmin() {
   const router = useRouter();
-  
-  const [settings, setSettings] = useState<Record<string, CategorySettings>>({});
+  const [settings, setSettings] = useState<Record<string, { narratorName: string; voiceId: string }>>({});
   const [settingsLoaded, setSettingsLoaded] = useState(false);
-  const [episodes, setEpisodes] = useState<Record<string, EpisodeInfo>>({});
+  const [episodes, setEpisodes] = useState<Record<string, { audioUrl: string; createdAt: string }>>({});
   const [generating, setGenerating] = useState<Record<string, boolean>>({});
   const [playing, setPlaying] = useState<string | null>(null);
   const [stateUpsellExists, setStateUpsellExists] = useState(false);
   const [generatingUpsell, setGeneratingUpsell] = useState(false);
   const [selectedState, setSelectedState] = useState('South Carolina');
-  const [subscriberStates, setSubscriberStates] = useState<string[]>([]);
-  
-  const [voices, setVoices] = useState<ElevenLabsVoice[]>([]);
+  const [voices, setVoices] = useState<{ voice_id: string; name: string }[]>([]);
   const [loadingVoices, setLoadingVoices] = useState(true);
-  
-  const [autoGenerate, setAutoGenerate] = useState(false);
-  const [timeSlot1, setTimeSlot1] = useState('06:00');
-  const [timeSlot2, setTimeSlot2] = useState('12:00');
-  const [timeSlot3, setTimeSlot3] = useState('18:00');
-  
-  const audioRefs = useRef<Record<string, HTMLAudioElement | null>>({});
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Load voices
   useEffect(() => {
-    async function loadVoices() {
-      try {
-        const response = await fetch('/api/elevenlabs/voices');
-        if (response.ok) {
-          const data = await response.json();
-          setVoices(data.voices || []);
-        }
-      } catch (error) {
-        console.error('Failed to load voices:', error);
-      } finally {
-        setLoadingVoices(false);
-      }
-    }
-    loadVoices();
+    fetch('/api/elevenlabs/voices')
+      .then(r => r.json())
+      .then(d => setVoices(d.voices || []))
+      .catch(() => {})
+      .finally(() => setLoadingVoices(false));
   }, []);
 
-  // Load settings from API
+  // Load settings
   useEffect(() => {
-    async function loadSettings() {
-      try {
-        console.log('[Admin] Loading settings from API...');
-        const response = await fetch('/api/admin/news-settings');
-        
-        if (!response.ok) {
-          console.error('Failed to load settings');
-          setSettingsLoaded(true);
-          return;
-        }
-
-        const data = await response.json();
-        const loaded: Record<string, CategorySettings> = {};
-        let loadedAutoGenerate = false;
-        let loadedTimes = ['06:00', '12:00', '18:00'];
-
+    fetch('/api/admin/news-settings')
+      .then(r => r.json())
+      .then(data => {
+        const loaded: Record<string, { narratorName: string; voiceId: string }> = {};
         for (const row of data.settings || []) {
-          console.log(`[Admin] Loaded ${row.category}: narrator="${row.narrator_name}", voice="${row.voice_id}"`);
-          loaded[row.category] = {
-            narratorName: row.narrator_name || '',
-            voiceId: row.voice_id || ''
-          };
-          if (row.auto_generate !== undefined) loadedAutoGenerate = row.auto_generate;
-          if (row.schedule_times?.length === 3) loadedTimes = row.schedule_times;
+          loaded[row.category] = { narratorName: row.narrator_name || '', voiceId: row.voice_id || '' };
         }
-
-        // Initialize empty settings for categories not in DB
         for (const cat of CATEGORIES) {
-          if (!loaded[cat.id]) {
-            loaded[cat.id] = { narratorName: '', voiceId: '' };
-          }
+          if (!loaded[cat.id]) loaded[cat.id] = { narratorName: '', voiceId: '' };
         }
-
         setSettings(loaded);
-        setAutoGenerate(loadedAutoGenerate);
-        setTimeSlot1(loadedTimes[0]);
-        setTimeSlot2(loadedTimes[1]);
-        setTimeSlot3(loadedTimes[2]);
         setSettingsLoaded(true);
-        console.log('[Admin] Settings loaded successfully');
-      } catch (error) {
-        console.error('Failed to load settings:', error);
-        setSettingsLoaded(true);
-      }
-    }
-    loadSettings();
+      })
+      .catch(() => setSettingsLoaded(true));
   }, []);
 
-  // Load episodes and subscriber states
+  // Load episodes
   useEffect(() => {
-    async function loadEpisodes() {
-      try {
-        const response = await fetch('/api/news/briefing?listAll=true');
-        if (response.ok) {
-          const data = await response.json();
-          const loaded: Record<string, EpisodeInfo> = {};
-          let upsellExists = false;
-          const states: string[] = [];
-
-          for (const ep of data.episodes || []) {
-            if (ep.category === 'state-upsell') {
-              upsellExists = true;
-              continue;
-            }
-            if (ep.category === 'state' && ep.state) {
-              if (!states.includes(ep.state)) {
-                states.push(ep.state);
-              }
-            }
-            const key = ep.state ? `${ep.category}-${ep.state}` : ep.category;
-            loaded[key] = {
-              audioUrl: ep.audio_url,
-              createdAt: ep.created_at
-            };
-          }
-
-          setEpisodes(loaded);
-          setStateUpsellExists(upsellExists);
-          setSubscriberStates(states);
+    fetch('/api/news/briefing?listAll=true')
+      .then(r => r.json())
+      .then(data => {
+        const loaded: Record<string, { audioUrl: string; createdAt: string }> = {};
+        let upsellExists = false;
+        for (const ep of data.episodes || []) {
+          if (ep.category === 'state-upsell') { upsellExists = true; continue; }
+          const key = ep.state ? `${ep.category}-${ep.state}` : ep.category;
+          loaded[key] = { audioUrl: ep.audio_url, createdAt: ep.created_at };
         }
-      } catch (error) {
-        console.error('Failed to load episodes:', error);
-      }
-    }
-    loadEpisodes();
+        setEpisodes(loaded);
+        setStateUpsellExists(upsellExists);
+      })
+      .catch(() => {});
   }, []);
 
-  // Save settings via API
-  const saveSettingsToDb = useCallback(async (category: string, narratorName: string, voiceId: string) => {
-    try {
-      console.log(`[Admin] Saving ${category}: narrator="${narratorName}", voice="${voiceId}"`);
-      
-      const response = await fetch('/api/admin/news-settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          category,
-          narrator_name: narratorName,
-          voice_id: voiceId,
-          auto_generate: autoGenerate,
-          schedule_times: [timeSlot1, timeSlot2, timeSlot3]
-        })
-      });
-      
-      if (!response.ok) {
-        const data = await response.json();
-        console.error('Failed to save settings:', data.error);
-        alert('Failed to save settings: ' + data.error);
-      } else {
-        console.log(`[Admin] Saved ${category} successfully`);
-      }
-    } catch (error) {
-      console.error('Failed to save settings:', error);
-      alert('Failed to save settings. Please try again.');
-    }
-  }, [autoGenerate, timeSlot1, timeSlot2, timeSlot3]);
-
-  // Save auto-generation settings
-  async function saveAutoSettings() {
-    for (const cat of CATEGORIES) {
-      const catSettings = settings[cat.id] || { narratorName: '', voiceId: '' };
-      await fetch('/api/admin/news-settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          category: cat.id,
-          narrator_name: catSettings.narratorName,
-          voice_id: catSettings.voiceId,
-          auto_generate: autoGenerate,
-          schedule_times: [timeSlot1, timeSlot2, timeSlot3]
-        })
-      });
-    }
-  }
-
-  // Update narrator name
-  function handleNarratorChange(category: string, value: string) {
-    const newSettings = {
-      ...settings,
-      [category]: { ...settings[category], narratorName: value }
-    };
-    setSettings(newSettings);
-  }
-
-  // Save narrator on blur
-  function handleNarratorBlur(category: string) {
-    const catSettings = settings[category];
-    if (catSettings) {
-      saveSettingsToDb(category, catSettings.narratorName, catSettings.voiceId);
-    }
-  }
-
-  // Update voice (save immediately)
-  function handleVoiceChange(category: string, value: string) {
-    const newSettings = {
-      ...settings,
-      [category]: { ...settings[category], voiceId: value }
-    };
-    setSettings(newSettings);
-    saveSettingsToDb(category, newSettings[category].narratorName, value);
+  // Save settings
+  async function saveSettings(category: string, narratorName: string, voiceId: string) {
+    await fetch('/api/admin/news-settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category, narrator_name: narratorName, voice_id: voiceId })
+    });
   }
 
   // Test voice
-  async function testVoice(voiceId: string, narratorName: string) {
-    if (!voiceId) {
-      alert('Please select a voice first');
-      return;
-    }
-
+  async function handleTestVoice(voiceId: string, narratorName: string) {
+    if (!voiceId) { alert('Please select a voice first'); return; }
     try {
-      // Use the API to generate test audio
-      const response = await fetch('/api/elevenlabs/test-voice', {
+      const r = await fetch('/api/elevenlabs/test-voice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          voiceId,
-          text: `Hello, I'm ${narratorName || 'your news broadcaster'}. This is a voice test for Drive Time Tales.`
-        })
+        body: JSON.stringify({ voiceId, text: `Hello, I'm ${narratorName || 'your broadcaster'}. This is a voice test.` })
       });
-
-      if (response.ok) {
-        const blob = await response.blob();
-        const url = URL.createObjectURL(blob);
-        const audio = new Audio(url);
+      if (r.ok) {
+        const blob = await r.blob();
+        const audio = new Audio(URL.createObjectURL(blob));
         audio.play();
       } else {
-        alert('Voice test failed. Please try again.');
+        alert('Voice test failed');
       }
-    } catch (error) {
-      alert('Voice test failed.');
-    }
+    } catch { alert('Voice test failed'); }
   }
 
   // Generate briefing
   async function handleGenerate(category: string, state?: string) {
-    const catSettings = settings[category];
-    if (!catSettings?.narratorName || !catSettings?.voiceId) {
-      alert('Please set narrator name and voice first.');
-      return;
-    }
-
-    const key = state ? `${category}-generating` : category;
-    setGenerating(prev => ({ ...prev, [key]: true }));
-
+    const s = settings[category];
+    if (!s?.narratorName || !s?.voiceId) { alert('Set narrator and voice first'); return; }
+    const key = state ? `${category}-${state}` : category;
+    setGenerating(p => ({ ...p, [key]: true }));
     try {
-      const response = await fetch('/api/admin/generate-news', {
+      const r = await fetch('/api/admin/generate-news', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ category, state })
       });
-
-      const data = await response.json();
-
-      if (response.ok && data.success) {
-        const episodeKey = state ? `${category}-${state}` : category;
-        setEpisodes(prev => ({
-          ...prev,
-          [episodeKey]: {
-            audioUrl: data.episode.audioUrl,
-            createdAt: data.episode.createdAt,
-            duration: data.episode.duration
-          }
-        }));
-        alert(`✅ Generated! Duration: ${data.episode.duration} min`);
+      const d = await r.json();
+      if (r.ok && d.success) {
+        setEpisodes(p => ({ ...p, [key]: { audioUrl: d.episode.audioUrl, createdAt: d.episode.createdAt } }));
+        alert(`Generated! Duration: ${d.episode.duration || 'N/A'} min`);
       } else {
-        alert(`❌ Failed: ${data.error}`);
+        alert(`Failed: ${d.error}`);
       }
-    } catch (error) {
-      alert('Generation failed. Check console.');
-    } finally {
-      setGenerating(prev => ({ ...prev, [key]: false }));
-    }
+    } catch { alert('Generation failed'); }
+    finally { setGenerating(p => ({ ...p, [key]: false })); }
   }
 
-  // Generate State Upsell
+  // Generate upsell
   async function handleGenerateUpsell() {
-    const stateSettings = settings['state'];
-    if (!stateSettings?.narratorName || !stateSettings?.voiceId) {
-      alert('Please set State News narrator and voice first.');
-      return;
-    }
-
+    const s = settings['state'];
+    if (!s?.narratorName || !s?.voiceId) { alert('Set State narrator and voice first'); return; }
     setGeneratingUpsell(true);
-
     try {
-      const response = await fetch('/api/news/state-upsell', {
+      const r = await fetch('/api/news/state-upsell', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          narratorName: stateSettings.narratorName,
-          voiceId: stateSettings.voiceId
-        })
+        body: JSON.stringify({ narratorName: s.narratorName, voiceId: s.voiceId })
       });
-
-      const data = await response.json();
-
-      if (response.ok && data.audioUrl) {
+      const d = await r.json();
+      if (r.ok && d.audioUrl) {
         setStateUpsellExists(true);
-        alert('✅ State Upsell generated successfully!');
+        alert('State Upsell generated!');
       } else {
-        alert(`❌ Failed: ${data.error}`);
+        alert(`Failed: ${d.error}`);
       }
-    } catch (error) {
-      alert('Generation failed.');
-    } finally {
-      setGeneratingUpsell(false);
-    }
+    } catch { alert('Generation failed'); }
+    finally { setGeneratingUpsell(false); }
   }
 
-  // Play/stop audio
-  function handlePlay(category: string, state?: string) {
-    const key = state ? `${category}-${state}` : category;
-    const episode = episodes[key];
-    if (!episode?.audioUrl) return;
-
-    if (playing && playing !== key) {
-      const prevAudio = audioRefs.current[playing];
-      if (prevAudio) {
-        prevAudio.pause();
-        prevAudio.currentTime = 0;
-      }
-    }
-
-    let audio = audioRefs.current[key];
-    
-    if (!audio) {
-      audio = new Audio(episode.audioUrl);
-      audioRefs.current[key] = audio;
-      audio.onended = () => setPlaying(null);
-    }
-
-    if (playing === key) {
-      audio.pause();
-      setPlaying(null);
-    } else {
-      audio.play();
-      setPlaying(key);
-    }
+  // Play audio
+  function handlePlay(key: string) {
+    const ep = episodes[key];
+    if (!ep?.audioUrl) return;
+    if (audioRef.current) { audioRef.current.pause(); }
+    if (playing === key) { setPlaying(null); return; }
+    const audio = new Audio(ep.audioUrl);
+    audioRef.current = audio;
+    audio.onended = () => setPlaying(null);
+    audio.play();
+    setPlaying(key);
   }
 
-  // Format time
-  function formatTime(iso: string): string {
-    return new Date(iso).toLocaleString('en-US', {
-      timeZone: 'America/New_York',
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
-    }) + ' EST';
-  }
-
-  // Show loading while settings load
   if (!settingsLoaded) {
-    return (
-      <div style={{ 
-        minHeight: '100vh', 
-        backgroundColor: '#ffffff', 
-        color: '#000000',
-        padding: '24px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: '18px',
-        fontWeight: 'bold'
-      }}>
-        Loading settings...
-      </div>
-    );
+    return <div style={{ padding: 40, background: '#fff', color: '#000', fontSize: 18 }}>Loading...</div>;
   }
+
+  // Styles
+  const cardStyle = { background: '#fff', border: '2px solid #000', borderRadius: 12, padding: 20, marginBottom: 20 };
+  const labelStyle = { display: 'block', marginBottom: 6, fontSize: 16, fontWeight: 'bold' as const, color: '#000' };
+  const inputStyle = { width: '100%', padding: 12, fontSize: 16, border: '2px solid #000', borderRadius: 6, marginBottom: 16, boxSizing: 'border-box' as const };
+  const btnStyle = { padding: '12px 20px', fontSize: 16, fontWeight: 'bold' as const, border: '2px solid #000', borderRadius: 6, cursor: 'pointer' };
 
   return (
-    <div style={{ 
-      minHeight: '100vh', 
-      backgroundColor: '#ffffff', 
-      color: '#000000',
-      padding: '24px'
-    }}>
-      {/* Header */}
-      <div style={{ marginBottom: '32px', borderBottom: '3px solid #000000', paddingBottom: '16px' }}>
-        <h1 style={{ fontSize: '28px', fontWeight: 'bold', marginBottom: '8px', color: '#000000' }}>
-          🎙️ News Briefings Admin
-        </h1>
-        <p style={{ color: '#000000', fontSize: '16px' }}>
-          Configure narrators, voices, and prompts for each news category. Settings are saved automatically and persist permanently.
-        </p>
-      </div>
+    <div style={{ minHeight: '100vh', background: '#fff', color: '#000', padding: 24 }}>
+      <h1 style={{ fontSize: 28, fontWeight: 'bold', marginBottom: 8 }}>🎙️ News Briefings Admin</h1>
+      <p style={{ marginBottom: 24, fontSize: 16 }}>Settings are saved when you click out of a field or change the voice.</p>
 
-      {/* Auto-Generation Settings */}
-      <div style={{
-        backgroundColor: '#f5f5f5',
-        border: '2px solid #000000',
-        borderRadius: '12px',
-        padding: '20px',
-        marginBottom: '24px'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-          <h2 style={{ fontSize: '20px', fontWeight: 'bold', color: '#000000' }}>⏰ Auto-Generation</h2>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-            <span style={{ color: '#000000', fontWeight: 'bold', fontSize: '16px' }}>{autoGenerate ? 'ON' : 'OFF'}</span>
-            <div
-              onClick={() => {
-                const newValue = !autoGenerate;
-                setAutoGenerate(newValue);
-                setTimeout(saveAutoSettings, 100);
-              }}
-              style={{
-                width: '50px',
-                height: '26px',
-                backgroundColor: autoGenerate ? '#16a34a' : '#666666',
-                borderRadius: '13px',
-                position: 'relative',
-                cursor: 'pointer',
-                border: '2px solid #000000'
-              }}
-            >
-              <div style={{
-                width: '20px',
-                height: '20px',
-                backgroundColor: 'white',
-                borderRadius: '50%',
-                position: 'absolute',
-                top: '1px',
-                left: autoGenerate ? '26px' : '1px',
-                transition: 'left 0.2s',
-                border: '1px solid #000000'
-              }} />
-            </div>
-          </label>
-        </div>
-
-        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', opacity: autoGenerate ? 1 : 0.5 }}>
-          {[
-            { label: 'Slot 1', value: timeSlot1, set: setTimeSlot1 },
-            { label: 'Slot 2', value: timeSlot2, set: setTimeSlot2 },
-            { label: 'Slot 3', value: timeSlot3, set: setTimeSlot3 }
-          ].map(slot => (
-            <div key={slot.label}>
-              <label style={{ display: 'block', marginBottom: '4px', fontSize: '16px', color: '#000000', fontWeight: 'bold' }}>{slot.label}</label>
-              <input
-                type="time"
-                value={slot.value}
-                onChange={(e) => { slot.set(e.target.value); setTimeout(saveAutoSettings, 100); }}
-                disabled={!autoGenerate}
-                style={{
-                  backgroundColor: '#ffffff',
-                  color: '#000000',
-                  border: '2px solid #000000',
-                  borderRadius: '6px',
-                  padding: '8px 12px',
-                  fontSize: '16px'
-                }}
-              />
-            </div>
-          ))}
-          <div style={{ display: 'flex', alignItems: 'flex-end', fontSize: '16px', color: '#000000', fontWeight: 'bold' }}>
-            (EST timezone)
-          </div>
-        </div>
-      </div>
-
-      {/* Category Cards */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))',
-        gap: '20px'
-      }}>
-        {CATEGORIES.map((cat) => {
-          const catSettings = settings[cat.id] || { narratorName: '', voiceId: '' };
-          const episode = episodes[cat.id];
-          const isGenerating = generating[cat.id];
-          const isPlaying = playing === cat.id;
-          
-          // For state, check selected state episode
-          const stateEpisode = cat.id === 'state' ? episodes[`state-${selectedState}`] : null;
-          const isStateGenerating = cat.id === 'state' ? generating['state-generating'] : false;
-          const isStatePlaying = cat.id === 'state' ? playing === `state-${selectedState}` : false;
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(400px, 1fr))', gap: 20 }}>
+        {CATEGORIES.map(cat => {
+          const s = settings[cat.id] || { narratorName: '', voiceId: '' };
+          const ep = episodes[cat.id];
+          const stateEp = episodes[`state-${selectedState}`];
+          const isGen = generating[cat.id] || generating[`state-${selectedState}`];
 
           return (
-            <div
-              key={cat.id}
-              style={{
-                backgroundColor: '#ffffff',
-                border: '2px solid #000000',
-                borderRadius: '12px',
-                padding: '20px',
-                borderTop: `6px solid ${cat.color}`
-              }}
-            >
-              {/* Header */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-                <span style={{ fontSize: '28px' }}>{cat.icon}</span>
-                <h3 style={{ fontSize: '22px', fontWeight: 'bold', color: '#000000' }}>{cat.label}</h3>
-              </div>
+            <div key={cat.id} style={{ ...cardStyle, borderTop: `6px solid ${cat.color}` }}>
+              <h2 style={{ fontSize: 22, fontWeight: 'bold', marginBottom: 16 }}>{cat.icon} {cat.label}</h2>
 
-              {/* Narrator Name */}
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', marginBottom: '6px', fontSize: '16px', fontWeight: 'bold', color: '#000000' }}>
-                  Narrator Name
-                </label>
-                <input
-                  type="text"
-                  value={catSettings.narratorName}
-                  onChange={(e) => handleNarratorChange(cat.id, e.target.value)}
-                  onBlur={() => handleNarratorBlur(cat.id)}
-                  placeholder="e.g., Sarah Mitchell"
-                  style={{
-                    width: '100%',
-                    backgroundColor: '#ffffff',
-                    color: '#000000',
-                    border: '2px solid #000000',
-                    borderRadius: '6px',
-                    padding: '12px',
-                    fontSize: '16px'
+              {/* Narrator */}
+              <label style={labelStyle}>Narrator Name</label>
+              <input
+                type="text"
+                value={s.narratorName}
+                onChange={e => setSettings(p => ({ ...p, [cat.id]: { ...p[cat.id], narratorName: e.target.value } }))}
+                onBlur={() => saveSettings(cat.id, s.narratorName, s.voiceId)}
+                placeholder="e.g., Sarah Mitchell"
+                style={inputStyle}
+              />
+
+              {/* Voice */}
+              <label style={labelStyle}>Voice</label>
+              <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
+                <select
+                  value={s.voiceId}
+                  onChange={e => {
+                    const v = e.target.value;
+                    setSettings(p => ({ ...p, [cat.id]: { ...p[cat.id], voiceId: v } }));
+                    saveSettings(cat.id, s.narratorName, v);
                   }}
-                />
-              </div>
-
-              {/* Voice + Test */}
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', marginBottom: '6px', fontSize: '16px', fontWeight: 'bold', color: '#000000' }}>
-                  Voice
-                </label>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <select
-                    value={catSettings.voiceId}
-                    onChange={(e) => handleVoiceChange(cat.id, e.target.value)}
-                    disabled={loadingVoices}
-                    style={{
-                      flex: 1,
-                      backgroundColor: '#ffffff',
-                      color: '#000000',
-                      border: '2px solid #000000',
-                      borderRadius: '6px',
-                      padding: '12px',
-                      fontSize: '16px'
-                    }}
-                  >
-                    <option value="">{loadingVoices ? 'Loading voices...' : 'Select voice'}</option>
-                    {voices.map(v => (
-                      <option key={v.voice_id} value={v.voice_id}>{v.name}</option>
-                    ))}
-                  </select>
-                  <button
-                    onClick={() => testVoice(catSettings.voiceId, catSettings.narratorName)}
-                    disabled={!catSettings.voiceId}
-                    style={{
-                      backgroundColor: catSettings.voiceId ? '#3b82f6' : '#cccccc',
-                      color: '#ffffff',
-                      border: '2px solid #000000',
-                      borderRadius: '6px',
-                      padding: '12px 20px',
-                      cursor: catSettings.voiceId ? 'pointer' : 'not-allowed',
-                      fontWeight: 'bold',
-                      fontSize: '16px'
-                    }}
-                  >
-                    🔊 Test Voice
-                  </button>
-                </div>
-              </div>
-
-              {/* Edit Prompt Button */}
-              <div style={{ marginBottom: '16px' }}>
-                <button
-                  onClick={() => router.push(`/admin/news-briefings/prompts/${cat.id}`)}
-                  style={{
-                    width: '100%',
-                    backgroundColor: '#ffffff',
-                    color: '#000000',
-                    border: '2px solid #000000',
-                    borderRadius: '6px',
-                    padding: '14px 16px',
-                    cursor: 'pointer',
-                    fontWeight: 'bold',
-                    fontSize: '16px'
-                  }}
+                  style={{ flex: 1, padding: 12, fontSize: 16, border: '2px solid #000', borderRadius: 6 }}
                 >
-                  📝 Edit Prompt
+                  <option value="">{loadingVoices ? 'Loading...' : 'Select voice'}</option>
+                  {voices.map(v => <option key={v.voice_id} value={v.voice_id}>{v.name}</option>)}
+                </select>
+                <button
+                  onClick={() => handleTestVoice(s.voiceId, s.narratorName)}
+                  disabled={!s.voiceId}
+                  style={{ ...btnStyle, background: s.voiceId ? '#3b82f6' : '#ccc', color: '#fff' }}
+                >
+                  🔊 Test
                 </button>
               </div>
 
-              {/* State-specific controls */}
-              {cat.id === 'state' && (
-                <>
-                  {/* State Dropdown */}
-                  <div style={{ marginBottom: '16px' }}>
-                    <label style={{ display: 'block', marginBottom: '6px', fontSize: '16px', fontWeight: 'bold', color: '#000000' }}>
-                      Select State to Generate/Preview
-                    </label>
-                    <select
-                      value={selectedState}
-                      onChange={(e) => setSelectedState(e.target.value)}
-                      style={{
-                        width: '100%',
-                        backgroundColor: '#ffffff',
-                        color: '#000000',
-                        border: '2px solid #000000',
-                        borderRadius: '6px',
-                        padding: '12px',
-                        fontSize: '16px'
-                      }}
-                    >
-                      {US_STATES.map(state => (
-                        <option key={state} value={state}>
-                          {state} {subscriberStates.includes(state) ? '(has subscribers)' : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+              {/* Edit Prompt */}
+              <button
+                onClick={() => router.push(`/admin/news-briefings/prompts/${cat.id}`)}
+                style={{ ...btnStyle, width: '100%', background: '#fff', marginBottom: 16 }}
+              >
+                📝 Edit Prompt
+              </button>
 
-                  {/* Generate/Play for selected state */}
-                  <div style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
+              {/* State-specific */}
+              {cat.id === 'state' ? (
+                <>
+                  <label style={labelStyle}>Select State</label>
+                  <select
+                    value={selectedState}
+                    onChange={e => setSelectedState(e.target.value)}
+                    style={{ ...inputStyle, marginBottom: 16 }}
+                  >
+                    {US_STATES.map(st => <option key={st} value={st}>{st}</option>)}
+                  </select>
+
+                  <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
                     <button
                       onClick={() => handleGenerate('state', selectedState)}
-                      disabled={isStateGenerating || !catSettings.narratorName || !catSettings.voiceId}
-                      style={{
-                        flex: 1,
-                        backgroundColor: (isStateGenerating || !catSettings.narratorName || !catSettings.voiceId) ? '#cccccc' : cat.color,
-                        color: '#ffffff',
-                        border: '2px solid #000000',
-                        borderRadius: '6px',
-                        padding: '14px 16px',
-                        fontWeight: 'bold',
-                        cursor: (isStateGenerating || !catSettings.narratorName || !catSettings.voiceId) ? 'not-allowed' : 'pointer',
-                        fontSize: '16px'
-                      }}
+                      disabled={isGen || !s.narratorName || !s.voiceId}
+                      style={{ ...btnStyle, flex: 1, background: isGen ? '#ccc' : cat.color, color: '#fff' }}
                     >
-                      {isStateGenerating ? '⏳ Generating...' : `🎬 Generate ${selectedState}`}
+                      {isGen ? '⏳ Generating...' : `🎬 Generate ${selectedState}`}
                     </button>
                     <button
-                      onClick={() => handlePlay('state', selectedState)}
-                      disabled={!stateEpisode?.audioUrl}
-                      style={{
-                        flex: 1,
-                        backgroundColor: stateEpisode?.audioUrl ? (isStatePlaying ? '#dc2626' : '#10b981') : '#cccccc',
-                        color: '#ffffff',
-                        border: '2px solid #000000',
-                        borderRadius: '6px',
-                        padding: '14px 16px',
-                        fontWeight: 'bold',
-                        cursor: stateEpisode?.audioUrl ? 'pointer' : 'not-allowed',
-                        fontSize: '16px'
-                      }}
+                      onClick={() => handlePlay(`state-${selectedState}`)}
+                      disabled={!stateEp?.audioUrl}
+                      style={{ ...btnStyle, flex: 1, background: stateEp?.audioUrl ? '#10b981' : '#ccc', color: '#fff' }}
                     >
-                      {isStatePlaying ? '⏹️ Stop' : '▶️ Play'}
+                      {playing === `state-${selectedState}` ? '⏹️ Stop' : '▶️ Play'}
                     </button>
                   </div>
 
-                  {/* State episode status */}
-                  {stateEpisode && (
-                    <div style={{ 
-                      fontSize: '14px', 
-                      color: '#000000',
-                      fontWeight: 'bold',
-                      backgroundColor: '#f5f5f5',
-                      padding: '10px 12px',
-                      borderRadius: '6px',
-                      border: '1px solid #000000',
-                      marginBottom: '16px'
-                    }}>
-                      {selectedState} last generated: {formatTime(stateEpisode.createdAt)}
-                    </div>
-                  )}
-
-                  {/* Upsell Section */}
-                  <div style={{ 
-                    backgroundColor: '#fffbeb', 
-                    border: '2px solid #000000',
-                    borderRadius: '8px', 
-                    padding: '12px',
-                    marginBottom: '16px'
-                  }}>
-                    <p style={{ fontSize: '14px', color: '#000000', marginBottom: '10px', fontWeight: 'bold' }}>
-                      Welcome Page Upsell: This message plays when non-subscribers click State News.
+                  <div style={{ background: '#fffbeb', border: '2px solid #000', borderRadius: 8, padding: 12 }}>
+                    <p style={{ fontSize: 14, fontWeight: 'bold', marginBottom: 10 }}>
+                      Welcome Page Upsell (for non-subscribers)
                     </p>
                     <button
                       onClick={handleGenerateUpsell}
-                      disabled={generatingUpsell || !catSettings.narratorName || !catSettings.voiceId}
-                      style={{
-                        width: '100%',
-                        backgroundColor: (generatingUpsell || !catSettings.narratorName || !catSettings.voiceId) ? '#cccccc' : (stateUpsellExists ? '#10b981' : '#dc2626'),
-                        color: '#ffffff',
-                        border: '2px solid #000000',
-                        borderRadius: '6px',
-                        padding: '14px 16px',
-                        cursor: (generatingUpsell || !catSettings.narratorName || !catSettings.voiceId) ? 'not-allowed' : 'pointer',
-                        fontWeight: 'bold',
-                        fontSize: '16px'
-                      }}
+                      disabled={generatingUpsell || !s.narratorName || !s.voiceId}
+                      style={{ ...btnStyle, width: '100%', background: stateUpsellExists ? '#10b981' : '#dc2626', color: '#fff' }}
                     >
-                      {generatingUpsell ? '⏳ Generating Upsell...' : 
-                       stateUpsellExists ? '✅ Upsell Ready (Click to Regenerate)' : 
-                       '⚠️ Generate State Upsell'}
+                      {generatingUpsell ? '⏳ Generating...' : stateUpsellExists ? '✅ Upsell Ready' : '⚠️ Generate Upsell'}
                     </button>
                   </div>
                 </>
-              )}
-
-              {/* Generate + Play Buttons (NOT for State - state has its own above) */}
-              {cat.id !== 'state' && (
-                <div style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
-                  <button
-                    onClick={() => handleGenerate(cat.id)}
-                    disabled={isGenerating || !catSettings.narratorName || !catSettings.voiceId}
-                    style={{
-                      flex: 1,
-                      backgroundColor: (isGenerating || !catSettings.narratorName || !catSettings.voiceId) ? '#cccccc' : cat.color,
-                      color: (cat.id === 'world') ? '#000000' : '#ffffff',
-                      border: '2px solid #000000',
-                      borderRadius: '6px',
-                      padding: '14px 16px',
-                      fontWeight: 'bold',
-                      cursor: (isGenerating || !catSettings.narratorName || !catSettings.voiceId) ? 'not-allowed' : 'pointer',
-                      fontSize: '16px'
-                    }}
-                  >
-                    {isGenerating ? '⏳ Generating...' : '🎬 Generate'}
-                  </button>
-                  <button
-                    onClick={() => handlePlay(cat.id)}
-                    disabled={!episode?.audioUrl}
-                    style={{
-                      flex: 1,
-                      backgroundColor: episode?.audioUrl ? (isPlaying ? '#dc2626' : '#10b981') : '#cccccc',
-                      color: '#ffffff',
-                      border: '2px solid #000000',
-                      borderRadius: '6px',
-                      padding: '14px 16px',
-                      fontWeight: 'bold',
-                      cursor: episode?.audioUrl ? 'pointer' : 'not-allowed',
-                      fontSize: '16px'
-                    }}
-                  >
-                    {isPlaying ? '⏹️ Stop' : '▶️ Play'}
-                  </button>
-                </div>
-              )}
-
-              {/* Status (for non-state categories) */}
-              {cat.id !== 'state' && episode && (
-                <div style={{ 
-                  fontSize: '14px', 
-                  color: '#000000',
-                  fontWeight: 'bold',
-                  backgroundColor: '#f5f5f5',
-                  padding: '10px 12px',
-                  borderRadius: '6px',
-                  border: '1px solid #000000'
-                }}>
-                  Last generated: {formatTime(episode.createdAt)}
-                  {episode.duration && ` • ${episode.duration} min`}
-                </div>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
+                    <button
+                      onClick={() => handleGenerate(cat.id)}
+                      disabled={isGen || !s.narratorName || !s.voiceId}
+                      style={{ ...btnStyle, flex: 1, background: isGen ? '#ccc' : cat.color, color: cat.id === 'world' ? '#000' : '#fff' }}
+                    >
+                      {isGen ? '⏳ Generating...' : '🎬 Generate'}
+                    </button>
+                    <button
+                      onClick={() => handlePlay(cat.id)}
+                      disabled={!ep?.audioUrl}
+                      style={{ ...btnStyle, flex: 1, background: ep?.audioUrl ? '#10b981' : '#ccc', color: '#fff' }}
+                    >
+                      {playing === cat.id ? '⏹️ Stop' : '▶️ Play'}
+                    </button>
+                  </div>
+                  {ep && (
+                    <p style={{ fontSize: 14, fontWeight: 'bold', background: '#f5f5f5', padding: 10, borderRadius: 6 }}>
+                      Last: {new Date(ep.createdAt).toLocaleString()}
+                    </p>
+                  )}
+                </>
               )}
             </div>
           );
