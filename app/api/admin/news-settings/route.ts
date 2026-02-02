@@ -1,6 +1,6 @@
 // app/api/admin/news-settings/route.ts
 // DTT News Briefings - Settings API
-// Version 2.0 - February 2026
+// February 2026
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';

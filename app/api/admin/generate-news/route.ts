@@ -1,12 +1,6 @@
 // app/api/admin/generate-news/route.ts
 // DTT News Briefings - Generate News API
-// Version 3.0 - February 2026
-// 
-// Features:
-// - NewsAPI.org as primary source (top headlines)
-// - Article fetching for full content
-// - Quality controls from prompt settings
-// - Duration calculation
+// February 2026
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
@@ -20,28 +14,6 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY!;
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY!;
 const NEWSAPI_KEY = process.env.NEWSAPI_KEY || '';
 const WORLD_NEWS_API_KEY = process.env.WORLD_NEWS_API_KEY || '';
-
-interface NewsStory {
-  headline: string;
-  summary: string;
-  source: string;
-  url?: string;
-  fullContent?: string;
-}
-
-interface PromptData {
-  targetDuration: string;
-  storyCount: string;
-  maxSecondsPerStory: string;
-  focusAreas: string[];
-  contentPriority: string[];
-  contentAvoid: string[];
-  newsSourcePriority: string;
-  specialInstructions: string;
-  selectedIntro: number;
-  selectedOutro: number;
-  customPrompt?: string;
-}
 
 // 15 Intro options
 const INTRO_OPTIONS = [
@@ -81,7 +53,7 @@ const OUTRO_OPTIONS = [
   "{userName}, have a great {timeOfDay}. This is {narratorName} for Drive Time Tales!"
 ];
 
-// Content priority/avoid labels
+// Content labels
 const PRIORITY_LABELS: Record<string, string> = {
   breaking: 'Breaking News',
   government: 'Government/Political',
@@ -101,7 +73,26 @@ const AVOID_LABELS: Record<string, string> = {
   analysis: 'Extended Analysis/Opinion'
 };
 
-// Default prompt data
+interface NewsStory {
+  headline: string;
+  summary: string;
+  source: string;
+  url?: string;
+  fullContent?: string;
+}
+
+interface PromptData {
+  targetDuration: string;
+  storyCount: string;
+  maxSecondsPerStory: string;
+  focusAreas: string[];
+  contentPriority: string[];
+  contentAvoid: string[];
+  newsSourcePriority: string;
+  specialInstructions: string;
+  customPrompt?: string;
+}
+
 const DEFAULT_PROMPT: PromptData = {
   targetDuration: '3',
   storyCount: '5',
@@ -110,14 +101,12 @@ const DEFAULT_PROMPT: PromptData = {
   contentPriority: ['breaking', 'government', 'economic', 'trending'],
   contentAvoid: ['fluff', 'celebrity', 'lifestyle'],
   newsSourcePriority: 'newsapi',
-  specialInstructions: '',
-  selectedIntro: 0,
-  selectedOutro: 0
+  specialInstructions: ''
 };
 
 // Get time of day
 function getTimeOfDay(): string {
-  const hour = parseInt(new Date().toLocaleString('en-US', { timeZone: 'America/New_York', hour: 'numeric', hour12: false }));
+  const hour = new Date().getHours();
   if (hour < 12) return 'morning';
   if (hour < 17) return 'afternoon';
   return 'evening';
@@ -125,15 +114,21 @@ function getTimeOfDay(): string {
 
 // Get formatted date
 function getFormattedDate(): string {
-  return new Date().toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'long', month: 'long', day: 'numeric' });
+  return new Date().toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric'
+  });
 }
 
-// Fetch from NewsAPI (top headlines)
+// Fetch from NewsAPI
 async function fetchNewsAPI(category: string, count: number): Promise<NewsStory[]> {
-  if (!NEWSAPI_KEY) return [];
+  if (!NEWSAPI_KEY) {
+    console.log('[NewsAPI] No API key, skipping');
+    return [];
+  }
   
   try {
-    // Map category to NewsAPI category
     const categoryMap: Record<string, string> = {
       national: 'general',
       world: 'general',
@@ -151,8 +146,14 @@ async function fetchNewsAPI(category: string, count: number): Promise<NewsStory[
     
     console.log('[NewsAPI] Fetching:', category);
     
-    const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
-    if (!response.ok) return [];
+    const response = await fetch(url, { 
+      signal: AbortSignal.timeout(10000)
+    });
+    
+    if (!response.ok) {
+      console.log('[NewsAPI] Error response:', response.status);
+      return [];
+    }
     
     const data = await response.json();
     const articles = data.articles || [];
@@ -176,6 +177,7 @@ async function fetchNewsAPI(category: string, count: number): Promise<NewsStory[
       });
     }
     
+    console.log('[NewsAPI] Got', stories.length, 'stories');
     return stories;
   } catch (error) {
     console.error('[NewsAPI] Error:', error);
@@ -183,9 +185,12 @@ async function fetchNewsAPI(category: string, count: number): Promise<NewsStory[
   }
 }
 
-// Fetch from World News API (backup)
+// Fetch from World News API
 async function fetchWorldNewsAPI(category: string, count: number): Promise<NewsStory[]> {
-  if (!WORLD_NEWS_API_KEY) return [];
+  if (!WORLD_NEWS_API_KEY) {
+    console.log('[WorldNews] No API key, skipping');
+    return [];
+  }
   
   try {
     let url = `https://api.worldnewsapi.com/search-news?api-key=${WORLD_NEWS_API_KEY}&language=en&number=${count * 2}`;
@@ -202,7 +207,12 @@ async function fetchWorldNewsAPI(category: string, count: number): Promise<NewsS
       url += '&text=science OR technology OR space OR NASA OR AI';
     }
     
-    const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    console.log('[WorldNews] Fetching:', category);
+    
+    const response = await fetch(url, { 
+      signal: AbortSignal.timeout(10000)
+    });
+    
     if (!response.ok) return [];
     
     const data = await response.json();
@@ -227,6 +237,7 @@ async function fetchWorldNewsAPI(category: string, count: number): Promise<NewsS
       });
     }
     
+    console.log('[WorldNews] Got', stories.length, 'stories');
     return stories;
   } catch (error) {
     console.error('[WorldNews] Error:', error);
@@ -242,7 +253,10 @@ async function fetchGDELT(state: string, count: number): Promise<NewsStory[]> {
     
     console.log('[GDELT] Fetching:', state);
     
-    const response = await fetch(url, { signal: AbortSignal.timeout(15000) });
+    const response = await fetch(url, { 
+      signal: AbortSignal.timeout(15000)
+    });
+    
     if (!response.ok) return [];
     
     const data = await response.json();
@@ -267,6 +281,7 @@ async function fetchGDELT(state: string, count: number): Promise<NewsStory[]> {
       });
     }
     
+    console.log('[GDELT] Got', stories.length, 'stories');
     return stories;
   } catch (error) {
     console.error('[GDELT] Error:', error);
@@ -274,11 +289,11 @@ async function fetchGDELT(state: string, count: number): Promise<NewsStory[]> {
   }
 }
 
-// Fetch full article content (best effort)
+// Fetch full article content (best effort, skip on timeout)
 async function fetchArticleContent(url: string): Promise<string> {
   try {
-    const response = await fetch(url, { 
-      signal: AbortSignal.timeout(5000),
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(3000),
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; DriveTimeTales/1.0)' }
     });
     
@@ -291,10 +306,10 @@ async function fetchArticleContent(url: string): Promise<string> {
     const text = paragraphs
       .map(p => p.replace(/<[^>]+>/g, '').trim())
       .filter(p => p.length > 50)
-      .slice(0, 5)
+      .slice(0, 3)
       .join(' ');
     
-    return text.substring(0, 1000);
+    return text.substring(0, 500);
   } catch {
     return '';
   }
@@ -308,35 +323,22 @@ function buildPrompt(
   narratorName: string,
   promptData: PromptData
 ): string {
-  // If custom prompt is set, use it with replacements
-  if (promptData.customPrompt) {
-    return promptData.customPrompt
-      .replace(/{narratorName}/g, narratorName)
-      .replace(/{category}/g, state || category)
-      .replace(/{timeOfDay}/g, getTimeOfDay())
-      .replace(/{date}/g, getFormattedDate())
-      .replace(/{userName}/g, 'listeners');
-  }
-  
   const timeOfDay = getTimeOfDay();
   const date = getFormattedDate();
   const categoryLabel = state || category.charAt(0).toUpperCase() + category.slice(1);
   
   // Randomly select intro and outro
-  const randomIntroIndex = Math.floor(Math.random() * INTRO_OPTIONS.length);
-  const randomOutroIndex = Math.floor(Math.random() * OUTRO_OPTIONS.length);
+  const randomIntro = INTRO_OPTIONS[Math.floor(Math.random() * INTRO_OPTIONS.length)];
+  const randomOutro = OUTRO_OPTIONS[Math.floor(Math.random() * OUTRO_OPTIONS.length)];
   
-  const intro = INTRO_OPTIONS[randomIntroIndex];
-  const outro = OUTRO_OPTIONS[randomOutroIndex];
-  
-  const introText = intro
+  const introText = randomIntro
     .replace(/{narratorName}/g, narratorName)
     .replace(/{category}/g, categoryLabel)
     .replace(/{timeOfDay}/g, timeOfDay)
     .replace(/{date}/g, date)
     .replace(/{userName}/g, 'listeners');
   
-  const outroText = outro
+  const outroText = randomOutro
     .replace(/{narratorName}/g, narratorName)
     .replace(/{category}/g, categoryLabel)
     .replace(/{timeOfDay}/g, timeOfDay)
@@ -353,9 +355,19 @@ function buildPrompt(
   const storiesList = stories.map((s, i) => {
     let entry = `${i + 1}. ${s.headline}`;
     if (s.summary) entry += ` - ${s.summary}`;
-    if (s.fullContent) entry += ` [Additional: ${s.fullContent}]`;
+    if (s.fullContent) entry += ` [More: ${s.fullContent}]`;
     return entry;
   }).join('\n');
+
+  // Use custom prompt if provided
+  if (promptData.customPrompt) {
+    return promptData.customPrompt
+      .replace(/{narratorName}/g, narratorName)
+      .replace(/{category}/g, categoryLabel)
+      .replace(/{timeOfDay}/g, timeOfDay)
+      .replace(/{date}/g, date)
+      .replace(/{userName}/g, 'listeners');
+  }
 
   return `You are ${narratorName}, a professional radio news broadcaster.
 Create a ${promptData.targetDuration}-minute ${categoryLabel} news briefing.
@@ -370,7 +382,7 @@ CONTENT PRIORITY (cover these types first):
 ${priorityLabels.map((l, i) => `${i + 1}. ${l}`).join('\n')}
 
 FOCUS AREAS (in order of importance):
-${promptData.focusAreas.map((a, i) => `${i + 1}. ${a}`).join('\n')}
+${promptData.focusAreas.filter(a => a).map((a, i) => `${i + 1}. ${a}`).join('\n')}
 
 CONTENT TO AVOID:
 ${avoidLabels.map(l => `- ${l}`).join('\n')}
@@ -389,11 +401,13 @@ SCRIPT STRUCTURE:
 2. NEWS STORIES: Cover the top ${promptData.storyCount} stories quickly
 3. CLOSING (use exactly): "${outroText}"
 
-Write the complete script now. Output ONLY the spoken script, no stage directions.`;
+Write the complete script now. Output ONLY the spoken script, no stage directions or notes.`;
 }
 
 // Generate audio with ElevenLabs
 async function generateAudio(script: string, voiceId: string): Promise<Buffer> {
+  console.log('[Generate] Calling ElevenLabs, script length:', script.length);
+  
   const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
     method: 'POST',
     headers: {
@@ -409,14 +423,19 @@ async function generateAudio(script: string, voiceId: string): Promise<Buffer> {
   });
 
   if (!response.ok) {
+    const errorText = await response.text();
+    console.error('[Generate] ElevenLabs error:', response.status, errorText);
     throw new Error(`ElevenLabs error: ${response.status}`);
   }
 
-  return Buffer.from(await response.arrayBuffer());
+  const buffer = Buffer.from(await response.arrayBuffer());
+  console.log('[Generate] Audio generated, size:', buffer.byteLength);
+  return buffer;
 }
 
-// Calculate duration from audio buffer (estimate: ~16KB per second for MP3)
+// Calculate duration from audio buffer (estimate)
 function estimateDuration(buffer: Buffer): string {
+  // ~16KB per second for MP3 at 128kbps
   const seconds = buffer.byteLength / 16000;
   const minutes = seconds / 60;
   return minutes.toFixed(1);
@@ -427,7 +446,8 @@ export async function POST(request: NextRequest) {
   const startTime = Date.now();
   
   try {
-    const { category, state } = await request.json();
+    const body = await request.json();
+    const { category, state } = body;
     
     if (!category) {
       return NextResponse.json({ error: 'Category is required' }, { status: 400 });
@@ -440,14 +460,21 @@ export async function POST(request: NextRequest) {
     console.log(`[Generate] Starting: ${category}${state ? ` (${state})` : ''}`);
 
     // Get settings from database
-    const { data: settingsData } = await supabase
+    const { data: settingsData, error: settingsError } = await supabase
       .from('news_settings')
       .select('*')
       .eq('category', category)
       .single();
 
-    if (!settingsData?.narrator_name || !settingsData?.voice_id) {
-      return NextResponse.json({ error: 'Please set narrator name and voice in Admin first.' }, { status: 400 });
+    if (settingsError || !settingsData) {
+      console.error('[Generate] Settings error:', settingsError);
+      return NextResponse.json({ error: 'Category not found in settings' }, { status: 400 });
+    }
+
+    if (!settingsData.narrator_name || !settingsData.voice_id) {
+      return NextResponse.json({ 
+        error: 'Please set narrator name and voice in Admin first.' 
+      }, { status: 400 });
     }
 
     const narratorName = settingsData.narrator_name;
@@ -455,44 +482,49 @@ export async function POST(request: NextRequest) {
     const promptData: PromptData = { ...DEFAULT_PROMPT, ...(settingsData.prompt_data || {}) };
     const storyCount = parseInt(promptData.storyCount) || 5;
 
-    // Fetch news based on source priority
+    // Fetch news
     let stories: NewsStory[] = [];
     
     if (category === 'state' && state) {
       // State news uses GDELT
       stories = await fetchGDELT(state, storyCount);
     } else {
-      // Try NewsAPI first if key exists, otherwise use World News API
-      if (NEWSAPI_KEY && (promptData.newsSourcePriority === 'newsapi' || !promptData.newsSourcePriority)) {
+      // Try NewsAPI first
+      if (NEWSAPI_KEY) {
         stories = await fetchNewsAPI(category, storyCount);
       }
       
-      // Fall back to World News API if no stories or no NewsAPI key
+      // Fall back to World News API if needed
       if (stories.length < storyCount && WORLD_NEWS_API_KEY) {
         const backup = await fetchWorldNewsAPI(category, storyCount - stories.length);
         stories = [...stories, ...backup];
       }
       
-      // If still no stories, try GDELT as last resort
+      // Last resort: GDELT
       if (stories.length === 0) {
         stories = await fetchGDELT('United States', storyCount);
       }
     }
 
     if (stories.length === 0) {
-      return NextResponse.json({ error: 'Could not fetch news. Please try again.' }, { status: 500 });
+      return NextResponse.json({ 
+        error: 'Could not fetch news stories. Please try again.' 
+      }, { status: 500 });
     }
 
-    // Try to fetch full article content for top stories (best effort)
+    console.log('[Generate] Got', stories.length, 'stories');
+
+    // Try to fetch full article content for top stories (best effort, don't block)
     console.log('[Generate] Fetching article content...');
-    for (let i = 0; i < Math.min(3, stories.length); i++) {
-      if (stories[i].url) {
-        const content = await fetchArticleContent(stories[i].url!);
+    const contentPromises = stories.slice(0, 2).map(async (story, i) => {
+      if (story.url) {
+        const content = await fetchArticleContent(story.url);
         if (content) {
           stories[i].fullContent = content;
         }
       }
-    }
+    });
+    await Promise.all(contentPromises);
 
     // Build prompt and generate script with Claude
     const prompt = buildPrompt(stories, category, state || null, narratorName, promptData);
@@ -513,6 +545,8 @@ export async function POST(request: NextRequest) {
     });
 
     if (!claudeResponse.ok) {
+      const errorText = await claudeResponse.text();
+      console.error('[Generate] Claude error:', claudeResponse.status, errorText);
       throw new Error(`Claude API error: ${claudeResponse.status}`);
     }
 
@@ -522,36 +556,52 @@ export async function POST(request: NextRequest) {
       if (block.type === 'text') script += block.text;
     }
     script = script.replace(/```[\s\S]*?```/g, '').replace(/\*\*/g, '').trim();
+    
+    console.log('[Generate] Script generated, length:', script.length);
 
     // Generate audio
     console.log('[Generate] Generating audio...');
     const audioBuffer = await generateAudio(script, voiceId);
     const duration = estimateDuration(audioBuffer);
 
-    // Upload to storage
+    // Upload to storage - CORRECT BUCKET: audio/news/
     const timestamp = Date.now();
     const fileName = state
-      ? `${category}-${state.toLowerCase().replace(/\s+/g, '-')}-${timestamp}.mp3`
+      ? `state-${state.toLowerCase().replace(/\s+/g, '-')}-${timestamp}.mp3`
       : `${category}-${timestamp}.mp3`;
-
     const filePath = `news/${fileName}`;
+
+    console.log('[Generate] Uploading to:', filePath);
+
     const { error: uploadError } = await supabase.storage
       .from('audio')
       .upload(filePath, audioBuffer, { contentType: 'audio/mpeg', upsert: true });
 
     if (uploadError) {
       console.error('[Generate] Upload error:', uploadError);
-      return NextResponse.json({ error: 'Failed to upload audio: ' + uploadError.message }, { status: 500 });
+      return NextResponse.json({ 
+        error: 'Failed to upload audio: ' + uploadError.message 
+      }, { status: 500 });
     }
 
     const { data: urlData } = supabase.storage.from('audio').getPublicUrl(filePath);
     const audioUrl = urlData.publicUrl;
 
-    // Mark previous as not live
+    console.log('[Generate] Audio URL:', audioUrl);
+
+    // Mark previous episodes as not live
     if (state) {
-      await supabase.from('news_episodes').update({ is_live: false }).eq('category', category).eq('state', state);
+      await supabase
+        .from('news_episodes')
+        .update({ is_live: false })
+        .eq('category', category)
+        .eq('state', state);
     } else {
-      await supabase.from('news_episodes').update({ is_live: false }).eq('category', category).is('state', null);
+      await supabase
+        .from('news_episodes')
+        .update({ is_live: false })
+        .eq('category', category)
+        .is('state', null);
     }
 
     // Save new episode
@@ -572,10 +622,14 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (insertError) {
-      return NextResponse.json({ error: 'Failed to save episode' }, { status: 500 });
+      console.error('[Generate] Insert error:', insertError);
+      return NextResponse.json({ 
+        error: 'Failed to save episode: ' + insertError.message 
+      }, { status: 500 });
     }
 
-    console.log(`[Generate] Complete in ${Date.now() - startTime}ms. Duration: ${duration} min`);
+    const elapsed = Date.now() - startTime;
+    console.log(`[Generate] Complete in ${elapsed}ms. Duration: ${duration} min`);
 
     return NextResponse.json({
       success: true,
@@ -592,10 +646,12 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('[Generate] Error:', error);
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Generation failed' }, { status: 500 });
+    return NextResponse.json({ 
+      error: error instanceof Error ? error.message : 'Generation failed' 
+    }, { status: 500 });
   }
 }
 
 export async function GET() {
-  return NextResponse.json({ status: 'ok', version: '3.0' });
+  return NextResponse.json({ status: 'ok', version: '3.1' });
 }
