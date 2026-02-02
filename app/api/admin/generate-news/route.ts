@@ -11,22 +11,6 @@ const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY!;
 const NEWSAPI_KEY = process.env.NEWSAPI_KEY || '';
 const WORLD_NEWS_API_KEY = process.env.WORLD_NEWS_API_KEY || '';
 
-const INTRO_OPTIONS = [
-  "Good {timeOfDay}, listeners! I'm {narratorName} with your {category} briefing for {date}.",
-  "Hey there! {narratorName} here with today's top {category} stories.",
-  "Welcome! Let's get you caught up on {category} news.",
-  "Good {timeOfDay}! Here's what's happening in {category} news.",
-  "It's {date}, and I'm {narratorName}. Let's dive into {category} news."
-];
-
-const OUTRO_OPTIONS = [
-  "That's your {category} update. Drive safe!",
-  "I'm {narratorName}. Thanks for listening. See you next time!",
-  "That's the news. Have a great {timeOfDay}!",
-  "Stay informed and drive safe. This is {narratorName}.",
-  "That wraps up {category} news. Thanks for tuning in!"
-];
-
 interface NewsStory { headline: string; summary: string; source: string; }
 
 function getTimeOfDay(): string {
@@ -37,7 +21,7 @@ function getTimeOfDay(): string {
 }
 
 function getFormattedDate(): string {
-  return new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  return new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 }
 
 async function fetchNewsAPI(category: string, count: number): Promise<NewsStory[]> {
@@ -133,6 +117,8 @@ export async function POST(request: NextRequest) {
     const promptData = settings.prompt_data || {};
     const storyCount = parseInt(promptData.storyCount) || 5;
 
+    console.log(`[Generate] Narrator: ${narratorName}, Voice: ${voiceId}`);
+
     let stories: NewsStory[] = [];
     if (category === 'state' && state) {
       stories = await fetchGDELT(state, storyCount);
@@ -155,35 +141,42 @@ export async function POST(request: NextRequest) {
     const date = getFormattedDate();
     const catLabel = state || (category.charAt(0).toUpperCase() + category.slice(1));
     
-    const intro = INTRO_OPTIONS[Math.floor(Math.random() * INTRO_OPTIONS.length)]
-      .replace(/{narratorName}/g, narratorName).replace(/{category}/g, catLabel).replace(/{timeOfDay}/g, timeOfDay).replace(/{date}/g, date);
-    const outro = OUTRO_OPTIONS[Math.floor(Math.random() * OUTRO_OPTIONS.length)]
-      .replace(/{narratorName}/g, narratorName).replace(/{category}/g, catLabel).replace(/{timeOfDay}/g, timeOfDay);
+    // Build the exact intro and outro lines
+    const introLine = `Good ${timeOfDay}, I'm ${narratorName} with your ${catLabel} news briefing for ${date}.`;
+    const outroLine = `That's your ${catLabel} news update for ${date}. I'm ${narratorName}. Thanks for listening to Drive Time Tales. Drive safe!`;
 
     const storiesList = stories.map((s, i) => `${i + 1}. ${s.headline}${s.summary ? ' - ' + s.summary : ''}`).join('\n');
     const duration = promptData.targetDuration || '3';
     const maxSec = promptData.maxSecondsPerStory || '30';
 
-    const prompt = `You are ${narratorName}, a professional radio news broadcaster.
-Create a ${duration}-minute ${catLabel} news briefing.
+    // STRONGER PROMPT - be very explicit about requirements
+    const prompt = `You are ${narratorName}, a professional radio news broadcaster for Drive Time Tales.
 
-NEWS TO COVER:
+YOUR TASK: Write a ${duration}-minute spoken news script.
+
+CRITICAL REQUIREMENTS - YOU MUST FOLLOW THESE EXACTLY:
+
+1. START YOUR SCRIPT WITH THIS EXACT OPENING LINE (word for word):
+"${introLine}"
+
+2. THEN cover these news stories (${maxSec} seconds each, headlines and key facts only):
 ${storiesList}
 
-RULES:
-- ${maxSec} seconds per story MAXIMUM
-- Headlines and key facts only - NO deep analysis
-- Fast-paced like radio news
-- NO fluff, celebrity, or lifestyle content
+3. END YOUR SCRIPT WITH THIS EXACT CLOSING LINE (word for word):
+"${outroLine}"
 
-SCRIPT STRUCTURE:
-1. OPENING: "${intro}"
-2. NEWS: Cover the stories quickly
-3. CLOSING: "${outro}"
+STYLE RULES:
+- Write in a conversational, radio broadcaster style
+- Keep each story brief - just the headline and 1-2 key facts
+- Use smooth transitions between stories like "In other news..." or "Meanwhile..." or "Turning to..."
+- NO stage directions, NO notes, NO commentary - ONLY the spoken words
+- Do NOT add any text before the opening line or after the closing line
 
-Write the script now. Output ONLY the spoken words.`;
+Write the complete script now. Remember: START with "${introLine}" and END with "${outroLine}"`;
 
     console.log('[Generate] Calling Claude...');
+    console.log('[Generate] Intro line:', introLine);
+    
     const claudeR = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
@@ -199,7 +192,21 @@ Write the script now. Output ONLY the spoken words.`;
     let script = '';
     for (const b of claudeD.content) if (b.type === 'text') script += b.text;
     script = script.replace(/```[\s\S]*?```/g, '').trim();
+    
+    // Verify the script starts correctly
+    if (!script.startsWith('Good')) {
+      console.log('[Generate] WARNING: Script did not start with intro, prepending...');
+      script = introLine + '\n\n' + script;
+    }
+    
+    // Verify the script ends correctly
+    if (!script.includes('Drive safe')) {
+      console.log('[Generate] WARNING: Script missing outro, appending...');
+      script = script + '\n\n' + outroLine;
+    }
+    
     console.log('[Generate] Script length:', script.length);
+    console.log('[Generate] Script preview:', script.substring(0, 200));
 
     console.log('[Generate] Generating audio...');
     const audioR = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
@@ -262,5 +269,5 @@ Write the script now. Output ONLY the spoken words.`;
 }
 
 export async function GET() {
-  return NextResponse.json({ status: 'ok', version: '5.0-20260202' });
+  return NextResponse.json({ status: 'ok', version: '5.1-fixed-intro' });
 }
