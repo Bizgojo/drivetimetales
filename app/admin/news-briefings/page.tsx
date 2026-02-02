@@ -1,476 +1,695 @@
-// app/admin/news-briefings/page.tsx
-// DTT News Briefings Admin - Version 7.0
-// February 2026 - Full Requirements Implementation
+'use client'
 
-'use client';
+import { useState, useEffect } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { supabase } from '@/lib/supabase'
 
-import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+type TabType = 'overview' | 'stories' | 'users' | 'financial' | 'settings'
 
-const CATEGORIES = [
-  { id: 'state', label: 'State News', icon: '🏛️', color: '#dc2626' },
-  { id: 'national', label: 'National News', icon: '🇺🇸', color: '#f97316' },
-  { id: 'world', label: 'World News', icon: '🌍', color: '#eab308' },
-  { id: 'business', label: 'Business News', icon: '💼', color: '#16a34a' },
-  { id: 'sports', label: 'Sports News', icon: '⚽', color: '#2563eb' },
-  { id: 'science', label: 'Science & Tech', icon: '🔬', color: '#9333ea' }
-];
+interface Story {
+  id: string
+  title: string
+  author: string
+  genre: string
+  duration_mins: number
+  credits: number
+  ai_rating: number
+  release_date: string
+  play_count?: number
+  completion_rate?: number
+}
 
-// Styles - White background, black text, no gray
-const styles = {
-  page: { minHeight: '100vh', backgroundColor: '#ffffff', color: '#000000', padding: 24, fontFamily: 'Arial, sans-serif' },
-  card: { backgroundColor: '#ffffff', border: '2px solid #000000', borderRadius: 12, padding: 20, marginBottom: 20 },
-  label: { display: 'block', marginBottom: 6, fontSize: 16, fontWeight: 'bold', color: '#000000' },
-  input: { width: '100%', padding: 12, fontSize: 16, border: '2px solid #000000', borderRadius: 6, backgroundColor: '#ffffff', color: '#000000', boxSizing: 'border-box' as const },
-  select: { padding: 12, fontSize: 16, border: '2px solid #000000', borderRadius: 6, backgroundColor: '#ffffff', color: '#000000' },
-  btn: { padding: '12px 20px', fontSize: 16, fontWeight: 'bold' as const, border: '2px solid #000000', borderRadius: 6, cursor: 'pointer' },
-  btnDisabled: { backgroundColor: '#cccccc', color: '#666666', cursor: 'not-allowed' },
-  row: { display: 'flex', gap: 10, marginBottom: 16 },
-  status: { fontSize: 14, fontWeight: 'bold', backgroundColor: '#f5f5f5', padding: 10, borderRadius: 6, border: '1px solid #000000', color: '#000000' }
-};
+interface User {
+  id: string
+  email: string
+  display_name: string
+  subscription_status: string
+  subscription_plan: string
+  credits: number
+  created_at: string
+  last_login: string
+}
 
-export default function NewsBriefingsAdmin() {
-  const router = useRouter();
+export default function AdminPage() {
+  const router = useRouter()
+  const [loading, setLoading] = useState(true)
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [activeTab, setActiveTab] = useState<TabType>('overview')
   
-  // State
-  const [settings, setSettings] = useState<Record<string, { narratorName: string; voiceId: string }>>({});
-  const [settingsLoaded, setSettingsLoaded] = useState(false);
-  const [episodes, setEpisodes] = useState<Record<string, { audioUrl: string; createdAt: string; duration?: string }>>({});
-  const [generating, setGenerating] = useState<Record<string, boolean>>({});
-  const [playing, setPlaying] = useState<string | null>(null);
-  const [voices, setVoices] = useState<{ voice_id: string; name: string }[]>([]);
-  const [loadingVoices, setLoadingVoices] = useState(true);
-  const [subscriberStates, setSubscriberStates] = useState<string[]>([]);
-  const [selectedState, setSelectedState] = useState('');
-  const [stateUpsell, setStateUpsell] = useState<{ exists: boolean; audioUrl?: string }>({ exists: false });
-  const [generatingUpsell, setGeneratingUpsell] = useState(false);
-  const [playingUpsell, setPlayingUpsell] = useState(false);
-  
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const upsellAudioRef = useRef<HTMLAudioElement | null>(null);
+  // Overview Stats
+  const [stats, setStats] = useState({
+    totalUsers: 0,
+    newUsersThisMonth: 0,
+    activeSubscribers: 0,
+    totalStories: 0,
+    totalPlays: 0,
+    totalRevenue: 0,
+    monthlyRevenue: 0,
+  })
 
-  // Load voices
+  // Story Data
+  const [stories, setStories] = useState<Story[]>([])
+  const [storySort, setStorySort] = useState<'plays' | 'rating' | 'recent'>('recent')
+
+  // User Data
+  const [users, setUsers] = useState<User[]>([])
+  const [userFilter, setUserFilter] = useState<'all' | 'subscribers' | 'free'>('all')
+
+  // Financial Data
+  const [financialData, setFinancialData] = useState({
+    testDriverCount: 0,
+    commuterCount: 0,
+    roadWarriorCount: 0,
+    freedomPacksSold: 0,
+    testDriverRevenue: 0,
+    commuterRevenue: 0,
+    roadWarriorRevenue: 0,
+    freedomPacksRevenue: 0,
+  })
+
+  // Settings
+  const [settings, setSettings] = useState({
+    showFreedomPacks: true,
+    showAnnualPlans: true,
+    freeCreditsForNewcomers: 2,
+    maintenanceMode: false,
+  })
+  const [saving, setSaving] = useState(false)
+  const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
+
   useEffect(() => {
-    fetch('/api/elevenlabs/voices')
-      .then(r => r.ok ? r.json() : { voices: [] })
-      .then(d => setVoices(d.voices || []))
-      .catch(() => setVoices([]))
-      .finally(() => setLoadingVoices(false));
-  }, []);
-
-  // Load settings
-  useEffect(() => {
-    fetch('/api/admin/news-settings')
-      .then(r => r.ok ? r.json() : { settings: [] })
-      .then(data => {
-        const loaded: Record<string, { narratorName: string; voiceId: string }> = {};
-        for (const row of data.settings || []) {
-          loaded[row.category] = { narratorName: row.narrator_name || '', voiceId: row.voice_id || '' };
-        }
-        for (const cat of CATEGORIES) {
-          if (!loaded[cat.id]) loaded[cat.id] = { narratorName: '', voiceId: '' };
-        }
-        setSettings(loaded);
-        setSettingsLoaded(true);
-      })
-      .catch(() => setSettingsLoaded(true));
-  }, []);
-
-  // Load episodes and subscriber states
-  useEffect(() => {
-    // Get episodes
-    fetch('/api/news/briefing?listAll=true')
-      .then(r => r.ok ? r.json() : { episodes: [] })
-      .then(data => {
-        const loaded: Record<string, { audioUrl: string; createdAt: string; duration?: string }> = {};
-        const states: string[] = [];
-        
-        for (const ep of data.episodes || []) {
-          if (ep.category === 'state-upsell') {
-            setStateUpsell({ exists: true, audioUrl: ep.audio_url });
-            continue;
-          }
-          if (ep.category === 'state' && ep.state && !states.includes(ep.state)) {
-            states.push(ep.state);
-          }
-          const key = ep.state ? `${ep.category}-${ep.state}` : ep.category;
-          loaded[key] = { audioUrl: ep.audio_url, createdAt: ep.created_at, duration: ep.duration };
-        }
-        setEpisodes(loaded);
-        if (states.length > 0) {
-          setSubscriberStates(states.sort());
-          if (!selectedState) setSelectedState(states[0]);
-        }
-      })
-      .catch(() => {});
-
-    // Get subscriber states from users table
-    fetch('/api/admin/subscriber-states')
-      .then(r => r.ok ? r.json() : { states: [] })
-      .then(data => {
-        if (data.states?.length > 0) {
-          setSubscriberStates(prev => {
-            const combined = Array.from(new Set([...prev, ...data.states])).sort();
-            if (!selectedState && combined.length > 0) setSelectedState(combined[0]);
-            return combined;
-          });
-        }
-      })
-      .catch(() => {});
-  }, []);
-
-  // Save settings via API
-  async function saveSettings(category: string, narratorName: string, voiceId: string) {
-    try {
-      await fetch('/api/admin/news-settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ category, narrator_name: narratorName, voice_id: voiceId })
-      });
-    } catch (e) {
-      console.error('Failed to save settings:', e);
-    }
-  }
-
-  // Test voice
-  async function handleTestVoice(voiceId: string, narratorName: string) {
-    if (!voiceId) { alert('Please select a voice first'); return; }
-    try {
-      const r = await fetch('/api/elevenlabs/test-voice', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ voiceId, text: `Hello, I'm ${narratorName || 'your news broadcaster'}. This is a voice test for Drive Time Tales.` })
-      });
-      if (r.ok) {
-        const blob = await r.blob();
-        const audio = new Audio(URL.createObjectURL(blob));
-        audio.play();
-      } else {
-        alert('Voice test failed. Please try again.');
-      }
-    } catch {
-      alert('Voice test failed.');
-    }
-  }
-
-  // Generate briefing
-  async function handleGenerate(category: string, state?: string) {
-    const s = settings[category];
-    if (!s?.narratorName || !s?.voiceId) { 
-      alert('Please set narrator name and voice first.'); 
-      return; 
-    }
-    
-    const key = state ? `${category}-${state}` : category;
-    setGenerating(p => ({ ...p, [key]: true }));
-    
-    try {
-      const r = await fetch('/api/admin/generate-news', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ category, state })
-      });
-      const d = await r.json();
+    async function loadAdminData() {
+      const { data: { session } } = await supabase.auth.getSession()
       
-      if (r.ok && d.success) {
-        setEpisodes(p => ({ 
-          ...p, 
-          [key]: { 
-            audioUrl: d.episode.audioUrl, 
-            createdAt: d.episode.createdAt,
-            duration: d.episode.duration 
-          } 
-        }));
-        alert(`✅ Generated! Duration: ${d.episode.duration || 'N/A'} min`);
-      } else {
-        alert(`❌ Failed: ${d.error}`);
+      if (!session) {
+        router.push('/signin')
+        return
       }
-    } catch {
-      alert('Generation failed. Please try again.');
-    } finally {
-      setGenerating(p => ({ ...p, [key]: false }));
-    }
-  }
 
-  // Generate upsell
-  async function handleGenerateUpsell() {
-    const s = settings['state'];
-    if (!s?.narratorName || !s?.voiceId) { 
-      alert('Please set State News narrator and voice first.'); 
-      return; 
-    }
-    
-    setGeneratingUpsell(true);
-    try {
-      const r = await fetch('/api/news/state-upsell', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ narratorName: s.narratorName, voiceId: s.voiceId })
-      });
-      const d = await r.json();
+      // Check if user is admin
+      const { data: userData } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', session.user.id)
+        .single()
       
-      if (r.ok && d.audioUrl) {
-        setStateUpsell({ exists: true, audioUrl: d.audioUrl });
-        alert('✅ State Upsell generated successfully!');
-      } else {
-        alert(`❌ Failed: ${d.error}`);
+      // For now, allow access if user exists (you can add role check later)
+      if (!userData) {
+        router.push('/home')
+        return
       }
-    } catch {
-      alert('Generation failed.');
-    } finally {
-      setGeneratingUpsell(false);
+
+      setIsAdmin(true)
+
+      // Load all data
+      await Promise.all([
+        loadOverviewStats(),
+        loadStories(),
+        loadUsers(),
+        loadFinancialData(),
+        loadSettings(),
+      ])
+
+      setLoading(false)
+    }
+
+    loadAdminData()
+  }, [router])
+
+  const loadOverviewStats = async () => {
+    const { count: totalUsers } = await supabase
+      .from('users')
+      .select('*', { count: 'exact', head: true })
+
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+    const { count: newUsersThisMonth } = await supabase
+      .from('users')
+      .select('*', { count: 'exact', head: true })
+      .gte('created_at', thirtyDaysAgo)
+
+    const { count: activeSubscribers } = await supabase
+      .from('users')
+      .select('*', { count: 'exact', head: true })
+      .eq('subscription_status', 'active')
+
+    const { count: totalStories } = await supabase
+      .from('stories')
+      .select('*', { count: 'exact', head: true })
+
+    setStats(prev => ({
+      ...prev,
+      totalUsers: totalUsers || 0,
+      newUsersThisMonth: newUsersThisMonth || 0,
+      activeSubscribers: activeSubscribers || 0,
+      totalStories: totalStories || 0,
+    }))
+  }
+
+  const loadStories = async () => {
+    const { data } = await supabase
+      .from('stories')
+      .select('*')
+      .order('release_date', { ascending: false })
+
+    if (data) {
+      setStories(data)
     }
   }
 
-  // Play audio
-  function handlePlay(key: string) {
-    if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
-    if (upsellAudioRef.current) { upsellAudioRef.current.pause(); setPlayingUpsell(false); }
-    
-    if (playing === key) { setPlaying(null); return; }
-    
-    const ep = episodes[key];
-    if (!ep?.audioUrl) return;
-    
-    const audio = new Audio(ep.audioUrl);
-    audioRef.current = audio;
-    audio.onended = () => setPlaying(null);
-    audio.play();
-    setPlaying(key);
+  const loadUsers = async () => {
+    const { data } = await supabase
+      .from('users')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    if (data) {
+      setUsers(data)
+    }
   }
 
-  // Play upsell
-  function handlePlayUpsell() {
-    if (audioRef.current) { audioRef.current.pause(); setPlaying(null); }
-    if (upsellAudioRef.current) { upsellAudioRef.current.pause(); }
-    
-    if (playingUpsell) { setPlayingUpsell(false); return; }
-    
-    if (!stateUpsell.audioUrl) return;
-    
-    const audio = new Audio(stateUpsell.audioUrl);
-    upsellAudioRef.current = audio;
-    audio.onended = () => setPlayingUpsell(false);
-    audio.play();
-    setPlayingUpsell(true);
+  const loadFinancialData = async () => {
+    // Count by subscription plan
+    const { count: testDriverCount } = await supabase
+      .from('users')
+      .select('*', { count: 'exact', head: true })
+      .eq('subscription_plan', 'test-driver')
+      .eq('subscription_status', 'active')
+
+    const { count: commuterCount } = await supabase
+      .from('users')
+      .select('*', { count: 'exact', head: true })
+      .eq('subscription_plan', 'commuter')
+      .eq('subscription_status', 'active')
+
+    const { count: roadWarriorCount } = await supabase
+      .from('users')
+      .select('*', { count: 'exact', head: true })
+      .eq('subscription_plan', 'road-warrior')
+      .eq('subscription_status', 'active')
+
+    setFinancialData({
+      testDriverCount: testDriverCount || 0,
+      commuterCount: commuterCount || 0,
+      roadWarriorCount: roadWarriorCount || 0,
+      freedomPacksSold: 0, // Would need a purchases table to track this
+      testDriverRevenue: (testDriverCount || 0) * 2.99,
+      commuterRevenue: (commuterCount || 0) * 7.99,
+      roadWarriorRevenue: (roadWarriorCount || 0) * 14.99,
+      freedomPacksRevenue: 0,
+    })
   }
 
-  // Format time
-  function formatTime(iso: string): string {
-    return new Date(iso).toLocaleString('en-US', {
-      month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true
-    });
+  const loadSettings = async () => {
+    const { data } = await supabase
+      .from('app_settings')
+      .select('*')
+      .single()
+
+    if (data) {
+      setSettings({
+        showFreedomPacks: data.show_freedom_packs ?? true,
+        showAnnualPlans: data.show_annual_plans ?? true,
+        freeCreditsForNewcomers: data.free_credits_newcomers ?? 2,
+        maintenanceMode: data.maintenance_mode ?? false,
+      })
+    }
   }
 
-  if (!settingsLoaded) {
-    return (
-      <div style={{ ...styles.page, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <p style={{ fontSize: 20, fontWeight: 'bold' }}>Loading settings...</p>
-      </div>
-    );
+  const handleSaveSettings = async () => {
+    setSaving(true)
+    setMessage(null)
+
+    try {
+      const { error } = await supabase
+        .from('app_settings')
+        .upsert({
+          id: 1,
+          show_freedom_packs: settings.showFreedomPacks,
+          show_annual_plans: settings.showAnnualPlans,
+          free_credits_newcomers: settings.freeCreditsForNewcomers,
+          maintenance_mode: settings.maintenanceMode,
+          updated_at: new Date().toISOString(),
+        })
+
+      if (error) throw error
+      setMessage({ type: 'success', text: 'Settings saved successfully!' })
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to save settings' })
+    }
+
+    setSaving(false)
   }
 
-  return (
-    <div style={styles.page}>
-      {/* Header */}
-      <h1 style={{ fontSize: 28, fontWeight: 'bold', marginBottom: 8, color: '#000000' }}>
-        🎙️ News Briefings Admin
-      </h1>
-      <p style={{ marginBottom: 24, fontSize: 16, color: '#000000' }}>
-        Configure narrators, voices, and prompts. Settings save automatically and persist permanently.
-      </p>
+  // Filter users based on selection
+  const filteredUsers = users.filter(user => {
+    if (userFilter === 'subscribers') return user.subscription_status === 'active'
+    if (userFilter === 'free') return user.subscription_status !== 'active'
+    return true
+  })
 
-      {/* Category Cards Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: 20 }}>
-        {CATEGORIES.map(cat => {
-          const s = settings[cat.id] || { narratorName: '', voiceId: '' };
-          const ep = cat.id === 'state' ? episodes[`state-${selectedState}`] : episodes[cat.id];
-          const key = cat.id === 'state' ? `state-${selectedState}` : cat.id;
-          const isGen = generating[key];
-          const isPlay = playing === key;
+  // Sort stories based on selection
+  const sortedStories = [...stories].sort((a, b) => {
+    if (storySort === 'rating') return (b.ai_rating || 0) - (a.ai_rating || 0)
+    if (storySort === 'plays') return (b.play_count || 0) - (a.play_count || 0)
+    return new Date(b.release_date).getTime() - new Date(a.release_date).getTime()
+  })
 
-          return (
-            <div key={cat.id} style={{ ...styles.card, borderTop: `6px solid ${cat.color}` }}>
-              {/* Category Header */}
-              <h2 style={{ fontSize: 22, fontWeight: 'bold', marginBottom: 16, color: '#000000' }}>
-                {cat.icon} {cat.label}
-              </h2>
+  const Toggle = ({ enabled, onChange, label }: { enabled: boolean, onChange: () => void, label: string }) => (
+    <div className="flex items-center justify-between py-3 border-b border-slate-700">
+      <span className="text-white">{label}</span>
+      <button
+        onClick={onChange}
+        className={`relative w-12 h-6 rounded-full transition-colors ${
+          enabled ? 'bg-green-500' : 'bg-slate-600'
+        }`}
+      >
+        <span
+          className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${
+            enabled ? 'right-1' : 'left-1'
+          }`}
+        />
+      </button>
+    </div>
+  )
 
-              {/* Narrator Name */}
-              <label style={styles.label}>Narrator Name</label>
-              <input
-                type="text"
-                value={s.narratorName}
-                onChange={e => setSettings(p => ({ ...p, [cat.id]: { ...p[cat.id], narratorName: e.target.value } }))}
-                onBlur={() => saveSettings(cat.id, s.narratorName, s.voiceId)}
-                placeholder="e.g., Sarah Mitchell"
-                style={{ ...styles.input, marginBottom: 16 }}
-              />
-
-              {/* Voice + Test Button */}
-              <label style={styles.label}>Voice</label>
-              <div style={styles.row}>
-                <select
-                  value={s.voiceId}
-                  onChange={e => {
-                    const v = e.target.value;
-                    setSettings(p => ({ ...p, [cat.id]: { ...p[cat.id], voiceId: v } }));
-                    saveSettings(cat.id, s.narratorName, v);
-                  }}
-                  style={{ ...styles.select, flex: 1 }}
-                >
-                  <option value="">{loadingVoices ? 'Loading...' : 'Select voice'}</option>
-                  {voices.map(v => <option key={v.voice_id} value={v.voice_id}>{v.name}</option>)}
-                </select>
-                <button
-                  onClick={() => handleTestVoice(s.voiceId, s.narratorName)}
-                  disabled={!s.voiceId}
-                  style={{ 
-                    ...styles.btn, 
-                    backgroundColor: s.voiceId ? '#3b82f6' : '#cccccc', 
-                    color: '#ffffff',
-                    ...(s.voiceId ? {} : styles.btnDisabled)
-                  }}
-                >
-                  🔊 Test
-                </button>
-              </div>
-
-              {/* Edit Prompt Button */}
-              <button
-                onClick={() => router.push(`/admin/news-briefings/prompts/${cat.id}`)}
-                style={{ ...styles.btn, width: '100%', backgroundColor: '#ffffff', marginBottom: 16 }}
-              >
-                📝 Edit Prompt
-              </button>
-
-              {/* STATE NEWS - Special Controls */}
-              {cat.id === 'state' ? (
-                <>
-                  {/* State Dropdown - Only subscriber states */}
-                  <label style={styles.label}>Select State (Subscribers Only)</label>
-                  <select
-                    value={selectedState}
-                    onChange={e => setSelectedState(e.target.value)}
-                    style={{ ...styles.select, width: '100%', marginBottom: 16 }}
-                  >
-                    {subscriberStates.length === 0 ? (
-                      <option value="">No subscriber states yet</option>
-                    ) : (
-                      subscriberStates.map(st => <option key={st} value={st}>{st}</option>)
-                    )}
-                  </select>
-
-                  {/* Generate + Play for selected state */}
-                  <div style={styles.row}>
-                    <button
-                      onClick={() => handleGenerate('state', selectedState)}
-                      disabled={isGen || !s.narratorName || !s.voiceId || !selectedState}
-                      style={{ 
-                        ...styles.btn, 
-                        flex: 1, 
-                        backgroundColor: (isGen || !s.narratorName || !s.voiceId || !selectedState) ? '#cccccc' : cat.color, 
-                        color: '#ffffff' 
-                      }}
-                    >
-                      {isGen ? '⏳ Generating...' : `🎬 Generate ${selectedState || 'State'}`}
-                    </button>
-                    <button
-                      onClick={() => handlePlay(key)}
-                      disabled={!ep?.audioUrl}
-                      style={{ 
-                        ...styles.btn, 
-                        flex: 1, 
-                        backgroundColor: ep?.audioUrl ? (isPlay ? '#dc2626' : '#10b981') : '#cccccc', 
-                        color: '#ffffff' 
-                      }}
-                    >
-                      {isPlay ? '⏹️ Stop' : '▶️ Play'}
-                    </button>
-                  </div>
-
-                  {/* Status for state */}
-                  {ep && (
-                    <div style={{ ...styles.status, marginBottom: 16 }}>
-                      {selectedState}: {formatTime(ep.createdAt)} {ep.duration ? `• ${ep.duration} min` : ''}
-                    </div>
-                  )}
-
-                  {/* Upsell Section */}
-                  <div style={{ backgroundColor: '#fffbeb', border: '2px solid #000000', borderRadius: 8, padding: 12 }}>
-                    <p style={{ fontSize: 14, fontWeight: 'bold', marginBottom: 10, color: '#000000' }}>
-                      Welcome Page Upsell (uses State News voice)
-                    </p>
-                    <div style={styles.row}>
-                      <button
-                        onClick={handleGenerateUpsell}
-                        disabled={generatingUpsell || !s.narratorName || !s.voiceId}
-                        style={{ 
-                          ...styles.btn, 
-                          flex: 1, 
-                          backgroundColor: (generatingUpsell || !s.narratorName || !s.voiceId) ? '#cccccc' : (stateUpsell.exists ? '#10b981' : '#dc2626'), 
-                          color: '#ffffff' 
-                        }}
-                      >
-                        {generatingUpsell ? '⏳...' : stateUpsell.exists ? '✅ Regenerate Upsell' : '⚠️ Generate Upsell'}
-                      </button>
-                      <button
-                        onClick={handlePlayUpsell}
-                        disabled={!stateUpsell.audioUrl}
-                        style={{ 
-                          ...styles.btn, 
-                          flex: 1, 
-                          backgroundColor: stateUpsell.audioUrl ? (playingUpsell ? '#dc2626' : '#10b981') : '#cccccc', 
-                          color: '#ffffff' 
-                        }}
-                      >
-                        {playingUpsell ? '⏹️ Stop' : '▶️ Play Upsell'}
-                      </button>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                /* OTHER CATEGORIES */
-                <>
-                  <div style={styles.row}>
-                    <button
-                      onClick={() => handleGenerate(cat.id)}
-                      disabled={isGen || !s.narratorName || !s.voiceId}
-                      style={{ 
-                        ...styles.btn, 
-                        flex: 1, 
-                        backgroundColor: (isGen || !s.narratorName || !s.voiceId) ? '#cccccc' : cat.color, 
-                        color: cat.id === 'world' ? '#000000' : '#ffffff' 
-                      }}
-                    >
-                      {isGen ? '⏳ Generating...' : '🎬 Generate'}
-                    </button>
-                    <button
-                      onClick={() => handlePlay(cat.id)}
-                      disabled={!ep?.audioUrl}
-                      style={{ 
-                        ...styles.btn, 
-                        flex: 1, 
-                        backgroundColor: ep?.audioUrl ? (isPlay ? '#dc2626' : '#10b981') : '#cccccc', 
-                        color: '#ffffff' 
-                      }}
-                    >
-                      {isPlay ? '⏹️ Stop' : '▶️ Play'}
-                    </button>
-                  </div>
-
-                  {/* Status */}
-                  {ep && (
-                    <div style={styles.status}>
-                      Last: {formatTime(ep.createdAt)} {ep.duration ? `• ${ep.duration} min` : ''}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          );
-        })}
+  const Logo = () => (
+    <div className="flex items-center gap-2">
+      <svg width="40" height="24" viewBox="0 0 80 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <g>
+          <rect x="45" y="24" width="30" height="14" rx="3" fill="#f97316"/>
+          <path d="M52 24 L56 16 L68 16 L72 24" fill="#f97316"/>
+          <path d="M54 23 L57 17 L67 17 L70 23" fill="#1e293b"/>
+          <circle cx="54" cy="38" r="5" fill="#334155"/>
+          <circle cx="54" cy="38" r="2.5" fill="#64748b"/>
+          <circle cx="68" cy="38" r="5" fill="#334155"/>
+          <circle cx="68" cy="38" r="2.5" fill="#64748b"/>
+          <rect x="73" y="28" width="3" height="4" rx="1" fill="#fef08a"/>
+        </g>
+        <g>
+          <rect x="2" y="20" width="18" height="18" rx="3" fill="#3b82f6"/>
+          <path d="M5 20 L8 12 L17 12 L20 20" fill="#3b82f6"/>
+          <path d="M7 19 L9 13 L16 13 L18 19" fill="#1e293b"/>
+          <rect x="20" y="18" width="22" height="20" rx="2" fill="#60a5fa"/>
+          <circle cx="10" cy="38" r="5" fill="#334155"/>
+          <circle cx="10" cy="38" r="2.5" fill="#64748b"/>
+          <circle cx="32" cy="38" r="5" fill="#334155"/>
+          <circle cx="32" cy="38" r="2.5" fill="#64748b"/>
+        </g>
+      </svg>
+      <div className="flex items-baseline">
+        <span className="text-base font-bold text-white">Drive Time </span>
+        <span className="text-base font-bold text-orange-500">Tales</span>
       </div>
     </div>
-  );
+  )
+
+  const TabButton = ({ tab, label, icon }: { tab: TabType, label: string, icon: string }) => (
+    <button
+      onClick={() => setActiveTab(tab)}
+      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+        activeTab === tab
+          ? 'bg-orange-500 text-black'
+          : 'bg-slate-800 text-white hover:bg-slate-700'
+      }`}
+    >
+      <span>{icon}</span>
+      <span className="hidden sm:inline">{label}</span>
+    </button>
+  )
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="inline-block w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  if (!isAdmin) return null
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-white">
+      <div className="max-w-6xl mx-auto px-4 py-6">
+        
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-4">
+            <Logo />
+            <span className="text-slate-500">|</span>
+            <h1 className="text-xl font-bold text-white">Admin Dashboard</h1>
+          </div>
+          <Link href="/home" className="text-orange-400 text-sm hover:underline">
+            ← Back to App
+          </Link>
+        </div>
+
+        {/* Tab Navigation */}
+        <div className="flex flex-wrap gap-2 mb-6">
+          <TabButton tab="overview" label="Overview" icon="📊" />
+          <TabButton tab="stories" label="Stories" icon="📚" />
+          <TabButton tab="users" label="Users" icon="👥" />
+          <TabButton tab="financial" label="Financial" icon="💰" />
+          <TabButton tab="settings" label="Settings" icon="⚙️" />
+        </div>
+
+        {/* OVERVIEW TAB */}
+        {activeTab === 'overview' && (
+          <div>
+            <h2 className="text-lg font-bold text-white mb-4">Dashboard Overview</h2>
+            
+            {/* Stats Grid */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              <div className="bg-slate-800 rounded-xl p-4">
+                <p className="text-3xl font-bold text-white">{stats.totalUsers}</p>
+                <p className="text-slate-400 text-sm">Total Users</p>
+              </div>
+              <div className="bg-slate-800 rounded-xl p-4">
+                <p className="text-3xl font-bold text-green-400">{stats.newUsersThisMonth}</p>
+                <p className="text-slate-400 text-sm">New This Month</p>
+              </div>
+              <div className="bg-slate-800 rounded-xl p-4">
+                <p className="text-3xl font-bold text-orange-400">{stats.activeSubscribers}</p>
+                <p className="text-slate-400 text-sm">Active Subscribers</p>
+              </div>
+              <div className="bg-slate-800 rounded-xl p-4">
+                <p className="text-3xl font-bold text-blue-400">{stats.totalStories}</p>
+                <p className="text-slate-400 text-sm">Total Stories</p>
+              </div>
+            </div>
+
+            {/* Quick Stats */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-slate-900 rounded-xl p-4 border border-slate-800">
+                <h3 className="text-white font-semibold mb-3">Subscription Breakdown</h3>
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Test Driver</span>
+                    <span className="text-white font-medium">{financialData.testDriverCount}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Commuter</span>
+                    <span className="text-white font-medium">{financialData.commuterCount}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Road Warrior</span>
+                    <span className="text-white font-medium">{financialData.roadWarriorCount}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-slate-900 rounded-xl p-4 border border-slate-800">
+                <h3 className="text-white font-semibold mb-3">Monthly Revenue (Est.)</h3>
+                <p className="text-3xl font-bold text-green-400">
+                  ${(financialData.testDriverRevenue + financialData.commuterRevenue + financialData.roadWarriorRevenue).toFixed(2)}
+                </p>
+                <p className="text-slate-500 text-sm mt-1">Based on active subscriptions</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* STORIES TAB */}
+        {activeTab === 'stories' && (
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-white">Story Data</h2>
+              <div className="flex gap-2">
+                <select
+                  value={storySort}
+                  onChange={(e) => setStorySort(e.target.value as any)}
+                  className="px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm"
+                >
+                  <option value="recent">Most Recent</option>
+                  <option value="rating">Highest Rated</option>
+                  <option value="plays">Most Played</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Stories Table */}
+            <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-slate-800">
+                    <tr>
+                      <th className="text-left text-slate-400 text-xs font-medium px-4 py-3">Title</th>
+                      <th className="text-left text-slate-400 text-xs font-medium px-4 py-3">Author</th>
+                      <th className="text-left text-slate-400 text-xs font-medium px-4 py-3">Genre</th>
+                      <th className="text-left text-slate-400 text-xs font-medium px-4 py-3">Duration</th>
+                      <th className="text-left text-slate-400 text-xs font-medium px-4 py-3">Credits</th>
+                      <th className="text-left text-slate-400 text-xs font-medium px-4 py-3">Rating</th>
+                      <th className="text-left text-slate-400 text-xs font-medium px-4 py-3">Released</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sortedStories.map((story, index) => (
+                      <tr key={story.id} className={index % 2 === 0 ? 'bg-slate-900' : 'bg-slate-800/50'}>
+                        <td className="px-4 py-3 text-white text-sm font-medium">{story.title}</td>
+                        <td className="px-4 py-3 text-slate-400 text-sm">{story.author}</td>
+                        <td className="px-4 py-3 text-slate-400 text-sm">{story.genre}</td>
+                        <td className="px-4 py-3 text-slate-400 text-sm">{story.duration_mins}m</td>
+                        <td className="px-4 py-3 text-slate-400 text-sm">{story.credits}</td>
+                        <td className="px-4 py-3 text-yellow-400 text-sm">★ {story.ai_rating?.toFixed(1) || 'N/A'}</td>
+                        <td className="px-4 py-3 text-slate-400 text-sm">
+                          {new Date(story.release_date).toLocaleDateString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <p className="text-slate-500 text-sm mt-3">Total: {stories.length} stories</p>
+          </div>
+        )}
+
+        {/* USERS TAB */}
+        {activeTab === 'users' && (
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-white">User Data</h2>
+              <div className="flex gap-2">
+                <select
+                  value={userFilter}
+                  onChange={(e) => setUserFilter(e.target.value as any)}
+                  className="px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm"
+                >
+                  <option value="all">All Users</option>
+                  <option value="subscribers">Subscribers Only</option>
+                  <option value="free">Free Users Only</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Users Table */}
+            <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-slate-800">
+                    <tr>
+                      <th className="text-left text-slate-400 text-xs font-medium px-4 py-3">Name</th>
+                      <th className="text-left text-slate-400 text-xs font-medium px-4 py-3">Email</th>
+                      <th className="text-left text-slate-400 text-xs font-medium px-4 py-3">Plan</th>
+                      <th className="text-left text-slate-400 text-xs font-medium px-4 py-3">Status</th>
+                      <th className="text-left text-slate-400 text-xs font-medium px-4 py-3">Credits</th>
+                      <th className="text-left text-slate-400 text-xs font-medium px-4 py-3">Joined</th>
+                      <th className="text-left text-slate-400 text-xs font-medium px-4 py-3">Last Login</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredUsers.map((user, index) => (
+                      <tr key={user.id} className={index % 2 === 0 ? 'bg-slate-900' : 'bg-slate-800/50'}>
+                        <td className="px-4 py-3 text-white text-sm font-medium">{user.display_name || 'N/A'}</td>
+                        <td className="px-4 py-3 text-slate-400 text-sm">{user.email}</td>
+                        <td className="px-4 py-3 text-sm">
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                            user.subscription_plan === 'road-warrior' ? 'bg-purple-500/20 text-purple-400' :
+                            user.subscription_plan === 'commuter' ? 'bg-blue-500/20 text-blue-400' :
+                            user.subscription_plan === 'test-driver' ? 'bg-green-500/20 text-green-400' :
+                            'bg-slate-700 text-slate-400'
+                          }`}>
+                            {user.subscription_plan || 'Free'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm">
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                            user.subscription_status === 'active' ? 'bg-green-500/20 text-green-400' : 'bg-slate-700 text-slate-400'
+                          }`}>
+                            {user.subscription_status || 'None'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-slate-400 text-sm">
+                          {user.credits === -1 ? '∞' : user.credits || 0}
+                        </td>
+                        <td className="px-4 py-3 text-slate-400 text-sm">
+                          {user.created_at ? new Date(user.created_at).toLocaleDateString() : 'N/A'}
+                        </td>
+                        <td className="px-4 py-3 text-slate-400 text-sm">
+                          {user.last_login ? new Date(user.last_login).toLocaleDateString() : 'Never'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <p className="text-slate-500 text-sm mt-3">Showing: {filteredUsers.length} users</p>
+          </div>
+        )}
+
+        {/* FINANCIAL TAB */}
+        {activeTab === 'financial' && (
+          <div>
+            <h2 className="text-lg font-bold text-white mb-4">Financial Data</h2>
+
+            {/* Revenue Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              <div className="bg-gradient-to-br from-green-500/20 to-green-600/10 rounded-xl p-6 border border-green-500/30">
+                <p className="text-green-400 text-sm font-medium mb-1">Estimated Monthly Revenue</p>
+                <p className="text-4xl font-bold text-white">
+                  ${(financialData.testDriverRevenue + financialData.commuterRevenue + financialData.roadWarriorRevenue + financialData.freedomPacksRevenue).toFixed(2)}
+                </p>
+              </div>
+              <div className="bg-gradient-to-br from-orange-500/20 to-orange-600/10 rounded-xl p-6 border border-orange-500/30">
+                <p className="text-orange-400 text-sm font-medium mb-1">Total Active Subscribers</p>
+                <p className="text-4xl font-bold text-white">
+                  {financialData.testDriverCount + financialData.commuterCount + financialData.roadWarriorCount}
+                </p>
+              </div>
+            </div>
+
+            {/* Revenue Breakdown */}
+            <div className="bg-slate-900 rounded-xl p-4 border border-slate-800 mb-6">
+              <h3 className="text-white font-semibold mb-4">Subscription Revenue Breakdown</h3>
+              <div className="space-y-4">
+                <div>
+                  <div className="flex justify-between mb-1">
+                    <span className="text-slate-400">Test Driver ($2.99/mo)</span>
+                    <span className="text-white">{financialData.testDriverCount} subscribers = ${financialData.testDriverRevenue.toFixed(2)}/mo</span>
+                  </div>
+                  <div className="h-2 bg-slate-700 rounded-full">
+                    <div className="h-full bg-green-500 rounded-full" style={{ width: `${(financialData.testDriverCount / Math.max(stats.activeSubscribers, 1)) * 100}%` }} />
+                  </div>
+                </div>
+                <div>
+                  <div className="flex justify-between mb-1">
+                    <span className="text-slate-400">Commuter ($7.99/mo)</span>
+                    <span className="text-white">{financialData.commuterCount} subscribers = ${financialData.commuterRevenue.toFixed(2)}/mo</span>
+                  </div>
+                  <div className="h-2 bg-slate-700 rounded-full">
+                    <div className="h-full bg-blue-500 rounded-full" style={{ width: `${(financialData.commuterCount / Math.max(stats.activeSubscribers, 1)) * 100}%` }} />
+                  </div>
+                </div>
+                <div>
+                  <div className="flex justify-between mb-1">
+                    <span className="text-slate-400">Road Warrior ($14.99/mo)</span>
+                    <span className="text-white">{financialData.roadWarriorCount} subscribers = ${financialData.roadWarriorRevenue.toFixed(2)}/mo</span>
+                  </div>
+                  <div className="h-2 bg-slate-700 rounded-full">
+                    <div className="h-full bg-purple-500 rounded-full" style={{ width: `${(financialData.roadWarriorCount / Math.max(stats.activeSubscribers, 1)) * 100}%` }} />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Freedom Packs */}
+            <div className="bg-slate-900 rounded-xl p-4 border border-slate-800">
+              <h3 className="text-white font-semibold mb-4">Freedom Packs (One-Time Purchases)</h3>
+              <p className="text-slate-400 text-sm">
+                Freedom Pack purchase tracking requires a purchases table. 
+                This will show sales data once integrated with Stripe webhooks.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* SETTINGS TAB */}
+        {activeTab === 'settings' && (
+          <div>
+            <h2 className="text-lg font-bold text-white mb-4">App Settings</h2>
+
+            {/* Pricing Settings */}
+            <div className="bg-slate-900 rounded-xl p-4 mb-4 border border-slate-800">
+              <h3 className="text-white font-semibold mb-4">Pricing Page</h3>
+              <Toggle
+                enabled={settings.showFreedomPacks}
+                onChange={() => setSettings(s => ({ ...s, showFreedomPacks: !s.showFreedomPacks }))}
+                label="Show Freedom Packs"
+              />
+              <Toggle
+                enabled={settings.showAnnualPlans}
+                onChange={() => setSettings(s => ({ ...s, showAnnualPlans: !s.showAnnualPlans }))}
+                label="Show Annual Plans Toggle"
+              />
+            </div>
+
+            {/* Newcomer Settings */}
+            <div className="bg-slate-900 rounded-xl p-4 mb-4 border border-slate-800">
+              <h3 className="text-white font-semibold mb-4">Newcomer Settings</h3>
+              <div className="flex items-center justify-between py-3">
+                <span className="text-white">Free Credits for Newcomers</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setSettings(s => ({ ...s, freeCreditsForNewcomers: Math.max(0, s.freeCreditsForNewcomers - 1) }))}
+                    className="w-8 h-8 bg-slate-700 hover:bg-slate-600 rounded-lg text-white font-bold"
+                  >
+                    -
+                  </button>
+                  <span className="w-8 text-center text-white font-bold">{settings.freeCreditsForNewcomers}</span>
+                  <button
+                    onClick={() => setSettings(s => ({ ...s, freeCreditsForNewcomers: Math.min(10, s.freeCreditsForNewcomers + 1) }))}
+                    className="w-8 h-8 bg-slate-700 hover:bg-slate-600 rounded-lg text-white font-bold"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* System Settings */}
+            <div className="bg-slate-900 rounded-xl p-4 mb-4 border border-slate-800">
+              <h3 className="text-white font-semibold mb-4">System</h3>
+              <Toggle
+                enabled={settings.maintenanceMode}
+                onChange={() => setSettings(s => ({ ...s, maintenanceMode: !s.maintenanceMode }))}
+                label="Maintenance Mode"
+              />
+              {settings.maintenanceMode && (
+                <p className="text-yellow-400 text-xs mt-2">
+                  ⚠️ Users will see a maintenance message
+                </p>
+              )}
+            </div>
+
+            {/* Message */}
+            {message && (
+              <div className={`p-3 rounded-lg mb-4 text-sm text-center ${
+                message.type === 'success' 
+                  ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
+                  : 'bg-red-500/20 text-red-400 border border-red-500/30'
+              }`}>
+                {message.text}
+              </div>
+            )}
+
+            {/* Save Button */}
+            <button
+              onClick={handleSaveSettings}
+              disabled={saving}
+              className={`w-full py-3 rounded-xl font-bold transition-colors ${
+                saving
+                  ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                  : 'bg-orange-500 hover:bg-orange-400 text-black'
+              }`}
+            >
+              {saving ? 'Saving...' : 'Save Settings'}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }

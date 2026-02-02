@@ -1,10 +1,8 @@
 // app/api/news/state-upsell/route.ts
-// DTT News Briefings - State Upsell Message API
-// FRESH BUILD - February 2026
-//
-// Generates or retrieves the state news upsell message for non-subscribers
+// Generate state news upsell message for non-subscribers
+// February 2026
 
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
@@ -14,43 +12,27 @@ const supabase = createClient(
 
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY!;
 
-export async function GET() {
+const UPSELL_SCRIPT = `State news is available exclusively for Drive Time Tales subscribers. 
+With a subscription, you'll get personalized news briefings for your state, 
+covering local government, community events, weather, and more. 
+Subscribe today to stay informed about what's happening in your area. 
+Visit our website or tap the subscribe button to get started.`;
+
+// POST - Generate upsell audio
+export async function POST(request: NextRequest) {
   try {
-    // Check for existing upsell message
-    const { data: existing } = await supabase
-      .from('news_episodes')
-      .select('audio_url')
-      .eq('category', 'state-upsell')
-      .eq('is_live', true)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single();
+    const { narratorName, voiceId } = await request.json();
 
-    if (existing?.audio_url) {
-      return NextResponse.json({ audioUrl: existing.audio_url });
+    if (!narratorName || !voiceId) {
+      return NextResponse.json({ 
+        error: 'Narrator name and voice ID are required' 
+      }, { status: 400 });
     }
 
-    // Get state news settings for narrator name and voice
-    const { data: settings } = await supabase
-      .from('news_settings')
-      .select('narrator_name, voice_id')
-      .eq('category', 'state')
-      .single();
-
-    if (!settings?.narrator_name || !settings?.voice_id) {
-      return NextResponse.json(
-        { error: 'State news not configured' },
-        { status: 404 }
-      );
-    }
-
-    // Generate upsell message
-    const script = `Hello, I'm ${settings.narrator_name}, your State News broadcaster. I'd like to welcome you to the Drive Time Tales news division! State news is not available for non-subscribers, but when you subscribe, you'll get your own personalized state news delivered fresh every day. In the meantime, enjoy the other news briefings, and I look forward to seeing you soon!`;
-
-    console.log('[State Upsell] Generating audio...');
+    console.log('[State Upsell] Generating with voice:', voiceId);
 
     // Generate audio with ElevenLabs
-    const audioResponse = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${settings.voice_id}`, {
+    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
       method: 'POST',
       headers: {
         'Accept': 'audio/mpeg',
@@ -58,76 +40,98 @@ export async function GET() {
         'xi-api-key': ELEVENLABS_API_KEY
       },
       body: JSON.stringify({
-        text: script,
+        text: UPSELL_SCRIPT,
         model_id: 'eleven_multilingual_v2',
-        voice_settings: {
-          stability: 0.5,
-          similarity_boost: 0.75
-        }
+        voice_settings: { stability: 0.5, similarity_boost: 0.75 }
       })
     });
 
-    if (!audioResponse.ok) {
-      console.error('[State Upsell] ElevenLabs error:', audioResponse.status);
-      return NextResponse.json(
-        { error: 'Failed to generate audio' },
-        { status: 500 }
-      );
+    if (!response.ok) {
+      console.error('[State Upsell] ElevenLabs error:', response.status);
+      return NextResponse.json({ error: 'Audio generation failed' }, { status: 500 });
     }
 
-    const audioBuffer = Buffer.from(await audioResponse.arrayBuffer());
+    const audioBuffer = Buffer.from(await response.arrayBuffer());
 
-    // Upload to Supabase storage
+    // Upload to storage - CORRECT BUCKET: audio/news/
     const fileName = `state-upsell-${Date.now()}.mp3`;
-    
+    const filePath = `news/${fileName}`;
+
+    console.log('[State Upsell] Uploading to:', filePath);
+
     const { error: uploadError } = await supabase.storage
-      .from('news-audio')
-      .upload(fileName, audioBuffer, {
-        contentType: 'audio/mpeg',
-        upsert: true
-      });
+      .from('audio')
+      .upload(filePath, audioBuffer, { contentType: 'audio/mpeg', upsert: true });
 
     if (uploadError) {
       console.error('[State Upsell] Upload error:', uploadError);
-      return NextResponse.json(
-        { error: 'Failed to upload audio' },
-        { status: 500 }
-      );
+      return NextResponse.json({ 
+        error: 'Failed to upload: ' + uploadError.message 
+      }, { status: 500 });
     }
 
-    const { data: urlData } = supabase.storage
-      .from('news-audio')
-      .getPublicUrl(fileName);
-
+    const { data: urlData } = supabase.storage.from('audio').getPublicUrl(filePath);
     const audioUrl = urlData.publicUrl;
 
-    // Save to database
+    // Mark previous upsells as not live
     await supabase
       .from('news_episodes')
       .update({ is_live: false })
       .eq('category', 'state-upsell');
 
-    await supabase
+    // Save episode
+    const { error: insertError } = await supabase
       .from('news_episodes')
       .insert({
         category: 'state-upsell',
-        state: null,
         audio_url: audioUrl,
-        script_text: script,
-        narrator_name: settings.narrator_name,
-        voice_id: settings.voice_id,
+        script_text: UPSELL_SCRIPT,
+        narrator_name: narratorName,
+        voice_id: voiceId,
         is_live: true,
         created_at: new Date().toISOString()
       });
 
+    if (insertError) {
+      console.error('[State Upsell] Insert error:', insertError);
+    }
+
     console.log('[State Upsell] Generated successfully');
 
-    return NextResponse.json({ audioUrl });
+    return NextResponse.json({ 
+      success: true, 
+      audioUrl 
+    });
+
   } catch (error) {
     console.error('[State Upsell] Error:', error);
-    return NextResponse.json(
-      { error: 'Failed to generate upsell message' },
-      { status: 500 }
-    );
+    return NextResponse.json({ 
+      error: error instanceof Error ? error.message : 'Generation failed' 
+    }, { status: 500 });
+  }
+}
+
+// GET - Retrieve existing upsell
+export async function GET() {
+  try {
+    const { data, error } = await supabase
+      .from('news_episodes')
+      .select('*')
+      .eq('category', 'state-upsell')
+      .eq('is_live', true)
+      .single();
+
+    if (error || !data) {
+      return NextResponse.json({ exists: false });
+    }
+
+    return NextResponse.json({ 
+      exists: true, 
+      audioUrl: data.audio_url,
+      createdAt: data.created_at
+    });
+  } catch (error) {
+    console.error('[State Upsell] GET error:', error);
+    return NextResponse.json({ exists: false });
   }
 }

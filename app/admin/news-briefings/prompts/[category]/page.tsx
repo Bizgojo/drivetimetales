@@ -1,13 +1,13 @@
 // app/admin/news-briefings/prompts/[category]/page.tsx
 // DTT News Briefings - Prompt Editor
-// Version 2.0 - February 2026
-// Full implementation with all quality controls
+// February 2026
 
 'use client';
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 
+// Category info
 const CATEGORY_INFO: Record<string, { label: string; icon: string; color: string }> = {
   state: { label: 'State News', icon: '🏛️', color: '#dc2626' },
   national: { label: 'National News', icon: '🇺🇸', color: '#f97316' },
@@ -17,7 +17,7 @@ const CATEGORY_INFO: Record<string, { label: string; icon: string; color: string
   science: { label: 'Science & Tech', icon: '🔬', color: '#9333ea' }
 };
 
-// 15 Intro options
+// 15 Intro options (randomly selected by Claude)
 const INTRO_OPTIONS = [
   "Good {timeOfDay}, {userName}! I'm {narratorName} with your {category} briefing for {date}.",
   "Hey {userName}! {narratorName} here with today's top {category} stories.",
@@ -36,7 +36,7 @@ const INTRO_OPTIONS = [
   "Hey {userName}! It's {date}, and I'm {narratorName} with your {category} update."
 ];
 
-// 15 Outro options
+// 15 Outro options (randomly selected by Claude)
 const OUTRO_OPTIONS = [
   "That's your {category} update, {userName}. Drive safe!",
   "I'm {narratorName}. Thanks for listening, {userName}. See you next time!",
@@ -78,8 +78,8 @@ const CONTENT_AVOID_OPTIONS = [
 
 // News Source options
 const NEWS_SOURCE_OPTIONS = [
-  { id: 'newsapi', label: 'NewsAPI.org (Top Headlines)' },
-  { id: 'worldnews', label: 'World News API' },
+  { id: 'newsapi', label: 'NewsAPI.org (Top Headlines) - PRIMARY' },
+  { id: 'worldnews', label: 'World News API - BACKUP' },
   { id: 'gdelt', label: 'GDELT (Local/Regional)' }
 ];
 
@@ -92,8 +92,6 @@ interface PromptData {
   contentAvoid: string[];
   newsSourcePriority: string;
   specialInstructions: string;
-  selectedIntro: number;
-  selectedOutro: number;
   customPrompt: string;
 }
 
@@ -106,24 +104,102 @@ const DEFAULT_PROMPT: PromptData = {
   contentAvoid: ['fluff', 'celebrity', 'lifestyle'],
   newsSourcePriority: 'newsapi',
   specialInstructions: '',
-  selectedIntro: 0,
-  selectedOutro: 0,
   customPrompt: ''
 };
 
-// Styles
-const styles = {
-  page: { minHeight: '100vh', backgroundColor: '#ffffff', color: '#000000', padding: 24, fontFamily: 'Arial, sans-serif' },
-  section: { backgroundColor: '#ffffff', border: '2px solid #000000', borderRadius: 12, padding: 20, marginBottom: 20 },
-  label: { display: 'block', marginBottom: 8, fontSize: 16, fontWeight: 'bold' as const, color: '#000000' },
-  input: { width: '100%', padding: 12, fontSize: 16, border: '2px solid #000000', borderRadius: 6, backgroundColor: '#ffffff', color: '#000000', boxSizing: 'border-box' as const },
-  select: { width: '100%', padding: 12, fontSize: 16, border: '2px solid #000000', borderRadius: 6, backgroundColor: '#ffffff', color: '#000000' },
-  textarea: { width: '100%', padding: 12, fontSize: 16, border: '2px solid #000000', borderRadius: 6, backgroundColor: '#ffffff', color: '#000000', resize: 'vertical' as const, fontFamily: 'Arial, sans-serif' },
-  btn: { padding: '14px 24px', fontSize: 16, fontWeight: 'bold' as const, border: '2px solid #000000', borderRadius: 6, cursor: 'pointer' },
-  checkbox: { width: 20, height: 20, marginRight: 10, cursor: 'pointer' },
-  checkboxLabel: { display: 'flex', alignItems: 'center', fontSize: 16, color: '#000000', marginBottom: 8, cursor: 'pointer' },
-  row: { display: 'flex', gap: 16, marginBottom: 16, flexWrap: 'wrap' as const },
-  focusItem: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, padding: 10, backgroundColor: '#f5f5f5', borderRadius: 6, border: '1px solid #000000' }
+// Styles - White background, black text
+const pageStyle: React.CSSProperties = {
+  minHeight: '100vh',
+  backgroundColor: '#ffffff',
+  color: '#000000',
+  padding: '24px',
+  fontFamily: 'Arial, sans-serif'
+};
+
+const sectionStyle: React.CSSProperties = {
+  backgroundColor: '#ffffff',
+  border: '2px solid #000000',
+  borderRadius: '12px',
+  padding: '20px',
+  marginBottom: '20px'
+};
+
+const labelStyle: React.CSSProperties = {
+  display: 'block',
+  marginBottom: '8px',
+  fontSize: '16px',
+  fontWeight: 'bold',
+  color: '#000000'
+};
+
+const inputStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '12px',
+  fontSize: '16px',
+  border: '2px solid #000000',
+  borderRadius: '6px',
+  backgroundColor: '#ffffff',
+  color: '#000000',
+  boxSizing: 'border-box'
+};
+
+const selectStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '12px',
+  fontSize: '16px',
+  border: '2px solid #000000',
+  borderRadius: '6px',
+  backgroundColor: '#ffffff',
+  color: '#000000'
+};
+
+const textareaStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '12px',
+  fontSize: '16px',
+  border: '2px solid #000000',
+  borderRadius: '6px',
+  backgroundColor: '#ffffff',
+  color: '#000000',
+  resize: 'vertical',
+  fontFamily: 'Arial, sans-serif',
+  boxSizing: 'border-box'
+};
+
+const buttonStyle: React.CSSProperties = {
+  padding: '14px 24px',
+  fontSize: '16px',
+  fontWeight: 'bold',
+  border: '2px solid #000000',
+  borderRadius: '6px',
+  cursor: 'pointer'
+};
+
+const checkboxLabelStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  fontSize: '16px',
+  color: '#000000',
+  marginBottom: '8px',
+  cursor: 'pointer'
+};
+
+const checkboxStyle: React.CSSProperties = {
+  width: '20px',
+  height: '20px',
+  marginRight: '10px',
+  cursor: 'pointer'
+};
+
+const focusItemStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '10px',
+  marginBottom: '8px',
+  padding: '10px',
+  backgroundColor: '#f5f5f5',
+  borderRadius: '6px',
+  border: '1px solid #000000'
 };
 
 export default function PromptEditor() {
@@ -137,7 +213,7 @@ export default function PromptEditor() {
   
   const catInfo = CATEGORY_INFO[category];
 
-  // Load prompt data
+  // Load prompt data from database
   useEffect(() => {
     if (!category || !CATEGORY_INFO[category]) {
       router.push('/admin/news-briefings');
@@ -155,21 +231,22 @@ export default function PromptEditor() {
       .finally(() => setLoading(false));
   }, [category, router]);
 
-  // Save prompt
+  // Save prompt to database
   async function handleSave() {
     setSaving(true);
     try {
-      const r = await fetch('/api/admin/news-settings', {
+      const response = await fetch('/api/admin/news-settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ category, prompt_data: promptData })
       });
-      if (r.ok) {
+      if (response.ok) {
         alert('✅ Prompt saved successfully!');
       } else {
         alert('❌ Failed to save prompt');
       }
-    } catch {
+    } catch (error) {
+      console.error('Save error:', error);
       alert('❌ Failed to save prompt');
     } finally {
       setSaving(false);
@@ -182,41 +259,45 @@ export default function PromptEditor() {
     if (newIndex < 0 || newIndex >= promptData.focusAreas.length) return;
     
     const newAreas = [...promptData.focusAreas];
-    [newAreas[index], newAreas[newIndex]] = [newAreas[newIndex], newAreas[index]];
-    setPromptData(p => ({ ...p, focusAreas: newAreas }));
+    const temp = newAreas[index];
+    newAreas[index] = newAreas[newIndex];
+    newAreas[newIndex] = temp;
+    setPromptData(prev => ({ ...prev, focusAreas: newAreas }));
   }
 
   // Add focus area
   function addFocusArea() {
-    setPromptData(p => ({ ...p, focusAreas: [...p.focusAreas, ''] }));
+    setPromptData(prev => ({ ...prev, focusAreas: [...prev.focusAreas, ''] }));
   }
 
   // Remove focus area
   function removeFocusArea(index: number) {
-    setPromptData(p => ({ ...p, focusAreas: p.focusAreas.filter((_, i) => i !== index) }));
+    setPromptData(prev => ({
+      ...prev,
+      focusAreas: prev.focusAreas.filter((_, i) => i !== index)
+    }));
   }
 
-  // Update focus area
+  // Update focus area text
   function updateFocusArea(index: number, value: string) {
     const newAreas = [...promptData.focusAreas];
     newAreas[index] = value;
-    setPromptData(p => ({ ...p, focusAreas: newAreas }));
+    setPromptData(prev => ({ ...prev, focusAreas: newAreas }));
   }
 
   // Toggle checkbox
   function toggleCheckbox(field: 'contentPriority' | 'contentAvoid', id: string) {
-    setPromptData(p => {
-      const current = p[field];
-      const newValue = current.includes(id) ? current.filter(x => x !== id) : [...current, id];
-      return { ...p, [field]: newValue };
+    setPromptData(prev => {
+      const current = prev[field];
+      const newValue = current.includes(id)
+        ? current.filter(x => x !== id)
+        : [...current, id];
+      return { ...prev, [field]: newValue };
     });
   }
 
   // Generate prompt preview
   function generatePreview(): string {
-    const intro = INTRO_OPTIONS[promptData.selectedIntro] || INTRO_OPTIONS[0];
-    const outro = OUTRO_OPTIONS[promptData.selectedOutro] || OUTRO_OPTIONS[0];
-    
     const priorityLabels = promptData.contentPriority
       .map(id => CONTENT_PRIORITY_OPTIONS.find(o => o.id === id)?.label)
       .filter(Boolean);
@@ -230,11 +311,11 @@ Create a ${promptData.targetDuration}-minute ${catInfo?.label || category} brief
 
 TARGET: ${promptData.storyCount} stories, ${promptData.maxSecondsPerStory} seconds each maximum.
 
-CONTENT PRIORITY (in order):
+CONTENT PRIORITY (cover these types first):
 ${priorityLabels.map((l, i) => `${i + 1}. ${l}`).join('\n')}
 
 FOCUS AREAS (in order of importance):
-${promptData.focusAreas.map((a, i) => `${i + 1}. ${a}`).join('\n')}
+${promptData.focusAreas.filter(a => a.trim()).map((a, i) => `${i + 1}. ${a}`).join('\n')}
 
 CONTENT TO AVOID:
 ${avoidLabels.map(l => `- ${l}`).join('\n')}
@@ -246,131 +327,168 @@ RULES:
 - Keep it fast-paced like a radio news update
 
 ${promptData.specialInstructions ? `SPECIAL INSTRUCTIONS:\n${promptData.specialInstructions}\n` : ''}
-INTRO (use this): "${intro}"
-
-OUTRO (use this): "${outro}"`;
+INTRO: (Claude will randomly select from 15 options)
+OUTRO: (Claude will randomly select from 15 options)`;
   }
 
   if (loading || !catInfo) {
     return (
-      <div style={{ ...styles.page, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <p style={{ fontSize: 20, fontWeight: 'bold' }}>Loading...</p>
+      <div style={{ ...pageStyle, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <p style={{ fontSize: '20px', fontWeight: 'bold', color: '#000000' }}>Loading...</p>
       </div>
     );
   }
 
   return (
-    <div style={styles.page}>
+    <div style={pageStyle}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button onClick={() => router.push('/admin/news-briefings')} style={{ ...styles.btn, backgroundColor: '#ffffff' }}>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: '24px',
+        flexWrap: 'wrap',
+        gap: '16px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <button
+            onClick={() => router.push('/admin/news-briefings')}
+            style={{ ...buttonStyle, backgroundColor: '#ffffff' }}
+          >
             ← Back
           </button>
-          <h1 style={{ fontSize: 24, fontWeight: 'bold', color: '#000000' }}>
+          <h1 style={{ fontSize: '24px', fontWeight: 'bold', color: '#000000' }}>
             {catInfo.icon} {catInfo.label} Prompt
           </h1>
         </div>
         <button
           onClick={handleSave}
           disabled={saving}
-          style={{ ...styles.btn, backgroundColor: catInfo.color, color: category === 'world' ? '#000000' : '#ffffff' }}
+          style={{
+            ...buttonStyle,
+            backgroundColor: catInfo.color,
+            color: category === 'world' ? '#000000' : '#ffffff'
+          }}
         >
           {saving ? 'Saving...' : '💾 Save Prompt'}
         </button>
       </div>
 
       {/* Duration & Story Settings */}
-      <div style={styles.section}>
-        <h2 style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 16, color: '#000000' }}>⏱️ Duration & Story Settings</h2>
-        <div style={styles.row}>
-          <div style={{ flex: 1, minWidth: 150 }}>
-            <label style={styles.label}>Target Duration (minutes)</label>
+      <div style={sectionStyle}>
+        <h2 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '16px', color: '#000000' }}>
+          ⏱️ Duration & Story Settings
+        </h2>
+        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: '150px' }}>
+            <label style={labelStyle}>Target Duration (minutes)</label>
             <input
               type="number"
               min="1"
               max="10"
               value={promptData.targetDuration}
-              onChange={e => setPromptData(p => ({ ...p, targetDuration: e.target.value }))}
-              style={styles.input}
+              onChange={e => setPromptData(prev => ({ ...prev, targetDuration: e.target.value }))}
+              style={inputStyle}
             />
           </div>
-          <div style={{ flex: 1, minWidth: 150 }}>
-            <label style={styles.label}>Story Count</label>
+          <div style={{ flex: 1, minWidth: '150px' }}>
+            <label style={labelStyle}>Story Count</label>
             <input
               type="number"
               min="1"
               max="10"
               value={promptData.storyCount}
-              onChange={e => setPromptData(p => ({ ...p, storyCount: e.target.value }))}
-              style={styles.input}
+              onChange={e => setPromptData(prev => ({ ...prev, storyCount: e.target.value }))}
+              style={inputStyle}
             />
           </div>
-          <div style={{ flex: 1, minWidth: 150 }}>
-            <label style={styles.label}>Max Seconds Per Story</label>
+          <div style={{ flex: 1, minWidth: '150px' }}>
+            <label style={labelStyle}>Max Seconds Per Story</label>
             <input
               type="number"
               min="15"
               max="120"
               value={promptData.maxSecondsPerStory}
-              onChange={e => setPromptData(p => ({ ...p, maxSecondsPerStory: e.target.value }))}
-              style={styles.input}
+              onChange={e => setPromptData(prev => ({ ...prev, maxSecondsPerStory: e.target.value }))}
+              style={inputStyle}
             />
           </div>
         </div>
       </div>
 
       {/* Focus Areas - Reorderable */}
-      <div style={styles.section}>
-        <h2 style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 16, color: '#000000' }}>🎯 Focus Areas (in order of importance)</h2>
+      <div style={sectionStyle}>
+        <h2 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '16px', color: '#000000' }}>
+          🎯 Focus Areas (in order of importance)
+        </h2>
         {promptData.focusAreas.map((area, index) => (
-          <div key={index} style={styles.focusItem}>
-            <span style={{ fontWeight: 'bold', minWidth: 24 }}>{index + 1}.</span>
+          <div key={index} style={focusItemStyle}>
+            <span style={{ fontWeight: 'bold', minWidth: '24px', color: '#000000' }}>{index + 1}.</span>
             <input
               type="text"
               value={area}
               onChange={e => updateFocusArea(index, e.target.value)}
               placeholder="Enter focus area..."
-              style={{ ...styles.input, flex: 1, marginBottom: 0 }}
+              style={{ ...inputStyle, flex: 1, marginBottom: 0 }}
             />
             <button
               onClick={() => moveFocusArea(index, 'up')}
               disabled={index === 0}
-              style={{ ...styles.btn, padding: '8px 12px', backgroundColor: index === 0 ? '#cccccc' : '#3b82f6', color: '#ffffff' }}
+              style={{
+                ...buttonStyle,
+                padding: '8px 12px',
+                backgroundColor: index === 0 ? '#cccccc' : '#3b82f6',
+                color: '#ffffff'
+              }}
             >
               ↑
             </button>
             <button
               onClick={() => moveFocusArea(index, 'down')}
               disabled={index === promptData.focusAreas.length - 1}
-              style={{ ...styles.btn, padding: '8px 12px', backgroundColor: index === promptData.focusAreas.length - 1 ? '#cccccc' : '#3b82f6', color: '#ffffff' }}
+              style={{
+                ...buttonStyle,
+                padding: '8px 12px',
+                backgroundColor: index === promptData.focusAreas.length - 1 ? '#cccccc' : '#3b82f6',
+                color: '#ffffff'
+              }}
             >
               ↓
             </button>
             <button
               onClick={() => removeFocusArea(index)}
-              style={{ ...styles.btn, padding: '8px 12px', backgroundColor: '#dc2626', color: '#ffffff' }}
+              style={{
+                ...buttonStyle,
+                padding: '8px 12px',
+                backgroundColor: '#dc2626',
+                color: '#ffffff'
+              }}
             >
               ✕
             </button>
           </div>
         ))}
-        <button onClick={addFocusArea} style={{ ...styles.btn, backgroundColor: '#ffffff', marginTop: 8 }}>
+        <button
+          onClick={addFocusArea}
+          style={{ ...buttonStyle, backgroundColor: '#ffffff', marginTop: '8px' }}
+        >
           + Add Focus Area
         </button>
       </div>
 
       {/* Content Priority */}
-      <div style={styles.section}>
-        <h2 style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 16, color: '#000000' }}>✅ Content Priority (what to include)</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8 }}>
+      <div style={sectionStyle}>
+        <h2 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '16px', color: '#000000' }}>
+          ✅ Content Priority (what to include)
+        </h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '8px' }}>
           {CONTENT_PRIORITY_OPTIONS.map(opt => (
-            <label key={opt.id} style={styles.checkboxLabel}>
+            <label key={opt.id} style={checkboxLabelStyle}>
               <input
                 type="checkbox"
                 checked={promptData.contentPriority.includes(opt.id)}
                 onChange={() => toggleCheckbox('contentPriority', opt.id)}
-                style={styles.checkbox}
+                style={checkboxStyle}
               />
               {opt.label}
             </label>
@@ -379,16 +497,18 @@ OUTRO (use this): "${outro}"`;
       </div>
 
       {/* Content to Avoid */}
-      <div style={styles.section}>
-        <h2 style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 16, color: '#000000' }}>❌ Content to Avoid (what to exclude)</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8 }}>
+      <div style={sectionStyle}>
+        <h2 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '16px', color: '#000000' }}>
+          ❌ Content to Avoid (what to exclude)
+        </h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '8px' }}>
           {CONTENT_AVOID_OPTIONS.map(opt => (
-            <label key={opt.id} style={styles.checkboxLabel}>
+            <label key={opt.id} style={checkboxLabelStyle}>
               <input
                 type="checkbox"
                 checked={promptData.contentAvoid.includes(opt.id)}
                 onChange={() => toggleCheckbox('contentAvoid', opt.id)}
-                style={styles.checkbox}
+                style={checkboxStyle}
               />
               {opt.label}
             </label>
@@ -397,12 +517,14 @@ OUTRO (use this): "${outro}"`;
       </div>
 
       {/* News Source Priority */}
-      <div style={styles.section}>
-        <h2 style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 16, color: '#000000' }}>📰 News Source Priority</h2>
+      <div style={sectionStyle}>
+        <h2 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '16px', color: '#000000' }}>
+          📰 News Source Priority
+        </h2>
         <select
           value={promptData.newsSourcePriority}
-          onChange={e => setPromptData(p => ({ ...p, newsSourcePriority: e.target.value }))}
-          style={styles.select}
+          onChange={e => setPromptData(prev => ({ ...prev, newsSourcePriority: e.target.value }))}
+          style={selectStyle}
         >
           {NEWS_SOURCE_OPTIONS.map(opt => (
             <option key={opt.id} value={opt.id}>{opt.label}</option>
@@ -410,75 +532,90 @@ OUTRO (use this): "${outro}"`;
         </select>
       </div>
 
-      {/* Intro/Outro Selection */}
-      <div style={styles.section}>
-        <h2 style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 16, color: '#000000' }}>👋 Intro & Outro Scripts</h2>
-        <div style={styles.row}>
-          <div style={{ flex: 1 }}>
-            <label style={styles.label}>Select Intro</label>
-            <select
-              value={promptData.selectedIntro}
-              onChange={e => setPromptData(p => ({ ...p, selectedIntro: parseInt(e.target.value) }))}
-              style={styles.select}
-            >
-              {INTRO_OPTIONS.map((intro, i) => (
-                <option key={i} value={i}>{i + 1}. {intro.substring(0, 60)}...</option>
+      {/* Intro/Outro Scripts - Read Only */}
+      <div style={sectionStyle}>
+        <h2 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '16px', color: '#000000' }}>
+          👋 Intro & Outro Scripts (Randomly Selected by Claude)
+        </h2>
+        <p style={{ marginBottom: '16px', color: '#000000' }}>
+          Claude will randomly choose from these 15 options for each briefing:
+        </p>
+        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: '250px' }}>
+            <label style={labelStyle}>Sample Intros (read-only)</label>
+            <select disabled style={{ ...selectStyle, backgroundColor: '#f5f5f5', cursor: 'not-allowed' }}>
+              {INTRO_OPTIONS.slice(0, 5).map((intro, i) => (
+                <option key={i}>{i + 1}. {intro.substring(0, 50)}...</option>
               ))}
+              <option>... and 10 more variations</option>
             </select>
           </div>
-          <div style={{ flex: 1 }}>
-            <label style={styles.label}>Select Outro</label>
-            <select
-              value={promptData.selectedOutro}
-              onChange={e => setPromptData(p => ({ ...p, selectedOutro: parseInt(e.target.value) }))}
-              style={styles.select}
-            >
-              {OUTRO_OPTIONS.map((outro, i) => (
-                <option key={i} value={i}>{i + 1}. {outro.substring(0, 60)}...</option>
+          <div style={{ flex: 1, minWidth: '250px' }}>
+            <label style={labelStyle}>Sample Outros (read-only)</label>
+            <select disabled style={{ ...selectStyle, backgroundColor: '#f5f5f5', cursor: 'not-allowed' }}>
+              {OUTRO_OPTIONS.slice(0, 5).map((outro, i) => (
+                <option key={i}>{i + 1}. {outro.substring(0, 50)}...</option>
               ))}
+              <option>... and 10 more variations</option>
             </select>
           </div>
         </div>
       </div>
 
       {/* Special Instructions */}
-      <div style={styles.section}>
-        <h2 style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 16, color: '#000000' }}>📋 Special Instructions</h2>
+      <div style={sectionStyle}>
+        <h2 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '16px', color: '#000000' }}>
+          📋 Special Instructions
+        </h2>
         <textarea
           value={promptData.specialInstructions}
-          onChange={e => setPromptData(p => ({ ...p, specialInstructions: e.target.value }))}
+          onChange={e => setPromptData(prev => ({ ...prev, specialInstructions: e.target.value }))}
           rows={4}
           placeholder="Any additional instructions for Claude..."
-          style={styles.textarea}
+          style={textareaStyle}
         />
       </div>
 
-      {/* Prompt Preview - Editable */}
-      <div style={{ ...styles.section, backgroundColor: '#f5f5f5' }}>
-        <h2 style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 16, color: '#000000' }}>📄 Prompt Preview (Editable)</h2>
+      {/* Prompt Preview - Large and Editable */}
+      <div style={{ ...sectionStyle, backgroundColor: '#f5f5f5' }}>
+        <h2 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '16px', color: '#000000' }}>
+          📄 Prompt Preview (Editable)
+        </h2>
         <textarea
           value={promptData.customPrompt || generatePreview()}
-          onChange={e => setPromptData(p => ({ ...p, customPrompt: e.target.value }))}
+          onChange={e => setPromptData(prev => ({ ...prev, customPrompt: e.target.value }))}
           rows={20}
-          style={{ ...styles.textarea, fontSize: 14, fontFamily: 'monospace', backgroundColor: '#ffffff' }}
+          style={{
+            ...textareaStyle,
+            fontSize: '14px',
+            fontFamily: 'monospace',
+            backgroundColor: '#ffffff'
+          }}
         />
         <button
-          onClick={() => setPromptData(p => ({ ...p, customPrompt: '' }))}
-          style={{ ...styles.btn, backgroundColor: '#ffffff', marginTop: 12 }}
+          onClick={() => setPromptData(prev => ({ ...prev, customPrompt: '' }))}
+          style={{ ...buttonStyle, backgroundColor: '#ffffff', marginTop: '12px' }}
         >
           🔄 Reset to Generated Preview
         </button>
       </div>
 
       {/* Bottom Save Button */}
-      <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 24 }}>
-        <button onClick={() => router.push('/admin/news-briefings')} style={{ ...styles.btn, backgroundColor: '#ffffff' }}>
+      <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', marginTop: '24px' }}>
+        <button
+          onClick={() => router.push('/admin/news-briefings')}
+          style={{ ...buttonStyle, backgroundColor: '#ffffff' }}
+        >
           ← Back to Admin
         </button>
         <button
           onClick={handleSave}
           disabled={saving}
-          style={{ ...styles.btn, backgroundColor: catInfo.color, color: category === 'world' ? '#000000' : '#ffffff' }}
+          style={{
+            ...buttonStyle,
+            backgroundColor: catInfo.color,
+            color: category === 'world' ? '#000000' : '#ffffff'
+          }}
         >
           {saving ? 'Saving...' : '💾 Save Prompt'}
         </button>
