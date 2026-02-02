@@ -1,6 +1,3 @@
-// app/api/admin/subscriber-states/route.ts
-// Returns list of states that have subscribers
-
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
@@ -11,7 +8,6 @@ const supabase = createClient(
 
 export async function GET() {
   try {
-    // Get distinct states from users who have a subscription
     const { data, error } = await supabase
       .from('users')
       .select('state')
@@ -24,8 +20,9 @@ export async function GET() {
       return NextResponse.json({ states: [] });
     }
 
-    // Get unique states
-    const states = [...new Set((data || []).map(u => u.state).filter(Boolean))].sort();
+    const stateList = (data || []).map(u => u.state).filter(Boolean);
+    const uniqueStates = stateList.filter((state, index) => stateList.indexOf(state) === index);
+    const states = uniqueStates.sort();
     
     return NextResponse.json({ states });
   } catch (error) {
