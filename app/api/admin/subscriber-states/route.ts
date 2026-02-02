@@ -1,7 +1,3 @@
-// app/api/admin/subscriber-states/route.ts
-// Returns list of states that have subscribers
-// February 2026
-
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
@@ -24,11 +20,11 @@ export async function GET() {
       return NextResponse.json({ states: [] });
     }
 
-    // Get unique states - using filter instead of Set spread to avoid TypeScript issues
+    // Get unique states using filter (not Set spread to avoid TypeScript issues)
     const allStates = (data || []).map(u => u.state).filter(Boolean);
     const uniqueStates = allStates.filter((state, index) => allStates.indexOf(state) === index);
     const sortedStates = uniqueStates.sort();
-    
+
     return NextResponse.json({ states: sortedStates });
   } catch (error) {
     console.error('[Subscriber States] Error:', error);
