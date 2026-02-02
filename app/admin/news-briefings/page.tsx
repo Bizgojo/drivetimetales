@@ -537,59 +537,65 @@ export default function NewsBriefingsAdmin() {
                 </button>
               </div>
 
-              {/* Action Buttons Row 2: Generate + Play */}
-              <div style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>
-                <button
-                  onClick={() => handleGenerate(cat.id)}
-                  disabled={isGenerating || !catSettings.narratorName || !catSettings.voiceId}
-                  style={{
-                    flex: 1,
-                    backgroundColor: isGenerating ? '#475569' : cat.color,
-                    color: cat.id === 'world' ? 'black' : 'white',
-                    border: 'none',
-                    borderRadius: '6px',
-                    padding: '10px 16px',
-                    fontWeight: 'bold',
-                    cursor: isGenerating ? 'not-allowed' : 'pointer',
-                    opacity: (!catSettings.narratorName || !catSettings.voiceId) ? 0.5 : 1
-                  }}
-                >
-                  {isGenerating ? '⏳ Generating...' : '🎬 Generate'}
-                </button>
-                <button
-                  onClick={() => handlePlay(cat.id)}
-                  disabled={!episode?.audioUrl}
-                  style={{
-                    flex: 1,
-                    backgroundColor: episode?.audioUrl ? (isPlaying ? '#dc2626' : '#475569') : '#1e293b',
-                    color: 'white',
-                    border: episode?.audioUrl ? 'none' : '1px solid #475569',
-                    borderRadius: '6px',
-                    padding: '10px 16px',
-                    fontWeight: 'bold',
-                    cursor: episode?.audioUrl ? 'pointer' : 'not-allowed',
-                    opacity: episode?.audioUrl ? 1 : 0.5
-                  }}
-                >
-                  {isPlaying ? '⏹️ Stop' : '▶️ Play'}
-                </button>
-              </div>
+              {/* Action Buttons Row 2: Generate + Play (NOT for State - state uses auto-generation) */}
+              {cat.id !== 'state' && (
+                <div style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>
+                  <button
+                    onClick={() => handleGenerate(cat.id)}
+                    disabled={isGenerating || !catSettings.narratorName || !catSettings.voiceId}
+                    style={{
+                      flex: 1,
+                      backgroundColor: isGenerating ? '#475569' : cat.color,
+                      color: cat.id === 'world' ? 'black' : 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      padding: '10px 16px',
+                      fontWeight: 'bold',
+                      cursor: isGenerating ? 'not-allowed' : 'pointer',
+                      opacity: (!catSettings.narratorName || !catSettings.voiceId) ? 0.5 : 1
+                    }}
+                  >
+                    {isGenerating ? '⏳ Generating...' : '🎬 Generate'}
+                  </button>
+                  <button
+                    onClick={() => handlePlay(cat.id)}
+                    disabled={!episode?.audioUrl}
+                    style={{
+                      flex: 1,
+                      backgroundColor: episode?.audioUrl ? (isPlaying ? '#dc2626' : '#475569') : '#1e293b',
+                      color: 'white',
+                      border: episode?.audioUrl ? 'none' : '1px solid #475569',
+                      borderRadius: '6px',
+                      padding: '10px 16px',
+                      fontWeight: 'bold',
+                      cursor: episode?.audioUrl ? 'pointer' : 'not-allowed',
+                      opacity: episode?.audioUrl ? 1 : 0.5
+                    }}
+                  >
+                    {isPlaying ? '⏹️ Stop' : '▶️ Play'}
+                  </button>
+                </div>
+              )}
 
               {/* State Upsell Button (State card only) */}
               {cat.id === 'state' && (
                 <div style={{ marginBottom: '12px' }}>
+                  <p style={{ fontSize: '12px', opacity: 0.7, marginBottom: '8px' }}>
+                    State news is auto-generated for subscriber states. Use this button to generate the Welcome page upsell message.
+                  </p>
                   <button
                     onClick={handleGenerateUpsell}
                     disabled={generatingUpsell || !catSettings.narratorName || !catSettings.voiceId}
                     style={{
                       width: '100%',
-                      backgroundColor: stateUpsellExists ? '#334155' : '#dc2626',
+                      backgroundColor: generatingUpsell ? '#475569' : (stateUpsellExists ? '#334155' : '#dc2626'),
                       color: 'white',
                       border: stateUpsellExists ? '1px solid #475569' : 'none',
                       borderRadius: '6px',
                       padding: '10px 16px',
-                      cursor: generatingUpsell ? 'not-allowed' : 'pointer',
-                      fontWeight: 'bold'
+                      cursor: (generatingUpsell || !catSettings.narratorName || !catSettings.voiceId) ? 'not-allowed' : 'pointer',
+                      fontWeight: 'bold',
+                      opacity: (!catSettings.narratorName || !catSettings.voiceId) ? 0.5 : 1
                     }}
                   >
                     {generatingUpsell ? '⏳ Generating Upsell...' : 
