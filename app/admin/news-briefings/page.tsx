@@ -305,7 +305,7 @@ export default function NewsBriefingsAdmin() {
       <style>{spinnerStyles}</style>
       
       <Link href="/admin" style={{ display: 'inline-block', marginBottom: '16px', color: '#3b82f6', fontSize: '16px', textDecoration: 'none' }}>← Back to Admin</Link>
-      <h1 style={{ fontSize: '28px', fontWeight: 'bold', marginBottom: '8px', color: '#000000' }}>🎙️ News Briefings Admin</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}><h1 style={{ fontSize: '28px', fontWeight: 'bold', margin: 0, color: '#000000' }}>🎙️ News Briefings Admin</h1><Link href="/admin/news-briefings/test-sources" style={{ padding: '10px 16px', backgroundColor: '#8b5cf6', color: '#ffffff', borderRadius: '6px', textDecoration: 'none', fontWeight: 'bold', fontSize: '14px' }}>🧪 Test Sources</Link></div>
       <p style={{ marginBottom: '24px', fontSize: '16px', color: '#000000' }}>Configure narrators, voices, and prompts. Settings save automatically.</p>
 
       {/* Auto-Generation Master Controls */}
