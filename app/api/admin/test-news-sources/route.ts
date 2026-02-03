@@ -1,193 +1,579 @@
+// FILE: app/api/admin/test-news-sources/route.ts
+// STANDALONE - Does not touch any existing DTT code
+// Safe to delete without affecting anything else
+
 import { NextRequest, NextResponse } from 'next/server';
 
-interface NewsStory { title: string; url: string; source: string; date: string; fetchedContent?: string; contentSource?: string; description?: string; }
-interface ContentFetchResult { story: NewsStory; contentFetchMs: number; contentLength: number; contentSource: string; }
+// ============================================
+// TYPES
+// ============================================
 
-const CATEGORY_CONFIG: Record<string, { newsApiCategory: string; categoryLabel: string }> = {
-  national: { newsApiCategory: 'general', categoryLabel: 'National News' },
-  business: { newsApiCategory: 'business', categoryLabel: 'Business News' },
-  sports: { newsApiCategory: 'sports', categoryLabel: 'Sports News' },
-  science: { newsApiCategory: 'technology', categoryLabel: 'Science & Technology News' },
-  world: { newsApiCategory: 'general', categoryLabel: 'World News' },
-  state: { newsApiCategory: 'general', categoryLabel: 'State News' }
+interface NewsStory {
+  title: string;
+  url: string;
+  source: string;
+  date: string;
+  summary?: string;
+  trendingScore?: number;
+  fetchedContent?: string;
+}
+
+interface SourceResult {
+  source: string;
+  stories: NewsStory[];
+  fetchTimeMs: number;
+  error?: string;
+  onTopicCount?: number;
+  offTopicStories?: string[];
+}
+
+interface TestResult {
+  category: string;
+  timestamp: string;
+  results: SourceResult[];
+  comparison?: {
+    source: string;
+    storyCount: number;
+    onTopicPercent: number;
+    avgTrendingScore: number;
+  }[];
+}
+
+// ============================================
+// CATEGORY CONFIGURATIONS
+// ============================================
+
+const CATEGORY_CONFIG: Record<string, {
+  gdeltQuery: string;
+  gdeltTheme?: string;
+  newsApiCategory?: string;
+  worldNewsCategory?: string;
+  excludeKeywords: string[];
+  expectedKeywords: string[];
+}> = {
+  national: {
+    gdeltQuery: 'congress OR "white house" OR federal OR legislation OR government',
+    gdeltTheme: 'TAX_FNCACT_GOVERNMENT',
+    newsApiCategory: 'general',
+    worldNewsCategory: 'politics',
+    excludeKeywords: ['sports', 'nfl', 'nba', 'mlb', 'celebrity', 'entertainment', 'stock', 'earnings'],
+    expectedKeywords: ['congress', 'senate', 'house', 'president', 'federal', 'legislation', 'government', 'bill', 'law', 'policy']
+  },
+  business: {
+    gdeltQuery: 'market OR stocks OR economy OR earnings OR CEO OR "wall street"',
+    gdeltTheme: 'TAX_WORLDBUSINESS',
+    newsApiCategory: 'business',
+    worldNewsCategory: 'business',
+    excludeKeywords: ['sports', 'nfl', 'nba', 'celebrity', 'entertainment'],
+    expectedKeywords: ['market', 'stock', 'economy', 'earnings', 'ceo', 'company', 'business', 'trade', 'inflation', 'fed']
+  },
+  sports: {
+    gdeltQuery: 'NFL OR NBA OR MLB OR NHL OR championship OR game OR player OR coach',
+    gdeltTheme: 'SPORT',
+    newsApiCategory: 'sports',
+    worldNewsCategory: 'sports',
+    excludeKeywords: ['politics', 'congress', 'economy', 'stock'],
+    expectedKeywords: ['game', 'score', 'player', 'team', 'championship', 'nfl', 'nba', 'mlb', 'nhl', 'coach', 'win', 'loss']
+  },
+  science: {
+    gdeltQuery: 'research OR NASA OR AI OR technology OR discovery OR scientists',
+    gdeltTheme: 'TAX_SCIENCE',
+    newsApiCategory: 'technology',
+    worldNewsCategory: 'science',
+    excludeKeywords: ['sports', 'celebrity', 'politics', 'congress'],
+    expectedKeywords: ['research', 'study', 'scientists', 'nasa', 'space', 'ai', 'technology', 'discovery', 'experiment']
+  },
+  world: {
+    gdeltQuery: 'international OR foreign OR global OR "united nations"',
+    gdeltTheme: 'TAX_WORLDPOLITICS',
+    newsApiCategory: 'general',
+    worldNewsCategory: 'world',
+    excludeKeywords: ['domestic', 'us politics', 'sports', 'celebrity'],
+    expectedKeywords: ['international', 'foreign', 'global', 'country', 'minister', 'diplomatic', 'treaty']
+  },
+  state: {
+    gdeltQuery: '', // Will be set dynamically with state name
+    newsApiCategory: 'general',
+    worldNewsCategory: 'politics',
+    excludeKeywords: ['national', 'federal', 'international', 'sports'],
+    expectedKeywords: ['governor', 'state', 'local', 'county', 'mayor', 'legislature']
+  }
 };
 
-async function fetchNewsAPITrending(category: string, state?: string) {
+// ============================================
+// GDELT FETCHER
+// ============================================
+
+async function fetchGDELT(category: string, state?: string): Promise<SourceResult> {
   const startTime = Date.now();
   const config = CATEGORY_CONFIG[category];
-  const apiKey = process.env.NEWSAPI_KEY;
-  
-  if (!apiKey) {
-    return { stories: [], fetchTimeMs: Date.now() - startTime, error: 'NEWSAPI_KEY not configured' };
-  }
   
   try {
-    let url: string;
-    
+    // Build query
+    let query = config.gdeltQuery;
     if (category === 'state' && state) {
-      // Use everything endpoint for state-specific search
-      url = `https://newsapi.org/v2/everything?q="${state}"&language=en&sortBy=publishedAt&pageSize=20&apiKey=${apiKey}`;
-    } else if (category === 'world') {
-      // World news - exclude US sources
-      url = `https://newsapi.org/v2/top-headlines?category=${config.newsApiCategory}&language=en&pageSize=20&apiKey=${apiKey}`;
-    } else {
-      // US top headlines by category
-      url = `https://newsapi.org/v2/top-headlines?country=us&category=${config.newsApiCategory}&pageSize=20&apiKey=${apiKey}`;
+      query = `"${state}"`;
     }
     
-    const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    // Add theme if available
+    if (config.gdeltTheme) {
+      query += ` theme:${config.gdeltTheme}`;
+    }
+    
+    // GDELT DOC API - get articles sorted by relevance (trending)
+    const url = `https://api.gdeltproject.org/api/v2/doc/doc?` +
+      `query=${encodeURIComponent(query)}&` +
+      `mode=artlist&` +
+      `maxrecords=20&` +
+      `sort=hybridrel&` +
+      `timespan=24h&` +
+      `format=json`;
+    
+    const response = await fetch(url, { 
+      headers: { 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(15000)
+    });
     
     if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`NewsAPI returned ${response.status}: ${text.substring(0, 100)}`);
+      throw new Error(`GDELT API returned ${response.status}`);
     }
     
     const data = await response.json();
     const articles = data.articles || [];
     
-    // Filter out removed articles and duplicates
-    const seenTitles = new Set<string>();
-    const stories: NewsStory[] = [];
+    // Map to our format
+    const stories: NewsStory[] = articles.map((article: any) => ({
+      title: article.title || 'No title',
+      url: article.url || '',
+      source: article.domain || 'unknown',
+      date: article.seendate || new Date().toISOString(),
+      trendingScore: article.socialimage ? 100 : 50 // Proxy: articles with images tend to be more prominent
+    }));
     
-    for (const article of articles) {
-      const title = article.title || '';
-      if (!title || title === '[Removed]' || title.length < 20) continue;
-      
-      const titleKey = title.toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 50);
-      if (seenTitles.has(titleKey)) continue;
-      seenTitles.add(titleKey);
-      
-      stories.push({
-        title,
-        url: article.url || '',
-        source: article.source?.name || '',
-        date: article.publishedAt || new Date().toISOString(),
-        description: article.description || ''
-      });
-    }
+    // Check on-topic
+    const { onTopicCount, offTopicStories } = checkOnTopic(stories, config);
     
-    return { stories: stories.slice(0, 10), fetchTimeMs: Date.now() - startTime };
+    return {
+      source: 'GDELT',
+      stories,
+      fetchTimeMs: Date.now() - startTime,
+      onTopicCount,
+      offTopicStories
+    };
+    
   } catch (error: any) {
-    return { stories: [], fetchTimeMs: Date.now() - startTime, error: error.message };
+    return {
+      source: 'GDELT',
+      stories: [],
+      fetchTimeMs: Date.now() - startTime,
+      error: error.message || 'Unknown error'
+    };
   }
 }
 
-async function fetchArticleContent(url: string) {
+// ============================================
+// NEWSAPI FETCHER
+// ============================================
+
+async function fetchNewsAPI(category: string): Promise<SourceResult> {
+  const startTime = Date.now();
+  const config = CATEGORY_CONFIG[category];
+  
+  const apiKey = process.env.NEWSAPI_KEY;
+  if (!apiKey) {
+    return {
+      source: 'NewsAPI',
+      stories: [],
+      fetchTimeMs: Date.now() - startTime,
+      error: 'NEWSAPI_KEY not configured'
+    };
+  }
+  
   try {
-    if (!url) return { content: '', success: false };
+    const url = `https://newsapi.org/v2/top-headlines?` +
+      `country=us&` +
+      `category=${config.newsApiCategory || 'general'}&` +
+      `pageSize=20&` +
+      `apiKey=${apiKey}`;
+    
     const response = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1)' },
-      signal: AbortSignal.timeout(8000)
+      signal: AbortSignal.timeout(10000)
     });
-    if (!response.ok) return { content: '', success: false };
-    const html = await response.text();
-    const paragraphs: string[] = [];
-    const pRegex = /<p[^>]*>([^<]+)<\/p>/gi;
-    let match;
-    while ((match = pRegex.exec(html)) !== null && paragraphs.length < 5) {
-      const text = match[1].replace(/<[^>]+>/g, '').trim();
-      if (text.length > 80) paragraphs.push(text);
+    
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`NewsAPI returned ${response.status}: ${text}`);
     }
-    const content = paragraphs.join(' ').substring(0, 800);
-    return { content, success: content.length > 100 };
-  } catch { return { content: '', success: false }; }
+    
+    const data = await response.json();
+    const articles = data.articles || [];
+    
+    const stories: NewsStory[] = articles.map((article: any) => ({
+      title: article.title || 'No title',
+      url: article.url || '',
+      source: article.source?.name || 'unknown',
+      date: article.publishedAt || new Date().toISOString(),
+      summary: article.description || ''
+    }));
+    
+    const { onTopicCount, offTopicStories } = checkOnTopic(stories, config);
+    
+    return {
+      source: 'NewsAPI',
+      stories,
+      fetchTimeMs: Date.now() - startTime,
+      onTopicCount,
+      offTopicStories
+    };
+    
+  } catch (error: any) {
+    return {
+      source: 'NewsAPI',
+      stories: [],
+      fetchTimeMs: Date.now() - startTime,
+      error: error.message || 'Unknown error'
+    };
+  }
 }
 
-async function fetchAllArticleContent(stories: NewsStory[]): Promise<ContentFetchResult[]> {
-  return Promise.all(stories.map(async (story) => {
-    const start = Date.now();
-    // Use description from NewsAPI if available, otherwise try to fetch
-    let content = story.description || '';
-    let success = content.length > 50;
+// ============================================
+// WORLD NEWS API FETCHER
+// ============================================
+
+async function fetchWorldNewsAPI(category: string): Promise<SourceResult> {
+  const startTime = Date.now();
+  const config = CATEGORY_CONFIG[category];
+  
+  const apiKey = process.env.WORLD_NEWS_API_KEY;
+  if (!apiKey) {
+    return {
+      source: 'World News API',
+      stories: [],
+      fetchTimeMs: Date.now() - startTime,
+      error: 'WORLD_NEWS_API_KEY not configured'
+    };
+  }
+  
+  try {
+    // Build query based on category
+    const categoryMap: Record<string, string> = {
+      national: 'politics',
+      business: 'business',
+      sports: 'sports',
+      science: 'science',
+      world: 'world',
+      state: 'politics'
+    };
     
-    if (!success) {
-      const fetched = await fetchArticleContent(story.url);
-      content = fetched.content;
-      success = fetched.success;
+    const url = `https://api.worldnewsapi.com/search-news?` +
+      `source-countries=us&` +
+      `language=en&` +
+      `number=20&` +
+      `sort=publish-time&` +
+      `sort-direction=DESC&` +
+      `api-key=${apiKey}`;
+    
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(10000)
+    });
+    
+    if (!response.ok) {
+      throw new Error(`World News API returned ${response.status}`);
+    }
+    
+    const data = await response.json();
+    const articles = data.news || [];
+    
+    const stories: NewsStory[] = articles.map((article: any) => ({
+      title: article.title || 'No title',
+      url: article.url || '',
+      source: article.source || 'unknown',
+      date: article.publish_date || new Date().toISOString(),
+      summary: article.text?.substring(0, 300) || ''
+    }));
+    
+    const { onTopicCount, offTopicStories } = checkOnTopic(stories, config);
+    
+    return {
+      source: 'World News API',
+      stories,
+      fetchTimeMs: Date.now() - startTime,
+      onTopicCount,
+      offTopicStories
+    };
+    
+  } catch (error: any) {
+    return {
+      source: 'World News API',
+      stories: [],
+      fetchTimeMs: Date.now() - startTime,
+      error: error.message || 'Unknown error'
+    };
+  }
+}
+
+// ============================================
+// REUTERS WIRE API FETCHER (Experimental)
+// ============================================
+
+async function fetchReutersWire(category: string): Promise<SourceResult> {
+  const startTime = Date.now();
+  const config = CATEGORY_CONFIG[category];
+  
+  try {
+    // Map category to Reuters feed
+    const feedMap: Record<string, string> = {
+      national: 'politics',
+      business: 'business',
+      sports: 'sports',
+      science: 'tech',
+      world: 'world',
+      state: 'wire'
+    };
+    
+    const feed = feedMap[category] || 'wire';
+    const url = `https://wireapi.reuters.com/v8/feed/rapp/us/tabbar/feeds/${feed}`;
+    
+    const response = await fetch(url, {
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'Mozilla/5.0'
+      },
+      signal: AbortSignal.timeout(10000)
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Reuters Wire API returned ${response.status}`);
+    }
+    
+    const data = await response.json();
+    const articles = data.wireFeed?.story || data.story || [];
+    
+    const stories: NewsStory[] = articles.slice(0, 20).map((article: any) => ({
+      title: article.headline || article.title || 'No title',
+      url: article.url || article.canonical_url || '',
+      source: 'Reuters',
+      date: article.updated || article.published || new Date().toISOString()
+    }));
+    
+    const { onTopicCount, offTopicStories } = checkOnTopic(stories, config);
+    
+    return {
+      source: 'Reuters Wire (Experimental)',
+      stories,
+      fetchTimeMs: Date.now() - startTime,
+      onTopicCount,
+      offTopicStories
+    };
+    
+  } catch (error: any) {
+    return {
+      source: 'Reuters Wire (Experimental)',
+      stories: [],
+      fetchTimeMs: Date.now() - startTime,
+      error: error.message || 'Unknown error'
+    };
+  }
+}
+
+// ============================================
+// ESPN API FETCHER (Sports Only)
+// ============================================
+
+async function fetchESPN(): Promise<SourceResult> {
+  const startTime = Date.now();
+  
+  try {
+    // Fetch news from multiple sports
+    const sports = ['football/nfl', 'basketball/nba', 'baseball/mlb', 'hockey/nhl'];
+    const allStories: NewsStory[] = [];
+    
+    for (const sport of sports) {
+      try {
+        const url = `https://site.api.espn.com/apis/site/v2/sports/${sport}/news?limit=5`;
+        const response = await fetch(url, {
+          signal: AbortSignal.timeout(5000)
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          const articles = data.articles || [];
+          
+          for (const article of articles) {
+            allStories.push({
+              title: article.headline || article.title || 'No title',
+              url: article.links?.web?.href || '',
+              source: 'ESPN',
+              date: article.published || new Date().toISOString(),
+              summary: article.description || ''
+            });
+          }
+        }
+      } catch (e) {
+        // Continue with other sports if one fails
+      }
     }
     
     return {
-      story: { ...story, fetchedContent: content || undefined, contentSource: success ? 'direct' : 'failed' },
-      contentFetchMs: Date.now() - start,
-      contentLength: content.length,
-      contentSource: success ? 'direct' : 'failed'
-    } as ContentFetchResult;
-  }));
+      source: 'ESPN (Experimental)',
+      stories: allStories.slice(0, 20),
+      fetchTimeMs: Date.now() - startTime,
+      onTopicCount: allStories.length,
+      offTopicStories: []
+    };
+    
+  } catch (error: any) {
+    return {
+      source: 'ESPN (Experimental)',
+      stories: [],
+      fetchTimeMs: Date.now() - startTime,
+      error: error.message || 'Unknown error'
+    };
+  }
 }
 
-function generateSamplePrompt(category: string, stories: NewsStory[]) {
-  const config = CATEGORY_CONFIG[category];
-  let prompt = `You are a professional radio news broadcaster for Drive Time Tales.
+// ============================================
+// ARTICLE CONTENT FETCHER
+// ============================================
 
-YOUR TASK: Write a 3-minute spoken news script for ${config.categoryLabel}.
-
-RULES:
-- Write for AUDIO - no visual references, spell out numbers
-- Sound natural and conversational
-- Cover the most important stories first
-- Total length: approximately 450-500 words
-
-STORIES TO COVER:
-`;
-  stories.forEach((s, i) => {
-    prompt += `\n${i + 1}. "${s.title}" (${s.source})`;
-    if (s.fetchedContent) {
-      prompt += `\n   Context: ${s.fetchedContent.substring(0, 350)}...`;
+async function fetchArticleContent(url: string): Promise<string> {
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; DTTBot/1.0)',
+        'Accept': 'text/html'
+      },
+      signal: AbortSignal.timeout(8000)
+    });
+    
+    if (!response.ok) {
+      return '';
     }
-    prompt += '\n';
-  });
-  prompt += `\nWrite the complete script now. Start with a greeting and end with a sign-off.`;
-  return prompt;
+    
+    const html = await response.text();
+    
+    // Simple extraction: find first few paragraphs
+    // Look for <p> tags and extract text
+    const paragraphs: string[] = [];
+    const pRegex = /<p[^>]*>([^<]+(?:<[^>]+>[^<]+)*)<\/p>/gi;
+    let match;
+    
+    while ((match = pRegex.exec(html)) !== null && paragraphs.length < 3) {
+      // Strip HTML tags from the paragraph content
+      const text = match[1].replace(/<[^>]+>/g, '').trim();
+      if (text.length > 50) { // Only meaningful paragraphs
+        paragraphs.push(text);
+      }
+    }
+    
+    return paragraphs.join(' ').substring(0, 500);
+    
+  } catch (error) {
+    return '';
+  }
 }
+
+// ============================================
+// ON-TOPIC CHECKER
+// ============================================
+
+function checkOnTopic(stories: NewsStory[], config: typeof CATEGORY_CONFIG[string]): {
+  onTopicCount: number;
+  offTopicStories: string[];
+} {
+  const offTopicStories: string[] = [];
+  let onTopicCount = 0;
+  
+  for (const story of stories) {
+    const titleLower = (story.title + ' ' + (story.summary || '')).toLowerCase();
+    
+    // Check for excluded keywords
+    const hasExcluded = config.excludeKeywords.some(kw => titleLower.includes(kw.toLowerCase()));
+    
+    // Check for expected keywords
+    const hasExpected = config.expectedKeywords.some(kw => titleLower.includes(kw.toLowerCase()));
+    
+    if (hasExcluded && !hasExpected) {
+      offTopicStories.push(`"${story.title.substring(0, 60)}..." - contains excluded keyword`);
+    } else {
+      onTopicCount++;
+    }
+  }
+  
+  return { onTopicCount, offTopicStories };
+}
+
+// ============================================
+// MAIN API HANDLER
+// ============================================
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const category = searchParams.get('category') || 'national';
+  const sources = searchParams.get('sources')?.split(',') || ['gdelt', 'newsapi', 'worldnews'];
   const state = searchParams.get('state') || 'South Carolina';
-
-  if (!CATEGORY_CONFIG[category]) return NextResponse.json({ error: 'Invalid category' }, { status: 400 });
-
-  const newsResult = await fetchNewsAPITrending(category, category === 'state' ? state : undefined);
-
-  if (newsResult.error || newsResult.stories.length === 0) {
-    return NextResponse.json({
-      category,
-      workflow: 'NewsAPI → Fetch → Claude',
-      step1_trending: {
-        source: 'NewsAPI',
-        storiesFound: 0,
-        fetchTimeMs: newsResult.fetchTimeMs,
-        error: newsResult.error || 'No stories found',
-        topStories: []
-      },
-      step2_content: null,
-      finalStories: [],
-      samplePrompt: 'No stories available.'
-    });
+  const fetchContent = searchParams.get('fetchContent') === 'true';
+  
+  // Validate category
+  if (!CATEGORY_CONFIG[category]) {
+    return NextResponse.json({ error: `Invalid category: ${category}` }, { status: 400 });
   }
-
-  const contentResults = await fetchAllArticleContent(newsResult.stories);
-  const finalStories = contentResults.map(r => r.story);
-
-  return NextResponse.json({
+  
+  const results: SourceResult[] = [];
+  
+  // Fetch from selected sources in parallel
+  const fetchPromises: Promise<SourceResult>[] = [];
+  
+  if (sources.includes('gdelt')) {
+    fetchPromises.push(fetchGDELT(category, category === 'state' ? state : undefined));
+  }
+  if (sources.includes('newsapi')) {
+    fetchPromises.push(fetchNewsAPI(category));
+  }
+  if (sources.includes('worldnews')) {
+    fetchPromises.push(fetchWorldNewsAPI(category));
+  }
+  if (sources.includes('reuters')) {
+    fetchPromises.push(fetchReutersWire(category));
+  }
+  if (sources.includes('espn') && category === 'sports') {
+    fetchPromises.push(fetchESPN());
+  }
+  
+  const fetchedResults = await Promise.all(fetchPromises);
+  results.push(...fetchedResults);
+  
+  // Optionally fetch article content for top stories from each source
+  if (fetchContent) {
+    for (const result of results) {
+      if (result.stories.length > 0 && !result.error) {
+        // Fetch content for top 3 stories
+        const contentPromises = result.stories.slice(0, 3).map(async (story) => {
+          story.fetchedContent = await fetchArticleContent(story.url);
+          return story;
+        });
+        await Promise.all(contentPromises);
+      }
+    }
+  }
+  
+  // Build comparison
+  const comparison = results.map(r => ({
+    source: r.source,
+    storyCount: r.stories.length,
+    onTopicPercent: r.stories.length > 0 ? Math.round((r.onTopicCount || 0) / r.stories.length * 100) : 0,
+    avgTrendingScore: r.stories.length > 0 
+      ? Math.round(r.stories.reduce((sum, s) => sum + (s.trendingScore || 0), 0) / r.stories.length)
+      : 0,
+    error: r.error
+  }));
+  
+  const testResult: TestResult = {
     category,
     timestamp: new Date().toISOString(),
-    workflow: 'NewsAPI (top headlines) → Content Fetch → Claude',
-    step1_trending: {
-      source: 'NewsAPI',
-      storiesFound: newsResult.stories.length,
-      fetchTimeMs: newsResult.fetchTimeMs,
-      topStories: newsResult.stories.slice(0, 5).map(s => ({ title: s.title, source: s.source }))
-    },
-    step2_content: {
-      totalStories: contentResults.length,
-      directFetchSuccess: contentResults.filter(r => r.contentSource === 'direct').length,
-      directFetchFailed: contentResults.filter(r => r.contentSource === 'failed').length,
-      avgContentLength: Math.round(contentResults.reduce((sum, r) => sum + r.contentLength, 0) / contentResults.length),
-      fetchTimeMs: contentResults.reduce((sum, r) => sum + r.contentFetchMs, 0),
-      results: contentResults
-    },
-    finalStories,
-    samplePrompt: generateSamplePrompt(category, finalStories)
-  });
+    results,
+    comparison
+  };
+  
+  return NextResponse.json(testResult);
 }
