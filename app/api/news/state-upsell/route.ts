@@ -6,96 +6,61 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY!;
-
-const UPSELL_SCRIPT = `State news is available exclusively for Drive Time Tales subscribers. With a subscription, you'll get personalized news briefings for your state, covering local government, community events, weather, and more. Subscribe today to stay informed about what's happening in your area. Visit our website or tap the subscribe button to get started.`;
+async function generateAudioClip(text: string, voiceId: string): Promise<Buffer> {
+  const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+    method: 'POST',
+    headers: {
+      'Accept': 'audio/mpeg',
+      'Content-Type': 'application/json',
+      'xi-api-key': process.env.ELEVENLABS_API_KEY!
+    },
+    body: JSON.stringify({
+      text: text,
+      model_id: 'eleven_monolingual_v1',
+      voice_settings: { stability: 0.5, similarity_boost: 0.75 }
+    }),
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`ElevenLabs API error: ${response.status} - ${errorText}`);
+  }
+  const arrayBuffer = await response.arrayBuffer();
+  return Buffer.from(arrayBuffer);
+}
 
 export async function POST(request: NextRequest) {
   try {
-    const { narratorName, voiceId } = await request.json();
+    const body = await request.json().catch(() => ({}));
+    const { narratorName, voiceId, scriptText } = body;
 
-    if (!narratorName || !voiceId) {
-      return NextResponse.json({ error: 'Narrator name and voice required' }, { status: 400 });
+    if (!voiceId) return NextResponse.json({ error: 'Voice ID is required' }, { status: 400 });
+    if (!scriptText) return NextResponse.json({ error: 'Script text is required' }, { status: 400 });
+
+    console.log('[Generate State Upsell] Voice:', voiceId, 'Narrator:', narratorName);
+
+    // Delete old upsell files
+    const { data: existingFiles } = await supabase.storage.from('news-audio').list('welcome-clips', { search: 'state-upsell' });
+    if (existingFiles && existingFiles.length > 0) {
+      for (const file of existingFiles) {
+        if (file.name.startsWith('state-upsell')) {
+          await supabase.storage.from('news-audio').remove([`welcome-clips/${file.name}`]);
+        }
+      }
     }
 
-    console.log('[State Upsell] Generating...');
+    // Generate the audio
+    const audioBuffer = await generateAudioClip(scriptText, voiceId);
+    const fileName = `welcome-clips/state-upsell-${Date.now()}.mp3`;
+    
+    const { error: uploadError } = await supabase.storage.from('news-audio').upload(fileName, audioBuffer, { contentType: 'audio/mpeg', upsert: true });
+    if (uploadError) throw new Error(`Upload error: ${uploadError.message}`);
 
-    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
-      method: 'POST',
-      headers: {
-        'Accept': 'audio/mpeg',
-        'Content-Type': 'application/json',
-        'xi-api-key': ELEVENLABS_API_KEY
-      },
-      body: JSON.stringify({
-        text: UPSELL_SCRIPT,
-        model_id: 'eleven_multilingual_v2',
-        voice_settings: { stability: 0.5, similarity_boost: 0.75 }
-      })
-    });
+    const { data: urlData } = supabase.storage.from('news-audio').getPublicUrl(fileName);
+    console.log('[Generate State Upsell] Complete!', urlData.publicUrl);
 
-    if (!response.ok) {
-      console.error('[State Upsell] ElevenLabs error:', response.status);
-      return NextResponse.json({ error: 'Audio generation failed' }, { status: 500 });
-    }
-
-    const audioBuffer = Buffer.from(await response.arrayBuffer());
-
-    const fileName = `state-upsell-${Date.now()}.mp3`;
-    const filePath = `news/${fileName}`;
-
-    console.log('[State Upsell] Uploading to:', filePath);
-
-    const { error: uploadError } = await supabase.storage
-      .from('audio')
-      .upload(filePath, audioBuffer, { contentType: 'audio/mpeg', upsert: true });
-
-    if (uploadError) {
-      console.error('[State Upsell] Upload error:', uploadError);
-      return NextResponse.json({ error: 'Upload failed: ' + uploadError.message }, { status: 500 });
-    }
-
-    const { data: urlData } = supabase.storage.from('audio').getPublicUrl(filePath);
-    const audioUrl = urlData.publicUrl;
-
-    await supabase.from('news_episodes').update({ is_live: false }).eq('category', 'state-upsell');
-
-    await supabase.from('news_episodes').insert({
-      category: 'state-upsell',
-      audio_url: audioUrl,
-      script_text: UPSELL_SCRIPT,
-      narrator_name: narratorName,
-      voice_id: voiceId,
-      is_live: true,
-      created_at: new Date().toISOString()
-    });
-
-    console.log('[State Upsell] Complete!');
-
-    return NextResponse.json({ success: true, audioUrl });
-
+    return NextResponse.json({ success: true, audioUrl: urlData.publicUrl, scriptText, voiceId, narratorName });
   } catch (error) {
-    console.error('[State Upsell] Error:', error);
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed' }, { status: 500 });
-  }
-}
-
-export async function GET() {
-  try {
-    const { data, error } = await supabase
-      .from('news_episodes')
-      .select('*')
-      .eq('category', 'state-upsell')
-      .eq('is_live', true)
-      .single();
-
-    if (error || !data) {
-      return NextResponse.json({ exists: false });
-    }
-
-    return NextResponse.json({ exists: true, audioUrl: data.audio_url, createdAt: data.created_at });
-  } catch (error) {
-    console.error('[State Upsell] GET error:', error);
-    return NextResponse.json({ exists: false });
+    console.error('[Generate State Upsell] Error:', error);
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Generation failed' }, { status: 500 });
   }
 }
