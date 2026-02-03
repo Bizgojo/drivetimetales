@@ -147,7 +147,7 @@ export default function NewsBriefingsAdmin() {
   if (!settingsLoaded) { return (<div style={{ minHeight: '100vh', backgroundColor: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><style>{spinnerStyles}</style><div style={{ textAlign: 'center' }}><Spinner color="#000000" /><p style={{ fontSize: '20px', fontWeight: 'bold', color: '#000000', marginTop: '16px' }}>Loading settings...</p></div></div>); }
 
   const inputStyle: React.CSSProperties = { width: '100%', padding: '12px', fontSize: '16px', border: '2px solid #000000', borderRadius: '6px', backgroundColor: '#ffffff', color: '#000000', boxSizing: 'border-box' };
-  const selectStyle: React.CSSProperties = { padding: '12px', fontSize: '16px', border: '2px solid #000000', borderRadius: '6px', backgroundColor: '#ffffff', color: '#000000', flex: 1 };
+  const selectStyle: React.CSSProperties = { padding: '12px', fontSize: '16px', border: '2px solid #000000', borderRadius: '6px', backgroundColor: '#ffffff', color: '#000000', flex: 1, maxWidth: 'calc(100% - 120px)' };
   const btnStyle: React.CSSProperties = { padding: '12px 20px', fontSize: '16px', fontWeight: 'bold', border: '2px solid #000000', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' };
 
   return (
