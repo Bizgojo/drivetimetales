@@ -171,7 +171,7 @@ export default function NewsBriefingsAdmin() {
 
           return (
             <div key={cat.id} style={{ backgroundColor: '#ffffff', border: '2px solid #000000', borderRadius: '12px', padding: '20px', borderTop: `6px solid ${cat.color}` }}>
-              <h2 style={{ fontSize: '22px', fontWeight: 'bold', marginBottom: '16px', color: '#000000' }}>{cat.icon} {cat.label}</h2>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}><h2 style={{ fontSize: '22px', fontWeight: 'bold', color: '#000000', margin: 0 }}>{cat.icon} {cat.label}</h2><a href={`/admin/news-briefings/prompts/${cat.id}`} style={{ fontSize: '14px', color: '#3b82f6' }}>📝 Edit Prompt</a></div>
               <label style={{ display: 'block', marginBottom: '6px', fontSize: '16px', fontWeight: 'bold', color: '#000000' }}>Narrator Name</label>
               <input type="text" value={s.narratorName} onChange={e => setSettings(p => ({ ...p, [cat.id]: { ...p[cat.id], narratorName: e.target.value } }))} onBlur={() => saveSettings(cat.id, s.narratorName, s.voiceId)} placeholder="e.g., Sarah Mitchell" style={{ ...inputStyle, marginBottom: '16px' }} />
               <label style={{ display: 'block', marginBottom: '6px', fontSize: '16px', fontWeight: 'bold', color: '#000000' }}>Voice</label>
@@ -210,7 +210,7 @@ export default function NewsBriefingsAdmin() {
                     <button onClick={() => handleGenerate(cat.id)} disabled={isGenerating || !s.narratorName || !s.voiceId} style={{ ...btnStyle, flex: 1, backgroundColor: (isGenerating || !s.narratorName || !s.voiceId) ? '#cccccc' : cat.color, color: cat.id === 'world' ? '#000000' : '#ffffff' }}>{isGenerating ? <><Spinner /> Generating...</> : '🎬 Generate'}</button>
                     <button onClick={() => handlePlay(cat.id)} disabled={!ep?.audioUrl} style={{ ...btnStyle, flex: 1, backgroundColor: ep?.audioUrl ? (isPlaying ? '#dc2626' : '#10b981') : '#cccccc', color: '#ffffff' }}>{isPlaying ? '⏹️ Stop' : '▶️ Play'}</button>
                   </div>
-                  {ep && <div style={{ fontSize: '14px', fontWeight: 'bold', backgroundColor: '#f5f5f5', padding: '10px', borderRadius: '6px', color: '#000000' }}>Last: {formatTime(ep.createdAt)} {ep.duration ? `• ${ep.duration} min` : ''}</div>}
+                  {ep && <div style={{ fontSize: '14px', fontWeight: 'bold', backgroundColor: '#f5f5f5', padding: '10px', borderRadius: '6px', color: '#000000', marginBottom: '16px' }}>Last: {formatTime(ep.createdAt)} {ep.duration ? `• ${ep.duration} min` : ''}</div>}
                 </>
               )}
             </div>
