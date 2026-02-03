@@ -51,8 +51,7 @@ export function Home_NewsBriefings({ newsEpisodes = {}, credits = 0, userState =
       const response = await fetch('/api/news/no-credits-message', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ category, userName }) });
       const data = await response.json();
       if (data.audioUrl) {
-        const audio = new Audio(data.audioUrl);
-        mainAudioRef.current = audio;
+        const audio = new Audio(data.audioUrl); mainAudioRef.current = audio;
         audio.onended = () => { setPlaying(null); setPlayPhase(null); };
         audio.play(); setPlaying(category); setPlayPhase('main');
       } else { alert('You need credits to listen. Please subscribe or purchase credits.'); }
@@ -68,37 +67,24 @@ export function Home_NewsBriefings({ newsEpisodes = {}, credits = 0, userState =
       setLoading(null); setPlaying(category);
       if (introData.audioUrl) {
         setPlayPhase('intro');
-        const introAudio = new Audio(introData.audioUrl);
-        introAudioRef.current = introAudio;
+        const introAudio = new Audio(introData.audioUrl); introAudioRef.current = introAudio;
         introAudio.onended = () => {
           setPlayPhase('main');
-          const mainAudio = new Audio(mainAudioUrl);
-          mainAudioRef.current = mainAudio;
+          const mainAudio = new Audio(mainAudioUrl); mainAudioRef.current = mainAudio;
           mainAudio.onended = () => { setPlaying(null); setPlayPhase(null); };
           mainAudio.onerror = () => { setPlaying(null); setPlayPhase(null); };
           mainAudio.play();
         };
-        introAudio.onerror = () => {
-          setPlayPhase('main');
-          const mainAudio = new Audio(mainAudioUrl);
-          mainAudioRef.current = mainAudio;
-          mainAudio.onended = () => { setPlaying(null); setPlayPhase(null); };
-          mainAudio.play();
-        };
+        introAudio.onerror = () => { setPlayPhase('main'); const mainAudio = new Audio(mainAudioUrl); mainAudioRef.current = mainAudio; mainAudio.onended = () => { setPlaying(null); setPlayPhase(null); }; mainAudio.play(); };
         introAudio.play();
       } else {
-        setPlayPhase('main');
-        const mainAudio = new Audio(mainAudioUrl);
-        mainAudioRef.current = mainAudio;
-        mainAudio.onended = () => { setPlaying(null); setPlayPhase(null); };
-        mainAudio.play();
+        setPlayPhase('main'); const mainAudio = new Audio(mainAudioUrl); mainAudioRef.current = mainAudio;
+        mainAudio.onended = () => { setPlaying(null); setPlayPhase(null); }; mainAudio.play();
       }
     } catch {
       setLoading(null); setPlaying(category); setPlayPhase('main');
-      const mainAudio = new Audio(mainAudioUrl);
-      mainAudioRef.current = mainAudio;
-      mainAudio.onended = () => { setPlaying(null); setPlayPhase(null); };
-      mainAudio.play();
+      const mainAudio = new Audio(mainAudioUrl); mainAudioRef.current = mainAudio;
+      mainAudio.onended = () => { setPlaying(null); setPlayPhase(null); }; mainAudio.play();
     }
   }
 
