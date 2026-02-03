@@ -1,6 +1,3 @@
-// app/api/admin/generate-state-upsell/route.ts
-// One-time generation of the state news upsell audio clip for Welcome page
-
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
@@ -9,28 +6,28 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const STATE_UPSELL_TEXT = "State news is available exclusively for Drive Time Tales subscribers. Sign up for a free trial and get personalized news for your state, delivered fresh every day. We'd love to have you!";
+const DEFAULT_UPSELL_TEXT = "Hi and welcome to Drive Time Tales! I'm Sarah Mitchell, and I'll be bringing you personalized news for your state, delivered fresh every day. State news is a subscriber benefit, so sign up for a free trial to get your local headlines. In the meantime, enjoy our national, world, business, sports, and science and technology briefings — they're all free to listen to right now. I look forward to welcoming you back once you've joined us on Drive Time Tales!";
+
+// Tammy voice - warm, friendly, American female
+const DEFAULT_VOICE_ID = 'CyHwTRKhXEYuSd7CbMwI';
 
 async function generateAudioClip(text: string, voiceId: string): Promise<Buffer> {
-  const response = await fetch(
-    `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
-    {
-      method: 'POST',
-      headers: {
-        'Accept': 'audio/mpeg',
-        'Content-Type': 'application/json',
-        'xi-api-key': process.env.ELEVENLABS_API_KEY!
-      },
-      body: JSON.stringify({
-        text: text,
-        model_id: 'eleven_multilingual_v2',
-        voice_settings: {
-          stability: 0.75,
-          similarity_boost: 0.9
-        }
-      }),
-    }
-  );
+  const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+    method: 'POST',
+    headers: {
+      'Accept': 'audio/mpeg',
+      'Content-Type': 'application/json',
+      'xi-api-key': process.env.ELEVENLABS_API_KEY!
+    },
+    body: JSON.stringify({
+      text: text,
+      model_id: 'eleven_monolingual_v1',
+      voice_settings: {
+        stability: 0.5,
+        similarity_boost: 0.75
+      }
+    }),
+  });
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -44,12 +41,14 @@ async function generateAudioClip(text: string, voiceId: string): Promise<Buffer>
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
-    const { forceRegenerate = false } = body;
+    const { voiceId, forceRegenerate = false, scriptText } = body;
 
-    // Tanya - Upbeat and Expressive
-    const voice = 'Bwff1jnzl1s94AEcntUq';
+    // Use provided values or defaults
+    const voice = voiceId || DEFAULT_VOICE_ID;
+    const script = scriptText || DEFAULT_UPSELL_TEXT;
 
-    console.log('[Generate State Upsell] Starting with Tanya voice...');
+    console.log('[Generate State Upsell] Starting with voice:', voice);
+    console.log('[Generate State Upsell] Script:', script.substring(0, 50) + '...');
 
     // Check if upsell clip already exists
     const { data: existingFiles } = await supabase.storage
@@ -68,9 +67,18 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Delete old upsell files if regenerating
+    if (forceRegenerate && existingFiles && existingFiles.length > 0) {
+      for (const file of existingFiles) {
+        if (file.name.startsWith('state-upsell')) {
+          await supabase.storage.from('news-audio').remove([`welcome-clips/${file.name}`]);
+        }
+      }
+    }
+
     // Generate the audio clip
     console.log('[Generate State Upsell] Generating audio...');
-    const audioBuffer = await generateAudioClip(STATE_UPSELL_TEXT, voice);
+    const audioBuffer = await generateAudioClip(script, voice);
     
     const fileName = `welcome-clips/state-upsell-${Date.now()}.mp3`;
     
@@ -92,45 +100,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       audioUrl: urlData.publicUrl,
-      scriptText: STATE_UPSELL_TEXT
+      scriptText: script,
+      voiceId: voice
     });
 
   } catch (error) {
     console.error('[Generate State Upsell] Error:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Generation failed' },
-      { status: 500 }
-    );
-  }
-}
-
-export async function GET(request: NextRequest) {
-  try {
-    const { data: files } = await supabase.storage
-      .from('news-audio')
-      .list('welcome-clips', { search: 'state-upsell' });
-
-    if (!files || files.length === 0) {
-      return NextResponse.json({ 
-        exists: false,
-        message: 'State upsell clip not found. Call POST to generate it.'
-      });
-    }
-
-    const { data: urlData } = supabase.storage
-      .from('news-audio')
-      .getPublicUrl(`welcome-clips/${files[0].name}`);
-
-    return NextResponse.json({
-      exists: true,
-      audioUrl: urlData.publicUrl,
-      fileName: files[0].name
-    });
-
-  } catch (error) {
-    console.error('[Get State Upsell] Error:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to fetch' },
       { status: 500 }
     );
   }
