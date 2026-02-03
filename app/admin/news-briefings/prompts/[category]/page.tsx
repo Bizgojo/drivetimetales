@@ -12,20 +12,40 @@ const CATEGORY_INFO: Record<string, { label: string; icon: string; color: string
   science: { label: 'Science & Tech', icon: '🔬', color: '#9333ea' }
 };
 
-const INTRO_OPTIONS = [
+const DEFAULT_INTROS = [
   "Good {timeOfDay}, I'm {narratorName} with your {category} news briefing for {date}.",
   "Hello and welcome! I'm {narratorName} bringing you today's {category} news for {date}.",
   "Good {timeOfDay}, listeners! {narratorName} here with your {category} update for {date}.",
   "Welcome to Drive Time Tales! I'm {narratorName} with {category} news for {date}.",
-  "It's {date}, and I'm {narratorName}. Here's your {category} news briefing."
+  "It's {date}, and I'm {narratorName}. Here's your {category} news briefing.",
+  "Hey there, I'm {narratorName}. Let's get into today's {category} news for {date}.",
+  "Good {timeOfDay}! {narratorName} here, ready to bring you the latest {category} news.",
+  "Welcome back to Drive Time Tales! I'm {narratorName} with your {category} briefing.",
+  "Good {timeOfDay}, this is {narratorName} with your {category} news update for {date}.",
+  "Hello, I'm {narratorName}. Here's what's happening in {category} news today, {date}.",
+  "It's {timeOfDay} on {date}. I'm {narratorName} with your {category} briefing.",
+  "Thanks for tuning in! I'm {narratorName}, here with today's top {category} stories.",
+  "Good {timeOfDay}, I'm {narratorName}. Let's dive into {category} news for {date}.",
+  "Welcome! {narratorName} here with everything you need to know in {category} news.",
+  "Hey, it's {narratorName}. Time for your {category} news briefing on this {date}."
 ];
 
-const OUTRO_OPTIONS = [
+const DEFAULT_OUTROS = [
   "That's your {category} news update for {date}. I'm {narratorName}. Thanks for listening to Drive Time Tales. Drive safe!",
   "That wraps up {category} news for {date}. I'm {narratorName}. Stay informed and drive safe!",
   "I'm {narratorName}, and that's your {category} briefing. Thanks for tuning in to Drive Time Tales!",
   "That's all for {category} news today. I'm {narratorName}. Have a great {timeOfDay} and drive safe!",
-  "This has been your {category} update from Drive Time Tales. I'm {narratorName}. See you next time!"
+  "This has been your {category} update from Drive Time Tales. I'm {narratorName}. See you next time!",
+  "I'm {narratorName}. That's the latest in {category} news. Thanks for listening, and drive safe!",
+  "That's your {category} roundup for {date}. I'm {narratorName} for Drive Time Tales. Until next time!",
+  "You've been listening to {category} news with {narratorName}. Drive safe and we'll see you soon!",
+  "That's a wrap on {category} news! I'm {narratorName}. Thanks for making Drive Time Tales part of your day.",
+  "I'm {narratorName}, signing off from your {category} briefing. Stay safe out there!",
+  "That's your {category} news for {date}. I'm {narratorName}. Enjoy the drive and stay informed!",
+  "Thanks for joining me for {category} news. I'm {narratorName}. Drive safe and catch you next time!",
+  "And that's your {category} update! {narratorName} here, wishing you safe travels.",
+  "That does it for {category} news on {date}. I'm {narratorName}. Take care and drive safe!",
+  "This is {narratorName} wrapping up your {category} briefing. Thanks for listening to Drive Time Tales!"
 ];
 
 const PRIORITY_OPTIONS = [
@@ -55,8 +75,9 @@ interface PromptData {
   contentPriority: string[];
   contentAvoid: string[];
   specialInstructions: string;
-  selectedIntroIndex: number;
-  selectedOutroIndex: number;
+  intros: string[];
+  outros: string[];
+  customPrompt: string;
 }
 
 const DEFAULT_PROMPT: PromptData = {
@@ -67,8 +88,9 @@ const DEFAULT_PROMPT: PromptData = {
   contentPriority: ['breaking', 'government', 'economic'],
   contentAvoid: ['fluff', 'celebrity', 'lifestyle'],
   specialInstructions: '',
-  selectedIntroIndex: 0,
-  selectedOutroIndex: 0
+  intros: DEFAULT_INTROS,
+  outros: DEFAULT_OUTROS,
+  customPrompt: ''
 };
 
 export default function PromptEditor() {
@@ -81,13 +103,41 @@ export default function PromptEditor() {
   const [saving, setSaving] = useState(false);
   const [promptData, setPromptData] = useState<PromptData>(DEFAULT_PROMPT);
   const [narratorName, setNarratorName] = useState('');
+  const [showIntros, setShowIntros] = useState(false);
+  const [showOutros, setShowOutros] = useState(false);
+
+  // Generate the default prompt template
+  function generateDefaultPrompt(): string {
+    const catLabel = catInfo?.label || category;
+    return `You are {narratorName}, a professional radio news broadcaster for Drive Time Tales.
+
+YOUR TASK: Write a ${promptData.targetDuration}-minute spoken news script.
+
+CRITICAL REQUIREMENTS - YOU MUST FOLLOW THESE EXACTLY:
+
+1. START YOUR SCRIPT WITH ONE OF THE PROVIDED INTRO OPTIONS (randomly selected, with variables filled in)
+
+2. THEN cover these news stories (${promptData.maxSecondsPerStory} seconds each, headlines and key facts only):
+[News stories will be inserted here from NewsAPI/GDELT]
+
+3. END YOUR SCRIPT WITH ONE OF THE PROVIDED OUTRO OPTIONS (randomly selected, with variables filled in)
+
+STYLE RULES:
+- Write in a conversational, radio broadcaster style
+- Keep each story brief - just the headline and 1-2 key facts
+- Use smooth transitions between stories like "In other news..." or "Meanwhile..." or "Turning to..."
+- NO stage directions, NO notes, NO commentary - ONLY the spoken words
+- Do NOT add any text before the opening line or after the closing line
+${promptData.specialInstructions ? `\nSPECIAL INSTRUCTIONS:\n${promptData.specialInstructions}` : ''}
+
+Write the complete script now.`;
+  }
 
   useEffect(() => {
     if (!category || !CATEGORY_INFO[category]) {
       router.push('/admin/news-briefings');
       return;
     }
-    // Load settings including narrator name
     fetch(`/api/admin/news-settings?category=${category}`)
       .then(r => r.ok ? r.json() : null)
       .then(data => {
@@ -95,13 +145,26 @@ export default function PromptEditor() {
           const settings = data.settings[0];
           if (settings.narrator_name) setNarratorName(settings.narrator_name);
           if (settings.prompt_data) {
-            setPromptData({ ...DEFAULT_PROMPT, ...settings.prompt_data });
+            const loaded = { ...DEFAULT_PROMPT, ...settings.prompt_data };
+            // Ensure intros/outros have 15 items
+            if (!loaded.intros || loaded.intros.length < 15) loaded.intros = DEFAULT_INTROS;
+            if (!loaded.outros || loaded.outros.length < 15) loaded.outros = DEFAULT_OUTROS;
+            // Set custom prompt if not set
+            if (!loaded.customPrompt) loaded.customPrompt = '';
+            setPromptData(loaded);
           }
         }
       })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [category, router]);
+
+  // Initialize custom prompt with default if empty
+  useEffect(() => {
+    if (!loading && !promptData.customPrompt) {
+      setPromptData(p => ({ ...p, customPrompt: generateDefaultPrompt() }));
+    }
+  }, [loading, catInfo]);
 
   async function handleSave() {
     setSaving(true);
@@ -115,6 +178,12 @@ export default function PromptEditor() {
       else alert('Failed to save');
     } catch { alert('Failed to save'); }
     finally { setSaving(false); }
+  }
+
+  function resetPromptToDefault() {
+    if (confirm('Reset prompt to default? This will overwrite your custom edits.')) {
+      setPromptData(p => ({ ...p, customPrompt: generateDefaultPrompt() }));
+    }
   }
 
   function moveFocusArea(index: number, direction: 'up' | 'down') {
@@ -134,49 +203,16 @@ export default function PromptEditor() {
     }));
   }
 
-  // Generate preview of the actual Claude prompt
-  function generatePromptPreview(): string {
-    const timeOfDay = new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening';
-    const date = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
-    const narrator = narratorName || '[Narrator Name]';
-    const catLabel = catInfo?.label || category;
+  function updateIntro(index: number, value: string) {
+    const newIntros = [...promptData.intros];
+    newIntros[index] = value;
+    setPromptData(p => ({ ...p, intros: newIntros }));
+  }
 
-    const intro = INTRO_OPTIONS[promptData.selectedIntroIndex]
-      .replace(/{timeOfDay}/g, timeOfDay)
-      .replace(/{narratorName}/g, narrator)
-      .replace(/{category}/g, catLabel)
-      .replace(/{date}/g, date);
-
-    const outro = OUTRO_OPTIONS[promptData.selectedOutroIndex]
-      .replace(/{timeOfDay}/g, timeOfDay)
-      .replace(/{narratorName}/g, narrator)
-      .replace(/{category}/g, catLabel)
-      .replace(/{date}/g, date);
-
-    return `You are ${narrator}, a professional radio news broadcaster for Drive Time Tales.
-
-YOUR TASK: Write a ${promptData.targetDuration}-minute spoken news script.
-
-CRITICAL REQUIREMENTS - YOU MUST FOLLOW THESE EXACTLY:
-
-1. START YOUR SCRIPT WITH THIS EXACT OPENING LINE (word for word):
-"${intro}"
-
-2. THEN cover these news stories (${promptData.maxSecondsPerStory} seconds each, headlines and key facts only):
-[News stories will be inserted here from NewsAPI/GDELT]
-
-3. END YOUR SCRIPT WITH THIS EXACT CLOSING LINE (word for word):
-"${outro}"
-
-STYLE RULES:
-- Write in a conversational, radio broadcaster style
-- Keep each story brief - just the headline and 1-2 key facts
-- Use smooth transitions between stories like "In other news..." or "Meanwhile..." or "Turning to..."
-- NO stage directions, NO notes, NO commentary - ONLY the spoken words
-- Do NOT add any text before the opening line or after the closing line
-${promptData.specialInstructions ? `\nSPECIAL INSTRUCTIONS:\n${promptData.specialInstructions}` : ''}
-
-Write the complete script now.`;
+  function updateOutro(index: number, value: string) {
+    const newOutros = [...promptData.outros];
+    newOutros[index] = value;
+    setPromptData(p => ({ ...p, outros: newOutros }));
   }
 
   if (loading || !catInfo) {
@@ -191,11 +227,6 @@ Write the complete script now.`;
   const btnStyle: React.CSSProperties = { padding: '14px 24px', fontSize: '16px', fontWeight: 'bold', border: '2px solid #000000', borderRadius: '6px', cursor: 'pointer' };
   const sectionStyle: React.CSSProperties = { backgroundColor: '#ffffff', border: '2px solid #000000', borderRadius: '12px', padding: '20px', marginBottom: '20px' };
 
-  // Preview values for intro/outro
-  const timeOfDay = new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening';
-  const date = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
-  const narrator = narratorName || '[Set narrator name in admin]';
-
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#ffffff', color: '#000000', padding: '24px', fontFamily: 'Arial, sans-serif' }}>
       {/* Header */}
@@ -205,7 +236,7 @@ Write the complete script now.`;
           <h1 style={{ fontSize: '24px', fontWeight: 'bold', color: '#000000' }}>{catInfo.icon} {catInfo.label} Prompt Editor</h1>
         </div>
         <button onClick={handleSave} disabled={saving} style={{ ...btnStyle, backgroundColor: catInfo.color, color: category === 'world' ? '#000000' : '#ffffff' }}>
-          {saving ? 'Saving...' : '💾 Save Prompt'}
+          {saving ? 'Saving...' : '💾 Save All Settings'}
         </button>
       </div>
 
@@ -228,88 +259,68 @@ Write the complete script now.`;
         </div>
       </div>
 
-      {/* Intro Selection */}
+      {/* Intros - Collapsible */}
       <div style={sectionStyle}>
-        <h2 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '16px', color: '#000000' }}>👋 Intro Selection</h2>
-        <p style={{ marginBottom: '12px', color: '#666666' }}>Select the intro style. Preview shows how it will sound with current settings.</p>
+        <div 
+          onClick={() => setShowIntros(!showIntros)} 
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+        >
+          <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: '#000000', margin: 0 }}>
+            👋 Intro Options (15) - AI selects randomly at generation time
+          </h2>
+          <span style={{ fontSize: '20px', color: '#666666' }}>{showIntros ? '▼' : '▶'}</span>
+        </div>
+        <p style={{ fontSize: '14px', color: '#666666', marginTop: '8px', marginBottom: showIntros ? '16px' : 0 }}>
+          Variables: {'{narratorName}'}, {'{category}'}, {'{date}'}, {'{timeOfDay}'}
+        </p>
         
-        {INTRO_OPTIONS.map((intro, i) => {
-          const previewIntro = intro
-            .replace(/{timeOfDay}/g, timeOfDay)
-            .replace(/{narratorName}/g, narrator)
-            .replace(/{category}/g, catInfo.label)
-            .replace(/{date}/g, date);
-          
-          return (
-            <div 
-              key={i} 
-              onClick={() => setPromptData(p => ({ ...p, selectedIntroIndex: i }))}
-              style={{ 
-                padding: '12px', 
-                marginBottom: '8px', 
-                border: promptData.selectedIntroIndex === i ? `3px solid ${catInfo.color}` : '2px solid #cccccc', 
-                borderRadius: '8px', 
-                cursor: 'pointer',
-                backgroundColor: promptData.selectedIntroIndex === i ? '#f0f9ff' : '#ffffff'
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <input 
-                  type="radio" 
-                  checked={promptData.selectedIntroIndex === i} 
-                  onChange={() => setPromptData(p => ({ ...p, selectedIntroIndex: i }))}
-                  style={{ width: '20px', height: '20px' }}
+        {showIntros && (
+          <div style={{ maxHeight: '400px', overflowY: 'auto', border: '1px solid #cccccc', borderRadius: '6px', padding: '10px' }}>
+            {promptData.intros.map((intro, i) => (
+              <div key={i} style={{ marginBottom: '10px' }}>
+                <label style={{ fontSize: '14px', fontWeight: 'bold', color: '#666666' }}>#{i + 1}</label>
+                <textarea
+                  value={intro}
+                  onChange={e => updateIntro(i, e.target.value)}
+                  rows={2}
+                  style={{ ...inputStyle, resize: 'vertical', marginTop: '4px' }}
                 />
-                <div>
-                  <div style={{ fontWeight: 'bold', marginBottom: '4px', color: '#000000' }}>Option {i + 1}</div>
-                  <div style={{ color: '#333333', fontStyle: 'italic' }}>"{previewIntro}"</div>
-                </div>
               </div>
-            </div>
-          );
-        })}
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Outro Selection */}
+      {/* Outros - Collapsible */}
       <div style={sectionStyle}>
-        <h2 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '16px', color: '#000000' }}>🎬 Outro Selection</h2>
-        <p style={{ marginBottom: '12px', color: '#666666' }}>Select the outro style. Preview shows how it will sound with current settings.</p>
+        <div 
+          onClick={() => setShowOutros(!showOutros)} 
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+        >
+          <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: '#000000', margin: 0 }}>
+            🎬 Outro Options (15) - AI selects randomly at generation time
+          </h2>
+          <span style={{ fontSize: '20px', color: '#666666' }}>{showOutros ? '▼' : '▶'}</span>
+        </div>
+        <p style={{ fontSize: '14px', color: '#666666', marginTop: '8px', marginBottom: showOutros ? '16px' : 0 }}>
+          Variables: {'{narratorName}'}, {'{category}'}, {'{date}'}, {'{timeOfDay}'}
+        </p>
         
-        {OUTRO_OPTIONS.map((outro, i) => {
-          const previewOutro = outro
-            .replace(/{timeOfDay}/g, timeOfDay)
-            .replace(/{narratorName}/g, narrator)
-            .replace(/{category}/g, catInfo.label)
-            .replace(/{date}/g, date);
-          
-          return (
-            <div 
-              key={i} 
-              onClick={() => setPromptData(p => ({ ...p, selectedOutroIndex: i }))}
-              style={{ 
-                padding: '12px', 
-                marginBottom: '8px', 
-                border: promptData.selectedOutroIndex === i ? `3px solid ${catInfo.color}` : '2px solid #cccccc', 
-                borderRadius: '8px', 
-                cursor: 'pointer',
-                backgroundColor: promptData.selectedOutroIndex === i ? '#f0f9ff' : '#ffffff'
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <input 
-                  type="radio" 
-                  checked={promptData.selectedOutroIndex === i} 
-                  onChange={() => setPromptData(p => ({ ...p, selectedOutroIndex: i }))}
-                  style={{ width: '20px', height: '20px' }}
+        {showOutros && (
+          <div style={{ maxHeight: '400px', overflowY: 'auto', border: '1px solid #cccccc', borderRadius: '6px', padding: '10px' }}>
+            {promptData.outros.map((outro, i) => (
+              <div key={i} style={{ marginBottom: '10px' }}>
+                <label style={{ fontSize: '14px', fontWeight: 'bold', color: '#666666' }}>#{i + 1}</label>
+                <textarea
+                  value={outro}
+                  onChange={e => updateOutro(i, e.target.value)}
+                  rows={2}
+                  style={{ ...inputStyle, resize: 'vertical', marginTop: '4px' }}
                 />
-                <div>
-                  <div style={{ fontWeight: 'bold', marginBottom: '4px', color: '#000000' }}>Option {i + 1}</div>
-                  <div style={{ color: '#333333', fontStyle: 'italic' }}>"{previewOutro}"</div>
-                </div>
               </div>
-            </div>
-          );
-        })}
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Focus Areas */}
@@ -365,32 +376,38 @@ Write the complete script now.`;
         />
       </div>
 
-      {/* Claude Prompt Preview */}
-      <div style={{ ...sectionStyle, backgroundColor: '#1e293b' }}>
-        <h2 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '16px', color: '#ffffff' }}>🤖 Claude Prompt Preview</h2>
-        <p style={{ marginBottom: '12px', color: '#94a3b8' }}>This is the actual prompt that will be sent to Claude when generating news:</p>
-        <pre style={{ 
-          backgroundColor: '#0f172a', 
-          padding: '16px', 
-          borderRadius: '8px', 
-          color: '#e2e8f0', 
-          fontSize: '13px', 
-          lineHeight: '1.5',
-          whiteSpace: 'pre-wrap',
-          wordWrap: 'break-word',
-          maxHeight: '400px',
-          overflow: 'auto',
-          border: '1px solid #334155'
-        }}>
-          {generatePromptPreview()}
-        </pre>
+      {/* Claude Prompt - Editable */}
+      <div style={sectionStyle}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+          <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: '#000000', margin: 0 }}>🤖 Claude Prompt (Editable)</h2>
+          <button onClick={resetPromptToDefault} style={{ ...btnStyle, padding: '8px 16px', backgroundColor: '#f5f5f5', fontSize: '14px' }}>
+            Reset to Default
+          </button>
+        </div>
+        <p style={{ marginBottom: '12px', color: '#666666', fontSize: '14px' }}>
+          This is the prompt sent to Claude when generating news. Edit directly to customize. News stories and a randomly selected intro/outro will be inserted at generation time.
+        </p>
+        <textarea
+          value={promptData.customPrompt || generateDefaultPrompt()}
+          onChange={e => setPromptData(p => ({ ...p, customPrompt: e.target.value }))}
+          rows={20}
+          style={{ 
+            ...inputStyle, 
+            fontFamily: 'monospace',
+            fontSize: '14px',
+            lineHeight: '1.5',
+            resize: 'vertical',
+            backgroundColor: '#ffffff',
+            color: '#000000'
+          }}
+        />
       </div>
 
       {/* Bottom Save Button */}
       <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', marginTop: '24px' }}>
         <button onClick={() => router.push('/admin/news-briefings')} style={{ ...btnStyle, backgroundColor: '#ffffff' }}>← Back to Admin</button>
         <button onClick={handleSave} disabled={saving} style={{ ...btnStyle, backgroundColor: catInfo.color, color: category === 'world' ? '#000000' : '#ffffff' }}>
-          {saving ? 'Saving...' : '💾 Save Prompt Settings'}
+          {saving ? 'Saving...' : '💾 Save All Settings'}
         </button>
       </div>
     </div>
