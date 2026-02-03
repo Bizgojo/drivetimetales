@@ -124,7 +124,7 @@ export default function HomePage() {
         {/* Show Playlist OR Continue Listening, not both */}
         {hasPlaylist ? <YourPlaylist /> : <ContinueListening />}
         
-        <Home_NewsBriefings newsEpisodes={newsEpisodes} credits={userCredits} userState={userState} />
+        <Home_NewsBriefings newsEpisodes={newsEpisodes} credits={userCredits} userState={userState} userName={displayName} />
         <NewReleases />
         <RecommendedForYou />
       </main>
