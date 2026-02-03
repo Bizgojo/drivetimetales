@@ -6,6 +6,27 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+// GET - Return existing upsell audio URL
+export async function GET() {
+  try {
+    const { data, error } = await supabase
+      .from('news_settings')
+      .select('upsell_audio_url')
+      .eq('category', 'state')
+      .single();
+
+    if (error || !data?.upsell_audio_url) {
+      return NextResponse.json({ exists: false, audioUrl: null });
+    }
+
+    return NextResponse.json({ exists: true, audioUrl: data.upsell_audio_url });
+  } catch (error) {
+    console.error('[State Upsell GET] Error:', error);
+    return NextResponse.json({ exists: false, audioUrl: null });
+  }
+}
+
+// POST - Generate new upsell audio
 async function generateAudioClip(text: string, voiceId: string): Promise<Buffer> {
   const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
     method: 'POST',
