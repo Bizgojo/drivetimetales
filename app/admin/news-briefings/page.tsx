@@ -14,13 +14,13 @@ const CATEGORIES = [
 ];
 
 // Spinning wheel component
-function Spinner() {
+function Spinner({ color = '#ffffff' }: { color?: string }) {
   return (
     <span style={{
       display: 'inline-block',
-      width: '20px',
-      height: '20px',
-      border: '3px solid #ffffff',
+      width: '18px',
+      height: '18px',
+      border: `3px solid ${color}`,
       borderTopColor: 'transparent',
       borderRadius: '50%',
       animation: 'spin 1s linear infinite',
@@ -30,7 +30,6 @@ function Spinner() {
   );
 }
 
-// Add keyframes for spinner
 const spinnerStyles = `
   @keyframes spin {
     0% { transform: rotate(0deg); }
@@ -57,6 +56,12 @@ export default function NewsBriefingsAdmin() {
   const [stateUpsell, setStateUpsell] = useState<{ exists: boolean; audioUrl?: string }>({ exists: false });
   const [generatingUpsell, setGeneratingUpsell] = useState(false);
   const [playingUpsell, setPlayingUpsell] = useState(false);
+  
+  // Auto-generation state (master toggle for all categories)
+  const [autoGenerateEnabled, setAutoGenerateEnabled] = useState(false);
+  const [scheduleTimes, setScheduleTimes] = useState<string[]>(['06:00', '12:00', '18:00']);
+  const [savingAutoGen, setSavingAutoGen] = useState(false);
+  
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Load voices
@@ -74,13 +79,27 @@ export default function NewsBriefingsAdmin() {
       .then(r => r.ok ? r.json() : { settings: [] })
       .then(data => {
         const loaded: Record<string, Settings> = {};
+        let foundAutoGen = false;
+        let foundTimes: string[] = [];
+        
         for (const row of data.settings || []) {
           loaded[row.category] = { narratorName: row.narrator_name || '', voiceId: row.voice_id || '' };
+          // Check first category for auto_generate setting (master toggle stored on 'national')
+          if (row.category === 'national') {
+            if (row.auto_generate) {
+              foundAutoGen = row.auto_generate;
+            }
+            if (row.schedule_times && row.schedule_times.length > 0) {
+              foundTimes = row.schedule_times;
+            }
+          }
         }
         for (const cat of CATEGORIES) {
           if (!loaded[cat.id]) loaded[cat.id] = { narratorName: '', voiceId: '' };
         }
         setSettings(loaded);
+        setAutoGenerateEnabled(foundAutoGen);
+        if (foundTimes.length > 0) setScheduleTimes(foundTimes);
         setSettingsLoaded(true);
       })
       .catch(() => setSettingsLoaded(true));
@@ -111,7 +130,7 @@ export default function NewsBriefingsAdmin() {
       .catch(() => {});
   }, []);
 
-  // Save settings
+  // Save settings for a category
   async function saveSettings(category: string, narratorName: string, voiceId: string) {
     try {
       await fetch('/api/admin/news-settings', {
@@ -121,6 +140,26 @@ export default function NewsBriefingsAdmin() {
       });
     } catch (e) {
       console.error('Save failed:', e);
+    }
+  }
+
+  // Save auto-generation settings (stored on 'national' category as master)
+  async function saveAutoGenSettings() {
+    setSavingAutoGen(true);
+    try {
+      await fetch('/api/admin/news-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          category: 'national', 
+          auto_generate: autoGenerateEnabled,
+          schedule_times: scheduleTimes 
+        })
+      });
+    } catch (e) {
+      console.error('Save auto-gen failed:', e);
+    } finally {
+      setSavingAutoGen(false);
     }
   }
 
@@ -225,12 +264,33 @@ export default function NewsBriefingsAdmin() {
     return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
   }
 
+  // Add schedule time
+  function addScheduleTime() {
+    if (scheduleTimes.length < 6) {
+      setScheduleTimes([...scheduleTimes, '12:00']);
+    }
+  }
+
+  // Remove schedule time
+  function removeScheduleTime(index: number) {
+    if (scheduleTimes.length > 1) {
+      setScheduleTimes(scheduleTimes.filter((_, i) => i !== index));
+    }
+  }
+
+  // Update schedule time
+  function updateScheduleTime(index: number, value: string) {
+    const newTimes = [...scheduleTimes];
+    newTimes[index] = value;
+    setScheduleTimes(newTimes);
+  }
+
   if (!settingsLoaded) {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <style>{spinnerStyles}</style>
         <div style={{ textAlign: 'center' }}>
-          <Spinner />
+          <Spinner color="#000000" />
           <p style={{ fontSize: '20px', fontWeight: 'bold', color: '#000000', marginTop: '16px' }}>Loading settings...</p>
         </div>
       </div>
@@ -238,7 +298,6 @@ export default function NewsBriefingsAdmin() {
   }
 
   const inputStyle: React.CSSProperties = { width: '100%', padding: '12px', fontSize: '16px', border: '2px solid #000000', borderRadius: '6px', backgroundColor: '#ffffff', color: '#000000', boxSizing: 'border-box' };
-  const selectStyle: React.CSSProperties = { padding: '12px', fontSize: '16px', border: '2px solid #000000', borderRadius: '6px', backgroundColor: '#ffffff', color: '#000000'};
   const btnStyle: React.CSSProperties = { padding: '12px 20px', fontSize: '16px', fontWeight: 'bold', border: '2px solid #000000', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' };
 
   return (
@@ -249,6 +308,93 @@ export default function NewsBriefingsAdmin() {
       <h1 style={{ fontSize: '28px', fontWeight: 'bold', marginBottom: '8px', color: '#000000' }}>🎙️ News Briefings Admin</h1>
       <p style={{ marginBottom: '24px', fontSize: '16px', color: '#000000' }}>Configure narrators, voices, and prompts. Settings save automatically.</p>
 
+      {/* Auto-Generation Master Controls */}
+      <div style={{ backgroundColor: '#f8fafc', border: '2px solid #000000', borderRadius: '12px', padding: '20px', marginBottom: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
+          <div>
+            <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '4px', color: '#000000' }}>⏰ Auto-Generation Schedule</h2>
+            <p style={{ fontSize: '14px', color: '#666666', margin: 0 }}>When enabled, news briefings generate automatically for all categories at scheduled times.</p>
+          </div>
+          
+          {/* Toggle Switch */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <span style={{ fontWeight: 'bold', color: autoGenerateEnabled ? '#16a34a' : '#666666' }}>
+              {autoGenerateEnabled ? 'ON' : 'OFF'}
+            </span>
+            <button
+              onClick={() => setAutoGenerateEnabled(!autoGenerateEnabled)}
+              style={{
+                width: '60px',
+                height: '32px',
+                borderRadius: '16px',
+                border: '2px solid #000000',
+                backgroundColor: autoGenerateEnabled ? '#16a34a' : '#cccccc',
+                cursor: 'pointer',
+                position: 'relative',
+                transition: 'background-color 0.2s'
+              }}
+            >
+              <span style={{
+                position: 'absolute',
+                top: '3px',
+                left: autoGenerateEnabled ? '30px' : '3px',
+                width: '22px',
+                height: '22px',
+                borderRadius: '50%',
+                backgroundColor: '#ffffff',
+                border: '1px solid #000000',
+                transition: 'left 0.2s'
+              }} />
+            </button>
+          </div>
+        </div>
+
+        {/* Schedule Times */}
+        <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #cccccc' }}>
+          <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#000000' }}>Generation Times (24-hour format)</label>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
+            {scheduleTimes.map((time, index) => (
+              <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <input
+                  type="time"
+                  value={time}
+                  onChange={(e) => updateScheduleTime(index, e.target.value)}
+                  style={{ padding: '8px', fontSize: '16px', border: '2px solid #000000', borderRadius: '6px', backgroundColor: '#ffffff' }}
+                />
+                {scheduleTimes.length > 1 && (
+                  <button
+                    onClick={() => removeScheduleTime(index)}
+                    style={{ padding: '8px 12px', fontSize: '14px', border: '2px solid #dc2626', borderRadius: '6px', backgroundColor: '#fee2e2', color: '#dc2626', cursor: 'pointer', fontWeight: 'bold' }}
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            ))}
+            {scheduleTimes.length < 6 && (
+              <button
+                onClick={addScheduleTime}
+                style={{ padding: '8px 16px', fontSize: '14px', border: '2px solid #000000', borderRadius: '6px', backgroundColor: '#ffffff', cursor: 'pointer', fontWeight: 'bold' }}
+              >
+                + Add Time
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Save Button */}
+        <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'flex-end' }}>
+          <button
+            onClick={saveAutoGenSettings}
+            disabled={savingAutoGen}
+            style={{ ...btnStyle, backgroundColor: '#3b82f6', color: '#ffffff', minWidth: '150px' }}
+          >
+            {savingAutoGen ? <><Spinner /> Saving...</> : '💾 Save Schedule'}
+          </button>
+        </div>
+      </div>
+
+      {/* Category Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: '20px' }}>
         {CATEGORIES.map(cat => {
           const s = settings[cat.id] || { narratorName: '', voiceId: '' };
@@ -273,13 +419,22 @@ export default function NewsBriefingsAdmin() {
                 style={{ ...inputStyle, marginBottom: '16px' }}
               />
 
-              {/* Voice + Test Button */}
+              {/* Voice + Test Button - FIXED: explicit widths */}
               <label style={{ display: 'block', marginBottom: '6px', fontSize: '16px', fontWeight: 'bold', color: '#000000' }}>Voice</label>
-              <div style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', alignItems: 'stretch' }}>
                 <select
                   value={s.voiceId}
                   onChange={e => { const v = e.target.value; setSettings(p => ({ ...p, [cat.id]: { ...p[cat.id], voiceId: v } })); saveSettings(cat.id, s.narratorName, v); }}
-                  style={selectStyle}
+                  style={{ 
+                    padding: '12px', 
+                    fontSize: '16px', 
+                    border: '2px solid #000000', 
+                    borderRadius: '6px', 
+                    backgroundColor: '#ffffff', 
+                    color: '#000000',
+                    width: 'calc(100% - 110px)',
+                    minWidth: '150px'
+                  }}
                 >
                   <option value="">{loadingVoices ? 'Loading voices...' : 'Select a voice'}</option>
                   {voices.map(v => <option key={v.voice_id} value={v.voice_id}>{v.name}</option>)}
@@ -291,10 +446,12 @@ export default function NewsBriefingsAdmin() {
                     ...btnStyle, 
                     backgroundColor: (!s.voiceId || isTestingVoice) ? '#cccccc' : '#3b82f6', 
                     color: '#ffffff',
-                    minWidth: '100px'
+                    width: '100px',
+                    flexShrink: 0,
+                    padding: '12px 8px'
                   }}
                 >
-                  {isTestingVoice ? <><Spinner /> Testing</> : '🔊 Test'}
+                  {isTestingVoice ? <><Spinner /> </> : '🔊 Test'}
                 </button>
               </div>
 
