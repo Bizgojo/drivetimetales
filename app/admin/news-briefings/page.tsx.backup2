@@ -66,12 +66,6 @@ export default function NewsBriefingsAdmin() {
           }
         }
       }
-      // Load global auto-generate settings
-      const globalRow = (data.settings || []).find((r: any) => r.category === 'global');
-      if (globalRow) {
-        if (globalRow.auto_generate !== undefined) setAutoGenerateEnabled(globalRow.auto_generate);
-        if (globalRow.schedule_times) setScheduleTimes(globalRow.schedule_times);
-      }
       for (const cat of CATEGORIES) { if (!loaded[cat.id]) loaded[cat.id] = { narratorName: '', voiceId: '' }; }
       setSettings(loaded);
       setSettingsLoaded(true);
