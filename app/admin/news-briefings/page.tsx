@@ -147,8 +147,26 @@ export default function NewsBriefingsAdmin() {
       }); 
       const d = await r.json(); 
       if (r.ok && d.success) { 
-        // Script generated - navigate to edit prompt page to see it
-        router.push(`/admin/news-briefings/prompts/${category}`);
+        // Script generated - now create audio
+        const audioR = await fetch('/api/admin/generate-news-audio', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            category,
+            state,
+            voiceId: s.voiceId,
+            intro: d.script.intro,
+            body: d.script.body,
+            outro: d.script.outro
+          })
+        });
+        const audioD = await audioR.json();
+        if (audioR.ok && audioD.success) {
+          setEpisodes(p => ({ ...p, [key]: { audioUrl: audioD.episode.audioUrl, createdAt: audioD.episode.createdAt, duration: audioD.episode.duration } }));
+          
+        } else {
+          alert(`Audio generation failed: ${audioD.error || 'Unknown error'}`);
+        }
       } else { 
         alert(`Generation failed: ${d.error || 'Unknown error'}`); 
       } 
@@ -298,7 +316,7 @@ export default function NewsBriefingsAdmin() {
                       setScheduleTimes(newTimes);
                     }}
                     onBlur={() => saveAutoGenerateSettings(autoGenerateEnabled, scheduleTimes)}
-                    style={{ padding: '6px', fontSize: '14px', border: '1px solid #ccc', borderRadius: '4px' }}
+                    style={{ padding: '6px', fontSize: '14px', border: '1px solid #ccc', borderRadius: '4px', backgroundColor: '#ffffff', color: '#000000' }}
                   />
                 ))}
               </div>
