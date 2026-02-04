@@ -190,6 +190,7 @@ export default function PromptEditor() {
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#f5f5f5', color: '#000000', padding: '24px', fontFamily: 'Arial, sans-serif', maxWidth: '900px', margin: '0 auto' }}>
+      <style>{spinnerStyles}</style>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <button onClick={() => router.push('/admin/news-briefings')} style={{ ...btnStyle, backgroundColor: '#ffffff', fontSize: '16px', padding: '10px 20px' }}>
@@ -286,7 +287,7 @@ export default function PromptEditor() {
             padding: '16px'
           }}
         >
-          {generating ? '⏳ Searching news & generating script...' : '🚀 Generate Script'}
+          {generating ? <><Spinner /> Searching news & generating script...</> : '🚀 Generate Script'}
         </button>
 
         {!narratorName && (
