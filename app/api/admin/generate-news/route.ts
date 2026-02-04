@@ -188,6 +188,8 @@ STYLE RULES:
 - 5 paragraphs, one per story, each 2-4 sentences.
 - Most important story first.
 - Use smooth transitions like "Meanwhile..." or "In other news..." or "Turning to..."
+- DO NOT include any greeting (no "Good morning/afternoon/evening") - the intro handles that.
+- DO NOT mention the state name as a greeting - just start with the first news story.
 
 CRITICAL: 
 - The body text must be CLEAN for audio - NO URLs or citations in the spoken text.
