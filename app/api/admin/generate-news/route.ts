@@ -2,92 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
 
-// Initialize Supabase admin client
+// Initialize clients
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-// ============================================================
-// NEWS TEMPLATES (MVP: Hardcoded 3 intro + 3 outro variants)
-// ============================================================
-
-interface TemplateParams {
-  greetingTimeOfDay: 'morning' | 'afternoon' | 'evening';
-  firstName?: string;
-  narratorName: string;
-  category: string;
-  dateSpoken: string;
-  isPersonalized: boolean;
-}
-
-const INTRO_TEMPLATES_PERSONALIZED = [
-  `Good {GREETING}, {FIRST_NAME}. I'm {NARRATOR}, bringing you your {CATEGORY} update for {DATE}.`,
-  `Good {GREETING}, {FIRST_NAME}. This is {NARRATOR} with your {CATEGORY} briefing for {DATE}.`,
-  `Hey {FIRST_NAME}, good {GREETING}. I'm {NARRATOR}, and here's your {CATEGORY} news for {DATE}.`,
-];
-
-const INTRO_TEMPLATES_NON_PERSONALIZED = [
-  `Good {GREETING}. I'm {NARRATOR}, bringing you your {CATEGORY} update for {DATE}.`,
-  `Good {GREETING}. This is {NARRATOR} with your {CATEGORY} briefing for {DATE}.`,
-  `Good {GREETING}, everyone. I'm {NARRATOR}, and here's your {CATEGORY} news for {DATE}.`,
-];
-
-const OUTRO_TEMPLATES_PERSONALIZED = [
-  `{FIRST_NAME}, thanks for spending a couple minutes with me. I'm {NARRATOR}. I'll be back later with your next update.`,
-  `That's your {CATEGORY} update, {FIRST_NAME}. I'm {NARRATOR}, and I'll see you next time.`,
-  `Thanks for listening, {FIRST_NAME}. I'm {NARRATOR}. Stay safe out there, and I'll have more for you soon.`,
-];
-
-const OUTRO_TEMPLATES_NON_PERSONALIZED = [
-  `Thanks for spending a couple minutes with me. I'm {NARRATOR}. I'll be back later with your next update.`,
-  `That's your {CATEGORY} update. I'm {NARRATOR}, and I'll see you next time.`,
-  `Thanks for listening. I'm {NARRATOR}. Stay safe out there, and I'll have more for you soon.`,
-];
-
-function deterministicHash(seed: string, max: number): number {
-  let hash = 0;
-  for (let i = 0; i < seed.length; i++) {
-    const char = seed.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash;
-  }
-  return Math.abs(hash) % max;
-}
-
-function getTodayDateString(): string {
-  return new Date().toISOString().split('T')[0];
-}
-
-function renderIntro(params: TemplateParams): string {
-  const templates = params.isPersonalized ? INTRO_TEMPLATES_PERSONALIZED : INTRO_TEMPLATES_NON_PERSONALIZED;
-  const seed = `${params.category}-${getTodayDateString()}-${params.greetingTimeOfDay}-${params.isPersonalized ? '1' : '0'}-intro`;
-  const index = deterministicHash(seed, templates.length);
-  
-  let template = templates[index];
-  template = template.replace(/{GREETING}/g, params.greetingTimeOfDay);
-  template = template.replace(/{NARRATOR}/g, params.narratorName);
-  template = template.replace(/{CATEGORY}/g, params.category);
-  template = template.replace(/{DATE}/g, params.dateSpoken);
-  if (params.isPersonalized && params.firstName) {
-    template = template.replace(/{FIRST_NAME}/g, params.firstName);
-  }
-  return template;
-}
-
-function renderOutro(params: TemplateParams): string {
-  const templates = params.isPersonalized ? OUTRO_TEMPLATES_PERSONALIZED : OUTRO_TEMPLATES_NON_PERSONALIZED;
-  const seed = `${params.category}-${getTodayDateString()}-${params.greetingTimeOfDay}-${params.isPersonalized ? '1' : '0'}-outro`;
-  const index = deterministicHash(seed, templates.length);
-  
-  let template = templates[index];
-  template = template.replace(/{NARRATOR}/g, params.narratorName);
-  template = template.replace(/{CATEGORY}/g, params.category);
-  if (params.isPersonalized && params.firstName) {
-    template = template.replace(/{FIRST_NAME}/g, params.firstName);
-  }
-  return template;
-}
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // ============================================================
 // TIMEZONE & DATE UTILITIES
@@ -101,7 +22,7 @@ const STATE_TIMEZONES: Record<string, string> = {
   'Maine': 'America/New_York', 'Maryland': 'America/New_York', 'Delaware': 'America/New_York',
   'Vermont': 'America/New_York', 'New Hampshire': 'America/New_York', 'Rhode Island': 'America/New_York',
   'West Virginia': 'America/New_York', 'Kentucky': 'America/New_York', 'Indiana': 'America/New_York',
-  'Texas': 'America/Chicago', 'Illinois': 'America/Chicago', 'Tennessee': 'America/Chicago',
+  'Tennessee': 'America/Chicago', 'Texas': 'America/Chicago', 'Illinois': 'America/Chicago',
   'Missouri': 'America/Chicago', 'Wisconsin': 'America/Chicago', 'Minnesota': 'America/Chicago',
   'Iowa': 'America/Chicago', 'Kansas': 'America/Chicago', 'Nebraska': 'America/Chicago',
   'Oklahoma': 'America/Chicago', 'Louisiana': 'America/Chicago', 'Arkansas': 'America/Chicago',
@@ -136,7 +57,7 @@ function formatSpokenDate(timezone: string): string {
 
 function getCategoryDisplayName(categorySlug: string, state?: string): string {
   const names: Record<string, string> = {
-    'state': state || 'state news',
+    'state': state ? `${state} news` : 'state news',
     'national': 'national news',
     'world': 'world news',
     'business': 'business news',
@@ -147,134 +68,191 @@ function getCategoryDisplayName(categorySlug: string, state?: string): string {
 }
 
 // ============================================================
-// NEWS ITEMS PARSING
+// INTRO / OUTRO GENERATION (FIXED TEMPLATES)
 // ============================================================
 
-interface NewsItem {
-  title: string;
-  summary?: string;
-  source_name?: string;
-  source_url?: string;
-  published_at?: string;
-}
-
-function parseNewsItems(input: string): { items: NewsItem[]; error?: string } {
-  const trimmed = input.trim();
-  if (!trimmed) return { items: [], error: 'No news items provided' };
-  
-  // Try JSON first
-  if (trimmed.startsWith('[')) {
-    try {
-      const parsed = JSON.parse(trimmed);
-      if (Array.isArray(parsed)) {
-        const items: NewsItem[] = parsed.map((item: unknown) => {
-          if (typeof item === 'object' && item !== null) {
-            const obj = item as Record<string, unknown>;
-            return {
-              title: String(obj.title || ''),
-              summary: obj.summary ? String(obj.summary) : undefined,
-              source_name: obj.source_name ? String(obj.source_name) : undefined,
-              source_url: obj.source_url ? String(obj.source_url) : undefined,
-              published_at: obj.published_at ? String(obj.published_at) : undefined,
-            };
-          }
-          return { title: String(item) };
-        }).filter(item => item.title);
-        return { items };
-      }
-    } catch { /* Not valid JSON, try plain text */ }
-  }
-  
-  // Plain text parsing: split by blank lines
-  const blocks = trimmed.split(/\n\s*\n/).filter(b => b.trim());
-  const items: NewsItem[] = [];
-  
-  for (const block of blocks) {
-    const lines = block.split('\n').map(l => l.trim()).filter(l => l);
-    if (lines.length === 0) continue;
-    
-    const item: NewsItem = { title: lines[0] };
-    const urlLine = lines.find(l => l.match(/https?:\/\//));
-    if (urlLine) {
-      const urlMatch = urlLine.match(/(https?:\/\/[^\s]+)/);
-      if (urlMatch) {
-        item.source_url = urlMatch[1];
-        try {
-          const url = new URL(item.source_url);
-          item.source_name = url.hostname.replace('www.', '');
-        } catch { /* Invalid URL */ }
-      }
-    }
-    const nonTitleNonUrlLines = lines.slice(1).filter(l => !l.match(/https?:\/\//));
-    if (nonTitleNonUrlLines.length > 0) {
-      item.summary = nonTitleNonUrlLines.join(' ');
-    }
-    items.push(item);
-  }
-  
-  return { items };
-}
-
-// ============================================================
-// BODY GENERATION WITH CLAUDE
-// ============================================================
-
-const DEFAULT_BODY_PROMPT = `You are writing the BODY section of a news briefing script for Drive Time Tales, an audio platform for drivers and commuters.
-
-Context:
-- Category: {CATEGORY}
-- Duration target: {DURATION_MINUTES} minutes (about {WORD_COUNT_TARGET} words)
-- Tone/style: {TONE_STYLE}
-
-GROUNDING AND SAFETY RULES (MUST FOLLOW):
-- You will be given NEWS_ITEMS below. Use ONLY these items as facts.
-- Do NOT add or invent any events, details, names, numbers, or claims beyond NEWS_ITEMS.
-- If NEWS_ITEMS are empty or insufficient, say: "No verified updates were available in the last 6 hours for this category," and fill remaining time with evergreen, non-factual content only (commuting/safety reminder, "check local alerts"), without referencing any specific event.
-- No rumors, no speculation, no unverified social media claims.
-- Keep language broadcast-safe.
-
-STYLE RULES:
-- Write in a conversational, radio broadcaster style
-- No bullet lists, no segment numbering, no headings
-- Short paragraphs only (2-3 sentences each)
-- Use smooth transitions between stories like "In other news..." or "Meanwhile..." or "Turning to..."
-- Each story: what happened + why it matters (1-2 sentences each)
-- Keep it factual; avoid speculation and rumors
-
-NEWS_ITEMS:
-{NEWS_ITEMS_JSON}
-
-Write ONLY the body section now. Do not include any intro or outro - just the news content.
-Start directly with the first story. End after the last story.`;
-
-async function generateBody(params: {
+function generateIntro(params: {
+  greetingTimeOfDay: 'morning' | 'afternoon' | 'evening';
+  firstName: string | null;
+  newscasterName: string;
   categoryDisplayName: string;
-  newsItems: NewsItem[];
+  dateSpoken: string;
+  isPersonalized: boolean;
+}): string {
+  const { greetingTimeOfDay, firstName, newscasterName, categoryDisplayName, dateSpoken, isPersonalized } = params;
+  
+  if (isPersonalized && firstName) {
+    return `Good ${greetingTimeOfDay}, ${firstName}. I'm ${newscasterName}, bringing you the ${categoryDisplayName} for ${dateSpoken}.`;
+  } else {
+    return `Good ${greetingTimeOfDay}. I'm ${newscasterName}, bringing you the ${categoryDisplayName} for ${dateSpoken}.`;
+  }
+}
+
+function generateOutro(params: {
+  firstName: string | null;
+  newscasterName: string;
+  isPersonalized: boolean;
+}): string {
+  const { firstName, newscasterName, isPersonalized } = params;
+  
+  if (isPersonalized && firstName) {
+    return `${firstName}, thanks for spending a few minutes with me. I'm ${newscasterName}, and I'll be back later today with your next update. Take care out there.`;
+  } else {
+    return `Thanks for spending a few minutes with me. I'm ${newscasterName}, and I'll be back later today with your next update. Take care out there.`;
+  }
+}
+
+// ============================================================
+// SEARCH QUERIES BY CATEGORY
+// ============================================================
+
+function getSearchQuery(category: string, state?: string): string {
+  const today = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  
+  switch (category) {
+    case 'state':
+      return `${state} news today ${today} breaking news weather sports`;
+    case 'national':
+      return `US national news today ${today} breaking news politics economy`;
+    case 'world':
+      return `world news today ${today} international breaking news`;
+    case 'business':
+      return `business news today ${today} stock market economy finance`;
+    case 'sports':
+      return `sports news today ${today} NFL NBA MLB scores trades`;
+    case 'science':
+      return `science technology news today ${today} AI tech innovation`;
+    default:
+      return `news today ${today}`;
+  }
+}
+
+function getCategoryInstructions(category: string, state?: string): string {
+  switch (category) {
+    case 'state':
+      return `Find the 5 most important news stories about ${state} from the last 6 hours:
+- 3 hard news stories (public safety, weather, government, courts, schools, local economy)
+- 2 sports stories (college teams, pro teams relevant to ${state})
+Lead with emergencies or major breaking news if present.`;
+    case 'national':
+      return `Find the 5 most important US national news stories from the last 6 hours:
+- Focus on: government, politics, economy, public safety, major national events
+- Avoid celebrity gossip unless it's a major national story`;
+    case 'world':
+      return `Find the 5 most important world news stories from the last 6 hours that matter to Americans:
+- Focus on: conflicts, diplomacy, disasters, global economy, major elections`;
+    case 'business':
+      return `Find the 5 most important business/finance news stories from the last 6 hours:
+- Focus on: stock market moves, major earnings, Fed/interest rates, jobs, major deals`;
+    case 'sports':
+      return `Find the 5 most important sports news stories from the last 6 hours:
+- Focus on: NFL, NBA, MLB, NHL, college sports, major trades, game results`;
+    case 'science':
+      return `Find the 5 most important science/tech news stories from the last 6 hours:
+- Focus on: AI, cybersecurity, space, research breakthroughs, major tech announcements`;
+    default:
+      return `Find the 5 most important news stories from the last 6 hours.`;
+  }
+}
+
+// ============================================================
+// BODY GENERATION WITH WEB SEARCH
+// ============================================================
+
+async function generateBodyWithSearch(params: {
+  category: string;
+  categoryDisplayName: string;
+  state?: string;
   toneStyle: string;
   durationMinutes: number;
-  wordCountTarget: number;
-  customPrompt?: string;
-}): Promise<string> {
-  const { categoryDisplayName, newsItems, toneStyle, durationMinutes, wordCountTarget, customPrompt } = params;
+}): Promise<{ body: string; citations: string[] }> {
+  const { category, categoryDisplayName, state, toneStyle, durationMinutes } = params;
   
-  let prompt = customPrompt || DEFAULT_BODY_PROMPT;
-  prompt = prompt.replace(/{CATEGORY}/g, categoryDisplayName);
-  prompt = prompt.replace(/{DURATION_MINUTES}/g, String(durationMinutes));
-  prompt = prompt.replace(/{WORD_COUNT_TARGET}/g, String(wordCountTarget));
-  prompt = prompt.replace(/{TONE_STYLE}/g, toneStyle);
-  prompt = prompt.replace(/{NEWS_ITEMS_JSON}/g, JSON.stringify(newsItems, null, 2));
-  
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  
+  const wordTarget = durationMinutes * 130;
+  const searchQuery = getSearchQuery(category, state);
+  const categoryInstructions = getCategoryInstructions(category, state);
+
+  const prompt = `You are a news researcher and script writer for Drive Time Tales, an audio news platform.
+
+STEP 1: SEARCH FOR NEWS
+Search the web for: "${searchQuery}"
+${categoryInstructions}
+
+STEP 2: WRITE THE SCRIPT BODY
+Using ONLY the news you found from real sources, write a ${durationMinutes}-minute spoken news script body (about ${wordTarget} words).
+
+STYLE RULES:
+- Tone: ${toneStyle}
+- Conversational, confident, clear. Punchy sentences for audio.
+- No bullets, no headings, no "Story 1" labels.
+- 5 paragraphs, one per story, each 2-4 sentences.
+- Most important story first.
+- Use smooth transitions like "Meanwhile..." or "In other news..." or "Turning to..."
+
+CRITICAL: 
+- The body text must be CLEAN for audio - NO URLs or citations in the spoken text.
+- Only include facts you found from real news sources.
+- If you cannot find 5 credible stories, say so and include fewer.
+
+STEP 3: LIST CITATIONS
+After the body, list all source URLs you used, one per line.
+
+FORMAT YOUR RESPONSE EXACTLY LIKE THIS:
+---BODY---
+[Your spoken script body here - no URLs]
+
+---CITATIONS---
+[List each source URL on its own line]
+---END---`;
+
   try {
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 1500,
-      messages: [{ role: 'user', content: prompt }]
+      max_tokens: 2000,
+      messages: [{ role: 'user', content: prompt }],
+      tools: [{
+        type: 'web_search_20250305',
+        name: 'web_search',
+      }],
     });
     
-    const text = response.content[0].type === 'text' ? response.content[0].text : '';
-    return text.trim();
+    // Extract text from response
+    let fullText = '';
+    for (const block of response.content) {
+      if (block.type === 'text') {
+        fullText += block.text;
+      }
+    }
+    
+    // Parse body and citations
+    let body = '';
+    const citations: string[] = [];
+    
+    const bodyMatch = fullText.match(/---BODY---\s*([\s\S]*?)\s*---CITATIONS---/);
+    const citationsMatch = fullText.match(/---CITATIONS---\s*([\s\S]*?)\s*---END---/);
+    
+    if (bodyMatch) {
+      body = bodyMatch[1].trim();
+    } else {
+      // Fallback: try to extract body without markers
+      body = fullText.replace(/---BODY---|---CITATIONS---|---END---/g, '').trim();
+    }
+    
+    if (citationsMatch) {
+      const citationLines = citationsMatch[1].trim().split('\n');
+      for (const line of citationLines) {
+        const url = line.trim().match(/https?:\/\/[^\s]+/);
+        if (url) {
+          citations.push(url[0]);
+        }
+      }
+    }
+    
+    // Clean any stray URLs from body (safety check)
+    body = body.replace(/https?:\/\/[^\s]+/g, '').replace(/\s+/g, ' ').trim();
+    
+    return { body, citations };
+    
   } catch (error) {
     console.error('[News Generator] Claude API error:', error);
     throw new Error('Failed to generate script body');
@@ -286,7 +264,7 @@ async function generateBody(params: {
 // ============================================================
 
 export async function GET() {
-  return NextResponse.json({ status: 'ok', version: '1.0-news-generator' });
+  return NextResponse.json({ status: 'ok', version: '3.0-web-search' });
 }
 
 export async function POST(request: NextRequest) {
@@ -294,14 +272,12 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const {
       category,
-      newsItemsRaw,
       isPersonalized = false,
       firstName = 'Marc',
       state,
       narratorName,
-      toneStyle = 'warm, professional radio broadcaster',
-      durationMinutes = 3,
-      customPrompt,
+      toneStyle = 'warm, expressive, conversational - like a trusted friend giving you the news',
+      durationMinutes = 2,
     } = body;
     
     if (!category) {
@@ -312,40 +288,47 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Narrator name is required' }, { status: 400 });
     }
     
-    // Parse news items
-    const { items: newsItems, error: parseError } = parseNewsItems(newsItemsRaw || '');
+    if (category === 'state' && !state) {
+      return NextResponse.json({ error: 'State is required for state news' }, { status: 400 });
+    }
     
     // Determine timezone and greeting
     const timezone = state ? getTimezoneFromState(state) : 'America/New_York';
     const greetingTimeOfDay = getGreetingTimeOfDay(timezone);
     const dateSpoken = formatSpokenDate(timezone);
     const categoryDisplayName = getCategoryDisplayName(category, state);
-    const wordCountTarget = Math.round(durationMinutes * 130);
     
-    // Generate intro and outro
-    const templateParams: TemplateParams = {
+    // Generate INTRO
+    const intro = generateIntro({
       greetingTimeOfDay,
-      firstName: isPersonalized ? firstName : undefined,
-      narratorName,
-      category: categoryDisplayName,
+      firstName: isPersonalized ? firstName : null,
+      newscasterName: narratorName,
+      categoryDisplayName,
       dateSpoken,
       isPersonalized,
-    };
+    });
     
-    const intro = renderIntro(templateParams);
-    const outro = renderOutro(templateParams);
+    // Generate OUTRO
+    const outro = generateOutro({
+      firstName: isPersonalized ? firstName : null,
+      newscasterName: narratorName,
+      isPersonalized,
+    });
     
-    // Generate body
+    // Generate BODY with web search
     let bodyText: string;
+    let citations: string[] = [];
+    
     try {
-      bodyText = await generateBody({
+      const result = await generateBodyWithSearch({
+        category,
         categoryDisplayName,
-        newsItems,
+        state,
         toneStyle,
         durationMinutes,
-        wordCountTarget,
-        customPrompt,
       });
+      bodyText = result.body;
+      citations = result.citations;
     } catch (error) {
       console.error('[Generate News] Body generation failed:', error);
       return NextResponse.json({ error: 'Failed to generate script body' }, { status: 500 });
@@ -366,7 +349,7 @@ export async function POST(request: NextRequest) {
         intro_text: intro,
         body_text: bodyText,
         outro_text: outro,
-        news_items_json: newsItems,
+        news_items_json: citations.map(url => ({ source_url: url })),
         status: 'draft',
       })
       .select()
@@ -374,7 +357,6 @@ export async function POST(request: NextRequest) {
     
     if (saveError) {
       console.error('[Generate News] Save error:', saveError);
-      // Continue anyway - script was generated
     }
     
     return NextResponse.json({
@@ -384,17 +366,17 @@ export async function POST(request: NextRequest) {
         intro,
         body: bodyText,
         outro,
+        citations,
         metadata: {
           category,
+          categoryDisplayName,
           isPersonalized,
           timezoneUsed: timezone,
           greetingTimeOfDay,
           dateSpoken,
-          newsItemsCount: newsItems.length,
-          newsItemsParsed: newsItems,
           wordCount,
+          citationsCount: citations.length,
           generatedAt,
-          parseError,
         },
       },
     });
