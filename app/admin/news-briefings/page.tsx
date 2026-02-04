@@ -47,6 +47,8 @@ export default function NewsBriefingsAdmin() {
   const [lastGeneratedWith, setLastGeneratedWith] = useState<{ narratorName: string; voiceId: string; script: string } | null>(null);
   const [autoGenerateEnabled, setAutoGenerateEnabled] = useState(false);
   const [scheduleTimes, setScheduleTimes] = useState<string[]>(['06:00', '12:00', '18:00']);
+  const [generatingAll, setGeneratingAll] = useState(false);
+  const [autoGenerate, setAutoGenerate] = useState<Record<string, boolean>>({});
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => { fetch('/api/elevenlabs/voices').then(r => r.ok ? r.json() : { voices: [] }).then(d => setVoices(d.voices || [])).catch(() => setVoices([])).finally(() => setLoadingVoices(false)); }, []);
@@ -106,10 +108,86 @@ export default function NewsBriefingsAdmin() {
   }
 
   async function handleGenerate(category: string) {
+    const s = settings[category];
+    if (!s || !s.narratorName) { alert('Please set a narrator name first.'); return; }
     const state = category === 'state' ? selectedState : null;
     const key = state ? `state-${state}` : category;
     setGenerating(p => ({ ...p, [key]: true }));
-    try { const r = await fetch('/api/admin/generate-news', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ category, state }) }); const d = await r.json(); if (r.ok && d.success) { setEpisodes(p => ({ ...p, [key]: { audioUrl: d.episode.audioUrl, createdAt: d.episode.createdAt, duration: d.episode.duration } })); alert(`Generated successfully! Duration: ${d.episode.duration || 'N/A'} min`); } else { alert(`Generation failed: ${d.error || 'Unknown error'}`); } } catch (error) { console.error('Generate error:', error); alert('Generation failed.'); } finally { setGenerating(p => ({ ...p, [key]: false })); }
+    try { 
+      const r = await fetch('/api/admin/generate-news', { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ 
+          category, 
+          state,
+          narratorName: s.narratorName,
+          isPersonalized: true,
+          firstName: 'Marc',
+          toneStyle: 'warm, expressive, conversational - like a trusted friend giving you the news',
+          durationMinutes: 2
+        }) 
+      }); 
+      const d = await r.json(); 
+      if (r.ok && d.success) { 
+        // Script generated - navigate to edit prompt page to see it
+        router.push(`/admin/news-briefings/prompts/${category}`);
+      } else { 
+        alert(`Generation failed: ${d.error || 'Unknown error'}`); 
+      } 
+    } catch (error) { 
+      console.error('Generate error:', error); 
+      alert('Generation failed.'); 
+    } finally { 
+      setGenerating(p => ({ ...p, [key]: false })); 
+    }
+  }
+
+  async function handleGenerateAll() {
+    const categoriesToGenerate = CATEGORIES.filter(cat => {
+      const s = settings[cat.id];
+      return s && s.narratorName && s.voiceId;
+    });
+    
+    if (categoriesToGenerate.length === 0) {
+      alert('Please set narrator names and voices for at least one category first.');
+      return;
+    }
+
+    setGeneratingAll(true);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const cat of categoriesToGenerate) {
+      const s = settings[cat.id];
+      const state = cat.id === 'state' ? selectedState : null;
+      if (cat.id === 'state' && !state) continue;
+      
+      try {
+        const r = await fetch('/api/admin/generate-news', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            category: cat.id,
+            state,
+            narratorName: s.narratorName,
+            isPersonalized: false,
+            toneStyle: 'warm, expressive, conversational - like a trusted friend giving you the news',
+            durationMinutes: 2
+          })
+        });
+        const d = await r.json();
+        if (r.ok && d.success) {
+          successCount++;
+        } else {
+          failCount++;
+        }
+      } catch {
+        failCount++;
+      }
+    }
+
+    setGeneratingAll(false);
+    alert(`Generated ${successCount} briefings. ${failCount > 0 ? `${failCount} failed.` : ''}`);
   }
 
   async function handleGenerateUpsell() {
@@ -158,7 +236,53 @@ export default function NewsBriefingsAdmin() {
         <Link href="/admin/news-briefings/test-sources" style={{ padding: '10px 16px', backgroundColor: '#8b5cf6', color: '#fff', borderRadius: '6px', textDecoration: 'none', fontWeight: 'bold', fontSize: '14px' }}>🧪 Test Sources</Link>
       </div>
       <h1 style={{ fontSize: '28px', fontWeight: 'bold', marginBottom: '8px', color: '#000000' }}>🎙️ News Briefings Admin</h1>
-      <p style={{ marginBottom: '24px', fontSize: '16px', color: '#000000' }}>Configure narrators, voices, and prompts.</p>
+      <p style={{ marginBottom: '16px', fontSize: '16px', color: '#000000' }}>Configure narrators, voices, and prompts.</p>
+
+      {/* Generate All & Auto-Generate Controls */}
+      <div style={{ backgroundColor: '#f5f5f5', border: '2px solid #000000', borderRadius: '12px', padding: '16px', marginBottom: '24px' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            <button 
+              onClick={handleGenerateAll} 
+              disabled={generatingAll}
+              style={{ ...btnStyle, backgroundColor: generatingAll ? '#cccccc' : '#10b981', color: '#ffffff', padding: '14px 24px' }}
+            >
+              {generatingAll ? <><Spinner /> Generating All...</> : '🚀 Generate All Briefings'}
+            </button>
+          </div>
+          
+          <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+              <input 
+                type="checkbox" 
+                checked={autoGenerateEnabled}
+                onChange={e => setAutoGenerateEnabled(e.target.checked)}
+                style={{ width: '20px', height: '20px' }}
+              />
+              <span style={{ fontWeight: 'bold', fontSize: '14px' }}>Auto-Generate</span>
+            </label>
+            
+            {autoGenerateEnabled && (
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <span style={{ fontSize: '14px', color: '#666' }}>Times:</span>
+                {scheduleTimes.map((time, i) => (
+                  <input 
+                    key={i}
+                    type="time" 
+                    value={time}
+                    onChange={e => {
+                      const newTimes = [...scheduleTimes];
+                      newTimes[i] = e.target.value;
+                      setScheduleTimes(newTimes);
+                    }}
+                    style={{ padding: '6px', fontSize: '14px', border: '1px solid #ccc', borderRadius: '4px' }}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: '20px' }}>
         {CATEGORIES.map(cat => {
