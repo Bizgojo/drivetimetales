@@ -107,6 +107,18 @@ export default function NewsBriefingsAdmin() {
     try { await fetch('/api/admin/news-settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ category: 'state', upsellScript: upsellScript }) }); setUpsellScriptDirty(false); } catch (error) { console.error('Save upsell script error:', error); } finally { setSavingUpsellScript(false); }
   }
 
+  async function saveAutoGenerateSettings(enabled: boolean, times: string[]) {
+    try { 
+      await fetch('/api/admin/news-settings', { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ category: 'global', auto_generate: enabled, schedule_times: times }) 
+      }); 
+    } catch (error) { 
+      console.error('Save auto-generate settings error:', error); 
+    }
+  }
+
   async function handleTestVoice(category: string, voiceId: string, narratorName: string) {
     if (!voiceId) return;
     setTestingVoice(p => ({ ...p, [category]: true }));
@@ -262,7 +274,11 @@ export default function NewsBriefingsAdmin() {
               <input 
                 type="checkbox" 
                 checked={autoGenerateEnabled}
-                onChange={e => setAutoGenerateEnabled(e.target.checked)}
+                onChange={e => { 
+                  const newEnabled = e.target.checked;
+                  setAutoGenerateEnabled(newEnabled);
+                  saveAutoGenerateSettings(newEnabled, scheduleTimes);
+                }}
                 style={{ width: '20px', height: '20px' }}
               />
               <span style={{ fontWeight: 'bold', fontSize: '14px' }}>Auto-Generate</span>
@@ -270,7 +286,7 @@ export default function NewsBriefingsAdmin() {
             
             {autoGenerateEnabled && (
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <span style={{ fontSize: '14px', color: '#666' }}>Times:</span>
+                <span style={{ fontSize: '14px', color: '#666' }}>Times (ET):</span>
                 {scheduleTimes.map((time, i) => (
                   <input 
                     key={i}
@@ -281,6 +297,7 @@ export default function NewsBriefingsAdmin() {
                       newTimes[i] = e.target.value;
                       setScheduleTimes(newTimes);
                     }}
+                    onBlur={() => saveAutoGenerateSettings(autoGenerateEnabled, scheduleTimes)}
                     style={{ padding: '6px', fontSize: '14px', border: '1px solid #ccc', borderRadius: '4px' }}
                   />
                 ))}
