@@ -74,7 +74,7 @@ function FlagBadge({ flag, seriesNumber }: { flag: string; seriesNumber?: number
     <span style={{
       background: config.bg,
       color: config.text,
-      padding: '2px 8px',
+      padding: '2px 7px',
       borderRadius: '4px',
       fontSize: '10px',
       fontWeight: 700,
@@ -105,11 +105,10 @@ export default function HorizontalStoryCard({
   // Handle backward compatibility: if old flag prop is passed, convert to array
   let finalFlags = flags
   if ((!flags || flags.length === 0) && flag) {
-    // Map old flag values to new system
     const flagMap: Record<string, string> = {
       'free': 'free',
       'editors-pick': 'editors-pick',
-      'readers-choice': 'listeners-pick', // map old name to new
+      'readers-choice': 'listeners-pick',
       'trending': 'trending',
     }
     const mappedFlag = flagMap[flag]
@@ -119,29 +118,35 @@ export default function HorizontalStoryCard({
   }
   
   const displayFlags = getDisplayFlags(finalFlags)
-  
-  // Assign flags to rows (row 2, 3, 4)
-  const flag1 = displayFlags[0] || null
-  const flag2 = displayFlags[1] || null
-  const flag3 = displayFlags[2] || null
 
   return (
     <Link 
       href={`/player/${id}`}
-      className="bg-slate-800 rounded-xl overflow-hidden hover:bg-slate-700 transition"
-      style={{ display: 'flex' }}
+      style={{
+        display: 'flex',
+        background: '#1e293b',
+        borderRadius: '14px',
+        overflow: 'hidden',
+        border: '1px solid rgba(148, 163, 184, 0.06)',
+        textDecoration: 'none',
+      }}
     >
-      {/* Cover image */}
-      <div style={{ width: '5rem', height: '5rem', flexShrink: 0, padding: '0.5rem' }}>
+      {/* Cover image - 7rem square with shadow */}
+      <div style={{ width: '7rem', flexShrink: 0, padding: '0.5rem' }}>
         <div 
-          className="rounded-lg overflow-hidden cover-glow"
-          style={{ width: '100%', height: '100%' }}
+          className="cover-glow"
+          style={{
+            width: '100%',
+            aspectRatio: '1',
+            borderRadius: '10px',
+            overflow: 'hidden',
+            boxShadow: '0 2px 12px rgba(0,0,0,0.4)',
+          }}
         >
           <img 
             src={cover_url || '/images/default-cover.png'} 
             alt={title}
-            className="object-cover"
-            style={{ width: '100%', height: '100%' }}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
           />
         </div>
       </div>
@@ -149,64 +154,46 @@ export default function HorizontalStoryCard({
       {/* Content */}
       <div style={{ 
         flex: 1, 
-        paddingTop: '0.5rem', 
-        paddingBottom: '0.5rem', 
-        paddingRight: '0.75rem', 
+        padding: '0.5rem 0.75rem 0.5rem 0.25rem', 
         display: 'flex', 
         flexDirection: 'column', 
-        justifyContent: 'center',
+        justifyContent: 'space-between',
         minWidth: 0,
       }}>
-        {/* Row 1: Title (full width) */}
-        <h3 
-          className="text-sm font-bold text-white"
-          style={{
+        {/* Top: Title + meta */}
+        <div>
+          <h3 style={{
+            color: 'white',
+            fontSize: '15px',
+            fontWeight: 700,
             margin: 0,
-            whiteSpace: 'nowrap',
+            lineHeight: 1.3,
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
             overflow: 'hidden',
-            textOverflow: 'ellipsis',
-          }}
-        >
-          {title}
-        </h3>
-        
-        {/* Row 2: Genre + Flag 1 */}
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center',
-          marginTop: '2px',
-        }}>
-          <p style={{ color: '#94a3b8', fontSize: '0.75rem', margin: 0 }}>
-            {genre}
+          }}>
+            {title}
+          </h3>
+          <p style={{ color: '#94a3b8', fontSize: '12px', margin: '4px 0 0' }}>
+            {genre} • by {author}
           </p>
-          {flag1 && <FlagBadge flag={flag1} seriesNumber={series_number} />}
         </div>
         
-        {/* Row 3: Author + Flag 2 */}
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center',
-          marginTop: '2px',
-        }}>
-          <p style={{ color: '#94a3b8', fontSize: '0.75rem', margin: 0 }}>
-            by {author}
-          </p>
-          {flag2 && <FlagBadge flag={flag2} seriesNumber={series_number} />}
-        </div>
-        
-        {/* Row 4: Duration/Credits + Flag 3 */}
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center',
-          marginTop: '2px',
-        }}>
-          <p style={{ color: '#ffffff', fontSize: '0.75rem', fontWeight: 600, margin: 0 }}>
-            {duration_mins} min • {displayCredits} credit{displayCredits !== 1 ? 's' : ''}
-          </p>
-          {flag3 && <FlagBadge flag={flag3} seriesNumber={series_number} />}
+        {/* Bottom: Duration/credits + flags */}
+        <div>
+          <div style={{ marginTop: '6px' }}>
+            <span style={{ color: 'white', fontSize: '13px', fontWeight: 600 }}>
+              {duration_mins} min • {displayCredits} credit{displayCredits !== 1 ? 's' : ''}
+            </span>
+          </div>
+          {displayFlags.length > 0 && (
+            <div style={{ display: 'flex', gap: '4px', marginTop: '5px', flexWrap: 'wrap' }}>
+              {displayFlags.map(f => (
+                <FlagBadge key={f} flag={f} seriesNumber={series_number} />
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </Link>
