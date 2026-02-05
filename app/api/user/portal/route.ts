@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
 
     if (!userId) {
       // Redirect to login if no user ID
-      return NextResponse.redirect(new URL('/auth/login', request.url));
+      return NextResponse.redirect(new URL('/signin', request.url));
     }
 
     // Get user's Stripe customer ID

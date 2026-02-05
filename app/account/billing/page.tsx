@@ -75,7 +75,7 @@ export default function BillingPage() {
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
         <div className="text-center">
           <p className="text-slate-400 mb-4">Please sign in to view billing</p>
-          <Link href="/auth/login" className="text-orange-400 hover:text-orange-300">
+          <Link href="/signin" className="text-orange-400 hover:text-orange-300">
             Sign In
           </Link>
         </div>
