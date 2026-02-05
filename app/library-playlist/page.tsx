@@ -1,397 +1,222 @@
-'use client'
+'use client';
 
-import { useState, useEffect, Suspense } from 'react'
-import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
-import { useAuth } from '@/contexts/AuthContext'
-import StickyHeaderFull from '@/components/StickyHeaderFull'
-import LibraryFiltersV2 from '@/components/LibraryFiltersV2'
+import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
-interface Story {
-  id: string
-  title: string
-  genre: string
-  author: string
-  duration_mins: number
-  cover_url: string | null
-  audio_url?: string | null
-  series_id?: string | null
-  series_name?: string | null
-  series_number?: number | null
-  series_total?: number | null
-  flag?: string | null
-  is_free?: boolean
-  created_at?: string
+const CATEGORIES = [
+  { id: 'state', label: 'State News', icon: '🏛️', color: '#dc2626' },
+  { id: 'national', label: 'National News', icon: '🇺🇸', color: '#f97316' },
+  { id: 'world', label: 'World News', icon: '🌍', color: '#eab308' },
+  { id: 'business', label: 'Business News', icon: '💼', color: '#16a34a' },
+  { id: 'sports', label: 'Sports News', icon: '⚽', color: '#2563eb' },
+  { id: 'science', label: 'Science & Tech', icon: '🔬', color: '#9333ea' }
+];
+
+const DEFAULT_UPSELL_SCRIPT = `Hi and welcome to Drive Time Tales! I'm [narrator name], and I'll be bringing you personalized news for your state, delivered fresh every day. State news is a subscriber benefit, so sign up for a free trial to get your local headlines. In the meantime, enjoy our national, world, business, sports, and science and technology briefings — they're all free to listen to right now. I look forward to welcoming you back once you've joined us on Drive Time Tales!`;
+
+function Spinner({ color = '#ffffff' }: { color?: string }) {
+  return (<span style={{ display: 'inline-block', width: '18px', height: '18px', border: `3px solid ${color}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', marginRight: '8px', verticalAlign: 'middle' }} />);
 }
 
-interface PlaylistItem {
-  id: string
-  title: string
-  duration_mins: number
-  genre: string
-  author: string
-  cover_url: string | null
-  audio_url?: string | null
-  credited: boolean
-}
+const spinnerStyles = `@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`;
 
-function getCredits(duration_mins: number): number {
-  return Math.max(1, Math.floor(duration_mins / 15))
-}
+interface Voice { voice_id: string; name: string; }
+interface Settings { narratorName: string; voiceId: string; upsellScript?: string; }
+interface Episode { audioUrl: string; createdAt: string; duration?: string; }
 
-function LibraryPlaylistContent() {
-  const router = useRouter()
-  const { user } = useAuth()
-  const [stories, setStories] = useState<Story[]>([])
-  const [loading, setLoading] = useState(true)
-  const [userCredits, setUserCredits] = useState(0)
-  const [userName, setUserName] = useState('Friend')
+export default function NewsBriefingsAdmin() {
+  const router = useRouter();
+  const [settings, setSettings] = useState<Record<string, Settings>>({});
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [episodes, setEpisodes] = useState<Record<string, Episode>>({});
+  const [generating, setGenerating] = useState<Record<string, boolean>>({});
+  const [testingVoice, setTestingVoice] = useState<Record<string, boolean>>({});
+  const [playing, setPlaying] = useState<string | null>(null);
+  const [voices, setVoices] = useState<Voice[]>([]);
+  const [loadingVoices, setLoadingVoices] = useState(true);
+  const [subscriberStates, setSubscriberStates] = useState<string[]>([]);
+  const [selectedState, setSelectedState] = useState('');
+  const [stateUpsell, setStateUpsell] = useState<{ exists: boolean; audioUrl?: string }>({ exists: false });
+  const [generatingUpsell, setGeneratingUpsell] = useState(false);
+  const [playingUpsell, setPlayingUpsell] = useState(false);
+  const [upsellScript, setUpsellScript] = useState(DEFAULT_UPSELL_SCRIPT);
+  const [upsellScriptDirty, setUpsellScriptDirty] = useState(false);
+  const [savingUpsellScript, setSavingUpsellScript] = useState(false);
+  const [upsellNeedsRegenerate, setUpsellNeedsRegenerate] = useState(false);
+  const [lastGeneratedWith, setLastGeneratedWith] = useState<{ narratorName: string; voiceId: string; script: string } | null>(null);
+  const [autoGenerateEnabled, setAutoGenerateEnabled] = useState(false);
+  const [scheduleTimes, setScheduleTimes] = useState<string[]>(['06:00', '12:00', '18:00']);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Filter states
-  const [selectedDuration, setSelectedDuration] = useState('All Lengths')
-  const [selectedGenre, setSelectedGenre] = useState('All Categories')
-  const [selectedType, setSelectedType] = useState('Singles & Series')
+  useEffect(() => { fetch('/api/elevenlabs/voices').then(r => r.ok ? r.json() : { voices: [] }).then(d => setVoices(d.voices || [])).catch(() => setVoices([])).finally(() => setLoadingVoices(false)); }, []);
 
-  // Playlist state
-  const [playlist, setPlaylist] = useState<PlaylistItem[]>([])
-  const [showSavedMessage, setShowSavedMessage] = useState(false)
-
-  // Load existing playlist from localStorage
   useEffect(() => {
-    const savedPlaylist = localStorage.getItem('dtt_playlist')
-    if (savedPlaylist) {
-      try {
-        const parsed = JSON.parse(savedPlaylist)
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setPlaylist(parsed)
-        }
-      } catch (e) {
-        console.error('Error loading playlist:', e)
-      }
-    }
-  }, [])
-
-  // Fetch stories and user data
-  useEffect(() => {
-    async function fetchData() {
-      const { data: storiesData } = await supabase
-        .from('stories')
-        .select('id, title, genre, author, duration_mins, cover_url, audio_url, series_id, series_name, series_number, series_total, flag, is_free, created_at')
-        .not('cover_url', 'is', null)
-        .order('created_at', { ascending: false })
-      if (storiesData) setStories(storiesData)
-
-      if (user?.id) {
-        const { data: userData } = await supabase
-          .from('users')
-          .select('first_name, display_name, credits')
-          .eq('id', user.id)
-          .single()
-        if (userData) {
-          setUserName(userData.first_name || userData.display_name || 'Friend')
-          setUserCredits(userData.credits || 0)
+    fetch('/api/admin/news-settings').then(r => r.ok ? r.json() : { settings: [] }).then(data => {
+      const loaded: Record<string, Settings> = {};
+      for (const row of data.settings || []) {
+        loaded[row.category] = { narratorName: row.narrator_name || '', voiceId: row.voice_id || '', upsellScript: row.upsell_script || '' };
+        if (row.category === 'state') {
+          if (row.upsell_script) setUpsellScript(row.upsell_script);
+          if (row.upsell_audio_url) {
+            setStateUpsell({ exists: true, audioUrl: row.upsell_audio_url });
+            setLastGeneratedWith({ narratorName: row.narrator_name || '', voiceId: row.voice_id || '', script: row.upsell_script || DEFAULT_UPSELL_SCRIPT });
+          }
         }
       }
-      setLoading(false)
+      for (const cat of CATEGORIES) { if (!loaded[cat.id]) loaded[cat.id] = { narratorName: '', voiceId: '' }; }
+      setSettings(loaded);
+      setSettingsLoaded(true);
+    }).catch(() => setSettingsLoaded(true));
+  }, []);
+
+  useEffect(() => {
+    if (lastGeneratedWith && settings['state']) {
+      const s = settings['state'];
+      setUpsellNeedsRegenerate(s.narratorName !== lastGeneratedWith.narratorName || s.voiceId !== lastGeneratedWith.voiceId || upsellScript !== lastGeneratedWith.script);
     }
-    fetchData()
-  }, [user])
+  }, [settings, upsellScript, lastGeneratedWith]);
 
-  // Calculate credits used by playlist
-  const creditsUsed = playlist.reduce((sum, item) => sum + getCredits(item.duration_mins), 0)
-  const creditsLeft = userCredits - creditsUsed
-  const totalMinutes = playlist.reduce((sum, item) => sum + item.duration_mins, 0)
+  useEffect(() => { fetch('/api/admin/subscriber-states').then(r => r.ok ? r.json() : { states: [] }).then(d => { setSubscriberStates(d.states || []); if (d.states?.length > 0 && !selectedState) setSelectedState(d.states[0]); }).catch(() => {}); }, []);
 
-  // Filter stories (same logic as library page)
-  const filteredStories = stories.filter(story => {
-    if (selectedDuration !== 'All Lengths') {
-      if (selectedDuration === '~15 min' && story.duration_mins > 20) return false
-      if (selectedDuration === '~30 min' && (story.duration_mins <= 20 || story.duration_mins > 45)) return false
-      if (selectedDuration === '~1 hr' && story.duration_mins <= 45) return false
-    }
-    if (selectedGenre !== 'All Categories') {
-      const genreLower = story.genre?.toLowerCase() || ''
-      if (selectedGenre === 'Mystery' && !genreLower.includes('mystery')) return false
-      if (selectedGenre === 'Romance' && !genreLower.includes('romance')) return false
-      if (selectedGenre === 'Sci-Fi' && !genreLower.includes('sci-fi') && !genreLower.includes('scifi')) return false
-      if (selectedGenre === 'Horror' && !genreLower.includes('horror')) return false
-      if (selectedGenre === 'Comedy' && !genreLower.includes('comedy')) return false
-      if (selectedGenre === 'Learn' && !genreLower.includes('learn') && !genreLower.includes('educational')) return false
-      if (selectedGenre === 'Thriller' && !genreLower.includes('thriller')) return false
-      if (selectedGenre === 'Truckers' && !genreLower.includes('trucker')) return false
-      if (selectedGenre === 'Children' && !genreLower.includes('child') && !genreLower.includes('kids')) return false
-    }
-    if (selectedType === 'Singles Only' && story.series_name) return false
-    if (selectedType === 'Series Only' && !story.series_name) return false
-    return true
-  })
+  useEffect(() => {
+    fetch('/api/admin/news-episodes').then(r => r.ok ? r.json() : { episodes: [] }).then(data => {
+      const loaded: Record<string, Episode> = {};
+      for (const ep of data.episodes || []) {
+        const key = ep.category === 'state' ? `state-${ep.state}` : ep.category;
+        if (!loaded[key] || new Date(ep.created_at) > new Date(loaded[key].createdAt)) { loaded[key] = { audioUrl: ep.audio_url, createdAt: ep.created_at, duration: ep.duration }; }
+      }
+      setEpisodes(loaded);
+    }).catch(() => {});
+  }, []);
 
-  // Check if story is already in playlist
-  const isInPlaylist = (storyId: string) => playlist.some(item => item.id === storyId)
-
-  // Add story to playlist
-  const addToPlaylist = (story: Story) => {
-    if (isInPlaylist(story.id)) return
-    const cost = getCredits(story.duration_mins)
-    if (creditsLeft < cost && !story.is_free) return
-    setPlaylist([...playlist, {
-      id: story.id,
-      title: story.title,
-      duration_mins: story.duration_mins,
-      genre: story.genre,
-      author: story.author || 'Drive Time Tales',
-      cover_url: story.cover_url,
-      audio_url: story.audio_url || null,
-      credited: false,
-    }])
+  async function saveSettings(category: string, narratorName: string, voiceId: string) {
+    try { await fetch('/api/admin/news-settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ category, narratorName, voiceId }) }); } catch (error) { console.error('Save settings error:', error); }
   }
 
-  // Remove story from playlist
-  const removeFromPlaylist = (storyId: string) => {
-    setPlaylist(playlist.filter(item => item.id !== storyId))
+  async function saveUpsellScript() {
+    setSavingUpsellScript(true);
+    try { await fetch('/api/admin/news-settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ category: 'state', upsellScript: upsellScript }) }); setUpsellScriptDirty(false); } catch (error) { console.error('Save upsell script error:', error); } finally { setSavingUpsellScript(false); }
   }
 
-  // Move story up in playlist
-  const moveUp = (index: number) => {
-    if (index === 0) return
-    const newPlaylist = [...playlist]
-    ;[newPlaylist[index - 1], newPlaylist[index]] = [newPlaylist[index], newPlaylist[index - 1]]
-    setPlaylist(newPlaylist)
+  async function handleTestVoice(category: string, voiceId: string, narratorName: string) {
+    if (!voiceId) return;
+    setTestingVoice(p => ({ ...p, [category]: true }));
+    try { const r = await fetch('/api/elevenlabs/test-voice', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ voiceId, text: `Hi, I'm ${narratorName || 'your host'}. Welcome to Drive Time Tales!` }) }); const d = await r.json(); if (d.audioUrl) { const audio = new Audio(d.audioUrl); audio.play(); } } catch (error) { console.error('Test voice error:', error); } finally { setTestingVoice(p => ({ ...p, [category]: false })); }
   }
 
-  // Move story down in playlist
-  const moveDown = (index: number) => {
-    if (index === playlist.length - 1) return
-    const newPlaylist = [...playlist]
-    ;[newPlaylist[index], newPlaylist[index + 1]] = [newPlaylist[index + 1], newPlaylist[index]]
-    setPlaylist(newPlaylist)
+  async function handleGenerate(category: string) {
+    const state = category === 'state' ? selectedState : null;
+    const key = state ? `state-${state}` : category;
+    setGenerating(p => ({ ...p, [key]: true }));
+    try { const r = await fetch('/api/admin/generate-news', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ category, state }) }); const d = await r.json(); if (r.ok && d.success) { setEpisodes(p => ({ ...p, [key]: { audioUrl: d.episode.audioUrl, createdAt: d.episode.createdAt, duration: d.episode.duration } })); alert(`Generated successfully! Duration: ${d.episode.duration || 'N/A'} min`); } else { alert(`Generation failed: ${d.error || 'Unknown error'}`); } } catch (error) { console.error('Generate error:', error); alert('Generation failed.'); } finally { setGenerating(p => ({ ...p, [key]: false })); }
   }
 
-  // Save playlist
-  const savePlaylist = () => {
-    localStorage.setItem('dtt_playlist', JSON.stringify(playlist))
-    localStorage.setItem('dtt_playlist_index', '0')
-    localStorage.setItem('dtt_playlist_progress', '0')
-    setShowSavedMessage(true)
-    setTimeout(() => setShowSavedMessage(false), 2000)
+  async function handleGenerateUpsell() {
+    const s = settings['state'];
+    if (!s || !s.narratorName || !s.voiceId) { alert('Please set State News narrator and voice first.'); return; }
+    const scriptWithName = upsellScript.replace(/\[narrator name\]/gi, s.narratorName);
+    setGeneratingUpsell(true);
+    try {
+      const r = await fetch('/api/news/state-upsell', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ narratorName: s.narratorName, voiceId: s.voiceId, scriptText: scriptWithName }) });
+      const d = await r.json();
+      if (r.ok && d.audioUrl) {
+        setStateUpsell({ exists: true, audioUrl: d.audioUrl });
+        setLastGeneratedWith({ narratorName: s.narratorName, voiceId: s.voiceId, script: upsellScript });
+        setUpsellNeedsRegenerate(false);
+        await fetch('/api/admin/news-settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ category: 'state', upsellAudioUrl: d.audioUrl }) });
+        alert('State Upsell generated successfully!');
+      } else { alert(`Generation failed: ${d.error || 'Unknown error'}`); }
+    } catch (error) { console.error('Upsell error:', error); alert('Generation failed.'); } finally { setGeneratingUpsell(false); }
   }
 
-  // Start driving - save and go to player
-  const startDrive = () => {
-    localStorage.setItem('dtt_playlist', JSON.stringify(playlist))
-    localStorage.setItem('dtt_playlist_index', '0')
-    localStorage.setItem('dtt_playlist_progress', '0')
-    router.push('/player/playlist')
+  function handlePlay(key: string, url?: string) {
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+    if (playing === key) { setPlaying(null); setPlayingUpsell(false); return; }
+    const audioUrl = url || episodes[key]?.audioUrl;
+    if (!audioUrl) return;
+    const audio = new Audio(audioUrl);
+    audioRef.current = audio;
+    audio.onended = () => { setPlaying(null); setPlayingUpsell(false); };
+    audio.play();
+    setPlaying(key);
   }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
-      </div>
-    )
-  }
+  function formatTime(iso: string): string { return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }); }
+
+  if (!settingsLoaded) { return (<div style={{ minHeight: '100vh', backgroundColor: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><style>{spinnerStyles}</style><div style={{ textAlign: 'center' }}><Spinner color="#000000" /><p style={{ fontSize: '20px', fontWeight: 'bold', color: '#000000', marginTop: '16px' }}>Loading settings...</p></div></div>); }
+
+  const inputStyle: React.CSSProperties = { width: '100%', padding: '12px', fontSize: '16px', border: '2px solid #000000', borderRadius: '6px', backgroundColor: '#ffffff', color: '#000000', boxSizing: 'border-box' };
+  const selectStyle: React.CSSProperties = { padding: '12px', fontSize: '16px', border: '2px solid #000000', borderRadius: '6px', backgroundColor: '#ffffff', color: '#000000', flex: 1, maxWidth: 'calc(100% - 120px)' };
+  const btnStyle: React.CSSProperties = { padding: '12px 20px', fontSize: '16px', fontWeight: 'bold', border: '2px solid #000000', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' };
 
   return (
-    <div className="min-h-screen bg-slate-950" style={{ paddingBottom: '140px' }}>
-      <StickyHeaderFull />
-
-      {/* Filters - same as library page */}
-      <LibraryFiltersV2
-        selectedDuration={selectedDuration}
-        setSelectedDuration={setSelectedDuration}
-        selectedGenre={selectedGenre}
-        setSelectedGenre={setSelectedGenre}
-        selectedType={selectedType}
-        setSelectedType={setSelectedType}
-      />
-
-      {/* Stats bar */}
-      <div style={{ padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        <div style={{ backgroundColor: '#0f172a', padding: '0.25rem 0.5rem', borderRadius: '6px', textAlign: 'center', border: '1px solid #334155' }}>
-          <div style={{ color: 'white', fontSize: '10px' }}>Credits</div>
-          <div style={{ color: creditsLeft < 0 ? '#ef4444' : '#22c55e', fontSize: '14px', fontWeight: 'bold' }}>{creditsLeft}</div>
-        </div>
-        <div style={{ flex: 1, textAlign: 'center' }}>
-          <span style={{ color: 'white', fontSize: '14px', fontWeight: 600 }}>
-            {playlist.length} {playlist.length === 1 ? 'story' : 'stories'} • {totalMinutes} min
-          </span>
-        </div>
-        <button
-          onClick={() => router.push('/library')}
-          style={{ backgroundColor: '#334155', color: 'white', padding: '0.5rem 0.75rem', borderRadius: '6px', fontSize: '13px', fontWeight: 500, border: 'none', cursor: 'pointer' }}
-        >
-          ← Library
-        </button>
+    <div style={{ minHeight: '100vh', backgroundColor: '#ffffff', color: '#000000', padding: '24px', fontFamily: 'Arial, sans-serif' }}>
+      <style>{spinnerStyles}</style>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+        <Link href="/admin" style={{ color: '#3b82f6', fontSize: '16px', textDecoration: 'none' }}>← Back to Admin</Link>
+        <Link href="/admin/news-briefings/test-sources" style={{ padding: '10px 16px', backgroundColor: '#8b5cf6', color: '#fff', borderRadius: '6px', textDecoration: 'none', fontWeight: 'bold', fontSize: '14px' }}>🧪 Test Sources</Link>
       </div>
+      <h1 style={{ fontSize: '28px', fontWeight: 'bold', marginBottom: '8px', color: '#000000' }}>🎙️ News Briefings Admin</h1>
+      <p style={{ marginBottom: '24px', fontSize: '16px', color: '#000000' }}>Configure narrators, voices, and prompts.</p>
 
-      {/* YOUR PLAYLIST section */}
-      {playlist.length > 0 && (
-        <div style={{ padding: '0 0.75rem', marginBottom: '0.5rem' }}>
-          <h2 style={{ color: '#f97316', fontSize: '16px', fontWeight: 'bold', marginBottom: '0.5rem', padding: '0 0.25rem' }}>
-            🎧 Your Playlist
-          </h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            {playlist.map((item, index) => (
-              <div key={item.id} style={{
-                display: 'flex',
-                alignItems: 'center',
-                backgroundColor: '#1e3a5f',
-                borderRadius: '12px',
-                padding: '0.5rem',
-                border: '1px solid #3b82f6',
-                gap: '0.5rem',
-              }}>
-                {/* Order number */}
-                <div style={{ color: '#93c5fd', fontSize: '16px', fontWeight: 'bold', width: '24px', textAlign: 'center', flexShrink: 0 }}>
-                  {index + 1}
-                </div>
-                {/* Cover */}
-                <div style={{ width: '48px', height: '48px', borderRadius: '8px', overflow: 'hidden', flexShrink: 0 }}>
-                  {item.cover_url ? (
-                    <img src={item.cover_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  ) : (
-                    <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, #f97316, #c2410c)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <span style={{ fontSize: '20px' }}>🎵</span>
-                    </div>
-                  )}
-                </div>
-                {/* Info */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ color: 'white', fontSize: '13px', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', margin: 0 }}>{item.title}</p>
-                  <p style={{ color: '#94a3b8', fontSize: '11px', margin: 0 }}>{item.duration_mins} min • {getCredits(item.duration_mins)} cr</p>
-                </div>
-                {/* Move up/down */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flexShrink: 0 }}>
-                  <button onClick={() => moveUp(index)} disabled={index === 0} style={{ backgroundColor: index === 0 ? '#334155' : '#475569', color: 'white', border: 'none', borderRadius: '4px', width: '24px', height: '20px', fontSize: '10px', cursor: index === 0 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>▲</button>
-                  <button onClick={() => moveDown(index)} disabled={index === playlist.length - 1} style={{ backgroundColor: index === playlist.length - 1 ? '#334155' : '#475569', color: 'white', border: 'none', borderRadius: '4px', width: '24px', height: '20px', fontSize: '10px', cursor: index === playlist.length - 1 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>▼</button>
-                </div>
-                {/* Remove */}
-                <button onClick={() => removeFromPlaylist(item.id)} style={{ backgroundColor: '#dc2626', color: 'white', border: 'none', borderRadius: '50%', width: '28px', height: '28px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>×</button>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: '20px' }}>
+        {CATEGORIES.map(cat => {
+          const s = settings[cat.id] || { narratorName: '', voiceId: '' };
+          const episodeKey = cat.id === 'state' ? `state-${selectedState}` : cat.id;
+          const ep = episodes[episodeKey];
+          const isGenerating = generating[episodeKey];
+          const isTestingVoice = testingVoice[cat.id];
+          const isPlaying = playing === episodeKey;
+
+          return (
+            <div key={cat.id} style={{ backgroundColor: '#ffffff', border: '2px solid #000000', borderRadius: '12px', padding: '20px', borderTop: `6px solid ${cat.color}` }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}><h2 style={{ fontSize: '22px', fontWeight: 'bold', color: '#000000', margin: 0 }}>{cat.icon} {cat.label}</h2><a href={`/admin/news-briefings/prompts/${cat.id}`} style={{ fontSize: '14px', color: '#3b82f6' }}>📝 Edit Prompt</a></div>
+              <label style={{ display: 'block', marginBottom: '6px', fontSize: '16px', fontWeight: 'bold', color: '#000000' }}>Narrator Name</label>
+              <input type="text" value={s.narratorName} onChange={e => setSettings(p => ({ ...p, [cat.id]: { ...p[cat.id], narratorName: e.target.value } }))} onBlur={() => saveSettings(cat.id, s.narratorName, s.voiceId)} placeholder="e.g., Sarah Mitchell" style={{ ...inputStyle, marginBottom: '16px' }} />
+              <label style={{ display: 'block', marginBottom: '6px', fontSize: '16px', fontWeight: 'bold', color: '#000000' }}>Voice</label>
+              <div style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
+                <select value={s.voiceId} onChange={e => { const v = e.target.value; setSettings(p => ({ ...p, [cat.id]: { ...p[cat.id], voiceId: v } })); saveSettings(cat.id, s.narratorName, v); }} style={selectStyle}>
+                  <option value="">{loadingVoices ? 'Loading voices...' : 'Select a voice'}</option>
+                  {voices.map(v => <option key={v.voice_id} value={v.voice_id}>{v.name}</option>)}
+                </select>
+                <button onClick={() => handleTestVoice(cat.id, s.voiceId, s.narratorName)} disabled={!s.voiceId || isTestingVoice} style={{ ...btnStyle, backgroundColor: (!s.voiceId || isTestingVoice) ? '#cccccc' : '#3b82f6', color: '#ffffff', minWidth: '100px' }}>{isTestingVoice ? <><Spinner /> Testing</> : '🔊 Test'}</button>
               </div>
-            ))}
-          </div>
-        </div>
-      )}
 
-      {/* AVAILABLE STORIES section */}
-      <div style={{ padding: '0 0.75rem' }}>
-        <h2 style={{ color: 'white', fontSize: '16px', fontWeight: 'bold', marginBottom: '0.5rem', padding: '0 0.25rem' }}>
-          {playlist.length > 0 ? '➕ Add More Stories' : '➕ Select Stories for Your Playlist'}
-        </h2>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          {filteredStories.length === 0 ? (
-            <div style={{ backgroundColor: '#1e293b', borderRadius: '12px', padding: '2rem', textAlign: 'center' }}>
-              <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>😔</div>
-              <p style={{ color: 'white', fontSize: '16px', marginBottom: '0.5rem' }}>Sorry {userName}, no stories match your request.</p>
-              <p style={{ color: '#94a3b8', fontSize: '14px' }}>Try a different filter</p>
-            </div>
-          ) : (
-            filteredStories.map(story => {
-              const inPlaylist = isInPlaylist(story.id)
-              const cost = getCredits(story.duration_mins)
-              const canAfford = creditsLeft >= cost || story.is_free
-
-              return (
-                <div
-                  key={story.id}
-                  onClick={() => !inPlaylist && canAfford && addToPlaylist(story)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    backgroundColor: inPlaylist ? '#1e3a5f' : '#1e293b',
-                    borderRadius: '12px',
-                    overflow: 'hidden',
-                    cursor: inPlaylist || !canAfford ? 'default' : 'pointer',
-                    opacity: inPlaylist ? 0.5 : !canAfford ? 0.4 : 1,
-                    border: inPlaylist ? '1px solid #3b82f6' : '1px solid transparent',
-                  }}
-                >
-                  {/* Cover */}
-                  <div style={{ width: '5rem', height: '5rem', flexShrink: 0, padding: '0.5rem' }}>
-                    <div style={{ width: '100%', height: '100%', borderRadius: '8px', overflow: 'hidden' }}>
-                      <img
-                        src={story.cover_url || '/images/default-cover.png'}
-                        alt={story.title}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                      />
+              {cat.id === 'state' ? (
+                <>
+                  <label style={{ display: 'block', marginBottom: '6px', fontSize: '16px', fontWeight: 'bold', color: '#000000' }}>Subscriber States</label>
+                  {subscriberStates.length > 0 ? (<select value={selectedState} onChange={e => setSelectedState(e.target.value)} style={{ ...selectStyle, width: '100%', marginBottom: '16px' }}>{subscriberStates.map(st => <option key={st} value={st}>{st}</option>)}</select>) : (<p style={{ fontSize: '14px', color: '#666666', marginBottom: '16px' }}>No subscribers yet</p>)}
+                  <div style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
+                    <button onClick={() => handleGenerate(cat.id)} disabled={isGenerating || !s.narratorName || !s.voiceId || !selectedState} style={{ ...btnStyle, flex: 1, backgroundColor: (isGenerating || !s.narratorName || !s.voiceId || !selectedState) ? '#cccccc' : cat.color, color: '#ffffff' }}>{isGenerating ? <><Spinner /> Generating...</> : '🎬 Generate'}</button>
+                    <button onClick={() => handlePlay(episodeKey)} disabled={!ep?.audioUrl} style={{ ...btnStyle, flex: 1, backgroundColor: ep?.audioUrl ? (isPlaying ? '#dc2626' : '#10b981') : '#cccccc', color: '#ffffff' }}>{isPlaying ? '⏹️ Stop' : '▶️ Play'}</button>
+                  </div>
+                  {ep && <div style={{ fontSize: '14px', fontWeight: 'bold', backgroundColor: '#f5f5f5', padding: '10px', borderRadius: '6px', marginBottom: '16px', color: '#000000' }}>{selectedState}: {formatTime(ep.createdAt)} {ep.duration ? `• ${ep.duration} min` : ''}</div>}
+                  <div style={{ backgroundColor: '#fffbeb', border: '2px solid #000000', borderRadius: '8px', padding: '12px' }}>
+                    <p style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '10px', color: '#000000' }}>Welcome Page Upsell Script</p>
+                    <p style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>Use [narrator name] - replaced with narrator name above.</p>
+                    <textarea value={upsellScript} onChange={e => { setUpsellScript(e.target.value); setUpsellScriptDirty(true); }} onBlur={saveUpsellScript} style={{ ...inputStyle, minHeight: '120px', resize: 'vertical', marginBottom: '10px', fontSize: '14px' }} />
+                    {upsellScriptDirty && <p style={{ fontSize: '12px', color: '#f97316', marginBottom: '8px' }}>{savingUpsellScript ? 'Saving...' : 'Script changed - saves on blur'}</p>}
+                    {upsellNeedsRegenerate && stateUpsell.exists && (<div style={{ backgroundColor: '#fef3c7', border: '1px solid #f59e0b', borderRadius: '6px', padding: '8px', marginBottom: '10px' }}><p style={{ fontSize: '12px', color: '#92400e', margin: 0 }}>⚠️ Settings changed. Click Regenerate to update audio.</p></div>)}
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      <button onClick={handleGenerateUpsell} disabled={generatingUpsell || !s.narratorName || !s.voiceId} style={{ ...btnStyle, flex: 1, backgroundColor: (generatingUpsell || !s.narratorName || !s.voiceId) ? '#cccccc' : (upsellNeedsRegenerate ? '#f59e0b' : stateUpsell.exists ? '#10b981' : '#dc2626'), color: '#ffffff', fontSize: '14px', padding: '10px 16px' }}>{generatingUpsell ? <><Spinner /> Generating...</> : upsellNeedsRegenerate ? '🔄 Regenerate' : stateUpsell.exists ? '✅ Regenerate' : '⚠️ Generate Upsell'}</button>
+                      <button onClick={() => { if (playingUpsell) { if (audioRef.current) audioRef.current.pause(); setPlayingUpsell(false); setPlaying(null); } else if (stateUpsell.audioUrl) { handlePlay('upsell', stateUpsell.audioUrl); setPlayingUpsell(true); } }} disabled={!stateUpsell.audioUrl} style={{ ...btnStyle, flex: 1, backgroundColor: stateUpsell.audioUrl ? (playingUpsell ? '#dc2626' : '#10b981') : '#cccccc', color: '#ffffff', fontSize: '14px', padding: '10px 16px' }}>{playingUpsell ? '⏹️ Stop' : '▶️ Play Upsell'}</button>
                     </div>
                   </div>
-                  {/* Content */}
-                  <div style={{ flex: 1, paddingTop: '0.5rem', paddingBottom: '0.5rem', paddingRight: '0.5rem', minWidth: 0 }}>
-                    <h3 style={{ color: 'white', fontSize: '14px', fontWeight: 'bold', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{story.title}</h3>
-                    <p style={{ color: '#94a3b8', fontSize: '12px', margin: '2px 0 0 0' }}>{story.genre}</p>
-                    <p style={{ color: '#94a3b8', fontSize: '12px', margin: '2px 0 0 0' }}>by {story.author || 'Drive Time Tales'}</p>
-                    <p style={{ color: 'white', fontSize: '12px', fontWeight: 600, margin: '2px 0 0 0' }}>
-                      {story.duration_mins} min • {cost} credit{cost !== 1 ? 's' : ''}
-                      {story.is_free && <span style={{ backgroundColor: '#22c55e', color: 'white', padding: '1px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: 700, marginLeft: '6px' }}>FREE</span>}
-                    </p>
+                </>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
+                    <button onClick={() => handleGenerate(cat.id)} disabled={isGenerating || !s.narratorName || !s.voiceId} style={{ ...btnStyle, flex: 1, backgroundColor: (isGenerating || !s.narratorName || !s.voiceId) ? '#cccccc' : cat.color, color: cat.id === 'world' ? '#000000' : '#ffffff' }}>{isGenerating ? <><Spinner /> Generating...</> : '🎬 Generate'}</button>
+                    <button onClick={() => handlePlay(cat.id)} disabled={!ep?.audioUrl} style={{ ...btnStyle, flex: 1, backgroundColor: ep?.audioUrl ? (isPlaying ? '#dc2626' : '#10b981') : '#cccccc', color: '#ffffff' }}>{isPlaying ? '⏹️ Stop' : '▶️ Play'}</button>
                   </div>
-                  {/* Add/Added indicator */}
-                  <div style={{ paddingRight: '0.75rem', flexShrink: 0 }}>
-                    {inPlaylist ? (
-                      <div style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: '#3b82f6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <span style={{ color: 'white', fontSize: '14px' }}>✓</span>
-                      </div>
-                    ) : canAfford ? (
-                      <div style={{ width: '28px', height: '28px', borderRadius: '50%', border: '2px solid #22c55e', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <span style={{ color: '#22c55e', fontSize: '18px', lineHeight: 1 }}>+</span>
-                      </div>
-                    ) : (
-                      <div style={{ width: '28px', height: '28px', borderRadius: '50%', border: '2px solid #475569', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <span style={{ color: '#475569', fontSize: '14px' }}>$</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )
-            })
-          )}
-        </div>
-      </div>
-
-      {/* Saved message toast */}
-      {showSavedMessage && (
-        <div style={{ position: 'fixed', top: '80px', left: '50%', transform: 'translateX(-50%)', backgroundColor: '#22c55e', color: 'white', padding: '0.75rem 1.5rem', borderRadius: '8px', fontSize: '15px', fontWeight: 'bold', zIndex: 100, boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }}>
-          ✓ Playlist Saved!
-        </div>
-      )}
-
-      {/* Bottom action buttons */}
-      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: '#0f172a', padding: '0.75rem', borderTop: '1px solid #334155', zIndex: 50 }}>
-        {playlist.length > 0 ? (
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <button
-              onClick={savePlaylist}
-              style={{ flex: 1, backgroundColor: '#3b82f6', color: 'white', padding: '0.75rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
-            >
-              💾 Save ({playlist.length} stories • {totalMinutes}min)
-            </button>
-            <button
-              onClick={startDrive}
-              style={{ flex: 1, backgroundColor: '#22c55e', color: 'white', padding: '0.75rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
-            >
-              🚗 Start Drive
-            </button>
-          </div>
-        ) : (
-          <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '14px', padding: '0.5rem' }}>
-            Select stories above to build your playlist
-          </div>
-        )}
+                  {ep && <div style={{ fontSize: '14px', fontWeight: 'bold', backgroundColor: '#f5f5f5', padding: '10px', borderRadius: '6px', color: '#000000', marginBottom: '16px' }}>Last: {formatTime(ep.createdAt)} {ep.duration ? `• ${ep.duration} min` : ''}</div>}
+                </>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
-  )
-}
-
-export default function LibraryPlaylistPage() {
-  return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
-      </div>
-    }>
-      <LibraryPlaylistContent />
-    </Suspense>
-  )
+  );
 }
