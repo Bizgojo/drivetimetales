@@ -119,7 +119,7 @@ export function Home_NewsBriefings({ newsEpisodes = {}, credits = 0, userState =
   }
 
   return (
-    <div style={{ width: '100%' }}>
+    <div style={{ width: '100%', padding: '0 0.75rem' }}>
       <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: 'white', marginBottom: '12px' }}>📻 News Briefings</h2>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
         {CATEGORIES.map((cat) => {
