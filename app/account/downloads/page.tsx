@@ -70,7 +70,7 @@ export default function DownloadsPage() {
       <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
         <div className="text-center">
           <p className="text-white mb-4">Please sign in to view downloads</p>
-          <Link href="/auth/login" className="px-6 py-3 bg-orange-500 text-white rounded-xl">Sign In</Link>
+          <Link href="/signin" className="px-6 py-3 bg-orange-500 text-white rounded-xl">Sign In</Link>
         </div>
       </div>
     );
