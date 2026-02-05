@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
-import StickyHeaderFull from '@/components/StickyHeaderFull'
+import StickyHeader from '@/components/StickyHeader'
 import LibraryFiltersV2 from '@/components/LibraryFiltersV2'
 
 interface Story {
@@ -132,6 +132,8 @@ function LibraryPlaylistContent() {
   // Add story to playlist
   const addToPlaylist = (story: Story) => {
     if (isInPlaylist(story.id)) return
+    const cost = getCredits(story.duration_mins)
+    if (creditsLeft < cost && !story.is_free) return
     setPlaylist([...playlist, {
       id: story.id,
       title: story.title,
@@ -192,7 +194,7 @@ function LibraryPlaylistContent() {
 
   return (
     <div className="min-h-screen bg-slate-950" style={{ paddingBottom: '140px' }}>
-      <StickyHeaderFull />
+      <StickyHeader />
 
       {/* Filters - same as library page */}
       <LibraryFiltersV2
@@ -288,19 +290,20 @@ function LibraryPlaylistContent() {
             filteredStories.map(story => {
               const inPlaylist = isInPlaylist(story.id)
               const cost = getCredits(story.duration_mins)
+              const canAfford = creditsLeft >= cost || story.is_free
 
               return (
                 <div
                   key={story.id}
-                  onClick={() => !inPlaylist && addToPlaylist(story)}
+                  onClick={() => !inPlaylist && canAfford && addToPlaylist(story)}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
                     backgroundColor: inPlaylist ? '#1e3a5f' : '#1e293b',
                     borderRadius: '12px',
                     overflow: 'hidden',
-                    cursor: inPlaylist ? 'default' : 'pointer',
-                    opacity: inPlaylist ? 0.5 : 1,
+                    cursor: inPlaylist || !canAfford ? 'default' : 'pointer',
+                    opacity: inPlaylist ? 0.5 : !canAfford ? 0.4 : 1,
                     border: inPlaylist ? '1px solid #3b82f6' : '1px solid transparent',
                   }}
                 >
@@ -330,9 +333,13 @@ function LibraryPlaylistContent() {
                       <div style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: '#3b82f6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <span style={{ color: 'white', fontSize: '14px' }}>✓</span>
                       </div>
-                    ) : (
+                    ) : canAfford ? (
                       <div style={{ width: '28px', height: '28px', borderRadius: '50%', border: '2px solid #22c55e', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <span style={{ color: '#22c55e', fontSize: '18px', lineHeight: 1 }}>+</span>
+                      </div>
+                    ) : (
+                      <div style={{ width: '28px', height: '28px', borderRadius: '50%', border: '2px solid #475569', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <span style={{ color: '#475569', fontSize: '14px' }}>$</span>
                       </div>
                     )}
                   </div>
