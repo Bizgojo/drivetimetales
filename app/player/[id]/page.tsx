@@ -4,7 +4,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { useState, useEffect, useRef, Suspense } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
-import StickyHeaderFull from '@/components/StickyHeaderFull'
+import StickyHeader from '@/components/StickyHeader'
 
 interface Story {
   id: string
@@ -72,7 +72,6 @@ function PlayerContent() {
   const handleTimeUpdate = () => { 
     if (audioRef.current) { 
       setCurrentTime(audioRef.current.currentTime)
-      // Charge credits at 3 minutes
       if (!charged && audioRef.current.currentTime >= 180) chargeCredits() 
     } 
   }
@@ -90,220 +89,112 @@ function PlayerContent() {
 
   const handlePlayPause = () => { 
     if (!audioRef.current) return
-    if (isPlaying) { 
-      audioRef.current.pause() 
-    } else { 
-      audioRef.current.play() 
-    }
+    if (isPlaying) { audioRef.current.pause() } else { audioRef.current.play() }
     setIsPlaying(!isPlaying) 
   }
   
   const handleReserve = async () => { 
     if (!user || !storyId) return
+    if (audioRef.current) { audioRef.current.pause() }
     try { 
       await supabase.from('wishlists').upsert({ user_id: user.id, story_id: storyId })
-      router.push('/library') 
+      router.back() 
     } catch (err) { console.error('Error reserving:', err) } 
   }
   
   const handleNotForMe = async () => { 
     if (!user || !storyId) return
+    if (audioRef.current) { audioRef.current.pause() }
     try { 
       await supabase.from('user_passes').upsert({ user_id: user.id, story_id: storyId })
-      router.push('/library') 
+      router.back() 
     } catch (err) { console.error('Error passing:', err) } 
   }
   
-  const formatTime = (seconds: number) => { 
-    const mins = Math.floor(seconds / 60)
-    const secs = Math.floor(seconds % 60)
-    return `${mins}:${secs.toString().padStart(2, '0')}` 
+  const formatTime = (s: number) => `${Math.floor(s/60)}:${Math.floor(s%60).toString().padStart(2,'0')}`
+  
+  const getCountdown = () => {
+    const r = Math.max(0, 180 - currentTime)
+    return `${Math.floor(r/60)}:${Math.floor(r%60).toString().padStart(2,'0')}`
   }
 
   if (loading) return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div style={{ height: '100vh', backgroundColor: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ width: '40px', height: '40px', border: '4px solid #f97316', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
   
   if (error || !story) return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#020617', color: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+    <div style={{ height: '100vh', backgroundColor: '#020617', color: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
       <p style={{ marginBottom: '16px' }}>{error || 'Story not found'}</p>
-      <button onClick={() => router.push('/library')} style={{ color: '#f97316', background: 'none', border: 'none', cursor: 'pointer' }}>Back to Library</button>
+      <button onClick={() => router.back()} style={{ color: '#f97316', background: 'none', border: 'none', cursor: 'pointer' }}>Go Back</button>
     </div>
   )
 
+  // Cover will expand to fill available space
+
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#020617', color: 'white', display: 'flex', flexDirection: 'column' }}>
-      <audio 
-        ref={audioRef} 
-        src={story.audio_url} 
-        onCanPlay={handleCanPlay} 
-        onTimeUpdate={handleTimeUpdate} 
-        onEnded={() => setIsPlaying(false)} 
-        onPlay={() => setIsPlaying(true)} 
-        onPause={() => setIsPlaying(false)} 
-      />
+    <div style={{ height: '100vh', backgroundColor: '#020617', color: 'white', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <audio ref={audioRef} src={story.audio_url} onCanPlay={handleCanPlay} onTimeUpdate={handleTimeUpdate} onEnded={() => setIsPlaying(false)} onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} />
       
-      <StickyHeaderFull />
+      <StickyHeader />
       
-      {/* Scrollable content area */}
-      <main style={{ 
-        flex: 1, 
-        padding: '16px', 
-        paddingBottom: showButtons ? '180px' : '120px',
-        overflowY: 'auto'
-      }}>
-        {/* Cover art - larger when buttons hidden */}
-        <div style={{ 
-          width: showButtons ? '200px' : '280px', 
-          height: showButtons ? '200px' : '280px', 
-          margin: '0 auto 16px', 
-          borderRadius: '12px', 
-          overflow: 'hidden', 
-          boxShadow: '0 0 30px rgba(255, 255, 255, 0.3)', 
-          transition: 'all 0.3s ease' 
-        }}>
-          {story.cover_url ? (
-            <img src={story.cover_url} alt={story.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-          ) : (
-            <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, #475569, #1e293b)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '64px' }}>🎧</div>
+      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '4px 16px 0', justifyContent: 'space-between' }}>
+        <div style={{ width: showButtons ? '270px' : '320px', height: showButtons ? '270px' : '320px', borderRadius: '10px', overflow: 'hidden', boxShadow: '0 0 24px rgba(249,115,22,0.25)', flexShrink: 0 }}>
+          {story.cover_url ? <img src={story.cover_url} alt={story.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg,#475569,#1e293b)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '48px' }}>🎧</div>}
+        </div>
+        
+        <div style={{ lineHeight: 1.3 }}>
+          <h1 style={{ fontSize: '17px', fontWeight: 'bold', margin: 0, color: 'white', textAlign: 'center' }}>{story.title}</h1>
+          <p style={{ color: 'white', fontSize: '12px', margin: 0, textAlign: 'center' }}>{story.genre} • {story.duration_mins} min • {story.credits} credit{story.credits !== 1 ? 's' : ''}</p>
+          <p style={{ color: 'white', fontSize: '12px', margin: 0, textAlign: 'center' }}>by {story.author || 'Drive Time Tales'}</p>
+          {story.description && (
+            <p style={{ color: 'white', fontSize: '12px', textAlign: 'justify', margin: 0, marginTop: '8px', lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{story.description}</p>
           )}
         </div>
-        
-        {/* Story info */}
-        <div style={{ textAlign: 'center', marginBottom: '16px' }}>
-          <h1 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '4px', color: 'white' }}>{story.title}</h1>
-          <p style={{ color: 'white', fontSize: '14px', marginBottom: '4px' }}>
-            {story.genre} • {story.duration_mins} min • {story.credits} credit{story.credits !== 1 ? 's' : ''}
-          </p>
-          <p style={{ color: 'white', fontSize: '14px' }}>by {story.author || 'Drive Time Tales'}</p>
-        </div>
-        
-        {/* Description - expands/contracts based on content */}
-        {story.description && (
-          <p style={{ 
-            color: 'white', 
-            fontSize: '14px', 
-            textAlign: 'center', 
-            marginBottom: '16px', 
-            lineHeight: 1.6, 
-            padding: '0 8px' 
-          }}>
-            {story.description}
-          </p>
-        )}
       </main>
       
-      {/* Sticky bottom controls */}
-      <div style={{ 
-        position: 'fixed', 
-        bottom: 0, 
-        left: 0, 
-        right: 0, 
-        backgroundColor: '#020617',
-        borderTop: '1px solid #1e293b',
-        padding: '12px 16px',
-        paddingBottom: '24px'
-      }}>
-        {/* Progress bar */}
-        <div style={{ marginBottom: '12px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'white', marginBottom: '4px' }}>
+      <div style={{ backgroundColor: '#020617', padding: '6px 16px 12px', flexShrink: 0 }}>
+        <div style={{ marginBottom: '6px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'white', marginBottom: '2px' }}>
             <span>{formatTime(currentTime)}</span>
             <span>{formatTime(duration)}</span>
           </div>
-          <div style={{ height: '6px', backgroundColor: '#334155', borderRadius: '3px', overflow: 'hidden' }}>
-            <div style={{ height: '100%', backgroundColor: '#f97316', width: duration > 0 ? `${(currentTime / duration) * 100}%` : '0%', transition: 'width 0.1s' }} />
+          <div style={{ height: '4px', backgroundColor: '#334155', borderRadius: '2px', overflow: 'hidden' }}>
+            <div style={{ height: '100%', backgroundColor: '#f97316', width: duration > 0 ? `${(currentTime/duration)*100}%` : '0%', transition: 'width 0.1s' }} />
           </div>
         </div>
         
-        {/* Play button */}
-        <button 
-          onClick={handlePlayPause} 
-          style={{ 
-            width: '100%', 
-            padding: '16px', 
-            borderRadius: '12px', 
-            border: 'none', 
-            fontSize: '18px', 
-            fontWeight: 'bold', 
-            cursor: 'pointer', 
-            marginBottom: showButtons ? '8px' : '0', 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'center', 
-            gap: '8px', 
-            backgroundColor: isPlaying ? '#f97316' : '#22c55e', 
-            color: 'black', 
-            animation: !isPlaying && audioReady && currentTime === 0 && !charged ? 'pulse 2s infinite' : 'none' 
-          }}
-        >
-          {!audioReady ? 'Loading...' : isPlaying ? 'Pause' : charged ? (libraryEntry?.completed ? 'Play Again' : (currentTime > 0 || (libraryEntry?.progress ?? 0) > 0) ? 'Continue' : 'Play') : currentTime > 0 ? 'Continue' : 'Tap to Play'}
+        <button onClick={handlePlayPause} style={{ width: '100%', padding: '12px', borderRadius: '10px', border: 'none', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer', marginBottom: showButtons ? '6px' : '0', backgroundColor: isPlaying ? '#f97316' : '#22c55e', color: isPlaying ? 'white' : 'black' }}>
+          {!audioReady ? 'Loading...' : isPlaying ? 'Pause' : charged ? (libraryEntry?.completed ? 'Play Again' : currentTime > 0 ? 'Continue' : 'Play') : currentTime > 0 ? 'Continue' : 'Tap to Play'}
         </button>
         
-        {/* Reserve/Not For Me buttons - only show before 3 min charge */}
         {showButtons && (
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button 
-              onClick={handleReserve} 
-              style={{ 
-                flex: 1, 
-                padding: '14px', 
-                backgroundColor: '#db2777', 
-                border: 'none', 
-                borderRadius: '12px', 
-                color: 'white', 
-                fontWeight: '600', 
-                fontSize: '14px', 
-                cursor: 'pointer' 
-              }}
-            >
-              Reserve for Later
-            </button>
-            <button 
-              onClick={handleNotForMe} 
-              style={{ 
-                flex: 1, 
-                padding: '14px', 
-                backgroundColor: '#334155', 
-                border: 'none', 
-                borderRadius: '12px', 
-                color: 'white', 
-                fontWeight: '600', 
-                fontSize: '14px', 
-                cursor: 'pointer' 
-              }}
-            >
-              Not For Me
-            </button>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '4px' }}>
+            <button onClick={handleReserve} style={{ flex: 1, padding: '10px', backgroundColor: '#db2777', border: 'none', borderRadius: '10px', color: 'white', fontWeight: '600', fontSize: '13px', cursor: 'pointer' }}>Reserve for Later</button>
+            <button onClick={handleNotForMe} style={{ flex: 1, padding: '10px', backgroundColor: '#334155', border: 'none', borderRadius: '10px', color: 'white', fontWeight: '600', fontSize: '13px', cursor: 'pointer' }}>Not For Me</button>
           </div>
         )}
         
-        {/* Countdown message */}
-        {!charged && currentTime > 0 && currentTime < 180 && (
-          <p style={{ textAlign: 'center', color: 'white', fontSize: '12px', marginTop: '8px' }}>
-            Credits charged in {Math.ceil((180 - currentTime) / 60)} min
-          </p>
-        )}
-      </div>
+        </div>
       
-      <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } } 
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
-      `}</style>
+      {!charged && showButtons && (
+        <p style={{ textAlign: 'center', color: '#f97316', fontSize: '11px', padding: '4px 0 8px', backgroundColor: '#020617' }}>Credit{story.credits !== 1 ? 's' : ''} charged after 3 min of play</p>
+      )}
+      
+      {!charged && isPlaying && currentTime < 180 && (
+        <p style={{ textAlign: 'center', color: '#f97316', fontSize: '11px', padding: '0 0 8px', backgroundColor: '#020617' }}>Credit{story.credits !== 1 ? 's' : ''} charged in {getCountdown()}</p>
+      )}
+      
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
 }
 
 export default function PlayerPage() {
   return (
-    <Suspense fallback={
-      <div style={{ minHeight: '100vh', backgroundColor: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ width: '40px', height: '40px', border: '4px solid #f97316', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-      </div>
-    }>
+    <Suspense fallback={<div style={{ height: '100vh', backgroundColor: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ width: '40px', height: '40px', border: '4px solid #f97316', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} /><style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style></div>}>
       <PlayerContent />
     </Suspense>
   )
