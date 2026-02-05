@@ -35,7 +35,7 @@ export default function AccountPage() {
 
   // Only redirect if definitely not logged in (after loading completes and mounted)
   if (!user) {
-    router.push('/auth/login');
+    router.push('/signin');
     return (
       <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
         <div className="text-center">
