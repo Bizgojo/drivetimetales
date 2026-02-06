@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 
 // Initialize clients
 const supabaseAdmin = createClient(
@@ -8,7 +8,7 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // ============================================================
 // TIMEZONE & DATE UTILITIES
@@ -156,7 +156,7 @@ Lead with emergencies or major breaking news if present.`;
 }
 
 // ============================================================
-// BODY GENERATION WITH WEB SEARCH
+// BODY GENERATION WITH OPENAI WEB SEARCH
 // ============================================================
 
 async function generateBodyWithSearch(params: {
@@ -208,21 +208,27 @@ FORMAT YOUR RESPONSE EXACTLY LIKE THIS:
 ---END---`;
 
   try {
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 2000,
-      messages: [{ role: 'user', content: prompt }],
-      tools: [{
-        type: 'web_search_20250305',
-        name: 'web_search',
-      }],
+    // Use GPT-4o with web search capability via Responses API
+    const response = await openai.responses.create({
+      model: 'gpt-4o',
+      tools: [{ type: 'web_search' }],
+      input: prompt,
     });
     
-    // Extract text from response
+    // Extract text from response - use output_text convenience property
     let fullText = '';
-    for (const block of response.content) {
-      if (block.type === 'text') {
-        fullText += block.text;
+    if (response.output_text) {
+      fullText = response.output_text;
+    } else if (response.output && Array.isArray(response.output)) {
+      // Fallback: iterate through output array
+      for (const item of response.output) {
+        if (item.type === 'message' && item.content) {
+          for (const content of item.content) {
+            if (content.type === 'output_text' && content.text) {
+              fullText += content.text;
+            }
+          }
+        }
       }
     }
     
@@ -256,7 +262,7 @@ FORMAT YOUR RESPONSE EXACTLY LIKE THIS:
     return { body, citations };
     
   } catch (error) {
-    console.error('[News Generator] Claude API error:', error);
+    console.error('[News Generator] OpenAI API error:', error);
     throw new Error('Failed to generate script body');
   }
 }
@@ -266,7 +272,7 @@ FORMAT YOUR RESPONSE EXACTLY LIKE THIS:
 // ============================================================
 
 export async function GET() {
-  return NextResponse.json({ status: 'ok', version: '3.0-web-search' });
+  return NextResponse.json({ status: 'ok', version: '3.1-openai-web-search' });
 }
 
 export async function POST(request: NextRequest) {
