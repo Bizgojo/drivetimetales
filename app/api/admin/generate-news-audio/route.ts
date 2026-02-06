@@ -34,7 +34,7 @@ async function generateAudioFromText(text: string, voiceId: string): Promise<Buf
 
 export async function POST(request: NextRequest) {
   try {
-    const { category, state, voiceId, intro, body, outro } = await request.json();
+    const { category, state, voiceId, narratorName, intro, body, outro } = await request.json();
 
     if (!category) {
       return NextResponse.json({ error: 'Category is required' }, { status: 400 });
@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
     
     console.log('[Generate News Audio] Audio URL:', audioUrl);
     
-    // Save episode to database
+    // Save episode to database - using correct column names
     const { data: episode, error: dbError } = await supabase
       .from('news_episodes')
       .insert({
@@ -89,9 +89,10 @@ export async function POST(request: NextRequest) {
         state: state || null,
         audio_url: audioUrl,
         duration: `${durationMinutes}`,
-        script_intro: intro,
-        script_body: body,
-        script_outro: outro,
+        script_text: fullScript,
+        voice_id: voiceId,
+        narrator_name: narratorName || null,
+        is_live: true,
         created_at: new Date().toISOString()
       })
       .select()
@@ -99,10 +100,22 @@ export async function POST(request: NextRequest) {
     
     if (dbError) {
       console.error('[Generate News Audio] DB error:', dbError);
-      // Continue anyway - audio was generated
+      // Don't silently continue - this is important to track
+      return NextResponse.json({ 
+        success: true,
+        warning: 'Audio generated but database save failed',
+        dbError: dbError.message,
+        episode: {
+          audioUrl,
+          duration: `${durationMinutes}`,
+          createdAt: new Date().toISOString(),
+          category,
+          state
+        }
+      });
     }
     
-    console.log('[Generate News Audio] Complete!');
+    console.log('[Generate News Audio] Complete! Episode ID:', episode?.id);
     
     return NextResponse.json({
       success: true,
