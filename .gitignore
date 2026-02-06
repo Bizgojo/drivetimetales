@@ -3,3 +3,7 @@ node_modules/
 .next
 Audio Dramas/
 Audio Dramas/
+*.mp3
+*.wav
+*.m4a
+Audio Dramas/
