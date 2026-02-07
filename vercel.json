@@ -1,8 +1,11 @@
 {
+  "buildCommand": "npm run build",
+  "outputDirectory": ".next",
+  "framework": "nextjs",
   "crons": [
     {
-      "path": "/api/cron/news-generation",
-      "schedule": "0 11,17,23 * * *"
+      "path": "/api/cron/generate-news",
+      "schedule": "*/15 * * * *"
     }
   ]
 }
