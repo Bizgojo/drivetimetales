@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY!;
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
 export async function POST(request: NextRequest) {
   try {
@@ -32,9 +38,23 @@ export async function POST(request: NextRequest) {
     }
 
     const audioBuffer = await response.arrayBuffer();
-    return new NextResponse(audioBuffer, {
-      headers: { 'Content-Type': 'audio/mpeg' }
-    });
+    
+    // Upload to Supabase storage
+    const timestamp = Date.now();
+    const fileName = `test-voice/test-${timestamp}.mp3`;
+    
+    const { error: uploadError } = await supabase.storage
+      .from('news-audio')
+      .upload(fileName, Buffer.from(audioBuffer), { contentType: 'audio/mpeg', upsert: true });
+    
+    if (uploadError) {
+      console.error('[Test Voice] Upload error:', uploadError);
+      return NextResponse.json({ error: 'Upload failed' }, { status: 500 });
+    }
+    
+    const { data: urlData } = supabase.storage.from('news-audio').getPublicUrl(fileName);
+    
+    return NextResponse.json({ audioUrl: urlData.publicUrl });
   } catch (error) {
     console.error('[Test Voice] Error:', error);
     return NextResponse.json({ error: 'Voice test failed' }, { status: 500 });
