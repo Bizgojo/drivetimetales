@@ -77,7 +77,7 @@ export default function YourPlaylist() {
   return (
     <section style={{ padding: '1rem', paddingTop: '0.5rem', position: 'relative' }}>
       <Link 
-        href="/library-playlist-player"
+        href="/player/playlist"
         style={{ 
           display: 'block',
           backgroundColor: '#1e3a5f',
