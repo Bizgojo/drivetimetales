@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const { data: settingsData, error: settingsError } = await supabase
-      .from('news_settings').select('*').eq('id', '1').single();
+      .from('news_settings').select('*').eq('id', 'main').single();
 
     if (settingsError || !settingsData) {
       console.log('[Cron] No settings found');
@@ -120,7 +120,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
   try {
-    const { data: settingsData } = await supabase.from('news_settings').select('*').eq('id', '1').single();
+    const { data: settingsData } = await supabase.from('news_settings').select('*').eq('id', 'main').single();
     const settings = settingsData?.settings || {};
     const categories = settings.categories || {};
     const selectedState = settings.selected_state || 'South Carolina';
