@@ -88,7 +88,7 @@ export async function GET(request: NextRequest) {
     const stateSettings = categories['state'];
     if (stateSettings?.voice_id) {
       const { data: users } = await supabase.from('users').select('state').not('state', 'is', null).gt('credits', 0);
-      const subscriberStates = [...new Set((users || []).map((u: any) => u.state).filter(Boolean))];
+      const subscriberStates = Array.from(new Set((users || []).map((u: any) => u.state).filter(Boolean)));
       if (!subscriberStates.includes(selectedState)) subscriberStates.push(selectedState);
 
       for (const state of subscriberStates) {
@@ -146,7 +146,7 @@ export async function POST(request: NextRequest) {
     const stateSettings = categories['state'];
     if (stateSettings?.voice_id) {
       const { data: users } = await supabase.from('users').select('state').not('state', 'is', null).gt('credits', 0);
-      const subscriberStates = [...new Set((users || []).map((u: any) => u.state).filter(Boolean))];
+      const subscriberStates = Array.from(new Set((users || []).map((u: any) => u.state).filter(Boolean)));
       if (!subscriberStates.includes(selectedState)) subscriberStates.push(selectedState);
       for (const state of subscriberStates) {
         try {
