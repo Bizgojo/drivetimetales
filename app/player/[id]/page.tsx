@@ -140,7 +140,7 @@ function PlayerContent() {
       
       <StickyHeader />
       
-      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '4px 16px 0', justifyContent: 'space-between' }}>
+      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '4px 16px 0', justifyContent: 'flex-start', gap: '8px' }}>
         <div style={{ width: showButtons ? '270px' : '320px', height: showButtons ? '270px' : '320px', borderRadius: '10px', overflow: 'hidden', boxShadow: '0 0 24px rgba(249,115,22,0.25)', flexShrink: 0 }}>
           {story.cover_url ? <img src={story.cover_url} alt={story.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg,#475569,#1e293b)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '48px' }}>🎧</div>}
         </div>
@@ -157,7 +157,7 @@ function PlayerContent() {
       
       <div style={{ backgroundColor: '#020617', padding: '6px 16px 12px', flexShrink: 0 }}>
         <div style={{ marginBottom: '6px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'white', marginBottom: '2px' }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-start', gap: '8px', fontSize: '10px', color: 'white', marginBottom: '2px' }}>
             <span>{formatTime(currentTime)}</span>
             <span>{formatTime(duration)}</span>
           </div>
