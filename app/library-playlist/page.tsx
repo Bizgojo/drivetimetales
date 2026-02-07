@@ -206,24 +206,7 @@ function LibraryPlaylistContent() {
         setSelectedType={setSelectedType}
       />
 
-      {/* Stats bar */}
-      <div style={{ padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        <div style={{ backgroundColor: '#0f172a', padding: '0.25rem 0.5rem', borderRadius: '6px', textAlign: 'center', border: '1px solid #334155' }}>
-          <div style={{ color: 'white', fontSize: '10px' }}>Credits</div>
-          <div style={{ color: creditsLeft < 0 ? '#ef4444' : '#22c55e', fontSize: '14px', fontWeight: 'bold' }}>{creditsLeft}</div>
-        </div>
-        <div style={{ flex: 1, textAlign: 'center' }}>
-          <span style={{ color: 'white', fontSize: '14px', fontWeight: 600 }}>
-            {playlist.length} {playlist.length === 1 ? 'story' : 'stories'} • {totalMinutes} min
-          </span>
-        </div>
-        <button
-          onClick={() => router.push('/library')}
-          style={{ backgroundColor: '#334155', color: 'white', padding: '0.5rem 0.75rem', borderRadius: '6px', fontSize: '13px', fontWeight: 500, border: 'none', cursor: 'pointer' }}
-        >
-          ← Library
-        </button>
-      </div>
+      {/* Stats moved to sticky bottom */}
 
       {/* YOUR PLAYLIST section */}
       {playlist.length > 0 && (
@@ -276,9 +259,6 @@ function LibraryPlaylistContent() {
 
       {/* AVAILABLE STORIES section */}
       <div style={{ padding: '0 0.75rem' }}>
-        <h2 style={{ color: 'white', fontSize: '16px', fontWeight: 'bold', marginBottom: '0.5rem', padding: '0 0.25rem' }}>
-          {playlist.length > 0 ? '➕ Add More Stories' : '➕ Select Stories for Your Playlist'}
-        </h2>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           {filteredStories.length === 0 ? (
             <div style={{ backgroundColor: '#1e293b', borderRadius: '12px', padding: '2rem', textAlign: 'center' }}>
@@ -357,28 +337,20 @@ function LibraryPlaylistContent() {
         </div>
       )}
 
-      {/* Bottom action buttons */}
-      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: '#0f172a', padding: '0.75rem', borderTop: '1px solid #334155', zIndex: 50 }}>
-        {playlist.length > 0 ? (
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <button
-              onClick={savePlaylist}
-              style={{ flex: 1, backgroundColor: '#3b82f6', color: 'white', padding: '0.75rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
-            >
-              💾 Save ({playlist.length} stories • {totalMinutes}min)
-            </button>
-            <button
-              onClick={startDrive}
-              style={{ flex: 1, backgroundColor: '#22c55e', color: 'white', padding: '0.75rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
-            >
-              🚗 Start Drive
-            </button>
+      {/* Bottom sticky: stats bar */}
+      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: '#0f172a', borderTop: '1px solid #334155', zIndex: 50, padding: '0.5rem 0.75rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <div style={{ backgroundColor: '#0f172a', padding: '0.25rem 0.5rem', borderRadius: '6px', textAlign: 'center', border: '1px solid #334155' }}>
+            <div style={{ color: 'white', fontSize: '10px' }}>Credits</div>
+            <div style={{ color: creditsLeft < 0 ? '#ef4444' : '#22c55e', fontSize: '14px', fontWeight: 'bold' }}>{creditsLeft}</div>
           </div>
-        ) : (
-          <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '14px', padding: '0.5rem' }}>
-            Select stories above to build your playlist
+          <div style={{ flex: 1, textAlign: 'center' }}>
+            <div style={{ color: 'white', fontSize: '13px', fontWeight: 600 }}>➕ Select Stories for Your Playlist</div>
+            <div style={{ color: 'white', fontSize: '12px' }}>
+              {playlist.length} {playlist.length === 1 ? 'story' : 'stories'} • {totalMinutes} min
+            </div>
           </div>
-        )}
+        </div>
       </div>
     </div>
   )
