@@ -280,10 +280,10 @@ export default function NewsBriefingsAdmin() {
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
             <button 
               onClick={handleGenerateAll} 
-              disabled={generatingAll}
+              disabled={true}
               style={{ ...btnStyle, backgroundColor: generatingAll ? '#cccccc' : '#10b981', color: '#ffffff', padding: '14px 24px' }}
             >
-              {generatingAll ? <><Spinner /> Generating All...</> : '🚀 Generate All Briefings'}
+              {generatingAll ? <><Spinner /> Generating All...</> : '🚀 Generate All (Coming Soon)'}
             </button>
           </div>
           
