@@ -170,7 +170,7 @@ function LibraryPlaylistContent() {
       />
 
       {/* Stats bar - sticky below header */}
-      <div style={{ position: 'sticky', top: '60px', zIndex: 40, backgroundColor: '#020617', padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', borderBottom: '1px solid #334155' }}>
+      <div style={{ position: 'sticky', top: '175px', zIndex: 39, backgroundColor: '#020617', padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', borderBottom: '1px solid #334155' }}>
         <div style={{ backgroundColor: '#0f172a', padding: '0.25rem 0.5rem', borderRadius: '6px', textAlign: 'center', border: '1px solid #334155' }}>
           <div style={{ color: 'white', fontSize: '10px' }}>Credits</div>
           <div style={{ color: creditsLeft < 0 ? '#ef4444' : '#22c55e', fontSize: '14px', fontWeight: 'bold' }}>{creditsLeft}</div>
