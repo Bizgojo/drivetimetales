@@ -10,12 +10,13 @@ export async function GET(request: NextRequest) {
   try {
     const authHeader = request.headers.get('authorization');
     const cronSecret = process.env.CRON_SECRET;
-    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+    if (cronSecret && authHeader !== 'Bearer ' + cronSecret) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const { data: settingsData } = await supabase.from('news_settings').select('*').eq('id', '1').single();
     const settings = settingsData?.settings || {};
+
     if (!settings.auto_generate) {
       return NextResponse.json({ success: true, message: 'Auto-generation is disabled', generated: 0 });
     }
@@ -28,18 +29,21 @@ export async function GET(request: NextRequest) {
 
     let generatedCount = 0;
     const errors: string[] = [];
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || '';
 
     for (const categoryId of enabledCategories) {
       try {
         const catSettings = categories[categoryId] || {};
-        await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/admin/generate-news`, {
+        const url = baseUrl + '/api/admin/generate-news';
+        await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ category: categoryId, voiceId: catSettings.voice_id || '', narratorName: catSettings.narrator_name || 'Your Host', storiesCount: settings.stories_per_category || 5 })
         });
         generatedCount++;
       } catch (err) {
-        errors.push(`Category ${categoryId}: ${err}`);
+        const errMsg = 'Category ' + categoryId + ': ' + err;
+        errors.push(errMsg);
       }
     }
 
@@ -47,14 +51,16 @@ export async function GET(request: NextRequest) {
     if (stateNews.enabled) {
       for (const state of states) {
         try {
-          await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/admin/generate-news`, {
+          const url = baseUrl + '/api/admin/generate-news';
+          await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ category: 'state', voiceId: stateNews.voice_id || '', narratorName: stateNews.narrator_name || 'Your Host', state, storiesCount: settings.stories_per_category || 5 })
           });
           generatedCount++;
         } catch (err) {
-          errors.push(`State ${state}: ${err}`);
+          const errMsg = 'State ' + state + ': ' + err;
+          errors.push(errMsg);
         }
       }
     }
