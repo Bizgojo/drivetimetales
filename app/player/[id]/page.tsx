@@ -140,8 +140,8 @@ function PlayerContent() {
       
       <StickyHeader />
       
-      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '4px 16px 0', justifyContent: 'flex-start', gap: '8px' }}>
-        <div style={{ width: showButtons ? '270px' : '320px', height: showButtons ? '270px' : '320px', borderRadius: '10px', overflow: 'hidden', boxShadow: '0 0 24px rgba(249,115,22,0.25)', flexShrink: 0 }}>
+      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '4px 16px 0', justifyContent: 'center', gap: '6px' }}>
+        <div style={{ width: '75vw', maxWidth: '320px', aspectRatio: '1', borderRadius: '10px', overflow: 'hidden', boxShadow: '0 0 24px rgba(249,115,22,0.25)', flexShrink: 0 }}>
           {story.cover_url ? <img src={story.cover_url} alt={story.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg,#475569,#1e293b)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '48px' }}>🎧</div>}
         </div>
         
@@ -153,39 +153,38 @@ function PlayerContent() {
             <p style={{ color: 'white', fontSize: '12px', textAlign: 'justify', margin: 0, marginTop: '8px', lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{story.description}</p>
           )}
         </div>
+        
+        <div style={{ width: '100%' }}>
+          <div style={{ marginBottom: '6px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'white', marginBottom: '2px' }}>
+              <span>{formatTime(currentTime)}</span>
+              <span>{formatTime(duration)}</span>
+            </div>
+            <div style={{ height: '4px', backgroundColor: '#334155', borderRadius: '2px', overflow: 'hidden' }}>
+              <div style={{ height: '100%', backgroundColor: '#f97316', width: duration > 0 ? `${(currentTime/duration)*100}%` : '0%', transition: 'width 0.1s' }} />
+            </div>
+          </div>
+          
+          <button onClick={handlePlayPause} style={{ width: '100%', padding: '12px', borderRadius: '10px', border: 'none', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer', marginBottom: showButtons ? '6px' : '0', backgroundColor: isPlaying ? '#f97316' : '#22c55e', color: isPlaying ? 'white' : 'black' }}>
+            {!audioReady ? 'Loading...' : isPlaying ? 'Pause' : charged ? (libraryEntry?.completed ? 'Play Again' : currentTime > 0 ? 'Continue' : 'Play') : currentTime > 0 ? 'Continue' : 'Tap to Play'}
+          </button>
+          
+          {showButtons && (
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '4px' }}>
+              <button onClick={handleReserve} style={{ flex: 1, padding: '10px', backgroundColor: '#db2777', border: 'none', borderRadius: '10px', color: 'white', fontWeight: '600', fontSize: '13px', cursor: 'pointer' }}>Reserve for Later</button>
+              <button onClick={handleNotForMe} style={{ flex: 1, padding: '10px', backgroundColor: '#334155', border: 'none', borderRadius: '10px', color: 'white', fontWeight: '600', fontSize: '13px', cursor: 'pointer' }}>Not For Me</button>
+            </div>
+          )}
+          
+          {!charged && showButtons && (
+            <p style={{ textAlign: 'center', color: '#f97316', fontSize: '11px', margin: '4px 0 0' }}>Credit{story.credits !== 1 ? 's' : ''} charged after 3 min of play</p>
+          )}
+          
+          {!charged && isPlaying && currentTime < 180 && (
+            <p style={{ textAlign: 'center', color: '#f97316', fontSize: '11px', margin: '0' }}>Credit{story.credits !== 1 ? 's' : ''} charged in {getCountdown()}</p>
+          )}
+        </div>
       </main>
-      
-      <div style={{ backgroundColor: '#020617', padding: '6px 16px 12px', flexShrink: 0 }}>
-        <div style={{ marginBottom: '6px' }}>
-          <div style={{ display: 'flex', justifyContent: 'flex-start', gap: '8px', fontSize: '10px', color: 'white', marginBottom: '2px' }}>
-            <span>{formatTime(currentTime)}</span>
-            <span>{formatTime(duration)}</span>
-          </div>
-          <div style={{ height: '4px', backgroundColor: '#334155', borderRadius: '2px', overflow: 'hidden' }}>
-            <div style={{ height: '100%', backgroundColor: '#f97316', width: duration > 0 ? `${(currentTime/duration)*100}%` : '0%', transition: 'width 0.1s' }} />
-          </div>
-        </div>
-        
-        <button onClick={handlePlayPause} style={{ width: '100%', padding: '12px', borderRadius: '10px', border: 'none', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer', marginBottom: showButtons ? '6px' : '0', backgroundColor: isPlaying ? '#f97316' : '#22c55e', color: isPlaying ? 'white' : 'black' }}>
-          {!audioReady ? 'Loading...' : isPlaying ? 'Pause' : charged ? (libraryEntry?.completed ? 'Play Again' : currentTime > 0 ? 'Continue' : 'Play') : currentTime > 0 ? 'Continue' : 'Tap to Play'}
-        </button>
-        
-        {showButtons && (
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '4px' }}>
-            <button onClick={handleReserve} style={{ flex: 1, padding: '10px', backgroundColor: '#db2777', border: 'none', borderRadius: '10px', color: 'white', fontWeight: '600', fontSize: '13px', cursor: 'pointer' }}>Reserve for Later</button>
-            <button onClick={handleNotForMe} style={{ flex: 1, padding: '10px', backgroundColor: '#334155', border: 'none', borderRadius: '10px', color: 'white', fontWeight: '600', fontSize: '13px', cursor: 'pointer' }}>Not For Me</button>
-          </div>
-        )}
-        
-        </div>
-      
-      {!charged && showButtons && (
-        <p style={{ textAlign: 'center', color: '#f97316', fontSize: '11px', padding: '4px 0 8px', backgroundColor: '#020617' }}>Credit{story.credits !== 1 ? 's' : ''} charged after 3 min of play</p>
-      )}
-      
-      {!charged && isPlaying && currentTime < 180 && (
-        <p style={{ textAlign: 'center', color: '#f97316', fontSize: '11px', padding: '0 0 8px', backgroundColor: '#020617' }}>Credit{story.credits !== 1 ? 's' : ''} charged in {getCountdown()}</p>
-      )}
       
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
