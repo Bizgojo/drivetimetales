@@ -7,10 +7,11 @@ export async function POST(request: NextRequest) {
     const { voiceId, text } = await request.json();
 
     if (!voiceId || !text) {
-      return NextResponse.json({ error: 'Missing voiceId or text' }, { status: 400 });
+      return NextResponse.json({ error: 'voiceId and text are required' }, { status: 400 });
     }
 
-    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+    const url = "https://api.elevenlabs.io/v1/text-to-speech/" + voiceId;
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Accept': 'audio/mpeg',
@@ -25,12 +26,12 @@ export async function POST(request: NextRequest) {
     });
 
     if (!response.ok) {
-      console.error('[Test Voice] ElevenLabs error:', response.status);
+      const errorText = await response.text();
+      console.error('[Test Voice] ElevenLabs error:', errorText);
       return NextResponse.json({ error: 'Voice test failed' }, { status: 500 });
     }
 
     const audioBuffer = await response.arrayBuffer();
-
     return new NextResponse(audioBuffer, {
       headers: { 'Content-Type': 'audio/mpeg' }
     });
