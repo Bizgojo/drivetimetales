@@ -161,7 +161,7 @@ export default function ContinueListening() {
 
   return (
     <section className="px-4 pt-6 pb-4">
-      <h2 className="text-lg font-bold text-white mb-4">▶️ Continue Listening</h2>
+      <h2 className="text-lg font-bold text-white mb-4">▶️ CONTINUE LISTENING</h2>
       
       {/* Entire card is clickable - navigates to play page with resume position */}
       <Link 
