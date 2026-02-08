@@ -22,32 +22,11 @@ const CATEGORIES = ['national', 'world', 'business', 'sports', 'science'];
 export async function GET(request: NextRequest) {
   const startTime = Date.now();
   try {
-    // Step 1: Try to get voice IDs from the most recent news_episodes
-    // This way we always use whatever voice was last used for each category
-    const { data: recentEpisodes } = await supabase
-      .from('news_episodes')
-      .select('category, voice_id, narrator_name, state')
-      .order('created_at', { ascending: false })
-      .limit(50);
-
-    // Build voice map from recent episodes (most recent wins)
-    const voiceMap: Record<string, { voiceId: string; narratorName: string }> = {};
-    if (recentEpisodes) {
-      for (const ep of recentEpisodes) {
-        const key = ep.state ? `state-${ep.state}` : ep.category;
-        if (!voiceMap[key] && ep.voice_id) {
-          voiceMap[key] = { voiceId: ep.voice_id, narratorName: ep.narrator_name || 'Your Host' };
-        }
-        // Also store by just category for fallback
-        if (!voiceMap[ep.category] && ep.voice_id) {
-          voiceMap[ep.category] = { voiceId: ep.voice_id, narratorName: ep.narrator_name || 'Your Host' };
-        }
-      }
-    }
-
-    // Also try settings table as fallback
+    // Step 1: Get voice/narrator config from news_settings table (admin panel saves here)
     const { data: settingsRows } = await supabase.from('news_settings').select('*');
+    const settingsMap: Record<string, { voiceId: string; narratorName: string }> = {};
     let mainSettings: any = {};
+    
     if (settingsRows) {
       for (const row of settingsRows) {
         if (row.id === '1' || row.id === 'main') {
@@ -55,8 +34,35 @@ export async function GET(request: NextRequest) {
             mainSettings = row.settings;
           }
         }
+        // Each category has its own row with voice_id and narrator_name
+        if (row.category && row.voice_id) {
+          settingsMap[row.category] = { voiceId: row.voice_id, narratorName: row.narrator_name || 'Your Host' };
+        }
       }
     }
+
+    // Step 2: Fallback - get voice IDs from recent news_episodes
+    const { data: recentEpisodes } = await supabase
+      .from('news_episodes')
+      .select('category, voice_id, narrator_name, state')
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    const episodeMap: Record<string, { voiceId: string; narratorName: string }> = {};
+    if (recentEpisodes) {
+      for (const ep of recentEpisodes) {
+        const key = ep.state ? `state-${ep.state}` : ep.category;
+        if (!episodeMap[key] && ep.voice_id) {
+          episodeMap[key] = { voiceId: ep.voice_id, narratorName: ep.narrator_name || 'Your Host' };
+        }
+        if (!episodeMap[ep.category] && ep.voice_id) {
+          episodeMap[ep.category] = { voiceId: ep.voice_id, narratorName: ep.narrator_name || 'Your Host' };
+        }
+      }
+    }
+
+    // Merge: settings table takes priority over episodes
+    const voiceMap: Record<string, { voiceId: string; narratorName: string }> = { ...episodeMap, ...settingsMap };
 
     // Check if auto-generate is enabled
     const { data: globalRow } = await supabase.from("news_settings").select("auto_generate").eq("category", "global").single();
@@ -82,10 +88,9 @@ export async function GET(request: NextRequest) {
     // Generate each category using voice from recent episodes
     for (const categoryId of CATEGORIES) {
       const voice = voiceMap[categoryId];
-      const settingsVoice = mainSettings?.categories?.[categoryId];
       
-      const voiceId = voice?.voiceId || settingsVoice?.voice_id;
-      const narratorName = voice?.narratorName || settingsVoice?.narrator_name || 'Your Host';
+      const voiceId = voice?.voiceId;
+      const narratorName = voice?.narratorName || 'Your Host';
 
       if (!voiceId) {
         console.log(`[Cron] Skipping ${categoryId} - no voice found in episodes or settings`);
@@ -110,9 +115,8 @@ export async function GET(request: NextRequest) {
 
     // Generate state news
     const stateVoice = voiceMap['state'];
-    const stateSettingsVoice = mainSettings?.categories?.['state'];
-    const stateVoiceId = stateVoice?.voiceId || stateSettingsVoice?.voice_id;
-    const stateNarrator = stateVoice?.narratorName || stateSettingsVoice?.narrator_name || 'Your Host';
+    const stateVoiceId = stateVoice?.voiceId;
+    const stateNarrator = stateVoice?.narratorName || 'Your Host';
 
     if (stateVoiceId) {
       const { data: users } = await supabase.from('users').select('state').not('state', 'is', null).gt('credits', 0);
