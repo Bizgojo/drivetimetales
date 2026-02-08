@@ -172,6 +172,8 @@ async function generateBodyWithSearch(params: {
   const searchQuery = getSearchQuery(category, state);
   const categoryInstructions = getCategoryInstructions(category, state);
 
+  const spokenDate = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  
   const prompt = `You are a news researcher and script writer for Drive Time Tales, an audio news platform.
 
 STEP 1: SEARCH FOR NEWS
@@ -181,6 +183,8 @@ ${categoryInstructions}
 STEP 2: WRITE THE SCRIPT BODY
 Using ONLY the news you found from real sources, write a ${durationMinutes}-minute spoken news script body (about ${wordTarget} words).
 
+IMPORTANT: Start the body with the spoken date "${spokenDate}." as the very first words, followed immediately by the first news story. For example: "${spokenDate}. A major development today..."
+
 STYLE RULES:
 - Tone: ${toneStyle}
 - Conversational, confident, clear. Punchy sentences for audio.
@@ -188,8 +192,9 @@ STYLE RULES:
 - 5 paragraphs, one per story, each 2-4 sentences.
 - Most important story first.
 - Use smooth transitions like "Meanwhile..." or "In other news..." or "Turning to..."
-- DO NOT include any greeting (no "Good morning/afternoon/evening") - the intro handles that.
-- DO NOT mention the state name as a greeting - just start with the first news story.
+- DO NOT include any greeting (no "Good morning/afternoon/evening") - a separate intro handles that.
+- DO NOT include any sign-off or outro - a separate outro handles that.
+- DO NOT mention the state name as a greeting - start with the date then the first news story.
 
 CRITICAL: 
 - The body text must be CLEAN for audio - NO URLs or citations in the spoken text.
