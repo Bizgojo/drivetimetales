@@ -17,7 +17,7 @@ export default function StickyHeaderFull() {
         {/* Back Button */}
         <button
           onClick={() => router.back()}
-          className="w-11 h-11 rounded-full bg-slate-700 hover:bg-slate-600 flex items-center justify-center transition-colors flex-shrink-0"
+          className="w-11 h-11 rounded-full bg-blue-600 hover:bg-blue-500 flex items-center justify-center transition-colors flex-shrink-0"
           aria-label="Go back"
         >
           <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
