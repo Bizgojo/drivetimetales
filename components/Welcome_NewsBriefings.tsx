@@ -72,6 +72,33 @@ export function Welcome_NewsBriefings({
     setPlaying(null);
   }
 
+  // Play a sequence of audio files: intro → news body → outro
+  function playSequence(urls: string[], category: string) {
+    stopAudio();
+    let index = 0;
+    setPlaying(category);
+
+    function playNext() {
+      if (index >= urls.length) {
+        setPlaying(null);
+        return;
+      }
+      const audio = new Audio(urls[index]);
+      audioRef.current = audio;
+      audio.onended = () => {
+        index++;
+        playNext();
+      };
+      audio.onerror = () => {
+        // Skip failed audio, try next
+        index++;
+        playNext();
+      };
+      audio.play();
+    }
+    playNext();
+  }
+
   function playAudio(url: string, category: string) {
     stopAudio();
     const audio = new Audio(url);
@@ -118,30 +145,53 @@ export function Welcome_NewsBriefings({
       return;
     }
 
-    // Check if we have pre-loaded episode
+    // Get the news body audio
     const episode = newsEpisodes[category];
-    const episodeUrl = episode?.audio_url || episode?.audioUrl;
+    const newsBodyUrl = episode?.audio_url || episode?.audioUrl;
     
-    if (episodeUrl) {
-      playAudio(episodeUrl, category);
+    if (!newsBodyUrl) {
+      // Try fetching from API
+      setLoading(category);
+      try {
+        const response = await fetch(`/api/news/briefing?category=${category}`);
+        const data = await response.json();
+        if (!response.ok || !data.episode?.audioUrl) {
+          alert(data.error || 'Briefing not available yet. Please try again later.');
+          setLoading(null);
+          return;
+        }
+        // Got the news body, now fetch intro/outro and play sequence
+        await playWithIntroOutro(category, data.episode.audioUrl);
+      } catch (error) {
+        console.error('[Welcome] Failed to fetch briefing:', error);
+        alert('Failed to load briefing. Please try again.');
+      } finally {
+        setLoading(null);
+      }
       return;
     }
 
-    // Fetch from API
+    // We have the news body, fetch intro/outro and play sequence
     setLoading(category);
+    await playWithIntroOutro(category, newsBodyUrl);
+    setLoading(null);
+  }
+
+  async function playWithIntroOutro(category: string, newsBodyUrl: string) {
     try {
-      const response = await fetch(`/api/news/briefing?category=${category}`);
+      const response = await fetch(`/api/news/intro-outro?category=${category}`);
       const data = await response.json();
-      if (response.ok && data.episode?.audioUrl) {
-        playAudio(data.episode.audioUrl, category);
-      } else {
-        alert(data.error || 'Briefing not available yet. Please try again later.');
-      }
+      
+      const urls: string[] = [];
+      if (data.intro?.audioUrl) urls.push(data.intro.audioUrl);
+      urls.push(newsBodyUrl);
+      if (data.outro?.audioUrl) urls.push(data.outro.audioUrl);
+      
+      playSequence(urls, category);
     } catch (error) {
-      console.error('[Welcome] Failed to fetch briefing:', error);
-      alert('Failed to load briefing. Please try again.');
-    } finally {
-      setLoading(null);
+      // If intro/outro fetch fails, just play the news body
+      console.error('[Welcome] Failed to fetch intro/outro:', error);
+      playAudio(newsBodyUrl, category);
     }
   }
 
