@@ -96,8 +96,8 @@ function WelcomeContent() {
       try {
         const { data, error } = await supabase
           .from('news_episodes')
-          .select('id, category, audio_url, is_live')
-          .eq('is_live', true)
+          .select('id, category, audio_url, is_live, created_at')
+          .eq('is_live', true).order('created_at', { ascending: false })
 
         if (error) {
           console.error('Error fetching news episodes:', error)
@@ -107,7 +107,7 @@ function WelcomeContent() {
         if (data) {
           const episodesByCategory: Record<string, NewsEpisode> = {}
           data.forEach(ep => {
-            episodesByCategory[ep.category] = ep
+            if (!episodesByCategory[ep.category]) episodesByCategory[ep.category] = ep
           })
           setNewsEpisodes(episodesByCategory)
         }
