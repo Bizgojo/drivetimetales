@@ -6,24 +6,24 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-// 15 generic intro templates (no user name, includes [narrator_name] and [category] placeholders)
-// [time_greeting] = "Good morning" / "Good afternoon" / "Good evening"
+// 15 generic intro templates (no user name)
+// These end with "for" — the news body picks up with the date
 const INTRO_TEMPLATES = [
-  `[time_greeting]. I'm [narrator_name], and here's your [category] update for [date].`,
-  `[time_greeting]. I'm [narrator_name] with your [category] briefing for [date]. Let's get into it.`,
-  `[time_greeting]. [narrator_name] here with your [category] for [date].`,
-  `[time_greeting], and welcome. I'm [narrator_name], bringing you the latest [category] for [date].`,
-  `[time_greeting]. This is [narrator_name] with your [category] update. Here's what's happening on [date].`,
-  `[time_greeting]. [narrator_name] here. Let's jump right into your [category] for [date].`,
-  `[time_greeting]. I'm [narrator_name]. Here's what you need to know in [category] for [date].`,
-  `[time_greeting] and thanks for tuning in. I'm [narrator_name] with your [category] for [date].`,
-  `[time_greeting]. It's [narrator_name] bringing you today's [category] headlines for [date].`,
-  `[time_greeting]. [narrator_name] here with the stories that matter in [category] for [date].`,
-  `[time_greeting]. I'm [narrator_name], and this is your [category] briefing for [date]. Let's dive in.`,
-  `[time_greeting]. Welcome to your [category] update. I'm [narrator_name], and today is [date].`,
-  `[time_greeting]. I'm [narrator_name]. Here are the top [category] stories for [date].`,
-  `[time_greeting]. This is [narrator_name], and you're listening to your [category] briefing for [date].`,
-  `[time_greeting]. [narrator_name] here. Let me catch you up on [category] for [date].`,
+  `[time_greeting]. I'm [narrator_name], and here's your [category] update for`,
+  `[time_greeting]. I'm [narrator_name] with your [category] briefing for`,
+  `[time_greeting]. [narrator_name] here with your [category] for`,
+  `[time_greeting], and welcome. I'm [narrator_name], bringing you the latest [category] for`,
+  `[time_greeting]. This is [narrator_name] with your [category] update for`,
+  `[time_greeting]. [narrator_name] here. Here's your [category] for`,
+  `[time_greeting]. I'm [narrator_name] with the [category] you need to know, for`,
+  `[time_greeting] and thanks for tuning in. I'm [narrator_name] with your [category] for`,
+  `[time_greeting]. It's [narrator_name] bringing you today's [category] headlines for`,
+  `[time_greeting]. [narrator_name] here with the stories that matter in [category] for`,
+  `[time_greeting]. I'm [narrator_name], and this is your [category] briefing for`,
+  `[time_greeting]. Welcome to your [category] update. I'm [narrator_name], and this is for`,
+  `[time_greeting]. I'm [narrator_name] with your top [category] stories for`,
+  `[time_greeting]. This is [narrator_name], and you're listening to your [category] briefing for`,
+  `[time_greeting]. [narrator_name] here. Let me catch you up on [category] for`,
 ];
 
 // 15 generic outro templates
@@ -46,22 +46,23 @@ const OUTRO_TEMPLATES = [
 ];
 
 // Personalized intro templates (includes [first_name])
+// These also end with "for" — news body starts with the date
 const PERSONALIZED_INTRO_TEMPLATES = [
-  `[time_greeting], [first_name]. I'm [narrator_name], and here's your [category] update for [date].`,
-  `[time_greeting], [first_name]. I'm [narrator_name] with your [category] briefing for [date]. Let's get into it.`,
-  `[time_greeting], [first_name]. [narrator_name] here with your [category] for [date].`,
-  `[time_greeting], [first_name], and welcome back. I'm [narrator_name], bringing you the latest [category] for [date].`,
-  `[time_greeting], [first_name]. This is [narrator_name] with your [category] update for [date].`,
-  `Hey [first_name], [time_greeting]. [narrator_name] here. Let's jump into your [category] for [date].`,
-  `[time_greeting], [first_name]. I'm [narrator_name]. Here's what you need to know in [category] for [date].`,
-  `[time_greeting], [first_name], and thanks for tuning in. I'm [narrator_name] with your [category] for [date].`,
-  `[time_greeting], [first_name]. It's [narrator_name] bringing you today's [category] headlines for [date].`,
-  `[time_greeting], [first_name]. [narrator_name] here with the stories that matter in [category] for [date].`,
-  `[time_greeting], [first_name]. I'm [narrator_name], and this is your [category] briefing for [date]. Let's dive in.`,
-  `[time_greeting], [first_name]. Welcome to your [category] update. I'm [narrator_name], and today is [date].`,
-  `[time_greeting], [first_name]. I'm [narrator_name]. Here are the top [category] stories for [date].`,
-  `[time_greeting], [first_name]. This is [narrator_name], and you're listening to your [category] briefing for [date].`,
-  `[time_greeting], [first_name]. [narrator_name] here. Let me catch you up on [category] for [date].`,
+  `[time_greeting], [first_name]. I'm [narrator_name], and here's your [category] update for`,
+  `[time_greeting], [first_name]. I'm [narrator_name] with your [category] briefing for`,
+  `[time_greeting], [first_name]. [narrator_name] here with your [category] for`,
+  `[time_greeting], [first_name], and welcome back. I'm [narrator_name] with the latest [category] for`,
+  `[time_greeting], [first_name]. This is [narrator_name] with your [category] update for`,
+  `Hey [first_name], [time_greeting]. [narrator_name] here with your [category] for`,
+  `[time_greeting], [first_name]. I'm [narrator_name] with the [category] you need to know, for`,
+  `[time_greeting], [first_name], and thanks for tuning in. I'm [narrator_name] with your [category] for`,
+  `[time_greeting], [first_name]. It's [narrator_name] bringing you today's [category] headlines for`,
+  `[time_greeting], [first_name]. [narrator_name] here with the stories that matter in [category] for`,
+  `[time_greeting], [first_name]. I'm [narrator_name], and this is your [category] briefing for`,
+  `[time_greeting], [first_name]. Welcome to your [category] update. I'm [narrator_name], and this is for`,
+  `[time_greeting], [first_name]. I'm [narrator_name] with your top [category] stories for`,
+  `[time_greeting], [first_name]. This is [narrator_name], and you're listening to your [category] briefing for`,
+  `[time_greeting], [first_name]. [narrator_name] here. Let me catch you up on [category] for`,
 ];
 
 // Personalized outro templates
@@ -200,13 +201,11 @@ export async function POST(request: NextRequest) {
 
     for (const template of templates) {
       const timeGreeting = timeGreetings[template.time_period] || 'Good morning';
-      const today = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
       let script = template.script_template
         .replace(/\[narrator_name\]/g, narratorName)
         .replace(/\[time_greeting\]/g, timeGreeting)
-        .replace(/\[category\]/g, categoryDisplay)
-        .replace(/\[date\]/g, today);
+        .replace(/\[category\]/g, categoryDisplay);
 
       // Generate TTS
       try {
@@ -225,7 +224,7 @@ export async function POST(request: NextRequest) {
 
         if (ttsResponse.ok) {
           const audioBuffer = await ttsResponse.arrayBuffer();
-          const fileName = `intros/${targetCategory}/${template.type}_${template.variation}_${template.time_period}_${voiceId.slice(0, 8)}.mp3`;
+          const fileName = `intros/${targetCategory}/${template.type}_v${template.variation}_${template.time_period}_${voiceId.slice(0, 8)}.mp3`;
 
           const { error: uploadError } = await supabase.storage
             .from('audio')
@@ -234,13 +233,14 @@ export async function POST(request: NextRequest) {
           if (!uploadError) {
             const { data: urlData } = supabase.storage.from('audio').getPublicUrl(fileName);
 
-            // Update template with audio URL for this narrator
-            await supabase.from('intro_outro_templates').update({
-              [`voice_${voiceId.slice(0, 8)}_url`]: urlData.publicUrl,
-              audio_url: urlData.publicUrl, // Also set generic audio_url
+            // Save to narrator_audio table (keyed by template + voice + category)
+            await supabase.from('narrator_audio').upsert({
+              template_id: template.id,
               voice_id: voiceId,
               narrator_name: narratorName,
-            }).eq('id', template.id);
+              category: targetCategory,
+              audio_url: urlData.publicUrl,
+            }, { onConflict: 'template_id,voice_id,category' });
 
             generated++;
             results.push({ id: template.id, type: template.type, variation: template.variation, success: true });
