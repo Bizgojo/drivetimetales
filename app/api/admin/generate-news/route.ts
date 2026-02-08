@@ -280,6 +280,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const {
       category,
+      voiceId,
       isPersonalized = false,
       firstName = 'Marc',
       state,
@@ -367,6 +368,76 @@ export async function POST(request: NextRequest) {
       console.error('[Generate News] Save error:', saveError);
     }
     
+    // Generate audio with ElevenLabs if voiceId provided
+    let audioUrl: string | null = null;
+    let audioDuration: number | null = null;
+    
+    if (voiceId) {
+      try {
+        const fullScript = `${intro}\n\n${bodyText}\n\n${outro}`;
+        console.log(`[Generate News] Generating TTS for ${category} with voice ${voiceId}`);
+        
+        const ttsResponse = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'xi-api-key': process.env.ELEVENLABS_API_KEY!,
+          },
+          body: JSON.stringify({
+            text: fullScript,
+            model_id: 'eleven_turbo_v2',
+            voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+          }),
+        });
+        
+        if (ttsResponse.ok) {
+          const audioBuffer = await ttsResponse.arrayBuffer();
+          const audioBase64 = Buffer.from(audioBuffer).toString('base64');
+          const fileName = `news/${category}${state ? '-' + state.toLowerCase().replace(/\s/g, '-') : ''}/${Date.now()}.mp3`;
+          
+          const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
+            .from('audio')
+            .upload(fileName, Buffer.from(audioBuffer), {
+              contentType: 'audio/mpeg',
+              upsert: true,
+            });
+          
+          if (!uploadError && uploadData) {
+            const { data: urlData } = supabaseAdmin.storage.from('audio').getPublicUrl(fileName);
+            audioUrl = urlData.publicUrl;
+            audioDuration = Math.round(fullScript.split(/\s+/).length / 130 * 10) / 10; // rough estimate in minutes
+            console.log(`[Generate News] Audio uploaded: ${audioUrl}`);
+          } else {
+            console.error('[Generate News] Upload error:', uploadError);
+          }
+        } else {
+          console.error('[Generate News] TTS error:', ttsResponse.status, await ttsResponse.text());
+        }
+      } catch (ttsErr) {
+        console.error('[Generate News] TTS failed:', ttsErr);
+      }
+    }
+    
+    // Save to news_episodes if audio was generated
+    if (audioUrl) {
+      try {
+        await supabaseAdmin.from('news_episodes').insert({
+          category,
+          state: state || null,
+          script_text: `${intro}\n\n${bodyText}\n\n${outro}`,
+          audio_url: audioUrl,
+          narrator_name: narratorName,
+          voice_id: voiceId,
+          duration: audioDuration,
+          is_live: true,
+          created_at: new Date().toISOString(),
+        });
+        console.log(`[Generate News] Saved to news_episodes: ${category}`);
+      } catch (epErr) {
+        console.error('[Generate News] news_episodes insert error:', epErr);
+      }
+    }
+    
     return NextResponse.json({
       success: true,
       script: {
@@ -385,6 +456,7 @@ export async function POST(request: NextRequest) {
           wordCount,
           citationsCount: citations.length,
           generatedAt,
+          audioUrl,
         },
       },
     });
