@@ -59,7 +59,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Check if auto-generate is enabled
-    const isEnabled = mainSettings?.schedule?.enabled || mainSettings?.auto_generate || false;
+    const { data: globalRow } = await supabase.from("news_settings").select("auto_generate").eq("category", "global").single();
+    const isEnabled = globalRow?.auto_generate || mainSettings?.schedule?.enabled || mainSettings?.auto_generate || false;
 
     console.log(`[Cron] Auto-generate enabled: ${isEnabled}, Voice map entries: ${Object.keys(voiceMap).length}`);
 
