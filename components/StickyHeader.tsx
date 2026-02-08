@@ -31,6 +31,7 @@ export default function StickyHeader({ showBack = true }: StickyHeaderProps) {
         maxWidth: '64rem',
         margin: '0 auto',
       }}>
+        {/* Left: Back button or spacer */}
         {showBack ? (
           <button
             onClick={() => router.back()}
@@ -56,6 +57,7 @@ export default function StickyHeader({ showBack = true }: StickyHeaderProps) {
           <div style={{ width: '2.75rem', height: '2.75rem', flexShrink: 0 }} />
         )}
 
+        {/* Center: Logo */}
         <Link href={logoHref} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', textDecoration: 'none' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
             <span style={{ fontSize: '1.25rem' }}>🚗</span>
@@ -64,16 +66,16 @@ export default function StickyHeader({ showBack = true }: StickyHeaderProps) {
           <span style={{
             fontSize: '1.25rem',
             fontWeight: 700,
+            fontStyle: 'italic',
             letterSpacing: '-0.025em',
             whiteSpace: 'nowrap',
-            display: 'inline-block',
-            transform: 'skewX(-8deg)',
           }}>
             <span style={{ color: 'white' }}>Drive Time </span>
             <span style={{ color: '#fb923c' }}>Tales</span>
           </span>
         </Link>
 
+        {/* Right: Avatar or spacer */}
         {user ? (
           <Link
             href="/account"
