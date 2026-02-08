@@ -9,10 +9,11 @@ export default function StickyHeaderGuest() {
   return (
     <header className="sticky top-0 z-50 bg-slate-950 border-b border-slate-800 px-4 py-3">
       <div className="flex items-center justify-between max-w-7xl mx-auto">
-        {/* Back Button */}
+        {/* Back Button - Blue #3b82f6 */}
         <button
           onClick={() => router.back()}
-          className="w-11 h-11 rounded-full bg-slate-700 hover:bg-slate-600 flex items-center justify-center transition-colors flex-shrink-0"
+          className="w-11 h-11 rounded-full flex items-center justify-center transition-colors flex-shrink-0"
+          style={{ backgroundColor: '#3b82f6' }}
           aria-label="Go back"
         >
           <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
