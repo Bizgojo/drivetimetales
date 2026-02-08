@@ -368,13 +368,13 @@ export async function POST(request: NextRequest) {
       console.error('[Generate News] Save error:', saveError);
     }
     
-    // Generate audio with ElevenLabs if voiceId provided
+    // Generate audio with ElevenLabs if voiceId provided - BODY ONLY (no intro/outro)
+    // Intros/outros are separate pre-recorded audio files played by the client
     let audioUrl: string | null = null;
     let audioDuration: number | null = null;
     
     if (voiceId) {
       try {
-        const fullScript = `${intro}\n\n${bodyText}\n\n${outro}`;
         console.log(`[Generate News] Generating TTS for ${category} with voice ${voiceId}`);
         
         const ttsResponse = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
@@ -384,7 +384,7 @@ export async function POST(request: NextRequest) {
             'xi-api-key': process.env.ELEVENLABS_API_KEY!,
           },
           body: JSON.stringify({
-            text: fullScript,
+            text: bodyText,
             model_id: 'eleven_turbo_v2',
             voice_settings: { stability: 0.5, similarity_boost: 0.75 },
           }),
@@ -392,7 +392,6 @@ export async function POST(request: NextRequest) {
         
         if (ttsResponse.ok) {
           const audioBuffer = await ttsResponse.arrayBuffer();
-          const audioBase64 = Buffer.from(audioBuffer).toString('base64');
           const fileName = `news/${category}${state ? '-' + state.toLowerCase().replace(/\s/g, '-') : ''}/${Date.now()}.mp3`;
           
           const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
@@ -405,7 +404,7 @@ export async function POST(request: NextRequest) {
           if (!uploadError && uploadData) {
             const { data: urlData } = supabaseAdmin.storage.from('audio').getPublicUrl(fileName);
             audioUrl = urlData.publicUrl;
-            audioDuration = Math.round(fullScript.split(/\s+/).length / 130 * 10) / 10; // rough estimate in minutes
+            audioDuration = Math.round(bodyText.split(/\s+/).length / 130 * 10) / 10;
             console.log(`[Generate News] Audio uploaded: ${audioUrl}`);
           } else {
             console.error('[Generate News] Upload error:', uploadError);
