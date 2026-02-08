@@ -170,16 +170,21 @@ export default function SeriesDetailPage() {
   }
 
   const goToPlayer = () => {
-    if (selectedEpisodes.size === 0) return
+    // If no episodes manually selected, auto-select all unfinished
+    let episodesToPlay = episodes.filter(ep => selectedEpisodes.has(ep.id))
+    if (episodesToPlay.length === 0) {
+      episodesToPlay = unfinishedEpisodes.length > 0 ? unfinishedEpisodes : episodes
+    }
+    
+    const totalCredits = episodesToPlay.reduce((sum, ep) => sum + ep.credits, 0)
     
     // Check credits
-    if (userCredits < selectedCredits) {
+    if (userCredits < totalCredits) {
       setShowInsufficientCredits(true)
       return
     }
     
-    const selected = episodes.filter(ep => selectedEpisodes.has(ep.id))
-    const playlist = selected.map(ep => ({
+    const playlist = episodesToPlay.map(ep => ({
       id: ep.id,
       title: ep.title,
       episode_number: ep.episode_number,
@@ -188,6 +193,27 @@ export default function SeriesDetailPage() {
     localStorage.setItem('dtt_series_playlist', JSON.stringify(playlist))
     localStorage.setItem('dtt_series_index', '0')
     router.push('/player/series')
+  }
+
+  const saveSeries = () => {
+    // Save series info to localStorage for home page to display
+    const seriesSave = {
+      series_id: seriesId,
+      series_name: seriesInfo?.name || '',
+      cover_url: seriesInfo?.cover_url || null,
+      genre: seriesInfo?.genre || '',
+      author: seriesInfo?.author || '',
+      total_episodes: episodes.length,
+      total_duration_mins: episodes.reduce((sum, ep) => sum + ep.duration_mins, 0),
+      saved_at: new Date().toISOString(),
+      episodes: episodes.map(ep => ({
+        id: ep.id,
+        title: ep.title,
+        episode_number: ep.episode_number,
+      }))
+    }
+    localStorage.setItem('dtt_saved_series', JSON.stringify(seriesSave))
+    router.push('/home')
   }
 
   const totalEpisodes = episodes.length
@@ -229,7 +255,7 @@ export default function SeriesDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white" style={{ paddingBottom: hasSelection ? '80px' : '0' }}>
+    <div className="min-h-screen bg-slate-950 text-white" style={{ paddingBottom: '80px' }}>
       <StickyHeaderFull />
       
       <div className="sticky top-[60px] z-40 bg-slate-900 border-b border-slate-700">
@@ -360,39 +386,60 @@ export default function SeriesDetailPage() {
         </div>
       </div>
 
-      {/* Sticky Go to Player Button */}
-      {hasSelection && (
-        <div style={{
-          position: 'fixed',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          backgroundColor: '#020617',
-          padding: '16px',
-          borderTop: '1px solid #334155',
-          zIndex: 50
-        }}>
+      {/* Sticky Bottom - Play Series / Save Series */}
+      <div style={{
+        position: 'fixed',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        backgroundColor: '#020617',
+        padding: '16px',
+        borderTop: '1px solid #334155',
+        zIndex: 50
+      }}>
+        <div style={{ display: 'flex', gap: '12px' }}>
           <button
             onClick={goToPlayer}
             style={{
-              width: '100%',
+              flex: 1,
               padding: '16px',
               borderRadius: '12px',
               backgroundColor: '#22c55e',
               color: 'white',
               fontWeight: 700,
-              fontSize: '18px',
+              fontSize: '16px',
               border: 'none',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center'
+              justifyContent: 'center',
+              gap: '8px'
             }}
           >
-            Play {selectedEpisodes.size} episode{selectedEpisodes.size !== 1 ? 's' : ''}, {selectedCredits} Credit{selectedCredits !== 1 ? 's' : ''}
+            ▶ Play Series
+          </button>
+          <button
+            onClick={saveSeries}
+            style={{
+              flex: 1,
+              padding: '16px',
+              borderRadius: '12px',
+              backgroundColor: '#3b82f6',
+              color: 'white',
+              fontWeight: 700,
+              fontSize: '16px',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px'
+            }}
+          >
+            💾 Save Series
           </button>
         </div>
-      )}
+      </div>
 
       {/* Insufficient Credits Modal */}
       {showInsufficientCredits && (
