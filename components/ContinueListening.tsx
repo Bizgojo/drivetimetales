@@ -70,6 +70,7 @@ export default function ContinueListening() {
   const { user } = useAuth()
   const [story, setStory] = useState<ContinueListeningStory | null>(null)
   const [loading, setLoading] = useState(true)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   useEffect(() => {
     async function fetchContinueListening() {
@@ -155,6 +156,30 @@ export default function ContinueListening() {
   // Resume position: rewind 5 seconds (Phase 1 sentence approximation)
   const resumePosition = Math.max(0, story.progress - 5)
 
+  const handleDelete = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setShowDeleteConfirm(true)
+  }
+
+  const confirmDelete = async () => {
+    if (user && story) {
+      await supabase
+        .from('user_library')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('story_id', story.story_id)
+    }
+    setStory(null)
+    setShowDeleteConfirm(false)
+  }
+
+  const cancelDelete = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setShowDeleteConfirm(false)
+  }
+
   // =============================================================================
   // RENDER
   // =============================================================================
@@ -163,50 +188,141 @@ export default function ContinueListening() {
     <section className="px-4 pt-6 pb-4">
       <h2 className="text-lg font-bold text-white mb-4">▶️ CONTINUE LISTENING</h2>
       
-      {/* Entire card is clickable - navigates to play page with resume position */}
-      <Link 
-        href={`/player/${story.story_id}/play?resume=${resumePosition}`}
-        className="flex bg-slate-800 rounded-xl overflow-hidden hover:bg-slate-700 transition"
-      >
-        {/* Cover: w-28 h-28 with p-2 padding (matches HorizontalStoryCard template) */}
-        <div className="w-28 h-28 flex-shrink-0 p-2">
-          <div className="w-full h-full rounded-lg overflow-hidden cover-glow">
-            <img 
-              src={story.cover_url || '/images/default-cover.png'} 
-              alt={story.title}
-              className="w-full h-full object-cover" 
-            />
-          </div>
-        </div>
-        
-        {/* Info */}
-        <div className="flex-1 py-2 pr-3 flex flex-col justify-center">
-          <h3 className="text-sm font-bold text-white line-clamp-1">{story.title}</h3>
-          <p className="text-white text-xs">{story.genre}</p>
-          <p className="text-white text-xs">by {story.author}</p>
-          <p className="text-white text-xs">{story.duration_mins} min • {minsRemaining} min left</p>
-          
-          {/* Progress bar */}
-          <div className="flex items-center gap-2 mt-1">
-            <div className="flex-1 h-1.5 bg-slate-700 rounded-full">
-              <div 
-                className="h-1.5 bg-orange-500 rounded-full" 
-                style={{ width: `${progressPercent}%` }}
+      {/* Card wrapper with relative positioning for delete button */}
+      <div style={{ position: 'relative' }}>
+        {/* Delete button - red badge in upper right corner */}
+        <button
+          onClick={handleDelete}
+          style={{
+            position: 'absolute',
+            top: '-6px',
+            right: '-6px',
+            backgroundColor: '#dc2626',
+            border: 'none',
+            color: 'white',
+            fontSize: '9px',
+            fontWeight: 'bold',
+            cursor: 'pointer',
+            padding: '2px 6px',
+            borderRadius: '6px',
+            zIndex: 10,
+            boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
+          }}
+        >
+          Delete
+        </button>
+
+        {/* Entire card is clickable - navigates to play page with resume position */}
+        <Link 
+          href={`/player/${story.story_id}/play?resume=${resumePosition}`}
+          className="flex bg-slate-800 rounded-xl overflow-hidden hover:bg-slate-700 transition"
+        >
+          {/* Cover: w-28 h-28 with p-2 padding (matches HorizontalStoryCard template) */}
+          <div className="w-28 h-28 flex-shrink-0 p-2">
+            <div className="w-full h-full rounded-lg overflow-hidden cover-glow">
+              <img 
+                src={story.cover_url || '/images/default-cover.png'} 
+                alt={story.title}
+                className="w-full h-full object-cover" 
               />
             </div>
-            <span className="text-white text-xs">{progressPercent}%</span>
+          </div>
+          
+          {/* Info */}
+          <div className="flex-1 py-2 pr-3 flex flex-col justify-center">
+            <h3 className="text-sm font-bold text-white line-clamp-1">{story.title}</h3>
+            <p className="text-white text-xs">{story.genre}</p>
+            <p className="text-white text-xs">by {story.author}</p>
+            <p className="text-white text-xs">{story.duration_mins} min • {minsRemaining} min left</p>
+            
+            {/* Progress bar */}
+            <div className="flex items-center gap-2 mt-1">
+              <div className="flex-1 h-1.5 bg-slate-700 rounded-full">
+                <div 
+                  className="h-1.5 bg-orange-500 rounded-full" 
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+              <span className="text-white text-xs">{progressPercent}%</span>
+            </div>
+          </div>
+          
+          {/* Play button */}
+          <div className="pr-3 flex items-center">
+            <div className="w-10 h-10 bg-orange-500 rounded-full flex items-center justify-center hover:bg-orange-400 transition">
+              <svg className="w-5 h-5 text-black ml-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
+              </svg>
+            </div>
+          </div>
+        </Link>
+      </div>
+
+      {/* Delete confirmation popup */}
+      {showDeleteConfirm && (
+        <div 
+          style={{ 
+            position: 'fixed', 
+            inset: 0, 
+            backgroundColor: 'rgba(0,0,0,0.8)', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center', 
+            padding: '1rem', 
+            zIndex: 50 
+          }}
+          onClick={cancelDelete}
+        >
+          <div 
+            style={{ 
+              backgroundColor: '#1e293b', 
+              borderRadius: '16px', 
+              padding: '1.5rem', 
+              maxWidth: '300px', 
+              textAlign: 'center' 
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span style={{ fontSize: '48px', display: 'block', marginBottom: '1rem' }}>🗑️</span>
+            <h3 style={{ color: 'white', fontSize: '18px', fontWeight: 'bold', marginBottom: '0.5rem' }}>Remove from Continue Listening?</h3>
+            <p style={{ color: '#94a3b8', marginBottom: '1.5rem' }}>This will remove "{story.title}" from your library.</p>
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <button 
+                onClick={cancelDelete} 
+                style={{ 
+                  flex: 1, 
+                  padding: '0.75rem', 
+                  borderRadius: '8px', 
+                  border: 'none', 
+                  backgroundColor: '#475569', 
+                  color: 'white', 
+                  cursor: 'pointer',
+                  fontSize: '15px',
+                  fontWeight: 500
+                }}
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={confirmDelete} 
+                style={{ 
+                  flex: 1, 
+                  padding: '0.75rem', 
+                  borderRadius: '8px', 
+                  border: 'none', 
+                  backgroundColor: '#dc2626', 
+                  color: 'white', 
+                  fontWeight: 'bold', 
+                  cursor: 'pointer',
+                  fontSize: '15px'
+                }}
+              >
+                Delete
+              </button>
+            </div>
           </div>
         </div>
-        
-        {/* Play button */}
-        <div className="pr-3 flex items-center">
-          <div className="w-10 h-10 bg-orange-500 rounded-full flex items-center justify-center hover:bg-orange-400 transition">
-            <svg className="w-5 h-5 text-black ml-0.5" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
-            </svg>
-          </div>
-        </div>
-      </Link>
+      )}
     </section>
   )
 }
