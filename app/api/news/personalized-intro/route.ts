@@ -1,9 +1,7 @@
 // app/api/news/personalized-intro/route.ts
-// DTT News Briefings - Personalized Intro Generator
-// February 2026
-//
-// Generates a short (~5 second) personalized intro for Home page
-// "Good afternoon, Marc! Here's your National News briefing."
+// Returns cached personalized intro + outro for logged-in users
+// First call: generates via ElevenLabs, caches to user_intro_cache
+// Subsequent calls: returns cached audio URLs instantly
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
@@ -13,145 +11,218 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY!;
-
-// Category display names
-const CATEGORY_LABELS: Record<string, string> = {
-  state: 'State',
-  national: 'National',
-  world: 'World',
-  business: 'Business',
-  sports: 'Sports',
-  science: 'Science and Tech'
-};
-
-// Intro variations - short and personal
-const INTRO_VARIATIONS = [
-  "Good {timeOfDay}, {userName}! Here's your {category} briefing.",
-  "Hey {userName}! {narratorName} here with your {category} update.",
-  "{userName}, good {timeOfDay}! Ready for your {category} news?",
-  "Hi {userName}! Let's get into your {category} briefing.",
-  "Good {timeOfDay}, {userName}! I'm {narratorName} with your {category} news."
-];
-
-function getTimeOfDay(): string {
-  const hour = parseInt(new Date().toLocaleString('en-US', { 
-    timeZone: 'America/New_York', 
-    hour: 'numeric', 
-    hour12: false 
-  }));
-  if (hour < 12) return 'morning';
-  if (hour < 17) return 'afternoon';
+function getTimePeriod(): 'morning' | 'afternoon' | 'evening' {
+  const formatter = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', hour12: false });
+  const hour = parseInt(formatter.format(new Date()), 10);
+  if (hour >= 5 && hour < 12) return 'morning';
+  if (hour >= 12 && hour < 17) return 'afternoon';
   return 'evening';
 }
 
-function pickRandom<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
+const TIME_GREETINGS: Record<string, string> = {
+  'morning': 'Good morning',
+  'afternoon': 'Good afternoon',
+  'evening': 'Good evening',
+};
+
+const CATEGORY_DISPLAY: Record<string, string> = {
+  'state': 'state news', 'national': 'national news', 'world': 'world news',
+  'business': 'business news', 'sports': 'sports news', 'science': 'science and tech news',
+};
 
 export async function POST(request: NextRequest) {
   try {
-    const { category, userName, stateName } = await request.json();
+    const { userId, category, userName, stateName } = await request.json();
 
     if (!category || !userName) {
-      return NextResponse.json(
-        { error: 'Missing category or userName' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'category and userName required' }, { status: 400 });
     }
 
-    // Get narrator name and voice from settings
-    const { data: settings, error: settingsError } = await supabase
+    const categoryDisplay = category === 'state' && stateName 
+      ? `${stateName} news` 
+      : (CATEGORY_DISPLAY[category] || 'news');
+
+    // Get the narrator voice for this category from news_settings
+    const { data: settings } = await supabase
       .from('news_settings')
-      .select('narrator_name, voice_id')
+      .select('voice_id, narrator_name')
       .eq('category', category)
       .single();
 
-    if (settingsError || !settings?.narrator_name || !settings?.voice_id) {
-      return NextResponse.json(
-        { error: 'Category not configured' },
-        { status: 404 }
-      );
+    const voiceId = settings?.voice_id;
+    const narratorName = settings?.narrator_name || 'Your Host';
+
+    if (!voiceId) {
+      return NextResponse.json({ introUrl: null, outroUrl: null, message: 'No voice configured' });
     }
 
-    // Build the intro script
-    const timeOfDay = getTimeOfDay();
-    const categoryLabel = category === 'state' && stateName 
-      ? `${stateName}` 
-      : CATEGORY_LABELS[category] || category;
-    
-    const template = pickRandom(INTRO_VARIATIONS);
-    const script = template
-      .replace(/{timeOfDay}/g, timeOfDay)
-      .replace(/{userName}/g, userName)
-      .replace(/{narratorName}/g, settings.narrator_name)
-      .replace(/{category}/g, categoryLabel);
+    // Check cache for existing intro + outro (not stale)
+    if (userId) {
+      const { data: cached } = await supabase
+        .from('user_intro_cache')
+        .select('type, audio_url')
+        .eq('user_id', userId)
+        .eq('category', category)
+        .eq('voice_id', voiceId)
+        .eq('is_stale', false);
 
-    console.log(`[Personalized Intro] Generating for ${userName}: "${script}"`);
-
-    // Generate audio with ElevenLabs
-    const audioResponse = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${settings.voice_id}`, {
-      method: 'POST',
-      headers: {
-        'Accept': 'audio/mpeg',
-        'Content-Type': 'application/json',
-        'xi-api-key': ELEVENLABS_API_KEY
-      },
-      body: JSON.stringify({
-        text: script,
-        model_id: 'eleven_multilingual_v2',
-        voice_settings: {
-          stability: 0.5,
-          similarity_boost: 0.75
+      if (cached && cached.length >= 2) {
+        const introCache = cached.find(c => c.type === 'intro');
+        const outroCache = cached.find(c => c.type === 'outro');
+        if (introCache && outroCache) {
+          return NextResponse.json({
+            success: true,
+            introUrl: introCache.audio_url,
+            outroUrl: outroCache.audio_url,
+            cached: true,
+            narratorName,
+          });
         }
-      })
-    });
-
-    if (!audioResponse.ok) {
-      console.error('[Personalized Intro] ElevenLabs error:', audioResponse.status);
-      return NextResponse.json(
-        { error: 'Failed to generate audio' },
-        { status: 500 }
-      );
+      }
     }
 
-    const audioBuffer = Buffer.from(await audioResponse.arrayBuffer());
+    // Not cached — generate personalized intro + outro
+    const timePeriod = getTimePeriod();
+    const timeGreeting = TIME_GREETINGS[timePeriod];
 
-    // Upload to Supabase storage (temporary file)
-    const fileName = `intro-${category}-${userName.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}.mp3`;
-    
-    const { error: uploadError } = await supabase.storage
-      .from('news-audio')
-      .upload(fileName, audioBuffer, {
-        contentType: 'audio/mpeg',
-        upsert: true
+    // Pick a random personalized template for intro
+    const { data: introTemplates } = await supabase
+      .from('intro_outro_templates')
+      .select('id, script_template, variation')
+      .eq('type', 'intro')
+      .eq('category', 'personalized')
+      .eq('time_period', timePeriod);
+
+    const { data: outroTemplates } = await supabase
+      .from('intro_outro_templates')
+      .select('id, script_template, variation')
+      .eq('type', 'outro')
+      .eq('category', 'personalized');
+
+    if (!introTemplates?.length || !outroTemplates?.length) {
+      return NextResponse.json({ introUrl: null, outroUrl: null, message: 'No personalized templates found' });
+    }
+
+    const introTemplate = introTemplates[Math.floor(Math.random() * introTemplates.length)];
+    const outroTemplate = outroTemplates[Math.floor(Math.random() * outroTemplates.length)];
+
+    // Fill in placeholders
+    const introScript = introTemplate.script_template
+      .replace(/\[time_greeting\]/g, timeGreeting)
+      .replace(/\[first_name\]/g, userName)
+      .replace(/\[narrator_name\]/g, narratorName)
+      .replace(/\[category\]/g, categoryDisplay);
+
+    const outroScript = outroTemplate.script_template
+      .replace(/\[first_name\]/g, userName)
+      .replace(/\[narrator_name\]/g, narratorName)
+      .replace(/\[category\]/g, categoryDisplay);
+
+    // Generate TTS for both
+    let introUrl: string | null = null;
+    let outroUrl: string | null = null;
+
+    // Generate intro audio
+    try {
+      const ttsResponse = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'xi-api-key': process.env.ELEVENLABS_API_KEY!,
+        },
+        body: JSON.stringify({
+          text: introScript,
+          model_id: 'eleven_turbo_v2',
+          voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+        }),
       });
 
-    if (uploadError) {
-      console.error('[Personalized Intro] Upload error:', uploadError);
-      return NextResponse.json(
-        { error: 'Failed to upload audio' },
-        { status: 500 }
-      );
+      if (ttsResponse.ok) {
+        const audioBuffer = await ttsResponse.arrayBuffer();
+        const safeUserName = userName.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const fileName = `intros/personalized/${category}_intro_${safeUserName}_${voiceId.slice(0, 8)}.mp3`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('audio')
+          .upload(fileName, Buffer.from(audioBuffer), { contentType: 'audio/mpeg', upsert: true });
+
+        if (!uploadError) {
+          const { data: urlData } = supabase.storage.from('audio').getPublicUrl(fileName);
+          introUrl = urlData.publicUrl;
+        }
+      }
+    } catch (err) {
+      console.error('[Personalized] Intro TTS error:', err);
     }
 
-    const { data: urlData } = supabase.storage
-      .from('news-audio')
-      .getPublicUrl(fileName);
+    // Generate outro audio
+    try {
+      const ttsResponse = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'xi-api-key': process.env.ELEVENLABS_API_KEY!,
+        },
+        body: JSON.stringify({
+          text: outroScript,
+          model_id: 'eleven_turbo_v2',
+          voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+        }),
+      });
 
-    console.log('[Personalized Intro] Generated successfully');
+      if (ttsResponse.ok) {
+        const audioBuffer = await ttsResponse.arrayBuffer();
+        const safeUserName = userName.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const fileName = `intros/personalized/${category}_outro_${safeUserName}_${voiceId.slice(0, 8)}.mp3`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('audio')
+          .upload(fileName, Buffer.from(audioBuffer), { contentType: 'audio/mpeg', upsert: true });
+
+        if (!uploadError) {
+          const { data: urlData } = supabase.storage.from('audio').getPublicUrl(fileName);
+          outroUrl = urlData.publicUrl;
+        }
+      }
+    } catch (err) {
+      console.error('[Personalized] Outro TTS error:', err);
+    }
+
+    // Cache both if userId provided
+    if (userId && introUrl) {
+      await supabase.from('user_intro_cache').upsert({
+        user_id: userId,
+        category,
+        type: 'intro',
+        voice_id: voiceId,
+        narrator_name: narratorName,
+        audio_url: introUrl,
+        is_stale: false,
+      }, { onConflict: 'user_id,category,type,voice_id' });
+    }
+
+    if (userId && outroUrl) {
+      await supabase.from('user_intro_cache').upsert({
+        user_id: userId,
+        category,
+        type: 'outro',
+        voice_id: voiceId,
+        narrator_name: narratorName,
+        audio_url: outroUrl,
+        is_stale: false,
+      }, { onConflict: 'user_id,category,type,voice_id' });
+    }
 
     return NextResponse.json({
-      audioUrl: urlData.publicUrl,
-      script,
-      duration: '5' // Approximate seconds
+      success: true,
+      introUrl,
+      outroUrl,
+      cached: false,
+      narratorName,
     });
 
   } catch (error) {
-    console.error('[Personalized Intro] Error:', error);
-    return NextResponse.json(
-      { error: 'Failed to generate intro' },
-      { status: 500 }
-    );
+    console.error('[Personalized] Error:', error);
+    return NextResponse.json({ error: String(error) }, { status: 500 });
   }
 }
