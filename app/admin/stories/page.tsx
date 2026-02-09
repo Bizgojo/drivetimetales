@@ -344,7 +344,7 @@ export default function AdminStoriesPage() {
                           <select
                             value={editGenres.primary}
                             onChange={(e) => setEditGenres({ ...editGenres, primary: e.target.value })}
-                            style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #f97316', fontSize: '12px', color: textPrimary, minWidth: '120px' }}
+                            style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #f97316', fontSize: '12px', color: '#000000', backgroundColor: '#ffffff', minWidth: '120px' }}
                           >
                             <option value="">— Select —</option>
                             {genres.map(g => <option key={g.id} value={g.name}>{g.name}</option>)}
@@ -356,7 +356,7 @@ export default function AdminStoriesPage() {
                           <select
                             value={editGenres.secondary}
                             onChange={(e) => setEditGenres({ ...editGenres, secondary: e.target.value })}
-                            style={{ padding: '4px 8px', borderRadius: '4px', border: `1px solid ${border}`, fontSize: '12px', color: textPrimary, minWidth: '120px' }}
+                            style={{ padding: '4px 8px', borderRadius: '4px', border: `1px solid ${border}`, fontSize: '12px', color: '#000000', backgroundColor: '#ffffff', minWidth: '120px' }}
                           >
                             <option value="">— None —</option>
                             {genres.filter(g => g.name !== editGenres.primary).map(g => <option key={g.id} value={g.name}>{g.name}</option>)}
@@ -368,7 +368,7 @@ export default function AdminStoriesPage() {
                           <select
                             value={editGenres.third}
                             onChange={(e) => setEditGenres({ ...editGenres, third: e.target.value })}
-                            style={{ padding: '4px 8px', borderRadius: '4px', border: `1px solid ${border}`, fontSize: '12px', color: textPrimary, minWidth: '120px' }}
+                            style={{ padding: '4px 8px', borderRadius: '4px', border: `1px solid ${border}`, fontSize: '12px', color: '#000000', backgroundColor: '#ffffff', minWidth: '120px' }}
                           >
                             <option value="">— None —</option>
                             {genres.filter(g => g.name !== editGenres.primary && g.name !== editGenres.secondary).map(g => <option key={g.id} value={g.name}>{g.name}</option>)}
