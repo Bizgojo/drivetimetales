@@ -155,7 +155,7 @@ export default function AdminGenresPage() {
   const inactiveGenres = genres.filter(g => !g.active)
 
   return (
-    <div style={{ padding: '2rem' }}>
+    <div style={{ padding: '2rem', color: '#1e293b' }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <div>
@@ -311,7 +311,7 @@ export default function AdminGenresPage() {
                         </div>
                       ) : (
                         <span
-                          style={{ fontSize: '14px', fontWeight: 500, color: '#1e293b', cursor: 'pointer' }}
+                          style={{ fontSize: '16px', fontWeight: 600, color: '#000000', cursor: 'pointer' }}
                           onDoubleClick={() => { setEditingId(genre.id); setEditName(genre.name) }}
                           title="Double-click to rename"
                         >
