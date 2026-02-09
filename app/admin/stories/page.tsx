@@ -9,6 +9,8 @@ interface Story {
   title: string
   author: string
   genre: string
+  genre_secondary: string | null
+  genre_third: string | null
   duration_mins: number
   cover_url: string | null
   series_name: string | null
@@ -33,6 +35,12 @@ interface Story {
   pct_skipped: number
 }
 
+interface Genre {
+  id: string
+  name: string
+  display_order: number
+}
+
 const FLAG_OPTIONS = [
   { value: null, label: 'No Flag', color: '#6b7280' },
   { value: 'free', label: 'Free Today', color: '#22c55e' },
@@ -43,11 +51,10 @@ const FLAG_OPTIONS = [
   { value: 'staff-favorite', label: 'Staff Favorite', color: '#eab308' },
 ]
 
-const GENRES = ['All', 'Mystery', 'Drama', 'Sci-Fi', 'Horror', 'Thriller', 'Non-Fiction', 'Children', 'Comedy', 'Romance', 'Trucker Stories']
-
 export default function AdminStoriesPage() {
   const router = useRouter()
   const [stories, setStories] = useState<Story[]>([])
+  const [genres, setGenres] = useState<Genre[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [genreFilter, setGenreFilter] = useState('All')
@@ -55,6 +62,9 @@ export default function AdminStoriesPage() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [flagDropdown, setFlagDropdown] = useState<string | null>(null)
+  const [genreEditor, setGenreEditor] = useState<string | null>(null)
+  const [editGenres, setEditGenres] = useState<{ primary: string, secondary: string, third: string }>({ primary: '', secondary: '', third: '' })
+  const [savingGenre, setSavingGenre] = useState(false)
 
   const bg = '#FAF9F6'
   const cardBg = '#FFFFFF'
@@ -62,7 +72,10 @@ export default function AdminStoriesPage() {
   const textSecondary = '#4a4a4a'
   const border = '#e0e0e0'
 
-  useEffect(() => { fetchStories() }, [])
+  useEffect(() => {
+    fetchStories()
+    fetchGenres()
+  }, [])
 
   async function fetchStories() {
     setLoading(true)
@@ -70,6 +83,15 @@ export default function AdminStoriesPage() {
     if (data) setStories(data)
     if (error) console.error('Error fetching stories:', error)
     setLoading(false)
+  }
+
+  async function fetchGenres() {
+    const { data } = await supabase
+      .from('genres')
+      .select('*')
+      .eq('active', true)
+      .order('display_order', { ascending: true })
+    if (data) setGenres(data)
   }
 
   async function updateFlag(storyId: string, flag: string | null) {
@@ -84,6 +106,39 @@ export default function AdminStoriesPage() {
     fetchStories()
   }
 
+  function openGenreEditor(story: Story) {
+    if (genreEditor === story.id) {
+      setGenreEditor(null)
+      return
+    }
+    setGenreEditor(story.id)
+    setEditGenres({
+      primary: story.genre || '',
+      secondary: story.genre_secondary || '',
+      third: story.genre_third || '',
+    })
+  }
+
+  async function saveGenres(storyId: string) {
+    setSavingGenre(true)
+    const { error } = await supabase
+      .from('stories')
+      .update({
+        genre: editGenres.primary || null,
+        genre_secondary: editGenres.secondary || null,
+        genre_third: editGenres.third || null,
+      })
+      .eq('id', storyId)
+
+    if (error) {
+      console.error('Error saving genres:', error)
+    } else {
+      setGenreEditor(null)
+      await fetchStories()
+    }
+    setSavingGenre(false)
+  }
+
   function handleSort(column: typeof sortBy) {
     if (sortBy === column) {
       setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
@@ -93,17 +148,22 @@ export default function AdminStoriesPage() {
     }
   }
 
+  const genreNames = ['All', ...genres.map(g => g.name)]
+
   const filteredStories = stories
     .filter(s => {
       const matchesSearch = search === '' || 
         s.title.toLowerCase().includes(search.toLowerCase()) ||
         s.author.toLowerCase().includes(search.toLowerCase())
-      const matchesGenre = genreFilter === 'All' || s.genre === genreFilter
+      const matchesGenre = genreFilter === 'All' || 
+        s.genre === genreFilter || 
+        s.genre_secondary === genreFilter || 
+        s.genre_third === genreFilter
       return matchesSearch && matchesGenre
     })
     .sort((a, b) => {
-      let aVal = a[sortBy]
-      let bVal = b[sortBy]
+      let aVal = a[sortBy] as string | number | null
+      let bVal = b[sortBy] as string | number | null
       if (aVal === null) aVal = ''
       if (bVal === null) bVal = ''
       if (typeof aVal === 'string') aVal = aVal.toLowerCase()
@@ -122,44 +182,25 @@ export default function AdminStoriesPage() {
     <div style={{ minHeight: '100vh', backgroundColor: bg, padding: '1rem' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <button onClick={() => router.push('/admin')} style={{ backgroundColor: '#e5e5e5', color: textPrimary, padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 500 }}>← Back</button>
-          <h1 style={{ color: textPrimary, fontSize: '24px', fontWeight: 'bold' }}>Stories Management</h1>
-        </div>
-        <button onClick={() => router.push('/admin/stories/new')} style={{ backgroundColor: '#f97316', color: 'white', padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 600 }}>+ Add Story</button>
-      </div>
-
-      {/* Summary Stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
-        <div style={{ backgroundColor: cardBg, borderRadius: '8px', padding: '1rem', border: `1px solid ${border}`, textAlign: 'center' }}>
-          <div style={{ color: textSecondary, fontSize: '12px' }}>Total Stories</div>
-          <div style={{ color: textPrimary, fontSize: '28px', fontWeight: 'bold' }}>{totalStories}</div>
-        </div>
-        <div style={{ backgroundColor: cardBg, borderRadius: '8px', padding: '1rem', border: `1px solid ${border}`, textAlign: 'center' }}>
-          <div style={{ color: textSecondary, fontSize: '12px' }}>Total Downloads</div>
-          <div style={{ color: '#2563eb', fontSize: '28px', fontWeight: 'bold' }}>{totalDownloads}</div>
-        </div>
-        <div style={{ backgroundColor: cardBg, borderRadius: '8px', padding: '1rem', border: `1px solid ${border}`, textAlign: 'center' }}>
-          <div style={{ color: textSecondary, fontSize: '12px' }}>Avg Completion</div>
-          <div style={{ color: '#16a34a', fontSize: '28px', fontWeight: 'bold' }}>{avgCompletion}%</div>
-        </div>
-        <div style={{ backgroundColor: cardBg, borderRadius: '8px', padding: '1rem', border: `1px solid ${border}`, textAlign: 'center' }}>
-          <div style={{ color: textSecondary, fontSize: '12px' }}>With Flags</div>
-          <div style={{ color: '#a855f7', fontSize: '28px', fontWeight: 'bold' }}>{stories.filter(s => s.flag).length}</div>
+        <div>
+          <h1 style={{ fontSize: '22px', fontWeight: 'bold', color: textPrimary, margin: 0 }}>📚 Stories ({totalStories})</h1>
+          <p style={{ color: textSecondary, fontSize: '13px', margin: '4px 0 0 0' }}>
+            {totalDownloads} total downloads · {avgCompletion}% avg completion
+          </p>
         </div>
       </div>
 
       {/* Filters */}
-      <div style={{ backgroundColor: cardBg, borderRadius: '12px', padding: '1rem', marginBottom: '1rem', border: `1px solid ${border}`, display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
-        <input 
-          type="text" 
-          placeholder="Search by title or author..." 
-          value={search} 
+      <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+        <input
+          type="text"
+          placeholder="Search title or author..."
+          value={search}
           onChange={(e) => setSearch(e.target.value)}
-          style={{ flex: 1, minWidth: '200px', padding: '0.5rem 0.75rem', borderRadius: '6px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px' }}
+          style={{ padding: '0.5rem 0.75rem', borderRadius: '6px', border: `1px solid ${border}`, flex: 1, minWidth: '200px', color: textPrimary, fontSize: '14px' }}
         />
         <select value={genreFilter} onChange={(e) => setGenreFilter(e.target.value)} style={{ padding: '0.5rem 0.75rem', borderRadius: '6px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px' }}>
-          {GENRES.map(g => <option key={g} value={g}>{g}</option>)}
+          {genreNames.map(g => <option key={g} value={g}>{g}</option>)}
         </select>
         <select value={`${sortBy}-${sortDir}`} onChange={(e) => { const [col, dir] = e.target.value.split('-'); setSortBy(col as typeof sortBy); setSortDir(dir as 'asc' | 'desc') }} style={{ padding: '0.5rem 0.75rem', borderRadius: '6px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px' }}>
           <option value="title-asc">Title A-Z</option>
@@ -183,7 +224,7 @@ export default function AdminStoriesPage() {
                 <th style={{ padding: '0.75rem 0.5rem', textAlign: 'left', color: textSecondary, fontWeight: 600, width: '40px' }}></th>
                 <th style={{ padding: '0.75rem 0.5rem', textAlign: 'left', color: textSecondary, fontWeight: 600, minWidth: '50px' }}>Cover</th>
                 <th style={{ padding: '0.75rem 0.5rem', textAlign: 'left', color: textSecondary, fontWeight: 600, minWidth: '150px', cursor: 'pointer' }} onClick={() => handleSort('title')}>Title {sortBy === 'title' && (sortDir === 'asc' ? '↑' : '↓')}</th>
-                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'left', color: textSecondary, fontWeight: 600, minWidth: '80px', cursor: 'pointer' }} onClick={() => handleSort('genre')}>Genre {sortBy === 'genre' && (sortDir === 'asc' ? '↑' : '↓')}</th>
+                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'left', color: textSecondary, fontWeight: 600, minWidth: '120px', cursor: 'pointer' }} onClick={() => handleSort('genre')}>Genres {sortBy === 'genre' && (sortDir === 'asc' ? '↑' : '↓')}</th>
                 <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600 }}>Dur</th>
                 <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600 }}>Cr</th>
                 <th style={{ padding: '0.75rem 0.5rem', textAlign: 'left', color: textSecondary, fontWeight: 600, minWidth: '80px', cursor: 'pointer' }} onClick={() => handleSort('series_name')}>Series {sortBy === 'series_name' && (sortDir === 'asc' ? '↑' : '↓')}</th>
@@ -192,7 +233,6 @@ export default function AdminStoriesPage() {
                 <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600 }}>Month</th>
                 <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600 }}>YTD</th>
                 <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600, cursor: 'pointer' }} onClick={() => handleSort('downloads_total')}>Total {sortBy === 'downloads_total' && (sortDir === 'asc' ? '↑' : '↓')}</th>
-                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600 }}>Start%</th>
                 <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600, cursor: 'pointer' }} onClick={() => handleSort('pct_finished')}>Fin% {sortBy === 'pct_finished' && (sortDir === 'asc' ? '↑' : '↓')}</th>
                 <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600 }}>Skip%</th>
                 <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600, cursor: 'pointer' }} onClick={() => handleSort('rating')}>Rating {sortBy === 'rating' && (sortDir === 'asc' ? '↑' : '↓')}</th>
@@ -201,6 +241,7 @@ export default function AdminStoriesPage() {
             </thead>
             <tbody>
               {filteredStories.map((story, i) => (
+                <>
                 <tr key={story.id} style={{ borderBottom: `1px solid ${border}`, backgroundColor: i % 2 === 0 ? 'transparent' : '#fafafa' }}>
                   {/* Delete */}
                   <td style={{ padding: '0.5rem', position: 'relative' }}>
@@ -226,8 +267,31 @@ export default function AdminStoriesPage() {
                     <div style={{ color: textPrimary, fontWeight: 600, fontSize: '13px', lineHeight: 1.2 }}>{story.title}</div>
                     <div style={{ color: textSecondary, fontSize: '11px' }}>by {story.author}</div>
                   </td>
-                  {/* Genre */}
-                  <td style={{ padding: '0.5rem', color: textSecondary }}>{story.genre}</td>
+                  {/* Genres - clickable */}
+                  <td style={{ padding: '0.5rem' }}>
+                    <button
+                      onClick={() => openGenreEditor(story)}
+                      style={{
+                        background: 'none',
+                        border: genreEditor === story.id ? '1px solid #f97316' : '1px solid transparent',
+                        borderRadius: '4px',
+                        padding: '2px 6px',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        width: '100%',
+                      }}
+                    >
+                      <div style={{ color: textPrimary, fontSize: '12px', fontWeight: 500 }}>{story.genre || '—'}</div>
+                      {(story.genre_secondary || story.genre_third) && (
+                        <div style={{ color: textSecondary, fontSize: '10px' }}>
+                          {[story.genre_secondary, story.genre_third].filter(Boolean).join(', ')}
+                        </div>
+                      )}
+                      {!story.genre && !story.genre_secondary && !story.genre_third && (
+                        <div style={{ color: '#f97316', fontSize: '10px' }}>Click to set</div>
+                      )}
+                    </button>
+                  </td>
                   {/* Duration */}
                   <td style={{ padding: '0.5rem', textAlign: 'center', color: textPrimary }}>{story.duration_mins}m</td>
                   {/* Credits */}
@@ -243,7 +307,6 @@ export default function AdminStoriesPage() {
                   <td style={{ padding: '0.5rem', textAlign: 'center', color: textPrimary }}>{story.downloads_ytd || 0}</td>
                   <td style={{ padding: '0.5rem', textAlign: 'center', color: '#2563eb', fontWeight: 600 }}>{story.downloads_total || 0}</td>
                   {/* Percentages */}
-                  <td style={{ padding: '0.5rem', textAlign: 'center', color: story.pct_started > 70 ? '#16a34a' : textPrimary }}>{story.pct_started || 0}%</td>
                   <td style={{ padding: '0.5rem', textAlign: 'center', color: story.pct_finished > 50 ? '#16a34a' : story.pct_finished < 20 ? '#dc2626' : textPrimary, fontWeight: 600 }}>{story.pct_finished || 0}%</td>
                   <td style={{ padding: '0.5rem', textAlign: 'center', color: story.pct_skipped > 30 ? '#dc2626' : textPrimary }}>{story.pct_skipped || 0}%</td>
                   {/* Rating */}
@@ -269,6 +332,76 @@ export default function AdminStoriesPage() {
                     )}
                   </td>
                 </tr>
+                {/* Genre Editor Row */}
+                {genreEditor === story.id && (
+                  <tr key={`${story.id}-genres`} style={{ backgroundColor: '#fffbeb' }}>
+                    <td colSpan={17} style={{ padding: '0.75rem 1rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '12px', fontWeight: 600, color: textPrimary }}>Edit Genres:</span>
+                        
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                          <label style={{ fontSize: '11px', color: textSecondary, width: '55px' }}>Primary*</label>
+                          <select
+                            value={editGenres.primary}
+                            onChange={(e) => setEditGenres({ ...editGenres, primary: e.target.value })}
+                            style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #f97316', fontSize: '12px', color: textPrimary, minWidth: '120px' }}
+                          >
+                            <option value="">— Select —</option>
+                            {genres.map(g => <option key={g.id} value={g.name}>{g.name}</option>)}
+                          </select>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                          <label style={{ fontSize: '11px', color: textSecondary, width: '55px' }}>2nd</label>
+                          <select
+                            value={editGenres.secondary}
+                            onChange={(e) => setEditGenres({ ...editGenres, secondary: e.target.value })}
+                            style={{ padding: '4px 8px', borderRadius: '4px', border: `1px solid ${border}`, fontSize: '12px', color: textPrimary, minWidth: '120px' }}
+                          >
+                            <option value="">— None —</option>
+                            {genres.filter(g => g.name !== editGenres.primary).map(g => <option key={g.id} value={g.name}>{g.name}</option>)}
+                          </select>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                          <label style={{ fontSize: '11px', color: textSecondary, width: '55px' }}>3rd</label>
+                          <select
+                            value={editGenres.third}
+                            onChange={(e) => setEditGenres({ ...editGenres, third: e.target.value })}
+                            style={{ padding: '4px 8px', borderRadius: '4px', border: `1px solid ${border}`, fontSize: '12px', color: textPrimary, minWidth: '120px' }}
+                          >
+                            <option value="">— None —</option>
+                            {genres.filter(g => g.name !== editGenres.primary && g.name !== editGenres.secondary).map(g => <option key={g.id} value={g.name}>{g.name}</option>)}
+                          </select>
+                        </div>
+
+                        <button
+                          onClick={() => saveGenres(story.id)}
+                          disabled={savingGenre || !editGenres.primary}
+                          style={{
+                            padding: '4px 12px', borderRadius: '4px',
+                            backgroundColor: savingGenre || !editGenres.primary ? '#9ca3af' : '#22c55e',
+                            color: 'white', border: 'none', cursor: savingGenre || !editGenres.primary ? 'default' : 'pointer',
+                            fontSize: '12px', fontWeight: 600,
+                          }}
+                        >
+                          {savingGenre ? 'Saving...' : 'Save'}
+                        </button>
+                        <button
+                          onClick={() => setGenreEditor(null)}
+                          style={{
+                            padding: '4px 12px', borderRadius: '4px',
+                            backgroundColor: '#e5e5e5', color: textPrimary,
+                            border: 'none', cursor: 'pointer', fontSize: '12px',
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                </>
               ))}
             </tbody>
           </table>
