@@ -14,7 +14,7 @@ export default function AdminLayout({
     { href: '/admin', label: 'Dashboard', icon: '📊' },
     { href: '/admin/news-briefings', label: 'News Briefings', icon: '📰' },
     { href: '/admin/stories', label: 'Stories', icon: '📚' },
-    { href: '/admin/users', label: 'Users', icon: '👥' },
+    { href: '/admin/genres', label: 'Genres', icon: '🎭' },    { href: '/admin/users', label: 'Users', icon: '👥' },
     { href: '/admin/analytics', label: 'Analytics', icon: '📈' },
     { href: '/admin/subscriptions', label: 'Subscriptions', icon: '💳' },
     { href: '/admin/referrals', label: 'Referrals', icon: '🎁' },
