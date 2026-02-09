@@ -144,7 +144,7 @@ export default function LibraryFiltersV2({
     }
 
     // Also add any used genres not in the genres table (legacy data)
-    for (const name of usedGenres) {
+    for (const name of Array.from(usedGenres)) {
       if (!options.find(o => o.value === name)) {
         options.push({
           value: name,
