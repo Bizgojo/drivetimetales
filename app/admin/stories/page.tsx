@@ -101,7 +101,19 @@ export default function AdminStoriesPage() {
   }
 
   async function deleteStory(storyId: string) {
-    await supabase.from('stories').delete().eq('id', storyId)
+    try {
+      const res = await fetch('/api/admin/delete-story', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storyId }),
+      })
+      const result = await res.json()
+      if (!result.success) {
+        alert('Delete failed: ' + (result.error || 'Unknown error'))
+      }
+    } catch (err) {
+      alert('Delete failed: ' + String(err))
+    }
     setDeleteConfirm(null)
     fetchStories()
   }
@@ -248,7 +260,8 @@ export default function AdminStoriesPage() {
                     <button onClick={() => setDeleteConfirm(deleteConfirm === story.id ? null : story.id)} style={{ backgroundColor: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: '4px', padding: '4px 6px', cursor: 'pointer', fontSize: '10px' }}>🗑</button>
                     {deleteConfirm === story.id && (
                       <div style={{ position: 'absolute', top: '100%', left: 0, backgroundColor: cardBg, border: `1px solid ${border}`, borderRadius: '6px', padding: '0.5rem', zIndex: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', minWidth: '120px' }}>
-                        <div style={{ color: textPrimary, fontSize: '11px', marginBottom: '0.5rem' }}>Delete this story?</div>
+                        <div style={{ color: '#dc2626', fontSize: '11px', fontWeight: 600, marginBottom: '0.25rem' }}>Delete permanently?</div>
+                        <div style={{ color: textSecondary, fontSize: '10px', marginBottom: '0.5rem' }}>Removes story, user data, reviews &amp; files</div>
                         <div style={{ display: 'flex', gap: '0.25rem' }}>
                           <button onClick={() => deleteStory(story.id)} style={{ flex: 1, backgroundColor: '#dc2626', color: 'white', border: 'none', borderRadius: '4px', padding: '4px', cursor: 'pointer', fontSize: '10px' }}>Yes</button>
                           <button onClick={() => setDeleteConfirm(null)} style={{ flex: 1, backgroundColor: '#e5e5e5', color: textPrimary, border: 'none', borderRadius: '4px', padding: '4px', cursor: 'pointer', fontSize: '10px' }}>No</button>
