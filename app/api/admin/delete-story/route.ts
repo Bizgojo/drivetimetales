@@ -1,18 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
-
 export async function DELETE(req: NextRequest) {
   try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+    if (!supabaseUrl || !supabaseKey) {
+      console.error('[Delete Story] Missing env vars:', { url: !!supabaseUrl, key: !!supabaseKey })
+      return NextResponse.json({ error: 'Server configuration error' }, { status: 500 })
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseKey)
+
     const { storyId } = await req.json()
 
     if (!storyId) {
       return NextResponse.json({ error: 'Missing storyId' }, { status: 400 })
     }
+
+    console.log('[Delete Story] Looking up story:', storyId)
 
     // Step 1: Get the story's audio_url and cover_url before deleting
     const { data: story, error: fetchError } = await supabase
@@ -21,8 +28,10 @@ export async function DELETE(req: NextRequest) {
       .eq('id', storyId)
       .single()
 
+    console.log('[Delete Story] Fetch result:', { story: story?.title, error: fetchError?.message, code: fetchError?.code })
+
     if (fetchError || !story) {
-      return NextResponse.json({ error: 'Story not found' }, { status: 404 })
+      return NextResponse.json({ error: 'Story not found', details: fetchError?.message || 'No data returned' }, { status: 404 })
     }
 
     console.log('[Delete Story] Starting cascade delete for:', story.title, story.id)
@@ -65,7 +74,6 @@ export async function DELETE(req: NextRequest) {
 
     // Step 5: Delete audio file from Supabase storage (if stored there)
     if (story.audio_url && story.audio_url.includes('supabase.co/storage')) {
-      // Extract path after /public/audio/ or /public/Audio/
       const audioMatch = story.audio_url.match(/\/object\/public\/([^/]+)\/(.+)$/)
       if (audioMatch) {
         const bucket = audioMatch[1]
