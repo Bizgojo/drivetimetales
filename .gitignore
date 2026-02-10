@@ -7,3 +7,6 @@ Audio Dramas/
 *.wav
 *.m4a
 Audio Dramas/
+.env.local.backup*
+.env.local
+.DS_Store
