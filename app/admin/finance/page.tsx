@@ -208,7 +208,7 @@ export default function AdminFinancePage() {
   }
 
   // Group services by category
-  const categories = [...new Set(SERVICES.map(s => s.category))]
+  const categories = Array.from(new Set(SERVICES.map(s => s.category)))
 
   const categoryIcons: Record<string, string> = {
     'AI & Voice': '🤖',
