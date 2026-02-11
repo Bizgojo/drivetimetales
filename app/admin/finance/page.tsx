@@ -1,304 +1,447 @@
-'use client';
+'use client'
 
-import React, { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react'
 
-interface Transaction {
-  id: string;
-  user_id: string;
-  user_email?: string;
-  type: 'subscription' | 'credit_pack' | 'refund';
-  amount_cents: number;
-  product_name: string;
-  stripe_payment_id?: string;
-  created_at: string;
+// ============================================================================
+// SERVICE DEFINITIONS
+// ============================================================================
+interface ServiceDef {
+  name: string
+  purpose: string
+  loginUrl: string
+  defaultCost: number
+  billingType: 'monthly' | 'annual' | 'one-time' | 'usage-based'
+  category: 'AI & Voice' | 'Infrastructure' | 'Audio Production' | 'Data & APIs' | 'Business Tools'
 }
 
-interface FinanceStats {
-  todayRevenue: number;
-  weekRevenue: number;
-  monthRevenue: number;
-  yearRevenue: number;
-  totalRevenue: number;
-  subscriptionRevenue: number;
-  creditPackRevenue: number;
-  refunds: number;
-  transactionCount: number;
-}
+const SERVICES: ServiceDef[] = [
+  {
+    name: 'Anthropic (Claude)',
+    purpose: 'AI scripting for news briefings, story adaptation, and content generation. Powers the news auto-generation system and assists with audio drama script writing.',
+    loginUrl: 'https://console.anthropic.com',
+    defaultCost: 0,
+    billingType: 'monthly',
+    category: 'AI & Voice',
+  },
+  {
+    name: 'ElevenLabs',
+    purpose: 'Text-to-speech voice generation for all audio dramas and news briefings. Pro plan provides 100,000 characters/month for narrator, announcer, and character voices.',
+    loginUrl: 'https://elevenlabs.io/app',
+    defaultCost: 0,
+    billingType: 'monthly',
+    category: 'AI & Voice',
+  },
+  {
+    name: 'OpenAI',
+    purpose: 'DALL-E image generation for audio drama cover art (~$0.04/image). Also used for ChatGPT assistance with content development.',
+    loginUrl: 'https://platform.openai.com',
+    defaultCost: 0,
+    billingType: 'monthly',
+    category: 'AI & Voice',
+  },
+  {
+    name: 'Suno',
+    purpose: 'AI music generation for background music, intro/outro music, and scene-based soundtracks for audio dramas.',
+    loginUrl: 'https://suno.com',
+    defaultCost: 0,
+    billingType: 'monthly',
+    category: 'AI & Voice',
+  },
+  {
+    name: 'Supabase',
+    purpose: 'PostgreSQL database and file storage backend for DTT website. Stores users, stories, news episodes, preferences, and audio/cover files.',
+    loginUrl: 'https://supabase.com/dashboard',
+    defaultCost: 0,
+    billingType: 'monthly',
+    category: 'Infrastructure',
+  },
+  {
+    name: 'Vercel',
+    purpose: 'Website hosting and deployment platform for drivetimetales.vercel.app. Handles builds, serverless functions, cron jobs, and CDN.',
+    loginUrl: 'https://vercel.com/dashboard',
+    defaultCost: 0,
+    billingType: 'monthly',
+    category: 'Infrastructure',
+  },
+  {
+    name: 'Cloudflare R2',
+    purpose: 'Object storage for audio files and cover images. Serves content via CDN with no egress fees. Backup storage alongside Supabase.',
+    loginUrl: 'https://dash.cloudflare.com',
+    defaultCost: 0,
+    billingType: 'monthly',
+    category: 'Infrastructure',
+  },
+  {
+    name: 'Stripe',
+    purpose: 'Payment processing for DTT subscriptions and credit pack purchases. Handles recurring billing, webhooks, and customer management.',
+    loginUrl: 'https://dashboard.stripe.com',
+    defaultCost: 0,
+    billingType: 'usage-based',
+    category: 'Infrastructure',
+  },
+  {
+    name: 'GitHub',
+    purpose: 'Source code repository for DTT website. Source of truth for all code. Connected to Vercel for automatic deployments on push.',
+    loginUrl: 'https://github.com',
+    defaultCost: 0,
+    billingType: 'monthly',
+    category: 'Infrastructure',
+  },
+  {
+    name: 'REAPER',
+    purpose: 'Digital audio workstation for mixing audio drama tracks — combines narrator voice, announcer, intro/outro music, background music, and SFX into final output.',
+    loginUrl: 'https://www.reaper.fm/purchase.php',
+    defaultCost: 0,
+    billingType: 'one-time',
+    category: 'Audio Production',
+  },
+  {
+    name: 'Hindenburg Pro',
+    purpose: 'Professional audio production software for advanced editing, noise reduction, and audio mastering of voice recordings.',
+    loginUrl: 'https://hindenburg.com/account',
+    defaultCost: 0,
+    billingType: 'monthly',
+    category: 'Audio Production',
+  },
+  {
+    name: 'Soundly',
+    purpose: 'Sound effects library for sourcing professional SFX used in audio dramas — ambient sounds, transitions, and scene-setting audio.',
+    loginUrl: 'https://getsoundly.com',
+    defaultCost: 0,
+    billingType: 'monthly',
+    category: 'Audio Production',
+  },
+  {
+    name: 'NewsAPI / World News',
+    purpose: 'RSS and news data feeds providing current headlines for the automated news briefings system. Supplies content for all 6 news categories.',
+    loginUrl: 'https://worldnewsapi.com/account',
+    defaultCost: 0,
+    billingType: 'monthly',
+    category: 'Data & APIs',
+  },
+  {
+    name: 'Freesound',
+    purpose: 'Free/open-source sound effects API integrated into ADM Tab 5 for auto-searching and downloading SFX clips.',
+    loginUrl: 'https://freesound.org',
+    defaultCost: 0,
+    billingType: 'monthly',
+    category: 'Data & APIs',
+  },
+]
 
-export default function FinancePage() {
-  const [stats, setStats] = useState<FinanceStats | null>(null);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [timeFilter, setTimeFilter] = useState<'today' | 'week' | 'month' | 'year' | 'all'>('month');
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
+// ============================================================================
+// COMPONENT
+// ============================================================================
+export default function AdminFinancePage() {
+  const [year, setYear] = useState(2026)
+  const [costs, setCosts] = useState<Record<string, number[]>>({})
+  const [expandedService, setExpandedService] = useState<string | null>(null)
+  const [editingCell, setEditingCell] = useState<{ service: string; month: number } | null>(null)
+  const [editValue, setEditValue] = useState('')
+  const [hasChanges, setHasChanges] = useState(false)
+
+  // Load saved costs from localStorage
   useEffect(() => {
-    async function fetchFinanceData() {
-      try {
-        const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-        const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-        if (!url || !key) {
-          setLoading(false);
-          return;
-        }
-
-        const headers = {
-          'apikey': key,
-          'Authorization': `Bearer ${key}`,
-        };
-
-        // Fetch purchases/transactions
-        const purchasesRes = await fetch(
-          `${url}/rest/v1/purchases?select=*&order=created_at.desc&limit=100`,
-          { headers }
-        );
-        
-        let purchases = [];
-        if (purchasesRes.ok) {
-          purchases = await purchasesRes.json();
-        }
-
-        // Calculate date ranges
-        const now = new Date();
-        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-        const monthAgo = new Date(today.getFullYear(), today.getMonth() - 1, today.getDate());
-        const yearAgo = new Date(today.getFullYear() - 1, today.getMonth(), today.getDate());
-
-        // Calculate stats
-        const calculateRevenue = (items: any[], since?: Date) => {
-          return items
-            .filter((p: any) => !since || new Date(p.created_at) >= since)
-            .filter((p: any) => p.type !== 'refund')
-            .reduce((sum: number, p: any) => sum + (p.amount_cents || 0), 0) / 100;
-        };
-
-        const refunds = purchases
-          .filter((p: any) => p.type === 'refund')
-          .reduce((sum: number, p: any) => sum + Math.abs(p.amount_cents || 0), 0) / 100;
-
-        const subscriptionRevenue = purchases
-          .filter((p: any) => p.type === 'subscription')
-          .reduce((sum: number, p: any) => sum + (p.amount_cents || 0), 0) / 100;
-
-        const creditPackRevenue = purchases
-          .filter((p: any) => p.type === 'credit_pack')
-          .reduce((sum: number, p: any) => sum + (p.amount_cents || 0), 0) / 100;
-
-        setStats({
-          todayRevenue: calculateRevenue(purchases, today),
-          weekRevenue: calculateRevenue(purchases, weekAgo),
-          monthRevenue: calculateRevenue(purchases, monthAgo),
-          yearRevenue: calculateRevenue(purchases, yearAgo),
-          totalRevenue: calculateRevenue(purchases),
-          subscriptionRevenue,
-          creditPackRevenue,
-          refunds,
-          transactionCount: purchases.length,
-        });
-
-        setTransactions(purchases);
-
-      } catch (error) {
-        console.error('Error fetching finance data:', error);
-      } finally {
-        setLoading(false);
-      }
+    const saved = localStorage.getItem(`dtt_finance_${year}`)
+    if (saved) {
+      setCosts(JSON.parse(saved))
+    } else {
+      // Initialize with defaults
+      const initial: Record<string, number[]> = {}
+      SERVICES.forEach(s => {
+        initial[s.name] = Array(12).fill(s.defaultCost)
+      })
+      setCosts(initial)
     }
+  }, [year])
 
-    fetchFinanceData();
-  }, []);
+  // Save to localStorage
+  const saveCosts = () => {
+    localStorage.setItem(`dtt_finance_${year}`, JSON.stringify(costs))
+    setHasChanges(false)
+  }
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
-  };
+  // Start editing a cell
+  const startEdit = (service: string, month: number) => {
+    setEditingCell({ service, month })
+    setEditValue((costs[service]?.[month] ?? 0).toString())
+  }
 
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
+  // Commit edit
+  const commitEdit = () => {
+    if (!editingCell) return
+    const val = parseFloat(editValue) || 0
+    setCosts(prev => {
+      const updated = { ...prev }
+      if (!updated[editingCell.service]) updated[editingCell.service] = Array(12).fill(0)
+      updated[editingCell.service] = [...updated[editingCell.service]]
+      updated[editingCell.service][editingCell.month] = val
+      return updated
+    })
+    setEditingCell(null)
+    setHasChanges(true)
+  }
 
-  const getTypeColor = (type: string) => {
-    switch (type) {
-      case 'subscription': return 'text-blue-400 bg-blue-400/10';
-      case 'credit_pack': return 'text-green-400 bg-green-400/10';
-      case 'refund': return 'text-red-400 bg-red-400/10';
-      default: return 'text-gray-400 bg-gray-400/10';
-    }
-  };
+  // Apply same cost to all months for a service
+  const applyToAllMonths = (service: string, value: number) => {
+    setCosts(prev => {
+      const updated = { ...prev }
+      updated[service] = Array(12).fill(value)
+      return updated
+    })
+    setHasChanges(true)
+  }
 
-  const getFilteredTransactions = () => {
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    
-    return transactions.filter((t) => {
-      const date = new Date(t.created_at);
-      switch (timeFilter) {
-        case 'today':
-          return date >= today;
-        case 'week':
-          return date >= new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-        case 'month':
-          return date >= new Date(today.getFullYear(), today.getMonth() - 1, today.getDate());
-        case 'year':
-          return date >= new Date(today.getFullYear() - 1, today.getMonth(), today.getDate());
-        default:
-          return true;
-      }
-    });
-  };
+  // Calculate totals
+  const getServiceTotal = (service: string) => {
+    return (costs[service] || Array(12).fill(0)).reduce((a, b) => a + b, 0)
+  }
 
-  if (loading) {
-    return (
-      <div className="p-8 flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="inline-block w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mb-4" />
-          <p className="text-gray-400">Loading finance data...</p>
-        </div>
-      </div>
-    );
+  const getMonthTotal = (month: number) => {
+    return SERVICES.reduce((total, s) => total + (costs[s.name]?.[month] || 0), 0)
+  }
+
+  const getGrandTotal = () => {
+    return SERVICES.reduce((total, s) => total + getServiceTotal(s.name), 0)
+  }
+
+  // Group services by category
+  const categories = [...new Set(SERVICES.map(s => s.category))]
+
+  const categoryIcons: Record<string, string> = {
+    'AI & Voice': '🤖',
+    'Infrastructure': '🏗️',
+    'Audio Production': '🎧',
+    'Data & APIs': '📡',
+    'Business Tools': '💼',
   }
 
   return (
-    <div className="p-8">
+    <div style={{ padding: '24px', maxWidth: '100%', overflowX: 'auto', color: '#000', background: '#fff', minHeight: '100vh' }}>
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-white mb-2">💰 Finance</h1>
-        <p className="text-gray-400">Revenue tracking and financial overview</p>
-      </div>
-
-      {/* Revenue Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-          <span className="text-gray-400 text-sm">Today</span>
-          <p className="text-2xl font-bold text-white mt-1">{formatCurrency(stats?.todayRevenue || 0)}</p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
+        <div>
+          <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            💰 Expense Tracker
+          </h1>
+          <p style={{ color: '#666', margin: '4px 0 0', fontSize: '14px' }}>
+            Monthly subscription costs for DTT & ADM services
+          </p>
         </div>
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-          <span className="text-gray-400 text-sm">This Week</span>
-          <p className="text-2xl font-bold text-white mt-1">{formatCurrency(stats?.weekRevenue || 0)}</p>
-        </div>
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-          <span className="text-gray-400 text-sm">This Month</span>
-          <p className="text-2xl font-bold text-white mt-1">{formatCurrency(stats?.monthRevenue || 0)}</p>
-        </div>
-        <div className="bg-gradient-to-r from-green-900/50 to-green-800/30 border border-green-700/50 rounded-xl p-6">
-          <span className="text-green-300 text-sm">Total Revenue</span>
-          <p className="text-2xl font-bold text-white mt-1">{formatCurrency(stats?.totalRevenue || 0)}</p>
-        </div>
-      </div>
-
-      {/* Revenue Breakdown */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-xl">⭐</span>
-            <span className="text-gray-400 text-sm">Subscriptions</span>
-          </div>
-          <p className="text-2xl font-bold text-blue-400">{formatCurrency(stats?.subscriptionRevenue || 0)}</p>
-        </div>
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-xl">💎</span>
-            <span className="text-gray-400 text-sm">Credit Packs</span>
-          </div>
-          <p className="text-2xl font-bold text-green-400">{formatCurrency(stats?.creditPackRevenue || 0)}</p>
-        </div>
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-xl">↩️</span>
-            <span className="text-gray-400 text-sm">Refunds</span>
-          </div>
-          <p className="text-2xl font-bold text-red-400">-{formatCurrency(stats?.refunds || 0)}</p>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <button
+            onClick={() => setYear(y => y - 1)}
+            style={{ padding: '6px 12px', border: '1px solid #ccc', borderRadius: '6px', cursor: 'pointer', background: '#f5f5f5', color: '#000' }}
+          >
+            ◀
+          </button>
+          <span style={{ fontSize: '20px', fontWeight: 'bold', minWidth: '60px', textAlign: 'center' }}>{year}</span>
+          <button
+            onClick={() => setYear(y => y + 1)}
+            style={{ padding: '6px 12px', border: '1px solid #ccc', borderRadius: '6px', cursor: 'pointer', background: '#f5f5f5', color: '#000' }}
+          >
+            ▶
+          </button>
+          <button
+            onClick={saveCosts}
+            style={{
+              padding: '8px 20px',
+              background: hasChanges ? '#f97316' : '#ccc',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: hasChanges ? 'pointer' : 'default',
+              fontWeight: 'bold',
+              marginLeft: '12px',
+            }}
+          >
+            {hasChanges ? '💾 Save Changes' : '✓ Saved'}
+          </button>
         </div>
       </div>
 
-      {/* Transactions Table */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-        <div className="p-4 border-b border-gray-800 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-white">Recent Transactions</h2>
-          <div className="flex gap-2">
-            {(['today', 'week', 'month', 'year', 'all'] as const).map((filter) => (
-              <button
-                key={filter}
-                onClick={() => setTimeFilter(filter)}
-                className={`px-3 py-1 rounded-lg text-sm transition-colors ${
-                  timeFilter === filter
-                    ? 'bg-orange-500 text-black'
-                    : 'bg-gray-800 text-gray-400 hover:text-white'
-                }`}
-              >
-                {filter.charAt(0).toUpperCase() + filter.slice(1)}
-              </button>
-            ))}
-          </div>
+      {/* Summary Cards */}
+      <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
+        <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '8px', padding: '16px 24px', flex: '1', minWidth: '150px' }}>
+          <div style={{ fontSize: '12px', color: '#9a3412', fontWeight: '600', textTransform: 'uppercase' }}>Annual Total</div>
+          <div style={{ fontSize: '28px', fontWeight: 'bold', color: '#c2410c' }}>${getGrandTotal().toFixed(2)}</div>
         </div>
+        <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '16px 24px', flex: '1', minWidth: '150px' }}>
+          <div style={{ fontSize: '12px', color: '#166534', fontWeight: '600', textTransform: 'uppercase' }}>Monthly Avg</div>
+          <div style={{ fontSize: '28px', fontWeight: 'bold', color: '#15803d' }}>${(getGrandTotal() / 12).toFixed(2)}</div>
+        </div>
+        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '16px 24px', flex: '1', minWidth: '150px' }}>
+          <div style={{ fontSize: '12px', color: '#1e40af', fontWeight: '600', textTransform: 'uppercase' }}>Services</div>
+          <div style={{ fontSize: '28px', fontWeight: 'bold', color: '#1d4ed8' }}>{SERVICES.length}</div>
+        </div>
+      </div>
 
-        {getFilteredTransactions().length === 0 ? (
-          <div className="p-8 text-center">
-            <span className="text-4xl mb-4 block">📭</span>
-            <p className="text-gray-400">No transactions found</p>
-            <p className="text-gray-500 text-sm mt-1">Transactions will appear here when customers make purchases</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-800">
-                <tr>
-                  <th className="px-4 py-3 text-left text-gray-400 text-sm font-medium">Date</th>
-                  <th className="px-4 py-3 text-left text-gray-400 text-sm font-medium">Type</th>
-                  <th className="px-4 py-3 text-left text-gray-400 text-sm font-medium">Product</th>
-                  <th className="px-4 py-3 text-left text-gray-400 text-sm font-medium">User</th>
-                  <th className="px-4 py-3 text-right text-gray-400 text-sm font-medium">Amount</th>
+      {/* Spreadsheet */}
+      <div style={{ overflowX: 'auto', border: '1px solid #e5e7eb', borderRadius: '8px' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: '1200px' }}>
+          <thead>
+            <tr style={{ background: '#f9fafb' }}>
+              <th style={{ textAlign: 'left', padding: '10px 12px', borderBottom: '2px solid #e5e7eb', position: 'sticky', left: 0, background: '#f9fafb', zIndex: 2, minWidth: '200px', color: '#000' }}>
+                Service
+              </th>
+              {MONTHS.map((m, i) => (
+                <th key={m} style={{ textAlign: 'right', padding: '10px 8px', borderBottom: '2px solid #e5e7eb', minWidth: '80px', color: '#000' }}>
+                  {m} {year.toString().slice(2)}
+                </th>
+              ))}
+              <th style={{ textAlign: 'right', padding: '10px 12px', borderBottom: '2px solid #e5e7eb', background: '#f3f4f6', minWidth: '90px', fontWeight: 'bold', color: '#000' }}>
+                Total
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {categories.map(category => (
+              <>
+                {/* Category Header */}
+                <tr key={`cat-${category}`}>
+                  <td colSpan={14} style={{ padding: '8px 12px', background: '#f3f4f6', fontWeight: 'bold', fontSize: '12px', textTransform: 'uppercase', color: '#6b7280', letterSpacing: '0.05em', borderBottom: '1px solid #e5e7eb' }}>
+                    {categoryIcons[category] || '📁'} {category}
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-800">
-                {getFilteredTransactions().map((transaction) => (
-                  <tr key={transaction.id} className="hover:bg-gray-800/50">
-                    <td className="px-4 py-3 text-gray-300 text-sm">
-                      {formatDate(transaction.created_at)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getTypeColor(transaction.type)}`}>
-                        {transaction.type.replace('_', ' ')}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-white text-sm">
-                      {transaction.product_name || '-'}
-                    </td>
-                    <td className="px-4 py-3 text-gray-400 text-sm">
-                      {transaction.user_email || transaction.user_id?.slice(0, 8) + '...'}
-                    </td>
-                    <td className={`px-4 py-3 text-right font-medium ${
-                      transaction.type === 'refund' ? 'text-red-400' : 'text-green-400'
-                    }`}>
-                      {transaction.type === 'refund' ? '-' : ''}
-                      {formatCurrency((transaction.amount_cents || 0) / 100)}
-                    </td>
-                  </tr>
+                {SERVICES.filter(s => s.category === category).map(service => (
+                  <>
+                    <tr key={service.name} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                      {/* Service Name Cell */}
+                      <td style={{ padding: '8px 12px', position: 'sticky', left: 0, background: '#fff', zIndex: 1, borderRight: '1px solid #f3f4f6' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <button
+                            onClick={() => setExpandedService(expandedService === service.name ? null : service.name)}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '10px', color: '#9ca3af', padding: '2px', width: '16px' }}
+                          >
+                            {expandedService === service.name ? '▼' : '▶'}
+                          </button>
+                          <a
+                            href={service.loginUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ color: '#2563eb', textDecoration: 'none', fontWeight: '500', fontSize: '13px' }}
+                            title={`Open ${service.name} login`}
+                          >
+                            {service.name} ↗
+                          </a>
+                          {service.billingType === 'one-time' && (
+                            <span style={{ fontSize: '10px', background: '#dbeafe', color: '#1d4ed8', padding: '1px 5px', borderRadius: '4px' }}>one-time</span>
+                          )}
+                          {service.billingType === 'usage-based' && (
+                            <span style={{ fontSize: '10px', background: '#fef3c7', color: '#92400e', padding: '1px 5px', borderRadius: '4px' }}>usage</span>
+                          )}
+                        </div>
+                      </td>
+                      {/* Monthly Cost Cells */}
+                      {MONTHS.map((_, monthIdx) => {
+                        const isEditing = editingCell?.service === service.name && editingCell?.month === monthIdx
+                        const val = costs[service.name]?.[monthIdx] || 0
+                        return (
+                          <td
+                            key={monthIdx}
+                            onClick={() => !isEditing && startEdit(service.name, monthIdx)}
+                            style={{
+                              textAlign: 'right',
+                              padding: '4px 8px',
+                              cursor: 'pointer',
+                              background: isEditing ? '#fffbeb' : val > 0 ? '#fff' : '#fafafa',
+                              color: val > 0 ? '#000' : '#d1d5db',
+                            }}
+                          >
+                            {isEditing ? (
+                              <input
+                                type="number"
+                                value={editValue}
+                                onChange={e => setEditValue(e.target.value)}
+                                onBlur={commitEdit}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter') commitEdit()
+                                  if (e.key === 'Escape') setEditingCell(null)
+                                }}
+                                autoFocus
+                                style={{
+                                  width: '70px',
+                                  textAlign: 'right',
+                                  padding: '2px 4px',
+                                  border: '2px solid #f97316',
+                                  borderRadius: '4px',
+                                  fontSize: '13px',
+                                  outline: 'none',
+                                  color: '#000',
+                                  background: '#fff',
+                                }}
+                                step="0.01"
+                              />
+                            ) : (
+                              <span>{val > 0 ? `$${val.toFixed(2)}` : '—'}</span>
+                            )}
+                          </td>
+                        )
+                      })}
+                      {/* Row Total */}
+                      <td style={{ textAlign: 'right', padding: '8px 12px', background: '#f9fafb', fontWeight: '600', color: '#000' }}>
+                        ${getServiceTotal(service.name).toFixed(2)}
+                      </td>
+                    </tr>
+                    {/* Expanded Description Row */}
+                    {expandedService === service.name && (
+                      <tr key={`${service.name}-desc`}>
+                        <td colSpan={14} style={{ padding: '8px 12px 12px 40px', background: '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
+                          <div style={{ fontSize: '12px', color: '#4b5563', lineHeight: '1.5', maxWidth: '800px' }}>
+                            <strong>Purpose:</strong> {service.purpose}
+                          </div>
+                          <div style={{ marginTop: '6px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <span style={{ fontSize: '11px', color: '#6b7280' }}>
+                              Billing: {service.billingType === 'one-time' ? 'One-time purchase (spread over 12 months)' : service.billingType === 'usage-based' ? 'Pay per transaction' : 'Monthly subscription'}
+                            </span>
+                            <span style={{ color: '#d1d5db' }}>|</span>
+                            <button
+                              onClick={() => {
+                                const val = costs[service.name]?.[0] || 0
+                                if (val > 0) applyToAllMonths(service.name, val)
+                              }}
+                              style={{ fontSize: '11px', color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+                            >
+                              Apply Jan cost to all months
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+              </>
+            ))}
+          </tbody>
+          {/* Footer Totals */}
+          <tfoot>
+            <tr style={{ borderTop: '2px solid #e5e7eb', background: '#f9fafb' }}>
+              <td style={{ padding: '10px 12px', fontWeight: 'bold', position: 'sticky', left: 0, background: '#f9fafb', zIndex: 1, color: '#000' }}>
+                MONTHLY TOTALS
+              </td>
+              {MONTHS.map((_, i) => (
+                <td key={i} style={{ textAlign: 'right', padding: '10px 8px', fontWeight: 'bold', color: '#000' }}>
+                  ${getMonthTotal(i).toFixed(2)}
+                </td>
+              ))}
+              <td style={{ textAlign: 'right', padding: '10px 12px', fontWeight: 'bold', background: '#fff7ed', color: '#c2410c', fontSize: '14px' }}>
+                ${getGrandTotal().toFixed(2)}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
       </div>
 
-      {/* Export Button */}
-      <div className="mt-4 flex justify-end">
-        <button
-          onClick={() => {
-            // TODO: Implement CSV export
-            alert('Export feature coming soon!');
-          }}
-          className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-sm transition-colors"
-        >
-          📥 Export to CSV
-        </button>
+      {/* Instructions */}
+      <div style={{ marginTop: '20px', padding: '16px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+        <p style={{ fontSize: '12px', color: '#64748b', margin: 0, lineHeight: '1.6' }}>
+          <strong>How to use:</strong> Click any cell to edit the cost. Click ▶ next to a service name to see its purpose and billing type. 
+          Click the service name link (↗) to go to its login page. Use the year arrows to switch between years. 
+          Changes are saved to your browser — click "Save Changes" to persist.
+        </p>
       </div>
     </div>
-  );
+  )
 }
