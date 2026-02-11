@@ -8,7 +8,7 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// OpenAI client created inside handler
 
 // ============================================================
 // TIMEZONE & DATE UTILITIES
@@ -214,6 +214,7 @@ FORMAT YOUR RESPONSE EXACTLY LIKE THIS:
 
   try {
     // Use GPT-4o with web search capability via Responses API
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const response = await openai.responses.create({
       model: 'gpt-4o',
       tools: [{ type: 'web_search' }],
