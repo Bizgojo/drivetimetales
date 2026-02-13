@@ -29,10 +29,10 @@ export default function SeriesCard({
   return (
     <Link 
       href={`/series/${id}`}
-      className="rounded-xl overflow-hidden hover:bg-slate-700 transition block" style={{ background: "#1e293b", border: "1px solid rgba(255, 255, 255, 0.18)", height: "150px" }}
+      className="rounded-xl overflow-hidden hover:bg-slate-700 transition block" style={{ background: "#1e293b", border: "1px solid rgba(255, 255, 255, 0.18)" }}
     >
       <div style={{ display: 'flex' }}>
-        <div style={{ width: '150px', height: '150px', flexShrink: 0 }}>
+        <div style={{ width: '7rem', height: '7rem', flexShrink: 0, padding: '0.5rem' }}>
           <div className="rounded-lg overflow-hidden" style={{ width: '100%', height: '100%', position: 'relative' }}>
             <img 
               src={cover_url || '/images/default-cover.png'} 
