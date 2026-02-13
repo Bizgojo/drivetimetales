@@ -35,7 +35,7 @@ export default function SeriesDetailPage() {
   const [loading, setLoading] = useState(true)
   const [userProgress, setUserProgress] = useState<Record<string, UserProgress>>({})
   const [selectedEpisodes, setSelectedEpisodes] = useState<Set<string>>(new Set())
-  const [userCredits, setUserCredits] = useState(0)
+  const [userCredits, setUserCredits] = useState(user?.credits || 0)
   const [showInsufficientCredits, setShowInsufficientCredits] = useState(false)
   const [seriesInfo, setSeriesInfo] = useState<{
     name: string
@@ -47,7 +47,14 @@ export default function SeriesDetailPage() {
 
   useEffect(() => {
     if (seriesId) fetchSeriesData()
-  }, [seriesId])
+  }, [seriesId, user?.id])
+
+  // Sync credits from auth context as fallback
+  useEffect(() => {
+    if (user?.credits !== undefined && user.credits > 0 && userCredits === 0) {
+      setUserCredits(user.credits)
+    }
+  }, [user?.credits])
 
   const fetchSeriesData = async () => {
     try {
