@@ -29,10 +29,10 @@ export default function SeriesCard({
   return (
     <Link 
       href={`/series/${id}`}
-      className="bg-slate-800 rounded-xl overflow-hidden hover:bg-slate-700 transition block"
+      className="rounded-xl overflow-hidden hover:bg-slate-700 transition block" style={{ background: "#1e293b", border: "1px solid rgba(255, 255, 255, 0.18)", height: "150px" }}
     >
       <div style={{ display: 'flex' }}>
-        <div style={{ width: '7rem', height: '7rem', flexShrink: 0, padding: '0.5rem' }}>
+        <div style={{ width: '150px', height: '150px', flexShrink: 0 }}>
           <div className="rounded-lg overflow-hidden" style={{ width: '100%', height: '100%', position: 'relative' }}>
             <img 
               src={cover_url || '/images/default-cover.png'} 
@@ -64,7 +64,7 @@ export default function SeriesCard({
           paddingRight: '0.75rem', 
           display: 'flex', 
           flexDirection: 'column', 
-          justifyContent: 'center' 
+          justifyContent: 'space-between' 
         }}>
           <h3 className="text-sm font-bold text-white line-clamp-1">{series_name}</h3>
           <p style={{ color: '#94a3b8', fontSize: '0.75rem' }}>{genre}</p>
