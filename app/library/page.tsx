@@ -41,6 +41,10 @@ interface SeriesGroup {
   episode_count: number
   total_duration_mins: number
   cover_url: string | null
+  description?: string | null
+  completed_episodes?: number
+  episode_ids: string[]
+  earliest_created_at?: string
 }
 
 function getCredits(duration_mins: number): number {
@@ -119,6 +123,7 @@ function LibraryContent() {
   const { user } = useAuth()
   const [stories, setStories] = useState<Story[]>([])
   const [userLibrary, setUserLibrary] = useState<UserLibraryEntry[]>([])
+  const [seriesTableData, setSeriesTableData] = useState<Record<string, { cover_image: string | null, description: string | null }>>({})
   const [loading, setLoading] = useState(true)
   const [userName, setUserName] = useState('Friend')
   const [userCredits, setUserCredits] = useState(4)
@@ -159,6 +164,17 @@ function LibraryContent() {
           .eq('user_id', user.id)
         if (libraryData) setUserLibrary(libraryData)
       }
+      
+      // Fetch series table data for covers and descriptions
+      const { data: seriesRows } = await supabase
+        .from('series')
+        .select('title, cover_image, description')
+      if (seriesRows) {
+        const lookup: Record<string, { cover_image: string | null, description: string | null }> = {}
+        seriesRows.forEach((s: any) => { lookup[s.title] = { cover_image: s.cover_image, description: s.description } })
+        setSeriesTableData(lookup)
+      }
+      
       setLoading(false)
     }
     fetchData()
@@ -196,38 +212,57 @@ function LibraryContent() {
     return true
   })
 
-  // Group stories by series_name
-  const seriesGroups: SeriesGroup[] = []
-  if (selectedType === 'Series Only') {
-    const seriesMap = new Map<string, SeriesGroup>()
-    filteredStories.forEach(story => {
-      if (story.series_name) {
-        const existing = seriesMap.get(story.series_name)
-        if (existing) {
-          existing.episode_count += 1
-          existing.total_duration_mins += story.duration_mins || 0
-        } else {
-          seriesMap.set(story.series_name, {
-            id: story.series_id || story.id,
-            series_name: story.series_name,
-            genre: story.genre || '',
-            author: story.author || 'Drive Time Tales',
-            episode_count: 1,
-            total_duration_mins: story.duration_mins || 0,
-            cover_url: story.cover_url
-          })
+  // Build series groups from ALL filtered stories (not just Series Only view)
+  const seriesMap = new Map<string, SeriesGroup>()
+  filteredStories.forEach(story => {
+    if (story.series_name) {
+      const existing = seriesMap.get(story.series_name)
+      if (existing) {
+        existing.episode_count += 1
+        existing.total_duration_mins += story.duration_mins || 0
+        existing.episode_ids.push(story.id)
+        if (story.created_at && (!existing.earliest_created_at || story.created_at < existing.earliest_created_at)) {
+          existing.earliest_created_at = story.created_at
         }
+      } else {
+        const seriesInfo = seriesTableData[story.series_name]
+        seriesMap.set(story.series_name, {
+          id: story.series_id || story.id,
+          series_name: story.series_name,
+          genre: story.genre || '',
+          author: story.author || 'Drive Time Tales',
+          episode_count: 1,
+          total_duration_mins: story.duration_mins || 0,
+          cover_url: seriesInfo?.cover_image || story.cover_url,
+          description: seriesInfo?.description || null,
+          episode_ids: [story.id],
+          earliest_created_at: story.created_at || undefined
+        })
       }
-    })
-    seriesMap.forEach(series => seriesGroups.push(series))
-  }
+    }
+  })
+  const seriesGroups = Array.from(seriesMap.values())
+  
+  // Calculate completed episodes per series from user library
+  seriesGroups.forEach(group => {
+    group.completed_episodes = group.episode_ids.filter(eid => 
+      libraryLookup.get(eid)?.completed
+    ).length
+  })
 
-  // Type filter for display
-  const displayStories = selectedType === 'Series Only' 
-    ? [] 
-    : selectedType === 'Singles Only'
-      ? filteredStories.filter(s => !s.series_name)
-      : filteredStories
+  // Get singles (stories not in any series)
+  const singles = filteredStories.filter(s => !s.series_name)
+
+  // Build mixed display items for "Both" view: one card per series + singles
+  type DisplayItem = { type: 'single', story: Story, sortDate: string } | { type: 'series', group: SeriesGroup, sortDate: string }
+  const mixedItems: DisplayItem[] = []
+  singles.forEach(story => {
+    mixedItems.push({ type: 'single', story, sortDate: story.created_at || '' })
+  })
+  seriesGroups.forEach(group => {
+    mixedItems.push({ type: 'series', group, sortDate: group.earliest_created_at || '' })
+  })
+  mixedItems.sort((a, b) => (b.sortDate || '').localeCompare(a.sortDate || ''))
 
   if (loading) {
     return (
@@ -252,6 +287,57 @@ function LibraryContent() {
       />
       
       <div className="px-3 py-2 flex flex-col gap-2">
+        {/* Both (mixed view) - series as SeriesCard, singles as HorizontalStoryCard */}
+        {selectedType === 'Singles & Series' && (
+          <>
+            {mixedItems.length === 0 ? (
+              <div className="bg-slate-800 rounded-xl p-8 text-center">
+                <div className="text-4xl mb-3">😔</div>
+                <p className="text-white text-base mb-2">Sorry {userName}, no stories match your request.</p>
+                <p className="text-white text-sm" style={{ opacity: 0.7 }}>Try a different filter</p>
+              </div>
+            ) : (
+              mixedItems.map(item => {
+                if (item.type === 'series') {
+                  return (
+                    <SeriesCard 
+                      key={`series-${item.group.series_name}`} 
+                      id={item.group.id} 
+                      series_name={item.group.series_name} 
+                      genre={item.group.genre} 
+                      episode_count={item.group.episode_count} 
+                      total_duration_mins={item.group.total_duration_mins} 
+                      cover_url={item.group.cover_url} 
+                      description={item.group.description}
+                      completed_episodes={item.group.completed_episodes}
+                    />
+                  )
+                } else {
+                  const libraryEntry = libraryLookup.get(item.story.id)
+                  const flags = computeStoryFlags(item.story, libraryEntry)
+                  return (
+                    <div key={item.story.id} onClick={() => router.push('/player/' + item.story.id)} className="cursor-pointer">
+                      <HorizontalStoryCard 
+                        id={item.story.id} 
+                        title={item.story.title} 
+                        genre={item.story.genre} 
+                        author={item.story.author || 'Drive Time Tales'} 
+                        duration_mins={item.story.duration_mins} 
+                        credits={getCredits(item.story.duration_mins)} 
+                        cover_url={item.story.cover_url} 
+                        series_number={item.story.series_number} 
+                        series_total={item.story.series_total} 
+                        flags={flags}
+                      />
+                    </div>
+                  )
+                }
+              })
+            )}
+          </>
+        )}
+
+        {/* Series Only view */}
         {selectedType === 'Series Only' && (
           <>
             {seriesGroups.length === 0 ? (
@@ -262,21 +348,33 @@ function LibraryContent() {
               </div>
             ) : (
               seriesGroups.map(series => (
-                <SeriesCard key={series.series_name} id={series.id} series_name={series.series_name} genre={series.genre} author={series.author} episode_count={series.episode_count} total_duration_mins={series.total_duration_mins} cover_url={series.cover_url} />
+                <SeriesCard 
+                  key={series.series_name} 
+                  id={series.id} 
+                  series_name={series.series_name} 
+                  genre={series.genre} 
+                  episode_count={series.episode_count} 
+                  total_duration_mins={series.total_duration_mins} 
+                  cover_url={series.cover_url} 
+                  description={series.description}
+                  completed_episodes={series.completed_episodes}
+                />
               ))
             )}
           </>
         )}
-        {selectedType !== 'Series Only' && (
+
+        {/* Singles Only view */}
+        {selectedType === 'Singles Only' && (
           <>
-            {displayStories.length === 0 ? (
+            {singles.length === 0 ? (
               <div className="bg-slate-800 rounded-xl p-8 text-center">
                 <div className="text-4xl mb-3">😔</div>
                 <p className="text-white text-base mb-2">Sorry {userName}, no stories match your request.</p>
                 <p className="text-white text-sm" style={{ opacity: 0.7 }}>Try a different filter</p>
               </div>
             ) : (
-              displayStories.map(story => {
+              singles.map(story => {
                 const libraryEntry = libraryLookup.get(story.id)
                 const flags = computeStoryFlags(story, libraryEntry)
                 return (
