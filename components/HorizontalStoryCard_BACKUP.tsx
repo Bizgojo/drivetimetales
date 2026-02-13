@@ -127,12 +127,12 @@ export default function HorizontalStoryCard({
         background: '#1e293b',
         borderRadius: '14px',
         overflow: 'hidden',
-        border: '1px solid rgba(255, 255, 255, 0.18)', height: '150px',
+        border: '1px solid rgba(148, 163, 184, 0.06)',
         textDecoration: 'none',
       }}
     >
       {/* Cover image - 7rem square with shadow */}
-      <div style={{ width: '150px', height: '150px', flexShrink: 0 }}>
+      <div style={{ width: '7rem', flexShrink: 0, padding: '0.5rem' }}>
         <div 
           className="cover-glow"
           style={{
@@ -176,7 +176,7 @@ export default function HorizontalStoryCard({
             {title}
           </h3>
           <p style={{ color: '#94a3b8', fontSize: '12px', margin: '4px 0 0' }}>
-            {genre}
+            {genre} • by {author}
           </p>
         </div>
         

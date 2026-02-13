@@ -7,7 +7,7 @@ export default function StickyHeaderHome() {
   const { user } = useAuth()
   
   // Get user initial from email or name
-  const userInitial = user?.email?.charAt(0).toUpperCase() || user?.user_metadata?.name?.charAt(0).toUpperCase() || '?'
+  const userInitial = user?.first_name?.charAt(0).toUpperCase() || user?.email?.charAt(0).toUpperCase() || user?.user_metadata?.name?.charAt(0).toUpperCase() || '?'
 
   return (
     <header className="sticky top-0 z-50 bg-slate-950 border-b border-slate-800 px-4 py-3">

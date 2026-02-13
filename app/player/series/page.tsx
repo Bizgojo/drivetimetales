@@ -87,15 +87,26 @@ function SeriesPlayerContent() {
     setLoading(false)
   }
 
+  // FIX: Force audio element to load new source when currentIndex changes
+  useEffect(() => {
+    if (audioRef.current && playlist.length > 0 && currentStory) {
+      // Reset state for new episode
+      setAudioReady(false)
+      setDuration(0)
+      // Force the audio element to load the new source
+      audioRef.current.load()
+    }
+  }, [currentIndex, playlist])
+
   // Auto-play when audio is ready
   useEffect(() => {
-    if (audioReady && audioRef.current && !isPlaying && playlist.length > 0) {
+    if (audioReady && audioRef.current && playlist.length > 0) {
       audioRef.current.play().catch(err => {
         console.error('Autoplay failed:', err)
       })
       setIsPlaying(true)
     }
-  }, [audioReady, playlist.length])
+  }, [audioReady])
 
   // Check if current story is already in user's library
   useEffect(() => {
@@ -190,6 +201,7 @@ function SeriesPlayerContent() {
     setCurrentTime(0)
     setDuration(0)
     setCharged(false)
+    setIsPlaying(false)
     setCurrentIndex(prev => prev + 1)
   }
 
@@ -228,14 +240,14 @@ function SeriesPlayerContent() {
 
   // Play/Pause toggle
   const handlePlayPause = () => {
-    if (!audioRef.current) return
-    
-    if (isPlaying) {
-      audioRef.current.pause()
-      setIsPlaying(false)
-    } else {
-      audioRef.current.play()
-      setIsPlaying(true)
+    if (audioRef.current) {
+      if (isPlaying) {
+        audioRef.current.pause()
+        setIsPlaying(false)
+      } else {
+        audioRef.current.play().catch(err => console.error('Play failed:', err))
+        setIsPlaying(true)
+      }
     }
   }
 
