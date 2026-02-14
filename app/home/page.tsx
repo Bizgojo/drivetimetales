@@ -1,6 +1,6 @@
 'use client'
 import StickyHeaderHome from '@/components/StickyHeaderHome'
-
+import { getDeviceTimePeriod } from '@/lib/news-utils'
 // C01 Home Page - Updated Jan 21, 2026 - Playlist priority over Continue Listening
 
 import StickyHeaderFull from '@/components/StickyHeaderFull'
@@ -92,6 +92,7 @@ export default function HomePage() {
           .from('news_episodes')
           .select('id, category, audio_url, is_live, created_at')
           .eq('is_live', true)
+          .eq('time_period', getDeviceTimePeriod())
           .order('created_at', { ascending: false })
 
         if (error) {
@@ -124,7 +125,7 @@ export default function HomePage() {
         {/* Show Playlist OR Continue Listening, not both */}
         {hasPlaylist ? <YourPlaylist /> : <ContinueListening />}
         
-        <Home_NewsBriefings newsEpisodes={newsEpisodes} credits={userCredits} userState={userState} userName={displayName} />
+        {/* <Home_NewsBriefings newsEpisodes={newsEpisodes} credits={userCredits} userState={userState} userName={displayName} /> */}
         <NewReleases />
         <RecommendedForYou />
       </main>
