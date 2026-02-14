@@ -61,7 +61,7 @@ export default function SeriesCard({
           />
           <div style={{
             position: 'absolute',
-            top: '4px',
+            bottom: '4px',
             left: '4px',
             backgroundColor: '#dc2626',
             color: 'white',
