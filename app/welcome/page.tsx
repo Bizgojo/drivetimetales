@@ -1,7 +1,6 @@
 /*
 ================================================================================
 🔒 WELCOME PAGE - Drive Time Tales
-================================================================================
 Location: app/welcome/page.tsx
 Updated: January 18, 2026
 
@@ -15,7 +14,7 @@ MODULES:
 */
 
 'use client'
-
+import { getDeviceTimePeriod } from '@/lib/news-utils'
 import { useState, useEffect, Suspense } from 'react'
 import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
@@ -97,7 +96,8 @@ function WelcomeContent() {
         const { data, error } = await supabase
           .from('news_episodes')
           .select('id, category, audio_url, is_live, created_at')
-          .eq('is_live', true).order('created_at', { ascending: false })
+          .eq('is_live', true)
+          .eq('time_period', getDeviceTimePeriod()).order('created_at', { ascending: false })
 
         if (error) {
           console.error('Error fetching news episodes:', error)
@@ -129,17 +129,17 @@ function WelcomeContent() {
       <main style={{ maxWidth: '56rem', marginLeft: 'auto', marginRight: 'auto', padding: '1.5rem 1rem', paddingBottom: '6rem' }}>
 
         {/* W1: WelcomeHeader */}
-        <WelcomeHeader credits={freeCredits} />
+        <WelcomeHeader credits={freeCredits} /> */}
         
 
         {/* W2: NewsBriefings */}
-        <Welcome_NewsBriefings newsEpisodes={newsEpisodes} credits={freeCredits} />
+        {/* <Welcome_NewsBriefings newsEpisodes={newsEpisodes} credits={freeCredits} /> */}
 
         {/* W3: NewReleases */}
-        <W3NewReleases credits={freeCredits} />
+        <W3NewReleases credits={freeCredits} /> */}
 
         {/* W4: RecommendedForYou */}
-        <W4RecommendedForYou credits={freeCredits} />
+        <W4RecommendedForYou credits={freeCredits} /> */}
 
       </main>
 

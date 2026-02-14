@@ -6,15 +6,22 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+// ============================================================
+// v4.0 - Returns the correct time-period briefing per category
+// Client sends ?timePeriod=morning|afternoon|evening based on device time
+// ============================================================
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const category = searchParams.get('category');
     const state = searchParams.get('state');
+    const timePeriod = searchParams.get('timePeriod'); // morning | afternoon | evening
 
     let query = supabase
       .from('news_episodes')
       .select('*')
+      .eq('is_live', true)
       .order('created_at', { ascending: false });
 
     if (category) {
@@ -23,6 +30,11 @@ export async function GET(request: NextRequest) {
 
     if (state) {
       query = query.eq('state', state);
+    }
+
+    // Filter by time period if provided
+    if (timePeriod) {
+      query = query.eq('time_period', timePeriod);
     }
 
     const { data, error } = await query.limit(20);
@@ -43,13 +55,14 @@ export async function GET(request: NextRequest) {
       return response;
     }
 
+    // Group by category — one per category (latest)
     const briefingsByCategory: Record<string, any> = {};
     for (const briefing of data || []) {
       if (!briefingsByCategory[briefing.category]) {
         briefingsByCategory[briefing.category] = briefing;
       }
     }
-    
+
     const response = NextResponse.json({
       success: true,
       briefings: briefingsByCategory,

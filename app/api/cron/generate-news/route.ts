@@ -6,154 +6,163 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-// Hardcoded voice/narrator config from admin panel
-// Update these here if you change voices in the admin panel
-const VOICE_CONFIG: Record<string, { narratorName: string; voiceId: string }> = {
-  state: { narratorName: 'Sarah Mitchell', voiceId: '' },
-  national: { narratorName: 'Bill Stevens', voiceId: '' },
-  world: { narratorName: 'Edward Williams', voiceId: '' },
-  business: { narratorName: 'Roger Clemons', voiceId: '' },
-  sports: { narratorName: '', voiceId: '' },
-  science: { narratorName: '', voiceId: '' },
-};
+// ============================================================
+// v4.0 - SIMPLIFIED CRON: Generate generic briefings
+// Each category gets 1 body + 3 audio versions (morning/afternoon/evening)
+// No personalization, no per-user intros
+// ============================================================
 
 const CATEGORIES = ['national', 'world', 'business', 'sports', 'science'];
 
 export async function GET(request: NextRequest) {
   const startTime = Date.now();
   try {
-    // Step 1: Get voice/narrator config from news_settings table (admin panel saves here)
+    // Step 1: Get voice/narrator config from news_settings
     const { data: settingsRows } = await supabase.from('news_settings').select('*');
-    const settingsMap: Record<string, { voiceId: string; narratorName: string }> = {};
-    let mainSettings: any = {};
-    
+    const voiceMap: Record<string, { voiceId: string; narratorName: string }> = {};
+
     if (settingsRows) {
       for (const row of settingsRows) {
-        if (row.id === '1' || row.id === 'main') {
-          if (row.settings && Object.keys(row.settings).length > 0) {
-            mainSettings = row.settings;
+        if (row.category && row.voice_id) {
+          voiceMap[row.category] = { voiceId: row.voice_id, narratorName: row.narrator_name || 'Tammy' };
+        }
+      }
+    }
+
+    // Fallback: get from recent episodes
+    if (Object.keys(voiceMap).length === 0) {
+      const { data: recentEps } = await supabase
+        .from('news_episodes')
+        .select('category, voice_id, narrator_name')
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (recentEps) {
+        for (const ep of recentEps) {
+          if (!voiceMap[ep.category] && ep.voice_id) {
+            voiceMap[ep.category] = { voiceId: ep.voice_id, narratorName: ep.narrator_name || 'Tammy' };
           }
         }
-        // Each category has its own row with voice_id and narrator_name
-        if (row.category && row.voice_id) {
-          settingsMap[row.category] = { voiceId: row.voice_id, narratorName: row.narrator_name || 'Your Host' };
-        }
       }
     }
-
-    // Step 2: Fallback - get voice IDs from recent news_episodes
-    const { data: recentEpisodes } = await supabase
-      .from('news_episodes')
-      .select('category, voice_id, narrator_name, state')
-      .order('created_at', { ascending: false })
-      .limit(50);
-
-    const episodeMap: Record<string, { voiceId: string; narratorName: string }> = {};
-    if (recentEpisodes) {
-      for (const ep of recentEpisodes) {
-        const key = ep.state ? `state-${ep.state}` : ep.category;
-        if (!episodeMap[key] && ep.voice_id) {
-          episodeMap[key] = { voiceId: ep.voice_id, narratorName: ep.narrator_name || 'Your Host' };
-        }
-        if (!episodeMap[ep.category] && ep.voice_id) {
-          episodeMap[ep.category] = { voiceId: ep.voice_id, narratorName: ep.narrator_name || 'Your Host' };
-        }
-      }
-    }
-
-    // Merge: settings table takes priority over episodes
-    const voiceMap: Record<string, { voiceId: string; narratorName: string }> = { ...episodeMap, ...settingsMap };
 
     // Check if auto-generate is enabled
-    const { data: globalRow } = await supabase.from("news_settings").select("auto_generate").eq("category", "global").single();
-    const isEnabled = globalRow?.auto_generate || mainSettings?.schedule?.enabled || mainSettings?.auto_generate || false;
-
-    console.log(`[Cron] Auto-generate enabled: ${isEnabled}, Voice map entries: ${Object.keys(voiceMap).length}`);
-
-    // For manual GET requests (testing), always run regardless of enabled flag
+    const { data: globalRow } = await supabase
+      .from('news_settings')
+      .select('auto_generate')
+      .eq('category', 'global')
+      .single();
+    const isEnabled = globalRow?.auto_generate || false;
     const isManualTest = !request.headers.get('x-vercel-cron');
-    
+
+    console.log(`[Cron v4] Auto-generate: ${isEnabled}, Voices: ${Object.keys(voiceMap).length}`);
+
     if (!isEnabled && !isManualTest) {
-      return NextResponse.json({ 
-        success: true, 
-        message: 'Auto-generation disabled (enable in admin panel)',
-        voiceMapCategories: Object.keys(voiceMap),
-        generated: 0 
+      return NextResponse.json({
+        success: true,
+        message: 'Auto-generation disabled',
+        generated: 0,
       });
     }
 
-    const results: Array<{ category: string; state?: string; success: boolean; error?: string }> = [];
+    const results: Array<{ category: string; state?: string; success: boolean; versions?: number; error?: string }> = [];
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://drivetimetales.vercel.app';
 
-    // Generate each category using voice from recent episodes
+    // Generate each category
     for (const categoryId of CATEGORIES) {
       const voice = voiceMap[categoryId];
-      
-      const voiceId = voice?.voiceId;
-      const narratorName = voice?.narratorName || 'Your Host';
-
-      if (!voiceId) {
-        console.log(`[Cron] Skipping ${categoryId} - no voice found in episodes or settings`);
+      if (!voice?.voiceId) {
+        console.log(`[Cron v4] Skipping ${categoryId} — no voice configured`);
         results.push({ category: categoryId, success: false, error: 'No voice configured' });
         continue;
       }
 
       try {
-        console.log(`[Cron] Generating ${categoryId} with ${narratorName}...`);
+        console.log(`[Cron v4] Generating ${categoryId} with ${voice.narratorName}...`);
         const response = await fetch(baseUrl + '/api/admin/generate-news', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ category: categoryId, voiceId, narratorName, state: null, storiesCount: 5, listenerName: 'listener' })
+          body: JSON.stringify({
+            category: categoryId,
+            voiceId: voice.voiceId,
+            narratorName: voice.narratorName,
+          }),
         });
-        results.push({ category: categoryId, success: response.ok, error: response.ok ? undefined : 'HTTP ' + response.status });
-        console.log(`[Cron] ${categoryId}: ${response.ok ? 'OK' : 'FAIL'}`);
+
+        if (response.ok) {
+          const data = await response.json();
+          results.push({
+            category: categoryId,
+            success: true,
+            versions: data.script?.metadata?.audioVersions || 0,
+          });
+        } else {
+          results.push({ category: categoryId, success: false, error: `HTTP ${response.status}` });
+        }
+        console.log(`[Cron v4] ${categoryId}: ${response.ok ? 'OK' : 'FAIL'}`);
       } catch (err) {
         results.push({ category: categoryId, success: false, error: String(err) });
       }
-      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Delay between categories to avoid rate limits
+      await new Promise(resolve => setTimeout(resolve, 3000));
     }
 
     // Generate state news
     const stateVoice = voiceMap['state'];
-    const stateVoiceId = stateVoice?.voiceId;
-    const stateNarrator = stateVoice?.narratorName || 'Your Host';
+    if (stateVoice?.voiceId) {
+      const { data: users } = await supabase
+        .from('users')
+        .select('state')
+        .not('state', 'is', null)
+        .gt('credits', 0);
 
-    if (stateVoiceId) {
-      const { data: users } = await supabase.from('users').select('state').not('state', 'is', null).gt('credits', 0);
       const subscriberStates = Array.from(new Set((users || []).map((u: any) => u.state).filter(Boolean)));
       if (!subscriberStates.includes('South Carolina')) subscriberStates.push('South Carolina');
 
       for (const state of subscriberStates) {
         try {
-          console.log(`[Cron] Generating state news for ${state}...`);
+          console.log(`[Cron v4] Generating state news: ${state}...`);
           const response = await fetch(baseUrl + '/api/admin/generate-news', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ category: 'state', voiceId: stateVoiceId, narratorName: stateNarrator, state, storiesCount: 5, listenerName: 'listener' })
+            body: JSON.stringify({
+              category: 'state',
+              voiceId: stateVoice.voiceId,
+              narratorName: stateVoice.narratorName,
+              state,
+            }),
           });
-          results.push({ category: 'state', state, success: response.ok });
+          const data = response.ok ? await response.json() : null;
+          results.push({
+            category: 'state',
+            state,
+            success: response.ok,
+            versions: data?.script?.metadata?.audioVersions || 0,
+          });
         } catch (err) {
           results.push({ category: 'state', state, success: false, error: String(err) });
         }
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(resolve => setTimeout(resolve, 3000));
       }
-    } else {
-      console.log('[Cron] Skipping state news - no voice found');
     }
 
     const successCount = results.filter(r => r.success).length;
+    const totalVersions = results.reduce((sum, r) => sum + (r.versions || 0), 0);
     const elapsed = Math.round((Date.now() - startTime) / 1000);
-    return NextResponse.json({ 
-      success: true, 
-      message: `Generated ${successCount} briefings`, 
-      generated: successCount, 
-      total: results.length, 
-      elapsedSeconds: elapsed, 
+
+    return NextResponse.json({
+      success: true,
+      message: `Generated ${successCount} categories, ${totalVersions} audio versions`,
+      generated: successCount,
+      totalVersions,
+      total: results.length,
+      elapsedSeconds: elapsed,
       voicesFound: Object.keys(voiceMap),
-      results 
+      results,
     });
   } catch (error) {
-    console.error('[Cron] Error:', error);
+    console.error('[Cron v4] Error:', error);
     return NextResponse.json({ success: false, error: String(error) }, { status: 500 });
   }
 }

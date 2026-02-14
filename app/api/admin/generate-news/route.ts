@@ -8,49 +8,28 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-// OpenAI client created inside handler
+// ============================================================
+// v4.0 - GENERIC NEWS BRIEFINGS (No Personalization)
+// ============================================================
+// Each briefing cycle generates 3 complete audio files per category:
+//   morning, afternoon, evening
+// Each audio file is self-contained: greeting + announcer + date + news + outro
+// Client picks the right one based on device local time
+// ============================================================
 
 // ============================================================
-// TIMEZONE & DATE UTILITIES
+// DATE UTILITY
 // ============================================================
 
-const STATE_TIMEZONES: Record<string, string> = {
-  'South Carolina': 'America/New_York', 'North Carolina': 'America/New_York', 'Georgia': 'America/New_York',
-  'Florida': 'America/New_York', 'Virginia': 'America/New_York', 'New York': 'America/New_York',
-  'Pennsylvania': 'America/New_York', 'Ohio': 'America/New_York', 'Michigan': 'America/New_York',
-  'Massachusetts': 'America/New_York', 'New Jersey': 'America/New_York', 'Connecticut': 'America/New_York',
-  'Maine': 'America/New_York', 'Maryland': 'America/New_York', 'Delaware': 'America/New_York',
-  'Vermont': 'America/New_York', 'New Hampshire': 'America/New_York', 'Rhode Island': 'America/New_York',
-  'West Virginia': 'America/New_York', 'Kentucky': 'America/New_York', 'Indiana': 'America/New_York',
-  'Tennessee': 'America/Chicago', 'Texas': 'America/Chicago', 'Illinois': 'America/Chicago',
-  'Missouri': 'America/Chicago', 'Wisconsin': 'America/Chicago', 'Minnesota': 'America/Chicago',
-  'Iowa': 'America/Chicago', 'Kansas': 'America/Chicago', 'Nebraska': 'America/Chicago',
-  'Oklahoma': 'America/Chicago', 'Louisiana': 'America/Chicago', 'Arkansas': 'America/Chicago',
-  'Mississippi': 'America/Chicago', 'Alabama': 'America/Chicago', 'North Dakota': 'America/Chicago',
-  'South Dakota': 'America/Chicago', 'Colorado': 'America/Denver', 'Arizona': 'America/Phoenix',
-  'Utah': 'America/Denver', 'New Mexico': 'America/Denver', 'Wyoming': 'America/Denver',
-  'Montana': 'America/Denver', 'Idaho': 'America/Boise', 'California': 'America/Los_Angeles',
-  'Washington': 'America/Los_Angeles', 'Oregon': 'America/Los_Angeles', 'Nevada': 'America/Los_Angeles',
-  'Alaska': 'America/Anchorage', 'Hawaii': 'Pacific/Honolulu',
-};
-
-function getTimezoneFromState(state: string): string {
-  return STATE_TIMEZONES[state] || 'America/New_York';
-}
-
-function getGreetingTimeOfDay(timezone: string): 'morning' | 'afternoon' | 'evening' {
-  const now = new Date();
-  const formatter = new Intl.DateTimeFormat('en-US', { timeZone: timezone, hour: 'numeric', hour12: false });
-  const hour = parseInt(formatter.format(now), 10);
-  if (hour >= 5 && hour < 12) return 'morning';
-  if (hour >= 12 && hour < 17) return 'afternoon';
-  return 'evening';
-}
-
-function formatSpokenDate(timezone: string): string {
+function formatSpokenDate(): string {
+  // Use ET as the canonical date (most US listeners)
   const now = new Date();
   const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: timezone, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+    timeZone: 'America/New_York',
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
   });
   return formatter.format(now);
 }
@@ -68,47 +47,12 @@ function getCategoryDisplayName(categorySlug: string, state?: string): string {
 }
 
 // ============================================================
-// INTRO / OUTRO GENERATION (FIXED TEMPLATES)
-// ============================================================
-
-function generateIntro(params: {
-  greetingTimeOfDay: 'morning' | 'afternoon' | 'evening';
-  firstName: string | null;
-  newscasterName: string;
-  categoryDisplayName: string;
-  dateSpoken: string;
-  isPersonalized: boolean;
-}): string {
-  const { greetingTimeOfDay, firstName, newscasterName, categoryDisplayName, dateSpoken, isPersonalized } = params;
-  
-  if (isPersonalized && firstName) {
-    return `Good ${greetingTimeOfDay}, ${firstName}. I'm ${newscasterName}, bringing you the ${categoryDisplayName} for ${dateSpoken}.`;
-  } else {
-    return `Good ${greetingTimeOfDay}. I'm ${newscasterName}, bringing you the ${categoryDisplayName} for ${dateSpoken}.`;
-  }
-}
-
-function generateOutro(params: {
-  firstName: string | null;
-  newscasterName: string;
-  isPersonalized: boolean;
-}): string {
-  const { firstName, newscasterName, isPersonalized } = params;
-  
-  if (isPersonalized && firstName) {
-    return `${firstName}, thanks for spending a few minutes with me. I'm ${newscasterName}, and I'll be back later today with your next update. Take care out there.`;
-  } else {
-    return `Thanks for spending a few minutes with me. I'm ${newscasterName}, and I'll be back later today with your next update. Take care out there.`;
-  }
-}
-
-// ============================================================
 // SEARCH QUERIES BY CATEGORY
 // ============================================================
 
 function getSearchQuery(category: string, state?: string): string {
   const today = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-  
+
   switch (category) {
     case 'state':
       return `${state} news today ${today} breaking news weather sports`;
@@ -156,6 +100,25 @@ Lead with emergencies or major breaking news if present.`;
 }
 
 // ============================================================
+// FULL SCRIPT ASSEMBLY (greeting + intro + body + outro)
+// ============================================================
+
+function assembleFullScript(params: {
+  timePeriod: 'morning' | 'afternoon' | 'evening';
+  narratorName: string;
+  categoryDisplayName: string;
+  dateSpoken: string;
+  bodyText: string;
+}): string {
+  const { timePeriod, narratorName, categoryDisplayName, dateSpoken, bodyText } = params;
+
+  const intro = `Good ${timePeriod}. I'm ${narratorName}, bringing you the ${categoryDisplayName} for ${dateSpoken}.`;
+  const outro = `Thanks for spending a few minutes with me. I'm ${narratorName}, and I'll be back later today with your next update. Take care out there.`;
+
+  return `${intro}\n\n${bodyText}\n\n${outro}`;
+}
+
+// ============================================================
 // BODY GENERATION WITH OPENAI WEB SEARCH
 // ============================================================
 
@@ -167,13 +130,13 @@ async function generateBodyWithSearch(params: {
   durationMinutes: number;
 }): Promise<{ body: string; citations: string[] }> {
   const { category, categoryDisplayName, state, toneStyle, durationMinutes } = params;
-  
+
   const wordTarget = durationMinutes * 130;
   const searchQuery = getSearchQuery(category, state);
   const categoryInstructions = getCategoryInstructions(category, state);
 
   const spokenDate = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
-  
+
   const prompt = `You are a news researcher and script writer for Drive Time Tales, an audio news platform.
 
 STEP 1: SEARCH FOR NEWS
@@ -213,20 +176,17 @@ FORMAT YOUR RESPONSE EXACTLY LIKE THIS:
 ---END---`;
 
   try {
-    // Use GPT-4o with web search capability via Responses API
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const response = await openai.responses.create({
       model: 'gpt-4o',
       tools: [{ type: 'web_search' }],
       input: prompt,
     });
-    
-    // Extract text from response - use output_text convenience property
+
     let fullText = '';
     if (response.output_text) {
       fullText = response.output_text;
     } else if (response.output && Array.isArray(response.output)) {
-      // Fallback: iterate through output array
       for (const item of response.output) {
         if (item.type === 'message' && item.content) {
           for (const content of item.content) {
@@ -237,21 +197,19 @@ FORMAT YOUR RESPONSE EXACTLY LIKE THIS:
         }
       }
     }
-    
-    // Parse body and citations
+
     let body = '';
     const citations: string[] = [];
-    
+
     const bodyMatch = fullText.match(/---BODY---\s*([\s\S]*?)\s*---CITATIONS---/);
     const citationsMatch = fullText.match(/---CITATIONS---\s*([\s\S]*?)\s*---END---/);
-    
+
     if (bodyMatch) {
       body = bodyMatch[1].trim();
     } else {
-      // Fallback: try to extract body without markers
       body = fullText.replace(/---BODY---|---CITATIONS---|---END---/g, '').trim();
     }
-    
+
     if (citationsMatch) {
       const citationLines = citationsMatch[1].trim().split('\n');
       for (const line of citationLines) {
@@ -261,15 +219,69 @@ FORMAT YOUR RESPONSE EXACTLY LIKE THIS:
         }
       }
     }
-    
-    // Clean any stray URLs from body (safety check)
+
     body = body.replace(/https?:\/\/[^\s]+/g, '').replace(/\s+/g, ' ').trim();
-    
+
     return { body, citations };
-    
+
   } catch (error) {
     console.error('[News Generator] OpenAI API error:', error);
     throw new Error('Failed to generate script body');
+  }
+}
+
+// ============================================================
+// TTS: Generate audio with ElevenLabs
+// ============================================================
+
+async function generateAndUploadAudio(params: {
+  text: string;
+  voiceId: string;
+  storagePath: string;
+}): Promise<{ audioUrl: string; duration: number } | null> {
+  const { text, voiceId, storagePath } = params;
+
+  try {
+    const ttsResponse = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'xi-api-key': process.env.ELEVENLABS_API_KEY!,
+      },
+      body: JSON.stringify({
+        text,
+        model_id: 'eleven_turbo_v2',
+        voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+      }),
+    });
+
+    if (!ttsResponse.ok) {
+      console.error(`[TTS] Error: ${ttsResponse.status}`, await ttsResponse.text());
+      return null;
+    }
+
+    const audioBuffer = await ttsResponse.arrayBuffer();
+
+    const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
+      .from('audio')
+      .upload(storagePath, Buffer.from(audioBuffer), {
+        contentType: 'audio/mpeg',
+        upsert: true,
+      });
+
+    if (uploadError || !uploadData) {
+      console.error('[TTS] Upload error:', uploadError);
+      return null;
+    }
+
+    const { data: urlData } = supabaseAdmin.storage.from('audio').getPublicUrl(storagePath);
+    const duration = Math.round(text.split(/\s+/).length / 130 * 10) / 10;
+
+    return { audioUrl: urlData.publicUrl, duration };
+
+  } catch (err) {
+    console.error('[TTS] Failed:', err);
+    return null;
   }
 }
 
@@ -278,62 +290,42 @@ FORMAT YOUR RESPONSE EXACTLY LIKE THIS:
 // ============================================================
 
 export async function GET() {
-  return NextResponse.json({ status: 'ok', version: '3.1-openai-web-search' });
+  return NextResponse.json({ status: 'ok', version: '4.0-generic-3-versions' });
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    const reqBody = await request.json();
     const {
       category,
       voiceId,
-      isPersonalized = false,
-      firstName = 'Marc',
       state,
       narratorName,
       toneStyle = 'warm, expressive, conversational - like a trusted friend giving you the news',
       durationMinutes = 2,
-    } = body;
-    
+    } = reqBody;
+
     if (!category) {
       return NextResponse.json({ error: 'Category is required' }, { status: 400 });
     }
-    
     if (!narratorName) {
       return NextResponse.json({ error: 'Narrator name is required' }, { status: 400 });
     }
-    
     if (category === 'state' && !state) {
       return NextResponse.json({ error: 'State is required for state news' }, { status: 400 });
     }
-    
-    // Determine timezone and greeting
-    const timezone = state ? getTimezoneFromState(state) : 'America/New_York';
-    const greetingTimeOfDay = getGreetingTimeOfDay(timezone);
-    const dateSpoken = formatSpokenDate(timezone);
+
+    const dateSpoken = formatSpokenDate();
     const categoryDisplayName = getCategoryDisplayName(category, state);
-    
-    // Generate INTRO
-    const intro = generateIntro({
-      greetingTimeOfDay,
-      firstName: isPersonalized ? firstName : null,
-      newscasterName: narratorName,
-      categoryDisplayName,
-      dateSpoken,
-      isPersonalized,
-    });
-    
-    // Generate OUTRO
-    const outro = generateOutro({
-      firstName: isPersonalized ? firstName : null,
-      newscasterName: narratorName,
-      isPersonalized,
-    });
-    
-    // Generate BODY with web search
+
+    // ========================================
+    // STEP 1: Generate news body (one time)
+    // ========================================
+    console.log(`[Generate News v4] Generating body for ${category}...`);
+
     let bodyText: string;
     let citations: string[] = [];
-    
+
     try {
       const result = await generateBodyWithSearch({
         category,
@@ -348,124 +340,167 @@ export async function POST(request: NextRequest) {
       console.error('[Generate News] Body generation failed:', error);
       return NextResponse.json({ error: 'Failed to generate script body' }, { status: 500 });
     }
-    
+
     const wordCount = bodyText.split(/\s+/).length;
     const generatedAt = new Date().toISOString();
-    
-    // Save to database
+
+    // ========================================
+    // STEP 2: Generate 3 complete audio files
+    // ========================================
+    const timePeriods: Array<'morning' | 'afternoon' | 'evening'> = ['morning', 'afternoon', 'evening'];
+    const results: Array<{
+      timePeriod: string;
+      audioUrl: string | null;
+      duration: number | null;
+      fullScript: string;
+    }> = [];
+
+    for (const timePeriod of timePeriods) {
+      const fullScript = assembleFullScript({
+        timePeriod,
+        narratorName,
+        categoryDisplayName,
+        dateSpoken,
+        bodyText,
+      });
+
+      let audioUrl: string | null = null;
+      let duration: number | null = null;
+
+      if (voiceId) {
+        console.log(`[Generate News v4] TTS: ${category} / ${timePeriod}...`);
+        const storagePath = `news/${category}${state ? '-' + state.toLowerCase().replace(/\s/g, '-') : ''}/${timePeriod}-${Date.now()}.mp3`;
+
+        const audioResult = await generateAndUploadAudio({
+          text: fullScript,
+          voiceId,
+          storagePath,
+        });
+
+        if (audioResult) {
+          audioUrl = audioResult.audioUrl;
+          duration = audioResult.duration;
+        }
+
+        // Small delay between TTS calls to avoid rate limits
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+
+      results.push({ timePeriod, audioUrl, duration, fullScript });
+    }
+
+    // ========================================
+    // STEP 3: Save to database
+    // ========================================
+
+    // Save script to generated_scripts
     const { data: savedScript, error: saveError } = await supabaseAdmin
       .from('generated_scripts')
       .insert({
         category_slug: category,
-        is_personalized: isPersonalized,
+        is_personalized: false,
         generated_at: generatedAt,
-        timezone_used: timezone,
-        greeting_time_of_day: greetingTimeOfDay,
-        intro_text: intro,
+        timezone_used: 'America/New_York',
+        greeting_time_of_day: 'all',
+        intro_text: '',
         body_text: bodyText,
-        outro_text: outro,
+        outro_text: '',
         news_items_json: citations.map(url => ({ source_url: url })),
-        status: 'draft',
+        status: 'published',
       })
       .select()
       .single();
-    
+
     if (saveError) {
-      console.error('[Generate News] Save error:', saveError);
+      console.error('[Generate News] Save script error:', saveError);
     }
-    
-    // Generate audio with ElevenLabs if voiceId provided - BODY ONLY (no intro/outro)
-    // Intros/outros are separate pre-recorded audio files played by the client
-    let audioUrl: string | null = null;
-    let audioDuration: number | null = null;
-    
-    if (voiceId) {
-      try {
-        console.log(`[Generate News] Generating TTS for ${category} with voice ${voiceId}`);
-        
-        const ttsResponse = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'xi-api-key': process.env.ELEVENLABS_API_KEY!,
-          },
-          body: JSON.stringify({
-            text: bodyText,
-            model_id: 'eleven_turbo_v2',
-            voice_settings: { stability: 0.5, similarity_boost: 0.75 },
-          }),
-        });
-        
-        if (ttsResponse.ok) {
-          const audioBuffer = await ttsResponse.arrayBuffer();
-          const fileName = `news/${category}${state ? '-' + state.toLowerCase().replace(/\s/g, '-') : ''}/${Date.now()}.mp3`;
-          
-          const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
-            .from('audio')
-            .upload(fileName, Buffer.from(audioBuffer), {
-              contentType: 'audio/mpeg',
-              upsert: true,
-            });
-          
-          if (!uploadError && uploadData) {
-            const { data: urlData } = supabaseAdmin.storage.from('audio').getPublicUrl(fileName);
-            audioUrl = urlData.publicUrl;
-            audioDuration = Math.round(bodyText.split(/\s+/).length / 130 * 10) / 10;
-            console.log(`[Generate News] Audio uploaded: ${audioUrl}`);
-          } else {
-            console.error('[Generate News] Upload error:', uploadError);
-          }
-        } else {
-          console.error('[Generate News] TTS error:', ttsResponse.status, await ttsResponse.text());
+
+    // Save each time-period version to news_episodes
+    for (const result of results) {
+      if (result.audioUrl) {
+        try {
+          await supabaseAdmin.from('news_episodes').insert({
+            category,
+            state: state || null,
+            script_text: result.fullScript,
+            audio_url: result.audioUrl,
+            narrator_name: narratorName,
+            voice_id: voiceId,
+            duration: result.duration,
+            is_live: true,
+            time_period: result.timePeriod,
+            created_at: new Date().toISOString(),
+          });
+          console.log(`[Generate News v4] Saved: ${category} / ${result.timePeriod}`);
+        } catch (epErr) {
+          console.error(`[Generate News] news_episodes insert error (${result.timePeriod}):`, epErr);
         }
-      } catch (ttsErr) {
-        console.error('[Generate News] TTS failed:', ttsErr);
       }
     }
-    
-    // Save to news_episodes if audio was generated
-    if (audioUrl) {
-      try {
-        await supabaseAdmin.from('news_episodes').insert({
-          category,
-          state: state || null,
-          script_text: `${intro}\n\n${bodyText}\n\n${outro}`,
-          audio_url: audioUrl,
-          narrator_name: narratorName,
-          voice_id: voiceId,
-          duration: audioDuration,
-          is_live: true,
-          created_at: new Date().toISOString(),
-        });
-        console.log(`[Generate News] Saved to news_episodes: ${category}`);
-      } catch (epErr) {
-        console.error('[Generate News] news_episodes insert error:', epErr);
+
+    // ========================================
+    // STEP 4: Mark older episodes as not live
+    // ========================================
+    try {
+      const newIds = results.filter(r => r.audioUrl).map(r => r.audioUrl);
+      if (newIds.length > 0) {
+        // Get IDs of just-inserted episodes
+        const { data: newEpisodes } = await supabaseAdmin
+          .from('news_episodes')
+          .select('id')
+          .eq('category', category)
+          .eq('is_live', true)
+          .order('created_at', { ascending: false })
+          .limit(3);
+
+        const keepIds = (newEpisodes || []).map(e => e.id);
+
+        if (keepIds.length > 0) {
+          // Mark all older episodes of this category as not live
+          let archiveQuery = supabaseAdmin
+            .from('news_episodes')
+            .update({ is_live: false })
+            .eq('category', category)
+            .eq('is_live', true)
+            .not('id', 'in', `(${keepIds.join(',')})`);
+
+          if (state) {
+            archiveQuery = archiveQuery.eq('state', state);
+          }
+
+          await archiveQuery;
+          console.log(`[Generate News v4] Archived old ${category} episodes, keeping ${keepIds.length} new`);
+        }
       }
+    } catch (archiveErr) {
+      console.error('[Generate News] Archive error:', archiveErr);
     }
-    
+
+    const successCount = results.filter(r => r.audioUrl).length;
+
     return NextResponse.json({
       success: true,
       script: {
         id: savedScript?.id,
-        intro,
         body: bodyText,
-        outro,
         citations,
+        versions: results.map(r => ({
+          timePeriod: r.timePeriod,
+          audioUrl: r.audioUrl,
+          duration: r.duration,
+        })),
         metadata: {
           category,
           categoryDisplayName,
-          isPersonalized,
-          timezoneUsed: timezone,
-          greetingTimeOfDay,
           dateSpoken,
           wordCount,
           citationsCount: citations.length,
           generatedAt,
-          audioUrl,
+          audioVersions: successCount,
         },
       },
     });
-    
+
   } catch (error) {
     console.error('[Generate News] Error:', error);
     return NextResponse.json({ error: 'Failed to generate news script' }, { status: 500 });
