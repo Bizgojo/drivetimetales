@@ -34,9 +34,11 @@ export default function SeriesDetailPage() {
   const [episodes, setEpisodes] = useState<Episode[]>([])
   const [loading, setLoading] = useState(true)
   const [userProgress, setUserProgress] = useState<Record<string, UserProgress>>({})
+  const [ownedEpisodes, setOwnedEpisodes] = useState<Set<string>>(new Set())
   const [selectedEpisodes, setSelectedEpisodes] = useState<Set<string>>(new Set())
   const [userCredits, setUserCredits] = useState(user?.credits || 0)
   const [showInsufficientCredits, setShowInsufficientCredits] = useState(false)
+  const [showRestartModal, setShowRestartModal] = useState<string | null>(null)
   const [seriesInfo, setSeriesInfo] = useState<{
     name: string
     description: string
@@ -124,14 +126,18 @@ export default function SeriesDetailPage() {
           
           if (progressData) {
             const progress: Record<string, UserProgress> = {}
+            const owned = new Set<string>()
             progressData.forEach(p => {
               progress[p.story_id] = {
                 story_id: p.story_id,
                 progress_seconds: p.progress || 0,
                 completed: p.completed || false
               }
+              // If it's in user_library, the user already owns it
+              owned.add(p.story_id)
             })
             setUserProgress(progress)
+            setOwnedEpisodes(owned)
           }
         }
       }
@@ -155,7 +161,9 @@ export default function SeriesDetailPage() {
   // Calculate unfinished episodes stats
   const unfinishedEpisodes = episodes.filter(ep => !userProgress[ep.id]?.completed)
   const unfinishedCount = unfinishedEpisodes.length
-  const unfinishedCredits = unfinishedEpisodes.reduce((sum, ep) => sum + ep.credits, 0)
+  // Only count credits for episodes NOT already owned
+  const unfinishedCredits = unfinishedEpisodes.reduce((sum, ep) => 
+    sum + (ownedEpisodes.has(ep.id) ? 0 : ep.credits), 0)
   const unfinishedMins = unfinishedEpisodes.reduce((sum, ep) => sum + ep.duration_mins, 0)
   const unfinishedHours = Math.floor(unfinishedMins / 60)
   const unfinishedRemMins = unfinishedMins % 60
@@ -165,7 +173,9 @@ export default function SeriesDetailPage() {
 
   // Calculate selected episodes stats
   const selectedArray = episodes.filter(ep => selectedEpisodes.has(ep.id))
-  const selectedCredits = selectedArray.reduce((sum, ep) => sum + ep.credits, 0)
+  // Only charge for episodes not already owned
+  const selectedCredits = selectedArray.reduce((sum, ep) => 
+    sum + (ownedEpisodes.has(ep.id) ? 0 : ep.credits), 0)
 
   const selectAllUnfinished = () => {
     if (userCredits < unfinishedCredits) {
@@ -176,14 +186,16 @@ export default function SeriesDetailPage() {
     setSelectedEpisodes(unfinishedIds)
   }
 
-  const goToPlayer = () => {
+  const goToPlayer = (startFromBeginning?: boolean) => {
     // If no episodes manually selected, auto-select all unfinished
     let episodesToPlay = episodes.filter(ep => selectedEpisodes.has(ep.id))
     if (episodesToPlay.length === 0) {
       episodesToPlay = unfinishedEpisodes.length > 0 ? unfinishedEpisodes : episodes
     }
     
-    const totalCredits = episodesToPlay.reduce((sum, ep) => sum + ep.credits, 0)
+    // Only charge for episodes NOT already owned
+    const totalCredits = episodesToPlay.reduce((sum, ep) => 
+      sum + (ownedEpisodes.has(ep.id) ? 0 : ep.credits), 0)
     
     // Check credits
     if (userCredits < totalCredits) {
@@ -191,12 +203,43 @@ export default function SeriesDetailPage() {
       return
     }
     
-    const playlist = episodesToPlay.map(ep => ({
+    const playlist = episodesToPlay.map(ep => {
+      const progress = userProgress[ep.id]
+      // Resume 5 seconds before where they stopped (minimum 0)
+      const resumePosition = (!startFromBeginning && progress && !progress.completed && progress.progress_seconds > 5) 
+        ? Math.max(0, progress.progress_seconds - 5) 
+        : 0
+      return {
+        id: ep.id,
+        title: ep.title,
+        episode_number: ep.episode_number,
+        series_name: seriesInfo?.name,
+        resume_seconds: resumePosition
+      }
+    })
+    localStorage.setItem('dtt_series_playlist', JSON.stringify(playlist))
+    localStorage.setItem('dtt_series_index', '0')
+    router.push('/player/series')
+  }
+
+  // Play a single episode directly (tap the play icon)
+  const playSingleEpisode = (ep: Episode, startFromBeginning?: boolean) => {
+    const creditsNeeded = ownedEpisodes.has(ep.id) ? 0 : ep.credits
+    if (userCredits < creditsNeeded) {
+      setShowInsufficientCredits(true)
+      return
+    }
+    const progress = userProgress[ep.id]
+    const resumePosition = (!startFromBeginning && progress && !progress.completed && progress.progress_seconds > 5)
+      ? Math.max(0, progress.progress_seconds - 5)
+      : 0
+    const playlist = [{
       id: ep.id,
       title: ep.title,
       episode_number: ep.episode_number,
-      series_name: seriesInfo?.name
-    }))
+      series_name: seriesInfo?.name,
+      resume_seconds: resumePosition
+    }]
     localStorage.setItem('dtt_series_playlist', JSON.stringify(playlist))
     localStorage.setItem('dtt_series_index', '0')
     router.push('/player/series')
@@ -311,6 +354,8 @@ export default function SeriesDetailPage() {
             const progress = userProgress[ep.id]
             const progressPercent = progress ? progress.completed ? 100 : Math.round((progress.progress_seconds / (ep.duration_mins * 60)) * 100) : 0
             const isSelected = selectedEpisodes.has(ep.id)
+            const isOwned = ownedEpisodes.has(ep.id)
+            const hasProgress = progress && progress.progress_seconds > 0 && !progress.completed
             const epDescription = ep.description ? ep.description.split(' ').slice(0, 15).join(' ') + (ep.description.split(' ').length > 15 ? '...' : '') : ''
 
             return (
@@ -365,14 +410,54 @@ export default function SeriesDetailPage() {
                           <span style={{ color: 'white', fontSize: '14px', fontWeight: 'bold' }}>✓</span>
                         </div>
                       )}
+
+                      {/* Play button overlay */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (hasProgress) {
+                            setShowRestartModal(ep.id)
+                          } else {
+                            playSingleEpisode(ep)
+                          }
+                        }}
+                        style={{
+                          position: 'absolute',
+                          bottom: '6px',
+                          right: '6px',
+                          backgroundColor: 'rgba(0,0,0,0.7)',
+                          color: 'white',
+                          width: '30px',
+                          height: '30px',
+                          borderRadius: '50%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          border: '1.5px solid rgba(255,255,255,0.5)',
+                          cursor: 'pointer',
+                          fontSize: '12px'
+                        }}
+                      >
+                        ▶
+                      </button>
                     </div>
                   </div>
                   
                   <div style={{ flex: 1, padding: '12px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                    <div className="text-white text-xs font-medium" style={{ marginBottom: '4px' }}>Episode {ep.episode_number}</div>
+                    <div className="text-white text-xs font-medium" style={{ marginBottom: '4px' }}>
+                      Episode {ep.episode_number}
+                      {isOwned && <span style={{ color: '#22c55e', marginLeft: '8px' }}>✓ Owned</span>}
+                    </div>
                     <h3 className="text-white font-bold text-sm" style={{ marginBottom: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ep.title}</h3>
                     {epDescription && <p className="text-white text-xs" style={{ marginBottom: '8px', opacity: 0.8 }}>{epDescription}</p>}
-                    <div className="text-white text-xs font-semibold">{ep.duration_mins} min • {ep.credits} credit{ep.credits !== 1 ? 's' : ''}</div>
+                    <div className="text-white text-xs font-semibold">
+                      {ep.duration_mins} min • {isOwned ? '✓ Owned' : `${ep.credits} credit${ep.credits !== 1 ? 's' : ''}`}
+                      {hasProgress && (
+                        <span style={{ color: '#f97316', marginLeft: '8px' }}>
+                          {Math.round(progress.progress_seconds / 60)}m listened
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
                 
@@ -406,7 +491,7 @@ export default function SeriesDetailPage() {
       }}>
         <div style={{ display: 'flex', gap: '12px' }}>
           <button
-            onClick={goToPlayer}
+            onClick={() => goToPlayer()}
             style={{
               flex: 1,
               padding: '16px',
@@ -423,7 +508,7 @@ export default function SeriesDetailPage() {
               gap: '8px'
             }}
           >
-            ▶ Play Series
+            ▶ Play{hasSelection ? ` (${selectedEpisodes.size})` : ' Series'}
           </button>
           <button
             onClick={saveSeries}
@@ -447,6 +532,105 @@ export default function SeriesDetailPage() {
           </button>
         </div>
       </div>
+
+      {/* Resume / Restart Modal */}
+      {showRestartModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.8)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 100,
+          padding: '20px'
+        }}>
+          <div style={{
+            backgroundColor: '#1e293b',
+            borderRadius: '16px',
+            padding: '24px',
+            maxWidth: '320px',
+            width: '100%',
+            textAlign: 'center'
+          }}>
+            {(() => {
+              const ep = episodes.find(e => e.id === showRestartModal)
+              const progress = userProgress[showRestartModal]
+              if (!ep || !progress) return null
+              const mins = Math.round(progress.progress_seconds / 60)
+              return (
+                <>
+                  <p className="text-white text-lg font-semibold" style={{ marginBottom: '8px' }}>
+                    Episode {ep.episode_number}: {ep.title}
+                  </p>
+                  <p className="text-white" style={{ marginBottom: '24px', opacity: 0.8 }}>
+                    You listened {mins} min of {ep.duration_mins} min
+                  </p>
+                </>
+              )
+            })()}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <button
+                onClick={() => {
+                  const ep = episodes.find(e => e.id === showRestartModal)
+                  if (ep) {
+                    setShowRestartModal(null)
+                    playSingleEpisode(ep, false)
+                  }
+                }}
+                style={{
+                  padding: '14px 24px',
+                  borderRadius: '25px',
+                  backgroundColor: '#f97316',
+                  color: 'black',
+                  fontWeight: 600,
+                  border: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                ▶ Resume Where I Left Off
+              </button>
+              <button
+                onClick={() => {
+                  const ep = episodes.find(e => e.id === showRestartModal)
+                  if (ep) {
+                    setShowRestartModal(null)
+                    playSingleEpisode(ep, true)
+                  }
+                }}
+                style={{
+                  padding: '14px 24px',
+                  borderRadius: '25px',
+                  backgroundColor: '#22c55e',
+                  color: 'white',
+                  fontWeight: 600,
+                  border: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                🔄 Start from Beginning
+              </button>
+              <button
+                onClick={() => setShowRestartModal(null)}
+                style={{
+                  padding: '14px 24px',
+                  borderRadius: '25px',
+                  backgroundColor: '#334155',
+                  color: 'white',
+                  fontWeight: 500,
+                  border: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Insufficient Credits Modal */}
       {showInsufficientCredits && (
@@ -472,10 +656,10 @@ export default function SeriesDetailPage() {
             textAlign: 'center'
           }}>
             <p className="text-white text-lg font-semibold" style={{ marginBottom: '16px' }}>
-              Sorry, you have insufficient credits to play all this series
+              Sorry, you have insufficient credits
             </p>
             <p className="text-white" style={{ marginBottom: '24px', opacity: 0.8 }}>
-              You need {unfinishedCredits} credits but only have {userCredits}
+              You need {hasSelection ? selectedCredits : unfinishedCredits} credits but only have {userCredits}
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <button
