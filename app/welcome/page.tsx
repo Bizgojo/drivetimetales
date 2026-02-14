@@ -129,7 +129,7 @@ function WelcomeContent() {
       <main style={{ maxWidth: '56rem', marginLeft: 'auto', marginRight: 'auto', padding: '1.5rem 1rem', paddingBottom: '6rem' }}>
 
         {/* W1: WelcomeHeader */}
-        <WelcomeHeader credits={freeCredits} /> */}
+        <WelcomeHeader credits={freeCredits} />
         
 
         {/* W2: NewsBriefings */}
