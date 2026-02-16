@@ -1,14 +1,12 @@
 /*
 ================================================================================
-🔒 PROTECTED MODULE W1 - WELCOME HEADER
+🔑 PROTECTED MODULE W1 - WELCOME HEADER
 ================================================================================
 Module: W1_WelcomeHeader
-Location: ~/DriveTimeFiles/WorkingCodeLibrary/03_WelcomePage/
-File: W1_WelcomeHeader.protected.tsx
+Location: components/WelcomeHeader.tsx
 
 Created: January 18, 2026
-Owner: Marc (Wonder Books Press / Drive Time Tales)
-Status: PROTECTED
+Updated: February 15, 2026 - Removed news briefing reference
 
 PURPOSE:
 Welcome page header with animated vehicles and 3 credit states.
@@ -19,7 +17,6 @@ STATES:
 - State 3 (0 credits): "You have used all your free credits" + [Get More Credits] button
 
 ⚠️  DO NOT MODIFY THIS DESIGN WITHOUT MARC'S EXPLICIT APPROVAL
-
 ================================================================================
 */
 
@@ -104,7 +101,7 @@ export default function WelcomeHeader({ credits }: WelcomeHeaderProps) {
             <span style={{ fontSize: '2.5rem' }}>🚚</span>
             <span style={{ fontSize: '2.5rem' }}>🚙</span>
             <span style={{ fontSize: '2.5rem' }}>🚐</span>
-            <span style={{ fontSize: '2.5rem' }}>🏎️</span>
+            <span style={{ fontSize: '2.5rem' }}>🎗️</span>
           </div>
         </div>
       )}
@@ -187,7 +184,7 @@ export default function WelcomeHeader({ credits }: WelcomeHeaderProps) {
             borderRadius: '0.25rem', 
             textTransform: 'uppercase' 
           }}>Free</span> 
-          Story or any News Briefing and play for free.
+          Story and start listening.
         </p>
       )}
       

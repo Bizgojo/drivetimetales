@@ -1,40 +1,26 @@
 /*
 ================================================================================
-🔒 WELCOME PAGE - Drive Time Tales
+🔑 WELCOME PAGE - Drive Time Tales
 Location: app/welcome/page.tsx
-Updated: January 18, 2026
+Updated: February 15, 2026
 
 MODULES:
 - W1: WelcomeHeader (animated vehicles, credits, secret code)
-- W2: NewsBriefings (horizontal button layout)
-- W3: NewReleases (TODO - 1-2 credits only)
-- W4: RecommendedForYou (TODO - 1-2 credits only)
+- W3: NewReleases (latest 2 stories)
+- W4: PopularSeries (series with 15-20 min episodes to hook new users)
 - W5: BottomStickyButtons ([Go To Library] + [Subscribe])
 ================================================================================
 */
 
 'use client'
-import { getDeviceTimePeriod } from '@/lib/news-utils'
 import { useState, useEffect, Suspense } from 'react'
 import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
-import { Welcome_NewsBriefings } from '@/components/Welcome_NewsBriefings'
 import W3NewReleases from '@/components/W3NewReleases'
-import W4RecommendedForYou from '@/components/W4RecommendedForYou'
+import W4PopularSeries from '@/components/W4PopularSeries'
 import WelcomeHeader from '@/components/WelcomeHeader'
-
-// =============================================================================
-// TYPES
-// =============================================================================
-
-interface NewsEpisode {
-  id: string
-  category: string
-  audio_url: string | null
-  is_live: boolean
-}
 
 // =============================================================================
 // MAIN CONTENT COMPONENT
@@ -43,10 +29,10 @@ interface NewsEpisode {
 function WelcomeContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const partner = searchParams.get('partner')
 
   // Free credits for non-logged-in users (stored in localStorage)
   const [freeCredits, setFreeCredits] = useState(2)
-  const [newsEpisodes, setNewsEpisodes] = useState<Record<string, NewsEpisode>>({})
 
   // =============================================================================
   // INITIALIZE: Check auth, load free credits
@@ -87,39 +73,6 @@ function WelcomeContent() {
   }, [router])
 
   // =============================================================================
-  // FETCH NEWS EPISODES
-  // =============================================================================
-
-  useEffect(() => {
-    async function fetchNewsEpisodes() {
-      try {
-        const { data, error } = await supabase
-          .from('news_episodes')
-          .select('id, category, audio_url, is_live, created_at')
-          .eq('is_live', true)
-          .eq('time_period', getDeviceTimePeriod()).order('created_at', { ascending: false })
-
-        if (error) {
-          console.error('Error fetching news episodes:', error)
-          return
-        }
-
-        if (data) {
-          const episodesByCategory: Record<string, NewsEpisode> = {}
-          data.forEach(ep => {
-            if (!episodesByCategory[ep.category]) episodesByCategory[ep.category] = ep
-          })
-          setNewsEpisodes(episodesByCategory)
-        }
-      } catch (err) {
-        console.error('Error in fetchNewsEpisodes:', err)
-      }
-    }
-
-    fetchNewsEpisodes()
-  }, [])
-
-  // =============================================================================
   // RENDER
   // =============================================================================
   
@@ -128,18 +81,30 @@ function WelcomeContent() {
 
       <main style={{ maxWidth: '56rem', marginLeft: 'auto', marginRight: 'auto', padding: '1.5rem 1rem', paddingBottom: '6rem' }}>
 
+        {/* Partner welcome banner */}
+        {partner && (
+          <div style={{
+            background: 'rgba(34,197,94,0.1)',
+            border: '1px solid rgba(34,197,94,0.3)',
+            borderRadius: '0.75rem',
+            padding: '0.75rem 1rem',
+            textAlign: 'center',
+            marginBottom: '0.5rem',
+            fontSize: '0.9rem',
+            color: '#22c55e'
+          }}>
+            Welcome from {partner.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())} — enjoy your free stories!
+          </div>
+        )}
+
         {/* W1: WelcomeHeader */}
         <WelcomeHeader credits={freeCredits} />
-        
-
-        {/* W2: NewsBriefings */}
-        {/* <Welcome_NewsBriefings newsEpisodes={newsEpisodes} credits={freeCredits} /> */}
 
         {/* W3: NewReleases */}
         <W3NewReleases credits={freeCredits} />
 
-        {/* W4: RecommendedForYou */}
-        <W4RecommendedForYou credits={freeCredits} />
+        {/* W4: PopularSeries (replaces RecommendedForYou) */}
+        <W4PopularSeries credits={freeCredits} />
 
       </main>
 
