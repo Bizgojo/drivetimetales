@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, Suspense } from 'react'
+import LibraryAuthOverlay from '@/components/LibraryAuthOverlay'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
@@ -432,6 +433,7 @@ export default function LibraryPage() {
   return (
     <Suspense fallback={<div className="min-h-screen bg-slate-950 flex items-center justify-center"><div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" /></div>}>
       <LibraryContent />
+      <LibraryAuthOverlay />
     </Suspense>
   )
 }
