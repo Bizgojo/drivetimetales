@@ -136,10 +136,10 @@ export default function HorizontalStoryCard({
       {/* Cover image - 168px square with 14px border on 3 sides */}
       <div style={{ 
         flexShrink: 0,
-        borderLeft: '14px solid #1e293b',
-        borderTop: '14px solid #1e293b',
-        borderBottom: '14px solid #1e293b',
-        borderRadius: '0 0 0 0',
+        border: '14px solid #1e293b',
+        borderRight: 'none',
+        borderRadius: '16px 0 0 16px',
+        overflow: 'hidden',
       }}>
         <div 
           style={{
@@ -147,7 +147,6 @@ export default function HorizontalStoryCard({
             width: '168px',
             height: '168px',
             overflow: 'hidden',
-            borderRadius: '0',
           }}
         >
           <img 
