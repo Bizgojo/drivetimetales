@@ -129,18 +129,24 @@ export default function HorizontalStoryCard({
         overflow: 'hidden',
         border: '1px solid rgba(148, 163, 184, 0.06)',
         textDecoration: 'none',
+        alignItems: 'flex-start',
+        padding: 0,
       }}
     >
-      {/* Cover image - 7rem square with shadow */}
-      <div style={{ width: '7rem', flexShrink: 0, padding: '0.5rem' }}>
+      {/* Cover image - 112px square with 14px border on 3 sides */}
+      <div style={{ 
+        flexShrink: 0,
+        borderLeft: '14px solid #1e293b',
+        borderTop: '14px solid #1e293b',
+        borderBottom: '14px solid #1e293b',
+        borderRadius: '0 0 0 0',
+      }}>
         <div 
-          className="cover-glow"
           style={{
-            width: '100%',
-            aspectRatio: '1',
-            borderRadius: '10px',
+            width: '112px',
+            height: '112px',
             overflow: 'hidden',
-            boxShadow: '0 2px 12px rgba(0,0,0,0.4)',
+            borderRadius: '0',
           }}
         >
           <img 
@@ -154,7 +160,7 @@ export default function HorizontalStoryCard({
       {/* Content */}
       <div style={{ 
         flex: 1, 
-        padding: '0.5rem 0.75rem 0.5rem 0.25rem', 
+        padding: '0.75rem 0.75rem 0.75rem 0.5rem', 
         display: 'flex', 
         flexDirection: 'column', 
         justifyContent: 'space-between',
