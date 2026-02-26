@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 
+export const dynamic = 'force-dynamic';
+
 interface NewsStory { title: string; url: string; source: string; date: string; description?: string; fetchedContent?: string; contentSource?: string; contentNote?: string; }
 interface ContentFetchResult { story: NewsStory; contentFetchMs: number; contentLength: number; }
 
