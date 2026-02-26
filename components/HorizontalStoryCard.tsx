@@ -133,7 +133,7 @@ export default function HorizontalStoryCard({
         padding: 0,
       }}
     >
-      {/* Cover image - 112px square with 14px border on 3 sides */}
+      {/* Cover image - 168px square with 14px border on 3 sides */}
       <div style={{ 
         flexShrink: 0,
         borderLeft: '14px solid #1e293b',
@@ -143,6 +143,7 @@ export default function HorizontalStoryCard({
       }}>
         <div 
           style={{
+            position: 'relative',
             width: '168px',
             height: '168px',
             overflow: 'hidden',
@@ -154,6 +155,13 @@ export default function HorizontalStoryCard({
             alt={title}
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
           />
+          {/* White shadow/glow overlay */}
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            boxShadow: 'inset 0 0 15px rgba(255, 255, 255, 0.2)',
+            pointerEvents: 'none'
+          }} />
         </div>
       </div>
       
