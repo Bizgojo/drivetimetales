@@ -138,30 +138,19 @@ export default function HorizontalStoryCard({
         flexShrink: 0,
         border: '14px solid #1e293b',
         borderRight: 'none',
-        borderRadius: '16px 0 0 16px',
         overflow: 'hidden',
+        boxShadow: '0 0 15px rgba(255, 255, 255, 0.4)',
       }}>
-        <div 
-          style={{
-            position: 'relative',
-            width: '168px',
-            height: '168px',
-            overflow: 'hidden',
+        <img 
+          src={cover_url || '/images/default-cover.png'} 
+          alt={title}
+          style={{ 
+            width: '168px', 
+            height: '168px', 
+            objectFit: 'cover',
+            display: 'block',
           }}
-        >
-          <img 
-            src={cover_url || '/images/default-cover.png'} 
-            alt={title}
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-          />
-          {/* White shadow/glow overlay */}
-          <div style={{
-            position: 'absolute',
-            inset: 0,
-            boxShadow: 'inset 0 0 25px rgba(255, 255, 255, 0.5)',
-            pointerEvents: 'none'
-          }} />
-        </div>
+        />
       </div>
       
       {/* Content */}
