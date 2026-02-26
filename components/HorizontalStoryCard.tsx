@@ -143,8 +143,8 @@ export default function HorizontalStoryCard({
       }}>
         <div 
           style={{
-            width: '112px',
-            height: '112px',
+            width: '168px',
+            height: '168px',
             overflow: 'hidden',
             borderRadius: '0',
           }}
