@@ -159,7 +159,7 @@ export default function HorizontalStoryCard({
           <div style={{
             position: 'absolute',
             inset: 0,
-            boxShadow: 'inset 0 0 15px rgba(255, 255, 255, 0.2)',
+            boxShadow: 'inset 0 0 25px rgba(255, 255, 255, 0.5)',
             pointerEvents: 'none'
           }} />
         </div>
