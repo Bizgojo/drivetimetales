@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, Suspense, useMemo } from 'react'
 import LibraryAuthOverlay from '@/components/LibraryAuthOverlay'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
@@ -52,19 +52,13 @@ function getCredits(duration_mins: number): number {
   return Math.max(1, Math.floor(duration_mins / 15))
 }
 
-/**
- * Compute flags for a story based on FLAG_RULES.md v1.1
- */
 function computeStoryFlags(story: Story, userLibraryEntry?: UserLibraryEntry | null): string[] {
   const flags: string[] = []
   
-  // Determine user's relationship to story
   const isOwned = !!userLibraryEntry
   const isReserved = userLibraryEntry?.reserved === true
   const isContinue = (userLibraryEntry?.progress ?? 0) > 0 && !userLibraryEntry?.completed
   
-  // User status flags (mutually exclusive)
-  // Continue implies Owned, so don't show both
   if (isContinue) {
     flags.push('continue')
   } else if (isReserved) {
@@ -75,17 +69,11 @@ function computeStoryFlags(story: Story, userLibraryEntry?: UserLibraryEntry | n
   
   const userHasStory = isContinue || isOwned || isReserved
   
-  // Series flag
   if (story.series_number) {
     flags.push('series')
   }
   
-  // Content flags (only if user doesn't have story)
   if (!userHasStory) {
-    // TODO: Add trending logic when implemented
-    // if (story.is_trending) flags.push('trending')
-    
-    // NEW: stories added within last 25 days
     if (story.created_at) {
       const storyDate = new Date(story.created_at)
       const now = new Date()
@@ -94,34 +82,29 @@ function computeStoryFlags(story: Story, userLibraryEntry?: UserLibraryEntry | n
         flags.push('new')
       }
     }
-    
-    // FREE
     if (story.is_free) {
       flags.push('free')
     }
   }
   
-  // Editorial flags (mutually exclusive)
   if (story.flag === 'editors-pick') {
     flags.push('editors-pick')
   } else if (story.flag === 'listeners-pick') {
     flags.push('listeners-pick')
   }
   
-  // Sort by priority and return top 3
   const priorityOrder = [
     'continue', 'reserved', 'owned', 'series', 
     'trending', 'new', 'free', 'editors-pick', 'listeners-pick'
   ]
   
   flags.sort((a, b) => priorityOrder.indexOf(a) - priorityOrder.indexOf(b))
-  
   return flags.slice(0, 3)
 }
 
 function LibraryContent() {
   const router = useRouter()
-  const { user } = useAuth()
+  const { user, loading: authLoading } = useAuth()
   const [stories, setStories] = useState<Story[]>([])
   const [userLibrary, setUserLibrary] = useState<UserLibraryEntry[]>([])
   const [seriesTableData, setSeriesTableData] = useState<Record<string, { cover_image: string | null, description: string | null }>>({})
@@ -129,7 +112,6 @@ function LibraryContent() {
   const [userName, setUserName] = useState('Friend')
   const [userCredits, setUserCredits] = useState(4)
   
-  // Filter states - matching LibraryFiltersV2 expected values
   const [selectedDuration, setSelectedDuration] = useState('All Lengths')
   const [selectedGenre, setSelectedGenre] = useState('All Categories')
   const [selectedType, setSelectedType] = useState('Singles & Series')
@@ -137,8 +119,11 @@ function LibraryContent() {
   const showLowCreditsButton = userCredits <= 3
 
   useEffect(() => {
+    // Wait for auth to resolve before fetching
+    if (authLoading) return
+
     async function fetchData() {
-      // Fetch stories with is_free and created_at for flag calculation
+      // Fetch stories
       const { data: storiesData } = await supabase
         .from('stories')
         .select('id, title, genre, author, duration_mins, cover_url, series_id, series_name, series_number, series_total, flag, is_free, created_at')
@@ -158,15 +143,18 @@ function LibraryContent() {
           setUserCredits(userData.credits || 0)
         }
         
-        // Fetch user library for flag calculation
+        // Fetch user library
         const { data: libraryData } = await supabase
           .from('user_library')
           .select('story_id, progress, completed, reserved')
           .eq('user_id', user.id)
-        if (libraryData) setUserLibrary(libraryData)
+        if (libraryData) {
+          console.log('[Library] Loaded', libraryData.length, 'library entries for user', user.id)
+          setUserLibrary(libraryData)
+        }
       }
       
-      // Fetch series table data for covers and descriptions
+      // Fetch series table data
       const { data: seriesRows } = await supabase
         .from('series')
         .select('title, cover_image, description')
@@ -179,50 +167,47 @@ function LibraryContent() {
       setLoading(false)
     }
     fetchData()
-  }, [user])
+  }, [user, authLoading])
 
-  // Create lookup for user library
-  const libraryLookup = new Map<string, UserLibraryEntry>()
-  userLibrary.forEach(entry => {
-    libraryLookup.set(entry.story_id, entry)
-  })
+  // Create lookup for user library — recalculates when userLibrary changes
+  const libraryLookup = useMemo(() => {
+    const map = new Map<string, UserLibraryEntry>()
+    userLibrary.forEach(entry => map.set(entry.story_id, entry))
+    return map
+  }, [userLibrary])
 
   // Filter stories
   const filteredStories = stories.filter(story => {
-    // Duration filter
     if (selectedDuration !== 'All Lengths') {
       if (selectedDuration === '~15 min' && story.duration_mins > 20) return false
       if (selectedDuration === '~30 min' && (story.duration_mins <= 20 || story.duration_mins > 45)) return false
       if (selectedDuration === '~1 hr' && story.duration_mins <= 45) return false
     }
     
-    // Genre filter
     if (selectedGenre !== 'All Categories') {
       const genreLower = story.genre?.toLowerCase() || ''
       if (selectedGenre === 'Mystery' && !genreLower.includes('mystery')) return false
       if (selectedGenre === 'Romance' && !genreLower.includes('romance')) return false
-      if (selectedGenre === 'Sci-Fi' && !genreLower.includes('sci-fi') && !genreLower.includes('scifi')) return false
       if (selectedGenre === 'Horror' && !genreLower.includes('horror')) return false
-      if (selectedGenre === 'Comedy' && !genreLower.includes('comedy')) return false
-      if (selectedGenre === 'Learn' && !genreLower.includes('learn') && !genreLower.includes('educational')) return false
       if (selectedGenre === 'Thriller' && !genreLower.includes('thriller')) return false
-      if (selectedGenre === 'Truckers' && !genreLower.includes('trucker')) return false
-      if (selectedGenre === 'Children' && !genreLower.includes('child') && !genreLower.includes('kids')) return false
+      if (selectedGenre === 'Sci-Fi' && !genreLower.includes('sci')) return false
+      if (selectedGenre === 'Western' && !genreLower.includes('western')) return false
+      if (selectedGenre === 'Drama' && !genreLower.includes('drama')) return false
     }
     
     return true
   })
 
-  // Build series groups from ALL filtered stories (not just Series Only view)
+  // Build series groups
   const seriesMap = new Map<string, SeriesGroup>()
   filteredStories.forEach(story => {
     if (story.series_name) {
       const existing = seriesMap.get(story.series_name)
       if (existing) {
-        existing.episode_count += 1
+        existing.episode_count++
         existing.total_duration_mins += story.duration_mins || 0
         existing.episode_ids.push(story.id)
-        if (story.created_at && (!existing.earliest_created_at || story.created_at < existing.earliest_created_at)) {
+        if ((story.created_at || '') < (existing.earliest_created_at || '')) {
           existing.earliest_created_at = story.created_at
         }
       } else {
@@ -230,31 +215,28 @@ function LibraryContent() {
         seriesMap.set(story.series_name, {
           id: story.series_id || story.id,
           series_name: story.series_name,
-          genre: story.genre || '',
-          author: story.author || 'Drive Time Tales',
+          genre: story.genre,
+          author: story.author,
           episode_count: 1,
           total_duration_mins: story.duration_mins || 0,
           cover_url: seriesInfo?.cover_image || story.cover_url,
           description: seriesInfo?.description || null,
           episode_ids: [story.id],
-          earliest_created_at: story.created_at || undefined
+          earliest_created_at: story.created_at
         })
       }
     }
   })
   const seriesGroups = Array.from(seriesMap.values())
   
-  // Calculate completed episodes per series from user library
   seriesGroups.forEach(group => {
     group.completed_episodes = group.episode_ids.filter(eid => 
       libraryLookup.get(eid)?.completed
     ).length
   })
 
-  // Get singles (stories not in any series)
   const singles = filteredStories.filter(s => !s.series_name)
 
-  // Build mixed display items for "Both" view: one card per series + singles
   type DisplayItem = { type: 'single', story: Story, sortDate: string } | { type: 'series', group: SeriesGroup, sortDate: string }
   const mixedItems: DisplayItem[] = []
   singles.forEach(story => {
@@ -277,7 +259,6 @@ function LibraryContent() {
     <div className="min-h-screen bg-slate-950" style={{ paddingBottom: '55px' }}>
       <StickyHeaderFull />
       
-      {/* Use shared LibraryFiltersV2 component */}
       <LibraryFiltersV2
         selectedDuration={selectedDuration}
         setSelectedDuration={setSelectedDuration}
@@ -288,7 +269,6 @@ function LibraryContent() {
       />
       
       <div className="px-3 py-2 flex flex-col gap-2">
-        {/* Both (mixed view) - series as SeriesCard, singles as HorizontalStoryCard */}
         {selectedType === 'Singles & Series' && (
           <>
             {mixedItems.length === 0 ? (
@@ -339,7 +319,6 @@ function LibraryContent() {
           </>
         )}
 
-        {/* Series Only view */}
         {selectedType === 'Series Only' && (
           <>
             {seriesGroups.length === 0 ? (
@@ -366,7 +345,6 @@ function LibraryContent() {
           </>
         )}
 
-        {/* Singles Only view */}
         {selectedType === 'Singles Only' && (
           <>
             {singles.length === 0 ? (
@@ -402,7 +380,6 @@ function LibraryContent() {
         )}
       </div>
 
-      {/* Sticky bottom bar: Credits + Playlist/Search OR Series instruction OR Low Credits */}
       <div className="fixed bottom-0 left-0 right-0 bg-slate-950 px-3 py-2 border-t border-slate-700 z-50">
         {showLowCreditsButton ? (
           <button onClick={() => router.push('/buy-credits')} className="w-full bg-orange-500 text-white py-2 rounded-lg text-base font-bold">Low On Credits - Get More</button>
