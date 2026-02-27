@@ -144,7 +144,7 @@ function LibraryContent() {
         // Fetch user library
         const { data: libraryData } = await supabase
           .from('user_library')
-          .select('story_id, progress, completed, reserved')
+          .select('story_id, progress, completed')
           .eq('user_id', user.id)
         if (libraryData) {
           console.log('[Library] Loaded', libraryData.length, 'library entries for user', user.id)
