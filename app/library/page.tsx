@@ -119,8 +119,6 @@ function LibraryContent() {
   const showLowCreditsButton = userCredits <= 3
 
   useEffect(() => {
-    // Wait for auth to resolve before fetching
-    if (authLoading) return
 
     async function fetchData() {
       // Fetch stories
