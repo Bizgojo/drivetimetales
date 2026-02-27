@@ -36,7 +36,7 @@ export default function SeriesDetailPage() {
   const [userProgress, setUserProgress] = useState<Record<string, UserProgress>>({})
   const [ownedEpisodes, setOwnedEpisodes] = useState<Set<string>>(new Set())
   const [selectedEpisodes, setSelectedEpisodes] = useState<Set<string>>(new Set())
-  const [userCredits, setUserCredits] = useState(user?.credits || 0)
+  const [userCredits, setUserCredits] = useState(9999)
   const [showInsufficientCredits, setShowInsufficientCredits] = useState(false)
   const [showRestartModal, setShowRestartModal] = useState<string | null>(null)
   const [seriesInfo, setSeriesInfo] = useState<{
@@ -67,7 +67,7 @@ export default function SeriesDetailPage() {
           .select('credits')
           .eq('id', user.id)
           .single()
-        if (userData) setUserCredits(userData.credits || 0)
+        if (userData) setUserCredits(9999) // Credits disabled - unlimited plan
       }
 
       let { data: episodesData } = await supabase
@@ -320,26 +320,90 @@ export default function SeriesDetailPage() {
             <span className="text-orange-400 text-sm">{seriesInfo.genre}</span>
           </div>
           
-          {/* Select All Unfinished Button */}
-          {unfinishedCount > 0 && (
-            <button 
-              onClick={selectAllUnfinished} 
+          {/* Play from Beginning + Continue buttons */}
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '8px' }}>
+            {/* Play from Beginning - always shown */}
+            <button
+              onClick={() => goToPlayer(true)}
               style={{
-                width: '100%',
-                padding: '14px 16px',
+                flex: 1,
+                padding: '14px 12px',
                 backgroundColor: '#f97316',
                 color: 'black',
                 fontWeight: 700,
                 borderRadius: '12px',
                 border: 'none',
                 cursor: 'pointer',
-                fontSize: '15px',
-                marginBottom: '8px'
+                fontSize: '14px',
               }}
             >
-              ▶ Select All Unfinished ({unfinishedCount}) • {unfinishedCredits} credit{unfinishedCredits !== 1 ? 's' : ''} • {unfinishedTimeText}
+              ▶ Play from Beginning
             </button>
-          )}
+
+            {/* Continue - only shown if user has progress */}
+            {(() => {
+              const lastEp = episodes.find(ep => 
+                userProgress[ep.id] && !userProgress[ep.id].completed && userProgress[ep.id].progress_seconds > 0
+              )
+              const allCompleted = episodes.length > 0 && episodes.every(ep => userProgress[ep.id]?.completed)
+
+              if (allCompleted) {
+                return (
+                  <button
+                    onClick={() => goToPlayer(true)}
+                    style={{
+                      flex: 1,
+                      padding: '14px 12px',
+                      backgroundColor: '#22c55e',
+                      color: 'white',
+                      fontWeight: 700,
+                      borderRadius: '12px',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontSize: '14px',
+                    }}
+                  >
+                    🔄 Play Again
+                  </button>
+                )
+              }
+
+              if (lastEp) {
+                const resumeSeconds = Math.max(0, userProgress[lastEp.id].progress_seconds - 3)
+                return (
+                  <button
+                    onClick={() => {
+                      const playlist = [{
+                        id: lastEp.id,
+                        title: lastEp.title,
+                        episode_number: lastEp.episode_number,
+                        series_name: seriesInfo?.name,
+                        resume_seconds: resumeSeconds
+                      }]
+                      localStorage.setItem('dtt_series_playlist', JSON.stringify(playlist))
+                      localStorage.setItem('dtt_series_index', '0')
+                      router.push('/player/series')
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: '14px 12px',
+                      backgroundColor: '#22c55e',
+                      color: 'white',
+                      fontWeight: 700,
+                      borderRadius: '12px',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontSize: '14px',
+                    }}
+                  >
+                    ▶ Continue
+                  </button>
+                )
+              }
+
+              return null
+            })()}
+          </div>
           
           {/* Instruction text */}
           <p className="text-white text-sm text-center font-bold">
@@ -375,23 +439,6 @@ export default function SeriesDetailPage() {
                   <div style={{ width: '100px', flexShrink: 0, position: 'relative' }}>
                     <div style={{ width: '100px', height: '100px', position: 'relative' }}>
                       <img src={ep.cover_url || seriesInfo.cover_url || '/images/default-cover.png'} alt={ep.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                      <div style={{ 
-                        position: 'absolute', 
-                        top: '6px', 
-                        left: '6px', 
-                        backgroundColor: progress?.completed ? '#22c55e' : '#f97316', 
-                        color: progress?.completed ? 'white' : 'black', 
-                        width: '26px', 
-                        height: '26px', 
-                        borderRadius: '50%', 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        justifyContent: 'center', 
-                        fontSize: '12px', 
-                        fontWeight: 700 
-                      }}>
-                        {progress?.completed ? '✓' : ep.episode_number}
-                      </div>
                       
                       {/* Selection indicator */}
                       {isSelected && (
@@ -410,36 +457,6 @@ export default function SeriesDetailPage() {
                           <span style={{ color: 'white', fontSize: '14px', fontWeight: 'bold' }}>✓</span>
                         </div>
                       )}
-
-                      {/* Play button overlay */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          if (hasProgress) {
-                            setShowRestartModal(ep.id)
-                          } else {
-                            playSingleEpisode(ep)
-                          }
-                        }}
-                        style={{
-                          position: 'absolute',
-                          bottom: '6px',
-                          right: '6px',
-                          backgroundColor: 'rgba(0,0,0,0.7)',
-                          color: 'white',
-                          width: '30px',
-                          height: '30px',
-                          borderRadius: '50%',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          border: '1.5px solid rgba(255,255,255,0.5)',
-                          cursor: 'pointer',
-                          fontSize: '12px'
-                        }}
-                      >
-                        ▶
-                      </button>
                     </div>
                   </div>
                   

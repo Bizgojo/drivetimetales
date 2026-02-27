@@ -9,31 +9,18 @@ export default function StickyHeaderGuest() {
   return (
     <header className="sticky top-0 z-50 bg-slate-950 border-b border-slate-800 px-4 py-3">
       <div className="flex items-center justify-between max-w-7xl mx-auto">
-        {/* Back Button - Blue #3b82f6 */}
-        <button
-          onClick={() => router.back()}
-          className="w-11 h-11 rounded-full flex items-center justify-center transition-colors flex-shrink-0"
-          style={{ backgroundColor: '#3b82f6' }}
-          aria-label="Go back"
-        >
+        <button onClick={() => router.back()} className="w-11 h-11 rounded-full flex items-center justify-center transition-colors flex-shrink-0" style={{ backgroundColor: '#3b82f6' }} aria-label="Go back">
           <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
         </button>
-
-        {/* Logo - Links to Welcome page for guests */}
-        <Link href="/welcome" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-          <div className="flex items-center gap-0.5">
-            <span className="text-xl">🚗</span>
-            <span className="text-2xl">🚛</span>
-          </div>
-          <span className="text-xl font-bold italic tracking-tight whitespace-nowrap">
-            <span className="text-white">Drive Time </span>
-            <span className="text-orange-400">Tales</span>
+        <Link href="/welcome" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}>
+          <img src="/icons/icon-192x192.png" alt="Endless Tales" style={{ width: '36px', height: '36px', borderRadius: '8px', marginRight: '8px' }} />
+          <span style={{ fontSize: '1.25rem', fontWeight: 700, letterSpacing: '-0.025em', whiteSpace: 'nowrap' }}>
+            <span style={{ color: 'white' }}>Endless </span>
+            <span style={{ color: '#fb923c' }}>Tales</span>
           </span>
         </Link>
-
-        {/* Spacer for balance */}
         <div className="w-11 h-11 flex-shrink-0" />
       </div>
     </header>

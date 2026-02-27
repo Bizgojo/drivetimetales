@@ -329,6 +329,7 @@ function LibraryContent() {
                         series_number={item.story.series_number} 
                         series_total={item.story.series_total} 
                         flags={flags}
+                        progress_percent={libraryEntry?.completed ? 100 : libraryEntry?.progress && item.story.duration_mins ? Math.round((libraryEntry.progress / (item.story.duration_mins * 60)) * 100) : undefined}
                       />
                     </div>
                   )
@@ -391,6 +392,7 @@ function LibraryContent() {
                       series_number={story.series_number} 
                       series_total={story.series_total} 
                       flags={flags}
+                      progress_percent={libraryEntry?.completed ? 100 : libraryEntry?.progress && story.duration_mins ? Math.round((libraryEntry.progress / (story.duration_mins * 60)) * 100) : undefined}
                     />
                   </div>
                 )

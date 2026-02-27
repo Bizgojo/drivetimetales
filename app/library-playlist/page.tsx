@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import StickyHeaderFull from '@/components/StickyHeaderFull'
+import HorizontalStoryCard from '@/components/HorizontalStoryCard'
 import LibraryFiltersV2 from '@/components/LibraryFiltersV2'
 
 interface Story {
@@ -226,30 +227,20 @@ function LibraryPlaylistContent() {
               const cost = getCredits(story.duration_mins)
               const canAfford = creditsLeft >= cost || story.is_free
               return (
-                <div key={story.id} onClick={() => !inPlaylist && canAfford && addToPlaylist(story)} style={{ display: 'flex', alignItems: 'center', backgroundColor: inPlaylist ? '#1e3a5f' : '#1e293b', borderRadius: '12px', overflow: 'hidden', cursor: inPlaylist || !canAfford ? 'default' : 'pointer', opacity: inPlaylist ? 0.5 : !canAfford ? 0.4 : 1, border: inPlaylist ? '1px solid #3b82f6' : '1px solid transparent' }}>
-                  <div style={{ width: '5rem', height: '5rem', flexShrink: 0, padding: '0.5rem' }}>
-                    <div style={{ width: '100%', height: '100%', borderRadius: '8px', overflow: 'hidden' }}>
-                      <img src={story.cover_url || '/images/default-cover.png'} alt={story.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    </div>
-                  </div>
-                  <div style={{ flex: 1, paddingTop: '0.5rem', paddingBottom: '0.5rem', paddingRight: '0.5rem', minWidth: 0 }}>
-                    <h3 style={{ color: 'white', fontSize: '14px', fontWeight: 'bold', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{story.title}</h3>
-                    <p style={{ color: '#94a3b8', fontSize: '12px', margin: '2px 0 0 0' }}>{story.genre}</p>
-                    <p style={{ color: '#94a3b8', fontSize: '12px', margin: '2px 0 0 0' }}>by {story.author || 'Drive Time Tales'}</p>
-                    <p style={{ color: 'white', fontSize: '12px', fontWeight: 600, margin: '2px 0 0 0' }}>
-                      {story.duration_mins} min • {cost} credit{cost !== 1 ? 's' : ''}
-                      {story.is_free && <span style={{ backgroundColor: '#22c55e', color: 'white', padding: '1px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: 700, marginLeft: '6px' }}>FREE</span>}
-                    </p>
-                  </div>
-                  <div style={{ paddingRight: '0.75rem', flexShrink: 0 }}>
-                    {inPlaylist ? (
-                      <div style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: '#3b82f6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><span style={{ color: 'white', fontSize: '14px' }}>✓</span></div>
-                    ) : canAfford ? (
-                      <div style={{ width: '28px', height: '28px', borderRadius: '50%', border: '2px solid #22c55e', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><span style={{ color: '#22c55e', fontSize: '18px', lineHeight: 1 }}>+</span></div>
-                    ) : (
-                      <div style={{ width: '28px', height: '28px', borderRadius: '50%', border: '2px solid #475569', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><span style={{ color: '#475569', fontSize: '14px' }}>$</span></div>
-                    )}
-                  </div>
+                <div
+                  key={story.id}
+                  onClick={() => !inPlaylist && addToPlaylist(story)}
+                  style={{ opacity: inPlaylist ? 0.5 : 1, cursor: inPlaylist ? 'default' : 'pointer', outline: inPlaylist ? '2px solid #3b82f6' : 'none', borderRadius: '14px' }}
+                >
+                  <HorizontalStoryCard
+                    id={story.id}
+                    title={story.title}
+                    genre={story.genre}
+                    author={story.author}
+                    duration_mins={story.duration_mins}
+                    cover_url={story.cover_url}
+                    flags={story.series_name ? ['series'] : []}
+                  />
                 </div>
               )
             })

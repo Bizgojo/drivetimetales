@@ -191,15 +191,16 @@ export default function RecommendedForYou() {
         {displayItems.map(item => {
           if (item.type === 'series') {
             return (
-              <SeriesCard
+              <HorizontalStoryCard
                 key={`series-${item.group.series_name}`}
                 id={item.group.id}
-                series_name={item.group.series_name}
+                title={item.group.series_name}
                 genre={item.group.genre}
-                episode_count={item.group.episode_count}
-                total_duration_mins={item.group.total_duration_mins}
+                author=""
+                duration_mins={item.group.total_duration_mins}
                 cover_url={item.group.cover_url}
                 description={item.group.description}
+                series_number={undefined}
               />
             )
           } else {
