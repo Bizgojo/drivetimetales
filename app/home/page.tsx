@@ -7,6 +7,7 @@ import WelcomeCredits from '@/components/WelcomeCredits'
 import NewReleases from '@/components/NewReleases'
 import RecommendedForYou from '@/components/RecommendedForYou'
 import BottomStickyButtons from '@/components/BottomStickyButtons'
+import ContinueListening from '@/components/ContinueListening'
 
 function HomeContent() {
   const { user } = useAuth()
@@ -23,6 +24,7 @@ function HomeContent() {
       <StickyHeaderHome />
       <main className="pb-20">
         <WelcomeCredits displayName={userName} />
+        <ContinueListening />
         <NewReleases />
         <RecommendedForYou />
       </main>
