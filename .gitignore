@@ -10,3 +10,4 @@ Audio Dramas/
 .env.local.backup*
 .env.local
 .DS_Store
+.env.local.save
