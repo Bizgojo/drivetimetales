@@ -1,6 +1,5 @@
 'use client'
-
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
@@ -25,20 +24,20 @@ interface UserProgress {
   completed: boolean
 }
 
+type SelectionMode = 'all' | 'continue' | 'pick'
+
 export default function SeriesDetailPage() {
   const params = useParams()
   const router = useRouter()
   const seriesId = params.id as string
   const { user } = useAuth()
-  
+
   const [episodes, setEpisodes] = useState<Episode[]>([])
   const [loading, setLoading] = useState(true)
   const [userProgress, setUserProgress] = useState<Record<string, UserProgress>>({})
   const [ownedEpisodes, setOwnedEpisodes] = useState<Set<string>>(new Set())
   const [selectedEpisodes, setSelectedEpisodes] = useState<Set<string>>(new Set())
-  const [userCredits, setUserCredits] = useState(9999)
-  const [showInsufficientCredits, setShowInsufficientCredits] = useState(false)
-  const [showRestartModal, setShowRestartModal] = useState<string | null>(null)
+  const [selectionMode, setSelectionMode] = useState<SelectionMode>('all')
   const [seriesInfo, setSeriesInfo] = useState<{
     name: string
     description: string
@@ -51,25 +50,44 @@ export default function SeriesDetailPage() {
     if (seriesId) fetchSeriesData()
   }, [seriesId, user?.id])
 
-  // Sync credits from auth context as fallback
+  // Auto-apply selection when mode changes
   useEffect(() => {
-    if (user?.credits !== undefined && user.credits > 0 && userCredits === 0) {
-      setUserCredits(user.credits)
+    if (episodes.length === 0) return
+    if (selectionMode === 'all') {
+      setSelectedEpisodes(new Set(episodes.map(ep => ep.id)))
+    } else if (selectionMode === 'continue') {
+      applyContineFromMode()
+    } else {
+      // Pick mode — clear selection, user picks manually
+      setSelectedEpisodes(new Set())
     }
-  }, [user?.credits])
+  }, [selectionMode, episodes])
+
+  const applyContineFromMode = () => {
+    // Priority 1: last in-progress episode (started but not finished)
+    const lastInProgress = [...episodes].reverse().find(ep =>
+      userProgress[ep.id] && !userProgress[ep.id].completed && userProgress[ep.id].progress_seconds > 0
+    )
+    // Priority 2: first episode after the last completed one
+    let firstAfterCompleted: Episode | undefined
+    for (let i = episodes.length - 1; i >= 0; i--) {
+      if (userProgress[episodes[i].id]?.completed) {
+        firstAfterCompleted = episodes[i + 1]
+        break
+      }
+    }
+    // Priority 3: first unstarted episode
+    const firstUnplayed = episodes.find(ep => !userProgress[ep.id] || userProgress[ep.id].progress_seconds === 0)
+    const startEp = lastInProgress || firstAfterCompleted || firstUnplayed || episodes[0]
+    if (!startEp) return
+    // Select from that episode forward
+    const startIdx = episodes.findIndex(ep => ep.id === startEp.id)
+    const toSelect = episodes.slice(startIdx).map(ep => ep.id)
+    setSelectedEpisodes(new Set(toSelect))
+  }
 
   const fetchSeriesData = async () => {
     try {
-      // Get user credits
-      if (user?.id) {
-        const { data: userData } = await supabase
-          .from('users')
-          .select('credits')
-          .eq('id', user.id)
-          .single()
-        if (userData) setUserCredits(9999) // Credits disabled - unlimited plan
-      }
-
       let { data: episodesData } = await supabase
         .from('stories')
         .select('id, title, description, duration_mins, credits, cover_url, episode_number, series_name, genre, author')
@@ -79,635 +97,261 @@ export default function SeriesDetailPage() {
       if (!episodesData || episodesData.length === 0) {
         const { data: storyData } = await supabase
           .from('stories')
-          .select('series_name')
+          .select('id, title, description, duration_mins, credits, cover_url, episode_number, series_name, genre, author')
           .eq('id', seriesId)
-          .single()
-        
-        if (storyData?.series_name) {
-          const { data: seriesEpisodes } = await supabase
-            .from('stories')
-            .select('id, title, description, duration_mins, credits, cover_url, episode_number, series_name, genre, author')
-            .eq('series_name', storyData.series_name)
-            .order('episode_number', { ascending: true })
-          episodesData = seriesEpisodes
+        episodesData = storyData
+      }
+
+      if (episodesData) {
+        setEpisodes(episodesData)
+        // Auto-select all on load
+        setSelectedEpisodes(new Set(episodesData.map((ep: Episode) => ep.id)))
+
+        const firstEp = episodesData[0]
+        if (firstEp) {
+          // Try to get the series cover from the series table
+          const { data: seriesRow } = await supabase
+            .from('series')
+            .select('cover_image, title')
+            .eq('id', seriesId)
+            .single()
+          setSeriesInfo({
+            name: seriesRow?.title || firstEp.series_name || firstEp.title,
+            description: firstEp.description || '',
+            genre: firstEp.genre || '',
+            author: firstEp.author || '',
+            cover_url: seriesRow?.cover_image || firstEp.cover_url || null,
+          })
         }
       }
 
-      if (episodesData && episodesData.length > 0) {
-        const sorted = episodesData.sort((a, b) => {
-          if (a.episode_number === null) return 1
-          if (b.episode_number === null) return -1
-          return (a.episode_number || 0) - (b.episode_number || 0)
-        })
-        
-        const withNumbers = sorted.map((ep, idx) => ({
-          ...ep,
-          episode_number: ep.episode_number || idx + 1,
-          credits: ep.credits || Math.max(1, Math.floor((ep.duration_mins || 15) / 15))
-        }))
-        
-        setEpisodes(withNumbers)
-        
-        const first = withNumbers[0]
-        setSeriesInfo({
-          name: first.series_name || first.title,
-          description: first.description || `A ${first.genre || 'drama'} series from Drive Time Tales.`,
-          genre: first.genre || 'Drama',
-          author: first.author || 'Drive Time Tales',
-          cover_url: first.cover_url || null
-        })
+      if (user?.id) {
+        const ids = (episodesData || []).map((ep: Episode) => ep.id)
+        const { data: progressData } = await supabase
+          .from('user_library')
+          .select('story_id, progress, completed')
+          .eq('user_id', user.id)
+          .in('story_id', ids)
 
-        if (user?.id) {
-          const { data: progressData } = await supabase
-            .from('user_library')
-            .select('story_id, progress, completed')
-            .eq('user_id', user.id)
-            .in('story_id', withNumbers.map(e => e.id))
-          
-          if (progressData) {
-            const progress: Record<string, UserProgress> = {}
-            const owned = new Set<string>()
-            progressData.forEach(p => {
-              progress[p.story_id] = {
-                story_id: p.story_id,
-                progress_seconds: p.progress || 0,
-                completed: p.completed || false
-              }
-              // If it's in user_library, the user already owns it
-              owned.add(p.story_id)
-            })
-            setUserProgress(progress)
-            setOwnedEpisodes(owned)
-          }
+        if (progressData) {
+          const progressMap: Record<string, UserProgress> = {}
+          const owned = new Set<string>()
+          progressData.forEach((p: any) => {
+            progressMap[p.story_id] = {
+              story_id: p.story_id,
+              progress_seconds: p.progress || 0,
+              completed: p.completed || false,
+            }
+            owned.add(p.story_id)
+          })
+          setUserProgress(progressMap)
+          setOwnedEpisodes(owned)
         }
       }
-    } catch (error) {
-      console.error('Error fetching series:', error)
+    } catch (err) {
+      console.error('fetchSeriesData error:', err)
     } finally {
       setLoading(false)
     }
   }
 
-  const toggleEpisodeSelection = (episodeId: string) => {
-    const newSelected = new Set(selectedEpisodes)
-    if (newSelected.has(episodeId)) {
-      newSelected.delete(episodeId)
-    } else {
-      newSelected.add(episodeId)
-    }
-    setSelectedEpisodes(newSelected)
-  }
-
-  // Calculate unfinished episodes stats
-  const unfinishedEpisodes = episodes.filter(ep => !userProgress[ep.id]?.completed)
-  const unfinishedCount = unfinishedEpisodes.length
-  // Only count credits for episodes NOT already owned
-  const unfinishedCredits = unfinishedEpisodes.reduce((sum, ep) => 
-    sum + (ownedEpisodes.has(ep.id) ? 0 : ep.credits), 0)
-  const unfinishedMins = unfinishedEpisodes.reduce((sum, ep) => sum + ep.duration_mins, 0)
-  const unfinishedHours = Math.floor(unfinishedMins / 60)
-  const unfinishedRemMins = unfinishedMins % 60
-  const unfinishedTimeText = unfinishedHours > 0 
-    ? `${unfinishedHours}h ${unfinishedRemMins}m` 
-    : `${unfinishedRemMins}m`
-
-  // Calculate selected episodes stats
-  const selectedArray = episodes.filter(ep => selectedEpisodes.has(ep.id))
-  // Only charge for episodes not already owned
-  const selectedCredits = selectedArray.reduce((sum, ep) => 
-    sum + (ownedEpisodes.has(ep.id) ? 0 : ep.credits), 0)
-
-  const selectAllUnfinished = () => {
-    if (userCredits < unfinishedCredits) {
-      setShowInsufficientCredits(true)
-      return
-    }
-    const unfinishedIds = new Set(unfinishedEpisodes.map(ep => ep.id))
-    setSelectedEpisodes(unfinishedIds)
-  }
-
-  const goToPlayer = (startFromBeginning?: boolean) => {
-    // If no episodes manually selected, auto-select all unfinished
-    let episodesToPlay = episodes.filter(ep => selectedEpisodes.has(ep.id))
-    if (episodesToPlay.length === 0) {
-      episodesToPlay = unfinishedEpisodes.length > 0 ? unfinishedEpisodes : episodes
-    }
-    
-    // Only charge for episodes NOT already owned
-    const totalCredits = episodesToPlay.reduce((sum, ep) => 
-      sum + (ownedEpisodes.has(ep.id) ? 0 : ep.credits), 0)
-    
-    // Check credits
-    if (userCredits < totalCredits) {
-      setShowInsufficientCredits(true)
-      return
-    }
-    
-    const playlist = episodesToPlay.map(ep => {
-      const progress = userProgress[ep.id]
-      // Resume 5 seconds before where they stopped (minimum 0)
-      const resumePosition = (!startFromBeginning && progress && !progress.completed && progress.progress_seconds > 5) 
-        ? Math.max(0, progress.progress_seconds - 5) 
-        : 0
-      return {
-        id: ep.id,
-        title: ep.title,
-        episode_number: ep.episode_number,
-        series_name: seriesInfo?.name,
-        resume_seconds: resumePosition
-      }
+  const toggleEpisodeSelection = (id: string) => {
+    if (selectionMode !== 'pick') return // Only toggle in pick mode
+    setSelectedEpisodes(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
     })
-    localStorage.setItem('dtt_series_playlist', JSON.stringify(playlist))
-    localStorage.setItem('dtt_series_index', '0')
-    router.push('/player/series')
   }
 
-  // Play a single episode directly (tap the play icon)
-  const playSingleEpisode = (ep: Episode, startFromBeginning?: boolean) => {
-    const creditsNeeded = ownedEpisodes.has(ep.id) ? 0 : ep.credits
-    if (userCredits < creditsNeeded) {
-      setShowInsufficientCredits(true)
-      return
-    }
-    const progress = userProgress[ep.id]
-    const resumePosition = (!startFromBeginning && progress && !progress.completed && progress.progress_seconds > 5)
-      ? Math.max(0, progress.progress_seconds - 5)
-      : 0
-    const playlist = [{
-      id: ep.id,
-      title: ep.title,
-      episode_number: ep.episode_number,
-      series_name: seriesInfo?.name,
-      resume_seconds: resumePosition
-    }]
-    localStorage.setItem('dtt_series_playlist', JSON.stringify(playlist))
-    localStorage.setItem('dtt_series_index', '0')
-    router.push('/player/series')
-  }
+  // Stats
+  const selectedArray = useMemo(() => episodes.filter(ep => selectedEpisodes.has(ep.id)), [episodes, selectedEpisodes])
+  const selectedMins = useMemo(() => selectedArray.reduce((sum, ep) => sum + ep.duration_mins, 0), [selectedArray])
+  const totalEpisodes = episodes.length
+  const totalMins = episodes.reduce((sum, ep) => sum + ep.duration_mins, 0)
+  const totalHours = Math.floor(totalMins / 60)
+  const totalRemMins = totalMins % 60
+  const durationText = totalHours > 0 ? `${totalHours}h ${totalRemMins}m` : `${totalRemMins}m`
 
   const saveSeries = async () => {
     if (!user?.id) return
-    // Determine which episodes to save - selected or all
-    const toSave = hasSelection
-      ? episodes.filter(ep => selectedEpisodes.has(ep.id))
-      : episodes
-    // Upsert each episode into user_library with progress=0 (reserved)
+    const toSave = selectedArray.length > 0 ? selectedArray : episodes
     const upserts = toSave.map(ep => ({
       user_id: user.id,
       story_id: ep.id,
       progress: 0,
       completed: false,
+      hide_from_home: false,
       last_played: new Date().toISOString(),
     }))
     await supabase.from('user_library').upsert(upserts)
-    router.push('/library')
+    router.push('/home')
   }
 
-  const totalEpisodes = episodes.length
-  const totalDuration = episodes.reduce((sum, ep) => sum + (ep.duration_mins || 0), 0)
-  const hours = Math.floor(totalDuration / 60)
-  const mins = totalDuration % 60
-  const durationText = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`
-  const shortDescription = seriesInfo?.description 
-    ? seriesInfo.description.split(' ').slice(0, 30).join(' ') + (seriesInfo.description.split(' ').length > 30 ? '...' : '')
-    : ''
-
-  // Check if anything is selected (for sticky button)
-  const hasSelection = selectedEpisodes.size > 0
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-950">
-        <StickyHeaderFull />
-        <div className="flex items-center justify-center py-20">
-          <div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
-        </div>
-      </div>
-    )
+  const goToPlayer = () => {
+    const toPlay = selectedArray.length > 0 ? selectedArray : episodes
+    // Start with the first selected episode, resuming if in-progress
+    const firstEp = toPlay[0]
+    if (!firstEp) return
+    const progress = userProgress[firstEp.id]
+    const resumeAt = (progress && !progress.completed && progress.progress_seconds > 5)
+      ? Math.max(0, progress.progress_seconds - 3) : 0
+    // Store the full playlist for auto-advance (future use)
+    const playlist = toPlay.map(ep => ({ id: ep.id, episode_number: ep.episode_number }))
+    localStorage.setItem('dtt_series_playlist', JSON.stringify(playlist))
+    localStorage.setItem('dtt_series_index', '0')
+    // Route to existing player with resume position
+    router.push(`/player/${firstEp.id}?resume=${resumeAt}`)
   }
 
-  if (!seriesInfo || episodes.length === 0) {
-    return (
-      <div className="min-h-screen bg-slate-950">
-        <StickyHeaderFull />
-        <div className="flex items-center justify-center py-20">
-          <div className="text-center">
-            <div className="text-5xl mb-4">😢</div>
-            <h2 className="text-white text-xl mb-2">Series Not Found</h2>
-            <button onClick={() => router.push('/library')} className="text-orange-400 hover:underline">← Back to Library</button>
-          </div>
-        </div>
-      </div>
-    )
-  }
+  if (loading) return <div style={{ background: '#020617', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ color: '#64748b', fontSize: '14px' }}>Loading...</div></div>
+  if (!seriesInfo) return null
+
+  const selModes: { key: SelectionMode; label: string }[] = [
+    { key: 'all', label: 'Select All' },
+    { key: 'continue', label: 'Continue' },
+    { key: 'pick', label: 'Pick Episodes' },
+  ]
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white" style={{ paddingBottom: '80px' }}>
+    <div style={{ background: '#020617', minHeight: '100vh', paddingBottom: '100px' }}>
       <StickyHeaderFull />
-      
-      <div className="sticky top-[60px] z-40 bg-slate-900 border-b border-slate-700">
-        <div className="px-4 py-4">
-          <h1 className="text-xl font-bold text-white mb-2">{seriesInfo.name}</h1>
-          <p className="text-white text-sm leading-relaxed mb-3">{shortDescription}</p>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '12px' }}>
-            <span className="text-white text-sm">{totalEpisodes} episode{totalEpisodes !== 1 ? 's' : ''}</span>
-            <span className="text-white text-sm">•</span>
-            <span className="text-white text-sm">{durationText} total</span>
-            <span className="text-white text-sm">•</span>
-            <span className="text-orange-400 text-sm">{seriesInfo.genre}</span>
+
+      {/* Hero — cover + title + meta, no description */}
+      <div style={{ padding: '16px 16px 0', display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
+        <div style={{ width: 120, height: 120, borderRadius: 10, overflow: 'hidden', flexShrink: 0, boxShadow: '0 0 20px rgba(255,255,255,0.15)' }}>
+          <img src={seriesInfo.cover_url || '/images/default-cover.png'} alt={seriesInfo.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <h1 style={{ fontFamily: 'var(--font-outfit, sans-serif)', fontWeight: 800, fontSize: 17, color: 'white', lineHeight: 1.2, marginBottom: 4 }}>{seriesInfo.name}</h1>
+          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 6 }}>
+            {totalEpisodes} episodes · <span style={{ color: '#f97316', fontWeight: 700 }}>{durationText} total</span>
           </div>
-          
-          {/* Play from Beginning + Continue buttons */}
-          <div style={{ display: 'flex', gap: '10px', marginBottom: '8px' }}>
-            {/* Play from Beginning - always shown */}
+
+        </div>
+      </div>
+
+      {/* Segmented control */}
+      <div style={{ padding: '14px 16px 0' }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>Episode Selection</div>
+        <div style={{ display: 'flex', background: '#0f172a', borderRadius: 10, padding: 3, border: '1px solid #1e293b', gap: 2 }}>
+          {selModes.map(m => (
             <button
-              onClick={() => goToPlayer(true)}
+              key={m.key}
+              onClick={() => setSelectionMode(m.key)}
               style={{
-                flex: 1,
-                padding: '14px 12px',
-                backgroundColor: '#f97316',
-                color: 'black',
-                fontWeight: 700,
-                borderRadius: '12px',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: '14px',
+                flex: 1, padding: '8px 4px', border: 'none', borderRadius: 8,
+                fontFamily: 'inherit', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                background: selectionMode === m.key ? '#f97316' : 'transparent',
+                color: selectionMode === m.key ? 'white' : '#94a3b8',
+                boxShadow: selectionMode === m.key ? '0 2px 8px rgba(249,115,22,0.4)' : 'none',
+                transition: 'all 0.15s',
+              }}
+            >{m.label}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* Selection summary */}
+      {selectedEpisodes.size > 0 && (
+        <div style={{ margin: '10px 16px 0', background: '#1e293b', borderRadius: 10, padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid rgba(249,115,22,0.2)' }}>
+          <span style={{ fontSize: 12, color: '#cbd5e1' }}>
+            <strong style={{ color: '#f97316' }}>{selectedEpisodes.size} episode{selectedEpisodes.size !== 1 ? 's' : ''}</strong> selected · {selectedMins} min
+          </span>
+          {selectionMode === 'pick' && (
+            <button onClick={() => setSelectedEpisodes(new Set())} style={{ fontSize: 11, color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>Clear</button>
+          )}
+        </div>
+      )}
+
+      {/* Episode list */}
+      <div style={{ padding: '10px 16px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {episodes.map(ep => {
+          const progress = userProgress[ep.id]
+          const isCompleted = progress?.completed || false
+          const isInProgress = progress && progress.progress_seconds > 0 && !isCompleted
+          const isSelected = selectedEpisodes.has(ep.id)
+          const progressPct = progress ? isCompleted ? 100 : Math.round((progress.progress_seconds / (ep.duration_mins * 60)) * 100) : 0
+          const isDisabled = selectionMode === 'continue' && isCompleted
+
+          return (
+            <div
+              key={ep.id}
+              onClick={() => toggleEpisodeSelection(ep.id)}
+              style={{
+                background: '#1e293b',
+                borderRadius: 12,
+                border: `1px solid ${isSelected ? (isInProgress ? '#22c55e' : '#f97316') : 'rgba(148,163,184,0.06)'}`,
+                display: 'flex',
+                overflow: 'hidden',
+                position: 'relative',
+                cursor: selectionMode === 'pick' ? 'pointer' : 'default',
+                minHeight: 100,
+                opacity: isDisabled ? 0.4 : 1,
+                background: isSelected && isInProgress ? 'rgba(34,197,94,0.05)' : isSelected ? 'rgba(249,115,22,0.04)' : '#1e293b',
               }}
             >
-              ▶ Play from Beginning
-            </button>
-
-            {/* Continue - only shown if user has progress */}
-            {(() => {
-              const lastEp = episodes.find(ep => 
-                userProgress[ep.id] && !userProgress[ep.id].completed && userProgress[ep.id].progress_seconds > 0
-              )
-              const allCompleted = episodes.length > 0 && episodes.every(ep => userProgress[ep.id]?.completed)
-
-              if (allCompleted) {
-                return (
-                  <button
-                    onClick={() => goToPlayer(true)}
-                    style={{
-                      flex: 1,
-                      padding: '14px 12px',
-                      backgroundColor: '#22c55e',
-                      color: 'white',
-                      fontWeight: 700,
-                      borderRadius: '12px',
-                      border: 'none',
-                      cursor: 'pointer',
-                      fontSize: '14px',
-                    }}
-                  >
-                    🔄 Play Again
-                  </button>
-                )
-              }
-
-              if (lastEp) {
-                const resumeSeconds = Math.max(0, userProgress[lastEp.id].progress_seconds - 3)
-                return (
-                  <button
-                    onClick={() => {
-                      const playlist = [{
-                        id: lastEp.id,
-                        title: lastEp.title,
-                        episode_number: lastEp.episode_number,
-                        series_name: seriesInfo?.name,
-                        resume_seconds: resumeSeconds
-                      }]
-                      localStorage.setItem('dtt_series_playlist', JSON.stringify(playlist))
-                      localStorage.setItem('dtt_series_index', '0')
-                      router.push('/player/series')
-                    }}
-                    style={{
-                      flex: 1,
-                      padding: '14px 12px',
-                      backgroundColor: '#22c55e',
-                      color: 'white',
-                      fontWeight: 700,
-                      borderRadius: '12px',
-                      border: 'none',
-                      cursor: 'pointer',
-                      fontSize: '14px',
-                    }}
-                  >
-                    ▶ Continue
-                  </button>
-                )
-              }
-
-              return null
-            })()}
-          </div>
-          
-          {/* Instruction text */}
-          <p className="text-white text-sm text-center font-bold">
-            Or select episodes individually
-          </p>
-        </div>
-      </div>
-
-      <div className="px-4 py-4">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {episodes.map((ep) => {
-            const progress = userProgress[ep.id]
-            const progressPercent = progress ? progress.completed ? 100 : Math.round((progress.progress_seconds / (ep.duration_mins * 60)) * 100) : 0
-            const isSelected = selectedEpisodes.has(ep.id)
-            const isOwned = ownedEpisodes.has(ep.id)
-            const hasProgress = progress && progress.progress_seconds > 0 && !progress.completed
-            const epDescription = ep.description ? ep.description.split(' ').slice(0, 15).join(' ') + (ep.description.split(' ').length > 15 ? '...' : '') : ''
-
-            return (
-              <div 
-                key={ep.id} 
-                onClick={() => toggleEpisodeSelection(ep.id)}
-                style={{
-                  backgroundColor: isSelected ? '#1e3a2f' : '#1e293b',
-                  borderRadius: '12px',
-                  overflow: 'hidden',
-                  cursor: 'pointer',
-                  border: isSelected ? '2px solid #22c55e' : '2px solid transparent',
-                  transition: 'all 0.2s'
-                }}
-              >
-                <div style={{ display: 'flex' }}>
-                  <div style={{ width: '100px', flexShrink: 0, position: 'relative' }}>
-                    <div style={{ width: '100px', height: '100px', position: 'relative' }}>
-                      <img src={ep.cover_url || seriesInfo.cover_url || '/images/default-cover.png'} alt={ep.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                      
-                      {/* Selection indicator */}
-                      {isSelected && (
-                        <div style={{
-                          position: 'absolute',
-                          top: '6px',
-                          right: '6px',
-                          backgroundColor: '#22c55e',
-                          width: '24px',
-                          height: '24px',
-                          borderRadius: '50%',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center'
-                        }}>
-                          <span style={{ color: 'white', fontSize: '14px', fontWeight: 'bold' }}>✓</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  
-                  <div style={{ flex: 1, padding: '12px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                    <div className="text-white text-xs font-medium" style={{ marginBottom: '4px' }}>
-                      Episode {ep.episode_number}
-                      {isOwned && <span style={{ color: '#22c55e', marginLeft: '8px' }}>✓ Owned</span>}
-                    </div>
-                    <h3 className="text-white font-bold text-sm" style={{ marginBottom: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ep.title}</h3>
-                    {epDescription && <p className="text-white text-xs" style={{ marginBottom: '8px', opacity: 0.8 }}>{epDescription}</p>}
-                    <div className="text-white text-xs font-semibold">
-                      {ep.duration_mins} min • {isOwned ? '✓ Owned' : `${ep.credits} credit${ep.credits !== 1 ? 's' : ''}`}
-                      {hasProgress && (
-                        <span style={{ color: '#f97316', marginLeft: '8px' }}>
-                          {Math.round(progress.progress_seconds / 60)}m listened
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                
-                {/* Progress bar at bottom of card */}
-                <div style={{ height: '6px', backgroundColor: '#475569', borderRadius: '0 0 10px 10px' }}>
-                  <div style={{ 
-                    height: '100%', 
-                    width: `${Math.max(progressPercent, 0)}%`, 
-                    backgroundColor: progress?.completed ? '#22c55e' : '#f97316', 
-                    borderRadius: progressPercent > 95 ? '0 0 10px 10px' : '0 0 0 10px',
-                    transition: 'width 0.3s',
-                    minWidth: progressPercent > 0 ? '8px' : '0'
-                  }} />
-                </div>
+              {/* Cover */}
+              <div style={{ width: 80, height: 80, flexShrink: 0, margin: '10px 0 10px 10px', borderRadius: 6, overflow: 'hidden', boxShadow: '0 0 15px rgba(255,255,255,0.2)' }}>
+                <img src={ep.cover_url || seriesInfo.cover_url || '/images/default-cover.png'} alt={ep.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               </div>
-            )
-          })}
-        </div>
+
+              {/* Body */}
+              <div style={{ flex: 1, padding: '10px 28px 10px 10px', display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 0 }}>
+                <div style={{ fontSize: 10, color: isInProgress ? '#22c55e' : '#64748b', fontWeight: 700, marginBottom: 2 }}>
+                  Episode {ep.episode_number} · {ep.duration_mins} min
+                  {isInProgress && <span style={{ marginLeft: 6 }}>· In progress</span>}
+                  {isCompleted && <span style={{ color: '#22c55e', marginLeft: 6 }}>· Completed</span>}
+                </div>
+                <div style={{ fontFamily: 'var(--font-outfit, sans-serif)', fontWeight: 700, fontSize: 13, color: 'white', lineHeight: 1.2, marginBottom: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ep.title}</div>
+                {ep.description && (
+                  <p style={{ fontSize: 10, color: '#94a3b8', lineHeight: 1.5, margin: 0, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{ep.description}</p>
+                )}
+              </div>
+
+              {/* Checkmark — top right */}
+              <div style={{
+                position: 'absolute', top: 8, right: 8,
+                width: 20, height: 20, borderRadius: '50%',
+                background: isSelected ? (isInProgress ? '#22c55e' : '#f97316') : 'transparent',
+                border: `2px solid ${isSelected ? (isInProgress ? '#22c55e' : '#f97316') : '#334155'}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                transition: 'all 0.15s',
+              }}>
+                {isSelected && (
+                  <svg width="10" height="8" viewBox="0 0 12 9" fill="none">
+                    <path d="M1 4l3.5 3.5L11 1" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                  </svg>
+                )}
+              </div>
+
+              {/* Progress bar */}
+              {progressPct > 0 && (
+                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 3, background: '#334155' }}>
+                  <div style={{ height: '100%', width: `${progressPct}%`, background: isCompleted ? '#22c55e' : '#f97316', transition: 'width 0.3s' }} />
+                </div>
+              )}
+            </div>
+          )
+        })}
       </div>
 
-      {/* Sticky Bottom - Play Series / Save Series */}
-      <div style={{
-        position: 'fixed',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        backgroundColor: '#020617',
-        padding: '16px',
-        borderTop: '1px solid #334155',
-        zIndex: 50
-      }}>
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <button
-            onClick={() => goToPlayer()}
-            style={{
-              flex: 1,
-              padding: '16px',
-              borderRadius: '12px',
-              backgroundColor: '#22c55e',
-              color: 'white',
-              fontWeight: 700,
-              fontSize: '16px',
-              border: 'none',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '8px'
-            }}
-          >
-            ▶ Play{hasSelection ? ` (${selectedEpisodes.size})` : ' Series'}
-          </button>
-          <button
-            onClick={saveSeries}
-            style={{
-              flex: 1,
-              padding: '16px',
-              borderRadius: '12px',
-              backgroundColor: '#3b82f6',
-              color: 'white',
-              fontWeight: 700,
-              fontSize: '16px',
-              border: 'none',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '8px'
-            }}
-          >
-            💾 Save Episodes
-          </button>
-        </div>
+      {/* Sticky bottom */}
+      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: 'linear-gradient(to top, #020617 80%, transparent)', padding: '12px 16px 16px', display: 'flex', gap: 10 }}>
+        <button
+          onClick={saveSeries}
+          style={{ flex: 1, padding: '14px 10px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: 12, fontFamily: 'var(--font-outfit, sans-serif)', fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+        >
+          💾 Save for Later
+        </button>
+        <button
+          onClick={goToPlayer}
+          style={{ flex: 1, padding: '14px 10px', background: selectionMode === 'continue' ? '#22c55e' : '#f97316', color: selectionMode === 'continue' ? '#042013' : 'white', border: 'none', borderRadius: 12, fontFamily: 'var(--font-outfit, sans-serif)', fontSize: 14, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+        >
+          ▶ {selectionMode === 'continue' ? 'Continue' : 'Play Now'}
+        </button>
       </div>
-
-      {/* Resume / Restart Modal */}
-      {showRestartModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.8)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 100,
-          padding: '20px'
-        }}>
-          <div style={{
-            backgroundColor: '#1e293b',
-            borderRadius: '16px',
-            padding: '24px',
-            maxWidth: '320px',
-            width: '100%',
-            textAlign: 'center'
-          }}>
-            {(() => {
-              const ep = episodes.find(e => e.id === showRestartModal)
-              const progress = userProgress[showRestartModal]
-              if (!ep || !progress) return null
-              const mins = Math.round(progress.progress_seconds / 60)
-              return (
-                <>
-                  <p className="text-white text-lg font-semibold" style={{ marginBottom: '8px' }}>
-                    Episode {ep.episode_number}: {ep.title}
-                  </p>
-                  <p className="text-white" style={{ marginBottom: '24px', opacity: 0.8 }}>
-                    You listened {mins} min of {ep.duration_mins} min
-                  </p>
-                </>
-              )
-            })()}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <button
-                onClick={() => {
-                  const ep = episodes.find(e => e.id === showRestartModal)
-                  if (ep) {
-                    setShowRestartModal(null)
-                    playSingleEpisode(ep, false)
-                  }
-                }}
-                style={{
-                  padding: '14px 24px',
-                  borderRadius: '25px',
-                  backgroundColor: '#f97316',
-                  color: 'black',
-                  fontWeight: 600,
-                  border: 'none',
-                  cursor: 'pointer'
-                }}
-              >
-                ▶ Resume Where I Left Off
-              </button>
-              <button
-                onClick={() => {
-                  const ep = episodes.find(e => e.id === showRestartModal)
-                  if (ep) {
-                    setShowRestartModal(null)
-                    playSingleEpisode(ep, true)
-                  }
-                }}
-                style={{
-                  padding: '14px 24px',
-                  borderRadius: '25px',
-                  backgroundColor: '#22c55e',
-                  color: 'white',
-                  fontWeight: 600,
-                  border: 'none',
-                  cursor: 'pointer'
-                }}
-              >
-                🔄 Start from Beginning
-              </button>
-              <button
-                onClick={() => setShowRestartModal(null)}
-                style={{
-                  padding: '14px 24px',
-                  borderRadius: '25px',
-                  backgroundColor: '#334155',
-                  color: 'white',
-                  fontWeight: 500,
-                  border: 'none',
-                  cursor: 'pointer'
-                }}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Insufficient Credits Modal */}
-      {showInsufficientCredits && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.8)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 100,
-          padding: '20px'
-        }}>
-          <div style={{
-            backgroundColor: '#1e293b',
-            borderRadius: '16px',
-            padding: '24px',
-            maxWidth: '320px',
-            width: '100%',
-            textAlign: 'center'
-          }}>
-            <p className="text-white text-lg font-semibold" style={{ marginBottom: '16px' }}>
-              Sorry, you have insufficient credits
-            </p>
-            <p className="text-white" style={{ marginBottom: '24px', opacity: 0.8 }}>
-              You need {hasSelection ? selectedCredits : unfinishedCredits} credits but only have {userCredits}
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <button
-                onClick={() => router.push('/buy-credits')}
-                style={{
-                  padding: '14px 24px',
-                  borderRadius: '25px',
-                  backgroundColor: '#f97316',
-                  color: 'black',
-                  fontWeight: 600,
-                  border: 'none',
-                  cursor: 'pointer'
-                }}
-              >
-                Get More Credits
-              </button>
-              <button
-                onClick={() => setShowInsufficientCredits(false)}
-                style={{
-                  padding: '14px 24px',
-                  borderRadius: '25px',
-                  backgroundColor: '#334155',
-                  color: 'white',
-                  fontWeight: 500,
-                  border: 'none',
-                  cursor: 'pointer'
-                }}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

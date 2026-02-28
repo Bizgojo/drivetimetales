@@ -18,6 +18,7 @@ function PlayerContent() {
   const storyId = params.id as string
   const audioRef = useRef<HTMLAudioElement>(null)
   const saveTimer = useRef<NodeJS.Timeout | null>(null)
+  const resumeRef = useRef(0)
 
   const [story, setStory] = useState<Story | null>(null)
   const [loading, setLoading] = useState(true)
@@ -37,7 +38,7 @@ function PlayerContent() {
         const { data: lib } = await supabase.from('user_library').select('progress, completed').eq('user_id', user.id).eq('story_id', storyId).single()
         if (lib && lib.progress > 0) {
           const resumeAt = lib.completed ? 0 : Math.max(0, lib.progress - 3)
-          if (audioRef.current) audioRef.current.currentTime = resumeAt
+          resumeRef.current = resumeAt
           setCurrentTime(resumeAt)
           setHasProgress(true)
         }
@@ -128,7 +129,7 @@ function PlayerContent() {
   return (
     <div style={{ height: '100dvh', backgroundColor: '#020617', color: 'white', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <audio ref={audioRef} src={story.audio_url}
-        onCanPlay={() => { setAudioReady(true); if (audioRef.current) setDuration(audioRef.current.duration) }}
+        onCanPlay={() => { if (audioRef.current && resumeRef.current > 0) { audioRef.current.currentTime = resumeRef.current } setAudioReady(true); if (audioRef.current) setDuration(audioRef.current.duration) }}
         onTimeUpdate={handleTimeUpdate}
         onEnded={() => { setIsPlaying(false); saveProgress(duration, true); setTimeout(() => router.push('/library'), 1500) }}
         onPlay={() => setIsPlaying(true)}

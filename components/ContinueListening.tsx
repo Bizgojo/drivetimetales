@@ -1,46 +1,7 @@
-/*
-================================================================================
-🔒 PROTECTED MODULE 06 - DO NOT MODIFY WITHOUT OWNER APPROVAL
-================================================================================
-Module: 06_ContinueListening
-Location: ~/DriveTimeFiles/WorkingCodeLibrary/02_HomePage/
-File: 06_ContinueListening.protected.tsx
-
-Created: January 16, 2026
-Owner: Marc (Wonder Books Press / Drive Time Tales)
-Status: LOCKED - Universal Template
-
-PURPOSE:
-This is the official Continue Listening module for the DTT Home Page.
-Shows the user's most recently played uncompleted story with a progress bar
-and allows one-tap resume playback.
-
-⚠️  DO NOT MODIFY THIS DESIGN WITHOUT MARC'S EXPLICIT APPROVAL
-⚠️  DO NOT GUESS OR CREATE ALTERNATIVE DESIGNS
-⚠️  ALWAYS CALL THIS MODULE WHEN BUILDING THE HOME PAGE
-
-DISPLAY RULES:
-- Only shows if user has an uncompleted story (completed = FALSE)
-- Shows only ONE story (most recent by last_played)
-- If no uncompleted story exists, this module does NOT render
-
-CLICK BEHAVIOR:
-- Entire card is clickable (cover, text, AND play button)
-- Click navigates to /player/[id]/play
-- Audio resumes at (progress - 5 seconds) to rewind to sentence start
-
-DATA SOURCE:
-- Table: user_library
-- Query: WHERE user_id = [user] AND completed = FALSE ORDER BY last_played DESC LIMIT 1
-- Join: stories table for title, genre, author, duration_mins, cover_url
-
-================================================================================
-*/
-
 'use client'
 
-import Link from 'next/link'
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 
@@ -48,397 +9,505 @@ import { supabase } from '@/lib/supabase'
 // TYPES
 // =============================================================================
 
-interface ContinueListeningStory {
-  id: string
+interface SingleStoryCard {
+  type: 'single'
   story_id: string
-  progress: number          // seconds into the story
-  last_played: string
-  completed: boolean
-  // Joined from stories table
   title: string
-  genre: string
   author: string
-  duration_mins: number
+  genre: string
   cover_url: string | null
+  duration_mins: number
+  progress: number        // seconds
+  last_played: string
+}
+
+interface SeriesCard {
+  type: 'series'
+  story_id: string        // current episode id
+  series_id: string
+  series_name: string
+  title: string           // episode title
+  author: string
+  genre: string
+  cover_url: string | null
+  duration_mins: number
+  progress: number        // seconds into episode
+  episode_number: number
+  total_episodes: number
+  last_played: string
+}
+
+interface PlaylistCard {
+  type: 'playlist'
+  playlist_id: string
+  total_stories: number
+  completed_stories: number
+  remaining_mins: number
+  next_stories: string[]  // titles of remaining stories to play
+  last_played: string
+}
+
+type ContinueCard = SingleStoryCard | SeriesCard | PlaylistCard
+
+// =============================================================================
+// HELPERS
+// =============================================================================
+
+function minsRemaining(durationMins: number, progressSeconds: number): number {
+  return Math.max(0, Math.round(durationMins - progressSeconds / 60))
+}
+
+function progressPercent(durationMins: number, progressSeconds: number): number {
+  return Math.min(100, Math.round((progressSeconds / (durationMins * 60)) * 100))
 }
 
 // =============================================================================
-// COMPONENT
+// DISMISS CONFIRM MODAL
 // =============================================================================
 
-export default function ContinueListening() {
-  const { user } = useAuth()
-  const [story, setStory] = useState<ContinueListeningStory | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
-
-  useEffect(() => {
-    async function fetchContinueListening() {
-      if (!user) {
-        setLoading(false)
-        return
-      }
-
-      try {
-        // Query: most recent uncompleted story
-        const { data, error } = await supabase
-          .from('user_library')
-          .select(`
-            id,
-            story_id,
-            progress,
-            last_played,
-            completed,
-            stories (
-              title,
-              genre,
-              author,
-              duration_mins,
-              cover_url
-            )
-          `)
-          .eq('user_id', user.id)
-          .eq('completed', false)
-          .order('last_played', { ascending: false })
-          .limit(1)
-          .single()
-
-        if (error && error.code !== 'PGRST116') {
-          // PGRST116 = no rows returned (not an error for us)
-          console.error('Error fetching continue listening:', error)
-        }
-
-        if (data && data.stories) {
-          setStory({
-            id: data.id,
-            story_id: data.story_id,
-            progress: data.progress || 0,
-            last_played: data.last_played,
-            completed: data.completed,
-            title: (data.stories as any).title,
-            genre: (data.stories as any).genre,
-            author: (data.stories as any).author,
-            duration_mins: (data.stories as any).duration_mins,
-            cover_url: (data.stories as any).cover_url,
-          })
-        }
-      } catch (err) {
-        console.error('Error in fetchContinueListening:', err)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchContinueListening()
-  }, [user])
-
-  // =============================================================================
-  // DISPLAY LOGIC: Do not render if no uncompleted story
-  // =============================================================================
-  
-  if (loading) {
-    return null // Don't show loading state, just hide until ready
-  }
-
-  if (!story) {
-    return null // No uncompleted story = don't render module
-  }
-
-  // =============================================================================
-  // CALCULATIONS
-  // =============================================================================
-
-  const totalSeconds = story.duration_mins * 60
-  const progressPercent = totalSeconds > 0 ? Math.round((story.progress / totalSeconds) * 100) : 0
-  const secondsRemaining = totalSeconds - story.progress
-  const minsRemaining = Math.max(1, Math.ceil(secondsRemaining / 60))
-
-  // Resume position: rewind 5 seconds (Phase 1 sentence approximation)
-  const resumePosition = Math.max(0, story.progress - 5)
-
-  const handleDelete = (e: React.MouseEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setShowDeleteConfirm(true)
-  }
-
-  const confirmDelete = async () => {
-    if (user && story) {
-      await supabase
-        .from('user_library')
-        .delete()
-        .eq('user_id', user.id)
-        .eq('story_id', story.story_id)
-    }
-    setStory(null)
-    setShowDeleteConfirm(false)
-  }
-
-  const cancelDelete = (e: React.MouseEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setShowDeleteConfirm(false)
-  }
-
-  // =============================================================================
-  // RENDER
-  // =============================================================================
-
+function DismissModal({
+  label,
+  onConfirm,
+  onCancel,
+}: {
+  label: string
+  onConfirm: () => void
+  onCancel: () => void
+}) {
   return (
-    <section className="px-4 pt-6 pb-4">
-      <h2 className="text-lg font-bold text-white mb-4">▶️ CONTINUE LISTENING</h2>
-      
-      {/* Card wrapper with relative positioning for delete button */}
-      <div style={{ position: 'relative' }}>
-        {/* Delete button - red badge in upper right corner */}
-        <button
-          onClick={handleDelete}
-          style={{
-            position: 'absolute',
-            top: '-6px',
-            right: '-6px',
-            backgroundColor: '#dc2626',
-            border: 'none',
-            color: 'white',
-            fontSize: '9px',
-            fontWeight: 'bold',
-            cursor: 'pointer',
-            padding: '2px 6px',
-            borderRadius: '6px',
-            zIndex: 10,
-            boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
-          }}
-        >
-          Delete
-        </button>
-
-        {/* Entire card is clickable - navigates to play page with resume position */}
-        <Link 
-          href={`/player/${story.story_id}/play?resume=${resumePosition}`}
-          className="flex bg-slate-800 rounded-xl overflow-hidden hover:bg-slate-700 transition"
-        >
-          {/* Cover: w-28 h-28 with p-2 padding (matches HorizontalStoryCard template) */}
-          <div className="w-28 h-28 flex-shrink-0 p-2">
-            <div className="w-full h-full rounded-lg overflow-hidden cover-glow">
-              <img 
-                src={story.cover_url || '/images/default-cover.png'} 
-                alt={story.title}
-                className="w-full h-full object-cover" 
-              />
-            </div>
-          </div>
-          
-          {/* Info */}
-          <div className="flex-1 py-2 pr-3 flex flex-col justify-center">
-            <h3 className="text-sm font-bold text-white line-clamp-1">{story.title}</h3>
-            <p className="text-white text-xs">{story.genre}</p>
-            <p className="text-white text-xs">by {story.author}</p>
-            <p className="text-white text-xs">{story.duration_mins} min • {minsRemaining} min left</p>
-            
-            {/* Progress bar */}
-            <div className="flex items-center gap-2 mt-1">
-              <div className="flex-1 h-1.5 bg-slate-700 rounded-full">
-                <div 
-                  className="h-1.5 bg-orange-500 rounded-full" 
-                  style={{ width: `${progressPercent}%` }}
-                />
-              </div>
-              <span className="text-white text-xs">{progressPercent}%</span>
-            </div>
-          </div>
-          
-          {/* Play button */}
-          <div className="pr-3 flex items-center">
-            <div className="w-10 h-10 bg-orange-500 rounded-full flex items-center justify-center hover:bg-orange-400 transition">
-              <svg className="w-5 h-5 text-black ml-0.5" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
-              </svg>
-            </div>
-          </div>
-        </Link>
-      </div>
-
-      {/* Delete confirmation popup */}
-      {showDeleteConfirm && (
-        <div 
-          style={{ 
-            position: 'fixed', 
-            inset: 0, 
-            backgroundColor: 'rgba(0,0,0,0.8)', 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'center', 
-            padding: '1rem', 
-            zIndex: 50 
-          }}
-          onClick={cancelDelete}
-        >
-          <div 
-            style={{ 
-              backgroundColor: '#1e293b', 
-              borderRadius: '16px', 
-              padding: '1.5rem', 
-              maxWidth: '300px', 
-              textAlign: 'center' 
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <span style={{ fontSize: '48px', display: 'block', marginBottom: '1rem' }}>🗑️</span>
-            <h3 style={{ color: 'white', fontSize: '18px', fontWeight: 'bold', marginBottom: '0.5rem' }}>Remove from Continue Listening?</h3>
-            <p style={{ color: '#94a3b8', marginBottom: '1.5rem' }}>This will remove "{story.title}" from your library.</p>
-            <div style={{ display: 'flex', gap: '0.75rem' }}>
-              <button 
-                onClick={cancelDelete} 
-                style={{ 
-                  flex: 1, 
-                  padding: '0.75rem', 
-                  borderRadius: '8px', 
-                  border: 'none', 
-                  backgroundColor: '#475569', 
-                  color: 'white', 
-                  cursor: 'pointer',
-                  fontSize: '15px',
-                  fontWeight: 500
-                }}
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={confirmDelete} 
-                style={{ 
-                  flex: 1, 
-                  padding: '0.75rem', 
-                  borderRadius: '8px', 
-                  border: 'none', 
-                  backgroundColor: '#dc2626', 
-                  color: 'white', 
-                  fontWeight: 'bold', 
-                  cursor: 'pointer',
-                  fontSize: '15px'
-                }}
-              >
-                Delete
-              </button>
-            </div>
-          </div>
+    <div
+      onClick={onCancel}
+      style={{
+        position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '1rem', zIndex: 50,
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          backgroundColor: '#1e293b', borderRadius: '16px', padding: '1.5rem',
+          maxWidth: '320px', width: '100%', textAlign: 'center',
+        }}
+      >
+        <p style={{ color: 'white', fontWeight: 700, fontSize: '16px', marginBottom: '8px' }}>
+          Remove from Continue Listening?
+        </p>
+        <p style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '20px' }}>
+          {label} will stay in your Library with your progress saved.
+        </p>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button onClick={onCancel} style={{
+            flex: 1, padding: '12px', borderRadius: '10px', border: '1px solid #334155',
+            background: 'transparent', color: '#94a3b8', fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+          }}>Cancel</button>
+          <button onClick={onConfirm} style={{
+            flex: 1, padding: '12px', borderRadius: '10px', border: 'none',
+            background: '#dc2626', color: 'white', fontSize: '14px', fontWeight: 700, cursor: 'pointer',
+          }}>Remove</button>
         </div>
-      )}
-    </section>
-  )
-}
-
-
-// =============================================================================
-// REQUIRED CSS (add to globals.css)
-// =============================================================================
-/*
-.cover-glow {
-  box-shadow: 0 0 15px rgba(255, 255, 255, 0.4);
-}
-*/
-
-
-// =============================================================================
-// SPECS REFERENCE (DO NOT CHANGE)
-// =============================================================================
-/*
-SECTION CONTAINER:
-- px-4 pt-6 pb-4
-
-SECTION TITLE:
-- text-lg font-bold text-white mb-4
-- Emoji: ▶️
-
-CARD CONTAINER:
-- flex
-- bg-slate-800
-- rounded-xl
-- overflow-hidden
-- hover:bg-slate-700 transition
-- Entire card wrapped in Link (clickable)
-
-COVER WRAPPER:
-- w-28 h-28 (112px x 112px)
-- flex-shrink-0
-- p-2 (8px padding around cover)
-
-COVER INNER:
-- w-full h-full
-- rounded-lg
-- overflow-hidden
-- cover-glow (box-shadow: 0 0 15px rgba(255,255,255,0.4))
-
-INFO AREA:
-- flex-1
-- py-2 pr-3
-- flex flex-col justify-center
-
-TYPOGRAPHY:
-- Title: text-sm font-bold text-white line-clamp-1
-- Genre: text-white text-xs
-- Author: text-white text-xs (prefixed with "by ")
-- Duration line: text-white text-xs ("{duration} min • {remaining} min left")
-
-PROGRESS BAR:
-- Container: flex items-center gap-2 mt-1
-- Track: flex-1 h-1.5 bg-slate-700 rounded-full
-- Fill: h-1.5 bg-orange-500 rounded-full, width = progress %
-- Percentage: text-white text-xs
-
-PLAY BUTTON:
-- Container: pr-3 flex items-center
-- Button: w-10 h-10 bg-orange-500 rounded-full flex items-center justify-center
-- Hover: hover:bg-orange-400 transition
-- Icon: w-5 h-5 text-black ml-0.5 (play triangle SVG)
-
-NAVIGATION:
-- Route: /player/[story_id]/play?resume=[resumePosition]
-- Resume position: progress - 5 seconds (minimum 0)
-
-DATA QUERY:
-- Table: user_library JOIN stories
-- Filter: user_id = current user, completed = FALSE
-- Order: last_played DESC
-- Limit: 1
-*/
-
-
-// =============================================================================
-// USAGE IN HOME PAGE
-// =============================================================================
-/*
-import ContinueListening from '@/components/ContinueListening'
-
-export default function HomePage() {
-  return (
-    <div>
-      <ContinueListening />
-      
-      <NewReleases />
-      <RecommendedForYou />
+      </div>
     </div>
   )
 }
 
-NOTE: ContinueListening automatically hides itself if no uncompleted story exists.
-No conditional rendering needed in the parent component.
-*/
+// =============================================================================
+// CARD: SINGLE STORY
+// =============================================================================
 
+function SingleStoryCardUI({
+  card,
+  onDismiss,
+}: {
+  card: SingleStoryCard
+  onDismiss: () => void
+}) {
+  const router = useRouter()
+  const resumeAt = Math.max(0, card.progress - 5)
+  const pct = progressPercent(card.duration_mins, card.progress)
+  const minsLeft = minsRemaining(card.duration_mins, card.progress)
+
+  return (
+    <div
+      onClick={() => router.push(`/player/${card.story_id}?resume=${resumeAt}`)}
+      style={{
+        background: '#1e293b', borderRadius: '13px',
+        border: '1px solid rgba(148,163,184,0.06)',
+        display: 'flex', overflow: 'hidden', position: 'relative', cursor: 'pointer',
+      }}
+    >
+      {/* Cover */}
+      <div style={{ width: 76, height: 76, flexShrink: 0, margin: '9px 0 9px 9px', borderRadius: 7, overflow: 'hidden', boxShadow: '0 0 10px rgba(255,255,255,0.18)' }}>
+        <img src={card.cover_url || '/images/default-cover.png'} alt={card.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+      </div>
+
+      {/* Body */}
+      <div style={{ flex: 1, padding: '9px 28px 9px 9px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minWidth: 0 }}>
+        <div>
+          <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#f97316', marginBottom: 2 }}>Single Story</div>
+          <div style={{ fontWeight: 700, fontSize: 13, color: 'white', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.title}</div>
+          <div style={{ fontSize: 10, color: '#64748b', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.author} · {card.genre}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}><strong style={{ color: 'white' }}>{minsLeft} min</strong> left of {card.duration_mins} min</div>
+          <div style={{ height: 3, background: '#334155', borderRadius: 2, overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: `${pct}%`, background: '#f97316', borderRadius: 2 }} />
+          </div>
+        </div>
+      </div>
+
+      {/* Dismiss */}
+      <button
+        onClick={e => { e.stopPropagation(); onDismiss() }}
+        style={{
+          position: 'absolute', top: 8, right: 8, width: 24, height: 24,
+          background: 'rgba(100,116,139,0.4)', border: '1px solid rgba(148,163,184,0.2)',
+          borderRadius: '50%', color: '#94a3b8', fontSize: 14, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1,
+        }}
+      >×</button>
+    </div>
+  )
+}
 
 // =============================================================================
-// PLAY PAGE MUST HANDLE RESUME PARAMETER
+// CARD: SERIES EPISODE
 // =============================================================================
-/*
-The /player/[id]/play page must read the ?resume= query parameter and set
-the audio currentTime on load:
 
-// In /player/[id]/play/page.tsx
-const searchParams = useSearchParams()
-const resumeTime = parseInt(searchParams.get('resume') || '0', 10)
+function SeriesCardUI({
+  card,
+  onDismiss,
+}: {
+  card: SeriesCard
+  onDismiss: () => void
+}) {
+  const router = useRouter()
+  const resumeAt = Math.max(0, card.progress - 5)
+  const pct = progressPercent(card.duration_mins, card.progress)
+  const minsLeft = minsRemaining(card.duration_mins, card.progress)
 
-useEffect(() => {
-  if (audioRef.current && resumeTime > 0) {
-    audioRef.current.currentTime = resumeTime
+  return (
+    <div
+      onClick={() => router.push(`/player/${card.story_id}?resume=${resumeAt}`)}
+      style={{
+        background: '#1e293b', borderRadius: '13px',
+        border: '1px solid rgba(148,163,184,0.06)',
+        display: 'flex', overflow: 'hidden', position: 'relative', cursor: 'pointer',
+      }}
+    >
+      {/* Cover */}
+      <div style={{ width: 76, height: 76, flexShrink: 0, margin: '9px 0 9px 9px', borderRadius: 7, overflow: 'hidden', boxShadow: '0 0 10px rgba(255,255,255,0.18)' }}>
+        <img src={card.cover_url || '/images/default-cover.png'} alt={card.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+      </div>
+
+      {/* Body */}
+      <div style={{ flex: 1, padding: '9px 28px 9px 9px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minWidth: 0 }}>
+        <div>
+          <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#f97316', marginBottom: 2 }}>
+            Series · Ep {card.episode_number} of {card.total_episodes}
+          </div>
+          <div style={{ fontWeight: 700, fontSize: 13, color: 'white', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.series_name}</div>
+          <div style={{ fontSize: 10, color: '#64748b', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.author} · {card.genre}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}><strong style={{ color: 'white' }}>{minsLeft} min</strong> left of {card.duration_mins} min</div>
+          <div style={{ height: 3, background: '#334155', borderRadius: 2, overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: `${pct}%`, background: '#f97316', borderRadius: 2 }} />
+          </div>
+        </div>
+      </div>
+
+      {/* Dismiss */}
+      <button
+        onClick={e => { e.stopPropagation(); onDismiss() }}
+        style={{
+          position: 'absolute', top: 8, right: 8, width: 24, height: 24,
+          background: 'rgba(100,116,139,0.4)', border: '1px solid rgba(148,163,184,0.2)',
+          borderRadius: '50%', color: '#94a3b8', fontSize: 14, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1,
+        }}
+      >×</button>
+    </div>
+  )
+}
+
+// =============================================================================
+// CARD: PLAYLIST
+// =============================================================================
+
+function PlaylistCardUI({
+  card,
+  onDismiss,
+}: {
+  card: PlaylistCard
+  onDismiss: () => void
+}) {
+  const router = useRouter()
+
+  return (
+    <div
+      onClick={() => router.push('/player/playlist')}
+      style={{
+        background: '#1e293b', borderRadius: '13px',
+        border: '1px solid rgba(148,163,184,0.06)',
+        display: 'flex', overflow: 'hidden', position: 'relative', cursor: 'pointer',
+        alignItems: 'flex-start',
+      }}
+    >
+      {/* Playlist cover icon */}
+      <div style={{ width: 76, height: 76, flexShrink: 0, margin: '9px 0 9px 9px', borderRadius: 7, overflow: 'hidden', boxShadow: '0 0 10px rgba(255,255,255,0.18)', background: '#1a1a2e', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <img src="/images/playlist_icon.png" alt="Playlist" style={{ width: '90%', height: '90%', objectFit: 'contain' }} />
+      </div>
+
+      {/* Body */}
+      <div style={{ flex: 1, padding: '9px 28px 9px 9px', minWidth: 0 }}>
+        <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#f97316', marginBottom: 2 }}>Your Playlist</div>
+        <div style={{ fontWeight: 700, fontSize: 13, color: 'white', lineHeight: 1.2, marginBottom: 2 }}>
+          {card.total_stories} Stories · {card.remaining_mins} min remaining
+        </div>
+        <div style={{ fontSize: 10, color: '#64748b', marginBottom: 5 }}>
+          {card.completed_stories} of {card.total_stories} completed
+        </div>
+        {/* Remaining story titles — cut off cleanly at container boundary */}
+        <div style={{ overflow: 'hidden' }}>
+          {card.next_stories.map((title, i) => (
+            <div
+              key={i}
+              style={{
+                fontSize: 10, lineHeight: 1.6,
+                color: i === 0 ? '#94a3b8' : '#475569',
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'clip',
+              }}
+            >
+              {i === 0 ? '▶ ' : '· '}{title}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Dismiss */}
+      <button
+        onClick={e => { e.stopPropagation(); onDismiss() }}
+        style={{
+          position: 'absolute', top: 8, right: 8, width: 24, height: 24,
+          background: 'rgba(100,116,139,0.4)', border: '1px solid rgba(148,163,184,0.2)',
+          borderRadius: '50%', color: '#94a3b8', fontSize: 14, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1,
+        }}
+      >×</button>
+    </div>
+  )
+}
+
+// =============================================================================
+// MAIN COMPONENT
+// =============================================================================
+
+export default function ContinueListening() {
+  const { user } = useAuth()
+  const [singleCard, setSingleCard] = useState<SingleStoryCard | null>(null)
+  const [seriesCard, setSeriesCard] = useState<SeriesCard | null>(null)
+  const [playlistCard, setPlaylistCard] = useState<PlaylistCard | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  // Dismiss state — tracks which cards are hidden from home (not deleted)
+  const [hiddenSingle, setHiddenSingle] = useState<string | null>(null)   // story_id
+  const [hiddenSeries, setHiddenSeries] = useState<string | null>(null)   // story_id
+  const [dismissModal, setDismissModal] = useState<'single' | 'series' | 'playlist' | null>(null)
+
+  useEffect(() => {
+    if (!user) return
+    fetchCards()
+  }, [user, hiddenSingle, hiddenSeries])
+
+  const fetchCards = async () => {
+    setLoading(true)
+
+    // --- Single story: most recent in-progress, not a series episode ---
+    const { data: singles } = await supabase
+      .from('user_library')
+      .select(`
+        story_id, progress, last_played, completed,
+        stories(title, author, genre, cover_url, duration_mins, series_id)
+      `)
+      .eq('user_id', user!.id)
+      .eq('completed', false)
+      .eq('hide_from_home', false)
+      .is('stories.series_id', null)
+      .order('last_played', { ascending: false })
+      .limit(10)
+
+    const validSingles = (singles || []).filter(
+      r => r.progress > 0 && r.story_id !== hiddenSingle
+    )
+    if (validSingles.length > 0) {
+      const r = validSingles[0]
+      const s = r.stories as any
+      setSingleCard({
+        type: 'single',
+        story_id: r.story_id,
+        title: s.title,
+        author: s.author,
+        genre: s.genre,
+        cover_url: s.cover_url,
+        duration_mins: s.duration_mins,
+        progress: r.progress,
+        last_played: r.last_played,
+      })
+    } else {
+      setSingleCard(null)
+    }
+
+    // --- Series episode: most recent in-progress series episode ---
+    const { data: seriesRows } = await supabase
+      .from('user_library')
+      .select(`
+        story_id, progress, last_played, completed,
+        stories(title, author, genre, cover_url, duration_mins, series_id, episode_number,
+          series(name, episode_count))
+      `)
+      .eq('user_id', user!.id)
+      .eq('completed', false)
+      .eq('hide_from_home', false)
+      .not('stories.series_id', 'is', null)
+      .order('last_played', { ascending: false })
+      .limit(10)
+
+    const validSeries = (seriesRows || []).filter(
+      r => r.story_id !== hiddenSeries
+    )
+    if (validSeries.length > 0) {
+      const r = validSeries[0]
+      const s = r.stories as any
+      setSeriesCard({
+        type: 'series',
+        story_id: r.story_id,
+        series_id: s.series_id,
+        series_name: s.series?.name || s.title,
+        title: s.title,
+        author: s.author,
+        genre: s.genre,
+        cover_url: s.cover_url,
+        duration_mins: s.duration_mins,
+        progress: r.progress,
+        episode_number: s.episode_number || 1,
+        total_episodes: s.series?.episode_count || 1,
+        last_played: r.last_played,
+      })
+    } else {
+      setSeriesCard(null)
+    }
+
+    // --- Playlist: read from localStorage ---
+    const raw = localStorage.getItem('dtt_active_playlist')
+    if (raw) {
+      try {
+        const pl = JSON.parse(raw)
+        setPlaylistCard({
+          type: 'playlist',
+          playlist_id: pl.id || 'active',
+          total_stories: pl.stories?.length || 0,
+          completed_stories: pl.completed || 0,
+          remaining_mins: pl.remaining_mins || 0,
+          next_stories: (pl.stories || [])
+            .slice(pl.completed || 0)
+            .map((s: any) => s.title),
+          last_played: pl.last_played || '',
+        })
+      } catch {
+        setPlaylistCard(null)
+      }
+    } else {
+      setPlaylistCard(null)
+    }
+
+    setLoading(false)
   }
-}, [resumeTime])
-*/
+
+  // Dismiss handlers — set hide_from_home flag in DB, replace with next most recent
+  const dismissSingle = async () => {
+    if (!singleCard || !user) return
+    await supabase
+      .from('user_library')
+      .update({ hide_from_home: true })
+      .eq('user_id', user.id)
+      .eq('story_id', singleCard.story_id)
+    setHiddenSingle(singleCard.story_id)
+    setDismissModal(null)
+  }
+
+  const dismissSeries = async () => {
+    if (!seriesCard || !user) return
+    await supabase
+      .from('user_library')
+      .update({ hide_from_home: true })
+      .eq('user_id', user.id)
+      .eq('story_id', seriesCard.story_id)
+    setHiddenSeries(seriesCard.story_id)
+    setDismissModal(null)
+  }
+
+  const dismissPlaylist = () => {
+    localStorage.removeItem('dtt_active_playlist')
+    setPlaylistCard(null)
+    setDismissModal(null)
+  }
+
+  if (loading) return null
+  if (!singleCard && !seriesCard && !playlistCard) return null
+
+  return (
+    <section style={{ padding: '18px 14px 0' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 12 }}>
+        <span style={{ fontSize: 13 }}>▶</span>
+        <span style={{ fontFamily: 'var(--font-outfit, sans-serif)', fontSize: 11, fontWeight: 800, color: 'white', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+          Continue Listening
+        </span>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {singleCard && (
+          <SingleStoryCardUI
+            card={singleCard}
+            onDismiss={() => setDismissModal('single')}
+          />
+        )}
+        {seriesCard && (
+          <SeriesCardUI
+            card={seriesCard}
+            onDismiss={() => setDismissModal('series')}
+          />
+        )}
+        {playlistCard && (
+          <PlaylistCardUI
+            card={playlistCard}
+            onDismiss={() => setDismissModal('playlist')}
+          />
+        )}
+      </div>
+
+      {/* Dismiss modals */}
+      {dismissModal === 'single' && singleCard && (
+        <DismissModal
+          label={singleCard.title}
+          onConfirm={dismissSingle}
+          onCancel={() => setDismissModal(null)}
+        />
+      )}
+      {dismissModal === 'series' && seriesCard && (
+        <DismissModal
+          label={seriesCard.series_name}
+          onConfirm={dismissSeries}
+          onCancel={() => setDismissModal(null)}
+        />
+      )}
+      {dismissModal === 'playlist' && (
+        <DismissModal
+          label="Your Playlist"
+          onConfirm={dismissPlaylist}
+          onCancel={() => setDismissModal(null)}
+        />
+      )}
+    </section>
+  )
+}
