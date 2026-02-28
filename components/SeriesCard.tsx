@@ -14,6 +14,22 @@ interface SeriesCardProps {
   completed_episodes?: number
 }
 
+
+function PlayPill({ label }: { label: string }) {
+  const colors: Record<string, { bg: string; text: string }> = {
+    'Play':       { bg: 'rgba(249,115,22,0.88)',  text: 'white' },
+    'Continue':   { bg: 'rgba(34,197,94,0.88)',   text: '#042013' },
+    'Play Again': { bg: 'rgba(59,130,246,0.88)',  text: 'white' },
+  }
+  const c = colors[label] || colors['Play']
+  return (
+    <div style={{ position: 'absolute', bottom: '7px', right: '7px', background: c.bg, borderRadius: '20px', padding: '4px 9px 4px 7px', display: 'flex', alignItems: 'center', gap: '4px', boxShadow: '0 2px 6px rgba(0,0,0,0.4)', pointerEvents: 'none' }}>
+      <svg width="7" height="9" viewBox="0 0 12 14" fill={c.text}><path d="M1 1l10 6-10 6V1z"/></svg>
+      <span style={{ color: c.text, fontSize: '9px', fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{label}</span>
+    </div>
+  )
+}
+
 export default function SeriesCard({
   id,
   series_name,
@@ -57,12 +73,14 @@ export default function SeriesCard({
           overflow: 'hidden',
           flexShrink: 0,
           boxShadow: '0 0 15px rgba(255, 255, 255, 0.4)',
+          position: 'relative',
         }}>
           <img
             src={cover_url || '/images/default-cover.png'}
             alt={series_name}
             style={{ width: '130px', height: '130px', objectFit: 'cover', display: 'block' }}
           />
+          <PlayPill label={completed_episodes >= episode_count && episode_count > 0 ? 'Play Again' : completed_episodes > 0 ? 'Continue' : 'Play'} />
         </div>
       </div>
 
