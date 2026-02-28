@@ -440,7 +440,7 @@ function LibraryContent() {
           duration_mins={reviewTarget.duration_mins}
           onClose={() => setReviewTarget(null)}
           onSubmitted={(rating) => {
-            setJustReviewed(prev => new Set([...prev, reviewTarget.id]))
+            setJustReviewed(prev => { const s = new Set(prev); s.add(reviewTarget.id); return s })
             setReviewTarget(null)
           }}
         />
