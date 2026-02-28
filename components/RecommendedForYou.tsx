@@ -31,6 +31,7 @@ export default function RecommendedForYou({ excludeIds = [] }: { excludeIds?: st
       const { data } = await supabase.from('story_analytics')
         .select('id, title, genre, author, duration_mins, cover_url, series_id, series_name, series_number, created_at, avg_rating, review_count')
         .not('cover_url', 'is', null)
+        .limit(100)
       if (!data || !data.length) { setLoading(false); return }
       let ex = new Set(excludeIds)
       if (user?.id) {
