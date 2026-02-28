@@ -280,7 +280,6 @@ export default function SeriesDetailPage() {
               key={ep.id}
               onClick={() => toggleEpisodeSelection(ep.id)}
               style={{
-                background: '#1e293b',
                 borderRadius: 12,
                 border: `1px solid ${isSelected ? (isInProgress ? '#22c55e' : '#f97316') : 'rgba(148,163,184,0.06)'}`,
                 display: 'flex',
