@@ -84,6 +84,8 @@ export default function HorizontalStoryCard({ id, title, genre, author, duration
     if (mappedFlag) finalFlags = [mappedFlag]
   }
   if (not_for_me) finalFlags = ['not-for-me']
+  // Remove 'continue' flag — play pill on cover already communicates this
+  finalFlags = finalFlags.filter(f => f !== 'continue')
 
   const displayFlags = getDisplayFlags(finalFlags)
   const durationLabel = duration_mins ? `${duration_mins} min` : series_total ? `~${series_total} min avg` : null
