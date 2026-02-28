@@ -3,6 +3,7 @@
 import Link from 'next/link'
 
 const FLAG_CONFIG: Record<string, { bg: string; text: string; priority: number }> = {
+  'not-for-me':     { bg: '#ef4444', text: 'white',  priority: 0 },
   'continue':       { bg: '#22c55e', text: 'black',  priority: 1 },
   'reserved':       { bg: '#eab308', text: 'black',  priority: 2 },
   'owned':          { bg: '#f97316', text: 'white',  priority: 3 },
@@ -18,6 +19,14 @@ const FLAG_LABELS: Record<string, string> = {
   'continue': 'Continue', 'reserved': 'Reserved', 'owned': 'Owned',
   'trending': 'Trending', 'new': 'NEW', 'free': 'FREE',
   'editors-pick': "Editor's Pick", 'listeners-pick': "Listener's Pick",
+  'not-for-me': '👎 Not For Me',
+}
+
+// Play pill colors: Play=orange, Continue=green, Play Again=blue
+const PLAY_PILL_COLORS: Record<string, string> = {
+  'Play':       'rgba(249,115,22,0.88)',
+  'Continue':   'rgba(34,197,94,0.88)',
+  'Play Again': 'rgba(59,130,246,0.88)',
 }
 
 interface HorizontalStoryCardProps {
@@ -29,6 +38,7 @@ interface HorizontalStoryCardProps {
   progress_percent?: number
   avg_rating?: number | null; review_count?: number
   is_completed?: boolean; has_reviewed?: boolean
+  not_for_me?: boolean
   onReviewClick?: (e: React.MouseEvent) => void
 }
 
@@ -54,23 +64,41 @@ function StarDisplay({ rating, count }: { rating: number; count?: number }) {
   return <span style={{ display: 'inline-flex', alignItems: 'center', gap: '1px' }}>{stars}{count !== undefined && count > 0 && <span style={{ color: '#64748b', fontSize: '10px', marginLeft: '4px' }}>({count})</span>}</span>
 }
 
-export default function HorizontalStoryCard({ id, title, genre, author, duration_mins, cover_url, description, credits, series_number, series_total, flags = [], flag, progress_percent, avg_rating, review_count, is_completed, has_reviewed, onReviewClick }: HorizontalStoryCardProps) {
+function PlayPill({ label }: { label: string }) {
+  const bg = PLAY_PILL_COLORS[label] || 'rgba(249,115,22,0.88)'
+  const textColor = label === 'Continue' ? '#042013' : 'white'
+  return (
+    <div style={{ position: 'absolute', bottom: '7px', right: '7px', background: bg, borderRadius: '20px', padding: '4px 9px 4px 7px', display: 'flex', alignItems: 'center', gap: '4px', boxShadow: '0 2px 6px rgba(0,0,0,0.4)', pointerEvents: 'none' }}>
+      <svg width="7" height="9" viewBox="0 0 12 14" fill={textColor}><path d="M1 1l10 6-10 6V1z"/></svg>
+      <span style={{ color: textColor, fontSize: '9px', fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{label}</span>
+    </div>
+  )
+}
+
+export default function HorizontalStoryCard({ id, title, genre, author, duration_mins, cover_url, description, credits, series_number, series_total, flags = [], flag, progress_percent, avg_rating, review_count, is_completed, has_reviewed, not_for_me, onReviewClick }: HorizontalStoryCardProps) {
+
   let finalFlags = flags
   if ((!flags || flags.length === 0) && flag) {
     const flagMap: Record<string, string> = { 'free': 'free', 'editors-pick': 'editors-pick', 'readers-choice': 'listeners-pick', 'trending': 'trending' }
     const mappedFlag = flagMap[flag]
     if (mappedFlag) finalFlags = [mappedFlag]
   }
+  if (not_for_me) finalFlags = ['not-for-me']
+
   const displayFlags = getDisplayFlags(finalFlags)
   const durationLabel = duration_mins ? `${duration_mins} min` : series_total ? `~${series_total} min avg` : null
-  const showReviewPrompt = is_completed && !has_reviewed
-  const showReviewedBadge = is_completed && has_reviewed
+  const showReviewPrompt = is_completed && !has_reviewed && !not_for_me
+
+  let playLabel = 'Play'
+  if (is_completed) playLabel = 'Play Again'
+  else if (progress_percent !== undefined && progress_percent > 0) playLabel = 'Continue'
 
   return (
-    <Link href={`/player/${id}`} style={{ display: 'flex', background: '#1e293b', borderRadius: '14px', position: 'relative', overflow: 'hidden', border: '1px solid rgba(148, 163, 184, 0.06)', textDecoration: 'none', alignItems: 'stretch', padding: 0, minHeight: '150px' }}>
+    <Link href={`/player/${id}`} style={{ display: 'flex', background: '#1e293b', borderRadius: '14px', position: 'relative', overflow: 'hidden', border: '1px solid rgba(148,163,184,0.06)', textDecoration: 'none', alignItems: 'stretch', padding: 0, minHeight: '150px' }}>
       <div style={{ flexShrink: 0, border: '10px solid #1e293b', borderRight: 'none', display: 'flex', alignItems: 'center' }}>
-        <div style={{ width: '130px', height: '130px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0, boxShadow: '0 0 15px rgba(255, 255, 255, 0.4)' }}>
+        <div style={{ width: '130px', height: '130px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0, boxShadow: '0 0 15px rgba(255,255,255,0.4)', position: 'relative' }}>
           <img src={cover_url || '/images/default-cover.png'} alt={title} style={{ width: '130px', height: '130px', objectFit: 'cover', display: 'block' }} />
+          <PlayPill label={playLabel} />
         </div>
       </div>
       <div style={{ flex: 1, padding: '10px 12px 10px 10px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minWidth: 0 }}>
@@ -81,24 +109,19 @@ export default function HorizontalStoryCard({ id, title, genre, author, duration
         <div style={{ fontSize: '11px', lineHeight: 1.3 }}>
           <div style={{ color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{author}</div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{genre}</span>
+            <span style={{ color: '#94a3b8' }}>{genre}</span>
             {durationLabel && <span style={{ color: 'white', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0, marginLeft: '6px' }}>{durationLabel}</span>}
           </div>
         </div>
-        {!showReviewPrompt && !showReviewedBadge && description && (
+        {!showReviewPrompt && description && (
           <p style={{ color: '#94a3b8', fontSize: '11px', lineHeight: 1.35, margin: 0, display: '-webkit-box', WebkitLineClamp: avg_rating ? 2 : 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{description}</p>
         )}
         {showReviewPrompt && (
-          <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); onReviewClick?.(e) }} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(34, 197, 94, 0.12)', border: '1px solid rgba(34, 197, 94, 0.35)', borderRadius: '6px', padding: '5px 10px', cursor: 'pointer', width: '100%', textAlign: 'left' }}>
+          <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); onReviewClick?.(e) }} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.35)', borderRadius: '6px', padding: '5px 10px', cursor: 'pointer', width: '100%', textAlign: 'left' }}>
             <span style={{ fontSize: '13px' }}>⭐</span>
             <span style={{ color: '#22c55e', fontSize: '11px', fontWeight: 700 }}>Rate this story</span>
             <span style={{ color: '#22c55e', fontSize: '11px', marginLeft: 'auto' }}>›</span>
           </button>
-        )}
-        {showReviewedBadge && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(34, 197, 94, 0.08)', border: '1px solid rgba(34, 197, 94, 0.2)', borderRadius: '6px', padding: '5px 10px' }}>
-            <span style={{ color: '#22c55e', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>✓ Reviewed</span>
-          </div>
         )}
         {avg_rating != null && avg_rating > 0 && (
           <div style={{ marginTop: '2px' }}><StarDisplay rating={avg_rating} count={review_count} /></div>

@@ -416,24 +416,14 @@ function LibraryContent() {
       </div>
 
       <div className="fixed bottom-0 left-0 right-0 bg-slate-950 px-3 py-2 border-t border-slate-700 z-50">
-        {showLowCreditsButton ? (
-          <button onClick={() => router.push('/buy-credits')} className="w-full bg-orange-500 text-white py-2 rounded-lg text-base font-bold">Low On Credits - Get More</button>
-        ) : selectedType === 'Series Only' ? (
+        {selectedType === 'Series Only' ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div className="bg-slate-950 px-2 py-1 rounded-md text-center leading-tight border border-slate-700">
-              <div className="text-white text-[10px]">Credits</div>
-              <div className="text-white text-sm">{userCredits}</div>
-            </div>
             <div style={{ flex: 1, textAlign: 'center' }}>
               <p className="text-white text-sm" style={{ margin: 0 }}>Select any series to expand</p>
             </div>
           </div>
         ) : (
           <div className="flex gap-2 items-center">
-            <div className="bg-slate-950 px-2 py-1 rounded-md text-center leading-tight border border-slate-700">
-              <div className="text-white text-[10px]">Credits</div>
-              <div className="text-white text-sm">{userCredits}</div>
-            </div>
             <div className="flex-1"><PlaylistButton /></div>
             <button onClick={() => router.push('/library-search')} className="bg-slate-700 text-white px-3 py-2 rounded-md text-sm font-medium">Search</button>
           </div>
