@@ -455,7 +455,7 @@ function LibraryContent() {
                   ))}
                 </div>
               )}
-              {!searchQuery && <p style={{ color: '#78716c', fontSize: '13px', textAlign: 'center', padding: '20px' }}>Type to search stories</p>}
+              {!searchQuery && <button onClick={() => { setShowSearch(false); setSearchQuery(''); setSearchResults([]) }} style={{ display: 'block', width: '100%', padding: '12px', background: 'none', border: 'none', color: '#a8a29e', fontSize: '13px', cursor: 'pointer', textAlign: 'center' }}>Dismiss</button>}
             </div>
           </div>
         </div>
