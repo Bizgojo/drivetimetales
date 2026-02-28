@@ -174,14 +174,14 @@ function PlayerContent() {
             {!audioReady ? 'Loading...' : isPlaying ? '⏸ Pause' : hasProgress ? '▶ Continue' : '▶ Play'}
           </button>
 
-          {/* Right: Not for Me (before any progress) → Start Over (after pausing) */}
-          {isPlaying ? (
-            <button onClick={handleNotForMe} style={{ flex: 1, padding: '16px', borderRadius: '14px', border: 'none', fontSize: '13px', fontWeight: 600, cursor: 'pointer', backgroundColor: '#1e293b', color: '#94a3b8' }}>
-              Not for Me
-            </button>
-          ) : (
+          {/* Right: Not for Me (no prior progress) OR Start Over (has progress) */}
+          {hasProgress ? (
             <button onClick={handleStartOver} style={{ flex: 1, padding: '16px', borderRadius: '14px', border: 'none', fontSize: '13px', fontWeight: 600, cursor: 'pointer', backgroundColor: '#1e293b', color: '#94a3b8' }}>
               Start Over
+            </button>
+          ) : (
+            <button onClick={handleNotForMe} style={{ flex: 1, padding: '16px', borderRadius: '14px', border: 'none', fontSize: '13px', fontWeight: 600, cursor: 'pointer', backgroundColor: '#1e293b', color: '#94a3b8' }}>
+              Not for Me
             </button>
           )}
         </div>
