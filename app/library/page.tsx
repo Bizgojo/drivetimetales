@@ -425,7 +425,7 @@ function LibraryContent() {
         ) : (
           <div className="flex gap-2 items-center">
             <div className="flex-1"><PlaylistButton /></div>
-            <button onClick={() => router.push('/library-search')} className="bg-slate-700 text-white px-3 py-2 rounded-md text-sm font-medium">Search</button>
+            <button onClick={() => router.push('/library-search')} style={{ background: "#f97316", color: "white", padding: "0.75rem 1rem", borderRadius: "10px", fontSize: "18px", fontWeight: 700, border: "none", cursor: "pointer", whiteSpace: "nowrap" }}>Search</button>
           </div>
         )}
       </div>
