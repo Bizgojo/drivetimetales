@@ -245,25 +245,22 @@ export default function SeriesDetailPage() {
     router.push('/player/series')
   }
 
-  const saveSeries = () => {
-    // Save series info to localStorage for home page to display
-    const seriesSave = {
-      series_id: seriesId,
-      series_name: seriesInfo?.name || '',
-      cover_url: seriesInfo?.cover_url || null,
-      genre: seriesInfo?.genre || '',
-      author: seriesInfo?.author || '',
-      total_episodes: episodes.length,
-      total_duration_mins: episodes.reduce((sum, ep) => sum + ep.duration_mins, 0),
-      saved_at: new Date().toISOString(),
-      episodes: episodes.map(ep => ({
-        id: ep.id,
-        title: ep.title,
-        episode_number: ep.episode_number,
-      }))
-    }
-    localStorage.setItem('dtt_saved_series', JSON.stringify(seriesSave))
-    router.push('/home')
+  const saveSeries = async () => {
+    if (!user?.id) return
+    // Determine which episodes to save - selected or all
+    const toSave = hasSelection
+      ? episodes.filter(ep => selectedEpisodes.has(ep.id))
+      : episodes
+    // Upsert each episode into user_library with progress=0 (reserved)
+    const upserts = toSave.map(ep => ({
+      user_id: user.id,
+      story_id: ep.id,
+      progress: 0,
+      completed: false,
+      last_played: new Date().toISOString(),
+    }))
+    await supabase.from('user_library').upsert(upserts)
+    router.push('/library')
   }
 
   const totalEpisodes = episodes.length
@@ -545,7 +542,7 @@ export default function SeriesDetailPage() {
               gap: '8px'
             }}
           >
-            💾 Save Series
+            💾 Save Episodes
           </button>
         </div>
       </div>
