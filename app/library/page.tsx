@@ -425,10 +425,37 @@ function LibraryContent() {
         ) : (
           <div className="flex gap-2 items-center">
             <div className="flex-1"><PlaylistButton /></div>
-            <button onClick={() => router.push('/library-search')} style={{ background: "#f97316", color: "white", padding: "0.75rem 1rem", borderRadius: "10px", fontSize: "18px", fontWeight: 700, border: "none", cursor: "pointer", whiteSpace: "nowrap" }}>Search</button>
+            <button onClick={() => setShowSearch(true)} style={{ background: "#f97316", color: "white", padding: "0.75rem 1rem", borderRadius: "10px", fontSize: "18px", fontWeight: 700, border: "none", cursor: "pointer", whiteSpace: "nowrap" }}>Search</button>
           </div>
         )}
       </div>
+
+      {/* Search Overlay */}
+      {showSearch && (
+        <div onClick={() => { setShowSearch(false); setSearchQuery(''); setSearchResults([]) }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: '80px' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#0f172a', borderRadius: '16px', width: '90%', maxWidth: '420px', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }}>
+            <div style={{ padding: '12px', position: 'relative' }}>
+              <input autoFocus value={searchQuery} onChange={async e => { const q = e.target.value; setSearchQuery(q); if (!q.trim()) { setSearchResults([]); return } setSearchLoading(true); const { data } = await supabase.from('story_analytics').select('id, title, genre, author, duration_mins, cover_url, avg_rating, review_count').or(`title.ilike.%${q}%,author.ilike.%${q}%`).limit(15); setSearchResults(data || []); setSearchLoading(false) }} placeholder="Search by title or author…" style={{ width: '100%', background: '#1e293b', border: '1px solid rgba(148,163,184,0.15)', borderRadius: '10px', padding: '10px 36px 10px 36px', color: 'white', fontSize: '15px', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+              <svg style={{ position: 'absolute', left: '22px', top: '50%', transform: 'translateY(-50%)', opacity: 0.4 }} width="16" height="16" fill="none" stroke="white" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path strokeLinecap="round" d="M21 21l-4.35-4.35"/></svg>
+              {searchQuery && <button onClick={() => { setSearchQuery(''); setSearchResults([]) }} style={{ position: 'absolute', right: '22px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '20px', lineHeight: 1 }}>×</button>}
+            </div>
+            <div style={{ maxHeight: '60vh', overflowY: 'auto', padding: '0 12px 12px' }}>
+              {searchLoading && <p style={{ color: '#475569', fontSize: '13px', textAlign: 'center', padding: '20px' }}>Searching…</p>}
+              {!searchLoading && searchQuery && searchResults.length === 0 && <p style={{ color: '#475569', fontSize: '13px', textAlign: 'center', padding: '20px' }}>No results for "{searchQuery}"</p>}
+              {!searchLoading && searchResults.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {searchResults.map(story => (
+                    <div key={story.id} onClick={() => { setShowSearch(false); setSearchQuery(''); setSearchResults([]); router.push(`/player/${story.id}`) }}>
+                      <HorizontalStoryCard id={story.id} title={story.title} genre={story.genre} author={story.author} duration_mins={story.duration_mins} cover_url={story.cover_url} avg_rating={story.avg_rating} review_count={(story as any).review_count} />
+                    </div>
+                  ))}
+                </div>
+              )}
+              {!searchQuery && <p style={{ color: '#475569', fontSize: '13px', textAlign: 'center', padding: '20px' }}>Type to search stories</p>}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Review Modal — single instance for all stories */}
       {reviewTarget && user?.id && (
