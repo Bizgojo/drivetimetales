@@ -51,8 +51,8 @@ export default function SeriesCard({
         alignItems: 'center',
       }}>
         <div style={{
-          width: '182px',
-          height: '182px',
+          width: '130px',
+          height: '130px',
           borderRadius: '6px',
           overflow: 'hidden',
           flexShrink: 0,
@@ -61,7 +61,7 @@ export default function SeriesCard({
           <img
             src={cover_url || '/images/default-cover.png'}
             alt={series_name}
-            style={{ width: '182px', height: '182px', objectFit: 'cover', display: 'block' }}
+            style={{ width: '130px', height: '130px', objectFit: 'cover', display: 'block' }}
           />
         </div>
       </div>

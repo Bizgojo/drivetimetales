@@ -10,6 +10,7 @@ import HorizontalStoryCard from '@/components/HorizontalStoryCard'
 import SeriesCard from '@/components/SeriesCard'
 import PlaylistButton from '@/components/PlaylistButton'
 import LibraryFiltersV2 from '@/components/LibraryFiltersV2'
+import ReviewModal from '@/components/ReviewModal'
 
 interface Story {
   id: string
@@ -25,6 +26,9 @@ interface Story {
   flag?: string | null
   is_free?: boolean
   created_at?: string
+  // From story_analytics view
+  avg_rating?: number | null
+  review_count?: number
 }
 
 interface UserLibraryEntry {
@@ -48,14 +52,23 @@ interface SeriesGroup {
   earliest_created_at?: string
 }
 
+// Review modal target type
+interface ReviewTarget {
+  id: string
+  title: string
+  genre: string
+  duration_mins: number
+}
+
 function getCredits(duration_mins: number): number {
   return Math.max(1, Math.floor(duration_mins / 15))
 }
 
 function computeStoryFlags(story: Story, userLibraryEntry?: UserLibraryEntry | null): string[] {
+  if (userLibraryEntry?.completed) return []
   const flags: string[] = []
   
-  const isOwned = !!userLibraryEntry
+  const isOwned = !!userLibraryEntry && !userLibraryEntry?.completed
   const isReserved = userLibraryEntry?.reserved === true
   const isContinue = (userLibraryEntry?.progress ?? 0) > 0 && !userLibraryEntry?.completed
   
@@ -112,6 +125,11 @@ function LibraryContent() {
   const [userName, setUserName] = useState('Friend')
   const [userCredits, setUserCredits] = useState(4)
   
+  // Review state
+  const [reviewTarget, setReviewTarget] = useState<ReviewTarget | null>(null)
+  const [userReviewedIds, setUserReviewedIds] = useState<Set<string>>(new Set())
+  const [justReviewed, setJustReviewed] = useState<Set<string>>(new Set())
+
   const [selectedDuration, setSelectedDuration] = useState('All Lengths')
   const [selectedGenre, setSelectedGenre] = useState('All Categories')
   const [selectedType, setSelectedType] = useState('Singles & Series')
@@ -119,12 +137,11 @@ function LibraryContent() {
   const showLowCreditsButton = userCredits <= 3
 
   useEffect(() => {
-
     async function fetchData() {
-      // Fetch stories
+      // Fetch stories from story_analytics view to get avg_rating + review_count
       const { data: storiesData } = await supabase
-        .from('stories')
-        .select('id, title, genre, author, duration_mins, cover_url, series_id, series_name, series_number, series_total, flag, is_free, created_at')
+        .from('story_analytics')
+        .select('id, title, genre, author, duration_mins, cover_url, series_id, series_name, series_number, series_total, flag, is_free, created_at, avg_rating, review_count')
         .not('cover_url', 'is', null)
         .order('published_on', { ascending: false })
       if (storiesData) setStories(storiesData)
@@ -150,6 +167,15 @@ function LibraryContent() {
           console.log('[Library] Loaded', libraryData.length, 'library entries for user', user.id)
           setUserLibrary(libraryData)
         }
+
+        // Fetch which stories this user has already reviewed
+        const { data: reviewsData } = await supabase
+          .from('reviews')
+          .select('story_id')
+          .eq('user_id', user.id)
+        if (reviewsData) {
+          setUserReviewedIds(new Set(reviewsData.map((r: any) => r.story_id)))
+        }
       }
       
       // Fetch series table data
@@ -167,7 +193,6 @@ function LibraryContent() {
     fetchData()
   }, [user, authLoading])
 
-  // Create lookup for user library — recalculates when userLibrary changes
   const libraryLookup = useMemo(() => {
     const map = new Map<string, UserLibraryEntry>()
     userLibrary.forEach(entry => map.set(entry.story_id, entry))
@@ -245,6 +270,56 @@ function LibraryContent() {
   })
   mixedItems.sort((a, b) => (b.sortDate || '').localeCompare(a.sortDate || ''))
 
+  // Helper to render a single HSC with review props
+  function renderStoryCard(story: Story) {
+    const libraryEntry = libraryLookup.get(story.id)
+    const flags = computeStoryFlags(story, libraryEntry)
+    const is_completed = libraryEntry?.completed === true
+    const has_reviewed = userReviewedIds.has(story.id) || justReviewed.has(story.id)
+    const progress_percent = is_completed
+      ? undefined  // don't show progress bar on completed stories
+      : libraryEntry?.progress && story.duration_mins
+        ? Math.round((libraryEntry.progress / (story.duration_mins * 60)) * 100)
+        : undefined
+
+    return (
+      <div
+        key={story.id}
+        onClick={() => {
+          // Don't navigate if clicking the Rate It button
+        }}
+        className="cursor-pointer"
+      >
+        <HorizontalStoryCard
+          id={story.id}
+          title={story.title}
+          genre={story.genre}
+          author={story.author || 'Drive Time Tales'}
+          duration_mins={story.duration_mins}
+          credits={getCredits(story.duration_mins)}
+          cover_url={story.cover_url}
+          series_number={story.series_number}
+          series_total={story.series_total}
+          flags={flags}
+          progress_percent={progress_percent}
+          avg_rating={story.avg_rating}
+          review_count={story.review_count}
+          is_completed={is_completed}
+          has_reviewed={has_reviewed}
+          onReviewClick={(e) => {
+            e.preventDefault()
+            setReviewTarget({
+              id: story.id,
+              title: story.title,
+              genre: story.genre,
+              duration_mins: story.duration_mins,
+            })
+          }}
+        />
+      </div>
+    )
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
@@ -292,25 +367,7 @@ function LibraryContent() {
                     />
                   )
                 } else {
-                  const libraryEntry = libraryLookup.get(item.story.id)
-                  const flags = computeStoryFlags(item.story, libraryEntry)
-                  return (
-                    <div key={item.story.id} onClick={() => router.push('/player/' + item.story.id)} className="cursor-pointer">
-                      <HorizontalStoryCard 
-                        id={item.story.id} 
-                        title={item.story.title} 
-                        genre={item.story.genre} 
-                        author={item.story.author || 'Drive Time Tales'} 
-                        duration_mins={item.story.duration_mins} 
-                        credits={getCredits(item.story.duration_mins)} 
-                        cover_url={item.story.cover_url} 
-                        series_number={item.story.series_number} 
-                        series_total={item.story.series_total} 
-                        flags={flags}
-                        progress_percent={libraryEntry?.completed ? 100 : libraryEntry?.progress && item.story.duration_mins ? Math.round((libraryEntry.progress / (item.story.duration_mins * 60)) * 100) : undefined}
-                      />
-                    </div>
-                  )
+                  return renderStoryCard(item.story)
                 }
               })
             )}
@@ -352,27 +409,7 @@ function LibraryContent() {
                 <p className="text-white text-sm" style={{ opacity: 0.7 }}>Try a different filter</p>
               </div>
             ) : (
-              singles.map(story => {
-                const libraryEntry = libraryLookup.get(story.id)
-                const flags = computeStoryFlags(story, libraryEntry)
-                return (
-                  <div key={story.id} onClick={() => router.push('/player/' + story.id)} className="cursor-pointer">
-                    <HorizontalStoryCard 
-                      id={story.id} 
-                      title={story.title} 
-                      genre={story.genre} 
-                      author={story.author || 'Drive Time Tales'} 
-                      duration_mins={story.duration_mins} 
-                      credits={getCredits(story.duration_mins)} 
-                      cover_url={story.cover_url} 
-                      series_number={story.series_number} 
-                      series_total={story.series_total} 
-                      flags={flags}
-                      progress_percent={libraryEntry?.completed ? 100 : libraryEntry?.progress && story.duration_mins ? Math.round((libraryEntry.progress / (story.duration_mins * 60)) * 100) : undefined}
-                    />
-                  </div>
-                )
-              })
+              singles.map(story => renderStoryCard(story))
             )}
           </>
         )}
@@ -402,6 +439,22 @@ function LibraryContent() {
           </div>
         )}
       </div>
+
+      {/* Review Modal — single instance for all stories */}
+      {reviewTarget && user?.id && (
+        <ReviewModal
+          storyId={reviewTarget.id}
+          storyTitle={reviewTarget.title}
+          userId={user.id}
+          genre={reviewTarget.genre}
+          duration_mins={reviewTarget.duration_mins}
+          onClose={() => setReviewTarget(null)}
+          onSubmitted={(rating) => {
+            setJustReviewed(prev => new Set([...prev, reviewTarget.id]))
+            setReviewTarget(null)
+          }}
+        />
+      )}
     </div>
   )
 }

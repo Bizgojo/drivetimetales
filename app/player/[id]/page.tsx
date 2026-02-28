@@ -81,7 +81,7 @@ function PlayerContent() {
       <audio ref={audioRef} src={story.audio_url}
         onCanPlay={() => { setAudioReady(true); if (audioRef.current) setDuration(audioRef.current.duration) }}
         onTimeUpdate={handleTimeUpdate}
-        onEnded={() => { setIsPlaying(false); saveProgress(duration, true) }}
+        onEnded={() => { setIsPlaying(false); saveProgress(duration, true); setTimeout(() => router.push('/library'), 1500) }}
         onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} />
       <div style={{ padding: '12px 16px 0', flexShrink: 0 }}>
         <button onClick={() => { if (audioRef.current) audioRef.current.pause(); router.back() }} style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundColor: '#3b82f6', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -113,7 +113,7 @@ function PlayerContent() {
               Start Over
             </button>
           ) : (
-            <button onClick={() => { if (audioRef.current) audioRef.current.pause(); saveProgress(currentTime); router.back() }} style={{ flex: 1, padding: '16px', borderRadius: '14px', border: 'none', fontSize: '14px', fontWeight: 600, cursor: 'pointer', backgroundColor: '#1e293b', color: '#94a3b8' }}>
+            <button onClick={() => { if (audioRef.current) audioRef.current.pause(); supabase.from('user_library').upsert({ user_id: user?.id, story_id: storyId, not_for_me: true, last_played: new Date().toISOString() }); router.push('/library') }} style={{ flex: 1, padding: '16px', borderRadius: '14px', border: 'none', fontSize: '14px', fontWeight: 600, cursor: 'pointer', backgroundColor: '#1e293b', color: '#94a3b8' }}>
               Not for Me
             </button>
           )}
