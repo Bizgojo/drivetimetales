@@ -71,7 +71,13 @@ function PlayerContent() {
   const handlePlayPause = () => {
     if (!audioRef.current) return
     if (isPlaying) { audioRef.current.pause(); saveProgress(currentTime) }
-    else { audioRef.current.play(); setHasProgress(true) }
+    else {
+      const resumeAt = Math.max(0, currentTime - 3)
+      audioRef.current.currentTime = resumeAt
+      setCurrentTime(resumeAt)
+      audioRef.current.play()
+      setHasProgress(true)
+    }
     setIsPlaying(!isPlaying)
   }
 
