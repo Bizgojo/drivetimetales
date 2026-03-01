@@ -10,7 +10,6 @@ interface Story {
   avg_rating?: number | null; review_count?: number
 }
 
-function getCredits(d: number) { return Math.max(1, Math.floor(d / 15)) }
 
 function StarDisplay({ rating, count }: { rating: number; count?: number }) {
   return <span style={{ display: 'inline-flex', gap: '1px' }}>
@@ -57,7 +56,7 @@ export default function NewReleases({ excludeIds = [] }: { excludeIds?: string[]
               <h3 className="text-xs font-bold text-white line-clamp-2 leading-tight">{s.title}</h3>
               <p style={{ color: '#94a3b8', fontSize: '0.7rem' }}>{s.genre}</p>
               <p style={{ color: '#94a3b8', fontSize: '0.7rem' }}>by {s.author}</p>
-              <p style={{ color: '#fff', fontSize: '0.7rem', fontWeight: 600 }}>{s.duration_mins} min · {getCredits(s.duration_mins)} cr</p>
+              <p style={{ color: '#fff', fontSize: '0.7rem', fontWeight: 600 }}>{s.duration_mins} min</p>
               {s.avg_rating != null && s.avg_rating > 0 && <StarDisplay rating={Math.round(s.avg_rating)} count={s.review_count} />}
             </div>
           </Link>

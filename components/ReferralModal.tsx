@@ -69,7 +69,7 @@ export default function ReferralModal({ isOpen, onClose, userId, userName }: Ref
   }
 
   const referralLink = `https://drivetimetales.vercel.app/signup?ref=${referralCode}`
-  const shareText = `Join me on Drive Time Tales! Audio stories for your commute. Use my link to sign up and we both get 1 month free when you subscribe: ${referralLink}`
+  const shareText = `Join me on Endless Tales! Amazing audio stories for your commute. Sign up free with my link: ${referralLink}`
 
   const copyLink = async () => {
     await navigator.clipboard.writeText(referralLink)
@@ -99,7 +99,7 @@ export default function ReferralModal({ isOpen, onClose, userId, userName }: Ref
 
         {/* Description */}
         <p style={{ color: '#94a3b8', fontSize: '14px', marginBottom: '1.5rem', lineHeight: 1.5 }}>
-          Share your link with friends. When they subscribe, you <strong style={{ color: '#22c55e' }}>both</strong> get 1 month free!
+          Share your link with friends and help them discover great stories for their commute!
         </p>
 
         {loading ? (

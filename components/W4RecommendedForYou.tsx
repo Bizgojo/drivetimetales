@@ -14,7 +14,6 @@ Status: PROTECTED
 PURPOSE:
 Recommended For You section for Welcome page. Shows stories costing 1-3 credits.
 Uses Module 01 HorizontalStoryCard for display.
-If user doesn't have enough credits, shows popup with option to subscribe.
 
 ⚠️  DO NOT MODIFY THIS DESIGN WITHOUT MARC'S EXPLICIT APPROVAL
 ================================================================================
@@ -200,7 +199,7 @@ export default function W4RecommendedForYou({ credits }: W4RecommendedForYouProp
             </p>
 
             <Link
-              href="/subscribe"
+              href="/signup"
               className="hover:bg-orange-400 font-semibold rounded-xl transition"
               style={{
                 display: 'inline-block',

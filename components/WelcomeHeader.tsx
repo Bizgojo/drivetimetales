@@ -141,7 +141,7 @@ export default function WelcomeHeader({ credits }: WelcomeHeaderProps) {
         }}>
           You have used all your free credits
           <Link 
-            href="/subscribe" 
+            href="/signup" 
             style={{ 
               backgroundColor: '#f97316', 
               color: 'black', 

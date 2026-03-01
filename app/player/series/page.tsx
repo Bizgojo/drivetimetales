@@ -16,7 +16,6 @@ interface SeriesStory {
   duration_mins: number
   cover_url: string | null
   audio_url: string
-  credits: number
   episode_number: number
   series_name: string
 }
@@ -70,7 +69,7 @@ function SeriesPlayerContent() {
     const ids = episodes.map(ep => ep.id)
     const { data: stories } = await supabase
       .from('stories')
-      .select('id, title, author, description, genre, duration_mins, cover_url, audio_url, credits, episode_number, series_name')
+      .select('id, title, author, description, genre, duration_mins, cover_url, audio_url, episode_number, series_name')
       .in('id', ids)
     
     if (stories) {
@@ -205,7 +204,7 @@ function SeriesPlayerContent() {
     setCurrentIndex(prev => prev + 1)
   }
 
-  // Charge credits after 3 minutes (180 seconds)
+  // credits removed
   useEffect(() => {
     if (isPlaying && !charged && currentTime >= 180 && user && currentStory) {
       chargeCredits()
@@ -215,11 +214,9 @@ function SeriesPlayerContent() {
   const chargeCredits = async () => {
     if (!user || !currentStory || charged) return
     
-    const creditCost = currentStory.credits || Math.max(1, Math.floor(currentStory.duration_mins / 15))
     
     const { error: creditError } = await supabase
       .from('users')
-      .update({ credits: (user.credits || 0) - creditCost })
       .eq('id', user.id)
 
     if (!creditError) {
@@ -449,7 +446,7 @@ function SeriesPlayerContent() {
                 <p style={{ color: '#f97316', fontSize: '11px', fontWeight: 'bold', marginBottom: '2px' }}>Episode {nextStory.episode_number || currentIndex + 2}</p>
                 <p style={{ color: 'white', fontSize: '14px', fontWeight: 'bold', marginBottom: '2px' }}>{nextStory.title}</p>
                 <p style={{ color: 'white', fontSize: '12px' }}>
-                  {nextStory.duration_mins} min • {nextStory.credits || Math.max(1, Math.floor(nextStory.duration_mins / 15))} credit
+                  {nextStory.duration_mins} min
                 </p>
               </div>
             </div>
