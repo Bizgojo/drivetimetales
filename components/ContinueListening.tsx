@@ -126,6 +126,7 @@ function SingleStoryCardUI({
   const resumeAt = Math.max(0, card.progress - 5)
   const pct = progressPercent(card.duration_mins, card.progress)
   const minsLeft = minsRemaining(card.duration_mins, card.progress)
+  const notStarted = card.progress === 0
 
   return (
     <div
@@ -149,7 +150,7 @@ function SingleStoryCardUI({
           <div style={{ fontSize: 10, color: '#64748b', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.author} · {card.genre}</div>
         </div>
         <div>
-          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}><strong style={{ color: 'white' }}>{minsLeft} min</strong> left of {card.duration_mins} min</div>
+          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>{notStarted ? <strong style={{ color: '#22c55e' }}>Ready to Play</strong> : <><strong style={{ color: 'white' }}>{minsLeft} min</strong> left of {card.duration_mins} min</>}</div>
           <div style={{ height: 3, background: '#334155', borderRadius: 2, overflow: 'hidden' }}>
             <div style={{ height: '100%', width: `${pct}%`, background: '#f97316', borderRadius: 2 }} />
           </div>
@@ -255,9 +256,8 @@ function PlaylistCardUI({
       }}
     >
       {/* Playlist cover icon */}
-      <div style={{ width: 76, height: 76, flexShrink: 0, margin: '9px 0 9px 9px', borderRadius: 7, boxShadow: '0 0 10px rgba(255,255,255,0.18)', background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 2 }}>
-        <span style={{ fontSize: 28 }}>🎧</span>
-        <span style={{ fontSize: 8, fontWeight: 800, color: 'white', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Playlist</span>
+      <div style={{ width: 76, height: 76, flexShrink: 0, margin: '9px 0 9px 9px', borderRadius: 7, overflow: 'hidden', boxShadow: '0 0 10px rgba(255,255,255,0.18)' }}>
+        <img src="/images/playlist_icon.png" alt="Playlist" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
       </div>
 
       {/* Body */}
@@ -339,7 +339,7 @@ export default function ContinueListening() {
       .limit(10)
 
     const validSingles = (singles || []).filter(
-      r => r.progress > 0 && r.story_id !== hiddenSingle
+      r => r.stories != null && !r.completed && r.story_id !== hiddenSingle
     )
     if (validSingles.length > 0) {
       const r = validSingles[0]
@@ -375,7 +375,7 @@ export default function ContinueListening() {
       .limit(10)
 
     const validSeries = (seriesRows || []).filter(
-      r => r.progress > 0 && r.story_id !== hiddenSeries
+      r => !r.completed && r.story_id !== hiddenSeries
     )
     const firstValidSeries = validSeries.find(r => r.stories != null)
     if (firstValidSeries) {
@@ -460,7 +460,7 @@ export default function ContinueListening() {
 
   return (
     <section style={{ padding: '1.5rem 1rem 0' }}>
-      <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>▶️ CONTINUE LISTENING</h2>
+      <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>🎧 READY TO PLAY</h2>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {singleCard && (
