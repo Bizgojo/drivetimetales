@@ -136,9 +136,8 @@ function LibraryPlaylistContent() {
   }
 
   const savePlaylist = () => {
-    localStorage.setItem('dtt_playlist', JSON.stringify(playlist))
-    localStorage.setItem('dtt_playlist_index', '0')
-    localStorage.setItem('dtt_playlist_progress', '0')
+    const playlistData = { id: 'user-playlist-' + Date.now(), stories: playlist, completed: 0, remaining_mins: playlist.reduce((sum, s) => sum + (s.duration_mins || 0), 0), last_played: new Date().toISOString() }
+    localStorage.setItem('dtt_active_playlist', JSON.stringify(playlistData))
     router.push('/home')
   }
 
@@ -172,10 +171,7 @@ function LibraryPlaylistContent() {
 
       {/* Stats bar - sticky below header */}
       <div style={{ position: 'sticky', top: '175px', zIndex: 39, backgroundColor: '#020617', padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', borderBottom: '1px solid #334155' }}>
-        <div style={{ backgroundColor: '#0f172a', padding: '0.25rem 0.5rem', borderRadius: '6px', textAlign: 'center', border: '1px solid #334155' }}>
-          <div style={{ color: 'white', fontSize: '10px' }}>Credits</div>
-          <div style={{ color: creditsLeft < 0 ? '#ef4444' : '#22c55e', fontSize: '14px', fontWeight: 'bold' }}>{creditsLeft}</div>
-        </div>
+
         <div style={{ flex: 1, textAlign: 'center' }}>
           <div style={{ color: 'white', fontSize: '13px', fontWeight: 600 }}>Select Stories for Your Playlist</div>
           <div style={{ color: 'white', fontSize: '12px' }}>{playlist.length} {playlist.length === 1 ? 'story' : 'stories'} • {totalMinutes} min</div>
@@ -199,7 +195,7 @@ function LibraryPlaylistContent() {
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <p style={{ color: 'white', fontSize: '13px', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', margin: 0 }}>{item.title}</p>
-                  <p style={{ color: '#94a3b8', fontSize: '11px', margin: 0 }}>{item.duration_mins} min • {getCredits(item.duration_mins)} cr</p>
+                  <p style={{ color: '#94a3b8', fontSize: '11px', margin: 0 }}>{item.duration_mins} min</p>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flexShrink: 0 }}>
                   <button onClick={() => moveUp(index)} disabled={index === 0} style={{ backgroundColor: index === 0 ? '#334155' : '#475569', color: 'white', border: 'none', borderRadius: '4px', width: '24px', height: '20px', fontSize: '10px', cursor: index === 0 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>▲</button>
@@ -230,7 +226,7 @@ function LibraryPlaylistContent() {
                 <div
                   key={story.id}
                   onClick={() => !inPlaylist && addToPlaylist(story)}
-                  style={{ opacity: inPlaylist ? 0.5 : 1, cursor: inPlaylist ? 'default' : 'pointer', outline: inPlaylist ? '2px solid #3b82f6' : 'none', borderRadius: '14px' }}
+                  style={{ opacity: inPlaylist ? 0.6 : 1, cursor: inPlaylist ? 'default' : 'pointer', outline: inPlaylist ? '2px solid #22c55e' : 'none', borderRadius: '14px', position: 'relative' }}
                 >
                   <HorizontalStoryCard
                     id={story.id}
@@ -240,7 +236,11 @@ function LibraryPlaylistContent() {
                     duration_mins={story.duration_mins}
                     cover_url={story.cover_url}
                     flags={story.series_name ? ['series'] : []}
+                    hidePill={true}
                   />
+                  <div style={{ position: 'absolute', bottom: '14px', right: '14px', background: inPlaylist ? 'rgba(34,197,94,0.88)' : 'rgba(59,130,246,0.88)', borderRadius: '20px', padding: '4px 9px', display: 'flex', alignItems: 'center', gap: '4px', boxShadow: '0 2px 6px rgba(0,0,0,0.4)', pointerEvents: 'none' }}>
+                    <span style={{ color: 'white', fontSize: '9px', fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase' }}>{inPlaylist ? '✓ Added' : '+ Add'}</span>
+                  </div>
                 </div>
               )
             })
@@ -256,8 +256,8 @@ function LibraryPlaylistContent() {
       {playlist.length > 0 && (
         <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: '#0f172a', padding: '0.75rem', borderTop: '1px solid #334155', zIndex: 50 }}>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <button onClick={startDrive} style={{ flex: 1, backgroundColor: '#22c55e', color: 'white', padding: '0.75rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>▶️ Play Playlist</button>
-            <button onClick={savePlaylist} style={{ flex: 1, backgroundColor: '#3b82f6', color: 'white', padding: '0.75rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>💾 Save Playlist</button>
+            <button onClick={startDrive} style={{ flex: 1, backgroundColor: '#22c55e', color: 'white', padding: '0.75rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>▶ Play Now</button>
+            <button onClick={savePlaylist} style={{ flex: 1, backgroundColor: '#3b82f6', color: 'white', padding: '0.75rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>💾 Save for Later</button>
           </div>
         </div>
       )}

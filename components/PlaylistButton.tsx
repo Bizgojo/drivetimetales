@@ -32,7 +32,7 @@ export default function PlaylistButton() {
         gap: '0.5rem',
         backgroundColor: '#3b82f6',
         color: 'white',
-        padding: '0.75rem 1rem',
+        padding: '0.5rem 1rem',
         borderRadius: '10px',
         fontSize: '18px',
         fontWeight: 700,
@@ -47,7 +47,7 @@ export default function PlaylistButton() {
         </>
       ) : (
         <>
-          <img src="/images/et-logo.png" alt="" style={{ width: "44px", height: "44px", objectFit: "contain", flexShrink: 0 }} />
+          <img src="/images/et-logo.png" alt="" style={{ width: "28px", height: "28px", objectFit: "contain", flexShrink: 0 }} />
           <span>Create a Playlist</span>
         </>
       )}

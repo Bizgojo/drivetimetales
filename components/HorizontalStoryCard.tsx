@@ -40,6 +40,7 @@ interface HorizontalStoryCardProps {
   is_completed?: boolean; has_reviewed?: boolean
   not_for_me?: boolean
   onReviewClick?: (e: React.MouseEvent) => void
+  hidePill?: boolean
 }
 
 function getDisplayFlags(flags: string[]): string[] {
@@ -75,7 +76,7 @@ function PlayPill({ label }: { label: string }) {
   )
 }
 
-export default function HorizontalStoryCard({ id, title, genre, author, duration_mins, cover_url, description, credits, series_number, series_total, flags = [], flag, progress_percent, avg_rating, review_count, is_completed, has_reviewed, not_for_me, onReviewClick }: HorizontalStoryCardProps) {
+export default function HorizontalStoryCard({ id, title, genre, author, duration_mins, cover_url, description, credits, series_number, series_total, flags = [], flag, progress_percent, avg_rating, review_count, is_completed, has_reviewed, not_for_me, onReviewClick, hidePill }: HorizontalStoryCardProps) {
 
   let finalFlags = flags
   if ((!flags || flags.length === 0) && flag) {
@@ -100,7 +101,7 @@ export default function HorizontalStoryCard({ id, title, genre, author, duration
       <div style={{ flexShrink: 0, border: '10px solid #1e293b', borderRight: 'none', display: 'flex', alignItems: 'center' }}>
         <div style={{ width: '130px', height: '130px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0, boxShadow: '0 0 15px rgba(255,255,255,0.4)', position: 'relative' }}>
           <img src={cover_url || '/images/default-cover.png'} alt={title} style={{ width: '130px', height: '130px', objectFit: 'cover', display: 'block' }} />
-          <PlayPill label={playLabel} />
+          {!hidePill && <PlayPill label={playLabel} />}
         </div>
       </div>
       <div style={{ flex: 1, padding: '10px 12px 10px 10px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minWidth: 0 }}>

@@ -422,7 +422,7 @@ function LibraryContent() {
         ) : (
           <div className="flex gap-2 items-center">
             <div className="flex-1"><PlaylistButton /></div>
-            <button onClick={() => setShowSearch(true)} style={{ background: "#f97316", color: "white", padding: "0.75rem 1rem", borderRadius: "10px", fontSize: "18px", fontWeight: 700, border: "none", cursor: "pointer", whiteSpace: "nowrap" }}>Search</button>
+            <button onClick={() => setShowSearch(true)} style={{ background: "#f97316", color: "white", padding: "0.5rem 1rem", borderRadius: "10px", fontSize: "18px", fontWeight: 700, border: "none", cursor: "pointer", whiteSpace: "nowrap" }}>Search</button>
           </div>
         )}
       </div>
