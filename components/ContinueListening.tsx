@@ -255,8 +255,9 @@ function PlaylistCardUI({
       }}
     >
       {/* Playlist cover icon */}
-      <div style={{ width: 76, height: 76, flexShrink: 0, margin: '9px 0 9px 9px', borderRadius: 7, overflow: 'hidden', boxShadow: '0 0 10px rgba(255,255,255,0.18)', background: '#1a1a2e', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <img src="/images/playlist_icon.png" alt="Playlist" style={{ width: '90%', height: '90%', objectFit: 'contain' }} />
+      <div style={{ width: 76, height: 76, flexShrink: 0, margin: '9px 0 9px 9px', borderRadius: 7, boxShadow: '0 0 10px rgba(255,255,255,0.18)', background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 2 }}>
+        <span style={{ fontSize: 28 }}>🎧</span>
+        <span style={{ fontSize: 8, fontWeight: 800, color: 'white', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Playlist</span>
       </div>
 
       {/* Body */}
@@ -364,7 +365,7 @@ export default function ContinueListening() {
       .select(`
         story_id, progress, last_played, completed,
         stories(title, author, genre, cover_url, duration_mins, series_id, episode_number,
-          series(name, episode_count))
+          series(title, total_episodes))
       `)
       .eq('user_id', user!.id)
       .eq('completed', false)
@@ -374,16 +375,17 @@ export default function ContinueListening() {
       .limit(10)
 
     const validSeries = (seriesRows || []).filter(
-      r => r.story_id !== hiddenSeries
+      r => r.progress > 0 && r.story_id !== hiddenSeries
     )
-    if (validSeries.length > 0) {
-      const r = validSeries[0]
+    const firstValidSeries = validSeries.find(r => r.stories != null)
+    if (firstValidSeries) {
+      const r = firstValidSeries
       const s = r.stories as any
       setSeriesCard({
         type: 'series',
         story_id: r.story_id,
         series_id: s.series_id,
-        series_name: s.series?.name || s.title,
+        series_name: s.series?.title || s.title,
         title: s.title,
         author: s.author,
         genre: s.genre,
@@ -391,7 +393,7 @@ export default function ContinueListening() {
         duration_mins: s.duration_mins,
         progress: r.progress,
         episode_number: s.episode_number || 1,
-        total_episodes: s.series?.episode_count || 1,
+        total_episodes: s.series?.total_episodes || 1,
         last_played: r.last_played,
       })
     } else {
@@ -457,13 +459,8 @@ export default function ContinueListening() {
   if (!singleCard && !seriesCard && !playlistCard) return null
 
   return (
-    <section style={{ padding: '18px 14px 0' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 12 }}>
-        <span style={{ fontSize: 13 }}>▶</span>
-        <span style={{ fontFamily: 'var(--font-outfit, sans-serif)', fontSize: 11, fontWeight: 800, color: 'white', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-          Continue Listening
-        </span>
-      </div>
+    <section style={{ padding: '1.5rem 1rem 0' }}>
+      <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>▶️ CONTINUE LISTENING</h2>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {singleCard && (
