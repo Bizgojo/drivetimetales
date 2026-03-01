@@ -66,7 +66,7 @@ export default function AccountPage() {
   const memberSince = new Date(user.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
   const menuItems = [
-    { href: '/account/billing', icon: '💎', label: 'Billing & Credits', desc: `${user.credits} credits available` },
+    { href: '/account/billing', icon: '💎', label: 'Billing & Subscription', desc: 'Manage your plan' },
     { href: '/account/help', icon: '💬', label: 'Help & Support', desc: 'Contact us' },
     { href: '/account/faqs', icon: '❓', label: 'FAQs', desc: 'Common questions' },
   ];
@@ -207,7 +207,7 @@ export default function AccountPage() {
             <span style={{ fontSize: '24px' }}>💳</span>
             <div style={{ flex: 1 }}>
               <p style={{ color: '#f97316', fontWeight: '600', margin: 0 }}>Upgrade or Add Credits</p>
-              <p style={{ color: '#94a3b8', fontSize: '14px', margin: 0 }}>Change plan or buy more credits</p>
+              <p style={{ color: '#94a3b8', fontSize: '14px', margin: 0 }}>Manage your subscription</p>
             </div>
             <span style={{ color: '#f97316' }}>›</span>
           </div>

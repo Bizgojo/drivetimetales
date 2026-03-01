@@ -8,7 +8,6 @@ interface SeriesEpisodeCardProps {
   title: string
   description?: string | null
   duration_mins: number
-  credits: number
   cover_url: string | null
   progress_percent?: number
   is_completed?: boolean
@@ -20,7 +19,6 @@ export default function SeriesEpisodeCard({
   title,
   description,
   duration_mins,
-  credits,
   cover_url,
   progress_percent = 0,
   is_completed = false
@@ -99,7 +97,7 @@ export default function SeriesEpisodeCard({
           </p>
         )}
         <p style={{ color: '#ffffff', fontSize: '0.75rem', fontWeight: 600, marginTop: '4px' }}>
-          {duration_mins} min • {credits} credit{credits !== 1 ? 's' : ''}
+          {duration_mins} min
         </p>
       </div>
     </Link>

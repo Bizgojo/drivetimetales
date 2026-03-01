@@ -60,9 +60,6 @@ interface ReviewTarget {
   duration_mins: number
 }
 
-function getCredits(duration_mins: number): number {
-  return Math.max(1, Math.floor(duration_mins / 15))
-}
 
 function computeStoryFlags(story: Story, userLibraryEntry?: UserLibraryEntry | null): string[] {
   if (userLibraryEntry?.completed) return []
@@ -123,7 +120,6 @@ function LibraryContent() {
   const [seriesTableData, setSeriesTableData] = useState<Record<string, { cover_image: string | null, description: string | null }>>({})
   const [loading, setLoading] = useState(true)
   const [userName, setUserName] = useState('Friend')
-  const [userCredits, setUserCredits] = useState(4)
   
   // Review state
   const [reviewTarget, setReviewTarget] = useState<ReviewTarget | null>(null)
@@ -138,7 +134,6 @@ function LibraryContent() {
   const [searchResults, setSearchResults] = useState<any[]>([])
   const [searchLoading, setSearchLoading] = useState(false)
 
-  const showLowCreditsButton = userCredits <= 3
 
   useEffect(() => {
     async function fetchData() {
@@ -154,12 +149,11 @@ function LibraryContent() {
         // Fetch user data
         const { data: userData } = await supabase
           .from('users')
-          .select('first_name, display_name, credits')
+          .select('first_name, display_name')
           .eq('id', user.id)
           .single()
         if (userData) {
           setUserName(userData.first_name || userData.display_name || 'Friend')
-          setUserCredits(userData.credits || 0)
         }
         
         // Fetch user library
@@ -300,7 +294,6 @@ function LibraryContent() {
           genre={story.genre}
           author={story.author || 'Drive Time Tales'}
           duration_mins={story.duration_mins}
-          credits={getCredits(story.duration_mins)}
           cover_url={story.cover_url}
           series_number={story.series_number}
           series_total={story.series_total}
