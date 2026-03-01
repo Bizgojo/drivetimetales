@@ -1,4 +1,5 @@
-'use client';
+'use client'
+import StickyHeaderFull from '@/components/StickyHeaderFull';
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -14,12 +15,12 @@ const faqs: FAQ[] = [
     answer: "From the home screen, tap your avatar in the top right corner to open your Account page. You'll see two buttons: 'My Collection' shows all stories you've unlocked and can listen to anytime. 'Reserved Stories' shows stories you've saved to listen to later. You can also access your collection directly from the bottom navigation bar."
   },
   {
-    question: "How do credits work?",
+    question: "How does listening work?",
     answer: "Credits are used to unlock stories. Each story costs 1-4 credits depending on its length. When you start listening, you get a 3-minute preview before credits are charged. Once you unlock a story, it's yours forever - listen as many times as you like! Credits refresh monthly on your billing date but don't roll over to the next month."
   },
   {
-    question: "How can I earn free credits?",
-    answer: "There are several ways to earn free credits: 1) New users receive 2 free credits upon signup. 2) Refer a friend - when they subscribe, you both get bonus credits. 3) Keep an eye on your email for special promotions and seasonal offers. 4) Follow us on social media where we occasionally run credit giveaways."
+    question: "How do I get started?",
+    answer: "Sign up for a free account to browse the library. Subscribe to unlock unlimited listening on all stories."
   },
   {
     question: "When are refunds considered?",
@@ -39,7 +40,7 @@ const faqs: FAQ[] = [
   },
   {
     question: "What's the difference between subscription plans?",
-    answer: "We offer three paid plans: Test Driver ($2.99/month) includes 10 credits - great for occasional listeners. Commuter ($7.99/month) includes 30 credits - perfect for daily commutes. Road Warrior ($14.99/month) offers unlimited listening - ideal for long-haul drivers and frequent travelers. All plans include full access to our story library."
+    answer: "We offer simple subscription plans for every kind of listener. All plans include full access to every story in our library."
   },
   {
     question: "Can I listen offline?",
@@ -61,43 +62,7 @@ export default function FAQsPage() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
-      {/* Header */}
-      <header style={{
-        position: 'sticky',
-        top: 0,
-        zIndex: 50,
-        backgroundColor: '#030712',
-        borderBottom: '1px solid #1f2937',
-        padding: '12px 16px'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <button 
-            onClick={() => router.back()}
-            style={{
-              width: '44px',
-              height: '44px',
-              borderRadius: '50%',
-              backgroundColor: '#1f2937',
-              border: 'none',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}
-          >
-            <span style={{ color: 'white', fontSize: '20px' }}>‹</span>
-          </button>
-          
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '20px' }}>🚛</span>
-            <span style={{ fontSize: '20px' }}>🚗</span>
-            <span style={{ color: 'white', fontWeight: 'bold', marginLeft: '4px' }}>Drive Time </span>
-            <span style={{ color: '#fb923c', fontWeight: 'bold' }}>Tales</span>
-          </div>
-          
-          <div style={{ width: '44px' }} />
-        </div>
-      </header>
+      <StickyHeaderFull />
 
       <div className="px-4 py-6 pb-24 max-w-2xl mx-auto">
         {/* Page Header */}

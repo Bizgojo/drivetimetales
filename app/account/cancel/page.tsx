@@ -1,4 +1,5 @@
 'use client'
+import StickyHeaderFull from '@/components/StickyHeaderFull'
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -155,43 +156,7 @@ export default function CancelSubscriptionPage() {
 
   return (
     <div className="min-h-screen bg-slate-950">
-      {/* Header */}
-      <header style={{
-        position: 'sticky',
-        top: 0,
-        zIndex: 50,
-        backgroundColor: '#030712',
-        borderBottom: '1px solid #1f2937',
-        padding: '12px 16px'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <button 
-            onClick={() => router.back()}
-            style={{
-              width: '44px',
-              height: '44px',
-              borderRadius: '50%',
-              backgroundColor: '#1f2937',
-              border: 'none',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}
-          >
-            <span style={{ color: 'white', fontSize: '20px' }}>‹</span>
-          </button>
-          
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '20px' }}>🚛</span>
-            <span style={{ fontSize: '20px' }}>🚗</span>
-            <span style={{ color: 'white', fontWeight: 'bold', marginLeft: '4px' }}>Drive Time </span>
-            <span style={{ color: '#fb923c', fontWeight: 'bold' }}>Tales</span>
-          </div>
-          
-          <div style={{ width: '44px' }} />
-        </div>
-      </header>
+      <StickyHeaderFull />
 
       <div className="p-6 max-w-md mx-auto">
         <div className="text-center mb-8">

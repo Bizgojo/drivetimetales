@@ -10,11 +10,11 @@ const faqs = [
     a: 'DriveTimeTales is an audio story platform designed for drivers. Listen to engaging stories during your commute, road trip, or long haul.'
   },
   {
-    q: 'How do credits work?',
-    a: 'Credits are used to unlock stories. Each story costs 1-4 credits based on length. Subscribers get monthly credits, or you can buy Freedom Packs.'
+    q: 'How does listening work?',
+    a: 'All stories are included with your subscription. No credits, no per-story charges — just tap and listen.'
   },
   {
-    q: 'Do credits expire?',
+    q: 'Can I cancel my subscription?',
     a: 'Freedom Pack credits never expire. Subscription credits refresh monthly - unused credits don\'t roll over.'
   },
   {
@@ -27,7 +27,7 @@ const faqs = [
   },
   {
     q: 'Are there free stories?',
-    a: 'Yes! New visitors get 2 free credits, and stories under 30 minutes are free to try.'
+    a: 'Yes! Browse the full library as a guest and subscribe to start listening.'
   },
 ];
 
