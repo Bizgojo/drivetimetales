@@ -22,7 +22,7 @@ interface SeriesStory {
 
 function SeriesPlayerContent() {
   const router = useRouter()
-  const { user, refreshUser } = useAuth()
+  const { user } = useAuth()
   
   const [playlist, setPlaylist] = useState<SeriesStory[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
@@ -204,36 +204,19 @@ function SeriesPlayerContent() {
     setCurrentIndex(prev => prev + 1)
   }
 
-  // credits removed
+  // Track progress after 3 minutes of listening
   useEffect(() => {
     if (isPlaying && !charged && currentTime >= 180 && user && currentStory) {
-      chargeCredits()
+      supabase.from('user_library').upsert({
+        user_id: user.id,
+        story_id: currentStory.id,
+        progress: Math.floor(currentTime),
+        completed: false,
+        last_played: new Date().toISOString()
+      }, { onConflict: 'user_id,story_id' })
+      setCharged(true)
     }
   }, [currentTime, isPlaying, charged])
-
-  const chargeCredits = async () => {
-    if (!user || !currentStory || charged) return
-    
-    
-    const { error: creditError } = await supabase
-      .from('users')
-      .eq('id', user.id)
-
-    if (!creditError) {
-      await supabase
-        .from('user_library')
-        .upsert({
-          user_id: user.id,
-          story_id: currentStory.id,
-          progress: Math.floor(currentTime),
-          completed: false,
-          last_played: new Date().toISOString()
-        }, { onConflict: 'user_id,story_id' })
-
-      setCharged(true)
-      refreshUser()
-    }
-  }
 
   // Play/Pause toggle
   const handlePlayPause = () => {
@@ -461,11 +444,7 @@ function SeriesPlayerContent() {
         )}
 
         {/* Charge countdown */}
-        {!charged && currentTime > 0 && currentTime < 180 && (
-          <p style={{ textAlign: 'center', color: '#64748b', fontSize: '12px', marginTop: '12px' }}>
-            Credits charged in {Math.ceil((180 - currentTime) / 60)} min
-          </p>
-        )}
+        
       </main>
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
