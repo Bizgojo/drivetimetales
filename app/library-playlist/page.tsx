@@ -1,274 +1,30 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
-import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
-import { useAuth } from '@/contexts/AuthContext'
-import StickyHeaderFull from '@/components/StickyHeaderFull'
-import HorizontalStoryCard from '@/components/HorizontalStoryCard'
-import LibraryFiltersV2 from '@/components/LibraryFiltersV2'
+import { Suspense } from 'react'
+import StickyHeaderHome from '@/components/StickyHeaderHome'
+import ContinueListening from '@/components/ContinueListening'
+import NewReleases from '@/components/NewReleases'
+import RecommendedForYou from '@/components/RecommendedForYou'
+import BottomStickyButtons from '@/components/BottomStickyButtons'
 
-interface Story {
-  id: string
-  title: string
-  genre: string
-  author: string
-  duration_mins: number
-  cover_url: string | null
-  audio_url?: string | null
-  series_id?: string | null
-  series_name?: string | null
-  series_number?: number | null
-  series_total?: number | null
-  flag?: string | null
-  is_free?: boolean
-  created_at?: string
-}
-
-interface PlaylistItem {
-  id: string
-  title: string
-  duration_mins: number
-  genre: string
-  author: string
-  cover_url: string | null
-  audio_url?: string | null
-  credited: boolean
-}
-
-function getCredits(duration_mins: number): number {
-  return Math.max(1, Math.floor(duration_mins / 15))
-}
-
-function LibraryPlaylistContent() {
-  const router = useRouter()
-  const { user } = useAuth()
-  const [stories, setStories] = useState<Story[]>([])
-  const [loading, setLoading] = useState(true)
-  const [userCredits, setUserCredits] = useState(0)
-  const [userName, setUserName] = useState('Friend')
-  const [selectedDuration, setSelectedDuration] = useState('All Lengths')
-  const [selectedGenre, setSelectedGenre] = useState('All Categories')
-  const [selectedType, setSelectedType] = useState('Singles & Series')
-  const [playlist, setPlaylist] = useState<PlaylistItem[]>([])
-  const [showSavedMessage, setShowSavedMessage] = useState(false)
-
-  useEffect(() => {
-    const savedPlaylist = localStorage.getItem('dtt_playlist')
-    if (savedPlaylist) {
-      try {
-        const parsed = JSON.parse(savedPlaylist)
-        if (Array.isArray(parsed) && parsed.length > 0) setPlaylist(parsed)
-      } catch (e) { console.error('Error loading playlist:', e) }
-    }
-  }, [])
-
-  useEffect(() => {
-    async function fetchData() {
-      const { data: storiesData } = await supabase
-        .from('stories')
-        .select('id, title, genre, author, duration_mins, cover_url, audio_url, series_id, series_name, series_number, series_total, flag, is_free, created_at')
-        .not('cover_url', 'is', null)
-        .order('created_at', { ascending: false })
-      if (storiesData) setStories(storiesData)
-      if (user?.id) {
-        const { data: userData } = await supabase.from('users').select('first_name, display_name, credits').eq('id', user.id).single()
-        if (userData) {
-          setUserName(userData.first_name || userData.display_name || 'Friend')
-          setUserCredits(userData.credits || 0)
-        }
-      }
-      setLoading(false)
-    }
-    fetchData()
-  }, [user])
-
-  const creditsUsed = playlist.reduce((sum, item) => sum + getCredits(item.duration_mins), 0)
-  const creditsLeft = userCredits - creditsUsed
-  const totalMinutes = playlist.reduce((sum, item) => sum + item.duration_mins, 0)
-
-  const filteredStories = stories.filter(story => {
-    if (selectedDuration !== 'All Lengths') {
-      if (selectedDuration === '~15 min' && story.duration_mins > 20) return false
-      if (selectedDuration === '~30 min' && (story.duration_mins <= 20 || story.duration_mins > 45)) return false
-      if (selectedDuration === '~1 hr' && story.duration_mins <= 45) return false
-    }
-    if (selectedGenre !== 'All Categories') {
-      const g = story.genre?.toLowerCase() || ''
-      if (selectedGenre === 'Mystery' && !g.includes('mystery')) return false
-      if (selectedGenre === 'Romance' && !g.includes('romance')) return false
-      if (selectedGenre === 'Sci-Fi' && !g.includes('sci-fi') && !g.includes('scifi')) return false
-      if (selectedGenre === 'Horror' && !g.includes('horror')) return false
-      if (selectedGenre === 'Comedy' && !g.includes('comedy')) return false
-      if (selectedGenre === 'Learn' && !g.includes('learn') && !g.includes('educational')) return false
-      if (selectedGenre === 'Thriller' && !g.includes('thriller')) return false
-      if (selectedGenre === 'Truckers' && !g.includes('trucker')) return false
-      if (selectedGenre === 'Children' && !g.includes('child') && !g.includes('kids')) return false
-    }
-    if (selectedType === 'Singles Only' && story.series_name) return false
-    if (selectedType === 'Series Only' && !story.series_name) return false
-    return true
-  })
-
-  const isInPlaylist = (storyId: string) => playlist.some(item => item.id === storyId)
-
-  const addToPlaylist = (story: Story) => {
-    if (isInPlaylist(story.id)) return
-    const cost = getCredits(story.duration_mins)
-    if (creditsLeft < cost && !story.is_free) return
-    setPlaylist([...playlist, { id: story.id, title: story.title, duration_mins: story.duration_mins, genre: story.genre, author: story.author || 'Drive Time Tales', cover_url: story.cover_url, audio_url: story.audio_url || null, credited: false }])
-  }
-
-  const removeFromPlaylist = (storyId: string) => { setPlaylist(playlist.filter(item => item.id !== storyId)) }
-
-  const moveUp = (index: number) => {
-    if (index === 0) return
-    const n = [...playlist]
-    ;[n[index - 1], n[index]] = [n[index], n[index - 1]]
-    setPlaylist(n)
-  }
-
-  const moveDown = (index: number) => {
-    if (index === playlist.length - 1) return
-    const n = [...playlist]
-    ;[n[index], n[index + 1]] = [n[index + 1], n[index]]
-    setPlaylist(n)
-  }
-
-  const savePlaylist = () => {
-    const playlistData = { id: 'user-playlist-' + Date.now(), stories: playlist, completed: 0, remaining_mins: playlist.reduce((sum, s) => sum + (s.duration_mins || 0), 0), last_played: new Date().toISOString() }
-    localStorage.setItem('dtt_active_playlist', JSON.stringify(playlistData))
-    router.push('/home')
-  }
-
-  const startDrive = () => {
-    localStorage.setItem('dtt_playlist', JSON.stringify(playlist))
-    localStorage.setItem('dtt_playlist_index', '0')
-    localStorage.setItem('dtt_playlist_progress', '0')
-    router.push('/player/playlist')
-  }
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
-      </div>
-    )
-  }
-
+function HomeContent() {
   return (
-    <div className="min-h-screen bg-slate-950" style={{ paddingBottom: playlist.length > 0 ? '70px' : '0' }}>
-      <StickyHeaderFull />
-
-      <LibraryFiltersV2
-        selectedDuration={selectedDuration}
-        setSelectedDuration={setSelectedDuration}
-        selectedGenre={selectedGenre}
-        setSelectedGenre={setSelectedGenre}
-        selectedType={selectedType}
-        setSelectedType={setSelectedType}
-      />
-
-      {/* Stats bar - sticky below header */}
-      <div style={{ position: 'sticky', top: '175px', zIndex: 39, backgroundColor: '#020617', padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', borderBottom: '1px solid #334155' }}>
-
-        <div style={{ flex: 1, textAlign: 'center' }}>
-          <div style={{ color: 'white', fontSize: '13px', fontWeight: 600 }}>Select Stories for Your Playlist</div>
-          <div style={{ color: 'white', fontSize: '12px' }}>{playlist.length} {playlist.length === 1 ? 'story' : 'stories'} • {totalMinutes} min</div>
-        </div>
-      </div>
-
-      {/* YOUR PLAYLIST section */}
-      {playlist.length > 0 && (
-        <div style={{ padding: '0 0.75rem', marginBottom: '0.5rem' }}>
-          <h2 style={{ color: '#f97316', fontSize: '16px', fontWeight: 'bold', marginBottom: '0.5rem', padding: '0 0.25rem' }}>🎧 Your Playlist</h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            {playlist.map((item, index) => (
-              <div key={item.id} style={{ display: 'flex', alignItems: 'center', backgroundColor: '#1e3a5f', borderRadius: '12px', padding: '0.5rem', border: '1px solid #3b82f6', gap: '0.5rem' }}>
-                <div style={{ color: '#93c5fd', fontSize: '16px', fontWeight: 'bold', width: '24px', textAlign: 'center', flexShrink: 0 }}>{index + 1}</div>
-                <div style={{ width: '48px', height: '48px', borderRadius: '8px', overflow: 'hidden', flexShrink: 0 }}>
-                  {item.cover_url ? (
-                    <img src={item.cover_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  ) : (
-                    <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, #f97316, #c2410c)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><span style={{ fontSize: '20px' }}>🎵</span></div>
-                  )}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ color: 'white', fontSize: '13px', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', margin: 0 }}>{item.title}</p>
-                  <p style={{ color: '#94a3b8', fontSize: '11px', margin: 0 }}>{item.duration_mins} min</p>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flexShrink: 0 }}>
-                  <button onClick={() => moveUp(index)} disabled={index === 0} style={{ backgroundColor: index === 0 ? '#334155' : '#475569', color: 'white', border: 'none', borderRadius: '4px', width: '24px', height: '20px', fontSize: '10px', cursor: index === 0 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>▲</button>
-                  <button onClick={() => moveDown(index)} disabled={index === playlist.length - 1} style={{ backgroundColor: index === playlist.length - 1 ? '#334155' : '#475569', color: 'white', border: 'none', borderRadius: '4px', width: '24px', height: '20px', fontSize: '10px', cursor: index === playlist.length - 1 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>▼</button>
-                </div>
-                <button onClick={() => removeFromPlaylist(item.id)} style={{ backgroundColor: '#dc2626', color: 'white', border: 'none', borderRadius: '50%', width: '28px', height: '28px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>×</button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* AVAILABLE STORIES */}
-      <div style={{ padding: '0 0.75rem' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          {filteredStories.length === 0 ? (
-            <div style={{ backgroundColor: '#1e293b', borderRadius: '12px', padding: '2rem', textAlign: 'center' }}>
-              <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>😔</div>
-              <p style={{ color: 'white', fontSize: '16px', marginBottom: '0.5rem' }}>Sorry {userName}, no stories match your request.</p>
-              <p style={{ color: '#94a3b8', fontSize: '14px' }}>Try a different filter</p>
-            </div>
-          ) : (
-            filteredStories.map(story => {
-              const inPlaylist = isInPlaylist(story.id)
-              const cost = getCredits(story.duration_mins)
-              const canAfford = creditsLeft >= cost || story.is_free
-              return (
-                <div
-                  key={story.id}
-                  onClick={() => !inPlaylist && addToPlaylist(story)}
-                  style={{ opacity: inPlaylist ? 0.6 : 1, cursor: inPlaylist ? 'default' : 'pointer', outline: inPlaylist ? '2px solid #22c55e' : 'none', borderRadius: '14px', position: 'relative' }}
-                >
-                  <HorizontalStoryCard
-                    id={story.id}
-                    title={story.title}
-                    genre={story.genre}
-                    author={story.author}
-                    duration_mins={story.duration_mins}
-                    cover_url={story.cover_url}
-                    flags={story.series_name ? ['series'] : []}
-                    hidePill={true}
-                  />
-                  <div style={{ position: 'absolute', bottom: '14px', right: '14px', background: inPlaylist ? 'rgba(34,197,94,0.88)' : 'rgba(59,130,246,0.88)', borderRadius: '20px', padding: '4px 9px', display: 'flex', alignItems: 'center', gap: '4px', boxShadow: '0 2px 6px rgba(0,0,0,0.4)', pointerEvents: 'none' }}>
-                    <span style={{ color: 'white', fontSize: '9px', fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase' }}>{inPlaylist ? '✓ Added' : '+ Add'}</span>
-                  </div>
-                </div>
-              )
-            })
-          )}
-        </div>
-      </div>
-
-      {showSavedMessage && (
-        <div style={{ position: 'fixed', top: '80px', left: '50%', transform: 'translateX(-50%)', backgroundColor: '#22c55e', color: 'white', padding: '0.75rem 1.5rem', borderRadius: '8px', fontSize: '15px', fontWeight: 'bold', zIndex: 100, boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }}>✓ Playlist Saved!</div>
-      )}
-
-      {/* Bottom sticky - only when playlist has stories */}
-      {playlist.length > 0 && (
-        <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: '#0f172a', padding: '0.75rem', borderTop: '1px solid #334155', zIndex: 50 }}>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <button onClick={startDrive} style={{ flex: 1, backgroundColor: '#22c55e', color: 'white', padding: '0.75rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>▶ Play Now</button>
-            <button onClick={savePlaylist} style={{ flex: 1, backgroundColor: '#3b82f6', color: 'white', padding: '0.75rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>💾 Save for Later</button>
-          </div>
-        </div>
-      )}
+    <div className="min-h-screen bg-slate-950">
+      <StickyHeaderHome />
+      <main className="pb-20">
+        <ContinueListening />
+        <NewReleases />
+        <RecommendedForYou />
+      </main>
+      <BottomStickyButtons />
     </div>
   )
 }
 
-export default function LibraryPlaylistPage() {
+export default function HomePage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-slate-950 flex items-center justify-center"><div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" /></div>}>
-      <LibraryPlaylistContent />
+    <Suspense fallback={<div>Loading...</div>}>
+      <HomeContent />
     </Suspense>
   )
 }

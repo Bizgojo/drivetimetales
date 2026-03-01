@@ -450,7 +450,7 @@ export default function ContinueListening() {
   }
 
   const dismissPlaylist = () => {
-    localStorage.removeItem('dtt_active_playlist')
+    localStorage.removeItem('dtt_active_playlist'); localStorage.removeItem('dtt_playlist'); localStorage.removeItem('dtt_playlist_index'); localStorage.removeItem('dtt_playlist_progress')
     setPlaylistCard(null)
     setDismissModal(null)
   }

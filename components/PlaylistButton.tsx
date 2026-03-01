@@ -8,13 +8,13 @@ export default function PlaylistButton() {
   const [storyCount, setStoryCount] = useState(0)
 
   useEffect(() => {
-    const savedPlaylist = localStorage.getItem('dtt_playlist')
+    const savedPlaylist = localStorage.getItem('dtt_active_playlist')
     if (savedPlaylist) {
       try {
         const parsed = JSON.parse(savedPlaylist)
-        if (Array.isArray(parsed) && parsed.length > 0) {
+        const arr = Array.isArray(parsed) ? parsed : (parsed.stories || []); if (arr.length > 0) {
           setHasPlaylist(true)
-          setStoryCount(parsed.length)
+          setStoryCount(arr.length)
         }
       } catch (e) {
         setHasPlaylist(false)
