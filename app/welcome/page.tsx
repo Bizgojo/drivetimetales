@@ -12,6 +12,7 @@ function WelcomeContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const partner = searchParams.get('partner')
+  const ref = searchParams.get('ref')
   const [freeCredits, setFreeCredits] = useState(2)
 
   useEffect(() => {
@@ -40,6 +41,13 @@ function WelcomeContent() {
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       <main style={{ maxWidth: '56rem', marginLeft: 'auto', marginRight: 'auto', padding: '1.5rem 1rem', paddingBottom: '6rem' }}>
+        {ref && (
+          <div style={{ background: 'linear-gradient(135deg, rgba(249,115,22,0.15), rgba(249,115,22,0.05))', border: '1px solid rgba(249,115,22,0.4)', borderRadius: '1rem', padding: '1rem', textAlign: 'center', marginBottom: '1rem' }}>
+            <div style={{ fontSize: '28px', marginBottom: '6px' }}>🎁</div>
+            <div style={{ color: 'white', fontSize: '16px', fontWeight: 800, marginBottom: '4px' }}>You've been given 2 Weeks Free!</div>
+            <div style={{ color: '#94a3b8', fontSize: '13px' }}>A friend shared their Endless Tales link with you. Subscribe to claim your free 14 days.</div>
+          </div>
+        )}
         {partner && (
           <div style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '0.75rem', padding: '0.75rem 1rem', textAlign: 'center', marginBottom: '0.5rem', fontSize: '0.9rem', color: '#22c55e' }}>
             Welcome from {partner.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())} — enjoy your free stories!

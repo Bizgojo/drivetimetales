@@ -15,6 +15,13 @@ export const metadata: Metadata = {
     siteName: 'Endless Tales',
     locale: 'en_US',
     type: 'website',
+    images: [{ url: 'https://endless-tales.com/images/og-share.png', width: 1024, height: 1024, alt: 'Endless Tales - Audio Stories for the Road' }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Endless Tales - Audio Stories for the Road',
+    description: 'Listen to engaging audio stories during your commute, road trip, or long haul.',
+    images: ['https://endless-tales.com/images/og-share.png'],
   },
 };
 
