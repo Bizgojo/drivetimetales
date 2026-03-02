@@ -4,23 +4,23 @@ import './globals.css';
 import { AuthProvider } from '@/contexts/AuthContext';
 
 export const metadata: Metadata = {
-  title: 'Endless Tales - Audio Stories for the Road',
-  description: 'Listen to engaging audio stories during your commute, road trip, or long haul. Professional audio dramas designed for drivers.',
+  title: 'Endless Tales - Audio Stories for Your Me-Time',
+  description: 'Audio stories for your me-time — commute, workout, road trip, or just relaxing. Professional audio dramas designed for drivers.',
   keywords: ['audiobooks', 'audio stories', 'truckers', 'commute', 'road trip', 'audio drama'],
   authors: [{ name: 'Endless Tales' }],
   openGraph: {
-    title: 'Endless Tales - Audio Stories for the Road',
-    description: 'Listen to engaging audio stories during your commute, road trip, or long haul.',
+    title: 'Endless Tales - Audio Stories for Your Me-Time',
+    description: 'Audio stories for your me-time — commute, workout, road trip, or just relaxing.',
     url: 'https://endless-tales.com',
     siteName: 'Endless Tales',
     locale: 'en_US',
     type: 'website',
-    images: [{ url: 'https://endless-tales.com/images/og-share.png', width: 1024, height: 1024, alt: 'Endless Tales - Audio Stories for the Road' }],
+    images: [{ url: 'https://endless-tales.com/images/og-share.png', width: 1024, height: 1024, alt: 'Endless Tales - Audio Stories for Your Me-Time' }],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Endless Tales - Audio Stories for the Road',
-    description: 'Listen to engaging audio stories during your commute, road trip, or long haul.',
+    title: 'Endless Tales - Audio Stories for Your Me-Time',
+    description: 'Audio stories for your me-time — commute, workout, road trip, or just relaxing.',
     images: ['https://endless-tales.com/images/og-share.png'],
   },
 };

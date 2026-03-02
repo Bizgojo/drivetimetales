@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
+import StickyHeaderFull from '@/components/StickyHeaderFull'
 
 interface Offer { id: string; name: string; description: string; offer_type: 'free_days' | 'credits'; referrer_reward: number; referred_reward: number; weight: number }
 interface ReferralStats { total: number; opened: number; signed_up: number; subscribed: number; rewarded: number }
@@ -18,6 +19,8 @@ export default function ReferPage() {
   const [stats, setStats] = useState<ReferralStats>({ total: 0, opened: 0, signed_up: 0, subscribed: 0, rewarded: 0 })
   const [referrals, setReferrals] = useState<Referral[]>([])
   const [copied, setCopied] = useState(false)
+  const [facebookCopied, setFacebookCopied] = useState(false)
+  const [twitterCopied, setTwitterCopied] = useState(false)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => { if (user?.id) fetchReferralData() }, [user])
@@ -84,117 +87,90 @@ export default function ReferPage() {
     setLoading(false)
   }
 
-  const referralLink = 'https://drivetimetales.vercel.app/signup?ref=' + referralCode
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://drivetimetales.vercel.app'
+  const referralLink = baseUrl + '/welcome?ref=' + referralCode
   const rewardText = currentOffer ? (currentOffer.offer_type === 'free_days' ? currentOffer.referrer_reward + ' days free' : currentOffer.referrer_reward + ' credits') : '2 weeks free'
-  const shareText = 'Join me on Drive Time Tales! Audio stories for your commute. Sign up with my link and we both get ' + rewardText + '!'
+  const shareText = 'Hey! ' + userName + ' is giving you 2 weeks free on Endless Tales — audio stories for your commute, road trip, or downtime. ' + userName + ' says you\'ll love it! Click the link and you both get ' + rewardText + ':'
   const shareTextWithLink = shareText + ' ' + referralLink
 
-  const copyLink = async () => { await navigator.clipboard.writeText(referralLink); setCopied(true); setTimeout(() => setCopied(false), 2000) }
+  const copyLink = async () => { await navigator.clipboard.writeText(shareTextWithLink); setCopied(true); setTimeout(() => setCopied(false), 2000) }
   const shareViaSMS = () => { window.open('sms:?body=' + encodeURIComponent(shareTextWithLink), '_blank') }
-  const shareViaEmail = () => { window.open('mailto:?subject=' + encodeURIComponent(userName + ' invited you to Drive Time Tales') + '&body=' + encodeURIComponent(shareTextWithLink), '_blank') }
+  const shareViaEmail = () => { window.open('mailto:?subject=' + encodeURIComponent(userName + ' is giving you 2 weeks free on Endless Tales!') + '&body=' + encodeURIComponent(shareTextWithLink), '_blank') }
   const shareViaWhatsApp = () => { window.open('https://wa.me/?text=' + encodeURIComponent(shareTextWithLink), '_blank') }
-  const shareViaTwitter = () => { window.open('https://twitter.com/intent/tweet?text=' + encodeURIComponent(shareText) + '&url=' + encodeURIComponent(referralLink), '_blank') }
+  const shareViaTwitter = async () => { try { await navigator.clipboard.writeText(shareTextWithLink) } catch(e) {} setTwitterCopied(true); setTimeout(() => setTwitterCopied(false), 4000) }
   const shareViaFacebook = () => { window.open('https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(referralLink) + '&quote=' + encodeURIComponent(shareText), '_blank') }
 
   if (loading) return (<div style={{ minHeight: '100vh', backgroundColor: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ width: '40px', height: '40px', border: '4px solid #f97316', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} /><style dangerouslySetInnerHTML={{ __html: '@keyframes spin { to { transform: rotate(360deg); } }' }} /></div>)
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#0f172a' }}>
-      <div style={{ position: 'sticky', top: 0, backgroundColor: '#0f172a', zIndex: 50 }}>
-        <div style={{ padding: '0.5rem 0.75rem', display: 'flex', alignItems: 'center', borderBottom: '1px solid #334155' }}>
-          <button onClick={() => router.push('/home')} style={{ backgroundColor: '#334155', color: 'white', padding: '0.35rem 0.6rem', borderRadius: '6px', fontSize: '13px', fontWeight: 500, border: 'none', cursor: 'pointer' }}>← Back</button>
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}><span style={{ fontSize: '18px' }}>🚗</span><span style={{ fontSize: '18px' }}>🚙</span><span style={{ color: 'white', fontSize: '16px', fontWeight: 'bold' }}>Drive Time</span><span style={{ color: '#f97316', fontSize: '16px', fontWeight: 'bold' }}>Tales</span></div>
-          <div onClick={() => router.push('/account')} style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#f97316', overflow: 'hidden', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><span style={{ color: 'white', fontSize: '16px', fontWeight: 'bold' }}>{userName.charAt(0).toUpperCase()}</span></div>
-        </div>
-      </div>
+      <StickyHeaderFull />
       
-      <div style={{ padding: '1.5rem 1rem', maxWidth: '400px', margin: '0 auto' }}>
-        <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-          <div style={{ fontSize: '48px', marginBottom: '0.5rem' }}>❤️</div>
-          <h1 style={{ color: 'white', fontSize: '24px', fontWeight: 'bold', marginBottom: '0.5rem' }}>Help a Friend</h1>
-          <p style={{ color: '#94a3b8', fontSize: '14px', lineHeight: 1.5 }}>Share your link. When they subscribe, you <strong style={{ color: '#22c55e' }}>both</strong> get {rewardText}!</p>
+      <div style={{ padding: '24px 16px', maxWidth: '400px', margin: '0 auto' }}>
+
+        {/* Hero */}
+        <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+          <h1 style={{ color: 'white', fontSize: '24px', fontWeight: 900, lineHeight: 1.2, marginBottom: '10px' }}>
+            Give 2 Weeks Free.<br /><span style={{ color: '#f97316' }}>Get 2 Weeks Free.</span>
+          </h1>
+          <p style={{ color: 'white', fontSize: '14px', lineHeight: 1.6 }}>Share with anyone. Every person who subscribes earns you both 14 free days.</p>
+          <div style={{ color: '#f97316', fontSize: '13px', fontWeight: 700, marginTop: '8px' }}>♾️ No limit — the more you share, the more you earn!</div>
         </div>
-        
-        {currentOffer && (<div style={{ backgroundColor: currentOffer.offer_type === 'free_days' ? '#3b82f6' : '#22c55e', borderRadius: '8px', padding: '0.5rem 1rem', marginBottom: '1rem', textAlign: 'center' }}><span style={{ color: 'white', fontSize: '13px', fontWeight: 600 }}>{currentOffer.offer_type === 'free_days' ? '📅' : '🎫'} {currentOffer.name}</span></div>)}
-        
-        <div style={{ backgroundColor: '#1e293b', borderRadius: '12px', padding: '1.25rem', marginBottom: '1.5rem', textAlign: 'center' }}>
-          <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '0.25rem' }}>Your Code</div>
-          <div style={{ color: '#f97316', fontSize: '28px', fontWeight: 'bold', letterSpacing: '2px' }}>{referralCode}</div>
-        </div>
-        
-        {/* Copy Link Button */}
-        <button onClick={copyLink} style={{ width: '100%', backgroundColor: copied ? '#22c55e' : '#f97316', color: 'white', padding: '1rem', borderRadius: '12px', border: 'none', cursor: 'pointer', fontSize: '16px', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-          {copied ? '✓ Link Copied!' : '🔗 Copy Referral Link'}
-        </button>
-        
-        {/* Social Sharing Grid */}
-        <div style={{ marginBottom: '1.5rem' }}>
-          <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '0.75rem', textAlign: 'center' }}>Share via</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem', marginBottom: '0.5rem' }}>
-            <button onClick={shareViaWhatsApp} style={{ backgroundColor: '#25D366', color: 'white', padding: '0.75rem', borderRadius: '10px', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: 600, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem' }}>
-              <span style={{ fontSize: '20px' }}>💬</span>
-              <span>WhatsApp</span>
-            </button>
-            <button onClick={shareViaTwitter} style={{ backgroundColor: '#1DA1F2', color: 'white', padding: '0.75rem', borderRadius: '10px', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: 600, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem' }}>
-              <span style={{ fontSize: '20px' }}>🐦</span>
-              <span>Twitter</span>
-            </button>
-            <button onClick={shareViaFacebook} style={{ backgroundColor: '#4267B2', color: 'white', padding: '0.75rem', borderRadius: '10px', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: 600, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem' }}>
-              <span style={{ fontSize: '20px' }}>📘</span>
-              <span>Facebook</span>
-            </button>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.5rem' }}>
-            <button onClick={shareViaSMS} style={{ backgroundColor: '#22c55e', color: 'white', padding: '0.75rem', borderRadius: '10px', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-              <span>📱</span> Text Message
-            </button>
-            <button onClick={shareViaEmail} style={{ backgroundColor: '#6366f1', color: 'white', padding: '0.75rem', borderRadius: '10px', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-              <span>✉️</span> Email
-            </button>
-          </div>
-        </div>
-        
-        {/* Stats */}
-        <div style={{ backgroundColor: '#1e293b', borderRadius: '12px', padding: '1.25rem', marginBottom: '1rem' }}>
-          <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '0.75rem', textAlign: 'center' }}>Your Referrals</div>
-          <div style={{ display: 'flex', justifyContent: 'space-around', marginBottom: '1rem' }}>
-            <div style={{ textAlign: 'center' }}><div style={{ color: 'white', fontSize: '24px', fontWeight: 'bold' }}>{stats.total}</div><div style={{ color: '#94a3b8', fontSize: '11px' }}>Sent</div></div>
-            <div style={{ textAlign: 'center' }}><div style={{ color: 'white', fontSize: '24px', fontWeight: 'bold' }}>{stats.opened}</div><div style={{ color: '#94a3b8', fontSize: '11px' }}>Opened</div></div>
-            <div style={{ textAlign: 'center' }}><div style={{ color: 'white', fontSize: '24px', fontWeight: 'bold' }}>{stats.signed_up}</div><div style={{ color: '#94a3b8', fontSize: '11px' }}>Signed Up</div></div>
-            <div style={{ textAlign: 'center' }}><div style={{ color: '#22c55e', fontSize: '24px', fontWeight: 'bold' }}>{stats.rewarded}</div><div style={{ color: '#94a3b8', fontSize: '11px' }}>Rewarded</div></div>
-          </div>
-          {stats.rewarded > 0 && currentOffer && (<div style={{ backgroundColor: '#0f172a', borderRadius: '8px', padding: '0.75rem', textAlign: 'center' }}><div style={{ color: '#22c55e', fontSize: '20px', fontWeight: 'bold' }}>{currentOffer.offer_type === 'free_days' ? (stats.rewarded * currentOffer.referrer_reward) + ' days' : (stats.rewarded * currentOffer.referrer_reward) + ' credits'}</div><div style={{ color: '#94a3b8', fontSize: '11px' }}>Total Earned</div></div>)}
-        </div>
-        
-        {/* Leaderboard Link */}
-        <button onClick={() => router.push('/refer/leaderboard')} style={{ width: '100%', backgroundColor: '#334155', color: 'white', padding: '0.75rem', borderRadius: '10px', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-          🏆 View Leaderboard
-        </button>
-        
-        {/* Recent Activity */}
-        {referrals.length > 0 && (
-          <div style={{ backgroundColor: '#1e293b', borderRadius: '12px', padding: '1.25rem' }}>
-            <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '0.75rem' }}>Recent Activity</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {referrals.slice(0, 5).map(ref => (
-                <div key={ref.id} style={{ backgroundColor: '#0f172a', borderRadius: '8px', padding: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <div style={{ color: 'white', fontSize: '13px' }}>{ref.referred_email || 'Pending...'}</div>
-                    <div style={{ color: '#94a3b8', fontSize: '11px' }}>{new Date(ref.created_at).toLocaleDateString()}</div>
-                  </div>
-                  <div style={{ backgroundColor: ref.status === 'rewarded' ? '#22c55e' : ref.status === 'subscribed' ? '#3b82f6' : ref.status === 'signed_up' ? '#f97316' : ref.opened_at ? '#eab308' : '#475569', color: ['rewarded', 'subscribed'].includes(ref.status) ? 'white' : 'black', padding: '0.25rem 0.5rem', borderRadius: '4px', fontSize: '10px', fontWeight: 600 }}>
-                    {ref.status === 'rewarded' ? '✓ REWARDED' : ref.status === 'subscribed' ? 'SUBSCRIBED' : ref.status === 'signed_up' ? 'SIGNED UP' : ref.opened_at ? 'OPENED' : 'SENT'}
-                  </div>
-                </div>
-              ))}
-            </div>
-            {referrals.length > 5 && (
-              <button onClick={() => router.push('/refer/dashboard')} style={{ width: '100%', marginTop: '0.75rem', padding: '0.5rem', backgroundColor: '#334155', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}>
-                View All ({referrals.length}) →
+
+        {/* Steps */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '24px' }}>
+
+          {/* Step 1 */}
+          <div style={{ background: '#1e293b', borderRadius: '14px', padding: '16px', display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
+            <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#f97316', color: 'white', fontSize: '15px', fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: '2px' }}>1</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ color: 'white', fontSize: '15px', fontWeight: 700, marginBottom: '10px' }}>Copy your personal invite link</div>
+              <button onClick={copyLink} style={{ width: '100%', background: copied ? '#22c55e' : '#f97316', color: 'white', border: 'none', padding: '14px', borderRadius: '12px', fontSize: '16px', fontWeight: 900, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                {copied ? '✓ Link Copied!' : '📋 Copy My Invite Link'}
               </button>
-            )}
+            </div>
           </div>
-        )}
+
+          {/* Step 2 */}
+          <div style={{ background: '#1e293b', borderRadius: '14px', padding: '16px', display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
+            <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#f97316', color: 'white', fontSize: '15px', fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: '2px' }}>2</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ color: 'white', fontSize: '15px', fontWeight: 700, marginBottom: '10px' }}>Open any messenger and paste the link</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <button onClick={shareViaSMS} style={{ width: '100%', background: '#22c55e', color: 'white', border: 'none', padding: '12px 16px', borderRadius: '10px', fontSize: '14px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px' }}>📱 Text Message</button>
+                <button onClick={shareViaEmail} style={{ width: '100%', background: '#6366f1', color: 'white', border: 'none', padding: '12px 16px', borderRadius: '10px', fontSize: '14px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px' }}>✉️ Email</button>
+                <button onClick={shareViaFacebook} style={{ width: '100%', background: '#4267B2', color: 'white', border: 'none', padding: '12px 16px', borderRadius: '10px', fontSize: '14px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px' }}>📘 Facebook</button>
+                <button onClick={shareViaTwitter} style={{ width: '100%', background: '#1DA1F2', color: 'white', border: 'none', padding: '12px 16px', borderRadius: '10px', fontSize: '14px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px' }}>🐦 Twitter / X</button>
+                <button onClick={shareViaWhatsApp} style={{ width: '100%', background: '#25D366', color: 'white', border: 'none', padding: '12px 16px', borderRadius: '10px', fontSize: '14px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px' }}>💬 WhatsApp</button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        {/* Stats - Free Days Earned */}
+        <div style={{ background: '#1e293b', borderRadius: '16px', padding: '20px' }}>
+          <div style={{ color: 'white', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', textAlign: 'center', marginBottom: '16px' }}>Your Free Days Earned</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            <div style={{ background: '#0f172a', borderRadius: '10px', padding: '14px', textAlign: 'center' }}>
+              <div style={{ color: '#22c55e', fontSize: '24px', fontWeight: 900 }}>{stats.rewarded * (currentOffer?.referrer_reward || 14)}</div>
+              <div style={{ color: 'white', fontSize: '11px', fontWeight: 600, marginTop: '4px' }}>Days Earned</div>
+            </div>
+            <div style={{ background: '#0f172a', borderRadius: '10px', padding: '14px', textAlign: 'center' }}>
+              <div style={{ color: '#22c55e', fontSize: '24px', fontWeight: 900 }}>{stats.rewarded}</div>
+              <div style={{ color: 'white', fontSize: '11px', fontWeight: 600, marginTop: '4px' }}>Friends Referred</div>
+            </div>
+            <div style={{ background: '#0f172a', borderRadius: '10px', padding: '14px', textAlign: 'center' }}>
+              <div style={{ color: '#22c55e', fontSize: '24px', fontWeight: 900 }}>{stats.opened}</div>
+              <div style={{ color: 'white', fontSize: '11px', fontWeight: 600, marginTop: '4px' }}>Links Opened</div>
+            </div>
+            <div style={{ background: '#0f172a', borderRadius: '10px', padding: '14px', textAlign: 'center' }}>
+              <div style={{ color: '#22c55e', fontSize: '24px', fontWeight: 900 }}>{stats.signed_up}</div>
+              <div style={{ color: 'white', fontSize: '11px', fontWeight: 600, marginTop: '4px' }}>Subscribed</div>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
   )
