@@ -45,7 +45,7 @@ function LibraryPlaylistContent() {
 
     const libraryStories = []
     for (const row of (data || [])) {
-      const s = row.stories
+      const s = row.stories as any as any
       if (s && s.id) libraryStories.push({ id: s.id, title: s.title, author: s.author, genre: s.genre, duration_mins: s.duration_mins, cover_url: s.cover_url })
     }
 
