@@ -133,7 +133,7 @@ function LibraryPlaylistContent() {
   )
 
   return (
-    <div style={{ background: '#020617', minHeight: '100vh', paddingBottom: playlist.length > 0 ? 100 : 20 }}>
+    <div style={{ background: '#020617', minHeight: '100vh', paddingBottom: 120 }}>
       <StickyHeaderFull />
       <div style={{ padding: '16px 16px 8px' }}>
         <h1 style={{ color: 'white', fontSize: 20, fontWeight: 800, margin: 0 }}>Build Your Playlist</h1>
