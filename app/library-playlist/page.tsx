@@ -126,11 +126,11 @@ function LibraryPlaylistContent() {
     return true
   })
 
-  if (loading) (
+  if (loading) { return (
     <div style={{ background: '#020617', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ width: 40, height: 40, border: '4px solid #f97316', borderTopColor: 'transparent', borderRadius: '50%' }} />
     </div>
-  )
+  )}
 
   return (
     <div style={{ background: '#020617', minHeight: '100vh', paddingBottom: 120 }}>
@@ -169,7 +169,7 @@ function LibraryPlaylistContent() {
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                   {i > 0 && <button onClick={() => moveUp(i)} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: 'white', cursor: 'pointer', fontSize: 12, width: 28, height: 28, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>▲</button>}
-                  {i < playlist.length - 1 && <button onClick={() => moveDown(i)} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: 'white', cursor: 'pointer', fontSize: 12, width: 28, height: 28, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>▼</button>}
+                  {i === 0 && <button onClick={() => moveDown(i)} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: 'white', cursor: 'pointer', fontSize: 12, width: 28, height: 28, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>▼</button>}
                   <button onClick={() => removeFromPlaylist(story.id)} style={{ background: 'rgba(220,38,38,0.15)', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: 14, width: 28, height: 28, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
                 </div>
               </div>
