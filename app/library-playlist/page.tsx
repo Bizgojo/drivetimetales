@@ -139,6 +139,7 @@ function LibraryPlaylistContent() {
         <h1 style={{ color: 'white', fontSize: 20, fontWeight: 800, margin: 0 }}>Build Your Playlist</h1>
         <p style={{ color: '#64748b', fontSize: 13, margin: '4px 0 0' }}>Tap a story to add it to your queue.</p>
       </div>
+      <div style={{ position: 'sticky', top: '60px', zIndex: 40, background: '#020617' }}>
       <LibraryFiltersV2
         selectedDuration={selectedDuration}
         setSelectedDuration={setSelectedDuration}
@@ -147,12 +148,13 @@ function LibraryPlaylistContent() {
         selectedType={selectedType}
         setSelectedType={setSelectedType}
       />
-      <div style={{ position: 'sticky', top: 0, zIndex: 20, background: '#020617', padding: '8px 16px', marginLeft: '-16px', marginRight: '-16px', textAlign: 'center', borderBottom: '1px solid rgba(249,115,22,0.15)' }}>
+      <div style={{ background: '#020617', padding: '8px 16px', textAlign: 'center', borderBottom: '1px solid rgba(249,115,22,0.15)' }}>
         <div style={{ fontSize: 11, fontWeight: 800, color: playlist.length > 0 ? '#f97316' : '#475569', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
           {playlist.length > 0
             ? `Your Playlist · ${playlist.length} ${playlist.length === 1 ? 'story' : 'stories'} · ${playlist.reduce((s, x) => s + (x.duration_mins || 0), 0)} min`
             : 'Your Playlist · 0 Stories — tap below to add'}
         </div>
+      </div>
       </div>
 
       {playlist.length > 0 && (
