@@ -21,6 +21,7 @@ export default function AdminLayout({
     { href: '/admin/subscriptions', label: 'Subscriptions', icon: '💳' },
     { href: '/admin/referrals', label: 'Referrals', icon: '🎁' },
     { href: '/admin/marketing', label: 'Marketing', icon: '📱' },
+    { href: '/admin/social-posting', label: 'Social Posting', icon: '🌐' },
     { href: '/admin/finance', label: 'Finance', icon: '💰' },
   ]
 
