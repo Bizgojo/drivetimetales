@@ -193,7 +193,7 @@ function StoryEditorPanel({
             <input
               value={title}
               onChange={e => setTitle(e.target.value)}
-              style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: `1px solid ${border}`, fontSize: '13px', color: textPrimary, boxSizing: 'border-box' }}
+              style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: `1px solid ${border}`, fontSize: '13px', color: '#000000', backgroundColor: '#ffffff', boxSizing: 'border-box' }}
             />
           </div>
 
@@ -204,7 +204,7 @@ function StoryEditorPanel({
               <input
                 value={episodeTitle}
                 onChange={e => setEpisodeTitle(e.target.value)}
-                style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: `1px solid ${border}`, fontSize: '13px', color: textPrimary, boxSizing: 'border-box' }}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: `1px solid ${border}`, fontSize: '13px', color: '#000000', backgroundColor: '#ffffff', boxSizing: 'border-box' }}
               />
             </div>
           )}
@@ -225,7 +225,7 @@ function StoryEditorPanel({
               style={{
                 width: '100%', padding: '8px 10px', borderRadius: '6px',
                 border: `1px solid ${overLimit ? '#dc2626' : border}`,
-                fontSize: '13px', color: textPrimary, resize: 'vertical', boxSizing: 'border-box',
+                fontSize: '13px', color: '#000000', backgroundColor: '#ffffff', resize: 'vertical', boxSizing: 'border-box',
                 fontFamily: 'inherit',
               }}
             />
@@ -677,12 +677,12 @@ export default function AdminStoriesPage() {
           placeholder="Search title, author, or series..."
           value={search}
           onChange={e => setSearch(e.target.value)}
-          style={{ padding: '0.5rem 0.75rem', borderRadius: '6px', border: `1px solid ${border}`, flex: 1, minWidth: '200px', color: textPrimary, fontSize: '14px' }}
+          style={{ padding: '0.5rem 0.75rem', borderRadius: '6px', border: `1px solid ${border}`, flex: 1, minWidth: '200px', color: '#000000', backgroundColor: '#ffffff', fontSize: '14px' }}
         />
-        <select value={genreFilter} onChange={e => setGenreFilter(e.target.value)} style={{ padding: '0.5rem 0.75rem', borderRadius: '6px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px' }}>
+        <select value={genreFilter} onChange={e => setGenreFilter(e.target.value)} style={{ padding: '0.5rem 0.75rem', borderRadius: '6px', border: `1px solid ${border}`, color: '#000000', backgroundColor: '#ffffff', fontSize: '14px' }}>
           {genreNames.map(g => <option key={g} value={g}>{g}</option>)}
         </select>
-        <select value={`${sortBy}-${sortDir}`} onChange={e => { const [col, dir] = e.target.value.split('-'); setSortBy(col as typeof sortBy); setSortDir(dir as 'asc' | 'desc') }} style={{ padding: '0.5rem 0.75rem', borderRadius: '6px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px' }}>
+        <select value={`${sortBy}-${sortDir}`} onChange={e => { const [col, dir] = e.target.value.split('-'); setSortBy(col as typeof sortBy); setSortDir(dir as 'asc' | 'desc') }} style={{ padding: '0.5rem 0.75rem', borderRadius: '6px', border: `1px solid ${border}`, color: '#000000', backgroundColor: '#ffffff', fontSize: '14px' }}>
           <option value="title-asc">Title A-Z</option>
           <option value="title-desc">Title Z-A</option>
           <option value="genre-asc">Genre A-Z</option>
