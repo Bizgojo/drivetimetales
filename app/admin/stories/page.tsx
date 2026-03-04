@@ -87,6 +87,7 @@ function StoryEditorPanel({
   const [thirdGenre, setThirdGenre] = useState(story.genre_third || '')
   const [flag, setFlag] = useState<string | null>(story.flag)
   const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
   const [uploadingCover, setUploadingCover] = useState(false)
   const [coverUrl, setCoverUrl] = useState(story.cover_url || '')
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -134,8 +135,9 @@ function StoryEditorPanel({
     if (error) {
       alert('Save failed: ' + error.message)
     } else {
+      setSaved(true)
       onSaved()
-      onClose()
+      setTimeout(() => setSaved(false), 3000)
     }
     setSaving(false)
   }
@@ -352,12 +354,12 @@ function StoryEditorPanel({
             disabled={saving || overLimit || !primaryGenre}
             style={{
               flex: 1, padding: '10px', borderRadius: '8px', fontWeight: 700, fontSize: '14px',
-              backgroundColor: saving || overLimit || !primaryGenre ? '#9ca3af' : '#22c55e',
+              backgroundColor: saved ? '#2563eb' : saving || overLimit || !primaryGenre ? '#9ca3af' : '#22c55e',
               color: 'white', border: 'none',
               cursor: saving || overLimit || !primaryGenre ? 'default' : 'pointer',
             }}
           >
-            {saving ? 'Saving...' : '✓ Save Changes'}
+            {saved ? '✓ Saved!' : saving ? 'Saving...' : '✓ Save Changes'}
           </button>
           <button
             onClick={onClose}
