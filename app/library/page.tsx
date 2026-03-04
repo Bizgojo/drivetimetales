@@ -140,7 +140,7 @@ function LibraryContent() {
       // Fetch stories from story_analytics view to get avg_rating + review_count
       const { data: storiesData } = await supabase
         .from('story_analytics')
-        .select('id, title, genre, author, duration_mins, cover_url, series_id, series_name, series_number, series_total, flag, is_free, created_at, avg_rating, review_count')
+        .select('id, title, genre, author, duration_mins, cover_url, series_id, series_name, episode_title, series_number, series_total, flag, is_free, created_at, avg_rating, review_count')
         .not('cover_url', 'is', null)
         .order('published_on', { ascending: false })
       if (storiesData) setStories(storiesData)
