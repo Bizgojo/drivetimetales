@@ -117,7 +117,8 @@ function StoryEditorPanel({
   async function handleSave() {
     if (overLimit) return
     setSaving(true)
-    const { error } = await supabase
+    console.log('Saving story:', story.id, { title, author, primaryGenre })
+    const { data, error } = await supabase
       .from('stories')
       .update({
         title: title.trim(),
@@ -132,6 +133,8 @@ function StoryEditorPanel({
         cover_url: coverUrl || null,
       })
       .eq('id', story.id)
+      .select()
+    console.log('Save result:', { data, error })
     if (error) {
       alert('Save failed: ' + error.message)
     } else {
