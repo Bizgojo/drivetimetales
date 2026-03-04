@@ -619,6 +619,7 @@ export default function AdminStoriesPage() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [editingStory, setEditingStory] = useState<Story | null>(null)
+  const editingStoryRef = useRef<Story | null>(null)
 
   useEffect(() => {
     fetchStories()
@@ -787,7 +788,7 @@ export default function AdminStoriesPage() {
                   key={group.name}
                   group={group}
                   index={i}
-                  onEditClick={setEditingStory}
+                  onEditClick={s => { editingStoryRef.current = s; setEditingStory(s) }}
                   onDelete={deleteStory}
                   deleteConfirm={deleteConfirm}
                   setDeleteConfirm={setDeleteConfirm}
@@ -809,7 +810,7 @@ export default function AdminStoriesPage() {
                   key={story.id}
                   story={story}
                   index={i}
-                  onEditClick={setEditingStory}
+                  onEditClick={s => { editingStoryRef.current = s; setEditingStory(s) }}
                   onDelete={deleteStory}
                   deleteConfirm={deleteConfirm}
                   setDeleteConfirm={setDeleteConfirm}
@@ -828,10 +829,15 @@ export default function AdminStoriesPage() {
       {/* Story Editor Panel */}
       {editingStory && (
         <StoryEditorPanel
-          story={editingStory}
+          story={editingStoryRef.current!}
           genres={genres}
-          onClose={() => setEditingStory(null)}
-          onSaved={fetchStories}
+          onClose={() => { setEditingStory(null); editingStoryRef.current = null }}
+          onSaved={() => {
+            // Refresh stories in background without resetting panel state
+            supabase.from('story_analytics').select('*').then(({ data }) => {
+              if (data) setStories(data)
+            })
+          }}
         />
       )}
     </div>
