@@ -79,6 +79,7 @@ function StoryEditorPanel({
   onSaved: () => void
 }) {
   const [title, setTitle] = useState(story.title)
+  const [author, setAuthor] = useState(story.author || '')
   const [episodeTitle, setEpisodeTitle] = useState(story.episode_title || '')
   const [description, setDescription] = useState(story.description || '')
   const [primaryGenre, setPrimaryGenre] = useState(story.genre || '')
@@ -119,6 +120,7 @@ function StoryEditorPanel({
       .from('stories')
       .update({
         title: title.trim(),
+        author: author.trim() || null,
         episode_title: episodeTitle.trim() || null,
         description: description.trim() || null,
         genre: primaryGenre || null,
@@ -193,6 +195,16 @@ function StoryEditorPanel({
             <input
               value={title}
               onChange={e => setTitle(e.target.value)}
+              style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: `1px solid ${border}`, fontSize: '13px', color: '#000000', backgroundColor: '#ffffff', boxSizing: 'border-box' }}
+            />
+          </div>
+
+          {/* Author */}
+          <div>
+            <label style={{ fontSize: '12px', fontWeight: 600, color: textSecondary, display: 'block', marginBottom: '6px' }}>AUTHOR</label>
+            <input
+              value={author}
+              onChange={e => setAuthor(e.target.value)}
               style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: `1px solid ${border}`, fontSize: '13px', color: '#000000', backgroundColor: '#ffffff', boxSizing: 'border-box' }}
             />
           </div>
@@ -281,6 +293,54 @@ function StoryEditorPanel({
                   {opt.label}
                 </button>
               ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Live Card Preview */}
+        <div style={{ padding: '1rem 1.25rem', borderTop: `1px solid ${border}` }}>
+          <div style={{ fontSize: '12px', fontWeight: 600, color: textSecondary, marginBottom: '10px', letterSpacing: '0.05em' }}>CARD PREVIEW</div>
+          <div style={{ background: '#0f172a', borderRadius: '14px', padding: '12px' }}>
+            <div style={{ display: 'flex', background: '#1e293b', borderRadius: '14px', overflow: 'hidden', border: '1px solid rgba(148,163,184,0.06)', alignItems: 'stretch', minHeight: '130px' }}>
+              {/* Cover */}
+              <div style={{ flexShrink: 0, border: '10px solid #1e293b', borderRight: 'none', display: 'flex', alignItems: 'center' }}>
+                <div style={{ width: '110px', height: '110px', borderRadius: '6px', overflow: 'hidden', boxShadow: '0 0 15px rgba(255,255,255,0.4)', position: 'relative', flexShrink: 0 }}>
+                  <img src={coverUrl || '/images/default-cover.png'} alt={title} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                  {/* Play pill */}
+                  <div style={{ position: 'absolute', bottom: '6px', right: '6px', background: 'rgba(249,115,22,0.88)', borderRadius: '20px', padding: '3px 8px 3px 6px', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                    <svg width="6" height="8" viewBox="0 0 12 14" fill="white"><path d="M1 1l10 6-10 6V1z"/></svg>
+                    <span style={{ color: 'white', fontSize: '8px', fontWeight: 800, letterSpacing: '0.05em' }}>PLAY</span>
+                  </div>
+                </div>
+              </div>
+              {/* Info */}
+              <div style={{ flex: 1, padding: '10px 12px 10px 10px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minWidth: 0 }}>
+                {/* Flag */}
+                <div style={{ minHeight: '18px' }}>
+                  {flag && (
+                    <span style={{
+                      background: flag === 'new' ? '#3b82f6' : flag === 'free' ? '#9333ea' : flag === 'trending' ? '#14b8a6' : flag === 'editors-pick' ? '#9333ea' : '#f97316',
+                      color: 'white', padding: '2px 7px', borderRadius: '3px', fontSize: '9px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.07em'
+                    }}>
+                      {flag === 'new' ? 'NEW' : flag === 'free' ? 'FREE' : flag === 'editors-pick' ? "Editor's Pick" : flag === 'trending' ? 'Trending' : flag}
+                    </span>
+                  )}
+                </div>
+                {/* Title */}
+                <div style={{ color: 'white', fontSize: '14px', fontWeight: 700, lineHeight: 1.2, letterSpacing: '-0.01em', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' } as React.CSSProperties}>{title || 'Title'}</div>
+                {/* Author + genre + duration */}
+                <div style={{ fontSize: '11px', lineHeight: 1.3 }}>
+                  <div style={{ color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{author || 'Author'}</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#94a3b8' }}>{primaryGenre || '—'}</span>
+                    <span style={{ color: 'white', fontWeight: 600 }}>{story.duration_mins} min</span>
+                  </div>
+                </div>
+                {/* Description */}
+                {description && (
+                  <p style={{ color: '#94a3b8', fontSize: '11px', lineHeight: 1.35, margin: 0, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' } as React.CSSProperties}>{description}</p>
+                )}
+              </div>
             </div>
           </div>
         </div>
