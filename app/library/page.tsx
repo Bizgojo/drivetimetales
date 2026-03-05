@@ -250,15 +250,19 @@ function LibraryContent() {
       }
     }
   })
-  const seriesGroups = Array.from(seriesMap.values())
-  
+  // Single-episode series show as standalone until a 2nd episode is added
+  const trueSeriesGroups = Array.from(seriesMap.values()).filter(g => g.episode_count > 1)
+  const singleEpSeriesStories = filteredStories.filter(s =>
+    s.series_name && (seriesMap.get(s.series_name)?.episode_count || 0) <= 1
+  )
+  const seriesGroups = trueSeriesGroups
+
   seriesGroups.forEach(group => {
-    group.completed_episodes = group.episode_ids.filter(eid => 
+    group.completed_episodes = group.episode_ids.filter(eid =>
       libraryLookup.get(eid)?.completed
     ).length
   })
-
-  const singles = filteredStories.filter(s => !s.series_name)
+  const singles = [...filteredStories.filter(s => !s.series_name), ...singleEpSeriesStories]
 
   type DisplayItem = { type: 'single', story: Story, sortDate: string } | { type: 'series', group: SeriesGroup, sortDate: string }
   const mixedItems: DisplayItem[] = []
