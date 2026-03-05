@@ -94,15 +94,21 @@ export default function LibraryFiltersV2({
   setSelectedGenre,
   selectedType,
   setSelectedType,
+  selectedGroup,
+  setSelectedGroup,
 }: LibraryFiltersV2Props) {
 
   const [allGenres, setAllGenres] = useState<GenreOption[]>([])
   const [visibleGenres, setVisibleGenres] = useState<string[]>([])
   const [showMoreMenu, setShowMoreMenu] = useState(false)
   const [loaded, setLoaded] = useState(false)
+  const [groups, setGroups] = useState<{id: string, name: string}[]>([])
 
   useEffect(() => {
     loadGenresWithStories()
+    supabase.from('groups').select('id, name').order('display_order', { ascending: true }).then(({ data }) => {
+      if (data) setGroups(data)
+    })
   }, [])
 
   async function loadGenresWithStories() {
@@ -299,6 +305,35 @@ export default function LibraryFiltersV2({
                       {genre.emoji} {genre.label}
                     </button>
                   ))}
+                  {groups.length > 0 && (
+                    <>
+                      <div style={{ borderTop: '1px solid #475569', margin: '6px 0' }} />
+                      <div style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 600, padding: '2px 12px 4px', letterSpacing: '0.05em' }}>COLLECTIONS</div>
+                      {groups.map(group => (
+                        <button
+                          key={group.id}
+                          onClick={() => { setSelectedGroup(selectedGroup === group.name ? '' : group.name); setShowMoreMenu(false) }}
+                          style={{
+                            display: 'block',
+                            width: '100%',
+                            padding: '10px 12px',
+                            backgroundColor: selectedGroup === group.name ? '#334155' : 'transparent',
+                            border: 'none',
+                            color: selectedGroup === group.name ? '#f97316' : 'white',
+                            fontSize: '14px',
+                            textAlign: 'left',
+                            cursor: 'pointer',
+                            borderRadius: '4px',
+                            fontWeight: selectedGroup === group.name ? 600 : 400,
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#334155'}
+                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = selectedGroup === group.name ? '#334155' : 'transparent'}
+                        >
+                          📦 {group.name}
+                        </button>
+                      ))}
+                    </>
+                  )}
                 </div>
               )}
             </div>

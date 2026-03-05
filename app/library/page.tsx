@@ -130,6 +130,7 @@ function LibraryContent() {
 
   const [selectedDuration, setSelectedDuration] = useState('All Lengths')
   const [selectedGenre, setSelectedGenre] = useState('All Categories')
+  const [selectedGroup, setSelectedGroup] = useState('')
   const [selectedType, setSelectedType] = useState('Singles & Series')
   const [showSearch, setShowSearch] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -207,6 +208,9 @@ function LibraryContent() {
       if (selectedDuration === '~1 hr' && story.duration_mins <= 45) return false
     }
     
+    if (selectedGroup) {
+      if (!story.group_name || story.group_name !== selectedGroup) return false
+    }
     if (selectedGenre !== 'All Categories') {
       const genreLower = story.genre?.toLowerCase() || ''
       if (selectedGenre === 'Mystery' && !genreLower.includes('mystery')) return false
@@ -345,6 +349,8 @@ function LibraryContent() {
         setSelectedGenre={setSelectedGenre}
         selectedType={selectedType}
         setSelectedType={setSelectedType}
+        selectedGroup={selectedGroup}
+        setSelectedGroup={setSelectedGroup}
       />
       
       <div className="px-3 py-2 flex flex-col gap-2">
