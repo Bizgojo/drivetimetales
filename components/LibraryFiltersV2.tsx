@@ -217,7 +217,7 @@ export default function LibraryFiltersV2({
 
   return (
     <div style={{ position: 'sticky', top: '60px', zIndex: 40, padding: '0 1rem' }}>
-      <div style={{ backgroundColor: '#f1f5f9', borderRadius: '12px', padding: '0.5rem' }}>
+      <div style={{ backgroundColor: '#1e293b', borderRadius: '12px', padding: '0.5rem' }}>
         
         {/* Row 1: Duration | Type */}
         <div style={{ display: 'flex', gap: '0.35rem', marginBottom: '0.35rem', alignItems: 'center', justifyContent: 'center' }}>
