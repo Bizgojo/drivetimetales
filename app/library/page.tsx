@@ -27,6 +27,7 @@ interface Story {
   description?: string | null
   flag?: string | null
   is_free?: boolean
+  group_name?: string | null
   created_at?: string
   // From story_analytics view
   avg_rating?: number | null
