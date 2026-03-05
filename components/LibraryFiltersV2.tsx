@@ -295,13 +295,13 @@ export default function LibraryFiltersV2({
                         padding: '10px 12px',
                         backgroundColor: 'transparent',
                         border: 'none',
-                        color: 'white',
+                        color: '#111',
                         fontSize: '14px',
                         textAlign: 'left',
                         cursor: 'pointer',
                         borderRadius: '4px',
                       }}
-                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#334155'}
+                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#e2e8f0'}
                       onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                     >
                       {genre.emoji} {genre.label}
@@ -309,8 +309,8 @@ export default function LibraryFiltersV2({
                   ))}
                   {groups.length > 0 && (
                     <>
-                      <div style={{ borderTop: '1px solid #475569', margin: '6px 0' }} />
-                      <div style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 600, padding: '2px 12px 4px', letterSpacing: '0.05em' }}>COLLECTIONS</div>
+                      <div style={{ borderTop: '1px solid #cbd5e1', margin: '6px 0' }} />
+                      <div style={{ color: '#64748b', fontSize: '11px', fontWeight: 600, padding: '2px 12px 4px', letterSpacing: '0.05em' }}>COLLECTIONS</div>
                       {groups.map(group => (
                         <button
                           key={group.id}
@@ -319,9 +319,9 @@ export default function LibraryFiltersV2({
                             display: 'block',
                             width: '100%',
                             padding: '10px 12px',
-                            backgroundColor: selectedGroup === group.name ? '#334155' : 'transparent',
+                            backgroundColor: selectedGroup === group.name ? '#e2e8f0' : 'transparent',
                             border: 'none',
-                            color: selectedGroup === group.name ? '#f97316' : 'white',
+                            color: selectedGroup === group.name ? '#f97316' : '#111',
                             fontSize: '14px',
                             textAlign: 'left',
                             cursor: 'pointer',
@@ -329,7 +329,7 @@ export default function LibraryFiltersV2({
                             fontWeight: selectedGroup === group.name ? 600 : 400,
                           }}
                           onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#334155'}
-                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = selectedGroup === group.name ? '#334155' : 'transparent'}
+                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = selectedGroup === group.name ? '#e2e8f0' : 'transparent'}
                         >
                           📦 {group.name}
                         </button>
