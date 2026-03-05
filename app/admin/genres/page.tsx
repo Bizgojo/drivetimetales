@@ -42,6 +42,7 @@ export default function AdminGenresPage() {
 
   useEffect(() => {
     loadGenresAndCounts()
+    fetchGroups()
   }, [])
 
   async function loadGenresAndCounts() {
