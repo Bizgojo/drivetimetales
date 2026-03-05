@@ -27,6 +27,7 @@ function LibraryPlaylistContent() {
   const [selectedDuration, setSelectedDuration] = useState('All Lengths')
   const [selectedGenre, setSelectedGenre] = useState('All Genres')
   const [selectedType, setSelectedType] = useState('Singles & Series')
+  const [selectedGroup, setSelectedGroup] = useState('')
 
   useEffect(() => {
     if (!user) return
