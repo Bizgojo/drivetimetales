@@ -479,20 +479,6 @@ function StoryRow({
 }) {
   return (
     <tr style={{ borderBottom: `1px solid ${border}`, backgroundColor: index % 2 === 0 ? 'transparent' : '#fafafa' }}>
-      {/* Delete */}
-      <td style={{ padding: '0.5rem', position: 'relative' }}>
-        <button onClick={() => setDeleteConfirm(deleteConfirm === story.id ? null : story.id)} style={{ backgroundColor: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: '4px', padding: '4px 6px', cursor: 'pointer', fontSize: '10px' }}>🗑</button>
-        {deleteConfirm === story.id && (
-          <div style={{ position: 'absolute', top: '100%', left: 0, backgroundColor: cardBg, border: `1px solid ${border}`, borderRadius: '6px', padding: '0.5rem', zIndex: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', minWidth: '120px' }}>
-            <div style={{ color: '#dc2626', fontSize: '11px', fontWeight: 600, marginBottom: '0.25rem' }}>Delete permanently?</div>
-            <div style={{ color: textSecondary, fontSize: '10px', marginBottom: '0.5rem' }}>Removes story, user data, reviews & files</div>
-            <div style={{ display: 'flex', gap: '0.25rem' }}>
-              <button onClick={() => onDelete(story.id)} style={{ flex: 1, backgroundColor: '#dc2626', color: 'white', border: 'none', borderRadius: '4px', padding: '4px', cursor: 'pointer', fontSize: '10px' }}>Yes</button>
-              <button onClick={() => setDeleteConfirm(null)} style={{ flex: 1, backgroundColor: '#e5e5e5', color: textPrimary, border: 'none', borderRadius: '4px', padding: '4px', cursor: 'pointer', fontSize: '10px' }}>No</button>
-            </div>
-          </div>
-        )}
-      </td>
       {/* Cover — clickable to edit */}
       <td style={{ padding: '0.5rem' }}>
         <div
