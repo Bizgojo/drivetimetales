@@ -217,7 +217,7 @@ export default function LibraryFiltersV2({
 
   return (
     <div style={{ position: 'sticky', top: '60px', zIndex: 40, padding: '0 1rem' }}>
-      <div style={{ backgroundColor: '#1e293b', borderRadius: '12px', padding: '0.5rem' }}>
+      <div style={{ backgroundColor: '#f1f5f9', borderRadius: '12px', padding: '0.5rem' }}>
         
         {/* Row 1: Duration | Type */}
         <div style={{ display: 'flex', gap: '0.35rem', marginBottom: '0.35rem', alignItems: 'center', justifyContent: 'center' }}>
@@ -277,13 +277,13 @@ export default function LibraryFiltersV2({
                   top: '100%',
                   right: 0,
                   marginTop: '4px',
-                  backgroundColor: '#1e293b',
-                  border: '1px solid #475569',
+                  backgroundColor: '#f1f5f9',
+                  border: '1px solid #cbd5e1',
                   borderRadius: '8px',
                   padding: '8px',
                   zIndex: 100,
                   minWidth: '140px',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
                 }}>
                   {moreGenres.map(genre => (
                     <button
@@ -328,7 +328,7 @@ export default function LibraryFiltersV2({
                             borderRadius: '4px',
                             fontWeight: selectedGroup === group.name ? 600 : 400,
                           }}
-                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#334155'}
+                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#e2e8f0'}
                           onMouseLeave={(e) => e.currentTarget.style.backgroundColor = selectedGroup === group.name ? '#e2e8f0' : 'transparent'}
                         >
                           📦 {group.name}
