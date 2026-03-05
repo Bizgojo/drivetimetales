@@ -143,7 +143,7 @@ function LibraryContent() {
       const { data: storiesData } = await supabase
         .from('story_analytics')
         .select('id, title, genre, author, duration_mins, cover_url, series_id, series_name, episode_title, description, is_hidden, series_number, series_total, flag, is_free, created_at, avg_rating, review_count')
-        .not('cover_url', 'is', null).eq('is_hidden', false).eq('is_hidden', false)
+        .not('cover_url', 'is', null).eq('is_hidden', false)
         .order('published_on', { ascending: false })
       if (storiesData) setStories(storiesData)
       
