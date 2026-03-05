@@ -19,6 +19,8 @@ interface Story {
   episode_title: string | null
   flag: string | null
   description: string | null
+  is_hidden: boolean
+  group_name: string | null
   is_free: boolean
   rating: number
   review_count: number
@@ -38,6 +40,12 @@ interface Story {
 }
 
 interface Genre {
+  id: string
+  name: string
+  display_order: number
+}
+
+interface Group {
   id: string
   name: string
   display_order: number
@@ -77,6 +85,7 @@ function StoryEditorPanel({
   genres: Genre[]
   onClose: () => void
   onSaved: () => void
+  onDelete: (id: string) => void
 }) {
   const [title, setTitle] = useState(story.title)
   const [author, setAuthor] = useState(story.author || '')
@@ -90,7 +99,17 @@ function StoryEditorPanel({
   const [saved, setSaved] = useState(false)
   const [uploadingCover, setUploadingCover] = useState(false)
   const [coverUrl, setCoverUrl] = useState(story.cover_url || '')
+  const [isHidden, setIsHidden] = useState(story.is_hidden || false)
+  const [groupName, setGroupName] = useState(story.group_name || '')
+  const [groups, setGroups] = useState<Group[]>([])
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    supabase.from('groups').select('*').order('display_order', { ascending: true }).then(({ data }) => {
+      if (data) setGroups(data)
+    })
+  }, [])
 
   const wordCount = description.trim() === '' ? 0 : description.trim().split(/\s+/).length
   const overLimit = wordCount > 24
@@ -130,6 +149,8 @@ function StoryEditorPanel({
         genre_third: thirdGenre || null,
         flag: flag,
         is_free: flag === 'free',
+        is_hidden: isHidden,
+        group_name: groupName || null,
         cover_url: coverUrl || null,
       })
       .eq('id', story.id)
@@ -300,7 +321,69 @@ function StoryEditorPanel({
               ))}
             </div>
           </div>
-        </div>
+          </div>
+
+          {/* Group */}
+          <div>
+            <label style={{ fontSize: '12px', fontWeight: 600, color: textSecondary, display: 'block', marginBottom: '8px' }}>GROUP / COLLECTION</label>
+            <select
+              value={groupName}
+              onChange={e => setGroupName(e.target.value)}
+              style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: `1px solid ${border}`, fontSize: '13px', color: '#000000', backgroundColor: '#ffffff', boxSizing: 'border-box' as 'border-box' }}
+            >
+              <option value="">— No group —</option>
+              {groups.map(g => <option key={g.id} value={g.name}>{g.name}</option>)}
+            </select>
+          </div>
+
+          {/* Visibility */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: '8px', backgroundColor: isHidden ? '#fef2f2' : '#f0fdf4', border: `1px solid ${isHidden ? '#fecaca' : '#bbf7d0'}` }}>
+            <div>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: textPrimary }}>{isHidden ? '🙈 Hidden from app' : '👁 Visible in app'}</div>
+              <div style={{ fontSize: '11px', color: textSecondary, marginTop: '2px' }}>{isHidden ? 'Users cannot see or play this story' : 'Story appears in library'}</div>
+            </div>
+            <button
+              onClick={() => setIsHidden(!isHidden)}
+              style={{
+                padding: '6px 14px', borderRadius: '20px', fontSize: '11px', fontWeight: 700, border: 'none', cursor: 'pointer',
+                backgroundColor: isHidden ? '#dc2626' : '#16a34a',
+                color: 'white',
+              }}
+            >
+              {isHidden ? 'Unhide' : 'Hide'}
+            </button>
+          </div>
+
+          {/* Danger Zone — Delete */}
+          <div style={{ borderTop: `1px solid ${border}`, paddingTop: '1rem' }}>
+            {!showDeleteConfirm ? (
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                style={{ width: '100%', padding: '8px', borderRadius: '6px', backgroundColor: '#fee2e2', color: '#dc2626', border: '1px solid #fecaca', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}
+              >
+                🗑 Delete This Story
+              </button>
+            ) : (
+              <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '12px' }}>
+                <div style={{ fontSize: '12px', fontWeight: 700, color: '#dc2626', marginBottom: '4px' }}>Delete permanently?</div>
+                <div style={{ fontSize: '11px', color: textSecondary, marginBottom: '10px' }}>This removes the story, all user progress, and reviews. Cannot be undone.</div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    onClick={() => { onDelete(story.id); onClose() }}
+                    style={{ flex: 1, padding: '8px', borderRadius: '6px', backgroundColor: '#dc2626', color: 'white', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700 }}
+                  >
+                    Yes, Delete
+                  </button>
+                  <button
+                    onClick={() => setShowDeleteConfirm(false)}
+                    style={{ flex: 1, padding: '8px', borderRadius: '6px', backgroundColor: '#e5e5e5', color: textPrimary, border: 'none', cursor: 'pointer', fontSize: '12px' }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
 
         {/* Live Card Preview */}
         <div style={{ padding: '1rem 1.25rem', borderTop: `1px solid ${border}` }}>
@@ -423,7 +506,10 @@ function StoryRow({
       </td>
       {/* Title */}
       <td style={{ padding: '0.5rem' }}>
-        <div style={{ color: textPrimary, fontWeight: 600, fontSize: '13px', lineHeight: 1.2 }}>{story.title}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <div style={{ color: textPrimary, fontWeight: 600, fontSize: '13px', lineHeight: 1.2 }}>{story.title}</div>
+          {story.is_hidden && <span style={{ backgroundColor: '#dc2626', color: 'white', borderRadius: '3px', padding: '1px 5px', fontSize: '9px', fontWeight: 700 }}>HIDDEN</span>}
+        </div>
         {story.episode_title && <div style={{ color: textSecondary, fontSize: '11px', fontStyle: 'italic' }}>{story.episode_title}</div>}
         <div style={{ color: textSecondary, fontSize: '11px' }}>by {story.author}</div>
       </td>
@@ -832,6 +918,15 @@ export default function AdminStoriesPage() {
           story={editingStoryRef.current!}
           genres={genres}
           onClose={() => { setEditingStory(null); editingStoryRef.current = null }}
+          onDelete={async (storyId) => {
+            try {
+              const res = await fetch('/api/admin/delete-story', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storyId }) })
+              const result = await res.json()
+              if (!result.success) alert('Delete failed: ' + (result.error || 'Unknown error'))
+            } catch (err) { alert('Delete failed: ' + String(err)) }
+            setDeleteConfirm(null)
+            fetchStories()
+          }}
           onSaved={() => {
             // Refresh stories in background without resetting panel state
             supabase.from('story_analytics').select('*').then(({ data }) => {
