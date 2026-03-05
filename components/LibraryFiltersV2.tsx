@@ -10,6 +10,8 @@ interface LibraryFiltersV2Props {
   setSelectedGenre: (value: string) => void
   selectedType: string
   setSelectedType: (value: string) => void
+  selectedGroup: string
+  setSelectedGroup: (value: string) => void
 }
 
 interface GenreOption {
