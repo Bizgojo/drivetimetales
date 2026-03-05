@@ -23,6 +23,8 @@ interface Story {
   series_name?: string | null
   series_number?: number | null
   series_total?: number | null
+  episode_title?: string | null
+  description?: string | null
   flag?: string | null
   is_free?: boolean
   created_at?: string
@@ -140,8 +142,8 @@ function LibraryContent() {
       // Fetch stories from story_analytics view to get avg_rating + review_count
       const { data: storiesData } = await supabase
         .from('story_analytics')
-        .select('id, title, genre, author, duration_mins, cover_url, series_id, series_name, episode_title, series_number, series_total, flag, is_free, created_at, avg_rating, review_count')
-        .not('cover_url', 'is', null)
+        .select('id, title, genre, author, duration_mins, cover_url, series_id, series_name, episode_title, description, is_hidden, series_number, series_total, flag, is_free, created_at, avg_rating, review_count')
+        .not('cover_url', 'is', null).eq('is_hidden', false).eq('is_hidden', false)
         .order('published_on', { ascending: false })
       if (storiesData) setStories(storiesData)
       
@@ -297,6 +299,9 @@ function LibraryContent() {
           cover_url={story.cover_url}
           series_number={story.series_number}
           series_total={story.series_total}
+          episode_title={story.episode_title}
+          series_name={story.series_name}
+          description={story.description}
           flags={flags}
           progress_percent={progress_percent}
           avg_rating={story.avg_rating}
