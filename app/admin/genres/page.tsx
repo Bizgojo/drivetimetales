@@ -209,7 +209,15 @@ export default function AdminGenresPage() {
     <div style={{ padding: '2rem', color: '#000000' }}>
       {/* Header */}
       <div style={{ marginBottom: '1.5rem' }}>
-        <h1 style={{ fontSize: '24px', fontWeight: 'bold', color: '#000000' }}>🎭 Genre Manager</h1>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <h1 style={{ fontSize: '24px', fontWeight: 'bold', color: '#000000' }}>
+            {activeTab === 'genres' ? '🎭 Genre Manager' : '📦 Group Manager'}
+          </h1>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button onClick={() => setActiveTab('genres')} style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '13px', backgroundColor: activeTab === 'genres' ? '#f97316' : '#e5e5e5', color: activeTab === 'genres' ? 'white' : '#4a4a4a' }}>🎭 Genres</button>
+            <button onClick={() => setActiveTab('groups')} style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '13px', backgroundColor: activeTab === 'groups' ? '#f97316' : '#e5e5e5', color: activeTab === 'groups' ? 'white' : '#4a4a4a' }}>📦 Groups</button>
+          </div>
+        </div>
         <p style={{ color: '#475569', fontSize: '14px', marginTop: '4px' }}>
           {genres.length} genres. Story counts update automatically.
         </p>
