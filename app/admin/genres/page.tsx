@@ -44,6 +44,32 @@ export default function AdminGenresPage() {
     loadGenresAndCounts()
   }, [])
 
+  async function fetchGroups() {
+    const { data } = await supabase.from('groups').select('*').order('display_order', { ascending: true })
+    if (data) setGroups(data)
+  }
+
+  async function saveGroup() {
+    if (!newGroupName.trim()) return
+    setSavingGroup(true)
+    if (editingGroup) {
+      await supabase.from('groups').update({ name: newGroupName.trim(), description: newGroupDesc.trim() || null }).eq('id', editingGroup.id)
+    } else {
+      await supabase.from('groups').insert({ name: newGroupName.trim(), description: newGroupDesc.trim() || null, display_order: groups.length })
+    }
+    setNewGroupName('')
+    setNewGroupDesc('')
+    setEditingGroup(null)
+    setSavingGroup(false)
+    fetchGroups()
+  }
+
+  async function deleteGroup(id: string) {
+    await supabase.from('groups').delete().eq('id', id)
+    setDeletingGroup(null)
+    fetchGroups()
+  }
+
   async function loadGenresAndCounts() {
     setLoading(true)
 
