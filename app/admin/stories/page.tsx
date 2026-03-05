@@ -80,6 +80,7 @@ function StoryEditorPanel({
   genres,
   onClose,
   onSaved,
+  onDelete,
 }: {
   story: Story
   genres: Genre[]
