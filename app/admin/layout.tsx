@@ -23,7 +23,6 @@ export default function AdminLayout({
     { href: '/admin/marketing', label: 'Marketing', icon: '📱' },
     { href: '/admin/waitlist', label: 'Waitlist', icon: '📋' },
     { href: '/admin/social-analytics', label: 'Social Analytics', icon: '📊' },
-    { href: '/admin/social-analytics', label: 'Social Analytics', icon: '📊' },
     { href: '/admin/social-posting', label: 'Social Posting', icon: '🌐' },
     { href: '/admin/finance', label: 'Finance', icon: '💰' },
   ]
