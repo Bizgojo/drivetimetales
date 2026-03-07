@@ -1,296 +1,322 @@
-'use client';
+'use client'
 
-import React, { useState } from 'react';
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { supabase } from '@/lib/supabase'
 
-interface Post {
-  id: string;
-  platform: string;
-  content: string;
-  respondingTo?: string;
-  status: 'draft' | 'posted';
+const PLATFORMS = ['Instagram', 'TikTok', 'Facebook', 'X/Twitter', 'Reddit', 'Pinterest']
+const POST_TYPES = ['Original Post', 'Reel', 'Story', 'Thread', 'Reply', 'Pin', 'Comment']
+
+const PLATFORM_ICONS: Record<string, string> = {
+  'Instagram': '📸', 'TikTok': '🎵', 'Facebook': '👤',
+  'X/Twitter': '𝕏', 'Reddit': '🔴', 'Pinterest': '📌',
 }
 
-interface PlatformData {
-  name: string;
-  username: string;
-  postsNeeded: number;
-  posts: Post[];
+interface QueueItem {
+  id: string
+  platform: string
+  post_type: string
+  caption: string
+  responding_to?: string
+  utm_campaign: string
+  status: 'draft' | 'posted'
+  utm_link?: string
 }
 
-const SocialPostingAdmin = () => {
-  const [platforms, setPlatforms] = useState<PlatformData[]>([
-    {
-      name: 'Reddit',
-      username: 'EndlessTalesAudio',
-      postsNeeded: 12,
-      posts: [
-        {
-          id: '1',
-          platform: 'Reddit',
-          content: 'Check out this heartwarming dog story from our collection. Perfect for a quick listen during your morning routine!',
-          respondingTo: 'r/Mommit - Wholesome stories thread',
-          status: 'draft',
-        },
-        {
-          id: '2',
-          platform: 'Reddit',
-          content: 'New audio drama series launching April 1st! 15-minute episodes perfect for your workout.',
-          respondingTo: 'r/audiodrama - New releases thread',
-          status: 'draft',
-        },
-      ],
-    },
-    {
-      name: 'X (Twitter)',
-      username: '@EndlessTalesApp',
-      postsNeeded: 10,
-      posts: [
-        {
-          id: '3',
-          platform: 'X',
-          content: '🎧 New story dropping soon: "The Girl Who Read to Strays" - A heartwarming tale about connection. Coming April 1st.',
-          respondingTo: 'Main feed',
-          status: 'draft',
-        },
-      ],
-    },
-    {
-      name: 'TikTok',
-      username: '@EndlessTalesApp',
-      postsNeeded: 8,
-      posts: [
-        {
-          id: '4',
-          platform: 'TikTok',
-          content: '[30-second clip] Dog lovers, this one\'s for you. Full story launching April 1st.',
-          respondingTo: '#DogLover #AudioStories',
-          status: 'draft',
-        },
-      ],
-    },
-    {
-      name: 'Instagram',
-      username: '@endlessaudiotales',
-      postsNeeded: 6,
-      posts: [
-        {
-          id: '5',
-          platform: 'Instagram',
-          content: 'Stories for every moment. 🎧 Launching April 1st. Commutes, workouts, chores—we\'ve got the perfect story for you.',
-          respondingTo: 'Main feed + Stories',
-          status: 'draft',
-        },
-      ],
-    },
-    {
-      name: 'Facebook',
-      username: 'Endless Tales',
-      postsNeeded: 7,
-      posts: [
-        {
-          id: '6',
-          platform: 'Facebook',
-          content: 'Meet Endless Tales - audio storytelling for housewives, fitness enthusiasts, and everyone in between. Join our community!',
-          respondingTo: 'Main page feed',
-          status: 'draft',
-        },
-      ],
-    },
-    {
-      name: 'Pinterest',
-      username: 'yourendlesstales',
-      postsNeeded: 5,
-      posts: [
-        {
-          id: '7',
-          platform: 'Pinterest',
-          content: 'Cozy stories for your me-time. 13 heartwarming dog tales launching April 1st.',
-          respondingTo: 'Board: Audio Stories & Recommendations',
-          status: 'draft',
-        },
-      ],
-    },
-  ]);
+const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZteWhsZmVvdXpzbGl4dGttZGR5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYwODk2MTIsImV4cCI6MjA4MTY2NTYxMn0.7asAd8ctLKJLdv2AojbF8WEo-N6dVheVA3mWxjkFwkk'
 
-  const [expandedPlatform, setExpandedPlatform] = useState<string | null>(null);
-  const [editingPost, setEditingPost] = useState<Post | null>(null);
+async function callClaude(prompt: string, system: string): Promise<string> {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1000,
+      system,
+      messages: [{ role: 'user', content: prompt }],
+      tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+    })
+  })
+  const data = await res.json()
+  return data.content?.filter((b: {type: string}) => b.type === 'text').map((b: {text: string}) => b.text).join('\n') || ''
+}
 
-  const handleDeletePost = (platformName: string, postId: string) => {
-    setPlatforms(
-      platforms.map((p) => {
-        if (p.name === platformName) {
-          return {
-            ...p,
-            posts: p.posts.filter((post) => post.id !== postId),
-            postsNeeded: p.postsNeeded - 1,
-          };
+function makeUTMLink(platform: string, postType: string, campaign: string) {
+  const source = platform.toLowerCase().replace('/', '_').replace(' ', '')
+  const medium = postType.toLowerCase().replace(' ', '_')
+  return `https://endless-tales.com?utm_source=${source}&utm_medium=${medium}&utm_campaign=${campaign}`
+}
+
+export default function SocialPostingPage() {
+  const router = useRouter()
+  const [tab, setTab] = useState<'queue' | 'paste'>('queue')
+  const [queue, setQueue] = useState<QueueItem[]>([])
+  const [searching, setSearching] = useState(false)
+  const [searchPlatform, setSearchPlatform] = useState('Reddit')
+  const [searchTopic, setSearchTopic] = useState('')
+  const [postCount, setPostCount] = useState(3)
+  const [pasteThread, setPasteThread] = useState('')
+  const [pastePlatform, setPastePlatform] = useState('Reddit')
+  const [pastePostType, setPastePostType] = useState('Reply')
+  const [generatingReply, setGeneratingReply] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [copiedId, setCopiedId] = useState<string | null>(null)
+
+  const bg = '#FAF9F6'
+  const cardBg = '#FFFFFF'
+  const textPrimary = '#1a1a1a'
+  const textSecondary = '#4a4a4a'
+  const border = '#e0e0e0'
+  const ember = '#e8520a'
+
+  const SYSTEM = `You are Hal, social media manager for Endless Tales — a subscription audio drama app launching April 17, 2026 at $7.99/month with a 14-day free trial. Stories are 15–30 min, professional cast/score/sound design. Target audience: commuters, parents, people who want "me time". Genres: mystery, thriller, romance, drama. Never be salesy or spammy. Be helpful, genuine, and community-focused. When replying to threads, add real value first, mention Endless Tales only when it fits naturally.`
+
+  async function searchAndGenerate() {
+    if (!searchTopic.trim()) return
+    setSearching(true)
+    try {
+      const prompt = `Search ${searchPlatform} for ${postCount} real conversations or post opportunities about: "${searchTopic}" that would be relevant to Endless Tales audio dramas.
+
+For each one, provide:
+1. The thread/post context (title, community, what it's about)
+2. A genuine reply or original post caption that adds value and naturally mentions Endless Tales where appropriate
+
+Format as JSON array:
+[{
+  "platform": "${searchPlatform}",
+  "post_type": "Reply" or "Original Post",
+  "responding_to": "thread title or context (null if original)",
+  "caption": "the actual post text to copy-paste"
+}]
+
+Return ONLY the JSON array, no other text.`
+
+      const raw = await callClaude(prompt, SYSTEM)
+      const clean = raw.replace(/```json|```/g, '').trim()
+      const items = JSON.parse(clean)
+      const newItems: QueueItem[] = items.map((item: {platform: string, post_type: string, responding_to?: string, caption: string}, i: number) => {
+        const campaign = `${item.platform.toLowerCase().replace('/', '_')}_${searchTopic.toLowerCase().replace(/\s+/g, '_')}_${Date.now()}_${i}`
+        return {
+          id: `${Date.now()}_${i}`,
+          platform: item.platform || searchPlatform,
+          post_type: item.post_type || 'Reply',
+          caption: item.caption,
+          responding_to: item.responding_to || undefined,
+          utm_campaign: campaign,
+          status: 'draft',
+          utm_link: makeUTMLink(item.platform || searchPlatform, item.post_type || 'Reply', campaign),
         }
-        return p;
       })
-    );
-    setEditingPost(null);
-  };
-
-  const handlePostSubmit = (platformName: string) => {
-    if (!editingPost) return;
-
-    setPlatforms(
-      platforms.map((p) => {
-        if (p.name === platformName) {
-          return {
-            ...p,
-            posts: p.posts.map((post) =>
-              post.id === editingPost.id ? { ...editingPost, status: 'posted' as const } : post
-            ),
-          };
-        }
-        return p;
-      })
-    );
-    setEditingPost(null);
-  };
-
-  const handleEditChange = (field: keyof Post, value: string) => {
-    if (editingPost) {
-      setEditingPost({ ...editingPost, [field]: value });
+      setQueue(q => [...newItems, ...q])
+    } catch (e) {
+      console.error(e)
     }
-  };
+    setSearching(false)
+  }
 
-  const totalPostsNeeded = platforms.reduce((sum, p) => sum + p.postsNeeded, 0);
-  const totalPostsDrafted = platforms.reduce((sum, p) => sum + p.posts.length, 0);
+  async function generateReply() {
+    if (!pasteThread.trim()) return
+    setGeneratingReply(true)
+    try {
+      const prompt = `Here is a social media post/thread on ${pastePlatform}:\n\n${pasteThread}\n\nWrite a genuine ${pastePostType.toLowerCase()} that adds real value to this conversation and naturally mentions Endless Tales where it fits. Return ONLY the post text, nothing else.`
+      const reply = await callClaude(prompt, SYSTEM)
+      const campaign = `${pastePlatform.toLowerCase().replace('/', '_')}_paste_${Date.now()}`
+      const newItem: QueueItem = {
+        id: `paste_${Date.now()}`,
+        platform: pastePlatform,
+        post_type: pastePostType,
+        caption: reply.trim(),
+        responding_to: pasteThread.slice(0, 80) + (pasteThread.length > 80 ? '...' : ''),
+        utm_campaign: campaign,
+        status: 'draft',
+        utm_link: makeUTMLink(pastePlatform, pastePostType, campaign),
+      }
+      setQueue(q => [newItem, ...q])
+      setPasteThread('')
+      setTab('queue')
+    } catch (e) {
+      console.error(e)
+    }
+    setGeneratingReply(false)
+  }
+
+  async function markPosted(item: QueueItem) {
+    // Log to social_posts table
+    await supabase.from('social_posts').insert({
+      platform: item.platform,
+      post_type: item.post_type,
+      caption: item.caption,
+      utm_campaign: item.utm_campaign,
+      utm_medium: item.post_type.toLowerCase().replace(' ', '_'),
+      posted_at: new Date().toISOString(),
+      posted_by: 'hal',
+    })
+    // Copy UTM link
+    if (item.utm_link) {
+      navigator.clipboard.writeText(item.utm_link)
+      setCopiedId(item.id)
+      setTimeout(() => setCopiedId(null), 3000)
+    }
+    // Update status
+    setQueue(q => q.map(i => i.id === item.id ? { ...i, status: 'posted' } : i))
+  }
+
+  function removeFromQueue(id: string) {
+    setQueue(q => q.filter(i => i.id !== id))
+  }
+
+  const drafted = queue.filter(i => i.status === 'draft').length
+  const posted = queue.filter(i => i.status === 'posted').length
 
   return (
-    <div className="min-h-screen bg-white text-black p-6">
+    <div style={{ minHeight: '100vh', backgroundColor: bg, padding: '1rem' }}>
+
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-4xl font-bold mb-2 text-black">Social Media Posting Hub</h1>
-        <p className="text-gray-700">Manage all your posts across 6 platforms from one place</p>
-        <div className="mt-4 flex gap-8">
-          <div className="bg-orange-100 border border-orange-300 rounded-lg p-4">
-            <p className="text-sm text-gray-700">Posts Drafted</p>
-            <p className="text-3xl font-bold text-orange-600">{totalPostsDrafted}</p>
-          </div>
-          <div className="bg-orange-100 border border-orange-300 rounded-lg p-4">
-            <p className="text-sm text-gray-700">Total Posts Needed</p>
-            <p className="text-3xl font-bold text-orange-600">{totalPostsNeeded}</p>
-          </div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <button onClick={() => router.push('/admin')} style={{ backgroundColor: '#e5e5e5', color: textPrimary, padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 500 }}>← Back</button>
+          <h1 style={{ color: textPrimary, fontSize: '24px', fontWeight: 'bold' }}>Social Posting</h1>
         </div>
+        <button onClick={() => router.push('/admin/social-analytics')} style={{ backgroundColor: '#e5e5e5', color: textPrimary, padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 500 }}>📊 View Analytics →</button>
       </div>
 
-      {/* Platforms Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {platforms.map((platform) => (
-          <div key={platform.name} className="bg-white border-2 border-gray-300 rounded-lg overflow-hidden shadow-sm">
-            {/* Platform Header */}
-            <button
-              onClick={() => setExpandedPlatform(expandedPlatform === platform.name ? null : platform.name)}
-              className="w-full bg-gray-100 hover:bg-gray-200 transition p-4 flex items-center justify-between border-b border-gray-300"
-            >
-              <div className="text-left">
-                <h2 className="text-xl font-bold text-black">{platform.name}</h2>
-                <p className="text-sm text-gray-700">{platform.username}</p>
-              </div>
-              <div className="flex items-center gap-4">
-                <div className="bg-orange-600 text-white rounded-full px-3 py-1 text-sm font-bold">
-                  {platform.postsNeeded} needed
-                </div>
-                <span className={`text-2xl transition-transform text-black ${expandedPlatform === platform.name ? 'rotate-180' : ''}`}>
-                  ▼
-                </span>
-              </div>
-            </button>
-
-            {/* Expanded Posts */}
-            {expandedPlatform === platform.name && (
-              <div className="p-6 space-y-4 border-t border-gray-300">
-                {platform.posts.length === 0 ? (
-                  <p className="text-gray-700 text-center py-4">No posts drafted yet</p>
-                ) : (
-                  platform.posts.map((post) => (
-                    <div
-                      key={post.id}
-                      className={`p-4 rounded-lg border-2 ${
-                        post.status === 'posted'
-                          ? 'border-green-400 bg-green-50'
-                          : 'border-orange-300 bg-orange-50'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between mb-3">
-                        <span
-                          className={`text-xs font-bold px-2 py-1 rounded ${
-                            post.status === 'posted'
-                              ? 'bg-green-200 text-green-900'
-                              : 'bg-orange-200 text-orange-900'
-                          }`}
-                        >
-                          {post.status === 'posted' ? '✓ POSTED' : 'DRAFT'}
-                        </span>
-                      </div>
-
-                      {editingPost?.id === post.id ? (
-                        <div className="space-y-3">
-                          <textarea
-                            value={editingPost.content}
-                            onChange={(e) => handleEditChange('content', e.target.value)}
-                            className="w-full bg-white border border-gray-400 rounded p-3 text-black text-sm focus:outline-none focus:border-orange-600"
-                            rows={4}
-                          />
-                          <input
-                            type="text"
-                            value={editingPost.respondingTo || ''}
-                            onChange={(e) => handleEditChange('respondingTo', e.target.value)}
-                            placeholder="What is this responding to?"
-                            className="w-full bg-white border border-gray-400 rounded p-3 text-black text-sm focus:outline-none focus:border-orange-600"
-                          />
-
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => handlePostSubmit(platform.name)}
-                              className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded flex items-center justify-center gap-2 transition"
-                            >
-                              ✈️ Post Now
-                            </button>
-                            <button
-                              onClick={() => setEditingPost(null)}
-                              className="flex-1 bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded transition"
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              onClick={() => handleDeletePost(platform.name, post.id)}
-                              className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded transition"
-                            >
-                              🗑️
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div>
-                          <p className="text-black mb-2">{post.content}</p>
-                          <p className="text-xs text-gray-700 mb-3">
-                            <strong>Responding to:</strong> {post.respondingTo}
-                          </p>
-
-                          {post.status === 'draft' && (
-                            <button
-                              onClick={() => setEditingPost(post)}
-                              className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded transition"
-                            >
-                              Edit & Post
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
+      {/* Stats */}
+      <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
+        {[{ label: 'In Queue', value: drafted, color: ember }, { label: 'Posted Today', value: posted, color: '#16a34a' }].map(s => (
+          <div key={s.label} style={{ backgroundColor: cardBg, borderRadius: '12px', padding: '1rem 1.5rem', border: `1px solid ${border}` }}>
+            <div style={{ color: textSecondary, fontSize: '12px', fontWeight: 600, textTransform: 'uppercase' }}>{s.label}</div>
+            <div style={{ color: s.color, fontSize: '28px', fontWeight: 800 }}>{s.value}</div>
           </div>
         ))}
       </div>
-    </div>
-  );
-};
 
-export default SocialPostingAdmin;
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
+        {[{ key: 'queue', label: '🤖 Hal Finds Posts' }, { key: 'paste', label: '📋 Paste a Thread' }].map(t => (
+          <button key={t.key} onClick={() => setTab(t.key as 'queue' | 'paste')}
+            style={{ padding: '0.6rem 1.25rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '14px', backgroundColor: tab === t.key ? ember : '#e5e5e5', color: tab === t.key ? 'white' : textPrimary }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab: Hal Finds Posts */}
+      {tab === 'queue' && (
+        <>
+          <div style={{ backgroundColor: cardBg, borderRadius: '12px', padding: '1.25rem', border: `1px solid ${border}`, marginBottom: '1.5rem' }}>
+            <h2 style={{ color: textPrimary, fontSize: '16px', fontWeight: 'bold', marginBottom: '1rem' }}>Ask Hal to find posting opportunities</h2>
+            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <select value={searchPlatform} onChange={e => setSearchPlatform(e.target.value)}
+                style={{ padding: '0.65rem', borderRadius: '8px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px', backgroundColor: '#fff' }}>
+                {PLATFORMS.map(p => <option key={p}>{p}</option>)}
+              </select>
+              <input type="text" value={searchTopic} onChange={e => setSearchTopic(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && searchAndGenerate()}
+                placeholder="Topic, genre, audience... (e.g. audio dramas for commuters)"
+                style={{ flex: 1, minWidth: '200px', padding: '0.65rem', borderRadius: '8px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px' }} />
+              <select value={postCount} onChange={e => setPostCount(Number(e.target.value))}
+                style={{ padding: '0.65rem', borderRadius: '8px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px', backgroundColor: '#fff' }}>
+                {[1,2,3,5].map(n => <option key={n} value={n}>{n} posts</option>)}
+              </select>
+              <button onClick={searchAndGenerate} disabled={searching || !searchTopic.trim()}
+                style={{ padding: '0.65rem 1.5rem', borderRadius: '8px', border: 'none', cursor: searching || !searchTopic.trim() ? 'not-allowed' : 'pointer', fontWeight: 700, backgroundColor: searching || !searchTopic.trim() ? '#e5e5e5' : ember, color: searching || !searchTopic.trim() ? textSecondary : 'white' }}>
+                {searching ? 'Searching...' : '🔍 Find & Draft'}
+              </button>
+            </div>
+          </div>
+
+          {/* Queue */}
+          {queue.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '3rem', color: textSecondary, backgroundColor: cardBg, borderRadius: '12px', border: `1px solid ${border}` }}>
+              <div style={{ fontSize: '48px', marginBottom: '1rem' }}>🤖</div>
+              <div style={{ fontSize: '16px', fontWeight: 600, marginBottom: '0.5rem' }}>Queue is empty</div>
+              <div style={{ fontSize: '14px' }}>Use the search above or paste a thread to generate posts.</div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {queue.map(item => (
+                <div key={item.id} style={{ backgroundColor: cardBg, borderRadius: '12px', padding: '1.25rem', border: `2px solid ${item.status === 'posted' ? '#86efac' : border}`, opacity: item.status === 'posted' ? 0.7 : 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ fontSize: '20px' }}>{PLATFORM_ICONS[item.platform] || '🌐'}</span>
+                      <span style={{ color: textPrimary, fontWeight: 700 }}>{item.platform}</span>
+                      <span style={{ backgroundColor: '#f5f5f5', color: textSecondary, padding: '0.15rem 0.5rem', borderRadius: '999px', fontSize: '12px' }}>{item.post_type}</span>
+                      {item.status === 'posted' && <span style={{ backgroundColor: '#dcfce7', color: '#16a34a', padding: '0.15rem 0.5rem', borderRadius: '999px', fontSize: '12px', fontWeight: 700 }}>✓ Posted</span>}
+                    </div>
+                    <button onClick={() => removeFromQueue(item.id)} style={{ backgroundColor: 'transparent', border: 'none', cursor: 'pointer', color: textSecondary, fontSize: '18px' }}>×</button>
+                  </div>
+
+                  {item.responding_to && (
+                    <div style={{ backgroundColor: '#f5f5f5', borderRadius: '6px', padding: '0.5rem 0.75rem', fontSize: '12px', color: textSecondary, marginBottom: '0.75rem' }}>
+                      <strong>Responding to:</strong> {item.responding_to}
+                    </div>
+                  )}
+
+                  {editingId === item.id ? (
+                    <textarea
+                      value={item.caption}
+                      onChange={e => setQueue(q => q.map(i => i.id === item.id ? { ...i, caption: e.target.value } : i))}
+                      rows={5}
+                      style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px', resize: 'vertical', marginBottom: '0.75rem', boxSizing: 'border-box' }}
+                    />
+                  ) : (
+                    <p style={{ color: textPrimary, fontSize: '14px', lineHeight: 1.6, marginBottom: '0.75rem', whiteSpace: 'pre-wrap' }}>{item.caption}</p>
+                  )}
+
+                  {item.status === 'draft' && (
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button onClick={() => setEditingId(editingId === item.id ? null : item.id)}
+                        style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: `1px solid ${border}`, backgroundColor: '#f5f5f5', color: textPrimary, cursor: 'pointer', fontSize: '13px', fontWeight: 500 }}>
+                        {editingId === item.id ? 'Done Editing' : '✏️ Edit'}
+                      </button>
+                      <button onClick={() => { navigator.clipboard.writeText(item.caption); setCopiedId(item.id + '_copy'); setTimeout(() => setCopiedId(null), 2000) }}
+                        style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: `1px solid ${border}`, backgroundColor: '#f5f5f5', color: textPrimary, cursor: 'pointer', fontSize: '13px', fontWeight: 500 }}>
+                        {copiedId === item.id + '_copy' ? '✓ Copied!' : '📋 Copy Caption'}
+                      </button>
+                      <button onClick={() => markPosted(item)}
+                        style={{ flex: 1, padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', backgroundColor: ember, color: 'white', cursor: 'pointer', fontSize: '13px', fontWeight: 700 }}>
+                        {copiedId === item.id ? '✓ Logged + UTM Copied!' : '✅ Mark Posted + Copy UTM Link'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Tab: Paste a Thread */}
+      {tab === 'paste' && (
+        <div style={{ backgroundColor: cardBg, borderRadius: '12px', padding: '1.5rem', border: `1px solid ${border}` }}>
+          <h2 style={{ color: textPrimary, fontSize: '18px', fontWeight: 'bold', marginBottom: '0.5rem' }}>Paste a post or thread</h2>
+          <p style={{ color: textSecondary, fontSize: '14px', marginBottom: '1.25rem' }}>Copy a post from Reddit, X, etc. and Hal will write a genuine reply that fits naturally.</p>
+
+          <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem' }}>
+            <select value={pastePlatform} onChange={e => setPastePlatform(e.target.value)}
+              style={{ padding: '0.65rem', borderRadius: '8px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px', backgroundColor: '#fff' }}>
+              {PLATFORMS.map(p => <option key={p}>{p}</option>)}
+            </select>
+            <select value={pastePostType} onChange={e => setPastePostType(e.target.value)}
+              style={{ padding: '0.65rem', borderRadius: '8px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px', backgroundColor: '#fff' }}>
+              {POST_TYPES.map(t => <option key={t}>{t}</option>)}
+            </select>
+          </div>
+
+          <textarea
+            value={pasteThread}
+            onChange={e => setPasteThread(e.target.value)}
+            rows={8}
+            placeholder="Paste the thread, post, or conversation here..."
+            style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px', resize: 'vertical', marginBottom: '1rem', boxSizing: 'border-box' }}
+          />
+
+          <button onClick={generateReply} disabled={generatingReply || !pasteThread.trim()}
+            style={{ width: '100%', padding: '0.85rem', borderRadius: '8px', border: 'none', cursor: generatingReply || !pasteThread.trim() ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '15px', backgroundColor: generatingReply || !pasteThread.trim() ? '#e5e5e5' : ember, color: generatingReply || !pasteThread.trim() ? textSecondary : 'white' }}>
+            {generatingReply ? 'Hal is writing...' : '🤖 Generate Reply with Hal'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
