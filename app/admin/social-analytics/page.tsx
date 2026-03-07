@@ -146,6 +146,27 @@ export default function AdminSocialAnalyticsPage() {
         <button onClick={() => setShowForm(true)} style={{ backgroundColor: ember, color: 'white', padding: '0.5rem 1.25rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '15px' }}>+ Log Post</button>
       </div>
 
+      {/* How It Works */}
+      <div style={{ backgroundColor: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '12px', padding: '1.25rem', marginBottom: '1.5rem' }}>
+        <h2 style={{ color: textPrimary, fontSize: '16px', fontWeight: 'bold', marginBottom: '1rem' }}>📖 How This Works</h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem' }}>
+          {[
+            { step: '1', title: 'Hal recommends a post', desc: 'Go to Social Posting and ask Hal for a post idea. Copy the caption.' },
+            { step: '2', title: 'Post it on social media', desc: 'Paste the caption into Instagram, TikTok, Reddit, etc. and publish it.' },
+            { step: '3', title: 'Log it here', desc: 'Click the Log Post button, pick the platform, paste the caption, and save to get a tracking link.' },
+            { step: '4', title: 'Add the tracking link', desc: 'Put the UTM link in your bio or post. Every signup from that link gets credited to that post.' },
+            { step: '5', title: 'Watch the results', desc: 'The dashboard shows which platforms and post types bring in the most waitlist signups.' },
+          ].map(({ step, title, desc }) => (
+            <div key={step} style={{ display: 'flex', gap: '0.75rem' }}>
+              <div style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: ember, color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '13px', flexShrink: 0 }}>{step}</div>
+              <div>
+                <div style={{ color: textPrimary, fontWeight: 700, fontSize: '13px', marginBottom: '0.2rem' }}>{title}</div>
+                <div style={{ color: textSecondary, fontSize: '12px', lineHeight: 1.5 }}>{desc}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
       {/* Platform Summary */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
         {PLATFORMS.map(p => {
