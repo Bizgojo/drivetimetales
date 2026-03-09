@@ -18,62 +18,119 @@ const AUTHOR_STYLE_PROFILES = {
   'Stephen King': {
     name: 'Stephen King',
     description: 'The Master of Psychological Horror',
+    birth_year: 1947,
+    death_year: null,
+    living: true,
     techniques: 'Ordinary made terrible, deep character interiority, conversational voice, slow burn to explosion, flawed relatable protagonists',
     audioAdaptation: 'Build dread through ambient sounds, pace dialogue to create mounting unease, include dark humor'
   },
   'Richard Matheson': {
     name: 'Richard Matheson',
     description: 'The Architect of Paranoid Science Fiction',
+    birth_year: 1926,
+    death_year: 2013,
+    living: false,
     techniques: 'Scientific rationalization, isolation as horror, relentless pace, paranoid atmosphere, twist of perspective',
     audioAdaptation: 'Maintain relentless forward momentum, use silence and ambient menace, build to revelation'
   },
   'Ray Bradbury': {
     name: 'Ray Bradbury',
     description: 'The Poet of Science Fiction',
+    birth_year: 1920,
+    death_year: 2012,
+    living: false,
     techniques: 'Lyrical prose poetry, nostalgic melancholy, humanist science fiction, sensory immersion, warning through wonder',
     audioAdaptation: 'Narrator voice more prominent, rich ambient soundscapes, slower pacing, musical underscore'
   },
   'Roald Dahl': {
     name: 'Roald Dahl',
     description: 'The Master of Dark Comedy',
+    birth_year: 1916,
+    death_year: 1990,
+    living: false,
     techniques: 'Delicious twists, dark humor, precise economical prose, urbane narrator voice, moral inversion',
     audioAdaptation: 'Measured pace building to sudden revelation, end on twist without explaining'
   },
   'O. Henry': {
     name: 'O. Henry',
     description: 'The Craftsman of Surprise Endings',
+    birth_year: 1862,
+    death_year: 1910,
+    living: false,
     techniques: 'O. Henry Ending with surprise conclusions that illuminate deeper truth, warmth for common people, humor with heart, ironic commentary on society and human nature',
     audioAdaptation: 'Warm narrator with touch of irony, authentic working-class voices, emotional twist at conclusion'
   },
   'Agatha Christie': {
     name: 'Agatha Christie',
     description: 'The Queen of Mystery',
+    birth_year: 1890,
+    death_year: 1976,
+    living: false,
     techniques: 'Fair-play cluing with all clues presented to listener, misdirection mastery, closed circle setting with limited suspects, foreboding atmosphere, detective as lens observing what others miss',
     audioAdaptation: 'Plant clues in conversation, distinct character voices for each suspect, theatrical final reveal'
   },
   'Arthur Conan Doyle': {
     name: 'Arthur Conan Doyle',
     description: 'The Father of Deductive Detection',
+    birth_year: 1859,
+    death_year: 1930,
+    living: false,
     techniques: 'Deductive revelation through logical chains, Watson viewpoint allowing genius to dazzle, detailed Victorian description, problem-solution structure, eccentric brilliant detective',
     audioAdaptation: 'First-person Watson narration, Holmes delivers deductions theatrically, rich period atmosphere through sound'
   },
   'Elmore Leonard': {
     name: 'Elmore Leonard',
     description: 'The Master of Criminal Dialogue',
+    birth_year: 1925,
+    death_year: 2013,
+    living: false,
     techniques: 'Invisible prose ("If it sounds like writing, rewrite it"), dialogue supremacy, criminal authenticity, minimalist dialogue tags, third-person shifting POV, cool matter-of-fact violence',
     audioAdaptation: 'Each character needs distinctive voice, minimal narration, fast pacing, criminal slang and authenticity'
   },
   'Shirley Jackson': {
     name: 'Shirley Jackson',
     description: 'The Poet of Domestic Horror',
+    birth_year: 1916,
+    death_year: 1965,
+    living: false,
     techniques: 'Surface normality hiding horror, psychological ambiguity, social menace of conformity, controlled simple prose concealing dread, female consciousness and domestic entrapment, suggestion over showing',
     audioAdaptation: 'Build dread through tone shifts, ordinary sounds become menacing, end with ambiguity and unease'
   },
   'Edgar Allan Poe': {
     name: 'Edgar Allan Poe',
     description: 'The Father of Modern Horror',
-    techniques: 'Gothic atmosphere, unreliable narration, psychological obsession, musical prose with rhythm and meter, single unified effect building to climax, decay and death imagery',
-    audioAdaptation: 'Ornate first-person narration, atmospheric sound design, music as emotional driver, building psychological unraveling'
+    birth_year: 1809,
+    death_year: 1849,
+    living: false,
+    techniques: 'Gothic atmosphere (crumbling mansions, crypts, storms), unreliable narration (first-person voices that may be mad), psychological obsession (death, beauty, revenge, guilt), musical prose (rhythmic, repetitive), single unified effect',
+    audioAdaptation: 'Hypnotic narrator rhythm, gothic ambient sounds, build to single overwhelming moment'
+  },
+  'Raymond Chandler': {
+    name: 'Raymond Chandler',
+    description: 'The Voice of Hardboiled Noir',
+    birth_year: 1888,
+    death_year: 1959,
+    living: false,
+    techniques: 'Poetic tough-talk (lyrical similes in street-smart cynicism), moral knight hero with personal code, atmospheric place (Los Angeles as character), snappy dialogue with subtext, first-person weariness',
+    audioAdaptation: 'World-weary narrator voice, noir ambient sounds, dialogue-heavy scenes'
+  },
+  'Rod Serling': {
+    name: 'Rod Serling',
+    description: 'The Master of the Moral Twist',
+    birth_year: 1924,
+    death_year: 1975,
+    living: false,
+    techniques: 'Social commentary (science fiction examining prejudice, war, conformity), ironic justice (characters get what they deserve), tight structure, narrator framing, ordinary to extraordinary',
+    audioAdaptation: 'Distinctive narrator framing, twist revelation with moral resonance'
+  },
+  'Neil Gaiman': {
+    name: 'Neil Gaiman',
+    description: 'The Mythmaker of Modern Fantasy',
+    birth_year: 1960,
+    death_year: null,
+    living: true,
+    techniques: 'Mythic resonance (ancient archetypes in contemporary settings), fairy tale logic, wonder and darkness (magic beautiful and dangerous), conversational voice, hidden world (magical underworld)',
+    audioAdaptation: 'Warm intimate narrator, blend mundane and magical sounds, fairy tale pacing'
   }
 };
 
@@ -275,9 +332,26 @@ const CreateStoryStage: React.FC<{
       {/* Author Style Profile Info */}
       {form.authorStyle && AUTHOR_STYLE_PROFILES[form.authorStyle as keyof typeof AUTHOR_STYLE_PROFILES] && (
         <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-4 space-y-2">
-          <h4 className="font-semibold text-black">
-            {AUTHOR_STYLE_PROFILES[form.authorStyle as keyof typeof AUTHOR_STYLE_PROFILES].name}
-          </h4>
+          <div className="flex items-start justify-between">
+            <div>
+              <h4 className="font-semibold text-black">
+                {AUTHOR_STYLE_PROFILES[form.authorStyle as keyof typeof AUTHOR_STYLE_PROFILES].name}
+              </h4>
+              <p className="text-xs text-gray-600">
+                {AUTHOR_STYLE_PROFILES[form.authorStyle as keyof typeof AUTHOR_STYLE_PROFILES].birth_year} 
+                {AUTHOR_STYLE_PROFILES[form.authorStyle as keyof typeof AUTHOR_STYLE_PROFILES].living ? 
+                  ' - Present' : 
+                  ` - ${AUTHOR_STYLE_PROFILES[form.authorStyle as keyof typeof AUTHOR_STYLE_PROFILES].death_year}`}
+              </p>
+            </div>
+            <span className={`px-2 py-1 rounded text-xs font-medium ${
+              AUTHOR_STYLE_PROFILES[form.authorStyle as keyof typeof AUTHOR_STYLE_PROFILES].living
+                ? 'bg-green-100 text-green-800'
+                : 'bg-gray-200 text-gray-700'
+            }`}>
+              {AUTHOR_STYLE_PROFILES[form.authorStyle as keyof typeof AUTHOR_STYLE_PROFILES].living ? 'Living' : 'Deceased'}
+            </span>
+          </div>
           <p className="text-sm text-gray-700">
             <strong>Style:</strong> {AUTHOR_STYLE_PROFILES[form.authorStyle as keyof typeof AUTHOR_STYLE_PROFILES].description}
           </p>
