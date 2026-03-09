@@ -1,18 +1,54 @@
-/*
-Story Creation - Complete Workflow
-All-in-one page for creating, reviewing, editing, and publishing stories
-*/
-
 'use client';
 
-import React, { useState } from 'react';
-import { Play, Pause, RotateCcw, Edit2, Save, X, Trash2, Plus, Volume2, Image as ImageIcon } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Play, Pause, RotateCcw, Edit2, Save, X, Trash2, Plus, Volume2, Image as ImageIcon, Music, Zap } from 'lucide-react';
 
 // ============================================================================
-// TYPES & CONSTANTS
+// TYPES
 // ============================================================================
 
 type Stage = 'create' | 'to-test' | 'review' | 'publish';
+
+interface StoryPrompt {
+  concept: string;
+  tone: string;
+  wordCount: number;
+  primaryGenre: string;
+  secondaryGenre1?: string;
+  secondaryGenre2?: string;
+  series: string;
+  episode: string;
+  authorName: string;
+  authorStyle: string;
+  targetDestination: string;
+}
+
+interface Story {
+  id: string;
+  title: string;
+  primaryGenre: string;
+  secondaryGenre1?: string;
+  secondaryGenre2?: string;
+  wordCount: number;
+  series: string;
+  episode: string;
+  concept: string;
+  tone: string;
+  authorName: string;
+  authorStyle: string;
+  targetDestination: string;
+  status: 'pending' | 'in_review' | 'ready' | 'published';
+  createdAt: string;
+  generatedScript?: string;
+  introText?: string;
+  outroText?: string;
+  introAudioUrl?: string;
+  storyAudioUrl?: string;
+  outroAudioUrl?: string;
+  backgroundMusicUrl?: string;
+  coverImageUrl?: string;
+  sfxMetadata?: Array<{ id: string; time: string; description: string }>;
+}
 
 const AUTHOR_STYLE_PROFILES = {
   'Stephen King': {
@@ -98,21 +134,21 @@ const AUTHOR_STYLE_PROFILES = {
   },
   'Edgar Allan Poe': {
     name: 'Edgar Allan Poe',
-    description: 'The Father of Modern Horror',
+    description: 'The Master of Gothic Atmosphere',
     birth_year: 1809,
     death_year: 1849,
     living: false,
-    techniques: 'Gothic atmosphere (crumbling mansions, crypts, storms), unreliable narration (first-person voices that may be mad), psychological obsession (death, beauty, revenge, guilt), musical prose (rhythmic, repetitive), single unified effect',
-    audioAdaptation: 'Hypnotic narrator rhythm, gothic ambient sounds, build to single overwhelming moment'
+    techniques: 'Unreliable narrators, psychological descent, atmosphere of dread, rhythmic repetition, melancholy beauty, death and loss as central obsessions',
+    audioAdaptation: 'Atmospheric soundscapes, narrator revealing instability gradually, music underlining emotional decay'
   },
   'Raymond Chandler': {
     name: 'Raymond Chandler',
-    description: 'The Voice of Hardboiled Noir',
+    description: 'The Master of Hardboiled Noir',
     birth_year: 1888,
     death_year: 1959,
     living: false,
-    techniques: 'Poetic tough-talk (lyrical similes in street-smart cynicism), moral knight hero with personal code, atmospheric place (Los Angeles as character), snappy dialogue with subtext, first-person weariness',
-    audioAdaptation: 'World-weary narrator voice, noir ambient sounds, dialogue-heavy scenes'
+    techniques: 'Sharp descriptive metaphors, world-weary detective POV, corrupt urban landscape, morality in amoral world, witty cynical dialogue',
+    audioAdaptation: 'Deep-voiced narrator with dry wit, gritty urban ambience, pacing that mirrors investigation'
   },
   'Rod Serling': {
     name: 'Rod Serling',
@@ -120,58 +156,46 @@ const AUTHOR_STYLE_PROFILES = {
     birth_year: 1924,
     death_year: 1975,
     living: false,
-    techniques: 'Social commentary (science fiction examining prejudice, war, conformity), ironic justice (characters get what they deserve), tight structure, narrator framing, ordinary to extraordinary',
-    audioAdaptation: 'Distinctive narrator framing, twist revelation with moral resonance'
+    techniques: 'Socially conscious narrative, twist that subverts expectations, ordinary people in extraordinary circumstances, commentary on human nature and society',
+    audioAdaptation: 'Narrator frames story with moral weight, unexpected reveals require surprise, end with lingering question'
   },
   'Neil Gaiman': {
     name: 'Neil Gaiman',
-    description: 'The Mythmaker of Modern Fantasy',
+    description: 'The Master of Modern Mythology',
     birth_year: 1960,
     death_year: null,
     living: true,
-    techniques: 'Mythic resonance (ancient archetypes in contemporary settings), fairy tale logic, wonder and darkness (magic beautiful and dangerous), conversational voice, hidden world (magical underworld)',
-    audioAdaptation: 'Warm intimate narrator, blend mundane and magical sounds, fairy tale pacing'
-  }
+    techniques: 'Mythological depth in mundane settings, wonder beneath ordinary surface, diverse cultural references, dark fairy tale logic, found family themes',
+    audioAdaptation: 'Blend whimsy with darkness, treat magical elements as matter-of-fact, character voices carry emotional weight'
+  },
+  'Isaac Asimov': {
+    name: 'Isaac Asimov',
+    description: 'The Master of Science Fiction Ideas',
+    birth_year: 1920,
+    death_year: 1992,
+    living: false,
+    techniques: 'Explore single scientific concept deeply, rational problem-solving, accessible explanations, often optimistic future, focus on ideas over characters',
+    audioAdaptation: 'Clear exposition of concepts, pacing allows listener to follow logic, technology treated as character element'
+  },
+  'H.P. Lovecraft': {
+    name: 'H.P. Lovecraft',
+    description: 'The Master of Cosmic Horror',
+    birth_year: 1890,
+    death_year: 1937,
+    living: false,
+    techniques: 'Cosmic insignificance of humanity, forbidden knowledge leading to madness, atmospheric dread, unreliable scholar narratives, eldritch atmosphere',
+    audioAdaptation: 'Build incomprehensible menace, narrator reveals descent into cosmic awareness, sound design creates alienness'
+  },
+  'Margaret Atwood': {
+    name: 'Margaret Atwood',
+    description: 'The Master of Speculative Realism',
+    birth_year: 1939,
+    death_year: null,
+    living: true,
+    techniques: 'Feminist speculation, dystopian detail, psychological interiority, language as power, women navigating controlled systems',
+    audioAdaptation: 'Female voice with interior complexity, sparse language, systemic oppression through dialogue and tone'
+  },
 };
-
-interface StoryPrompt {
-  id?: string;
-  title: string;
-  primaryGenre: string;
-  secondaryGenre1?: string;
-  secondaryGenre2?: string;
-  wordCount: number;
-  series: string;
-  episode: string;
-  concept: string;
-  tone: string;
-  authorName: string;
-  authorStyle: string;
-  targetDestination: string;
-}
-
-interface Story {
-  id: string;
-  title: string;
-  primaryGenre: string;
-  secondaryGenre1?: string;
-  secondaryGenre2?: string;
-  wordCount: number;
-  series: string;
-  episode: string;
-  concept: string;
-  tone: string;
-  authorName: string;
-  authorStyle: string;
-  targetDestination: string;
-  status: 'pending' | 'in_review' | 'ready';
-  createdAt: string;
-  introText?: string;
-  outroText?: string;
-  coverImageUrl?: string;
-  backgroundMusicUrl?: string;
-  sfxItems: Array<{ id: string; time: string; description: string }>;
-}
 
 // ============================================================================
 // STAGE 1: CREATE STORY FORM
@@ -179,28 +203,27 @@ interface Story {
 
 const CreateStoryStage: React.FC<{
   onSubmit: (prompt: StoryPrompt) => void;
-}> = ({ onSubmit }) => {
+  isLoading?: boolean;
+}> = ({ onSubmit, isLoading = false }) => {
   const [genres, setGenres] = useState<string[]>([]);
   const [genresLoading, setGenresLoading] = useState(true);
   const authorStyleOptions = Object.keys(AUTHOR_STYLE_PROFILES);
   
   const [form, setForm] = useState<StoryPrompt>({
-    title: '',
+    concept: '',
+    tone: '',
+    wordCount: 1500,
     primaryGenre: '',
     secondaryGenre1: '',
     secondaryGenre2: '',
-    wordCount: 1500,
     series: '',
     episode: '',
-    concept: '',
-    tone: '',
     authorName: '',
     authorStyle: '',
     targetDestination: 'app',
   });
 
-  // Fetch genres from API
-  React.useEffect(() => {
+  useEffect(() => {
     fetch('/api/asc3/genres')
       .then(res => res.json())
       .then(data => {
@@ -212,7 +235,7 @@ const CreateStoryStage: React.FC<{
       .catch(() => setGenresLoading(false));
   }, []);
 
-  const isValid = form.title && form.primaryGenre && form.wordCount > 0 && form.concept && form.tone && form.authorName && form.authorStyle;
+  const isValid = form.primaryGenre && form.wordCount > 0 && form.concept && form.tone && form.authorName && form.authorStyle;
   
   const calculateDuration = (words: number) => {
     const minutes = Math.round(words / 150);
@@ -221,19 +244,8 @@ const CreateStoryStage: React.FC<{
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold text-black">Create Story</h2>
-
-      {/* Title */}
-      <div>
-        <label className="block text-sm font-semibold text-black mb-2">Story Title *</label>
-        <input
-          type="text"
-          value={form.title}
-          onChange={(e) => setForm({ ...form, title: e.target.value })}
-          placeholder="e.g., The Last Transmission"
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black bg-white"
-        />
-      </div>
+      <h2 className="text-2xl font-bold text-black">✍️ Create Story</h2>
+      <p className="text-sm text-gray-700">Fill out your story details. Claude will generate the title and complete script.</p>
 
       {/* Genres Selection */}
       <div>
@@ -241,8 +253,8 @@ const CreateStoryStage: React.FC<{
         <select
           value={form.primaryGenre}
           onChange={(e) => setForm({ ...form, primaryGenre: e.target.value })}
-          disabled={genresLoading}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black bg-white disabled:bg-gray-100"
+          disabled={genresLoading || isLoading}
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-black bg-white disabled:bg-gray-100"
         >
           <option value="">{genresLoading ? 'Loading genres...' : 'Select primary genre'}</option>
           {genres.map((g) => (
@@ -257,8 +269,8 @@ const CreateStoryStage: React.FC<{
           <select
             value={form.secondaryGenre1 || ''}
             onChange={(e) => setForm({ ...form, secondaryGenre1: e.target.value || undefined })}
-            disabled={genresLoading}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black bg-white disabled:bg-gray-100"
+            disabled={genresLoading || isLoading}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-black bg-white disabled:bg-gray-100"
           >
             <option value="">Select secondary genre</option>
             {genres.map((g) => (
@@ -272,8 +284,8 @@ const CreateStoryStage: React.FC<{
           <select
             value={form.secondaryGenre2 || ''}
             onChange={(e) => setForm({ ...form, secondaryGenre2: e.target.value || undefined })}
-            disabled={genresLoading}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black bg-white disabled:bg-gray-100"
+            disabled={genresLoading || isLoading}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-black bg-white disabled:bg-gray-100"
           >
             <option value="">Select secondary genre</option>
             {genres.map((g) => (
@@ -291,7 +303,8 @@ const CreateStoryStage: React.FC<{
           value={form.wordCount}
           onChange={(e) => setForm({ ...form, wordCount: parseInt(e.target.value) || 0 })}
           placeholder="e.g., 1500"
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black bg-white"
+          disabled={isLoading}
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-black bg-white disabled:bg-gray-100"
         />
         <p className="text-xs text-gray-600 mt-1">At 150 words per minute</p>
       </div>
@@ -305,7 +318,8 @@ const CreateStoryStage: React.FC<{
             value={form.series}
             onChange={(e) => setForm({ ...form, series: e.target.value })}
             placeholder="e.g., Future Echoes"
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black bg-white"
+            disabled={isLoading}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-black bg-white disabled:bg-gray-100"
           />
         </div>
 
@@ -316,7 +330,8 @@ const CreateStoryStage: React.FC<{
             value={form.episode}
             onChange={(e) => setForm({ ...form, episode: e.target.value })}
             placeholder="1"
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black bg-white"
+            disabled={isLoading}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-black bg-white disabled:bg-gray-100"
           />
         </div>
       </div>
@@ -327,9 +342,10 @@ const CreateStoryStage: React.FC<{
         <textarea
           value={form.concept}
           onChange={(e) => setForm({ ...form, concept: e.target.value })}
-          placeholder="2-3 sentences describing your story..."
+          placeholder="2-3 sentences describing your story idea..."
           rows={4}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black bg-white resize-none"
+          disabled={isLoading}
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-black bg-white resize-none disabled:bg-gray-100"
         />
       </div>
 
@@ -341,10 +357,11 @@ const CreateStoryStage: React.FC<{
             <button
               key={t}
               onClick={() => setForm({ ...form, tone: t })}
+              disabled={isLoading}
               className={`px-3 py-2 rounded text-sm font-medium transition ${
                 form.tone === t
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-black hover:bg-gray-200'
+                  ? 'bg-orange-500 text-white'
+                  : 'bg-gray-100 text-black hover:bg-gray-200 disabled:bg-gray-100'
               }`}
             >
               {t}
@@ -362,7 +379,8 @@ const CreateStoryStage: React.FC<{
             value={form.authorName}
             onChange={(e) => setForm({ ...form, authorName: e.target.value })}
             placeholder="e.g., Mark Holbrook"
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black bg-white"
+            disabled={isLoading}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-black bg-white disabled:bg-gray-100"
           />
         </div>
 
@@ -371,7 +389,8 @@ const CreateStoryStage: React.FC<{
           <select
             value={form.authorStyle}
             onChange={(e) => setForm({ ...form, authorStyle: e.target.value })}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black bg-white"
+            disabled={isLoading}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-black bg-white disabled:bg-gray-100"
           >
             <option value="">Select style</option>
             {authorStyleOptions.map((style) => (
@@ -383,7 +402,7 @@ const CreateStoryStage: React.FC<{
 
       {/* Author Style Profile Info */}
       {form.authorStyle && AUTHOR_STYLE_PROFILES[form.authorStyle as keyof typeof AUTHOR_STYLE_PROFILES] && (
-        <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-4 space-y-2">
+        <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 space-y-2">
           <div className="flex items-start justify-between">
             <div>
               <h4 className="font-semibold text-black">
@@ -416,17 +435,14 @@ const CreateStoryStage: React.FC<{
         </div>
       )}
 
-      <p className="text-sm text-gray-600 bg-blue-50 p-3 rounded border border-blue-200">
-        💡 <strong>Note:</strong> Characters will be determined by Claude when writing the script based on the author style and story concept.
-      </p>
-
       {/* Target Destination */}
       <div>
         <label className="block text-sm font-semibold text-black mb-2">Target Destination *</label>
         <select
           value={form.targetDestination}
           onChange={(e) => setForm({ ...form, targetDestination: e.target.value })}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black bg-white"
+          disabled={isLoading}
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-black bg-white disabled:bg-gray-100"
         >
           <option value="app">📚 App Library</option>
           <option value="for-households">🏠 For Households</option>
@@ -439,14 +455,14 @@ const CreateStoryStage: React.FC<{
       {/* Submit */}
       <button
         onClick={() => onSubmit(form)}
-        disabled={!isValid}
+        disabled={!isValid || isLoading}
         className={`w-full py-3 rounded-lg font-semibold transition ${
-          isValid
-            ? 'bg-blue-600 hover:bg-blue-700 text-white'
+          isValid && !isLoading
+            ? 'bg-orange-500 hover:bg-orange-600 text-white'
             : 'bg-gray-300 text-gray-600 cursor-not-allowed'
         }`}
       >
-        Generate Story
+        {isLoading ? '🔄 Generating with Claude...' : '🚀 Generate Story'}
       </button>
     </div>
   );
@@ -467,12 +483,12 @@ const StoriesToTestStage: React.FC<{
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold text-black">Stories To Test</h2>
+      <h2 className="text-2xl font-bold text-black">📖 Stories To Test</h2>
 
       {stories.length === 0 ? (
-        <div className="bg-blue-50 p-12 rounded-lg text-center border border-blue-200">
-          <p className="text-blue-900 font-semibold">No stories yet</p>
-          <p className="text-blue-800 text-sm">Create your first story to get started</p>
+        <div className="bg-orange-50 p-12 rounded-lg text-center border border-orange-200">
+          <p className="text-orange-900 font-semibold">No stories yet</p>
+          <p className="text-orange-800 text-sm">Create your first story to get started</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -480,7 +496,7 @@ const StoriesToTestStage: React.FC<{
             <button
               key={story.id}
               onClick={() => onSelect(story)}
-              className="w-full p-4 bg-white border border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition text-left"
+              className="w-full p-4 bg-white border border-gray-300 rounded-lg hover:border-orange-500 hover:bg-orange-50 transition text-left"
             >
               <div className="flex items-start justify-between">
                 <div>
@@ -494,7 +510,7 @@ const StoriesToTestStage: React.FC<{
                   </p>
                 </div>
                 <div className="text-right">
-                  <span className={`px-2 py-1 rounded text-xs font-medium ${
+                  <span className={`px-2 py-1 rounded text-xs font-medium whitespace-nowrap ${
                     story.status === 'ready' ? 'bg-green-100 text-green-800' :
                     story.status === 'in_review' ? 'bg-blue-100 text-blue-800' :
                     'bg-yellow-100 text-yellow-800'
@@ -512,23 +528,88 @@ const StoriesToTestStage: React.FC<{
 };
 
 // ============================================================================
-// STAGE 3: REVIEW & EDIT
+// STAGE 3: REVIEW & EDIT WITH AUDIO
 // ============================================================================
 
 const ReviewEditStage: React.FC<{
   story: Story;
   onBack: () => void;
   onNext: () => void;
-}> = ({ story, onBack, onNext }) => {
+  onUpdate: (story: Story) => void;
+}> = ({ story, onBack, onNext, onUpdate }) => {
+  const [audioRef, setAudioRef] = useState<HTMLAudioElement | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [currentSegment, setCurrentSegment] = useState<'intro' | 'story' | 'outro'>('story');
+  
   const [introText, setIntroText] = useState(story.introText || '');
   const [outroText, setOutroText] = useState(story.outroText || '');
   const [editingIntro, setEditingIntro] = useState(false);
   const [editingOutro, setEditingOutro] = useState(false);
+  const [savingChanges, setSavingChanges] = useState(false);
 
   const calculateDuration = (words: number) => {
     const minutes = Math.round(words / 150);
     return `${minutes} min`;
   };
+
+  const getAudioUrl = () => {
+    if (currentSegment === 'intro') return story.introAudioUrl || '';
+    if (currentSegment === 'story') return story.storyAudioUrl || '';
+    return story.outroAudioUrl || '';
+  };
+
+  const handlePlayPause = () => {
+    if (!audioRef) return;
+    if (isPlaying) {
+      audioRef.pause();
+    } else {
+      audioRef.play();
+    }
+    setIsPlaying(!isPlaying);
+  };
+
+  const handleStartOver = () => {
+    if (audioRef) {
+      audioRef.currentTime = 0;
+      audioRef.play();
+      setIsPlaying(true);
+    }
+  };
+
+  const handleSaveChanges = async () => {
+    setSavingChanges(true);
+    try {
+      const updatedStory = {
+        ...story,
+        introText,
+        outroText,
+      };
+      
+      // Save to database
+      const response = await fetch('/api/asc3/update-story', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedStory),
+      });
+
+      if (response.ok) {
+        onUpdate(updatedStory);
+        setEditingIntro(false);
+        setEditingOutro(false);
+        alert('✅ Changes saved!');
+      } else {
+        alert('❌ Failed to save changes');
+      }
+    } catch (error) {
+      alert('❌ Error saving changes');
+    } finally {
+      setSavingChanges(false);
+    }
+  };
+
+  const audioUrl = getAudioUrl();
 
   return (
     <div className="space-y-6">
@@ -546,43 +627,117 @@ const ReviewEditStage: React.FC<{
       </div>
 
       {/* Audio Player */}
-      <div className="bg-white p-6 rounded-lg border border-gray-300">
-        <h3 className="font-semibold text-black mb-4">Audio Preview</h3>
-        <div className="flex gap-2 mb-4">
-          {['Intro', 'Story', 'Outro'].map((seg) => (
-            <button key={seg} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
-              ▶ {seg}
+      {audioUrl && (
+        <div className="bg-white p-6 rounded-lg border border-gray-300">
+          <h3 className="font-semibold text-black mb-4">🎵 Audio Player</h3>
+          
+          {/* Segment Selection */}
+          <div className="flex gap-2 mb-4">
+            {['intro', 'story', 'outro'].map((seg) => (
+              <button
+                key={seg}
+                onClick={() => {
+                  setCurrentSegment(seg as 'intro' | 'story' | 'outro');
+                  setIsPlaying(false);
+                }}
+                className={`px-4 py-2 rounded font-medium transition ${
+                  currentSegment === seg
+                    ? 'bg-orange-500 text-white'
+                    : 'bg-gray-200 text-black hover:bg-gray-300'
+                }`}
+              >
+                {seg.charAt(0).toUpperCase() + seg.slice(1)}
+              </button>
+            ))}
+          </div>
+
+          {/* Player Controls */}
+          <div className="flex items-center gap-4">
+            <button
+              onClick={handlePlayPause}
+              className="w-12 h-12 rounded-full bg-orange-500 text-white flex items-center justify-center hover:bg-orange-600"
+            >
+              {isPlaying ? <Pause size={24} /> : <Play size={24} />}
             </button>
-          ))}
+            <div className="flex-1">
+              <div className="bg-gray-300 h-2 rounded-full">
+                <div
+                  className="bg-orange-500 h-2 rounded-full transition-all"
+                  style={{ width: duration > 0 ? `${(currentTime / duration) * 100}%` : '0%' }}
+                />
+              </div>
+              <p className="text-xs text-gray-600 mt-1">
+                {Math.floor(currentTime)}s / {Math.floor(duration)}s
+              </p>
+            </div>
+            <button
+              onClick={handleStartOver}
+              className="px-3 py-2 bg-gray-200 text-black rounded hover:bg-gray-300 text-sm font-medium"
+            >
+              🔄 Start Over
+            </button>
+          </div>
+
+          {/* Hidden audio element */}
+          <audio
+            ref={(el) => {
+              if (el) {
+                setAudioRef(el);
+                el.src = audioUrl;
+              }
+            }}
+            onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+            onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
+            onEnded={() => setIsPlaying(false)}
+            className="hidden"
+          />
         </div>
-        <div className="flex items-center gap-4">
-          <button className="w-12 h-12 rounded-full bg-blue-600 text-white flex items-center justify-center hover:bg-blue-700">
-            <Play size={24} />
-          </button>
-          <div className="flex-1 bg-gray-300 h-2 rounded-full"></div>
-          <button className="px-3 py-2 bg-gray-200 text-black rounded hover:bg-gray-300 text-sm font-medium">🔄 Start Over</button>
-        </div>
-      </div>
+      )}
 
       {/* Edit Intro */}
       <div className="bg-white border border-gray-300 rounded-lg p-4">
         <div className="flex items-center justify-between mb-2">
           <h4 className="font-semibold text-black">Edit Intro Text</h4>
-          {editingIntro ? (
+          {editingIntro && (
             <div className="flex gap-2">
-              <button onClick={() => setEditingIntro(false)} className="px-2 py-1 bg-blue-600 text-white rounded text-sm">Save</button>
-              <button onClick={() => setEditingIntro(false)} className="px-2 py-1 bg-gray-200 text-black rounded text-sm">Cancel</button>
+              <button
+                onClick={() => {
+                  setEditingIntro(false);
+                  handleSaveChanges();
+                }}
+                className="px-2 py-1 bg-orange-500 text-white rounded text-sm font-medium"
+              >
+                💾 Save
+              </button>
+              <button
+                onClick={() => {
+                  setEditingIntro(false);
+                  setIntroText(story.introText || '');
+                }}
+                className="px-2 py-1 bg-gray-200 text-black rounded text-sm font-medium"
+              >
+                ✕ Cancel
+              </button>
             </div>
-          ) : (
-            <button onClick={() => setEditingIntro(true)} className="p-1 hover:bg-gray-100 rounded">
-              <Edit2 size={16} className="text-black" />
-            </button>
           )}
         </div>
         {editingIntro ? (
-          <textarea value={introText} onChange={(e) => setIntroText(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded text-black bg-white" rows={3} />
+          <textarea
+            value={introText}
+            onChange={(e) => setIntroText(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded text-black bg-white"
+            rows={3}
+          />
         ) : (
-          <p className="text-black">{introText || '(No intro text set)'}</p>
+          <div className="flex items-start justify-between">
+            <p className="text-black flex-1">{introText || '(No intro text set)'}</p>
+            <button
+              onClick={() => setEditingIntro(true)}
+              className="p-1 hover:bg-gray-100 rounded ml-2"
+            >
+              <Edit2 size={16} className="text-black" />
+            </button>
+          </div>
         )}
       </div>
 
@@ -590,23 +745,72 @@ const ReviewEditStage: React.FC<{
       <div className="bg-white border border-gray-300 rounded-lg p-4">
         <div className="flex items-center justify-between mb-2">
           <h4 className="font-semibold text-black">Edit Outro Text</h4>
-          {editingOutro ? (
+          {editingOutro && (
             <div className="flex gap-2">
-              <button onClick={() => setEditingOutro(false)} className="px-2 py-1 bg-blue-600 text-white rounded text-sm">Save</button>
-              <button onClick={() => setEditingOutro(false)} className="px-2 py-1 bg-gray-200 text-black rounded text-sm">Cancel</button>
+              <button
+                onClick={() => {
+                  setEditingOutro(false);
+                  handleSaveChanges();
+                }}
+                className="px-2 py-1 bg-orange-500 text-white rounded text-sm font-medium"
+              >
+                💾 Save
+              </button>
+              <button
+                onClick={() => {
+                  setEditingOutro(false);
+                  setOutroText(story.outroText || '');
+                }}
+                className="px-2 py-1 bg-gray-200 text-black rounded text-sm font-medium"
+              >
+                ✕ Cancel
+              </button>
             </div>
-          ) : (
-            <button onClick={() => setEditingOutro(true)} className="p-1 hover:bg-gray-100 rounded">
-              <Edit2 size={16} className="text-black" />
-            </button>
           )}
         </div>
         {editingOutro ? (
-          <textarea value={outroText} onChange={(e) => setOutroText(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded text-black bg-white" rows={3} />
+          <textarea
+            value={outroText}
+            onChange={(e) => setOutroText(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded text-black bg-white"
+            rows={3}
+          />
         ) : (
-          <p className="text-black">{outroText || '(No outro text set)'}</p>
+          <div className="flex items-start justify-between">
+            <p className="text-black flex-1">{outroText || '(No outro text set)'}</p>
+            <button
+              onClick={() => setEditingOutro(true)}
+              className="p-1 hover:bg-gray-100 rounded ml-2"
+            >
+              <Edit2 size={16} className="text-black" />
+            </button>
+          </div>
         )}
       </div>
+
+      {/* Cover Image */}
+      {story.coverImageUrl && (
+        <div className="bg-white border border-gray-300 rounded-lg p-4">
+          <h4 className="font-semibold text-black mb-3">📷 Cover Image</h4>
+          <img
+            src={story.coverImageUrl}
+            alt="Cover"
+            className="w-full h-48 object-cover rounded"
+          />
+        </div>
+      )}
+
+      {/* Background Music */}
+      {story.backgroundMusicUrl && (
+        <div className="bg-white border border-gray-300 rounded-lg p-4">
+          <h4 className="font-semibold text-black mb-3">🎵 Background Music</h4>
+          <audio
+            controls
+            src={story.backgroundMusicUrl}
+            className="w-full"
+          />
+        </div>
+      )}
 
       {/* Next Button */}
       <button
@@ -629,6 +833,7 @@ const PublishStage: React.FC<{
   onComplete: () => void;
 }> = ({ story, onBack, onComplete }) => {
   const [destinations, setDestinations] = useState<string[]>(['app']);
+  const [publishing, setPublishing] = useState(false);
 
   const calculateDuration = (words: number) => {
     const minutes = Math.round(words / 150);
@@ -641,24 +846,46 @@ const PublishStage: React.FC<{
     );
   };
 
+  const handlePublish = async () => {
+    setPublishing(true);
+    try {
+      const response = await fetch('/api/asc3/publish-story', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storyId: story.id,
+          destinations,
+        }),
+      });
+
+      if (response.ok) {
+        alert('✅ Story published successfully!');
+        onComplete();
+      } else {
+        alert('❌ Failed to publish story');
+      }
+    } catch (error) {
+      alert('❌ Error publishing story');
+    } finally {
+      setPublishing(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-black">Publish: {story.title}</h2>
+          <h2 className="text-2xl font-bold text-black">📤 Publish: {story.title}</h2>
           <p className="text-sm text-gray-600 mt-1">
-            By {story.authorName} • {story.primaryGenre}
-            {story.secondaryGenre1 && ` • ${story.secondaryGenre1}`}
-            {story.secondaryGenre2 && ` • ${story.secondaryGenre2}`}
-            {' '} • {calculateDuration(story.wordCount)} • {story.wordCount} words
+            By {story.authorName} • {story.primaryGenre} • {calculateDuration(story.wordCount)}
           </p>
         </div>
         <button onClick={onBack} className="px-4 py-2 bg-gray-200 text-black rounded hover:bg-gray-300">← Back</button>
       </div>
 
       {/* Publish Destinations */}
-      <div className="bg-blue-50 border border-blue-300 rounded-lg p-6 space-y-4">
-        <h3 className="font-semibold text-blue-900 text-lg">Select Publishing Destinations</h3>
+      <div className="bg-orange-50 border border-orange-200 rounded-lg p-6 space-y-4">
+        <h3 className="font-semibold text-orange-900 text-lg">Select Publishing Destinations</h3>
 
         <div className="space-y-2">
           {[
@@ -673,18 +900,23 @@ const PublishStage: React.FC<{
                 type="checkbox"
                 checked={destinations.includes(dest.id)}
                 onChange={() => toggleDestination(dest.id)}
-                className="w-4 h-4 rounded text-blue-600"
+                className="w-4 h-4 rounded text-orange-600"
               />
-              <span className="text-sm font-medium text-blue-900">{dest.label}</span>
+              <span className="text-sm font-medium text-black">{dest.label}</span>
             </label>
           ))}
         </div>
 
         <button
-          onClick={onComplete}
-          className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold"
+          onClick={handlePublish}
+          disabled={publishing || destinations.length === 0}
+          className={`w-full py-3 rounded-lg font-semibold transition ${
+            publishing || destinations.length === 0
+              ? 'bg-gray-300 text-gray-600 cursor-not-allowed'
+              : 'bg-orange-500 hover:bg-orange-600 text-white'
+          }`}
         >
-          📤 Publish to {destinations.length} {destinations.length === 1 ? 'Destination' : 'Destinations'}
+          {publishing ? '🔄 Publishing...' : `📤 Publish to ${destinations.length} ${destinations.length === 1 ? 'Destination' : 'Destinations'}`}
         </button>
       </div>
     </div>
@@ -699,26 +931,25 @@ export default function StoryCreationPage() {
   const [stage, setStage] = useState<Stage>('create');
   const [stories, setStories] = useState<Story[]>([]);
   const [selectedStory, setSelectedStory] = useState<Story | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const handleCreateSubmit = async (prompt: StoryPrompt) => {
-    // Show loading state
-    alert('🚀 Generating story with Claude... Please wait...');
+    setIsGenerating(true);
 
     try {
-      // Get author profile
       const authorProfile = AUTHOR_STYLE_PROFILES[prompt.authorStyle as keyof typeof AUTHOR_STYLE_PROFILES];
       
       if (!authorProfile) {
         alert('❌ Author style not found');
+        setIsGenerating(false);
         return;
       }
 
       // Call generation API
-      const response = await fetch('/api/asc3/generate-story', {
+      const response = await fetch('/api/asc3/generate-story-complete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title: prompt.title,
           concept: prompt.concept,
           tone: prompt.tone,
           wordCount: prompt.wordCount,
@@ -731,6 +962,7 @@ export default function StoryCreationPage() {
           audioAdaptation: authorProfile.audioAdaptation,
           series: prompt.series,
           episode: prompt.episode,
+          targetDestination: prompt.targetDestination,
         }),
       });
 
@@ -738,13 +970,14 @@ export default function StoryCreationPage() {
 
       if (!result.success) {
         alert(`❌ Error: ${result.error}`);
+        setIsGenerating(false);
         return;
       }
 
-      // Create story with generated script
+      // Create story with complete data
       const newStory: Story = {
         id: `story_${Date.now()}`,
-        title: prompt.title,
+        title: result.data.title,
         primaryGenre: prompt.primaryGenre,
         secondaryGenre1: prompt.secondaryGenre1,
         secondaryGenre2: prompt.secondaryGenre2,
@@ -758,18 +991,27 @@ export default function StoryCreationPage() {
         targetDestination: prompt.targetDestination,
         status: 'pending',
         createdAt: new Date().toISOString(),
-        sfxItems: [],
+        generatedScript: result.data.script,
+        introAudioUrl: result.data.introAudioUrl,
+        storyAudioUrl: result.data.storyAudioUrl,
+        outroAudioUrl: result.data.outroAudioUrl,
+        backgroundMusicUrl: result.data.backgroundMusicUrl,
+        coverImageUrl: result.data.coverImageUrl,
+        sfxMetadata: result.data.sfxMetadata || [],
+        introText: result.data.introText,
+        outroText: result.data.outroText,
       };
 
       setStories([...stories, newStory]);
       
-      // Show success
-      alert(`✅ Story generated!\n\n${result.data.wordCount} words\nAuthor: ${prompt.authorName}\nGenres: ${prompt.primaryGenre}${prompt.secondaryGenre1 ? ', ' + prompt.secondaryGenre1 : ''}${prompt.secondaryGenre2 ? ', ' + prompt.secondaryGenre2 : ''}`);
+      alert(`✅ Story Generated!\n\n"${result.data.title}"\n${result.data.wordCount} words\nAudio, music, and cover generated!`);
       
       setStage('to-test');
     } catch (error) {
       console.error('Error generating story:', error);
       alert('❌ Failed to generate story. Please try again.');
+    } finally {
+      setIsGenerating(false);
     }
   };
 
@@ -779,24 +1021,29 @@ export default function StoryCreationPage() {
   };
 
   const handlePublishComplete = () => {
-    alert('✅ Story published successfully!');
     setStage('create');
     setSelectedStory(null);
+    setStories([]);
+  };
+
+  const handleUpdateStory = (updatedStory: Story) => {
+    setSelectedStory(updatedStory);
+    setStories(stories.map(s => s.id === updatedStory.id ? updatedStory : s));
   };
 
   return (
-    <div className="p-6 md:p-10 max-w-4xl mx-auto bg-white">
+    <div className="p-6 md:p-10 max-w-4xl mx-auto bg-white min-h-screen">
       {/* Progress Indicator */}
       <div className="mb-8">
         <div className="flex items-center justify-between text-sm font-medium mb-2">
-          <div className={stage === 'create' ? 'text-blue-600 font-bold' : 'text-gray-600'}>1. Create</div>
-          <div className={stage === 'to-test' ? 'text-blue-600 font-bold' : 'text-gray-600'}>2. Stories</div>
-          <div className={stage === 'review' ? 'text-blue-600 font-bold' : 'text-gray-600'}>3. Review</div>
-          <div className={stage === 'publish' ? 'text-blue-600 font-bold' : 'text-gray-600'}>4. Publish</div>
+          <div className={stage === 'create' ? 'text-orange-600 font-bold' : 'text-gray-600'}>1. Create</div>
+          <div className={stage === 'to-test' ? 'text-orange-600 font-bold' : 'text-gray-600'}>2. Stories</div>
+          <div className={stage === 'review' ? 'text-orange-600 font-bold' : 'text-gray-600'}>3. Review</div>
+          <div className={stage === 'publish' ? 'text-orange-600 font-bold' : 'text-gray-600'}>4. Publish</div>
         </div>
         <div className="w-full bg-gray-300 rounded-full h-2">
           <div
-            className="bg-blue-600 h-2 rounded-full transition-all"
+            className="bg-orange-500 h-2 rounded-full transition-all"
             style={{
               width:
                 stage === 'create'
@@ -812,7 +1059,7 @@ export default function StoryCreationPage() {
       </div>
 
       {/* Stages */}
-      {stage === 'create' && <CreateStoryStage onSubmit={handleCreateSubmit} />}
+      {stage === 'create' && <CreateStoryStage onSubmit={handleCreateSubmit} isLoading={isGenerating} />}
 
       {stage === 'to-test' && (
         <StoriesToTestStage
@@ -826,6 +1073,7 @@ export default function StoryCreationPage() {
           story={selectedStory}
           onBack={() => setStage('to-test')}
           onNext={() => setStage('publish')}
+          onUpdate={handleUpdateStory}
         />
       )}
 
