@@ -213,6 +213,7 @@ export default function AdminGenresPage() {
             fontSize: '14px',
             outline: 'none', color: '#000000', backgroundColor: '#ffffff',
             color: '#000000',
+          }}
         />
         <button
           onClick={addGenre}
