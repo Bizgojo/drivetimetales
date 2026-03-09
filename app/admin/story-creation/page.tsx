@@ -42,8 +42,38 @@ const AUTHOR_STYLE_PROFILES = {
   'O. Henry': {
     name: 'O. Henry',
     description: 'The Craftsman of Surprise Endings',
-    techniques: 'Surprise endings that reveal character, warmth for common people, humor with heart, tearful smile',
-    audioAdaptation: 'Build warmth and connection with characters, deliver ending with emotional impact'
+    techniques: 'O. Henry Ending with surprise conclusions that illuminate deeper truth, warmth for common people, humor with heart, ironic commentary on society and human nature',
+    audioAdaptation: 'Warm narrator with touch of irony, authentic working-class voices, emotional twist at conclusion'
+  },
+  'Agatha Christie': {
+    name: 'Agatha Christie',
+    description: 'The Queen of Mystery',
+    techniques: 'Fair-play cluing with all clues presented to listener, misdirection mastery, closed circle setting with limited suspects, foreboding atmosphere, detective as lens observing what others miss',
+    audioAdaptation: 'Plant clues in conversation, distinct character voices for each suspect, theatrical final reveal'
+  },
+  'Arthur Conan Doyle': {
+    name: 'Arthur Conan Doyle',
+    description: 'The Father of Deductive Detection',
+    techniques: 'Deductive revelation through logical chains, Watson viewpoint allowing genius to dazzle, detailed Victorian description, problem-solution structure, eccentric brilliant detective',
+    audioAdaptation: 'First-person Watson narration, Holmes delivers deductions theatrically, rich period atmosphere through sound'
+  },
+  'Elmore Leonard': {
+    name: 'Elmore Leonard',
+    description: 'The Master of Criminal Dialogue',
+    techniques: 'Invisible prose ("If it sounds like writing, rewrite it"), dialogue supremacy, criminal authenticity, minimalist dialogue tags, third-person shifting POV, cool matter-of-fact violence',
+    audioAdaptation: 'Each character needs distinctive voice, minimal narration, fast pacing, criminal slang and authenticity'
+  },
+  'Shirley Jackson': {
+    name: 'Shirley Jackson',
+    description: 'The Poet of Domestic Horror',
+    techniques: 'Surface normality hiding horror, psychological ambiguity, social menace of conformity, controlled simple prose concealing dread, female consciousness and domestic entrapment, suggestion over showing',
+    audioAdaptation: 'Build dread through tone shifts, ordinary sounds become menacing, end with ambiguity and unease'
+  },
+  'Edgar Allan Poe': {
+    name: 'Edgar Allan Poe',
+    description: 'The Father of Modern Horror',
+    techniques: 'Gothic atmosphere, unreliable narration, psychological obsession, musical prose with rhythm and meter, single unified effect building to climax, decay and death imagery',
+    audioAdaptation: 'Ornate first-person narration, atmospheric sound design, music as emotional driver, building psychological unraveling'
   }
 };
 
