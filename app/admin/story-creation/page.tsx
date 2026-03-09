@@ -9,10 +9,43 @@ import React, { useState } from 'react';
 import { Play, Pause, RotateCcw, Edit2, Save, X, Trash2, Plus, Volume2, Image as ImageIcon } from 'lucide-react';
 
 // ============================================================================
-// TYPES
+// TYPES & CONSTANTS
 // ============================================================================
 
 type Stage = 'create' | 'to-test' | 'review' | 'publish';
+
+const AUTHOR_STYLE_PROFILES = {
+  'Stephen King': {
+    name: 'Stephen King',
+    description: 'The Master of Psychological Horror',
+    techniques: 'Ordinary made terrible, deep character interiority, conversational voice, slow burn to explosion, flawed relatable protagonists',
+    audioAdaptation: 'Build dread through ambient sounds, pace dialogue to create mounting unease, include dark humor'
+  },
+  'Richard Matheson': {
+    name: 'Richard Matheson',
+    description: 'The Architect of Paranoid Science Fiction',
+    techniques: 'Scientific rationalization, isolation as horror, relentless pace, paranoid atmosphere, twist of perspective',
+    audioAdaptation: 'Maintain relentless forward momentum, use silence and ambient menace, build to revelation'
+  },
+  'Ray Bradbury': {
+    name: 'Ray Bradbury',
+    description: 'The Poet of Science Fiction',
+    techniques: 'Lyrical prose poetry, nostalgic melancholy, humanist science fiction, sensory immersion, warning through wonder',
+    audioAdaptation: 'Narrator voice more prominent, rich ambient soundscapes, slower pacing, musical underscore'
+  },
+  'Roald Dahl': {
+    name: 'Roald Dahl',
+    description: 'The Master of Dark Comedy',
+    techniques: 'Delicious twists, dark humor, precise economical prose, urbane narrator voice, moral inversion',
+    audioAdaptation: 'Measured pace building to sudden revelation, end on twist without explaining'
+  },
+  'O. Henry': {
+    name: 'O. Henry',
+    description: 'The Craftsman of Surprise Endings',
+    techniques: 'Surprise endings that reveal character, warmth for common people, humor with heart, tearful smile',
+    audioAdaptation: 'Build warmth and connection with characters, deliver ending with emotional impact'
+  }
+};
 
 interface StoryPrompt {
   id?: string;
@@ -57,7 +90,7 @@ const CreateStoryStage: React.FC<{
   onSubmit: (prompt: StoryPrompt) => void;
 }> = ({ onSubmit }) => {
   const [genres, setGenres] = useState<string[]>(['Drama', 'Horror', 'Sci-Fi', 'Mystery', 'Comedy', 'Heartwarming']);
-  const [authorStyles, setAuthorStyles] = useState<string[]>(['Mark Holbrook', 'Daniel Wren', 'Classic Literary', 'Contemporary']);
+  const authorStyleOptions = Object.keys(AUTHOR_STYLE_PROFILES);
   
   const [form, setForm] = useState<StoryPrompt>({
     title: '',
@@ -202,15 +235,33 @@ const CreateStoryStage: React.FC<{
             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black bg-white"
           >
             <option value="">Select style</option>
-            {authorStyles.map((style) => (
+            {authorStyleOptions.map((style) => (
               <option key={style} value={style}>{style}</option>
             ))}
           </select>
         </div>
       </div>
 
+      {/* Author Style Profile Info */}
+      {form.authorStyle && AUTHOR_STYLE_PROFILES[form.authorStyle as keyof typeof AUTHOR_STYLE_PROFILES] && (
+        <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-4 space-y-2">
+          <h4 className="font-semibold text-black">
+            {AUTHOR_STYLE_PROFILES[form.authorStyle as keyof typeof AUTHOR_STYLE_PROFILES].name}
+          </h4>
+          <p className="text-sm text-gray-700">
+            <strong>Style:</strong> {AUTHOR_STYLE_PROFILES[form.authorStyle as keyof typeof AUTHOR_STYLE_PROFILES].description}
+          </p>
+          <p className="text-sm text-gray-700">
+            <strong>Techniques:</strong> {AUTHOR_STYLE_PROFILES[form.authorStyle as keyof typeof AUTHOR_STYLE_PROFILES].techniques}
+          </p>
+          <p className="text-sm text-gray-700">
+            <strong>Audio:</strong> {AUTHOR_STYLE_PROFILES[form.authorStyle as keyof typeof AUTHOR_STYLE_PROFILES].audioAdaptation}
+          </p>
+        </div>
+      )}
+
       <p className="text-sm text-gray-600 bg-blue-50 p-3 rounded border border-blue-200">
-        💡 <strong>Note:</strong> Characters will be determined by Claude when writing the script.
+        💡 <strong>Note:</strong> Characters will be determined by Claude when writing the script based on the author style and story concept.
       </p>
 
       {/* Target Destination */}
