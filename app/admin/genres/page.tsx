@@ -128,11 +128,11 @@ export default function AdminGenresPage() {
   }
 
   return (
-    <div style={{ padding: '2rem', backgroundColor: '#0f172a', minHeight: '100vh', color: '#ffffff' }}>
+    <div style={{ padding: '2rem', backgroundColor: '#f5f5f5', minHeight: '100vh', color: '#000000' }}>
       {/* Header */}
       <div style={{ marginBottom: '2rem' }}>
-        <h1 style={{ fontSize: '28px', fontWeight: 'bold', marginBottom: '0.5rem' }}>🎭 Genre Manager</h1>
-        <p style={{ color: '#94a3b8', fontSize: '14px' }}>
+        <h1 style={{ fontSize: '28px', fontWeight: 'bold', marginBottom: '0.5rem', color: '#000000' }}>🎭 Genre Manager</h1>
+        <p style={{ color: '#666666', fontSize: '14px' }}>
           Manage genres used in your library. Genres are automatically synced to Story Creation and Library filters.
         </p>
       </div>
@@ -144,8 +144,8 @@ export default function AdminGenresPage() {
             padding: '1rem',
             marginBottom: '1.5rem',
             borderRadius: '8px',
-            backgroundColor: message.type === 'success' ? '#065f46' : '#7f1d1d',
-            color: message.type === 'success' ? '#d1fae5' : '#fee2e2',
+            backgroundColor: message.type === 'success' ? '#d1fae5' : '#fee2e2',
+            color: message.type === 'success' ? '#065f46' : '#7f1d1d',
             fontWeight: 500,
           }}
         >
@@ -171,9 +171,9 @@ export default function AdminGenresPage() {
             flex: 1,
             padding: '0.75rem 1rem',
             borderRadius: '6px',
-            border: '1px solid #334155',
-            backgroundColor: '#1e293b',
-            color: '#ffffff',
+            border: '1px solid #cccccc',
+            backgroundColor: '#ffffff',
+            color: '#000000',
             fontSize: '14px',
             outline: 'none',
           }}
@@ -184,8 +184,8 @@ export default function AdminGenresPage() {
           style={{
             padding: '0.75rem 1.5rem',
             borderRadius: '6px',
-            backgroundColor: saving || !newGenre.trim() ? '#475569' : '#f97316',
-            color: '#ffffff',
+            backgroundColor: saving || !newGenre.trim() ? '#cccccc' : '#f97316',
+            color: saving || !newGenre.trim() ? '#666666' : '#ffffff',
             fontWeight: 600,
             fontSize: '14px',
             border: 'none',
@@ -197,11 +197,11 @@ export default function AdminGenresPage() {
       </div>
 
       {/* Genres List */}
-      <div style={{ backgroundColor: '#1e293b', borderRadius: '8px', overflow: 'hidden' }}>
+      <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', overflow: 'hidden', border: '1px solid #dddddd' }}>
         {loading ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8' }}>Loading genres...</div>
+          <div style={{ padding: '2rem', textAlign: 'center', color: '#666666' }}>Loading genres...</div>
         ) : genres.length === 0 ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8' }}>No genres yet</div>
+          <div style={{ padding: '2rem', textAlign: 'center', color: '#666666' }}>No genres yet</div>
         ) : (
           <>
             {/* Headers */}
@@ -209,10 +209,10 @@ export default function AdminGenresPage() {
               style={{
                 display: 'flex',
                 padding: '1rem',
-                borderBottom: '1px solid #334155',
+                borderBottom: '1px solid #dddddd',
                 fontWeight: 600,
                 fontSize: '12px',
-                color: '#94a3b8',
+                color: '#333333',
                 textTransform: 'uppercase',
               }}
             >
@@ -236,20 +236,21 @@ export default function AdminGenresPage() {
                     display: 'flex',
                     alignItems: 'center',
                     padding: '1rem',
-                    borderBottom: '1px solid #334155',
+                    borderBottom: '1px solid #eeeeee',
                     gap: '1rem',
+                    color: '#000000',
                   }}
                 >
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 500 }}>{genre.name}</div>
+                    <div style={{ fontWeight: 500, color: '#000000' }}>{genre.name}</div>
                   </div>
-                  <div style={{ width: '80px', textAlign: 'center', color: '#94a3b8' }}>
+                  <div style={{ width: '80px', textAlign: 'center', color: '#666666' }}>
                     {genreCounts.primary}
                   </div>
-                  <div style={{ width: '80px', textAlign: 'center', color: '#94a3b8' }}>
+                  <div style={{ width: '80px', textAlign: 'center', color: '#666666' }}>
                     {genreCounts.secondary}
                   </div>
-                  <div style={{ width: '80px', textAlign: 'center', color: '#94a3b8' }}>
+                  <div style={{ width: '80px', textAlign: 'center', color: '#666666' }}>
                     {genreCounts.tertiary}
                   </div>
                   <div style={{ width: '50px', textAlign: 'center' }}>
@@ -260,7 +261,7 @@ export default function AdminGenresPage() {
                           background: 'none',
                           border: 'none',
                           cursor: 'pointer',
-                          color: '#f97316',
+                          color: '#ff6b6b',
                           padding: '0.5rem',
                         }}
                         title="Delete genre"
@@ -268,7 +269,7 @@ export default function AdminGenresPage() {
                         <Trash2 size={18} />
                       </button>
                     ) : (
-                      <div style={{ color: '#64748b', fontSize: '12px' }} title="Cannot delete - stories use this genre">
+                      <div style={{ color: '#999999', fontSize: '12px' }} title="Cannot delete - stories use this genre">
                         🔒
                       </div>
                     )}
