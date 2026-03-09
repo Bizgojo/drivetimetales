@@ -7,7 +7,7 @@ List of all generated stories pending review and publishing
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Play, Edit2, Trash2, AlertCircle, CheckCircle, Clock } from 'lucide-react';
+import { Play, Edit2, Trash2, AlertCircle, CheckCircle, Clock, BookOpen } from 'lucide-react';
 
 // ============================================================================
 // TYPE DEFINITIONS
