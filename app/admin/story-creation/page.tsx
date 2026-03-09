@@ -31,6 +31,7 @@ interface Story extends StoryPrompt {
   id: string;
   status: 'pending' | 'in_review' | 'ready';
   createdAt: string;
+  wordCount: number;
   introText?: string;
   outroText?: string;
   coverImageUrl?: string;
