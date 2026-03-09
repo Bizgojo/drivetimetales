@@ -1,7 +1,7 @@
-"""
+/*
 ASC3 Stories To Test
 List of all generated stories pending review and publishing
-"""
+*/
 
 'use client';
 
