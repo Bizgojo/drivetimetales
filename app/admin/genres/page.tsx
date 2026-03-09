@@ -1,516 +1,351 @@
-'use client'
-import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
+/*
+ASC3 Genre Manager
+Manage genres, view story counts by genre usage, manage author associations
+*/
 
-interface Group {
-  id: string
-  name: string
-  description: string | null
-  display_order: number
-  created_at?: string
-}
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { X, Plus, Trash2 } from 'lucide-react';
 
 interface Genre {
-  id: string
-  name: string
-  display_order: number
-  active: boolean
-  created_at: string
+  id: string;
+  name: string;
+  color_hex?: string;
 }
 
-interface GenreCounts {
-  primary: number
-  secondary: number
-  third: number
-  total: number
+interface GenreAuthor {
+  author_id: string;
+  author_name: string;
+  birth_year?: number;
+  death_year?: number;
+  living?: boolean;
+  rank?: number;
 }
 
-export default function AdminGenresPage() {
-  const [activeTab, setActiveTab] = useState<'genres' | 'groups'>('genres')
-  const [genres, setGenres] = useState<Genre[]>([])
-  const [groups, setGroups] = useState<Group[]>([])
-  const [newGroupName, setNewGroupName] = useState('')
-  const [newGroupDesc, setNewGroupDesc] = useState('')
-  const [savingGroup, setSavingGroup] = useState(false)
-  const [editingGroup, setEditingGroup] = useState<Group | null>(null)
-  const [deletingGroup, setDeletingGroup] = useState<string | null>(null)
-  const [genreCounts, setGenreCounts] = useState<Record<string, GenreCounts>>({})
-  const [loading, setLoading] = useState(true)
-  const [newGenreName, setNewGenreName] = useState('')
-  const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
-  const [saving, setSaving] = useState(false)
+interface GenreStats {
+  genre_id: string;
+  genre_name: string;
+  primary_count: number;
+  secondary_count: number;
+  tertiary_count: number;
+  total_count: number;
+}
 
+interface SelectedGenre {
+  id: string;
+  name: string;
+  stats: GenreStats;
+}
+
+export default function GenreManagerPage() {
+  const [genres, setGenres] = useState<Genre[]>([]);
+  const [stats, setStats] = useState<GenreStats[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedGenre, setSelectedGenre] = useState<SelectedGenre | null>(null);
+  const [genreAuthors, setGenreAuthors] = useState<GenreAuthor[]>([]);
+
+  // Fetch genres and stats
   useEffect(() => {
-    loadGenresAndCounts()
-  }, [])
+    const fetchData = async () => {
+      try {
+        // Fetch genres
+        const genresRes = await fetch('/api/asc3/genres');
+        const genresData = await genresRes.json();
+        setGenres(genresData.data || []);
 
-  async function fetchGroups() {
-    const { data } = await supabase.from('groups').select('*').order('display_order', { ascending: true })
-    if (data) setGroups(data)
-  }
+        // TODO: Fetch story count stats from database
+        // For now, initialize with 0 counts
+        const initialStats = (genresData.data || []).map((g: Genre) => ({
+          genre_id: g.id,
+          genre_name: g.name,
+          primary_count: 0,
+          secondary_count: 0,
+          tertiary_count: 0,
+          total_count: 0,
+        }));
+        setStats(initialStats);
 
-  async function saveGroup() {
-    if (!newGroupName.trim()) return
-    setSavingGroup(true)
-    if (editingGroup) {
-      await supabase.from('groups').update({ name: newGroupName.trim(), description: newGroupDesc.trim() || null }).eq('id', editingGroup.id)
-    } else {
-      await supabase.from('groups').insert({ name: newGroupName.trim(), description: newGroupDesc.trim() || null, display_order: groups.length })
-    }
-    setNewGroupName('')
-    setNewGroupDesc('')
-    setEditingGroup(null)
-    setSavingGroup(false)
-    fetchGroups()
-  }
-
-  async function deleteGroup(id: string) {
-    await supabase.from('groups').delete().eq('id', id)
-    setDeletingGroup(null)
-    fetchGroups()
-  }
-
-  async function loadGenresAndCounts() {
-    setLoading(true)
-
-    const { data: genreData, error: genreError } = await supabase
-      .from('genres')
-      .select('*')
-      .eq('active', true)
-      .order('display_order', { ascending: true })
-
-    if (genreError) {
-      showMessage('error', 'Failed to load genres')
-      setLoading(false)
-      return
-    }
-
-    const { data: stories, error: storiesError } = await supabase
-      .from('stories')
-      .select('genre, genre_secondary, genre_third')
-
-    const counts: Record<string, GenreCounts> = {}
-
-    if (genreData) {
-      for (const g of genreData) {
-        counts[g.name] = { primary: 0, secondary: 0, third: 0, total: 0 }
+        setLoading(false);
+      } catch (error) {
+        console.error('Error fetching genres:', error);
+        setLoading(false);
       }
+    };
+
+    fetchData();
+  }, []);
+
+  // Fetch authors for selected genre
+  const handleGenreClick = async (genre: Genre) => {
+    try {
+      const res = await fetch(`/api/asc3/genres?id=${genre.id}`);
+      const data = await res.json();
+
+      const genreStats = stats.find((s) => s.genre_id === genre.id) || {
+        genre_id: genre.id,
+        genre_name: genre.name,
+        primary_count: 0,
+        secondary_count: 0,
+        tertiary_count: 0,
+        total_count: 0,
+      };
+
+      setSelectedGenre({
+        id: genre.id,
+        name: genre.name,
+        stats: genreStats,
+      });
+
+      setGenreAuthors(
+        (data.data || []).map((item: any) => ({
+          author_id: item.author_id,
+          author_name: item.author_name,
+          birth_year: item.birth_year,
+          death_year: item.death_year,
+          living: item.living,
+          rank: item.rank,
+        }))
+      );
+    } catch (error) {
+      console.error('Error fetching genre authors:', error);
     }
+  };
 
-    if (stories && !storiesError) {
-      for (const story of stories) {
-        if (story.genre && counts[story.genre]) {
-          counts[story.genre].primary++
-          counts[story.genre].total++
-        }
-        if (story.genre_secondary && counts[story.genre_secondary]) {
-          counts[story.genre_secondary].secondary++
-          counts[story.genre_secondary].total++
-        }
-        if (story.genre_third && counts[story.genre_third]) {
-          counts[story.genre_third].third++
-          counts[story.genre_third].total++
-        }
-      }
-    }
+  const getAuthorLifespan = (author: GenreAuthor): string => {
+    if (author.living) return 'Living';
+    if (author.death_year) return `† ${author.death_year}`;
+    return 'Unknown';
+  };
 
-    setGenres(genreData || [])
-    setGenreCounts(counts)
-    setLoading(false)
-  }
-
-  function showMessage(type: 'success' | 'error', text: string) {
-    setMessage({ type, text })
-    setTimeout(() => setMessage(null), 3000)
-  }
-
-  async function addGenre() {
-    const name = newGenreName.trim()
-    if (!name) return
-
-    if (genres.some(g => g.name.toLowerCase() === name.toLowerCase())) {
-      showMessage('error', 'Genre already exists')
-      return
-    }
-
-    setSaving(true)
-    const maxOrder = genres.length > 0 ? Math.max(...genres.map(g => g.display_order)) : 0
-
-    const { error } = await supabase
-      .from('genres')
-      .insert({ name, display_order: maxOrder + 1, active: true })
-
-    if (error) {
-      showMessage('error', `Failed to add genre: ${error.message}`)
-    } else {
-      setNewGenreName('')
-      showMessage('success', `Added "${name}"`)
-      await loadGenresAndCounts()
-    }
-    setSaving(false)
-  }
-
-  async function moveGenre(id: string, direction: 'up' | 'down') {
-    const index = genres.findIndex(g => g.id === id)
-    if (index === -1) return
-    if (direction === 'up' && index === 0) return
-    if (direction === 'down' && index === genres.length - 1) return
-
-    const swapIndex = direction === 'up' ? index - 1 : index + 1
-    const current = genres[index]
-    const swap = genres[swapIndex]
-
-    const updates = [
-      supabase.from('genres').update({ display_order: swap.display_order }).eq('id', current.id),
-      supabase.from('genres').update({ display_order: current.display_order }).eq('id', swap.id),
-    ]
-
-    const results = await Promise.all(updates)
-    if (results.some(r => r.error)) {
-      showMessage('error', 'Failed to reorder')
-    } else {
-      await loadGenresAndCounts()
-    }
-  }
-
-  async function deleteGenre(genre: Genre) {
-    const counts = genreCounts[genre.name]
-    if (counts && counts.primary > 0) {
-      showMessage('error', `Cannot delete "${genre.name}" — ${counts.primary} ${counts.primary === 1 ? 'story uses' : 'stories use'} it as primary genre. Reassign them first.`)
-      return
-    }
-
-    const warningParts = []
-    if (counts && counts.secondary > 0) warningParts.push(`${counts.secondary} as secondary`)
-    if (counts && counts.third > 0) warningParts.push(`${counts.third} as third`)
-
-    let confirmMsg = `Delete "${genre.name}" permanently?`
-    if (warningParts.length > 0) {
-      confirmMsg += `\n\nNote: ${warningParts.join(' and ')} ${warningParts.length === 1 ? 'story still uses' : 'stories still use'} this genre. Those fields will be cleared.`
-    }
-    confirmMsg += '\n\nThis cannot be undone.'
-
-    if (!confirm(confirmMsg)) return
-
-    const { error } = await supabase
-      .from('genres')
-      .delete()
-      .eq('id', genre.id)
-
-    if (error) {
-      showMessage('error', `Failed to delete: ${error.message}`)
-    } else {
-      showMessage('success', `Deleted "${genre.name}"`)
-      await loadGenresAndCounts()
-    }
+  if (loading) {
+    return (
+      <div style={{ padding: '40px', textAlign: 'center', color: 'white' }}>
+        Loading genres...
+      </div>
+    );
   }
 
   return (
-    <div style={{ padding: '2rem', color: '#000000' }}>
-      {/* Header */}
-      <div style={{ marginBottom: '1.5rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <h1 style={{ fontSize: '24px', fontWeight: 'bold', color: '#000000' }}>
-            {activeTab === 'genres' ? '🎭 Genre Manager' : '📦 Group Manager'}
+    <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', padding: '40px 20px' }}>
+      <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+        {/* Header */}
+        <div style={{ marginBottom: '40px' }}>
+          <h1 style={{ fontSize: '32px', fontWeight: 'bold', color: 'white', margin: '0 0 10px 0' }}>
+            Genre Manager
           </h1>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button onClick={() => setActiveTab('genres')} style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '13px', backgroundColor: activeTab === 'genres' ? '#f97316' : '#e5e5e5', color: activeTab === 'genres' ? 'white' : '#4a4a4a' }}>🎭 Genres</button>
-            <button onClick={() => setActiveTab('groups')} style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '13px', backgroundColor: activeTab === 'groups' ? '#f97316' : '#e5e5e5', color: activeTab === 'groups' ? 'white' : '#4a4a4a' }}>📦 Groups</button>
-          </div>
+          <p style={{ color: 'white', opacity: 0.9, margin: '0' }}>
+            Manage genres and their associated authors
+          </p>
         </div>
-        <p style={{ color: '#475569', fontSize: '14px', marginTop: '4px' }}>
-          {genres.length} genres. Story counts update automatically.
-        </p>
-      </div>
 
-      {/* Message */}
-      {message && (
-        <div style={{
-          padding: '0.75rem 1rem',
-          borderRadius: '8px',
-          marginBottom: '1rem',
-          backgroundColor: message.type === 'success' ? '#dcfce7' : '#fee2e2',
-          color: message.type === 'success' ? '#166534' : '#991b1b',
-          fontWeight: 500,
-        }}>
-          {message.text}
-        </div>
-      )}
+        {/* Main Layout */}
+        <div style={{ display: 'grid', gridTemplateColumns: selectedGenre ? '1fr 1fr' : '1fr', gap: '30px' }}>
+          {/* Genre List */}
+          <div>
+            <h2 style={{ fontSize: '18px', fontWeight: '600', color: 'white', marginBottom: '20px' }}>
+              Genres
+            </h2>
 
-      {/* Add New Genre */}
-      <div style={{
-        backgroundColor: 'white',
-        borderRadius: '12px',
-        padding: '1.5rem',
-        marginBottom: '1.5rem',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-        display: 'flex',
-        gap: '0.75rem',
-        alignItems: 'center',
-      }}>
-        <input
-          type="text"
-          value={newGenreName}
-          onChange={(e) => setNewGenreName(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && addGenre()}
-          placeholder="New genre name..."
-          style={{
-            flex: 1,
-            padding: '0.6rem 1rem',
-            borderRadius: '8px',
-            border: '1px solid #d1d5db',
-            fontSize: '14px',
-            outline: 'none',
-            color: '#000000',
-            backgroundColor: '#ffffff',
-          }}
-        />
-        <button
-          onClick={addGenre}
-          disabled={saving || !newGenreName.trim()}
-          style={{
-            padding: '0.6rem 1.5rem',
-            borderRadius: '8px',
-            backgroundColor: saving || !newGenreName.trim() ? '#9ca3af' : '#f97316',
-            color: 'white',
-            fontWeight: 600,
-            fontSize: '14px',
-            border: 'none',
-            cursor: saving || !newGenreName.trim() ? 'default' : 'pointer',
-          }}
-        >
-          {saving ? 'Adding...' : '+ Add Genre'}
-        </button>
-      </div>
-
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>Loading genres...</div>
-      ) : (
-        <div style={{
-          backgroundColor: 'white',
-          borderRadius: '12px',
-          padding: '1.5rem',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-        }}>
-          {/* Column Headers */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.75rem',
-            padding: '0 1rem 0.75rem 1rem',
-            borderBottom: '2px solid #e2e8f0',
-            marginBottom: '0.5rem',
-          }}>
-            <span style={{ width: '24px' }}></span>
-            <span style={{ width: '40px' }}></span>
-            <span style={{ flex: 1, fontSize: '12px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Genre</span>
-            <span style={{ width: '70px', fontSize: '12px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', textAlign: 'center' }}>Primary</span>
-            <span style={{ width: '70px', fontSize: '12px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', textAlign: 'center' }}>2nd</span>
-            <span style={{ width: '70px', fontSize: '12px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', textAlign: 'center' }}>3rd</span>
-            <span style={{ width: '70px', fontSize: '12px', fontWeight: 700, color: '#f97316', textTransform: 'uppercase', textAlign: 'center' }}>Total</span>
-            <span style={{ width: '50px' }}></span>
-          </div>
-
-          {genres.length === 0 ? (
-            <p style={{ color: '#94a3b8', fontStyle: 'italic', padding: '1rem' }}>No genres yet</p>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              {genres.map((genre, index) => {
-                const counts = genreCounts[genre.name] || { primary: 0, secondary: 0, third: 0, total: 0 }
-                const canDelete = counts.primary === 0
+            <div style={{ display: 'grid', gap: '12px' }}>
+              {genres.map((genre) => {
+                const genreStat = stats.find((s) => s.genre_id === genre.id);
+                const isSelected = selectedGenre?.id === genre.id;
 
                 return (
-                  <div
+                  <button
                     key={genre.id}
+                    onClick={() => handleGenreClick(genre)}
                     style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.75rem',
-                      padding: '0.6rem 1rem',
+                      padding: '16px',
+                      backgroundColor: isSelected ? '#f97316' : '#1e293b',
+                      border: 'none',
                       borderRadius: '8px',
-                      backgroundColor: index % 2 === 0 ? '#f8fafc' : '#ffffff',
-                      border: '1px solid #f1f5f9',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      transition: 'all 0.2s',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isSelected) {
+                        (e.target as HTMLElement).style.backgroundColor = '#334155';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isSelected) {
+                        (e.target as HTMLElement).style.backgroundColor = '#1e293b';
+                      }
                     }}
                   >
-                    {/* Order number */}
-                    <span style={{ color: '#94a3b8', fontSize: '13px', width: '24px', textAlign: 'center' }}>
-                      {index + 1}
-                    </span>
-
-                    {/* Move buttons */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', width: '40px', alignItems: 'center' }}>
-                      <button
-                        onClick={() => moveGenre(genre.id, 'up')}
-                        disabled={index === 0}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <h3 style={{ color: 'white', fontWeight: '600', margin: '0 0 4px 0' }}>
+                          {genre.name}
+                        </h3>
+                        <p
+                          style={{
+                            color: 'white',
+                            opacity: 0.7,
+                            fontSize: '12px',
+                            margin: '0',
+                          }}
+                        >
+                          PRIMARY: {genreStat?.primary_count || 0} | 2ND: {genreStat?.secondary_count || 0} | 3RD:{' '}
+                          {genreStat?.tertiary_count || 0}
+                        </p>
+                      </div>
+                      <div
                         style={{
-                          background: 'none', border: 'none', cursor: index === 0 ? 'default' : 'pointer',
-                          fontSize: '11px', opacity: index === 0 ? 0.2 : 0.7, padding: '0', lineHeight: '1',
+                          backgroundColor: genre.color_hex || '#f97316',
+                          width: '32px',
+                          height: '32px',
+                          borderRadius: '6px',
                         }}
-                      >▲</button>
-                      <button
-                        onClick={() => moveGenre(genre.id, 'down')}
-                        disabled={index === genres.length - 1}
-                        style={{
-                          background: 'none', border: 'none',
-                          cursor: index === genres.length - 1 ? 'default' : 'pointer',
-                          fontSize: '11px', opacity: index === genres.length - 1 ? 0.2 : 0.7, padding: '0', lineHeight: '1',
-                        }}
-                      >▼</button>
+                      />
                     </div>
-
-                    {/* Genre Name */}
-                    <span style={{ flex: 1, fontSize: '15px', fontWeight: 600, color: '#000000' }}>
-                      {genre.name}
-                    </span>
-
-                    {/* Counts */}
-                    <span style={{ width: '70px', textAlign: 'center', fontSize: '14px', fontWeight: 500, color: counts.primary > 0 ? '#000000' : '#cbd5e1' }}>
-                      {counts.primary}
-                    </span>
-                    <span style={{ width: '70px', textAlign: 'center', fontSize: '14px', fontWeight: 500, color: counts.secondary > 0 ? '#000000' : '#cbd5e1' }}>
-                      {counts.secondary}
-                    </span>
-                    <span style={{ width: '70px', textAlign: 'center', fontSize: '14px', fontWeight: 500, color: counts.third > 0 ? '#000000' : '#cbd5e1' }}>
-                      {counts.third}
-                    </span>
-                    <span style={{ width: '70px', textAlign: 'center', fontSize: '15px', fontWeight: 700, color: counts.total > 0 ? '#f97316' : '#cbd5e1' }}>
-                      {counts.total}
-                    </span>
-
-                    {/* Delete */}
-                    <button
-                      onClick={() => deleteGenre(genre)}
-                      disabled={!canDelete}
-                      title={canDelete ? 'Delete genre' : `Cannot delete — ${counts.primary} stories use this as primary genre`}
-                      style={{
-                        width: '50px',
-                        padding: '0.3rem',
-                        borderRadius: '4px',
-                        backgroundColor: canDelete ? '#fee2e2' : '#f1f5f9',
-                        border: 'none',
-                        cursor: canDelete ? 'pointer' : 'not-allowed',
-                        fontSize: '14px',
-                        opacity: canDelete ? 1 : 0.3,
-                        textAlign: 'center',
-                      }}
-                    >🗑</button>
-                  </div>
-                )
+                  </button>
+                );
               })}
+            </div>
+          </div>
+
+          {/* Genre Details Popup */}
+          {selectedGenre && (
+            <div
+              style={{
+                backgroundColor: '#1e293b',
+                borderRadius: '12px',
+                padding: '24px',
+                border: '1px solid #334155',
+                display: 'flex',
+                flexDirection: 'column',
+              }}
+            >
+              {/* Header */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                <h2 style={{ fontSize: '20px', fontWeight: '600', color: 'white', margin: '0' }}>
+                  {selectedGenre.name}
+                </h2>
+                <button
+                  onClick={() => setSelectedGenre(null)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: '4px',
+                    color: 'white',
+                  }}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* Stats */}
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr 1fr 1fr',
+                  gap: '12px',
+                  marginBottom: '24px',
+                }}
+              >
+                <div style={{ backgroundColor: '#0f172a', padding: '12px', borderRadius: '6px', textAlign: 'center' }}>
+                  <p style={{ color: 'white', opacity: 0.7, fontSize: '12px', margin: '0 0 4px 0' }}>PRIMARY</p>
+                  <p style={{ color: '#f97316', fontSize: '20px', fontWeight: 'bold', margin: '0' }}>
+                    {selectedGenre.stats.primary_count}
+                  </p>
+                </div>
+                <div style={{ backgroundColor: '#0f172a', padding: '12px', borderRadius: '6px', textAlign: 'center' }}>
+                  <p style={{ color: 'white', opacity: 0.7, fontSize: '12px', margin: '0 0 4px 0' }}>2ND</p>
+                  <p style={{ color: '#f97316', fontSize: '20px', fontWeight: 'bold', margin: '0' }}>
+                    {selectedGenre.stats.secondary_count}
+                  </p>
+                </div>
+                <div style={{ backgroundColor: '#0f172a', padding: '12px', borderRadius: '6px', textAlign: 'center' }}>
+                  <p style={{ color: 'white', opacity: 0.7, fontSize: '12px', margin: '0 0 4px 0' }}>3RD</p>
+                  <p style={{ color: '#f97316', fontSize: '20px', fontWeight: 'bold', margin: '0' }}>
+                    {selectedGenre.stats.tertiary_count}
+                  </p>
+                </div>
+                <div style={{ backgroundColor: '#0f172a', padding: '12px', borderRadius: '6px', textAlign: 'center' }}>
+                  <p style={{ color: 'white', opacity: 0.7, fontSize: '12px', margin: '0 0 4px 0' }}>TOTAL</p>
+                  <p style={{ color: '#f97316', fontSize: '20px', fontWeight: 'bold', margin: '0' }}>
+                    {selectedGenre.stats.total_count}
+                  </p>
+                </div>
+              </div>
+
+              {/* Authors List */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                  <h3 style={{ fontSize: '14px', fontWeight: '600', color: 'white', margin: '0' }}>
+                    Top Authors
+                  </h3>
+                  <button
+                    style={{
+                      background: '#f97316',
+                      border: 'none',
+                      color: 'white',
+                      padding: '6px 12px',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '12px',
+                      fontWeight: '500',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    <Plus size={14} />
+                    Add Author
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {genreAuthors.length === 0 ? (
+                    <p style={{ color: 'white', opacity: 0.5, textAlign: 'center', padding: '20px' }}>
+                      No authors assigned yet
+                    </p>
+                  ) : (
+                    genreAuthors.map((author, idx) => (
+                      <div
+                        key={author.author_id}
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          padding: '12px',
+                          backgroundColor: '#0f172a',
+                          borderRadius: '6px',
+                        }}
+                      >
+                        <div>
+                          <p style={{ color: 'white', fontWeight: '500', margin: '0 0 4px 0' }}>
+                            #{idx + 1} {author.author_name}
+                          </p>
+                          <p style={{ color: 'white', opacity: 0.6, fontSize: '12px', margin: '0' }}>
+                            {getAuthorLifespan(author)}
+                          </p>
+                        </div>
+                        <button
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                            color: '#ef4444',
+                            padding: '4px',
+                          }}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
             </div>
           )}
         </div>
-      )}
-
-      {/* Help text */}
-      <div style={{
-        marginTop: '1.5rem',
-        padding: '1rem',
-        backgroundColor: '#eff6ff',
-        borderRadius: '8px',
-        fontSize: '13px',
-        color: '#1e40af',
-      }}>
-        <strong>How it works:</strong> Genres appear in DTT Library filters and ADM publish dropdowns.
-        Use ▲▼ to change display order. The 🗑 button is disabled when stories use that genre as their primary.
-        Assign genres to stories on the Stories tab.
       </div>
-      {/* ── Groups Tab ── */}
-      {activeTab === 'groups' && (
-        <div>
-          {/* Add / Edit Group Form */}
-          <div style={{ backgroundColor: '#FFFFFF', borderRadius: '12px', border: '1px solid #e0e0e0', padding: '1.25rem', marginBottom: '1.5rem' }}>
-            <h2 style={{ fontSize: '15px', fontWeight: 700, color: '#1a1a1a', margin: '0 0 1rem 0' }}>
-              {editingGroup ? `Editing: ${editingGroup.name}` : '+ New Group'}
-            </h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: 600, color: '#4a4a4a', display: 'block', marginBottom: '4px' }}>GROUP NAME *</label>
-                <input
-                  value={newGroupName}
-                  onChange={e => setNewGroupName(e.target.value)}
-                  placeholder="e.g. Dog Lover Stories"
-                  style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #e0e0e0', fontSize: '13px', color: '#000', backgroundColor: '#fff', boxSizing: 'border-box' as 'border-box' }}
-                />
-              </div>
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: 600, color: '#4a4a4a', display: 'block', marginBottom: '4px' }}>DESCRIPTION (optional)</label>
-                <input
-                  value={newGroupDesc}
-                  onChange={e => setNewGroupDesc(e.target.value)}
-                  placeholder="e.g. Heartwarming stories about dogs and their humans"
-                  style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #e0e0e0', fontSize: '13px', color: '#000', backgroundColor: '#fff', boxSizing: 'border-box' as 'border-box' }}
-                />
-              </div>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button
-                  onClick={saveGroup}
-                  disabled={savingGroup || !newGroupName.trim()}
-                  style={{ padding: '9px 20px', borderRadius: '6px', backgroundColor: savingGroup || !newGroupName.trim() ? '#9ca3af' : '#22c55e', color: 'white', border: 'none', cursor: savingGroup || !newGroupName.trim() ? 'default' : 'pointer', fontWeight: 700, fontSize: '13px' }}
-                >
-                  {savingGroup ? 'Saving...' : editingGroup ? 'Update Group' : 'Create Group'}
-                </button>
-                {editingGroup && (
-                  <button
-                    onClick={() => { setEditingGroup(null); setNewGroupName(''); setNewGroupDesc('') }}
-                    style={{ padding: '9px 16px', borderRadius: '6px', backgroundColor: '#e5e5e5', color: '#1a1a1a', border: 'none', cursor: 'pointer', fontSize: '13px' }}
-                  >Cancel</button>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Groups List */}
-          <div style={{ backgroundColor: '#FFFFFF', borderRadius: '12px', border: '1px solid #e0e0e0', overflow: 'hidden' }}>
-            {groups.length === 0 ? (
-              <div style={{ padding: '3rem', textAlign: 'center', color: '#4a4a4a' }}>
-                No groups yet. Create your first group above.
-              </div>
-            ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-                <thead>
-                  <tr style={{ backgroundColor: '#f5f5f5', borderBottom: '2px solid #e0e0e0' }}>
-                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', color: '#4a4a4a', fontWeight: 600 }}>Name</th>
-                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', color: '#4a4a4a', fontWeight: 600 }}>Description</th>
-                    <th style={{ padding: '0.75rem 1rem', textAlign: 'center', color: '#4a4a4a', fontWeight: 600, width: '120px' }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {groups.map((group, i) => (
-                    <tr key={group.id} style={{ borderBottom: '1px solid #e0e0e0', backgroundColor: i % 2 === 0 ? 'transparent' : '#fafafa' }}>
-                      <td style={{ padding: '0.75rem 1rem', fontWeight: 600, color: '#1a1a1a' }}>
-                        📦 {group.name}
-                      </td>
-                      <td style={{ padding: '0.75rem 1rem', color: '#4a4a4a', fontSize: '12px' }}>
-                        {group.description || <span style={{ color: '#9ca3af' }}>—</span>}
-                      </td>
-                      <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
-                        {deletingGroup === group.id ? (
-                          <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
-                            <button onClick={() => deleteGroup(group.id)} style={{ padding: '3px 8px', borderRadius: '4px', backgroundColor: '#dc2626', color: 'white', border: 'none', cursor: 'pointer', fontSize: '11px', fontWeight: 700 }}>Delete</button>
-                            <button onClick={() => setDeletingGroup(null)} style={{ padding: '3px 8px', borderRadius: '4px', backgroundColor: '#e5e5e5', color: '#1a1a1a', border: 'none', cursor: 'pointer', fontSize: '11px' }}>Cancel</button>
-                          </div>
-                        ) : (
-                          <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
-                            <button
-                              onClick={() => { setEditingGroup(group); setNewGroupName(group.name); setNewGroupDesc(group.description || '') }}
-                              style={{ padding: '3px 8px', borderRadius: '4px', backgroundColor: '#e0f2fe', color: '#0369a1', border: 'none', cursor: 'pointer', fontSize: '11px', fontWeight: 600 }}
-                            >Edit</button>
-                            <button
-                              onClick={() => setDeletingGroup(group.id)}
-                              style={{ padding: '3px 8px', borderRadius: '4px', backgroundColor: '#fee2e2', color: '#dc2626', border: 'none', cursor: 'pointer', fontSize: '11px' }}
-                            >🗑</button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </div>
-      )}
     </div>
-  )
+  );
 }
