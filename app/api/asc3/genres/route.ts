@@ -1,0 +1,30 @@
+/*
+ASC3 Genres API
+GET: List all genres
+*/
+
+import { supabase } from '@/lib/supabase';
+import { NextRequest, NextResponse } from 'next/server';
+
+export async function GET() {
+  try {
+    const { data, error } = await supabase
+      .from('genres')
+      .select('*')
+      .order('name', { ascending: true });
+
+    if (error) throw error;
+
+    return NextResponse.json({
+      success: true,
+      data: data || [],
+      count: (data || []).length
+    });
+  } catch (error) {
+    console.error('Error fetching genres:', error);
+    return NextResponse.json(
+      { success: false, error: 'Failed to fetch genres' },
+      { status: 500 }
+    );
+  }
+}
