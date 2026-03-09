@@ -18,20 +18,30 @@ interface StoryPrompt {
   id?: string;
   title: string;
   genre: string;
-  duration: '3-5' | '10-15' | '15-20' | '20-30';
+  wordCount: number;
   series: string;
   episode: string;
   concept: string;
   tone: string;
-  characters: Array<{ name: string; age: string; gender: string; role: string }>;
+  authorName: string;
+  authorStyle: string;
   targetDestination: string;
 }
 
-interface Story extends StoryPrompt {
+interface Story {
   id: string;
+  title: string;
+  genre: string;
+  wordCount: number;
+  series: string;
+  episode: string;
+  concept: string;
+  tone: string;
+  authorName: string;
+  authorStyle: string;
+  targetDestination: string;
   status: 'pending' | 'in_review' | 'ready';
   createdAt: string;
-  wordCount: number;
   introText?: string;
   outroText?: string;
   coverImageUrl?: string;
@@ -46,40 +56,27 @@ interface Story extends StoryPrompt {
 const CreateStoryStage: React.FC<{
   onSubmit: (prompt: StoryPrompt) => void;
 }> = ({ onSubmit }) => {
+  const [genres, setGenres] = useState<string[]>(['Drama', 'Horror', 'Sci-Fi', 'Mystery', 'Comedy', 'Heartwarming']);
+  const [authorStyles, setAuthorStyles] = useState<string[]>(['Mark Holbrook', 'Daniel Wren', 'Classic Literary', 'Contemporary']);
+  
   const [form, setForm] = useState<StoryPrompt>({
     title: '',
     genre: '',
-    duration: '10-15',
+    wordCount: 1500,
     series: '',
     episode: '',
     concept: '',
     tone: '',
-    characters: [{ name: '', age: '', gender: 'M', role: '' }],
+    authorName: '',
+    authorStyle: '',
     targetDestination: 'app',
   });
 
-  const isValid = form.title && form.genre && form.concept && form.tone && form.characters.some(c => c.name);
-
-  const addCharacter = () => {
-    setForm({
-      ...form,
-      characters: [...form.characters, { name: '', age: '', gender: 'M', role: '' }],
-    });
-  };
-
-  const updateCharacter = (idx: number, field: string, value: string) => {
-    const updated = [...form.characters];
-    updated[idx] = { ...updated[idx], [field]: value };
-    setForm({ ...form, characters: updated });
-  };
-
-  const removeCharacter = (idx: number) => {
-    if (form.characters.length > 1) {
-      setForm({
-        ...form,
-        characters: form.characters.filter((_, i) => i !== idx),
-      });
-    }
+  const isValid = form.title && form.genre && form.wordCount > 0 && form.concept && form.tone && form.authorName && form.authorStyle;
+  
+  const calculateDuration = (words: number) => {
+    const minutes = Math.round(words / 150);
+    return `${minutes} min`;
   };
 
   return (
@@ -98,7 +95,7 @@ const CreateStoryStage: React.FC<{
         />
       </div>
 
-      {/* Genre & Duration */}
+      {/* Genre & Word Count */}
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-semibold text-black mb-2">Genre *</label>
@@ -108,27 +105,22 @@ const CreateStoryStage: React.FC<{
             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black bg-white"
           >
             <option value="">Select genre</option>
-            <option value="Drama">Drama</option>
-            <option value="Horror">Horror</option>
-            <option value="Sci-Fi">Sci-Fi</option>
-            <option value="Mystery">Mystery</option>
-            <option value="Comedy">Comedy</option>
-            <option value="Heartwarming">Heartwarming</option>
+            {genres.map((g) => (
+              <option key={g} value={g}>{g}</option>
+            ))}
           </select>
         </div>
 
         <div>
-          <label className="block text-sm font-semibold text-black mb-2">Duration *</label>
-          <select
-            value={form.duration}
-            onChange={(e) => setForm({ ...form, duration: e.target.value as any })}
+          <label className="block text-sm font-semibold text-black mb-2">Word Count * (Duration: {calculateDuration(form.wordCount)})</label>
+          <input
+            type="number"
+            value={form.wordCount}
+            onChange={(e) => setForm({ ...form, wordCount: parseInt(e.target.value) || 0 })}
+            placeholder="e.g., 1500"
             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black bg-white"
-          >
-            <option value="3-5">3-5 min</option>
-            <option value="10-15">10-15 min</option>
-            <option value="15-20">15-20 min</option>
-            <option value="20-30">20-30 min</option>
-          </select>
+          />
+          <p className="text-xs text-gray-600 mt-1">At 150 words per minute</p>
         </div>
       </div>
 
@@ -189,62 +181,37 @@ const CreateStoryStage: React.FC<{
         </div>
       </div>
 
-      {/* Characters */}
-      <div>
-        <div className="flex justify-between items-center mb-3">
-          <label className="block text-sm font-semibold text-black">Characters *</label>
-          <button
-            onClick={addCharacter}
-            className="text-blue-600 text-sm font-medium flex items-center gap-1"
-          >
-            <Plus size={16} /> Add
-          </button>
+      {/* Author Name & Style */}
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-semibold text-black mb-2">Author Name *</label>
+          <input
+            type="text"
+            value={form.authorName}
+            onChange={(e) => setForm({ ...form, authorName: e.target.value })}
+            placeholder="e.g., Mark Holbrook"
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black bg-white"
+          />
         </div>
 
-        <div className="space-y-2">
-          {form.characters.map((char, idx) => (
-            <div key={idx} className="bg-gray-50 p-3 rounded border border-gray-300 flex items-end gap-2">
-              <div className="flex-1 grid grid-cols-4 gap-2">
-                <input
-                  placeholder="Name"
-                  value={char.name}
-                  onChange={(e) => updateCharacter(idx, 'name', e.target.value)}
-                  className="px-2 py-1 border border-gray-300 rounded text-sm text-black bg-white"
-                />
-                <input
-                  placeholder="Age"
-                  value={char.age}
-                  onChange={(e) => updateCharacter(idx, 'age', e.target.value)}
-                  className="px-2 py-1 border border-gray-300 rounded text-sm text-black bg-white"
-                />
-                <select
-                  value={char.gender}
-                  onChange={(e) => updateCharacter(idx, 'gender', e.target.value)}
-                  className="px-2 py-1 border border-gray-300 rounded text-sm text-black bg-white"
-                >
-                  <option value="M">M</option>
-                  <option value="F">F</option>
-                  <option value="Other">Other</option>
-                </select>
-                <input
-                  placeholder="Role"
-                  value={char.role}
-                  onChange={(e) => updateCharacter(idx, 'role', e.target.value)}
-                  className="px-2 py-1 border border-gray-300 rounded text-sm text-black bg-white"
-                />
-              </div>
-              {form.characters.length > 1 && (
-                <button
-                  onClick={() => removeCharacter(idx)}
-                  className="p-1 hover:bg-red-100 rounded transition text-red-600"
-                >
-                  <Trash2 size={16} />
-                </button>
-              )}
-            </div>
-          ))}
+        <div>
+          <label className="block text-sm font-semibold text-black mb-2">Author Style to Follow *</label>
+          <select
+            value={form.authorStyle}
+            onChange={(e) => setForm({ ...form, authorStyle: e.target.value })}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black bg-white"
+          >
+            <option value="">Select style</option>
+            {authorStyles.map((style) => (
+              <option key={style} value={style}>{style}</option>
+            ))}
+          </select>
         </div>
       </div>
+
+      <p className="text-sm text-gray-600 bg-blue-50 p-3 rounded border border-blue-200">
+        💡 <strong>Note:</strong> Characters will be determined by Claude when writing the script.
+      </p>
 
       {/* Target Destination */}
       <div>
@@ -286,6 +253,11 @@ const StoriesToTestStage: React.FC<{
   stories: Story[];
   onSelect: (story: Story) => void;
 }> = ({ stories, onSelect }) => {
+  const calculateDuration = (words: number) => {
+    const minutes = Math.round(words / 150);
+    return `${minutes} min`;
+  };
+
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-bold text-black">Stories To Test</h2>
@@ -307,7 +279,7 @@ const StoriesToTestStage: React.FC<{
                 <div>
                   <h3 className="font-semibold text-black">{story.title}</h3>
                   {story.series && <p className="text-sm text-gray-600">{story.series} • Ep {story.episode}</p>}
-                  <p className="text-xs text-gray-500 mt-1">{story.genre} • {story.duration} min • {story.wordCount} words</p>
+                  <p className="text-xs text-gray-500 mt-1">{story.genre} • {calculateDuration(story.wordCount)} • {story.wordCount} words • By {story.authorName}</p>
                 </div>
                 <div className="text-right">
                   <span className={`px-2 py-1 rounded text-xs font-medium ${
@@ -341,10 +313,18 @@ const ReviewEditStage: React.FC<{
   const [editingIntro, setEditingIntro] = useState(false);
   const [editingOutro, setEditingOutro] = useState(false);
 
+  const calculateDuration = (words: number) => {
+    const minutes = Math.round(words / 150);
+    return `${minutes} min`;
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-black">{story.title}</h2>
+        <div>
+          <h2 className="text-2xl font-bold text-black">{story.title}</h2>
+          <p className="text-sm text-gray-600 mt-1">By {story.authorName} • {story.genre} • {calculateDuration(story.wordCount)} • {story.wordCount} words</p>
+        </div>
         <button onClick={onBack} className="px-4 py-2 bg-gray-200 text-black rounded hover:bg-gray-300">← Back</button>
       </div>
 
@@ -433,6 +413,11 @@ const PublishStage: React.FC<{
 }> = ({ story, onBack, onComplete }) => {
   const [destinations, setDestinations] = useState<string[]>(['app']);
 
+  const calculateDuration = (words: number) => {
+    const minutes = Math.round(words / 150);
+    return `${minutes} min`;
+  };
+
   const toggleDestination = (dest: string) => {
     setDestinations((prev) =>
       prev.includes(dest) ? prev.filter((d) => d !== dest) : [...prev, dest]
@@ -442,7 +427,10 @@ const PublishStage: React.FC<{
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-black">Publish: {story.title}</h2>
+        <div>
+          <h2 className="text-2xl font-bold text-black">Publish: {story.title}</h2>
+          <p className="text-sm text-gray-600 mt-1">By {story.authorName} • {story.genre} • {calculateDuration(story.wordCount)} • {story.wordCount} words</p>
+        </div>
         <button onClick={onBack} className="px-4 py-2 bg-gray-200 text-black rounded hover:bg-gray-300">← Back</button>
       </div>
 
@@ -496,7 +484,6 @@ export default function StoryCreationPage() {
       id: `story_${Date.now()}`,
       status: 'pending',
       createdAt: new Date().toISOString(),
-      wordCount: 1500,
       sfxItems: [],
     };
     setStories([...stories, newStory]);
