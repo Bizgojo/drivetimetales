@@ -137,7 +137,9 @@ const AUTHOR_STYLE_PROFILES = {
 interface StoryPrompt {
   id?: string;
   title: string;
-  genre: string;
+  primaryGenre: string;
+  secondaryGenre1?: string;
+  secondaryGenre2?: string;
   wordCount: number;
   series: string;
   episode: string;
@@ -151,7 +153,9 @@ interface StoryPrompt {
 interface Story {
   id: string;
   title: string;
-  genre: string;
+  primaryGenre: string;
+  secondaryGenre1?: string;
+  secondaryGenre2?: string;
   wordCount: number;
   series: string;
   episode: string;
@@ -176,12 +180,15 @@ interface Story {
 const CreateStoryStage: React.FC<{
   onSubmit: (prompt: StoryPrompt) => void;
 }> = ({ onSubmit }) => {
-  const [genres, setGenres] = useState<string[]>(['Drama', 'Horror', 'Sci-Fi', 'Mystery', 'Comedy', 'Heartwarming']);
+  const [genres, setGenres] = useState<string[]>([]);
+  const [genresLoading, setGenresLoading] = useState(true);
   const authorStyleOptions = Object.keys(AUTHOR_STYLE_PROFILES);
   
   const [form, setForm] = useState<StoryPrompt>({
     title: '',
-    genre: '',
+    primaryGenre: '',
+    secondaryGenre1: '',
+    secondaryGenre2: '',
     wordCount: 1500,
     series: '',
     episode: '',
@@ -192,7 +199,20 @@ const CreateStoryStage: React.FC<{
     targetDestination: 'app',
   });
 
-  const isValid = form.title && form.genre && form.wordCount > 0 && form.concept && form.tone && form.authorName && form.authorStyle;
+  // Fetch genres from API
+  React.useEffect(() => {
+    fetch('/api/asc3/genres')
+      .then(res => res.json())
+      .then(data => {
+        if (data.data && Array.isArray(data.data)) {
+          setGenres(data.data.map((g: any) => g.name));
+        }
+        setGenresLoading(false);
+      })
+      .catch(() => setGenresLoading(false));
+  }, []);
+
+  const isValid = form.title && form.primaryGenre && form.wordCount > 0 && form.concept && form.tone && form.authorName && form.authorStyle;
   
   const calculateDuration = (words: number) => {
     const minutes = Math.round(words / 150);
@@ -215,16 +235,32 @@ const CreateStoryStage: React.FC<{
         />
       </div>
 
-      {/* Genre & Word Count */}
+      {/* Genres Selection */}
+      <div>
+        <label className="block text-sm font-semibold text-black mb-2">Primary Genre *</label>
+        <select
+          value={form.primaryGenre}
+          onChange={(e) => setForm({ ...form, primaryGenre: e.target.value })}
+          disabled={genresLoading}
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black bg-white disabled:bg-gray-100"
+        >
+          <option value="">{genresLoading ? 'Loading genres...' : 'Select primary genre'}</option>
+          {genres.map((g) => (
+            <option key={g} value={g}>{g}</option>
+          ))}
+        </select>
+      </div>
+
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-semibold text-black mb-2">Genre *</label>
+          <label className="block text-sm font-semibold text-black mb-2">Secondary Genre 1 (optional)</label>
           <select
-            value={form.genre}
-            onChange={(e) => setForm({ ...form, genre: e.target.value })}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black bg-white"
+            value={form.secondaryGenre1 || ''}
+            onChange={(e) => setForm({ ...form, secondaryGenre1: e.target.value || undefined })}
+            disabled={genresLoading}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black bg-white disabled:bg-gray-100"
           >
-            <option value="">Select genre</option>
+            <option value="">Select secondary genre</option>
             {genres.map((g) => (
               <option key={g} value={g}>{g}</option>
             ))}
@@ -232,16 +268,32 @@ const CreateStoryStage: React.FC<{
         </div>
 
         <div>
-          <label className="block text-sm font-semibold text-black mb-2">Word Count * (Duration: {calculateDuration(form.wordCount)})</label>
-          <input
-            type="number"
-            value={form.wordCount}
-            onChange={(e) => setForm({ ...form, wordCount: parseInt(e.target.value) || 0 })}
-            placeholder="e.g., 1500"
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black bg-white"
-          />
-          <p className="text-xs text-gray-600 mt-1">At 150 words per minute</p>
+          <label className="block text-sm font-semibold text-black mb-2">Secondary Genre 2 (optional)</label>
+          <select
+            value={form.secondaryGenre2 || ''}
+            onChange={(e) => setForm({ ...form, secondaryGenre2: e.target.value || undefined })}
+            disabled={genresLoading}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black bg-white disabled:bg-gray-100"
+          >
+            <option value="">Select secondary genre</option>
+            {genres.map((g) => (
+              <option key={g} value={g}>{g}</option>
+            ))}
+          </select>
         </div>
+      </div>
+
+      {/* Word Count */}
+      <div>
+        <label className="block text-sm font-semibold text-black mb-2">Word Count * (Duration: {calculateDuration(form.wordCount)})</label>
+        <input
+          type="number"
+          value={form.wordCount}
+          onChange={(e) => setForm({ ...form, wordCount: parseInt(e.target.value) || 0 })}
+          placeholder="e.g., 1500"
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black bg-white"
+        />
+        <p className="text-xs text-gray-600 mt-1">At 150 words per minute</p>
       </div>
 
       {/* Series & Episode */}
@@ -434,7 +486,12 @@ const StoriesToTestStage: React.FC<{
                 <div>
                   <h3 className="font-semibold text-black">{story.title}</h3>
                   {story.series && <p className="text-sm text-gray-600">{story.series} • Ep {story.episode}</p>}
-                  <p className="text-xs text-gray-500 mt-1">{story.genre} • {calculateDuration(story.wordCount)} • {story.wordCount} words • By {story.authorName}</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {story.primaryGenre}
+                    {story.secondaryGenre1 && ` • ${story.secondaryGenre1}`}
+                    {story.secondaryGenre2 && ` • ${story.secondaryGenre2}`}
+                    {' '} • {calculateDuration(story.wordCount)} • {story.wordCount} words • By {story.authorName}
+                  </p>
                 </div>
                 <div className="text-right">
                   <span className={`px-2 py-1 rounded text-xs font-medium ${
@@ -478,7 +535,12 @@ const ReviewEditStage: React.FC<{
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-black">{story.title}</h2>
-          <p className="text-sm text-gray-600 mt-1">By {story.authorName} • {story.genre} • {calculateDuration(story.wordCount)} • {story.wordCount} words</p>
+          <p className="text-sm text-gray-600 mt-1">
+            By {story.authorName} • {story.primaryGenre}
+            {story.secondaryGenre1 && ` • ${story.secondaryGenre1}`}
+            {story.secondaryGenre2 && ` • ${story.secondaryGenre2}`}
+            {' '} • {calculateDuration(story.wordCount)} • {story.wordCount} words
+          </p>
         </div>
         <button onClick={onBack} className="px-4 py-2 bg-gray-200 text-black rounded hover:bg-gray-300">← Back</button>
       </div>
@@ -584,7 +646,12 @@ const PublishStage: React.FC<{
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-black">Publish: {story.title}</h2>
-          <p className="text-sm text-gray-600 mt-1">By {story.authorName} • {story.genre} • {calculateDuration(story.wordCount)} • {story.wordCount} words</p>
+          <p className="text-sm text-gray-600 mt-1">
+            By {story.authorName} • {story.primaryGenre}
+            {story.secondaryGenre1 && ` • ${story.secondaryGenre1}`}
+            {story.secondaryGenre2 && ` • ${story.secondaryGenre2}`}
+            {' '} • {calculateDuration(story.wordCount)} • {story.wordCount} words
+          </p>
         </div>
         <button onClick={onBack} className="px-4 py-2 bg-gray-200 text-black rounded hover:bg-gray-300">← Back</button>
       </div>
@@ -635,8 +702,19 @@ export default function StoryCreationPage() {
 
   const handleCreateSubmit = (prompt: StoryPrompt) => {
     const newStory: Story = {
-      ...prompt,
       id: `story_${Date.now()}`,
+      title: prompt.title,
+      primaryGenre: prompt.primaryGenre,
+      secondaryGenre1: prompt.secondaryGenre1,
+      secondaryGenre2: prompt.secondaryGenre2,
+      wordCount: prompt.wordCount,
+      series: prompt.series,
+      episode: prompt.episode,
+      concept: prompt.concept,
+      tone: prompt.tone,
+      authorName: prompt.authorName,
+      authorStyle: prompt.authorStyle,
+      targetDestination: prompt.targetDestination,
       status: 'pending',
       createdAt: new Date().toISOString(),
       sfxItems: [],
