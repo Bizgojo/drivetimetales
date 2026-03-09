@@ -35,7 +35,6 @@ export default function AdminGenresPage() {
     const { data: genreData, error: genreError } = await supabase
       .from('genres')
       .select('*')
-      .eq('active', true)
       .order('display_order', { ascending: true })
 
     if (genreError) {
