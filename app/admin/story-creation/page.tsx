@@ -700,27 +700,77 @@ export default function StoryCreationPage() {
   const [stories, setStories] = useState<Story[]>([]);
   const [selectedStory, setSelectedStory] = useState<Story | null>(null);
 
-  const handleCreateSubmit = (prompt: StoryPrompt) => {
-    const newStory: Story = {
-      id: `story_${Date.now()}`,
-      title: prompt.title,
-      primaryGenre: prompt.primaryGenre,
-      secondaryGenre1: prompt.secondaryGenre1,
-      secondaryGenre2: prompt.secondaryGenre2,
-      wordCount: prompt.wordCount,
-      series: prompt.series,
-      episode: prompt.episode,
-      concept: prompt.concept,
-      tone: prompt.tone,
-      authorName: prompt.authorName,
-      authorStyle: prompt.authorStyle,
-      targetDestination: prompt.targetDestination,
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-      sfxItems: [],
-    };
-    setStories([...stories, newStory]);
-    setStage('to-test');
+  const handleCreateSubmit = async (prompt: StoryPrompt) => {
+    // Show loading state
+    alert('🚀 Generating story with Claude... Please wait...');
+
+    try {
+      // Get author profile
+      const authorProfile = AUTHOR_STYLE_PROFILES[prompt.authorStyle as keyof typeof AUTHOR_STYLE_PROFILES];
+      
+      if (!authorProfile) {
+        alert('❌ Author style not found');
+        return;
+      }
+
+      // Call generation API
+      const response = await fetch('/api/asc3/generate-story', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: prompt.title,
+          concept: prompt.concept,
+          tone: prompt.tone,
+          wordCount: prompt.wordCount,
+          primaryGenre: prompt.primaryGenre,
+          secondaryGenre1: prompt.secondaryGenre1,
+          secondaryGenre2: prompt.secondaryGenre2,
+          authorName: prompt.authorName,
+          authorStyle: prompt.authorStyle,
+          authorTechniques: authorProfile.techniques,
+          audioAdaptation: authorProfile.audioAdaptation,
+          series: prompt.series,
+          episode: prompt.episode,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!result.success) {
+        alert(`❌ Error: ${result.error}`);
+        return;
+      }
+
+      // Create story with generated script
+      const newStory: Story = {
+        id: `story_${Date.now()}`,
+        title: prompt.title,
+        primaryGenre: prompt.primaryGenre,
+        secondaryGenre1: prompt.secondaryGenre1,
+        secondaryGenre2: prompt.secondaryGenre2,
+        wordCount: result.data.wordCount,
+        series: prompt.series,
+        episode: prompt.episode,
+        concept: prompt.concept,
+        tone: prompt.tone,
+        authorName: prompt.authorName,
+        authorStyle: prompt.authorStyle,
+        targetDestination: prompt.targetDestination,
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+        sfxItems: [],
+      };
+
+      setStories([...stories, newStory]);
+      
+      // Show success
+      alert(`✅ Story generated!\n\n${result.data.wordCount} words\nAuthor: ${prompt.authorName}\nGenres: ${prompt.primaryGenre}${prompt.secondaryGenre1 ? ', ' + prompt.secondaryGenre1 : ''}${prompt.secondaryGenre2 ? ', ' + prompt.secondaryGenre2 : ''}`);
+      
+      setStage('to-test');
+    } catch (error) {
+      console.error('Error generating story:', error);
+      alert('❌ Failed to generate story. Please try again.');
+    }
   };
 
   const handleSelectStory = (story: Story) => {
