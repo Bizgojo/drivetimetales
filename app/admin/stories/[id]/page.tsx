@@ -1,7 +1,7 @@
-"""
+/*
 ASC3 Story Review & Edit
 Complete story editing interface with audio controls, text editing, SFX management, and publishing
-"""
+*/
 
 'use client';
 

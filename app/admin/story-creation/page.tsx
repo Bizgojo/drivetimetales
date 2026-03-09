@@ -1,7 +1,7 @@
-"""
+/*
 Story Creation - Complete Workflow
 All-in-one page for creating, reviewing, editing, and publishing stories
-"""
+*/
 
 'use client';
 
