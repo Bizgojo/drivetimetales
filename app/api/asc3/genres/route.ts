@@ -1,25 +1,46 @@
 /*
 ASC3 Genres API
-GET: List all genres
+GET: List all genres, or get authors for a specific genre by ?id=
 */
 
 import { supabase } from '@/lib/supabase';
 import { NextRequest, NextResponse } from 'next/server';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const { data, error } = await supabase
-      .from('genres')
-      .select('*')
-      .order('name', { ascending: true });
+    const { searchParams } = new URL(request.url);
+    const genreId = searchParams.get('id');
 
-    if (error) throw error;
+    if (genreId) {
+      // Get authors for specific genre
+      const { data, error } = await supabase
+        .from('v_genre_authors')
+        .select('*')
+        .eq('genre_id', genreId)
+        .order('rank', { ascending: true });
 
-    return NextResponse.json({
-      success: true,
-      data: data || [],
-      count: (data || []).length
-    });
+      if (error) throw error;
+
+      return NextResponse.json({
+        success: true,
+        data: data || [],
+        count: (data || []).length
+      });
+    } else {
+      // List all genres
+      const { data, error } = await supabase
+        .from('genres')
+        .select('*')
+        .order('name', { ascending: true });
+
+      if (error) throw error;
+
+      return NextResponse.json({
+        success: true,
+        data: data || [],
+        count: (data || []).length
+      });
+    }
   } catch (error) {
     console.error('Error fetching genres:', error);
     return NextResponse.json(

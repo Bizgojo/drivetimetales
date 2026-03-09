@@ -1,26 +1,54 @@
 /*
 ASC3 Authors API
-GET: List all authors
+GET: List all authors, or get specific author by ?id=
 POST: Create new author (admin only)
 */
 
 import { supabase } from '@/lib/supabase';
 import { NextRequest, NextResponse } from 'next/server';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const { data, error } = await supabase
-      .from('authors')
-      .select('*')
-      .order('name', { ascending: true });
+    const { searchParams } = new URL(request.url);
+    const authorId = searchParams.get('id');
 
-    if (error) throw error;
+    if (authorId) {
+      // Get specific author with genres
+      const { data: author, error: authorError } = await supabase
+        .from('authors')
+        .select('*')
+        .eq('id', authorId)
+        .single();
 
-    return NextResponse.json({
-      success: true,
-      data: data || [],
-      count: (data || []).length
-    });
+      if (authorError) throw authorError;
+
+      const { data: genres, error: genresError } = await supabase
+        .from('genre_authors')
+        .select('genre_id, genres!inner(id, name), rank')
+        .eq('author_id', authorId)
+        .order('rank', { ascending: true });
+
+      if (genresError) throw genresError;
+
+      return NextResponse.json({
+        success: true,
+        data: { ...author, genres: genres || [] }
+      });
+    } else {
+      // List all authors
+      const { data, error } = await supabase
+        .from('authors')
+        .select('*')
+        .order('name', { ascending: true });
+
+      if (error) throw error;
+
+      return NextResponse.json({
+        success: true,
+        data: data || [],
+        count: (data || []).length
+      });
+    }
   } catch (error) {
     console.error('Error fetching authors:', error);
     return NextResponse.json(
