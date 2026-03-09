@@ -2,14 +2,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 
-interface Group {
-  id: string
-  name: string
-  description: string | null
-  display_order: number
-  created_at?: string
-}
-
 interface Genre {
   id: string
   name: string
@@ -26,14 +18,7 @@ interface GenreCounts {
 }
 
 export default function AdminGenresPage() {
-  const [activeTab, setActiveTab] = useState<'genres' | 'groups'>('genres')
   const [genres, setGenres] = useState<Genre[]>([])
-  const [groups, setGroups] = useState<Group[]>([])
-  const [newGroupName, setNewGroupName] = useState('')
-  const [newGroupDesc, setNewGroupDesc] = useState('')
-  const [savingGroup, setSavingGroup] = useState(false)
-  const [editingGroup, setEditingGroup] = useState<Group | null>(null)
-  const [deletingGroup, setDeletingGroup] = useState<string | null>(null)
   const [genreCounts, setGenreCounts] = useState<Record<string, GenreCounts>>({})
   const [loading, setLoading] = useState(true)
   const [newGenreName, setNewGenreName] = useState('')
@@ -43,32 +28,6 @@ export default function AdminGenresPage() {
   useEffect(() => {
     loadGenresAndCounts()
   }, [])
-
-  async function fetchGroups() {
-    const { data } = await supabase.from('groups').select('*').order('display_order', { ascending: true })
-    if (data) setGroups(data)
-  }
-
-  async function saveGroup() {
-    if (!newGroupName.trim()) return
-    setSavingGroup(true)
-    if (editingGroup) {
-      await supabase.from('groups').update({ name: newGroupName.trim(), description: newGroupDesc.trim() || null }).eq('id', editingGroup.id)
-    } else {
-      await supabase.from('groups').insert({ name: newGroupName.trim(), description: newGroupDesc.trim() || null, display_order: groups.length })
-    }
-    setNewGroupName('')
-    setNewGroupDesc('')
-    setEditingGroup(null)
-    setSavingGroup(false)
-    fetchGroups()
-  }
-
-  async function deleteGroup(id: string) {
-    await supabase.from('groups').delete().eq('id', id)
-    setDeletingGroup(null)
-    fetchGroups()
-  }
 
   async function loadGenresAndCounts() {
     setLoading(true)
@@ -209,15 +168,7 @@ export default function AdminGenresPage() {
     <div style={{ padding: '2rem', color: '#000000' }}>
       {/* Header */}
       <div style={{ marginBottom: '1.5rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <h1 style={{ fontSize: '24px', fontWeight: 'bold', color: '#000000' }}>
-            {activeTab === 'genres' ? '🎭 Genre Manager' : '📦 Group Manager'}
-          </h1>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button onClick={() => setActiveTab('genres')} style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '13px', backgroundColor: activeTab === 'genres' ? '#f97316' : '#e5e5e5', color: activeTab === 'genres' ? 'white' : '#4a4a4a' }}>🎭 Genres</button>
-            <button onClick={() => setActiveTab('groups')} style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '13px', backgroundColor: activeTab === 'groups' ? '#f97316' : '#e5e5e5', color: activeTab === 'groups' ? 'white' : '#4a4a4a' }}>📦 Groups</button>
-          </div>
-        </div>
+        <h1 style={{ fontSize: '24px', fontWeight: 'bold', color: '#000000' }}>🎭 Genre Manager</h1>
         <p style={{ color: '#475569', fontSize: '14px', marginTop: '4px' }}>
           {genres.length} genres. Story counts update automatically.
         </p>
@@ -415,102 +366,6 @@ export default function AdminGenresPage() {
         Use ▲▼ to change display order. The 🗑 button is disabled when stories use that genre as their primary.
         Assign genres to stories on the Stories tab.
       </div>
-      {/* ── Groups Tab ── */}
-      {activeTab === 'groups' && (
-        <div>
-          {/* Add / Edit Group Form */}
-          <div style={{ backgroundColor: '#FFFFFF', borderRadius: '12px', border: '1px solid #e0e0e0', padding: '1.25rem', marginBottom: '1.5rem' }}>
-            <h2 style={{ fontSize: '15px', fontWeight: 700, color: '#1a1a1a', margin: '0 0 1rem 0' }}>
-              {editingGroup ? `Editing: ${editingGroup.name}` : '+ New Group'}
-            </h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: 600, color: '#4a4a4a', display: 'block', marginBottom: '4px' }}>GROUP NAME *</label>
-                <input
-                  value={newGroupName}
-                  onChange={e => setNewGroupName(e.target.value)}
-                  placeholder="e.g. Dog Lover Stories"
-                  style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #e0e0e0', fontSize: '13px', color: '#000', backgroundColor: '#fff', boxSizing: 'border-box' as 'border-box' }}
-                />
-              </div>
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: 600, color: '#4a4a4a', display: 'block', marginBottom: '4px' }}>DESCRIPTION (optional)</label>
-                <input
-                  value={newGroupDesc}
-                  onChange={e => setNewGroupDesc(e.target.value)}
-                  placeholder="e.g. Heartwarming stories about dogs and their humans"
-                  style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #e0e0e0', fontSize: '13px', color: '#000', backgroundColor: '#fff', boxSizing: 'border-box' as 'border-box' }}
-                />
-              </div>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button
-                  onClick={saveGroup}
-                  disabled={savingGroup || !newGroupName.trim()}
-                  style={{ padding: '9px 20px', borderRadius: '6px', backgroundColor: savingGroup || !newGroupName.trim() ? '#9ca3af' : '#22c55e', color: 'white', border: 'none', cursor: savingGroup || !newGroupName.trim() ? 'default' : 'pointer', fontWeight: 700, fontSize: '13px' }}
-                >
-                  {savingGroup ? 'Saving...' : editingGroup ? 'Update Group' : 'Create Group'}
-                </button>
-                {editingGroup && (
-                  <button
-                    onClick={() => { setEditingGroup(null); setNewGroupName(''); setNewGroupDesc('') }}
-                    style={{ padding: '9px 16px', borderRadius: '6px', backgroundColor: '#e5e5e5', color: '#1a1a1a', border: 'none', cursor: 'pointer', fontSize: '13px' }}
-                  >Cancel</button>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Groups List */}
-          <div style={{ backgroundColor: '#FFFFFF', borderRadius: '12px', border: '1px solid #e0e0e0', overflow: 'hidden' }}>
-            {groups.length === 0 ? (
-              <div style={{ padding: '3rem', textAlign: 'center', color: '#4a4a4a' }}>
-                No groups yet. Create your first group above.
-              </div>
-            ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-                <thead>
-                  <tr style={{ backgroundColor: '#f5f5f5', borderBottom: '2px solid #e0e0e0' }}>
-                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', color: '#4a4a4a', fontWeight: 600 }}>Name</th>
-                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', color: '#4a4a4a', fontWeight: 600 }}>Description</th>
-                    <th style={{ padding: '0.75rem 1rem', textAlign: 'center', color: '#4a4a4a', fontWeight: 600, width: '120px' }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {groups.map((group, i) => (
-                    <tr key={group.id} style={{ borderBottom: '1px solid #e0e0e0', backgroundColor: i % 2 === 0 ? 'transparent' : '#fafafa' }}>
-                      <td style={{ padding: '0.75rem 1rem', fontWeight: 600, color: '#1a1a1a' }}>
-                        📦 {group.name}
-                      </td>
-                      <td style={{ padding: '0.75rem 1rem', color: '#4a4a4a', fontSize: '12px' }}>
-                        {group.description || <span style={{ color: '#9ca3af' }}>—</span>}
-                      </td>
-                      <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
-                        {deletingGroup === group.id ? (
-                          <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
-                            <button onClick={() => deleteGroup(group.id)} style={{ padding: '3px 8px', borderRadius: '4px', backgroundColor: '#dc2626', color: 'white', border: 'none', cursor: 'pointer', fontSize: '11px', fontWeight: 700 }}>Delete</button>
-                            <button onClick={() => setDeletingGroup(null)} style={{ padding: '3px 8px', borderRadius: '4px', backgroundColor: '#e5e5e5', color: '#1a1a1a', border: 'none', cursor: 'pointer', fontSize: '11px' }}>Cancel</button>
-                          </div>
-                        ) : (
-                          <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
-                            <button
-                              onClick={() => { setEditingGroup(group); setNewGroupName(group.name); setNewGroupDesc(group.description || '') }}
-                              style={{ padding: '3px 8px', borderRadius: '4px', backgroundColor: '#e0f2fe', color: '#0369a1', border: 'none', cursor: 'pointer', fontSize: '11px', fontWeight: 600 }}
-                            >Edit</button>
-                            <button
-                              onClick={() => setDeletingGroup(group.id)}
-                              style={{ padding: '3px 8px', borderRadius: '4px', backgroundColor: '#fee2e2', color: '#dc2626', border: 'none', cursor: 'pointer', fontSize: '11px' }}
-                            >🗑</button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   )
 }
