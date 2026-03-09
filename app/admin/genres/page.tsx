@@ -151,8 +151,8 @@ export default function AdminGenresPage() {
     }
   }
 
-  const activeGenres = genres.filter(g => g.active)
-  const inactiveGenres = genres.filter(g => !g.active)
+  const activeGenres = genres.filter(g => g.active !== false)
+  const inactiveGenres = genres.filter(g => g.active === false)
 
   return (
     <div style={{ padding: '2rem' }}>
