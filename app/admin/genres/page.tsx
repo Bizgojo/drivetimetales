@@ -10,32 +10,71 @@ interface Genre {
   created_at: string
 }
 
+interface GenreCounts {
+  primary: number
+  secondary: number
+  third: number
+  total: number
+}
+
 export default function AdminGenresPage() {
   const [genres, setGenres] = useState<Genre[]>([])
+  const [genreCounts, setGenreCounts] = useState<Record<string, GenreCounts>>({})
   const [loading, setLoading] = useState(true)
   const [newGenreName, setNewGenreName] = useState('')
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [editName, setEditName] = useState('')
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    loadGenres()
+    loadGenresAndCounts()
   }, [])
 
-  async function loadGenres() {
+  async function loadGenresAndCounts() {
     setLoading(true)
-    const { data, error } = await supabase
+
+    const { data: genreData, error: genreError } = await supabase
       .from('genres')
       .select('*')
+      .eq('active', true)
       .order('display_order', { ascending: true })
 
-    if (error) {
-      console.error('Error loading genres:', error)
+    if (genreError) {
       showMessage('error', 'Failed to load genres')
-    } else {
-      setGenres(data || [])
+      setLoading(false)
+      return
     }
+
+    const { data: stories, error: storiesError } = await supabase
+      .from('stories')
+      .select('genre, genre_secondary, genre_third')
+
+    const counts: Record<string, GenreCounts> = {}
+
+    if (genreData) {
+      for (const g of genreData) {
+        counts[g.name] = { primary: 0, secondary: 0, third: 0, total: 0 }
+      }
+    }
+
+    if (stories && !storiesError) {
+      for (const story of stories) {
+        if (story.genre && counts[story.genre]) {
+          counts[story.genre].primary++
+          counts[story.genre].total++
+        }
+        if (story.genre_secondary && counts[story.genre_secondary]) {
+          counts[story.genre_secondary].secondary++
+          counts[story.genre_secondary].total++
+        }
+        if (story.genre_third && counts[story.genre_third]) {
+          counts[story.genre_third].third++
+          counts[story.genre_third].total++
+        }
+      }
+    }
+
+    setGenres(genreData || [])
+    setGenreCounts(counts)
     setLoading(false)
   }
 
@@ -61,51 +100,13 @@ export default function AdminGenresPage() {
       .insert({ name, display_order: maxOrder + 1, active: true })
 
     if (error) {
-      console.error('Error adding genre:', error)
       showMessage('error', `Failed to add genre: ${error.message}`)
     } else {
       setNewGenreName('')
       showMessage('success', `Added "${name}"`)
-      await loadGenres()
+      await loadGenresAndCounts()
     }
     setSaving(false)
-  }
-
-  async function toggleActive(genre: Genre) {
-    const { error } = await supabase
-      .from('genres')
-      .update({ active: !genre.active })
-      .eq('id', genre.id)
-
-    if (error) {
-      showMessage('error', 'Failed to update genre')
-    } else {
-      showMessage('success', `${genre.name} ${genre.active ? 'deactivated' : 'activated'}`)
-      await loadGenres()
-    }
-  }
-
-  async function saveEdit(id: string) {
-    const name = editName.trim()
-    if (!name) return
-
-    if (genres.some(g => g.name.toLowerCase() === name.toLowerCase() && g.id !== id)) {
-      showMessage('error', 'Genre name already exists')
-      return
-    }
-
-    const { error } = await supabase
-      .from('genres')
-      .update({ name })
-      .eq('id', id)
-
-    if (error) {
-      showMessage('error', 'Failed to rename genre')
-    } else {
-      setEditingId(null)
-      showMessage('success', `Renamed to "${name}"`)
-      await loadGenres()
-    }
   }
 
   async function moveGenre(id: string, direction: 'up' | 'down') {
@@ -124,19 +125,31 @@ export default function AdminGenresPage() {
     ]
 
     const results = await Promise.all(updates)
-    const hasError = results.some(r => r.error)
-
-    if (hasError) {
+    if (results.some(r => r.error)) {
       showMessage('error', 'Failed to reorder')
     } else {
-      await loadGenres()
+      await loadGenresAndCounts()
     }
   }
 
   async function deleteGenre(genre: Genre) {
-    if (!confirm(`Delete "${genre.name}" permanently?\n\nThis cannot be undone. Stories using this genre will need to be updated.`)) {
+    const counts = genreCounts[genre.name]
+    if (counts && counts.primary > 0) {
+      showMessage('error', `Cannot delete "${genre.name}" — ${counts.primary} ${counts.primary === 1 ? 'story uses' : 'stories use'} it as primary genre. Reassign them first.`)
       return
     }
+
+    const warningParts = []
+    if (counts && counts.secondary > 0) warningParts.push(`${counts.secondary} as secondary`)
+    if (counts && counts.third > 0) warningParts.push(`${counts.third} as third`)
+
+    let confirmMsg = `Delete "${genre.name}" permanently?`
+    if (warningParts.length > 0) {
+      confirmMsg += `\n\nNote: ${warningParts.join(' and ')} ${warningParts.length === 1 ? 'story still uses' : 'stories still use'} this genre. Those fields will be cleared.`
+    }
+    confirmMsg += '\n\nThis cannot be undone.'
+
+    if (!confirm(confirmMsg)) return
 
     const { error } = await supabase
       .from('genres')
@@ -147,23 +160,18 @@ export default function AdminGenresPage() {
       showMessage('error', `Failed to delete: ${error.message}`)
     } else {
       showMessage('success', `Deleted "${genre.name}"`)
-      await loadGenres()
+      await loadGenresAndCounts()
     }
   }
 
-  const activeGenres = genres.filter(g => g.active)
-  const inactiveGenres = genres.filter(g => !g.active)
-
   return (
-    <div style={{ padding: '2rem' }}>
+    <div style={{ padding: '2rem', color: '#000000' }}>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-        <div>
-          <h1 style={{ fontSize: '24px', fontWeight: 'bold', color: '#1e293b' }}>🎭 Genre Manager</h1>
-          <p style={{ color: '#64748b', fontSize: '14px', marginTop: '4px' }}>
-            Manage genres for DTT Library and ADM publishing. {activeGenres.length} active, {inactiveGenres.length} inactive.
-          </p>
-        </div>
+      <div style={{ marginBottom: '1.5rem' }}>
+        <h1 style={{ fontSize: '24px', fontWeight: 'bold', color: '#000000' }}>🎭 Genre Manager</h1>
+        <p style={{ color: '#475569', fontSize: '14px', marginTop: '4px' }}>
+          {genres.length} genres. Story counts update automatically.
+        </p>
       </div>
 
       {/* Message */}
@@ -204,6 +212,8 @@ export default function AdminGenresPage() {
             border: '1px solid #d1d5db',
             fontSize: '14px',
             outline: 'none',
+            color: '#000000',
+            backgroundColor: '#ffffff',
           }}
         />
         <button
@@ -227,34 +237,50 @@ export default function AdminGenresPage() {
       {loading ? (
         <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>Loading genres...</div>
       ) : (
-        <>
-          {/* Active Genres */}
+        <div style={{
+          backgroundColor: 'white',
+          borderRadius: '12px',
+          padding: '1.5rem',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+        }}>
+          {/* Column Headers */}
           <div style={{
-            backgroundColor: 'white',
-            borderRadius: '12px',
-            padding: '1.5rem',
-            marginBottom: '1.5rem',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            padding: '0 1rem 0.75rem 1rem',
+            borderBottom: '2px solid #e2e8f0',
+            marginBottom: '0.5rem',
           }}>
-            <h2 style={{ fontSize: '16px', fontWeight: 600, color: '#1e293b', marginBottom: '1rem' }}>
-              Active Genres ({activeGenres.length})
-            </h2>
+            <span style={{ width: '24px' }}></span>
+            <span style={{ width: '40px' }}></span>
+            <span style={{ flex: 1, fontSize: '12px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Genre</span>
+            <span style={{ width: '70px', fontSize: '12px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', textAlign: 'center' }}>Primary</span>
+            <span style={{ width: '70px', fontSize: '12px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', textAlign: 'center' }}>2nd</span>
+            <span style={{ width: '70px', fontSize: '12px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', textAlign: 'center' }}>3rd</span>
+            <span style={{ width: '70px', fontSize: '12px', fontWeight: 700, color: '#f97316', textTransform: 'uppercase', textAlign: 'center' }}>Total</span>
+            <span style={{ width: '50px' }}></span>
+          </div>
 
-            {activeGenres.length === 0 ? (
-              <p style={{ color: '#94a3b8', fontStyle: 'italic' }}>No active genres</p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                {activeGenres.map((genre, index) => (
+          {genres.length === 0 ? (
+            <p style={{ color: '#94a3b8', fontStyle: 'italic', padding: '1rem' }}>No genres yet</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              {genres.map((genre, index) => {
+                const counts = genreCounts[genre.name] || { primary: 0, secondary: 0, third: 0, total: 0 }
+                const canDelete = counts.primary === 0
+
+                return (
                   <div
                     key={genre.id}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
                       gap: '0.75rem',
-                      padding: '0.75rem 1rem',
+                      padding: '0.6rem 1rem',
                       borderRadius: '8px',
-                      backgroundColor: '#f8fafc',
-                      border: '1px solid #e2e8f0',
+                      backgroundColor: index % 2 === 0 ? '#f8fafc' : '#ffffff',
+                      border: '1px solid #f1f5f9',
                     }}
                   >
                     {/* Order number */}
@@ -263,145 +289,68 @@ export default function AdminGenresPage() {
                     </span>
 
                     {/* Move buttons */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', width: '40px', alignItems: 'center' }}>
                       <button
                         onClick={() => moveGenre(genre.id, 'up')}
                         disabled={index === 0}
                         style={{
                           background: 'none', border: 'none', cursor: index === 0 ? 'default' : 'pointer',
-                          fontSize: '12px', opacity: index === 0 ? 0.3 : 1, padding: '0',
+                          fontSize: '11px', opacity: index === 0 ? 0.2 : 0.7, padding: '0', lineHeight: '1',
                         }}
                       >▲</button>
                       <button
                         onClick={() => moveGenre(genre.id, 'down')}
-                        disabled={index === activeGenres.length - 1}
+                        disabled={index === genres.length - 1}
                         style={{
                           background: 'none', border: 'none',
-                          cursor: index === activeGenres.length - 1 ? 'default' : 'pointer',
-                          fontSize: '12px', opacity: index === activeGenres.length - 1 ? 0.3 : 1, padding: '0',
+                          cursor: index === genres.length - 1 ? 'default' : 'pointer',
+                          fontSize: '11px', opacity: index === genres.length - 1 ? 0.2 : 0.7, padding: '0', lineHeight: '1',
                         }}
                       >▼</button>
                     </div>
 
-                    {/* Name (editable) */}
-                    <div style={{ flex: 1 }}>
-                      {editingId === genre.id ? (
-                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                          <input
-                            value={editName}
-                            onChange={(e) => setEditName(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') saveEdit(genre.id)
-                              if (e.key === 'Escape') setEditingId(null)
-                            }}
-                            autoFocus
-                            style={{
-                              flex: 1, padding: '0.3rem 0.6rem', borderRadius: '4px',
-                              border: '1px solid #f97316', fontSize: '14px', outline: 'none',
-                            }}
-                          />
-                          <button onClick={() => saveEdit(genre.id)} style={{
-                            padding: '0.3rem 0.75rem', borderRadius: '4px', backgroundColor: '#22c55e',
-                            color: 'white', border: 'none', cursor: 'pointer', fontSize: '13px',
-                          }}>Save</button>
-                          <button onClick={() => setEditingId(null)} style={{
-                            padding: '0.3rem 0.75rem', borderRadius: '4px', backgroundColor: '#e2e8f0',
-                            border: 'none', cursor: 'pointer', fontSize: '13px',
-                          }}>Cancel</button>
-                        </div>
-                      ) : (
-                        <span
-                          style={{ fontSize: '14px', fontWeight: 500, color: '#1e293b', cursor: 'pointer' }}
-                          onDoubleClick={() => { setEditingId(genre.id); setEditName(genre.name) }}
-                          title="Double-click to rename"
-                        >
-                          {genre.name}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Action buttons */}
-                    <button
-                      onClick={() => { setEditingId(genre.id); setEditName(genre.name) }}
-                      style={{
-                        padding: '0.3rem 0.6rem', borderRadius: '4px', backgroundColor: '#e2e8f0',
-                        border: 'none', cursor: 'pointer', fontSize: '12px',
-                      }}
-                    >✏️ Rename</button>
-
-                    <button
-                      onClick={() => toggleActive(genre)}
-                      style={{
-                        padding: '0.3rem 0.6rem', borderRadius: '4px', backgroundColor: '#fef3c7',
-                        border: 'none', cursor: 'pointer', fontSize: '12px',
-                      }}
-                    >⏸ Deactivate</button>
-
-                    <button
-                      onClick={() => deleteGenre(genre)}
-                      style={{
-                        padding: '0.3rem 0.6rem', borderRadius: '4px', backgroundColor: '#fee2e2',
-                        border: 'none', cursor: 'pointer', fontSize: '12px',
-                      }}
-                    >🗑</button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Inactive Genres */}
-          {inactiveGenres.length > 0 && (
-            <div style={{
-              backgroundColor: 'white',
-              borderRadius: '12px',
-              padding: '1.5rem',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-            }}>
-              <h2 style={{ fontSize: '16px', fontWeight: 600, color: '#64748b', marginBottom: '1rem' }}>
-                Inactive Genres ({inactiveGenres.length})
-              </h2>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                {inactiveGenres.map((genre) => (
-                  <div
-                    key={genre.id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.75rem',
-                      padding: '0.75rem 1rem',
-                      borderRadius: '8px',
-                      backgroundColor: '#f1f5f9',
-                      border: '1px dashed #cbd5e1',
-                      opacity: 0.7,
-                    }}
-                  >
-                    <span style={{ flex: 1, fontSize: '14px', color: '#64748b', textDecoration: 'line-through' }}>
+                    {/* Genre Name */}
+                    <span style={{ flex: 1, fontSize: '15px', fontWeight: 600, color: '#000000' }}>
                       {genre.name}
                     </span>
 
-                    <button
-                      onClick={() => toggleActive(genre)}
-                      style={{
-                        padding: '0.3rem 0.75rem', borderRadius: '4px', backgroundColor: '#dcfce7',
-                        border: 'none', cursor: 'pointer', fontSize: '12px',
-                      }}
-                    >▶ Reactivate</button>
+                    {/* Counts */}
+                    <span style={{ width: '70px', textAlign: 'center', fontSize: '14px', fontWeight: 500, color: counts.primary > 0 ? '#000000' : '#cbd5e1' }}>
+                      {counts.primary}
+                    </span>
+                    <span style={{ width: '70px', textAlign: 'center', fontSize: '14px', fontWeight: 500, color: counts.secondary > 0 ? '#000000' : '#cbd5e1' }}>
+                      {counts.secondary}
+                    </span>
+                    <span style={{ width: '70px', textAlign: 'center', fontSize: '14px', fontWeight: 500, color: counts.third > 0 ? '#000000' : '#cbd5e1' }}>
+                      {counts.third}
+                    </span>
+                    <span style={{ width: '70px', textAlign: 'center', fontSize: '15px', fontWeight: 700, color: counts.total > 0 ? '#f97316' : '#cbd5e1' }}>
+                      {counts.total}
+                    </span>
 
+                    {/* Delete */}
                     <button
                       onClick={() => deleteGenre(genre)}
+                      disabled={!canDelete}
+                      title={canDelete ? 'Delete genre' : `Cannot delete — ${counts.primary} stories use this as primary genre`}
                       style={{
-                        padding: '0.3rem 0.6rem', borderRadius: '4px', backgroundColor: '#fee2e2',
-                        border: 'none', cursor: 'pointer', fontSize: '12px',
+                        width: '50px',
+                        padding: '0.3rem',
+                        borderRadius: '4px',
+                        backgroundColor: canDelete ? '#fee2e2' : '#f1f5f9',
+                        border: 'none',
+                        cursor: canDelete ? 'pointer' : 'not-allowed',
+                        fontSize: '14px',
+                        opacity: canDelete ? 1 : 0.3,
+                        textAlign: 'center',
                       }}
                     >🗑</button>
                   </div>
-                ))}
-              </div>
+                )
+              })}
             </div>
           )}
-        </>
+        </div>
       )}
 
       {/* Help text */}
@@ -413,9 +362,9 @@ export default function AdminGenresPage() {
         fontSize: '13px',
         color: '#1e40af',
       }}>
-        <strong>How it works:</strong> Active genres appear in the DTT Library filter and ADM publish dropdowns.
-        Deactivated genres are hidden but preserved. Stories already tagged with a deactivated genre keep their tag.
-        Double-click a name to rename it. Use ▲▼ to change display order.
+        <strong>How it works:</strong> Genres appear in DTT Library filters and ADM publish dropdowns.
+        Use ▲▼ to change display order. The 🗑 button is disabled when stories use that genre as their primary.
+        Assign genres to stories on the Stories tab.
       </div>
     </div>
   )
