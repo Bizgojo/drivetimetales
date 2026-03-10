@@ -933,6 +933,22 @@ export default function StoryCreationPage() {
   const [selectedStory, setSelectedStory] = useState<Story | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
 
+  // Load pending stories from DB on mount so refreshes don't wipe the list
+  useEffect(() => {
+    const loadStories = async () => {
+      try {
+        const res = await fetch('/api/asc3/list-stories?status=pending');
+        const data = await res.json();
+        if (data.success && data.stories?.length > 0) {
+          setStories(data.stories);
+        }
+      } catch (e) {
+        console.warn('Could not load stories from DB:', e);
+      }
+    };
+    loadStories();
+  }, []);
+
   const handleCreateSubmit = async (prompt: StoryPrompt) => {
     setIsGenerating(true);
 
