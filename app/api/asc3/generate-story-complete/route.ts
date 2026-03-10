@@ -74,12 +74,31 @@ interface StorySegmentResult {
 
 // ─── Character Parsing ────────────────────────────────────────────────────────
 
-function parseGender(desc: string): 'male' | 'female' | 'neutral' | 'unknown' {
+// Common male first names for fallback gender detection
+const MALE_NAMES = new Set(['james','john','robert','michael','william','david','richard','joseph','thomas','charles','christopher','daniel','matthew','anthony','mark','donald','steven','paul','andrew','kenneth','george','joshua','kevin','brian','edward','ronald','timothy','jason','jeffrey','ryan','gary','jacob','nicholas','eric','jonathan','stephen','larry','justin','scott','brandon','benjamin','samuel','frank','raymond','patrick','jack','dennis','jerry','tyler','aaron','jose','adam','henry','douglas','nathan','peter','zachary','kyle','walter','harold','jeremy','ethan','carl','arthur','roger','terry','sean','austin','christian','noah','joe','alan','juan','elijah','phillip','wayne','albert','bobby','billy','dylan','liam','mason','lucas','oliver','aiden','caleb','eli','cameron','luke','alexander','charlie','hunter','jackson','wyatt','gabriel','evan','owen','henry','leo','lincoln','xavier','landon','parker','finn','max','julian','cole','carter','hayden','carlos','miguel','louis','antonio','marcus','travis','alex','richard','sheriff','detective','doctor','captain','father','reverend','deputy','agent','officer']]
+
+// Common female first names for fallback gender detection
+const FEMALE_NAMES = new Set(['mary','patricia','linda','barbara','elizabeth','jennifer','maria','susan','dorothy','lisa','nancy','karen','betty','helen','sandra','donna','carol','ruth','sharon','michelle','laura','sarah','kimberly','deborah','jessica','shirley','cynthia','angela','melissa','brenda','amy','anna','rebecca','virginia','kathleen','pamela','martha','debra','amanda','stephanie','carolyn','christine','marie','janet','catherine','frances','ann','joyce','diane','alice','julie','heather','teresa','doris','gloria','evelyn','jean','cheryl','mildred','katherine','joan','ashley','judith','rose','janice','kelly','nicole','judy','christina','kathy','theresa','beverly','denise','tammy','irene','jane','lori','rachel','marilyn','andrea','kathryn','louise','sara','anne','jacqueline','wanda','bonnie','julia','ruby','lois','tina','phyllis','norma','paula','diana','annie','lillian','emily','robin','peggy','crystal','gladys','rita','dawn','connie','florence','tracy','edna','tiffany','emma','grace','ella','olivia','sophia','ava','isabella','mia','luna','chloe','penelope','layla','riley','zoey','nora','lily','eleanor','hannah','lillian','addison','aubrey','ellie','stella','natalie','zoe','leah','hazel','violet','aurora','savannah','audrey','brooklyn','bella','claire','skylar','lucy','paisley','everly','anna','caroline','nova','genesis','emilia','kennedy','samantha','maya','willow','kinsley','naomi','aaliyah','elena','sarah','gabriella','allison','millie','alyssa','alexandra','jade','abigail','scarlett','victoria','ariana','sophia'])
+
+function parseGender(desc: string, charName?: string): 'male' | 'female' | 'neutral' | 'unknown' {
   const lower = desc.toLowerCase()
-  // Match patterns like "34F", "52M", "F,", etc.
-  if (/\b\d+f\b/i.test(lower) || lower.includes('female') || lower.includes('woman') || lower.includes('girl') || lower.includes('she/her')) return 'female'
-  if (/\b\d+m\b/i.test(lower) || lower.includes('male') || lower.includes('man') || lower.includes('boy') || lower.includes('he/him') || lower.includes('guy')) return 'male'
+  // Match patterns like "34F", "52M"
+  if (/\b\d+f\b/i.test(lower) || lower.includes('female') || lower.includes('woman') || lower.includes('girl') || lower.includes('she/her') || lower.includes('mrs.') || lower.includes('miss ') || lower.includes('ms.')) return 'female'
+  if (/\b\d+m\b/i.test(lower) || lower.includes('male') || lower.includes('man') || lower.includes('boy') || lower.includes('he/him') || lower.includes('guy') || lower.includes('mr.') || lower.includes('father ') || lower.includes('sheriff') || lower.includes('detective') || lower.includes('reverend')) return 'male'
   if (lower.includes('neutral') || lower.includes('androgynous') || lower.includes('they/them')) return 'neutral'
+
+  // Fallback: check character name against known name lists
+  if (charName) {
+    const parts = charName.toLowerCase().split(/\s+/)
+    const firstName = parts[0]
+    if (MALE_NAMES.has(firstName)) return 'male'
+    if (FEMALE_NAMES.has(firstName)) return 'female'
+    // Check all name parts (e.g. "Sheriff Roy" → "roy" is male)
+    for (const part of parts) {
+      if (MALE_NAMES.has(part)) return 'male'
+      if (FEMALE_NAMES.has(part)) return 'female'
+    }
+  }
   return 'unknown'
 }
 
@@ -112,7 +131,7 @@ function parseCharacterGuide(guideText: string): CharacterInfo[] {
     characters.push({
       name,
       description: desc,
-      gender: parseGender(desc + ' ' + name.toLowerCase()),
+      gender: parseGender(desc, name),
       age: parseAge(desc),
     })
   }
