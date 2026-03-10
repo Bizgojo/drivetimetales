@@ -371,9 +371,104 @@ export async function POST(req: NextRequest) {
       .filter(Boolean)
       .join(', ')
 
+    // Genre-specific writing instructions
+    const genreLower = (body.primaryGenre || '').toLowerCase()
+    const genreInstructions = (() => {
+      if (genreLower.includes('thriller') || genreLower.includes('mystery')) return `
+GENRE CRAFT — THRILLER/MYSTERY:
+- Open with a hook that creates immediate tension or a disturbing discovery
+- Use short, punchy sentences during high-tension scenes; longer sentences during investigation/exposition
+- Layer in clues and red herrings naturally through dialogue and narration
+- Build dread slowly — withhold key information strategically
+- Every scene should raise a question or deepen the mystery
+- Climax must recontextualize earlier events; twist should feel inevitable in hindsight
+- Characters should have hidden motives and conflicting agendas
+- Use silence and what characters DON'T say as much as what they do`
+
+      if (genreLower.includes('horror')) return `
+GENRE CRAFT — HORROR:
+- Establish normalcy first, then disrupt it with something deeply wrong
+- Use sensory details: sounds, smells, textures — audio horror lives in the details listeners can imagine
+- Build dread through implication and suggestion, not explicit description
+- The unknown is scarier than the known — let the listener's imagination do the work
+- Give characters believable reasons to stay in dangerous situations
+- Pacing: slow burn with sudden jolts; silence before the scare
+- The monster (physical or psychological) should reflect a deeper human fear
+- End with consequences — horror has weight`
+
+      if (genreLower.includes('romance') || genreLower.includes('love')) return `
+GENRE CRAFT — ROMANCE:
+- Establish chemistry through subtext — what characters feel but don't say
+- Use internal conflict: characters want connection but fear vulnerability
+- Sensory and emotional detail: how the protagonist feels in their body, not just their thoughts
+- Build the relationship through small meaningful moments, not grand gestures
+- The central obstacle must feel genuinely insurmountable before the resolution
+- Dialogue should crackle with tension, humor, and unspoken feeling
+- Earn the emotional payoff — don't rush to the resolution`
+
+      if (genreLower.includes('sci-fi') || genreLower.includes('science fiction') || genreLower.includes('cosmic')) return `
+GENRE CRAFT — SCI-FI:
+- Ground the fantastical in specific, believable sensory detail
+- Explore the human implications of the technology or concept — what does it mean for people?
+- Avoid info-dumping: reveal world-building through character reactions and dialogue
+- The science/technology should create the central conflict, not just be backdrop
+- Characters should feel the wonder, terror, or alienation of their world
+- Use the genre to explore a real human theme: identity, mortality, connection, power
+- Contrast the vast/cosmic with the intimate/personal`
+
+      if (genreLower.includes('western') || genreLower.includes('adventure')) return `
+GENRE CRAFT — WESTERN/ADVENTURE:
+- Establish the world through vivid environmental detail — landscape as character
+- Clear moral stakes: what the protagonist stands to lose or gain
+- Conflict should feel physical and immediate, with real consequences
+- Dialogue is spare and loaded — characters say exactly what they mean or exactly the opposite
+- The journey IS the story — each obstacle reveals character
+- Honor, loyalty, survival: the genre's core themes should surface naturally
+- Pacing is steady with explosive action beats`
+
+      if (genreLower.includes('drama') || genreLower.includes('literary')) return `
+GENRE CRAFT — DRAMA:
+- Character is everything — motivation, contradiction, and change drive the story
+- Subtext in every scene: characters want something but can't ask for it directly
+- Let silences breathe; what's unsaid matters as much as dialogue
+- Avoid melodrama — restraint creates more emotional impact than explosion
+- Ground conflict in specific, real-world circumstances and relationships
+- The ending should feel earned and true, not necessarily happy
+- Find the universal in the specific — one family's story illuminates everyone's`
+
+      if (genreLower.includes('comedy') || genreLower.includes('humor')) return `
+GENRE CRAFT — COMEDY:
+- Timing is everything — set up, delay, punchline; trust the rhythm
+- Characters should be earnest about their absurd situations (they're not in on the joke)
+- Use escalation: each complication should make things funnier and more chaotic
+- Ground the humor in character — the funniest moments reveal who people really are
+- Callbacks reward attentive listeners; plant details early that pay off later
+- Mix wit with heart — the best comedies make you laugh and feel something
+- Avoid obvious jokes; find the unexpected angle`
+
+      if (genreLower.includes('family') || genreLower.includes('children')) return `
+GENRE CRAFT — FAMILY/CHILDREN:
+- Young protagonists with real agency — they solve their own problems
+- Clear, vivid stakes that matter to a child's world
+- Humor that works for both kids and adults (different levels of meaning)
+- Themes of belonging, courage, friendship, doing the right thing
+- Language is accessible but not dumbed down — kids appreciate being respected
+- Wonder and imagination: the world should feel magical or surprising
+- Resolution should feel earned and emotionally satisfying`
+
+      return `
+GENRE CRAFT — ${(body.primaryGenre || 'GENERAL').toUpperCase()}:
+- Open with a compelling hook that immediately draws the listener in
+- Build character through dialogue and action, not exposition
+- Create escalating conflict with meaningful stakes
+- Use pacing strategically — vary the rhythm to control tension
+- End with a resonant, emotionally satisfying conclusion`
+    })()
+
     const claudePrompt = `You are an expert audio drama writer working in the style of ${body.authorStyle}.
 
 Create a complete audio drama script with the following specifications:
+${genreInstructions}
 
 **Story Requirements:**
 - Concept: ${body.concept}
@@ -633,7 +728,20 @@ Now write the complete audio drama:`
 
     try {
       const genre = body.primaryGenre || 'fiction'
-      const dallePrompt = `Professional audiobook cover art for "${title}", a ${genre} story. Dark, cinematic, sophisticated. No text on image.`
+      const genreVisual: Record<string, string> = {
+        thriller: 'dark, shadowy, high contrast, noir atmosphere, tension',
+        mystery: 'moody, atmospheric, hidden clues, dramatic lighting',
+        horror: 'dark, eerie, unsettling, gothic shadows, dread',
+        romance: 'warm, intimate, soft lighting, emotional depth',
+        'sci-fi': 'futuristic, cosmic, neon and darkness, vast scale',
+        western: 'golden dust, vast landscapes, lone figure, cinematic',
+        adventure: 'epic, sweeping vistas, bold colors, action',
+        drama: 'cinematic portrait, emotional, naturalistic lighting',
+        comedy: 'warm, bright colors, playful, expressive',
+        family: 'vibrant, inviting, warm tones, wonder and charm',
+      }
+      const visualStyle = Object.entries(genreVisual).find(([k]) => genre.toLowerCase().includes(k))?.[1] || 'cinematic, sophisticated, dramatic'
+      const dallePrompt = `Professional audiobook cover art for "${title}", a ${genre} audio drama. Style: ${visualStyle}. Painterly, high quality, no text, no letters, no words on image.`
 
       console.log('🎨 Generating cover image with DALL-E 3...')
 
