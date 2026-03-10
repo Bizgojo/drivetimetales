@@ -1491,7 +1491,7 @@ export default function StoryCreationPage() {
 
       // Create story with complete data
       const newStory: Story = {
-        id: `story_${Date.now()}`,
+        id: result.data.storyId,
         title: result.data.title,
         primaryGenre: prompt.primaryGenre,
         secondaryGenre1: prompt.secondaryGenre1,
