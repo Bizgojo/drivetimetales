@@ -216,7 +216,19 @@ function parseStoryIntoSegments(
     const text = currentTextLines.join(' ').trim()
     if (!text) return
 
-    const voiceInfo = voiceMap.get(currentSpeaker) ?? { voice_id: fallbackVoiceId, voice_name: 'Default' }
+    // Exact match first, then fuzzy match (handles SHERIFF TATE vs SHERIFF EUGENE TATE)
+    let voiceInfo = voiceMap.get(currentSpeaker)
+    if (!voiceInfo) {
+      // Try partial match: find a voiceMap key that contains the speaker or vice versa
+      for (const [key, val] of voiceMap.entries()) {
+        if (key.includes(currentSpeaker) || currentSpeaker.includes(key) ||
+            key.split(' ').some(w => w.length > 3 && currentSpeaker.includes(w))) {
+          voiceInfo = val
+          break
+        }
+      }
+    }
+    if (!voiceInfo) voiceInfo = { voice_id: fallbackVoiceId, voice_name: 'Default' }
 
     // Split long segments to stay under ElevenLabs limit
     if (text.length <= ELEVENLABS_CHUNK_SIZE) {
@@ -504,21 +516,27 @@ ${genreInstructions}
 A unique, compelling title for the story
 
 [CHARACTER GUIDE]
-List EVERY character as a bullet point:
-- NARRATOR (neutral, warm storytelling voice)
-- CHARACTER NAME (age/gender, personality description)
+List EVERY character as a bullet point. Gender MUST be marked — this controls voice casting.
+Format: - CHARACTER NAME (AGE + GENDER_CODE, personality)
 
-Examples:
+GENDER CODES — MANDATORY, no exceptions:
+  M = male  |  F = female  |  N = neutral/unknown
+
+Examples (copy this exact format):
 - NARRATOR (neutral, warm storytelling voice)
 - SARAH CHEN (34F, warm but anxious, determined)
 - DETECTIVE WADE (52M, gruff, authoritative, world-weary)
 - OLD PRIEST (68M, gentle, fearful, hiding secrets)
+- SHERIFF ROY TATE (55M, commanding, southern drawl, weary)
+- DR. ELENA VASQUEZ (41F, sharp, clinical, hiding guilt)
 
 Rules for CHARACTER GUIDE:
 - Use ALL CAPS for character names
-- Include age and gender in format like 34F or 52M when known
+- ALWAYS include age number + M or F — e.g. 34F, 52M, 68M — NEVER omit the gender letter
+- If age unknown, use M or F alone — e.g. (M, gruff veteran) or (F, young nurse)
 - 4-8 characters maximum (including NARRATOR)
 - NARRATOR must always be listed first
+- Character names in [STORY] must EXACTLY match names listed here — no abbreviations
 
 [STORY]
 The complete story where EVERY line is tagged with [CHARACTER NAME]: prefix.
