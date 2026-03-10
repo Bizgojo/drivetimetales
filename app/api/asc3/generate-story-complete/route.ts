@@ -832,7 +832,7 @@ Now write the complete audio drama:`
         family: 'vibrant, inviting, warm tones, wonder and charm',
       }
       const visualStyle = Object.entries(genreVisual).find(([k]) => genre.toLowerCase().includes(k))?.[1] || 'cinematic, sophisticated, dramatic'
-      const dallePrompt = `Professional audiobook cover art for "${title}", a ${genre} audio drama. Style: ${visualStyle}. Painterly, high quality, no text, no letters, no words on image.`
+      const dallePrompt = `Square album cover art (1000x1000, like a vinyl record or music album) for an audio drama called "${title}". Genre: ${genre}. Style: ${visualStyle}. Full-bleed square composition, cinematic and striking, suitable for a streaming audio platform. No text, no letters, no words anywhere on the image. Think music album artwork, not book covers.`
 
       console.log('🎨 Generating cover image with DALL-E 3...')
 
