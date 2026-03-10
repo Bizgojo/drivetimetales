@@ -645,7 +645,9 @@ const ReviewEditStage: React.FC<{
   sunoCookie: string;
 }> = ({ story, onBack, onNext, onUpdate, sunoCookie }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const musicRef = useRef<HTMLAudioElement | null>(null);
+  const musicRef = useRef<HTMLAudioElement | null>(null);       // background music (story segments only)
+  const introMusicRef = useRef<HTMLAudioElement | null>(null);  // intro/outro dedicated music
+  const INTRO_OUTRO_MUSIC = 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/intro_outro_music.mp3';
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -671,6 +673,34 @@ const ReviewEditStage: React.FC<{
     return queue;
   };
 
+  // Switch music layers based on what section is playing
+  const applyMusicForLabel = (label: string) => {
+    const isIntroOutro = label.includes('Intro') || label.includes('Outro');
+    if (isIntroOutro) {
+      // Stop background music, play intro/outro music
+      musicRef.current?.pause();
+      if (musicRef.current) musicRef.current.currentTime = 0;
+      if (introMusicRef.current) {
+        introMusicRef.current.src = INTRO_OUTRO_MUSIC;
+        introMusicRef.current.loop = true;
+        introMusicRef.current.volume = musicVolume;
+        introMusicRef.current.play().catch(console.error);
+      }
+    } else {
+      // Stop intro/outro music, play background music
+      introMusicRef.current?.pause();
+      if (introMusicRef.current) introMusicRef.current.currentTime = 0;
+      if (musicRef.current && effectiveMusicUrl) {
+        if (!musicRef.current.src || !musicRef.current.src.includes('background_music') && !musicRef.current.src.includes('music-library')) {
+          musicRef.current.src = effectiveMusicUrl;
+        }
+        musicRef.current.loop = true;
+        musicRef.current.volume = musicVolume;
+        musicRef.current.play().catch(console.error);
+      }
+    }
+  };
+
   const startFullPlay = () => {
     const queue = buildFullPlayQueue();
     if (!queue.length || !audioRef.current) return;
@@ -680,14 +710,10 @@ const ReviewEditStage: React.FC<{
     setFullPlayMode(true);
     setFullPlayLabel(queue[0].label);
     audioRef.current.src = queue[0].url;
-    audioRef.current.play().then(() => setIsPlaying(true)).catch(console.error);
-    // Start background music
-    if (musicRef.current && effectiveMusicUrl) {
-      musicRef.current.src = effectiveMusicUrl;
-      musicRef.current.loop = true;
-      musicRef.current.volume = musicVolume;
-      musicRef.current.play().catch(console.error);
-    }
+    audioRef.current.play().then(() => {
+      setIsPlaying(true);
+      applyMusicForLabel(queue[0].label);
+    }).catch(console.error);
   };
 
   const stopFullPlay = () => {
@@ -695,11 +721,8 @@ const ReviewEditStage: React.FC<{
     setFullPlayLabel('');
     setIsPlaying(false);
     audioRef.current?.pause();
-    // Stop background music
-    if (musicRef.current) {
-      musicRef.current.pause();
-      musicRef.current.currentTime = 0;
-    }
+    if (musicRef.current) { musicRef.current.pause(); musicRef.current.currentTime = 0; }
+    if (introMusicRef.current) { introMusicRef.current.pause(); introMusicRef.current.currentTime = 0; }
   };
   
   const [introText, setIntroText] = useState(story.introText || '');
@@ -1032,6 +1055,7 @@ const ReviewEditStage: React.FC<{
 
           {/* Hidden music audio element */}
           <audio ref={musicRef} loop className="hidden" />
+          <audio ref={introMusicRef} loop className="hidden" />
 
           {/* Background Music Volume Control */}
           {effectiveMusicUrl && (
@@ -1075,6 +1099,7 @@ const ReviewEditStage: React.FC<{
                   const nextLabel = fullPlaySectionLabels.current[nextIndex]?.label || '';
                   setFullPlayLabel(nextLabel);
                   setCurrentTime(0);
+                  applyMusicForLabel(nextLabel);
                   if (audioRef.current) {
                     audioRef.current.src = nextUrl;
                     audioRef.current.load();
