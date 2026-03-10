@@ -1036,10 +1036,10 @@ export default function StoryCreationPage() {
       {/* Progress Indicator */}
       <div className="mb-8">
         <div className="flex items-center justify-between text-sm font-medium mb-2">
-          <div className={stage === 'create' ? 'text-orange-600 font-bold' : 'text-gray-600'}>1. Create</div>
-          <div className={stage === 'to-test' ? 'text-orange-600 font-bold' : 'text-gray-600'}>2. Stories</div>
-          <div className={stage === 'review' ? 'text-orange-600 font-bold' : 'text-gray-600'}>3. Review</div>
-          <div className={stage === 'publish' ? 'text-orange-600 font-bold' : 'text-gray-600'}>4. Publish</div>
+          <button onClick={() => setStage('create')} className={stage === 'create' ? 'text-orange-600 font-bold' : 'text-gray-500 hover:text-orange-500 cursor-pointer'}>1. Create</button>
+          <button onClick={() => stories.length > 0 && setStage('to-test')} className={stage === 'to-test' ? 'text-orange-600 font-bold' : stories.length > 0 ? 'text-gray-500 hover:text-orange-500 cursor-pointer' : 'text-gray-300 cursor-not-allowed'}>2. Stories</button>
+          <button onClick={() => selectedStory && setStage('review')} className={stage === 'review' ? 'text-orange-600 font-bold' : selectedStory ? 'text-gray-500 hover:text-orange-500 cursor-pointer' : 'text-gray-300 cursor-not-allowed'}>3. Review</button>
+          <button onClick={() => selectedStory && setStage('publish')} className={stage === 'publish' ? 'text-orange-600 font-bold' : selectedStory ? 'text-gray-500 hover:text-orange-500 cursor-pointer' : 'text-gray-300 cursor-not-allowed'}>4. Publish</button>
         </div>
         <div className="w-full bg-gray-300 rounded-full h-2">
           <div
