@@ -1,3 +1,6 @@
 /** @type {import('next').NextConfig} */
-module.exports = {}
-// force
+module.exports = {
+  experimental: {
+    serverComponentsExternalPackages: ['ws', 'bufferutil', 'utf-8-validate'],
+  },
+}
