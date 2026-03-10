@@ -15,10 +15,7 @@ export async function POST(req: NextRequest) {
     // Update story status to published
     const { error } = await supabase
       .from('stories')
-      .update({
-        status: 'published',
-        publishing_destinations: destinations,
-      })
+      .update({ status: 'published' })
       .eq('id', storyId)
 
     if (error) {
