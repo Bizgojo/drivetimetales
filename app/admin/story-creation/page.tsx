@@ -476,20 +476,22 @@ const CreateStoryStage: React.FC<{
 const StoriesToTestStage: React.FC<{
   stories: Story[];
   onSelect: (story: Story) => void;
-}> = ({ stories, onSelect }) => {
+  onDelete: (storyId: string) => void;
+}> = ({ stories, onSelect, onDelete }) => {
   const calculateDuration = (words: number) => {
     const minutes = Math.round(words / 150);
     return `${minutes} min`;
   };
 
+  const formatDate = (iso: string) => {
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' })
+      + ' at ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'America/New_York' }) + ' ET';
+  };
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-black">📖 Stories To Test</h2>
-        <span className="bg-orange-100 text-orange-800 text-sm font-semibold px-3 py-1 rounded-full">
-          {stories.length} waiting
-        </span>
-      </div>
+      <h2 className="text-2xl font-bold text-black">📖 Stories To Test</h2>
 
       {stories.length === 0 ? (
         <div className="bg-orange-50 p-12 rounded-lg text-center border border-orange-200">
@@ -514,11 +516,9 @@ const StoriesToTestStage: React.FC<{
                     {story.secondaryGenre2 && ` • ${story.secondaryGenre2}`}
                     {' '} • {calculateDuration(story.wordCount)} • {story.wordCount} words • By {story.authorName}
                   </p>
-                  <p className="text-xs text-gray-400 mt-1">
-                    🕐 {new Date(story.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} at {new Date(story.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
-                  </p>
+                  <p className="text-xs text-gray-400 mt-1">🕐 {formatDate(story.createdAt)}</p>
                 </div>
-                <div className="text-right">
+                <div className="flex flex-col items-end gap-2">
                   <span className={`px-2 py-1 rounded text-xs font-medium whitespace-nowrap ${
                     story.status === 'ready' ? 'bg-green-100 text-green-800' :
                     story.status === 'in_review' ? 'bg-blue-100 text-blue-800' :
@@ -526,6 +526,10 @@ const StoriesToTestStage: React.FC<{
                   }`}>
                     {story.status === 'ready' ? '✅ Ready' : story.status === 'in_review' ? '🔄 Reviewing' : '⏳ Pending'}
                   </span>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onDelete(story.id); }}
+                    className="text-xs text-red-400 hover:text-red-600 px-2 py-0.5 border border-red-200 hover:border-red-400 rounded"
+                  >🗑 Delete</button>
                 </div>
               </div>
             </button>
@@ -1097,7 +1101,9 @@ export default function StoryCreationPage() {
       <div className="mb-8">
         <div className="flex items-center justify-between text-sm font-medium mb-2">
           <button onClick={() => setStage('create')} className={stage === 'create' ? 'text-orange-600 font-bold' : 'text-gray-500 hover:text-orange-500 cursor-pointer'}>1. Create</button>
-          <button onClick={() => stories.length > 0 && setStage('to-test')} className={stage === 'to-test' ? 'text-orange-600 font-bold' : stories.length > 0 ? 'text-gray-500 hover:text-orange-500 cursor-pointer' : 'text-gray-300 cursor-not-allowed'}>2. Stories</button>
+          <button onClick={() => stories.length > 0 && setStage('to-test')} className={stage === 'to-test' ? 'text-orange-600 font-bold' : stories.length > 0 ? 'text-gray-500 hover:text-orange-500 cursor-pointer' : 'text-gray-300 cursor-not-allowed'}>
+            2. Stories {stories.length > 0 && <span className="ml-1 bg-orange-500 text-white text-xs rounded-full px-1.5 py-0.5">{stories.length}</span>}
+          </button>
           <button onClick={() => selectedStory && setStage('review')} className={stage === 'review' ? 'text-orange-600 font-bold' : selectedStory ? 'text-gray-500 hover:text-orange-500 cursor-pointer' : 'text-gray-300 cursor-not-allowed'}>3. Review</button>
           <button onClick={() => selectedStory && setStage('publish')} className={stage === 'publish' ? 'text-orange-600 font-bold' : selectedStory ? 'text-gray-500 hover:text-orange-500 cursor-pointer' : 'text-gray-300 cursor-not-allowed'}>4. Publish</button>
         </div>
@@ -1125,6 +1131,15 @@ export default function StoryCreationPage() {
         <StoriesToTestStage
           stories={stories}
           onSelect={handleSelectStory}
+          onDelete={async (id) => {
+            if (!confirm('Delete this story?')) return;
+            await fetch(`/api/asc3/update-story`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id, status: 'archived' }),
+            });
+            setStories(stories.filter(s => s.id !== id));
+          }}
         />
       )}
 
