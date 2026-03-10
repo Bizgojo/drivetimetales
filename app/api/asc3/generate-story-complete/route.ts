@@ -333,12 +333,14 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     const storyId = crypto.randomUUID()
+    const selectedModel = body.model || 'claude-sonnet-4-6'
 
     console.log('📝 ASC3 multi-voice generation request:', {
       storyId,
       concept: body.concept?.substring(0, 60),
       wordCount: body.wordCount,
       authorStyle: body.authorStyle,
+      model: selectedModel,
     })
 
     // ═══════════════════════════════════════════════════════════════
@@ -414,7 +416,7 @@ Now write the complete audio drama:`
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
+        model: selectedModel,
         max_tokens: 12000,
         messages: [{ role: 'user', content: claudePrompt }],
       }),

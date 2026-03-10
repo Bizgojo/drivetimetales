@@ -21,6 +21,7 @@ interface StoryPrompt {
   authorName: string;
   authorStyle: string;
   targetDestination: string;
+  useOpus?: boolean;
 }
 
 interface StorySegment {
@@ -238,6 +239,7 @@ const CreateStoryStage: React.FC<{
     authorName: '',
     authorStyle: '',
     targetDestination: 'app',
+    useOpus: false,
   });
 
   useEffect(() => {
@@ -479,8 +481,27 @@ const CreateStoryStage: React.FC<{
             : 'bg-gray-300 text-gray-600 cursor-not-allowed'
         }`}
       >
-        {isLoading ? '🔄 Generating with Claude...' : '🚀 Generate Story'}
+        {isLoading ? `🔄 Generating with ${form.useOpus ? 'Opus 4.6' : 'Sonnet 4.6'}...` : '🚀 Generate Story'}
       </button>
+
+      {/* Model Toggle */}
+      <div className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 mt-3">
+        <div>
+          <p className="text-sm font-medium text-black">
+            {form.useOpus ? '👑 Opus 4.6 — Top Quality' : '⚡ Sonnet 4.6 — Excellent Quality'}
+          </p>
+          <p className="text-xs text-gray-500 mt-0.5">
+            {form.useOpus ? '$0.11/story • ~90-120 sec • Best for flagship stories' : '$0.07/story • ~45-60 sec • Recommended for most stories'}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setForm(f => ({ ...f, useOpus: !f.useOpus }))}
+          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${form.useOpus ? 'bg-orange-500' : 'bg-gray-300'}`}
+        >
+          <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${form.useOpus ? 'translate-x-6' : 'translate-x-1'}`} />
+        </button>
+      </div>
     </div>
   );
 };
@@ -1171,6 +1192,7 @@ export default function StoryCreationPage() {
           series: prompt.series,
           episode: prompt.episode,
           targetDestination: prompt.targetDestination,
+          model: prompt.useOpus ? 'claude-opus-4-6' : 'claude-sonnet-4-6',
         }),
       });
 
