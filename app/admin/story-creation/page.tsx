@@ -588,11 +588,13 @@ const ReviewEditStage: React.FC<{
   onUpdate: (story: Story) => void;
 }> = ({ story, onBack, onNext, onUpdate }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const musicRef = useRef<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [currentSegment, setCurrentSegment] = useState<'intro' | 'story' | 'outro'>('story');
   const [currentChunkIndex, setCurrentChunkIndex] = useState(0);
+  const [musicVolume, setMusicVolume] = useState(0.2);
 
   // Full story playback mode
   const [fullPlayMode, setFullPlayMode] = useState(false);
@@ -622,6 +624,13 @@ const ReviewEditStage: React.FC<{
     setFullPlayLabel(queue[0].label);
     audioRef.current.src = queue[0].url;
     audioRef.current.play().then(() => setIsPlaying(true)).catch(console.error);
+    // Start background music
+    if (musicRef.current && story.backgroundMusicUrl) {
+      musicRef.current.src = story.backgroundMusicUrl;
+      musicRef.current.loop = true;
+      musicRef.current.volume = musicVolume;
+      musicRef.current.play().catch(console.error);
+    }
   };
 
   const stopFullPlay = () => {
@@ -629,6 +638,11 @@ const ReviewEditStage: React.FC<{
     setFullPlayLabel('');
     setIsPlaying(false);
     audioRef.current?.pause();
+    // Stop background music
+    if (musicRef.current) {
+      musicRef.current.pause();
+      musicRef.current.currentTime = 0;
+    }
   };
   
   const [introText, setIntroText] = useState(story.introText || '');
@@ -676,9 +690,22 @@ const ReviewEditStage: React.FC<{
     if (isPlaying) {
       audioRef.current.pause();
       setIsPlaying(false);
+      // Pause background music too
+      musicRef.current?.pause();
     } else {
       audioRef.current.play()
-        .then(() => setIsPlaying(true))
+        .then(() => {
+          setIsPlaying(true);
+          // Resume/start background music
+          if (musicRef.current && story.backgroundMusicUrl) {
+            if (!musicRef.current.src || musicRef.current.src === window.location.href) {
+              musicRef.current.src = story.backgroundMusicUrl;
+              musicRef.current.loop = true;
+            }
+            musicRef.current.volume = musicVolume;
+            musicRef.current.play().catch(console.error);
+          }
+        })
         .catch((err) => {
           console.error('Audio play error:', err);
           alert('Could not play audio. Check browser console for details.');
@@ -725,6 +752,11 @@ const ReviewEditStage: React.FC<{
     } finally {
       setSavingChanges(false);
     }
+  };
+
+  const getMusicTrackName = (url: string): string => {
+    const filename = url.split('/').pop()?.replace('.mp3', '').replace(/-/g, ' ') || 'Unknown Track';
+    return filename.replace(/\b\w/g, c => c.toUpperCase());
   };
 
   const audioUrl = getAudioUrl();
@@ -861,6 +893,35 @@ const ReviewEditStage: React.FC<{
               🔄 Start Over
             </button>
           </div>
+
+          {/* Hidden music audio element */}
+          <audio ref={musicRef} loop className="hidden" />
+
+          {/* Background Music Volume Control */}
+          {story.backgroundMusicUrl && (
+            <div className="mt-4 pt-4 border-t border-gray-200">
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium text-gray-700 whitespace-nowrap">🎵 Music Volume:</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={musicVolume}
+                  onChange={(e) => {
+                    const vol = parseFloat(e.target.value);
+                    setMusicVolume(vol);
+                    if (musicRef.current) musicRef.current.volume = vol;
+                  }}
+                  className="flex-1 accent-orange-500"
+                />
+                <span className="text-sm text-gray-600 w-10 text-right">{Math.round(musicVolume * 100)}%</span>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                🎵 Background: {getMusicTrackName(story.backgroundMusicUrl)}
+              </p>
+            </div>
+          )}
 
           {/* Hidden audio element */}
           <audio
@@ -1013,10 +1074,13 @@ const ReviewEditStage: React.FC<{
         </div>
       )}
 
-      {/* Background Music */}
+      {/* Background Music Info */}
       {story.backgroundMusicUrl && (
         <div className="bg-white border border-gray-300 rounded-lg p-4">
-          <h4 className="font-semibold text-black mb-3">🎵 Background Music</h4>
+          <h4 className="font-semibold text-black mb-2">🎵 Background Music</h4>
+          <p className="text-sm text-gray-600 mb-3">
+            {getMusicTrackName(story.backgroundMusicUrl)} — plays automatically under dialogue when you hit ▶ Play Full Story
+          </p>
           <audio
             controls
             src={story.backgroundMusicUrl}

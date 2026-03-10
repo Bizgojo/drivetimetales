@@ -327,6 +327,26 @@ async function uploadAudioToStorage(
   return publicUrl
 }
 
+// ─── Background Music Selection ──────────────────────────────────────────────
+
+function selectBackgroundMusic(tone: string, genre: string): string {
+  const t = (tone || '').toLowerCase()
+  const g = (genre || '').toLowerCase()
+
+  if (g.includes('horror') || t.includes('horrify') || t.includes('terrif'))
+    return 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/music-library/hollow-crown-of-cinders.mp3'
+  if (g.includes('sci') || g.includes('cosmic') || g.includes('get smarter'))
+    return 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/music-library/cosmic-bloom.mp3'
+  if (g.includes('drama') || t.includes('emotional') || t.includes('moving'))
+    return 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/music-library/heartbeats-between-chapters.mp3'
+  if (g.includes('comedy') || t.includes('light') || t.includes('warm') || t.includes('heartfelt'))
+    return 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/music-library/flicker-old-porch-light.mp3'
+  if (g.includes('adventure') || g.includes('western'))
+    return 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/music-library/dust-trail-omen.mp3'
+  // Default: thriller/suspense
+  return 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/music-library/midnight-red-5th-avenue.mp3'
+}
+
 // ─── Main Handler ─────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
@@ -766,7 +786,7 @@ Now write the complete audio drama:`
         storyAudioUrl,
         storyAudioUrls,
         outroAudioUrl,
-        backgroundMusicUrl: '',
+        backgroundMusicUrl: selectBackgroundMusic(body.tone, body.primaryGenre),
         coverImageUrl,
         sfxMetadata: [],
         _warnings: warnings,

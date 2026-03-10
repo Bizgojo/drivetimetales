@@ -1,0 +1,100 @@
+{
+  "tracks": [
+    {
+      "id": "midnight-red-5th-avenue",
+      "name": "Midnight Red On 5th Avenue",
+      "mood": ["thriller", "mystery", "noir", "suspenseful", "dark"],
+      "url": "https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/music-library/midnight-red-5th-avenue.mp3"
+    },
+    {
+      "id": "dust-trail-omen",
+      "name": "Dust Trail Omen",
+      "mood": ["noir", "thriller", "western", "dark", "suspenseful"],
+      "url": "https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/music-library/dust-trail-omen.mp3"
+    },
+    {
+      "id": "unanswered-corners",
+      "name": "Unanswered Corners",
+      "mood": ["thriller", "mystery", "detective", "noir"],
+      "url": "https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/music-library/unanswered-corners.mp3"
+    },
+    {
+      "id": "manhattan-oracle-bg",
+      "name": "Manhattan Oracle",
+      "mood": ["thriller", "mystery", "urban", "detective"],
+      "url": "https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/music-library/manhattan-oracle-bg.mp3"
+    },
+    {
+      "id": "hollow-crown-of-cinders",
+      "name": "Hollow Crown of Cinders",
+      "mood": ["horror", "dark", "haunting", "supernatural", "gothic"],
+      "url": "https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/music-library/hollow-crown-of-cinders.mp3"
+    },
+    {
+      "id": "rain-empty-district",
+      "name": "Rain in the Empty District",
+      "mood": ["horror", "dark", "mysterious", "gothic", "atmospheric"],
+      "url": "https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/music-library/rain-empty-district.mp3"
+    },
+    {
+      "id": "arcane-undercurrent",
+      "name": "Arcane Undercurrent",
+      "mood": ["horror", "supernatural", "dark", "mysterious", "tense"],
+      "url": "https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/music-library/arcane-undercurrent.mp3"
+    },
+    {
+      "id": "heartbeats-between-chapters",
+      "name": "Heartbeats Between Chapters",
+      "mood": ["drama", "emotional", "poignant", "literary"],
+      "url": "https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/music-library/heartbeats-between-chapters.mp3"
+    },
+    {
+      "id": "shimmering-threshold",
+      "name": "Shimmering Threshold",
+      "mood": ["drama", "emotional", "mysterious", "literary"],
+      "url": "https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/music-library/shimmering-threshold.mp3"
+    },
+    {
+      "id": "emotional-mysterious",
+      "name": "Emotional Mysterious",
+      "mood": ["drama", "emotional", "mysterious", "tense"],
+      "url": "https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/music-library/emotional-mysterious.mp3"
+    },
+    {
+      "id": "flicker-old-porch-light",
+      "name": "Flicker of an Old Porch Light",
+      "mood": ["heartfelt", "warm", "family", "nostalgic", "comedy"],
+      "url": "https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/music-library/flicker-old-porch-light.mp3"
+    },
+    {
+      "id": "jack-tales-underscore",
+      "name": "Jack Tales Underscore",
+      "mood": ["adventure", "folk", "warm", "heartfelt", "family"],
+      "url": "https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/music-library/jack-tales-underscore.mp3"
+    },
+    {
+      "id": "embers-to-daybreak",
+      "name": "Embers to Daybreak",
+      "mood": ["warm", "hopeful", "commuter", "uplifting"],
+      "url": "https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/music-library/embers-to-daybreak.mp3"
+    },
+    {
+      "id": "cosmic-bloom",
+      "name": "Cosmic Bloom",
+      "mood": ["sci-fi", "cosmic", "wonder", "educational", "epic"],
+      "url": "https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/music-library/cosmic-bloom.mp3"
+    },
+    {
+      "id": "signal-through-static",
+      "name": "Signal Through the Static",
+      "mood": ["sci-fi", "technology", "mystery", "futuristic"],
+      "url": "https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/music-library/signal-through-static.mp3"
+    },
+    {
+      "id": "embers-into-engines",
+      "name": "Embers Into Engines",
+      "mood": ["sci-fi", "epic", "historical", "journey"],
+      "url": "https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/music-library/embers-into-engines.mp3"
+    }
+  ]
+}
