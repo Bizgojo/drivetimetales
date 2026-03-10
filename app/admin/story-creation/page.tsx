@@ -1431,13 +1431,28 @@ export default function StoryCreationPage() {
         const data = await res.json();
         if (data.success && data.stories?.length > 0) {
           setStories(data.stories);
-          // Restore selected story from URL if any
-          const pendingId = sessionStorage.getItem('pendingStoryId');
+          // Restore selected story from URL — match by real UUID or by title fallback
+          const pendingId = sessionStorage.getItem('pendingStoryId') || new URLSearchParams(window.location.search).get('storyId');
           if (pendingId) {
-            const found = data.stories.find((s: Story) => s.id === pendingId);
-            if (found) setSelectedStory(found);
+            const found = data.stories.find((s: Story) => s.id === pendingId)
+              || data.stories.find((s: Story) => s.title === pendingId); // title fallback
+            if (found) {
+              setSelectedStory(found);
+              // Fix URL if it had a stale temp ID
+              if (pendingId !== found.id) {
+                const params = new URLSearchParams(window.location.search);
+                params.set('storyId', found.id);
+                window.history.replaceState({}, '', `?${params.toString()}`);
+              }
+            }
             sessionStorage.removeItem('pendingStoryId');
           }
+          // Also fix selectedStory if it's currently using a temp ID
+          setSelectedStory(prev => {
+            if (!prev) return prev;
+            const match = data.stories.find((s: Story) => s.title === prev.title && s.id !== prev.id);
+            return match ? { ...prev, ...match } : prev;
+          });
         }
       } catch (e) {
         console.warn('Could not load stories from DB:', e);
