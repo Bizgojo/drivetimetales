@@ -23,6 +23,20 @@ interface StoryPrompt {
   targetDestination: string;
 }
 
+interface StorySegment {
+  speaker: string;
+  text_preview: string;
+  audioUrl: string;
+  index: number;
+}
+
+interface CharacterGuideEntry {
+  name: string;
+  description: string;
+  voiceId: string;
+  voiceName: string;
+}
+
 interface Story {
   id: string;
   title: string;
@@ -45,6 +59,8 @@ interface Story {
   introAudioUrl?: string;
   storyAudioUrl?: string;
   storyAudioUrls?: string[];
+  storySegments?: StorySegment[];
+  characterGuide?: CharacterGuideEntry[];
   outroAudioUrl?: string;
   backgroundMusicUrl?: string;
   coverImageUrl?: string;
@@ -568,7 +584,25 @@ const ReviewEditStage: React.FC<{
     return `${minutes} min`;
   };
 
-  const getStoryChunks = () => story.storyAudioUrls?.length ? story.storyAudioUrls : (story.storyAudioUrl ? [story.storyAudioUrl] : []);
+  // Multi-voice: use storySegments if available, fall back to storyAudioUrls
+  const getStoryChunks = () => {
+    if (story.storySegments?.length) return story.storySegments.map(s => s.audioUrl);
+    if (story.storyAudioUrls?.length) return story.storyAudioUrls;
+    return story.storyAudioUrl ? [story.storyAudioUrl] : [];
+  };
+
+  const getCurrentSpeaker = () => {
+    if (currentSegment !== 'story') return null;
+    if (story.storySegments?.length) {
+      const seg = story.storySegments[currentChunkIndex];
+      if (seg) {
+        const charEntry = story.characterGuide?.find(c => c.name === seg.speaker);
+        const voiceName = charEntry?.voiceName || '';
+        return voiceName ? `${seg.speaker} — Voice: ${voiceName}` : seg.speaker;
+      }
+    }
+    return null;
+  };
 
   const getAudioUrl = () => {
     if (currentSegment === 'intro') return story.introAudioUrl || '';
@@ -578,8 +612,6 @@ const ReviewEditStage: React.FC<{
     }
     return story.outroAudioUrl || '';
   };
-
-  const getTotalChunks = () => currentSegment === 'story' ? getStoryChunks().length : 1;
 
   const handlePlayPause = () => {
     if (!audioRef.current) return;
@@ -638,6 +670,7 @@ const ReviewEditStage: React.FC<{
   };
 
   const audioUrl = getAudioUrl();
+  const currentSpeaker = getCurrentSpeaker();
 
   return (
     <div className="space-y-6">
@@ -653,6 +686,26 @@ const ReviewEditStage: React.FC<{
         </div>
         <button onClick={onBack} className="px-4 py-2 bg-gray-200 text-black rounded hover:bg-gray-300">← Back</button>
       </div>
+
+      {/* Character Guide */}
+      {story.characterGuide && story.characterGuide.length > 0 && (
+        <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+          <h3 className="font-semibold text-orange-900 mb-3">🎭 Character Voices</h3>
+          <div className="grid grid-cols-1 gap-2">
+            {story.characterGuide.map((char) => (
+              <div key={char.name} className="flex items-center justify-between bg-white rounded px-3 py-2 border border-orange-100">
+                <div>
+                  <span className="font-semibold text-black text-sm">{char.name}</span>
+                  {char.description && (
+                    <span className="text-gray-500 text-xs ml-2">({char.description})</span>
+                  )}
+                </div>
+                <span className="text-orange-600 text-sm font-medium">🎙️ {char.voiceName}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Audio Player */}
       {audioUrl && (
@@ -683,6 +736,9 @@ const ReviewEditStage: React.FC<{
                 }`}
               >
                 {seg.charAt(0).toUpperCase() + seg.slice(1)}
+                {seg === 'story' && story.storySegments?.length && (
+                  <span className="ml-1 text-xs opacity-75">({story.storySegments.length} segs)</span>
+                )}
               </button>
             ))}
           </div>
@@ -702,9 +758,20 @@ const ReviewEditStage: React.FC<{
                   style={{ width: duration > 0 ? `${(currentTime / duration) * 100}%` : '0%' }}
                 />
               </div>
-              <p className="text-xs text-gray-600 mt-1">
-                {Math.floor(currentTime)}s / {Math.floor(duration)}s
-              </p>
+              <div className="flex items-center justify-between mt-1">
+                <p className="text-xs text-gray-600">
+                  {Math.floor(currentTime)}s / {Math.floor(duration)}s
+                  {currentSegment === 'story' && getStoryChunks().length > 1 && (
+                    <span className="ml-2 text-gray-400">segment {currentChunkIndex + 1}/{getStoryChunks().length}</span>
+                  )}
+                </p>
+              </div>
+              {/* Now speaking indicator */}
+              {currentSpeaker && isPlaying && (
+                <p className="text-xs text-orange-600 font-medium mt-1">
+                  🎙️ [{currentSpeaker}]
+                </p>
+              )}
             </div>
             <button
               onClick={handleStartOver}
@@ -724,9 +791,10 @@ const ReviewEditStage: React.FC<{
               if (currentSegment === 'story') {
                 const chunks = getStoryChunks();
                 if (currentChunkIndex < chunks.length - 1) {
-                  // Auto-advance to next chunk
+                  // Auto-advance to next segment
                   setCurrentChunkIndex(prev => prev + 1);
-                  setTimeout(() => audioRef.current?.play().then(() => setIsPlaying(true)).catch(console.error), 100);
+                  setCurrentTime(0);
+                  setTimeout(() => audioRef.current?.play().then(() => setIsPlaying(true)).catch(console.error), 150);
                 } else {
                   setIsPlaying(false);
                   setCurrentChunkIndex(0);
@@ -1058,6 +1126,8 @@ export default function StoryCreationPage() {
         introAudioUrl: result.data.introAudioUrl,
         storyAudioUrl: result.data.storyAudioUrl,
         storyAudioUrls: result.data.storyAudioUrls || (result.data.storyAudioUrl ? [result.data.storyAudioUrl] : []),
+        storySegments: result.data.storySegments || [],
+        characterGuide: result.data.characterGuide || [],
         outroAudioUrl: result.data.outroAudioUrl,
         backgroundMusicUrl: result.data.backgroundMusicUrl,
         coverImageUrl: result.data.coverImageUrl,
