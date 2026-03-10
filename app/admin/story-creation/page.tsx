@@ -849,8 +849,8 @@ const ReviewEditStage: React.FC<{
                 }`}
               >
                 {seg.charAt(0).toUpperCase() + seg.slice(1)}
-                {seg === 'story' && story.storySegments?.length && (
-                  <span className="ml-1 text-xs opacity-75">({story.storySegments.length} segs)</span>
+                {seg === 'story' && (story.storySegments?.length ?? 0) > 0 && (
+                  <span className="ml-1 text-xs opacity-75">({story.storySegments!.length} segs)</span>
                 )}
               </button>
             ))}
