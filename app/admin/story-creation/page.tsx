@@ -572,6 +572,43 @@ const ReviewEditStage: React.FC<{
   const [duration, setDuration] = useState(0);
   const [currentSegment, setCurrentSegment] = useState<'intro' | 'story' | 'outro'>('story');
   const [currentChunkIndex, setCurrentChunkIndex] = useState(0);
+
+  // Full story playback mode
+  const [fullPlayMode, setFullPlayMode] = useState(false);
+  const fullPlayQueueRef = useRef<string[]>([]);
+  const fullPlayIndexRef = useRef(0);
+  const fullPlaySectionLabels = useRef<{url: string, label: string}[]>([]);
+  const [fullPlayLabel, setFullPlayLabel] = useState('');
+
+  const buildFullPlayQueue = () => {
+    const queue: {url: string, label: string}[] = [];
+    if (story.introAudioUrl) queue.push({ url: story.introAudioUrl, label: '🎙️ Intro' });
+    const chunks = story.storySegments?.length
+      ? story.storySegments.map((s, i) => ({ url: s.audioUrl, label: `🎭 ${s.speaker || 'Story'} (${i+1}/${story.storySegments!.length})` }))
+      : (story.storyAudioUrls?.length ? story.storyAudioUrls : story.storyAudioUrl ? [story.storyAudioUrl] : []).map((url, i, arr) => ({ url, label: `📖 Story (${i+1}/${arr.length})` }));
+    queue.push(...chunks);
+    if (story.outroAudioUrl) queue.push({ url: story.outroAudioUrl, label: '🎙️ Outro' });
+    return queue;
+  };
+
+  const startFullPlay = () => {
+    const queue = buildFullPlayQueue();
+    if (!queue.length || !audioRef.current) return;
+    fullPlaySectionLabels.current = queue;
+    fullPlayQueueRef.current = queue.map(q => q.url);
+    fullPlayIndexRef.current = 0;
+    setFullPlayMode(true);
+    setFullPlayLabel(queue[0].label);
+    audioRef.current.src = queue[0].url;
+    audioRef.current.play().then(() => setIsPlaying(true)).catch(console.error);
+  };
+
+  const stopFullPlay = () => {
+    setFullPlayMode(false);
+    setFullPlayLabel('');
+    setIsPlaying(false);
+    audioRef.current?.pause();
+  };
   
   const [introText, setIntroText] = useState(story.introText || '');
   const [outroText, setOutroText] = useState(story.outroText || '');
@@ -710,8 +747,31 @@ const ReviewEditStage: React.FC<{
       {/* Audio Player */}
       {audioUrl && (
         <div className="bg-white p-6 rounded-lg border border-gray-300">
-          <h3 className="font-semibold text-black mb-4">🎵 Audio Player</h3>
-          
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-black">🎵 Audio Player</h3>
+            {!fullPlayMode ? (
+              <button
+                onClick={startFullPlay}
+                className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold px-4 py-2 rounded-lg transition"
+              >
+                ▶ Play Full Story
+              </button>
+            ) : (
+              <button
+                onClick={stopFullPlay}
+                className="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white text-sm font-semibold px-4 py-2 rounded-lg transition"
+              >
+                ⏹ Stop
+              </button>
+            )}
+          </div>
+
+          {fullPlayMode && (
+            <div className="mb-3 px-3 py-2 bg-orange-50 border border-orange-200 rounded text-sm font-medium text-orange-800">
+              Now playing: {fullPlayLabel}
+            </div>
+          )}
+
           {/* Segment Selection */}
           <div className="flex gap-2 mb-4">
             {['intro', 'story', 'outro'].map((seg) => (
@@ -788,10 +848,27 @@ const ReviewEditStage: React.FC<{
             onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
             onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
             onEnded={() => {
-              if (currentSegment === 'story') {
+              if (fullPlayMode) {
+                // Full story mode: advance through queue
+                const nextIndex = fullPlayIndexRef.current + 1;
+                if (nextIndex < fullPlayQueueRef.current.length) {
+                  fullPlayIndexRef.current = nextIndex;
+                  const nextUrl = fullPlayQueueRef.current[nextIndex];
+                  const nextLabel = fullPlaySectionLabels.current[nextIndex]?.label || '';
+                  setFullPlayLabel(nextLabel);
+                  setCurrentTime(0);
+                  if (audioRef.current) {
+                    audioRef.current.src = nextUrl;
+                    audioRef.current.load();
+                    setTimeout(() => audioRef.current?.play().then(() => setIsPlaying(true)).catch(console.error), 150);
+                  }
+                } else {
+                  // Full story finished
+                  stopFullPlay();
+                }
+              } else if (currentSegment === 'story') {
                 const chunks = getStoryChunks();
                 if (currentChunkIndex < chunks.length - 1) {
-                  // Auto-advance to next segment
                   setCurrentChunkIndex(prev => prev + 1);
                   setCurrentTime(0);
                   setTimeout(() => audioRef.current?.play().then(() => setIsPlaying(true)).catch(console.error), 150);
