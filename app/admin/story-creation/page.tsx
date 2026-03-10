@@ -673,30 +673,70 @@ const ReviewEditStage: React.FC<{
     return queue;
   };
 
+  const crossfadeAdminRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Crossfade between two audio elements over durationMs
+  const crossfadeAudio = (outEl: HTMLAudioElement, inEl: HTMLAudioElement, inSrc: string, durationMs = 5000) => {
+    if (crossfadeAdminRef.current) clearInterval(crossfadeAdminRef.current);
+    const startVol = outEl.volume || musicVolume;
+    inEl.src = inSrc;
+    inEl.loop = true;
+    inEl.volume = 0;
+    inEl.play().catch(console.error);
+    let step = 0;
+    const steps = 50;
+    crossfadeAdminRef.current = setInterval(() => {
+      step++;
+      const p = step / steps;
+      outEl.volume = Math.max(0, startVol * (1 - p));
+      inEl.volume = Math.min(musicVolume, musicVolume * p);
+      if (step >= steps) {
+        clearInterval(crossfadeAdminRef.current!);
+        outEl.pause();
+        outEl.currentTime = 0;
+        outEl.volume = musicVolume;
+      }
+    }, durationMs / steps);
+  };
+
   // Switch music layers based on what section is playing
+  const prevSectionRef = useRef<string>('');
   const applyMusicForLabel = (label: string) => {
     const isIntroOutro = label.includes('Intro') || label.includes('Outro');
+    const wasIntroOutro = prevSectionRef.current.includes('Intro') || prevSectionRef.current.includes('Outro');
+    const prevLabel = prevSectionRef.current;
+    prevSectionRef.current = label;
+
+    const needsCrossfade = prevLabel !== '' && (
+      (!wasIntroOutro && isIntroOutro) || // story→outro
+      (wasIntroOutro && !isIntroOutro)    // intro→story
+    );
+
     if (isIntroOutro) {
-      // Stop background music, play intro/outro music
-      musicRef.current?.pause();
-      if (musicRef.current) musicRef.current.currentTime = 0;
-      if (introMusicRef.current) {
-        introMusicRef.current.src = INTRO_OUTRO_MUSIC;
-        introMusicRef.current.loop = true;
-        introMusicRef.current.volume = musicVolume;
-        introMusicRef.current.play().catch(console.error);
+      if (needsCrossfade && musicRef.current && introMusicRef.current) {
+        crossfadeAudio(musicRef.current, introMusicRef.current, INTRO_OUTRO_MUSIC);
+      } else {
+        musicRef.current?.pause();
+        if (introMusicRef.current) {
+          introMusicRef.current.src = INTRO_OUTRO_MUSIC;
+          introMusicRef.current.loop = true;
+          introMusicRef.current.volume = musicVolume;
+          introMusicRef.current.play().catch(console.error);
+        }
       }
     } else {
-      // Stop intro/outro music, play background music
-      introMusicRef.current?.pause();
-      if (introMusicRef.current) introMusicRef.current.currentTime = 0;
-      if (musicRef.current && effectiveMusicUrl) {
-        if (!musicRef.current.src || !musicRef.current.src.includes('background_music') && !musicRef.current.src.includes('music-library')) {
-          musicRef.current.src = effectiveMusicUrl;
+      if (needsCrossfade && introMusicRef.current && musicRef.current && effectiveMusicUrl) {
+        crossfadeAudio(introMusicRef.current, musicRef.current, effectiveMusicUrl);
+      } else {
+        introMusicRef.current?.pause();
+        if (musicRef.current && effectiveMusicUrl) {
+          if (!musicRef.current.src || musicRef.current.paused) {
+            musicRef.current.src = effectiveMusicUrl;
+          }
+          musicRef.current.loop = true;
+          musicRef.current.volume = musicVolume;
+          musicRef.current.play().catch(console.error);
         }
-        musicRef.current.loop = true;
-        musicRef.current.volume = musicVolume;
-        musicRef.current.play().catch(console.error);
       }
     }
   };

@@ -21,8 +21,10 @@ function PlayerContent() {
   const storyId = params.id as string
   const audioRef = useRef<HTMLAudioElement>(null)
   const musicRef = useRef<HTMLAudioElement>(null)
+  const crossfadeTimer = useRef<NodeJS.Timeout | null>(null)
   const saveTimer = useRef<NodeJS.Timeout | null>(null)
   const resumeRef = useRef(0)
+  const currentQueueType = useRef<'intro' | 'story' | 'outro'>('intro')
 
   const [story, setStory] = useState<Story & { intro_audio_url?: string; outro_audio_url?: string } | null>(null)
   const [loading, setLoading] = useState(true)
@@ -97,15 +99,60 @@ function PlayerContent() {
     applyMusic(queue[0].type)
   }, [isASC3, queue])
 
-  const applyMusic = (type: 'intro' | 'story' | 'outro') => {
+  // Smooth crossfade between two music sources over durationMs
+  const crossfadeTo = (newSrc: string, durationMs = 5000) => {
     if (!musicRef.current) return
-    if (type === 'intro' || type === 'outro') {
-      musicRef.current.src = introOutroMusicUrl
-    } else {
-      musicRef.current.src = backgroundMusicUrl || introOutroMusicUrl
+    if (crossfadeTimer.current) clearInterval(crossfadeTimer.current)
+
+    const outgoing = musicRef.current
+    const startVol = outgoing.volume || musicVolume
+
+    // Create a temporary audio element for the incoming track
+    const incoming = new Audio(newSrc)
+    incoming.loop = true
+    incoming.volume = 0
+    incoming.play().catch(() => {})
+
+    const steps = 50
+    const stepMs = durationMs / steps
+    let step = 0
+
+    crossfadeTimer.current = setInterval(() => {
+      step++
+      const progress = step / steps
+      outgoing.volume = Math.max(0, startVol * (1 - progress))
+      incoming.volume = Math.min(musicVolume, musicVolume * progress)
+
+      if (step >= steps) {
+        clearInterval(crossfadeTimer.current!)
+        outgoing.pause()
+        // Swap incoming into musicRef
+        musicRef.current = incoming
+        outgoing.src = ''
+      }
+    }, stepMs)
+  }
+
+  const applyMusic = (type: 'intro' | 'story' | 'outro', crossfade = false) => {
+    const newSrc = (type === 'story' && backgroundMusicUrl) ? backgroundMusicUrl : introOutroMusicUrl
+    if (!newSrc || !musicRef.current) return
+
+    const prevType = currentQueueType.current
+    currentQueueType.current = type
+
+    // Crossfade at section boundaries: intro→story and story→outro
+    const needsCrossfade = crossfade && (
+      (prevType === 'intro' && type === 'story') ||
+      (prevType === 'story' && type === 'outro')
+    )
+
+    if (needsCrossfade) {
+      crossfadeTo(newSrc, 5000) // 5-second crossfade
+    } else if (!musicRef.current.src || musicRef.current.paused) {
+      musicRef.current.src = newSrc
+      musicRef.current.loop = true
+      musicRef.current.volume = musicVolume
     }
-    musicRef.current.loop = true
-    musicRef.current.volume = musicVolume
   }
 
   const advanceQueue = () => {
@@ -114,7 +161,7 @@ function PlayerContent() {
       setQueueIndex(nextIndex)
       const next = queue[nextIndex]
       setSectionLabel(next.label)
-      applyMusic(next.type)
+      applyMusic(next.type, true) // true = allow crossfade
       if (audioRef.current) {
         audioRef.current.src = next.url
         audioRef.current.load()
@@ -124,11 +171,19 @@ function PlayerContent() {
         }, 100)
       }
     } else {
-      // Story finished
+      // Story finished — fade out music then navigate
+      if (musicRef.current) {
+        const vol = musicRef.current.volume
+        let step = 0
+        const fadeOut = setInterval(() => {
+          step++
+          if (musicRef.current) musicRef.current.volume = Math.max(0, vol * (1 - step / 20))
+          if (step >= 20) { clearInterval(fadeOut); musicRef.current?.pause() }
+        }, 150)
+      }
       setIsPlaying(false)
-      musicRef.current?.pause()
       saveProgress(duration, true)
-      setTimeout(() => router.push('/library'), 1500)
+      setTimeout(() => router.push('/library'), 3000)
     }
   }
 
@@ -153,8 +208,15 @@ function PlayerContent() {
       audioRef.current.play().then(() => {
         setIsPlaying(true)
         if (musicRef.current && musicRef.current.src) {
-          musicRef.current.volume = musicVolume
+          // Fade music in from 0 over 2 seconds
+          musicRef.current.volume = 0
           musicRef.current.play().catch(() => {})
+          let step = 0
+          const fadeIn = setInterval(() => {
+            step++
+            if (musicRef.current) musicRef.current.volume = Math.min(musicVolume, musicVolume * (step / 20))
+            if (step >= 20) clearInterval(fadeIn)
+          }, 100)
         }
       }).catch(() => {})
     }
