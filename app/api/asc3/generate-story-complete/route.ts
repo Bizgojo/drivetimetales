@@ -523,24 +523,43 @@ Now write the complete audio drama:`
 
     console.log('🤖 Calling Claude for multi-voice script...')
 
-    const claudeHttpResponse = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: selectedModel,
-        max_tokens: 12000,
-        messages: [{ role: 'user', content: claudePrompt }],
-      }),
-    })
-
-    if (!claudeHttpResponse.ok) {
+    // Claude call with retry for rate limits (429) and overload (529)
+    let claudeHttpResponse: Response | null = null
+    let lastClaudeError = ''
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      if (attempt > 1) {
+        const waitSec = attempt === 2 ? 15 : 30
+        console.log(`⏳ Claude rate limit — waiting ${waitSec}s before retry ${attempt}/3...`)
+        await new Promise(r => setTimeout(r, waitSec * 1000))
+      }
+      claudeHttpResponse = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: selectedModel,
+          max_tokens: 12000,
+          messages: [{ role: 'user', content: claudePrompt }],
+        }),
+      })
+      if (claudeHttpResponse.ok) break
       const errBody = await claudeHttpResponse.json()
-      console.error('Claude API error:', errBody)
-      return NextResponse.json({ success: false, error: `Claude API error: ${JSON.stringify(errBody.error)}` }, { status: 500 })
+      lastClaudeError = errBody?.error?.message || errBody?.error?.type || JSON.stringify(errBody)
+      const status = claudeHttpResponse.status
+      console.error(`Claude attempt ${attempt} failed (${status}):`, lastClaudeError)
+      // Only retry on rate limit / overload
+      if (status !== 429 && status !== 529) break
+    }
+
+    if (!claudeHttpResponse || !claudeHttpResponse.ok) {
+      const isRateLimit = claudeHttpResponse?.status === 429 || claudeHttpResponse?.status === 529
+      const userMsg = isRateLimit
+        ? 'Claude is rate limited (too many requests). Please wait 30 seconds and try again.'
+        : `Claude API error: ${lastClaudeError}`
+      return NextResponse.json({ success: false, error: userMsg }, { status: 500 })
     }
 
     const claudeResult = await claudeHttpResponse.json()

@@ -1526,9 +1526,13 @@ export default function StoryCreationPage() {
       alert(`✅ Story Generated!\n\n"${result.data.title}"\n${result.data.wordCount} words\nAudio, music, and cover generated!`);
       
       navigateToStage('to-test');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error generating story:', error);
-      alert('❌ Failed to generate story. Please try again.');
+      const msg = error?.message || 'Unknown error'
+      const isTimeout = msg.includes('timeout') || msg.includes('fetch')
+      alert(isTimeout
+        ? '❌ Request timed out. The server may still be generating — check Tab 2 in 30 seconds before trying again.'
+        : `❌ Generation failed: ${msg}`)
     } finally {
       setIsGenerating(false);
     }
