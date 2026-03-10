@@ -410,8 +410,8 @@ Now write the complete audio drama:`
     console.log('🤖 Calling Claude for multi-voice script...')
 
     const claudeResponse = await anthropic.messages.create({
-      model: 'claude-opus-4-1-20250805',
-      max_tokens: 6000,
+      model: 'claude-3-5-sonnet-20241022',
+      max_tokens: 12000,
       messages: [{ role: 'user', content: claudePrompt }],
     })
 
