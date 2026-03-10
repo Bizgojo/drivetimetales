@@ -43,6 +43,11 @@ export async function GET(req: NextRequest) {
       const storyAudioUrl = row.audio_url || row.story_audio_url || ''
 
       // List segment files from storage to reconstruct multi-voice segments
+      // IMPORTANT: Storage folder ID may differ from DB row ID — extract from audio URL
+      const audioUrlForPath = row.story_audio_url || row.intro_audio_url || row.outro_audio_url || ''
+      const storageIdMatch = audioUrlForPath.match(/asc3\/([^/]+)\//)
+      const storageFolderId = storageIdMatch ? storageIdMatch[1] : row.id
+
       let storySegments: { audioUrl: string; speaker: string; index: number }[] = []
       try {
         const listRes = await fetch(
@@ -54,7 +59,7 @@ export async function GET(req: NextRequest) {
               Authorization: `Bearer ${SERVICE_KEY}`,
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ prefix: `asc3/${row.id}/`, limit: 200, sortBy: { column: 'name', order: 'asc' } }),
+            body: JSON.stringify({ prefix: `asc3/${storageFolderId}/`, limit: 200, sortBy: { column: 'name', order: 'asc' } }),
           }
         )
         if (listRes.ok) {
@@ -68,7 +73,7 @@ export async function GET(req: NextRequest) {
             storySegments = segmentFiles.map((f, i) => {
               const speaker = characterGuide[i]?.character || `Part ${i + 1}`
               return {
-                audioUrl: `${BASE_STORAGE}/asc3/${row.id}/${f.name}`,
+                audioUrl: `${BASE_STORAGE}/asc3/${storageFolderId}/${f.name}`,
                 speaker,
                 index: i,
               }
@@ -94,12 +99,12 @@ export async function GET(req: NextRequest) {
         status: row.status || 'pending',
         createdAt: row.created_at,
         generatedScript: row.script || '',
-        introAudioUrl: row.intro_audio_url || '',
+        introAudioUrl: row.intro_audio_url || `${BASE_STORAGE}/asc3/${storageFolderId}/intro.mp3`,
         storyAudioUrl,
         storyAudioUrls: storySegments.length ? storySegments.map(s => s.audioUrl) : (storyAudioUrl ? [storyAudioUrl] : []),
         storySegments,
         characterGuide,
-        outroAudioUrl: row.outro_audio_url || '',
+        outroAudioUrl: row.outro_audio_url || `${BASE_STORAGE}/asc3/${storageFolderId}/outro.mp3`,
         backgroundMusicUrl: '',
         coverImageUrl: row.cover_url || row.cover_image_url || '',
         sfxMetadata: [],
