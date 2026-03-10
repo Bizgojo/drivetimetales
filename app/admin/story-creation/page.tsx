@@ -625,8 +625,8 @@ const ReviewEditStage: React.FC<{
     audioRef.current.src = queue[0].url;
     audioRef.current.play().then(() => setIsPlaying(true)).catch(console.error);
     // Start background music
-    if (musicRef.current && story.backgroundMusicUrl) {
-      musicRef.current.src = story.backgroundMusicUrl;
+    if (musicRef.current && effectiveMusicUrl) {
+      musicRef.current.src = effectiveMusicUrl;
       musicRef.current.loop = true;
       musicRef.current.volume = musicVolume;
       musicRef.current.play().catch(console.error);
@@ -697,9 +697,9 @@ const ReviewEditStage: React.FC<{
         .then(() => {
           setIsPlaying(true);
           // Resume/start background music
-          if (musicRef.current && story.backgroundMusicUrl) {
+          if (musicRef.current && effectiveMusicUrl) {
             if (!musicRef.current.src || musicRef.current.src === window.location.href) {
-              musicRef.current.src = story.backgroundMusicUrl;
+              musicRef.current.src = effectiveMusicUrl;
               musicRef.current.loop = true;
             }
             musicRef.current.volume = musicVolume;
@@ -758,6 +758,21 @@ const ReviewEditStage: React.FC<{
     const filename = url.split('/').pop()?.replace('.mp3', '').replace(/-/g, ' ') || 'Unknown Track';
     return filename.replace(/\b\w/g, c => c.toUpperCase());
   };
+
+  // Fallback: pick music by genre if story doesn't have one set
+  const BASE = 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/music-library';
+  const getEffectiveMusicUrl = (): string => {
+    if (story.backgroundMusicUrl) return story.backgroundMusicUrl;
+    const g = (story.primaryGenre || '').toLowerCase();
+    const t = (story.tone || '').toLowerCase();
+    if (g.includes('horror') || t.includes('horrify')) return `${BASE}/hollow-crown-of-cinders.mp3`;
+    if (g.includes('sci') || g.includes('cosmic') || g.includes('get smarter')) return `${BASE}/cosmic-bloom.mp3`;
+    if (g.includes('drama') || t.includes('emotional')) return `${BASE}/heartbeats-between-chapters.mp3`;
+    if (g.includes('comedy') || t.includes('warm') || t.includes('heartfelt')) return `${BASE}/flicker-old-porch-light.mp3`;
+    if (g.includes('adventure') || g.includes('western')) return `${BASE}/dust-trail-omen.mp3`;
+    return `${BASE}/midnight-red-5th-avenue.mp3`; // default: thriller
+  };
+  const effectiveMusicUrl = getEffectiveMusicUrl();
 
   const audioUrl = getAudioUrl();
   const currentSpeaker = getCurrentSpeaker();
@@ -898,7 +913,7 @@ const ReviewEditStage: React.FC<{
           <audio ref={musicRef} loop className="hidden" />
 
           {/* Background Music Volume Control */}
-          {story.backgroundMusicUrl && (
+          {effectiveMusicUrl && (
             <div className="mt-4 pt-4 border-t border-gray-200">
               <div className="flex items-center gap-3">
                 <span className="text-sm font-medium text-gray-700 whitespace-nowrap">🎵 Music Volume:</span>
@@ -918,7 +933,7 @@ const ReviewEditStage: React.FC<{
                 <span className="text-sm text-gray-600 w-10 text-right">{Math.round(musicVolume * 100)}%</span>
               </div>
               <p className="text-xs text-gray-500 mt-1">
-                🎵 Background: {getMusicTrackName(story.backgroundMusicUrl)}
+                🎵 Background: {getMusicTrackName(effectiveMusicUrl)}
               </p>
             </div>
           )}
@@ -1075,15 +1090,15 @@ const ReviewEditStage: React.FC<{
       )}
 
       {/* Background Music Info */}
-      {story.backgroundMusicUrl && (
+      {effectiveMusicUrl && (
         <div className="bg-white border border-gray-300 rounded-lg p-4">
           <h4 className="font-semibold text-black mb-2">🎵 Background Music</h4>
           <p className="text-sm text-gray-600 mb-3">
-            {getMusicTrackName(story.backgroundMusicUrl)} — plays automatically under dialogue when you hit ▶ Play Full Story
+            {getMusicTrackName(effectiveMusicUrl)} — plays automatically under dialogue when you hit ▶ Play Full Story
           </p>
           <audio
             controls
-            src={story.backgroundMusicUrl}
+            src={effectiveMusicUrl}
             className="w-full"
           />
         </div>
