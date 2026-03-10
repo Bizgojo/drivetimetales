@@ -220,7 +220,7 @@ function parseStoryIntoSegments(
     let voiceInfo = voiceMap.get(currentSpeaker)
     if (!voiceInfo) {
       // Try partial match: find a voiceMap key that contains the speaker or vice versa
-      for (const [key, val] of voiceMap.entries()) {
+      for (const [key, val] of Array.from(voiceMap.entries())) {
         if (key.includes(currentSpeaker) || currentSpeaker.includes(key) ||
             key.split(' ').some(w => w.length > 3 && currentSpeaker.includes(w))) {
           voiceInfo = val
