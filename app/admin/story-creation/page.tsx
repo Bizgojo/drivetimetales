@@ -813,7 +813,7 @@ const ReviewEditStage: React.FC<{
   };
 
   const handleRegenerateSunoMusic = async () => {
-    if (!sunoCookie || isRegeneratingMusic) return
+    if (isRegeneratingMusic) return
     setIsRegeneratingMusic(true)
     try {
       // Extract sunoPrompt from script
@@ -1190,7 +1190,7 @@ const ReviewEditStage: React.FC<{
             <h4 className="font-semibold text-black">🎵 Background Music</h4>
             <button
               onClick={handleRegenerateSunoMusic}
-              disabled={!sunoCookie || isRegeneratingMusic}
+              disabled={isRegeneratingMusic}
               className="px-3 py-1 bg-purple-600 text-white rounded text-sm hover:bg-purple-700 disabled:opacity-40"
             >
               {isRegeneratingMusic ? '⏳ Generating...' : '🎵 Regenerate with Suno'}
