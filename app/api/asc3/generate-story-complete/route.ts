@@ -912,6 +912,7 @@ Now write the complete audio drama:`
       outro_audio_url: outroAudioUrl || null,
       cover_image_url: coverImageUrl || null,
       status: 'pending',
+      is_hidden: true,
       character_guide: characterGuideResult.length > 0 ? JSON.stringify(characterGuideResult) : null,
     }
 
