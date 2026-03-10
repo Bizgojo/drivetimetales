@@ -81,82 +81,87 @@ async function generateSunoTrack(prompt, title, storyId) {
     } catch (e) { /* not JSON */ }
   })
 
-  await page.goto('https://suno.com/create', { waitUntil: 'networkidle', timeout: 30000 })
-  await page.waitForTimeout(3000)
+  // Navigate to suno.com to establish authenticated context
+  await page.goto('https://suno.com', { waitUntil: 'networkidle', timeout: 30000 })
+  await page.waitForTimeout(2000)
 
-  // Try to fill the prompt — use whichever input is visible first
-  const inputSelectors = [
-    'textarea[placeholder*="Write some lyrics"]',
-    'textarea[placeholder*="Describe the sound"]',
-    'textarea[placeholder*="prompt"]',
-    'textarea',
-  ]
-
-  let filled = false
-  for (const sel of inputSelectors) {
+  // Call Suno API directly from browser JS context — auth cookies are already set
+  console.log('🎵 Calling Suno API from browser context...')
+  const genResult = await page.evaluate(async (prompt) => {
     try {
-      const el = page.locator(sel).first()
-      const isVisible = await el.isVisible().catch(() => false)
-      if (isVisible) {
-        await el.click()
-        await el.fill(cleanPrompt)
-        console.log(`✏️ Filled input: ${sel}`)
-        filled = true
+      // Get session token from Clerk
+      const sessionRes = await fetch('https://studio-api.prod.suno.com/api/session', {
+        credentials: 'include',
+      })
+      const sessionData = await sessionRes.json()
+      const userId = sessionData?.user?.id
+
+      // Generate music
+      const res = await fetch('https://studio-api.prod.suno.com/api/generate/v2/', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt,
+          mv: 'chirp-v3-5',
+          title: 'Background Music',
+          tags: 'instrumental cinematic atmospheric',
+          make_instrumental: true,
+          wait_audio: false,
+        }),
+      })
+      const text = await res.text()
+      return { status: res.status, body: text.slice(0, 500), userId }
+    } catch (e) {
+      return { error: String(e) }
+    }
+  }, cleanPrompt)
+
+  console.log('Generate result:', JSON.stringify(genResult))
+
+  if (!genResult || genResult.error || genResult.status >= 400) {
+    throw new Error(`Suno browser API failed: ${JSON.stringify(genResult)}`)
+  }
+
+  // Parse clip IDs
+  const genData = JSON.parse(genResult.body)
+  const clipIds: string[] = (genData.clips || []).map((c: any) => c.id)
+  if (!clipIds.length) throw new Error('No clip IDs returned from Suno')
+  console.log(`⏳ Waiting for ${clipIds.length} clips: ${clipIds.join(', ')}`)
+
+  // Poll via browser fetch (auth cookies still active)
+  let audioUrl = null
+  const idsParam = clipIds.join('%2C')
+  for (let attempt = 0; attempt < 48; attempt++) {
+    await page.waitForTimeout(5000)
+    process.stdout.write(`\r⏳ Polling... ${(attempt + 1) * 5}s`)
+
+    const pollResult = await page.evaluate(async (ids) => {
+      try {
+        const res = await fetch(`https://studio-api.prod.suno.com/api/feed/?ids=${ids}`, {
+          credentials: 'include',
+        })
+        return await res.json()
+      } catch (e) { return null }
+    }, idsParam)
+
+    if (Array.isArray(pollResult)) {
+      const ready = pollResult.filter((c: any) => c.audio_url && c.status === 'complete')
+      if (ready.length > 0) {
+        audioUrl = ready[0].audio_url
+        console.log(`\n✅ Track ready: ${ready[0].title || ready[0].id}`)
         break
       }
-    } catch (e) { /* try next */ }
-  }
-
-  if (!filled) {
-    // Last resort: force fill first textarea
-    await page.locator('textarea').first().evaluate((el, val) => {
-      el.value = val
-      el.dispatchEvent(new Event('input', { bubbles: true }))
-    }, cleanPrompt)
-    console.log('✏️ Force-filled textarea')
-  }
-
-  await page.waitForTimeout(500)
-
-  // Try clicking Instrumental toggle (if it exists and lyrics aren't needed)
-  try {
-    const instrBtn = page.getByRole('button', { name: 'Instrumental' })
-    if (await instrBtn.isVisible({ timeout: 2000 })) {
-      await instrBtn.click()
-      await page.waitForTimeout(500)
     }
-  } catch (e) { /* not critical */ }
-
-  // Click Create — use force to bypass panel overlay interception
-  try {
-    await page.getByRole('button', { name: 'Create' }).first().click({ force: true, timeout: 10000 })
-    console.log('✅ Clicked Create button')
-  } catch (e) {
-    // Fallback: use JS click
-    console.log('⚠️ Force click failed, trying JS click...')
-    await page.evaluate(() => {
-      const btns = Array.from(document.querySelectorAll('button, [role="button"]'))
-      const createBtn = btns.find(b => b.textContent?.trim() === 'Create')
-      if (createBtn) (createBtn as HTMLElement).click()
-    })
-    console.log('✅ JS-clicked Create button')
-  }
-  console.log('🎵 Generation started, waiting up to 4 minutes...')
-
-  // Poll for completion (max 4 min)
-  const startTime = Date.now()
-  while (!capturedAudioUrl && Date.now() - startTime < 240000) {
-    await page.waitForTimeout(5000)
-    const elapsed = Math.round((Date.now() - startTime) / 1000)
-    process.stdout.write(`\r⏳ Waiting... ${elapsed}s`)
   }
   console.log('')
 
   await browser.close()
 
-  if (!capturedAudioUrl) {
-    throw new Error('Suno generation timed out or no audio URL captured')
+  if (!audioUrl) {
+    throw new Error('Suno generation timed out after 4 minutes')
   }
+  const capturedAudioUrl = audioUrl
 
   // Download the track
   console.log('⬇️ Downloading track...')
