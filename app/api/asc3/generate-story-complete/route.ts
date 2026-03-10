@@ -82,7 +82,10 @@ const FEMALE_NAMES = new Set(['mary','patricia','linda','barbara','elizabeth','j
 
 function parseGender(desc: string, charName?: string): 'male' | 'female' | 'neutral' | 'unknown' {
   const lower = desc.toLowerCase()
-  // Match patterns like "34F", "52M"
+  // Spelled-out gender (new format): starts with "Female," or "Male,"
+  if (/^female[,\s]/i.test(lower) || lower.startsWith('female')) return 'female'
+  if (/^male[,\s]/i.test(lower) || lower.startsWith('male')) return 'male'
+  // Legacy patterns like "34F", "52M" and keywords
   if (/\b\d+f\b/i.test(lower) || lower.includes('female') || lower.includes('woman') || lower.includes('girl') || lower.includes('she/her') || lower.includes('mrs.') || lower.includes('miss ') || lower.includes('ms.')) return 'female'
   if (/\b\d+m\b/i.test(lower) || lower.includes('male') || lower.includes('man') || lower.includes('boy') || lower.includes('he/him') || lower.includes('guy') || lower.includes('mr.') || lower.includes('father ') || lower.includes('sheriff') || lower.includes('detective') || lower.includes('reverend')) return 'male'
   if (lower.includes('neutral') || lower.includes('androgynous') || lower.includes('they/them')) return 'neutral'
@@ -181,6 +184,18 @@ function matchVoices(
       // Age match (+30 for correct age bracket)
       const voiceAgeBracket = v.age.includes('young') ? 'young' : v.age.includes('old') ? 'old' : 'middle'
       if (char.age !== 'unknown' && voiceAgeBracket === char.age) score += 30
+
+      // Voice direction keywords from description (+10 each match)
+      const desc = (char.description || '').toLowerCase()
+      const vDesc = v.description.toLowerCase()
+      if (desc.includes('deep') && (vDesc.includes('deep') || vDesc.includes('dominant') || vDesc.includes('firm') || vDesc.includes('resonant'))) score += 10
+      if (desc.includes('gravelly') || desc.includes('gruff') || desc.includes('raspy')) score += (vDesc.includes('husky') || vDesc.includes('gruff') || vDesc.includes('trickster') ? 10 : 0)
+      if (desc.includes('warm') && vDesc.includes('warm')) score += 10
+      if (desc.includes('bright') || desc.includes('young') || desc.includes('eager')) score += (v.age === 'young' ? 10 : 0)
+      if (desc.includes('british') || desc.includes('english')) score += (v.accent === 'british' ? 15 : 0)
+      if (desc.includes('southern') || desc.includes('cajun') || desc.includes('drawl')) score += (v.accent === 'american' && v.age !== 'young' ? 8 : 0)
+      if (desc.includes('smooth') || desc.includes('trustworthy') || desc.includes('charming')) score += (vDesc.includes('smooth') || vDesc.includes('trustworthy') || vDesc.includes('charming') ? 10 : 0)
+      if (desc.includes('menacing') || desc.includes('cold') || desc.includes('calculating')) score += (vDesc.includes('dominant') || vDesc.includes('firm') || vDesc.includes('fierce') ? 10 : 0)
 
       return { voice: v, score }
     })
@@ -516,27 +531,30 @@ ${genreInstructions}
 A unique, compelling title for the story
 
 [CHARACTER GUIDE]
-List EVERY character as a bullet point. Gender MUST be marked — this controls voice casting.
-Format: - CHARACTER NAME (AGE + GENDER_CODE, personality)
+List EVERY character as a bullet point. This controls voice casting — be specific.
+Format: - CHARACTER NAME (Gender, Age, Voice Direction, Personality)
 
-GENDER CODES — MANDATORY, no exceptions:
-  M = male  |  F = female  |  N = neutral/unknown
+Voice Direction describes HOW the character sounds — accent, tone, depth, energy.
 
-Examples (copy this exact format):
-- NARRATOR (neutral, warm storytelling voice)
-- SARAH CHEN (34F, warm but anxious, determined)
-- DETECTIVE WADE (52M, gruff, authoritative, world-weary)
-- OLD PRIEST (68M, gentle, fearful, hiding secrets)
-- SHERIFF ROY TATE (55M, commanding, southern drawl, weary)
-- DR. ELENA VASQUEZ (41F, sharp, clinical, hiding guilt)
+Examples (follow this format exactly):
+- NARRATOR (Male, middle-aged, warm British storyteller, authoritative and immersive)
+- SARAH CHEN (Female, mid-30s, clear American voice, warm but anxious, determined)
+- DETECTIVE WADE (Male, early 50s, deep gravelly voice, gruff and world-weary)
+- OLD PRIEST (Male, late 60s, soft trembling voice, gentle but hiding secrets)
+- SHERIFF ROY TATE (Male, mid-50s, deep Southern drawl, commanding and weary)
+- DR. ELENA VASQUEZ (Female, early 40s, sharp clinical tone, professional, hiding guilt)
+- YOUNG NURSE (Female, late 20s, bright nervous voice, eager to please)
+- ANTAGONIST (Male, 40s, smooth menacing voice, calculating, cold)
 
-Rules for CHARACTER GUIDE:
+Rules:
 - Use ALL CAPS for character names
-- ALWAYS include age number + M or F — e.g. 34F, 52M, 68M — NEVER omit the gender letter
-- If age unknown, use M or F alone — e.g. (M, gruff veteran) or (F, young nurse)
+- ALWAYS start with Male or Female — never omit this
+- Include age range (20s, mid-30s, late 60s, etc.)
+- Describe the voice: deep, soft, raspy, bright, husky, trembling, smooth, sharp, warm, cold
+- Include accent if relevant: Southern, British, New York, Cajun, Midwest, etc.
 - 4-8 characters maximum (including NARRATOR)
-- NARRATOR must always be listed first
-- Character names in [STORY] must EXACTLY match names listed here — no abbreviations
+- NARRATOR always listed first
+- Character names in [STORY] must EXACTLY match names listed here — no abbreviations, no shortcuts
 
 [STORY]
 The complete story where EVERY line is tagged with [CHARACTER NAME]: prefix.
