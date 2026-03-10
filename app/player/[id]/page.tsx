@@ -24,7 +24,7 @@ function PlayerContent() {
   const saveTimer = useRef<NodeJS.Timeout | null>(null)
   const resumeRef = useRef(0)
 
-  const [story, setStory] = useState<Story | null>(null)
+  const [story, setStory] = useState<Story & { intro_audio_url?: string; outro_audio_url?: string } | null>(null)
   const [loading, setLoading] = useState(true)
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
@@ -45,21 +45,35 @@ function PlayerContent() {
     async function load() {
       const { data } = await supabase
         .from('stories')
-        .select('id, title, author, audio_url, cover_url, duration_mins')
+        .select('id, title, author, audio_url, cover_url, duration_mins, intro_audio_url, outro_audio_url')
         .eq('id', storyId).single()
       if (data) setStory(data)
 
-      // Try ASC3 playlist
+      // Build initial queue from DB fields immediately (works without extra API call)
+      if (data?.intro_audio_url || data?.outro_audio_url) {
+        const INTRO_MUSIC = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio/intro_outro_music.mp3`
+        const initialQueue: QueueItem[] = []
+        if (data.intro_audio_url) initialQueue.push({ url: data.intro_audio_url, type: 'intro', label: 'Intro' })
+        if (data.audio_url) initialQueue.push({ url: data.audio_url, type: 'story', label: 'Story' })
+        if (data.outro_audio_url) initialQueue.push({ url: data.outro_audio_url, type: 'outro', label: 'Outro' })
+        setQueue(initialQueue)
+        setIntroOutroMusicUrl(INTRO_MUSIC)
+        setIsASC3(true)
+      }
+
+      // Enhance with full segment list + background music from playlist API
       try {
         const res = await fetch(`/api/asc3/story-playlist?storyId=${storyId}`)
-        const playlist = await res.json()
-        if (playlist.queue?.length > 1) {
-          setQueue(playlist.queue)
-          setIntroOutroMusicUrl(playlist.introOutroMusicUrl || '')
-          setBackgroundMusicUrl(playlist.backgroundMusicUrl || null)
-          setIsASC3(true)
+        if (res.ok) {
+          const playlist = await res.json()
+          if (playlist.queue?.length > 1) {
+            setQueue(playlist.queue)
+            setIntroOutroMusicUrl(playlist.introOutroMusicUrl || '')
+            setBackgroundMusicUrl(playlist.backgroundMusicUrl || null)
+            setIsASC3(true)
+          }
         }
-      } catch (e) {}
+      } catch (e) { /* playlist enhancement optional */ }
 
       if (user?.id) {
         const { data: lib } = await supabase.from('user_library')
