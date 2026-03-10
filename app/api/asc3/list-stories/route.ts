@@ -22,8 +22,12 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: false, error: error.message }, { status: 500 })
     }
 
-    // Map DB columns back to Story UI shape
-    const stories = (data || []).map((row: any) => {
+    const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!
+    const BASE_STORAGE = `${SUPABASE_URL}/storage/v1/object/public/audio`
+
+    // Reconstruct storySegments from Supabase Storage for each story
+    const storiesWithSegments = await Promise.all((data || []).map(async (row: any) => {
       // Parse character_guide if stored as JSON string
       let characterGuide: any[] = []
       if (row.character_guide) {
@@ -37,6 +41,43 @@ export async function GET(req: NextRequest) {
       }
 
       const storyAudioUrl = row.audio_url || row.story_audio_url || ''
+
+      // List segment files from storage to reconstruct multi-voice segments
+      let storySegments: { audioUrl: string; speaker: string; index: number }[] = []
+      try {
+        const listRes = await fetch(
+          `${SUPABASE_URL}/storage/v1/object/list/audio`,
+          {
+            method: 'POST',
+            headers: {
+              apikey: SERVICE_KEY,
+              Authorization: `Bearer ${SERVICE_KEY}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ prefix: `asc3/${row.id}/`, limit: 200, sortBy: { column: 'name', order: 'asc' } }),
+          }
+        )
+        if (listRes.ok) {
+          const files: { name: string }[] = await listRes.json()
+          const segmentFiles = files
+            .filter(f => f.name.match(/^segment_\d+\.mp3$/))
+            .sort((a, b) => a.name.localeCompare(b.name))
+
+          if (segmentFiles.length > 0) {
+            // Try to match speakers from character_guide
+            storySegments = segmentFiles.map((f, i) => {
+              const speaker = characterGuide[i]?.character || `Part ${i + 1}`
+              return {
+                audioUrl: `${BASE_STORAGE}/asc3/${row.id}/${f.name}`,
+                speaker,
+                index: i,
+              }
+            })
+          }
+        }
+      } catch (e) {
+        // Storage list failed — fall back to single URL
+      }
 
       return {
         id: row.id,
@@ -55,9 +96,8 @@ export async function GET(req: NextRequest) {
         generatedScript: row.script || '',
         introAudioUrl: row.intro_audio_url || '',
         storyAudioUrl,
-        // storyAudioUrls: segments are stored individually in storage, return first URL for compat
-        storyAudioUrls: storyAudioUrl ? [storyAudioUrl] : [],
-        storySegments: [],
+        storyAudioUrls: storySegments.length ? storySegments.map(s => s.audioUrl) : (storyAudioUrl ? [storyAudioUrl] : []),
+        storySegments,
         characterGuide,
         outroAudioUrl: row.outro_audio_url || '',
         backgroundMusicUrl: '',
@@ -66,9 +106,9 @@ export async function GET(req: NextRequest) {
         introText: row.intro_text || '',
         outroText: row.outro_text || '',
       }
-    })
+    }))
 
-    return NextResponse.json({ success: true, stories })
+    return NextResponse.json({ success: true, stories: storiesWithSegments })
   } catch (err) {
     console.error('list-stories error:', err)
     return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 })
