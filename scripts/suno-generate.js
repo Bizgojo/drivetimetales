@@ -33,8 +33,21 @@ async function generateSunoTrack(prompt, storyId) {
   // Step 1: Capture Bearer token from OpenClaw browser
   const listRes = await fetch(`${BROWSER_CDP}/json/list`)
   const tabs = await listRes.json()
-  const sunoTab = tabs.find(t => t.url && t.url.includes('suno.com'))
-  if (!sunoTab) throw new Error('No Suno tab found in OpenClaw browser')
+  let sunoTab = tabs.find(t => t.url && t.url.includes('suno.com'))
+  if (!sunoTab) {
+    // Navigate to suno.com if no tab found
+    const anyTab = tabs.find(t => t.type === 'page' && t.webSocketDebuggerUrl)
+    if (!anyTab) throw new Error('No usable tab in OpenClaw browser')
+    // Use CDP to navigate
+    const tmpWs = await connectCDP(anyTab.webSocketDebuggerUrl)
+    await cdpSend(tmpWs, 'Page.navigate', { url: 'https://suno.com/create' })
+    tmpWs.close()
+    await sleep(5000)
+    const listRes2 = await fetch(`${BROWSER_CDP}/json/list`)
+    const tabs2 = await listRes2.json()
+    sunoTab = tabs2.find(t => t.url && t.url.includes('suno.com'))
+    if (!sunoTab) throw new Error('Could not load Suno in OpenClaw browser')
+  }
 
   // Step 2: Use CDP to interact with the page
   const ws = await connectCDP(sunoTab.webSocketDebuggerUrl)
