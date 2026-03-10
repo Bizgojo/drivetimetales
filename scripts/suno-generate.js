@@ -1,198 +1,199 @@
 #!/usr/bin/env node
 /**
- * suno-generate.js <prompt> <title> <storyId>
- * Uses Playwright to generate music via Suno's web UI,
- * waits for completion, uploads to Supabase Storage,
- * returns the public URL.
+ * suno-generate.js <prompt> <storyId>
+ * Uses the OpenClaw browser (already logged into Suno) to:
+ * 1. Navigate to suno.com/create
+ * 2. Fill prompt + enable Instrumental
+ * 3. Click Create
+ * 4. Poll feed/v3 for the new clip
+ * 5. Download + upload to Supabase
+ *
+ * The bearer token is captured from the browser's outgoing requests
+ * and used to poll the API for the new clip.
  */
 
-const { chromium } = require('playwright')
-const { execSync } = require('child_process')
-const { createClient } = require('@supabase/supabase-js')
-const os = require('os')
 const path = require('path')
-const fs = require('fs')
+const { createClient } = require('@supabase/supabase-js')
+const { execSync } = require('child_process')
 
 require('dotenv').config({ path: path.join(__dirname, '../.env.local') })
 
-const FIREFOX_PROFILE = 'dktuucuj.default-release'
-const COOKIES_DB = path.join(os.homedir(), `Library/Application Support/Firefox/Profiles/${FIREFOX_PROFILE}/cookies.sqlite`)
-const COOKIES_TMP = '/tmp/suno_generate_cookies.sqlite'
-
+const BROWSER_CDP = 'http://127.0.0.1:18800'
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 )
 
-async function loadFirefoxCookies(ctx) {
-  fs.copyFileSync(COOKIES_DB, COOKIES_TMP)
-  const rows = execSync(`sqlite3 "${COOKIES_TMP}" "SELECT name,value,host,path,isSecure,isHttpOnly FROM moz_cookies WHERE host LIKE '%suno%';"`, { encoding: 'utf8' })
-  let count = 0
-  for (const line of rows.split('\n')) {
-    if (!line.trim()) continue
-    const [name, value, host, cookiePath, isSecure, isHttpOnly] = line.split('|')
-    if (!name || !value) continue
+async function generateSunoTrack(prompt, storyId) {
+  const cleanPrompt = prompt.replace(/\b(vocal|vocals|singing|singer|lyrics|with lyrics|song)\b/gi, '').trim()
+    + ', instrumental only, no vocals'
+
+  console.log(`🎵 Generating for story ${storyId}`)
+
+  // Step 1: Capture Bearer token from OpenClaw browser
+  const listRes = await fetch(`${BROWSER_CDP}/json/list`)
+  const tabs = await listRes.json()
+  const sunoTab = tabs.find(t => t.url && t.url.includes('suno.com'))
+  if (!sunoTab) throw new Error('No Suno tab found in OpenClaw browser')
+
+  // Step 2: Use CDP to interact with the page
+  const ws = await connectCDP(sunoTab.webSocketDebuggerUrl)
+
+  // Navigate to create page
+  await cdpSend(ws, 'Page.navigate', { url: 'https://suno.com/create' })
+  await sleep(4000)
+
+  // Capture bearer token from network requests
+  let bearerToken = null
+  await cdpSend(ws, 'Network.enable', {})
+  ws.on('message', (data) => {
     try {
-      await ctx.addCookies([{ name, value, domain: host, path: cookiePath || '/', secure: isSecure === '1', httpOnly: isHttpOnly === '1', sameSite: 'None' }])
-      count++
-    } catch (e) { /* skip invalid */ }
-  }
-  return count
-}
-
-async function generateSunoTrack(prompt, title, storyId) {
-  const cleanPrompt = prompt
-    .replace(/\b(vocal|vocals|singing|singer|lyrics|with lyrics|song|voice)\b/gi, '')
-    .trim() + ', instrumental only, no vocals, no lyrics'
-
-  console.log(`🎵 Generating Suno track for story ${storyId}`)
-  console.log(`📝 Prompt: ${cleanPrompt.slice(0, 80)}...`)
-
-  const browser = await chromium.launch({
-    headless: true,
-    args: ['--disable-web-security', '--disable-features=IsolateOrigins,site-per-process', '--no-sandbox'],
-  })
-  const ctx = await browser.newContext({
-    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-  })
-
-  const cookieCount = await loadFirefoxCookies(ctx)
-  console.log(`🍪 Loaded ${cookieCount} cookies`)
-
-  const page = await ctx.newPage()
-  let capturedAudioUrl = null
-  let capturedClipId = null
-
-  // Watch feed responses for completed clips
-  page.on('response', async (resp) => {
-    if (!resp.url().includes('/api/feed') || resp.status() !== 200) return
-    try {
-      const data = await resp.json()
-      const clips = Array.isArray(data) ? data : (data.clips || [])
-      for (const clip of clips) {
-        if (clip.audio_url && clip.status === 'complete' && !capturedAudioUrl) {
-          // Only capture clips generated in this session (recent)
-          const createdAt = new Date(clip.created_at).getTime()
-          const twoMinsAgo = Date.now() - 2 * 60 * 1000
-          if (createdAt > twoMinsAgo) {
-            capturedAudioUrl = clip.audio_url
-            capturedClipId = clip.id
-            console.log(`✅ Track complete: ${clip.title || clip.id}`)
-          }
+      const msg = JSON.parse(data)
+      if (msg.method === 'Network.requestWillBeSent') {
+        const auth = msg.params?.request?.headers?.Authorization || msg.params?.request?.headers?.authorization
+        if (auth && auth.startsWith('Bearer eyJ') && !bearerToken) {
+          bearerToken = auth.split(' ')[1]
+          console.log('✅ Bearer token captured')
         }
       }
-    } catch (e) { /* not JSON */ }
+    } catch (e) {}
   })
 
-  // Navigate to suno.com to establish authenticated context
-  await page.goto('https://suno.com', { waitUntil: 'networkidle', timeout: 30000 })
-  await page.waitForTimeout(2000)
+  // Fill the textarea using JavaScript in the browser
+  await cdpSend(ws, 'Runtime.evaluate', {
+    expression: `
+      (function() {
+        const all = Array.from(document.querySelectorAll('textarea'));
+        const visible = all.find(el => window.getComputedStyle(el).visibility !== 'hidden' && el.getBoundingClientRect().width > 0);
+        if (!visible) return 'NO_TEXTAREA';
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+        setter.call(visible, ${JSON.stringify(cleanPrompt)});
+        visible.dispatchEvent(new Event('input', {bubbles:true}));
+        visible.dispatchEvent(new Event('change', {bubbles:true}));
+        return 'filled:' + visible.placeholder.slice(0, 30);
+      })()
+    `,
+    awaitPromise: false
+  })
+  await sleep(500)
 
-  // Call Suno API directly from browser JS context — auth cookies are already set
-  console.log('🎵 Calling Suno API from browser context...')
-  const genResult = await page.evaluate(async (prompt) => {
+  // Enable instrumental mode
+  await cdpSend(ws, 'Runtime.evaluate', {
+    expression: `
+      (function() {
+        const btns = Array.from(document.querySelectorAll('button'));
+        const instr = btns.find(b => b.textContent.includes('Instrumental') && !b.textContent.includes('Disable'));
+        if (instr) { instr.click(); return 'clicked instrumental'; }
+        return 'instrumental already on or not found';
+      })()
+    `,
+    awaitPromise: false
+  })
+  await sleep(500)
+
+  // Record timestamp before clicking Create
+  const beforeCreate = Date.now()
+
+  // Click Create
+  await cdpSend(ws, 'Runtime.evaluate', {
+    expression: `
+      (function() {
+        const btns = Array.from(document.querySelectorAll('button,[role="button"]'));
+        const createBtn = btns.find(b => b.textContent.trim() === 'Create' && !b.disabled);
+        if (createBtn) { createBtn.click(); return 'clicked'; }
+        return 'not found or disabled: ' + btns.filter(b=>b.textContent.includes('Create')).map(b=>b.textContent.trim()+'/'+b.disabled).join(',');
+      })()
+    `,
+    awaitPromise: false
+  })
+  console.log('🖱️ Clicked Create, waiting for generation...')
+  await sleep(3000) // wait for request to fire so we capture the token
+
+  ws.close()
+
+  if (!bearerToken) {
+    // Try to use saved token
     try {
-      // Get session token from Clerk
-      const sessionRes = await fetch('https://studio-api.prod.suno.com/api/session', {
-        credentials: 'include',
-      })
-      const sessionData = await sessionRes.json()
-      const userId = sessionData?.user?.id
-
-      // Generate music
-      const res = await fetch('https://studio-api.prod.suno.com/api/generate/v2/', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt,
-          mv: 'chirp-v3-5',
-          title: 'Background Music',
-          tags: 'instrumental cinematic atmospheric',
-          make_instrumental: true,
-          wait_audio: false,
-        }),
-      })
-      const text = await res.text()
-      return { status: res.status, body: text.slice(0, 500), userId }
+      bearerToken = require('fs').readFileSync('/tmp/last_suno_token.txt', 'utf8').trim()
+      console.log('⚠️ Using saved token')
     } catch (e) {
-      return { error: String(e) }
+      throw new Error('No Bearer token captured and no saved token found')
     }
-  }, cleanPrompt)
-
-  console.log('Generate result:', JSON.stringify(genResult))
-
-  if (!genResult || genResult.error || genResult.status >= 400) {
-    throw new Error(`Suno browser API failed: ${JSON.stringify(genResult)}`)
   }
 
-  // Parse clip IDs
-  const genData = JSON.parse(genResult.body)
-  const clipIds = (genData.clips || []).map((c) => c.id)
-  if (!clipIds.length) throw new Error('No clip IDs returned from Suno')
-  console.log(`⏳ Waiting for ${clipIds.length} clips: ${clipIds.join(', ')}`)
-
-  // Poll via browser fetch (auth cookies still active)
+  // Step 3: Poll for new clip (created after beforeCreate)
+  const headers = { 'Authorization': `Bearer ${bearerToken}`, 'Content-Type': 'application/json', 'Origin': 'https://suno.com' }
   let audioUrl = null
-  const idsParam = clipIds.join('%2C')
-  for (let attempt = 0; attempt < 48; attempt++) {
-    await page.waitForTimeout(5000)
-    process.stdout.write(`\r⏳ Polling... ${(attempt + 1) * 5}s`)
 
-    const pollResult = await page.evaluate(async (ids) => {
-      try {
-        const res = await fetch(`https://studio-api.prod.suno.com/api/feed/?ids=${ids}`, {
-          credentials: 'include',
-        })
-        return await res.json()
-      } catch (e) { return null }
-    }, idsParam)
+  for (let i = 0; i < 48; i++) {
+    await sleep(5000)
+    process.stdout.write(`\r⏳ ${(i + 1) * 5}s...`)
 
-    if (Array.isArray(pollResult)) {
-      const ready = pollResult.filter((c) => c.audio_url && c.status === 'complete')
-      if (ready.length > 0) {
-        audioUrl = ready[0].audio_url
-        console.log(`\n✅ Track ready: ${ready[0].title || ready[0].id}`)
+    try {
+      const res = await fetch('https://studio-api.prod.suno.com/api/feed/v3', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ page_size: 10, page: 0 })
+      })
+      const data = await res.json()
+      const clips = data.clips || []
+      const ready = clips.find(c => c.audio_url && c.status === 'complete' && new Date(c.created_at).getTime() > beforeCreate - 10000)
+      if (ready) {
+        audioUrl = ready.audio_url
+        console.log(`\n✅ Clip ready: ${ready.title}`)
         break
       }
-    }
+    } catch (e) {}
   }
-  console.log('')
 
-  await browser.close()
+  if (!audioUrl) throw new Error('Timed out waiting for Suno clip')
 
-  if (!audioUrl) {
-    throw new Error('Suno generation timed out after 4 minutes')
-  }
-  // using audioUrl
-
-  // Download the track
-  console.log('⬇️ Downloading track...')
+  // Step 4: Download + upload
+  console.log('⬇️ Downloading...')
   const dlRes = await fetch(audioUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } })
   if (!dlRes.ok) throw new Error(`Download failed: ${dlRes.status}`)
-  const audioBuffer = await dlRes.arrayBuffer()
+  const buf = await dlRes.arrayBuffer()
 
-  // Upload to Supabase
   const storagePath = `asc3/${storyId}/background_music.mp3`
-  console.log(`⬆️ Uploading to ${storagePath}...`)
-  const { error: uploadErr } = await supabase.storage
-    .from('audio')
-    .upload(storagePath, audioBuffer, { contentType: 'audio/mpeg', upsert: true })
+  const { error } = await supabase.storage.from('audio').upload(storagePath, buf, { contentType: 'audio/mpeg', upsert: true })
+  if (error) throw new Error(`Upload failed: ${error.message}`)
 
-  if (uploadErr) throw new Error(`Upload failed: ${uploadErr.message}`)
-
-  const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio/${storagePath}`
-  console.log(`✅ Done! URL: ${publicUrl}`)
-  return publicUrl
+  const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio/${storagePath}`
+  console.log(`✅ Done: ${url}`)
+  return url
 }
 
-// CLI usage
-const [,, prompt, title, storyId] = process.argv
-if (!prompt || !storyId) {
-  console.error('Usage: node suno-generate.js <prompt> <title> <storyId>')
-  process.exit(1)
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
+
+async function connectCDP(wsUrl) {
+  const WebSocket = require('ws')
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(wsUrl)
+    ws._msgId = 0
+    ws._pending = {}
+    ws.on('open', () => resolve(ws))
+    ws.on('error', reject)
+    ws.on('message', (data) => {
+      const msg = JSON.parse(data)
+      if (msg.id && ws._pending[msg.id]) {
+        ws._pending[msg.id](msg.result)
+        delete ws._pending[msg.id]
+      }
+    })
+  })
 }
 
-generateSunoTrack(prompt, title || 'Background Music', storyId)
+function cdpSend(ws, method, params = {}) {
+  return new Promise((resolve) => {
+    const id = ++ws._msgId
+    ws._pending[id] = resolve
+    ws.send(JSON.stringify({ id, method, params }))
+  })
+}
+
+const [,, prompt, storyId] = process.argv
+if (!prompt || !storyId) { console.error('Usage: node suno-generate.js <prompt> <storyId>'); process.exit(1) }
+
+generateSunoTrack(prompt, storyId)
   .then(url => { console.log('RESULT_URL:' + url); process.exit(0) })
   .catch(err => { console.error('ERROR:', err.message); process.exit(1) })
