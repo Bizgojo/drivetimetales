@@ -4,11 +4,14 @@ import { useState, useEffect, useRef, Suspense } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
-import Image from 'next/image'
 
 interface Story {
   id: string; title: string; author: string; audio_url: string
   cover_url: string | null; duration_mins: number
+}
+
+interface QueueItem {
+  url: string; type: 'intro' | 'story' | 'outro'; label: string
 }
 
 function PlayerContent() {
@@ -17,29 +20,53 @@ function PlayerContent() {
   const { user } = useAuth()
   const storyId = params.id as string
   const audioRef = useRef<HTMLAudioElement>(null)
+  const musicRef = useRef<HTMLAudioElement>(null)
   const saveTimer = useRef<NodeJS.Timeout | null>(null)
   const resumeRef = useRef(0)
 
   const [story, setStory] = useState<Story | null>(null)
   const [loading, setLoading] = useState(true)
-  const [audioReady, setAudioReady] = useState(false)
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
   const [hasProgress, setHasProgress] = useState(false)
 
-  // Load story + resume position
+  // ASC3 playlist state
+  const [queue, setQueue] = useState<QueueItem[]>([])
+  const [queueIndex, setQueueIndex] = useState(0)
+  const [introOutroMusicUrl, setIntroOutroMusicUrl] = useState('')
+  const [backgroundMusicUrl, setBackgroundMusicUrl] = useState<string | null>(null)
+  const [isASC3, setIsASC3] = useState(false)
+  const [sectionLabel, setSectionLabel] = useState('')
+  const musicVolume = 0.2
+
+  // Load story + playlist
   useEffect(() => {
     async function load() {
-      const { data } = await supabase.from('stories').select('id, title, author, audio_url, cover_url, duration_mins').eq('id', storyId).single()
+      const { data } = await supabase
+        .from('stories')
+        .select('id, title, author, audio_url, cover_url, duration_mins')
+        .eq('id', storyId).single()
       if (data) setStory(data)
 
+      // Try ASC3 playlist
+      try {
+        const res = await fetch(`/api/asc3/story-playlist?storyId=${storyId}`)
+        const playlist = await res.json()
+        if (playlist.queue?.length > 1) {
+          setQueue(playlist.queue)
+          setIntroOutroMusicUrl(playlist.introOutroMusicUrl || '')
+          setBackgroundMusicUrl(playlist.backgroundMusicUrl || null)
+          setIsASC3(true)
+        }
+      } catch (e) {}
+
       if (user?.id) {
-        const { data: lib } = await supabase.from('user_library').select('progress, completed').eq('user_id', user.id).eq('story_id', storyId).single()
+        const { data: lib } = await supabase.from('user_library')
+          .select('progress, completed').eq('user_id', user.id).eq('story_id', storyId).single()
         if (lib && lib.progress > 0) {
-          const resumeAt = lib.completed ? 0 : Math.max(0, lib.progress - 3)
-          resumeRef.current = resumeAt
-          setCurrentTime(resumeAt)
+          resumeRef.current = lib.completed ? 0 : Math.max(0, lib.progress - 3)
+          setCurrentTime(resumeRef.current)
           setHasProgress(true)
         }
       }
@@ -48,38 +75,75 @@ function PlayerContent() {
     load()
   }, [storyId, user])
 
-  // Auto-play when audio is ready
+  // When queue loads, start first item
   useEffect(() => {
-    if (audioReady && audioRef.current) {
-      audioRef.current.play().catch(() => {})
-    }
-  }, [audioReady])
+    if (!isASC3 || !queue.length || !audioRef.current) return
+    audioRef.current.src = queue[0].url
+    setSectionLabel(queue[0].label)
+    applyMusic(queue[0].type)
+  }, [isASC3, queue])
 
-  const saveProgress = async (time: number, completed = false) => {
-    if (user?.id && storyId) {
-      await supabase.from('user_library').upsert({ user_id: user.id, story_id: storyId, progress: Math.floor(time), completed, last_played: new Date().toISOString() })
+  const applyMusic = (type: 'intro' | 'story' | 'outro') => {
+    if (!musicRef.current) return
+    if (type === 'intro' || type === 'outro') {
+      musicRef.current.src = introOutroMusicUrl
+    } else {
+      musicRef.current.src = backgroundMusicUrl || introOutroMusicUrl
+    }
+    musicRef.current.loop = true
+    musicRef.current.volume = musicVolume
+  }
+
+  const advanceQueue = () => {
+    const nextIndex = queueIndex + 1
+    if (nextIndex < queue.length) {
+      setQueueIndex(nextIndex)
+      const next = queue[nextIndex]
+      setSectionLabel(next.label)
+      applyMusic(next.type)
+      if (audioRef.current) {
+        audioRef.current.src = next.url
+        audioRef.current.load()
+        setTimeout(() => {
+          audioRef.current?.play().catch(() => {})
+          if (isPlaying && musicRef.current?.paused) musicRef.current.play().catch(() => {})
+        }, 100)
+      }
+    } else {
+      // Story finished
+      setIsPlaying(false)
+      musicRef.current?.pause()
+      saveProgress(duration, true)
+      setTimeout(() => router.push('/library'), 1500)
     }
   }
 
-  const handleTimeUpdate = () => {
-    if (!audioRef.current) return
-    const t = audioRef.current.currentTime
-    setCurrentTime(t)
-    if (saveTimer.current) clearTimeout(saveTimer.current)
-    saveTimer.current = setTimeout(() => saveProgress(t), 5000)
+  const saveProgress = async (time: number, completed = false) => {
+    if (user?.id && storyId) {
+      await supabase.from('user_library').upsert({
+        user_id: user.id, story_id: storyId,
+        progress: Math.floor(time), completed,
+        last_played: new Date().toISOString()
+      })
+    }
   }
 
   const handlePlayPause = () => {
     if (!audioRef.current) return
-    if (isPlaying) { audioRef.current.pause(); saveProgress(currentTime) }
-    else {
-      const resumeAt = Math.max(0, currentTime - 3)
-      audioRef.current.currentTime = resumeAt
-      setCurrentTime(resumeAt)
-      audioRef.current.play()
-      setHasProgress(true)
+    if (isPlaying) {
+      audioRef.current.pause()
+      musicRef.current?.pause()
+      saveProgress(currentTime)
+      setIsPlaying(false)
+    } else {
+      audioRef.current.play().then(() => {
+        setIsPlaying(true)
+        if (musicRef.current && musicRef.current.src) {
+          musicRef.current.volume = musicVolume
+          musicRef.current.play().catch(() => {})
+        }
+      }).catch(() => {})
     }
-    setIsPlaying(!isPlaying)
   }
 
   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -91,21 +155,44 @@ function PlayerContent() {
   }
 
   const handleNotForMe = async () => {
-    if (audioRef.current) audioRef.current.pause()
+    audioRef.current?.pause()
+    musicRef.current?.pause()
     if (user?.id) {
-      await supabase.from('user_library').upsert({ user_id: user.id, story_id: storyId, not_for_me: true, progress: Math.floor(currentTime), last_played: new Date().toISOString() })
+      await supabase.from('user_library').upsert({
+        user_id: user.id, story_id: storyId, not_for_me: true,
+        progress: Math.floor(currentTime), last_played: new Date().toISOString()
+      })
     }
     router.push('/library')
   }
 
   const handleBack = () => {
-    if (audioRef.current) audioRef.current.pause()
+    audioRef.current?.pause()
+    musicRef.current?.pause()
     saveProgress(currentTime)
     router.push('/library')
   }
 
   const handleStartOver = () => {
-    if (audioRef.current) { audioRef.current.currentTime = 0; setCurrentTime(0); audioRef.current.play(); setIsPlaying(true) }
+    if (isASC3 && queue.length) {
+      setQueueIndex(0)
+      setSectionLabel(queue[0].label)
+      applyMusic(queue[0].type)
+      if (audioRef.current) {
+        audioRef.current.src = queue[0].url
+        audioRef.current.load()
+        setTimeout(() => {
+          audioRef.current?.play().catch(() => {})
+          musicRef.current?.play().catch(() => {})
+          setIsPlaying(true)
+        }, 100)
+      }
+    } else if (audioRef.current) {
+      audioRef.current.currentTime = 0
+      audioRef.current.play()
+      setIsPlaying(true)
+    }
+    setCurrentTime(0)
   }
 
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, '0')}`
@@ -128,12 +215,27 @@ function PlayerContent() {
 
   return (
     <div style={{ height: '100dvh', backgroundColor: '#020617', color: 'white', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <audio ref={audioRef} src={story.audio_url}
-        onCanPlay={() => { if (audioRef.current && resumeRef.current > 0) { audioRef.current.currentTime = resumeRef.current } setAudioReady(true); if (audioRef.current) setDuration(audioRef.current.duration) }}
-        onTimeUpdate={handleTimeUpdate}
-        onEnded={() => { setIsPlaying(false); saveProgress(duration, true); setTimeout(() => router.push('/library'), 1500) }}
+      {/* Hidden audio elements */}
+      <audio ref={audioRef}
+        onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
+        onTimeUpdate={(e) => {
+          const t = e.currentTarget.currentTime
+          setCurrentTime(t)
+          if (saveTimer.current) clearTimeout(saveTimer.current)
+          saveTimer.current = setTimeout(() => saveProgress(t), 5000)
+        }}
+        onEnded={() => isASC3 ? advanceQueue() : (setIsPlaying(false), saveProgress(duration, true), setTimeout(() => router.push('/library'), 1500))}
         onPlay={() => setIsPlaying(true)}
-        onPause={() => setIsPlaying(false)} />
+        onPause={() => setIsPlaying(false)}
+        onCanPlay={() => {
+          if (!isASC3 && audioRef.current && resumeRef.current > 0) {
+            audioRef.current.currentTime = resumeRef.current
+          }
+          if (audioRef.current) setDuration(audioRef.current.duration)
+        }}
+        src={!isASC3 ? story.audio_url : undefined}
+      />
+      <audio ref={musicRef} loop style={{ display: 'none' }} />
 
       {/* Header */}
       <div style={{ padding: '10px 16px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#0f172a', borderBottom: '1px solid rgba(148,163,184,0.06)' }}>
@@ -160,7 +262,14 @@ function PlayerContent() {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '16px 20px', gap: '12px' }}>
         <div>
           <h1 style={{ fontSize: '20px', fontWeight: 800, margin: 0, color: 'white', textAlign: 'center', lineHeight: 1.2 }}>{story.title}</h1>
-          <p style={{ color: '#94a3b8', fontSize: '13px', margin: '4px 0 0', textAlign: 'center' }}>by {story.author || 'Endless Tales'} · {formatTime(timeRemaining)} remaining</p>
+          <p style={{ color: '#94a3b8', fontSize: '13px', margin: '4px 0 0', textAlign: 'center' }}>
+            by {story.author || 'Endless Tales'} · {formatTime(timeRemaining)} remaining
+          </p>
+          {isASC3 && sectionLabel && isPlaying && (
+            <p style={{ color: '#f97316', fontSize: '11px', margin: '4px 0 0', textAlign: 'center', fontWeight: 600 }}>
+              🎙️ {sectionLabel} · {queueIndex + 1}/{queue.length}
+            </p>
+          )}
         </div>
 
         {/* Progress bar */}
@@ -176,12 +285,9 @@ function PlayerContent() {
 
         {/* Buttons */}
         <div style={{ display: 'flex', gap: '12px' }}>
-          {/* Left: Play/Pause/Continue */}
           <button onClick={handlePlayPause} style={{ flex: 2, padding: '16px', borderRadius: '14px', border: 'none', fontSize: '16px', fontWeight: 700, cursor: 'pointer', backgroundColor: isPlaying ? '#f97316' : '#22c55e', color: 'white', transition: 'background 0.2s' }}>
-            {!audioReady ? 'Loading...' : isPlaying ? '⏸ Pause' : hasProgress ? '▶ Continue' : '▶ Play'}
+            {isPlaying ? '⏸ Pause' : hasProgress ? '▶ Continue' : '▶ Play'}
           </button>
-
-          {/* Right: Not for Me (no prior progress) OR Start Over (has progress) */}
           {hasProgress ? (
             <button onClick={handleStartOver} style={{ flex: 1, padding: '16px', borderRadius: '14px', border: 'none', fontSize: '13px', fontWeight: 600, cursor: 'pointer', backgroundColor: '#1e293b', color: '#94a3b8' }}>
               Start Over
