@@ -6,8 +6,8 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const GEN_URL = 'https://studio-api.suno.ai/api/generate/v2/'
-const FEED_URL = 'https://studio-api.suno.ai/api/feed/'
+const GEN_URL = 'https://studio-api.prod.suno.com/api/generate/v2/'
+const FEED_URL = 'https://studio-api.prod.suno.com/api/feed/'
 const BASE_STORAGE = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio`
 
 function cleanPrompt(prompt: string): string {
