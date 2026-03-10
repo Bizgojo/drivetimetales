@@ -1398,6 +1398,31 @@ export default function StoryCreationPage() {
   });
   const [showSunoSettings, setShowSunoSettings] = useState(false);
 
+  // Persist stage + selected story ID in URL so refresh doesn't reset
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const savedStage = params.get('stage') as Stage | null;
+    const savedStoryId = params.get('storyId');
+    if (savedStage && ['create','to-test','review','publish'].includes(savedStage)) {
+      setStage(savedStage);
+    }
+    // selectedStory will be set after stories load below
+    if (savedStoryId) {
+      sessionStorage.setItem('pendingStoryId', savedStoryId);
+    }
+  }, []);
+
+  const navigateToStage = (newStage: Stage, storyId?: string) => {
+    setStage(newStage);
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams();
+      params.set('stage', newStage);
+      if (storyId) params.set('storyId', storyId);
+      window.history.replaceState({}, '', `?${params.toString()}`);
+    }
+  };
+
   // Load pending stories from DB on mount so refreshes don't wipe the list
   useEffect(() => {
     const loadStories = async () => {
@@ -1406,6 +1431,13 @@ export default function StoryCreationPage() {
         const data = await res.json();
         if (data.success && data.stories?.length > 0) {
           setStories(data.stories);
+          // Restore selected story from URL if any
+          const pendingId = sessionStorage.getItem('pendingStoryId');
+          if (pendingId) {
+            const found = data.stories.find((s: Story) => s.id === pendingId);
+            if (found) setSelectedStory(found);
+            sessionStorage.removeItem('pendingStoryId');
+          }
         }
       } catch (e) {
         console.warn('Could not load stories from DB:', e);
@@ -1493,7 +1525,7 @@ export default function StoryCreationPage() {
       
       alert(`✅ Story Generated!\n\n"${result.data.title}"\n${result.data.wordCount} words\nAudio, music, and cover generated!`);
       
-      setStage('to-test');
+      navigateToStage('to-test');
     } catch (error) {
       console.error('Error generating story:', error);
       alert('❌ Failed to generate story. Please try again.');
@@ -1504,11 +1536,11 @@ export default function StoryCreationPage() {
 
   const handleSelectStory = (story: Story) => {
     setSelectedStory(story);
-    setStage('review');
+    navigateToStage('review', story.id);
   };
 
   const handlePublishComplete = () => {
-    setStage('create');
+    navigateToStage('create');
     setSelectedStory(null);
     setStories([]);
   };
@@ -1523,12 +1555,12 @@ export default function StoryCreationPage() {
       {/* Progress Indicator */}
       <div className="mb-8">
         <div className="flex items-center justify-between text-sm font-medium mb-2">
-          <button onClick={() => setStage('create')} className={stage === 'create' ? 'text-orange-600 font-bold' : 'text-gray-500 hover:text-orange-500 cursor-pointer'}>1. Create</button>
-          <button onClick={() => stories.length > 0 && setStage('to-test')} className={stage === 'to-test' ? 'text-orange-600 font-bold' : stories.length > 0 ? 'text-gray-500 hover:text-orange-500 cursor-pointer' : 'text-gray-300 cursor-not-allowed'}>
+          <button onClick={() => navigateToStage('create')} className={stage === 'create' ? 'text-orange-600 font-bold' : 'text-gray-500 hover:text-orange-500 cursor-pointer'}>1. Create</button>
+          <button onClick={() => stories.length > 0 && navigateToStage('to-test')} className={stage === 'to-test' ? 'text-orange-600 font-bold' : stories.length > 0 ? 'text-gray-500 hover:text-orange-500 cursor-pointer' : 'text-gray-300 cursor-not-allowed'}>
             2. Stories {stories.length > 0 && <span className="ml-1 bg-orange-500 text-white text-xs rounded-full px-1.5 py-0.5">{stories.length}</span>}
           </button>
-          <button onClick={() => selectedStory && setStage('review')} className={stage === 'review' ? 'text-orange-600 font-bold' : selectedStory ? 'text-gray-500 hover:text-orange-500 cursor-pointer' : 'text-gray-300 cursor-not-allowed'}>3. Review</button>
-          <button onClick={() => selectedStory && setStage('publish')} className={stage === 'publish' ? 'text-orange-600 font-bold' : selectedStory ? 'text-gray-500 hover:text-orange-500 cursor-pointer' : 'text-gray-300 cursor-not-allowed'}>4. Publish</button>
+          <button onClick={() => selectedStory && navigateToStage('review', selectedStory?.id)} className={stage === 'review' ? 'text-orange-600 font-bold' : selectedStory ? 'text-gray-500 hover:text-orange-500 cursor-pointer' : 'text-gray-300 cursor-not-allowed'}>3. Review</button>
+          <button onClick={() => selectedStory && navigateToStage('publish', selectedStory?.id)} className={stage === 'publish' ? 'text-orange-600 font-bold' : selectedStory ? 'text-gray-500 hover:text-orange-500 cursor-pointer' : 'text-gray-300 cursor-not-allowed'}>4. Publish</button>
         </div>
         <div className="w-full bg-gray-300 rounded-full h-2">
           <div
@@ -1578,8 +1610,8 @@ export default function StoryCreationPage() {
       {stage === 'review' && selectedStory && (
         <ReviewEditStage
           story={selectedStory}
-          onBack={() => setStage('to-test')}
-          onNext={() => setStage('publish')}
+          onBack={() => navigateToStage('to-test')}
+          onNext={() => navigateToStage('publish', selectedStory?.id)}
           onUpdate={handleUpdateStory}
           sunoCookie={sunoCookie}
         />
@@ -1588,7 +1620,7 @@ export default function StoryCreationPage() {
       {stage === 'publish' && selectedStory && (
         <PublishStage
           story={selectedStory}
-          onBack={() => setStage('review')}
+          onBack={() => navigateToStage('review', selectedStory?.id)}
           onComplete={handlePublishComplete}
         />
       )}
