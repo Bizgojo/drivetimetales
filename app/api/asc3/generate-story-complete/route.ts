@@ -200,7 +200,7 @@ Now write the story:`
 
     const introText = `Welcome to Endless Tales.\n\nToday's story: "${title}" by ${authorName}.\n\n${conceptHook}\n\nLet's begin.`
 
-    const outroText = `Thank you for listening to "${title}" on Endless Tales. All subscriptions are unlimited. Endless Tales does not use credits. Visit endless-tales.com to explore more stories.`
+    const outroText = `Thank you for listening to "${title}" on Endless Tales. Visit endless-tales.com to explore more stories.`
 
     let introAudioUrl = ''
     let storyAudioUrl = ''

@@ -795,7 +795,7 @@ const ReviewEditStage: React.FC<{
           <img
             src={story.coverImageUrl}
             alt="Cover"
-            className="w-full h-48 object-cover rounded"
+            className="w-full aspect-square object-cover rounded"
           />
         </div>
       )}
