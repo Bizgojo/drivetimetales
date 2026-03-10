@@ -537,7 +537,7 @@ const ReviewEditStage: React.FC<{
   onNext: () => void;
   onUpdate: (story: Story) => void;
 }> = ({ story, onBack, onNext, onUpdate }) => {
-  const [audioRef, setAudioRef] = useState<HTMLAudioElement | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -561,19 +561,26 @@ const ReviewEditStage: React.FC<{
   };
 
   const handlePlayPause = () => {
-    if (!audioRef) return;
+    if (!audioRef.current) return;
     if (isPlaying) {
-      audioRef.pause();
+      audioRef.current.pause();
+      setIsPlaying(false);
     } else {
-      audioRef.play();
+      audioRef.current.play()
+        .then(() => setIsPlaying(true))
+        .catch((err) => {
+          console.error('Audio play error:', err);
+          alert('Could not play audio. Check browser console for details.');
+        });
     }
-    setIsPlaying(!isPlaying);
   };
 
   const handleStartOver = () => {
-    if (audioRef) {
-      audioRef.currentTime = 0;
-      audioRef.play();
+    if (audioRef.current) {
+      audioRef.current.currentTime = 0;
+      audioRef.current.play()
+        .then(() => setIsPlaying(true))
+        .catch(console.error);
       setIsPlaying(true);
     }
   };
@@ -637,7 +644,14 @@ const ReviewEditStage: React.FC<{
               <button
                 key={seg}
                 onClick={() => {
-                  setCurrentSegment(seg as 'intro' | 'story' | 'outro');
+                  const newSeg = seg as 'intro' | 'story' | 'outro';
+                  setCurrentSegment(newSeg);
+                  setIsPlaying(false);
+                  setCurrentTime(0);
+                  if (audioRef.current) {
+                    audioRef.current.pause();
+                    audioRef.current.currentTime = 0;
+                  }
                   setIsPlaying(false);
                 }}
                 className={`px-4 py-2 rounded font-medium transition ${
@@ -680,16 +694,13 @@ const ReviewEditStage: React.FC<{
 
           {/* Hidden audio element */}
           <audio
-            ref={(el) => {
-              if (el) {
-                setAudioRef(el);
-                el.src = audioUrl;
-              }
-            }}
+            ref={audioRef}
+            src={audioUrl}
             onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
             onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
             onEnded={() => setIsPlaying(false)}
             className="hidden"
+            crossOrigin="anonymous"
           />
         </div>
       )}
