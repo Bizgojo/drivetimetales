@@ -48,7 +48,10 @@ async function generateSunoTrack(prompt, title, storyId) {
   console.log(`🎵 Generating Suno track for story ${storyId}`)
   console.log(`📝 Prompt: ${cleanPrompt.slice(0, 80)}...`)
 
-  const browser = await chromium.launch({ headless: true })
+  const browser = await chromium.launch({
+    headless: true,
+    args: ['--disable-web-security', '--disable-features=IsolateOrigins,site-per-process', '--no-sandbox'],
+  })
   const ctx = await browser.newContext({
     userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
   })
