@@ -20,7 +20,7 @@ interface CDPSession {
 
 async function connectCDP(wsUrl: string): Promise<CDPSession> {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(wsUrl)
+    const ws = new WebSocket(wsUrl, { perMessageDeflate: false })
     const session: CDPSession = {
       ws,
       msgId: 0,

@@ -812,11 +812,27 @@ const ReviewEditStage: React.FC<{
     }
   };
 
+  const [sunoStatusMsg, setSunoStatusMsg] = React.useState('')
+  const [sunoElapsed, setSunoElapsed] = React.useState(0)
+
   const handleRegenerateSunoMusic = async () => {
     if (isRegeneratingMusic) return
     setIsRegeneratingMusic(true)
+    setSunoStatusMsg('🎵 Submitting to Suno...')
+    setSunoElapsed(0)
+
+    // Live elapsed timer
+    const startTime = Date.now()
+    const timer = setInterval(() => {
+      const secs = Math.round((Date.now() - startTime) / 1000)
+      setSunoElapsed(secs)
+      if (secs < 10) setSunoStatusMsg('🎵 Submitting to Suno...')
+      else if (secs < 30) setSunoStatusMsg('🎵 Generating track...')
+      else if (secs < 90) setSunoStatusMsg('🎵 Composing your soundtrack...')
+      else setSunoStatusMsg('🎵 Almost there...')
+    }, 1000)
+
     try {
-      // Extract sunoPrompt from script
       let sunoPrompt = ''
       if (story.generatedScript) {
         const m = story.generatedScript.match(/SUNO[_ ]PROMPT[:\s]+(.+?)(?:\n|$)/i)
@@ -827,7 +843,7 @@ const ReviewEditStage: React.FC<{
       const res = await fetch('/api/asc3/generate-music', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storyId: story.id, sunoPrompt, title: story.title, sunoCookie }),
+        body: JSON.stringify({ storyId: story.id, sunoPrompt, title: story.title }),
       })
       const data = await res.json()
       if (data.success && data.musicUrl) {
@@ -837,13 +853,17 @@ const ReviewEditStage: React.FC<{
           musicRef.current.src = data.musicUrl
           musicRef.current.load()
         }
-        alert('✅ New Suno track generated!')
+        setSunoStatusMsg('✅ Track ready!')
+        setTimeout(() => setSunoStatusMsg(''), 3000)
       } else {
+        setSunoStatusMsg('')
         alert(`❌ Suno failed: ${data.message || data.error}`)
       }
     } catch (e) {
+      setSunoStatusMsg('')
       alert('❌ Suno generation error')
     } finally {
+      clearInterval(timer)
       setIsRegeneratingMusic(false)
     }
   }
@@ -1193,9 +1213,16 @@ const ReviewEditStage: React.FC<{
               disabled={isRegeneratingMusic}
               className="px-3 py-1 bg-purple-600 text-white rounded text-sm hover:bg-purple-700 disabled:opacity-40"
             >
-              {isRegeneratingMusic ? '⏳ Generating...' : '🎵 Regenerate with Suno'}
+              {isRegeneratingMusic ? `⏳ ${sunoElapsed}s` : '🎵 Regenerate with Suno'}
             </button>
           </div>
+          {sunoStatusMsg && (
+            <div className="flex items-center gap-2 px-3 py-2 bg-purple-50 border border-purple-200 rounded text-sm text-purple-800 mb-2">
+              <span className="animate-spin inline-block">⟳</span>
+              <span>{sunoStatusMsg}</span>
+              {sunoElapsed > 0 && <span className="ml-auto text-purple-500 font-mono">{sunoElapsed}s</span>}
+            </div>
+          )}
           <p className="text-sm text-gray-600 mb-1">
             {story.sunoStatus === 'suno'
               ? '🎵 Custom Suno track'
