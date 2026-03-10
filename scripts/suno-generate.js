@@ -127,8 +127,20 @@ async function generateSunoTrack(prompt, title, storyId) {
     }
   } catch (e) { /* not critical */ }
 
-  // Click Create
-  await page.getByRole('button', { name: 'Create' }).first().click()
+  // Click Create — use force to bypass panel overlay interception
+  try {
+    await page.getByRole('button', { name: 'Create' }).first().click({ force: true, timeout: 10000 })
+    console.log('✅ Clicked Create button')
+  } catch (e) {
+    // Fallback: use JS click
+    console.log('⚠️ Force click failed, trying JS click...')
+    await page.evaluate(() => {
+      const btns = Array.from(document.querySelectorAll('button, [role="button"]'))
+      const createBtn = btns.find(b => b.textContent?.trim() === 'Create')
+      if (createBtn) (createBtn as HTMLElement).click()
+    })
+    console.log('✅ JS-clicked Create button')
+  }
   console.log('🎵 Generation started, waiting up to 4 minutes...')
 
   // Poll for completion (max 4 min)
