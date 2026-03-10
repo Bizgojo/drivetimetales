@@ -82,18 +82,50 @@ async function generateSunoTrack(prompt, title, storyId) {
   })
 
   await page.goto('https://suno.com/create', { waitUntil: 'networkidle', timeout: 30000 })
-  await page.waitForTimeout(2000)
+  await page.waitForTimeout(3000)
 
-  // Click Instrumental button to switch to instrumental mode
-  await page.getByRole('button', { name: 'Instrumental' }).click().catch(() => {
-    console.log('⚠️ Instrumental button not found, trying alternative...')
-  })
+  // Try to fill the prompt — use whichever input is visible first
+  const inputSelectors = [
+    'textarea[placeholder*="Write some lyrics"]',
+    'textarea[placeholder*="Describe the sound"]',
+    'textarea[placeholder*="prompt"]',
+    'textarea',
+  ]
+
+  let filled = false
+  for (const sel of inputSelectors) {
+    try {
+      const el = page.locator(sel).first()
+      const isVisible = await el.isVisible().catch(() => false)
+      if (isVisible) {
+        await el.click()
+        await el.fill(cleanPrompt)
+        console.log(`✏️ Filled input: ${sel}`)
+        filled = true
+        break
+      }
+    } catch (e) { /* try next */ }
+  }
+
+  if (!filled) {
+    // Last resort: force fill first textarea
+    await page.locator('textarea').first().evaluate((el, val) => {
+      el.value = val
+      el.dispatchEvent(new Event('input', { bubbles: true }))
+    }, cleanPrompt)
+    console.log('✏️ Force-filled textarea')
+  }
+
   await page.waitForTimeout(500)
 
-  // Fill in the description field
-  const descInput = page.getByPlaceholder('Describe the sound you want')
-  await descInput.fill(cleanPrompt)
-  await page.waitForTimeout(500)
+  // Try clicking Instrumental toggle (if it exists and lyrics aren't needed)
+  try {
+    const instrBtn = page.getByRole('button', { name: 'Instrumental' })
+    if (await instrBtn.isVisible({ timeout: 2000 })) {
+      await instrBtn.click()
+      await page.waitForTimeout(500)
+    }
+  } catch (e) { /* not critical */ }
 
   // Click Create
   await page.getByRole('button', { name: 'Create' }).first().click()
