@@ -542,6 +542,7 @@ Now write the complete audio drama:`
         body: JSON.stringify({
           model: selectedModel,
           max_tokens: 12000,
+          system: 'You are an expert audio drama writer. You ALWAYS respond using EXACTLY this structure, with no preamble or explanation before [TITLE]:\n\n[TITLE]\n<title here>\n\n[CHARACTER GUIDE]\n<character list>\n\n[STORY]\n<full story with [CHARACTER NAME]: tags on every line>\n\nNever deviate from this format. Never add sections. Never add commentary before or after.',
           messages: [{ role: 'user', content: claudePrompt }],
         }),
       })
@@ -567,14 +568,30 @@ Now write the complete audio drama:`
 
     // ─── Parse Claude output ───────────────────────────────────────
 
+    // Log first 500 chars to help debug format issues
+    console.log('📄 Claude response preview:', claudeText.slice(0, 500))
+    console.log('📄 Claude stop_reason:', claudeResult.stop_reason, '| tokens used:', claudeResult.usage?.output_tokens)
+
+    // Flexible parsing — handle variations in Claude's formatting
     const titleMatch = claudeText.match(/\[TITLE\]\s*\n\s*(.+?)(?:\n|$)/)
+      || claudeText.match(/^#\s*(.+?)(?:\n|$)/m)
+      || claudeText.match(/Title:\s*(.+?)(?:\n|$)/i)
+
     const characterGuideMatch = claudeText.match(/\[CHARACTER GUIDE\]\s*\n([\s\S]+?)\[STORY\]/)
+      || claudeText.match(/CHARACTER GUIDE:?\s*\n([\s\S]+?)\[STORY\]/i)
+
     const storyMatch = claudeText.match(/\[STORY\]\s*\n([\s\S]+)/)
+      || claudeText.match(/STORY:?\s*\n([\s\S]+)/i)
+      // Last resort: if Claude wrote dialogue without the [STORY] header, grab from first [CHARACTER]: line
+      || claudeText.match(/((?:\[[A-Z ]+\]:.+\n?)+[\s\S]+)/)
 
     if (!titleMatch || !storyMatch) {
-      console.error('❌ Failed to parse Claude response — missing TITLE or STORY sections')
+      console.error('❌ Failed to parse — response:', claudeText.slice(0, 800))
+      const hint = claudeResult.stop_reason === 'max_tokens'
+        ? 'Claude hit max_tokens limit — story was cut off. Try a shorter duration.'
+        : 'Claude did not follow the required format. Try regenerating.'
       return NextResponse.json(
-        { success: false, error: 'Failed to parse Claude response — missing required sections' },
+        { success: false, error: hint },
         { status: 400 }
       )
     }
