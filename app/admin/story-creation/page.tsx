@@ -484,7 +484,12 @@ const StoriesToTestStage: React.FC<{
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold text-black">📖 Stories To Test</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold text-black">📖 Stories To Test</h2>
+        <span className="bg-orange-100 text-orange-800 text-sm font-semibold px-3 py-1 rounded-full">
+          {stories.length} waiting
+        </span>
+      </div>
 
       {stories.length === 0 ? (
         <div className="bg-orange-50 p-12 rounded-lg text-center border border-orange-200">
@@ -508,6 +513,9 @@ const StoriesToTestStage: React.FC<{
                     {story.secondaryGenre1 && ` • ${story.secondaryGenre1}`}
                     {story.secondaryGenre2 && ` • ${story.secondaryGenre2}`}
                     {' '} • {calculateDuration(story.wordCount)} • {story.wordCount} words • By {story.authorName}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    🕐 {new Date(story.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} at {new Date(story.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
                   </p>
                 </div>
                 <div className="text-right">
