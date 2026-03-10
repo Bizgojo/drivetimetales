@@ -125,7 +125,7 @@ async function generateSunoTrack(prompt, title, storyId) {
 
   // Parse clip IDs
   const genData = JSON.parse(genResult.body)
-  const clipIds: string[] = (genData.clips || []).map((c: any) => c.id)
+  const clipIds = (genData.clips || []).map((c) => c.id)
   if (!clipIds.length) throw new Error('No clip IDs returned from Suno')
   console.log(`⏳ Waiting for ${clipIds.length} clips: ${clipIds.join(', ')}`)
 
@@ -146,7 +146,7 @@ async function generateSunoTrack(prompt, title, storyId) {
     }, idsParam)
 
     if (Array.isArray(pollResult)) {
-      const ready = pollResult.filter((c: any) => c.audio_url && c.status === 'complete')
+      const ready = pollResult.filter((c) => c.audio_url && c.status === 'complete')
       if (ready.length > 0) {
         audioUrl = ready[0].audio_url
         console.log(`\n✅ Track ready: ${ready[0].title || ready[0].id}`)
@@ -161,11 +161,11 @@ async function generateSunoTrack(prompt, title, storyId) {
   if (!audioUrl) {
     throw new Error('Suno generation timed out after 4 minutes')
   }
-  const capturedAudioUrl = audioUrl
+  // using audioUrl
 
   // Download the track
   console.log('⬇️ Downloading track...')
-  const dlRes = await fetch(capturedAudioUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } })
+  const dlRes = await fetch(audioUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } })
   if (!dlRes.ok) throw new Error(`Download failed: ${dlRes.status}`)
   const audioBuffer = await dlRes.arrayBuffer()
 
