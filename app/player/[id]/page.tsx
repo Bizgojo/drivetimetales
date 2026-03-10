@@ -40,7 +40,7 @@ function PlayerContent() {
   const [backgroundMusicUrl, setBackgroundMusicUrl] = useState<string | null>(null)
   const [isASC3, setIsASC3] = useState(false)
   const [sectionLabel, setSectionLabel] = useState('')
-  const musicVolume = 0.2
+  const musicVolume = 0.07
 
   // Load story + playlist
   useEffect(() => {
@@ -138,25 +138,16 @@ function PlayerContent() {
     }, stepMs)
   }
 
-  const applyMusic = (type: 'intro' | 'story' | 'outro', crossfade = false) => {
+  const applyMusic = (type: 'intro' | 'story' | 'outro') => {
     const newSrc = (type === 'story' && backgroundMusicUrl) ? backgroundMusicUrl : introOutroMusicUrl
     if (!newSrc || !musicRef.current) return
-
-    const prevType = currentQueueType.current
     currentQueueType.current = type
-
-    // Crossfade at section boundaries: intro→story and story→outro
-    const needsCrossfade = crossfade && (
-      (prevType === 'intro' && type === 'story') ||
-      (prevType === 'story' && type === 'outro')
-    )
-
-    if (needsCrossfade) {
-      crossfadeTo(newSrc, 5000) // 5-second crossfade
-    } else if (!musicRef.current.src || musicRef.current.paused) {
+    // Only swap if src is different and not already playing the right track
+    if (!musicRef.current.src?.includes(newSrc.split('/').pop() || '')) {
       musicRef.current.src = newSrc
       musicRef.current.loop = true
       musicRef.current.volume = musicVolume
+      if (isPlaying) musicRef.current.play().catch(() => {})
     }
   }
 
@@ -166,7 +157,18 @@ function PlayerContent() {
       setQueueIndex(nextIndex)
       const next = queue[nextIndex]
       setSectionLabel(next.label)
-      applyMusic(next.type, true) // true = allow crossfade
+      const prevType = currentQueueType.current
+
+      // Crossfade at the exact moment Belle B (intro) ends → first story segment begins
+      // and when last story segment ends → outro begins
+      const isBoundary = (prevType === 'intro' && next.type === 'story') ||
+                         (prevType === 'story' && next.type === 'outro')
+      const newMusicSrc = (next.type === 'story' && backgroundMusicUrl) ? backgroundMusicUrl : introOutroMusicUrl
+
+      if (isBoundary && newMusicSrc && musicRef.current) {
+        crossfadeTo(newMusicSrc, 5000)
+      }
+      currentQueueType.current = next.type
       if (audioRef.current) {
         audioRef.current.src = next.url
         audioRef.current.load()

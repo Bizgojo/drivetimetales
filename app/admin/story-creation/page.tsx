@@ -653,7 +653,7 @@ const ReviewEditStage: React.FC<{
   const [duration, setDuration] = useState(0);
   const [currentSegment, setCurrentSegment] = useState<'intro' | 'story' | 'outro'>('story');
   const [currentChunkIndex, setCurrentChunkIndex] = useState(0);
-  const [musicVolume, setMusicVolume] = useState(0.2);
+  const [musicVolume, setMusicVolume] = useState(0.07);
 
   // Full story playback mode
   const [fullPlayMode, setFullPlayMode] = useState(false);
