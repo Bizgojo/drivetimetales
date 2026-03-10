@@ -44,6 +44,7 @@ interface Story {
   outroText?: string;
   introAudioUrl?: string;
   storyAudioUrl?: string;
+  storyAudioUrls?: string[];
   outroAudioUrl?: string;
   backgroundMusicUrl?: string;
   coverImageUrl?: string;
@@ -542,6 +543,7 @@ const ReviewEditStage: React.FC<{
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [currentSegment, setCurrentSegment] = useState<'intro' | 'story' | 'outro'>('story');
+  const [currentChunkIndex, setCurrentChunkIndex] = useState(0);
   
   const [introText, setIntroText] = useState(story.introText || '');
   const [outroText, setOutroText] = useState(story.outroText || '');
@@ -554,11 +556,18 @@ const ReviewEditStage: React.FC<{
     return `${minutes} min`;
   };
 
+  const getStoryChunks = () => story.storyAudioUrls?.length ? story.storyAudioUrls : (story.storyAudioUrl ? [story.storyAudioUrl] : []);
+
   const getAudioUrl = () => {
     if (currentSegment === 'intro') return story.introAudioUrl || '';
-    if (currentSegment === 'story') return story.storyAudioUrl || '';
+    if (currentSegment === 'story') {
+      const chunks = getStoryChunks();
+      return chunks[currentChunkIndex] || chunks[0] || story.storyAudioUrl || '';
+    }
     return story.outroAudioUrl || '';
   };
+
+  const getTotalChunks = () => currentSegment === 'story' ? getStoryChunks().length : 1;
 
   const handlePlayPause = () => {
     if (!audioRef.current) return;
@@ -646,6 +655,7 @@ const ReviewEditStage: React.FC<{
                 onClick={() => {
                   const newSeg = seg as 'intro' | 'story' | 'outro';
                   setCurrentSegment(newSeg);
+                  setCurrentChunkIndex(0);
                   setIsPlaying(false);
                   setCurrentTime(0);
                   if (audioRef.current) {
@@ -698,7 +708,21 @@ const ReviewEditStage: React.FC<{
             src={audioUrl}
             onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
             onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
-            onEnded={() => setIsPlaying(false)}
+            onEnded={() => {
+              if (currentSegment === 'story') {
+                const chunks = getStoryChunks();
+                if (currentChunkIndex < chunks.length - 1) {
+                  // Auto-advance to next chunk
+                  setCurrentChunkIndex(prev => prev + 1);
+                  setTimeout(() => audioRef.current?.play().then(() => setIsPlaying(true)).catch(console.error), 100);
+                } else {
+                  setIsPlaying(false);
+                  setCurrentChunkIndex(0);
+                }
+              } else {
+                setIsPlaying(false);
+              }
+            }}
             className="hidden"
             crossOrigin="anonymous"
           />
@@ -1021,6 +1045,7 @@ export default function StoryCreationPage() {
         generatedScript: result.data.script,
         introAudioUrl: result.data.introAudioUrl,
         storyAudioUrl: result.data.storyAudioUrl,
+        storyAudioUrls: result.data.storyAudioUrls || (result.data.storyAudioUrl ? [result.data.storyAudioUrl] : []),
         outroAudioUrl: result.data.outroAudioUrl,
         backgroundMusicUrl: result.data.backgroundMusicUrl,
         coverImageUrl: result.data.coverImageUrl,

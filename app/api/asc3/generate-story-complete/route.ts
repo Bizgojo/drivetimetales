@@ -44,11 +44,11 @@ function splitTextIntoChunks(text: string, maxChars: number): string[] {
   return chunks
 }
 
-async function generateElevenLabsAudio(text: string): Promise<Buffer> {
+async function generateElevenLabsAudioChunks(text: string, storyId: string, prefix: string): Promise<string[]> {
   const chunks = splitTextIntoChunks(text, ELEVENLABS_CHUNK_SIZE)
-  const audioBuffers: Buffer[] = []
+  const urls: string[] = []
 
-  console.log(`🎙️ ElevenLabs: generating audio in ${chunks.length} chunk(s)...`)
+  console.log(`🎙️ ElevenLabs: generating ${chunks.length} chunk(s) for ${prefix}...`)
 
   for (let i = 0; i < chunks.length; i++) {
     const chunk = chunks[i]
@@ -79,10 +79,40 @@ async function generateElevenLabsAudio(text: string): Promise<Buffer> {
     }
 
     const arrayBuffer = await response.arrayBuffer()
-    audioBuffers.push(Buffer.from(arrayBuffer))
+    const buffer = Buffer.from(arrayBuffer)
+    const path = chunks.length === 1
+      ? `asc3/${storyId}/${prefix}.mp3`
+      : `asc3/${storyId}/${prefix}_${i + 1}.mp3`
+    const url = await uploadAudioToStorage(buffer, path)
+    urls.push(url)
+    console.log(`  ✅ Chunk ${i + 1} uploaded: ${path}`)
   }
 
-  return Buffer.concat(audioBuffers)
+  return urls
+}
+
+// Keep single-buffer version for short texts (intro/outro)
+async function generateElevenLabsAudio(text: string): Promise<Buffer> {
+  const response = await fetch(
+    `https://api.elevenlabs.io/v1/text-to-speech/${BELLE_B_VOICE_ID}`,
+    {
+      method: 'POST',
+      headers: {
+        'xi-api-key': ELEVENLABS_API_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        text,
+        model_id: 'eleven_monolingual_v1',
+        voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+      }),
+    }
+  )
+  if (!response.ok) {
+    const errText = await response.text()
+    throw new Error(`ElevenLabs API error: ${response.status} - ${errText}`)
+  }
+  return Buffer.from(await response.arrayBuffer())
 }
 
 async function uploadAudioToStorage(
@@ -203,7 +233,7 @@ Now write the story:`
     const outroText = `Thank you for listening to "${title}" on Endless Tales. Visit endless-tales.com to explore more stories.`
 
     let introAudioUrl = ''
-    let storyAudioUrl = ''
+    let storyAudioUrls: string[] = []
     let outroAudioUrl = ''
     let audioError: string | null = null
 
@@ -213,10 +243,9 @@ Now write the story:`
       introAudioUrl = await uploadAudioToStorage(introBuffer, `asc3/${storyId}/intro.mp3`)
       console.log(`✅ Intro audio uploaded: ${introAudioUrl}`)
 
-      console.log('🎙️ Generating story audio...')
-      const storyBuffer = await generateElevenLabsAudio(storyScript)
-      storyAudioUrl = await uploadAudioToStorage(storyBuffer, `asc3/${storyId}/story.mp3`)
-      console.log(`✅ Story audio uploaded: ${storyAudioUrl}`)
+      console.log('🎙️ Generating story audio (chunked)...')
+      storyAudioUrls = await generateElevenLabsAudioChunks(storyScript, storyId, 'story')
+      console.log(`✅ Story audio: ${storyAudioUrls.length} chunk(s) uploaded`)
 
       console.log('🎙️ Generating outro audio...')
       const outroBuffer = await generateElevenLabsAudio(outroText)
@@ -226,6 +255,9 @@ Now write the story:`
       audioError = err instanceof Error ? err.message : String(err)
       console.error('⚠️ Audio generation failed (continuing):', audioError)
     }
+
+    // Primary story URL is first chunk; all chunks stored as array
+    const storyAudioUrl = storyAudioUrls[0] || ''
 
     // ═══════════════════════════════════════════════════════════════
     // STEP 5 — Generate cover image via DALL-E 3
@@ -388,6 +420,7 @@ Now write the story:`
         outroText,
         introAudioUrl,
         storyAudioUrl,
+        storyAudioUrls,
         outroAudioUrl,
         backgroundMusicUrl: '',
         coverImageUrl,
