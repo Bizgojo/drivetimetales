@@ -1235,7 +1235,7 @@ export default function StoryCreationPage() {
         outroText: result.data.outroText,
       };
 
-      setStories([...stories, newStory]);
+      setStories([newStory, ...stories]);
       
       alert(`✅ Story Generated!\n\n"${result.data.title}"\n${result.data.wordCount} words\nAudio, music, and cover generated!`);
       
