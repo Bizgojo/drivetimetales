@@ -470,6 +470,12 @@ Now write the complete audio drama:`
     const characterGuideRaw = characterGuideMatch ? characterGuideMatch[1].trim() : ''
     const actualWordCount = storyScript.split(/\s+/).length
 
+    // Extract SUNO_PROMPT from script header
+    let sunoPrompt = ''
+    const sunoMatch = storyScript.match(/SUNO[_ ]PROMPT[:\s]+(.+?)(?:\n|$)/i)
+    if (sunoMatch) sunoPrompt = sunoMatch[1].trim()
+    if (!sunoPrompt) sunoPrompt = `Cinematic ${body.primaryGenre || 'thriller'} instrumental, atmospheric, mysterious, no vocals`
+
     console.log(`✅ Story generated: "${title}" (${actualWordCount} words)`)
 
     // ─── Parse characters and match voices ────────────────────────
@@ -759,7 +765,39 @@ Now write the complete audio drama:`
     // STEP 5 — Return response
     // ═══════════════════════════════════════════════════════════════
 
-    const warnings = [audioError, coverError, dbError, parseWarning, fallbackUsed ? '⚠️ Fell back to single Belle B voice — check story format' : null].filter(Boolean)
+    // ═══════════════════════════════════════════════════════════════
+    // STEP 5 — Suno music generation (optional, falls back to library)
+    // ═══════════════════════════════════════════════════════════════
+
+    let backgroundMusicUrl = selectBackgroundMusic(body.tone, body.primaryGenre) // fallback
+    const sunoCookie = (body.sunoCookie || process.env.SUNO_COOKIE || '').trim()
+    let sunoStatus = 'library' // track which source was used
+    let sunoWarning: string | null = null
+
+    if (sunoCookie) {
+      try {
+        console.log('🎵 Attempting Suno music generation...')
+        const sunoRes = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/asc3/generate-music`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ storyId, sunoPrompt, title, sunoCookie }),
+        })
+        const sunoData = await sunoRes.json()
+        if (sunoData.success && sunoData.musicUrl) {
+          backgroundMusicUrl = sunoData.musicUrl
+          sunoStatus = 'suno'
+          console.log('✅ Suno music generated:', sunoData.musicUrl)
+        } else {
+          console.warn('⚠️ Suno failed:', sunoData.message || sunoData.error)
+          sunoWarning = `Suno: ${sunoData.message || sunoData.error} — using library track instead`
+        }
+      } catch (e) {
+        console.warn('⚠️ Suno unavailable:', e)
+        sunoWarning = `Suno unavailable — using library track instead`
+      }
+    }
+
+    const warnings = [audioError, coverError, dbError, parseWarning, fallbackUsed ? '⚠️ Fell back to single Belle B voice — check story format' : null, sunoWarning].filter(Boolean)
 
     console.log('🏁 Multi-voice generation complete:', {
       storyId,
@@ -786,7 +824,8 @@ Now write the complete audio drama:`
         storyAudioUrl,
         storyAudioUrls,
         outroAudioUrl,
-        backgroundMusicUrl: selectBackgroundMusic(body.tone, body.primaryGenre),
+        backgroundMusicUrl,
+        sunoStatus,
         coverImageUrl,
         sfxMetadata: [],
         _warnings: warnings,

@@ -66,6 +66,7 @@ interface Story {
   backgroundMusicUrl?: string;
   coverImageUrl?: string;
   sfxMetadata?: Array<{ id: string; time: string; description: string }>;
+  sunoStatus?: string;
 }
 
 const AUTHOR_STYLE_PROFILES = {
@@ -222,7 +223,11 @@ const AUTHOR_STYLE_PROFILES = {
 const CreateStoryStage: React.FC<{
   onSubmit: (prompt: StoryPrompt) => void;
   isLoading?: boolean;
-}> = ({ onSubmit, isLoading = false }) => {
+  sunoCookie: string;
+  setSunoCookie: (v: string) => void;
+  showSunoSettings: boolean;
+  setShowSunoSettings: (v: boolean) => void;
+}> = ({ onSubmit, isLoading = false, sunoCookie, setSunoCookie, showSunoSettings, setShowSunoSettings }) => {
   const [genres, setGenres] = useState<string[]>([]);
   const [genresLoading, setGenresLoading] = useState(true);
   const authorStyleOptions = Object.keys(AUTHOR_STYLE_PROFILES);
@@ -502,6 +507,57 @@ const CreateStoryStage: React.FC<{
           <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${form.useOpus ? 'translate-x-6' : 'translate-x-1'}`} />
         </button>
       </div>
+
+      {/* Suno Settings */}
+      <div className="border border-gray-200 rounded-lg p-3">
+        <button
+          type="button"
+          onClick={() => setShowSunoSettings(!showSunoSettings)}
+          className="flex items-center justify-between w-full text-sm font-medium text-gray-700"
+        >
+          <span>🎵 Suno Music Settings</span>
+          <span className="text-xs text-gray-400">
+            {sunoCookie ? '✅ Cookie set' : '⚠️ No cookie — will use library'}
+            {showSunoSettings ? ' ▲' : ' ▼'}
+          </span>
+        </button>
+        {showSunoSettings && (
+          <div className="mt-3 space-y-2">
+            <p className="text-xs text-gray-500">
+              Paste your Suno session cookie to generate custom music per story.
+              Get it from: suno.com → DevTools (F12) → Application → Cookies → copy the value of the cookie named <strong>__session</strong> or the JWT token.
+            </p>
+            <textarea
+              value={sunoCookie}
+              onChange={(e) => {
+                setSunoCookie(e.target.value)
+                if (typeof window !== 'undefined') {
+                  if (e.target.value) {
+                    localStorage.setItem('sunoCookie', e.target.value)
+                  } else {
+                    localStorage.removeItem('sunoCookie')
+                  }
+                }
+              }}
+              placeholder="Paste Suno session cookie here..."
+              className="w-full h-20 text-xs border border-gray-300 rounded p-2 font-mono bg-white text-black"
+            />
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setSunoCookie('')
+                  if (typeof window !== 'undefined') localStorage.removeItem('sunoCookie')
+                }}
+                className="text-xs text-red-500 hover:text-red-700"
+              >
+                Clear
+              </button>
+              <span className="text-xs text-gray-400 ml-auto">Stored in browser only — never sent to server except during generation</span>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
@@ -586,7 +642,8 @@ const ReviewEditStage: React.FC<{
   onBack: () => void;
   onNext: () => void;
   onUpdate: (story: Story) => void;
-}> = ({ story, onBack, onNext, onUpdate }) => {
+  sunoCookie: string;
+}> = ({ story, onBack, onNext, onUpdate, sunoCookie }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const musicRef = useRef<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -650,6 +707,7 @@ const ReviewEditStage: React.FC<{
   const [editingIntro, setEditingIntro] = useState(false);
   const [editingOutro, setEditingOutro] = useState(false);
   const [savingChanges, setSavingChanges] = useState(false);
+  const [isRegeneratingMusic, setIsRegeneratingMusic] = useState(false);
 
   const calculateDuration = (words: number) => {
     const minutes = Math.round(words / 150);
@@ -753,6 +811,42 @@ const ReviewEditStage: React.FC<{
       setSavingChanges(false);
     }
   };
+
+  const handleRegenerateSunoMusic = async () => {
+    if (!sunoCookie || isRegeneratingMusic) return
+    setIsRegeneratingMusic(true)
+    try {
+      // Extract sunoPrompt from script
+      let sunoPrompt = ''
+      if (story.generatedScript) {
+        const m = story.generatedScript.match(/SUNO[_ ]PROMPT[:\s]+(.+?)(?:\n|$)/i)
+        if (m) sunoPrompt = m[1].trim()
+      }
+      if (!sunoPrompt) sunoPrompt = `Cinematic ${story.primaryGenre || 'thriller'} instrumental, atmospheric, mysterious, no vocals`
+
+      const res = await fetch('/api/asc3/generate-music', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storyId: story.id, sunoPrompt, title: story.title, sunoCookie }),
+      })
+      const data = await res.json()
+      if (data.success && data.musicUrl) {
+        const updatedStory = { ...story, backgroundMusicUrl: data.musicUrl, sunoStatus: 'suno' }
+        onUpdate(updatedStory)
+        if (musicRef.current) {
+          musicRef.current.src = data.musicUrl
+          musicRef.current.load()
+        }
+        alert('✅ New Suno track generated!')
+      } else {
+        alert(`❌ Suno failed: ${data.message || data.error}`)
+      }
+    } catch (e) {
+      alert('❌ Suno generation error')
+    } finally {
+      setIsRegeneratingMusic(false)
+    }
+  }
 
   const getMusicTrackName = (url: string): string => {
     const filename = url.split('/').pop()?.replace('.mp3', '').replace(/-/g, ' ') || 'Unknown Track';
@@ -1092,10 +1186,25 @@ const ReviewEditStage: React.FC<{
       {/* Background Music Info */}
       {effectiveMusicUrl && (
         <div className="bg-white border border-gray-300 rounded-lg p-4">
-          <h4 className="font-semibold text-black mb-2">🎵 Background Music</h4>
-          <p className="text-sm text-gray-600 mb-3">
-            {getMusicTrackName(effectiveMusicUrl)} — plays automatically under dialogue when you hit ▶ Play Full Story
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="font-semibold text-black">🎵 Background Music</h4>
+            <button
+              onClick={handleRegenerateSunoMusic}
+              disabled={!sunoCookie || isRegeneratingMusic}
+              className="px-3 py-1 bg-purple-600 text-white rounded text-sm hover:bg-purple-700 disabled:opacity-40"
+            >
+              {isRegeneratingMusic ? '⏳ Generating...' : '🎵 Regenerate with Suno'}
+            </button>
+          </div>
+          <p className="text-sm text-gray-600 mb-1">
+            {story.sunoStatus === 'suno'
+              ? '🎵 Custom Suno track'
+              : `🎵 Library: ${getMusicTrackName(effectiveMusicUrl)}`}
+            {' '} — plays automatically under dialogue when you hit ▶ Play Full Story
           </p>
+          {!sunoCookie && (
+            <p className="text-xs text-gray-400 mb-2">Set a Suno cookie in Stage 1 to enable regeneration.</p>
+          )}
           <audio
             controls
             src={effectiveMusicUrl}
@@ -1224,6 +1333,11 @@ export default function StoryCreationPage() {
   const [stories, setStories] = useState<Story[]>([]);
   const [selectedStory, setSelectedStory] = useState<Story | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [sunoCookie, setSunoCookie] = useState<string>(() => {
+    if (typeof window !== 'undefined') return localStorage.getItem('sunoCookie') || ''
+    return ''
+  });
+  const [showSunoSettings, setShowSunoSettings] = useState(false);
 
   // Load pending stories from DB on mount so refreshes don't wipe the list
   useEffect(() => {
@@ -1272,6 +1386,7 @@ export default function StoryCreationPage() {
           episode: prompt.episode,
           targetDestination: prompt.targetDestination,
           model: prompt.useOpus ? 'claude-opus-4-6' : 'claude-sonnet-4-6',
+          sunoCookie: sunoCookie || undefined,
         }),
       });
 
@@ -1312,6 +1427,7 @@ export default function StoryCreationPage() {
         sfxMetadata: result.data.sfxMetadata || [],
         introText: result.data.introText,
         outroText: result.data.outroText,
+        sunoStatus: result.data.sunoStatus,
       };
 
       setStories([newStory, ...stories]);
@@ -1373,7 +1489,16 @@ export default function StoryCreationPage() {
       </div>
 
       {/* Stages */}
-      {stage === 'create' && <CreateStoryStage onSubmit={handleCreateSubmit} isLoading={isGenerating} />}
+      {stage === 'create' && (
+        <CreateStoryStage
+          onSubmit={handleCreateSubmit}
+          isLoading={isGenerating}
+          sunoCookie={sunoCookie}
+          setSunoCookie={(v) => { setSunoCookie(v); if (typeof window !== 'undefined') { if (v) localStorage.setItem('sunoCookie', v); else localStorage.removeItem('sunoCookie'); } }}
+          showSunoSettings={showSunoSettings}
+          setShowSunoSettings={setShowSunoSettings}
+        />
+      )}
 
       {stage === 'to-test' && (
         <StoriesToTestStage
@@ -1397,6 +1522,7 @@ export default function StoryCreationPage() {
           onBack={() => setStage('to-test')}
           onNext={() => setStage('publish')}
           onUpdate={handleUpdateStory}
+          sunoCookie={sunoCookie}
         />
       )}
 
