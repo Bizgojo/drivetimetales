@@ -91,13 +91,18 @@ function PlayerContent() {
     load()
   }, [storyId, user])
 
-  // When queue loads, start first item
+  // When queue loads AND component is fully rendered, initialize audio src
   useEffect(() => {
-    if (!isASC3 || !queue.length || !audioRef.current) return
-    audioRef.current.src = queue[0].url
+    if (!isASC3 || !queue.length || loading) return
+    if (!audioRef.current) return
+    // Only set src if not already set (avoid overwriting on playlist enhancement)
+    if (!audioRef.current.src || audioRef.current.src === window.location.href) {
+      audioRef.current.src = queue[0].url
+      audioRef.current.load()
+    }
     setSectionLabel(queue[0].label)
     applyMusic(queue[0].type)
-  }, [isASC3, queue])
+  }, [isASC3, queue, loading])
 
   // Smooth crossfade between two music sources over durationMs
   const crossfadeTo = (newSrc: string, durationMs = 5000) => {
