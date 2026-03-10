@@ -847,6 +847,8 @@ const ReviewEditStage: React.FC<{
       })
       const data = await res.json()
       if (data.success && data.musicUrl) {
+        // Cache in localStorage so it survives page refresh
+        localStorage.setItem(`music_${story.id}`, data.musicUrl)
         const updatedStory = { ...story, backgroundMusicUrl: data.musicUrl, sunoStatus: 'suno' }
         onUpdate(updatedStory)
         if (musicRef.current) {
@@ -876,6 +878,11 @@ const ReviewEditStage: React.FC<{
   // Fallback: pick music by genre if story doesn't have one set
   const BASE = 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/music-library';
   const getEffectiveMusicUrl = (): string => {
+    // Check localStorage cache first (persists until DB column is available)
+    if (typeof window !== 'undefined') {
+      const cached = localStorage.getItem(`music_${story.id}`)
+      if (cached) return cached
+    }
     if (story.backgroundMusicUrl) return story.backgroundMusicUrl;
     const g = (story.primaryGenre || '').toLowerCase();
     const t = (story.tone || '').toLowerCase();

@@ -254,6 +254,12 @@ export async function POST(req: NextRequest) {
     const musicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio/${storagePath}`
     console.log(`✅ Music uploaded: ${musicUrl}`)
 
+    // Save to DB (background_music_url column — add if missing: ALTER TABLE stories ADD COLUMN IF NOT EXISTS background_music_url TEXT)
+    await supabase.from('stories').update({ background_music_url: musicUrl }).eq('id', storyId).then(({ error }) => {
+      if (error) console.log('⚠️ Could not save music URL to DB (column may not exist yet):', error.message)
+      else console.log('✅ Music URL saved to DB')
+    })
+
     return NextResponse.json({ success: true, musicUrl, message: 'Suno music generated successfully' })
 
   } catch (err: any) {
