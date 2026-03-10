@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@supabase/supabase-js'
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-})
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY!
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -409,14 +406,28 @@ Now write the complete audio drama:`
 
     console.log('🤖 Calling Claude for multi-voice script...')
 
-    const claudeResponse = await anthropic.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
-      max_tokens: 12000,
-      messages: [{ role: 'user', content: claudePrompt }],
+    const claudeHttpResponse = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 12000,
+        messages: [{ role: 'user', content: claudePrompt }],
+      }),
     })
 
-    const claudeText =
-      claudeResponse.content[0].type === 'text' ? claudeResponse.content[0].text : ''
+    if (!claudeHttpResponse.ok) {
+      const errBody = await claudeHttpResponse.json()
+      console.error('Claude API error:', errBody)
+      return NextResponse.json({ success: false, error: `Claude API error: ${JSON.stringify(errBody.error)}` }, { status: 500 })
+    }
+
+    const claudeResult = await claudeHttpResponse.json()
+    const claudeText = claudeResult.content?.[0]?.text || ''
 
     // ─── Parse Claude output ───────────────────────────────────────
 
