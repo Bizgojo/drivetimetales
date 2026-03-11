@@ -17,12 +17,12 @@ export async function GET() {
 
     if (slotsErr) throw slotsErr
 
-    // Get library (inactive stories)
+    // Get library (inactive stories) — order by id desc as fallback (added_at may not exist)
     const { data: library, error: libErr } = await supabase
       .from('landing_stories')
       .select('*')
       .eq('active', false)
-      .order('added_at', { ascending: false })
+      .order('id', { ascending: false })
 
     if (libErr) throw libErr
 
