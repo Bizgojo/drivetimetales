@@ -381,18 +381,16 @@ export default function LandingStoriesPage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch('/api/landing/slots')
+      const res = await fetch('/api/landing/slots?t=' + Date.now(), { cache: 'no-store' })
       const data = await res.json()
-      if (data.success) {
-        const slotArr: (LandingStory | null)[] = [null, null, null]
-        for (const s of data.slots) {
-          if (s.slot >= 1 && s.slot <= 3) slotArr[s.slot - 1] = s
-        }
-        setSlots(slotArr)
-        setLibrary(data.library)
+      const slotArr: (LandingStory | null)[] = [null, null, null]
+      for (const s of (data.slots || [])) {
+        if (s.slot >= 1 && s.slot <= 3) slotArr[s.slot - 1] = s
       }
-    } catch {
-      flash('Failed to load landing stories', false)
+      setSlots(slotArr)
+      setLibrary(data.library || [])
+    } catch (e) {
+      flash('Failed to load: ' + String(e), false)
     } finally {
       setLoading(false)
     }

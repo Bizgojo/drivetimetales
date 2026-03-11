@@ -26,7 +26,9 @@ export async function GET() {
 
     if (libErr) throw libErr
 
-    return NextResponse.json({ success: true, slots: slots || [], library: library || [] })
+    return NextResponse.json({ success: true, slots: slots || [], library: library || [] }, {
+      headers: { 'Cache-Control': 'no-store' }
+    })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     return NextResponse.json({ success: false, error: msg }, { status: 500 })
