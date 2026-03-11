@@ -277,7 +277,12 @@ function LibraryContent() {
   seriesGroups.forEach(group => {
     mixedItems.push({ type: 'series', group, sortDate: group.earliest_created_at || '' })
   })
-  mixedItems.sort((a, b) => (b.sortDate || '').localeCompare(a.sortDate || ''))
+  // Sort shortest to longest (singles by duration; series by total duration)
+  mixedItems.sort((a, b) => {
+    const aDur = a.type === 'single' ? (a.story.duration_mins || 0) : (a.group.total_duration_mins || 0)
+    const bDur = b.type === 'single' ? (b.story.duration_mins || 0) : (b.group.total_duration_mins || 0)
+    return aDur - bDur
+  })
 
   // Helper to render a single HSC with review props
   function renderStoryCard(story: Story) {

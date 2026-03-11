@@ -212,7 +212,14 @@ function LibraryPlaylistContent() {
     router.push('/player/playlist')
   }
 
-  const filteredCards = cards.filter(card => {
+  // Sort available cards shortest → longest (series by total, singles by duration)
+  const sortedCards = [...cards].sort((a, b) => {
+    const aDur = a.kind === 'series' ? a.total_mins : (a.story.duration_mins || 0)
+    const bDur = b.kind === 'series' ? b.total_mins : (b.story.duration_mins || 0)
+    return aDur - bDur
+  })
+
+  const filteredCards = sortedCards.filter(card => {
     const genre  = card.kind === 'series' ? card.genre : card.story.genre
     const durMin = card.kind === 'series' ? card.total_mins : card.story.duration_mins
     if (selectedDuration === '~15 min' && durMin > 20) return false
