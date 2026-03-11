@@ -86,9 +86,9 @@ function LibraryPlaylistContent() {
     }
 
     // Find unique series names from library
-    const seriesNames = [...new Set(
+    const seriesNames = Array.from(new Set(
       libraryStories.filter(s => s.series_name).map(s => s.series_name!)
-    )]
+    ))
 
     // For each series, fetch ALL episodes from stories table (any status — include archived)
     const seriesEpisodesMap: Record<string, StoryItem[]> = {}
