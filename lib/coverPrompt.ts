@@ -26,27 +26,22 @@ export function buildCoverPrompt(params: {
     Object.entries(genreStyle).find(([k]) => g.includes(k))?.[1] ||
     'cinematic, sophisticated, dramatic lighting, professional audiobook cover quality'
 
-  // Use script excerpt or concept for story-specific visual context
-  let storyContext = ''
-  if (script && script.length > 100) {
-    storyContext = script.substring(0, 600).replace(/\n+/g, ' ').trim()
-  } else if (concept) {
-    storyContext = concept.substring(0, 300)
-  }
+  // Use ONLY concept (sanitized) — never raw script (triggers content filters)
+  // Keep concept short and visual-description-safe
+  const conceptSnippet = concept
+    ? concept.replace(/\b(kill|murder|dead|blood|weapon|war|battle|shoot|fight|attack|Confederate|rebel|soldier)\b/gi, '').substring(0, 200).trim()
+    : ''
 
   return [
     `Professional audiobook cover art for "${title}" by ${author}.`,
     `Genre: ${genre}${tone ? `, tone: ${tone}` : ''}.`,
-    storyContext ? `Story context for visual inspiration: ${storyContext}` : '',
     `Visual style: ${styleRef}.`,
-    `Design requirements:`,
-    `- Square format (1024x1024), fills entire canvas edge to edge`,
-    `- The title "${title}" must appear prominently in the upper or lower portion of the cover in bold, elegant typography`,
-    `- The author name "${author}" must appear in smaller text near the title`,
-    `- Central image: a single powerful illustration or photorealistic scene that captures the mood and setting of this specific story`,
-    `- Color palette: rich, dramatic, genre-appropriate (not generic or stock-photo-like)`,
-    `- Quality benchmark: comparable to major published thriller/mystery audiobook covers on Audible or Spotify`,
-    `- Do NOT use generic stock imagery — the image must feel specific to this story`,
+    conceptSnippet ? `Thematic inspiration: ${conceptSnippet}.` : '',
+    `Square format 1024x1024, fills the entire canvas edge to edge with no borders.`,
+    `The title text "${title}" displayed prominently on the cover in bold dramatic typography.`,
+    `The author name "${author}" in smaller elegant text near the title.`,
+    `Central artwork: a single powerful, atmospheric scene capturing the mood and setting — rich dramatic colors, cinematic composition.`,
+    `Quality comparable to major audiobook covers on Audible. No generic stock imagery.`,
   ]
     .filter(Boolean)
     .join(' ')

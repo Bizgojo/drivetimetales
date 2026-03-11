@@ -18,10 +18,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'storyId is required' }, { status: 400 })
     }
 
-    // Fetch full story details for a rich, story-specific prompt
+    // Fetch story details — use concept/tone for visual prompt, NOT raw script
     const { data: story } = await supabase
       .from('stories')
-      .select('title, author, genre, script')
+      .select('title, author, genre, description')
       .eq('id', storyId)
       .single()
 
@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
       title: story?.title || 'Untitled',
       author: story?.author || 'Unknown Author',
       genre: story?.genre || genre || 'fiction',
-      script: story?.script,
+      concept: story?.description, // description = concept summary (safe text)
     })
 
     console.log('🎨 Regenerating cover with story-specific prompt (HD)...')

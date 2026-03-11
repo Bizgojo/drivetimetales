@@ -828,9 +828,9 @@ Now write the complete audio drama:`
         title,
         author: authorName,
         genre: body.primaryGenre || 'fiction',
-        concept: body.concept,
+        concept: body.concept,  // short concept summary — safe for DALL-E
         tone: body.tone,
-        script: storyScript,
+        // do NOT pass raw script — triggers content policy filters
       })
 
       console.log('🎨 Generating cover image with DALL-E 3...')
