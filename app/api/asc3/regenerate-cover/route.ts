@@ -7,7 +7,30 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY!
+const STABILITY_API_KEY = process.env.STABILITY_API_KEY!
+
+async function generateWithStability(prompt: string): Promise<Buffer> {
+  const form = new FormData()
+  form.append('prompt', prompt)
+  form.append('aspect_ratio', '1:1')
+  form.append('output_format', 'jpeg')
+
+  const res = await fetch('https://api.stability.ai/v2beta/stable-image/generate/core', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${STABILITY_API_KEY}`,
+      Accept: 'image/*',
+    },
+    body: form,
+  })
+
+  if (!res.ok) {
+    const errText = await res.text()
+    throw new Error(`Stability AI error: ${res.status} - ${errText}`)
+  }
+
+  return Buffer.from(await res.arrayBuffer())
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -32,36 +55,10 @@ export async function POST(req: NextRequest) {
       // no concept/script — any story context risks content policy violations
     })
 
-    console.log('🎨 Regenerating cover with story-specific prompt (HD)...')
-    console.log('  Preview:', dallePrompt.substring(0, 200))
+    console.log('🎨 Regenerating cover via Stability AI...')
+    console.log('  Prompt preview:', dallePrompt.substring(0, 200))
 
-    const dalleRes = await fetch('https://api.openai.com/v1/images/generations', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'dall-e-3',
-        prompt: dallePrompt,
-        n: 1,
-        size: '1024x1024',
-        quality: 'hd',
-      }),
-    })
-
-    if (!dalleRes.ok) {
-      const errText = await dalleRes.text()
-      throw new Error(`DALL-E error: ${dalleRes.status} - ${errText}`)
-    }
-
-    const dalleData = (await dalleRes.json()) as { data: { url: string }[] }
-    const imageUrl = dalleData.data[0]?.url
-    if (!imageUrl) throw new Error('No image URL returned from DALL-E')
-
-    const imgRes = await fetch(imageUrl)
-    if (!imgRes.ok) throw new Error(`Failed to download cover image: ${imgRes.status}`)
-    const imgBuffer = Buffer.from(await imgRes.arrayBuffer())
+    const imgBuffer = await generateWithStability(dallePrompt)
 
     const timestamp = Date.now()
     const storagePath = `asc3/${storyId}/cover_${timestamp}.jpg`
