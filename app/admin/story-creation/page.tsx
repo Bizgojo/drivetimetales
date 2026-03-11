@@ -67,6 +67,7 @@ interface Story {
   coverImageUrl?: string;
   sfxMetadata?: Array<{ id: string; time: string; description: string }>;
   sunoStatus?: string;
+  audioUrl?: string;
 }
 
 const AUTHOR_STYLE_PROFILES = {
@@ -679,6 +680,14 @@ const StoriesToTestStage: React.FC<{
 };
 
 // ============================================================================
+// ============================================================================
+const formatTime = (secs: number): string => {
+  if (!secs || isNaN(secs)) return '0:00';
+  const m = Math.floor(secs / 60);
+  const s = Math.floor(secs % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+};
+
 // STAGE 3: REVIEW & EDIT WITH AUDIO
 // ============================================================================
 
@@ -705,6 +714,9 @@ const ReviewEditStage: React.FC<{
   const fullPlayQueueRef = useRef<string[]>([]);
   const fullPlayIndexRef = useRef(0);
   const fullPlaySectionLabels = useRef<{url: string, label: string}[]>([]);
+  const segmentDurationsRef = useRef<number[]>([]);
+  const [totalStoryDuration, setTotalStoryDuration] = useState(0);
+  const [unifiedPosition, setUnifiedPosition] = useState(0);
   const [fullPlayLabel, setFullPlayLabel] = useState('');
 
   const buildFullPlayQueue = () => {
@@ -786,25 +798,69 @@ const ReviewEditStage: React.FC<{
     }
   };
 
-  const startFullPlay = () => {
+    const preloadDurations = (urls: string[]): Promise<number[]> => {
+    return Promise.all(urls.map(url => new Promise<number>(resolve => {
+      const a = new Audio();
+      a.preload = 'metadata';
+      a.onloadedmetadata = () => resolve(a.duration || 0);
+      a.onerror = () => resolve(0);
+      a.src = url;
+    })));
+  };
+
+  const startFullPlay = async () => {
     const queue = buildFullPlayQueue();
     if (!queue.length || !audioRef.current) return;
     fullPlaySectionLabels.current = queue;
-    fullPlayQueueRef.current = queue.map(q => q.url);
+    const urls = queue.map(q => q.url);
+    fullPlayQueueRef.current = urls;
     fullPlayIndexRef.current = 0;
     setFullPlayMode(true);
     setFullPlayLabel(queue[0].label);
-    audioRef.current.src = queue[0].url;
+    setUnifiedPosition(0);
+    // Preload durations in background
+    preloadDurations(urls).then(durations => {
+      segmentDurationsRef.current = durations;
+      setTotalStoryDuration(durations.reduce((a, b) => a + b, 0));
+    });
+    audioRef.current.src = urls[0];
     audioRef.current.play().then(() => {
       setIsPlaying(true);
       applyMusicForLabel(queue[0].label);
     }).catch(console.error);
   };
 
+  const seekToUnifiedPosition = (targetPos: number) => {
+    const durations = segmentDurationsRef.current;
+    const urls = fullPlayQueueRef.current;
+    if (!durations.length || !audioRef.current) return;
+    let acc = 0;
+    for (let i = 0; i < durations.length; i++) {
+      const segEnd = acc + (durations[i] || 0);
+      if (targetPos <= segEnd || i === durations.length - 1) {
+        const offsetInSeg = targetPos - acc;
+        fullPlayIndexRef.current = i;
+        const label = fullPlaySectionLabels.current[i]?.label || '';
+        setFullPlayLabel(label);
+        audioRef.current.src = urls[i];
+        audioRef.current.currentTime = Math.max(0, offsetInSeg);
+        audioRef.current.play().then(() => {
+          setIsPlaying(true);
+          applyMusicForLabel(label);
+        }).catch(console.error);
+        setUnifiedPosition(targetPos);
+        return;
+      }
+      acc = segEnd;
+    }
+  };
+
   const stopFullPlay = () => {
     setFullPlayMode(false);
     setFullPlayLabel('');
     setIsPlaying(false);
+    setUnifiedPosition(0);
+    setTotalStoryDuration(0);
     audioRef.current?.pause();
     if (musicRef.current) { musicRef.current.pause(); musicRef.current.currentTime = 0; }
     if (introMusicRef.current) { introMusicRef.current.pause(); introMusicRef.current.currentTime = 0; }
@@ -1243,20 +1299,49 @@ const ReviewEditStage: React.FC<{
               {isPlaying ? <Pause size={24} /> : <Play size={24} />}
             </button>
             <div className="flex-1">
-              <div className="bg-gray-300 h-2 rounded-full">
-                <div
-                  className="bg-orange-500 h-2 rounded-full transition-all"
-                  style={{ width: duration > 0 ? `${(currentTime / duration) * 100}%` : '0%' }}
-                />
-              </div>
-              <div className="flex items-center justify-between mt-1">
-                <p className="text-xs text-gray-600">
-                  {Math.floor(currentTime)}s / {Math.floor(duration)}s
-                  {currentSegment === 'story' && getStoryChunks().length > 1 && (
-                    <span className="ml-2 text-gray-400">segment {currentChunkIndex + 1}/{getStoryChunks().length}</span>
-                  )}
-                </p>
-              </div>
+              {/* Unified full-story seek bar (fullPlayMode) or per-segment seek bar */}
+              {fullPlayMode && totalStoryDuration > 0 ? (
+                <>
+                  <input
+                    type="range"
+                    min={0}
+                    max={totalStoryDuration}
+                    step={1}
+                    value={unifiedPosition}
+                    onChange={(e) => seekToUnifiedPosition(parseFloat(e.target.value))}
+                    className="w-full accent-orange-500 cursor-pointer"
+                  />
+                  <div className="flex items-center justify-between mt-1">
+                    <span className="text-xs text-gray-600">{formatTime(unifiedPosition)}</span>
+                    <span className="text-xs text-orange-600 font-medium truncate mx-2">{fullPlayLabel}</span>
+                    <span className="text-xs text-gray-600">{formatTime(totalStoryDuration)}</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <input
+                    type="range"
+                    min={0}
+                    max={duration || 0}
+                    step={0.5}
+                    value={currentTime}
+                    onChange={(e) => {
+                      const t = parseFloat(e.target.value);
+                      if (audioRef.current) audioRef.current.currentTime = t;
+                      setCurrentTime(t);
+                    }}
+                    className="w-full accent-orange-500 cursor-pointer"
+                  />
+                  <div className="flex items-center justify-between mt-1">
+                    <p className="text-xs text-gray-600">
+                      {formatTime(currentTime)} / {formatTime(duration)}
+                      {currentSegment === 'story' && getStoryChunks().length > 1 && (
+                        <span className="ml-2 text-gray-400">segment {currentChunkIndex + 1}/{getStoryChunks().length}</span>
+                      )}
+                    </p>
+                  </div>
+                </>
+              )}
               {/* Now speaking indicator */}
               {currentSpeaker && isPlaying && (
                 <p className="text-xs text-orange-600 font-medium mt-1">
@@ -1306,7 +1391,16 @@ const ReviewEditStage: React.FC<{
           <audio
             ref={audioRef}
             src={audioUrl}
-            onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+            onTimeUpdate={(e) => {
+              const t = e.currentTarget.currentTime;
+              setCurrentTime(t);
+              if (fullPlayMode && segmentDurationsRef.current.length) {
+                const completedMs = segmentDurationsRef.current
+                  .slice(0, fullPlayIndexRef.current)
+                  .reduce((a, b) => a + b, 0);
+                setUnifiedPosition(completedMs + t);
+              }
+            }}
             onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
             onEnded={() => {
               if (fullPlayMode) {
@@ -1427,7 +1521,6 @@ const ReviewEditStage: React.FC<{
               {isRegeneratingOutroAudio ? '⏳ Generating...' : '🎙️ Regen Audio'}
             </button>
           </div>
-          )}
         </div>
         {editingOutro ? (
           <textarea
