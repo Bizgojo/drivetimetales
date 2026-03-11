@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
       title: story?.title || 'Untitled',
       author: story?.author || 'Unknown Author',
       genre: story?.genre || genre || 'fiction',
-      concept: story?.description, // description = concept summary (safe text)
+      // no concept/script — any story context risks content policy violations
     })
 
     console.log('🎨 Regenerating cover with story-specific prompt (HD)...')

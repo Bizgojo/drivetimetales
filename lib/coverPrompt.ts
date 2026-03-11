@@ -26,23 +26,15 @@ export function buildCoverPrompt(params: {
     Object.entries(genreStyle).find(([k]) => g.includes(k))?.[1] ||
     'cinematic, sophisticated, dramatic lighting, professional audiobook cover quality'
 
-  // Use ONLY concept (sanitized) — never raw script (triggers content filters)
-  // Keep concept short and visual-description-safe
-  const conceptSnippet = concept
-    ? concept.replace(/\b(kill|murder|dead|blood|weapon|war|battle|shoot|fight|attack|Confederate|rebel|soldier)\b/gi, '').substring(0, 200).trim()
-    : ''
+  const toneDesc = tone ? `, ${tone}` : ''
 
-  return [
-    `Professional audiobook cover art for "${title}" by ${author}.`,
-    `Genre: ${genre}${tone ? `, tone: ${tone}` : ''}.`,
-    `Visual style: ${styleRef}.`,
-    conceptSnippet ? `Thematic inspiration: ${conceptSnippet}.` : '',
-    `Square format 1024x1024, fills the entire canvas edge to edge with no borders.`,
-    `The title text "${title}" displayed prominently on the cover in bold dramatic typography.`,
-    `The author name "${author}" in smaller elegant text near the title.`,
-    `Central artwork: a single powerful, atmospheric scene capturing the mood and setting — rich dramatic colors, cinematic composition.`,
-    `Quality comparable to major audiobook covers on Audible. No generic stock imagery.`,
-  ]
-    .filter(Boolean)
-    .join(' ')
+  return (
+    `Create a professional audiobook cover image in square format (1024x1024). ` +
+    `The cover is for an audio story called "${title}" written by ${author}. ` +
+    `Genre: ${genre}${toneDesc}. ` +
+    `Visual style: ${styleRef}. ` +
+    `The cover must include the title "${title}" in bold prominent typography and the author name "${author}" in smaller text. ` +
+    `Central image: a dramatic, atmospheric scene that fits the genre — cinematic lighting, rich colors, professional composition. ` +
+    `Style similar to top audiobook covers on Audible or Apple Books. No borders, fills entire canvas.`
+  )
 }
