@@ -31,6 +31,13 @@ function PlayerContent() {
   const musicBRef  = useRef<HTMLAudioElement>(null) // music track B (crossfade target)
   const activeMusic = useRef<'A' | 'B'>('A')        // which track is currently playing
 
+  // Web Audio API — real-time voice level detection for ducking
+  const audioCtxRef    = useRef<AudioContext | null>(null)
+  const analyserRef    = useRef<AnalyserNode | null>(null)
+  const voiceDataRef   = useRef<Float32Array | null>(null)
+  const duckLoopRef    = useRef<number | null>(null)   // requestAnimationFrame id
+  const isPlayingRef   = useRef(false)                  // ref copy for RAF loop
+
   const saveTimer   = useRef<NodeJS.Timeout | null>(null)
   const duckTimer   = useRef<NodeJS.Timeout | null>(null)
   const xfadeTimer  = useRef<NodeJS.Timeout | null>(null)
@@ -64,6 +71,50 @@ function PlayerContent() {
 
   const activeRef  = () => activeMusic.current === 'A' ? musicARef.current : musicBRef.current
   const inactiveRef = () => activeMusic.current === 'A' ? musicBRef.current : musicARef.current
+
+  /** Set up Web Audio analyser on the voice element (call inside user gesture) */
+  const setupWebAudio = () => {
+    if (audioCtxRef.current || !audioRef.current) return
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+      const source  = ctx.createMediaElementSource(audioRef.current)
+      const analyser = ctx.createAnalyser()
+      analyser.fftSize = 512
+      analyser.smoothingTimeConstant = 0.6
+      source.connect(analyser)
+      analyser.connect(ctx.destination)
+      audioCtxRef.current  = ctx
+      analyserRef.current  = analyser
+      voiceDataRef.current = new Float32Array(analyser.fftSize)
+    } catch (e) { console.warn('Web Audio not available', e) }
+  }
+
+  /** Real-time duck loop — runs at ~60fps, adjusts music based on voice RMS */
+  const startDuckLoop = () => {
+    if (duckLoopRef.current) cancelAnimationFrame(duckLoopRef.current)
+    const loop = () => {
+      if (!isPlayingRef.current) return
+      const el = activeRef()
+      if (el && analyserRef.current && voiceDataRef.current) {
+        analyserRef.current.getFloatTimeDomainData(voiceDataRef.current)
+        const rms = Math.sqrt(
+          voiceDataRef.current.reduce((s, v) => s + v * v, 0) / voiceDataRef.current.length
+        )
+        const voiceActive = rms > 0.008
+        const target = voiceActive
+          ? (currentQueueType.current === 'story' ? VOL_STORY : VOL_INTRO)
+          : Math.min(VOL_SWELL, el.volume + 0.002) // gentle rise during silence
+        // Smooth approach toward target
+        el.volume = Math.max(0, Math.min(VOL_SWELL, el.volume + (target - el.volume) * 0.12))
+      }
+      duckLoopRef.current = requestAnimationFrame(loop)
+    }
+    duckLoopRef.current = requestAnimationFrame(loop)
+  }
+
+  const stopDuckLoop = () => {
+    if (duckLoopRef.current) { cancelAnimationFrame(duckLoopRef.current); duckLoopRef.current = null }
+  }
 
   /** Animate volume of a specific audio element */
   const animateVol = (el: HTMLAudioElement, target: number, ms: number, onDone?: () => void) => {
@@ -236,16 +287,20 @@ function PlayerContent() {
       audioRef.current.pause()
       activeRef()?.pause()
       saveProgress(currentTime)
+      isPlayingRef.current = false
       setIsPlaying(false)
+      stopDuckLoop()
     } else {
+      setupWebAudio() // initialise Web Audio on first user gesture
       audioRef.current.play().then(() => {
+        isPlayingRef.current = true
         setIsPlaying(true)
         const mA = musicARef.current
         if (mA && mA.src) {
           mA.play().catch(() => {})
-          // Fade intro music in over 2s
           animateVol(mA, VOL_INTRO, 2000)
         }
+        startDuckLoop()
       }).catch(() => {})
     }
   }
@@ -348,12 +403,10 @@ function PlayerContent() {
           }
         }}
         onPlay={() => {
+          isPlayingRef.current = true
           setIsPlaying(true)
-          // Duck music whenever a voice segment starts — intro AND story
-          const target = currentQueueType.current === 'story' ? VOL_STORY : VOL_INTRO
-          setMusicVol(target, 300)
         }}
-        onPause={() => setIsPlaying(false)}
+        onPause={() => { isPlayingRef.current = false; setIsPlaying(false) }}
         onEnded={() => {
           if (!isASC3) { setIsPlaying(false); saveProgress(duration, true); setTimeout(() => router.push('/library'), 1500); return }
           const ni = queueIndex + 1
