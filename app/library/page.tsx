@@ -255,19 +255,16 @@ function LibraryContent() {
       }
     }
   })
-  // Single-episode series show as standalone until a 2nd episode is added
-  const trueSeriesGroups = Array.from(seriesMap.values()).filter(g => g.episode_count > 1)
-  const singleEpSeriesStories = filteredStories.filter(s =>
-    s.series_name && (seriesMap.get(s.series_name)?.episode_count || 0) <= 1
-  )
-  const seriesGroups = trueSeriesGroups
+  // Any story with a series_name shows as a series card (even if user only has 1 ep)
+  const seriesGroups = Array.from(seriesMap.values())
+  const singleEpSeriesStories: Story[] = []  // no longer demoted to singles
 
   seriesGroups.forEach(group => {
     group.completed_episodes = group.episode_ids.filter(eid =>
       libraryLookup.get(eid)?.completed
     ).length
   })
-  const singles = [...filteredStories.filter(s => !s.series_name), ...singleEpSeriesStories]
+  const singles = filteredStories.filter(s => !s.series_name)
 
   type DisplayItem = { type: 'single', story: Story, sortDate: string } | { type: 'series', group: SeriesGroup, sortDate: string }
   const mixedItems: DisplayItem[] = []
