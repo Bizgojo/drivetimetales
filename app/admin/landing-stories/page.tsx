@@ -369,6 +369,7 @@ export default function LandingStoriesPage() {
   const [working, setWorking] = useState(false)
   const [showCopyModal, setShowCopyModal] = useState(false)
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null)
+  const [playingSlot, setPlayingSlot] = useState<number | null>(null)
 
   const dragging = useRef<DragSource | null>(null)
   const [dragOver, setDragOver] = useState<string | null>(null)
@@ -528,9 +529,28 @@ export default function LandingStoriesPage() {
               </div>
               {story ? (
                 <div draggable onDragStart={onDragStart({ kind: 'slot', story })} onDragEnd={onDragEnd} style={{ cursor: 'grab' }}>
-                  <div style={{ aspectRatio: '1', background: '#1a1a1a' }}>
+                  <div style={{ aspectRatio: '1', background: '#1a1a1a', position: 'relative' }}>
                     {story.cover_url ? <img src={story.cover_url} alt={story.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '48px' }}>🎧</div>}
+                    {story.audio_url && (
+                      <button
+                        onClick={e => { e.stopPropagation(); setPlayingSlot(playingSlot === n ? null : n) }}
+                        style={{ position: 'absolute', bottom: '10px', right: '10px', width: '40px', height: '40px', borderRadius: '50%', background: playingSlot === n ? '#f97316' : 'rgba(0,0,0,0.75)', border: '2px solid #fff', color: '#fff', fontSize: '16px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        {playingSlot === n ? '⏹' : '▶'}
+                      </button>
+                    )}
                   </div>
+                  {playingSlot === n && story.audio_url && (
+                    <div style={{ background: '#1a1a1a', padding: '8px 10px' }}>
+                      <audio
+                        autoPlay
+                        controls
+                        src={story.audio_url}
+                        onEnded={() => setPlayingSlot(null)}
+                        style={{ width: '100%', height: '32px', accentColor: '#f97316' }}
+                      />
+                    </div>
+                  )}
                   <div style={{ padding: '0.75rem 1rem' }}>
                     <div style={{ fontWeight: 700, color: '#000', fontSize: '14px', marginBottom: '2px' }}>{story.title}</div>
                     <div style={{ color: '#666', fontSize: '12px', marginBottom: '4px' }}>{story.genre} · {story.author}</div>
