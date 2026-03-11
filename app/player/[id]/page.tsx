@@ -45,7 +45,7 @@ function PlayerContent() {
   const [backgroundMusicUrl, setBackgroundMusicUrl] = useState<string | null>(null)
   const [isASC3, setIsASC3] = useState(false)
   const [sectionLabel, setSectionLabel] = useState('')
-  const musicVolume = 0.04
+  const musicVolume = 0.03
 
   // Load story + playlist
   useEffect(() => {
