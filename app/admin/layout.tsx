@@ -1,7 +1,15 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
+import { useEffect } from 'react'
+import { useAuth } from '@/contexts/AuthContext'
+
+const ADMIN_EMAILS = new Set([
+  'marc@endless-tales.com',
+  'hello.endlesstales@gmail.com',
+  'williampostlewaite@icloud.com',
+])
 
 export default function AdminLayout({
   children,
@@ -9,6 +17,20 @@ export default function AdminLayout({
   children: React.ReactNode
 }) {
   const pathname = usePathname()
+  const router = useRouter()
+  const { user, loading } = useAuth()
+
+  useEffect(() => {
+    if (loading) return
+    if (!user || !ADMIN_EMAILS.has(user.email || '')) {
+      router.replace('/home')
+    }
+  }, [user, loading, router])
+
+  // Don't render anything while auth resolves or if not admin
+  if (loading || !user || !ADMIN_EMAILS.has(user.email || '')) {
+    return <div style={{ minHeight: '100vh', background: '#f5f5f5' }} />
+  }
 
   const menuItems = [
     { href: '/admin', label: 'Dashboard', icon: '📊' },

@@ -11,7 +11,7 @@ const supabase = createClient(
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId, email, priceId, referralCode } = await req.json()
+    const { userId, email, priceId, referralCode, trialDays: trialDaysParam } = await req.json()
 
     if (!userId || !email || !priceId) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
@@ -41,20 +41,11 @@ export async function POST(req: NextRequest) {
         .eq('id', userId)
     }
 
-    // Check if this is a referred signup - give them a trial
-    let trialDays = 0
+    // Use trial days from client (A/B assigned), referrals always get at least 14
+    let trialDays = trialDaysParam || 7
     if (referralCode) {
-      // Verify the referral code exists
-      const { data: referrer } = await supabase
-        .from('users')
-        .select('id')
-        .eq('referral_code', referralCode)
-        .single()
-
-      if (referrer) {
-        // Give the new user a 30-day trial (their free month)
-        trialDays = 30
-      }
+      const { data: referrer } = await supabase.from('users').select('id').eq('referral_code', referralCode).single()
+      if (referrer) trialDays = Math.max(trialDays, 14)
     }
 
     // Create checkout session
@@ -72,7 +63,7 @@ export async function POST(req: NextRequest) {
         metadata: { userId },
         trial_period_days: trialDays > 0 ? trialDays : undefined
       },
-      success_url: `${process.env.NEXT_PUBLIC_BASE_URL}/welcome?success=true`,
+      success_url: `${process.env.NEXT_PUBLIC_BASE_URL}/home?welcome=true`,
       cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL}/signup?canceled=true`,
       metadata: { userId, referralCode: referralCode || '' }
     })
