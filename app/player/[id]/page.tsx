@@ -15,9 +15,9 @@ interface QueueItem {
 }
 
 // Volume constants
-const VOL_INTRO  = 0.04   // intro/outro music under Belle B
-const VOL_STORY  = 0.04   // story background music (ducked under voices)
-const VOL_SWELL  = 0.10   // brief swell between lines
+const VOL_INTRO  = 0.025  // intro/outro music under Belle B (barely audible)
+const VOL_STORY  = 0.035  // story background music (ducked under voices)
+const VOL_SWELL  = 0.07   // brief swell between lines (never louder than this)
 
 function PlayerContent() {
   const params = useParams()
@@ -79,12 +79,13 @@ function PlayerContent() {
     return timer
   }
 
-  /** Instantly duck or raise the active music track */
+  /** Animate the active music track to a target volume, capped at VOL_SWELL */
   const setMusicVol = (target: number, ms = 200) => {
     const el = activeRef()
     if (!el) return
     if (duckTimer.current) clearInterval(duckTimer.current)
-    duckTimer.current = animateVol(el, target, ms)
+    const capped = Math.min(target, VOL_SWELL)
+    duckTimer.current = animateVol(el, capped, ms)
   }
 
   /** Switch active music track — fade out old, fade in new over durationMs */
@@ -348,8 +349,9 @@ function PlayerContent() {
         }}
         onPlay={() => {
           setIsPlaying(true)
-          // Duck music when voice starts playing
-          if (currentQueueType.current === 'story') setMusicVol(VOL_STORY, 300)
+          // Duck music whenever a voice segment starts — intro AND story
+          const target = currentQueueType.current === 'story' ? VOL_STORY : VOL_INTRO
+          setMusicVol(target, 300)
         }}
         onPause={() => setIsPlaying(false)}
         onEnded={() => {
