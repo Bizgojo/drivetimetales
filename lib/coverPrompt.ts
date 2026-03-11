@@ -28,13 +28,14 @@ export function buildCoverPrompt(params: {
 
   const toneDesc = tone ? `, ${tone}` : ''
 
+  // No text in the prompt — title/author added programmatically via sharp overlay
   return (
-    `Create a professional audiobook cover image in square format (1024x1024). ` +
-    `The cover is for an audio story called "${title}" written by ${author}. ` +
+    `A dramatic atmospheric background image for an audiobook cover. ` +
     `Genre: ${genre}${toneDesc}. ` +
     `Visual style: ${styleRef}. ` +
-    `The cover must include the title "${title}" in bold prominent typography and the author name "${author}" in smaller text. ` +
-    `Central image: a dramatic, atmospheric scene that fits the genre — cinematic lighting, rich colors, professional composition. ` +
-    `Style similar to top audiobook covers on Audible or Apple Books. No borders, fills entire canvas.`
+    `Square format, fills entire canvas. ` +
+    `Cinematic lighting, rich moody colors, professional composition. ` +
+    `IMPORTANT: absolutely no text, no words, no letters, no numbers anywhere in the image. ` +
+    `Pure atmospheric visual scene only.`
   )
 }

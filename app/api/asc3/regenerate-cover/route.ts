@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { buildCoverPrompt } from '@/lib/coverPrompt'
+import sharp from 'sharp'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -8,6 +9,62 @@ const supabase = createClient(
 )
 
 const STABILITY_API_KEY = process.env.STABILITY_API_KEY!
+
+function escapeXml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
+async function overlayText(imageBuffer: Buffer, title: string, author: string): Promise<Buffer> {
+  const size = 1024
+  const safeTitle = escapeXml(title.toUpperCase())
+  const safeAuthor = escapeXml(author)
+
+  // Split title into lines if long
+  const words = title.toUpperCase().split(' ')
+  const lines: string[] = []
+  let current = ''
+  for (const w of words) {
+    const test = current ? `${current} ${w}` : w
+    if (test.length > 16 && current) { lines.push(current); current = w }
+    else current = test
+  }
+  if (current) lines.push(current)
+
+  const titleFontSize = lines.length > 2 ? 72 : 86
+  const lineHeight = titleFontSize + 10
+  const titleBlockHeight = lines.length * lineHeight
+  const titleY = size - 220
+
+  const titleLines = lines.map((line, i) =>
+    `<text x="512" y="${titleY + i * lineHeight}" font-family="Georgia, serif" font-size="${titleFontSize}" font-weight="bold" fill="white" text-anchor="middle" filter="url(#shadow)">${escapeXml(line)}</text>`
+  ).join('\n')
+
+  const svg = `
+<svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="2" dy="2" stdDeviation="4" flood-color="black" flood-opacity="0.9"/>
+    </filter>
+    <!-- Dark gradient bar at bottom for text legibility -->
+    <linearGradient id="grad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="black" stop-opacity="0"/>
+      <stop offset="100%" stop-color="black" stop-opacity="0.75"/>
+    </linearGradient>
+  </defs>
+  <!-- Bottom gradient overlay -->
+  <rect x="0" y="${size - 300}" width="${size}" height="300" fill="url(#grad)"/>
+  <!-- Title lines -->
+  ${titleLines}
+  <!-- Author -->
+  <text x="512" y="${titleY + titleBlockHeight + 28}" font-family="Georgia, serif" font-size="36" fill="#d4a843" text-anchor="middle" filter="url(#shadow)">${safeAuthor}</text>
+</svg>`
+
+  return sharp(imageBuffer)
+    .resize(size, size)
+    .composite([{ input: Buffer.from(svg), blend: 'over' }])
+    .jpeg({ quality: 90 })
+    .toBuffer()
+}
 
 async function generateWithStability(prompt: string): Promise<Buffer> {
   const form = new FormData()
@@ -55,10 +112,18 @@ export async function POST(req: NextRequest) {
       // no concept/script — any story context risks content policy violations
     })
 
-    console.log('🎨 Regenerating cover via Stability AI...')
+    console.log('🎨 Generating cover via Stability AI...')
     console.log('  Prompt preview:', dallePrompt.substring(0, 200))
 
-    const imgBuffer = await generateWithStability(dallePrompt)
+    const rawBuffer = await generateWithStability(dallePrompt)
+
+    // Overlay title + author programmatically (Stability AI can't render text reliably)
+    const imgBuffer = await overlayText(
+      rawBuffer,
+      story?.title || 'Untitled',
+      story?.author || 'Unknown Author'
+    )
+    console.log('  ✅ Text overlay applied')
 
     const timestamp = Date.now()
     const storagePath = `asc3/${storyId}/cover_${timestamp}.jpg`
