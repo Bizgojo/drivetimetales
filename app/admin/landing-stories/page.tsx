@@ -1,335 +1,402 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { useState, useEffect, useCallback } from 'react'
 
 interface LandingStory {
   id: string
+  story_id?: string
   title: string
-  subtitle: string | null
-  cover_url: string | null
-  audio_url: string | null
-  duration_mins: number
-  sort_order: number
+  subtitle?: string
+  genre?: string
+  author?: string
+  description?: string
+  duration_mins?: number
+  cover_url?: string
+  audio_url?: string
   active: boolean
-  created_at: string
+  slot?: number | null
+  added_at?: string
 }
 
-const EMPTY_FORM = {
-  title: '',
-  subtitle: '',
-  cover_url: '',
-  audio_url: '',
-  duration_mins: 15,
-  sort_order: 0,
-  active: true,
+interface MainStory {
+  id: string
+  title: string
+  genre?: string
+  author?: string
+  duration_mins?: number
+  cover_url?: string
+  audio_url?: string
+  status?: string
 }
 
 export default function LandingStoriesPage() {
-  const router = useRouter()
-  const [stories, setStories] = useState<LandingStory[]>([])
+  const [slots, setSlots] = useState<(LandingStory | null)[]>([null, null, null])
+  const [library, setLibrary] = useState<LandingStory[]>([])
+  const [mainStories, setMainStories] = useState<MainStory[]>([])
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState(EMPTY_FORM)
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
-  const [toast, setToast] = useState<string | null>(null)
+  const [working, setWorking] = useState(false)
+  const [showAddPanel, setShowAddPanel] = useState(false)
+  const [assigningTo, setAssigningTo] = useState<number | null>(null)
+  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null)
 
-  const bg = '#FAF9F6'
-  const cardBg = '#FFFFFF'
-  const textPrimary = '#1a1a1a'
-  const textSecondary = '#4a4a4a'
-  const border = '#e0e0e0'
-  const ember = '#e8520a'
-
-  useEffect(() => { fetchStories() }, [])
-
-  function showToast(msg: string) {
-    setToast(msg)
-    setTimeout(() => setToast(null), 3000)
+  const flash = (text: string, ok = true) => {
+    setMsg({ text, ok })
+    setTimeout(() => setMsg(null), 3500)
   }
 
-  async function fetchStories() {
+  const load = useCallback(async () => {
     setLoading(true)
-    const { data } = await supabase
-      .from('landing_stories')
-      .select('*')
-      .order('sort_order', { ascending: true })
-    if (data) setStories(data)
-    setLoading(false)
-  }
-
-  function openNew() {
-    setForm({ ...EMPTY_FORM, sort_order: stories.length })
-    setEditingId(null)
-    setShowForm(true)
-  }
-
-  function openEdit(story: LandingStory) {
-    setForm({
-      title: story.title,
-      subtitle: story.subtitle || '',
-      cover_url: story.cover_url || '',
-      audio_url: story.audio_url || '',
-      duration_mins: story.duration_mins,
-      sort_order: story.sort_order,
-      active: story.active,
-    })
-    setEditingId(story.id)
-    setShowForm(true)
-  }
-
-  async function saveStory() {
-    if (!form.title.trim()) return
-    setSaving(true)
-    const payload = {
-      title: form.title.trim(),
-      subtitle: form.subtitle.trim() || null,
-      cover_url: form.cover_url.trim() || null,
-      audio_url: form.audio_url.trim() || null,
-      duration_mins: form.duration_mins,
-      sort_order: form.sort_order,
-      active: form.active,
+    try {
+      const res = await fetch('/api/landing/slots')
+      const data = await res.json()
+      if (data.success) {
+        // Map slot numbers to array indices
+        const slotArr: (LandingStory | null)[] = [null, null, null]
+        for (const s of data.slots) {
+          if (s.slot >= 1 && s.slot <= 3) slotArr[s.slot - 1] = s
+        }
+        setSlots(slotArr)
+        setLibrary(data.library)
+      }
+    } catch {
+      flash('Failed to load landing stories', false)
+    } finally {
+      setLoading(false)
     }
-    if (editingId) {
-      await supabase.from('landing_stories').update(payload).eq('id', editingId)
-      showToast('Story updated')
-    } else {
-      await supabase.from('landing_stories').insert(payload)
-      showToast('Story added')
+  }, [])
+
+  const loadMainStories = async () => {
+    try {
+      const res = await fetch('/api/asc3/list-stories')
+      const data = await res.json()
+      if (data.stories) setMainStories(data.stories)
+    } catch {
+      flash('Could not load story library', false)
     }
-    setShowForm(false)
-    setEditingId(null)
-    setForm(EMPTY_FORM)
-    setSaving(false)
-    fetchStories()
   }
 
-  async function toggleActive(story: LandingStory) {
-    await supabase.from('landing_stories').update({ active: !story.active }).eq('id', story.id)
-    setStories(s => s.map(st => st.id === story.id ? { ...st, active: !st.active } : st))
+  useEffect(() => { load() }, [load])
+
+  const handleAssign = async (libraryId: string, slot: number) => {
+    setWorking(true)
+    try {
+      const res = await fetch('/api/landing/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ libraryId, slot }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        flash(`✅ Story placed in Slot ${slot}`)
+        await load()
+      } else {
+        flash(`❌ ${data.error}`, false)
+      }
+    } catch {
+      flash('❌ Assignment failed', false)
+    } finally {
+      setWorking(false)
+      setAssigningTo(null)
+    }
   }
 
-  async function deleteStory(id: string) {
-    await supabase.from('landing_stories').delete().eq('id', id)
-    setDeleteConfirmId(null)
-    showToast('Story deleted')
-    fetchStories()
+  const handleMoveToLibrary = async (story: LandingStory) => {
+    setWorking(true)
+    try {
+      const res = await fetch('/api/landing/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // Trick: assign a non-existent id to slot — this will bump the existing one
+        // Instead, use a dedicated move route via assign with empty libraryId
+        // Actually: call remove slot directly
+        body: JSON.stringify({ removeSlot: story.slot }),
+      })
+      // Use update-story to deactivate
+      const res2 = await fetch('/api/landing/library', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ moveToLibrary: story.id }),
+      })
+      const data = await res2.json()
+      if (data.success) {
+        flash(`📦 Moved "${story.title}" to library`)
+        await load()
+      } else {
+        // Fallback: just reload
+        await load()
+      }
+    } catch {
+      flash('❌ Move failed', false)
+    } finally {
+      setWorking(false)
+    }
   }
 
-  async function moveStory(id: string, dir: 'up' | 'down') {
-    const idx = stories.findIndex(s => s.id === id)
-    const swapIdx = dir === 'up' ? idx - 1 : idx + 1
-    if (swapIdx < 0 || swapIdx >= stories.length) return
-    const a = stories[idx]
-    const b = stories[swapIdx]
-    await Promise.all([
-      supabase.from('landing_stories').update({ sort_order: b.sort_order }).eq('id', a.id),
-      supabase.from('landing_stories').update({ sort_order: a.sort_order }).eq('id', b.id),
-    ])
-    fetchStories()
+  const handleAddToLibrary = async (story: MainStory) => {
+    setWorking(true)
+    try {
+      const res = await fetch('/api/landing/library', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storyId: story.id }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        flash(`✅ "${story.title}" added to landing library`)
+        await load()
+      } else {
+        flash(`❌ ${data.error}`, false)
+      }
+    } catch {
+      flash('❌ Failed to add story', false)
+    } finally {
+      setWorking(false)
+    }
   }
 
-  function generateHTML() {
-    const active = stories.filter(s => s.active)
-    const html = active.map((s, idx) => {
-      const coverHtml = s.cover_url
-        ? `<img src="${s.cover_url}" alt="${s.title}" style="width:100%;height:100%;object-fit:cover;">`
-        : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:64px;background:#1a1a1a;">🎧</div>`
-      return `  <div class="story-card">
-    <div class="story-cover" style="position:relative;">
-      ${coverHtml}
-      <button class="cover-play" onclick="toggleStory(${idx})" id="playbtn${idx}">
-        <span id="playbtnicon${idx}">▶</span> <span id="playbtntxt${idx}">Play Now</span>
-      </button>
-    </div>
-    <div class="story-info">
-      <div class="story-title">${s.title}</div>
-      <div class="story-sub">${s.subtitle || ''}</div>
-      <div class="story-meta">${s.duration_mins} min</div>
-    </div>
-    <div class="progress-bar"><div id="bar${idx}" style="height:100%;width:0%;background:#e8520a;border-radius:2px;transition:width .3s;"></div></div>
-  </div>`
-    }).join('\n')
-    navigator.clipboard.writeText(html)
-    showToast('HTML copied to clipboard — paste into index.html')
+  const handleRemoveFromLibrary = async (story: LandingStory) => {
+    if (!confirm(`Remove "${story.title}" from the landing library?`)) return
+    setWorking(true)
+    try {
+      const res = await fetch('/api/landing/library', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ libraryId: story.id }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        flash(`🗑️ Removed "${story.title}" from library`)
+        await load()
+      } else {
+        flash(`❌ ${data.error}`, false)
+      }
+    } catch {
+      flash('❌ Remove failed', false)
+    } finally {
+      setWorking(false)
+    }
   }
 
-  if (loading) return (
-    <div style={{ minHeight: '100vh', backgroundColor: bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ width: '40px', height: '40px', border: `4px solid ${ember}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-      <style dangerouslySetInnerHTML={{ __html: '@keyframes spin { to { transform: rotate(360deg); } }' }} />
-    </div>
-  )
+  // Already-in-library story IDs for filtering the add panel
+  const inLibraryIds = new Set([
+    ...library.map(s => s.story_id).filter(Boolean),
+    ...slots.filter(Boolean).map(s => s!.story_id).filter(Boolean),
+  ])
+
+  const pageStyle: React.CSSProperties = { padding: '2rem', background: '#f5f5f5', minHeight: '100vh' }
+  const headStyle: React.CSSProperties = { fontSize: '22px', fontWeight: 700, color: '#000', marginBottom: '0.25rem' }
+  const subStyle: React.CSSProperties = { color: '#555', fontSize: '14px', marginBottom: '2rem' }
+  const sectionHead: React.CSSProperties = { fontSize: '16px', fontWeight: 700, color: '#000', marginBottom: '1rem', borderBottom: '2px solid #e5e7eb', paddingBottom: '0.5rem' }
+  const cardBase: React.CSSProperties = { background: '#fff', border: '1px solid #ddd', borderRadius: '12px', overflow: 'hidden' }
+  const btnOrange: React.CSSProperties = { background: '#f97316', color: '#fff', border: 'none', borderRadius: '6px', padding: '6px 14px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }
+  const btnGray: React.CSSProperties = { background: '#e5e7eb', color: '#333', border: 'none', borderRadius: '6px', padding: '6px 14px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }
+  const btnRed: React.CSSProperties = { background: '#fee2e2', color: '#b91c1c', border: 'none', borderRadius: '6px', padding: '6px 10px', fontSize: '12px', cursor: 'pointer' }
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: bg, padding: '1rem' }}>
+    <div style={pageStyle}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2rem' }}>
+        <div>
+          <h1 style={headStyle}>🎧 Landing Page Stories</h1>
+          <p style={subStyle}>Manage the 3 story slots on endless-tales.com. Swapped stories go to the library.</p>
+        </div>
+        <div style={{ display: 'flex', gap: '0.75rem' }}>
+          <button
+            style={btnGray}
+            onClick={() => { setShowAddPanel(!showAddPanel); if (!showAddPanel) loadMainStories() }}
+          >
+            {showAddPanel ? '✕ Close' : '＋ Add Stories to Library'}
+          </button>
+          <button style={btnOrange} onClick={load} disabled={loading || working}>
+            {loading ? '⏳' : '↺ Refresh'}
+          </button>
+        </div>
+      </div>
 
-      {/* Toast */}
-      {toast && (
-        <div style={{ position: 'fixed', top: '1rem', right: '1rem', backgroundColor: '#1a1a1a', color: 'white', padding: '0.75rem 1.25rem', borderRadius: '8px', zIndex: 9999, fontSize: '14px', fontWeight: 600 }}>
-          {toast}
+      {/* Flash message */}
+      {msg && (
+        <div style={{
+          padding: '0.75rem 1rem', borderRadius: '8px', marginBottom: '1.5rem',
+          background: msg.ok ? '#d1fae5' : '#fee2e2',
+          color: msg.ok ? '#065f46' : '#b91c1c',
+          fontSize: '14px', fontWeight: 500
+        }}>
+          {msg.text}
         </div>
       )}
 
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <button onClick={() => router.push('/admin')} style={{ backgroundColor: '#e5e5e5', color: textPrimary, padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 500 }}>← Back</button>
-          <div>
-            <h1 style={{ color: textPrimary, fontSize: '24px', fontWeight: 'bold' }}>Landing Page Stories</h1>
-            <p style={{ color: textSecondary, fontSize: '13px', marginTop: '2px' }}>Manage the 3 sample stories shown on endless-tales.com</p>
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
-          <button onClick={generateHTML} style={{ backgroundColor: '#2563eb', color: 'white', padding: '0.5rem 1.25rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '14px' }}>
-            📋 Copy HTML
-          </button>
-          <button onClick={openNew} style={{ backgroundColor: ember, color: 'white', padding: '0.5rem 1.25rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '14px' }}>
-            + Add Story
-          </button>
-        </div>
-      </div>
-
-      {/* Info box */}
-      <div style={{ backgroundColor: '#dbeafe', border: '1px solid #93c5fd', borderRadius: '10px', padding: '1rem', marginBottom: '1.5rem', fontSize: '13px', color: '#1e40af', lineHeight: 1.6 }}>
-        <strong>How to publish changes:</strong> Edit stories here → click <strong>Copy HTML</strong> → paste the copied HTML into <code>index.html</code> replacing the existing story cards → commit and push to GitHub.
-      </div>
-
-      {/* Stories */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        {stories.map((story, idx) => (
-          <div key={story.id} style={{ backgroundColor: cardBg, borderRadius: '12px', border: `2px solid ${story.active ? border : '#e5e5e5'}`, overflow: 'hidden', opacity: story.active ? 1 : 0.6 }}>
-            <div style={{ display: 'flex', gap: '1rem', padding: '1rem' }}>
-
-              {/* Cover preview */}
-              <div style={{ width: '80px', height: '80px', borderRadius: '8px', overflow: 'hidden', flexShrink: 0, backgroundColor: '#1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {story.cover_url
-                  ? <img src={story.cover_url} alt={story.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  : <span style={{ fontSize: '32px' }}>🎧</span>
-                }
+      {/* 3 Slot Cards */}
+      <div style={sectionHead}>Active Slots — endless-tales.com</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem', marginBottom: '3rem' }}>
+        {[1, 2, 3].map(slotNum => {
+          const story = slots[slotNum - 1]
+          return (
+            <div key={slotNum} style={{ ...cardBase, border: assigningTo === slotNum ? '2px solid #f97316' : '1px solid #ddd' }}>
+              {/* Slot label */}
+              <div style={{ padding: '0.75rem 1rem', background: '#f8f8f8', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontWeight: 700, color: '#000', fontSize: '14px' }}>Slot {slotNum}</span>
+                {assigningTo === slotNum && (
+                  <span style={{ fontSize: '12px', color: '#f97316', fontWeight: 600 }}>← Pick from library below</span>
+                )}
               </div>
 
-              {/* Info */}
-              <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-                  <span style={{ color: textPrimary, fontWeight: 700, fontSize: '16px' }}>{story.title}</span>
-                  <span style={{ backgroundColor: story.active ? '#dcfce7' : '#f5f5f5', color: story.active ? '#16a34a' : textSecondary, padding: '0.1rem 0.5rem', borderRadius: '999px', fontSize: '11px', fontWeight: 700 }}>
-                    {story.active ? 'Active' : 'Hidden'}
-                  </span>
-                </div>
-                <div style={{ color: textSecondary, fontSize: '13px', marginBottom: '0.25rem' }}>{story.subtitle || '—'}</div>
-                <div style={{ display: 'flex', gap: '1rem', fontSize: '12px', color: textSecondary }}>
-                  <span>⏱ {story.duration_mins} min</span>
-                  <span>{story.audio_url ? '🔊 Has audio' : '⚠️ No audio'}</span>
-                  <span>#{story.sort_order + 1}</span>
-                </div>
-              </div>
-
-              {/* Actions */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', alignItems: 'flex-end' }}>
-                <div style={{ display: 'flex', gap: '0.4rem' }}>
-                  <button onClick={() => moveStory(story.id, 'up')} disabled={idx === 0}
-                    style={{ padding: '0.3rem 0.6rem', borderRadius: '6px', border: `1px solid ${border}`, backgroundColor: '#f5f5f5', color: idx === 0 ? '#ccc' : textPrimary, cursor: idx === 0 ? 'not-allowed' : 'pointer', fontSize: '12px' }}>↑</button>
-                  <button onClick={() => moveStory(story.id, 'down')} disabled={idx === stories.length - 1}
-                    style={{ padding: '0.3rem 0.6rem', borderRadius: '6px', border: `1px solid ${border}`, backgroundColor: '#f5f5f5', color: idx === stories.length - 1 ? '#ccc' : textPrimary, cursor: idx === stories.length - 1 ? 'not-allowed' : 'pointer', fontSize: '12px' }}>↓</button>
-                </div>
-                <button onClick={() => openEdit(story)}
-                  style={{ padding: '0.3rem 0.75rem', borderRadius: '6px', border: `1px solid ${border}`, backgroundColor: '#f5f5f5', color: textPrimary, cursor: 'pointer', fontSize: '12px', fontWeight: 500 }}>✏️ Edit</button>
-                <button onClick={() => toggleActive(story)}
-                  style={{ padding: '0.3rem 0.75rem', borderRadius: '6px', border: 'none', backgroundColor: story.active ? '#fee2e2' : '#dcfce7', color: story.active ? '#dc2626' : '#16a34a', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}>
-                  {story.active ? 'Hide' : 'Show'}
-                </button>
-                {deleteConfirmId === story.id ? (
-                  <div style={{ display: 'flex', gap: '0.3rem' }}>
-                    <button onClick={() => deleteStory(story.id)} style={{ padding: '0.3rem 0.6rem', borderRadius: '6px', border: 'none', backgroundColor: '#dc2626', color: 'white', cursor: 'pointer', fontSize: '11px', fontWeight: 700 }}>Confirm</button>
-                    <button onClick={() => setDeleteConfirmId(null)} style={{ padding: '0.3rem 0.6rem', borderRadius: '6px', border: `1px solid ${border}`, backgroundColor: '#f5f5f5', color: textPrimary, cursor: 'pointer', fontSize: '11px' }}>Cancel</button>
+              {story ? (
+                <>
+                  {/* Cover */}
+                  <div style={{ aspectRatio: '1', background: '#1a1a1a', position: 'relative' }}>
+                    {story.cover_url ? (
+                      <img src={story.cover_url} alt={story.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '48px' }}>🎧</div>
+                    )}
                   </div>
+                  {/* Info */}
+                  <div style={{ padding: '0.75rem 1rem' }}>
+                    <div style={{ fontWeight: 700, color: '#000', fontSize: '14px', marginBottom: '2px' }}>{story.title}</div>
+                    <div style={{ color: '#666', fontSize: '12px', marginBottom: '4px' }}>{story.genre} · {story.author}</div>
+                    <div style={{ color: '#888', fontSize: '11px', marginBottom: '0.75rem' }}>{story.duration_mins} min</div>
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <button
+                        style={btnOrange}
+                        disabled={working}
+                        onClick={() => setAssigningTo(assigningTo === slotNum ? null : slotNum)}
+                      >
+                        🔄 Swap
+                      </button>
+                      <button
+                        style={btnGray}
+                        disabled={working}
+                        onClick={() => handleMoveToLibrary(story)}
+                      >
+                        📦 To Library
+                      </button>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div style={{ padding: '2rem', textAlign: 'center', color: '#aaa' }}>
+                  <div style={{ fontSize: '36px', marginBottom: '0.5rem' }}>＋</div>
+                  <div style={{ fontSize: '13px', marginBottom: '1rem' }}>Empty slot</div>
+                  <button
+                    style={btnOrange}
+                    onClick={() => setAssigningTo(assigningTo === slotNum ? null : slotNum)}
+                  >
+                    Assign Story
+                  </button>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Library */}
+      <div style={sectionHead}>
+        Secret Library
+        <span style={{ fontSize: '12px', fontWeight: 400, color: '#888', marginLeft: '0.5rem' }}>
+          {library.length} {library.length === 1 ? 'story' : 'stories'} — click Assign to place in a slot
+        </span>
+      </div>
+
+      {library.length === 0 ? (
+        <div style={{ color: '#aaa', fontSize: '14px', padding: '2rem', textAlign: 'center', background: '#fff', borderRadius: '12px', border: '1px dashed #ddd' }}>
+          Library is empty. Add stories using the button above.
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem', marginBottom: '3rem' }}>
+          {library.map(story => (
+            <div key={story.id} style={{ ...cardBase, outline: assigningTo ? '2px solid transparent' : 'none' }}>
+              {/* Cover */}
+              <div style={{ aspectRatio: '1', background: '#1a1a1a', position: 'relative' }}>
+                {story.cover_url ? (
+                  <img src={story.cover_url} alt={story.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 ) : (
-                  <button onClick={() => setDeleteConfirmId(story.id)}
-                    style={{ padding: '0.3rem 0.75rem', borderRadius: '6px', border: 'none', backgroundColor: '#fee2e2', color: '#dc2626', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}>🗑 Delete</button>
+                  <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '36px' }}>🎧</div>
+                )}
+              </div>
+              <div style={{ padding: '0.75rem' }}>
+                <div style={{ fontWeight: 700, color: '#000', fontSize: '13px', marginBottom: '2px' }}>{story.title}</div>
+                <div style={{ color: '#666', fontSize: '11px', marginBottom: '0.5rem' }}>{story.genre} · {story.duration_mins} min</div>
+
+                {assigningTo ? (
+                  <button
+                    style={{ ...btnOrange, width: '100%' }}
+                    disabled={working}
+                    onClick={() => handleAssign(story.id, assigningTo)}
+                  >
+                    → Put in Slot {assigningTo}
+                  </button>
+                ) : (
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button
+                      style={{ ...btnOrange, flex: 1 }}
+                      disabled={working}
+                      onClick={() => setAssigningTo(1)}
+                      title="Choose a slot above first, then click the story"
+                    >
+                      Assign
+                    </button>
+                    <button
+                      style={btnRed}
+                      disabled={working}
+                      onClick={() => handleRemoveFromLibrary(story)}
+                      title="Remove from library"
+                    >
+                      🗑
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add Stories Panel */}
+      {showAddPanel && (
+        <div style={{ background: '#fff', border: '1px solid #ddd', borderRadius: '12px', padding: '1.5rem', marginBottom: '2rem' }}>
+          <div style={{ fontSize: '15px', fontWeight: 700, color: '#000', marginBottom: '1rem' }}>
+            ＋ Add Stories from Story Database
+            <span style={{ fontSize: '12px', fontWeight: 400, color: '#888', marginLeft: '0.5rem' }}>
+              Stories already in slots or library are hidden
+            </span>
           </div>
-        ))}
-
-        {stories.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '3rem', color: textSecondary, backgroundColor: cardBg, borderRadius: '12px', border: `1px solid ${border}` }}>
-            <div style={{ fontSize: '48px', marginBottom: '1rem' }}>🎧</div>
-            <div style={{ fontSize: '16px', fontWeight: 600 }}>No stories yet</div>
-            <div style={{ fontSize: '14px', marginTop: '0.5rem' }}>Click "+ Add Story" to get started.</div>
-          </div>
-        )}
-      </div>
-
-      {/* Add/Edit Modal */}
-      {showForm && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
-          <div style={{ backgroundColor: cardBg, borderRadius: '16px', padding: '2rem', width: '100%', maxWidth: '520px', maxHeight: '90vh', overflowY: 'auto' }}>
-            <h2 style={{ color: textPrimary, fontSize: '20px', fontWeight: 'bold', marginBottom: '1.5rem' }}>
-              {editingId ? 'Edit Story' : 'Add Story'}
-            </h2>
-
-            {[
-              { label: 'Title *', key: 'title', placeholder: 'e.g. When Rosie Came Home' },
-              { label: 'Subtitle', key: 'subtitle', placeholder: 'e.g. DRAMA · DANIEL WREN' },
-              { label: 'Cover Image URL', key: 'cover_url', placeholder: 'https://...' },
-              { label: 'Audio File URL', key: 'audio_url', placeholder: 'https://...' },
-            ].map(({ label, key, placeholder }) => (
-              <div key={key} style={{ marginBottom: '1rem' }}>
-                <label style={{ color: textSecondary, fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '0.4rem' }}>{label}</label>
-                <input
-                  type="text"
-                  value={form[key as keyof typeof form] as string}
-                  onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
-                  placeholder={placeholder}
-                  style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px', boxSizing: 'border-box', backgroundColor: '#fff' }}
-                />
-              </div>
-            ))}
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-              <div>
-                <label style={{ color: textSecondary, fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '0.4rem' }}>Duration (mins)</label>
-                <input type="number" min={1} value={form.duration_mins}
-                  onChange={e => setForm(f => ({ ...f, duration_mins: Number(e.target.value) }))}
-                  style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px', boxSizing: 'border-box', backgroundColor: '#fff' }} />
-              </div>
-              <div>
-                <label style={{ color: textSecondary, fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '0.4rem' }}>Sort Order</label>
-                <input type="number" min={0} value={form.sort_order}
-                  onChange={e => setForm(f => ({ ...f, sort_order: Number(e.target.value) }))}
-                  style={{ width: '100%', padding: '0.65rem', borderRadius: '8px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px', boxSizing: 'border-box', backgroundColor: '#fff' }} />
-              </div>
+          {mainStories.length === 0 ? (
+            <div style={{ color: '#aaa', fontSize: '14px' }}>Loading stories...</div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.75rem' }}>
+              {mainStories
+                .filter(s => !inLibraryIds.has(s.id))
+                .map(story => (
+                  <div key={story.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem', background: '#f8f8f8', borderRadius: '8px', border: '1px solid #eee' }}>
+                    {story.cover_url ? (
+                      <img src={story.cover_url} alt={story.title} style={{ width: '44px', height: '44px', objectFit: 'cover', borderRadius: '6px', flexShrink: 0 }} />
+                    ) : (
+                      <div style={{ width: '44px', height: '44px', background: '#1a1a1a', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', flexShrink: 0 }}>🎧</div>
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, color: '#000', fontSize: '13px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{story.title}</div>
+                      <div style={{ color: '#888', fontSize: '11px' }}>{story.genre} · {story.duration_mins}m</div>
+                    </div>
+                    <button
+                      style={{ ...btnOrange, padding: '4px 10px', fontSize: '12px', flexShrink: 0 }}
+                      disabled={working}
+                      onClick={() => handleAddToLibrary(story)}
+                    >
+                      Add
+                    </button>
+                  </div>
+                ))}
             </div>
+          )}
+        </div>
+      )}
 
-            {/* Cover preview */}
-            {form.cover_url && (
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ color: textSecondary, fontSize: '13px', fontWeight: 600, display: 'block', marginBottom: '0.4rem' }}>Cover Preview</label>
-                <img src={form.cover_url} alt="preview" style={{ width: '100px', height: '100px', objectFit: 'cover', borderRadius: '8px', border: `1px solid ${border}` }}
-                  onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
-              </div>
-            )}
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
-              <input type="checkbox" id="active-toggle" checked={form.active}
-                onChange={e => setForm(f => ({ ...f, active: e.target.checked }))} />
-              <label htmlFor="active-toggle" style={{ color: textPrimary, fontSize: '14px', fontWeight: 500 }}>Show on landing page</label>
-            </div>
-
-            <div style={{ display: 'flex', gap: '0.75rem' }}>
-              <button onClick={() => { setShowForm(false); setEditingId(null) }}
-                style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', border: `1px solid ${border}`, backgroundColor: '#f5f5f5', color: textPrimary, cursor: 'pointer', fontWeight: 500 }}>Cancel</button>
-              <button onClick={saveStory} disabled={saving || !form.title.trim()}
-                style={{ flex: 2, padding: '0.75rem', borderRadius: '8px', border: 'none', backgroundColor: form.title.trim() ? ember : '#e5e5e5', color: form.title.trim() ? 'white' : textSecondary, cursor: form.title.trim() ? 'pointer' : 'not-allowed', fontWeight: 700 }}>
-                {saving ? 'Saving...' : editingId ? 'Save Changes' : 'Add Story'}
-              </button>
-            </div>
-          </div>
+      {/* Cancel assign mode */}
+      {assigningTo && (
+        <div style={{ position: 'fixed', bottom: '2rem', right: '2rem', background: '#1e293b', color: '#fff', padding: '1rem 1.5rem', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '1rem', boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}>
+          <span style={{ fontSize: '14px' }}>Assigning to <strong>Slot {assigningTo}</strong> — pick a story from the library</span>
+          <button style={{ ...btnGray, padding: '4px 12px' }} onClick={() => setAssigningTo(null)}>Cancel</button>
         </div>
       )}
     </div>
