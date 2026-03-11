@@ -323,16 +323,9 @@ function PlayerContent() {
           segmentDurationsRef.current[queueIndex] = segDur
           const total = segmentDurationsRef.current.reduce((a, b) => a + (b || 0), 0)
           if (total > 0) setTotalDuration(total)
-          // Schedule crossfade 4s before intro ends → story music fades in before narrator starts
+          // Start background music 3s before narrator (intro ends)
           if (currentQueueType.current === 'intro' && backgroundMusicUrl) {
-            scheduleCrossfade(backgroundMusicUrl, 4)
-          }
-          // Schedule crossfade 4s before last story segment ends → outro music fades in
-          if (currentQueueType.current === 'story') {
-            const nextIdx = queueIndex + 1
-            if (nextIdx < queue.length && queue[nextIdx]?.type === 'outro') {
-              scheduleCrossfade(introOutroMusicUrl, 4)
-            }
+            scheduleCrossfade(backgroundMusicUrl, 3)
           }
         }}
         onTimeUpdate={(e) => {
@@ -354,7 +347,19 @@ function PlayerContent() {
           if (saveTimer.current) clearTimeout(saveTimer.current)
           saveTimer.current = setTimeout(() => saveProgress(t), 5000)
         }}
-        onEnded={() => isASC3 ? advanceQueue() : (setIsPlaying(false), saveProgress(duration, true), setTimeout(() => router.push('/library'), 1500))}
+        onEnded={() => {
+          if (!isASC3) { setIsPlaying(false); saveProgress(duration, true); setTimeout(() => router.push('/library'), 1500); return }
+          // If last story segment → hold background music 3s before advancing to outro
+          const nextIdx = queueIndex + 1
+          const isLastStory = currentQueueType.current === 'story' && nextIdx < queue.length && queue[nextIdx]?.type === 'outro'
+          if (isLastStory) {
+            // Crossfade to outro music starting now, advance after 3s
+            crossfadeTo(introOutroMusicUrl, 3000)
+            setTimeout(() => advanceQueue(), 3000)
+          } else {
+            advanceQueue()
+          }
+        }}
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
         onCanPlay={() => {
