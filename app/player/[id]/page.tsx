@@ -322,7 +322,9 @@ function PlayerContent() {
           {hasProgress
             ? <button onClick={() => {
                 if (!isASC3 && story?.audio_url) {
-                  // Final mix mode — just seek to 0 and play
+                  // Final mix mode — clear resume ref so onCanPlay doesn't seek back, then seek to 0
+                  resumeRef.current = 0
+                  setHasProgress(false)
                   const a = audioRef.current
                   if (a) { a.currentTime = 0; a.play().catch(() => {}) }
                   setCurrentTime(0); setCumTime(0); setIsPlaying(true)
