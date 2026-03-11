@@ -118,8 +118,14 @@ function PlayerContent() {
         if (res.ok) {
           const pl = await res.json()
           if (pl.useFinalMix && pl.finalMixUrl) {
-            // Story has a pre-rendered final mix — play it directly via audio_url
-            // isASC3 stays false, player uses src={story.audio_url} which equals finalMixUrl
+            // Story has a pre-rendered final mix — play the audio_url directly.
+            // Override the early isASC3=true set above, clear the segment queue,
+            // and silence the separate music ref (music is already baked into final_mix.mp3).
+            setIsASC3(false)
+            setQueue([])
+            introMusicRef.current = ''
+            bgMusicRef.current = null
+            if (musicRef.current) { musicRef.current.pause(); musicRef.current.src = ''; musicRef.current.volume = 0 }
           } else if (pl.queue?.length > 1) {
             introMusicRef.current = pl.introOutroMusicUrl || introMusicRef.current
             bgMusicRef.current    = pl.backgroundMusicUrl || bgMusicRef.current
