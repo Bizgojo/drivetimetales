@@ -15,11 +15,24 @@ export async function GET(req: NextRequest) {
 
   const { data: story, error } = await supabase
     .from('stories')
-    .select('id, title, author, intro_audio_url, story_audio_url, outro_audio_url')
+    .select('id, title, author, audio_url, intro_audio_url, story_audio_url, outro_audio_url')
     .eq('id', storyId)
     .single()
 
   if (error || !story) return NextResponse.json({ error: 'Story not found' }, { status: 404 })
+
+  // If story has a rendered final_mix.mp3, return empty queue so the player
+  // uses audio_url directly (all mixing already done — no segment queue needed)
+  if (story.audio_url?.includes('final_mix.mp3')) {
+    return NextResponse.json({
+      queue: [],
+      useFinalMix: true,
+      finalMixUrl: story.audio_url,
+      introOutroMusicUrl: null,
+      backgroundMusicUrl: null,
+      totalSegments: 0,
+    }, { headers: { 'Cache-Control': 'no-store' } })
+  }
 
   // Extract storage folder ID — always prefer story_audio_url (segments folder)
   // intro_audio_url may use a different/incorrect folder ID from DB auto-generated ID

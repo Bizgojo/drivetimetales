@@ -117,7 +117,10 @@ function PlayerContent() {
         const res = await fetch(`/api/asc3/story-playlist?storyId=${storyId}`)
         if (res.ok) {
           const pl = await res.json()
-          if (pl.queue?.length > 1) {
+          if (pl.useFinalMix && pl.finalMixUrl) {
+            // Story has a pre-rendered final mix — play it directly via audio_url
+            // isASC3 stays false, player uses src={story.audio_url} which equals finalMixUrl
+          } else if (pl.queue?.length > 1) {
             introMusicRef.current = pl.introOutroMusicUrl || introMusicRef.current
             bgMusicRef.current    = pl.backgroundMusicUrl || bgMusicRef.current
             setQueue(pl.queue); setIsASC3(true)
