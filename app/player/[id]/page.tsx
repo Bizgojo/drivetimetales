@@ -62,7 +62,7 @@ function PlayerContent() {
   const [sectionLabel, setSectionLabel] = useState('')
   const musicVolume = 0.04       // ducked volume while voices play
   const musicVolumeUp = 0.10    // raised volume between segments / at transitions
-  const introMusicVolume = 0.08 // intro/outro music level (lower than story swells)
+  const introMusicVolume = 0.04 // intro/outro music level
 
   // Load story + playlist
   useEffect(() => {
