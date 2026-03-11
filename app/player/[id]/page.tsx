@@ -42,7 +42,7 @@ function PlayerContent() {
   const resumeRef = useRef(0)
   const currentQueueType = useRef<'intro' | 'story' | 'outro'>('intro')
 
-  const [story, setStory] = useState<Story & { intro_audio_url?: string; outro_audio_url?: string } | null>(null)
+  const [story, setStory] = useState<Story & { intro_audio_url?: string; outro_audio_url?: string; background_music_url?: string } | null>(null)
   const [loading, setLoading] = useState(true)
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
@@ -60,15 +60,16 @@ function PlayerContent() {
   const [backgroundMusicUrl, setBackgroundMusicUrl] = useState<string | null>(null)
   const [isASC3, setIsASC3] = useState(false)
   const [sectionLabel, setSectionLabel] = useState('')
-  const musicVolume = 0.03       // ducked volume while voices play
-  const musicVolumeUp = 0.12    // raised volume between segments / at transitions
+  const musicVolume = 0.04       // ducked volume while voices play
+  const musicVolumeUp = 0.10    // raised volume between segments / at transitions
+  const introMusicVolume = 0.08 // intro/outro music level (lower than story swells)
 
   // Load story + playlist
   useEffect(() => {
     async function load() {
       const { data } = await supabase
         .from('stories')
-        .select('id, title, author, audio_url, cover_url, duration_mins, intro_audio_url, outro_audio_url')
+        .select('id, title, author, audio_url, cover_url, duration_mins, intro_audio_url, outro_audio_url, background_music_url')
         .eq('id', storyId).single()
       if (data) setStory(data)
 
@@ -81,6 +82,8 @@ function PlayerContent() {
         if (data.outro_audio_url) initialQueue.push({ url: data.outro_audio_url, type: 'outro', label: 'Outro' })
         setQueue(initialQueue)
         setIntroOutroMusicUrl(INTRO_MUSIC)
+        // Load background music directly from DB — no playlist API needed
+        if ((data as any).background_music_url) setBackgroundMusicUrl((data as any).background_music_url)
         setIsASC3(true)
       }
 
@@ -168,7 +171,7 @@ function PlayerContent() {
     if (!musicRef.current.src?.includes(newSrc.split('/').pop() || '')) {
       musicRef.current.src = newSrc
       musicRef.current.loop = true
-      musicRef.current.volume = musicVolume
+      musicRef.current.volume = type === 'story' ? musicVolume : introMusicVolume
       if (isPlaying) musicRef.current.play().catch(() => {})
     }
   }
@@ -253,7 +256,7 @@ function PlayerContent() {
           let step = 0
           const fadeIn = setInterval(() => {
             step++
-            if (musicRef.current) musicRef.current.volume = Math.min(musicVolume, musicVolume * (step / 20))
+            if (musicRef.current) musicRef.current.volume = Math.min(introMusicVolume, introMusicVolume * (step / 20))
             if (step >= 20) clearInterval(fadeIn)
           }, 100)
         }
