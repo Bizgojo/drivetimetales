@@ -37,6 +37,7 @@ interface Story {
   pct_started: number
   pct_finished: number
   pct_skipped: number
+  created_at?: string
 }
 
 interface Genre {
@@ -541,6 +542,10 @@ function StoryRow({
           <span style={{ color: textSecondary, fontSize: '10px' }}>—</span>
         )}
       </td>
+      {/* Created */}
+      <td style={{ padding: '0.5rem', textAlign: 'center', color: textSecondary, fontSize: '11px', whiteSpace: 'nowrap' }}>
+        {story.created_at ? new Date(story.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : '—'}
+      </td>
     </tr>
   )
 }
@@ -614,6 +619,7 @@ function SeriesGroupRow({
         <td style={{ padding: '0.5rem', textAlign: 'center', color: avgFinished > 50 ? '#16a34a' : avgFinished < 20 ? '#dc2626' : textPrimary, fontWeight: 600 }}>{avgFinished}%</td>
         <td style={{ padding: '0.5rem', textAlign: 'center', color: textSecondary, fontSize: '11px' }}>—</td>
         <td style={{ padding: '0.5rem', textAlign: 'center', color: textSecondary, fontSize: '11px' }}>—</td>
+        <td style={{ padding: '0.5rem', textAlign: 'center', color: textSecondary, fontSize: '11px' }}>—</td>
       </tr>
 
       {/* Episode rows when expanded */}
@@ -668,6 +674,9 @@ function SeriesGroupRow({
                 </span>
               ) : <span style={{ color: textSecondary, fontSize: '10px' }}>—</span>}
             </td>
+            <td style={{ padding: '0.5rem', textAlign: 'center', color: textSecondary, fontSize: '11px', whiteSpace: 'nowrap' }}>
+              {ep.created_at ? new Date(ep.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : '—'}
+            </td>
           </tr>
         ))}
     </>
@@ -682,8 +691,8 @@ export default function AdminStoriesPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [genreFilter, setGenreFilter] = useState('All')
-  const [sortBy, setSortBy] = useState<'title' | 'genre' | 'duration_mins' | 'series_name' | 'downloads_total' | 'pct_finished' | 'rating'>('title')
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [sortBy, setSortBy] = useState<'title' | 'genre' | 'duration_mins' | 'series_name' | 'downloads_total' | 'pct_finished' | 'rating' | 'created_at'>('created_at')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [editingStory, setEditingStory] = useState<Story | null>(null)
   const editingStoryRef = useRef<Story | null>(null)
@@ -782,6 +791,36 @@ export default function AdminStoriesPage() {
     ? Math.round(stories.reduce((sum, s) => sum + (s.pct_finished || 0), 0) / stories.length)
     : 0
 
+  function handleSort(col: typeof sortBy) {
+    if (sortBy === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortBy(col); setSortDir(col === 'created_at' ? 'desc' : 'asc') }
+  }
+
+  function SortTh({ col, label, right, minW }: { col: typeof sortBy; label: string; right?: boolean; minW?: string }) {
+    const active = sortBy === col
+    return (
+      <th
+        onClick={() => handleSort(col)}
+        style={{ padding: '0.75rem 0.5rem', textAlign: right ? 'center' : 'left', color: active ? '#f97316' : textSecondary, fontWeight: 600, cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap', minWidth: minW, background: active ? '#fff8f3' : undefined }}
+      >
+        {label} {active ? (sortDir === 'asc' ? '↑' : '↓') : <span style={{ opacity: 0.3 }}>↕</span>}
+      </th>
+    )
+  }
+
+  function fmtDate(iso?: string) {
+    if (!iso) return '—'
+    const d = new Date(iso)
+    const now = new Date()
+    const diffMs = now.getTime() - d.getTime()
+    const diffDays = Math.floor(diffMs / 86400000)
+    if (diffDays === 0) return 'Today'
+    if (diffDays === 1) return 'Yesterday'
+    if (diffDays < 7) return `${diffDays}d ago`
+    if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: d.getFullYear() !== now.getFullYear() ? 'numeric' : undefined })
+  }
+
   if (loading) return (
     <div style={{ minHeight: '100vh', backgroundColor: bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ width: '40px', height: '40px', border: '4px solid #f97316', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
@@ -815,16 +854,9 @@ export default function AdminStoriesPage() {
         <select value={genreFilter} onChange={e => setGenreFilter(e.target.value)} style={{ padding: '0.5rem 0.75rem', borderRadius: '6px', border: `1px solid ${border}`, color: '#000000', backgroundColor: '#ffffff', fontSize: '14px' }}>
           {genreNames.map(g => <option key={g} value={g}>{g}</option>)}
         </select>
-        <select value={`${sortBy}-${sortDir}`} onChange={e => { const [col, dir] = e.target.value.split('-'); setSortBy(col as typeof sortBy); setSortDir(dir as 'asc' | 'desc') }} style={{ padding: '0.5rem 0.75rem', borderRadius: '6px', border: `1px solid ${border}`, color: '#000000', backgroundColor: '#ffffff', fontSize: '14px' }}>
-          <option value="title-asc">Title A-Z</option>
-          <option value="title-desc">Title Z-A</option>
-          <option value="genre-asc">Genre A-Z</option>
-          <option value="duration_mins-asc">Duration ↑</option>
-          <option value="duration_mins-desc">Duration ↓</option>
-          <option value="downloads_total-desc">Most Downloads</option>
-          <option value="pct_finished-desc">Best Completion</option>
-          <option value="rating-desc">Highest Rated</option>
-        </select>
+        <div style={{ padding: '0.5rem 0.75rem', fontSize: '12px', color: textSecondary, background: '#fff', border: `1px solid ${border}`, borderRadius: '6px' }}>
+          Click column headers to sort
+        </div>
       </div>
 
       {/* Table */}
@@ -833,19 +865,19 @@ export default function AdminStoriesPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
             <thead>
               <tr style={{ backgroundColor: '#f5f5f5', borderBottom: `2px solid ${border}` }}>
-                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'left', color: textSecondary, fontWeight: 600, width: '40px' }}></th>
-                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'left', color: textSecondary, fontWeight: 600, width: '60px' }}>Cover</th>
-                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'left', color: textSecondary, fontWeight: 600, minWidth: '160px' }}>Title</th>
-                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'left', color: textSecondary, fontWeight: 600, minWidth: '120px' }}>Genres</th>
-                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600 }}>Dur</th>
+                <th style={{ padding: '0.75rem 0.5rem', width: '56px' }}></th>
+                <SortTh col="title" label="Title" minW="160px" />
+                <SortTh col="genre" label="Genres" minW="110px" />
+                <SortTh col="duration_mins" label="Dur" right />
                 <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600 }}>Cr</th>
                 <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600 }}>Day</th>
                 <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600 }}>Week</th>
                 <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600 }}>Month</th>
-                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600 }}>Total</th>
-                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600 }}>Fin%</th>
-                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600 }}>Rating</th>
+                <SortTh col="downloads_total" label="Total" right />
+                <SortTh col="pct_finished" label="Fin%" right />
+                <SortTh col="rating" label="Rating" right />
                 <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600, minWidth: '80px' }}>Flag</th>
+                <SortTh col="created_at" label="Created" right minW="80px" />
               </tr>
             </thead>
             <tbody>
@@ -865,7 +897,7 @@ export default function AdminStoriesPage() {
               {/* Divider if both series and standalones exist */}
               {seriesGroups.length > 0 && sortedStandalones.length > 0 && (
                 <tr>
-                  <td colSpan={13} style={{ padding: '0.5rem 1rem', backgroundColor: '#f0f0f0', borderBottom: `1px solid ${border}`, fontSize: '11px', fontWeight: 700, color: textSecondary, letterSpacing: '0.05em' }}>
+                  <td colSpan={14} style={{ padding: '0.5rem 1rem', backgroundColor: '#f0f0f0', borderBottom: `1px solid ${border}`, fontSize: '11px', fontWeight: 700, color: textSecondary, letterSpacing: '0.05em' }}>
                     STANDALONE STORIES
                   </td>
                 </tr>
