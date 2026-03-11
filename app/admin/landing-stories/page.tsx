@@ -72,7 +72,7 @@ export default function LandingStoriesPage() {
 
   const loadMainStories = async () => {
     try {
-      const res = await fetch('/api/asc3/list-stories')
+      const res = await fetch('/api/landing/stories')
       const data = await res.json()
       if (data.stories) setMainStories(data.stories)
     } catch {
