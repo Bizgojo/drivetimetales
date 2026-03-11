@@ -16,6 +16,16 @@ const DUCK_TARGET     = 0.015  // music while voice is active (1.5%)
 const DUCK_MS         = 250    // ms to duck
 const RAISE_MS        = 600    // ms to raise after voice ends
 
+/** Temp debug: shows live music volume so we can confirm ducking works */
+function MusicVolumeDebug({ musicRef }: { musicRef: React.RefObject<HTMLAudioElement | null> }) {
+  const [vol, setVol] = useState(0)
+  useEffect(() => {
+    const t = setInterval(() => { if (musicRef.current) setVol(Math.round(musicRef.current.volume * 1000) / 10) }, 100)
+    return () => clearInterval(t)
+  }, [])
+  return <p style={{ color:'#64748b', fontSize:'10px', textAlign:'center', margin:'2px 0 0' }}>🎵 v0.1 · music: {vol}%</p>
+}
+
 function PlayerContent() {
   const params  = useParams()
   const router  = useRouter()
@@ -285,6 +295,8 @@ function PlayerContent() {
               🎙️ {sectionLabel} · {queueIndex+1}/{queue.length}
             </p>
           )}
+          {/* DEBUG — remove after testing */}
+          <MusicVolumeDebug musicRef={musicRef} />
         </div>
         <div>
           <div onClick={handleSeek} style={{ height:'6px', backgroundColor:'#334155', borderRadius:'3px', overflow:'hidden', cursor:'pointer' }}>
