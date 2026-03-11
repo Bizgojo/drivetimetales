@@ -90,15 +90,13 @@ function LibraryPlaylistContent() {
       libraryStories.filter(s => s.series_name).map(s => s.series_name!)
     )]
 
-    // For each series, fetch ALL episodes from stories table (not just library items)
+    // For each series, fetch ALL episodes from stories table (any status — include archived)
     const seriesEpisodesMap: Record<string, StoryItem[]> = {}
     if (seriesNames.length > 0) {
       const { data: allEps } = await supabase
         .from('stories')
         .select('id, title, author, genre, duration_mins, cover_url, series_name, episode_number')
         .in('series_name', seriesNames)
-        .eq('is_hidden', false)
-        .not('status', 'eq', 'archived')
         .order('episode_number', { ascending: true })
       for (const ep of (allEps || [])) {
         if (!ep.series_name) continue
@@ -150,7 +148,8 @@ function LibraryPlaylistContent() {
           episodes: eps.map(e => ({
             id: e.id, title: e.title, author: e.author, genre: e.genre,
             duration_mins: e.duration_mins, cover_url: e.cover_url,
-          })),
+            series_name: story.series_name,  // kept for "already in playlist" dedup
+          } as any)),
         })
       } else {
         if (inPlaylistIds.has(story.id)) continue
