@@ -832,7 +832,7 @@ Now write the complete audio drama:`
         family: 'vibrant, inviting, warm tones, wonder and charm',
       }
       const visualStyle = Object.entries(genreVisual).find(([k]) => genre.toLowerCase().includes(k))?.[1] || 'cinematic, sophisticated, dramatic'
-      const dallePrompt = `Square album cover art (1000x1000, like a vinyl record or music album) for an audio drama called "${title}". Genre: ${genre}. Style: ${visualStyle}. Full-bleed square composition, cinematic and striking, suitable for a streaming audio platform. No text, no letters, no words anywhere on the image. Think music album artwork, not book covers.`
+      const dallePrompt = `Music album cover art. Square format, 1:1 ratio, filling the entire canvas edge to edge with no borders or padding. This is NOT a book cover — it is a streaming music album cover like Spotify or Apple Music. Genre: ${genre}. ${visualStyle}. The image must be purely visual — no text, no title, no artist name, no words, no letters of any kind. Single powerful image that fills the whole square. Style reference: modern streaming platform album artwork.`
 
       console.log('🎨 Generating cover image with DALL-E 3...')
 
