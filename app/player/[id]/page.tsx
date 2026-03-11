@@ -40,7 +40,7 @@ function PlayerContent() {
   const [backgroundMusicUrl, setBackgroundMusicUrl] = useState<string | null>(null)
   const [isASC3, setIsASC3] = useState(false)
   const [sectionLabel, setSectionLabel] = useState('')
-  const musicVolume = 0.07
+  const musicVolume = 0.04
 
   // Load story + playlist
   useEffect(() => {
@@ -151,6 +151,19 @@ function PlayerContent() {
     }
   }
 
+  // Schedule a crossfade N seconds before the current audio ends
+  const scheduleCrossfadeRef = useRef<NodeJS.Timeout | null>(null)
+  const scheduleCrossfade = (newSrc: string, leadSec = 4) => {
+    if (scheduleCrossfadeRef.current) clearTimeout(scheduleCrossfadeRef.current)
+    const audio = audioRef.current
+    if (!audio || !audio.duration || isNaN(audio.duration)) return
+    const remaining = audio.duration - audio.currentTime
+    const delay = Math.max(0, (remaining - leadSec) * 1000)
+    scheduleCrossfadeRef.current = setTimeout(() => {
+      crossfadeTo(newSrc, leadSec * 1000)
+    }, delay)
+  }
+
   const advanceQueue = () => {
     const nextIndex = queueIndex + 1
     if (nextIndex < queue.length) {
@@ -158,16 +171,6 @@ function PlayerContent() {
       const next = queue[nextIndex]
       setSectionLabel(next.label)
       const prevType = currentQueueType.current
-
-      // Crossfade at the exact moment Belle B (intro) ends → first story segment begins
-      // and when last story segment ends → outro begins
-      const isBoundary = (prevType === 'intro' && next.type === 'story') ||
-                         (prevType === 'story' && next.type === 'outro')
-      const newMusicSrc = (next.type === 'story' && backgroundMusicUrl) ? backgroundMusicUrl : introOutroMusicUrl
-
-      if (isBoundary && newMusicSrc && musicRef.current) {
-        crossfadeTo(newMusicSrc, 5000)
-      }
       currentQueueType.current = next.type
       if (audioRef.current) {
         audioRef.current.src = next.url
@@ -300,7 +303,20 @@ function PlayerContent() {
     <div style={{ height: '100dvh', backgroundColor: '#020617', color: 'white', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* Hidden audio elements */}
       <audio ref={audioRef}
-        onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
+        onLoadedMetadata={(e) => {
+          setDuration(e.currentTarget.duration)
+          // Schedule crossfade 4s before intro ends → story music fades in before narrator starts
+          if (currentQueueType.current === 'intro' && backgroundMusicUrl) {
+            scheduleCrossfade(backgroundMusicUrl, 4)
+          }
+          // Schedule crossfade 4s before last story segment ends → outro music fades in
+          if (currentQueueType.current === 'story') {
+            const nextIdx = queueIndex + 1
+            if (nextIdx < queue.length && queue[nextIdx]?.type === 'outro') {
+              scheduleCrossfade(introOutroMusicUrl, 4)
+            }
+          }
+        }}
         onTimeUpdate={(e) => {
           const t = e.currentTarget.currentTime
           setCurrentTime(t)
