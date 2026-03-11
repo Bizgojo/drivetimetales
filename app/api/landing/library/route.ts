@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
     // Fetch story data from main stories table
     const { data: story, error: fetchErr } = await supabase
       .from('stories')
-      .select('id, title, genre, author, description, duration_mins, cover_url, audio_url')
+      .select('id, title, genre, author, duration_mins, cover_url, audio_url')
       .eq('id', storyId)
       .single()
 
@@ -58,7 +58,6 @@ export async function POST(req: NextRequest) {
         subtitle: `${(story.genre || '').toUpperCase()} · ${(story.author || '').toUpperCase()}`,
         genre: story.genre,
         author: story.author,
-        description: story.description,
         duration_mins: story.duration_mins,
         cover_url: story.cover_url,
         audio_url: story.audio_url,
