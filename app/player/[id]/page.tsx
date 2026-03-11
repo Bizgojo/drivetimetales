@@ -58,6 +58,7 @@ function PlayerContent() {
   const [queueIndex, setQueueIndex] = useState(0)
   const [introOutroMusicUrl, setIntroOutroMusicUrl] = useState('')
   const [backgroundMusicUrl, setBackgroundMusicUrl] = useState<string | null>(null)
+  const backgroundMusicUrlRef = useRef<string | null>(null)
   const [isASC3, setIsASC3] = useState(false)
   const [sectionLabel, setSectionLabel] = useState('')
   const musicVolume = 0.04       // ducked volume while voices play
@@ -83,7 +84,10 @@ function PlayerContent() {
         setQueue(initialQueue)
         setIntroOutroMusicUrl(INTRO_MUSIC)
         // Load background music directly from DB — no playlist API needed
-        if ((data as any).background_music_url) setBackgroundMusicUrl((data as any).background_music_url)
+        if ((data as any).background_music_url) {
+          setBackgroundMusicUrl((data as any).background_music_url)
+          backgroundMusicUrlRef.current = (data as any).background_music_url
+        }
         setIsASC3(true)
       }
 
@@ -95,7 +99,9 @@ function PlayerContent() {
           if (playlist.queue?.length > 1) {
             setQueue(playlist.queue)
             setIntroOutroMusicUrl(playlist.introOutroMusicUrl || '')
-            setBackgroundMusicUrl(playlist.backgroundMusicUrl || null)
+            const bgMusic = playlist.backgroundMusicUrl || null
+            setBackgroundMusicUrl(bgMusic)
+            backgroundMusicUrlRef.current = bgMusic
             setIsASC3(true)
           }
         }
@@ -164,7 +170,8 @@ function PlayerContent() {
   }
 
   const applyMusic = (type: 'intro' | 'story' | 'outro') => {
-    const newSrc = (type === 'story' && backgroundMusicUrl) ? backgroundMusicUrl : introOutroMusicUrl
+    const bgUrl = backgroundMusicUrlRef.current || backgroundMusicUrl
+    const newSrc = (type === 'story' && bgUrl) ? bgUrl : introOutroMusicUrl
     if (!newSrc || !musicRef.current) return
     currentQueueType.current = type
     // Only swap if src is different and not already playing the right track
@@ -345,8 +352,9 @@ function PlayerContent() {
           const total = segmentDurationsRef.current.reduce((a, b) => a + (b || 0), 0)
           if (total > 0) setTotalDuration(total)
           // Start background music 3s before narrator (intro ends)
-          if (currentQueueType.current === 'intro' && backgroundMusicUrl) {
-            scheduleCrossfade(backgroundMusicUrl, 3)
+          const bgUrl = backgroundMusicUrlRef.current || backgroundMusicUrl
+          if (currentQueueType.current === 'intro' && bgUrl) {
+            scheduleCrossfade(bgUrl, 3)
           }
         }}
 
