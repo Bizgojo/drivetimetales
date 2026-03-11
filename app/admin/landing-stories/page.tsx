@@ -75,9 +75,21 @@ function CopyFromAppModal({ onClose, onAdded }: { onClose: () => void; onAdded: 
   const [msg, setMsg] = useState('')
 
   useEffect(() => {
-    fetch('/api/landing/stories')
+    // Use the same App Library endpoint as the admin Stories page
+    fetch('/api/asc3/list-stories?status=all')
       .then(r => r.json())
-      .then(d => { if (d.stories) setAppStories(d.stories) })
+      .then(d => {
+        if (d.stories) {
+          setAppStories(d.stories.map((s: any) => ({
+            id: s.id,
+            title: s.title,
+            author: s.authorName || s.author,
+            genre: s.primaryGenre || s.genre,
+            duration_mins: s.wordCount ? Math.ceil(s.wordCount / 150) : s.duration_mins,
+            cover_url: s.coverImageUrl || s.cover_url,
+          })))
+        }
+      })
       .finally(() => setLoading(false))
   }, [])
 

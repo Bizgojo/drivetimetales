@@ -11,12 +11,9 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const status = searchParams.get('status') || 'pending'
 
-    const { data, error } = await supabase
-      .from('stories')
-      .select('*')
-      .eq('status', status)
-      .order('created_at', { ascending: false })
-      .limit(50)
+    const query = supabase.from('stories').select('*').order('created_at', { ascending: false }).limit(100)
+    if (status !== 'all') query.eq('status', status)
+    const { data, error } = await query
 
     if (error) {
       return NextResponse.json({ success: false, error: error.message }, { status: 500 })
