@@ -214,6 +214,51 @@ const AUTHOR_STYLE_PROFILES = {
     techniques: 'Feminist speculation, dystopian detail, psychological interiority, language as power, women navigating controlled systems',
     audioAdaptation: 'Female voice with interior complexity, sparse language, systemic oppression through dialogue and tone'
   },
+  'Dan Brown': {
+    name: 'Dan Brown',
+    description: 'The Master of the Conspiracy Thriller',
+    birth_year: 1964,
+    death_year: null,
+    living: true,
+    techniques: 'Short punchy chapters ending on cliffhangers, high-concept historical conspiracy, protagonist in over their head, expert knowledge weaponized as plot, multiple antagonists with shifting loyalties, relentless pace with revelation every few pages',
+    audioAdaptation: 'Fast chapter-by-chapter pacing, each scene ends on a hook, historical facts delivered as urgent discoveries, antagonist motivations revealed in layers'
+  },
+  'John Grisham': {
+    name: 'John Grisham',
+    description: 'The Master of the Legal Thriller',
+    birth_year: 1955,
+    death_year: null,
+    living: true,
+    techniques: 'Legal procedure as dramatic tension, ordinary protagonist thrust into dangerous system, institutional corruption, moral clarity in murky situations, accessible legal detail, Southern settings',
+    audioAdaptation: 'Procedural pacing builds dread, courtroom scenes as performance, protagonist vulnerability drives listener investment'
+  },
+  'Gillian Flynn': {
+    name: 'Gillian Flynn',
+    description: 'The Master of Psychological Domestic Suspense',
+    birth_year: 1971,
+    death_year: null,
+    living: true,
+    techniques: 'Unreliable narrators, domestic settings turned dangerous, female protagonists with dark interiors, dual timelines, shocking reversals, unflinching psychological brutality',
+    audioAdaptation: 'Dual narrator voices essential, keep listener off-balance, reveal character flaws gradually then all at once'
+  },
+  'Cormac McCarthy': {
+    name: 'Cormac McCarthy',
+    description: 'The Master of Violent American Prose',
+    birth_year: 1933,
+    death_year: 2023,
+    living: false,
+    techniques: 'Sparse punctuation creating relentless flow, biblical cadence, landscape as character, violence rendered with cold precision, moral weight without moralizing, sparse dialogue carrying enormous weight',
+    audioAdaptation: 'Narrator voice like scripture, long silences, landscape SFX as emotional underscore, dialogue without attribution forces listener to track speakers'
+  },
+  'Toni Morrison': {
+    name: 'Toni Morrison',
+    description: 'The Master of American Memory and Myth',
+    birth_year: 1931,
+    death_year: 2019,
+    living: false,
+    techniques: 'Non-linear narrative, community as character, trauma surfacing through memory, poetic language, African American experience as universal myth, spiritual realism',
+    audioAdaptation: 'Rich narrator voice with community warmth, non-linear structure requires strong audio anchoring, emotional weight carried in silence'
+  },
 };
 
 // ============================================================================
