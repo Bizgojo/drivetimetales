@@ -31,6 +31,10 @@ function PlayerContent() {
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
+  const segmentDurationsRef = useRef<number[]>([]) // duration of each segment as it loads
+  const [totalDuration, setTotalDuration] = useState(0)
+  const [cumulativeTime, setCumulativeTime] = useState(0)
+  const completedSecsRef = useRef(0) // total seconds of completed segments
   const [hasProgress, setHasProgress] = useState(false)
 
   // ASC3 playlist state
@@ -165,6 +169,8 @@ function PlayerContent() {
   }
 
   const advanceQueue = () => {
+    // Add completed segment to cumulative counter
+    completedSecsRef.current += segmentDurationsRef.current[queueIndex] || duration
     const nextIndex = queueIndex + 1
     if (nextIndex < queue.length) {
       setQueueIndex(nextIndex)
@@ -282,8 +288,10 @@ function PlayerContent() {
   }
 
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, '0')}`
-  const timeRemaining = duration > 0 ? Math.max(0, duration - currentTime) : (story?.duration_mins || 0) * 60
-  const progressPct = duration > 0 ? (currentTime / duration) * 100 : 0
+  const effectiveTotalDuration = totalDuration > 0 ? totalDuration : (story?.duration_mins || 0) * 60
+  const effectiveCurrent = isASC3 ? cumulativeTime : currentTime
+  const timeRemaining = effectiveTotalDuration > 0 ? Math.max(0, effectiveTotalDuration - effectiveCurrent) : 0
+  const progressPct = effectiveTotalDuration > 0 ? Math.min(100, (effectiveCurrent / effectiveTotalDuration) * 100) : 0
 
   if (loading) return (
     <div style={{ height: '100dvh', backgroundColor: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -304,7 +312,12 @@ function PlayerContent() {
       {/* Hidden audio elements */}
       <audio ref={audioRef}
         onLoadedMetadata={(e) => {
-          setDuration(e.currentTarget.duration)
+          const segDur = e.currentTarget.duration
+          setDuration(segDur)
+          // Track per-segment durations for total progress bar
+          segmentDurationsRef.current[queueIndex] = segDur
+          const total = segmentDurationsRef.current.reduce((a, b) => a + (b || 0), 0)
+          if (total > 0) setTotalDuration(total)
           // Schedule crossfade 4s before intro ends → story music fades in before narrator starts
           if (currentQueueType.current === 'intro' && backgroundMusicUrl) {
             scheduleCrossfade(backgroundMusicUrl, 4)
@@ -318,6 +331,8 @@ function PlayerContent() {
           }
         }}
         onTimeUpdate={(e) => {
+          const cum = completedSecsRef.current + e.currentTarget.currentTime
+          setCumulativeTime(cum)
           const t = e.currentTarget.currentTime
           setCurrentTime(t)
           if (saveTimer.current) clearTimeout(saveTimer.current)
