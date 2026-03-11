@@ -22,6 +22,7 @@ function PlayerContent() {
   const audioRef = useRef<HTMLAudioElement>(null)
   const musicRef = useRef<HTMLAudioElement>(null)
   const crossfadeTimer = useRef<NodeJS.Timeout | null>(null)
+  const nextAudioRef = useRef<HTMLAudioElement | null>(null) // preloaded next segment
   const saveTimer = useRef<NodeJS.Timeout | null>(null)
   const resumeRef = useRef(0)
   const currentQueueType = useRef<'intro' | 'story' | 'outro'>('intro')
@@ -179,12 +180,16 @@ function PlayerContent() {
       const prevType = currentQueueType.current
       currentQueueType.current = next.type
       if (audioRef.current) {
-        audioRef.current.src = next.url
-        audioRef.current.load()
-        setTimeout(() => {
-          audioRef.current?.play().catch(() => {})
-          if (isPlaying && musicRef.current?.paused) musicRef.current.play().catch(() => {})
-        }, 100)
+        if (nextAudioRef.current && nextAudioRef.current.src.includes(next.url.split('/').pop() || '')) {
+          // Swap in preloaded audio — zero gap
+          audioRef.current.src = nextAudioRef.current.src
+          nextAudioRef.current = null
+        } else {
+          audioRef.current.src = next.url
+          audioRef.current.load()
+        }
+        audioRef.current.play().catch(() => {})
+        if (isPlaying && musicRef.current?.paused) musicRef.current.play().catch(() => {})
       }
     } else {
       // Story finished — fade out music then navigate
@@ -333,6 +338,17 @@ function PlayerContent() {
         onTimeUpdate={(e) => {
           const cum = completedSecsRef.current + e.currentTarget.currentTime
           setCumulativeTime(cum)
+          // Preload next segment when 3s remain to eliminate gap between phrases
+          const remaining = e.currentTarget.duration - e.currentTarget.currentTime
+          if (remaining < 3 && remaining > 0 && isASC3) {
+            const nextIdx = queueIndex + 1
+            if (nextIdx < queue.length && !nextAudioRef.current) {
+              const pre = new Audio(queue[nextIdx].url)
+              pre.preload = 'auto'
+              pre.load()
+              nextAudioRef.current = pre
+            }
+          }
           const t = e.currentTarget.currentTime
           setCurrentTime(t)
           if (saveTimer.current) clearTimeout(saveTimer.current)
