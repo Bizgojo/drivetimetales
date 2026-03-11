@@ -819,6 +819,8 @@ const ReviewEditStage: React.FC<{
   const [isRegeneratingCover, setIsRegeneratingCover] = useState(false);
   const [isRegeneratingIntroAudio, setIsRegeneratingIntroAudio] = useState(false);
   const [isRegeneratingOutroAudio, setIsRegeneratingOutroAudio] = useState(false);
+  const [isRenderingFinalMix, setIsRenderingFinalMix] = useState(false);
+  const [finalMixUrl, setFinalMixUrl] = useState<string | null>(story.audioUrl || null);
 
   const calculateDuration = (words: number) => {
     const minutes = Math.round(words / 150);
@@ -953,6 +955,30 @@ const ReviewEditStage: React.FC<{
     } finally {
       if (type === 'intro') setIsRegeneratingIntroAudio(false)
       else setIsRegeneratingOutroAudio(false)
+    }
+  }
+
+  const handleRenderFinalMix = async () => {
+    if (isRenderingFinalMix) return
+    setIsRenderingFinalMix(true)
+    try {
+      const res = await fetch('/api/asc3/render-final-mix', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storyId: story.id, musicVolume: musicVolume }),
+      })
+      const data = await res.json()
+      if (data.success && data.finalAudioUrl) {
+        setFinalMixUrl(data.finalAudioUrl)
+        onUpdate({ ...story, audioUrl: data.finalAudioUrl })
+        alert('✅ Final mix rendered! Audio player below now plays the mixed version.')
+      } else {
+        alert(`❌ Render failed: ${data.error}`)
+      }
+    } catch {
+      alert('❌ Error rendering final mix')
+    } finally {
+      setIsRenderingFinalMix(false)
     }
   }
 
@@ -1138,22 +1164,38 @@ const ReviewEditStage: React.FC<{
         <div className="bg-white p-6 rounded-lg border border-gray-300">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold text-black">🎵 Audio Player</h3>
-            {!fullPlayMode ? (
+            <div className="flex items-center gap-2">
               <button
-                onClick={startFullPlay}
-                className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold px-4 py-2 rounded-lg transition"
+                onClick={handleRenderFinalMix}
+                disabled={isRenderingFinalMix}
+                className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition disabled:opacity-40"
+                title={`Mixes all audio + music at ${Math.round(musicVolume * 100)}% volume into one publishable MP3`}
               >
-                ▶ Play Full Story
+                {isRenderingFinalMix ? '⏳ Rendering...' : '🎬 Render Final Mix'}
               </button>
-            ) : (
-              <button
-                onClick={stopFullPlay}
-                className="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white text-sm font-semibold px-4 py-2 rounded-lg transition"
-              >
-                ⏹ Stop
-              </button>
-            )}
+              {!fullPlayMode ? (
+                <button
+                  onClick={startFullPlay}
+                  className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold px-4 py-2 rounded-lg transition"
+                >
+                  ▶ Play Full Story
+                </button>
+              ) : (
+                <button
+                  onClick={stopFullPlay}
+                  className="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white text-sm font-semibold px-4 py-2 rounded-lg transition"
+                >
+                  ⏹ Stop
+                </button>
+              )}
+            </div>
           </div>
+          {finalMixUrl && (
+            <div className="mb-3 px-3 py-2 bg-green-50 border border-green-200 rounded text-sm font-medium text-green-800 flex items-center justify-between">
+              <span>✅ Final mix ready — this is what gets published</span>
+              <audio controls src={finalMixUrl} className="h-8 ml-3" />
+            </div>
+          )}
 
           {fullPlayMode && (
             <div className="mb-3 px-3 py-2 bg-orange-50 border border-orange-200 rounded text-sm font-medium text-orange-800">
