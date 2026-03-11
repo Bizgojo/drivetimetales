@@ -817,6 +817,8 @@ const ReviewEditStage: React.FC<{
   const [savingChanges, setSavingChanges] = useState(false);
   const [isRegeneratingMusic, setIsRegeneratingMusic] = useState(false);
   const [isRegeneratingCover, setIsRegeneratingCover] = useState(false);
+  const [isRegeneratingIntroAudio, setIsRegeneratingIntroAudio] = useState(false);
+  const [isRegeneratingOutroAudio, setIsRegeneratingOutroAudio] = useState(false);
 
   const calculateDuration = (words: number) => {
     const minutes = Math.round(words / 150);
@@ -923,6 +925,36 @@ const ReviewEditStage: React.FC<{
 
   const [sunoStatusMsg, setSunoStatusMsg] = React.useState('')
   const [sunoElapsed, setSunoElapsed] = React.useState(0)
+
+  const handleRegenerateAnnouncerAudio = async (type: 'intro' | 'outro') => {
+    const text = type === 'intro' ? introText : outroText
+    if (!text.trim()) return alert('No text to generate from. Write the script first.')
+    if (type === 'intro') setIsRegeneratingIntroAudio(true)
+    else setIsRegeneratingOutroAudio(true)
+    try {
+      const res = await fetch('/api/asc3/regenerate-announcer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storyId: story.id, type, text }),
+      })
+      const data = await res.json()
+      if (data.success && data.audioUrl) {
+        const updated = {
+          ...story,
+          ...(type === 'intro' ? { introAudioUrl: data.audioUrl, introText: text } : { outroAudioUrl: data.audioUrl, outroText: text }),
+        }
+        onUpdate(updated)
+        alert(`✅ ${type === 'intro' ? 'Intro' : 'Outro'} audio regenerated!`)
+      } else {
+        alert(`❌ Failed: ${data.error}`)
+      }
+    } catch {
+      alert(`❌ Error regenerating ${type} audio`)
+    } finally {
+      if (type === 'intro') setIsRegeneratingIntroAudio(false)
+      else setIsRegeneratingOutroAudio(false)
+    }
+  }
 
   const handleRegenerateCover = async () => {
     if (isRegeneratingCover) return
@@ -1278,28 +1310,31 @@ const ReviewEditStage: React.FC<{
       <div className="bg-white border border-gray-300 rounded-lg p-4">
         <div className="flex items-center justify-between mb-2">
           <h4 className="font-semibold text-black">Edit Intro Text</h4>
-          {editingIntro && (
-            <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  setEditingIntro(false);
-                  handleSaveChanges();
-                }}
-                className="px-2 py-1 bg-orange-500 text-white rounded text-sm font-medium"
-              >
-                💾 Save
-              </button>
-              <button
-                onClick={() => {
-                  setEditingIntro(false);
-                  setIntroText(story.introText || '');
-                }}
-                className="px-2 py-1 bg-gray-200 text-black rounded text-sm font-medium"
-              >
-                ✕ Cancel
-              </button>
-            </div>
-          )}
+          <div className="flex gap-2">
+            {editingIntro && (
+              <>
+                <button
+                  onClick={() => { setEditingIntro(false); handleSaveChanges(); }}
+                  className="px-2 py-1 bg-orange-500 text-white rounded text-sm font-medium"
+                >
+                  💾 Save
+                </button>
+                <button
+                  onClick={() => { setEditingIntro(false); setIntroText(story.introText || ''); }}
+                  className="px-2 py-1 bg-gray-200 text-black rounded text-sm font-medium"
+                >
+                  ✕ Cancel
+                </button>
+              </>
+            )}
+            <button
+              onClick={() => handleRegenerateAnnouncerAudio('intro')}
+              disabled={isRegeneratingIntroAudio}
+              className="px-2 py-1 bg-blue-600 text-white rounded text-sm font-medium disabled:opacity-40"
+            >
+              {isRegeneratingIntroAudio ? '⏳ Generating...' : '🎙️ Regen Audio'}
+            </button>
+          </div>
         </div>
         {editingIntro ? (
           <textarea
@@ -1325,27 +1360,31 @@ const ReviewEditStage: React.FC<{
       <div className="bg-white border border-gray-300 rounded-lg p-4">
         <div className="flex items-center justify-between mb-2">
           <h4 className="font-semibold text-black">Edit Outro Text</h4>
-          {editingOutro && (
-            <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  setEditingOutro(false);
-                  handleSaveChanges();
-                }}
-                className="px-2 py-1 bg-orange-500 text-white rounded text-sm font-medium"
-              >
-                💾 Save
-              </button>
-              <button
-                onClick={() => {
-                  setEditingOutro(false);
-                  setOutroText(story.outroText || '');
-                }}
-                className="px-2 py-1 bg-gray-200 text-black rounded text-sm font-medium"
-              >
-                ✕ Cancel
-              </button>
-            </div>
+          <div className="flex gap-2">
+            {editingOutro && (
+              <>
+                <button
+                  onClick={() => { setEditingOutro(false); handleSaveChanges(); }}
+                  className="px-2 py-1 bg-orange-500 text-white rounded text-sm font-medium"
+                >
+                  💾 Save
+                </button>
+                <button
+                  onClick={() => { setEditingOutro(false); setOutroText(story.outroText || ''); }}
+                  className="px-2 py-1 bg-gray-200 text-black rounded text-sm font-medium"
+                >
+                  ✕ Cancel
+                </button>
+              </>
+            )}
+            <button
+              onClick={() => handleRegenerateAnnouncerAudio('outro')}
+              disabled={isRegeneratingOutroAudio}
+              className="px-2 py-1 bg-blue-600 text-white rounded text-sm font-medium disabled:opacity-40"
+            >
+              {isRegeneratingOutroAudio ? '⏳ Generating...' : '🎙️ Regen Audio'}
+            </button>
+          </div>
           )}
         </div>
         {editingOutro ? (

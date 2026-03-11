@@ -730,9 +730,14 @@ Now write the complete audio drama:`
 
     const conceptHook = (() => {
       const base = (body.concept || '').trim()
-      if (base.length <= 130) return base
-      const cut = base.lastIndexOf(' ', 130)
-      return base.substring(0, cut > 0 ? cut : 130) + '...'
+      if (base.length <= 300) return base
+      // Try to end at a sentence boundary within 300 chars
+      const sub = base.substring(0, 300)
+      const lastPeriod = Math.max(sub.lastIndexOf('. '), sub.lastIndexOf('! '), sub.lastIndexOf('? '))
+      if (lastPeriod > 100) return base.substring(0, lastPeriod + 1)
+      // Fall back to word boundary
+      const cut = sub.lastIndexOf(' ')
+      return base.substring(0, cut > 0 ? cut : 300) + '...'
     })()
 
     const authorName = body.authorName || body.authorStyle || 'the author'
