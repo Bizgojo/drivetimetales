@@ -14,58 +14,120 @@ interface QueueItem {
   url: string; type: 'intro' | 'story' | 'outro'; label: string
 }
 
+// Volume constants
+const VOL_INTRO  = 0.04   // intro/outro music under Belle B
+const VOL_STORY  = 0.04   // story background music (ducked under voices)
+const VOL_SWELL  = 0.10   // brief swell between lines
+
 function PlayerContent() {
   const params = useParams()
   const router = useRouter()
   const { user } = useAuth()
   const storyId = params.id as string
-  const audioRef = useRef<HTMLAudioElement>(null)
-  const musicRef = useRef<HTMLAudioElement>(null)
-  const crossfadeTimer = useRef<NodeJS.Timeout | null>(null)
-  const nextAudioRef = useRef<HTMLAudioElement | null>(null) // preloaded next segment
-  const duckTimer = useRef<NodeJS.Timeout | null>(null)
 
-  const fadeVolumeTo = (target: number, ms = 300) => {
-    if (!musicRef.current) return
-    if (duckTimer.current) clearInterval(duckTimer.current)
-    const start = musicRef.current.volume
-    const steps = 20
-    const stepMs = ms / steps
-    let step = 0
-    duckTimer.current = setInterval(() => {
-      step++
-      if (musicRef.current) musicRef.current.volume = start + (target - start) * (step / steps)
-      if (step >= steps) clearInterval(duckTimer.current!)
-    }, stepMs)
-  }
-  const saveTimer = useRef<NodeJS.Timeout | null>(null)
-  const resumeRef = useRef(0)
+  // Audio refs — all real DOM elements
+  const audioRef   = useRef<HTMLAudioElement>(null) // voice / dialogue
+  const musicARef  = useRef<HTMLAudioElement>(null) // music track A
+  const musicBRef  = useRef<HTMLAudioElement>(null) // music track B (crossfade target)
+  const activeMusic = useRef<'A' | 'B'>('A')        // which track is currently playing
+
+  const saveTimer   = useRef<NodeJS.Timeout | null>(null)
+  const duckTimer   = useRef<NodeJS.Timeout | null>(null)
+  const xfadeTimer  = useRef<NodeJS.Timeout | null>(null)
+  const schedTimer  = useRef<NodeJS.Timeout | null>(null)
+  const nextAudioRef = useRef<HTMLAudioElement | null>(null)
+  const resumeRef   = useRef(0)
   const currentQueueType = useRef<'intro' | 'story' | 'outro'>('intro')
 
-  const [story, setStory] = useState<Story & { intro_audio_url?: string; outro_audio_url?: string; background_music_url?: string } | null>(null)
+  const [story, setStory]   = useState<any | null>(null)
   const [loading, setLoading] = useState(true)
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
-  const [duration, setDuration] = useState(0)
-  const segmentDurationsRef = useRef<number[]>([]) // duration of each segment as it loads
-  const [totalDuration, setTotalDuration] = useState(0)
-  const [cumulativeTime, setCumulativeTime] = useState(0)
-  const completedSecsRef = useRef(0) // total seconds of completed segments
+  const [duration, setDuration]       = useState(0)
   const [hasProgress, setHasProgress] = useState(false)
 
-  // ASC3 playlist state
-  const [queue, setQueue] = useState<QueueItem[]>([])
-  const [queueIndex, setQueueIndex] = useState(0)
-  const [introOutroMusicUrl, setIntroOutroMusicUrl] = useState('')
-  const [backgroundMusicUrl, setBackgroundMusicUrl] = useState<string | null>(null)
-  const backgroundMusicUrlRef = useRef<string | null>(null)
-  const [isASC3, setIsASC3] = useState(false)
-  const [sectionLabel, setSectionLabel] = useState('')
-  const musicVolume = 0.04       // ducked volume while voices play
-  const musicVolumeUp = 0.10    // raised volume between segments / at transitions
-  const introMusicVolume = 0.04 // intro/outro music level
+  // ASC3 queue state
+  const [queue, setQueue]                     = useState<QueueItem[]>([])
+  const [queueIndex, setQueueIndex]           = useState(0)
+  const [isASC3, setIsASC3]                   = useState(false)
+  const [sectionLabel, setSectionLabel]       = useState('')
+  const introMusicUrlRef  = useRef('')
+  const bgMusicUrlRef     = useRef<string | null>(null)
 
-  // Load story + playlist
+  // Cumulative progress
+  const segDursRef   = useRef<number[]>([])
+  const completedRef = useRef(0)
+  const [totalDur, setTotalDur]         = useState(0)
+  const [cumTime, setCumTime]           = useState(0)
+
+  // ── Music helpers ──────────────────────────────────────────────────────────
+
+  const activeRef  = () => activeMusic.current === 'A' ? musicARef.current : musicBRef.current
+  const inactiveRef = () => activeMusic.current === 'A' ? musicBRef.current : musicARef.current
+
+  /** Animate volume of a specific audio element */
+  const animateVol = (el: HTMLAudioElement, target: number, ms: number, onDone?: () => void) => {
+    const start = el.volume
+    const steps = Math.max(10, Math.round(ms / 16))
+    const stepMs = ms / steps
+    let step = 0
+    const timer = setInterval(() => {
+      step++
+      el.volume = Math.max(0, Math.min(1, start + (target - start) * (step / steps)))
+      if (step >= steps) { clearInterval(timer); onDone?.() }
+    }, stepMs)
+    return timer
+  }
+
+  /** Instantly duck or raise the active music track */
+  const setMusicVol = (target: number, ms = 200) => {
+    const el = activeRef()
+    if (!el) return
+    if (duckTimer.current) clearInterval(duckTimer.current)
+    duckTimer.current = animateVol(el, target, ms)
+  }
+
+  /** Switch active music track — fade out old, fade in new over durationMs */
+  const switchMusic = (newSrc: string, targetVol: number, durationMs = 3000) => {
+    if (xfadeTimer.current) clearInterval(xfadeTimer.current)
+    const outEl = activeRef()
+    const inEl  = inactiveRef()
+    if (!inEl) return
+
+    inEl.src    = newSrc
+    inEl.loop   = true
+    inEl.volume = 0
+    inEl.play().catch(() => {})
+
+    const steps  = Math.max(20, Math.round(durationMs / 16))
+    const stepMs = durationMs / steps
+    const startVol = outEl?.volume ?? targetVol
+    let step = 0
+
+    xfadeTimer.current = setInterval(() => {
+      step++
+      const p = step / steps
+      if (outEl) outEl.volume = Math.max(0, startVol * (1 - p))
+      inEl.volume = Math.min(targetVol, targetVol * p)
+      if (step >= steps) {
+        clearInterval(xfadeTimer.current!)
+        outEl?.pause()
+        activeMusic.current = activeMusic.current === 'A' ? 'B' : 'A'
+      }
+    }, stepMs)
+  }
+
+  /** Schedule a music switch N seconds before the current audio ends */
+  const scheduleMusicSwitch = (newSrc: string, targetVol: number, leadSec: number) => {
+    if (schedTimer.current) clearTimeout(schedTimer.current)
+    const audio = audioRef.current
+    if (!audio?.duration || isNaN(audio.duration)) return
+    const delay = Math.max(0, (audio.duration - audio.currentTime - leadSec) * 1000)
+    schedTimer.current = setTimeout(() => switchMusic(newSrc, targetVol, leadSec * 1000), delay)
+  }
+
+  // ── Load story + queue ─────────────────────────────────────────────────────
+
   useEffect(() => {
     async function load() {
       const { data } = await supabase
@@ -74,43 +136,37 @@ function PlayerContent() {
         .eq('id', storyId).single()
       if (data) setStory(data)
 
-      // Build initial queue from DB fields immediately (works without extra API call)
-      if (data?.intro_audio_url || data?.outro_audio_url) {
+      if (data?.intro_audio_url) {
         const INTRO_MUSIC = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio/intro_outro_music.mp3`
-        const initialQueue: QueueItem[] = []
-        if (data.intro_audio_url) initialQueue.push({ url: data.intro_audio_url, type: 'intro', label: 'Intro' })
-        if (data.audio_url) initialQueue.push({ url: data.audio_url, type: 'story', label: 'Story' })
-        if (data.outro_audio_url) initialQueue.push({ url: data.outro_audio_url, type: 'outro', label: 'Outro' })
-        setQueue(initialQueue)
-        setIntroOutroMusicUrl(INTRO_MUSIC)
-        // Load background music directly from DB — no playlist API needed
-        if ((data as any).background_music_url) {
-          setBackgroundMusicUrl((data as any).background_music_url)
-          backgroundMusicUrlRef.current = (data as any).background_music_url
-        }
+        introMusicUrlRef.current  = INTRO_MUSIC
+        bgMusicUrlRef.current     = data.background_music_url || null
+
+        const q: QueueItem[] = []
+        if (data.intro_audio_url) q.push({ url: data.intro_audio_url, type: 'intro',  label: 'Intro' })
+        if (data.audio_url)       q.push({ url: data.audio_url,       type: 'story',  label: 'Story' })
+        if (data.outro_audio_url) q.push({ url: data.outro_audio_url, type: 'outro',  label: 'Outro' })
+        setQueue(q)
         setIsASC3(true)
       }
 
-      // Enhance with full segment list + background music from playlist API
+      // Enhance with full segment list from playlist API
       try {
         const res = await fetch(`/api/asc3/story-playlist?storyId=${storyId}`)
         if (res.ok) {
-          const playlist = await res.json()
-          if (playlist.queue?.length > 1) {
-            setQueue(playlist.queue)
-            setIntroOutroMusicUrl(playlist.introOutroMusicUrl || '')
-            const bgMusic = playlist.backgroundMusicUrl || null
-            setBackgroundMusicUrl(bgMusic)
-            backgroundMusicUrlRef.current = bgMusic
+          const pl = await res.json()
+          if (pl.queue?.length > 1) {
+            introMusicUrlRef.current = pl.introOutroMusicUrl || introMusicUrlRef.current
+            bgMusicUrlRef.current    = pl.backgroundMusicUrl || bgMusicUrlRef.current
+            setQueue(pl.queue)
             setIsASC3(true)
           }
         }
-      } catch (e) { /* playlist enhancement optional */ }
+      } catch (_) {}
 
       if (user?.id) {
         const { data: lib } = await supabase.from('user_library')
           .select('progress, completed').eq('user_id', user.id).eq('story_id', storyId).single()
-        if (lib && lib.progress > 0) {
+        if (lib?.progress > 0) {
           resumeRef.current = lib.completed ? 0 : Math.max(0, lib.progress - 3)
           setCurrentTime(resumeRef.current)
           setHasProgress(true)
@@ -121,95 +177,39 @@ function PlayerContent() {
     load()
   }, [storyId, user])
 
-  // When queue loads AND component is fully rendered, initialize audio src
+  // Init first segment once ready
   useEffect(() => {
-    if (!isASC3 || !queue.length || loading) return
-    if (!audioRef.current) return
-    // Only set src if not already set (avoid overwriting on playlist enhancement)
+    if (!isASC3 || !queue.length || loading || !audioRef.current) return
     if (!audioRef.current.src || audioRef.current.src === window.location.href) {
       audioRef.current.src = queue[0].url
       audioRef.current.load()
     }
     setSectionLabel(queue[0].label)
-    applyMusic(queue[0].type)
+    currentQueueType.current = queue[0].type
+    // Prime intro/outro music on track A
+    const mA = musicARef.current
+    if (mA && introMusicUrlRef.current) {
+      mA.src    = introMusicUrlRef.current
+      mA.loop   = true
+      mA.volume = 0
+    }
   }, [isASC3, queue, loading])
 
-  // Smooth crossfade between two music sources over durationMs
-  const crossfadeTo = (newSrc: string, durationMs = 5000) => {
-    if (!musicRef.current) return
-    if (crossfadeTimer.current) clearInterval(crossfadeTimer.current)
-
-    const outgoing = musicRef.current
-    const startVol = outgoing.volume || musicVolume
-
-    // Create a temporary audio element for the incoming track
-    const incoming = new Audio(newSrc)
-    incoming.loop = true
-    incoming.volume = 0
-    incoming.loop = true
-    incoming.play().catch(() => {})
-
-    const steps = 50
-    const stepMs = durationMs / steps
-    let step = 0
-
-    crossfadeTimer.current = setInterval(() => {
-      step++
-      const progress = step / steps
-      outgoing.volume = Math.max(0, startVol * (1 - progress))
-      incoming.volume = Math.min(musicVolumeUp, musicVolumeUp * progress)
-
-      if (step >= steps) {
-        clearInterval(crossfadeTimer.current!)
-        outgoing.pause()
-        // Swap incoming into musicRef
-        musicRef.current = incoming
-        outgoing.src = ''
-      }
-    }, stepMs)
-  }
-
-  const applyMusic = (type: 'intro' | 'story' | 'outro') => {
-    const bgUrl = backgroundMusicUrlRef.current || backgroundMusicUrl
-    const newSrc = (type === 'story' && bgUrl) ? bgUrl : introOutroMusicUrl
-    if (!newSrc || !musicRef.current) return
-    currentQueueType.current = type
-    // Only swap if src is different and not already playing the right track
-    if (!musicRef.current.src?.includes(newSrc.split('/').pop() || '')) {
-      musicRef.current.src = newSrc
-      musicRef.current.loop = true
-      musicRef.current.volume = type === 'story' ? musicVolume : introMusicVolume
-      if (isPlaying) musicRef.current.play().catch(() => {})
-    }
-  }
-
-  // Schedule a crossfade N seconds before the current audio ends
-  const scheduleCrossfadeRef = useRef<NodeJS.Timeout | null>(null)
-  const scheduleCrossfade = (newSrc: string, leadSec = 4) => {
-    if (scheduleCrossfadeRef.current) clearTimeout(scheduleCrossfadeRef.current)
-    const audio = audioRef.current
-    if (!audio || !audio.duration || isNaN(audio.duration)) return
-    const remaining = audio.duration - audio.currentTime
-    const delay = Math.max(0, (remaining - leadSec) * 1000)
-    scheduleCrossfadeRef.current = setTimeout(() => {
-      crossfadeTo(newSrc, leadSec * 1000)
-    }, delay)
-  }
+  // ── Queue advance ──────────────────────────────────────────────────────────
 
   const advanceQueue = () => {
-    // Add completed segment to cumulative counter
-    completedSecsRef.current += segmentDurationsRef.current[queueIndex] || duration
-    const nextIndex = queueIndex + 1
-    if (nextIndex < queue.length) {
-      setQueueIndex(nextIndex)
-      const next = queue[nextIndex]
+    completedRef.current += segDursRef.current[queueIndex] || duration
+    const nextIdx = queueIndex + 1
+    if (nextIdx < queue.length) {
+      setQueueIndex(nextIdx)
+      const next = queue[nextIdx]
       setSectionLabel(next.label)
-      const prevType = currentQueueType.current
       currentQueueType.current = next.type
+
       if (audioRef.current) {
-        // Briefly swell music between segments (60ms gap), then duck when next voice starts
-        fadeVolumeTo(musicVolumeUp, 60)
-        if (nextAudioRef.current && nextAudioRef.current.src.includes(next.url.split('/').pop() || '')) {
+        // Brief swell between lines
+        setMusicVol(VOL_SWELL, 60)
+        if (nextAudioRef.current?.src?.includes(next.url.split('/').pop() || '')) {
           audioRef.current.src = nextAudioRef.current.src
           nextAudioRef.current = null
         } else {
@@ -217,22 +217,35 @@ function PlayerContent() {
           audioRef.current.load()
         }
         audioRef.current.play().catch(() => {})
-        if (isPlaying && musicRef.current?.paused) musicRef.current.play().catch(() => {})
       }
     } else {
-      // Story finished — fade out music then navigate
-      if (musicRef.current) {
-        const vol = musicRef.current.volume
-        let step = 0
-        const fadeOut = setInterval(() => {
-          step++
-          if (musicRef.current) musicRef.current.volume = Math.max(0, vol * (1 - step / 20))
-          if (step >= 20) { clearInterval(fadeOut); musicRef.current?.pause() }
-        }, 150)
-      }
+      // All done — fade out music and navigate
+      setMusicVol(0, 2000)
       setIsPlaying(false)
       saveProgress(duration, true)
       setTimeout(() => router.push('/library'), 3000)
+    }
+  }
+
+  // ── Play / Pause ───────────────────────────────────────────────────────────
+
+  const handlePlayPause = () => {
+    if (!audioRef.current) return
+    if (isPlaying) {
+      audioRef.current.pause()
+      activeRef()?.pause()
+      saveProgress(currentTime)
+      setIsPlaying(false)
+    } else {
+      audioRef.current.play().then(() => {
+        setIsPlaying(true)
+        const mA = musicARef.current
+        if (mA && mA.src) {
+          mA.play().catch(() => {})
+          // Fade intro music in over 2s
+          animateVol(mA, VOL_INTRO, 2000)
+        }
+      }).catch(() => {})
     }
   }
 
@@ -246,85 +259,45 @@ function PlayerContent() {
     }
   }
 
-  const handlePlayPause = () => {
-    if (!audioRef.current) return
-    if (isPlaying) {
-      audioRef.current.pause()
-      musicRef.current?.pause()
-      saveProgress(currentTime)
-      setIsPlaying(false)
-    } else {
-      audioRef.current.play().then(() => {
-        setIsPlaying(true)
-        if (musicRef.current && musicRef.current.src) {
-          // Fade music in from 0 over 2 seconds
-          musicRef.current.volume = 0
-          musicRef.current.play().catch(() => {})
-          let step = 0
-          const fadeIn = setInterval(() => {
-            step++
-            if (musicRef.current) musicRef.current.volume = Math.min(introMusicVolume, introMusicVolume * (step / 20))
-            if (step >= 20) clearInterval(fadeIn)
-          }, 100)
-        }
-      }).catch(() => {})
-    }
-  }
-
   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!audioRef.current || !duration) return
     const rect = e.currentTarget.getBoundingClientRect()
-    const newTime = ((e.clientX - rect.left) / rect.width) * duration
-    audioRef.current.currentTime = newTime
-    setCurrentTime(newTime)
+    audioRef.current.currentTime = ((e.clientX - rect.left) / rect.width) * duration
   }
 
   const handleNotForMe = async () => {
-    audioRef.current?.pause()
-    musicRef.current?.pause()
-    if (user?.id) {
-      await supabase.from('user_library').upsert({
-        user_id: user.id, story_id: storyId, not_for_me: true,
-        progress: Math.floor(currentTime), last_played: new Date().toISOString()
-      })
-    }
+    audioRef.current?.pause(); activeRef()?.pause()
+    if (user?.id) await supabase.from('user_library').upsert({
+      user_id: user.id, story_id: storyId, not_for_me: true,
+      progress: Math.floor(currentTime), last_played: new Date().toISOString()
+    })
     router.push('/library')
   }
 
   const handleBack = () => {
-    audioRef.current?.pause()
-    musicRef.current?.pause()
+    audioRef.current?.pause(); activeRef()?.pause()
     saveProgress(currentTime)
     router.push('/library')
   }
 
   const handleStartOver = () => {
-    if (isASC3 && queue.length) {
-      setQueueIndex(0)
-      setSectionLabel(queue[0].label)
-      applyMusic(queue[0].type)
-      if (audioRef.current) {
-        audioRef.current.src = queue[0].url
-        audioRef.current.load()
-        setTimeout(() => {
-          audioRef.current?.play().catch(() => {})
-          musicRef.current?.play().catch(() => {})
-          setIsPlaying(true)
-        }, 100)
-      }
-    } else if (audioRef.current) {
-      audioRef.current.currentTime = 0
-      audioRef.current.play()
-      setIsPlaying(true)
-    }
-    setCurrentTime(0)
+    if (!isASC3 || !queue.length) { audioRef.current && (audioRef.current.currentTime = 0, audioRef.current.play(), setIsPlaying(true)); return }
+    completedRef.current = 0; segDursRef.current = []
+    setQueueIndex(0); setSectionLabel(queue[0].label); currentQueueType.current = 'intro'
+    const mA = musicARef.current
+    if (mA) { mA.volume = 0; mA.src = introMusicUrlRef.current; mA.loop = true }
+    musicBRef.current && (musicBRef.current.pause(), musicBRef.current.src = '')
+    activeMusic.current = 'A'
+    if (audioRef.current) { audioRef.current.src = queue[0].url; audioRef.current.load() }
+    setTimeout(() => { audioRef.current?.play().catch(() => {}); mA && (mA.play().catch(() => {}), animateVol(mA, VOL_INTRO, 2000)); setIsPlaying(true) }, 100)
+    setCurrentTime(0); setCumTime(0)
   }
 
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, '0')}`
-  const effectiveTotalDuration = totalDuration > 0 ? totalDuration : (story?.duration_mins || 0) * 60
-  const effectiveCurrent = isASC3 ? cumulativeTime : currentTime
-  const timeRemaining = effectiveTotalDuration > 0 ? Math.max(0, effectiveTotalDuration - effectiveCurrent) : 0
-  const progressPct = effectiveTotalDuration > 0 ? Math.min(100, (effectiveCurrent / effectiveTotalDuration) * 100) : 0
+  const effectiveTotal   = totalDur > 0 ? totalDur : (story?.duration_mins || 0) * 60
+  const effectiveCurrent = isASC3 ? cumTime : currentTime
+  const timeRemaining    = Math.max(0, effectiveTotal - effectiveCurrent)
+  const progressPct      = effectiveTotal > 0 ? Math.min(100, (effectiveCurrent / effectiveTotal) * 100) : 0
 
   if (loading) return (
     <div style={{ height: '100dvh', backgroundColor: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -342,69 +315,65 @@ function PlayerContent() {
 
   return (
     <div style={{ height: '100dvh', backgroundColor: '#020617', color: 'white', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      {/* Hidden audio elements */}
+
+      {/* Hidden audio elements — all in DOM for iOS autoplay */}
       <audio ref={audioRef}
         onLoadedMetadata={(e) => {
-          const segDur = e.currentTarget.duration
-          setDuration(segDur)
-          // Track per-segment durations for total progress bar
-          segmentDurationsRef.current[queueIndex] = segDur
-          const total = segmentDurationsRef.current.reduce((a, b) => a + (b || 0), 0)
-          if (total > 0) setTotalDuration(total)
-          // Start background music 3s before narrator (intro ends)
-          const bgUrl = backgroundMusicUrlRef.current || backgroundMusicUrl
-          if (currentQueueType.current === 'intro' && bgUrl) {
-            scheduleCrossfade(bgUrl, 3)
+          const d = e.currentTarget.duration
+          setDuration(d)
+          segDursRef.current[queueIndex] = d
+          const tot = segDursRef.current.reduce((a, b) => a + (b || 0), 0)
+          if (tot > 0) setTotalDur(tot)
+          // Schedule crossfade 3s before intro ends → story music fades in
+          if (currentQueueType.current === 'intro' && bgMusicUrlRef.current) {
+            scheduleMusicSwitch(bgMusicUrlRef.current, VOL_STORY, 3)
           }
         }}
-
         onTimeUpdate={(e) => {
-          const cum = completedSecsRef.current + e.currentTarget.currentTime
-          setCumulativeTime(cum)
-          // Preload next segment when 3s remain to eliminate gap between phrases
-          const remaining = e.currentTarget.duration - e.currentTarget.currentTime
-          if (remaining < 3 && remaining > 0 && isASC3) {
-            const nextIdx = queueIndex + 1
-            if (nextIdx < queue.length && !nextAudioRef.current) {
-              const pre = new Audio(queue[nextIdx].url)
-              pre.preload = 'auto'
-              pre.load()
+          const t = e.currentTarget.currentTime
+          setCurrentTime(t)
+          setCumTime(completedRef.current + t)
+          if (saveTimer.current) clearTimeout(saveTimer.current)
+          saveTimer.current = setTimeout(() => saveProgress(t), 5000)
+          // Preload next segment 3s ahead
+          const rem = e.currentTarget.duration - t
+          if (rem < 3 && rem > 0 && isASC3) {
+            const ni = queueIndex + 1
+            if (ni < queue.length && !nextAudioRef.current) {
+              const pre = new Audio(queue[ni].url)
+              pre.preload = 'auto'; pre.load()
               nextAudioRef.current = pre
             }
           }
-          const t = e.currentTarget.currentTime
-          setCurrentTime(t)
-          if (saveTimer.current) clearTimeout(saveTimer.current)
-          saveTimer.current = setTimeout(() => saveProgress(t), 5000)
         }}
+        onPlay={() => {
+          setIsPlaying(true)
+          // Duck music when voice starts playing
+          if (currentQueueType.current === 'story') setMusicVol(VOL_STORY, 300)
+        }}
+        onPause={() => setIsPlaying(false)}
         onEnded={() => {
           if (!isASC3) { setIsPlaying(false); saveProgress(duration, true); setTimeout(() => router.push('/library'), 1500); return }
-          // If last story segment → hold background music 3s before advancing to outro
-          const nextIdx = queueIndex + 1
-          const isLastStory = currentQueueType.current === 'story' && nextIdx < queue.length && queue[nextIdx]?.type === 'outro'
+          const ni = queueIndex + 1
+          const isLastStory = currentQueueType.current === 'story' && ni < queue.length && queue[ni]?.type === 'outro'
           if (isLastStory) {
-            // Crossfade to outro music starting now, advance after 3s
-            crossfadeTo(introOutroMusicUrl, 3000)
+            // Hold 3s of music swell before outro
+            setMusicVol(VOL_SWELL, 300)
+            switchMusic(introMusicUrlRef.current, VOL_INTRO, 3000)
             setTimeout(() => advanceQueue(), 3000)
           } else {
             advanceQueue()
           }
         }}
-        onPlay={() => {
-          setIsPlaying(true)
-          // Duck music when voice starts
-          if (currentQueueType.current === 'story') fadeVolumeTo(musicVolume, 200)
-        }}
-        onPause={() => setIsPlaying(false)}
         onCanPlay={() => {
-          if (!isASC3 && audioRef.current && resumeRef.current > 0) {
-            audioRef.current.currentTime = resumeRef.current
-          }
+          if (!isASC3 && audioRef.current && resumeRef.current > 0) audioRef.current.currentTime = resumeRef.current
           if (audioRef.current) setDuration(audioRef.current.duration)
         }}
         src={!isASC3 ? story.audio_url : undefined}
       />
-      <audio ref={musicRef} loop style={{ display: 'none' }} />
+      {/* Two music tracks in DOM — enables crossfade on iOS */}
+      <audio ref={musicARef} loop style={{ display: 'none' }} />
+      <audio ref={musicBRef} loop style={{ display: 'none' }} />
 
       {/* Header */}
       <div style={{ padding: '10px 16px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#0f172a', borderBottom: '1px solid rgba(148,163,184,0.06)' }}>
@@ -447,8 +416,8 @@ function PlayerContent() {
             <div style={{ height: '100%', backgroundColor: '#f97316', width: `${progressPct}%`, transition: 'width 0.1s', borderRadius: '3px' }} />
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
-            <span>{formatTime(currentTime)}</span>
-            <span>{formatTime(duration)}</span>
+            <span>{formatTime(effectiveCurrent)}</span>
+            <span>{formatTime(effectiveTotal)}</span>
           </div>
         </div>
 
