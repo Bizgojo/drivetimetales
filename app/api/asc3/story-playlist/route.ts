@@ -21,8 +21,9 @@ export async function GET(req: NextRequest) {
 
   if (error || !story) return NextResponse.json({ error: 'Story not found' }, { status: 404 })
 
-  // Extract storage folder ID from intro or story audio URL
-  const refUrl = story.intro_audio_url || story.story_audio_url || ''
+  // Extract storage folder ID — always prefer story_audio_url (segments folder)
+  // intro_audio_url may use a different/incorrect folder ID from DB auto-generated ID
+  const refUrl = story.story_audio_url || story.intro_audio_url || ''
   const folderMatch = refUrl.match(/asc3\/([^/]+)\//)
   const folderId = folderMatch?.[1]
 
