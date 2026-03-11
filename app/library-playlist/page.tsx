@@ -20,7 +20,7 @@ const STORAGE_KEY = 'dtt_active_playlist'
 
 function LibraryPlaylistContent() {
   const router = useRouter()
-  const { user } = useAuth()
+  const { user, loading: authLoading } = useAuth()
   const [stories, setStories] = useState([])
   const [playlist, setPlaylist] = useState([])
   const [loading, setLoading] = useState(true)
@@ -30,9 +30,10 @@ function LibraryPlaylistContent() {
   const [selectedGroup, setSelectedGroup] = useState('')
 
   useEffect(() => {
-    if (!user) return
+    if (authLoading) return // auth still initializing
+    if (!user) { setLoading(false); return } // not logged in — show empty state
     loadData()
-  }, [user])
+  }, [user, authLoading])
 
   const loadData = async () => {
     setLoading(true)

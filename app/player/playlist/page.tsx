@@ -23,9 +23,20 @@ function PlaylistPlayerContent() {
   const saveTimer = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
-    const saved = localStorage.getItem('dtt_playlist')
+    // Read from dtt_active_playlist (saved by library-playlist page)
+    // Format: { id, stories: PlaylistItem[] } OR legacy plain array
+    const raw = localStorage.getItem('dtt_active_playlist') || localStorage.getItem('dtt_playlist')
     const idx = parseInt(localStorage.getItem('dtt_playlist_index') || '0')
-    if (saved) { setPlaylist(JSON.parse(saved)); setCurrentIndex(idx) }
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw)
+        const items = Array.isArray(parsed) ? parsed : (parsed.stories || [])
+        if (items.length) { setPlaylist(items); setCurrentIndex(idx) }
+        else { router.replace('/library') }
+      } catch { router.replace('/library') }
+    } else {
+      router.replace('/library')
+    }
   }, [])
 
   useEffect(() => {
@@ -57,6 +68,7 @@ function PlaylistPlayerContent() {
   const handleEnded = async () => {
     setIsPlaying(false); await saveProgress(duration, true)
     if (currentIndex < playlist.length - 1) { const n = currentIndex + 1; localStorage.setItem('dtt_playlist_index', String(n)); setCurrentIndex(n) }
+    else { localStorage.removeItem('dtt_active_playlist'); localStorage.removeItem('dtt_playlist_index'); router.replace('/library') }
   }
 
   const handlePlayPause = () => {
@@ -68,7 +80,8 @@ function PlaylistPlayerContent() {
   const handleSkip = async () => {
     if (!audioRef.current) return
     audioRef.current.pause(); await saveProgress(currentTime)
-    if (currentIndex < playlist.length - 1) { const n = currentIndex + 1; localStorage.setItem('dtt_playlist_index', String(n)); setCurrentIndex(n) } else { router.back() }
+    if (currentIndex < playlist.length - 1) { const n = currentIndex + 1; localStorage.setItem('dtt_playlist_index', String(n)); setCurrentIndex(n) }
+    else { localStorage.removeItem('dtt_active_playlist'); localStorage.removeItem('dtt_playlist_index'); router.replace('/library') }
   }
 
   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
