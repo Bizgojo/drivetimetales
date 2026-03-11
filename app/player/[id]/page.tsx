@@ -346,10 +346,7 @@ function PlayerContent() {
             scheduleCrossfade(backgroundMusicUrl, 3)
           }
         }}
-        onPlay={() => {
-          // Duck music when voice starts playing
-          if (currentQueueType.current === 'story') fadeVolumeTo(musicVolume, 200)
-        }}
+
         onTimeUpdate={(e) => {
           const cum = completedSecsRef.current + e.currentTarget.currentTime
           setCumulativeTime(cum)
@@ -382,7 +379,11 @@ function PlayerContent() {
             advanceQueue()
           }
         }}
-        onPlay={() => setIsPlaying(true)}
+        onPlay={() => {
+          setIsPlaying(true)
+          // Duck music when voice starts
+          if (currentQueueType.current === 'story') fadeVolumeTo(musicVolume, 200)
+        }}
         onPause={() => setIsPlaying(false)}
         onCanPlay={() => {
           if (!isASC3 && audioRef.current && resumeRef.current > 0) {
