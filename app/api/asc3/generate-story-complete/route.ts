@@ -823,21 +823,15 @@ Now write the complete audio drama:`
     let coverError: string | null = null
 
     try {
-      const genre = body.primaryGenre || 'fiction'
-      const genreVisual: Record<string, string> = {
-        thriller: 'dark, shadowy, high contrast, noir atmosphere, tension',
-        mystery: 'moody, atmospheric, hidden clues, dramatic lighting',
-        horror: 'dark, eerie, unsettling, gothic shadows, dread',
-        romance: 'warm, intimate, soft lighting, emotional depth',
-        'sci-fi': 'futuristic, cosmic, neon and darkness, vast scale',
-        western: 'golden dust, vast landscapes, lone figure, cinematic',
-        adventure: 'epic, sweeping vistas, bold colors, action',
-        drama: 'cinematic portrait, emotional, naturalistic lighting',
-        comedy: 'warm, bright colors, playful, expressive',
-        family: 'vibrant, inviting, warm tones, wonder and charm',
-      }
-      const visualStyle = Object.entries(genreVisual).find(([k]) => genre.toLowerCase().includes(k))?.[1] || 'cinematic, sophisticated, dramatic'
-      const dallePrompt = `Music album cover art. Square format, 1:1 ratio, filling the entire canvas edge to edge with no borders or padding. This is NOT a book cover — it is a streaming music album cover like Spotify or Apple Music. Genre: ${genre}. ${visualStyle}. The image must be purely visual — no text, no title, no artist name, no words, no letters of any kind. Single powerful image that fills the whole square. Style reference: modern streaming platform album artwork.`
+      const { buildCoverPrompt } = await import('../../../../lib/coverPrompt')
+      const dallePrompt = buildCoverPrompt({
+        title,
+        author: authorName,
+        genre: body.primaryGenre || 'fiction',
+        concept: body.concept,
+        tone: body.tone,
+        script: storyScript,
+      })
 
       console.log('🎨 Generating cover image with DALL-E 3...')
 
@@ -852,6 +846,7 @@ Now write the complete audio drama:`
           prompt: dallePrompt,
           n: 1,
           size: '1024x1024',
+          quality: 'hd',
         }),
       })
 
