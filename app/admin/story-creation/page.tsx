@@ -771,6 +771,7 @@ const ReviewEditStage: React.FC<{
   const [editingOutro, setEditingOutro] = useState(false);
   const [savingChanges, setSavingChanges] = useState(false);
   const [isRegeneratingMusic, setIsRegeneratingMusic] = useState(false);
+  const [isRegeneratingCover, setIsRegeneratingCover] = useState(false);
 
   const calculateDuration = (words: number) => {
     const minutes = Math.round(words / 150);
@@ -877,6 +878,28 @@ const ReviewEditStage: React.FC<{
 
   const [sunoStatusMsg, setSunoStatusMsg] = React.useState('')
   const [sunoElapsed, setSunoElapsed] = React.useState(0)
+
+  const handleRegenerateCover = async () => {
+    if (isRegeneratingCover) return
+    setIsRegeneratingCover(true)
+    try {
+      const res = await fetch('/api/asc3/regenerate-cover', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storyId: story.id, genre: story.primaryGenre }),
+      })
+      const data = await res.json()
+      if (data.success && data.coverImageUrl) {
+        onUpdate({ ...story, coverImageUrl: data.coverImageUrl })
+      } else {
+        alert(`❌ Cover regeneration failed: ${data.error || 'Unknown error'}`)
+      }
+    } catch {
+      alert('❌ Cover regeneration error')
+    } finally {
+      setIsRegeneratingCover(false)
+    }
+  }
 
   const handleRegenerateSunoMusic = async () => {
     if (isRegeneratingMusic) return
@@ -1266,7 +1289,16 @@ const ReviewEditStage: React.FC<{
       {/* Cover Image */}
       {story.coverImageUrl && (
         <div className="bg-white border border-gray-300 rounded-lg p-4">
-          <h4 className="font-semibold text-black mb-3">📷 Cover Image</h4>
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="font-semibold text-black">📷 Cover Image</h4>
+            <button
+              onClick={handleRegenerateCover}
+              disabled={isRegeneratingCover}
+              className="px-3 py-1 bg-orange-500 text-white rounded text-sm hover:bg-orange-600 disabled:opacity-40"
+            >
+              {isRegeneratingCover ? '⏳ Generating...' : '🎨 Regenerate Cover'}
+            </button>
+          </div>
           <img
             src={story.coverImageUrl}
             alt="Cover"
