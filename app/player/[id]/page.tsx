@@ -320,7 +320,21 @@ function PlayerContent() {
             {isPlaying ? '⏸ Pause' : hasProgress ? '▶ Continue' : '▶ Play'}
           </button>
           {hasProgress
-            ? <button onClick={() => { completedRef.current=0; segDursRef.current=[]; setQueueIndex(0); setSectionLabel(queue[0]?.label||''); typeRef.current='intro'; const m=musicRef.current; if(m){m.src=introMusicRef.current;m.loop=true;m.volume=0} if(audioRef.current){audioRef.current.src=queue[0]?.url||'';audioRef.current.load()} setTimeout(()=>{audioRef.current?.play().catch(()=>{});const mu=musicRef.current;if(mu){mu.play().catch(()=>{});animVol(mu,0,VOL_INTRO_MUSIC,2000)}; setIsPlaying(true)},100); setCurrentTime(0);setCumTime(0) }} style={{ flex:1, padding:'16px', borderRadius:'14px', border:'none', fontSize:'13px', fontWeight:600, cursor:'pointer', backgroundColor:'#1e293b', color:'#94a3b8' }}>Start Over</button>
+            ? <button onClick={() => {
+                if (!isASC3 && story?.audio_url) {
+                  // Final mix mode — just seek to 0 and play
+                  const a = audioRef.current
+                  if (a) { a.currentTime = 0; a.play().catch(() => {}) }
+                  setCurrentTime(0); setCumTime(0); setIsPlaying(true)
+                } else {
+                  // Segment queue mode
+                  completedRef.current=0; segDursRef.current=[]; setQueueIndex(0); setSectionLabel(queue[0]?.label||''); typeRef.current='intro'
+                  const m=musicRef.current; if(m){m.src=introMusicRef.current;m.loop=true;m.volume=0}
+                  if(audioRef.current){audioRef.current.src=queue[0]?.url||'';audioRef.current.load()}
+                  setTimeout(()=>{audioRef.current?.play().catch(()=>{});const mu=musicRef.current;if(mu){mu.play().catch(()=>{});animVol(mu,0,VOL_INTRO_MUSIC,2000)};setIsPlaying(true)},100)
+                  setCurrentTime(0); setCumTime(0)
+                }
+              }} style={{ flex:1, padding:'16px', borderRadius:'14px', border:'none', fontSize:'13px', fontWeight:600, cursor:'pointer', backgroundColor:'#1e293b', color:'#94a3b8' }}>Start Over</button>
             : <button onClick={handleNotForMe} style={{ flex:1, padding:'16px', borderRadius:'14px', border:'none', fontSize:'13px', fontWeight:600, cursor:'pointer', backgroundColor:'#1e293b', color:'#94a3b8' }}>Not for Me</button>
           }
         </div>
