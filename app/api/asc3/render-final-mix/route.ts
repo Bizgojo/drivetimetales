@@ -99,7 +99,7 @@ export async function POST(req: NextRequest) {
 
     console.log(`🎬 Rendering final mix for story ${storyId} (music vol: ${musicVolume})`)
 
-    // ── 1. Fetch story + find storage folder ─────────────────────────────
+    // ── 1. Fetch story ────────────────────────────────────────────────────
     const { data: story, error: storyErr } = await supabase
       .from('stories')
       .select('id, title, intro_audio_url, outro_audio_url')
@@ -108,9 +108,9 @@ export async function POST(req: NextRequest) {
 
     if (storyErr || !story) return NextResponse.json({ error: 'Story not found' }, { status: 404 })
 
-    const folderMatch = (story.intro_audio_url || '').match(/asc3\/([^/]+)\//)
-    const folderId = folderMatch?.[1]
-    if (!folderId) return NextResponse.json({ error: 'Cannot determine storage folder' }, { status: 400 })
+    // Segments are always stored at asc3/{storyId}/ — use storyId directly as folder
+    // (intro_audio_url URL may differ if regenerated, so don't rely on it for folder)
+    const folderId = storyId
 
     const { data: files } = await supabase.storage
       .from('audio')
@@ -123,7 +123,7 @@ export async function POST(req: NextRequest) {
     const bgFile = (files || []).find(f => f.name === 'background_music.mp3')
     const bgMusicUrl = bgFile ? `${BASE_STORAGE}/asc3/${folderId}/background_music.mp3` : null
 
-    console.log(`  📂 ${folderId} | ${segments.length} segments | bg music: ${!!bgMusicUrl}`)
+    console.log(`  📂 ${folderId} | ${segments.length} segments | all files: ${(files||[]).map(f=>f.name).join(', ')} | bg music: ${!!bgMusicUrl}`)
 
     // ── 2. Download all files ────────────────────────────────────────────
     const introVoicePath  = path.join(tmpDir, 'intro_voice.mp3')
