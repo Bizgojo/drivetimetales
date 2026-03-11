@@ -31,6 +31,7 @@ interface MainStory {
 type DragSource =
   | { kind: 'slot'; story: LandingStory }
   | { kind: 'library'; story: LandingStory }
+  | { kind: 'db'; story: MainStory }
 
 export default function LandingStoriesPage() {
   const [slots, setSlots] = useState<(LandingStory | null)[]>([null, null, null])
@@ -44,6 +45,7 @@ export default function LandingStoriesPage() {
   // Drag state
   const dragging = useRef<DragSource | null>(null)
   const [dragOver, setDragOver] = useState<string | null>(null) // 'slot-1' | 'slot-2' | 'slot-3' | 'library'
+  const libraryRef = useRef<HTMLDivElement>(null)
 
   const flash = (text: string, ok = true) => {
     setMsg({ text, ok })
@@ -204,7 +206,25 @@ export default function LandingStoriesPage() {
     const src = dragging.current
     if (!src) return
 
-    if (src.kind === 'library') {
+    if (src.kind === 'db') {
+      // DB panel → Slot: add to library first, then assign
+      setWorking(true)
+      try {
+        const res = await fetch('/api/landing/library', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ storyId: src.story.id }),
+        })
+        const data = await res.json()
+        if (!data.success) { flash(`❌ ${data.error}`, false); return }
+        // Fetch the new library entry id
+        const slotsRes = await fetch('/api/landing/slots')
+        const slotsData = await slotsRes.json()
+        const newEntry = slotsData.library?.find((s: LandingStory) => s.story_id === src.story.id)
+        if (newEntry) await assignToSlot(newEntry.id, slotNum)
+        else { flash(`✅ Added to library — now drag to slot`, true); await load() }
+      } catch { flash('❌ Failed', false) } finally { setWorking(false) }
+    } else if (src.kind === 'library') {
       // Library → Slot: assign
       await assignToSlot(src.story.id, slotNum)
     } else if (src.kind === 'slot' && src.story.slot !== slotNum) {
@@ -242,11 +262,19 @@ export default function LandingStoriesPage() {
 
     if (src.kind === 'slot') {
       await moveToLibrary(src.story)
+    } else if (src.kind === 'db') {
+      await addToLibrary(src.story)
     }
+    // library → library: no-op
     dragging.current = null
   }
 
-  const onDragLeave = () => setDragOver(null)
+  const onDragLeave = (e: React.DragEvent) => {
+    // Only clear if leaving the actual drop zone container (not a child element)
+    const related = e.relatedTarget as Node | null
+    if (e.currentTarget.contains(related)) return
+    setDragOver(null)
+  }
 
   // ── Styles ───────────────────────────────────────────────────
 
@@ -381,6 +409,7 @@ export default function LandingStoriesPage() {
       </div>
 
       <div
+        ref={libraryRef}
         style={libraryDropStyle}
         onDragOver={onDragOverLibrary}
         onDragLeave={onDragLeave}
@@ -423,14 +452,20 @@ export default function LandingStoriesPage() {
         <div style={{ background: '#fff', border: '1px solid #ddd', borderRadius: '12px', padding: '1.5rem', marginTop: '2rem' }}>
           <div style={{ fontSize: '15px', fontWeight: 700, color: '#000', marginBottom: '1rem' }}>
             ＋ Add Stories from Database
-            <span style={{ fontSize: '12px', fontWeight: 400, color: '#888', marginLeft: '0.5rem' }}>Stories already in slots or library are hidden</span>
+            <span style={{ fontSize: '12px', fontWeight: 400, color: '#888', marginLeft: '0.5rem' }}>Drag to library or a slot — or click Add</span>
           </div>
           {mainStories.length === 0 ? (
             <div style={{ color: '#aaa', fontSize: '14px' }}>Loading stories...</div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.75rem' }}>
               {mainStories.filter(s => !inLibraryIds.has(s.id)).map(story => (
-                <div key={story.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem', background: '#f8f8f8', borderRadius: '8px', border: '1px solid #eee' }}>
+                <div
+                  key={story.id}
+                  draggable
+                  onDragStart={onDragStart({ kind: 'db', story })}
+                  onDragEnd={onDragEnd}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem', background: '#f8f8f8', borderRadius: '8px', border: '1px solid #eee', cursor: 'grab' }}
+                >
                   {story.cover_url
                     ? <img src={story.cover_url} alt={story.title} style={{ width: '44px', height: '44px', objectFit: 'cover', borderRadius: '6px', flexShrink: 0 }} />
                     : <div style={{ width: '44px', height: '44px', background: '#1a1a1a', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', flexShrink: 0 }}>🎧</div>
