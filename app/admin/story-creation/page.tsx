@@ -1064,6 +1064,43 @@ const ReviewEditStage: React.FC<{
         </div>
       )}
 
+      {/* Background Music Info */}
+      {effectiveMusicUrl && (
+        <div className="bg-white border border-gray-300 rounded-lg p-4">
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="font-semibold text-black">🎵 Background Music</h4>
+            <button
+              onClick={handleRegenerateSunoMusic}
+              disabled={isRegeneratingMusic}
+              className="px-3 py-1 bg-purple-600 text-white rounded text-sm hover:bg-purple-700 disabled:opacity-40"
+            >
+              {isRegeneratingMusic ? `⏳ ${sunoElapsed}s` : '🎵 Regenerate with Suno'}
+            </button>
+          </div>
+          {sunoStatusMsg && (
+            <div className="flex items-center gap-2 px-3 py-2 bg-purple-50 border border-purple-200 rounded text-sm text-purple-800 mb-2">
+              <span className="animate-spin inline-block">⟳</span>
+              <span>{sunoStatusMsg}</span>
+              {sunoElapsed > 0 && <span className="ml-auto text-purple-500 font-mono">{sunoElapsed}s</span>}
+            </div>
+          )}
+          <p className="text-sm text-gray-600 mb-1">
+            {story.sunoStatus === 'suno'
+              ? '🎵 Custom Suno track'
+              : `🎵 Library: ${getMusicTrackName(effectiveMusicUrl)}`}
+            {' '} — plays automatically under dialogue when you hit ▶ Play Full Story
+          </p>
+          {!sunoCookie && (
+            <p className="text-xs text-gray-400 mb-2">Set a Suno cookie in Stage 1 to enable regeneration.</p>
+          )}
+          <audio
+            controls
+            src={effectiveMusicUrl}
+            className="w-full"
+          />
+        </div>
+      )}
+
       {/* Audio Player */}
       {audioUrl && (
         <div className="bg-white p-6 rounded-lg border border-gray-300">
@@ -1348,43 +1385,6 @@ const ReviewEditStage: React.FC<{
             src={story.coverImageUrl}
             alt="Cover"
             className="w-full aspect-square object-cover rounded"
-          />
-        </div>
-      )}
-
-      {/* Background Music Info */}
-      {effectiveMusicUrl && (
-        <div className="bg-white border border-gray-300 rounded-lg p-4">
-          <div className="flex items-center justify-between mb-2">
-            <h4 className="font-semibold text-black">🎵 Background Music</h4>
-            <button
-              onClick={handleRegenerateSunoMusic}
-              disabled={isRegeneratingMusic}
-              className="px-3 py-1 bg-purple-600 text-white rounded text-sm hover:bg-purple-700 disabled:opacity-40"
-            >
-              {isRegeneratingMusic ? `⏳ ${sunoElapsed}s` : '🎵 Regenerate with Suno'}
-            </button>
-          </div>
-          {sunoStatusMsg && (
-            <div className="flex items-center gap-2 px-3 py-2 bg-purple-50 border border-purple-200 rounded text-sm text-purple-800 mb-2">
-              <span className="animate-spin inline-block">⟳</span>
-              <span>{sunoStatusMsg}</span>
-              {sunoElapsed > 0 && <span className="ml-auto text-purple-500 font-mono">{sunoElapsed}s</span>}
-            </div>
-          )}
-          <p className="text-sm text-gray-600 mb-1">
-            {story.sunoStatus === 'suno'
-              ? '🎵 Custom Suno track'
-              : `🎵 Library: ${getMusicTrackName(effectiveMusicUrl)}`}
-            {' '} — plays automatically under dialogue when you hit ▶ Play Full Story
-          </p>
-          {!sunoCookie && (
-            <p className="text-xs text-gray-400 mb-2">Set a Suno cookie in Stage 1 to enable regeneration.</p>
-          )}
-          <audio
-            controls
-            src={effectiveMusicUrl}
-            className="w-full"
           />
         </div>
       )}
