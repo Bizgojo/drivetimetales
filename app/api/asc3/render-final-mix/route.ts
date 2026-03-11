@@ -102,15 +102,21 @@ export async function POST(req: NextRequest) {
     // ── 1. Fetch story ────────────────────────────────────────────────────
     const { data: story, error: storyErr } = await supabase
       .from('stories')
-      .select('id, title, intro_audio_url, outro_audio_url')
+      .select('id, title, intro_audio_url, outro_audio_url, story_audio_url')
       .eq('id', storyId)
       .single()
 
     if (storyErr || !story) return NextResponse.json({ error: 'Story not found' }, { status: 404 })
 
-    // Segments are always stored at asc3/{storyId}/ — use storyId directly as folder
-    // (intro_audio_url URL may differ if regenerated, so don't rely on it for folder)
-    const folderId = storyId
+    // IMPORTANT: The DB record ID != storage folder ID.
+    // The generate route uses crypto.randomUUID() for storage but lets Supabase
+    // auto-generate the DB record ID. Extract the real folder from story_audio_url
+    // (which points to segment_000.mp3 in the real storage folder), falling back to
+    // intro_audio_url if story_audio_url is null.
+    const refUrl = story.story_audio_url || story.intro_audio_url || ''
+    const folderMatch = refUrl.match(/asc3\/([^/]+)\//)
+    const folderId = folderMatch?.[1]
+    if (!folderId) return NextResponse.json({ error: `Cannot determine storage folder from URLs: story_audio_url=${story.story_audio_url}, intro_audio_url=${story.intro_audio_url}` }, { status: 400 })
 
     const { data: files } = await supabase.storage
       .from('audio')
