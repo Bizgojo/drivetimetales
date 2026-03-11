@@ -292,10 +292,13 @@ function PlayerContent() {
       stopDuckLoop()
     } else {
       setupWebAudio() // initialise Web Audio on first user gesture
+      // Unlock BOTH music elements inside user gesture so iOS allows async playback later
+      const mA = musicARef.current
+      const mB = musicBRef.current
+      if (mB && !mB.src) { mB.volume = 0; mB.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA='; mB.play().catch(() => {}); mB.pause(); mB.src = '' }
       audioRef.current.play().then(() => {
         isPlayingRef.current = true
         setIsPlaying(true)
-        const mA = musicARef.current
         if (mA && mA.src) {
           mA.play().catch(() => {})
           animateVol(mA, VOL_INTRO, 2000)
