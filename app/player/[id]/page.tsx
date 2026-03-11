@@ -23,6 +23,21 @@ function PlayerContent() {
   const musicRef = useRef<HTMLAudioElement>(null)
   const crossfadeTimer = useRef<NodeJS.Timeout | null>(null)
   const nextAudioRef = useRef<HTMLAudioElement | null>(null) // preloaded next segment
+  const duckTimer = useRef<NodeJS.Timeout | null>(null)
+
+  const fadeVolumeTo = (target: number, ms = 300) => {
+    if (!musicRef.current) return
+    if (duckTimer.current) clearInterval(duckTimer.current)
+    const start = musicRef.current.volume
+    const steps = 20
+    const stepMs = ms / steps
+    let step = 0
+    duckTimer.current = setInterval(() => {
+      step++
+      if (musicRef.current) musicRef.current.volume = start + (target - start) * (step / steps)
+      if (step >= steps) clearInterval(duckTimer.current!)
+    }, stepMs)
+  }
   const saveTimer = useRef<NodeJS.Timeout | null>(null)
   const resumeRef = useRef(0)
   const currentQueueType = useRef<'intro' | 'story' | 'outro'>('intro')
@@ -45,7 +60,8 @@ function PlayerContent() {
   const [backgroundMusicUrl, setBackgroundMusicUrl] = useState<string | null>(null)
   const [isASC3, setIsASC3] = useState(false)
   const [sectionLabel, setSectionLabel] = useState('')
-  const musicVolume = 0.03
+  const musicVolume = 0.03       // ducked volume while voices play
+  const musicVolumeUp = 0.12    // raised volume between segments / at transitions
 
   // Load story + playlist
   useEffect(() => {
@@ -121,6 +137,7 @@ function PlayerContent() {
     const incoming = new Audio(newSrc)
     incoming.loop = true
     incoming.volume = 0
+    incoming.loop = true
     incoming.play().catch(() => {})
 
     const steps = 50
@@ -131,7 +148,7 @@ function PlayerContent() {
       step++
       const progress = step / steps
       outgoing.volume = Math.max(0, startVol * (1 - progress))
-      incoming.volume = Math.min(musicVolume, musicVolume * progress)
+      incoming.volume = Math.min(musicVolumeUp, musicVolumeUp * progress)
 
       if (step >= steps) {
         clearInterval(crossfadeTimer.current!)
@@ -180,8 +197,9 @@ function PlayerContent() {
       const prevType = currentQueueType.current
       currentQueueType.current = next.type
       if (audioRef.current) {
+        // Briefly swell music between segments (60ms gap), then duck when next voice starts
+        fadeVolumeTo(musicVolumeUp, 60)
         if (nextAudioRef.current && nextAudioRef.current.src.includes(next.url.split('/').pop() || '')) {
-          // Swap in preloaded audio — zero gap
           audioRef.current.src = nextAudioRef.current.src
           nextAudioRef.current = null
         } else {
@@ -327,6 +345,10 @@ function PlayerContent() {
           if (currentQueueType.current === 'intro' && backgroundMusicUrl) {
             scheduleCrossfade(backgroundMusicUrl, 3)
           }
+        }}
+        onPlay={() => {
+          // Duck music when voice starts playing
+          if (currentQueueType.current === 'story') fadeVolumeTo(musicVolume, 200)
         }}
         onTimeUpdate={(e) => {
           const cum = completedSecsRef.current + e.currentTarget.currentTime
