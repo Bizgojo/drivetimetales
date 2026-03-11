@@ -8,7 +8,7 @@ import { promisify } from 'util'
 
 const execFileAsync = promisify(execFile)
 
-// Use system ffmpeg (Mac dev) or ffmpeg-static (Vercel)
+// Use ffmpeg-static (Vercel) or fall back to system ffmpeg
 let FFMPEG_PATH = 'ffmpeg'
 try {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -23,13 +23,70 @@ const supabase = createClient(
 )
 
 const BASE_STORAGE = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio`
+const INTRO_OUTRO_MUSIC_URL = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio/intro_outro_music.mp3`
 
-// Download a URL to a local /tmp file
 async function download(url: string, dest: string): Promise<void> {
   const res = await fetch(url)
   if (!res.ok) throw new Error(`Download failed (${res.status}): ${url}`)
-  const buf = Buffer.from(await res.arrayBuffer())
-  await fs.writeFile(dest, buf)
+  await fs.writeFile(dest, Buffer.from(await res.arrayBuffer()))
+}
+
+async function getAudioDuration(filePath: string): Promise<number> {
+  try {
+    const { stdout } = await execFileAsync(FFMPEG_PATH.replace('ffmpeg', 'ffprobe').replace(/ffmpeg$/, 'ffprobe'), [
+      '-v', 'error', '-show_entries', 'format=duration',
+      '-of', 'default=noprint_wrappers=1:nokey=1', filePath
+    ])
+    return parseFloat(stdout.trim()) || 0
+  } catch {
+    // ffprobe might not be available — use ffmpeg to probe
+    try {
+      const { stderr } = await execFileAsync(FFMPEG_PATH, ['-i', filePath, '-f', 'null', '-'])
+      const m = stderr.match(/Duration:\s*(\d+):(\d+):([\d.]+)/)
+      if (m) return parseInt(m[1]) * 3600 + parseInt(m[2]) * 60 + parseFloat(m[3])
+    } catch { /* ignore */ }
+    return 0
+  }
+}
+
+async function generateSilence(outPath: string, durationSecs: number): Promise<void> {
+  await execFileAsync(FFMPEG_PATH, [
+    '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo',
+    '-t', String(durationSecs), '-q:a', '9', '-acodec', 'libmp3lame', '-y', outPath
+  ])
+}
+
+/**
+ * Mix a voice track with music underneath.
+ * Music plays under voice at `musicVol`, then continues `tailSecs` after voice ends, then fades out over `fadeSecs`.
+ */
+async function mixVoiceWithMusic(
+  voicePath: string,
+  musicPath: string,
+  outPath: string,
+  musicVol: number,
+  tailSecs: number,
+  fadeSecs: number
+): Promise<void> {
+  const voiceDur = await getAudioDuration(voicePath)
+  const totalMusicDur = voiceDur + tailSecs + fadeSecs
+  const fadeStart = voiceDur + tailSecs
+
+  await execFileAsync(FFMPEG_PATH, [
+    '-i', voicePath,
+    '-stream_loop', '-1', '-i', musicPath,
+    '-filter_complex', [
+      `[0:a]aformat=sample_rates=44100:channel_layouts=stereo[voice]`,
+      `[1:a]aformat=sample_rates=44100:channel_layouts=stereo,` +
+        `volume=${musicVol},` +
+        `atrim=start=0:end=${totalMusicDur},` +
+        `afade=t=out:st=${fadeStart}:d=${fadeSecs}[music]`,
+      `[voice][music]amix=inputs=2:duration=longest:dropout_transition=0[out]`,
+    ].join(';'),
+    '-map', '[out]',
+    '-ar', '44100', '-ac', '2', '-b:a', '192k',
+    '-y', outPath
+  ])
 }
 
 // POST body: { storyId, musicVolume?: number (0–1, default 0.35) }
@@ -40,9 +97,9 @@ export async function POST(req: NextRequest) {
     const { storyId, musicVolume = 0.35 } = await req.json()
     if (!storyId) return NextResponse.json({ error: 'storyId required' }, { status: 400 })
 
-    console.log(`🎬 Starting final mix for story ${storyId} (music vol: ${musicVolume})`)
+    console.log(`🎬 Rendering final mix for story ${storyId} (music vol: ${musicVolume})`)
 
-    // ── 1. Fetch story record ──────────────────────────────────────────────
+    // ── 1. Fetch story + find storage folder ─────────────────────────────
     const { data: story, error: storyErr } = await supabase
       .from('stories')
       .select('id, title, intro_audio_url, outro_audio_url')
@@ -51,11 +108,9 @@ export async function POST(req: NextRequest) {
 
     if (storyErr || !story) return NextResponse.json({ error: 'Story not found' }, { status: 404 })
 
-    // ── 2. Find folder ID and list segments ──────────────────────────────
-    const refUrl = story.intro_audio_url || ''
-    const folderMatch = refUrl.match(/asc3\/([^/]+)\//)
+    const folderMatch = (story.intro_audio_url || '').match(/asc3\/([^/]+)\//)
     const folderId = folderMatch?.[1]
-    if (!folderId) return NextResponse.json({ error: 'Cannot determine storage folder from intro URL' }, { status: 400 })
+    if (!folderId) return NextResponse.json({ error: 'Cannot determine storage folder' }, { status: 400 })
 
     const { data: files } = await supabase.storage
       .from('audio')
@@ -66,19 +121,21 @@ export async function POST(req: NextRequest) {
       .sort((a, b) => a.name.localeCompare(b.name))
 
     const bgFile = (files || []).find(f => f.name === 'background_music.mp3')
-    const musicUrl = bgFile ? `${BASE_STORAGE}/asc3/${folderId}/background_music.mp3` : null
+    const bgMusicUrl = bgFile ? `${BASE_STORAGE}/asc3/${folderId}/background_music.mp3` : null
 
-    console.log(`  📂 Folder: ${folderId} | Segments: ${segments.length} | Music: ${!!musicUrl}`)
+    console.log(`  📂 ${folderId} | ${segments.length} segments | bg music: ${!!bgMusicUrl}`)
 
-    // ── 3. Download all audio files ──────────────────────────────────────
-    const introPath  = path.join(tmpDir, 'intro.mp3')
-    const outroPath  = path.join(tmpDir, 'outro.mp3')
-    const musicPath  = musicUrl ? path.join(tmpDir, 'music.mp3') : null
-    const outputPath = path.join(tmpDir, 'final_mix.mp3')
+    // ── 2. Download all files ────────────────────────────────────────────
+    const introVoicePath  = path.join(tmpDir, 'intro_voice.mp3')
+    const outroVoicePath  = path.join(tmpDir, 'outro_voice.mp3')
+    const ioMusicPath     = path.join(tmpDir, 'io_music.mp3')
+    const bgMusicPath     = bgMusicUrl ? path.join(tmpDir, 'bg_music.mp3') : null
+    const outputPath      = path.join(tmpDir, 'final_mix.mp3')
 
-    await download(story.intro_audio_url, introPath)
-    await download(story.outro_audio_url, outroPath)
-    if (musicUrl && musicPath) await download(musicUrl, musicPath)
+    await download(story.intro_audio_url, introVoicePath)
+    await download(story.outro_audio_url, outroVoicePath)
+    await download(INTRO_OUTRO_MUSIC_URL, ioMusicPath)
+    if (bgMusicUrl && bgMusicPath) await download(bgMusicUrl, bgMusicPath)
 
     const segPaths: string[] = []
     for (let i = 0; i < segments.length; i++) {
@@ -87,70 +144,69 @@ export async function POST(req: NextRequest) {
       segPaths.push(p)
     }
 
-    // ── 4. Build ffmpeg concat list for dialogue ──────────────────────────
-    // Order: intro → 1.5s silence → story segments → 2.5s silence → outro
-    const silencePath15 = path.join(tmpDir, 'sil15.mp3')
-    const silencePath25 = path.join(tmpDir, 'sil25.mp3')
+    // ── 3. Build intro mix: Belle B intro + io music underneath ──────────
+    // Music plays under intro voice, fades out in 2s after she finishes
+    const introMixPath = path.join(tmpDir, 'intro_mix.mp3')
+    await mixVoiceWithMusic(introVoicePath, ioMusicPath, introMixPath, 0.35, 0, 2)
+    console.log('  ✅ Intro mix done')
 
-    // Generate silence files
-    await execFileAsync(FFMPEG_PATH, [
-      '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo',
-      '-t', '1.5', '-q:a', '9', '-acodec', 'libmp3lame', '-y', silencePath15
-    ])
-    await execFileAsync(FFMPEG_PATH, [
-      '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo',
-      '-t', '2.5', '-q:a', '9', '-acodec', 'libmp3lame', '-y', silencePath25
-    ])
+    // ── 4. Build outro mix: Belle B outro + io music, 3s tail, 3s fade ───
+    const outroMixPath = path.join(tmpDir, 'outro_mix.mp3')
+    await mixVoiceWithMusic(outroVoicePath, ioMusicPath, outroMixPath, 0.35, 3, 3)
+    console.log('  ✅ Outro mix done')
 
-    const concatList = [
-      introPath,
-      silencePath15,
-      ...segPaths,
-      silencePath25,
-      outroPath,
-    ]
+    // ── 5. Generate silence gaps ─────────────────────────────────────────
+    const sil15Path = path.join(tmpDir, 'sil15.mp3')
+    const sil25Path = path.join(tmpDir, 'sil25.mp3')
+    await generateSilence(sil15Path, 1.5)
+    await generateSilence(sil25Path, 2.5)
 
+    // ── 6. Build dialogue concat list ────────────────────────────────────
+    // intro_mix → 1.5s → story segments → 2.5s → outro_mix
+    const concatList = [introMixPath, sil15Path, ...segPaths, sil25Path, outroMixPath]
     const concatListPath = path.join(tmpDir, 'concat.txt')
     await fs.writeFile(concatListPath, concatList.map(p => `file '${p}'`).join('\n'))
 
-    // ── 5. Run ffmpeg mix ─────────────────────────────────────────────────
-    const ffArgs: string[] = []
+    // ── 7. Final mix: concat + background music under story segments ──────
+    if (bgMusicPath) {
+      // Get durations to calculate when BG music should start/end
+      const introDur = await getAudioDuration(introMixPath)
+      const segsDur = await Promise.all(segPaths.map(p => getAudioDuration(p)))
+        .then(ds => ds.reduce((a, b) => a + b, 0))
+      const bgStartSecs = introDur + 1.5          // after intro + gap
+      const bgEndSecs   = bgStartSecs + segsDur   // exactly covers story segments
 
-    if (musicPath) {
-      // Two inputs: concat dialogue + background music
-      ffArgs.push(
+      console.log(`  🎵 BG music: starts at ${bgStartSecs.toFixed(1)}s, ends at ${bgEndSecs.toFixed(1)}s`)
+
+      await execFileAsync(FFMPEG_PATH, [
         '-f', 'concat', '-safe', '0', '-i', concatListPath,
-        '-stream_loop', '-1', '-i', musicPath,
-        '-filter_complex',
-        // dialogue at full vol; music at musicVolume with fade-in 3s, fade-out 5s
-        [
-          '[0:a]aformat=sample_rates=44100:channel_layouts=stereo[dialogue]',
-          `[1:a]aformat=sample_rates=44100:channel_layouts=stereo,volume=${musicVolume}[music_raw]`,
-          // get dialogue duration for fade-out timing via adelay trick:
-          // fade out music in last 5s — we do it unconditionally at end using afade
-          `[music_raw]afade=t=in:st=0:d=3,afade=t=out:st=9999:d=5[music_faded]`,
-          '[dialogue][music_faded]amix=inputs=2:duration=first:dropout_transition=3[out]',
+        '-stream_loop', '-1', '-i', bgMusicPath,
+        '-filter_complex', [
+          `[0:a]aformat=sample_rates=44100:channel_layouts=stereo[dialogue]`,
+          // Delay BG music to start when story begins, trim when story ends, volume + fadeout
+          `[1:a]aformat=sample_rates=44100:channel_layouts=stereo,` +
+            `volume=${musicVolume},` +
+            `adelay=${Math.round(bgStartSecs * 1000)}|${Math.round(bgStartSecs * 1000)},` +
+            `atrim=end=${bgEndSecs + 2},` +       // +2s buffer, amix will cut at dialogue end
+            `afade=t=out:st=${bgEndSecs - 3}:d=3[bg]`,   // fade BG out 3s before story ends
+          `[dialogue][bg]amix=inputs=2:duration=first:dropout_transition=0[out]`,
         ].join(';'),
         '-map', '[out]',
-        '-ar', '44100', '-ac', '2',
-        '-b:a', '192k',
+        '-ar', '44100', '-ac', '2', '-b:a', '192k',
         '-y', outputPath
-      )
+      ])
     } else {
-      // No music: just concat dialogue
-      ffArgs.push(
+      // No background music — just concat the dialogue tracks
+      await execFileAsync(FFMPEG_PATH, [
         '-f', 'concat', '-safe', '0', '-i', concatListPath,
-        '-ar', '44100', '-ac', '2',
-        '-b:a', '192k',
+        '-ar', '44100', '-ac', '2', '-b:a', '192k',
         '-y', outputPath
-      )
+      ])
     }
 
-    console.log('  🎛️  Running ffmpeg...')
-    const { stderr } = await execFileAsync(FFMPEG_PATH, ffArgs)
-    if (stderr && stderr.includes('Error')) throw new Error(`ffmpeg error: ${stderr.slice(-500)}`)
+    console.log('  🎛️  ffmpeg mix complete')
 
-    // ── 6. Upload final mix to Supabase ───────────────────────────────────
+    // ── 8. Upload to Supabase ────────────────────────────────────────────
     const buffer = await fs.readFile(outputPath)
     const storagePath = `asc3/${folderId}/final_mix.mp3`
 
@@ -162,7 +218,6 @@ export async function POST(req: NextRequest) {
 
     const { data: { publicUrl } } = supabase.storage.from('audio').getPublicUrl(storagePath)
 
-    // ── 7. Update stories.audio_url ───────────────────────────────────────
     await supabase.from('stories').update({ audio_url: publicUrl }).eq('id', storyId)
 
     console.log(`✅ Final mix ready: ${publicUrl}`)
@@ -173,7 +228,6 @@ export async function POST(req: NextRequest) {
     console.error('Render final mix error:', msg)
     return NextResponse.json({ success: false, error: msg }, { status: 500 })
   } finally {
-    // Clean up tmp files
     await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {})
   }
 }
