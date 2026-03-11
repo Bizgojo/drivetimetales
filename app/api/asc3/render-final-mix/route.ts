@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+
+export const runtime = 'nodejs'
 import { createClient } from '@supabase/supabase-js'
 import { promises as fs } from 'fs'
 import path from 'path'
@@ -12,7 +14,7 @@ const execFileAsync = promisify(execFile)
 let FFMPEG_PATH = 'ffmpeg'
 try {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  FFMPEG_PATH = require('ffmpeg-static') as string
+  FFMPEG_PATH = eval('require')('ffmpeg-static') as string
 } catch {
   // system ffmpeg fallback
 }

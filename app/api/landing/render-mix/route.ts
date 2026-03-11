@@ -18,7 +18,7 @@ import { promisify } from 'util'
 const execFileAsync = promisify(execFile)
 
 let FFMPEG_PATH = 'ffmpeg'
-try { FFMPEG_PATH = require('ffmpeg-static') as string } catch { /* system ffmpeg */ }
+try { FFMPEG_PATH = eval('require')('ffmpeg-static') as string } catch { /* system ffmpeg */ }
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,

@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
+
+export const runtime = 'nodejs'
 import { createClient } from '@supabase/supabase-js'
 import { buildCoverPrompt } from '@/lib/coverPrompt'
-import sharp from 'sharp'
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let sharp: any
+try { sharp = eval('require')('sharp') } catch { sharp = null }
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
