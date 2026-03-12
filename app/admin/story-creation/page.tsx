@@ -732,69 +732,112 @@ const ReviewEditStage: React.FC<{
   };
 
   const crossfadeAdminRef = useRef<NodeJS.Timeout | null>(null);
+  const crossfadeDoneRef  = useRef(false); // prevent double-trigger per section
 
-  // Crossfade between two audio elements over durationMs
-  const crossfadeAudio = (outEl: HTMLAudioElement, inEl: HTMLAudioElement, inSrc: string, durationMs = 5000) => {
+  // Smoothly fade a volume from current → target over durationMs
+  const fadeVolume = (el: HTMLAudioElement, targetVol: number, durationMs = 2000) => {
+    const steps = 40;
+    const startVol = el.volume;
+    const delta = (targetVol - startVol) / steps;
+    let step = 0;
+    const t = setInterval(() => {
+      step++;
+      el.volume = Math.max(0, Math.min(1, startVol + delta * step));
+      if (step >= steps) {
+        clearInterval(t);
+        el.volume = targetVol;
+      }
+    }, durationMs / steps);
+    return t;
+  };
+
+  // Cross-fade: fade outEl to 0 AND inEl from 0 to targetVol simultaneously over durationMs
+  const crossfadeAudio = (
+    outEl: HTMLAudioElement,
+    inEl: HTMLAudioElement,
+    inSrc: string,
+    targetVol: number,
+    durationMs = 2000
+  ) => {
     if (crossfadeAdminRef.current) clearInterval(crossfadeAdminRef.current);
-    const startVol = outEl.volume || musicVolume;
-    inEl.src = inSrc;
-    inEl.loop = true;
+    // Start in-element
+    if (!inEl.src || !inEl.src.includes(inSrc.split('/').pop()!)) {
+      inEl.src = inSrc;
+    }
+    inEl.loop  = true;
     inEl.volume = 0;
     inEl.play().catch(console.error);
+    const startOut = outEl.volume;
+    const steps = 40;
     let step = 0;
-    const steps = 50;
     crossfadeAdminRef.current = setInterval(() => {
       step++;
       const p = step / steps;
-      outEl.volume = Math.max(0, startVol * (1 - p));
-      inEl.volume = Math.min(musicVolume, musicVolume * p);
+      outEl.volume = Math.max(0, startOut * (1 - p));
+      inEl.volume  = Math.min(targetVol, targetVol * p);
       if (step >= steps) {
         clearInterval(crossfadeAdminRef.current!);
         outEl.pause();
         outEl.currentTime = 0;
-        outEl.volume = musicVolume;
+        outEl.volume = targetVol; // reset for next use
       }
     }, durationMs / steps);
   };
 
-  // Switch music layers based on what section is playing
-  const prevSectionRef = useRef<string>('');
-  const applyMusicForLabel = (label: string) => {
-    const isIntroOutro = label.includes('Intro') || label.includes('Outro');
-    const wasIntroOutro = prevSectionRef.current.includes('Intro') || prevSectionRef.current.includes('Outro');
-    const prevLabel = prevSectionRef.current;
-    prevSectionRef.current = label;
+  const XF_SECS = 2;      // crossfade duration (seconds)
+  const PRE_SECS = 3;     // IO music pre-roll before Belle B (seconds)
+  const xfTriggeredRef = useRef(false);
 
-    const needsCrossfade = prevLabel !== '' && (
-      (!wasIntroOutro && isIntroOutro) || // story→outro
-      (wasIntroOutro && !isIntroOutro)    // intro→story
-    );
+  const startFullPlay = async () => {
+    const queue = buildFullPlayQueue();
+    if (!queue.length || !audioRef.current) return;
+    fullPlaySectionLabels.current = queue;
+    const urls = queue.map(q => q.url);
+    fullPlayQueueRef.current = urls;
+    fullPlayIndexRef.current = 0;
+    setFullPlayMode(true);
+    setFullPlayLabel(queue[0].label);
+    setUnifiedPosition(0);
+    xfTriggeredRef.current = false;
+    crossfadeDoneRef.current = false;
 
-    if (isIntroOutro) {
-      if (needsCrossfade && musicRef.current && introMusicRef.current) {
-        crossfadeAudio(musicRef.current, introMusicRef.current, INTRO_OUTRO_MUSIC);
-      } else {
-        musicRef.current?.pause();
-        if (introMusicRef.current) {
-          introMusicRef.current.src = INTRO_OUTRO_MUSIC;
-          introMusicRef.current.loop = true;
-          introMusicRef.current.volume = musicVolume;
-          introMusicRef.current.play().catch(console.error);
-        }
-      }
-    } else {
-      if (needsCrossfade && introMusicRef.current && musicRef.current && effectiveMusicUrl) {
-        crossfadeAudio(introMusicRef.current, musicRef.current, effectiveMusicUrl);
-      } else {
-        introMusicRef.current?.pause();
-        if (musicRef.current && effectiveMusicUrl) {
-          if (!musicRef.current.src || musicRef.current.paused) {
-            musicRef.current.src = effectiveMusicUrl;
-          }
-          musicRef.current.loop = true;
-          musicRef.current.volume = musicVolume;
-          musicRef.current.play().catch(console.error);
-        }
+    preloadDurations(urls).then(durations => {
+      segmentDurationsRef.current = durations;
+      setTotalStoryDuration(durations.reduce((a, b) => a + b, 0));
+    });
+
+    // ── Step 1: Start IO (intro/outro theme) music immediately ──────────────
+    const ioEl = introMusicRef.current;
+    if (ioEl) {
+      ioEl.src    = INTRO_OUTRO_MUSIC;
+      ioEl.loop   = true;
+      ioEl.volume = 0;
+      ioEl.play().catch(console.error);
+      fadeVolume(ioEl, ioVolume, 1000); // fade in over 1s
+    }
+
+    // ── Step 2: After PRE_SECS, start Belle B intro ──────────────────────────
+    setTimeout(() => {
+      if (!audioRef.current) return;
+      audioRef.current.src = urls[0];
+      audioRef.current.load();
+      audioRef.current.play().then(() => setIsPlaying(true)).catch(console.error);
+    }, PRE_SECS * 1000);
+  };
+
+  // Called from onTimeUpdate on the main audio element during full play
+  const handleFullPlayTimeUpdate = (currentTime: number, duration: number) => {
+    const label = fullPlaySectionLabels.current[fullPlayIndexRef.current]?.label || '';
+    const isIntro = label.includes('Intro');
+    const timeLeft = duration - currentTime;
+
+    // When intro is XF_SECS from ending → crossfade IO → BG music
+    if (isIntro && timeLeft <= XF_SECS && !xfTriggeredRef.current) {
+      xfTriggeredRef.current = true;
+      const bgEl = musicRef.current;
+      const ioEl = introMusicRef.current;
+      if (bgEl && ioEl && effectiveMusicUrl) {
+        crossfadeAudio(ioEl, bgEl, effectiveMusicUrl, musicVolume, XF_SECS * 1000);
       }
     }
   };
@@ -809,27 +852,7 @@ const ReviewEditStage: React.FC<{
     })));
   };
 
-  const startFullPlay = async () => {
-    const queue = buildFullPlayQueue();
-    if (!queue.length || !audioRef.current) return;
-    fullPlaySectionLabels.current = queue;
-    const urls = queue.map(q => q.url);
-    fullPlayQueueRef.current = urls;
-    fullPlayIndexRef.current = 0;
-    setFullPlayMode(true);
-    setFullPlayLabel(queue[0].label);
-    setUnifiedPosition(0);
-    // Preload durations in background
-    preloadDurations(urls).then(durations => {
-      segmentDurationsRef.current = durations;
-      setTotalStoryDuration(durations.reduce((a, b) => a + b, 0));
-    });
-    audioRef.current.src = urls[0];
-    audioRef.current.play().then(() => {
-      setIsPlaying(true);
-      applyMusicForLabel(queue[0].label);
-    }).catch(console.error);
-  };
+  // (old startFullPlay removed — replaced by version above with pre-roll + crossfades)
 
   const seekToUnifiedPosition = (targetPos: number) => {
     const durations = segmentDurationsRef.current;
@@ -847,7 +870,15 @@ const ReviewEditStage: React.FC<{
         audioRef.current.currentTime = Math.max(0, offsetInSeg);
         audioRef.current.play().then(() => {
           setIsPlaying(true);
-          applyMusicForLabel(label);
+          // Restore correct music layer when seeking
+          const isIO = label.includes('Intro') || label.includes('Outro');
+          if (isIO) {
+            musicRef.current?.pause();
+            if (introMusicRef.current) { introMusicRef.current.src = INTRO_OUTRO_MUSIC; introMusicRef.current.loop = true; introMusicRef.current.volume = ioVolume; introMusicRef.current.play().catch(console.error); }
+          } else {
+            introMusicRef.current?.pause();
+            if (musicRef.current && effectiveMusicUrl) { musicRef.current.src = effectiveMusicUrl; musicRef.current.loop = true; musicRef.current.volume = musicVolume; musicRef.current.play().catch(console.error); }
+          }
         }).catch(console.error);
         setUnifiedPosition(targetPos);
         return;
@@ -915,23 +946,37 @@ const ReviewEditStage: React.FC<{
 
   const handlePlayPause = () => {
     if (!audioRef.current) return;
+    const isIntroOutro = currentSegment === 'intro' || currentSegment === 'outro';
     if (isPlaying) {
       audioRef.current.pause();
       setIsPlaying(false);
-      // Pause background music too
       musicRef.current?.pause();
+      introMusicRef.current?.pause();
     } else {
       audioRef.current.play()
         .then(() => {
           setIsPlaying(true);
-          // Resume/start background music
-          if (musicRef.current && effectiveMusicUrl) {
-            if (!musicRef.current.src || musicRef.current.src === window.location.href) {
-              musicRef.current.src = effectiveMusicUrl;
-              musicRef.current.loop = true;
+          if (isIntroOutro) {
+            // Intro/outro: play IO (theme) music
+            musicRef.current?.pause();
+            const ioEl = introMusicRef.current;
+            if (ioEl) {
+              ioEl.src    = INTRO_OUTRO_MUSIC;
+              ioEl.loop   = true;
+              ioEl.volume = ioVolume;
+              ioEl.play().catch(console.error);
             }
-            musicRef.current.volume = musicVolume;
-            musicRef.current.play().catch(console.error);
+          } else {
+            // Story segment: play background music
+            introMusicRef.current?.pause();
+            if (musicRef.current && effectiveMusicUrl) {
+              if (!musicRef.current.src || musicRef.current.src === window.location.href) {
+                musicRef.current.src = effectiveMusicUrl;
+                musicRef.current.loop = true;
+              }
+              musicRef.current.volume = musicVolume;
+              musicRef.current.play().catch(console.error);
+            }
           }
         })
         .catch((err) => {
@@ -1423,18 +1468,20 @@ const ReviewEditStage: React.FC<{
             src={audioUrl}
             onTimeUpdate={(e) => {
               const t = e.currentTarget.currentTime;
+              const dur = e.currentTarget.duration || 0;
               setCurrentTime(t);
               if (fullPlayMode && segmentDurationsRef.current.length) {
                 const completedMs = segmentDurationsRef.current
                   .slice(0, fullPlayIndexRef.current)
                   .reduce((a, b) => a + b, 0);
                 setUnifiedPosition(completedMs + t);
+                // Trigger IO→BG crossfade 2s before intro ends
+                if (dur > 0) handleFullPlayTimeUpdate(t, dur);
               }
             }}
             onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
             onEnded={() => {
               if (fullPlayMode) {
-                // Full story mode: advance through queue
                 const nextIndex = fullPlayIndexRef.current + 1;
                 if (nextIndex < fullPlayQueueRef.current.length) {
                   fullPlayIndexRef.current = nextIndex;
@@ -1442,15 +1489,30 @@ const ReviewEditStage: React.FC<{
                   const nextLabel = fullPlaySectionLabels.current[nextIndex]?.label || '';
                   setFullPlayLabel(nextLabel);
                   setCurrentTime(0);
-                  applyMusicForLabel(nextLabel);
+                  xfTriggeredRef.current = false; // reset for next section
+
+                  // If transitioning into outro → crossfade BG → IO now
+                  if (nextLabel.includes('Outro')) {
+                    const bgEl = musicRef.current;
+                    const ioEl = introMusicRef.current;
+                    if (bgEl && ioEl) {
+                      ioEl.src    = INTRO_OUTRO_MUSIC;
+                      ioEl.loop   = true;
+                      ioEl.volume = 0;
+                      ioEl.play().catch(console.error);
+                      crossfadeAudio(bgEl, ioEl, INTRO_OUTRO_MUSIC, ioVolume, XF_SECS * 1000);
+                    }
+                  }
+
                   if (audioRef.current) {
                     audioRef.current.src = nextUrl;
                     audioRef.current.load();
                     setTimeout(() => audioRef.current?.play().then(() => setIsPlaying(true)).catch(console.error), 150);
                   }
                 } else {
-                  // Full story finished
-                  stopFullPlay();
+                  // Story finished — fade out IO music over 3s then stop
+                  if (introMusicRef.current) fadeVolume(introMusicRef.current, 0, 3000);
+                  setTimeout(() => stopFullPlay(), 3500);
                 }
               } else if (currentSegment === 'story') {
                 const chunks = getStoryChunks();
