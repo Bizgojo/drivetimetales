@@ -745,6 +745,15 @@ const ReviewEditStage: React.FC<{
   const musicRef = useRef<HTMLAudioElement | null>(null);       // background music (story segments only)
   const introMusicRef = useRef<HTMLAudioElement | null>(null);  // intro/outro dedicated music
   const INTRO_OUTRO_MUSIC = 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio/intro_outro_music.mp3';
+
+  // Stop ALL audio when component unmounts (navigating away, switching stories)
+  useEffect(() => {
+    return () => {
+      audioRef.current?.pause();
+      if (musicRef.current) { musicRef.current.pause(); musicRef.current.src = ''; }
+      if (introMusicRef.current) { introMusicRef.current.pause(); introMusicRef.current.src = ''; }
+    };
+  }, []);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
