@@ -105,14 +105,23 @@ function PlayerContent() {
         .eq('id', storyId).single()
       if (data) setStory(data)
       if (data?.intro_audio_url) {
-        const IM = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio/intro_outro_music.mp3`
-        introMusicRef.current = IM
-        bgMusicRef.current = (data as any).background_music_url || null
-        const q: QueueItem[] = []
-        if (data.intro_audio_url) q.push({ url: data.intro_audio_url, type: 'intro', label: 'Intro'  })
-        if (data.audio_url)       q.push({ url: data.audio_url,       type: 'story', label: 'Story'  })
-        if (data.outro_audio_url) q.push({ url: data.outro_audio_url, type: 'outro', label: 'Outro'  })
-        setQueue(q); setIsASC3(true)
+        // If audio_url is a pre-rendered final mix, skip ALL music and queue setup immediately.
+        // Don't wait for the story-playlist API — set noMusicRef now so there's no race condition.
+        if ((data as any).audio_url?.includes('final_mix')) {
+          noMusicRef.current = true
+          introMusicRef.current = ''
+          bgMusicRef.current = null
+          // isASC3 stays false, queue stays empty → <audio src={story.audio_url}> plays directly
+        } else {
+          const IM = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio/intro_outro_music.mp3`
+          introMusicRef.current = IM
+          bgMusicRef.current = (data as any).background_music_url || null
+          const q: QueueItem[] = []
+          if (data.intro_audio_url) q.push({ url: data.intro_audio_url, type: 'intro', label: 'Intro'  })
+          if (data.audio_url)       q.push({ url: data.audio_url,       type: 'story', label: 'Story'  })
+          if (data.outro_audio_url) q.push({ url: data.outro_audio_url, type: 'outro', label: 'Outro'  })
+          setQueue(q); setIsASC3(true)
+        }
       }
       try {
         const res = await fetch(`/api/asc3/story-playlist?storyId=${storyId}`)

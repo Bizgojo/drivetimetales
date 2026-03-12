@@ -44,24 +44,7 @@ const CURATED_VOICES = [
 ]
 
 const STORIES = [
-  {
-    authorName: 'Sara Keene',
-    authorStyle: 'Gillian Flynn',
-    primaryGenre: 'Thriller',
-    secondaryGenre1: 'Crime', secondaryGenre2: 'Suspense',
-    tone: 'Suspenseful',
-    wordCount: 2250,
-    concept: "A long-haul truck driver stops at a rural diner at 2am and overhears a conversation at the next booth — a man calmly describing how he's about to kill someone. The driver can't see the man's face. When she stands to leave, she realizes the description matches her exactly.",
-  },
-  {
-    authorName: 'Dale Harmon',
-    authorStyle: 'Cormac McCarthy',
-    primaryGenre: 'Western',
-    secondaryGenre1: 'Drama', secondaryGenre2: 'Mystery',
-    tone: 'Dark',
-    wordCount: 2250,
-    concept: 'A retired sheriff returns to his hometown to bury his estranged brother, only to find the grave already dug — and his brother very much alive, waiting for him with a rifle and thirty years of unfinished business.',
-  },
+  // Stories 1 & 2 already published — skipped
   {
     authorName: 'Nina Vasquez',
     authorStyle: 'Isaac Asimov',
@@ -512,7 +495,7 @@ async function processStory(story, idx) {
   // Step 10: Render final mix
   log(`  🎛️  Rendering final mix...`)
   try {
-    execSync(`node ${path.join(__dirname, 'render-story-mix.js')} ${storyId}`, {
+    execSync(`node ${path.join(__dirname, 'voice-only-render.js')} ${storyId}`, {
       stdio: 'pipe', timeout: 300000, cwd: path.join(__dirname, '..'), env: { ...process.env },
     })
     log(`  ✅ Render complete`)

@@ -9,11 +9,14 @@ const SUPABASE_URL = 'https://vmyhlfeouzslixtkmddy.supabase.co'
 const BASE = SUPABASE_URL + '/storage/v1/object/public/audio'
 const sb = createClient(SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
 
-// Stories to re-render (voice only — no music)
-const STORIES = [
-  '8eb9c3f0-7f8d-495e-aa4d-a10e62633e05',  // Dead Ringer
-  '76d68b1e-8630-439e-a8fe-d229e3b11e69',  // The Grave He Dug Himself
-]
+// Accept a single story ID as CLI arg, or fall back to the hardcoded list
+const CLI_ID = process.argv[2]
+const STORIES = CLI_ID
+  ? [CLI_ID]
+  : [
+      '8eb9c3f0-7f8d-495e-aa4d-a10e62633e05',  // Dead Ringer
+      '76d68b1e-8630-439e-a8fe-d229e3b11e69',  // The Grave He Dug Himself
+    ]
 
 async function dl(url, dest) {
   const r = await fetch(url)
