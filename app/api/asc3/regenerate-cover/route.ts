@@ -12,7 +12,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const STABILITY_API_KEY = process.env.STABILITY_API_KEY!
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY!
 
 function escapeXml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -84,27 +84,36 @@ async function overlayText(imageBuffer: Buffer, title: string, author: string): 
     .toBuffer()
 }
 
-async function generateWithStability(prompt: string): Promise<Buffer> {
-  const form = new FormData()
-  form.append('prompt', prompt)
-  form.append('aspect_ratio', '1:1')
-  form.append('output_format', 'jpeg')
-
-  const res = await fetch('https://api.stability.ai/v2beta/stable-image/generate/core', {
+async function generateWithDallE(prompt: string): Promise<Buffer> {
+  const res = await fetch('https://api.openai.com/v1/images/generations', {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${STABILITY_API_KEY}`,
-      Accept: 'image/*',
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+      'Content-Type': 'application/json',
     },
-    body: form,
+    body: JSON.stringify({
+      model: 'dall-e-3',
+      prompt: prompt.slice(0, 4000), // DALL-E 3 max prompt length
+      n: 1,
+      size: '1024x1024',
+      quality: 'hd',
+      response_format: 'url',
+    }),
   })
 
   if (!res.ok) {
     const errText = await res.text()
-    throw new Error(`Stability AI error: ${res.status} - ${errText}`)
+    throw new Error(`DALL-E 3 error: ${res.status} - ${errText}`)
   }
 
-  return Buffer.from(await res.arrayBuffer())
+  const json = await res.json() as any
+  const imageUrl = json.data?.[0]?.url
+  if (!imageUrl) throw new Error('DALL-E 3 returned no image URL')
+
+  // Download the image
+  const imgRes = await fetch(imageUrl)
+  if (!imgRes.ok) throw new Error(`Failed to download DALL-E image: ${imgRes.status}`)
+  return Buffer.from(await imgRes.arrayBuffer())
 }
 
 export async function POST(req: NextRequest) {
@@ -132,10 +141,10 @@ export async function POST(req: NextRequest) {
       concept: story?.description || story?.intro_text || undefined,
     })
 
-    console.log('🎨 Generating cover via Stability AI...')
+    console.log('🎨 Generating cover via DALL-E 3...')
     console.log('  Prompt preview:', dallePrompt.substring(0, 200))
 
-    const rawBuffer = await generateWithStability(dallePrompt)
+    const rawBuffer = await generateWithDallE(dallePrompt)
 
     // Overlay title + author programmatically (Stability AI can't render text reliably)
     const imgBuffer = await overlayText(
