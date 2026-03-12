@@ -43,6 +43,11 @@ async function overlayText(imageBuffer: Buffer, title: string, author: string): 
     `<text x="512" y="${titleY + i * lineHeight}" font-family="Georgia, serif" font-size="${titleFontSize}" font-weight="bold" fill="white" text-anchor="middle" filter="url(#shadow)">${escapeXml(line)}</text>`
   ).join('\n')
 
+  // Pill badge zone: bottom-right ~200×60px with 20px margin
+  const pillW = 220, pillH = 64, pillR = 32, pillMargin = 20
+  const pillX = size - pillW - pillMargin
+  const pillY = size - pillH - pillMargin
+
   const svg = `
 <svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
   <defs>
@@ -54,9 +59,18 @@ async function overlayText(imageBuffer: Buffer, title: string, author: string): 
       <stop offset="0%" stop-color="black" stop-opacity="0"/>
       <stop offset="100%" stop-color="black" stop-opacity="0.75"/>
     </linearGradient>
+    <!-- Radial darkening for pill badge zone (bottom-right) -->
+    <radialGradient id="pillGrad" cx="100%" cy="100%" r="30%" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="black" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="black" stop-opacity="0"/>
+    </radialGradient>
   </defs>
   <!-- Bottom gradient overlay -->
   <rect x="0" y="${size - 300}" width="${size}" height="300" fill="url(#grad)"/>
+  <!-- Bottom-right darkening for pill badge -->
+  <rect x="${size - 300}" y="${size - 200}" width="300" height="200" fill="url(#pillGrad)"/>
+  <!-- Pill badge placeholder outline (subtle, ensures area is always clear) -->
+  <rect x="${pillX}" y="${pillY}" width="${pillW}" height="${pillH}" rx="${pillR}" ry="${pillR}" fill="black" fill-opacity="0.45"/>
   <!-- Title lines -->
   ${titleLines}
   <!-- Author -->
