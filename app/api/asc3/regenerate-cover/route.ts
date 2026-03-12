@@ -37,7 +37,12 @@ async function overlayText(imageBuffer: Buffer, title: string, author: string): 
   const titleFontSize = lines.length > 2 ? 72 : 86
   const lineHeight = titleFontSize + 10
   const titleBlockHeight = lines.length * lineHeight
-  const titleY = size - 220
+
+  // Position title so the last line's baseline clears the pill badge zone
+  // pillY = size - pillH - pillMargin = 1024 - 64 - 20 = 940
+  // Keep 30px breathing room above the pill
+  const safeBottomY = (size - pillH - pillMargin) - 30   // 910
+  const titleY = safeBottomY - (lines.length - 1) * lineHeight
 
   const titleLines = lines.map((line, i) =>
     `<text x="512" y="${titleY + i * lineHeight}" font-family="Georgia, serif" font-size="${titleFontSize}" font-weight="bold" fill="white" text-anchor="middle" filter="url(#shadow)">${escapeXml(line)}</text>`
