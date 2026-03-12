@@ -1164,8 +1164,9 @@ const ReviewEditStage: React.FC<{
       setSunoElapsed(secs)
       if (secs < 10) setSunoStatusMsg('🎵 Submitting to Suno...')
       else if (secs < 30) setSunoStatusMsg('🎵 Generating track...')
-      else if (secs < 90) setSunoStatusMsg('🎵 Composing your soundtrack...')
-      else setSunoStatusMsg('🎵 Almost there...')
+      else if (secs < 120) setSunoStatusMsg('🎵 Composing your soundtrack...')
+      else if (secs < 300) setSunoStatusMsg('🎵 Almost there — Suno can take 3-5 min...')
+      else setSunoStatusMsg('🎵 Still working — up to 8 min total, hang tight...')
     }, 1000)
 
     try {

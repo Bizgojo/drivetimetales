@@ -213,7 +213,7 @@ export async function POST(req: NextRequest) {
 
     let audioUrl: string | null = null
     let sunoTitle: string = ''
-    for (let i = 0; i < 48; i++) {
+    for (let i = 0; i < 100; i++) {  // 100 × 5s = 8.3 min max
       await sleep(5000)
       process.stdout.write(`\r⏳ ${(i + 1) * 5}s...`)
       try {
@@ -226,7 +226,7 @@ export async function POST(req: NextRequest) {
         const clips = data.clips || []
         const ready = clips.find((c: any) =>
           c.audio_url && c.status === 'complete' &&
-          new Date(c.created_at).getTime() > beforeCreate - 15000
+          new Date(c.created_at).getTime() > beforeCreate - 60000  // 60s window
         )
         if (ready) {
           audioUrl = ready.audio_url
