@@ -617,6 +617,9 @@ const StoriesToTestStage: React.FC<{
   onSelect: (story: Story) => void;
   onDelete: (storyId: string) => void;
 }> = ({ stories, onSelect, onDelete }) => {
+  const [search, setSearch] = React.useState('');
+  const [statusFilter, setStatusFilter] = React.useState<string>('all');
+
   const calculateDuration = (words: number) => {
     const minutes = Math.round(words / 150);
     return `${minutes} min`;
@@ -628,18 +631,55 @@ const StoriesToTestStage: React.FC<{
       + ' at ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'America/New_York' }) + ' ET';
   };
 
-  return (
-    <div className="space-y-6">
-      <h2 className="text-2xl font-bold text-black">📖 Stories To Test</h2>
+  const filtered = stories.filter(s => {
+    const matchesSearch = !search || s.title.toLowerCase().includes(search.toLowerCase()) || (s.authorName || '').toLowerCase().includes(search.toLowerCase());
+    const matchesStatus = statusFilter === 'all' || s.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
 
-      {stories.length === 0 ? (
+  const statusCounts = {
+    all: stories.length,
+    pending: stories.filter(s => s.status === 'pending').length,
+    published: stories.filter(s => s.status === 'published').length,
+    ready: stories.filter(s => s.status === 'ready').length,
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold text-black">📖 Stories To Test</h2>
+        <span className="text-sm text-gray-500">{filtered.length} of {stories.length}</span>
+      </div>
+
+      {/* Search + filter bar */}
+      <div className="flex gap-2">
+        <input
+          type="text"
+          placeholder="🔍 Search by title or author..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm text-black bg-white focus:outline-none focus:border-orange-500"
+        />
+        <select
+          value={statusFilter}
+          onChange={e => setStatusFilter(e.target.value)}
+          className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-black bg-white focus:outline-none focus:border-orange-500"
+        >
+          <option value="all">All ({statusCounts.all})</option>
+          <option value="pending">⏳ Pending ({statusCounts.pending})</option>
+          <option value="ready">✅ Ready ({statusCounts.ready})</option>
+          <option value="published">🚀 Published ({statusCounts.published})</option>
+        </select>
+      </div>
+
+      {filtered.length === 0 ? (
         <div className="bg-orange-50 p-12 rounded-lg text-center border border-orange-200">
-          <p className="text-orange-900 font-semibold">No stories yet</p>
-          <p className="text-orange-800 text-sm">Create your first story to get started</p>
+          <p className="text-orange-900 font-semibold">{stories.length === 0 ? 'No stories yet' : 'No matches'}</p>
+          <p className="text-orange-800 text-sm">{stories.length === 0 ? 'Create your first story to get started' : 'Try a different search or filter'}</p>
         </div>
       ) : (
         <div className="space-y-3">
-          {stories.map((story) => (
+          {filtered.map((story) => (
             <button
               key={story.id}
               onClick={() => onSelect(story)}
