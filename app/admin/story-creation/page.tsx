@@ -707,7 +707,8 @@ const ReviewEditStage: React.FC<{
   const [duration, setDuration] = useState(0);
   const [currentSegment, setCurrentSegment] = useState<'intro' | 'story' | 'outro'>('story');
   const [currentChunkIndex, setCurrentChunkIndex] = useState(0);
-  const [musicVolume, setMusicVolume] = useState(0.47); // +4dB standard (locked Mar 11)
+  const [musicVolume, setMusicVolume] = useState((story as any).music_volume ?? 0.30);
+  const [ioVolume, setIoVolume] = useState((story as any).io_volume ?? 0.18);
 
   // Full story playback mode
   const [fullPlayMode, setFullPlayMode] = useState(false);
@@ -1018,16 +1019,18 @@ const ReviewEditStage: React.FC<{
     if (isRenderingFinalMix) return
     setIsRenderingFinalMix(true)
     try {
-      const res = await fetch('/api/asc3/render-final-mix', {
+      // Use local render route (runs Mac ffmpeg script) — Vercel can't run ffmpeg
+      const res = await fetch('/api/asc3/render-local', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storyId: story.id, musicVolume: musicVolume }),
+        body: JSON.stringify({ storyId: story.id }),
       })
       const data = await res.json()
-      if (data.success && data.finalAudioUrl) {
-        setFinalMixUrl(data.finalAudioUrl)
-        onUpdate({ ...story, audioUrl: data.finalAudioUrl })
-        alert('✅ Final mix rendered! Audio player below now plays the mixed version.')
+      if (data.success) {
+        const url = data.finalMixUrl || story.audioUrl
+        setFinalMixUrl(url)
+        onUpdate({ ...story, audioUrl: url })
+        alert('✅ Final mix rendered! Hit ▶ Play Full Story to test.')
       } else {
         alert(`❌ Render failed: ${data.error}`)
       }
@@ -1094,6 +1097,7 @@ const ReviewEditStage: React.FC<{
       if (data.success && data.musicUrl) {
         // Cache in localStorage so it survives page refresh
         localStorage.setItem(`music_${story.id}`, data.musicUrl)
+        if (data.musicTitle) localStorage.setItem(`music_title_${story.id}`, data.musicTitle)
         const updatedStory = { ...story, backgroundMusicUrl: data.musicUrl, sunoStatus: 'suno' }
         onUpdate(updatedStory)
         if (musicRef.current) {
@@ -1200,7 +1204,7 @@ const ReviewEditStage: React.FC<{
           )}
           <p className="text-sm text-gray-600 mb-1">
             {story.sunoStatus === 'suno'
-              ? '🎵 Custom Suno track'
+              ? `🎵 ${typeof window !== 'undefined' && localStorage.getItem(`music_title_${story.id}`) ? localStorage.getItem(`music_title_${story.id}`) : 'Custom Suno track'}`
               : `🎵 Library: ${getMusicTrackName(effectiveMusicUrl)}`}
             {' '} — plays automatically under dialogue when you hit ▶ Play Full Story
           </p>
@@ -1376,13 +1380,39 @@ const ReviewEditStage: React.FC<{
                     const vol = parseFloat(e.target.value);
                     setMusicVolume(vol);
                     if (musicRef.current) musicRef.current.volume = vol;
+                    fetch('/api/asc3/update-story', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ storyId: story.id, music_volume: vol }),
+                    }).catch(() => {})
                   }}
                   className="flex-1 accent-orange-500"
                 />
                 <span className="text-sm text-gray-600 w-10 text-right">{Math.round(musicVolume * 100)}%</span>
               </div>
+              <div className="flex items-center gap-3 mt-2">
+                <span className="text-sm font-medium text-gray-700 whitespace-nowrap">🎼 Intro/Outro:</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="0.5"
+                  step="0.01"
+                  value={ioVolume}
+                  onChange={(e) => {
+                    const vol = parseFloat(e.target.value);
+                    setIoVolume(vol);
+                    fetch('/api/asc3/update-story', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ storyId: story.id, io_volume: vol }),
+                    }).catch(() => {})
+                  }}
+                  className="flex-1 accent-purple-500"
+                />
+                <span className="text-sm text-gray-600 w-10 text-right">{Math.round(ioVolume * 100)}%</span>
+              </div>
               <p className="text-xs text-gray-500 mt-1">
-                🎵 Background: {getMusicTrackName(effectiveMusicUrl)}
+                🎵 Background: {getMusicTrackName(effectiveMusicUrl)} &nbsp;|&nbsp; 🎼 Intro/Outro theme
               </p>
             </div>
           )}

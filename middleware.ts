@@ -17,6 +17,12 @@ export async function middleware(request: NextRequest) {
   // Only guard /admin routes
   if (!pathname.startsWith('/admin')) return NextResponse.next()
 
+  // Skip auth checks on localhost (dev environment)
+  const host = request.headers.get('host') || ''
+  if (host.startsWith('localhost') || host.startsWith('127.0.0.1')) {
+    return NextResponse.next()
+  }
+
   const response = NextResponse.next({
     request: { headers: request.headers },
   })

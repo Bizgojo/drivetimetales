@@ -26,8 +26,7 @@ const SUPABASE_URL = 'https://vmyhlfeouzslixtkmddy.supabase.co'
 const ANON_KEY     = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZteWhsZmVvdXpzbGl4dGttZGR5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYwODk2MTIsImV4cCI6MjA4MTY2NTYxMn0.7asAd8ctLKJLdv2AojbF8WEo-N6dVheVA3mWxjkFwkk'
 const BASE         = `${SUPABASE_URL}/storage/v1/object/public/audio`
 
-const IO_VOL    = 0.18   // intro/outro theme music — subtle, under the voice
-const MUSIC_VOL = parseFloat(process.argv[3] || '0.15')  // bg story music — -12dB from 0.60
+const MUSIC_VOL_ARG = process.argv[3] ? parseFloat(process.argv[3]) : null  // optional CLI override
 const STORY_ID  = process.argv[2] || process.env.STORY_ID
 
 if (!STORY_ID) { console.error('Usage: node render-story-mix.js <storyId> [bgMusicVol]'); process.exit(1) }
@@ -114,9 +113,14 @@ async function main() {
   const sb = createClient(SUPABASE_URL, ANON_KEY)
 
   const { data: story, error } = await sb.from('stories')
-    .select('id, title, intro_audio_url, story_audio_url, outro_audio_url')
+    .select('id, title, intro_audio_url, story_audio_url, outro_audio_url, music_volume, io_volume')
     .eq('id', STORY_ID).single()
   if (error || !story) throw new Error('Story not found: ' + (error?.message || STORY_ID))
+
+  // Use CLI override → DB value → defaults
+  const MUSIC_VOL = MUSIC_VOL_ARG ?? (story.music_volume ?? 0.30)
+  const IO_VOL    = story.io_volume ?? 0.18
+  console.log(`    🎚  BG music: ${Math.round(MUSIC_VOL * 100)}%  IO music: ${Math.round(IO_VOL * 100)}%`)
 
   const m = (story.story_audio_url || '').match(/asc3\/([^/]+)\//)
   if (!m) throw new Error('Cannot extract folder from story_audio_url')
@@ -139,6 +143,12 @@ async function main() {
   console.log('\n⬇️   Downloading...')
   await dl(story.intro_audio_url, introP)
   await dl(story.outro_audio_url, outroP)
+
+  // Normalize Belle B intro/outro to match narrator level
+  const introNormP = introP + '_norm.mp3'; const outroNormP = outroP + '_norm.mp3'
+  ff(['-i', introP, '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11', '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', introNormP])
+  ff(['-i', outroP, '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11', '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', outroNormP])
+  fs.renameSync(introNormP, introP); fs.renameSync(outroNormP, outroP)
   await dl(`${BASE}/intro_outro_music.mp3`, ioP)
   if (bgFile) await dl(`${BASE}/asc3/${FOLDER}/background_music.mp3`, bgP)
   else { fs.copyFileSync(ioP, bgP); console.log('    (no BG — using io music)') }
@@ -155,6 +165,11 @@ async function main() {
   // ── Concat story segments ──────────────────────────────────────────────────
   console.log('\n🎵  Building tracks...')
   concatFiles(segPaths, rawP, 'concat segments')
+
+  // Normalize voice segments to consistent loudness (-16 LUFS)
+  const rawNormP = path.join(tmp, 'story_normalized.mp3')
+  ff(['-i', rawP, '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11', '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', rawNormP], 'normalize story voice')
+  fs.renameSync(rawNormP, rawP)
 
   const introDur = getDur(introP)
   const outroDur = getDur(outroP)

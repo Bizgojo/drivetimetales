@@ -124,7 +124,9 @@ export async function POST(req: NextRequest) {
       })
     })
 
-    // Step 3: Navigate to create page
+    // Step 3: Navigate away then back to suno.com/create to force fresh auth token requests
+    await cdpSend(session, 'Page.navigate', { url: 'https://suno.com/' })
+    await sleep(2000)
     await cdpSend(session, 'Page.navigate', { url: 'https://suno.com/create' })
     await sleep(4000)
 
@@ -210,6 +212,7 @@ export async function POST(req: NextRequest) {
     }
 
     let audioUrl: string | null = null
+    let sunoTitle: string = ''
     for (let i = 0; i < 48; i++) {
       await sleep(5000)
       process.stdout.write(`\r⏳ ${(i + 1) * 5}s...`)
@@ -227,6 +230,7 @@ export async function POST(req: NextRequest) {
         )
         if (ready) {
           audioUrl = ready.audio_url
+          sunoTitle = ready.title || ''
           console.log(`\n✅ Clip ready: ${ready.title}`)
           break
         }
@@ -260,7 +264,7 @@ export async function POST(req: NextRequest) {
       else console.log('✅ Music URL saved to DB')
     })
 
-    return NextResponse.json({ success: true, musicUrl, message: 'Suno music generated successfully' })
+    return NextResponse.json({ success: true, musicUrl, musicTitle: sunoTitle, message: 'Suno music generated successfully' })
 
   } catch (err: any) {
     console.error('generate-music error:', err)

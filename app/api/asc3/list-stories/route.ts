@@ -107,6 +107,8 @@ export async function GET(req: NextRequest) {
         sfxMetadata: [],
         introText: row.intro_text || '',
         outroText: row.outro_text || '',
+        music_volume: row.music_volume ?? 0.30,
+        io_volume: row.io_volume ?? 0.18,
       }
     }))
 
