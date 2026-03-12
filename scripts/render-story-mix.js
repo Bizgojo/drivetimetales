@@ -1,19 +1,12 @@
 #!/usr/bin/env node
 /**
- * ET Story Mix Renderer
+ * ET Story Mix Renderer — Clean Sequential Timeline
  *
- * Builds two tracks then mixes them:
+ * No music plays while any voice is speaking. Pure sequence:
  *
- * VOICE TRACK — concat with silence gaps:
- *   [3s sil] [Belle B intro] [4s sil] [story segments] [4s sil] [Belle B outro] [3s sil]
+ *   [IO 6s] [Belle B intro] [IO 8s] [Story narration] [IO 6s] [Belle B outro] [IO 6s fade-out]
  *
- * MUSIC TRACK — three pre-positioned clips, mixed with amix (NO adelay):
- *   music_a.mp3  [io_intro]                        starts at t=0
- *   music_b.mp3  [BG_DELAY silence] + [bg_full]    starts at t=BG_DELAY
- *   music_c.mp3  [OUTRO_DELAY silence] + [io_outro] starts at t=OUTRO_DELAY
- *   → silence is pre-baked into each clip so no adelay is needed in the mix step
- *
- * FINAL = amix(voice, music) with alimiter
+ * All sections are simple concatenation — no amix, no competition.
  */
 
 const { spawnSync } = require('child_process')
@@ -26,12 +19,17 @@ const SUPABASE_URL = 'https://vmyhlfeouzslixtkmddy.supabase.co'
 const ANON_KEY     = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZteWhsZmVvdXpzbGl4dGttZGR5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYwODk2MTIsImV4cCI6MjA4MTY2NTYxMn0.7asAd8ctLKJLdv2AojbF8WEo-N6dVheVA3mWxjkFwkk'
 const BASE         = `${SUPABASE_URL}/storage/v1/object/public/audio`
 
-const MUSIC_VOL_ARG = process.argv[3] ? parseFloat(process.argv[3]) : null  // optional CLI override
-const STORY_ID  = process.argv[2] || process.env.STORY_ID
+const STORY_ID = process.argv[2] || process.env.STORY_ID
+if (!STORY_ID) { console.error('Usage: node render-story-mix.js <storyId>'); process.exit(1) }
 
-if (!STORY_ID) { console.error('Usage: node render-story-mix.js <storyId> [bgMusicVol]'); process.exit(1) }
+// ── IO music sting durations (seconds) ───────────────────────────────────────
+const IO_OPEN   = 6   // before Belle B intro
+const IO_BRIDGE = 8   // between intro and story
+const IO_MID    = 6   // between story and outro
+const IO_CLOSE  = 6   // after Belle B outro (fades out)
+const IO_VOL    = 0.9 // music volume (full volume — no voice competing)
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 async function dl(url, dest) {
   const r = await fetch(url)
@@ -40,9 +38,9 @@ async function dl(url, dest) {
 }
 
 function getDur(f) {
-  const r   = spawnSync(FF, ['-i', f, '-f', 'null', '-'])
+  const r = spawnSync(FF, ['-i', f, '-f', 'null', '-'])
   const out = (r.stderr || Buffer.alloc(0)).toString()
-  const m   = out.match(/Duration:\s*(\d+):(\d+):([\d.]+)/)
+  const m = out.match(/Duration:\s*(\d+):(\d+):([\d.]+)/)
   return m ? +m[1] * 3600 + +m[2] * 60 + +m[3] : 0
 }
 
@@ -51,7 +49,7 @@ function ff(args, label) {
   const r = spawnSync(FF, args, { stdio: ['ignore', 'ignore', 'pipe'] })
   if (r.status !== 0) {
     const err = (r.stderr || Buffer.alloc(0)).toString()
-    throw new Error(`ffmpeg failed [${label || '?'}]:\n${err.slice(-600)}`)
+    throw new Error(`ffmpeg [${label || '?'}]:\n${err.slice(-600)}`)
   }
   if (label) console.log('done')
 }
@@ -60,236 +58,161 @@ function concatFiles(files, out, label) {
   const lst = out + '.lst'
   fs.writeFileSync(lst, files.map(f => `file '${f}'`).join('\n'))
   ff(['-f', 'concat', '-safe', '0', '-i', lst,
-    '-map', '0:a',
-    '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', out], label || 'concat')
+    '-map', '0:a', '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', out], label)
   fs.unlinkSync(lst)
 }
 
-/** Create a silent MP3 of exactly `dur` seconds */
-function mkSilence(out, dur) {
-  ff(['-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
-    '-t', String(dur), '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', out])
-  return out
-}
-
 /**
- * Pre-process a music clip from a looped source.
- * Uses -t to reliably trim looped streams (atrim has issues with looped inputs).
- * All output is audio-only (-map 0:a) to prevent embedded image streams causing issues.
+ * Trim IO music to exactly `dur` seconds.
+ * fadeIn: short fade-in to avoid hard pop at start
+ * fadeOut: fade to silence at end
  */
-function mkMusicClip(src, out, { dur, vol, fadeIn = 0, fadeOutSt = null, fadeOutDur = 0 }) {
-  const af = [`volume=${vol}`]
-  if (fadeIn > 0)                           af.push(`afade=t=in:st=0:d=${fadeIn}`)
-  if (fadeOutSt !== null && fadeOutDur > 0) af.push(`afade=t=out:st=${fadeOutSt}:d=${fadeOutDur}`)
-  ff(['-stream_loop', '-1', '-i', src,
+function mkSting(src, out, dur, { fadeIn = 0.3, fadeOut = 0.5, vol = IO_VOL } = {}) {
+  const fadeOutSt = dur - fadeOut
+  ff([
+    '-stream_loop', '-1', '-i', src,
     '-t', String(dur),
-    '-af', af.join(','),
-    '-map', '0:a',
-    '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', out])
+    '-af', `volume=${vol},afade=t=in:st=0:d=${fadeIn},afade=t=out:st=${fadeOutSt}:d=${fadeOut}`,
+    '-map', '0:a', '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', out,
+  ])
 }
 
-/**
- * Build a full-timeline music clip: [silenceDur seconds of silence] + [music clip].
- * This pre-positions the clip without using adelay (which has max-value bugs in ffmpeg).
- */
-function mkPositionedClip(src, out, tmp, { silenceDur, clipDur, vol, fadeIn, fadeOutSt, fadeOutDur }) {
-  const clipFile = out + '_clip.mp3'
-  mkMusicClip(src, clipFile, { dur: clipDur, vol, fadeIn, fadeOutSt, fadeOutDur })
-  if (silenceDur <= 0.01) {
-    fs.renameSync(clipFile, out)
-    return
-  }
-  const silFile = out + '_sil.mp3'
-  mkSilence(silFile, silenceDur)
-  concatFiles([silFile, clipFile], out)
-  fs.unlinkSync(silFile)
-  fs.unlinkSync(clipFile)
+function normalize(inP, outP, label) {
+  ff(['-i', inP, '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11',
+    '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', outP], label)
 }
 
-// ── Main ─────────────────────────────────────────────────────────────────────
+// ── Main ──────────────────────────────────────────────────────────────────────
 
 async function main() {
   const { createClient } = require('@supabase/supabase-js')
   const sb = createClient(SUPABASE_URL, ANON_KEY)
 
   const { data: story, error } = await sb.from('stories')
-    .select('id, title, intro_audio_url, story_audio_url, outro_audio_url, music_volume, io_volume')
+    .select('id, title, intro_audio_url, story_audio_url, outro_audio_url')
     .eq('id', STORY_ID).single()
   if (error || !story) throw new Error('Story not found: ' + (error?.message || STORY_ID))
-
-  // Use CLI override → DB value → defaults
-  const MUSIC_VOL = MUSIC_VOL_ARG ?? (story.music_volume ?? 0.30)
-  const IO_VOL    = story.io_volume ?? 0.18
-  console.log(`    🎚  BG music: ${Math.round(MUSIC_VOL * 100)}%  IO music: ${Math.round(IO_VOL * 100)}%`)
+  console.log(`\n📖  "${story.title}"`)
 
   const m = (story.story_audio_url || '').match(/asc3\/([^/]+)\//)
-  if (!m) throw new Error('Cannot extract folder from story_audio_url')
+  if (!m) throw new Error('Cannot extract storage folder from story_audio_url')
   const FOLDER = m[1]
-  console.log(`\n📖  "${story.title}"\n    folder: ${FOLDER}`)
 
+  // Download segments list
   const { data: files } = await sb.storage.from('audio').list(`asc3/${FOLDER}`, { limit: 300, sortBy: { column: 'name', order: 'asc' } })
-  const segs   = (files || []).filter(f => f.name.startsWith('segment_') && f.name.endsWith('.mp3')).sort((a, b) => a.name.localeCompare(b.name))
-  const bgFile = (files || []).find(f => f.name === 'background_music.mp3')
-  if (!segs.length) throw new Error('No segments found')
-  console.log(`    ${segs.length} segments  |  BG: ${bgFile ? 'yes' : 'no (falling back to io)'}`)
+  const segs = (files || []).filter(f => f.name.startsWith('segment_') && f.name.endsWith('.mp3')).sort((a, b) => a.name.localeCompare(b.name))
+  if (!segs.length) throw new Error('No segments found in storage folder')
+  console.log(`    ${segs.length} segments`)
 
   const tmp    = fs.mkdtempSync(path.join(os.tmpdir(), 'et-render-'))
+  const ioP    = path.join(tmp, 'io.mp3')
   const introP = path.join(tmp, 'intro.mp3')
   const outroP = path.join(tmp, 'outro.mp3')
-  const ioP    = path.join(tmp, 'io.mp3')
-  const bgP    = path.join(tmp, 'bg.mp3')
-  const rawP   = path.join(tmp, 'story_raw.mp3')
 
+  // ── Download ──────────────────────────────────────────────────────────────
   console.log('\n⬇️   Downloading...')
+  await dl(`${BASE}/intro_outro_music.mp3`, ioP)
   await dl(story.intro_audio_url, introP)
   await dl(story.outro_audio_url, outroP)
-
-  // Normalize Belle B intro/outro to match narrator level
-  const introNormP = introP + '_norm.mp3'; const outroNormP = outroP + '_norm.mp3'
-  ff(['-i', introP, '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11', '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', introNormP])
-  ff(['-i', outroP, '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11', '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', outroNormP])
-  fs.renameSync(introNormP, introP); fs.renameSync(outroNormP, outroP)
-  await dl(`${BASE}/intro_outro_music.mp3`, ioP)
-  if (bgFile) await dl(`${BASE}/asc3/${FOLDER}/background_music.mp3`, bgP)
-  else { fs.copyFileSync(ioP, bgP); console.log('    (no BG — using io music)') }
 
   const segPaths = []
   for (let i = 0; i < segs.length; i++) {
     const p = path.join(tmp, `s${String(i).padStart(3, '0')}.mp3`)
     await dl(`${BASE}/asc3/${FOLDER}/${segs[i].name}`, p)
     segPaths.push(p)
-    if ((i + 1) % 25 === 0) console.log(`    ${i + 1}/${segs.length}`)
+    if ((i + 1) % 25 === 0 || i + 1 === segs.length) console.log(`    ${i + 1}/${segs.length}`)
   }
-  console.log(`    ${segs.length}/${segs.length} ✅`)
 
-  // ── Concat story segments ──────────────────────────────────────────────────
-  console.log('\n🎵  Building tracks...')
-  concatFiles(segPaths, rawP, 'concat segments')
+  // ── Normalize all voice tracks ────────────────────────────────────────────
+  console.log('\n🔊  Normalizing voice...')
+  const introNorm = path.join(tmp, 'intro_norm.mp3')
+  const outroNorm = path.join(tmp, 'outro_norm.mp3')
+  const storyRaw  = path.join(tmp, 'story_raw.mp3')
+  const storyNorm = path.join(tmp, 'story_norm.mp3')
 
-  // Normalize voice segments to consistent loudness (-16 LUFS)
-  const rawNormP = path.join(tmp, 'story_normalized.mp3')
-  ff(['-i', rawP, '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11', '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', rawNormP], 'normalize story voice')
-  fs.renameSync(rawNormP, rawP)
+  normalize(introP, introNorm, 'normalize intro')
+  normalize(outroP, outroNorm, 'normalize outro')
+  concatFiles(segPaths, storyRaw, 'concat segments')
+  normalize(storyRaw, storyNorm, 'normalize story')
 
-  const introDur = getDur(introP)
-  const outroDur = getDur(outroP)
-  const storyDur = getDur(rawP)
-  console.log(`    intro:${introDur.toFixed(2)}s  story:${(storyDur/60).toFixed(2)}min  outro:${outroDur.toFixed(2)}s`)
+  const introDur = getDur(introNorm)
+  const outroDur = getDur(outroNorm)
+  const storyDur = getDur(storyNorm)
+  console.log(`    intro: ${introDur.toFixed(1)}s  |  story: ${(storyDur / 60).toFixed(2)} min  |  outro: ${outroDur.toFixed(1)}s`)
 
-  // ── Timing ─────────────────────────────────────────────────────────────────
-  const PRE     = 3   // io music before Belle B
-  const GAP     = 4   // gap between voice sections (1s alone + 2s xfade + 1s alone)
-  const POST    = 3   // io music tail after Belle B outro
-  const XF      = 2   // crossfade duration
+  // ── Build IO music stings ─────────────────────────────────────────────────
+  console.log('\n🎵  Building music stings...')
+  const sting1 = path.join(tmp, 'sting1.mp3')  // 6s open
+  const sting2 = path.join(tmp, 'sting2.mp3')  // 8s bridge
+  const sting3 = path.join(tmp, 'sting3.mp3')  // 6s mid
+  const sting4 = path.join(tmp, 'sting4.mp3')  // 6s close (longer fade-out)
 
-  // io_intro: t=0 → PRE+intro+1+XF, fades in 1s, fades out at PRE+intro+1 over XF seconds
-  const IO_INTRO_DUR   = PRE + introDur + 1 + XF
-  const IO_INTRO_FO    = PRE + introDur + 1
+  process.stdout.write(`   sting 1 (${IO_OPEN}s open)... `)
+  mkSting(ioP, sting1, IO_OPEN)
+  console.log('done')
 
-  // bg_full: delayed BG_DELAY, plays XF+1+story+1+XF, fades in XF, fades out XF before end
-  const BG_DELAY       = PRE + introDur + 1      // = IO_INTRO_FO (crossfade starts here)
-  const BG_DUR         = XF + 1 + storyDur + 1 + XF
-  const BG_FO          = XF + 1 + storyDur + 1  // fade-out starts here (within clip)
+  process.stdout.write(`   sting 2 (${IO_BRIDGE}s bridge)... `)
+  mkSting(ioP, sting2, IO_BRIDGE)
+  console.log('done')
 
-  // io_outro: delayed OUTRO_DELAY, plays XF+1+outro+POST, fades in XF, fades out POST before end
-  const OUTRO_DELAY    = PRE + introDur + GAP + storyDur + 1
-  const IO_OUTRO_DUR   = XF + 1 + outroDur + POST
-  const IO_OUTRO_FO    = XF + 1 + outroDur      // fade-out starts here (within clip)
+  process.stdout.write(`   sting 3 (${IO_MID}s mid)... `)
+  mkSting(ioP, sting3, IO_MID)
+  console.log('done')
 
-  const TOTAL          = PRE + introDur + GAP + storyDur + GAP + outroDur + POST
+  process.stdout.write(`   sting 4 (${IO_CLOSE}s close, fade-out)... `)
+  mkSting(ioP, sting4, IO_CLOSE, { fadeIn: 0.3, fadeOut: 3.0 })  // 3s fade-out to silence
+  console.log('done')
 
-  console.log(`\n⏱   Timeline: t=0 io starts | t=${PRE} Belle B | t=${(PRE+introDur).toFixed(1)} done`)
-  console.log(`    t=${IO_INTRO_FO.toFixed(1)} crossfade1 | t=${(PRE+introDur+GAP).toFixed(1)} narrator`)
-  console.log(`    t=${(PRE+introDur+GAP+storyDur).toFixed(1)} narrator done | t=${OUTRO_DELAY.toFixed(1)} crossfade2`)
-  console.log(`    t=${(PRE+introDur+GAP+storyDur+GAP).toFixed(1)} Belle B outro | t=${TOTAL.toFixed(1)} END`)
-
-  // ── VOICE TRACK ────────────────────────────────────────────────────────────
-  // [3s sil][intro][4s sil][story][4s sil][outro][3s sil]
-  const sils = [
-    mkSilence(path.join(tmp, 'sil_pre.mp3'),  PRE),
-    mkSilence(path.join(tmp, 'sil_gap1.mp3'), GAP),
-    mkSilence(path.join(tmp, 'sil_gap2.mp3'), GAP),
-    mkSilence(path.join(tmp, 'sil_post.mp3'), POST),
+  // ── Print timeline ────────────────────────────────────────────────────────
+  let t = 0
+  const tl = [
+    ['IO open',       IO_OPEN],
+    ['Belle B intro', introDur],
+    ['IO bridge',     IO_BRIDGE],
+    ['Story',         storyDur],
+    ['IO mid',        IO_MID],
+    ['Belle B outro', outroDur],
+    ['IO close',      IO_CLOSE],
   ]
-  const voiceP = path.join(tmp, 'voice_track.mp3')
-  concatFiles([sils[0], introP, sils[1], rawP, sils[2], outroP, sils[3]], voiceP, 'voice track')
+  console.log('\n⏱   Timeline:')
+  for (const [label, dur] of tl) {
+    console.log(`    ${t.toFixed(1)}s → ${(t + dur).toFixed(1)}s  [${label}]`)
+    t += dur
+  }
+  const totalDur = t
+  console.log(`    Total: ${(totalDur / 60).toFixed(2)} min`)
 
-  // ── MUSIC CLIPS ────────────────────────────────────────────────────────────
-  // Each clip has its silence pre-baked → no adelay needed in amix step
-  const musicA = path.join(tmp, 'music_a.mp3')
-  const musicB = path.join(tmp, 'music_b.mp3')
-  const musicC = path.join(tmp, 'music_c.mp3')
+  // ── Concatenate final mix ─────────────────────────────────────────────────
+  const finalP = path.join(tmp, 'final_mix.mp3')
+  console.log('\n🎬  Building final mix...')
+  concatFiles(
+    [sting1, introNorm, sting2, storyNorm, sting3, outroNorm, sting4],
+    finalP,
+    'concat all sections'
+  )
 
-  process.stdout.write('   music_a (io intro, t=0)... ')
-  mkPositionedClip(ioP, musicA, tmp, {
-    silenceDur: 0,
-    clipDur:    IO_INTRO_DUR,
-    vol:        IO_VOL,
-    fadeIn:     1,
-    fadeOutSt:  IO_INTRO_FO,
-    fadeOutDur: XF,
-  })
-  console.log(`done (${getDur(musicA).toFixed(1)}s)`)
+  // Apply limiter for safety
+  const limitedP = path.join(tmp, 'final_limited.mp3')
+  ff(['-i', finalP,
+    '-af', 'alimiter=level_in=1:level_out=0.99:limit=0.99:attack=5:release=50',
+    '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', limitedP], 'apply limiter')
 
-  process.stdout.write(`   music_b (bg, starts t=${BG_DELAY.toFixed(1)})... `)
-  mkPositionedClip(bgP, musicB, tmp, {
-    silenceDur: BG_DELAY,
-    clipDur:    BG_DUR,
-    vol:        MUSIC_VOL,
-    fadeIn:     XF,
-    fadeOutSt:  BG_FO,
-    fadeOutDur: XF,
-  })
-  console.log(`done (${(getDur(musicB)/60).toFixed(2)} min)`)
+  const sz  = (fs.statSync(limitedP).size / 1024 / 1024).toFixed(1)
+  const dur = getDur(limitedP)
+  console.log(`\n✅  ${sz} MB  |  ${(dur / 60).toFixed(2)} min`)
 
-  process.stdout.write(`   music_c (io outro, starts t=${OUTRO_DELAY.toFixed(1)})... `)
-  mkPositionedClip(ioP, musicC, tmp, {
-    silenceDur: OUTRO_DELAY,
-    clipDur:    IO_OUTRO_DUR,
-    vol:        IO_VOL,
-    fadeIn:     XF,
-    fadeOutSt:  IO_OUTRO_FO,
-    fadeOutDur: POST,
-  })
-  console.log(`done (${(getDur(musicC)/60).toFixed(2)} min)`)
-
-  // ── MUSIC TRACK — amix 3 full-timeline clips (no adelay) ──────────────────
-  const musicP = path.join(tmp, 'music_track.mp3')
-  process.stdout.write('   music track (amix 3 clips)... ')
-  ff([
-    '-i', musicA, '-i', musicB, '-i', musicC,
-    '-filter_complex',
-    '[0:a][1:a][2:a]amix=inputs=3:duration=longest:dropout_transition=0:normalize=0[out]',
-    '-map', '[out]', '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', musicP,
-  ])
-  console.log(`done (${(getDur(musicP)/60).toFixed(2)} min)`)
-
-  // ── FINAL MIX — voice + music ──────────────────────────────────────────────
-  const output = path.join(tmp, 'final_mix.mp3')
-  process.stdout.write('\n🎬  Final mix... ')
-  ff([
-    '-i', voiceP, '-i', musicP,
-    '-filter_complex',
-    '[0:a][1:a]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0,' +
-    'alimiter=level_in=1:level_out=0.99:limit=0.99:attack=5:release=50[out]',
-    '-map', '[out]', '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', output,
-  ])
-  const sz  = (fs.statSync(output).size / 1024 / 1024).toFixed(1)
-  const dur = getDur(output)
-  console.log(`done\n\n✅  ${sz} MB  |  ${(dur / 60).toFixed(2)} min  (expected ${(TOTAL / 60).toFixed(2)} min)`)
-
-  // ── UPLOAD ─────────────────────────────────────────────────────────────────
+  // ── Upload ────────────────────────────────────────────────────────────────
   console.log('\n☁️   Uploading...')
-  const buf         = fs.readFileSync(output)
-  // Use a versioned filename to bust Supabase CDN cache
   const version     = Date.now()
   const storagePath = `asc3/${FOLDER}/final_mix_${version}.mp3`
+  const buf         = fs.readFileSync(limitedP)
   const { error: upErr } = await sb.storage.from('audio').upload(storagePath, buf, { contentType: 'audio/mpeg', upsert: false })
   if (upErr) throw new Error('Upload: ' + upErr.message)
   const { data: { publicUrl } } = sb.storage.from('audio').getPublicUrl(storagePath)
   const { error: dbErr } = await sb.from('stories').update({ audio_url: publicUrl }).eq('id', STORY_ID)
-  if (dbErr) throw new Error('DB: ' + dbErr.message)
-  console.log(`✅  ${publicUrl}\n`)
+  if (dbErr) throw new Error('DB update: ' + dbErr.message)
+
+  console.log(`✅  Live: ${publicUrl}\n`)
   fs.rmSync(tmp, { recursive: true })
 }
 

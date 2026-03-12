@@ -55,6 +55,7 @@ function PlayerContent() {
   const [sectionLabel, setSectionLabel] = useState('')
   const introMusicRef = useRef('')
   const bgMusicRef    = useRef<string | null>(null)
+  const noMusicRef    = useRef(false)  // true when playing a pre-rendered final mix
   const segDursRef    = useRef<number[]>([])
   const completedRef  = useRef(0)
   const [totalDur, setTotalDur] = useState(0)
@@ -125,7 +126,8 @@ function PlayerContent() {
             setQueue([])
             introMusicRef.current = ''
             bgMusicRef.current = null
-            if (musicRef.current) { musicRef.current.pause(); musicRef.current.src = ''; musicRef.current.volume = 0 }
+            noMusicRef.current = true
+            if (musicRef.current) { musicRef.current.pause(); musicRef.current.src = 'about:blank'; musicRef.current.volume = 0 }
           } else if (pl.queue?.length > 1) {
             introMusicRef.current = pl.introOutroMusicUrl || introMusicRef.current
             bgMusicRef.current    = pl.backgroundMusicUrl || bgMusicRef.current
@@ -192,7 +194,7 @@ function PlayerContent() {
       audioRef.current.play().then(() => {
         setIsPlaying(true)
         const m = musicRef.current
-        if (m?.src) {
+        if (!noMusicRef.current && m?.src && m.src !== 'about:blank') {
           m.volume = 0
           m.play().catch(() => {})
           // Fade intro music in gently then duck under first voice
@@ -251,8 +253,7 @@ function PlayerContent() {
         }}
         onPlay={() => {
           setIsPlaying(true)
-          // Always duck music the moment voice starts — this is the key fix
-          duck()
+          if (!noMusicRef.current) duck()
         }}
         onPause={() => setIsPlaying(false)}
         onEnded={() => {
