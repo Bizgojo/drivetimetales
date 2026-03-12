@@ -19,6 +19,8 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from('stories')
       .select('*')
+      .eq('status', 'published')   // only show published stories
+      .eq('is_hidden', false)      // only show visible stories
       .order('created_at', { ascending: false });
 
     if (category) {

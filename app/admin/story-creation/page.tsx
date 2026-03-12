@@ -1744,11 +1744,14 @@ const PublishStage: React.FC<{
         }),
       });
 
-      if (response.ok) {
+      const data = await response.json();
+      if (response.ok && data.success) {
         alert('✅ Story published successfully!');
         onComplete();
+      } else if (data.duplicate) {
+        alert(`⚠️ Duplicate detected!\n\n${data.error}\n\nGo to Stage 2, delete the old published version first, then publish this one.`);
       } else {
-        alert('❌ Failed to publish story');
+        alert(`❌ Failed to publish: ${data.error || 'Unknown error'}`);
       }
     } catch (error) {
       alert('❌ Error publishing story');

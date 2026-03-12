@@ -12,6 +12,23 @@ export async function POST(req: NextRequest) {
 
     const { storyId, destinations } = body
 
+    // Check for existing published story with same title (duplicate guard)
+    const { data: existing } = await supabase
+      .from('stories')
+      .select('id, title')
+      .eq('status', 'published')
+      .eq('is_hidden', false)
+      .ilike('title', (await supabase.from('stories').select('title').eq('id', storyId).single()).data?.title || '')
+      .neq('id', storyId)
+
+    if (existing && existing.length > 0) {
+      return NextResponse.json({
+        success: false,
+        duplicate: true,
+        error: `A published story with this title already exists (ID: ${existing[0].id}). Archive the existing one first, or use a different title.`
+      }, { status: 409 })
+    }
+
     // Update story: published + visible in library
     const { error, data } = await supabase
       .from('stories')
