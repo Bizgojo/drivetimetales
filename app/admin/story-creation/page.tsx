@@ -1985,9 +1985,8 @@ export default function StoryCreationPage() {
   };
 
   const handlePublishComplete = () => {
-    navigateToStage('create');
     setSelectedStory(null);
-    setStories([]);
+    navigateToStage('to-test'); // return to Stage 2, keep stories list intact
   };
 
   const handleUpdateStory = (updatedStory: Story) => {
