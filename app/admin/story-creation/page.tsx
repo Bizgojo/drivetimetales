@@ -659,11 +659,14 @@ const StoriesToTestStage: React.FC<{
                 </div>
                 <div className="flex flex-col items-end gap-2">
                   <span className={`px-2 py-1 rounded text-xs font-medium whitespace-nowrap ${
-                    story.status === 'ready' ? 'bg-green-100 text-green-800' :
+                    story.status === 'published' ? 'bg-green-100 text-green-800' :
+                    story.status === 'ready'     ? 'bg-teal-100 text-teal-800' :
                     story.status === 'in_review' ? 'bg-blue-100 text-blue-800' :
                     'bg-yellow-100 text-yellow-800'
                   }`}>
-                    {story.status === 'ready' ? '✅ Ready' : story.status === 'in_review' ? '🔄 Reviewing' : '⏳ Pending'}
+                    {story.status === 'published' ? '🚀 Published' :
+                     story.status === 'ready'     ? '✅ Ready' :
+                     story.status === 'in_review' ? '🔄 Reviewing' : '⏳ Pending'}
                   </span>
                   <button
                     onClick={(e) => { e.stopPropagation(); onDelete(story.id); }}
@@ -1810,7 +1813,7 @@ export default function StoryCreationPage() {
   useEffect(() => {
     const loadStories = async () => {
       try {
-        const res = await fetch('/api/asc3/list-stories?status=pending');
+        const res = await fetch('/api/asc3/list-stories?status=all');
         const data = await res.json();
         if (data.success && data.stories?.length > 0) {
           setStories(data.stories);
