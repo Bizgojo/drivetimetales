@@ -117,17 +117,19 @@ export async function POST(req: NextRequest) {
     }
 
     // Fetch story details — use concept/tone for visual prompt, NOT raw script
-    const { data: story } = await supabase
+    const { data: story, error: storyErr } = await supabase
       .from('stories')
-      .select('title, author, genre, primary_genre, tone, description')
+      .select('title, author, genre, primary_genre, description, intro_text')
       .eq('id', storyId)
       .single()
+
+    if (storyErr) console.error('Story fetch error:', storyErr.message)
 
     const dallePrompt = buildCoverPrompt({
       title: story?.title || 'Untitled',
       author: story?.author || 'Unknown Author',
       genre: story?.genre || story?.primary_genre || genre || 'fiction',
-      tone: story?.tone || undefined,
+      concept: story?.description || story?.intro_text || undefined,
     })
 
     console.log('🎨 Generating cover via Stability AI...')

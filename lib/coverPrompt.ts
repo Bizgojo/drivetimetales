@@ -51,18 +51,21 @@ export function buildCoverPrompt(params: {
 
   const toneDesc = tone ? `, ${tone} tone` : ''
 
+  // Build scene description from concept if available
+  const sceneInstruction = concept
+    ? `The scene must visually reflect this story: "${concept.slice(0, 300)}". Depict the specific setting, mood, and atmosphere described — not a generic landscape. `
+    : ''
+
   // No text in the prompt — title/author added programmatically via sharp overlay
-  // Corner note: bottom corners are overlaid with UI pill badges — keep them naturally
-  // textured/atmospheric but avoid placing key subjects, faces, or focal points there.
   return (
     `A dramatic atmospheric background image for an audiobook cover. ` +
     `Genre: ${genre}${toneDesc}. ` +
     `Visual style: ${styleRef}. ` +
+    sceneInstruction +
     `Square format, fills entire canvas. ` +
-    `Cinematic lighting, rich moody colors, professional composition. ` +
+    `Cinematic lighting, professional composition. ` +
     `The main subject and focal point must be centered or in the upper half of the image. ` +
-    `Bottom corners should be naturally dark, shadowy, or softly textured — ` +
-    `atmospheric but free of important subjects, faces, or details (they will be covered by UI elements). ` +
+    `Bottom-right corner must be naturally dark or shadowy — no important subjects there. ` +
     `IMPORTANT: absolutely no text, no words, no letters, no numbers anywhere in the image. ` +
     `Pure atmospheric visual scene only.`
   )
