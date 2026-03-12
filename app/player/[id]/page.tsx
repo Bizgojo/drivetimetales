@@ -55,7 +55,7 @@ function PlayerContent() {
   const [sectionLabel, setSectionLabel] = useState('')
   const introMusicRef = useRef('')
   const bgMusicRef    = useRef<string | null>(null)
-  const noMusicRef    = useRef(false)  // true when playing a pre-rendered final mix
+  const noMusicRef    = useRef(true)   // music disabled globally — voice only
   const segDursRef    = useRef<number[]>([])
   const completedRef  = useRef(0)
   const [totalDur, setTotalDur] = useState(0)
