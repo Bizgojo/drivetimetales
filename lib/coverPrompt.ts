@@ -19,14 +19,37 @@ export function buildCoverPrompt(params: {
     drama: 'cinematic realism, emotionally charged portrait, naturalistic lighting',
     historical: 'period-accurate textures, aged paper tones, dramatic historical atmosphere',
     'true crime': 'dark, gritty, evidence-table aesthetic, dramatic noir lighting',
+    uplifting: 'warm golden light, soft bright tones, hopeful and life-affirming imagery — like a feel-good bestseller',
+    heartwarming: 'cozy warm palette, gentle sunlight, emotional warmth — like a Hallmark novel cover',
+    'dog lover': 'warm golden tones, joyful energy, soft natural light, bond between human and animal — heartwarming and bright',
+    comedy: 'bright cheerful colors, playful composition, light-hearted whimsy',
+    inspirational: 'radiant warm light, uplifting imagery, soft golden hour tones',
+  }
+
+  // Tone overrides genre for mood-driven styles
+  const toneStyleMap: Record<string, string> = {
+    uplifting: genreStyle.uplifting,
+    heartwarming: genreStyle.heartwarming,
+    heartfelt: genreStyle.heartwarming,
+    warm: 'soft warm lighting, golden tones, gentle and inviting atmosphere',
+    hopeful: 'bright open skies, warm golden light, optimistic and uplifting imagery',
+    funny: genreStyle.comedy,
+    humorous: genreStyle.comedy,
+    inspiring: genreStyle.inspirational,
+    emotional: 'deeply emotional, soft cinematic lighting, intimate and moving portrait',
+    cozy: 'warm firelight tones, comfortable intimate setting, soft textures',
   }
 
   const g = genre.toLowerCase()
-  const styleRef =
-    Object.entries(genreStyle).find(([k]) => g.includes(k))?.[1] ||
-    'cinematic, sophisticated, dramatic lighting, professional audiobook cover quality'
+  const t = (tone || '').toLowerCase()
 
-  const toneDesc = tone ? `, ${tone}` : ''
+  // Check tone first — it overrides genre mood
+  const toneOverride = Object.entries(toneStyleMap).find(([k]) => t.includes(k))?.[1]
+  const styleRef = toneOverride ||
+    Object.entries(genreStyle).find(([k]) => g.includes(k))?.[1] ||
+    'cinematic, sophisticated, professional audiobook cover quality'
+
+  const toneDesc = tone ? `, ${tone} tone` : ''
 
   // No text in the prompt — title/author added programmatically via sharp overlay
   // Corner note: bottom corners are overlaid with UI pill badges — keep them naturally

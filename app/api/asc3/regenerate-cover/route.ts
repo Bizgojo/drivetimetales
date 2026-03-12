@@ -105,15 +105,15 @@ export async function POST(req: NextRequest) {
     // Fetch story details — use concept/tone for visual prompt, NOT raw script
     const { data: story } = await supabase
       .from('stories')
-      .select('title, author, genre, description')
+      .select('title, author, genre, primary_genre, tone, description')
       .eq('id', storyId)
       .single()
 
     const dallePrompt = buildCoverPrompt({
       title: story?.title || 'Untitled',
       author: story?.author || 'Unknown Author',
-      genre: story?.genre || genre || 'fiction',
-      // no concept/script — any story context risks content policy violations
+      genre: story?.genre || story?.primary_genre || genre || 'fiction',
+      tone: story?.tone || undefined,
     })
 
     console.log('🎨 Generating cover via Stability AI...')
