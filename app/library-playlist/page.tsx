@@ -243,7 +243,7 @@ function LibraryPlaylistContent() {
 
       <div style={{ padding: '16px 16px 8px' }}>
         <h1 style={{ color: 'white', fontSize: 20, fontWeight: 800, margin: 0 }}>Build Your Playlist</h1>
-        <p style={{ color: '#94a3b8', fontSize: 13, margin: '4px 0 0' }}>Tap a story or series to add it to your queue.</p>
+        <p style={{ color: '#ffffff', fontSize: 13, margin: '4px 0 0' }}>Tap a story or series to add it to your queue.</p>
       </div>
 
       <div style={{ position: 'sticky', top: '60px', zIndex: 40, background: '#020617' }}>
@@ -258,7 +258,7 @@ function LibraryPlaylistContent() {
           setSelectedGroup={setSelectedGroup}
         />
         <div style={{ background: '#020617', padding: '8px 16px', textAlign: 'center', borderBottom: '1px solid rgba(249,115,22,0.15)' }}>
-          <div style={{ fontSize: 11, fontWeight: 800, color: playlist.length > 0 ? '#f97316' : '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: playlist.length > 0 ? '#f97316' : '#ffffff', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
             {playlist.length > 0
               ? `Your Playlist · ${playlist.length} ${playlist.length === 1 ? 'story' : 'stories'} · ${formatDuration(totalPlaylistMins)}`
               : 'Your Playlist · 0 Stories — tap below to add'}
@@ -276,7 +276,7 @@ function LibraryPlaylistContent() {
                 <img src={entry.cover_url || '/images/et-logo.png'} alt={entry.title} style={{ width: 60, height: 60, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ color: 'white', fontSize: 14, fontWeight: 700, marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{entry.title}</div>
-                  <div style={{ color: '#94a3b8', fontSize: 12 }}>{formatDuration(entry.duration_mins)} · {entry.author}</div>
+                  <div style={{ color: '#ffffff', fontSize: 12 }}>{formatDuration(entry.duration_mins)} · {entry.author}</div>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                   {i > 0 && <button onClick={() => moveUp(i)} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: 'white', cursor: 'pointer', fontSize: 12, width: 28, height: 28, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>▲</button>}
@@ -292,7 +292,7 @@ function LibraryPlaylistContent() {
       {/* ── Available library cards ── */}
       <div style={{ padding: '0 16px' }}>
         {filteredCards.length === 0 && (
-          <div style={{ color: '#94a3b8', textAlign: 'center', padding: '40px 0', fontSize: 14 }}>
+          <div style={{ color: '#ffffff', textAlign: 'center', padding: '40px 0', fontSize: 14 }}>
             {cards.length === 0 ? 'Your library is empty — browse stories to add them.' : 'No matches for current filters.'}
           </div>
         )}
@@ -312,8 +312,8 @@ function LibraryPlaylistContent() {
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ color: 'white', fontSize: 14, fontWeight: 700, marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.series_name}</div>
-                    <div style={{ color: '#cbd5e1', fontSize: 12 }}>{card.genre}</div>
-                    <div style={{ color: '#94a3b8', fontSize: 12 }}>{card.episode_count} episodes · {formatDuration(card.total_mins)} total · {card.author}</div>
+                    <div style={{ color: '#ffffff', fontSize: 12 }}>{card.genre}</div>
+                    <div style={{ color: '#ffffff', fontSize: 12 }}>{card.episode_count} episodes · {formatDuration(card.total_mins)} total · {card.author}</div>
                   </div>
                   <div style={{ flexShrink: 0, background: '#22c55e', borderRadius: 20, padding: '6px 14px', fontSize: 13, fontWeight: 700, color: '#042013' }}>+ Add All</div>
                 </div>
@@ -326,8 +326,8 @@ function LibraryPlaylistContent() {
                     style={{ width: 80, height: 80, borderRadius: 10, objectFit: 'cover', flexShrink: 0 }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ color: 'white', fontSize: 14, fontWeight: 700, marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.story.title}</div>
-                    <div style={{ color: '#cbd5e1', fontSize: 12 }}>{card.story.genre}</div>
-                    <div style={{ color: '#94a3b8', fontSize: 12 }}>{formatDuration(card.story.duration_mins)} · {card.story.author}</div>
+                    <div style={{ color: '#ffffff', fontSize: 12 }}>{card.story.genre}</div>
+                    <div style={{ color: '#ffffff', fontSize: 12 }}>{formatDuration(card.story.duration_mins)} · {card.story.author}</div>
                   </div>
                   <div style={{ flexShrink: 0, background: '#22c55e', borderRadius: 20, padding: '6px 14px', fontSize: 13, fontWeight: 700, color: '#042013' }}>+ Add</div>
                 </div>
