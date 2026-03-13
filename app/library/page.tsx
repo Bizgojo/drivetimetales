@@ -140,57 +140,61 @@ function LibraryContent() {
 
 
   useEffect(() => {
+    if (authLoading) return  // wait for auth to resolve before fetching
     async function fetchData() {
-      // Fetch stories from story_analytics view to get avg_rating + review_count
-      const { data: storiesData } = await supabase
-        .from('story_analytics')
-        .select('id, title, genre, author, duration_mins, cover_url, series_id, series_name, episode_title, description, is_hidden, series_number, series_total, flag, is_free, created_at, avg_rating, review_count')
-        .not('cover_url', 'is', null).eq('is_hidden', false)
-        .order('published_on', { ascending: false })
-      if (storiesData) setStories(storiesData)
-      
-      if (user?.id) {
-        // Fetch user data
-        const { data: userData } = await supabase
-          .from('users')
-          .select('first_name, display_name')
-          .eq('id', user.id)
-          .single()
-        if (userData) {
-          setUserName(userData.first_name || userData.display_name || 'Friend')
-        }
-        
-        // Fetch user library
-        const { data: libraryData } = await supabase
-          .from('user_library')
-          .select('story_id, progress, completed')
-          .eq('user_id', user.id)
-        if (libraryData) {
-          console.log('[Library] Loaded', libraryData.length, 'library entries for user', user.id)
-          setUserLibrary(libraryData)
+      try {
+        // Fetch stories — order by created_at (published_on may not exist in view)
+        const { data: storiesData } = await supabase
+          .from('story_analytics')
+          .select('id, title, genre, author, duration_mins, cover_url, series_id, series_name, episode_title, description, is_hidden, series_number, series_total, flag, is_free, created_at, avg_rating, review_count')
+          .not('cover_url', 'is', null).eq('is_hidden', false)
+          .order('created_at', { ascending: false })
+        if (storiesData) setStories(storiesData)
+
+        if (user?.id) {
+          // Fetch user data
+          const { data: userData } = await supabase
+            .from('users')
+            .select('first_name, display_name')
+            .eq('id', user.id)
+            .single()
+          if (userData) {
+            setUserName(userData.first_name || userData.display_name || 'Friend')
+          }
+
+          // Fetch user library
+          const { data: libraryData } = await supabase
+            .from('user_library')
+            .select('story_id, progress, completed')
+            .eq('user_id', user.id)
+          if (libraryData) {
+            setUserLibrary(libraryData)
+          }
+
+          // Fetch which stories this user has already reviewed
+          const { data: reviewsData } = await supabase
+            .from('reviews')
+            .select('story_id')
+            .eq('user_id', user.id)
+          if (reviewsData) {
+            setUserReviewedIds(new Set(reviewsData.map((r: any) => r.story_id)))
+          }
         }
 
-        // Fetch which stories this user has already reviewed
-        const { data: reviewsData } = await supabase
-          .from('reviews')
-          .select('story_id')
-          .eq('user_id', user.id)
-        if (reviewsData) {
-          setUserReviewedIds(new Set(reviewsData.map((r: any) => r.story_id)))
+        // Fetch series table data
+        const { data: seriesRows } = await supabase
+          .from('series')
+          .select('title, cover_image, description')
+        if (seriesRows) {
+          const lookup: Record<string, { cover_image: string | null, description: string | null }> = {}
+          seriesRows.forEach((s: any) => { lookup[s.title] = { cover_image: s.cover_image, description: s.description } })
+          setSeriesTableData(lookup)
         }
+      } catch (err) {
+        console.error('[Library] fetchData error:', err)
+      } finally {
+        setLoading(false)  // ALWAYS clear loading, even on error
       }
-      
-      // Fetch series table data
-      const { data: seriesRows } = await supabase
-        .from('series')
-        .select('title, cover_image, description')
-      if (seriesRows) {
-        const lookup: Record<string, { cover_image: string | null, description: string | null }> = {}
-        seriesRows.forEach((s: any) => { lookup[s.title] = { cover_image: s.cover_image, description: s.description } })
-        setSeriesTableData(lookup)
-      }
-      
-      setLoading(false)
     }
     fetchData()
   }, [user, authLoading])
