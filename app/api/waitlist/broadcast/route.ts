@@ -12,7 +12,6 @@ import { createClient } from '@supabase/supabase-js'
 export const maxDuration = 300
 export const runtime = 'nodejs'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -63,6 +62,7 @@ const LAUNCH_EMAIL_HTML = `
 `
 
 export async function POST(req: NextRequest) {
+  const resend = new Resend(process.env.RESEND_API_KEY)
   try {
     const { secret } = await req.json()
 
