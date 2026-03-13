@@ -264,7 +264,8 @@ function LibraryContent() {
       libraryLookup.get(eid)?.completed
     ).length
   })
-  const singles = filteredStories.filter(s => !s.series_name)
+  const singles = filteredStories.filter(s => !s.series_name).sort((a, b) => (a.duration_mins || 0) - (b.duration_mins || 0))
+  seriesGroups.sort((a, b) => (a.total_duration_mins || 0) - (b.total_duration_mins || 0))
 
   type DisplayItem = { type: 'single', story: Story, sortDate: string } | { type: 'series', group: SeriesGroup, sortDate: string }
   const mixedItems: DisplayItem[] = []
