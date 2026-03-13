@@ -170,6 +170,7 @@ Return ONLY the JSON array, no other text.`
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: bg, padding: '1rem' }}>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
@@ -220,7 +221,12 @@ Return ONLY the JSON array, no other text.`
               </select>
               <button onClick={searchAndGenerate} disabled={searching || !searchTopic.trim()}
                 style={{ padding: '0.65rem 1.5rem', borderRadius: '8px', border: 'none', cursor: searching || !searchTopic.trim() ? 'not-allowed' : 'pointer', fontWeight: 700, backgroundColor: searching || !searchTopic.trim() ? '#e5e5e5' : ember, color: searching || !searchTopic.trim() ? textSecondary : 'white' }}>
-                {searching ? 'Searching...' : '🔍 Find & Draft'}
+                {searching ? (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.4)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.7s linear infinite' }} />
+                    Searching Reddit...
+                  </span>
+                ) : '🔍 Find & Draft'}
               </button>
             </div>
           </div>
