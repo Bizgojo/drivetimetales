@@ -37,7 +37,13 @@ async function draftReply(post: {title: string, subreddit: string, body: string,
 Title: "${post.title}"
 ${post.body ? `Post: "${post.body}"` : ''}
 
-Write a genuine, helpful reply that adds real value to this conversation. Only mention Endless Tales if it fits naturally — never be promotional or spammy. Keep it 2-4 sentences, conversational Reddit tone. Reply with ONLY the reply text, nothing else.`
+Write a genuine, helpful reply that adds real value. Rules:
+- Endless Tales is NOT live yet — launching April 17, 2026. Never imply it's live.
+- Do NOT mention specific app stories — only the 3 free sample stories on endless-tales.com if relevant: "When Rosie Came Home" (3 min dog/soldier tearjerker), "The Grave He Dug Himself" (14 min western), "The Letters He Was Meant to Carry" (14 min uplifting)
+- If you mention Endless Tales, say it's "launching April 17" and link to endless-tales.com
+- Be helpful and community-first. Only mention ET if it fits naturally.
+- 2-4 sentences, conversational Reddit tone.
+Reply with ONLY the reply text, nothing else.`
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
