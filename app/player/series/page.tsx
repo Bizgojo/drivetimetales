@@ -34,6 +34,7 @@ function SeriesPlayerContent() {
   const [audioReady, setAudioReady] = useState(false)
   
   const audioRef = useRef<HTMLAudioElement>(null)
+  const autoPlayNext = useRef(false)
 
   const currentStory = playlist[currentIndex]
   const nextStory = playlist[currentIndex + 1]
@@ -97,13 +98,14 @@ function SeriesPlayerContent() {
     }
   }, [currentIndex, playlist])
 
-  // Auto-play when audio is ready
+  // Auto-play when audio is ready — only when auto-advancing (not on first load)
   useEffect(() => {
-    if (audioReady && audioRef.current && playlist.length > 0) {
-      audioRef.current.play().catch(err => {
-        console.error('Autoplay failed:', err)
-      })
-      setIsPlaying(true)
+    if (audioReady && autoPlayNext.current && audioRef.current) {
+      autoPlayNext.current = false
+      setTimeout(() => {
+        audioRef.current?.play().catch(err => console.error('Autoplay failed:', err))
+        setIsPlaying(true)
+      }, 300)
     }
   }, [audioReady])
 
@@ -147,6 +149,14 @@ function SeriesPlayerContent() {
     }
   }
 
+  // Backup: canPlay fires more reliably on mobile/Safari
+  const handleCanPlay = () => {
+    if (!audioReady && audioRef.current) {
+      setDuration(audioRef.current.duration || 0)
+      setAudioReady(true)
+    }
+  }
+
   // Handle time update
   const handleTimeUpdate = () => {
     if (audioRef.current) {
@@ -173,6 +183,7 @@ function SeriesPlayerContent() {
     
     // If not last story, go to next
     if (!isLastStory && nextStory) {
+      autoPlayNext.current = true
       goToNextStory()
     } else {
       // Series complete
@@ -288,7 +299,8 @@ function SeriesPlayerContent() {
         ref={audioRef} 
         src={currentStory.audio_url || undefined} 
         onTimeUpdate={handleTimeUpdate} 
-        onLoadedMetadata={handleLoadedMetadata} 
+        onLoadedMetadata={handleLoadedMetadata}
+        onCanPlay={handleCanPlay}
         onEnded={handleEnded} 
         preload="auto" 
       />
