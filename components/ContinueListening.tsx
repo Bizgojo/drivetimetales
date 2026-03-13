@@ -209,7 +209,15 @@ function SeriesCardUI({
         </div>
         <div>
           <div style={{ fontSize: 11, color: '#ffffff', marginBottom: 4 }}>
-            <strong style={{ color: '#ffffff' }}>{card.total_episodes - card.episode_number + 1} of {card.total_episodes}</strong> episodes left · <strong style={{ color: '#ffffff' }}>{card.total_remaining_mins >= 60 ? `${Math.floor(card.total_remaining_mins / 60)}h ${card.total_remaining_mins % 60}m` : `${card.total_remaining_mins} min`}</strong>
+            {(() => {
+              const fullEpsAfter = card.total_episodes - card.episode_number
+              const isPartial = card.progress > 0
+              const epCount = isPartial ? `${fullEpsAfter}+` : `${fullEpsAfter + 1}`
+              const hrs = Math.floor(card.total_remaining_mins / 60)
+              const mins = card.total_remaining_mins % 60
+              const timeStr = hrs > 0 ? `${hrs}hr ${mins}min` : `${mins}min`
+              return <><strong style={{ color: '#ffffff' }}>{epCount} Episodes, {timeStr} Remaining</strong></>
+            })()}
           </div>
           <div style={{ height: 3, background: '#334155', borderRadius: 2, overflow: 'hidden' }}>
             <div style={{ height: '100%', width: `${pct}%`, background: '#f97316', borderRadius: 2 }} />
