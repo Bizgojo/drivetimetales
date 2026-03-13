@@ -74,42 +74,30 @@ function LibraryPlaylistContent() {
   const loadData = async () => {
     setLoading(true)
 
-    // Fetch all user library stories (incl. completed — series shows all eps regardless)
+    // Fetch ALL published stories (not just user library — so all content is available for playlists)
     const { data } = await supabase
-      .from('user_library')
-      .select('story_id, stories(id, title, author, genre, duration_mins, cover_url, series_name, episode_number)')
-      .eq('user_id', user!.id)
-      .order('last_played', { ascending: false })
-      .limit(200)
+      .from('stories')
+      .select('id, title, author, genre, duration_mins, cover_url, series_name, episode_number')
+      .not('status', 'eq', 'archived')
+      .order('title', { ascending: true })
+      .limit(500)
 
-    const libraryStories: StoryItem[] = []
-    for (const row of (data || [])) {
-      const s = row.stories as any
-      if (s?.id) libraryStories.push({
-        id: s.id, title: s.title, author: s.author, genre: s.genre,
-        duration_mins: s.duration_mins, cover_url: s.cover_url,
-        series_name: s.series_name, episode_number: s.episode_number,
-      })
-    }
+    const libraryStories: StoryItem[] = (data || []).map((s: any) => ({
+      id: s.id, title: s.title, author: s.author, genre: s.genre,
+      duration_mins: s.duration_mins, cover_url: s.cover_url,
+      series_name: s.series_name, episode_number: s.episode_number,
+    }))
 
-    // Find unique series names from library
-    const seriesNames = Array.from(new Set(
-      libraryStories.filter(s => s.series_name).map(s => s.series_name!)
-    ))
-
-    // For each series, fetch ALL episodes from stories table (any status — include archived)
+    // Group series episodes (already fetched above)
     const seriesEpisodesMap: Record<string, StoryItem[]> = {}
-    if (seriesNames.length > 0) {
-      const { data: allEps } = await supabase
-        .from('stories')
-        .select('id, title, author, genre, duration_mins, cover_url, series_name, episode_number')
-        .in('series_name', seriesNames)
-        .order('episode_number', { ascending: true })
-      for (const ep of (allEps || [])) {
-        if (!ep.series_name) continue
-        if (!seriesEpisodesMap[ep.series_name]) seriesEpisodesMap[ep.series_name] = []
-        seriesEpisodesMap[ep.series_name].push(ep as StoryItem)
-      }
+    for (const s of libraryStories) {
+      if (!s.series_name) continue
+      if (!seriesEpisodesMap[s.series_name]) seriesEpisodesMap[s.series_name] = []
+      seriesEpisodesMap[s.series_name].push(s)
+    }
+    // Sort episodes within each series
+    for (const name of Object.keys(seriesEpisodesMap)) {
+      seriesEpisodesMap[name].sort((a, b) => (a.episode_number || 0) - (b.episode_number || 0))
     }
 
     // Restore existing playlist from localStorage
@@ -255,7 +243,7 @@ function LibraryPlaylistContent() {
 
       <div style={{ padding: '16px 16px 8px' }}>
         <h1 style={{ color: 'white', fontSize: 20, fontWeight: 800, margin: 0 }}>Build Your Playlist</h1>
-        <p style={{ color: '#64748b', fontSize: 13, margin: '4px 0 0' }}>Tap a story or series to add it to your queue.</p>
+        <p style={{ color: '#94a3b8', fontSize: 13, margin: '4px 0 0' }}>Tap a story or series to add it to your queue.</p>
       </div>
 
       <div style={{ position: 'sticky', top: '60px', zIndex: 40, background: '#020617' }}>
@@ -270,7 +258,7 @@ function LibraryPlaylistContent() {
           setSelectedGroup={setSelectedGroup}
         />
         <div style={{ background: '#020617', padding: '8px 16px', textAlign: 'center', borderBottom: '1px solid rgba(249,115,22,0.15)' }}>
-          <div style={{ fontSize: 11, fontWeight: 800, color: playlist.length > 0 ? '#f97316' : '#475569', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: playlist.length > 0 ? '#f97316' : '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
             {playlist.length > 0
               ? `Your Playlist · ${playlist.length} ${playlist.length === 1 ? 'story' : 'stories'} · ${formatDuration(totalPlaylistMins)}`
               : 'Your Playlist · 0 Stories — tap below to add'}
@@ -304,7 +292,7 @@ function LibraryPlaylistContent() {
       {/* ── Available library cards ── */}
       <div style={{ padding: '0 16px' }}>
         {filteredCards.length === 0 && (
-          <div style={{ color: '#475569', textAlign: 'center', padding: '40px 0', fontSize: 14 }}>
+          <div style={{ color: '#94a3b8', textAlign: 'center', padding: '40px 0', fontSize: 14 }}>
             {cards.length === 0 ? 'Your library is empty — browse stories to add them.' : 'No matches for current filters.'}
           </div>
         )}
@@ -324,7 +312,7 @@ function LibraryPlaylistContent() {
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ color: 'white', fontSize: 14, fontWeight: 700, marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.series_name}</div>
-                    <div style={{ color: '#64748b', fontSize: 12 }}>{card.genre}</div>
+                    <div style={{ color: '#cbd5e1', fontSize: 12 }}>{card.genre}</div>
                     <div style={{ color: '#94a3b8', fontSize: 12 }}>{card.episode_count} episodes · {formatDuration(card.total_mins)} total · {card.author}</div>
                   </div>
                   <div style={{ flexShrink: 0, background: '#22c55e', borderRadius: 20, padding: '6px 14px', fontSize: 13, fontWeight: 700, color: '#042013' }}>+ Add All</div>
@@ -338,7 +326,7 @@ function LibraryPlaylistContent() {
                     style={{ width: 80, height: 80, borderRadius: 10, objectFit: 'cover', flexShrink: 0 }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ color: 'white', fontSize: 14, fontWeight: 700, marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.story.title}</div>
-                    <div style={{ color: '#64748b', fontSize: 12 }}>{card.story.genre}</div>
+                    <div style={{ color: '#cbd5e1', fontSize: 12 }}>{card.story.genre}</div>
                     <div style={{ color: '#94a3b8', fontSize: 12 }}>{formatDuration(card.story.duration_mins)} · {card.story.author}</div>
                   </div>
                   <div style={{ flexShrink: 0, background: '#22c55e', borderRadius: 20, padding: '6px 14px', fontSize: 13, fontWeight: 700, color: '#042013' }}>+ Add</div>
