@@ -331,7 +331,7 @@ function CopyFromAppModal({ onClose, onAdded }: { onClose: () => void; onAdded: 
                   disabled={rendering || !introAudioUrl || !outroAudioUrl}
                   onClick={handleRenderMix}
                 >
-                  {rendering ? '⏳ Rendering (1-2 min)...' : '🎬 Render Final Mix'}
+                  {rendering ? '⏳ Rendering — please wait, do not close this window...' : '🎬 Render Final Mix'}
                 </button>
                 {finalAudioUrl && (
                   <div style={{ marginTop: '10px' }}>

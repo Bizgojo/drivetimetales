@@ -8,6 +8,9 @@
  * Body: { landingStoryId, musicVolume?: number }
  */
 import { NextRequest, NextResponse } from 'next/server'
+
+export const maxDuration = 300 // 5 min — needed for long stories (80+ segments)
+export const runtime = 'nodejs'
 import { createClient } from '@supabase/supabase-js'
 import { promises as fs } from 'fs'
 import path from 'path'
