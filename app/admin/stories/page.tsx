@@ -136,7 +136,6 @@ function StoryEditorPanel({
   }
 
   async function handleSave() {
-    if (overLimit) return
     setSaving(true)
     console.log('Saving story:', story.id, { title, author, primaryGenre })
     const { data, error } = await supabase
