@@ -26,19 +26,14 @@ interface QueueItem {
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZteWhsZmVvdXpzbGl4dGttZGR5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYwODk2MTIsImV4cCI6MjA4MTY2NTYxMn0.7asAd8ctLKJLdv2AojbF8WEo-N6dVheVA3mWxjkFwkk'
 
 async function callClaude(prompt: string, system: string): Promise<string> {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetch('/api/admin/social-draft', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1000,
-      system,
-      messages: [{ role: 'user', content: prompt }],
-      tools: [{ type: 'web_search_20250305', name: 'web_search' }],
-    })
+    body: JSON.stringify({ prompt, system }),
   })
   const data = await res.json()
-  return data.content?.filter((b: {type: string}) => b.type === 'text').map((b: {text: string}) => b.text).join('\n') || ''
+  if (!res.ok) throw new Error(data.error || 'API error')
+  return data.text || ''
 }
 
 function makeUTMLink(platform: string, postType: string, campaign: string) {
