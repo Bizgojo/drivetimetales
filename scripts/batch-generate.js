@@ -19,7 +19,29 @@ const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
 const BELLE_B_VOICE_ID = 'EXAVITQu4vr4xnSDxMaL'
-const NARRATOR_VOICE_ID = 'JBFqnCBsd6RMkjVDRZzb'
+// ─── American Narrator Pool (rotated per story, genre-aware) ─────────────────
+const NARRATOR_POOL = [
+  // Male — deep/dramatic (Thriller, Mystery, Western, Crime, Sci-Fi)
+  { voice_id: 'WUIWRUGpMCHWIDESrJVL', name: 'Quinn',         gender: 'male',   genres: ['Thriller','Mystery','Crime','Western','Science Fiction'] },
+  { voice_id: 'd5QgxQhvRNirnHGpRQdJ', name: 'DeepNarrator',  gender: 'male',   genres: ['Thriller','Western','Crime','Science Fiction','Drama'] },
+  { voice_id: 'XaRY1hVbOF8v4zmguHdl', name: 'Sterling',      gender: 'male',   genres: ['Mystery','Crime','Thriller','Drama'] },
+  { voice_id: 'v9LgF91V36LGgbLX3iHW', name: 'David',         gender: 'male',   genres: ['Drama','Science Fiction','Mystery','Romance','Family'] },
+  { voice_id: 'lWDDHwXsJXJM7nv2YgHY', name: 'Nathan',        gender: 'male',   genres: ['Drama','Science Fiction','Romance','Family','Adventure'] },
+  { voice_id: 'OxGkuZuufGcExzMjqRwp', name: 'Kyle',          gender: 'male',   genres: ['Drama','Family','Romance','Comedy','Adventure'] },
+  // Female — warm/professional (Romance, Family, Drama)
+  { voice_id: 'w2CTE3MYza6FgBnETYNT', name: 'Kimberly',      gender: 'female', genres: ['Romance','Family','Drama','Comedy'] },
+  { voice_id: 'WQP7cQUF5aAS6Axh5yaa', name: 'Elara',         gender: 'female', genres: ['Science Fiction','Thriller','Drama','Mystery'] },
+  { voice_id: 'oFnUs65XPN5XcT0txEbR', name: 'Veronica',      gender: 'female', genres: ['Drama','Romance','Family','Crime','Thriller'] },
+]
+
+function pickNarrator(genre, storyIndex) {
+  // Prefer genre-matched voices; fall back to all
+  const matched = NARRATOR_POOL.filter(v => v.genres.includes(genre))
+  const pool = matched.length > 0 ? matched : NARRATOR_POOL
+  return pool[storyIndex % pool.length]
+}
+
+const NARRATOR_VOICE_ID = 'JBFqnCBsd6RMkjVDRZzb' // legacy fallback only
 const ELEVENLABS_CHUNK_SIZE = 4500
 
 const CURATED_VOICES = [
@@ -100,7 +122,7 @@ ${genreInstructions(story.primaryGenre)}
 A unique, compelling title for the story
 
 [CHARACTER GUIDE]
-- NARRATOR (Male, middle-aged, warm British storyteller, authoritative and immersive)
+- NARRATOR (American narrator, middle-aged, authoritative and immersive — voice direction matches the story tone)
 [list every character: - NAME (Gender, Age, voice direction, personality)]
 
 [STORY]
@@ -179,11 +201,11 @@ function parseAge(desc) {
   return 'unknown'
 }
 
-function buildVoiceMap(charGuideRaw) {
+function buildVoiceMap(charGuideRaw, narratorVoice) {
   const voiceMap = new Map()
   const used = new Set([BELLE_B_VOICE_ID])
-  voiceMap.set('NARRATOR', { voice_id: NARRATOR_VOICE_ID, voice_name: 'George' })
-  used.add(NARRATOR_VOICE_ID)
+  voiceMap.set('NARRATOR', { voice_id: narratorVoice.voice_id, voice_name: narratorVoice.name })
+  used.add(narratorVoice.voice_id)
 
   const lines = charGuideRaw.split('\n').filter(l => l.trim().startsWith('-'))
   for (const line of lines) {
@@ -221,7 +243,7 @@ function buildVoiceMap(charGuideRaw) {
 }
 
 // ─── Segment parsing ──────────────────────────────────────────────────────────
-function parseSegments(storyText, voiceMap) {
+function parseSegments(storyText, voiceMap, narratorVoice) {
   const segments = []
   let idx = 0, speaker = null, lines = []
 
@@ -235,7 +257,7 @@ function parseSegments(storyText, voiceMap) {
         if (k.includes(speaker) || speaker.includes(k) || k.split(' ').some(w => w.length > 3 && speaker.includes(w))) { vi = v; break }
       }
     }
-    if (!vi) vi = { voice_id: NARRATOR_VOICE_ID, voice_name: 'George' }
+    if (!vi) vi = { voice_id: narratorVoice.voice_id, voice_name: narratorVoice.name }
     const chunks = text.length <= ELEVENLABS_CHUNK_SIZE ? [text] : splitChunks(text, ELEVENLABS_CHUNK_SIZE)
     for (const chunk of chunks) segments.push({ speaker, text: chunk, voiceId: vi.voice_id, index: idx++ })
     lines = []; speaker = null
@@ -256,7 +278,7 @@ function parseSegments(storyText, voiceMap) {
     }
   }
   flush()
-  return segments.length ? segments : [{ speaker: 'NARRATOR', text: storyText.trim(), voiceId: NARRATOR_VOICE_ID, index: 0 }]
+  return segments.length ? segments : [{ speaker: 'NARRATOR', text: storyText.trim(), voiceId: narratorVoice.voice_id, index: 0 }]
 }
 
 function splitChunks(text, max) {
@@ -406,10 +428,12 @@ async function processStory(story, idx) {
   log(`  📝 Title: "${title}" (${wordCount} words)`)
 
   // Step 2: Voice matching
-  const voiceMap = buildVoiceMap(characterGuideRaw)
+  const narratorVoice = pickNarrator(story.primaryGenre, idx)
+  log(`  🎙️ Narrator: ${narratorVoice.name} (${narratorVoice.gender}, ${narratorVoice.genres[0]})`)
+  const voiceMap = buildVoiceMap(characterGuideRaw, narratorVoice)
 
   // Step 3: Parse segments
-  const segments = parseSegments(storyScript, voiceMap)
+  const segments = parseSegments(storyScript, voiceMap, narratorVoice)
   log(`  🎭 ${segments.length} audio segments to generate`)
 
   // Step 4: Generate audio segments with ElevenLabs

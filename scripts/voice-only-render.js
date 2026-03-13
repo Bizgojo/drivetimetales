@@ -14,8 +14,9 @@ const CLI_ID = process.argv[2]
 const STORIES = CLI_ID
   ? [CLI_ID]
   : [
-      '8eb9c3f0-7f8d-495e-aa4d-a10e62633e05',  // Dead Ringer
-      '76d68b1e-8630-439e-a8fe-d229e3b11e69',  // The Grave He Dug Himself
+      'afd31da5-b149-4fcd-ad9f-5576020cc6c9',  // What the Water Keeps
+      '73ce868b-b99f-4734-9f8a-daf6f16107a4',  // What the Seam Remembers
+      '7fcfc69a-24a7-46e7-b13b-787ae6c79778',  // The Letters He Was Meant to Carry
     ]
 
 async function dl(url, dest) {

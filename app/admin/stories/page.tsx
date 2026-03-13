@@ -446,12 +446,12 @@ function StoryEditorPanel({
         <div style={{ padding: '1rem 1.25rem', borderTop: `1px solid ${border}`, display: 'flex', gap: '0.75rem' }}>
           <button
             onClick={handleSave}
-            disabled={saving || overLimit || !primaryGenre}
+            disabled={saving || overLimit}
             style={{
               flex: 1, padding: '10px', borderRadius: '8px', fontWeight: 700, fontSize: '14px',
-              backgroundColor: saved ? '#2563eb' : saving || overLimit || !primaryGenre ? '#9ca3af' : '#22c55e',
+              backgroundColor: saved ? '#2563eb' : saving || overLimit ? '#9ca3af' : '#22c55e',
               color: 'white', border: 'none',
-              cursor: saving || overLimit || !primaryGenre ? 'default' : 'pointer',
+              cursor: saving || overLimit ? 'default' : 'pointer',
             }}
           >
             {saved ? '✓ Saved!' : saving ? 'Saving...' : '✓ Save Changes'}
