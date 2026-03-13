@@ -10,20 +10,11 @@ import { NextRequest, NextResponse } from 'next/server'
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
-// Relevant subreddits only — filters out noise
-const RELEVANT_SUBREDDITS = [
-  'audiodrama','audiobooks','podcasts','storytelling','nosleep',
-  'shortstories','scifi','horror','romance','mystery',
-  'commuting','truckers','running','walking','fitness','gym',
-  'Mommit','SAHM','beyondthebump','HomeImprovement',
-  'boredom','entertainment','suggestions'
-]
+// Search these subreddits using Reddit's multi-sub search
+const SUBREDDIT_MULTI = 'audiodrama+audiobooks+podcasts+storytelling+nosleep+shortstories+commuting+truckers+running+fitness+Mommit+SAHM+boredom'
 
 async function searchReddit(topic: string, limit: number) {
-  // Search within relevant subreddits for better quality results
-  const subredditFilter = RELEVANT_SUBREDDITS.map(s => `subreddit:${s}`).join(' OR ')
-  const query = `(${encodeURIComponent(topic)}) AND (${encodeURIComponent(subredditFilter)})`
-  const url = `https://www.reddit.com/search.json?q=${query}&sort=hot&limit=${limit * 3}&t=month`
+  const url = `https://www.reddit.com/r/${SUBREDDIT_MULTI}/search.json?q=${encodeURIComponent(topic)}&restrict_sr=1&sort=hot&limit=${limit * 2}&t=month`
   const res = await fetch(url, {
     headers: { 'User-Agent': 'EndlessTalesBot/1.0 (social media manager)' }
   })
@@ -31,10 +22,7 @@ async function searchReddit(topic: string, limit: number) {
   const data = await res.json()
   const posts = data?.data?.children || []
   return posts
-    .filter((p: {data: {stickied?: boolean, subreddit: string}}) =>
-      !p.data.stickied &&
-      RELEVANT_SUBREDDITS.map(s => s.toLowerCase()).includes(p.data.subreddit.toLowerCase())
-    )
+    .filter((p: {data: {stickied?: boolean}}) => !p.data.stickied)
     .slice(0, limit)
     .map((p: {data: {title: string, subreddit: string, selftext: string, permalink: string, score: number, num_comments: number}}) => ({
       title: p.data.title,
