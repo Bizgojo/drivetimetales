@@ -270,7 +270,7 @@ function PlaylistCardUI({
       {/* Body */}
       <div style={{ flex: 1, padding: '9px 28px 9px 9px', minWidth: 0 }}>
         <div style={{ fontWeight: 700, fontSize: 14, color: 'white', lineHeight: 1.2, marginBottom: 4 }}>
-          {card.total_stories} Stories · {card.remaining_mins} min remaining
+          {card.total_stories} Stories · {card.remaining_mins} min Remaining
         </div>
         <div style={{ overflow: 'hidden' }}>
           {card.next_stories.map((title, i) => (
