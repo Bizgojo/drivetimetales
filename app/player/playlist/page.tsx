@@ -18,6 +18,7 @@ function PlaylistPlayerContent() {
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
+  const autoPlayNext = useRef(false)
   const [audioReady, setAudioReady] = useState(false)
   const audioRef = useRef<HTMLAudioElement>(null)
   const saveTimer = useRef<NodeJS.Timeout | null>(null)
@@ -48,6 +49,11 @@ function PlaylistPlayerContent() {
       else { const { data } = await supabase.from('stories').select('id, title, author, cover_url, audio_url, duration_mins').eq('id', item.id).single(); if (data) setStoryData(data); setLoading(false) }
       const saved = localStorage.getItem(`et_progress_${item.id}`)
       if (saved) { const resume = Math.max(0, parseInt(saved) - 3); if (audioRef.current) audioRef.current.currentTime = resume; setCurrentTime(resume) }
+      // Auto-play next track if previous story just ended
+      if (autoPlayNext.current && audioRef.current) {
+        autoPlayNext.current = false
+        setTimeout(() => { audioRef.current?.play().catch(() => {}) }, 300)
+      }
     }
     loadStory()
   }, [playlist, currentIndex])
@@ -66,9 +72,14 @@ function PlaylistPlayerContent() {
   }
 
   const handleEnded = async () => {
-    setIsPlaying(false); await saveProgress(duration, true)
-    if (currentIndex < playlist.length - 1) { const n = currentIndex + 1; localStorage.setItem('dtt_playlist_index', String(n)); setCurrentIndex(n) }
-    else { localStorage.removeItem('dtt_active_playlist'); localStorage.removeItem('dtt_playlist_index'); router.replace('/library') }
+    await saveProgress(duration, true)
+    if (currentIndex < playlist.length - 1) {
+      autoPlayNext.current = true  // signal next story to auto-play
+      const n = currentIndex + 1; localStorage.setItem('dtt_playlist_index', String(n)); setCurrentIndex(n)
+    } else {
+      setIsPlaying(false)
+      localStorage.removeItem('dtt_active_playlist'); localStorage.removeItem('dtt_playlist_index'); router.replace('/library')
+    }
   }
 
   const handlePlayPause = () => {
