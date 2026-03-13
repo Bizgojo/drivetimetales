@@ -18,6 +18,7 @@ interface QueueItem {
   post_type: string
   caption: string
   responding_to?: string
+  thread_url?: string
   utm_campaign: string
   status: 'draft' | 'posted'
   utm_link?: string
@@ -25,15 +26,15 @@ interface QueueItem {
 
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZteWhsZmVvdXpzbGl4dGttZGR5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYwODk2MTIsImV4cCI6MjA4MTY2NTYxMn0.7asAd8ctLKJLdv2AojbF8WEo-N6dVheVA3mWxjkFwkk'
 
-async function callClaude(prompt: string, system: string): Promise<string> {
+async function findAndDraft(topic: string, count: number, system: string) {
   const res = await fetch('/api/admin/social-draft', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt, system }),
+    body: JSON.stringify({ topic, count, system }),
   })
   const data = await res.json()
   if (!res.ok) throw new Error(data.error || 'API error')
-  return data.text || ''
+  return data.items || []
 }
 
 function makeUTMLink(platform: string, postType: string, campaign: string) {
@@ -70,38 +71,18 @@ export default function SocialPostingPage() {
     if (!searchTopic.trim()) return
     setSearching(true)
     try {
-      const prompt = `Search ${searchPlatform} for ${postCount} real conversations or post opportunities about: "${searchTopic}" that would be relevant to Endless Tales audio dramas.
-
-For each one, provide:
-1. The thread/post context (title, community, what it's about)
-2. A genuine reply or original post caption that adds value and naturally mentions Endless Tales where appropriate
-
-Format as JSON array:
-[{
-  "platform": "${searchPlatform}",
-  "post_type": "Reply" or "Original Post",
-  "responding_to": "thread title or context (null if original)",
-  "caption": "the actual post text to copy-paste"
-}]
-
-Return ONLY the JSON array, no other text.`
-
-      const raw = await callClaude(prompt, SYSTEM)
-      const clean = raw.replace(/```json|```/g, '').trim()
-      const items = JSON.parse(clean)
-      const newItems: QueueItem[] = items.map((item: {platform: string, post_type: string, responding_to?: string, caption: string}, i: number) => {
-        const campaign = `${item.platform.toLowerCase().replace('/', '_')}_${searchTopic.toLowerCase().replace(/\s+/g, '_')}_${Date.now()}_${i}`
-        return {
-          id: `${Date.now()}_${i}`,
-          platform: item.platform || searchPlatform,
-          post_type: item.post_type || 'Reply',
-          caption: item.caption,
-          responding_to: item.responding_to || undefined,
-          utm_campaign: campaign,
-          status: 'draft',
-          utm_link: makeUTMLink(item.platform || searchPlatform, item.post_type || 'Reply', campaign),
-        }
-      })
+      const items = await findAndDraft(searchTopic, postCount, SYSTEM)
+      const newItems: QueueItem[] = items.map((item: {platform: string, post_type: string, responding_to?: string, thread_url?: string, caption: string, utm_campaign: string}, i: number) => ({
+        id: `${Date.now()}_${i}`,
+        platform: item.platform || searchPlatform,
+        post_type: item.post_type || 'Reply',
+        caption: item.caption,
+        responding_to: item.responding_to || undefined,
+        thread_url: item.thread_url || undefined,
+        utm_campaign: item.utm_campaign,
+        status: 'draft',
+        utm_link: makeUTMLink(item.platform || searchPlatform, item.post_type || 'Reply', item.utm_campaign),
+      }))
       setQueue(q => [...newItems, ...q])
     } catch (e) {
       console.error(e)
@@ -249,7 +230,9 @@ Return ONLY the JSON array, no other text.`
 
                   {item.responding_to && (
                     <div style={{ backgroundColor: '#f5f5f5', borderRadius: '6px', padding: '0.5rem 0.75rem', fontSize: '12px', color: textSecondary, marginBottom: '0.75rem' }}>
-                      <strong>Responding to:</strong> {item.responding_to}
+                      <strong>Responding to:</strong> {item.thread_url
+                        ? <a href={item.thread_url} target="_blank" rel="noreferrer" style={{ color: '#f97316', marginLeft: '4px' }}>{item.responding_to} ↗</a>
+                        : ` ${item.responding_to}`}
                     </div>
                   )}
 
