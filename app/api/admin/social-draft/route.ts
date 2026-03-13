@@ -47,9 +47,12 @@ ${post.body ? `Post: "${post.body}"` : ''}
 
 Write a genuine, helpful ${isTwitter ? 'tweet' : 'reply'} that adds real value. Rules:
 - Endless Tales is NOT live yet — launching April 17, 2026. Never imply it's live.
-- Do NOT mention specific app stories — only the 3 free sample stories on endless-tales.com if relevant: "When Rosie Came Home" (3 min), "The Grave He Dug Himself" (14 min western), "The Letters He Was Meant to Carry" (14 min uplifting)
-- If you mention Endless Tales, say it's "launching April 17" and link to endless-tales.com
-- Be helpful and community-first. Only mention ET if it fits naturally.
+⚠️ PRE-LAUNCH RULES (enforced until April 18, 2026):
+- NEVER mention any Endless Tales app stories — app has NOT launched yet
+- ONLY reference these 3 free landing page stories if relevant: "When Rosie Came Home" (3 min), "The Grave He Dug Himself" (14 min western), "The Letters He Was Meant to Carry" (14 min uplifting)
+- Always say Endless Tales is "launching April 17" — NEVER imply it's live
+- Links MUST go to endless-tales.com ONLY
+- Community-first, genuine, helpful. Only mention ET when it fits naturally.
 ${formatNote}
 Reply with ONLY the post text, nothing else.`
 

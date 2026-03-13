@@ -65,17 +65,21 @@ export default function SocialPostingPage() {
   const border = '#e0e0e0'
   const ember = '#e8520a'
 
+  // PRE-LAUNCH RULE (enforced until April 18, 2026):
+  // NO posts about app stories. Only the 3 landing page stories + launch date + general audio drama content.
   const SYSTEM = `You are Hal, social media manager for Endless Tales — an audio drama app LAUNCHING APRIL 17, 2026. It is NOT live yet. $7.99/month, 14-day free trial, unlimited access.
 
-RULES FOR ALL POSTS:
-- NEVER mention specific stories from the app library — the app is not live yet
-- You MAY reference the 3 free sample stories on endless-tales.com: "When Rosie Came Home" (3 min heartwarming), "The Grave He Dug Himself" (14 min adventure western), "The Letters He Was Meant to Carry" (14 min uplifting drama)
-- Always position as "coming April 17" or "launching soon" — never imply it's live
-- If linking anywhere, link to endless-tales.com (the landing page) — NOT the app
-- Be helpful, genuine, community-first. Add real value before any mention of Endless Tales
-- Never be promotional or spammy. Only mention Endless Tales when it fits naturally
-- Target audience: commuters, parents, fitness people, anyone who wants "me time"
-- Genres: mystery, thriller, romance, drama, adventure, uplifting`
+⚠️ PRE-LAUNCH RULES — STRICTLY ENFORCED UNTIL APRIL 18, 2026:
+- NEVER mention any stories from the Endless Tales app library — the app has NOT launched
+- The ONLY Endless Tales stories you may ever reference are these 3 FREE sample stories on endless-tales.com:
+    1. "When Rosie Came Home" — 3 min heartwarming story about a soldier's dog
+    2. "The Grave He Dug Himself" — 14 min adventure western
+    3. "The Letters He Was Meant to Carry" — 14 min uplifting drama about a bus driver delivering letters
+- Always position Endless Tales as "launching April 17" or "coming April 17" — NEVER imply it is already live
+- ALL links must go to endless-tales.com ONLY — never link to the app or any app page
+- Be helpful, genuine, community-first. Add real value to the conversation first
+- Only mention Endless Tales when it fits naturally — never be salesy or promotional
+- Target audience: commuters, parents, fitness/active people, anyone who wants "me time"`
 
   async function searchAndGenerate() {
     if (!searchTopic.trim()) return
