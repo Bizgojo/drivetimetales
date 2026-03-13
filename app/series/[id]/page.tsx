@@ -257,7 +257,7 @@ export default function SeriesDetailPage() {
       {selectedEpisodes.size > 0 && (
         <div style={{ margin: '10px 16px 0', background: '#1e293b', borderRadius: 10, padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid rgba(249,115,22,0.2)' }}>
           <span style={{ fontSize: 12, color: '#cbd5e1' }}>
-            <strong style={{ color: '#f97316' }}>{selectedEpisodes.size} episode{selectedEpisodes.size !== 1 ? 's' : ''}</strong> selected · {selectedMins} min
+            <strong style={{ color: '#f97316' }}>{selectedEpisodes.size} episode{selectedEpisodes.size !== 1 ? 's' : ''}</strong> selected · {selectedMins >= 60 ? `${Math.floor(selectedMins / 60)}h ${selectedMins % 60}m` : `${selectedMins} min`}
           </span>
           {selectionMode === 'pick' && (
             <button onClick={() => setSelectedEpisodes(new Set())} style={{ fontSize: 11, color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>Clear</button>
