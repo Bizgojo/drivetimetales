@@ -204,10 +204,12 @@ function SeriesCardUI({
       <div style={{ flex: 1, padding: '9px 28px 9px 9px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minWidth: 0 }}>
         <div>
           <div style={{ fontWeight: 700, fontSize: 14, color: 'white', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.series_name}</div>
-          <div style={{ fontSize: 11, color: '#ffffff', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Ep {card.episode_number} of {card.total_episodes} · {card.author}</div>
+          <div style={{ fontSize: 11, color: '#ffffff', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.author}</div>
         </div>
         <div>
-          <div style={{ fontSize: 11, color: '#ffffff', marginBottom: 4 }}><strong style={{ color: '#ffffff' }}>{minsLeft} min</strong> left</div>
+          <div style={{ fontSize: 11, color: '#ffffff', marginBottom: 4 }}>
+            <strong style={{ color: '#ffffff' }}>{card.total_episodes - card.episode_number + 1} of {card.total_episodes}</strong> episodes left · <strong style={{ color: '#ffffff' }}>{minsLeft} min</strong>
+          </div>
           <div style={{ height: 3, background: '#334155', borderRadius: 2, overflow: 'hidden' }}>
             <div style={{ height: '100%', width: `${pct}%`, background: '#f97316', borderRadius: 2 }} />
           </div>
