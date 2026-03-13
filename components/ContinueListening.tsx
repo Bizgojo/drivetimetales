@@ -145,12 +145,11 @@ function SingleStoryCardUI({
       {/* Body */}
       <div style={{ flex: 1, padding: '9px 28px 9px 9px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minWidth: 0 }}>
         <div>
-          <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#f97316', marginBottom: 2 }}>Single Story</div>
-          <div style={{ fontWeight: 700, fontSize: 13, color: 'white', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.title}</div>
-          <div style={{ fontSize: 10, color: '#64748b', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.author} · {card.genre}</div>
+          <div style={{ fontWeight: 700, fontSize: 14, color: 'white', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.title}</div>
+          <div style={{ fontSize: 11, color: '#ffffff', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.author} · {card.genre}</div>
         </div>
         <div>
-          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>{notStarted ? <strong style={{ color: '#22c55e' }}>Ready to Play</strong> : <><strong style={{ color: 'white' }}>{minsLeft} min</strong> left of {card.duration_mins} min</>}</div>
+          <div style={{ fontSize: 11, color: '#ffffff', marginBottom: 4 }}>{notStarted ? <strong style={{ color: '#22c55e' }}>Ready to Play</strong> : <><strong style={{ color: '#ffffff' }}>{minsLeft} min</strong> left</>}</div>
           <div style={{ height: 3, background: '#334155', borderRadius: 2, overflow: 'hidden' }}>
             <div style={{ height: '100%', width: `${pct}%`, background: '#f97316', borderRadius: 2 }} />
           </div>
@@ -204,14 +203,11 @@ function SeriesCardUI({
       {/* Body */}
       <div style={{ flex: 1, padding: '9px 28px 9px 9px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minWidth: 0 }}>
         <div>
-          <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#f97316', marginBottom: 2 }}>
-            Series · Ep {card.episode_number} of {card.total_episodes}
-          </div>
-          <div style={{ fontWeight: 700, fontSize: 13, color: 'white', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.series_name}</div>
-          <div style={{ fontSize: 10, color: '#64748b', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.author} · {card.genre}</div>
+          <div style={{ fontWeight: 700, fontSize: 14, color: 'white', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.series_name}</div>
+          <div style={{ fontSize: 11, color: '#ffffff', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Ep {card.episode_number} of {card.total_episodes} · {card.author}</div>
         </div>
         <div>
-          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}><strong style={{ color: 'white' }}>{minsLeft} min</strong> left of {card.duration_mins} min</div>
+          <div style={{ fontSize: 11, color: '#ffffff', marginBottom: 4 }}><strong style={{ color: '#ffffff' }}>{minsLeft} min</strong> left</div>
           <div style={{ height: 3, background: '#334155', borderRadius: 2, overflow: 'hidden' }}>
             <div style={{ height: '100%', width: `${pct}%`, background: '#f97316', borderRadius: 2 }} />
           </div>
@@ -262,21 +258,16 @@ function PlaylistCardUI({
 
       {/* Body */}
       <div style={{ flex: 1, padding: '9px 28px 9px 9px', minWidth: 0 }}>
-        <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#f97316', marginBottom: 2 }}>Your Playlist</div>
-        <div style={{ fontWeight: 700, fontSize: 13, color: 'white', lineHeight: 1.2, marginBottom: 2 }}>
+        <div style={{ fontWeight: 700, fontSize: 14, color: 'white', lineHeight: 1.2, marginBottom: 4 }}>
           {card.total_stories} Stories · {card.remaining_mins} min remaining
         </div>
-        <div style={{ fontSize: 10, color: '#64748b', marginBottom: 5 }}>
-          {card.completed_stories} of {card.total_stories} completed
-        </div>
-        {/* Remaining story titles — cut off cleanly at container boundary */}
         <div style={{ overflow: 'hidden' }}>
           {card.next_stories.map((title, i) => (
             <div
               key={i}
               style={{
-                fontSize: 10, lineHeight: 1.6,
-                color: i === 0 ? '#94a3b8' : '#475569',
+                fontSize: 11, lineHeight: 1.6,
+                color: '#ffffff',
                 whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'clip',
               }}
             >
@@ -465,26 +456,33 @@ export default function ContinueListening() {
 
   return (
     <section style={{ padding: '1.5rem 1rem 0' }}>
-      <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>🎧 Your Unfinished Stories</h2>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         {singleCard && (
-          <SingleStoryCardUI
-            card={singleCard}
-            onDismiss={() => setDismissModal('single')}
-          />
+          <div>
+            <h2 style={{ color: 'white', fontSize: 18, fontWeight: 800, margin: '0 0 8px' }}>Your Saved Story</h2>
+            <SingleStoryCardUI
+              card={singleCard}
+              onDismiss={() => setDismissModal('single')}
+            />
+          </div>
         )}
         {seriesCard && (
-          <SeriesCardUI
-            card={seriesCard}
-            onDismiss={() => setDismissModal('series')}
-          />
+          <div>
+            <h2 style={{ color: 'white', fontSize: 18, fontWeight: 800, margin: '0 0 8px' }}>Your Saved Series</h2>
+            <SeriesCardUI
+              card={seriesCard}
+              onDismiss={() => setDismissModal('series')}
+            />
+          </div>
         )}
         {playlistCard && (
-          <PlaylistCardUI
-            card={playlistCard}
-            onDismiss={() => setDismissModal('playlist')}
-          />
+          <div>
+            <h2 style={{ color: 'white', fontSize: 18, fontWeight: 800, margin: '0 0 8px' }}>Your Saved Playlist</h2>
+            <PlaylistCardUI
+              card={playlistCard}
+              onDismiss={() => setDismissModal('playlist')}
+            />
+          </div>
         )}
       </div>
 
