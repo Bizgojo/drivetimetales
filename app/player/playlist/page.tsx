@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useState, useEffect, useRef, Suspense } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
+import StickyHeaderFull from '@/components/StickyHeaderFull'
 
 interface PlaylistItem { id: string; title: string; duration_mins: number; cover_url: string | null; audio_url?: string | null }
 interface StoryData { id: string; title: string; author: string; cover_url: string | null; audio_url: string; duration_mins: number }
@@ -116,13 +117,9 @@ function PlaylistPlayerContent() {
           audioRef.current?.play().catch(() => {})
         }
       }} onTimeUpdate={handleTimeUpdate} onEnded={handleEnded} onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} />
-      <div style={{ padding: '12px 16px 0', flexShrink: 0 }}>
-        <button onClick={() => { if (audioRef.current) audioRef.current.pause(); router.back() }} style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundColor: '#3b82f6', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <svg width="20" height="20" fill="none" stroke="white" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-        </button>
-      </div>
-      <div style={{ width: '100vw', aspectRatio: '1', flexShrink: 0, overflow: 'hidden' }}>
-        {storyData.cover_url ? <img src={storyData.cover_url} alt={storyData.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg,#475569,#1e293b)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '64px' }}>🎧</div>}
+      <StickyHeaderFull />
+      <div style={{ width: '100vw', maxHeight: '40vh', flexShrink: 0, overflow: 'hidden' }}>
+        {storyData.cover_url ? <img src={storyData.cover_url} alt={storyData.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ width: '100%', height: '200px', background: 'linear-gradient(135deg,#475569,#1e293b)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '64px' }}>🎧</div>}
       </div>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '16px 20px', gap: '12px' }}>
         <div>
