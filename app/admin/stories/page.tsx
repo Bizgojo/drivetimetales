@@ -93,7 +93,7 @@ function StoryEditorPanel({
   const [author, setAuthor] = useState(story.author || '')
   const [episodeTitle, setEpisodeTitle] = useState(story.episode_title || '')
   const [description, setDescription] = useState(story.description || '')
-  const [primaryGenre, setPrimaryGenre] = useState(story.genre || '')
+  const [primaryGenre, setPrimaryGenre] = useState((story as any).primary_genre || story.genre || '')
   const [secondaryGenre, setSecondaryGenre] = useState(story.genre_secondary || '')
   const [thirdGenre, setThirdGenre] = useState(story.genre_third || '')
   const [flag, setFlag] = useState<string | null>(story.flag)
@@ -147,6 +147,7 @@ function StoryEditorPanel({
         episode_title: episodeTitle.trim() || null,
         description: description.trim() || null,
         genre: primaryGenre || null,
+        primary_genre: primaryGenre || null,
         genre_secondary: secondaryGenre || null,
         genre_third: thirdGenre || null,
         flag: flag,
