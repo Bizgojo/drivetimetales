@@ -131,8 +131,9 @@ export default function AddToHomeScreen() {
 
             {/* Steps */}
             {[
-              { icon: '⬆️', text: 'Tap the Share button at the bottom of your browser' },
-              { icon: '➕', text: 'Scroll down and tap "Add to Home Screen"' },
+              { icon: '👆', text: 'Scroll to the top of the page — this reveals the Safari toolbar at the bottom of your screen' },
+              { icon: '⬆️', text: 'Tap the Share button (box with an arrow) in the Safari toolbar' },
+              { icon: '➕', text: 'Scroll down in the menu and tap "Add to Home Screen"' },
               { icon: '✅', text: 'Tap "Add" in the top right corner' },
             ].map((step, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '14px', marginBottom: '16px' }}>
