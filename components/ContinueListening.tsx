@@ -465,7 +465,7 @@ export default function ContinueListening() {
 
   return (
     <section style={{ padding: '1.5rem 1rem 0' }}>
-      <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>🎧 READY TO PLAY</h2>
+      <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>🎧 Your Unfinished Stories</h2>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {singleCard && (
