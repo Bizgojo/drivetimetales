@@ -74,31 +74,104 @@ Reply with ONLY the post text, nothing else.`
   return data.content?.[0]?.text || ''
 }
 
+const REDDIT_PLATFORMS = ['reddit']
+const SEARCH_PLATFORMS = [...REDDIT_PLATFORMS] // only Reddit has a public search API
+
+async function draftOriginalPost(topic: string, system: string, platform: string, index: number) {
+  const platformGuide: Record<string, string> = {
+    facebook: 'Write a Facebook post: conversational, 2-4 sentences, no hashtags, warm and personal tone. Can be slightly longer than a tweet. End with a soft call to action or question to drive engagement.',
+    'x/twitter': 'Write an X/Twitter post: max 280 characters, punchy, hook in first line. Can use 1-2 relevant hashtags.',
+    instagram: 'Write an Instagram caption: engaging opener, 3-5 sentences, storytelling tone, 3-5 relevant hashtags at the end.',
+    tiktok: 'Write a TikTok video caption: very short (1-2 sentences), energetic, hook-first. Include 3-4 trending hashtags.',
+    linkedin: 'Write a LinkedIn post: professional but personal, 3-5 sentences, insight or story-driven, no hashtags.',
+  }
+  const key = platform.toLowerCase().replace('/', '')
+  const formatNote = platformGuide[key] || `Write a ${platform} post: engaging, 2-4 sentences, appropriate tone for the platform.`
+
+  const angles = [
+    'the free listening experience — no signup, just listen',
+    'the April 17 launch date and what to expect',
+    'the emotional appeal of short audio stories for busy people',
+    'the 3 free stories available now on endless-tales.com',
+    'audio stories as "me time" for commuters, parents, or fitness routines',
+  ]
+  const angle = angles[index % angles.length]
+
+  const prompt = `Draft a ${platform} post about: "${topic}"
+Angle to focus on: ${angle}
+
+⚠️ PRE-LAUNCH RULES:
+- Endless Tales is NOT live yet — launching April 17, 2026
+- ONLY reference these 3 free stories if mentioning stories: "When Rosie Came Home" (3 min), "The Grave He Dug Himself" (14 min western), "The Letters He Was Meant to Carry" (14 min uplifting)
+- Link to endless-tales.com ONLY
+- Never imply the app is live
+- Community-first, genuine — never salesy
+
+${formatNote}
+Reply with ONLY the post text, nothing else.`
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': process.env.ANTHROPIC_API_KEY!,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5',
+      max_tokens: 300,
+      system,
+      messages: [{ role: 'user', content: prompt }],
+    }),
+  })
+  const data = await res.json()
+  return data.content?.[0]?.text || ''
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { topic, count = 3, system = '', platform = 'Reddit' } = await req.json()
     if (!topic) return NextResponse.json({ error: 'topic required' }, { status: 400 })
 
-    // 1. Get real Reddit threads
-    const posts = await searchReddit(topic, count)
-    if (!posts.length) return NextResponse.json({ items: [] })
+    const isReddit = SEARCH_PLATFORMS.includes(platform.toLowerCase())
 
-    // 2. Draft a reply for each
-    const isTwitter = platform.toLowerCase().includes('x') || platform.toLowerCase().includes('twitter')
-    const items = await Promise.all(posts.map(async (post: {title: string, subreddit: string, body: string, url: string}) => {
-      const caption = await draftReply(post, system, platform)
-      const campaign = `${isTwitter ? 'twitter' : 'reddit'}_${post.subreddit}_${Date.now()}`
-      return {
-        platform: isTwitter ? 'X/Twitter' : 'Reddit',
-        post_type: isTwitter ? 'Original Post' : 'Reply',
-        responding_to: `r/${post.subreddit}: ${post.title}`,
-        thread_url: post.url,
-        caption,
-        utm_campaign: campaign,
-      }
-    }))
+    if (isReddit) {
+      // Search real Reddit threads and draft replies
+      const posts = await searchReddit(topic, count)
+      if (!posts.length) return NextResponse.json({ items: [] })
 
-    return NextResponse.json({ items })
+      const items = await Promise.all(posts.map(async (post: {title: string, subreddit: string, body: string, url: string}) => {
+        const caption = await draftReply(post, system, platform)
+        const campaign = `reddit_${post.subreddit}_${Date.now()}`
+        return {
+          platform: 'Reddit',
+          post_type: 'Reply',
+          responding_to: `r/${post.subreddit}: ${post.title}`,
+          thread_url: post.url,
+          caption,
+          utm_campaign: campaign,
+        }
+      }))
+      return NextResponse.json({ items })
+
+    } else {
+      // For Facebook, X, Instagram, TikTok, LinkedIn — draft original posts
+      const indices = Array.from({ length: count }, (_, i) => i)
+      const items = await Promise.all(indices.map(async (i) => {
+        const caption = await draftOriginalPost(topic, system, platform, i)
+        const campaign = `${platform.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${Date.now()}_${i}`
+        return {
+          platform,
+          post_type: 'Original Post',
+          responding_to: undefined,
+          thread_url: undefined,
+          caption,
+          utm_campaign: campaign,
+        }
+      }))
+      return NextResponse.json({ items })
+    }
+
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error('social-draft error:', msg)
