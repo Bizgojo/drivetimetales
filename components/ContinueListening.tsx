@@ -334,13 +334,14 @@ export default function ContinueListening() {
       .eq('user_id', user!.id)
       .eq('completed', false)
       .eq('hide_from_home', false)
-      .is('stories.series_id', null)
       .order('last_played', { ascending: false })
-      .limit(10)
+      .limit(20)
 
-    const validSingles = (singles || []).filter(
-      r => r.stories != null && !r.completed && r.story_id !== hiddenSingle
-    )
+    const validSingles = (singles || []).filter(r => {
+      if (!r.stories || r.completed || r.story_id === hiddenSingle) return false
+      // Keep only non-series stories
+      return !(r.stories as any).series_id
+    })
     if (validSingles.length > 0) {
       const r = validSingles[0]
       const s = r.stories as any
@@ -360,6 +361,8 @@ export default function ContinueListening() {
     }
 
     // --- Series episode: most recent in-progress series episode ---
+    // NOTE: .not() on a related table column (stories.series_id) is not supported
+    // by PostgREST — filter in JS instead.
     const { data: seriesRows } = await supabase
       .from('user_library')
       .select(`
@@ -370,14 +373,16 @@ export default function ContinueListening() {
       .eq('user_id', user!.id)
       .eq('completed', false)
       .eq('hide_from_home', false)
-      .not('stories.series_id', 'is', null)
       .order('last_played', { ascending: false })
-      .limit(10)
+      .limit(20)
 
-    const validSeries = (seriesRows || []).filter(
-      r => !r.completed && r.story_id !== hiddenSeries
-    )
-    const firstValidSeries = validSeries.find(r => r.stories != null)
+    const validSeries = (seriesRows || []).filter(r => {
+      if (r.completed || r.story_id === hiddenSeries) return false
+      if (!r.stories) return false
+      // Keep only series episodes (have a series_id)
+      return !!(r.stories as any).series_id
+    })
+    const firstValidSeries = validSeries[0] ?? null
     if (firstValidSeries) {
       const r = firstValidSeries
       const s = r.stories as any
