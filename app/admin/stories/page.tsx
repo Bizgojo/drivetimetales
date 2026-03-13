@@ -448,15 +448,16 @@ function StoryEditorPanel({
         </div>
 
         {/* Save / Cancel */}
-        <div style={{ padding: '1rem 1.25rem', borderTop: `1px solid ${border}`, display: 'flex', gap: '0.75rem' }}>
+        <div style={{ padding: '1rem 1.25rem', paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))', borderTop: `1px solid ${border}`, display: 'flex', gap: '0.75rem', position: 'sticky', bottom: 0, backgroundColor: '#fff', zIndex: 10 }}>
           <button
             onClick={handleSave}
             disabled={saving}
             style={{
-              flex: 1, padding: '10px', borderRadius: '8px', fontWeight: 700, fontSize: '14px',
+              flex: 1, padding: '14px 10px', borderRadius: '8px', fontWeight: 700, fontSize: '14px',
               backgroundColor: saved ? '#2563eb' : saving ? '#9ca3af' : '#22c55e',
               color: 'white', border: 'none',
               cursor: saving ? 'default' : 'pointer',
+              touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent',
             }}
           >
             {saved ? '✓ Saved!' : saving ? 'Saving...' : '✓ Save Changes'}
