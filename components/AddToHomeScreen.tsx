@@ -19,15 +19,11 @@ function isInStandaloneMode(): boolean {
 }
 
 export default function AddToHomeScreen() {
-  // Detect platform immediately (runs client-side only)
-  const [platform, setPlatform] = useState<Platform>(() =>
-    typeof window !== 'undefined' ? detectPlatform() : 'other'
-  )
+  // Always start with safe server-side defaults — update in useEffect to avoid hydration mismatch
+  const [platform, setPlatform] = useState<Platform>('other')
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null)
   const [showIOSModal, setShowIOSModal] = useState(false)
-  const [installed, setInstalled] = useState(() =>
-    typeof window !== 'undefined' ? isInStandaloneMode() : false
-  )
+  const [installed, setInstalled] = useState(false)
   const [dismissed, setDismissed] = useState(false)
   const promptRef = useRef<any>(null)
 
