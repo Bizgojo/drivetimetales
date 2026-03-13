@@ -294,6 +294,10 @@ function StoryEditorPanel({
                     }}
                   >
                     <option value="">{required ? '— Select —' : '— None —'}</option>
+                    {/* If current value isn't in the genres list, show it anyway so it doesn't appear blank */}
+                    {value && !genres.find(g => g.name === value) && (
+                      <option key="__current__" value={value}>{value}</option>
+                    )}
                     {genres
                       .filter(g => g.name === value || (g.name !== primaryGenre && g.name !== secondaryGenre && g.name !== thirdGenre))
                       .map(g => <option key={g.id} value={g.name}>{g.name}</option>)}

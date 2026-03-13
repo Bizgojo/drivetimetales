@@ -22,15 +22,15 @@ const BELLE_B_VOICE_ID = 'EXAVITQu4vr4xnSDxMaL'
 // ─── American Narrator Pool (rotated per story, genre-aware) ─────────────────
 const NARRATOR_POOL = [
   // Male — deep/dramatic (Thriller, Mystery, Western, Crime, Sci-Fi)
-  { voice_id: 'WUIWRUGpMCHWIDESrJVL', name: 'Quinn',         gender: 'male',   genres: ['Thriller','Mystery','Crime','Western','Science Fiction'] },
-  { voice_id: 'd5QgxQhvRNirnHGpRQdJ', name: 'DeepNarrator',  gender: 'male',   genres: ['Thriller','Western','Crime','Science Fiction','Drama'] },
+  { voice_id: 'WUIWRUGpMCHWIDESrJVL', name: 'Quinn',         gender: 'male',   genres: ['Thriller','Mystery','Crime','Adventure','Sci-Fi'] },
+  { voice_id: 'd5QgxQhvRNirnHGpRQdJ', name: 'DeepNarrator',  gender: 'male',   genres: ['Thriller','Adventure','Crime','Sci-Fi','Drama'] },
   { voice_id: 'XaRY1hVbOF8v4zmguHdl', name: 'Sterling',      gender: 'male',   genres: ['Mystery','Crime','Thriller','Drama'] },
-  { voice_id: 'v9LgF91V36LGgbLX3iHW', name: 'David',         gender: 'male',   genres: ['Drama','Science Fiction','Mystery','Romance','Family'] },
-  { voice_id: 'lWDDHwXsJXJM7nv2YgHY', name: 'Nathan',        gender: 'male',   genres: ['Drama','Science Fiction','Romance','Family','Adventure'] },
+  { voice_id: 'v9LgF91V36LGgbLX3iHW', name: 'David',         gender: 'male',   genres: ['Drama','Sci-Fi','Mystery','Romance','Family'] },
+  { voice_id: 'lWDDHwXsJXJM7nv2YgHY', name: 'Nathan',        gender: 'male',   genres: ['Drama','Sci-Fi','Romance','Family','Adventure'] },
   { voice_id: 'OxGkuZuufGcExzMjqRwp', name: 'Kyle',          gender: 'male',   genres: ['Drama','Family','Romance','Comedy','Adventure'] },
   // Female — warm/professional (Romance, Family, Drama)
   { voice_id: 'w2CTE3MYza6FgBnETYNT', name: 'Kimberly',      gender: 'female', genres: ['Romance','Family','Drama','Comedy'] },
-  { voice_id: 'WQP7cQUF5aAS6Axh5yaa', name: 'Elara',         gender: 'female', genres: ['Science Fiction','Thriller','Drama','Mystery'] },
+  { voice_id: 'WQP7cQUF5aAS6Axh5yaa', name: 'Elara',         gender: 'female', genres: ['Sci-Fi','Thriller','Drama','Mystery'] },
   { voice_id: 'oFnUs65XPN5XcT0txEbR', name: 'Veronica',      gender: 'female', genres: ['Drama','Romance','Family','Crime','Thriller'] },
 ]
 
@@ -70,7 +70,7 @@ const STORIES = [
   {
     authorName: 'Nina Vasquez',
     authorStyle: 'Isaac Asimov',
-    primaryGenre: 'Science Fiction',
+    primaryGenre: 'Sci-Fi',
     secondaryGenre1: 'Drama', secondaryGenre2: 'Suspense',
     tone: 'Dramatic',
     wordCount: 4500,
