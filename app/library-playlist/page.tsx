@@ -257,8 +257,8 @@ function LibraryPlaylistContent() {
           selectedGroup={selectedGroup}
           setSelectedGroup={setSelectedGroup}
         />
-        <div style={{ background: '#020617', padding: '8px 16px', textAlign: 'center', borderBottom: '1px solid rgba(249,115,22,0.15)' }}>
-          <div style={{ fontSize: 11, fontWeight: 800, color: playlist.length > 0 ? '#f97316' : '#ffffff', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+        <div style={{ background: '#020617', padding: '12px 16px', textAlign: 'center', borderBottom: '1px solid rgba(249,115,22,0.3)' }}>
+          <div style={{ fontSize: 14, fontWeight: 800, color: playlist.length > 0 ? '#f97316' : '#ffffff', textTransform: 'uppercase', letterSpacing: '0.12em' }}>
             {playlist.length > 0
               ? `Your Playlist · ${playlist.length} ${playlist.length === 1 ? 'story' : 'stories'} · ${formatDuration(totalPlaylistMins)}`
               : 'Your Playlist · 0 Stories — tap below to add'}
