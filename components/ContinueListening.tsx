@@ -34,6 +34,7 @@ interface SeriesCard {
   progress: number        // seconds into episode
   episode_number: number
   total_episodes: number
+  total_remaining_mins: number  // total mins left across all remaining episodes
   last_played: string
 }
 
@@ -208,7 +209,7 @@ function SeriesCardUI({
         </div>
         <div>
           <div style={{ fontSize: 11, color: '#ffffff', marginBottom: 4 }}>
-            <strong style={{ color: '#ffffff' }}>{card.total_episodes - card.episode_number + 1} of {card.total_episodes}</strong> episodes left · <strong style={{ color: '#ffffff' }}>{minsLeft} min</strong>
+            <strong style={{ color: '#ffffff' }}>{card.total_episodes - card.episode_number + 1} of {card.total_episodes}</strong> episodes left · <strong style={{ color: '#ffffff' }}>{card.total_remaining_mins} min</strong> total
           </div>
           <div style={{ height: 3, background: '#334155', borderRadius: 2, overflow: 'hidden' }}>
             <div style={{ height: '100%', width: `${pct}%`, background: '#f97316', borderRadius: 2 }} />
@@ -379,6 +380,21 @@ export default function ContinueListening() {
     if (firstValidSeries) {
       const r = firstValidSeries
       const s = r.stories as any
+      const currentEp = s.episode_number || 1
+
+      // Fetch durations of all remaining episodes (current + future)
+      let totalRemainingMins = minsRemaining(s.duration_mins, r.progress)
+      if (s.series_id) {
+        const { data: remainingEps } = await supabase
+          .from('stories')
+          .select('duration_mins, episode_number')
+          .eq('series_id', s.series_id)
+          .gt('episode_number', currentEp)
+        for (const ep of (remainingEps || [])) {
+          totalRemainingMins += ep.duration_mins || 0
+        }
+      }
+
       setSeriesCard({
         type: 'series',
         story_id: r.story_id,
@@ -390,8 +406,9 @@ export default function ContinueListening() {
         cover_url: s.cover_url,
         duration_mins: s.duration_mins,
         progress: r.progress,
-        episode_number: s.episode_number || 1,
+        episode_number: currentEp,
         total_episodes: s.series?.total_episodes || 1,
+        total_remaining_mins: totalRemainingMins,
         last_played: r.last_played,
       })
     } else {
