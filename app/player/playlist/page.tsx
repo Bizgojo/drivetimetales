@@ -32,8 +32,10 @@ function PlaylistPlayerContent() {
       try {
         const parsed = JSON.parse(raw)
         const items = Array.isArray(parsed) ? parsed : (parsed.stories || [])
-        if (items.length) { setPlaylist(items); setCurrentIndex(idx) }
-        else { router.replace('/library') }
+        if (items.length) {
+          autoPlayNext.current = true  // auto-play immediately on first load
+          setPlaylist(items); setCurrentIndex(idx)
+        } else { router.replace('/library') }
       } catch { router.replace('/library') }
     } else {
       router.replace('/library')
@@ -49,11 +51,6 @@ function PlaylistPlayerContent() {
       else { const { data } = await supabase.from('stories').select('id, title, author, cover_url, audio_url, duration_mins').eq('id', item.id).single(); if (data) setStoryData(data); setLoading(false) }
       const saved = localStorage.getItem(`et_progress_${item.id}`)
       if (saved) { const resume = Math.max(0, parseInt(saved) - 3); if (audioRef.current) audioRef.current.currentTime = resume; setCurrentTime(resume) }
-      // Auto-play next track if previous story just ended
-      if (autoPlayNext.current && audioRef.current) {
-        autoPlayNext.current = false
-        setTimeout(() => { audioRef.current?.play().catch(() => {}) }, 300)
-      }
     }
     loadStory()
   }, [playlist, currentIndex])
@@ -111,7 +108,14 @@ function PlaylistPlayerContent() {
 
   return (
     <div style={{ height: '100dvh', backgroundColor: '#020617', color: 'white', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <audio ref={audioRef} src={storyData.audio_url} onCanPlay={() => { setAudioReady(true); if (audioRef.current) setDuration(audioRef.current.duration) }} onTimeUpdate={handleTimeUpdate} onEnded={handleEnded} onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} />
+      <audio ref={audioRef} src={storyData.audio_url} onCanPlay={() => {
+        setAudioReady(true)
+        if (audioRef.current) setDuration(audioRef.current.duration)
+        if (autoPlayNext.current) {
+          autoPlayNext.current = false
+          audioRef.current?.play().catch(() => {})
+        }
+      }} onTimeUpdate={handleTimeUpdate} onEnded={handleEnded} onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} />
       <div style={{ padding: '12px 16px 0', flexShrink: 0 }}>
         <button onClick={() => { if (audioRef.current) audioRef.current.pause(); router.back() }} style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundColor: '#3b82f6', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <svg width="20" height="20" fill="none" stroke="white" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
