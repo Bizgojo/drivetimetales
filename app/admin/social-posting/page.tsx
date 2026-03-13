@@ -209,7 +209,7 @@ Return ONLY the JSON array, no other text.`
               <input type="text" value={searchTopic} onChange={e => setSearchTopic(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && searchAndGenerate()}
                 placeholder="Topic, genre, audience... (e.g. audio dramas for commuters)"
-                style={{ flex: 1, minWidth: '200px', padding: '0.65rem', borderRadius: '8px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px' }} />
+                style={{ flex: 1, minWidth: '200px', padding: '0.65rem', borderRadius: '8px', border: `1px solid ${border}`, color: '#000000', backgroundColor: '#ffffff', fontSize: '14px' }} />
               <select value={postCount} onChange={e => setPostCount(Number(e.target.value))}
                 style={{ padding: '0.65rem', borderRadius: '8px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px', backgroundColor: '#fff' }}>
                 {[1,2,3,5].map(n => <option key={n} value={n}>{n} posts</option>)}
