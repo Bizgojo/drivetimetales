@@ -381,8 +381,11 @@ export default function ContinueListening() {
     const validSeries = (seriesRows || []).filter(r => {
       if (r.completed || r.story_id === hiddenSeries) return false
       if (!r.stories) return false
-      // Keep only series episodes (have a series_id)
-      return !!(r.stories as any).series_id
+      const s = r.stories as any
+      // RULE: Must be a series with more than 1 episode
+      if (!s.series_id) return false
+      if ((s.series?.total_episodes || 1) <= 1) return false
+      return true
     })
     const firstValidSeries = validSeries[0] ?? null
     if (firstValidSeries) {

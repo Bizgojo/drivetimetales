@@ -103,6 +103,11 @@ export default function SeriesDetailPage() {
       }
 
       if (episodesData) {
+        // RULE: A series must have more than 1 episode — redirect single episodes to story player
+        if (episodesData.length === 1) {
+          router.replace(`/player/${episodesData[0].id}`)
+          return
+        }
         setEpisodes(episodesData)
         // Auto-select all on load
         setSelectedEpisodes(new Set(episodesData.map((ep: Episode) => ep.id)))

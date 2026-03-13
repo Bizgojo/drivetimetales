@@ -52,7 +52,8 @@ export default function RecommendedForYou({ excludeIds = [] }: { excludeIds?: st
         } else { singles.push(story) }
       })
       const items: DisplayItem[] = []
-      seriesMap.forEach(g => items.push({ type: 'series', group: g, sortDate: g.earliest_created_at }))
+      // RULE: Only show series with more than 1 episode
+      seriesMap.forEach(g => { if (g.episode_count > 1) items.push({ type: 'series', group: g, sortDate: g.earliest_created_at }) })
       singles.forEach(s => items.push({ type: 'single', story: s, sortDate: s.created_at }))
       items.sort((a, b) => b.sortDate.localeCompare(a.sortDate))
       setDisplayItems(items.slice(0, 5))
