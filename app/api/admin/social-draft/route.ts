@@ -10,8 +10,20 @@ import { NextRequest, NextResponse } from 'next/server'
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
+// Relevant subreddits only — filters out noise
+const RELEVANT_SUBREDDITS = [
+  'audiodrama','audiobooks','podcasts','storytelling','nosleep',
+  'shortstories','scifi','horror','romance','mystery',
+  'commuting','truckers','running','walking','fitness','gym',
+  'Mommit','SAHM','beyondthebump','HomeImprovement',
+  'boredom','entertainment','suggestions'
+]
+
 async function searchReddit(topic: string, limit: number) {
-  const url = `https://www.reddit.com/search.json?q=${encodeURIComponent(topic)}&sort=hot&limit=${limit * 2}&t=week`
+  // Search within relevant subreddits for better quality results
+  const subredditFilter = RELEVANT_SUBREDDITS.map(s => `subreddit:${s}`).join(' OR ')
+  const query = `(${encodeURIComponent(topic)}) AND (${encodeURIComponent(subredditFilter)})`
+  const url = `https://www.reddit.com/search.json?q=${query}&sort=hot&limit=${limit * 3}&t=month`
   const res = await fetch(url, {
     headers: { 'User-Agent': 'EndlessTalesBot/1.0 (social media manager)' }
   })
@@ -19,7 +31,10 @@ async function searchReddit(topic: string, limit: number) {
   const data = await res.json()
   const posts = data?.data?.children || []
   return posts
-    .filter((p: {data: {stickied?: boolean, is_self?: boolean}}) => !p.data.stickied)
+    .filter((p: {data: {stickied?: boolean, subreddit: string}}) =>
+      !p.data.stickied &&
+      RELEVANT_SUBREDDITS.map(s => s.toLowerCase()).includes(p.data.subreddit.toLowerCase())
+    )
     .slice(0, limit)
     .map((p: {data: {title: string, subreddit: string, selftext: string, permalink: string, score: number, num_comments: number}}) => ({
       title: p.data.title,
@@ -31,19 +46,24 @@ async function searchReddit(topic: string, limit: number) {
     }))
 }
 
-async function draftReply(post: {title: string, subreddit: string, body: string, url: string}, system: string) {
-  const prompt = `You're replying to this Reddit post in r/${post.subreddit}:
+async function draftReply(post: {title: string, subreddit: string, body: string, url: string}, system: string, platform: string) {
+  const isTwitter = platform.toLowerCase().includes('x') || platform.toLowerCase().includes('twitter')
+  const formatNote = isTwitter
+    ? '- Format as an X/Twitter post: max 280 characters, punchy and engaging, can include relevant hashtags'
+    : '- 2-4 sentences, conversational Reddit tone, no hashtags'
+
+  const prompt = `You're ${isTwitter ? 'writing an X/Twitter post inspired by' : 'replying to'} this Reddit post in r/${post.subreddit}:
 
 Title: "${post.title}"
 ${post.body ? `Post: "${post.body}"` : ''}
 
-Write a genuine, helpful reply that adds real value. Rules:
+Write a genuine, helpful ${isTwitter ? 'tweet' : 'reply'} that adds real value. Rules:
 - Endless Tales is NOT live yet — launching April 17, 2026. Never imply it's live.
-- Do NOT mention specific app stories — only the 3 free sample stories on endless-tales.com if relevant: "When Rosie Came Home" (3 min dog/soldier tearjerker), "The Grave He Dug Himself" (14 min western), "The Letters He Was Meant to Carry" (14 min uplifting)
+- Do NOT mention specific app stories — only the 3 free sample stories on endless-tales.com if relevant: "When Rosie Came Home" (3 min), "The Grave He Dug Himself" (14 min western), "The Letters He Was Meant to Carry" (14 min uplifting)
 - If you mention Endless Tales, say it's "launching April 17" and link to endless-tales.com
 - Be helpful and community-first. Only mention ET if it fits naturally.
-- 2-4 sentences, conversational Reddit tone.
-Reply with ONLY the reply text, nothing else.`
+${formatNote}
+Reply with ONLY the post text, nothing else.`
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -65,7 +85,7 @@ Reply with ONLY the reply text, nothing else.`
 
 export async function POST(req: NextRequest) {
   try {
-    const { topic, count = 3, system = '' } = await req.json()
+    const { topic, count = 3, system = '', platform = 'Reddit' } = await req.json()
     if (!topic) return NextResponse.json({ error: 'topic required' }, { status: 400 })
 
     // 1. Get real Reddit threads
@@ -73,12 +93,13 @@ export async function POST(req: NextRequest) {
     if (!posts.length) return NextResponse.json({ items: [] })
 
     // 2. Draft a reply for each
+    const isTwitter = platform.toLowerCase().includes('x') || platform.toLowerCase().includes('twitter')
     const items = await Promise.all(posts.map(async (post: {title: string, subreddit: string, body: string, url: string}) => {
-      const caption = await draftReply(post, system)
-      const campaign = `reddit_${post.subreddit}_${Date.now()}`
+      const caption = await draftReply(post, system, platform)
+      const campaign = `${isTwitter ? 'twitter' : 'reddit'}_${post.subreddit}_${Date.now()}`
       return {
-        platform: 'Reddit',
-        post_type: 'Reply',
+        platform: isTwitter ? 'X/Twitter' : 'Reddit',
+        post_type: isTwitter ? 'Original Post' : 'Reply',
         responding_to: `r/${post.subreddit}: ${post.title}`,
         thread_url: post.url,
         caption,

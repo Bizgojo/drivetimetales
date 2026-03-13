@@ -26,11 +26,11 @@ interface QueueItem {
 
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZteWhsZmVvdXpzbGl4dGttZGR5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYwODk2MTIsImV4cCI6MjA4MTY2NTYxMn0.7asAd8ctLKJLdv2AojbF8WEo-N6dVheVA3mWxjkFwkk'
 
-async function findAndDraft(topic: string, count: number, system: string) {
+async function findAndDraft(topic: string, count: number, system: string, platform: string) {
   const res = await fetch('/api/admin/social-draft', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ topic, count, system }),
+    body: JSON.stringify({ topic, count, system, platform }),
   })
   const data = await res.json()
   if (!res.ok) throw new Error(data.error || 'API error')
@@ -81,7 +81,7 @@ RULES FOR ALL POSTS:
     if (!searchTopic.trim()) return
     setSearching(true)
     try {
-      const items = await findAndDraft(searchTopic, postCount, SYSTEM)
+      const items = await findAndDraft(searchTopic, postCount, SYSTEM, searchPlatform)
       const newItems: QueueItem[] = items.map((item: {platform: string, post_type: string, responding_to?: string, thread_url?: string, caption: string, utm_campaign: string}, i: number) => ({
         id: `${Date.now()}_${i}`,
         platform: item.platform || searchPlatform,
