@@ -382,19 +382,19 @@ export default function ContinueListening() {
       const s = r.stories as any
       const currentEp = s.episode_number || 1
 
-      // Fetch durations of ALL episodes in the series and sum for total
-      let totalRemainingMins = 0
+      // Fetch durations of remaining episodes only (current ep onwards)
+      let totalRemainingMins = minsRemaining(s.duration_mins, r.progress)  // time left on current ep
       if (s.series_id) {
-        const { data: allEps } = await supabase
+        const { data: futureEps } = await supabase
           .from('stories')
           .select('duration_mins')
           .eq('series_id', s.series_id)
-        for (const ep of (allEps || [])) {
+          .gt('episode_number', currentEp)  // episodes AFTER current
+        for (const ep of (futureEps || [])) {
           totalRemainingMins += ep.duration_mins || 0
         }
       }
-      // Fallback to current episode duration if series_id lookup fails
-      if (totalRemainingMins === 0) totalRemainingMins = s.duration_mins
+      if (totalRemainingMins === 0) totalRemainingMins = minsRemaining(s.duration_mins, r.progress)
 
       setSeriesCard({
         type: 'series',
