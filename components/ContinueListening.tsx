@@ -150,7 +150,7 @@ function SingleStoryCardUI({
           <div style={{ fontSize: 11, color: '#ffffff', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.author} · {card.genre}</div>
         </div>
         <div>
-          <div style={{ fontSize: 11, color: '#ffffff', marginBottom: 4 }}>{notStarted ? <strong style={{ color: '#22c55e' }}>Ready to Play</strong> : <><strong style={{ color: '#ffffff' }}>{minsLeft} min</strong> left</>}</div>
+          <div style={{ fontSize: 11, color: '#ffffff', marginBottom: 4 }}><strong style={{ color: '#ffffff' }}>{minsLeft} min</strong> left</div>
           <div style={{ height: 3, background: '#334155', borderRadius: 2, overflow: 'hidden' }}>
             <div style={{ height: '100%', width: `${pct}%`, background: '#f97316', borderRadius: 2 }} />
           </div>
