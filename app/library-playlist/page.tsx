@@ -61,7 +61,7 @@ function LibraryPlaylistContent() {
   const [playlist, setPlaylist] = useState<PlaylistEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedDuration, setSelectedDuration] = useState('All Lengths')
-  const [selectedGenre, setSelectedGenre] = useState('All Genres')
+  const [selectedGenre, setSelectedGenre] = useState('All Categories')
   const [selectedType, setSelectedType] = useState('Singles & Series')
   const [selectedGroup, setSelectedGroup] = useState('')
 
@@ -213,7 +213,7 @@ function LibraryPlaylistContent() {
     if (selectedDuration === '~15 min' && durMin > 20) return false
     if (selectedDuration === '~30 min' && (durMin <= 20 || durMin > 45)) return false
     if (selectedDuration === '~1 hr' && durMin <= 45) return false
-    if (selectedGenre !== 'All Genres') {
+    if (selectedGenre !== 'All Categories') {
       const g = genre?.toLowerCase() || ''
       if (selectedGenre === 'Mystery'  && !g.includes('mystery'))  return false
       if (selectedGenre === 'Romance'  && !g.includes('romance'))  return false
