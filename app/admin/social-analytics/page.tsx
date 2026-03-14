@@ -23,6 +23,13 @@ interface WaitlistEntry {
   created_at: string
 }
 
+interface UtmVisit {
+  source: string | null
+  medium: string | null
+  campaign: string | null
+  visited_at: string
+}
+
 const PLATFORMS = ['Instagram', 'TikTok', 'Facebook', 'X/Twitter', 'Reddit', 'Pinterest']
 const POST_TYPES = ['Reel', 'Story', 'Post', 'Thread', 'Pin', 'Comment', 'Ad']
 
@@ -48,6 +55,7 @@ export default function AdminSocialAnalyticsPage() {
   const router = useRouter()
   const [posts, setPosts] = useState<SocialPost[]>([])
   const [signups, setSignups] = useState<WaitlistEntry[]>([])
+  const [visits, setVisits] = useState<UtmVisit[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -71,12 +79,14 @@ export default function AdminSocialAnalyticsPage() {
 
   async function fetchData() {
     setLoading(true)
-    const [{ data: postsData }, { data: signupsData }] = await Promise.all([
+    const [{ data: postsData }, { data: signupsData }, { data: visitsData }] = await Promise.all([
       supabase.from('social_posts').select('*').order('posted_at', { ascending: false }),
-      supabase.from('waitlist').select('source, medium, campaign, created_at').order('created_at', { ascending: false })
+      supabase.from('waitlist').select('source, medium, campaign, created_at').order('created_at', { ascending: false }),
+      supabase.from('utm_visits').select('source, medium, campaign, visited_at').order('visited_at', { ascending: false })
     ])
     if (postsData) setPosts(postsData)
     if (signupsData) setSignups(signupsData)
+    if (visitsData) setVisits(visitsData)
     setLoading(false)
   }
 
@@ -102,8 +112,21 @@ export default function AdminSocialAnalyticsPage() {
     return signups.filter(s => s.campaign === post.utm_campaign).length
   }
 
+  function visitsForPost(post: SocialPost) {
+    return visits.filter(v => v.campaign === post.utm_campaign).length
+  }
+
+  function visitsForPlatform(platform: string) {
+    return visits.filter(v => v.source?.toLowerCase() === platform.toLowerCase()).length
+  }
+
   function signupsForPlatform(platform: string) {
     return signups.filter(s => s.source?.toLowerCase() === platform.toLowerCase()).length
+  }
+
+  function conversionRate(v: number, s: number) {
+    if (!v) return '—'
+    return `${Math.round((s / v) * 100)}%`
   }
 
   function utmLink(post: SocialPost) {
@@ -124,8 +147,12 @@ export default function AdminSocialAnalyticsPage() {
   const platformStats = PLATFORMS.map(p => ({
     platform: p,
     posts: posts.filter(post => post.platform.toLowerCase() === p.toLowerCase()).length,
+    visits: visitsForPlatform(p),
     signups: signupsForPlatform(p),
-  })).filter(s => s.posts > 0 || s.signups > 0)
+  })).filter(s => s.posts > 0 || s.visits > 0 || s.signups > 0)
+
+  const totalVisits = visits.length
+  const totalSignups = signups.length
 
   if (loading) return (
     <div style={{ minHeight: '100vh', backgroundColor: bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -167,20 +194,38 @@ export default function AdminSocialAnalyticsPage() {
           ))}
         </div>
       </div>
+      {/* Totals Banner */}
+      <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+        {[
+          { label: 'Total Landing Page Visits', value: totalVisits, color: '#2563eb' },
+          { label: 'Total Signups', value: totalSignups, color: '#16a34a' },
+          { label: 'Overall Conversion', value: conversionRate(totalVisits, totalSignups), color: ember },
+        ].map(s => (
+          <div key={s.label} style={{ backgroundColor: cardBg, borderRadius: '12px', padding: '1rem 1.5rem', border: `1px solid ${border}`, flex: 1, minWidth: '140px' }}>
+            <div style={{ color: textSecondary, fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', marginBottom: '0.25rem' }}>{s.label}</div>
+            <div style={{ color: s.color, fontSize: '28px', fontWeight: 800 }}>{s.value}</div>
+          </div>
+        ))}
+      </div>
+
       {/* Platform Summary */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
         {PLATFORMS.map(p => {
           const stat = platformStats.find(s => s.platform === p)
           const icon = PLATFORM_ICONS[p.toLowerCase()] || '🌐'
           const color = PLATFORM_COLORS[p.toLowerCase()] || '#333'
+          const v = stat?.visits || 0
+          const s = stat?.signups || 0
           return (
             <div key={p} style={{ backgroundColor: cardBg, borderRadius: '12px', padding: '1rem', border: `1px solid ${border}` }}>
               <div style={{ fontSize: '24px', marginBottom: '0.25rem' }}>{icon}</div>
-              <div style={{ color: textPrimary, fontWeight: 700, fontSize: '14px' }}>{p}</div>
-              <div style={{ color: textSecondary, fontSize: '12px', marginTop: '0.5rem' }}>
-                <span style={{ color, fontWeight: 700, fontSize: '20px' }}>{stat?.signups || 0}</span> signups
+              <div style={{ color: textPrimary, fontWeight: 700, fontSize: '14px', marginBottom: '0.5rem' }}>{p}</div>
+              <div style={{ fontSize: '12px', color: textSecondary, lineHeight: 1.8 }}>
+                <div>👆 <strong style={{ color: '#2563eb' }}>{v}</strong> visits</div>
+                <div>✅ <strong style={{ color: '#16a34a' }}>{s}</strong> signups</div>
+                <div>📈 <strong style={{ color: ember }}>{conversionRate(v, s)}</strong> CVR</div>
               </div>
-              <div style={{ color: textSecondary, fontSize: '11px' }}>{stat?.posts || 0} posts logged</div>
+              <div style={{ color: textSecondary, fontSize: '11px', marginTop: '0.4rem' }}>{stat?.posts || 0} posts logged</div>
             </div>
           )
         })}
@@ -200,7 +245,7 @@ export default function AdminSocialAnalyticsPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
               <thead>
                 <tr style={{ borderBottom: `2px solid ${border}` }}>
-                  {['Date', 'Platform', 'Type', 'Caption', 'UTM Link', 'Signups'].map(h => (
+                  {['Date', 'Platform', 'Type', 'Caption', 'UTM Link', 'Visits', 'Signups', 'CVR'].map(h => (
                     <th key={h} style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: textSecondary, fontWeight: 600, fontSize: '12px', textTransform: 'uppercase' }}>{h}</th>
                   ))}
                 </tr>
@@ -208,6 +253,7 @@ export default function AdminSocialAnalyticsPage() {
               <tbody>
                 {posts.map(post => {
                   const sups = signupsForPost(post)
+                  const vis = visitsForPost(post)
                   const icon = PLATFORM_ICONS[post.platform.toLowerCase()] || '🌐'
                   return (
                     <tr key={post.id} style={{ borderBottom: `1px solid ${border}` }}>
@@ -230,9 +276,15 @@ export default function AdminSocialAnalyticsPage() {
                         </button>
                       </td>
                       <td style={{ padding: '0.75rem' }}>
+                        <span style={{ color: '#2563eb', fontWeight: 700, fontSize: '14px' }}>{vis}</span>
+                      </td>
+                      <td style={{ padding: '0.75rem' }}>
                         <span style={{ backgroundColor: sups > 0 ? '#dcfce7' : '#f5f5f5', color: sups > 0 ? '#16a34a' : textSecondary, padding: '0.2rem 0.75rem', borderRadius: '999px', fontWeight: 700, fontSize: '14px' }}>
                           {sups}
                         </span>
+                      </td>
+                      <td style={{ padding: '0.75rem', color: ember, fontWeight: 700, fontSize: '13px' }}>
+                        {conversionRate(vis, sups)}
                       </td>
                     </tr>
                   )
