@@ -255,7 +255,7 @@ export default function SocialPostingPage() {
                       value={item.caption}
                       onChange={e => setQueue(q => q.map(i => i.id === item.id ? { ...i, caption: e.target.value } : i))}
                       rows={5}
-                      style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px', resize: 'vertical', marginBottom: '0.75rem', boxSizing: 'border-box' }}
+                      style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: `1px solid ${border}`, color: '#000000', backgroundColor: '#ffffff', fontSize: '14px', resize: 'vertical', marginBottom: '0.75rem', boxSizing: 'border-box' }}
                     />
                   ) : (
                     <p style={{ color: textPrimary, fontSize: '14px', lineHeight: 1.6, marginBottom: '0.75rem', whiteSpace: 'pre-wrap' }}>{item.caption}</p>
@@ -306,7 +306,7 @@ export default function SocialPostingPage() {
             onChange={e => setPasteThread(e.target.value)}
             rows={8}
             placeholder="Paste the thread, post, or conversation here..."
-            style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: `1px solid ${border}`, color: textPrimary, fontSize: '14px', resize: 'vertical', marginBottom: '1rem', boxSizing: 'border-box' }}
+            style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: `1px solid ${border}`, color: '#000000', backgroundColor: '#ffffff', fontSize: '14px', resize: 'vertical', marginBottom: '1rem', boxSizing: 'border-box' }}
           />
 
           <button onClick={generateReply} disabled={generatingReply || !pasteThread.trim()}
