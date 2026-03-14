@@ -26,6 +26,17 @@ interface QueueItem {
 
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZteWhsZmVvdXpzbGl4dGttZGR5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYwODk2MTIsImV4cCI6MjA4MTY2NTYxMn0.7asAd8ctLKJLdv2AojbF8WEo-N6dVheVA3mWxjkFwkk'
 
+async function callClaude(prompt: string, system: string): Promise<string> {
+  const res = await fetch('/api/admin/social-draft', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ topic: prompt, count: 1, system, platform: 'paste', _raw_prompt: prompt }),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || 'API error')
+  return data.items?.[0]?.caption || ''
+}
+
 async function findAndDraft(topic: string, count: number, system: string, platform: string) {
   const res = await fetch('/api/admin/social-draft', {
     method: 'POST',

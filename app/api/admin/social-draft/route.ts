@@ -130,8 +130,29 @@ Reply with ONLY the post text, nothing else.`
 
 export async function POST(req: NextRequest) {
   try {
-    const { topic, count = 3, system = '', platform = 'Reddit' } = await req.json()
+    const { topic, count = 3, system = '', platform = 'Reddit', _raw_prompt } = await req.json()
     if (!topic) return NextResponse.json({ error: 'topic required' }, { status: 400 })
+
+    // Handle raw paste prompt (from Paste a Thread tab)
+    if (platform === 'paste' && _raw_prompt) {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': process.env.ANTHROPIC_API_KEY!,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5',
+          max_tokens: 300,
+          system,
+          messages: [{ role: 'user', content: _raw_prompt }],
+        }),
+      })
+      const data = await res.json()
+      const caption = data.content?.[0]?.text || ''
+      return NextResponse.json({ items: [{ platform: 'Reddit', post_type: 'Reply', caption, utm_campaign: `paste_${Date.now()}` }] })
+    }
 
     const isReddit = SEARCH_PLATFORMS.includes(platform.toLowerCase())
 
