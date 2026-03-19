@@ -75,20 +75,42 @@ PRE-LAUNCH RULES (enforced until April 18, 2026):
     const newItems: PostItem[] = []
 
     try {
-      // 1. Reddit replies (5)
-      const redditRes = await fetch('/api/admin/social-draft', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic: 'audio stories podcasts commuting trucking fitness', count: 5, system: systemPrompt, platform: 'reddit' }),
-      })
-      const redditData = await redditRes.json()
-      if (redditData.error) {
-        setRedditError(`Reddit error: ${redditData.error}`)
-      } else if (!redditData.items?.length) {
-        setRedditError('Reddit returned 0 threads — try again in a few minutes.')
+      // 1. Reddit replies — searched client-side (browser IP, not Vercel IP which Reddit blocks)
+      const SUBREDDITS = ['audiodrama', 'Truckers', 'commuting', 'audiobooks', 'podcasts', 'running', 'Mommit']
+      const rawPosts: {title: string, subreddit: string, body: string, url: string}[] = []
+      for (const sub of SUBREDDITS.slice(0, 4)) {
+        try {
+          const r = await fetch(`https://www.reddit.com/r/${sub}/hot.json?limit=4`, {
+            headers: { 'User-Agent': 'EndlessTalesBot/1.0' }
+          })
+          if (!r.ok) continue
+          const d = await r.json()
+          const posts = (d?.data?.children || []).filter((p: {data: {stickied?: boolean}}) => !p.data.stickied).slice(0, 2)
+          for (const p of posts) {
+            rawPosts.push({
+              title: p.data.title,
+              subreddit: p.data.subreddit,
+              body: p.data.selftext?.slice(0, 400) || '',
+              url: `https://reddit.com${p.data.permalink}`,
+            })
+          }
+        } catch { continue }
       }
-      for (const item of (redditData.items || [])) {
-        newItems.push({ ...item, id: crypto.randomUUID(), status: 'pending' })
+
+      if (rawPosts.length === 0) {
+        setRedditError('Reddit returned 0 threads — try again in a few minutes.')
+      } else {
+        // Send fetched posts to API just for Claude drafting (no Reddit search on server)
+        const redditRes = await fetch('/api/admin/social-draft', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ posts: rawPosts, count: 5, system: systemPrompt, platform: 'reddit-prefetched' }),
+        })
+        const redditData = await redditRes.json()
+        if (redditData.error) setRedditError(`Draft error: ${redditData.error}`)
+        for (const item of (redditData.items || [])) {
+          newItems.push({ ...item, id: crypto.randomUUID(), status: 'pending' })
+        }
       }
 
       // 2. X/Twitter posts (3)

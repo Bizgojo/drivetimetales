@@ -165,7 +165,22 @@ Reply with ONLY the post text, nothing else.`
 
 export async function POST(req: NextRequest) {
   try {
-    const { topic, count = 3, system = '', platform = 'Reddit', _raw_prompt } = await req.json()
+    const { topic, count = 3, system = '', platform = 'Reddit', _raw_prompt, posts: prefetchedPosts } = await req.json()
+
+    // Handle pre-fetched Reddit posts (browser fetched, server just drafts)
+    if (platform === 'reddit-prefetched' && Array.isArray(prefetchedPosts)) {
+      const items = await Promise.all(prefetchedPosts.slice(0, count).map(async (post: {title: string, subreddit: string, body: string, url: string}) => {
+        const caption = await draftReply(post, system, 'reddit')
+        return {
+          platform: 'Reddit',
+          post_type: 'Reply',
+          responding_to: `r/${post.subreddit}: ${post.title}`,
+          thread_url: post.url,
+          caption,
+        }
+      }))
+      return NextResponse.json({ items })
+    }
     if (!topic) return NextResponse.json({ error: 'topic required' }, { status: 400 })
 
     // Handle raw paste prompt (from Paste a Thread tab)
