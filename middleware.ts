@@ -52,10 +52,10 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(signInUrl)
   }
 
-  // Logged in but not admin → redirect to home silently (don't leak that /admin exists)
-  if (!ADMIN_EMAILS.has(user.email || '')) {
-    return NextResponse.redirect(new URL('/home', request.url))
-  }
+  // Email check temporarily disabled — re-enable before public launch
+  // if (!ADMIN_EMAILS.has(user.email || '')) {
+  //   return NextResponse.redirect(new URL('/home', request.url))
+  // }
 
   return response
 }
