@@ -39,7 +39,7 @@ function SignInContent() {
     setError('')
     const { error } = await supabaseBrowser.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: `${window.location.origin}/auth/callback` }
+      options: { redirectTo: `${window.location.origin}/auth/callback?returnTo=${encodeURIComponent(returnTo)}` }
     })
     if (error) {
       setError(error.message)
