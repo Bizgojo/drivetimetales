@@ -181,23 +181,31 @@ PRE-LAUNCH RULES (enforced until April 18, 2026):
             </p>
           )}
         </div>
-        <button
-          onClick={generatePosts}
-          disabled={loading}
-          style={{
-            background: loading ? '#9ca3af' : '#111',
-            color: 'white',
-            border: 'none',
-            borderRadius: '8px',
-            padding: '10px 20px',
-            fontSize: '14px',
-            fontWeight: 600,
-            cursor: loading ? 'not-allowed' : 'pointer',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {loading ? '⏳ Generating...' : items.length === 0 ? '⚡ Generate Today\'s Posts' : '🔄 Regenerate'}
-        </button>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+          <button
+            onClick={() => {
+              if (items.length > 0 && !window.confirm("This will replace today's queue with a fresh batch. Posts you've already marked done will be cleared. Continue?")) return
+              generatePosts()
+            }}
+            disabled={loading}
+            style={{
+              background: loading ? '#9ca3af' : '#111',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              padding: '10px 20px',
+              fontSize: '14px',
+              fontWeight: 600,
+              cursor: loading ? 'not-allowed' : 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {loading ? '⏳ Generating...' : items.length === 0 ? '⚡ Generate Today\'s Posts' : '🔄 Replace with New Batch'}
+          </button>
+          {items.length > 0 && !loading && (
+            <span style={{ fontSize: '11px', color: '#9ca3af' }}>Only regenerate if drafts look bad</span>
+          )}
+        </div>
       </div>
 
       {/* Loading state */}
