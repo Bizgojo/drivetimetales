@@ -37,9 +37,12 @@ function SignInContent() {
   const handleGoogleLogin = async () => {
     setSocialLoading('google')
     setError('')
+    // Store returnTo in sessionStorage so callback can redirect correctly
+    // (can't pass it through Supabase OAuth redirect — only whitelisted URLs allowed)
+    sessionStorage.setItem('authReturnTo', returnTo)
     const { error } = await supabaseBrowser.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: `${window.location.origin}/auth/callback?returnTo=${encodeURIComponent(returnTo)}` }
+      options: { redirectTo: `${window.location.origin}/auth/callback` }
     })
     if (error) {
       setError(error.message)

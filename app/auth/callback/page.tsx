@@ -12,7 +12,9 @@ function AuthCallbackContent() {
   useEffect(() => {
     async function handleCallback() {
       const code = searchParams.get('code')
-      const returnTo = searchParams.get('returnTo') || '/home'
+      // Retrieve the intended destination stored before OAuth redirect
+      const returnTo = sessionStorage.getItem('authReturnTo') || '/home'
+      sessionStorage.removeItem('authReturnTo')
 
       if (code) {
         // Exchange the OAuth code for a session (PKCE flow)
