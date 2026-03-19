@@ -3,6 +3,10 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
 import { User, Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
+import { supabaseBrowser } from '@/lib/supabase-browser'
+
+// Use cookie-aware client for all auth operations so middleware can read the session
+const authClient = supabaseBrowser
 
 interface DbUser {
   id: string
@@ -80,7 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     
     async function initAuth() {
       try {
-        const { data: { session } } = await supabase.auth.getSession()
+        const { data: { session } } = await authClient.auth.getSession()
         
         if (!isMounted) return
         
@@ -102,7 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     
     initAuth()
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: { subscription } } = authClient.auth.onAuthStateChange(async (_event, session) => {
       if (!isMounted) return
       
       setSession(session)
@@ -123,19 +127,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const refreshUser = async () => {
-    const { data: { session } } = await supabase.auth.getSession()
+    const { data: { session } } = await authClient.auth.getSession()
     if (session?.user) {
       await loadDbUser(session.user)
     }
   }
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const { error } = await authClient.auth.signInWithPassword({ email, password })
     return { error }
   }
 
   const signUp = async (email: string, password: string, firstName: string) => {
-    const { data, error } = await supabase.auth.signUp({
+    const { data, error } = await authClient.auth.signUp({
       email,
       password,
       options: {
@@ -169,7 +173,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const signOut = async () => {
-    await supabase.auth.signOut()
+    await authClient.auth.signOut()
     setUser(null)
     setSession(null)
   }

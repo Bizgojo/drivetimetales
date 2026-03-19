@@ -8,6 +8,7 @@ const ADMIN_EMAILS = new Set([
   'marc@endless-tales.com',
   'hello.endlesstales@gmail.com',
   'williampostlewaite@icloud.com',
+  'm.postlewaite@gmail.com',
   ...ADMIN_EMAILS_ENV.split(',').map(e => e.trim()).filter(Boolean),
 ])
 

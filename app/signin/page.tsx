@@ -4,7 +4,7 @@ import { useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext'
-import { supabase } from '@/lib/supabase'
+import { supabaseBrowser } from '@/lib/supabase-browser'
 import StickyHeader from '@/components/StickyHeader'
 
 function SignInContent() {
@@ -37,7 +37,7 @@ function SignInContent() {
   const handleGoogleLogin = async () => {
     setSocialLoading('google')
     setError('')
-    const { error } = await supabase.auth.signInWithOAuth({
+    const { error } = await supabaseBrowser.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: `${window.location.origin}/auth/callback` }
     })
