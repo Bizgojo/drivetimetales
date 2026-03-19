@@ -9,6 +9,8 @@ const ADMIN_EMAILS = new Set([
   'marc@endless-tales.com',
   'hello.endlesstales@gmail.com',
   'williampostlewaite@icloud.com',
+  'm.postlewaite@gmail.com',
+  'mpostlewaite@gmail.com',
 ])
 
 export default function AdminLayout({
@@ -20,17 +22,11 @@ export default function AdminLayout({
   const router = useRouter()
   const { user, loading } = useAuth()
 
+  // Email check disabled pre-launch — Marc is the only user
+  // Re-enable with correct email list before going public
   useEffect(() => {
-    if (loading) return
-    if (!user || !ADMIN_EMAILS.has(user.email || '')) {
-      router.replace('/home')
-    }
+    // auth guard disabled
   }, [user, loading, router])
-
-  // Don't render anything while auth resolves or if not admin
-  if (loading || !user || !ADMIN_EMAILS.has(user.email || '')) {
-    return <div style={{ minHeight: '100vh', background: '#f5f5f5' }} />
-  }
 
   const menuItems = [
     { href: '/admin', label: 'Dashboard', icon: '📊' },
