@@ -13,25 +13,60 @@ export const maxDuration = 60
 // Search these subreddits using Reddit's multi-sub search
 const SUBREDDIT_MULTI = 'audiodrama+audiobooks+podcasts+storytelling+nosleep+shortstories+commuting+truckers+running+fitness+Mommit+SAHM+boredom'
 
+// Try multiple subreddits individually as fallback (more reliable than multi-search from server IPs)
+const TARGET_SUBREDDITS = ['audiodrama', 'Truckers', 'commuting', 'audiobooks', 'podcasts', 'running', 'Mommit']
+
 async function searchReddit(topic: string, limit: number) {
-  const url = `https://www.reddit.com/r/${SUBREDDIT_MULTI}/search.json?q=${encodeURIComponent(topic)}&restrict_sr=1&sort=hot&limit=${limit * 2}&t=month`
-  const res = await fetch(url, {
-    headers: { 'User-Agent': 'EndlessTalesBot/1.0 (social media manager)' }
-  })
-  if (!res.ok) throw new Error(`Reddit search failed: ${res.status}`)
-  const data = await res.json()
-  const posts = data?.data?.children || []
-  return posts
-    .filter((p: {data: {stickied?: boolean}}) => !p.data.stickied)
-    .slice(0, limit)
-    .map((p: {data: {title: string, subreddit: string, selftext: string, permalink: string, score: number, num_comments: number}}) => ({
-      title: p.data.title,
-      subreddit: p.data.subreddit,
-      body: p.data.selftext?.slice(0, 500) || '',
-      url: `https://reddit.com${p.data.permalink}`,
-      score: p.data.score,
-      comments: p.data.num_comments,
-    }))
+  // Try multi-search first
+  const multiUrl = `https://www.reddit.com/r/${SUBREDDIT_MULTI}/search.json?q=${encodeURIComponent(topic)}&restrict_sr=1&sort=hot&limit=${limit * 2}&t=month`
+  try {
+    const res = await fetch(multiUrl, {
+      headers: { 'User-Agent': 'EndlessTalesBot/1.0 by /u/EndlessTalesAudio' },
+      signal: AbortSignal.timeout(8000),
+    })
+    if (res.ok) {
+      const data = await res.json()
+      const posts = data?.data?.children || []
+      if (posts.length > 0) {
+        return posts
+          .filter((p: {data: {stickied?: boolean}}) => !p.data.stickied)
+          .slice(0, limit)
+          .map((p: {data: {title: string, subreddit: string, selftext: string, permalink: string, score: number, num_comments: number}}) => ({
+            title: p.data.title,
+            subreddit: p.data.subreddit,
+            body: p.data.selftext?.slice(0, 500) || '',
+            url: `https://reddit.com${p.data.permalink}`,
+            score: p.data.score,
+            comments: p.data.num_comments,
+          }))
+      }
+    }
+  } catch { /* fall through to individual sub approach */ }
+
+  // Fallback: fetch hot posts from individual subreddits
+  const allPosts: {title: string, subreddit: string, body: string, url: string, score: number, comments: number}[] = []
+  for (const sub of TARGET_SUBREDDITS.slice(0, 4)) {
+    try {
+      const res = await fetch(`https://www.reddit.com/r/${sub}/hot.json?limit=5`, {
+        headers: { 'User-Agent': 'EndlessTalesBot/1.0 by /u/EndlessTalesAudio' },
+        signal: AbortSignal.timeout(5000),
+      })
+      if (!res.ok) continue
+      const data = await res.json()
+      const posts = data?.data?.children || []
+      for (const p of posts.filter((p: {data: {stickied?: boolean}}) => !p.data.stickied).slice(0, 2)) {
+        allPosts.push({
+          title: p.data.title,
+          subreddit: p.data.subreddit,
+          body: p.data.selftext?.slice(0, 500) || '',
+          url: `https://reddit.com${p.data.permalink}`,
+          score: p.data.score,
+          comments: p.data.num_comments,
+        })
+      }
+    } catch { continue }
+  }
+  return allPosts.slice(0, limit)
 }
 
 async function draftReply(post: {title: string, subreddit: string, body: string, url: string}, system: string, platform: string) {

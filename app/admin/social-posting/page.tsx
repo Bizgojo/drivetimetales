@@ -39,6 +39,7 @@ export default function SocialPostingPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editText, setEditText] = useState('')
   const [lastGenerated, setLastGenerated] = useState<string | null>(null)
+  const [redditError, setRedditError] = useState<string | null>(null)
 
   // Load today's queue from localStorage on mount
   useEffect(() => {
@@ -70,6 +71,7 @@ PRE-LAUNCH RULES (enforced until April 18, 2026):
 
   async function generatePosts() {
     setLoading(true)
+    setRedditError(null)
     const newItems: PostItem[] = []
 
     try {
@@ -80,6 +82,11 @@ PRE-LAUNCH RULES (enforced until April 18, 2026):
         body: JSON.stringify({ topic: 'audio stories podcasts commuting trucking fitness', count: 5, system: systemPrompt, platform: 'reddit' }),
       })
       const redditData = await redditRes.json()
+      if (redditData.error) {
+        setRedditError(`Reddit error: ${redditData.error}`)
+      } else if (!redditData.items?.length) {
+        setRedditError('Reddit returned 0 threads — try again in a few minutes.')
+      }
       for (const item of (redditData.items || [])) {
         newItems.push({ ...item, id: crypto.randomUUID(), status: 'pending' })
       }
@@ -207,6 +214,13 @@ PRE-LAUNCH RULES (enforced until April 18, 2026):
           )}
         </div>
       </div>
+
+      {/* Reddit error banner */}
+      {redditError && !loading && (
+        <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '10px', padding: '12px 16px', marginBottom: '16px', fontSize: '13px', color: '#c2410c' }}>
+          ⚠️ <strong>Reddit:</strong> {redditError}
+        </div>
+      )}
 
       {/* Loading state */}
       {loading && (
