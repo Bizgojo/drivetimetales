@@ -167,6 +167,43 @@ export async function POST(req: NextRequest) {
   try {
     const { topic, count = 3, system = '', platform = 'Reddit', _raw_prompt, posts: prefetchedPosts } = await req.json()
 
+    // Handle original Reddit post drafts (not replies — standalone posts Marc submits to subreddits)
+    if (platform === 'reddit-original') {
+      const ORIGINAL_SUBREDDITS = ['r/audiodrama', 'r/storytelling', 'r/audiobooks', 'r/podcasts']
+      const indices = Array.from({ length: count }, (_, i) => i)
+      const items = await Promise.all(indices.map(async (i) => {
+        const sub = ORIGINAL_SUBREDDITS[i % ORIGINAL_SUBREDDITS.length]
+        const angles = [
+          'share the 3 free stories available now on endless-tales.com and invite feedback',
+          'talk about the April 17 launch and what makes Endless Tales different from audiobooks',
+          'ask the community what kinds of audio stories they want to hear more of',
+          'share a behind-the-scenes look at building an audio drama platform',
+        ]
+        const angle = angles[i % angles.length]
+        const prompt = `Write an original Reddit post for ${sub} from the perspective of someone building Endless Tales (an audio drama platform launching April 17, 2026).
+Angle: ${angle}
+
+Rules:
+- Sound like a real creator, not a marketer
+- Community-first, genuine, adds value to the subreddit
+- Pre-launch only — never imply it's live
+- Only reference these 3 free stories if mentioning stories: "When Rosie Came Home" (3 min), "The Grave He Dug Himself" (14 min western), "The Letters He Was Meant to Carry" (14 min uplifting)
+- Link to endless-tales.com only
+- Include a suggested post title on the first line starting with TITLE: then a blank line, then the post body
+
+Reply with ONLY the post (title line + body), nothing else.`
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY!, 'anthropic-version': '2023-06-01' },
+          body: JSON.stringify({ model: 'claude-haiku-4-5', max_tokens: 400, system, messages: [{ role: 'user', content: prompt }] }),
+        })
+        const data = await res.json()
+        const text = data.content?.[0]?.text || ''
+        return { platform: 'Reddit Post', post_type: 'Original Post', caption: text, responding_to: `Post to ${sub}`, utm_campaign: `reddit_original_${Date.now()}_${i}` }
+      }))
+      return NextResponse.json({ items })
+    }
+
     // Handle pre-fetched Reddit posts (browser fetched, server just drafts)
     if (platform === 'reddit-prefetched' && Array.isArray(prefetchedPosts)) {
       const items = await Promise.all(prefetchedPosts.slice(0, count).map(async (post: {title: string, subreddit: string, body: string, url: string}) => {

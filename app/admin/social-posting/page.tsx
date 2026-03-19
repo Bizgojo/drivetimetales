@@ -19,12 +19,14 @@ interface PostItem {
 
 const PLATFORM_ICON: Record<string, string> = {
   Reddit: '🔴',
+  'Reddit Post': '🔴',
   'X/Twitter': '𝕏',
   Facebook: '👤',
 }
 
 const PLATFORM_COLOR: Record<string, string> = {
   Reddit: '#ff4500',
+  'Reddit Post': '#ff4500',
   'X/Twitter': '#000000',
   Facebook: '#1877f2',
 }
@@ -40,6 +42,7 @@ export default function SocialPostingPage() {
   const [editText, setEditText] = useState('')
   const [lastGenerated, setLastGenerated] = useState<string | null>(null)
   const [redditError, setRedditError] = useState<string | null>(null)
+  const [postingToX, setPostingToX] = useState<string | null>(null) // item id being posted
 
   // Load today's queue from localStorage on mount
   useEffect(() => {
@@ -97,7 +100,18 @@ PRE-LAUNCH RULES (enforced until April 18, 2026):
         })
       }
 
-      // 2. X/Twitter posts (3)
+      // 2. Reddit Original Posts (2) — Marc posts these as the creator in relevant subreddits
+      const redditOrigRes = await fetch('/api/admin/social-draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic: 'audio drama storytelling community endless tales launch', count: 2, system: systemPrompt, platform: 'reddit-original' }),
+      })
+      const redditOrigData = await redditOrigRes.json()
+      for (const item of (redditOrigData.items || [])) {
+        newItems.push({ ...item, platform: 'Reddit Post', post_type: 'Original Post', id: crypto.randomUUID(), status: 'pending' })
+      }
+
+      // 3. X/Twitter posts (3)
       const xRes = await fetch('/api/admin/social-draft', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -108,7 +122,7 @@ PRE-LAUNCH RULES (enforced until April 18, 2026):
         newItems.push({ ...item, id: crypto.randomUUID(), status: 'pending' })
       }
 
-      // 3. Facebook posts (2)
+      // 4. Facebook posts (2)
       const fbRes = await fetch('/api/admin/social-draft', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -146,6 +160,26 @@ PRE-LAUNCH RULES (enforced until April 18, 2026):
   function saveEdit(id: string) {
     setItems(prev => prev.map(i => i.id === id ? { ...i, caption: editText } : i))
     setEditingId(null)
+  }
+
+  async function postToX(id: string, text: string) {
+    setPostingToX(id)
+    try {
+      const res = await fetch('/api/admin/post-to-x', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        markDone(id)
+      } else {
+        alert(data.error || 'Failed to post to X. Check your API credentials.')
+      }
+    } catch {
+      alert('Failed to post to X. Check your API credentials.')
+    }
+    setPostingToX(null)
   }
 
   async function copyToClipboard(id: string, text: string) {
@@ -250,11 +284,13 @@ PRE-LAUNCH RULES (enforced until April 18, 2026):
                 item={item}
                 editingId={editingId}
                 editText={editText}
+                postingToX={postingToX}
                 onEdit={startEdit}
                 onEditChange={setEditText}
                 onSaveEdit={saveEdit}
                 onCancelEdit={() => setEditingId(null)}
                 onCopy={copyToClipboard}
+                onPostToX={postToX}
                 onDone={markDone}
                 onSkip={markSkipped}
               />
@@ -362,15 +398,17 @@ PRE-LAUNCH RULES (enforced until April 18, 2026):
 
 // ─── Post Card ─────────────────────────────────────────────────────────────────
 
-function PostCard({ item, editingId, editText, onEdit, onEditChange, onSaveEdit, onCancelEdit, onCopy, onDone, onSkip }: {
+function PostCard({ item, editingId, editText, postingToX, onEdit, onEditChange, onSaveEdit, onCancelEdit, onCopy, onPostToX, onDone, onSkip }: {
   item: PostItem
   editingId: string | null
   editText: string
+  postingToX: string | null
   onEdit: (item: PostItem) => void
   onEditChange: (text: string) => void
   onSaveEdit: (id: string) => void
   onCancelEdit: () => void
   onCopy: (id: string, text: string) => void
+  onPostToX: (id: string, text: string) => void
   onDone: (id: string) => void
   onSkip: (id: string) => void
 }) {
@@ -378,6 +416,9 @@ function PostCard({ item, editingId, editText, onEdit, onEditChange, onSaveEdit,
   const color = PLATFORM_COLOR[item.platform] || '#374151'
   const icon = PLATFORM_ICON[item.platform] || '🌐'
   const isReddit = item.platform === 'Reddit'
+  const isRedditOriginal = item.platform === 'Reddit Post'
+  const isX = item.platform === 'X/Twitter'
+  const isPostingThisToX = postingToX === item.id
 
   return (
     <div style={{
@@ -464,25 +505,44 @@ function PostCard({ item, editingId, editText, onEdit, onEditChange, onSaveEdit,
           flexWrap: 'wrap',
         }}>
           {isReddit ? (
-            // Reddit: copy reply + mark done
+            // Reddit Replies: copy + mark done
             <>
-              <button
-                onClick={() => { onCopy(item.id, item.caption); onDone(item.id) }}
-                style={btnStyle('#16a34a', 'white')}
-              >
+              <button onClick={() => { onCopy(item.id, item.caption); onDone(item.id) }} style={btnStyle('#ff4500', 'white')}>
                 {item.copied ? '✅ Copied!' : '📋 Copy & Mark Done'}
               </button>
               <button onClick={() => onEdit(item)} style={btnStyle('#f3f4f6', '#374151')}>✏️ Edit</button>
               <button onClick={() => onSkip(item.id)} style={btnStyle('#f3f4f6', '#9ca3af')}>Skip</button>
             </>
-          ) : (
-            // X / Facebook: copy text + mark done
+          ) : isRedditOriginal ? (
+            // Reddit Original Posts: copy + mark done
+            <>
+              <button onClick={() => { onCopy(item.id, item.caption); onDone(item.id) }} style={btnStyle('#ff4500', 'white')}>
+                {item.copied ? '✅ Copied!' : '📋 Copy & Post on Reddit'}
+              </button>
+              <button onClick={() => onEdit(item)} style={btnStyle('#f3f4f6', '#374151')}>✏️ Edit</button>
+              <button onClick={() => onSkip(item.id)} style={btnStyle('#f3f4f6', '#9ca3af')}>Skip</button>
+            </>
+          ) : isX ? (
+            // X/Twitter: auto-post button + copy fallback
             <>
               <button
-                onClick={() => { onCopy(item.id, item.caption); onDone(item.id) }}
-                style={btnStyle('#111', 'white')}
+                onClick={() => onPostToX(item.id, item.caption)}
+                disabled={!!postingToX}
+                style={btnStyle(isPostingThisToX ? '#666' : '#000', 'white')}
               >
-                {item.copied ? '✅ Copied!' : '📋 Copy & Mark Done'}
+                {isPostingThisToX ? '⏳ Posting...' : '𝕏 Post to X'}
+              </button>
+              <button onClick={() => { onCopy(item.id, item.caption); onDone(item.id) }} style={btnStyle('#f3f4f6', '#374151')}>
+                {item.copied ? '✅ Copied!' : '📋 Copy instead'}
+              </button>
+              <button onClick={() => onEdit(item)} style={btnStyle('#f3f4f6', '#374151')}>✏️ Edit</button>
+              <button onClick={() => onSkip(item.id)} style={btnStyle('#f3f4f6', '#9ca3af')}>Skip</button>
+            </>
+          ) : (
+            // Facebook: copy + mark done
+            <>
+              <button onClick={() => { onCopy(item.id, item.caption); onDone(item.id) }} style={btnStyle('#1877f2', 'white')}>
+                {item.copied ? '✅ Copied!' : '📋 Copy & Post on Facebook'}
               </button>
               <button onClick={() => onEdit(item)} style={btnStyle('#f3f4f6', '#374151')}>✏️ Edit</button>
               <button onClick={() => onSkip(item.id)} style={btnStyle('#f3f4f6', '#9ca3af')}>Skip</button>
