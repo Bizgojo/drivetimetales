@@ -75,42 +75,26 @@ PRE-LAUNCH RULES (enforced until April 18, 2026):
     const newItems: PostItem[] = []
 
     try {
-      // 1. Reddit replies — searched client-side (browser IP, not Vercel IP which Reddit blocks)
-      const SUBREDDITS = ['audiodrama', 'Truckers', 'commuting', 'audiobooks', 'podcasts', 'running', 'Mommit']
-      const rawPosts: {title: string, subreddit: string, body: string, url: string}[] = []
-      for (const sub of SUBREDDITS.slice(0, 4)) {
-        try {
-          const r = await fetch(`https://www.reddit.com/r/${sub}/hot.json?limit=4`, {
-            headers: { 'User-Agent': 'EndlessTalesBot/1.0' }
-          })
-          if (!r.ok) continue
-          const d = await r.json()
-          const posts = (d?.data?.children || []).filter((p: {data: {stickied?: boolean}}) => !p.data.stickied).slice(0, 2)
-          for (const p of posts) {
-            rawPosts.push({
-              title: p.data.title,
-              subreddit: p.data.subreddit,
-              body: p.data.selftext?.slice(0, 400) || '',
-              url: `https://reddit.com${p.data.permalink}`,
-            })
-          }
-        } catch { continue }
+      // 1. Reddit replies — loaded from Supabase (pre-populated by local 8 AM cron on Mac)
+      const today = new Date().toISOString().slice(0, 10)
+      const redditRes = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/social_posts?queue_date=eq.${today}&platform=eq.Reddit&order=created_at.asc`,
+        { headers: { 'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, 'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!}` } }
+      )
+      const redditPosts = await redditRes.json()
+      if (!Array.isArray(redditPosts) || redditPosts.length === 0) {
+        setRedditError("No Reddit posts yet for today — the daily cron runs at 8 AM. You can also run it manually from your Mac.")
       }
-
-      if (rawPosts.length === 0) {
-        setRedditError('Reddit returned 0 threads — try again in a few minutes.')
-      } else {
-        // Send fetched posts to API just for Claude drafting (no Reddit search on server)
-        const redditRes = await fetch('/api/admin/social-draft', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ posts: rawPosts, count: 5, system: systemPrompt, platform: 'reddit-prefetched' }),
+      for (const p of (Array.isArray(redditPosts) ? redditPosts : [])) {
+        newItems.push({
+          id: p.id,
+          platform: 'Reddit',
+          post_type: p.post_type || 'Reply',
+          caption: p.caption,
+          responding_to: p.responding_to,
+          thread_url: p.thread_url,
+          status: (p.status === 'pending' ? 'pending' : p.status) as 'pending' | 'done' | 'skipped',
         })
-        const redditData = await redditRes.json()
-        if (redditData.error) setRedditError(`Draft error: ${redditData.error}`)
-        for (const item of (redditData.items || [])) {
-          newItems.push({ ...item, id: crypto.randomUUID(), status: 'pending' })
-        }
       }
 
       // 2. X/Twitter posts (3)
