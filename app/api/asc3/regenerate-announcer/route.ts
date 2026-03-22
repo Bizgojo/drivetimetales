@@ -1,34 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
-
 export const runtime = 'nodejs'
 import { createClient } from '@supabase/supabase-js'
+import { elevenLabsTTS } from '@/app/lib/el-logger'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY!
 const BELLE_B_VOICE_ID = 'EXAVITQu4vr4xnSDxMaL'
 
-async function generateAudio(text: string): Promise<Buffer> {
-  const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${BELLE_B_VOICE_ID}`, {
-    method: 'POST',
-    headers: { 'xi-api-key': ELEVENLABS_API_KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      text,
-      model_id: 'eleven_monolingual_v1',
-      voice_settings: { stability: 0.5, similarity_boost: 0.75 },
-    }),
-  })
-  if (!res.ok) throw new Error(`ElevenLabs error: ${res.status} - ${await res.text()}`)
-  return Buffer.from(await res.arrayBuffer())
-}
-
-// POST body: { storyId, type: 'intro' | 'outro', text }
+// POST body: { storyId, type: 'intro' | 'outro', text, storyTitle? }
 export async function POST(req: NextRequest) {
   try {
-    const { storyId, type, text } = await req.json()
+    const { storyId, type, text, storyTitle } = await req.json()
 
     if (!storyId || !type || !text) {
       return NextResponse.json({ success: false, error: 'storyId, type, and text required' }, { status: 400 })
@@ -39,10 +24,16 @@ export async function POST(req: NextRequest) {
 
     console.log(`🎙️ Regenerating ${type} audio for story ${storyId} (${text.length} chars)`)
 
-    // Generate new audio with Belle B
-    const buffer = await generateAudio(text)
+    // Generate with logging
+    const buffer = await elevenLabsTTS({
+      text,
+      voiceId: BELLE_B_VOICE_ID,
+      voiceName: 'Belle B',
+      category: 'intro',
+      storyTitle: storyTitle || null,
+    })
 
-    // Upload to Supabase storage (overwrites existing)
+    // Upload to Supabase storage
     const storagePath = `asc3/${storyId}/${type}.mp3`
     const { error: uploadErr } = await supabase.storage
       .from('audio')
@@ -52,7 +43,6 @@ export async function POST(req: NextRequest) {
 
     const { data: { publicUrl } } = supabase.storage.from('audio').getPublicUrl(storagePath)
 
-    // Update story record with new audio URL + text
     const dbField = type === 'intro'
       ? { intro_audio_url: publicUrl, intro_text: text }
       : { outro_audio_url: publicUrl, outro_text: text }
