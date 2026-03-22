@@ -99,6 +99,12 @@ The Drive Time Tales Team`;
       ? response.content[0].text 
       : 'Unable to generate response';
 
+    // Log usage
+    try {
+      const { logAnthropicCall } = await import('@/app/lib/anthropic-logger')
+      logAnthropicCall({ route: '/api/admin/support/ai-suggest', purpose: 'support-ai-suggest', model: 'claude-sonnet-4-20250514', inputTokens: response.usage?.input_tokens ?? 0, outputTokens: response.usage?.output_tokens ?? 0 }).catch(() => {})
+    } catch { /* never break */ }
+
     // Prepend greeting
     const fullResponse = `Hi ${userName},\n\n${suggestion}`;
 

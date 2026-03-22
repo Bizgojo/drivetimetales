@@ -112,6 +112,12 @@ Write the complete story now:`;
     }
 
     const result = await response.json();
+
+    // Log Anthropic usage
+    try {
+      const { logAnthropicCall } = await import('@/app/lib/anthropic-logger')
+      logAnthropicCall({ route: '/api/asc3/generate-story', purpose: 'story-generation', model: 'claude-sonnet-4-6', inputTokens: result.usage?.input_tokens ?? 0, outputTokens: result.usage?.output_tokens ?? 0 }).catch(() => {})
+    } catch { /* never break */ }
     
     // Extract the generated text
     const generatedText = result.content?.[0]?.text || '';

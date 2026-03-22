@@ -106,6 +106,8 @@ Reply with ONLY the post text, nothing else.`
     }),
   })
   const data = await res.json()
+  const log = await import('@/app/lib/anthropic-logger').then(m => m.logAnthropicCall).catch(() => null)
+  if (log) log({ route: '/api/admin/social-draft', purpose: 'reddit-reply-draft', model: 'claude-haiku-4-5', inputTokens: data.usage?.input_tokens ?? 0, outputTokens: data.usage?.output_tokens ?? 0 }).catch(() => {})
   return data.content?.[0]?.text || ''
 }
 
@@ -160,6 +162,8 @@ Reply with ONLY the post text, nothing else.`
     }),
   })
   const data = await res.json()
+  const log = await import('@/app/lib/anthropic-logger').then(m => m.logAnthropicCall).catch(() => null)
+  if (log) log({ route: '/api/admin/social-draft', purpose: 'social-original-post-draft', model: 'claude-haiku-4-5', inputTokens: data.usage?.input_tokens ?? 0, outputTokens: data.usage?.output_tokens ?? 0 }).catch(() => {})
   return data.content?.[0]?.text || ''
 }
 

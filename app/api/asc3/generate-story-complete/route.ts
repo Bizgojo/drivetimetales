@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { logAnthropicCall } from '@/app/lib/anthropic-logger'
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY!
 
@@ -668,7 +669,6 @@ Now write the complete audio drama:`
 
     // ─── Log Anthropic usage ───────────────────────────────────────
     try {
-      const { logAnthropicCall } = await import('../../../../lib/anthropic-logger')
       logAnthropicCall({
         route: '/api/asc3/generate-story-complete',
         purpose: 'story-generation',

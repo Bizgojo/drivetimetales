@@ -47,6 +47,12 @@ export async function POST(req: NextRequest) {
       ? msg.content[0].text
       : 'Sorry, I had a moment there — say that again?'
 
+    // Log usage
+    try {
+      const { logAnthropicCall } = await import('@/app/lib/anthropic-logger')
+      logAnthropicCall({ route: '/api/voice-chat', purpose: 'voice-chat', model: 'claude-haiku-4-5', inputTokens: msg.usage?.input_tokens ?? 0, outputTokens: msg.usage?.output_tokens ?? 0 }).catch(() => {})
+    } catch { /* never break */ }
+
     history.push({ role: 'assistant', content: responseText })
     await saveHistory(session_id, history)
 

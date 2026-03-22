@@ -469,7 +469,7 @@ function ELDetailTab() {
 
 // ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
 export default function FinancePage() {
-  const [tab, setTab] = useState<'expenses'|'revenue'|'pl'|'balance'|'el'>('expenses')
+  const [tab, setTab] = useState<'expenses'|'revenue'|'pl'|'balance'|'el'|'anthropic'>('expenses')
 
   const expDefaults = Object.fromEntries(EXPENSES.map(e => [e.id, [...e.defaults]]))
   const revDefaults = Object.fromEntries(REVENUES.map(r => [r.id, [...r.defaults]]))
