@@ -3,7 +3,11 @@ import { NextResponse } from 'next/server'
 export const dynamic = 'force-dynamic'
 
 const BASE_URL = 'https://endless-tales.com'
-const COVER_URL = `${BASE_URL}/images/podcast-cover.png`
+const COVER_URL = 'https://www.endless-tales.com/podcast-cover.png'
+
+function xmlEscape(str: string): string {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
 
 const EPISODES = [
   {
@@ -57,7 +61,7 @@ export async function GET() {
   <channel>
     <title>Endless Tales</title>
     <link>${BASE_URL}</link>
-    <description>Short-form audio dramas built for your commute. Full cast. Original music. Stories that fit in the time you have — 3 to 30 minutes. New episodes every week. Launching April 17, 2026.</description>
+    <description>Short-form audio dramas built for your commute. Full cast. Original music. Stories that fit in the time you have - 3 to 30 minutes. New episodes every week. Launching April 17, 2026.</description>
     <language>en-us</language>
     <copyright>© 2026 Endless Tales / Wonder Books Press LLC</copyright>
     <managingEditor>hello@endless-tales.com (Endless Tales)</managingEditor>
@@ -92,16 +96,16 @@ export async function GET() {
     <itunes:new-feed-url>${BASE_URL}/api/podcast/rss</itunes:new-feed-url>
     <podcast:locked>no</podcast:locked>
 ${EPISODES.map(ep => `    <item>
-      <title>${ep.title}</title>
-      <description><![CDATA[${ep.description}<br/><br/>Listen to more stories at <a href="${BASE_URL}?utm_source=podcast&utm_medium=rss&utm_campaign=episode&utm_content=${ep.guid}">${BASE_URL}</a> — launching April 17, 2026.]]></description>
-      <content:encoded><![CDATA[${ep.description}<br/><br/>Listen to more stories at <a href="${BASE_URL}">${BASE_URL}</a> — launching April 17, 2026.]]></content:encoded>
+      <title>${xmlEscape(ep.title)}</title>
+      <description><![CDATA[${ep.description} Listen to more stories at ${BASE_URL} — launching April 17, 2026.]]></description>
+      <content:encoded><![CDATA[${ep.description} Listen to more stories at ${BASE_URL} — launching April 17, 2026.]]></content:encoded>
       <enclosure url="${ep.audioUrl}" length="${ep.audioBytes}" type="audio/mpeg"/>
       <guid isPermaLink="false">${ep.guid}</guid>
       <pubDate>${ep.pubDate}</pubDate>
-      <link>${BASE_URL}?utm_source=podcast&utm_medium=rss&utm_campaign=episode&utm_content=${ep.guid}</link>
-      <itunes:title>${ep.title}</itunes:title>
-      <itunes:author>${ep.author}</itunes:author>
-      <itunes:summary>${ep.description}</itunes:summary>
+      <link>${BASE_URL}</link>
+      <itunes:title>${xmlEscape(ep.title)}</itunes:title>
+      <itunes:author>${xmlEscape(ep.author)}</itunes:author>
+      <itunes:summary><![CDATA[${ep.description}]]></itunes:summary>
       <itunes:duration>${ep.duration}</itunes:duration>
       <itunes:episode>${ep.episodeNumber}</itunes:episode>
       <itunes:episodeType>full</itunes:episodeType>
