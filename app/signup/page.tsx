@@ -7,14 +7,9 @@ import { supabase } from '@/lib/supabase'
 
 interface Offer { id: string; name: string; offer_type: 'free_days' | 'credits'; referrer_reward: number; referred_reward: number }
 
-// A/B test: randomly assign 7 or 14 day trial per user
+// Trial is locked at 7 days for all users
 function getTrialVariant(): { days: number; variant: 'A' | 'B' } {
-  const stored = typeof window !== 'undefined' ? localStorage.getItem('et_trial_variant') : null
-  if (stored === 'A') return { days: 7, variant: 'A' }
-  if (stored === 'B') return { days: 14, variant: 'B' }
-  const variant = Math.random() < 0.5 ? 'A' : 'B'
-  if (typeof window !== 'undefined') localStorage.setItem('et_trial_variant', variant)
-  return { days: variant === 'A' ? 7 : 14, variant }
+  return { days: 7, variant: 'A' }
 }
 
 function LoadingFallback() {
@@ -35,6 +30,7 @@ function SignUpContent() {
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
+  const [alreadyExists, setAlreadyExists] = useState(false)
   const [loading, setLoading] = useState(false)
   const [referralCode, setReferralCode] = useState<string | null>(null)
   const [referrerName, setReferrerName] = useState<string | null>(null)
@@ -82,7 +78,15 @@ function SignUpContent() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); setError(''); setLoading(true)
     const { error: signUpError, user } = await signUp(email, password, firstName)
-    if (signUpError) { setError(signUpError.message); setLoading(false); return }
+    if (signUpError) {
+      const msg = signUpError.message || ''
+      if (msg.toLowerCase().includes('already registered') || msg.toLowerCase().includes('already exists') || msg.toLowerCase().includes('user already')) {
+        setAlreadyExists(true)
+        setLoading(false)
+        return
+      }
+      setError(msg); setLoading(false); return
+    }
     if (!user) { setError('Failed to create account'); setLoading(false); return }
 
     // Save trial variant to users table for A/B tracking
@@ -103,7 +107,7 @@ function SignUpContent() {
       const response = await fetch('/api/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id, email, priceId: process.env.NEXT_PUBLIC_STRIPE_PRICE_TEST_DRIVER_MONTHLY, referralCode: referralCode || undefined, offerId: offer?.id || undefined, trialDays: finalTrialDays })
+        body: JSON.stringify({ userId: user.id, email, referralCode: referralCode || undefined, offerId: offer?.id || undefined, trialDays: finalTrialDays })
       })
       const data = await response.json()
       if (data.url) { window.location.href = data.url }
@@ -143,6 +147,11 @@ function SignUpContent() {
           <h2 style={{ color: 'white', fontSize: '20px', fontWeight: 'bold', marginBottom: '1.5rem', textAlign: 'center' }}>Create Your Account</h2>
 
           {error && <div style={{ backgroundColor: '#dc2626', color: 'white', padding: '0.75rem', borderRadius: '8px', marginBottom: '1rem', fontSize: '14px', textAlign: 'center' }}>{error}</div>}
+          {alreadyExists && (
+            <div style={{ backgroundColor: '#1e3a5f', border: '1px solid #3b82f6', color: 'white', padding: '0.75rem', borderRadius: '8px', marginBottom: '1rem', fontSize: '14px', textAlign: 'center' }}>
+              You already have an account. <a href="/signin" style={{ color: '#f97316', fontWeight: 700, textDecoration: 'underline' }}>Sign in here →</a>
+            </div>
+          )}
 
           <div style={{ marginBottom: '1rem' }}>
             <label style={{ color: '#94a3b8', fontSize: '14px', display: 'block', marginBottom: '0.5rem' }}>First Name</label>
@@ -162,8 +171,12 @@ function SignUpContent() {
             </div>
           </div>
 
-          <button type="submit" disabled={loading} style={{ width: '100%', padding: '0.875rem', borderRadius: '10px', border: 'none', backgroundColor: loading ? '#334155' : '#f97316', color: 'white', fontSize: '16px', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer' }}>
-            {loading ? 'Creating Account...' : `Start ${trialDays}-Day Free Trial →`}
+          <button
+            type={alreadyExists ? 'button' : 'submit'}
+            onClick={alreadyExists ? () => window.location.href = '/signin' : undefined}
+            disabled={loading}
+            style={{ width: '100%', padding: '0.875rem', borderRadius: '10px', border: 'none', backgroundColor: loading ? '#334155' : alreadyExists ? '#1d4ed8' : '#f97316', color: 'white', fontSize: '16px', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer' }}>
+            {loading ? 'Creating Account...' : alreadyExists ? 'You Already Have an Account — Sign In →' : `Start ${trialDays}-Day Free Trial →`}
           </button>
 
           {/* What you get */}

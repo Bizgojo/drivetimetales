@@ -38,6 +38,8 @@ export default function AdminLayout({
 
   const menuItems = [
     { href: '/admin', label: 'Dashboard', icon: '📊' },
+    { href: '/admin/checklist', label: 'Launch Checklist', icon: '🚀' },
+    { href: '/admin/finance', label: 'Finance', icon: '💰' },
     { href: '/admin/story-creation', label: 'Story Creation', icon: '✍️' },
     { href: '/admin/stories', label: 'Stories', icon: '📚' },
     { href: '/admin/genres', label: 'Genres', icon: '🎭' },
@@ -50,7 +52,6 @@ export default function AdminLayout({
     { href: '/admin/landing-stories', label: 'Landing Stories', icon: '🎧' },
     { href: '/admin/social-analytics', label: 'Social Analytics', icon: '📊' },
     { href: '/admin/social-posting', label: 'Social Posting', icon: '🌐' },
-    { href: '/admin/finance', label: 'Finance', icon: '💰' },
   ]
 
   // Theme colors (light theme for admin)

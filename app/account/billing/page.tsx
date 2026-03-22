@@ -15,9 +15,12 @@ interface Invoice {
 
 const PLAN_DETAILS: Record<string, { name: string; price: string }> = {
   'free': { name: 'Free', price: '$0' },
-  'test_driver': { name: 'Test Driver', price: '$2.99' },
-  'commuter': { name: 'Commuter', price: '$7.99' },
-  'road_warrior': { name: 'Road Warrior', price: '$14.99' },
+  'founding_member': { name: 'Founding Member', price: '$2.99/mo' },
+  'standard': { name: 'Unlimited', price: '$7.99/mo' },
+  // Legacy plan names (kept for backward compat)
+  'test_driver': { name: 'Founding Member', price: '$2.99/mo' },
+  'commuter': { name: 'Unlimited', price: '$7.99/mo' },
+  'road_warrior': { name: 'Unlimited', price: '$7.99/mo' },
 }
 
 export default function BillingPage() {

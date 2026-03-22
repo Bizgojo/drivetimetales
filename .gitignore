@@ -11,3 +11,6 @@ Audio Dramas/
 .env.local
 .DS_Store
 .env.local.save
+.vercel
+.env*.local
+.env.production

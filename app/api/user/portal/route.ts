@@ -1,47 +1,75 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { stripe } from '@/lib/stripe';
-import { createClient } from '@supabase/supabase-js';
+import { NextRequest, NextResponse } from 'next/server'
+import Stripe from 'stripe'
+import { createClient } from '@supabase/supabase-js'
 
-export const dynamic = 'force-dynamic';
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2023-10-16' })
 
-// Server-side Supabase client
-const supabaseAdmin = createClient(
+const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+)
 
-export async function GET(request: NextRequest) {
+export const dynamic = 'force-dynamic'
+
+export async function POST(request: NextRequest) {
   try {
-    // Get user ID from query params or auth header
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
+    const { userId } = await request.json()
 
     if (!userId) {
-      // Redirect to login if no user ID
-      return NextResponse.redirect(new URL('/signin', request.url));
+      return NextResponse.json({ error: 'Missing userId' }, { status: 400 })
     }
 
-    // Get user's Stripe customer ID
-    const { data: user, error } = await supabaseAdmin
+    const { data: user, error } = await supabase
       .from('users')
       .select('stripe_customer_id')
       .eq('id', userId)
-      .single();
+      .single()
 
     if (error || !user?.stripe_customer_id) {
-      return NextResponse.redirect(new URL('/account/billing?error=no_customer', request.url));
+      return NextResponse.json({ error: 'No billing account found' }, { status: 404 })
     }
 
-    // Create a Stripe Customer Portal session
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://drivetimetales.vercel.app'
+
     const portalSession = await stripe.billingPortal.sessions.create({
       customer: user.stripe_customer_id,
-      return_url: `${process.env.NEXT_PUBLIC_SITE_URL || 'https://drivetimetales.vercel.app'}/account/billing`,
-    });
+      return_url: `${baseUrl}/account/billing`,
+    })
 
-    // Redirect to the Stripe portal
-    return NextResponse.redirect(portalSession.url);
+    return NextResponse.json({ url: portalSession.url })
+  } catch (error: any) {
+    console.error('Error creating portal session:', error)
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+}
+
+// Keep GET for backward compatibility (redirects to login if no userId)
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url)
+  const userId = searchParams.get('userId')
+  if (!userId) {
+    return NextResponse.redirect(new URL('/signin', request.url))
+  }
+  // Redirect through a POST-equivalent by forwarding to POST handler logic
+  try {
+    const { data: user } = await supabase
+      .from('users')
+      .select('stripe_customer_id')
+      .eq('id', userId)
+      .single()
+
+    if (!user?.stripe_customer_id) {
+      return NextResponse.redirect(new URL('/account/billing?error=no_customer', request.url))
+    }
+
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://drivetimetales.vercel.app'
+    const portalSession = await stripe.billingPortal.sessions.create({
+      customer: user.stripe_customer_id,
+      return_url: `${baseUrl}/account/billing`,
+    })
+
+    return NextResponse.redirect(portalSession.url)
   } catch (error) {
-    console.error('Error creating portal session:', error);
-    return NextResponse.redirect(new URL('/account/billing?error=portal_failed', request.url));
+    return NextResponse.redirect(new URL('/account/billing?error=portal_failed', request.url))
   }
 }

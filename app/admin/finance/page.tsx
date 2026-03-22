@@ -1,447 +1,683 @@
 'use client'
-
 import { useState, useEffect } from 'react'
 
-// ============================================================================
-// SERVICE DEFINITIONS
-// ============================================================================
-interface ServiceDef {
-  name: string
-  purpose: string
-  loginUrl: string
-  defaultCost: number
-  billingType: 'monthly' | 'annual' | 'one-time' | 'usage-based'
-  category: 'AI & Voice' | 'Infrastructure' | 'Audio Production' | 'Data & APIs' | 'Business Tools'
+// ─── CONSTANTS ────────────────────────────────────────────────────────────────
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+const YEAR = 2026
+const EL_PLAN_MONTHLY = 315.33
+const EL_INCLUDED_CHARS = 2_000_000
+const EL_OVERAGE_RATE = 0.30 // per 1,000 chars
+
+// ─── EXPENSE LINE ITEMS ───────────────────────────────────────────────────────
+interface ExpenseItem {
+  id: string; name: string; category: string
+  billingType: 'monthly' | 'usage-based' | 'one-time'
+  url: string; notes: string; defaults: number[]
 }
 
-const SERVICES: ServiceDef[] = [
-  {
-    name: 'Anthropic (Claude)',
-    purpose: 'AI scripting for news briefings, story adaptation, and content generation. Powers the news auto-generation system and assists with audio drama script writing.',
-    loginUrl: 'https://console.anthropic.com',
-    defaultCost: 0,
-    billingType: 'monthly',
-    category: 'AI & Voice',
-  },
-  {
-    name: 'ElevenLabs',
-    purpose: 'Text-to-speech voice generation for all audio dramas and news briefings. Pro plan provides 100,000 characters/month for narrator, announcer, and character voices.',
-    loginUrl: 'https://elevenlabs.io/app',
-    defaultCost: 0,
-    billingType: 'monthly',
-    category: 'AI & Voice',
-  },
-  {
-    name: 'OpenAI',
-    purpose: 'DALL-E image generation for audio drama cover art (~$0.04/image). Also used for ChatGPT assistance with content development.',
-    loginUrl: 'https://platform.openai.com',
-    defaultCost: 0,
-    billingType: 'monthly',
-    category: 'AI & Voice',
-  },
-  {
-    name: 'Suno',
-    purpose: 'AI music generation for background music, intro/outro music, and scene-based soundtracks for audio dramas.',
-    loginUrl: 'https://suno.com',
-    defaultCost: 0,
-    billingType: 'monthly',
-    category: 'AI & Voice',
-  },
-  {
-    name: 'Supabase',
-    purpose: 'PostgreSQL database and file storage backend for DTT website. Stores users, stories, news episodes, preferences, and audio/cover files.',
-    loginUrl: 'https://supabase.com/dashboard',
-    defaultCost: 0,
-    billingType: 'monthly',
-    category: 'Infrastructure',
-  },
-  {
-    name: 'Vercel',
-    purpose: 'Website hosting and deployment platform for drivetimetales.vercel.app. Handles builds, serverless functions, cron jobs, and CDN.',
-    loginUrl: 'https://vercel.com/dashboard',
-    defaultCost: 0,
-    billingType: 'monthly',
-    category: 'Infrastructure',
-  },
-  {
-    name: 'Cloudflare R2',
-    purpose: 'Object storage for audio files and cover images. Serves content via CDN with no egress fees. Backup storage alongside Supabase.',
-    loginUrl: 'https://dash.cloudflare.com',
-    defaultCost: 0,
-    billingType: 'monthly',
-    category: 'Infrastructure',
-  },
-  {
-    name: 'Stripe',
-    purpose: 'Payment processing for DTT subscriptions and credit pack purchases. Handles recurring billing, webhooks, and customer management.',
-    loginUrl: 'https://dashboard.stripe.com',
-    defaultCost: 0,
-    billingType: 'usage-based',
-    category: 'Infrastructure',
-  },
-  {
-    name: 'GitHub',
-    purpose: 'Source code repository for DTT website. Source of truth for all code. Connected to Vercel for automatic deployments on push.',
-    loginUrl: 'https://github.com',
-    defaultCost: 0,
-    billingType: 'monthly',
-    category: 'Infrastructure',
-  },
-  {
-    name: 'REAPER',
-    purpose: 'Digital audio workstation for mixing audio drama tracks — combines narrator voice, announcer, intro/outro music, background music, and SFX into final output.',
-    loginUrl: 'https://www.reaper.fm/purchase.php',
-    defaultCost: 0,
-    billingType: 'one-time',
-    category: 'Audio Production',
-  },
-  {
-    name: 'Hindenburg Pro',
-    purpose: 'Professional audio production software for advanced editing, noise reduction, and audio mastering of voice recordings.',
-    loginUrl: 'https://hindenburg.com/account',
-    defaultCost: 0,
-    billingType: 'monthly',
-    category: 'Audio Production',
-  },
-  {
-    name: 'Soundly',
-    purpose: 'Sound effects library for sourcing professional SFX used in audio dramas — ambient sounds, transitions, and scene-setting audio.',
-    loginUrl: 'https://getsoundly.com',
-    defaultCost: 0,
-    billingType: 'monthly',
-    category: 'Audio Production',
-  },
-  {
-    name: 'NewsAPI / World News',
-    purpose: 'RSS and news data feeds providing current headlines for the automated news briefings system. Supplies content for all 6 news categories.',
-    loginUrl: 'https://worldnewsapi.com/account',
-    defaultCost: 0,
-    billingType: 'monthly',
-    category: 'Data & APIs',
-  },
-  {
-    name: 'Freesound',
-    purpose: 'Free/open-source sound effects API integrated into ADM Tab 5 for auto-searching and downloading SFX clips.',
-    loginUrl: 'https://freesound.org',
-    defaultCost: 0,
-    billingType: 'monthly',
-    category: 'Data & APIs',
-  },
+const EXPENSES: ExpenseItem[] = [
+  // AI & Voice
+  { id:'anthropic', name:'Anthropic (Claude)', category:'AI & Voice', billingType:'usage-based', url:'https://console.anthropic.com', notes:'AI story generation, scripting, content tasks. Pay-per-token.', defaults:[5,12,18,0,0,0,0,0,0,0,0,0] },
+  { id:'elevenlabs_plan', name:'ElevenLabs — Subscription', category:'AI & Voice', billingType:'monthly', url:'https://elevenlabs.io/app', notes:'Growing Business plan (annual). 2,000,000 chars/month included. ~$315.33/mo billed annually.', defaults:[315.33,315.33,315.33,0,0,0,0,0,0,0,0,0] },
+  { id:'elevenlabs_overage', name:'ElevenLabs — Overage', category:'AI & Voice', billingType:'usage-based', url:'https://elevenlabs.io/app', notes:'Chars beyond 2M/month × $0.30 per 1,000. Mar 2026: ~7.4M overage ≈ $2,228. See 🎙️ EL Detail tab for breakdown.', defaults:[0,0,2228,0,0,0,0,0,0,0,0,0] },
+  { id:'openai', name:'OpenAI (DALL-E / TTS)', category:'AI & Voice', billingType:'usage-based', url:'https://platform.openai.com', notes:'Cover art (DALL-E ~$0.04/image) + draft TTS ($0.015/1K chars).', defaults:[1,2,3,0,0,0,0,0,0,0,0,0] },
+  { id:'suno', name:'Suno', category:'AI & Voice', billingType:'monthly', url:'https://suno.com', notes:'AI background music for audio dramas. Pro plan: 2,500 credits/month.', defaults:[8,8,8,0,0,0,0,0,0,0,0,0] },
+  // Infrastructure
+  { id:'vercel', name:'Vercel', category:'Infrastructure', billingType:'monthly', url:'https://vercel.com/dashboard', notes:'App hosting + serverless functions + CDN. Pro plan.', defaults:[20,20,20,0,0,0,0,0,0,0,0,0] },
+  { id:'supabase', name:'Supabase', category:'Infrastructure', billingType:'monthly', url:'https://supabase.com/dashboard', notes:'PostgreSQL database + file storage (audio, covers). Free tier pre-launch.', defaults:[0,0,0,0,0,0,0,0,0,0,0,0] },
+  { id:'stripe', name:'Stripe', category:'Infrastructure', billingType:'usage-based', url:'https://dashboard.stripe.com', notes:'Payment processing. 2.9% + $0.30/transaction. $0 until launch.', defaults:[0,0,0,0,0,0,0,0,0,0,0,0] },
+  { id:'github', name:'GitHub', category:'Infrastructure', billingType:'monthly', url:'https://github.com', notes:'Source code. Free tier.', defaults:[0,0,0,0,0,0,0,0,0,0,0,0] },
+  // Audio Production
+  { id:'reaper', name:'REAPER (DAW)', category:'Audio Production', billingType:'one-time', url:'https://www.reaper.fm', notes:'DAW for mixing. One-time discounted license ~$60.', defaults:[60,0,0,0,0,0,0,0,0,0,0,0] },
+  { id:'freesound', name:'Freesound API', category:'Audio Production', billingType:'monthly', url:'https://freesound.org', notes:'SFX library in ASC3 pipeline. Free.', defaults:[0,0,0,0,0,0,0,0,0,0,0,0] },
+  // Business & Legal
+  { id:'microsoft365', name:'Microsoft 365', category:'Business & Legal', billingType:'monthly', url:'https://admin.microsoft.com', notes:'Business email (marc@, support@, sales@endless-tales.com). Business Basic.', defaults:[6,6,6,0,0,0,0,0,0,0,0,0] },
+  { id:'domain', name:'Domain (endless-tales.com)', category:'Business & Legal', billingType:'one-time', url:'https://domains.google.com', notes:'Annual domain. ~$12/year.', defaults:[12,0,0,0,0,0,0,0,0,0,0,0] },
+  { id:'openclaw', name:'OpenClaw (Hal AI)', category:'Business & Legal', billingType:'monthly', url:'https://openclaw.ai', notes:'AI business assistant. Dev, marketing, ops.', defaults:[0,0,0,0,0,0,0,0,0,0,0,0] },
+  // Data & APIs
+  { id:'resend', name:'Resend (Email)', category:'Data & APIs', billingType:'monthly', url:'https://resend.com', notes:'Transactional email (waitlist, referrals). Free up to 3K/month.', defaults:[0,0,0,0,0,0,0,0,0,0,0,0] },
 ]
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const EXPENSE_CATEGORIES = Array.from(new Set(EXPENSES.map(e => e.category)))
+const CAT_ICONS: Record<string,string> = { 'AI & Voice':'🤖', 'Infrastructure':'🏗️', 'Audio Production':'🎧', 'Business & Legal':'💼', 'Data & APIs':'📡' }
 
-// ============================================================================
-// COMPONENT
-// ============================================================================
-export default function AdminFinancePage() {
-  const [year, setYear] = useState(2026)
-  const [costs, setCosts] = useState<Record<string, number[]>>({})
-  const [expandedService, setExpandedService] = useState<string | null>(null)
-  const [editingCell, setEditingCell] = useState<{ service: string; month: number } | null>(null)
-  const [editValue, setEditValue] = useState('')
-  const [hasChanges, setHasChanges] = useState(false)
+// ─── REVENUE LINE ITEMS ───────────────────────────────────────────────────────
+interface RevenueItem { id: string; name: string; notes: string; defaults: number[] }
+const REVENUES: RevenueItem[] = [
+  { id:'founding_subs', name:'Founding Member Subscriptions ($2.99/mo)', notes:'First 500 subscribers at locked $2.99/month.', defaults:[0,0,0,0,0,0,0,0,0,0,0,0] },
+  { id:'standard_subs', name:'Standard Subscriptions ($7.99/mo)', notes:'After first 500 founding spots filled.', defaults:[0,0,0,0,0,0,0,0,0,0,0,0] },
+  { id:'other', name:'Other Revenue', notes:'Sponsorships, partnerships, or other income.', defaults:[0,0,0,0,0,0,0,0,0,0,0,0] },
+]
 
-  // Load saved costs from localStorage
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+const fmt = (n: number) => n === 0 ? '—' : `$${n.toFixed(2)}`
+const fmtSigned = (n: number) => n === 0 ? '—' : n > 0 ? `+$${n.toFixed(2)}` : `-$${Math.abs(n).toFixed(2)}`
+const fmtNum = (n: number) => n.toLocaleString()
+
+function useFinanceData(key: string, defaults: Record<string,number[]>) {
+  const [data, setData] = useState<Record<string,number[]>>(defaults)
+  const [dirty, setDirty] = useState(false)
   useEffect(() => {
-    const saved = localStorage.getItem(`dtt_finance_${year}`)
-    if (saved) {
-      setCosts(JSON.parse(saved))
-    } else {
-      // Initialize with defaults
-      const initial: Record<string, number[]> = {}
-      SERVICES.forEach(s => {
-        initial[s.name] = Array(12).fill(s.defaultCost)
-      })
-      setCosts(initial)
-    }
-  }, [year])
-
-  // Save to localStorage
-  const saveCosts = () => {
-    localStorage.setItem(`dtt_finance_${year}`, JSON.stringify(costs))
-    setHasChanges(false)
+    const saved = localStorage.getItem(key)
+    if (saved) setData(JSON.parse(saved))
+    else setData(defaults)
+  }, [key])
+  const update = (id: string, month: number, val: number) => {
+    setData(prev => { const next = { ...prev, [id]: [...(prev[id] || Array(12).fill(0))] }; next[id][month] = val; return next })
+    setDirty(true)
   }
+  const save = () => { localStorage.setItem(key, JSON.stringify(data)); setDirty(false) }
+  return { data, update, save, dirty }
+}
 
-  // Start editing a cell
-  const startEdit = (service: string, month: number) => {
-    setEditingCell({ service, month })
-    setEditValue((costs[service]?.[month] ?? 0).toString())
-  }
+function EditCell({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+  if (editing) return (
+    <input type="number" value={draft} step="0.01"
+      onChange={e => setDraft(e.target.value)}
+      onBlur={() => { onChange(parseFloat(draft)||0); setEditing(false) }}
+      onKeyDown={e => { if(e.key==='Enter'){onChange(parseFloat(draft)||0);setEditing(false)} if(e.key==='Escape')setEditing(false) }}
+      autoFocus style={{ width:72, textAlign:'right', padding:'2px 4px', border:'2px solid #f97316', borderRadius:4, fontSize:13, background:'#fff', color:'#000' }}
+    />
+  )
+  return (
+    <span onClick={() => { setDraft(value.toString()); setEditing(true) }}
+      style={{ cursor:'pointer', color: value>0?'#000':'#bbb', display:'block', textAlign:'right', padding:'2px 0' }}>
+      {fmt(value)}
+    </span>
+  )
+}
 
-  // Commit edit
-  const commitEdit = () => {
-    if (!editingCell) return
-    const val = parseFloat(editValue) || 0
-    setCosts(prev => {
-      const updated = { ...prev }
-      if (!updated[editingCell.service]) updated[editingCell.service] = Array(12).fill(0)
-      updated[editingCell.service] = [...updated[editingCell.service]]
-      updated[editingCell.service][editingCell.month] = val
-      return updated
-    })
-    setEditingCell(null)
-    setHasChanges(true)
-  }
+// ─── EL DETAIL TAB ────────────────────────────────────────────────────────────
+function ELDetailTab() {
+  const [selMonth, setSelMonth] = useState(2) // default March (index 2)
+  const [rows, setRows] = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
+  const [storiesProduced, setStoriesProduced] = useState(3) // editable
 
-  // Apply same cost to all months for a service
-  const applyToAllMonths = (service: string, value: number) => {
-    setCosts(prev => {
-      const updated = { ...prev }
-      updated[service] = Array(12).fill(value)
-      return updated
-    })
-    setHasChanges(true)
-  }
+  useEffect(() => {
+    setLoading(true)
+    const mm = String(selMonth + 1).padStart(2,'0')
+    const start = `${YEAR}-${mm}-01`
+    const end   = `${YEAR}-${mm}-31`
+    fetch(`/api/admin/el-usage?start=${start}&end=${end}`)
+      .then(r => r.json())
+      .then(d => { setRows(d.rows || []); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [selMonth])
 
-  // Calculate totals
-  const getServiceTotal = (service: string) => {
-    return (costs[service] || Array(12).fill(0)).reduce((a, b) => a + b, 0)
-  }
+  const totalCharsUsed = rows.reduce((s,r) => s + (r.chars_used||0), 0)
+  const totalOverageChars = rows.reduce((s,r) => s + (r.chars_overage||0), 0)
+  const totalOverageCost = rows.reduce((s,r) => s + parseFloat(r.cost_overage||0), 0)
+  const totalELCost = EL_PLAN_MONTHLY + totalOverageCost
+  const planCostPerStory = storiesProduced > 0 ? EL_PLAN_MONTHLY / storiesProduced : 0
+  const overageCostPerStory = storiesProduced > 0 ? totalOverageCost / storiesProduced : 0
+  const totalCostPerStory = planCostPerStory + overageCostPerStory
+  const pctUsed = Math.min(100, (totalCharsUsed / EL_INCLUDED_CHARS) * 100)
 
-  const getMonthTotal = (month: number) => {
-    return SERVICES.reduce((total, s) => total + (costs[s.name]?.[month] || 0), 0)
-  }
-
-  const getGrandTotal = () => {
-    return SERVICES.reduce((total, s) => total + getServiceTotal(s.name), 0)
-  }
-
-  // Group services by category
-  const categories = Array.from(new Set(SERVICES.map(s => s.category)))
-
-  const categoryIcons: Record<string, string> = {
-    'AI & Voice': '🤖',
-    'Infrastructure': '🏗️',
-    'Audio Production': '🎧',
-    'Data & APIs': '📡',
-    'Business Tools': '💼',
+  const S: Record<string,React.CSSProperties> = {
+    card: { background:'#fff', border:'1px solid #ddd', borderRadius:10, overflow:'hidden', marginBottom:20 },
+    cardHead: { background:'#fafafa', borderBottom:'1px solid #eee', padding:'12px 20px', display:'flex', justifyContent:'space-between', alignItems:'center' },
+    kpi: { background:'#fff', border:'1px solid #ddd', borderRadius:10, padding:'16px 20px', flex:1, minWidth:150 },
+    label: { fontSize:11, fontWeight:700, textTransform:'uppercase' as const, letterSpacing:1, color:'#888', marginBottom:4 },
+    big: { fontSize:26, fontWeight:900, color:'#111' },
+    table: { width:'100%', borderCollapse:'collapse' as const, fontSize:13 },
+    th: { textAlign:'right' as const, padding:'8px 12px', borderBottom:'2px solid #eee', fontWeight:700, background:'#f5f5f5' },
+    thL: { textAlign:'left' as const, padding:'8px 12px', borderBottom:'2px solid #eee', fontWeight:700, background:'#f5f5f5' },
+    td: { textAlign:'right' as const, padding:'8px 12px', borderBottom:'1px solid #f0f0f0' },
+    tdL: { textAlign:'left' as const, padding:'8px 12px', borderBottom:'1px solid #f0f0f0' },
   }
 
   return (
-    <div style={{ padding: '24px', maxWidth: '100%', overflowX: 'auto', color: '#000', background: '#fff', minHeight: '100vh' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
-        <div>
-          <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-            💰 Expense Tracker
-          </h1>
-          <p style={{ color: '#666', margin: '4px 0 0', fontSize: '14px' }}>
-            Monthly subscription costs for DTT & ADM services
-          </p>
+    <div>
+      {/* Month selector */}
+      <div style={{ display:'flex', gap:8, marginBottom:20, flexWrap:'wrap' }}>
+        {MONTHS.map((m,i) => (
+          <button key={m} onClick={() => setSelMonth(i)}
+            style={{ padding:'6px 14px', borderRadius:8, border:`1px solid ${selMonth===i?'#f97316':'#ddd'}`, background:selMonth===i?'#f97316':'#fff', color:selMonth===i?'#fff':'#333', fontWeight:600, fontSize:13, cursor:'pointer' }}>
+            {m}
+          </button>
+        ))}
+      </div>
+
+      {/* ── What you pay for: plain English ── */}
+      <div style={{ ...S.card, border:'1px solid #fed7aa' }}>
+        <div style={{ ...S.cardHead, background:'#fff7ed', borderBottom:'1px solid #fed7aa' }}>
+          <span style={{ fontWeight:700, color:'#9a3412' }}>📖 What You Pay For — ElevenLabs {MONTHS[selMonth]} {YEAR}</span>
         </div>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <button
-            onClick={() => setYear(y => y - 1)}
-            style={{ padding: '6px 12px', border: '1px solid #ccc', borderRadius: '6px', cursor: 'pointer', background: '#f5f5f5', color: '#000' }}
-          >
-            ◀
-          </button>
-          <span style={{ fontSize: '20px', fontWeight: 'bold', minWidth: '60px', textAlign: 'center' }}>{year}</span>
-          <button
-            onClick={() => setYear(y => y + 1)}
-            style={{ padding: '6px 12px', border: '1px solid #ccc', borderRadius: '6px', cursor: 'pointer', background: '#f5f5f5', color: '#000' }}
-          >
-            ▶
-          </button>
-          <button
-            onClick={saveCosts}
-            style={{
-              padding: '8px 20px',
-              background: hasChanges ? '#f97316' : '#ccc',
-              color: 'white',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: hasChanges ? 'pointer' : 'default',
-              fontWeight: 'bold',
-              marginLeft: '12px',
-            }}
-          >
-            {hasChanges ? '💾 Save Changes' : '✓ Saved'}
-          </button>
+        <div style={{ padding:'20px 24px' }}>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(200px,1fr))', gap:12, marginBottom:20 }}>
+            <div style={S.kpi}>
+              <div style={S.label}>Monthly Subscription</div>
+              <div style={S.big}>${EL_PLAN_MONTHLY.toFixed(2)}</div>
+              <div style={{ fontSize:12, color:'#888', marginTop:4 }}>Fixed — includes 2M chars/month<br/>Growing Business annual plan</div>
+            </div>
+            <div style={S.kpi}>
+              <div style={S.label}>Chars Used This Month</div>
+              <div style={{ ...S.big, color: totalCharsUsed > EL_INCLUDED_CHARS ? '#ef4444' : '#22c55e' }}>
+                {rows.length > 0 ? fmtNum(totalCharsUsed) : selMonth===2 ? '9,426,096' : '—'}
+              </div>
+              <div style={{ fontSize:12, color:'#888', marginTop:4 }}>Of {fmtNum(EL_INCLUDED_CHARS)} included free<br/>{rows.length === 0 && selMonth===2 ? '(estimated — create el_usage_log table)' : ''}</div>
+            </div>
+            <div style={S.kpi}>
+              <div style={S.label}>Overage Chars</div>
+              <div style={{ ...S.big, color: totalOverageChars > 0 ? '#ef4444' : '#22c55e' }}>
+                {rows.length > 0 ? fmtNum(totalOverageChars) : selMonth===2 ? '7,426,096' : '0'}
+              </div>
+              <div style={{ fontSize:12, color:'#888', marginTop:4 }}>× $0.30 per 1,000 chars</div>
+            </div>
+            <div style={{ ...S.kpi, borderColor: totalOverageCost > 0 ? '#fca5a5' : '#bbf7d0' }}>
+              <div style={S.label}>Overage Charge</div>
+              <div style={{ ...S.big, color: totalOverageCost > 0 ? '#ef4444' : '#22c55e' }}>
+                {rows.length > 0 ? `$${totalOverageCost.toFixed(2)}` : selMonth===2 ? '$2,227.83' : '$0.00'}
+              </div>
+              <div style={{ fontSize:12, color:'#888', marginTop:4 }}>Added to your invoice on top of subscription</div>
+            </div>
+            <div style={{ ...S.kpi, borderLeft:'4px solid #f97316' }}>
+              <div style={S.label}>Total EL Cost This Month</div>
+              <div style={{ ...S.big, color:'#f97316' }}>
+                {rows.length > 0 ? `$${totalELCost.toFixed(2)}` : selMonth===2 ? '$2,543.16' : `$${EL_PLAN_MONTHLY.toFixed(2)}`}
+              </div>
+              <div style={{ fontSize:12, color:'#888', marginTop:4 }}>Subscription + overage combined</div>
+            </div>
+          </div>
+
+          {/* Usage bar */}
+          <div style={{ marginBottom:16 }}>
+            <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#666', marginBottom:4 }}>
+              <span>Character Usage</span>
+              <span>{rows.length > 0 ? `${fmtNum(totalCharsUsed)} / ${fmtNum(EL_INCLUDED_CHARS)}` : selMonth===2 ? '9,426,096 / 2,000,000 (471% over)' : '— / 2,000,000'}</span>
+            </div>
+            <div style={{ height:12, background:'#f0f0f0', borderRadius:6, overflow:'hidden' }}>
+              <div style={{ height:'100%', width:`${Math.min(100,pctUsed || (selMonth===2?100:0))}%`, background: pctUsed > 100 || selMonth===2 ? '#ef4444' : pctUsed > 80 ? '#f97316' : '#22c55e', borderRadius:6 }}/>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
-        <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '8px', padding: '16px 24px', flex: '1', minWidth: '150px' }}>
-          <div style={{ fontSize: '12px', color: '#9a3412', fontWeight: '600', textTransform: 'uppercase' }}>Annual Total</div>
-          <div style={{ fontSize: '28px', fontWeight: 'bold', color: '#c2410c' }}>${getGrandTotal().toFixed(2)}</div>
+      {/* ── Per-story cost breakdown ── */}
+      <div style={S.card}>
+        <div style={S.cardHead}>
+          <span style={{ fontWeight:700 }}>🎙️ Cost Per Story — {MONTHS[selMonth]} {YEAR}</span>
+          <div style={{ display:'flex', alignItems:'center', gap:8, fontSize:13 }}>
+            <label style={{ color:'#666' }}>Stories produced this month:</label>
+            <input type="number" min="1" value={storiesProduced}
+              onChange={e => setStoriesProduced(parseInt(e.target.value)||1)}
+              style={{ width:48, padding:'4px 6px', border:'1px solid #ddd', borderRadius:6, textAlign:'center', fontSize:13, fontWeight:700 }}
+            />
+          </div>
         </div>
-        <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '16px 24px', flex: '1', minWidth: '150px' }}>
-          <div style={{ fontSize: '12px', color: '#166534', fontWeight: '600', textTransform: 'uppercase' }}>Monthly Avg</div>
-          <div style={{ fontSize: '28px', fontWeight: 'bold', color: '#15803d' }}>${(getGrandTotal() / 12).toFixed(2)}</div>
-        </div>
-        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '16px 24px', flex: '1', minWidth: '150px' }}>
-          <div style={{ fontSize: '12px', color: '#1e40af', fontWeight: '600', textTransform: 'uppercase' }}>Services</div>
-          <div style={{ fontSize: '28px', fontWeight: 'bold', color: '#1d4ed8' }}>{SERVICES.length}</div>
+        <div style={{ padding:'16px 24px' }}>
+          <table style={S.table}>
+            <thead>
+              <tr>
+                <th style={S.thL}>Cost Component</th>
+                <th style={S.th}>Total This Month</th>
+                <th style={S.th}>÷ {storiesProduced} Stories</th>
+                <th style={S.th}>Cost Per Story</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style={S.tdL}>
+                  <strong>Subscription (prorated)</strong>
+                  <div style={{ fontSize:11, color:'#888' }}>$315.33/mo ÷ stories produced = your "studio time" per story</div>
+                </td>
+                <td style={S.td}>${EL_PLAN_MONTHLY.toFixed(2)}</td>
+                <td style={S.td}>{storiesProduced}</td>
+                <td style={{ ...S.td, fontWeight:700 }}>${planCostPerStory.toFixed(2)}</td>
+              </tr>
+              <tr>
+                <td style={S.tdL}>
+                  <strong>Overage charges (est.)</strong>
+                  <div style={{ fontSize:11, color:'#888' }}>Extra chars beyond 2M included in plan × $0.30/1K</div>
+                </td>
+                <td style={{ ...S.td, color: totalOverageCost > 0 ? '#ef4444' : '#666' }}>
+                  {selMonth===2 && rows.length===0 ? '$2,227.83' : `$${totalOverageCost.toFixed(2)}`}
+                </td>
+                <td style={S.td}>{storiesProduced}</td>
+                <td style={{ ...S.td, fontWeight:700, color: overageCostPerStory > 0 ? '#ef4444' : '#666' }}>
+                  {selMonth===2 && rows.length===0 ? `$${(2227.83/storiesProduced).toFixed(2)}` : `$${overageCostPerStory.toFixed(2)}`}
+                </td>
+              </tr>
+              <tr style={{ background:'#fff7ed', fontWeight:800 }}>
+                <td style={{ ...S.tdL, fontWeight:800 }}>TOTAL COST PER STORY</td>
+                <td style={S.td}>—</td>
+                <td style={S.td}>—</td>
+                <td style={{ ...S.td, fontSize:18, color:'#f97316', fontWeight:900 }}>
+                  {selMonth===2 && rows.length===0 ? `$${(315.33/storiesProduced + 2227.83/storiesProduced).toFixed(2)}` : `$${totalCostPerStory.toFixed(2)}`}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div style={{ marginTop:12, padding:12, background:'#f0fdf4', borderRadius:8, fontSize:12, color:'#166534' }}>
+            💡 <strong>Normal months (no overage):</strong> Cost per story = ${EL_PLAN_MONTHLY.toFixed(2)} ÷ {storiesProduced} stories = <strong>${planCostPerStory.toFixed(2)}/story</strong> — just your subscription prorated.
+            The March overage ($2,228) was caused by excessive testing/iteration during development. With ASC3 v2.3.59 saving voice files, this won't happen again.
+          </div>
         </div>
       </div>
 
-      {/* Spreadsheet */}
-      <div style={{ overflowX: 'auto', border: '1px solid #e5e7eb', borderRadius: '8px' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: '1200px' }}>
-          <thead>
-            <tr style={{ background: '#f9fafb' }}>
-              <th style={{ textAlign: 'left', padding: '10px 12px', borderBottom: '2px solid #e5e7eb', position: 'sticky', left: 0, background: '#f9fafb', zIndex: 2, minWidth: '200px', color: '#000' }}>
-                Service
-              </th>
-              {MONTHS.map((m, i) => (
-                <th key={m} style={{ textAlign: 'right', padding: '10px 8px', borderBottom: '2px solid #e5e7eb', minWidth: '80px', color: '#000' }}>
-                  {m} {year.toString().slice(2)}
-                </th>
-              ))}
-              <th style={{ textAlign: 'right', padding: '10px 12px', borderBottom: '2px solid #e5e7eb', background: '#f3f4f6', minWidth: '90px', fontWeight: 'bold', color: '#000' }}>
-                Total
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {categories.map(category => (
-              <>
-                {/* Category Header */}
-                <tr key={`cat-${category}`}>
-                  <td colSpan={14} style={{ padding: '8px 12px', background: '#f3f4f6', fontWeight: 'bold', fontSize: '12px', textTransform: 'uppercase', color: '#6b7280', letterSpacing: '0.05em', borderBottom: '1px solid #e5e7eb' }}>
-                    {categoryIcons[category] || '📁'} {category}
-                  </td>
+      {/* ── Daily log ── */}
+      <div style={S.card}>
+        <div style={S.cardHead}>
+          <span style={{ fontWeight:700 }}>📅 Daily Usage Log — {MONTHS[selMonth]} {YEAR}</span>
+          <span style={{ fontSize:12, color:'#888' }}>Auto-logged from ASC3 v2.3.59+</span>
+        </div>
+        <div style={{ padding:'0 0 16px' }}>
+          {loading ? (
+            <p style={{ textAlign:'center', color:'#888', padding:24 }}>Loading...</p>
+          ) : rows.length === 0 ? (
+            <div style={{ padding:'24px', textAlign:'center', color:'#888' }}>
+              <div style={{ fontSize:32, marginBottom:8 }}>📭</div>
+              <div style={{ fontWeight:600, marginBottom:4 }}>No daily data logged yet for {MONTHS[selMonth]}</div>
+              <div style={{ fontSize:12 }}>
+                {selMonth === 2
+                  ? 'March data exists but the el_usage_log table needs to be created in Supabase first.\n Run the SQL shown below, then re-run ASC3 to start logging automatically.'
+                  : 'Daily data is captured automatically each time you run ASC3 v2.3.59+.'}
+              </div>
+              {selMonth === 2 && (
+                <div style={{ marginTop:16, background:'#f5f5f5', borderRadius:8, padding:'12px 16px', textAlign:'left', fontFamily:'monospace', fontSize:12 }}>
+                  {`CREATE TABLE IF NOT EXISTS el_usage_log (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  logged_at TIMESTAMPTZ DEFAULT NOW(),
+  usage_date DATE NOT NULL,
+  story_title TEXT, story_id TEXT,
+  chars_used INTEGER NOT NULL DEFAULT 0,
+  chars_included INTEGER NOT NULL DEFAULT 0,
+  chars_overage INTEGER NOT NULL DEFAULT 0,
+  cost_overage NUMERIC(10,4) NOT NULL DEFAULT 0,
+  model TEXT, notes TEXT
+);`}
+                </div>
+              )}
+            </div>
+          ) : (
+            <table style={S.table}>
+              <thead>
+                <tr>
+                  <th style={S.thL}>Date</th>
+                  <th style={S.thL}>Story</th>
+                  <th style={S.th}>Chars Used</th>
+                  <th style={S.th}>Included (free)</th>
+                  <th style={S.th}>Overage Chars</th>
+                  <th style={S.th}>Overage Cost</th>
+                  <th style={S.th}>Notes</th>
                 </tr>
-                {SERVICES.filter(s => s.category === category).map(service => (
-                  <>
-                    <tr key={service.name} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                      {/* Service Name Cell */}
-                      <td style={{ padding: '8px 12px', position: 'sticky', left: 0, background: '#fff', zIndex: 1, borderRight: '1px solid #f3f4f6' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <button
-                            onClick={() => setExpandedService(expandedService === service.name ? null : service.name)}
-                            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '10px', color: '#9ca3af', padding: '2px', width: '16px' }}
-                          >
-                            {expandedService === service.name ? '▼' : '▶'}
-                          </button>
-                          <a
-                            href={service.loginUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{ color: '#2563eb', textDecoration: 'none', fontWeight: '500', fontSize: '13px' }}
-                            title={`Open ${service.name} login`}
-                          >
-                            {service.name} ↗
-                          </a>
-                          {service.billingType === 'one-time' && (
-                            <span style={{ fontSize: '10px', background: '#dbeafe', color: '#1d4ed8', padding: '1px 5px', borderRadius: '4px' }}>one-time</span>
-                          )}
-                          {service.billingType === 'usage-based' && (
-                            <span style={{ fontSize: '10px', background: '#fef3c7', color: '#92400e', padding: '1px 5px', borderRadius: '4px' }}>usage</span>
-                          )}
-                        </div>
-                      </td>
-                      {/* Monthly Cost Cells */}
-                      {MONTHS.map((_, monthIdx) => {
-                        const isEditing = editingCell?.service === service.name && editingCell?.month === monthIdx
-                        const val = costs[service.name]?.[monthIdx] || 0
-                        return (
-                          <td
-                            key={monthIdx}
-                            onClick={() => !isEditing && startEdit(service.name, monthIdx)}
-                            style={{
-                              textAlign: 'right',
-                              padding: '4px 8px',
-                              cursor: 'pointer',
-                              background: isEditing ? '#fffbeb' : val > 0 ? '#fff' : '#fafafa',
-                              color: val > 0 ? '#000' : '#d1d5db',
-                            }}
-                          >
-                            {isEditing ? (
-                              <input
-                                type="number"
-                                value={editValue}
-                                onChange={e => setEditValue(e.target.value)}
-                                onBlur={commitEdit}
-                                onKeyDown={e => {
-                                  if (e.key === 'Enter') commitEdit()
-                                  if (e.key === 'Escape') setEditingCell(null)
-                                }}
-                                autoFocus
-                                style={{
-                                  width: '70px',
-                                  textAlign: 'right',
-                                  padding: '2px 4px',
-                                  border: '2px solid #f97316',
-                                  borderRadius: '4px',
-                                  fontSize: '13px',
-                                  outline: 'none',
-                                  color: '#000',
-                                  background: '#fff',
-                                }}
-                                step="0.01"
-                              />
-                            ) : (
-                              <span>{val > 0 ? `$${val.toFixed(2)}` : '—'}</span>
-                            )}
+              </thead>
+              <tbody>
+                {rows.map((r:any) => (
+                  <tr key={r.id}>
+                    <td style={S.tdL}>{r.usage_date}</td>
+                    <td style={S.tdL}>{r.story_title || '—'}</td>
+                    <td style={S.td}>{fmtNum(r.chars_used||0)}</td>
+                    <td style={{ ...S.td, color:'#22c55e' }}>{fmtNum(r.chars_included||0)}</td>
+                    <td style={{ ...S.td, color: r.chars_overage>0?'#ef4444':'#22c55e' }}>{fmtNum(r.chars_overage||0)}</td>
+                    <td style={{ ...S.td, fontWeight:700, color: parseFloat(r.cost_overage||0)>0?'#ef4444':'#22c55e' }}>${parseFloat(r.cost_overage||0).toFixed(2)}</td>
+                    <td style={{ ...S.td, fontSize:11, color:'#999' }}>{r.notes||'—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr style={{ background:'#f9f9f9', fontWeight:800 }}>
+                  <td colSpan={2} style={{ ...S.tdL, fontWeight:800 }}>TOTAL</td>
+                  <td style={S.td}>{fmtNum(totalCharsUsed)}</td>
+                  <td style={{ ...S.td, color:'#22c55e' }}>{fmtNum(Math.min(totalCharsUsed,EL_INCLUDED_CHARS))}</td>
+                  <td style={{ ...S.td, color:totalOverageChars>0?'#ef4444':'#22c55e' }}>{fmtNum(totalOverageChars)}</td>
+                  <td style={{ ...S.td, color:totalOverageCost>0?'#ef4444':'#22c55e', fontWeight:900 }}>${totalOverageCost.toFixed(2)}</td>
+                  <td style={S.td}>—</td>
+                </tr>
+              </tfoot>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
+export default function FinancePage() {
+  const [tab, setTab] = useState<'expenses'|'revenue'|'pl'|'balance'|'el'>('expenses')
+
+  const expDefaults = Object.fromEntries(EXPENSES.map(e => [e.id, [...e.defaults]]))
+  const revDefaults = Object.fromEntries(REVENUES.map(r => [r.id, [...r.defaults]]))
+  const exp = useFinanceData(`et_expenses_${YEAR}`, expDefaults)
+  const rev = useFinanceData(`et_revenue_${YEAR}`, revDefaults)
+
+  const monthExpTotal = (m: number) => EXPENSES.reduce((s,e) => s + (exp.data[e.id]?.[m]||0), 0)
+  const monthRevTotal = (m: number) => REVENUES.reduce((s,r) => s + (rev.data[r.id]?.[m]||0), 0)
+  const monthNetTotal = (m: number) => monthRevTotal(m) - monthExpTotal(m)
+  const catMonthTotal = (cat: string, m: number) => EXPENSES.filter(e=>e.category===cat).reduce((s,e) => s + (exp.data[e.id]?.[m]||0), 0)
+  const catTotal = (cat: string) => MONTHS.reduce((s,_,i) => s + catMonthTotal(cat,i), 0)
+  const ytdExp = MONTHS.slice(0,3).reduce((s,_,i) => s + monthExpTotal(i), 0)
+  const ytdRev = MONTHS.slice(0,3).reduce((s,_,i) => s + monthRevTotal(i), 0)
+  const ytdNet = ytdRev - ytdExp
+
+  const S: Record<string,React.CSSProperties> = {
+    page: { background:'#f5f5f5', minHeight:'100vh', padding:24, fontFamily:'-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif', color:'#000' },
+    header: { background:'#fff', border:'1px solid #ddd', borderRadius:10, padding:'18px 24px', marginBottom:20 },
+    tabs: { display:'flex', gap:4, marginBottom:20, flexWrap:'wrap' as const },
+    tab: (active:boolean): React.CSSProperties => ({ padding:'8px 20px', borderRadius:8, border:`1px solid ${active?'#f97316':'#ddd'}`, background:active?'#f97316':'#fff', color:active?'#fff':'#333', fontWeight:600, fontSize:14, cursor:'pointer' }),
+    card: { background:'#fff', border:'1px solid #ddd', borderRadius:10, overflow:'hidden', marginBottom:20 },
+    cardHead: { background:'#fafafa', borderBottom:'1px solid #eee', padding:'12px 20px', display:'flex', justifyContent:'space-between', alignItems:'center' },
+    table: { width:'100%', borderCollapse:'collapse' as const, fontSize:13 },
+    th: { textAlign:'right' as const, padding:'8px 10px', borderBottom:'2px solid #eee', fontWeight:700, color:'#000', whiteSpace:'nowrap' as const },
+    thLeft: { textAlign:'left' as const, padding:'8px 14px', borderBottom:'2px solid #eee', fontWeight:700, color:'#000' },
+    td: { padding:'8px 10px', borderBottom:'1px solid #f0f0f0', textAlign:'right' as const },
+    tdLeft: { padding:'8px 14px', borderBottom:'1px solid #f0f0f0', textAlign:'left' as const },
+    catHeader: { background:'#f0f4ff', padding:'7px 14px', fontWeight:700, fontSize:12, color:'#1e40af', borderBottom:'1px solid #e0e7ff', letterSpacing:0.5 },
+    catSubtotal: { background:'#f5f5f5', fontWeight:700, borderTop:'1px solid #e5e7eb', borderBottom:'2px solid #e5e7eb' },
+    totalRow: { background:'#fff7ed', fontWeight:700, borderTop:'2px solid #ddd' },
+    summaryCard: (color:string): React.CSSProperties => ({ background:'#fff', border:'1px solid #ddd', borderLeft:`4px solid ${color}`, borderRadius:8, padding:'14px 20px', flex:1, minWidth:160 }),
+  }
+
+  return (
+    <div style={S.page}>
+      {/* Header */}
+      <div style={S.header}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:12 }}>
+          <div>
+            <h1 style={{ fontSize:22, fontWeight:800, margin:0 }}>💰 Finance — {YEAR}</h1>
+            <p style={{ fontSize:13, color:'#666', margin:'4px 0 0' }}>Endless Tales · Wonder Books Press LLC · YTD through March</p>
+          </div>
+          <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
+            <div style={S.summaryCard('#ef4444')}>
+              <div style={{ fontSize:11, color:'#666', fontWeight:700, textTransform:'uppercase', letterSpacing:1 }}>YTD Expenses</div>
+              <div style={{ fontSize:22, fontWeight:900, color:'#ef4444' }}>${ytdExp.toFixed(2)}</div>
+            </div>
+            <div style={S.summaryCard('#22c55e')}>
+              <div style={{ fontSize:11, color:'#666', fontWeight:700, textTransform:'uppercase', letterSpacing:1 }}>YTD Revenue</div>
+              <div style={{ fontSize:22, fontWeight:900, color:'#22c55e' }}>${ytdRev.toFixed(2)}</div>
+            </div>
+            <div style={S.summaryCard(ytdNet>=0?'#3b82f6':'#f97316')}>
+              <div style={{ fontSize:11, color:'#666', fontWeight:700, textTransform:'uppercase', letterSpacing:1 }}>YTD Net</div>
+              <div style={{ fontSize:22, fontWeight:900, color:ytdNet>=0?'#3b82f6':'#f97316' }}>{fmtSigned(ytdNet)}</div>
+            </div>
+            <div style={S.summaryCard('#9333ea')}>
+              <div style={{ fontSize:11, color:'#666', fontWeight:700, textTransform:'uppercase', letterSpacing:1 }}>Avg Burn/Mo</div>
+              <div style={{ fontSize:22, fontWeight:900, color:'#9333ea' }}>${(ytdExp/3).toFixed(0)}/mo</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div style={S.tabs}>
+        {([['expenses','📋 Expenses'],['revenue','💵 Revenue'],['pl','📊 P&L'],['balance','🏦 Balance Sheet'],['el','🎙️ EL Detail']] as const).map(([id,label]) => (
+          <button key={id} style={S.tab(tab===id)} onClick={() => setTab(id)}>{label}</button>
+        ))}
+      </div>
+
+      {/* ── EXPENSES TAB ── */}
+      {tab === 'expenses' && (
+        <div>
+          <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:12 }}>
+            <button onClick={exp.save} style={{ padding:'8px 20px', background:exp.dirty?'#f97316':'#ddd', color:exp.dirty?'#fff':'#999', border:'none', borderRadius:8, fontWeight:700, cursor:exp.dirty?'pointer':'default' }}>
+              {exp.dirty ? '💾 Save Changes' : '✓ Saved'}
+            </button>
+          </div>
+          <div style={{ overflowX:'auto' }}>
+            <div style={S.card}>
+              <table style={S.table}>
+                <thead>
+                  <tr>
+                    <th style={{ ...S.thLeft, minWidth:220, position:'sticky', left:0, background:'#fafafa', zIndex:2 }}>Service</th>
+                    {MONTHS.map(m => <th key={m} style={{ ...S.th, minWidth:78 }}>{m}</th>)}
+                    <th style={{ ...S.th, minWidth:90, background:'#fff7ed' }}>Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {EXPENSE_CATEGORIES.map(cat => {
+                    const catItems = EXPENSES.filter(e => e.category === cat)
+                    const cTotal = catTotal(cat)
+                    return (
+                      <>
+                        {/* Category header row */}
+                        <tr key={`cat-${cat}`}>
+                          <td colSpan={14} style={S.catHeader}>{CAT_ICONS[cat]} {cat}</td>
+                        </tr>
+                        {/* Line items */}
+                        {catItems.map(item => (
+                          <tr key={item.id}>
+                            <td style={{ ...S.tdLeft, position:'sticky', left:0, background:'#fff', zIndex:1 }}>
+                              <a href={item.url} target="_blank" rel="noopener noreferrer" style={{ color:'#2563eb', textDecoration:'none', fontWeight:500 }}>{item.name} ↗</a>
+                              <div style={{ fontSize:11, color:'#999', marginTop:2 }}>{item.notes}</div>
+                            </td>
+                            {MONTHS.map((_,i) => (
+                              <td key={i} style={S.td}>
+                                <EditCell value={exp.data[item.id]?.[i]||0} onChange={v => exp.update(item.id,i,v)} />
+                              </td>
+                            ))}
+                            <td style={{ ...S.td, background:'#fff7ed', fontWeight:700 }}>
+                              ${(exp.data[item.id]||[]).reduce((a,b)=>a+b,0).toFixed(2)}
+                            </td>
+                          </tr>
+                        ))}
+                        {/* Category subtotal row */}
+                        <tr key={`sub-${cat}`} style={S.catSubtotal}>
+                          <td style={{ ...S.tdLeft, position:'sticky', left:0, background:'#f5f5f5', zIndex:1, fontWeight:700, color:'#374151' }}>
+                            {CAT_ICONS[cat]} {cat} Subtotal
                           </td>
-                        )
-                      })}
-                      {/* Row Total */}
-                      <td style={{ textAlign: 'right', padding: '8px 12px', background: '#f9fafb', fontWeight: '600', color: '#000' }}>
-                        ${getServiceTotal(service.name).toFixed(2)}
+                          {MONTHS.map((_,i) => (
+                            <td key={i} style={{ ...S.td, fontWeight:700, color: catMonthTotal(cat,i)>0?'#111':'#ccc' }}>
+                              {catMonthTotal(cat,i)>0 ? `$${catMonthTotal(cat,i).toFixed(2)}` : '—'}
+                            </td>
+                          ))}
+                          <td style={{ ...S.td, background:'#e5e7eb', fontWeight:900, color:'#111' }}>
+                            ${cTotal.toFixed(2)}
+                          </td>
+                        </tr>
+                      </>
+                    )
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr style={S.totalRow}>
+                    <td style={{ ...S.tdLeft, position:'sticky', left:0, background:'#fff7ed', fontWeight:800, zIndex:1 }}>TOTAL EXPENSES</td>
+                    {MONTHS.map((_,i) => (
+                      <td key={i} style={{ ...S.td, background:'#fff7ed', fontWeight:700, color:'#dc2626' }}>${monthExpTotal(i).toFixed(2)}</td>
+                    ))}
+                    <td style={{ ...S.td, background:'#fee2e2', fontWeight:900, color:'#dc2626', fontSize:14 }}>
+                      ${MONTHS.reduce((s,_,i)=>s+monthExpTotal(i),0).toFixed(2)}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+          <p style={{ fontSize:12, color:'#888', marginTop:8 }}>💡 Click any cell to edit. Changes save to browser. Blue subtotal rows = category totals. See 🎙️ EL Detail for per-story/daily breakdown.</p>
+        </div>
+      )}
+
+      {/* ── REVENUE TAB ── */}
+      {tab === 'revenue' && (
+        <div>
+          <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:12 }}>
+            <button onClick={rev.save} style={{ padding:'8px 20px', background:rev.dirty?'#f97316':'#ddd', color:rev.dirty?'#fff':'#999', border:'none', borderRadius:8, fontWeight:700, cursor:rev.dirty?'pointer':'default' }}>
+              {rev.dirty ? '💾 Save Changes' : '✓ Saved'}
+            </button>
+          </div>
+          <div style={S.card}>
+            <div style={S.cardHead}>
+              <span style={{ fontWeight:700 }}>💵 Revenue by Stream</span>
+              <span style={{ fontSize:12, color:'#888' }}>App launches April 17 — revenue begins ~May 2026</span>
+            </div>
+            <div style={{ overflowX:'auto' }}>
+              <table style={S.table}>
+                <thead>
+                  <tr>
+                    <th style={{ ...S.thLeft, minWidth:260 }}>Revenue Stream</th>
+                    {MONTHS.map(m => <th key={m} style={{ ...S.th, minWidth:80 }}>{m}</th>)}
+                    <th style={{ ...S.th, minWidth:90, background:'#f0fdf4' }}>Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {REVENUES.map(item => (
+                    <tr key={item.id}>
+                      <td style={S.tdLeft}>
+                        <div style={{ fontWeight:500 }}>{item.name}</div>
+                        <div style={{ fontSize:11, color:'#999', marginTop:2 }}>{item.notes}</div>
+                      </td>
+                      {MONTHS.map((_,i) => (
+                        <td key={i} style={S.td}><EditCell value={rev.data[item.id]?.[i]||0} onChange={v => rev.update(item.id,i,v)}/></td>
+                      ))}
+                      <td style={{ ...S.td, background:'#f0fdf4', fontWeight:700 }}>
+                        ${(rev.data[item.id]||[]).reduce((a,b)=>a+b,0).toFixed(2)}
                       </td>
                     </tr>
-                    {/* Expanded Description Row */}
-                    {expandedService === service.name && (
-                      <tr key={`${service.name}-desc`}>
-                        <td colSpan={14} style={{ padding: '8px 12px 12px 40px', background: '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
-                          <div style={{ fontSize: '12px', color: '#4b5563', lineHeight: '1.5', maxWidth: '800px' }}>
-                            <strong>Purpose:</strong> {service.purpose}
-                          </div>
-                          <div style={{ marginTop: '6px', display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            <span style={{ fontSize: '11px', color: '#6b7280' }}>
-                              Billing: {service.billingType === 'one-time' ? 'One-time purchase (spread over 12 months)' : service.billingType === 'usage-based' ? 'Pay per transaction' : 'Monthly subscription'}
-                            </span>
-                            <span style={{ color: '#d1d5db' }}>|</span>
-                            <button
-                              onClick={() => {
-                                const val = costs[service.name]?.[0] || 0
-                                if (val > 0) applyToAllMonths(service.name, val)
-                              }}
-                              style={{ fontSize: '11px', color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
-                            >
-                              Apply Jan cost to all months
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </>
-                ))}
-              </>
-            ))}
-          </tbody>
-          {/* Footer Totals */}
-          <tfoot>
-            <tr style={{ borderTop: '2px solid #e5e7eb', background: '#f9fafb' }}>
-              <td style={{ padding: '10px 12px', fontWeight: 'bold', position: 'sticky', left: 0, background: '#f9fafb', zIndex: 1, color: '#000' }}>
-                MONTHLY TOTALS
-              </td>
-              {MONTHS.map((_, i) => (
-                <td key={i} style={{ textAlign: 'right', padding: '10px 8px', fontWeight: 'bold', color: '#000' }}>
-                  ${getMonthTotal(i).toFixed(2)}
-                </td>
-              ))}
-              <td style={{ textAlign: 'right', padding: '10px 12px', fontWeight: 'bold', background: '#fff7ed', color: '#c2410c', fontSize: '14px' }}>
-                ${getGrandTotal().toFixed(2)}
-              </td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr style={{ ...S.totalRow, background:'#f0fdf4' }}>
+                    <td style={{ ...S.tdLeft, fontWeight:800 }}>TOTAL REVENUE</td>
+                    {MONTHS.map((_,i) => <td key={i} style={{ ...S.td, background:'#f0fdf4', fontWeight:700 }}>${monthRevTotal(i).toFixed(2)}</td>)}
+                    <td style={{ ...S.td, background:'#dcfce7', fontWeight:900, color:'#22c55e' }}>
+                      ${MONTHS.reduce((s,_,i)=>s+monthRevTotal(i),0).toFixed(2)}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
 
-      {/* Instructions */}
-      <div style={{ marginTop: '20px', padding: '16px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-        <p style={{ fontSize: '12px', color: '#64748b', margin: 0, lineHeight: '1.6' }}>
-          <strong>How to use:</strong> Click any cell to edit the cost. Click ▶ next to a service name to see its purpose and billing type. 
-          Click the service name link (↗) to go to its login page. Use the year arrows to switch between years. 
-          Changes are saved to your browser — click "Save Changes" to persist.
-        </p>
-      </div>
+      {/* ── P&L TAB ── */}
+      {tab === 'pl' && (
+        <div style={S.card}>
+          <div style={S.cardHead}>
+            <span style={{ fontWeight:700 }}>📊 Profit & Loss Statement — {YEAR}</span>
+            <span style={{ fontSize:12, color:'#888' }}>Auto-calculated from Expenses + Revenue tabs</span>
+          </div>
+          <div style={{ overflowX:'auto' }}>
+            <table style={S.table}>
+              <thead>
+                <tr>
+                  <th style={{ ...S.thLeft, minWidth:220 }}>Category</th>
+                  {MONTHS.map(m => <th key={m} style={{ ...S.th, minWidth:88 }}>{m}</th>)}
+                  <th style={{ ...S.th, minWidth:100 }}>Full Year</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td colSpan={14} style={{ ...S.catHeader, color:'#166534', background:'#f0fdf4' }}>💵 Revenue</td></tr>
+                {REVENUES.map(item => (
+                  <tr key={item.id}>
+                    <td style={S.tdLeft}>{item.name}</td>
+                    {MONTHS.map((_,i) => <td key={i} style={S.td}>{fmt(rev.data[item.id]?.[i]||0)}</td>)}
+                    <td style={{ ...S.td, fontWeight:700 }}>${(rev.data[item.id]||[]).reduce((a,b)=>a+b,0).toFixed(2)}</td>
+                  </tr>
+                ))}
+                <tr style={{ background:'#f0fdf4', fontWeight:700 }}>
+                  <td style={S.tdLeft}>Total Revenue</td>
+                  {MONTHS.map((_,i) => <td key={i} style={{ ...S.td, fontWeight:700 }}>${monthRevTotal(i).toFixed(2)}</td>)}
+                  <td style={{ ...S.td, fontWeight:900, color:'#22c55e' }}>${MONTHS.reduce((s,_,i)=>s+monthRevTotal(i),0).toFixed(2)}</td>
+                </tr>
+
+                <tr><td colSpan={14} style={{ ...S.catHeader, paddingTop:10 }}>📋 Expenses by Category</td></tr>
+                {EXPENSE_CATEGORIES.map(cat => {
+                  const cTotal = catTotal(cat)
+                  if (cTotal === 0) return null
+                  return (
+                    <tr key={cat}>
+                      <td style={S.tdLeft}>{CAT_ICONS[cat]} {cat}</td>
+                      {MONTHS.map((_,i) => <td key={i} style={S.td}>{fmt(catMonthTotal(cat,i))}</td>)}
+                      <td style={{ ...S.td, fontWeight:700 }}>${cTotal.toFixed(2)}</td>
+                    </tr>
+                  )
+                })}
+                <tr style={{ background:'#fff7ed', fontWeight:700 }}>
+                  <td style={S.tdLeft}>Total Expenses</td>
+                  {MONTHS.map((_,i) => <td key={i} style={{ ...S.td, fontWeight:700, color:'#dc2626' }}>${monthExpTotal(i).toFixed(2)}</td>)}
+                  <td style={{ ...S.td, fontWeight:900, color:'#dc2626' }}>${MONTHS.reduce((s,_,i)=>s+monthExpTotal(i),0).toFixed(2)}</td>
+                </tr>
+
+                <tr><td colSpan={14} style={{ ...S.catHeader, paddingTop:10, background:'#f5f3ff', color:'#5b21b6' }}>📈 Net Income</td></tr>
+                <tr style={{ background:'#f5f5f5', fontWeight:800, fontSize:14 }}>
+                  <td style={{ ...S.tdLeft, fontWeight:800 }}>NET INCOME (LOSS)</td>
+                  {MONTHS.map((_,i) => {
+                    const net = monthNetTotal(i)
+                    return <td key={i} style={{ ...S.td, fontWeight:800, color:net>=0?'#22c55e':'#dc2626' }}>{fmtSigned(net)}</td>
+                  })}
+                  <td style={{ ...S.td, fontWeight:900, fontSize:15, color:MONTHS.reduce((s,_,i)=>s+monthNetTotal(i),0)>=0?'#22c55e':'#dc2626' }}>
+                    {fmtSigned(MONTHS.reduce((s,_,i)=>s+monthNetTotal(i),0))}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── BALANCE SHEET TAB ── */}
+      {tab === 'balance' && (
+        <div>
+          <div style={S.card}>
+            <div style={S.cardHead}>
+              <span style={{ fontWeight:700 }}>🏦 Balance Sheet — As of March 21, 2026</span>
+              <span style={{ fontSize:12, color:'#888' }}>Pre-launch snapshot · Update manually each quarter</span>
+            </div>
+            <div style={{ padding:24, display:'grid', gridTemplateColumns:'1fr 1fr', gap:24 }}>
+              <div>
+                <h3 style={{ fontWeight:800, fontSize:15, marginBottom:12 }}>ASSETS</h3>
+                <table style={{ ...S.table, marginBottom:24 }}>
+                  <thead><tr>
+                    <th style={{ ...S.thLeft, background:'#f5f5f5' }}>Item</th>
+                    <th style={{ ...S.th, background:'#f5f5f5' }}>Value</th>
+                  </tr></thead>
+                  <tbody>
+                    <tr><td colSpan={2} style={S.catHeader}>Current Assets</td></tr>
+                    <tr><td style={S.tdLeft}>Cash / Operating Funds</td><td style={S.td}><span style={{color:'#aaa'}}>Enter manually</span></td></tr>
+                    <tr><td style={S.tdLeft}>Stripe Balance</td><td style={S.td}>$0.00</td></tr>
+                    <tr><td colSpan={2} style={S.catHeader}>Intangible Assets</td></tr>
+                    <tr><td style={S.tdLeft}>Software / App (dev cost)</td><td style={S.td}><span style={{color:'#aaa'}}>Enter manually</span></td></tr>
+                    <tr><td style={S.tdLeft}>Brand / Domain</td><td style={S.td}>$12.00</td></tr>
+                    <tr><td style={S.tdLeft}>Audio Content Library</td><td style={S.td}><span style={{color:'#aaa'}}>Enter manually</span></td></tr>
+                    <tr style={{ fontWeight:700, background:'#f5f5f5' }}>
+                      <td style={S.tdLeft}>TOTAL ASSETS</td><td style={S.td}>—</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div>
+                <h3 style={{ fontWeight:800, fontSize:15, marginBottom:12 }}>LIABILITIES & EQUITY</h3>
+                <table style={S.table}>
+                  <thead><tr>
+                    <th style={{ ...S.thLeft, background:'#f5f5f5' }}>Item</th>
+                    <th style={{ ...S.th, background:'#f5f5f5' }}>Value</th>
+                  </tr></thead>
+                  <tbody>
+                    <tr><td colSpan={2} style={S.catHeader}>Current Liabilities</td></tr>
+                    <tr><td style={S.tdLeft}>Accounts Payable</td><td style={S.td}>$0.00</td></tr>
+                    <tr><td style={S.tdLeft}>Deferred Revenue</td><td style={S.td}>$0.00</td></tr>
+                    <tr><td colSpan={2} style={S.catHeader}>Owner's Equity</td></tr>
+                    <tr><td style={S.tdLeft}>Owner's Investment</td><td style={S.td}><span style={{color:'#aaa'}}>Enter manually</span></td></tr>
+                    <tr>
+                      <td style={S.tdLeft}>Retained Earnings (YTD Net Loss)</td>
+                      <td style={{ ...S.td, color:'#dc2626', fontWeight:700 }}>{fmtSigned(ytdNet)}</td>
+                    </tr>
+                    <tr style={{ fontWeight:700, background:'#f5f5f5' }}>
+                      <td style={S.tdLeft}>TOTAL LIABILITIES + EQUITY</td><td style={S.td}>—</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <div style={{ marginTop:20, background:'#fff7ed', border:'1px solid #fed7aa', borderRadius:8, padding:16 }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:'#9a3412', textTransform:'uppercase', letterSpacing:1, marginBottom:4 }}>Monthly Burn Rate (Avg)</div>
+                  <div style={{ fontSize:28, fontWeight:900, color:'#ea580c' }}>${(ytdExp/3).toFixed(2)}/mo</div>
+                  <div style={{ fontSize:12, color:'#9a3412', marginTop:4 }}>Jan–Mar avg · ${ytdExp.toFixed(2)} total YTD</div>
+                </div>
+              </div>
+            </div>
+            <div style={{ padding:'12px 24px', borderTop:'1px solid #eee', fontSize:12, color:'#888' }}>
+              ⚠️ Balance Sheet requires manual entry for cash, dev costs, and owner investment. Contact your accountant before April 17 launch for formal books.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── EL DETAIL TAB ── */}
+      {tab === 'el' && <ELDetailTab />}
+
     </div>
   )
 }

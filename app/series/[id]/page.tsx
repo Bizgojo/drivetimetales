@@ -103,7 +103,12 @@ export default function SeriesDetailPage() {
       }
 
       if (episodesData) {
-        // RULE: A series must have more than 1 episode — redirect single episodes to story player
+        // RULE 5: A series must have more than 1 episode.
+        // 0 episodes → go home. 1 episode → redirect to story player directly.
+        if (episodesData.length === 0) {
+          router.replace('/home')
+          return
+        }
         if (episodesData.length === 1) {
           router.replace(`/player/${episodesData[0].id}`)
           return

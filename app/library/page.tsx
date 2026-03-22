@@ -259,16 +259,22 @@ function LibraryContent() {
       }
     }
   })
-  // Any story with a series_name shows as a series card (even if user only has 1 ep)
-  const seriesGroups = Array.from(seriesMap.values())
-  const singleEpSeriesStories: Story[] = []  // no longer demoted to singles
+  // RULE 5: A series must have MORE than 1 episode.
+  // Single-episode "series" are demoted to singles — shown as individual story cards.
+  const seriesGroups = Array.from(seriesMap.values()).filter(g => g.episode_count > 1)
+  const singleEpSeriesStories: Story[] = filteredStories.filter(s =>
+    s.series_name && seriesMap.get(s.series_name)?.episode_count === 1
+  )
 
   seriesGroups.forEach(group => {
     group.completed_episodes = group.episode_ids.filter(eid =>
       libraryLookup.get(eid)?.completed
     ).length
   })
-  const singles = filteredStories.filter(s => !s.series_name).sort((a, b) => (a.duration_mins || 0) - (b.duration_mins || 0))
+  // Singles = stories with no series_name OR demoted single-episode series (Rule 5)
+  const singles = filteredStories
+    .filter(s => !s.series_name || singleEpSeriesStories.includes(s))
+    .sort((a, b) => (a.duration_mins || 0) - (b.duration_mins || 0))
   seriesGroups.sort((a, b) => (a.total_duration_mins || 0) - (b.total_duration_mins || 0))
 
   type DisplayItem = { type: 'single', story: Story, sortDate: string } | { type: 'series', group: SeriesGroup, sortDate: string }

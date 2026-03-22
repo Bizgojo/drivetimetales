@@ -9,13 +9,46 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
+const FOUNDING_LIMIT = parseInt(process.env.ET_FOUNDING_MEMBER_LIMIT || '500')
+const FOUNDING_PRICE_ID = process.env.STRIPE_PRICE_FOUNDING_MEMBER!
+const STANDARD_PRICE_ID = process.env.STRIPE_PRICE_STANDARD!
+
+async function resolvePrice(): Promise<{ priceId: string; isFoundingMember: boolean }> {
+  try {
+    let count = 0
+    let hasMore = true
+    let startingAfter: string | undefined
+    while (hasMore) {
+      const subs = await stripe.subscriptions.list({
+        price: FOUNDING_PRICE_ID,
+        status: 'active',
+        limit: 100,
+        ...(startingAfter ? { starting_after: startingAfter } : {})
+      })
+      count += subs.data.length
+      hasMore = subs.has_more
+      if (subs.data.length > 0) startingAfter = subs.data[subs.data.length - 1].id
+      if (count >= FOUNDING_LIMIT) break
+    }
+    const isFoundingMember = count < FOUNDING_LIMIT
+    return { priceId: isFoundingMember ? FOUNDING_PRICE_ID : STANDARD_PRICE_ID, isFoundingMember }
+  } catch {
+    // Fallback to standard if Stripe query fails
+    return { priceId: STANDARD_PRICE_ID, isFoundingMember: false }
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const { userId, email, priceId, referralCode, trialDays: trialDaysParam } = await req.json()
+    const { userId, email, priceId: clientPriceId, referralCode, trialDays: trialDaysParam } = await req.json()
 
-    if (!userId || !email || !priceId) {
+    if (!userId || !email) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
+
+    // Auto-select founding member or standard price (ignore client-supplied priceId)
+    const { priceId, isFoundingMember } = await resolvePrice()
+    console.log(`[checkout] Assigned price: ${isFoundingMember ? 'founding member $2.99' : 'standard $7.99'}`)
 
     // Check if user already has a Stripe customer
     const { data: userData } = await supabase
@@ -60,7 +93,7 @@ export async function POST(req: NextRequest) {
       ],
       mode: 'subscription',
       subscription_data: {
-        metadata: { userId },
+        metadata: { userId, isFoundingMember: isFoundingMember ? 'true' : 'false' },
         trial_period_days: trialDays > 0 ? trialDays : undefined
       },
       success_url: `${process.env.NEXT_PUBLIC_BASE_URL}/home?welcome=true`,

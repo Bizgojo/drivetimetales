@@ -215,7 +215,9 @@ function PlayerContent() {
 
   const saveProgress = async (t: number, done = false) => {
     if (user?.id) await supabase.from('user_library').upsert({
-      user_id: user.id, story_id: storyId, progress: Math.floor(t), completed: done, last_played: new Date().toISOString()
+      user_id: user.id, story_id: storyId, progress: Math.floor(t), completed: done,
+      hide_from_home: false,  // Reset dismiss if user plays again
+      last_played: new Date().toISOString()
     })
   }
 
