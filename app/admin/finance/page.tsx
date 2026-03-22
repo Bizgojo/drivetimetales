@@ -204,7 +204,7 @@ function ELDetailTab() {
             <label style={{ color:'#666' }}>Stories produced this month:</label>
             <input type="number" min="1" value={storiesProduced}
               onChange={e => setStoriesProduced(parseInt(e.target.value)||1)}
-              style={{ width:48, padding:'4px 6px', border:'1px solid #ddd', borderRadius:6, textAlign:'center', fontSize:13, fontWeight:700 }}
+              style={{ width:48, padding:'4px 6px', border:'1px solid #ddd', borderRadius:6, textAlign:'center', fontSize:13, fontWeight:700, background:'#fff', color:'#000' }}
             />
           </div>
         </div>
