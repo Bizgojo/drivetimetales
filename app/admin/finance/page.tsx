@@ -253,7 +253,7 @@ function ELDetailTab() {
           </table>
           <div style={{ marginTop:12, padding:12, background:'#f0fdf4', borderRadius:8, fontSize:12, color:'#166534' }}>
             💡 <strong>Normal months (no overage):</strong> Cost per story = ${EL_PLAN_MONTHLY.toFixed(2)} ÷ {storiesProduced} stories = <strong>${planCostPerStory.toFixed(2)}/story</strong> — just your subscription prorated.
-            The March overage ($2,228) was caused by excessive testing/iteration during development. With ASC3 v2.3.59 saving voice files, this won't happen again.
+            The March overage ($2,228) was caused entirely by the News Briefings feature (daily SC news with 5 voices) — NOT story production. News Briefings are now deprecated. Story production costs ~$2-5 each. This overage will not repeat.
           </div>
         </div>
       </div>
