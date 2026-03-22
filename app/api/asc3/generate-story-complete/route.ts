@@ -331,9 +331,35 @@ function splitTextIntoChunks(text: string, maxChars: number): string[] {
 
 // ─── ElevenLabs Audio Generation ─────────────────────────────────────────────
 
-async function generateElevenLabsAudio(text: string, voiceId: string = BELLE_B_VOICE_ID): Promise<Buffer> {
+// Log EL usage to Supabase for per-story cost tracking
+async function logELUsage(historyItemId: string, voiceName: string, chars: number, storyTitle: string | null, text: string) {
+  try {
+    await supabase.from('el_usage_log').upsert({
+      history_item_id: historyItemId,
+      voice_name: voiceName,
+      chars,
+      category: storyTitle ? 'story' : 'intro',
+      story_title: storyTitle,
+      date_utc: new Date().toISOString().slice(0, 10),
+      ts_utc: new Date().toISOString(),
+      cost_usd: +(chars / 1000 * 0.30).toFixed(4),
+      raw_text: text.slice(0, 200),
+      synced_at: new Date().toISOString(),
+    }, { onConflict: 'history_item_id' })
+  } catch (e) {
+    console.warn('EL usage log failed (non-blocking):', e)
+  }
+}
+
+async function generateElevenLabsAudio(
+  text: string,
+  voiceId: string = BELLE_B_VOICE_ID,
+  voiceName: string = 'Belle B',
+  storyTitle: string | null = null
+): Promise<Buffer> {
+  // Use with-timestamps endpoint to get history_item_id for cost tracking
   const response = await fetch(
-    `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
+    `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/with-timestamps`,
     {
       method: 'POST',
       headers: {
@@ -348,10 +374,29 @@ async function generateElevenLabsAudio(text: string, voiceId: string = BELLE_B_V
     }
   )
   if (!response.ok) {
-    const errText = await response.text()
-    throw new Error(`ElevenLabs API error (voice ${voiceId}): ${response.status} - ${errText}`)
+    // Fallback to standard endpoint
+    const fallback = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
+      {
+        method: 'POST',
+        headers: { 'xi-api-key': ELEVENLABS_API_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, model_id: 'eleven_monolingual_v1', voice_settings: { stability: 0.5, similarity_boost: 0.75 } }),
+      }
+    )
+    if (!fallback.ok) {
+      const errText = await fallback.text()
+      throw new Error(`ElevenLabs API error (voice ${voiceId}): ${fallback.status} - ${errText}`)
+    }
+    return Buffer.from(await fallback.arrayBuffer())
   }
-  return Buffer.from(await response.arrayBuffer())
+
+  const json = await response.json()
+  // Log usage with history_item_id
+  if (json.history_item_id) {
+    await logELUsage(json.history_item_id, voiceName, text.length, storyTitle, text)
+  }
+  // audio is base64 in json.audio
+  return Buffer.from(json.audio || '', 'base64')
 }
 
 async function uploadAudioToStorage(
@@ -753,7 +798,7 @@ Now write the complete audio drama:`
 
     try {
       console.log('🎙️ Generating intro audio (Belle B)...')
-      const introBuffer = await generateElevenLabsAudio(introText, BELLE_B_VOICE_ID)
+      const introBuffer = await generateElevenLabsAudio(introText, BELLE_B_VOICE_ID, 'Belle B', null)
       introAudioUrl = await uploadAudioToStorage(introBuffer, `asc3/${storyId}/intro.mp3`)
       console.log(`✅ Intro audio: ${introAudioUrl}`)
 
@@ -765,7 +810,7 @@ Now write the complete audio drama:`
 
         console.log(`  [${segment.index + 1}/${audioSegments.length}] [${segment.speaker}] → ${segment.voiceId} | ${segment.text.substring(0, 60)}...`)
 
-        const buffer = await generateElevenLabsAudio(segment.text, segment.voiceId)
+        const buffer = await generateElevenLabsAudio(segment.text, segment.voiceId, segment.speaker, title)
         const url = await uploadAudioToStorage(buffer, path)
 
         storySegmentResults.push({
@@ -778,7 +823,7 @@ Now write the complete audio drama:`
       console.log(`✅ All ${storySegmentResults.length} segments generated`)
 
       console.log('🎙️ Generating outro audio (Belle B)...')
-      const outroBuffer = await generateElevenLabsAudio(outroText, BELLE_B_VOICE_ID)
+      const outroBuffer = await generateElevenLabsAudio(outroText, BELLE_B_VOICE_ID, 'Belle B', null)
       outroAudioUrl = await uploadAudioToStorage(outroBuffer, `asc3/${storyId}/outro.mp3`)
       console.log(`✅ Outro audio: ${outroAudioUrl}`)
 
@@ -1029,6 +1074,12 @@ Now write the complete audio drama:`
         coverImageUrl,
         sfxMetadata: [],
         _warnings: warnings,
+        elStats: {
+          estimatedChars: storySegmentResults.reduce((s, seg) => s + seg.text_preview.length, 0),
+          estimatedCost: `$${(storySegmentResults.reduce((s, seg) => s + seg.text_preview.length, 0) / 1000 * 0.30).toFixed(2)}`,
+          segments: storySegmentResults.length,
+          note: 'Exact cost visible in 🎙️ EL Usage admin page within ~1 hour',
+        },
       },
     })
   } catch (error) {

@@ -1912,6 +1912,12 @@ export default function StoryCreationPage() {
         return;
       }
 
+      // Pre-generation EL cost estimate
+      // ~5.5 chars/word average for audio drama dialogue × $0.30/1k chars
+      const estChars = Math.round(prompt.wordCount * 5.5)
+      const estCost = (estChars / 1000 * 0.30).toFixed(2)
+      console.log(`💰 EL cost estimate: ~${estChars.toLocaleString()} chars = ~$${estCost}`)
+
       // Call generation API
       const response = await fetch('/api/asc3/generate-story-complete', {
         method: 'POST',
