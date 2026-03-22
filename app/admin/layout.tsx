@@ -40,6 +40,7 @@ export default function AdminLayout({
     { href: '/admin', label: 'Dashboard', icon: '📊' },
     { href: '/admin/checklist', label: 'Launch Checklist', icon: '🚀' },
     { href: '/admin/finance', label: 'Finance', icon: '💰' },
+    { href: '/admin/el-usage', label: 'ElevenLabs Usage', icon: '🎙️' },
     { href: '/admin/story-creation', label: 'Story Creation', icon: '✍️' },
     { href: '/admin/stories', label: 'Stories', icon: '📚' },
     { href: '/admin/genres', label: 'Genres', icon: '🎭' },
