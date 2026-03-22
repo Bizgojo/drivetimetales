@@ -207,7 +207,7 @@ function StoryEditorPanel({
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   disabled={uploadingCover}
-                  style={{ padding: '8px 14px', backgroundColor: '#f97316', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}
+                  style={{ padding: '8px 14px', backgroundColor: '#f97316', color: '#000000', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}
                 >
                   {uploadingCover ? 'Uploading...' : '📁 Upload New Cover'}
                 </button>
@@ -353,7 +353,7 @@ function StoryEditorPanel({
               style={{
                 padding: '6px 14px', borderRadius: '20px', fontSize: '11px', fontWeight: 700, border: 'none', cursor: 'pointer',
                 backgroundColor: isHidden ? '#dc2626' : '#16a34a',
-                color: 'white',
+                color: '#000000',
               }}
             >
               {isHidden ? 'Unhide' : 'Hide'}
@@ -376,7 +376,7 @@ function StoryEditorPanel({
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button
                     onClick={() => { onDelete(story.id); onClose() }}
-                    style={{ flex: 1, padding: '8px', borderRadius: '6px', backgroundColor: '#dc2626', color: 'white', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700 }}
+                    style={{ flex: 1, padding: '8px', borderRadius: '6px', backgroundColor: '#dc2626', color: '#000000', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 700 }}
                   >
                     Yes, Delete
                   </button>
@@ -394,8 +394,8 @@ function StoryEditorPanel({
         {/* Live Card Preview */}
         <div style={{ padding: '1rem 1.25rem', borderTop: `1px solid ${border}` }}>
           <div style={{ fontSize: '12px', fontWeight: 600, color: textSecondary, marginBottom: '10px', letterSpacing: '0.05em' }}>CARD PREVIEW</div>
-          <div style={{ background: '#0f172a', borderRadius: '14px', padding: '12px' }}>
-            <div style={{ display: 'flex', background: '#1e293b', borderRadius: '14px', overflow: 'hidden', border: '1px solid rgba(148,163,184,0.06)', alignItems: 'stretch', minHeight: '130px' }}>
+          <div style={{ background: '#f5f5f5', borderRadius: '14px', padding: '12px' }}>
+            <div style={{ display: 'flex', background: '#ffffff', borderRadius: '14px', overflow: 'hidden', border: '1px solid rgba(148,163,184,0.06)', alignItems: 'stretch', minHeight: '130px' }}>
               {/* Cover */}
               <div style={{ flexShrink: 0, border: '10px solid #1e293b', borderRight: 'none', display: 'flex', alignItems: 'center' }}>
                 <div style={{ width: '110px', height: '110px', borderRadius: '6px', overflow: 'hidden', boxShadow: '0 0 15px rgba(255,255,255,0.4)', position: 'relative', flexShrink: 0 }}>
@@ -403,7 +403,7 @@ function StoryEditorPanel({
                   {/* Play pill */}
                   <div style={{ position: 'absolute', bottom: '6px', right: '6px', background: 'rgba(249,115,22,0.88)', borderRadius: '20px', padding: '3px 8px 3px 6px', display: 'flex', alignItems: 'center', gap: '3px' }}>
                     <svg width="6" height="8" viewBox="0 0 12 14" fill="white"><path d="M1 1l10 6-10 6V1z"/></svg>
-                    <span style={{ color: 'white', fontSize: '8px', fontWeight: 800, letterSpacing: '0.05em' }}>PLAY</span>
+                    <span style={{ color: '#000000', fontSize: '8px', fontWeight: 800, letterSpacing: '0.05em' }}>PLAY</span>
                   </div>
                 </div>
               </div>
@@ -414,7 +414,7 @@ function StoryEditorPanel({
                   {flag && (
                     <span style={{
                       background: flag === 'new' ? '#3b82f6' : flag === 'free' ? '#9333ea' : flag === 'trending' ? '#14b8a6' : flag === 'editors-pick' ? '#9333ea' : '#f97316',
-                      color: 'white', padding: '2px 7px', borderRadius: '3px', fontSize: '9px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.07em'
+                      color: '#000000', padding: '2px 7px', borderRadius: '3px', fontSize: '9px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.07em'
                     }}>
                       {flag === 'new' ? 'NEW' : flag === 'free' ? 'FREE' : flag === 'editors-pick' ? "Editor's Pick" : flag === 'trending' ? 'Trending' : flag}
                     </span>
@@ -423,23 +423,23 @@ function StoryEditorPanel({
                 {/* Title */}
                 {story.series_name && episodeTitle ? (
                   <div>
-                    <div style={{ color: '#94a3b8', fontSize: '10px', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{story.series_name}</div>
-                    <div style={{ color: 'white', fontSize: '14px', fontWeight: 700, lineHeight: 1.2, letterSpacing: '-0.01em', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' } as React.CSSProperties}>{episodeTitle}</div>
+                    <div style={{ color: '#333333', fontSize: '10px', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{story.series_name}</div>
+                    <div style={{ color: '#000000', fontSize: '14px', fontWeight: 700, lineHeight: 1.2, letterSpacing: '-0.01em', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' } as React.CSSProperties}>{episodeTitle}</div>
                   </div>
                 ) : (
-                  <div style={{ color: 'white', fontSize: '14px', fontWeight: 700, lineHeight: 1.2, letterSpacing: '-0.01em', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' } as React.CSSProperties}>{title || 'Title'}</div>
+                  <div style={{ color: '#000000', fontSize: '14px', fontWeight: 700, lineHeight: 1.2, letterSpacing: '-0.01em', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' } as React.CSSProperties}>{title || 'Title'}</div>
                 )}
                 {/* Author + genre + duration */}
                 <div style={{ fontSize: '11px', lineHeight: 1.3 }}>
-                  <div style={{ color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{author || 'Author'}</div>
+                  <div style={{ color: '#333333', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{author || 'Author'}</div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#94a3b8' }}>{primaryGenre || '—'}</span>
-                    <span style={{ color: 'white', fontWeight: 600 }}>{story.duration_mins} min</span>
+                    <span style={{ color: '#333333' }}>{primaryGenre || '—'}</span>
+                    <span style={{ color: '#000000', fontWeight: 600 }}>{story.duration_mins} min</span>
                   </div>
                 </div>
                 {/* Description */}
                 {description && (
-                  <p style={{ color: '#94a3b8', fontSize: '11px', lineHeight: 1.35, margin: 0, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' } as React.CSSProperties}>{description}</p>
+                  <p style={{ color: '#333333', fontSize: '11px', lineHeight: 1.35, margin: 0, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' } as React.CSSProperties}>{description}</p>
                 )}
               </div>
             </div>
@@ -454,7 +454,7 @@ function StoryEditorPanel({
             style={{
               flex: 1, padding: '14px 10px', borderRadius: '8px', fontWeight: 700, fontSize: '14px',
               backgroundColor: saved ? '#2563eb' : saving ? '#9ca3af' : '#22c55e',
-              color: 'white', border: 'none',
+              color: '#000000', border: 'none',
               cursor: saving ? 'default' : 'pointer',
               touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent',
             }}
@@ -508,7 +508,7 @@ function StoryRow({
       <td style={{ padding: '0.5rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
           <div style={{ color: textPrimary, fontWeight: 600, fontSize: '13px', lineHeight: 1.2 }}>{story.title}</div>
-          {story.is_hidden && <span style={{ backgroundColor: '#dc2626', color: 'white', borderRadius: '3px', padding: '1px 5px', fontSize: '9px', fontWeight: 700 }}>HIDDEN</span>}
+          {story.is_hidden && <span style={{ backgroundColor: '#dc2626', color: '#000000', borderRadius: '3px', padding: '1px 5px', fontSize: '9px', fontWeight: 700 }}>HIDDEN</span>}
         </div>
         {story.episode_title && <div style={{ color: textSecondary, fontSize: '11px', fontStyle: 'italic' }}>{story.episode_title}</div>}
         <div style={{ color: textSecondary, fontSize: '11px' }}>by {story.author}</div>
@@ -540,7 +540,7 @@ function StoryRow({
       {/* Flag */}
       <td style={{ padding: '0.5rem' }}>
         {story.flag ? (
-          <span style={{ backgroundColor: FLAG_OPTIONS.find(f => f.value === story.flag)?.color || '#e5e5e5', color: 'white', borderRadius: '4px', padding: '3px 7px', fontSize: '10px', fontWeight: 600 }}>
+          <span style={{ backgroundColor: FLAG_OPTIONS.find(f => f.value === story.flag)?.color || '#e5e5e5', color: '#000000', borderRadius: '4px', padding: '3px 7px', fontSize: '10px', fontWeight: 600 }}>
             {FLAG_OPTIONS.find(f => f.value === story.flag)?.label}
           </span>
         ) : (
@@ -674,7 +674,7 @@ function SeriesGroupRow({
             </td>
             <td style={{ padding: '0.5rem' }}>
               {ep.flag ? (
-                <span style={{ backgroundColor: FLAG_OPTIONS.find(f => f.value === ep.flag)?.color || '#e5e5e5', color: 'white', borderRadius: '4px', padding: '2px 6px', fontSize: '9px', fontWeight: 600 }}>
+                <span style={{ backgroundColor: FLAG_OPTIONS.find(f => f.value === ep.flag)?.color || '#e5e5e5', color: '#000000', borderRadius: '4px', padding: '2px 6px', fontSize: '9px', fontWeight: 600 }}>
                   {FLAG_OPTIONS.find(f => f.value === ep.flag)?.label}
                 </span>
               ) : <span style={{ color: textSecondary, fontSize: '10px' }}>—</span>}

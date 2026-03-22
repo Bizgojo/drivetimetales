@@ -196,7 +196,7 @@ function SignUpContent() {
 
         <p style={{ color: '#475569', fontSize: '12px', textAlign: 'center', marginTop: '1rem', lineHeight: 1.5 }}>
           By signing up you agree to our Terms of Service and Privacy Policy.<br/>
-          ${(7.99).toFixed(2)}/month after trial. Cancel anytime.
+          $2.99/mo after trial — founding member price (first 500 only). Cancel anytime.
         </p>
       </div>
     </div>

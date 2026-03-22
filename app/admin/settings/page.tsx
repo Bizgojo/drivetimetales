@@ -169,7 +169,7 @@ export default function AdminSettingsPage() {
           style={{
             padding: '12px 24px',
             backgroundColor: saving ? '#cbd5e1' : '#f97316',
-            color: 'white',
+            color: '#000000',
             border: 'none',
             borderRadius: '8px',
             fontWeight: 600,

@@ -389,7 +389,7 @@ export default function AdminSupportPage() {
             style={{
               padding: '0.5rem 1rem',
               backgroundColor: '#8b5cf6',
-              color: 'white',
+              color: '#000000',
               border: 'none',
               borderRadius: '8px',
               fontSize: '13px',
@@ -496,7 +496,7 @@ Example:
                 style={{
                   padding: '10px 20px',
                   backgroundColor: savingKnowledge ? '#cbd5e1' : '#8b5cf6',
-                  color: 'white',
+                  color: '#000000',
                   border: 'none',
                   borderRadius: '8px',
                   fontWeight: 600,
@@ -612,20 +612,20 @@ Example:
           {selectedMessage ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               {/* User Info Card */}
-              <div style={{ backgroundColor: '#1e293b', borderRadius: '12px', padding: '1.25rem', color: 'white' }}>
+              <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', padding: '1.25rem', color: '#000000' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
                   <div>
                     <h3 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '0.25rem' }}>
                       {selectedMessage.name}
                     </h3>
-                    <p style={{ color: '#94a3b8', fontSize: '14px' }}>{selectedMessage.email}</p>
+                    <p style={{ color: '#333333', fontSize: '14px' }}>{selectedMessage.email}</p>
                   </div>
                   <button
                     onClick={() => setShowHistory(!showHistory)}
                     style={{
                       padding: '0.5rem 1rem',
                       backgroundColor: '#3b82f6',
-                      color: 'white',
+                      color: '#000000',
                       border: 'none',
                       borderRadius: '6px',
                       fontSize: '13px',
@@ -637,7 +637,7 @@ Example:
                 </div>
                 
                 {loadingUser ? (
-                  <p style={{ color: '#94a3b8' }}>Loading user details...</p>
+                  <p style={{ color: '#333333' }}>Loading user details...</p>
                 ) : userDetails ? (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
                     <div style={{ backgroundColor: 'white', padding: '0.75rem', borderRadius: '8px' }}>
@@ -743,7 +743,7 @@ Example:
                         style={{
                           padding: '0.5rem 1rem',
                           backgroundColor: generatingAI ? '#cbd5e1' : '#8b5cf6',
-                          color: 'white',
+                          color: '#000000',
                           border: 'none',
                           borderRadius: '6px',
                           fontSize: '13px',
@@ -779,7 +779,7 @@ Example:
                       style={{
                         padding: '0.75rem 1.5rem',
                         backgroundColor: sending || !replyText.trim() ? '#cbd5e1' : '#f97316',
-                        color: 'white',
+                        color: '#000000',
                         border: 'none',
                         borderRadius: '8px',
                         fontWeight: 600,
@@ -799,7 +799,7 @@ Example:
               border: '1px solid #e2e8f0',
               padding: '3rem',
               textAlign: 'center',
-              color: '#94a3b8'
+              color: '#333333'
             }}>
               <span style={{ fontSize: '48px', display: 'block', marginBottom: '1rem' }}>💬</span>
               Select a message to view details

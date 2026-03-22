@@ -53,14 +53,14 @@ function SignInContent() {
 
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: '28px' }}>
-          <img src="/images/endless-tales-header-logo.png" alt="Endless Tales" style={{ height: '44px', objectFit: 'contain' }} />
+          <img src="/images/et-logo.png" alt="Endless Tales" style={{ height: '44px', objectFit: 'contain' }} />
         </div>
 
         {/* NEW USER — Trial CTA */}
         <div style={{ background: 'linear-gradient(135deg, #065f46, #064e3b)', border: '1px solid #10b981', borderRadius: '16px', padding: '20px', marginBottom: '20px', textAlign: 'center' }}>
           <div style={{ fontSize: '28px', marginBottom: '6px' }}>🎧</div>
           <div style={{ color: 'white', fontSize: '18px', fontWeight: 900, marginBottom: '4px' }}>New to Endless Tales?</div>
-          <div style={{ color: '#a7f3d0', fontSize: '13px', marginBottom: '16px' }}>Hundreds of audio stories — 7 days free, then $7.99/mo. Cancel anytime.</div>
+          <div style={{ color: '#a7f3d0', fontSize: '13px', marginBottom: '16px' }}>Hundreds of audio stories — 7 days free, then $2.99/mo for founding members. Cancel anytime.</div>
           <Link href="/signup" style={{ display: 'block', backgroundColor: '#10b981', color: 'white', padding: '14px', borderRadius: '10px', fontSize: '16px', fontWeight: 800, textDecoration: 'none' }}>
             🎉 Start Your 7-Day Free Trial
           </Link>

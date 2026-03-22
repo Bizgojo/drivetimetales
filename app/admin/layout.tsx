@@ -70,8 +70,9 @@ export default function AdminLayout({
         position: 'fixed',
         top: 0,
         left: 0,
-        bottom: 0,
-        overflowY: 'auto'
+        height: '100vh',
+        overflowY: 'scroll',
+        boxSizing: 'border-box'
       }}>
         {/* Logo */}
         <div style={{ padding: '0.5rem', marginBottom: '1.5rem' }}>
@@ -79,7 +80,7 @@ export default function AdminLayout({
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <span style={{ fontSize: '24px' }}>🚗</span>
               <div>
-                <div style={{ color: 'white', fontWeight: 'bold', fontSize: '14px' }}>Drive Time Tales</div>
+                <div style={{ color: 'white', fontWeight: 'bold', fontSize: '14px' }}>Endless Tales</div>
                 <div style={{ color: '#f97316', fontSize: '11px', fontWeight: 500 }}>Admin Panel</div>
               </div>
             </div>
@@ -193,7 +194,7 @@ export default function AdminLayout({
         </div>
 
         {/* Back to Site */}
-        <div style={{ position: 'absolute', bottom: '1rem', left: '1rem', right: '1rem' }}>
+        <div style={{ marginTop: '1.5rem', paddingBottom: '0.5rem' }}>
           <Link 
             href="/" 
             style={{

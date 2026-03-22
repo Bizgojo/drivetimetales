@@ -527,13 +527,13 @@ export default function UsersPage() {
                       <td style={{ padding: '12px 16px', textAlign: 'center' }}>
                         <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', fontSize: '13px' }}>
                           <span style={{ color: '#1e293b' }}>{formatListeningTime(user.listening7d || 0)}</span>
-                          <span style={{ color: '#94a3b8' }}>/</span>
+                          <span style={{ color: '#333333' }}>/</span>
                           <span style={{ color: '#1e293b' }}>{formatListeningTime(user.listening30d || 0)}</span>
-                          <span style={{ color: '#94a3b8' }}>/</span>
+                          <span style={{ color: '#333333' }}>/</span>
                           <span style={{ color: '#1e293b' }}>
                             {formatListeningTime(user.listening365d || 0)}
                             {user.memberDays && user.memberDays < 365 && (
-                              <span style={{ color: '#94a3b8', fontSize: '11px' }}> ({user.memberDays}d)</span>
+                              <span style={{ color: '#333333', fontSize: '11px' }}> ({user.memberDays}d)</span>
                             )}
                           </span>
                         </div>
@@ -567,7 +567,7 @@ export default function UsersPage() {
                             💬 {user.supportMessageCount}
                           </button>
                         ) : (
-                          <span style={{ color: '#cbd5e1', fontSize: '13px' }}>-</span>
+                          <span style={{ color: '#333333', fontSize: '13px' }}>-</span>
                         )}
                       </td>
                       <td style={{ padding: '12px 16px', textAlign: 'center' }}>
@@ -581,8 +581,8 @@ export default function UsersPage() {
                             }}
                             style={{
                               padding: '6px 12px',
-                              backgroundColor: '#1e293b',
-                              color: 'white',
+                              backgroundColor: '#ffffff',
+                              color: '#000000',
                               border: 'none',
                               borderRadius: '6px',
                               fontSize: '13px',
@@ -602,7 +602,7 @@ export default function UsersPage() {
                               style={{
                                 padding: '6px 12px',
                                 backgroundColor: '#dc2626',
-                                color: 'white',
+                                color: '#000000',
                                 border: 'none',
                                 borderRadius: '6px',
                                 fontSize: '13px',
@@ -746,7 +746,7 @@ export default function UsersPage() {
                       )}
                     </div>
                   ) : (
-                    <p style={{ color: '#94a3b8', textAlign: 'center', padding: '2rem' }}>
+                    <p style={{ color: '#333333', textAlign: 'center', padding: '2rem' }}>
                       Select a message to view
                     </p>
                   )}
@@ -884,7 +884,7 @@ export default function UsersPage() {
                   backgroundColor: '#f97316',
                   border: 'none',
                   borderRadius: '8px',
-                  color: 'white',
+                  color: '#000000',
                   fontWeight: 600,
                   cursor: saving ? 'not-allowed' : 'pointer',
                   opacity: saving ? 0.5 : 1
@@ -989,7 +989,7 @@ export default function UsersPage() {
                             Refundable: ${(payment.refundable / 100).toFixed(2)}
                           </span>
                         ) : (
-                          <span style={{ color: '#94a3b8' }}>Fully refunded</span>
+                          <span style={{ color: '#333333' }}>Fully refunded</span>
                         )}
                       </div>
                     </div>
@@ -1066,7 +1066,7 @@ export default function UsersPage() {
                         width: '100%',
                         padding: '12px',
                         backgroundColor: processingRefund ? '#fca5a5' : '#dc2626',
-                        color: 'white',
+                        color: '#000000',
                         border: 'none',
                         borderRadius: '8px',
                         fontWeight: 600,

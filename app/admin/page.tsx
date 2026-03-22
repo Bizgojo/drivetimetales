@@ -342,7 +342,7 @@ export default function AdminPage() {
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold">
-            <span className="text-white">DTT</span>
+            <span className="text-white">Endless Tales</span>
             <span className="text-orange-500 ml-2">Admin</span>
           </h1>
           <Link href="/home" className="text-slate-400 hover:text-white text-sm">
