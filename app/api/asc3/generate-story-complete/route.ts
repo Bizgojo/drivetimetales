@@ -666,6 +666,20 @@ Now write the complete audio drama:`
     const claudeResult = await claudeHttpResponse.json()
     const claudeText = claudeResult.content?.[0]?.text || ''
 
+    // ─── Log Anthropic usage ───────────────────────────────────────
+    try {
+      const { logAnthropicCall } = await import('../../../../lib/anthropic-logger')
+      logAnthropicCall({
+        route: '/api/asc3/generate-story-complete',
+        purpose: 'story-generation',
+        model: selectedModel,
+        inputTokens: claudeResult.usage?.input_tokens ?? 0,
+        outputTokens: claudeResult.usage?.output_tokens ?? 0,
+        storyTitle: body.title || 'untitled',
+        metadata: { genre: body.genre, authorStyle: body.authorStyle },
+      }).catch(() => {})
+    } catch { /* never break on logging failure */ }
+
     // ─── Parse Claude output ───────────────────────────────────────
 
     // Log first 500 chars to help debug format issues

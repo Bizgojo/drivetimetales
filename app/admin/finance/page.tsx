@@ -89,6 +89,137 @@ function EditCell({ value, onChange }: { value: number; onChange: (v: number) =>
   )
 }
 
+// ─── ANTHROPIC DETAIL TAB ─────────────────────────────────────────────────────
+function AnthropicTab() {
+  const [selMonth, setSelMonth] = useState(new Date().getMonth())
+  const [monthly, setMonthly] = useState<{month:number;input_tokens:number;output_tokens:number;cost_usd:number;calls:number}[]>([])
+  const [byRoute, setByRoute] = useState<{purpose:string;calls:number;input:number;output:number;cost:number}[]>([])
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    fetch(`/api/admin/anthropic-usage?view=monthly&year=${YEAR}`)
+      .then(r => r.json()).then(d => setMonthly(d.data || [])).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    setLoading(true)
+    fetch(`/api/admin/anthropic-usage?view=byRoute&year=${YEAR}&month=${selMonth+1}`)
+      .then(r => r.json()).then(d => { setByRoute(d.data || []); setLoading(false) }).catch(() => setLoading(false))
+  }, [selMonth])
+
+  const S: Record<string,React.CSSProperties> = {
+    card: { background:'#fff', border:'1px solid #ddd', borderRadius:10, overflow:'hidden', marginBottom:20 },
+    cardHead: { background:'#fafafa', borderBottom:'1px solid #eee', padding:'12px 20px', display:'flex', justifyContent:'space-between', alignItems:'center' },
+    table: { width:'100%', borderCollapse:'collapse' as const, fontSize:13 },
+    th: { textAlign:'right' as const, padding:'8px 12px', borderBottom:'2px solid #eee', fontWeight:700, background:'#f5f5f5' },
+    thL: { textAlign:'left' as const, padding:'8px 12px', borderBottom:'2px solid #eee', fontWeight:700, background:'#f5f5f5' },
+    td: { textAlign:'right' as const, padding:'8px 12px', borderBottom:'1px solid #f0f0f0' },
+    tdL: { textAlign:'left' as const, padding:'8px 12px', borderBottom:'1px solid #f0f0f0' },
+  }
+
+  const selData = monthly[selMonth] || { input_tokens:0, output_tokens:0, cost_usd:0, calls:0 }
+  const ytdCost = monthly.reduce((s,m) => s + parseFloat(String(m?.cost_usd||0)), 0)
+
+  return (
+    <div>
+      {/* Month selector */}
+      <div style={{ display:'flex', gap:8, marginBottom:20, flexWrap:'wrap' }}>
+        {MONTHS.map((m,i) => (
+          <button key={m} onClick={() => setSelMonth(i)}
+            style={{ padding:'6px 14px', borderRadius:8, border:`1px solid ${selMonth===i?'#f97316':'#ddd'}`, background:selMonth===i?'#f97316':'#fff', color:selMonth===i?'#fff':'#333', fontWeight:600, fontSize:13, cursor:'pointer' }}>
+            {m}
+          </button>
+        ))}
+      </div>
+
+      {/* KPI row */}
+      <div style={{ display:'flex', gap:16, marginBottom:20, flexWrap:'wrap' }}>
+        {[
+          { label:'This Month Cost', value:`$${parseFloat(String(selData.cost_usd)).toFixed(2)}` },
+          { label:'API Calls', value:(selData.calls||0).toLocaleString() },
+          { label:'Input Tokens', value:((selData.input_tokens||0)/1000).toFixed(1)+'K' },
+          { label:'Output Tokens', value:((selData.output_tokens||0)/1000).toFixed(1)+'K' },
+          { label:`${YEAR} YTD Cost`, value:`$${ytdCost.toFixed(2)}` },
+        ].map(({ label, value }) => (
+          <div key={label} style={{ background:'#fff', border:'1px solid #ddd', borderRadius:10, padding:'14px 20px', flex:1, minWidth:130 }}>
+            <div style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:1, color:'#888', marginBottom:4 }}>{label}</div>
+            <div style={{ fontSize:22, fontWeight:900, color:'#111' }}>{value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* By Route */}
+      <div style={S.card}>
+        <div style={S.cardHead}>
+          <span style={{ fontWeight:700 }}>🤖 Cost by Purpose — {MONTHS[selMonth]} {YEAR}</span>
+          {loading && <span style={{ fontSize:12, color:'#888' }}>Loading…</span>}
+        </div>
+        {byRoute.length === 0 ? (
+          <div style={{ padding:'40px 24px', textAlign:'center', color:'#888', fontSize:14 }}>
+            <div style={{ fontSize:32, marginBottom:12 }}>🤖</div>
+            <div style={{ fontWeight:600, marginBottom:6 }}>No Anthropic calls logged yet</div>
+            <div style={{ fontSize:13 }}>Usage will appear here once the app starts using <code>anthropicCall()</code> from <code>app/lib/anthropic-logger.ts</code></div>
+          </div>
+        ) : (
+          <table style={S.table}>
+            <thead><tr>
+              <th style={S.thL}>Purpose</th>
+              <th style={S.th}>Calls</th>
+              <th style={S.th}>Input Tokens</th>
+              <th style={S.th}>Output Tokens</th>
+              <th style={S.th}>Cost</th>
+            </tr></thead>
+            <tbody>
+              {byRoute.map((r,i) => (
+                <tr key={i}>
+                  <td style={S.tdL}>{r.purpose}</td>
+                  <td style={S.td}>{r.calls.toLocaleString()}</td>
+                  <td style={S.td}>{(r.input/1000).toFixed(1)}K</td>
+                  <td style={S.td}>{(r.output/1000).toFixed(1)}K</td>
+                  <td style={{ ...S.td, fontWeight:700, color: r.cost > 1 ? '#dc2626' : '#111' }}>${r.cost.toFixed(4)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Monthly trend */}
+      <div style={S.card}>
+        <div style={S.cardHead}><span style={{ fontWeight:700 }}>📅 Monthly Anthropic Spend — {YEAR}</span></div>
+        <table style={S.table}>
+          <thead><tr>
+            <th style={S.thL}>Month</th>
+            <th style={S.th}>Calls</th>
+            <th style={S.th}>Input Tokens</th>
+            <th style={S.th}>Output Tokens</th>
+            <th style={S.th}>Cost</th>
+          </tr></thead>
+          <tbody>
+            {monthly.map((m, i) => {
+              const cost = parseFloat(String(m?.cost_usd || 0))
+              if (!m || (cost === 0 && !m.calls)) return null
+              return (
+                <tr key={i} style={{ background: i === selMonth ? '#fff7ed' : undefined }}>
+                  <td style={{ ...S.tdL, fontWeight: i === selMonth ? 700 : 400 }}>{MONTHS[i]}</td>
+                  <td style={S.td}>{(m.calls||0).toLocaleString()}</td>
+                  <td style={S.td}>{((m.input_tokens||0)/1000).toFixed(1)}K</td>
+                  <td style={S.td}>{((m.output_tokens||0)/1000).toFixed(1)}K</td>
+                  <td style={{ ...S.td, fontWeight:700 }}>{cost > 0 ? `$${cost.toFixed(2)}` : '—'}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div style={{ padding:'12px 0', fontSize:12, color:'#888' }}>
+        💡 Rates: Claude Sonnet $3/$15 per MTok (input/output) · Haiku $0.80/$4 · Opus $15/$75 · Tracking begins when routes use <code>anthropicCall()</code> from the shared logger.
+      </div>
+    </div>
+  )
+}
+
 // ─── EL DETAIL TAB ────────────────────────────────────────────────────────────
 function ELDetailTab() {
   const [selMonth, setSelMonth] = useState(2) // default March (index 2)
@@ -404,7 +535,7 @@ export default function FinancePage() {
 
       {/* Tabs */}
       <div style={S.tabs}>
-        {([['expenses','📋 Expenses'],['revenue','💵 Revenue'],['pl','📊 P&L'],['balance','🏦 Balance Sheet'],['el','🎙️ EL Detail']] as const).map(([id,label]) => (
+        {([['expenses','📋 Expenses'],['revenue','💵 Revenue'],['pl','📊 P&L'],['balance','🏦 Balance Sheet'],['el','🎙️ EL Detail'],['anthropic','🤖 Anthropic']] as const).map(([id,label]) => (
           <button key={id} style={S.tab(tab===id)} onClick={() => setTab(id)}>{label}</button>
         ))}
       </div>
@@ -677,6 +808,9 @@ export default function FinancePage() {
 
       {/* ── EL DETAIL TAB ── */}
       {tab === 'el' && <ELDetailTab />}
+
+      {/* ── ANTHROPIC TAB ── */}
+      {tab === 'anthropic' && <AnthropicTab />}
 
     </div>
   )
