@@ -282,11 +282,11 @@ export default function AdminPage() {
   // Toggle component
   const Toggle = ({ enabled, onChange, label }: { enabled: boolean; onChange: () => void; label: string }) => (
     <div className="flex items-center justify-between py-3">
-      <span className="text-white">{label}</span>
+      <span className="text-black">{label}</span>
       <button
         onClick={onChange}
         className={`relative w-12 h-6 rounded-full transition-colors ${
-          enabled ? 'bg-orange-500' : 'bg-slate-700'
+          enabled ? 'bg-orange-500' : 'bg-gray-300'
         }`}
       >
         <div
@@ -314,10 +314,10 @@ export default function AdminPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="inline-block w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mb-4" />
-          <p className="text-white">Loading admin panel...</p>
+          <p className="text-black">Loading admin panel...</p>
         </div>
       </div>
     )
@@ -325,9 +325,9 @@ export default function AdminPage() {
 
   if (!isAdmin) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <p className="text-white text-lg mb-4">Access Denied</p>
+          <p className="text-black text-lg mb-4">Access Denied</p>
           <Link href="/signin" className="text-orange-500 hover:underline">
             Sign in as admin
           </Link>
@@ -337,15 +337,15 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
+    <div className="min-h-screen bg-gray-50 text-black">
       <div className="max-w-6xl mx-auto px-4 py-6">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold">
-            <span className="text-white">Endless Tales</span>
+            <span className="text-black">Endless Tales</span>
             <span className="text-orange-500 ml-2">Admin</span>
           </h1>
-          <Link href="/home" className="text-slate-400 hover:text-white text-sm">
+          <Link href="/home" className="text-gray-700 hover:text-black text-sm">
             ← Back to App
           </Link>
         </div>
@@ -359,7 +359,7 @@ export default function AdminPage() {
               className={`px-4 py-2 rounded-lg font-medium text-sm whitespace-nowrap transition-colors ${
                 activeTab === tab
                   ? 'bg-orange-500 text-black'
-                  : 'bg-slate-800 text-white hover:bg-slate-700'
+                  : 'bg-gray-100 text-black hover:bg-gray-300'
               }`}
             >
               {tab.charAt(0).toUpperCase() + tab.slice(1)}
@@ -370,44 +370,44 @@ export default function AdminPage() {
         {/* OVERVIEW TAB */}
         {activeTab === 'overview' && (
           <div>
-            <h2 className="text-lg font-bold text-white mb-4">Dashboard Overview</h2>
+            <h2 className="text-lg font-bold text-black mb-4">Dashboard Overview</h2>
             
             {/* Stats Grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-              <div className="bg-slate-900 rounded-xl p-4 border border-slate-800">
-                <p className="text-slate-400 text-xs mb-1">Total Users</p>
-                <p className="text-2xl font-bold text-white">{stats.totalUsers}</p>
+              <div className="bg-white rounded-xl p-4 border border-gray-200">
+                <p className="text-gray-700 text-xs mb-1">Total Users</p>
+                <p className="text-2xl font-bold text-black">{stats.totalUsers}</p>
               </div>
-              <div className="bg-slate-900 rounded-xl p-4 border border-slate-800">
-                <p className="text-slate-400 text-xs mb-1">New This Month</p>
+              <div className="bg-white rounded-xl p-4 border border-gray-200">
+                <p className="text-gray-700 text-xs mb-1">New This Month</p>
                 <p className="text-2xl font-bold text-green-400">{stats.newUsersThisMonth}</p>
               </div>
-              <div className="bg-slate-900 rounded-xl p-4 border border-slate-800">
-                <p className="text-slate-400 text-xs mb-1">Subscribers</p>
+              <div className="bg-white rounded-xl p-4 border border-gray-200">
+                <p className="text-gray-700 text-xs mb-1">Subscribers</p>
                 <p className="text-2xl font-bold text-orange-400">{stats.activeSubscribers}</p>
               </div>
-              <div className="bg-slate-900 rounded-xl p-4 border border-slate-800">
-                <p className="text-slate-400 text-xs mb-1">Total Stories</p>
-                <p className="text-2xl font-bold text-white">{stats.totalStories}</p>
+              <div className="bg-white rounded-xl p-4 border border-gray-200">
+                <p className="text-gray-700 text-xs mb-1">Total Stories</p>
+                <p className="text-2xl font-bold text-black">{stats.totalStories}</p>
               </div>
             </div>
 
             {/* Quick Links */}
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              <Link href="/admin/news-briefings" className="bg-slate-900 hover:bg-slate-800 rounded-xl p-4 border border-slate-700 transition-colors">
+              <Link href="/admin/news-briefings" className="bg-white hover:bg-gray-100 rounded-xl p-4 border border-gray-200 transition-colors">
                 <span className="text-2xl mb-2 block">📰</span>
-                <p className="text-white font-medium">News Briefings</p>
-                <p className="text-slate-400 text-xs">Manage news generation</p>
+                <p className="text-black font-medium">News Briefings</p>
+                <p className="text-gray-700 text-xs">Manage news generation</p>
               </Link>
-              <Link href="/admin/stories" className="bg-slate-900 hover:bg-slate-800 rounded-xl p-4 border border-slate-700 transition-colors">
+              <Link href="/admin/stories" className="bg-white hover:bg-gray-100 rounded-xl p-4 border border-gray-200 transition-colors">
                 <span className="text-2xl mb-2 block">📚</span>
-                <p className="text-white font-medium">Stories</p>
-                <p className="text-slate-400 text-xs">Manage audio content</p>
+                <p className="text-black font-medium">Stories</p>
+                <p className="text-gray-700 text-xs">Manage audio content</p>
               </Link>
-              <Link href="/admin/users" className="bg-slate-900 hover:bg-slate-800 rounded-xl p-4 border border-slate-700 transition-colors">
+              <Link href="/admin/users" className="bg-white hover:bg-gray-100 rounded-xl p-4 border border-gray-200 transition-colors">
                 <span className="text-2xl mb-2 block">👥</span>
-                <p className="text-white font-medium">Users</p>
-                <p className="text-slate-400 text-xs">View user accounts</p>
+                <p className="text-black font-medium">Users</p>
+                <p className="text-gray-700 text-xs">View user accounts</p>
               </Link>
             </div>
           </div>
@@ -417,7 +417,7 @@ export default function AdminPage() {
         {activeTab === 'stories' && (
           <div>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-white">Stories</h2>
+              <h2 className="text-lg font-bold text-black">Stories</h2>
               <div className="flex gap-2">
                 {(['recent', 'rating', 'plays'] as const).map((sort) => (
                   <button
@@ -426,7 +426,7 @@ export default function AdminPage() {
                     className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
                       storySort === sort
                         ? 'bg-orange-500 text-black'
-                        : 'bg-slate-800 text-white'
+                        : 'bg-gray-100 text-black'
                     }`}
                   >
                     {sort.charAt(0).toUpperCase() + sort.slice(1)}
@@ -435,26 +435,26 @@ export default function AdminPage() {
               </div>
             </div>
 
-            <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden">
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b border-slate-800">
-                      <th className="text-left text-slate-400 text-xs font-medium px-4 py-3">Title</th>
-                      <th className="text-left text-slate-400 text-xs font-medium px-4 py-3">Genre</th>
-                      <th className="text-left text-slate-400 text-xs font-medium px-4 py-3">Duration</th>
-                      <th className="text-left text-slate-400 text-xs font-medium px-4 py-3">Rating</th>
-                      <th className="text-left text-slate-400 text-xs font-medium px-4 py-3">Credits</th>
+                    <tr className="border-b border-gray-200">
+                      <th className="text-left text-gray-700 text-xs font-medium px-4 py-3">Title</th>
+                      <th className="text-left text-gray-700 text-xs font-medium px-4 py-3">Genre</th>
+                      <th className="text-left text-gray-700 text-xs font-medium px-4 py-3">Duration</th>
+                      <th className="text-left text-gray-700 text-xs font-medium px-4 py-3">Rating</th>
+                      <th className="text-left text-gray-700 text-xs font-medium px-4 py-3">Credits</th>
                     </tr>
                   </thead>
                   <tbody>
                     {sortedStories.slice(0, 20).map((story, index) => (
-                      <tr key={story.id} className={index % 2 === 0 ? 'bg-slate-900' : 'bg-slate-800/50'}>
-                        <td className="px-4 py-3 text-white text-sm font-medium max-w-xs truncate">{story.title}</td>
-                        <td className="px-4 py-3 text-slate-400 text-sm">{story.genre}</td>
-                        <td className="px-4 py-3 text-slate-400 text-sm">{story.duration_mins} min</td>
+                      <tr key={story.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-100'}>
+                        <td className="px-4 py-3 text-black text-sm font-medium max-w-xs truncate">{story.title}</td>
+                        <td className="px-4 py-3 text-gray-700 text-sm">{story.genre}</td>
+                        <td className="px-4 py-3 text-gray-700 text-sm">{story.duration_mins} min</td>
                         <td className="px-4 py-3 text-yellow-400 text-sm">{(story.ai_rating || 0).toFixed(1)} ★</td>
-                        <td className="px-4 py-3 text-slate-400 text-sm">{story.credits || 1}</td>
+                        <td className="px-4 py-3 text-gray-700 text-sm">{story.credits || 1}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -462,7 +462,7 @@ export default function AdminPage() {
               </div>
             </div>
 
-            <p className="text-slate-500 text-sm mt-3">Showing: {Math.min(sortedStories.length, 20)} of {sortedStories.length} stories</p>
+            <p className="text-gray-700 text-sm mt-3">Showing: {Math.min(sortedStories.length, 20)} of {sortedStories.length} stories</p>
           </div>
         )}
 
@@ -470,7 +470,7 @@ export default function AdminPage() {
         {activeTab === 'users' && (
           <div>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-white">Users</h2>
+              <h2 className="text-lg font-bold text-black">Users</h2>
               <div className="flex gap-2">
                 {(['all', 'subscribers', 'free'] as const).map((filter) => (
                   <button
@@ -479,7 +479,7 @@ export default function AdminPage() {
                     className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
                       userFilter === filter
                         ? 'bg-orange-500 text-black'
-                        : 'bg-slate-800 text-white'
+                        : 'bg-gray-100 text-black'
                     }`}
                   >
                     {filter.charAt(0).toUpperCase() + filter.slice(1)}
@@ -488,45 +488,45 @@ export default function AdminPage() {
               </div>
             </div>
 
-            <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden">
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b border-slate-800">
-                      <th className="text-left text-slate-400 text-xs font-medium px-4 py-3">Name</th>
-                      <th className="text-left text-slate-400 text-xs font-medium px-4 py-3">Email</th>
-                      <th className="text-left text-slate-400 text-xs font-medium px-4 py-3">Plan</th>
-                      <th className="text-left text-slate-400 text-xs font-medium px-4 py-3">Status</th>
-                      <th className="text-left text-slate-400 text-xs font-medium px-4 py-3">Credits</th>
-                      <th className="text-left text-slate-400 text-xs font-medium px-4 py-3">Joined</th>
+                    <tr className="border-b border-gray-200">
+                      <th className="text-left text-gray-700 text-xs font-medium px-4 py-3">Name</th>
+                      <th className="text-left text-gray-700 text-xs font-medium px-4 py-3">Email</th>
+                      <th className="text-left text-gray-700 text-xs font-medium px-4 py-3">Plan</th>
+                      <th className="text-left text-gray-700 text-xs font-medium px-4 py-3">Status</th>
+                      <th className="text-left text-gray-700 text-xs font-medium px-4 py-3">Credits</th>
+                      <th className="text-left text-gray-700 text-xs font-medium px-4 py-3">Joined</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredUsers.slice(0, 20).map((user, index) => (
-                      <tr key={user.id} className={index % 2 === 0 ? 'bg-slate-900' : 'bg-slate-800/50'}>
-                        <td className="px-4 py-3 text-white text-sm font-medium">{user.display_name || 'N/A'}</td>
-                        <td className="px-4 py-3 text-slate-400 text-sm">{user.email}</td>
+                      <tr key={user.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-100'}>
+                        <td className="px-4 py-3 text-black text-sm font-medium">{user.display_name || 'N/A'}</td>
+                        <td className="px-4 py-3 text-gray-700 text-sm">{user.email}</td>
                         <td className="px-4 py-3 text-sm">
                           <span className={`px-2 py-0.5 rounded text-xs font-medium ${
                             user.subscription_plan === 'road-warrior' ? 'bg-purple-500/20 text-purple-400' :
                             user.subscription_plan === 'commuter' ? 'bg-blue-500/20 text-blue-400' :
                             user.subscription_plan === 'test-driver' ? 'bg-green-500/20 text-green-400' :
-                            'bg-slate-700 text-slate-400'
+                            'bg-gray-300 text-gray-700'
                           }`}>
                             {user.subscription_plan || 'Free'}
                           </span>
                         </td>
                         <td className="px-4 py-3 text-sm">
                           <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                            user.subscription_status === 'active' ? 'bg-green-500/20 text-green-400' : 'bg-slate-700 text-slate-400'
+                            user.subscription_status === 'active' ? 'bg-green-500/20 text-green-400' : 'bg-gray-300 text-gray-700'
                           }`}>
                             {user.subscription_status || 'None'}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-slate-400 text-sm">
+                        <td className="px-4 py-3 text-gray-700 text-sm">
                           {user.credits === -1 ? '∞' : user.credits || 0}
                         </td>
-                        <td className="px-4 py-3 text-slate-400 text-sm">
+                        <td className="px-4 py-3 text-gray-700 text-sm">
                           {user.created_at ? new Date(user.created_at).toLocaleDateString() : 'N/A'}
                         </td>
                       </tr>
@@ -536,59 +536,59 @@ export default function AdminPage() {
               </div>
             </div>
 
-            <p className="text-slate-500 text-sm mt-3">Showing: {Math.min(filteredUsers.length, 20)} of {filteredUsers.length} users</p>
+            <p className="text-gray-700 text-sm mt-3">Showing: {Math.min(filteredUsers.length, 20)} of {filteredUsers.length} users</p>
           </div>
         )}
 
         {/* FINANCIAL TAB */}
         {activeTab === 'financial' && (
           <div>
-            <h2 className="text-lg font-bold text-white mb-4">Financial Data</h2>
+            <h2 className="text-lg font-bold text-black mb-4">Financial Data</h2>
 
             {/* Revenue Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
               <div className="bg-gradient-to-br from-green-500/20 to-green-600/10 rounded-xl p-6 border border-green-500/30">
                 <p className="text-green-400 text-sm font-medium mb-1">Estimated Monthly Revenue</p>
-                <p className="text-4xl font-bold text-white">
+                <p className="text-4xl font-bold text-black">
                   ${(financialData.testDriverRevenue + financialData.commuterRevenue + financialData.roadWarriorRevenue + financialData.freedomPacksRevenue).toFixed(2)}
                 </p>
               </div>
               <div className="bg-gradient-to-br from-orange-500/20 to-orange-600/10 rounded-xl p-6 border border-orange-500/30">
                 <p className="text-orange-400 text-sm font-medium mb-1">Total Active Subscribers</p>
-                <p className="text-4xl font-bold text-white">
+                <p className="text-4xl font-bold text-black">
                   {financialData.testDriverCount + financialData.commuterCount + financialData.roadWarriorCount}
                 </p>
               </div>
             </div>
 
             {/* Revenue Breakdown */}
-            <div className="bg-slate-900 rounded-xl p-4 border border-slate-800">
-              <h3 className="text-white font-semibold mb-4">Subscription Revenue Breakdown</h3>
+            <div className="bg-white rounded-xl p-4 border border-gray-200">
+              <h3 className="text-black font-semibold mb-4">Subscription Revenue Breakdown</h3>
               <div className="space-y-4">
                 <div>
                   <div className="flex justify-between mb-1">
-                    <span className="text-slate-400">Test Driver ($2.99/mo)</span>
-                    <span className="text-white">{financialData.testDriverCount} subscribers = ${financialData.testDriverRevenue.toFixed(2)}/mo</span>
+                    <span className="text-gray-700">Test Driver ($2.99/mo)</span>
+                    <span className="text-black">{financialData.testDriverCount} subscribers = ${financialData.testDriverRevenue.toFixed(2)}/mo</span>
                   </div>
-                  <div className="h-2 bg-slate-700 rounded-full">
+                  <div className="h-2 bg-gray-300 rounded-full">
                     <div className="h-full bg-green-500 rounded-full" style={{ width: `${(financialData.testDriverCount / Math.max(stats.activeSubscribers, 1)) * 100}%` }} />
                   </div>
                 </div>
                 <div>
                   <div className="flex justify-between mb-1">
-                    <span className="text-slate-400">Commuter ($7.99/mo)</span>
-                    <span className="text-white">{financialData.commuterCount} subscribers = ${financialData.commuterRevenue.toFixed(2)}/mo</span>
+                    <span className="text-gray-700">Commuter ($7.99/mo)</span>
+                    <span className="text-black">{financialData.commuterCount} subscribers = ${financialData.commuterRevenue.toFixed(2)}/mo</span>
                   </div>
-                  <div className="h-2 bg-slate-700 rounded-full">
+                  <div className="h-2 bg-gray-300 rounded-full">
                     <div className="h-full bg-blue-500 rounded-full" style={{ width: `${(financialData.commuterCount / Math.max(stats.activeSubscribers, 1)) * 100}%` }} />
                   </div>
                 </div>
                 <div>
                   <div className="flex justify-between mb-1">
-                    <span className="text-slate-400">Road Warrior ($14.99/mo)</span>
-                    <span className="text-white">{financialData.roadWarriorCount} subscribers = ${financialData.roadWarriorRevenue.toFixed(2)}/mo</span>
+                    <span className="text-gray-700">Road Warrior ($14.99/mo)</span>
+                    <span className="text-black">{financialData.roadWarriorCount} subscribers = ${financialData.roadWarriorRevenue.toFixed(2)}/mo</span>
                   </div>
-                  <div className="h-2 bg-slate-700 rounded-full">
+                  <div className="h-2 bg-gray-300 rounded-full">
                     <div className="h-full bg-purple-500 rounded-full" style={{ width: `${(financialData.roadWarriorCount / Math.max(stats.activeSubscribers, 1)) * 100}%` }} />
                   </div>
                 </div>
@@ -600,11 +600,11 @@ export default function AdminPage() {
         {/* SETTINGS TAB */}
         {activeTab === 'settings' && (
           <div>
-            <h2 className="text-lg font-bold text-white mb-4">App Settings</h2>
+            <h2 className="text-lg font-bold text-black mb-4">App Settings</h2>
 
             {/* Pricing Settings */}
-            <div className="bg-slate-900 rounded-xl p-4 mb-4 border border-slate-800">
-              <h3 className="text-white font-semibold mb-4">Pricing Page</h3>
+            <div className="bg-white rounded-xl p-4 mb-4 border border-gray-200">
+              <h3 className="text-black font-semibold mb-4">Pricing Page</h3>
               <Toggle
                 enabled={settings.showFreedomPacks}
                 onChange={() => setSettings(s => ({ ...s, showFreedomPacks: !s.showFreedomPacks }))}
@@ -618,21 +618,21 @@ export default function AdminPage() {
             </div>
 
             {/* Newcomer Settings */}
-            <div className="bg-slate-900 rounded-xl p-4 mb-4 border border-slate-800">
-              <h3 className="text-white font-semibold mb-4">Newcomer Settings</h3>
+            <div className="bg-white rounded-xl p-4 mb-4 border border-gray-200">
+              <h3 className="text-black font-semibold mb-4">Newcomer Settings</h3>
               <div className="flex items-center justify-between py-3">
-                <span className="text-white">Free Credits for Newcomers</span>
+                <span className="text-black">Free Credits for Newcomers</span>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setSettings(s => ({ ...s, freeCreditsForNewcomers: Math.max(0, s.freeCreditsForNewcomers - 1) }))}
-                    className="w-8 h-8 bg-slate-700 hover:bg-slate-600 rounded-lg text-white font-bold"
+                    className="w-8 h-8 bg-gray-300 hover:bg-gray-400 rounded-lg text-black font-bold"
                   >
                     -
                   </button>
-                  <span className="w-8 text-center text-white font-bold">{settings.freeCreditsForNewcomers}</span>
+                  <span className="w-8 text-center text-black font-bold">{settings.freeCreditsForNewcomers}</span>
                   <button
                     onClick={() => setSettings(s => ({ ...s, freeCreditsForNewcomers: Math.min(10, s.freeCreditsForNewcomers + 1) }))}
-                    className="w-8 h-8 bg-slate-700 hover:bg-slate-600 rounded-lg text-white font-bold"
+                    className="w-8 h-8 bg-gray-300 hover:bg-gray-400 rounded-lg text-black font-bold"
                   >
                     +
                   </button>
@@ -641,8 +641,8 @@ export default function AdminPage() {
             </div>
 
             {/* System Settings */}
-            <div className="bg-slate-900 rounded-xl p-4 mb-4 border border-slate-800">
-              <h3 className="text-white font-semibold mb-4">System</h3>
+            <div className="bg-white rounded-xl p-4 mb-4 border border-gray-200">
+              <h3 className="text-black font-semibold mb-4">System</h3>
               <Toggle
                 enabled={settings.maintenanceMode}
                 onChange={() => setSettings(s => ({ ...s, maintenanceMode: !s.maintenanceMode }))}
@@ -672,7 +672,7 @@ export default function AdminPage() {
               disabled={saving}
               className={`w-full py-3 rounded-xl font-bold transition-colors ${
                 saving
-                  ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                  ? 'bg-gray-300 text-gray-700 cursor-not-allowed'
                   : 'bg-orange-500 hover:bg-orange-400 text-black'
               }`}
             >
