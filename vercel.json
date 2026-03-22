@@ -7,10 +7,5 @@
       "maxDuration": 300
     }
   },
-  "crons": [
-    {
-      "path": "/api/cron/generate-news",
-      "schedule": "*/15 * * * *"
-    }
-  ]
+  "crons": []
 }
