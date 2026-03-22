@@ -14,3 +14,4 @@ Audio Dramas/
 .vercel
 .env*.local
 .env.production
+PASSWORDS.md
