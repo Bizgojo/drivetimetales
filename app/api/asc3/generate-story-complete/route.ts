@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { logAnthropicCall } from '@/app/lib/anthropic-logger'
+import { logDalleCall } from '@/app/lib/openai-logger'
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY!
 
@@ -917,6 +918,7 @@ Now write the complete audio drama:`
       const dalleData = (await dalleRes.json()) as { data: { url: string }[] }
       const imageUrl = dalleData.data[0]?.url
       if (!imageUrl) throw new Error('No image URL returned from DALL-E')
+      logDalleCall({ route: '/api/asc3/generate-story-complete', purpose: 'cover-art', model: 'dall-e-3', size: '1024x1024', quality: 'hd', n: 1, storyTitle: body.title }).catch(() => {})
 
       console.log('⬇️ Downloading cover image...')
       const imgRes = await fetch(imageUrl)

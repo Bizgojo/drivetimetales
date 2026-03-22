@@ -89,6 +89,136 @@ function EditCell({ value, onChange }: { value: number; onChange: (v: number) =>
   )
 }
 
+// ─── OPENAI DETAIL TAB ────────────────────────────────────────────────────────
+function OpenAITab() {
+  const [selMonth, setSelMonth] = useState(new Date().getMonth())
+  const [monthly, setMonthly] = useState<{month:number;dalle_images:number;dalle_cost:number;gpt_input:number;gpt_output:number;gpt_cost:number;total_cost:number}[]>([])
+  const [byPurpose, setByPurpose] = useState<{purpose:string;calls:number;images:number;input:number;output:number;cost:number;type:string}[]>([])
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    fetch(`/api/admin/openai-usage?view=monthly&year=${YEAR}`)
+      .then(r => r.json()).then(d => setMonthly(d.data || [])).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    setLoading(true)
+    fetch(`/api/admin/openai-usage?view=byPurpose&year=${YEAR}&month=${selMonth+1}`)
+      .then(r => r.json()).then(d => { setByPurpose(d.data || []); setLoading(false) }).catch(() => setLoading(false))
+  }, [selMonth])
+
+  const S: Record<string,React.CSSProperties> = {
+    card: { background:'#fff', border:'1px solid #ddd', borderRadius:10, overflow:'hidden', marginBottom:20 },
+    cardHead: { background:'#fafafa', borderBottom:'1px solid #eee', padding:'12px 20px', display:'flex', justifyContent:'space-between', alignItems:'center' },
+    table: { width:'100%', borderCollapse:'collapse' as const, fontSize:13 },
+    th: { textAlign:'right' as const, padding:'8px 12px', borderBottom:'2px solid #eee', fontWeight:700, background:'#f5f5f5' },
+    thL: { textAlign:'left' as const, padding:'8px 12px', borderBottom:'2px solid #eee', fontWeight:700, background:'#f5f5f5' },
+    td: { textAlign:'right' as const, padding:'8px 12px', borderBottom:'1px solid #f0f0f0' },
+    tdL: { textAlign:'left' as const, padding:'8px 12px', borderBottom:'1px solid #f0f0f0' },
+  }
+
+  const selData = monthly[selMonth] || { dalle_images:0, dalle_cost:0, gpt_input:0, gpt_output:0, gpt_cost:0, total_cost:0 }
+  const ytdDalle = monthly.reduce((s,m) => s + (m?.dalle_cost||0), 0)
+  const ytdGpt   = monthly.reduce((s,m) => s + (m?.gpt_cost||0), 0)
+  const ytdTotal = monthly.reduce((s,m) => s + (m?.total_cost||0), 0)
+
+  return (
+    <div>
+      <div style={{ display:'flex', gap:8, marginBottom:20, flexWrap:'wrap' }}>
+        {MONTHS.map((m,i) => (
+          <button key={m} onClick={() => setSelMonth(i)}
+            style={{ padding:'6px 14px', borderRadius:8, border:`1px solid ${selMonth===i?'#f97316':'#ddd'}`, background:selMonth===i?'#f97316':'#fff', color:selMonth===i?'#fff':'#333', fontWeight:600, fontSize:13, cursor:'pointer' }}>
+            {m}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ display:'flex', gap:16, marginBottom:20, flexWrap:'wrap' }}>
+        {[
+          { label:'DALL-E Images', value:(selData.dalle_images||0).toLocaleString() },
+          { label:'DALL-E Cost', value:`$${(selData.dalle_cost||0).toFixed(2)}` },
+          { label:'GPT Cost', value:`$${(selData.gpt_cost||0).toFixed(2)}` },
+          { label:'Month Total', value:`$${(selData.total_cost||0).toFixed(2)}` },
+          { label:`${YEAR} DALL-E YTD`, value:`$${ytdDalle.toFixed(2)}` },
+          { label:`${YEAR} GPT YTD`, value:`$${ytdGpt.toFixed(2)}` },
+          { label:`${YEAR} OpenAI Total`, value:`$${ytdTotal.toFixed(2)}` },
+        ].map(({ label, value }) => (
+          <div key={label} style={{ background:'#fff', border:'1px solid #ddd', borderRadius:10, padding:'14px 20px', flex:1, minWidth:120 }}>
+            <div style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:1, color:'#888', marginBottom:4 }}>{label}</div>
+            <div style={{ fontSize:20, fontWeight:900, color:'#111' }}>{value}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={S.card}>
+        <div style={S.cardHead}>
+          <span style={{ fontWeight:700 }}>🎨 Cost by Purpose — {MONTHS[selMonth]} {YEAR}</span>
+          {loading && <span style={{ fontSize:12, color:'#888' }}>Loading…</span>}
+        </div>
+        {byPurpose.length === 0 ? (
+          <div style={{ padding:'40px 24px', textAlign:'center', color:'#888', fontSize:14 }}>
+            <div style={{ fontSize:32, marginBottom:12 }}>🎨</div>
+            <div style={{ fontWeight:600, marginBottom:6 }}>No OpenAI calls logged yet</div>
+            <div style={{ fontSize:13 }}>DALL-E cover art and GPT calls will appear here automatically once stories are generated.</div>
+          </div>
+        ) : (
+          <table style={S.table}>
+            <thead><tr>
+              <th style={S.thL}>Purpose</th>
+              <th style={S.th}>Type</th>
+              <th style={S.th}>Calls</th>
+              <th style={S.th}>Images</th>
+              <th style={S.th}>Cost</th>
+            </tr></thead>
+            <tbody>
+              {byPurpose.map((r,i) => (
+                <tr key={i}>
+                  <td style={S.tdL}>{r.purpose}</td>
+                  <td style={{ ...S.td, color: r.type==='image' ? '#7c3aed' : '#1d4ed8' }}>{r.type==='image' ? '🖼️ DALL-E' : '💬 GPT'}</td>
+                  <td style={S.td}>{r.calls.toLocaleString()}</td>
+                  <td style={S.td}>{r.images > 0 ? r.images : '—'}</td>
+                  <td style={{ ...S.td, fontWeight:700, color: r.cost > 1 ? '#dc2626' : '#111' }}>${r.cost.toFixed(4)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div style={S.card}>
+        <div style={S.cardHead}><span style={{ fontWeight:700 }}>📅 Monthly OpenAI Spend — {YEAR}</span></div>
+        <table style={S.table}>
+          <thead><tr>
+            <th style={S.thL}>Month</th>
+            <th style={S.th}>DALL-E Images</th>
+            <th style={S.th}>DALL-E Cost</th>
+            <th style={S.th}>GPT Cost</th>
+            <th style={S.th}>Total</th>
+          </tr></thead>
+          <tbody>
+            {monthly.map((m, i) => {
+              if (!m || m.total_cost === 0) return null
+              return (
+                <tr key={i} style={{ background: i === selMonth ? '#fff7ed' : undefined }}>
+                  <td style={{ ...S.tdL, fontWeight: i === selMonth ? 700 : 400 }}>{MONTHS[i]}</td>
+                  <td style={S.td}>{(m.dalle_images||0).toLocaleString()}</td>
+                  <td style={S.td}>{m.dalle_cost > 0 ? `$${m.dalle_cost.toFixed(2)}` : '—'}</td>
+                  <td style={S.td}>{m.gpt_cost > 0 ? `$${m.gpt_cost.toFixed(2)}` : '—'}</td>
+                  <td style={{ ...S.td, fontWeight:700 }}>${m.total_cost.toFixed(2)}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div style={{ padding:'12px 0', fontSize:12, color:'#888' }}>
+        💡 Rates: DALL-E 3 HD $0.08/image · DALL-E 3 Standard $0.04/image · GPT-4o $5/$15 per MTok · GPT-4o-mini $0.15/$0.60 per MTok
+      </div>
+    </div>
+  )
+}
+
 // ─── ANTHROPIC DETAIL TAB ─────────────────────────────────────────────────────
 function AnthropicTab() {
   const [selMonth, setSelMonth] = useState(new Date().getMonth())
@@ -469,7 +599,7 @@ function ELDetailTab() {
 
 // ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
 export default function FinancePage() {
-  const [tab, setTab] = useState<'expenses'|'revenue'|'pl'|'balance'|'el'|'anthropic'>('expenses')
+  const [tab, setTab] = useState<'expenses'|'revenue'|'pl'|'balance'|'el'|'anthropic'|'openai'>('expenses')
 
   const expDefaults = Object.fromEntries(EXPENSES.map(e => [e.id, [...e.defaults]]))
   const revDefaults = Object.fromEntries(REVENUES.map(r => [r.id, [...r.defaults]]))
@@ -535,7 +665,7 @@ export default function FinancePage() {
 
       {/* Tabs */}
       <div style={S.tabs}>
-        {([['expenses','📋 Expenses'],['revenue','💵 Revenue'],['pl','📊 P&L'],['balance','🏦 Balance Sheet'],['el','🎙️ EL Detail'],['anthropic','🤖 Anthropic']] as const).map(([id,label]) => (
+        {([['expenses','📋 Expenses'],['revenue','💵 Revenue'],['pl','📊 P&L'],['balance','🏦 Balance Sheet'],['el','🎙️ EL Detail'],['anthropic','🤖 Anthropic'],['openai','🎨 OpenAI']] as const).map(([id,label]) => (
           <button key={id} style={S.tab(tab===id)} onClick={() => setTab(id)}>{label}</button>
         ))}
       </div>
@@ -811,6 +941,9 @@ export default function FinancePage() {
 
       {/* ── ANTHROPIC TAB ── */}
       {tab === 'anthropic' && <AnthropicTab />}
+
+      {/* ── OPENAI TAB ── */}
+      {tab === 'openai' && <OpenAITab />}
 
     </div>
   )

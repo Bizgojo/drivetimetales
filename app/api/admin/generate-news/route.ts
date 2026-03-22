@@ -198,6 +198,14 @@ FORMAT YOUR RESPONSE EXACTLY LIKE THIS:
       }
     }
 
+    // Log GPT usage (responses API doesn't return token counts reliably — estimate)
+    try {
+      const { logGptCall } = await import('@/app/lib/openai-logger')
+      const inTok = (response as any).usage?.input_tokens ?? Math.ceil(prompt.length / 4)
+      const outTok = (response as any).usage?.output_tokens ?? Math.ceil(fullText.length / 4)
+      logGptCall({ route: '/api/admin/generate-news', purpose: 'news-briefing', model: 'gpt-4o', inputTokens: inTok, outputTokens: outTok }).catch(() => {})
+    } catch { /* never break */ }
+
     let body = '';
     const citations: string[] = [];
 

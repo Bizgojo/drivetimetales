@@ -112,6 +112,10 @@ async function generateWithDallE(prompt: string): Promise<Buffer> {
   const json = await res.json() as any
   const imageUrl = json.data?.[0]?.url
   if (!imageUrl) throw new Error('DALL-E 3 returned no image URL')
+  try {
+    const { logDalleCall } = await import('@/app/lib/openai-logger')
+    logDalleCall({ route: '/api/asc3/regenerate-cover', purpose: 'cover-art-regen', model: 'dall-e-3', size: '1024x1024', quality: 'hd', n: 1 }).catch(() => {})
+  } catch { /* never break */ }
 
   // Download the image
   const imgRes = await fetch(imageUrl)
