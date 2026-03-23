@@ -175,7 +175,7 @@ function LiveExpenses() {
           <div>
             <div style={{ fontSize:11, fontWeight:700, color:'#888', marginBottom:4 }}>VENDOR</div>
             <select value={form.vendor} onChange={e => handleVendorChange(e.target.value)}
-              style={{ padding:'7px 10px', border:'1px solid #ddd', borderRadius:6, fontSize:13, background:'#fff' }}>
+              style={{ padding:'7px 10px', border:'1px solid #ddd', borderRadius:6, fontSize:13, background:'#fff', color:'#000' }}>
               {VENDORS.map(v => <option key={v.vendor} value={v.vendor}>{v.label}</option>)}
             </select>
           </div>
@@ -183,19 +183,19 @@ function LiveExpenses() {
             <div style={{ fontSize:11, fontWeight:700, color:'#888', marginBottom:4 }}>AMOUNT ($)</div>
             <input type="number" step="0.01" placeholder="0.00" value={form.amount_usd}
               onChange={e => setForm(f => ({ ...f, amount_usd: e.target.value }))}
-              style={{ width:100, padding:'7px 10px', border:'1px solid #ddd', borderRadius:6, fontSize:13 }} />
+              style={{ width:100, padding:'7px 10px', border:'1px solid #ddd', borderRadius:6, fontSize:13, background:'#fff', color:'#000' }} />
           </div>
           <div>
             <div style={{ fontSize:11, fontWeight:700, color:'#888', marginBottom:4 }}>DATE</div>
             <input type="date" value={form.expense_date}
               onChange={e => setForm(f => ({ ...f, expense_date: e.target.value }))}
-              style={{ padding:'7px 10px', border:'1px solid #ddd', borderRadius:6, fontSize:13 }} />
+              style={{ padding:'7px 10px', border:'1px solid #ddd', borderRadius:6, fontSize:13, background:'#fff', color:'#000' }} />
           </div>
           <div style={{ flex:1, minWidth:180 }}>
             <div style={{ fontSize:11, fontWeight:700, color:'#888', marginBottom:4 }}>DESCRIPTION (optional)</div>
             <input type="text" placeholder="e.g. Credits top-up $10" value={form.description}
               onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-              style={{ width:'100%', padding:'7px 10px', border:'1px solid #ddd', borderRadius:6, fontSize:13 }} />
+              style={{ width:'100%', padding:'7px 10px', border:'1px solid #ddd', borderRadius:6, fontSize:13, background:'#fff', color:'#000' }} />
           </div>
           <button onClick={submit} disabled={saving || !form.amount_usd}
             style={{ padding:'8px 20px', background: form.amount_usd ? '#16a34a' : '#ddd', color: form.amount_usd ? '#fff' : '#999', border:'none', borderRadius:8, fontWeight:700, fontSize:13, cursor: form.amount_usd ? 'pointer' : 'default' }}>
