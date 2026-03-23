@@ -37,10 +37,20 @@ const EXPENSES: ExpenseItem[] = [
   { id:'anthropic_hal', name:'Anthropic — Hal/OpenClaw Usage', category:'AI & Voice', billingType:'usage-based', url:'https://console.anthropic.com/billing', notes:'Claude API charges from Hal conversations (OpenClaw). Check console.anthropic.com → Usage, separate from app usage. Log monthly total here.', defaults:[0,0,0,0,0,0,0,0,0,0,0,0] },
   // Data & APIs
   { id:'resend', name:'Resend (Email)', category:'Data & APIs', billingType:'monthly', url:'https://resend.com', notes:'Transactional email (waitlist, referrals). Free up to 3K/month.', defaults:[0,0,0,0,0,0,0,0,0,0,0,0] },
+  // Marketing
+  { id:'mkt_social_tools', name:'Social Media Tools', category:'Marketing', billingType:'monthly', url:'', notes:'Scheduling, analytics, or management tools for social platforms.', defaults:[0,0,0,0,0,0,0,0,0,0,0,0] },
+  { id:'mkt_ads_facebook', name:'Advertising — Facebook', category:'Marketing', billingType:'usage-based', url:'https://adsmanager.facebook.com', notes:'Facebook & Instagram paid ads budget.', defaults:[0,0,0,0,0,0,0,0,0,0,0,0] },
+  { id:'mkt_ads_x', name:'Advertising — X (Twitter)', category:'Marketing', billingType:'usage-based', url:'https://ads.twitter.com', notes:'X promoted posts and ad campaigns.', defaults:[0,0,0,0,0,0,0,0,0,0,0,0] },
+  { id:'mkt_ads_reddit', name:'Advertising — Reddit', category:'Marketing', billingType:'usage-based', url:'https://ads.reddit.com', notes:'Reddit promoted posts and sponsored content.', defaults:[0,0,0,0,0,0,0,0,0,0,0,0] },
+  { id:'mkt_ads_tiktok', name:'Advertising — TikTok', category:'Marketing', billingType:'usage-based', url:'https://ads.tiktok.com', notes:'TikTok paid ad campaigns.', defaults:[0,0,0,0,0,0,0,0,0,0,0,0] },
+  { id:'mkt_ads_other', name:'Advertising — Other', category:'Marketing', billingType:'usage-based', url:'', notes:'Google Ads, podcast sponsorships, or other digital advertising.', defaults:[0,0,0,0,0,0,0,0,0,0,0,0] },
+  { id:'mkt_qr', name:'QR Codes & Print', category:'Marketing', billingType:'one-time', url:'', notes:'QR code printing, truck stop / rest area placement, physical marketing materials.', defaults:[0,0,0,0,0,0,0,0,0,0,0,0] },
+  { id:'mkt_influencers', name:'Influencer Partnerships', category:'Marketing', billingType:'usage-based', url:'', notes:'Paid influencer deals — travel, trucker, commuter niche creators.', defaults:[0,0,0,0,0,0,0,0,0,0,0,0] },
+  { id:'mkt_other', name:'Marketing — Other', category:'Marketing', billingType:'usage-based', url:'', notes:'PR, press, events, or any other marketing spend.', defaults:[0,0,0,0,0,0,0,0,0,0,0,0] },
 ]
 
 const EXPENSE_CATEGORIES = Array.from(new Set(EXPENSES.map(e => e.category)))
-const CAT_ICONS: Record<string,string> = { 'AI & Voice':'🤖', 'Infrastructure':'🏗️', 'Audio Production':'🎧', 'Business & Legal':'💼', 'Data & APIs':'📡' }
+const CAT_ICONS: Record<string,string> = { 'AI & Voice':'🤖', 'Infrastructure':'🏗️', 'Audio Production':'🎧', 'Business & Legal':'💼', 'Data & APIs':'📡', 'Marketing':'📣' }
 
 // ─── REVENUE LINE ITEMS ───────────────────────────────────────────────────────
 interface RevenueItem { id: string; name: string; notes: string; defaults: number[] }
@@ -104,6 +114,14 @@ const VENDORS = [
   { label: 'GoDaddy / Domain', vendor: 'GoDaddy', category: 'Business & Legal' },
   { label: 'OpenClaw', vendor: 'OpenClaw', category: 'Business & Legal' },
   { label: 'Resend', vendor: 'Resend', category: 'Data & APIs' },
+  { label: 'Facebook Ads', vendor: 'Facebook Ads', category: 'Marketing' },
+  { label: 'X (Twitter) Ads', vendor: 'X Ads', category: 'Marketing' },
+  { label: 'Reddit Ads', vendor: 'Reddit Ads', category: 'Marketing' },
+  { label: 'TikTok Ads', vendor: 'TikTok Ads', category: 'Marketing' },
+  { label: 'Influencer Payment', vendor: 'Influencer', category: 'Marketing' },
+  { label: 'QR Codes / Print', vendor: 'QR Codes', category: 'Marketing' },
+  { label: 'Social Media Tools', vendor: 'Social Tools', category: 'Marketing' },
+  { label: 'Marketing — Other', vendor: 'Marketing Other', category: 'Marketing' },
   { label: 'Other', vendor: 'Other', category: 'Other' },
 ]
 
