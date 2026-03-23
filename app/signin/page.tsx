@@ -22,13 +22,13 @@ function SignInContent() {
 
   const handleGoogle = async () => {
     setSocial('google')
-    // Use current origin so it works on localhost, vercel, and production
     const redirectTo = `${window.location.origin}/auth/callback`
-    const { error } = await supabaseBrowser.auth.signInWithOAuth({
+    const { data, error } = await supabaseBrowser.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo, skipBrowserRedirect: false }
+      options: { redirectTo, skipBrowserRedirect: true }
     })
-    if (error) { setError('Google sign-in failed. Please try email/password.'); setSocial(null) }
+    if (error) { setError('Google sign-in failed. Please try email/password.'); setSocial(null); return }
+    if (data?.url) window.location.href = data.url  // force full-page redirect (required on iOS Safari)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
