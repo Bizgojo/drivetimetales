@@ -33,7 +33,8 @@ const EXPENSES: ExpenseItem[] = [
   // Business & Legal
   { id:'microsoft365', name:'Microsoft 365', category:'Business & Legal', billingType:'monthly', url:'https://admin.microsoft.com', notes:'Business email (marc@, support@, sales@endless-tales.com). Business Basic.', defaults:[6,6,6,0,0,0,0,0,0,0,0,0] },
   { id:'domain', name:'Domain (endless-tales.com)', category:'Business & Legal', billingType:'one-time', url:'https://domains.google.com', notes:'Annual domain. ~$12/year.', defaults:[12,0,0,0,0,0,0,0,0,0,0,0] },
-  { id:'openclaw', name:'OpenClaw (Hal AI)', category:'Business & Legal', billingType:'monthly', url:'https://openclaw.ai', notes:'AI business assistant. Dev, marketing, ops.', defaults:[0,0,0,0,0,0,0,0,0,0,0,0] },
+  { id:'openclaw', name:'OpenClaw (Hal AI)', category:'Business & Legal', billingType:'monthly', url:'https://openclaw.ai', notes:'OpenClaw subscription fee (if any). See Anthropic line for actual Claude API charges from Hal conversations.', defaults:[0,0,0,0,0,0,0,0,0,0,0,0] },
+  { id:'anthropic_hal', name:'Anthropic — Hal/OpenClaw Usage', category:'AI & Voice', billingType:'usage-based', url:'https://console.anthropic.com/billing', notes:'Claude API charges from Hal conversations (OpenClaw). Check console.anthropic.com → Usage, separate from app usage. Log monthly total here.', defaults:[0,0,0,0,0,0,0,0,0,0,0,0] },
   // Data & APIs
   { id:'resend', name:'Resend (Email)', category:'Data & APIs', billingType:'monthly', url:'https://resend.com', notes:'Transactional email (waitlist, referrals). Free up to 3K/month.', defaults:[0,0,0,0,0,0,0,0,0,0,0,0] },
 ]
@@ -93,7 +94,8 @@ function EditCell({ value, onChange }: { value: number; onChange: (v: number) =>
 const VENDORS = [
   { label: 'OpenAI / ChatGPT', vendor: 'OpenAI', category: 'AI & Voice' },
   { label: 'ElevenLabs', vendor: 'ElevenLabs', category: 'AI & Voice' },
-  { label: 'Anthropic (Claude)', vendor: 'Anthropic', category: 'AI & Voice' },
+  { label: 'Anthropic — App (Claude API)', vendor: 'Anthropic', category: 'AI & Voice' },
+  { label: 'Anthropic — Hal/OpenClaw', vendor: 'Anthropic (Hal)', category: 'AI & Voice' },
   { label: 'Suno', vendor: 'Suno', category: 'AI & Voice' },
   { label: 'Vercel', vendor: 'Vercel', category: 'Infrastructure' },
   { label: 'Supabase', vendor: 'Supabase', category: 'Infrastructure' },
