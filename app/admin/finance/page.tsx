@@ -89,6 +89,184 @@ function EditCell({ value, onChange }: { value: number; onChange: (v: number) =>
   )
 }
 
+// ─── LIVE EXPENSES ────────────────────────────────────────────────────────────
+const VENDORS = [
+  { label: 'OpenAI / ChatGPT', vendor: 'OpenAI', category: 'AI & Voice' },
+  { label: 'ElevenLabs', vendor: 'ElevenLabs', category: 'AI & Voice' },
+  { label: 'Anthropic (Claude)', vendor: 'Anthropic', category: 'AI & Voice' },
+  { label: 'Suno', vendor: 'Suno', category: 'AI & Voice' },
+  { label: 'Vercel', vendor: 'Vercel', category: 'Infrastructure' },
+  { label: 'Supabase', vendor: 'Supabase', category: 'Infrastructure' },
+  { label: 'Stripe', vendor: 'Stripe', category: 'Infrastructure' },
+  { label: 'Microsoft 365', vendor: 'Microsoft 365', category: 'Business & Legal' },
+  { label: 'GoDaddy / Domain', vendor: 'GoDaddy', category: 'Business & Legal' },
+  { label: 'OpenClaw', vendor: 'OpenClaw', category: 'Business & Legal' },
+  { label: 'Resend', vendor: 'Resend', category: 'Data & APIs' },
+  { label: 'Other', vendor: 'Other', category: 'Other' },
+]
+
+function LiveExpenses() {
+  const [entries, setEntries]     = useState<any[]>([])
+  const [loading, setLoading]     = useState(true)
+  const [showAdd, setShowAdd]     = useState(false)
+  const [saving, setSaving]       = useState(false)
+  const [form, setForm]           = useState({ vendor: 'OpenAI', category: 'AI & Voice', description: '', amount_usd: '', expense_date: new Date().toISOString().split('T')[0] })
+  const [byVendor, setByVendor]   = useState<Record<string,number>>({})
+
+  const load = () => {
+    setLoading(true)
+    fetch(`/api/admin/expenses?year=${YEAR}`)
+      .then(r => r.json())
+      .then(d => { setEntries(d.data || []); setByVendor(d.byVendor || {}); setLoading(false) })
+      .catch(() => setLoading(false))
+  }
+
+  useEffect(() => { load() }, [])
+
+  const handleVendorChange = (v: string) => {
+    const found = VENDORS.find(x => x.vendor === v)
+    setForm(f => ({ ...f, vendor: v, category: found?.category || f.category }))
+  }
+
+  const submit = async () => {
+    if (!form.amount_usd || !form.vendor) return
+    setSaving(true)
+    await fetch('/api/admin/expenses', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form),
+    })
+    setSaving(false)
+    setShowAdd(false)
+    setForm(f => ({ ...f, amount_usd: '', description: '' }))
+    load()
+  }
+
+  const del = async (id: string) => {
+    if (!confirm('Delete this entry?')) return
+    await fetch(`/api/admin/expenses?id=${id}`, { method: 'DELETE' })
+    load()
+  }
+
+  const total = entries.reduce((s, e) => s + parseFloat(e.amount_usd), 0)
+  const thisMonth = entries.filter(e => e.month === new Date().getMonth() + 1 && e.year === YEAR).reduce((s, e) => s + parseFloat(e.amount_usd), 0)
+
+  return (
+    <div style={{ background:'#fff', border:'2px solid #f97316', borderRadius:12, marginBottom:20, overflow:'hidden' }}>
+      {/* Header */}
+      <div style={{ background:'#fff7ed', borderBottom:'1px solid #fed7aa', padding:'12px 20px', display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:8 }}>
+        <div>
+          <span style={{ fontWeight:800, fontSize:15, color:'#ea580c' }}>⚡ Live Expense Log</span>
+          <span style={{ fontSize:12, color:'#888', marginLeft:12 }}>Real-time — every purchase or charge you log appears instantly</span>
+        </div>
+        <div style={{ display:'flex', gap:12, alignItems:'center' }}>
+          <span style={{ fontWeight:700, color:'#dc2626', fontSize:14 }}>This month: ${thisMonth.toFixed(2)}</span>
+          <span style={{ fontWeight:700, color:'#374151', fontSize:13 }}>YTD total: ${total.toFixed(2)}</span>
+          <button onClick={() => setShowAdd(v => !v)}
+            style={{ padding:'7px 16px', background:'#f97316', color:'#fff', border:'none', borderRadius:8, fontWeight:700, fontSize:13, cursor:'pointer' }}>
+            {showAdd ? '✕ Cancel' : '+ Add Expense'}
+          </button>
+        </div>
+      </div>
+
+      {/* Quick Add Form */}
+      {showAdd && (
+        <div style={{ padding:'16px 20px', borderBottom:'1px solid #fed7aa', background:'#fffbf7', display:'flex', flexWrap:'wrap', gap:10, alignItems:'flex-end' }}>
+          <div>
+            <div style={{ fontSize:11, fontWeight:700, color:'#888', marginBottom:4 }}>VENDOR</div>
+            <select value={form.vendor} onChange={e => handleVendorChange(e.target.value)}
+              style={{ padding:'7px 10px', border:'1px solid #ddd', borderRadius:6, fontSize:13, background:'#fff' }}>
+              {VENDORS.map(v => <option key={v.vendor} value={v.vendor}>{v.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <div style={{ fontSize:11, fontWeight:700, color:'#888', marginBottom:4 }}>AMOUNT ($)</div>
+            <input type="number" step="0.01" placeholder="0.00" value={form.amount_usd}
+              onChange={e => setForm(f => ({ ...f, amount_usd: e.target.value }))}
+              style={{ width:100, padding:'7px 10px', border:'1px solid #ddd', borderRadius:6, fontSize:13 }} />
+          </div>
+          <div>
+            <div style={{ fontSize:11, fontWeight:700, color:'#888', marginBottom:4 }}>DATE</div>
+            <input type="date" value={form.expense_date}
+              onChange={e => setForm(f => ({ ...f, expense_date: e.target.value }))}
+              style={{ padding:'7px 10px', border:'1px solid #ddd', borderRadius:6, fontSize:13 }} />
+          </div>
+          <div style={{ flex:1, minWidth:180 }}>
+            <div style={{ fontSize:11, fontWeight:700, color:'#888', marginBottom:4 }}>DESCRIPTION (optional)</div>
+            <input type="text" placeholder="e.g. Credits top-up $10" value={form.description}
+              onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+              style={{ width:'100%', padding:'7px 10px', border:'1px solid #ddd', borderRadius:6, fontSize:13 }} />
+          </div>
+          <button onClick={submit} disabled={saving || !form.amount_usd}
+            style={{ padding:'8px 20px', background: form.amount_usd ? '#16a34a' : '#ddd', color: form.amount_usd ? '#fff' : '#999', border:'none', borderRadius:8, fontWeight:700, fontSize:13, cursor: form.amount_usd ? 'pointer' : 'default' }}>
+            {saving ? 'Saving…' : '✓ Save'}
+          </button>
+        </div>
+      )}
+
+      {/* Vendor summary pills */}
+      {Object.keys(byVendor).length > 0 && (
+        <div style={{ padding:'10px 20px', borderBottom:'1px solid #eee', display:'flex', flexWrap:'wrap', gap:8 }}>
+          {Object.entries(byVendor).sort((a,b) => b[1]-a[1]).map(([v, amt]) => (
+            <span key={v} style={{ background:'#f5f5f5', border:'1px solid #ddd', borderRadius:20, padding:'3px 10px', fontSize:12, fontWeight:700 }}>
+              {v}: <span style={{ color:'#dc2626' }}>${(amt as number).toFixed(2)}</span>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Entries table */}
+      {loading ? (
+        <div style={{ padding:24, textAlign:'center', color:'#888', fontSize:13 }}>Loading…</div>
+      ) : entries.length === 0 ? (
+        <div style={{ padding:'32px 24px', textAlign:'center', color:'#888', fontSize:14 }}>
+          <div style={{ fontSize:28, marginBottom:8 }}>📋</div>
+          <div style={{ fontWeight:600, marginBottom:4 }}>No expenses logged yet</div>
+          <div style={{ fontSize:13 }}>Hit "+ Add Expense" to log your first entry — like that OpenAI credit purchase.</div>
+        </div>
+      ) : (
+        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+          <thead>
+            <tr style={{ background:'#f9f9f9' }}>
+              <th style={{ textAlign:'left', padding:'8px 14px', borderBottom:'2px solid #eee', fontWeight:700 }}>Date</th>
+              <th style={{ textAlign:'left', padding:'8px 14px', borderBottom:'2px solid #eee', fontWeight:700 }}>Vendor</th>
+              <th style={{ textAlign:'left', padding:'8px 14px', borderBottom:'2px solid #eee', fontWeight:700 }}>Description</th>
+              <th style={{ textAlign:'right', padding:'8px 14px', borderBottom:'2px solid #eee', fontWeight:700 }}>Amount</th>
+              <th style={{ textAlign:'center', padding:'8px 14px', borderBottom:'2px solid #eee', fontWeight:700 }}>Source</th>
+              <th style={{ padding:'8px 8px', borderBottom:'2px solid #eee' }}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {entries.map(e => (
+              <tr key={e.id} style={{ borderBottom:'1px solid #f0f0f0' }}>
+                <td style={{ padding:'8px 14px', color:'#555' }}>{e.expense_date}</td>
+                <td style={{ padding:'8px 14px', fontWeight:600 }}>{e.vendor}</td>
+                <td style={{ padding:'8px 14px', color:'#666' }}>{e.description || '—'}</td>
+                <td style={{ padding:'8px 14px', textAlign:'right', fontWeight:700, color:'#dc2626' }}>${parseFloat(e.amount_usd).toFixed(2)}</td>
+                <td style={{ padding:'8px 14px', textAlign:'center' }}>
+                  <span style={{ background: e.entry_type==='auto'?'#dcfce7':'#f3f4f6', color: e.entry_type==='auto'?'#16a34a':'#666', borderRadius:10, padding:'2px 8px', fontSize:11, fontWeight:700 }}>
+                    {e.entry_type === 'auto' ? '⚡ auto' : '✋ manual'}
+                  </span>
+                </td>
+                <td style={{ padding:'4px 8px', textAlign:'center' }}>
+                  <button onClick={() => del(e.id)} style={{ background:'none', border:'none', cursor:'pointer', color:'#dc2626', fontSize:16, lineHeight:1 }}>×</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr style={{ background:'#fff7ed', fontWeight:800, borderTop:'2px solid #fed7aa' }}>
+              <td colSpan={3} style={{ padding:'8px 14px' }}>YTD TOTAL ({YEAR})</td>
+              <td style={{ padding:'8px 14px', textAlign:'right', color:'#dc2626', fontSize:15 }}>${total.toFixed(2)}</td>
+              <td colSpan={2}></td>
+            </tr>
+          </tfoot>
+        </table>
+      )}
+    </div>
+  )
+}
+
 // ─── OPENAI DETAIL TAB ────────────────────────────────────────────────────────
 function OpenAITab() {
   const [selMonth, setSelMonth] = useState(new Date().getMonth())
@@ -673,6 +851,7 @@ export default function FinancePage() {
       {/* ── EXPENSES TAB ── */}
       {tab === 'expenses' && (
         <div>
+          <LiveExpenses />
           <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:12 }}>
             <button onClick={exp.save} style={{ padding:'8px 20px', background:exp.dirty?'#f97316':'#ddd', color:exp.dirty?'#fff':'#999', border:'none', borderRadius:8, fontWeight:700, cursor:exp.dirty?'pointer':'default' }}>
               {exp.dirty ? '💾 Save Changes' : '✓ Saved'}
