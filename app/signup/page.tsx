@@ -125,7 +125,7 @@ function SignUpContent() {
 
         {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-          <img src="/images/endless-tales-header-logo.png" alt="Endless Tales" style={{ height: '48px', objectFit: 'contain', marginBottom: '8px' }} />
+          <img src="/images/et-logo.png" alt="Endless Tales" style={{ height: '48px', objectFit: 'contain', marginBottom: '8px' }} />
           <p style={{ color: '#94a3b8', fontSize: '14px', margin: 0 }}>Audio stories for your me-time</p>
         </div>
 
