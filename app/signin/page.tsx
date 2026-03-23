@@ -51,8 +51,11 @@ function SignInContent() {
       <div style={{ width:'100%', maxWidth:'380px' }}>
 
         {/* Logo */}
-        <div style={{ textAlign:'center', marginBottom:'32px' }}>
-          <img src="/images/et-logo.png" alt="Endless Tales" style={{ height:'48px', objectFit:'contain' }} />
+        <div style={{ textAlign:'center', marginBottom:'32px', display:'flex', flexDirection:'column', alignItems:'center', gap:'10px' }}>
+          <img src="/images/et-logo.png" alt="Endless Tales" style={{ height:'52px', objectFit:'contain' }} />
+          <span style={{ color:'#ffffff', fontSize:'22px', fontWeight:800, letterSpacing:'-0.3px' }}>
+            Endless <span style={{ color:'#f97316' }}>Tales</span>
+          </span>
         </div>
 
         {/* Sign In Card */}
