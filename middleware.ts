@@ -1,50 +1,54 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { createServerClient } from '@supabase/ssr'
 
-// Routes that do NOT require authentication
 const PUBLIC_ROUTES = new Set([
-  '/signin',
-  '/signup',
-  '/welcome',
-  '/forgot-password',
-  '/reset-password',
-  '/auth/callback',
-  '/auth/signup',
+  '/signin', '/signup', '/welcome', '/forgot-password',
+  '/reset-password', '/auth/callback', '/auth/signup',
 ])
 
-// Routes that start with these prefixes are always public
-const PUBLIC_PREFIXES = ['/api/', '/_next/', '/images/', '/icons/', '/favicon']
+const PUBLIC_PREFIXES = ['/api/', '/_next/', '/images/', '/icons/', '/favicon', '/podcast']
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // Always allow public prefixes
-  if (PUBLIC_PREFIXES.some(p => pathname.startsWith(p))) {
-    return NextResponse.next()
-  }
+  if (PUBLIC_PREFIXES.some(p => pathname.startsWith(p))) return NextResponse.next()
+  if (PUBLIC_ROUTES.has(pathname)) return NextResponse.next()
 
-  // Always allow exact public routes
-  if (PUBLIC_ROUTES.has(pathname)) {
-    return NextResponse.next()
-  }
+  const response = NextResponse.next()
 
-  // Check for Supabase session cookie
-  const hasSession =
-    request.cookies.get('sb-access-token') ||
-    request.cookies.get('sb-refresh-token') ||
-    [...request.cookies.getAll()].some(c => c.name.includes('supabase') || c.name.includes('sb-'))
+  // Use Supabase SSR client to properly validate the session
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => request.cookies.getAll(),
+        setAll: (cookiesToSet) => {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            response.cookies.set(name, value, options)
+          })
+        },
+      },
+    }
+  )
 
-  if (!hasSession) {
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) {
     const signinUrl = new URL('/signin', request.url)
     signinUrl.searchParams.set('returnTo', pathname)
-    return NextResponse.redirect(signinUrl)
+    // Clear any stale sb- cookies so old sessions don't persist
+    const redirect = NextResponse.redirect(signinUrl)
+    request.cookies.getAll()
+      .filter(c => c.name.startsWith('sb-'))
+      .forEach(c => redirect.cookies.delete(c.name))
+    return redirect
   }
 
-  return NextResponse.next()
+  return response
 }
 
 export const config = {
-  matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|images|icons|api).*)',
-  ],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|images|icons|api|podcast).*)'],
 }
