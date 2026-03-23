@@ -3,179 +3,46 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
-import { supabase } from '@/lib/supabase'
+import StickyHeaderFull from '@/components/StickyHeaderFull'
 
-const PLANS = [
-  {
-    id: 'test_driver',
-    name: 'Test Driver',
-    monthlyPrice: 2.99,
-    yearlyPrice: 29.99,
-    credits: 10,
-    monthlyPriceId: 'price_1SjSWGG3QDdai0ZhIluFz2T3',
-    yearlyPriceId: 'price_1SjSc8G3QDdai0ZhzV24N11l',
-  },
-  {
-    id: 'commuter',
-    name: 'Commuter',
-    monthlyPrice: 7.99,
-    yearlyPrice: 79.99,
-    credits: 25,
-    monthlyPriceId: 'price_1SjShgG3QDdai0ZhpLpMLBig',
-    yearlyPriceId: 'price_1SjSj1G3QDdai0ZhSETd2rcS',
-  },
-  {
-    id: 'road_warrior',
-    name: 'Road Warrior',
-    monthlyPrice: 14.99,
-    yearlyPrice: 149.99,
-    credits: 100,
-    monthlyPriceId: 'price_1SjSkJG3QDdai0ZhEqPaFOmU',
-    yearlyPriceId: 'price_1SjSlRG3QDdai0ZhD10RJ0sl',
-  },
-]
-
-const FREEDOM_PACKS = [
-  { id: 'small', name: 'Small Pack', price: 4.99, credits: 10, priceId: 'price_1SjSxEG3QDdai0Zhi0BbuzED' },
-  { id: 'medium', name: 'Medium Pack', price: 9.99, credits: 25, priceId: 'price_1SjSydG3QDdai0ZhUIYLwgzw' },
-  { id: 'large', name: 'Large Pack', price: 19.99, credits: 60, priceId: 'price_1SjT2LG3QDdai0ZhyG3JTuGY', bestValue: true },
-]
+interface Invoice {
+  id: string
+  date: string
+  description: string
+  amount: number
+  invoice_url?: string
+}
 
 export default function ManageSubscriptionPage() {
   const router = useRouter()
-  const { user, refreshUser } = useAuth()
-  const [loading, setLoading] = useState(true)
-  const [processing, setProcessing] = useState<string | null>(null)
-  const [confirmPack, setConfirmPack] = useState<{id: string, name: string, price: number, credits: number} | null>(null)
-  const [confirmChange, setConfirmChange] = useState<{plan: typeof PLANS[0], isUpgrade: boolean} | null>(null)
-  
-  // User data
-  const [currentPlan, setCurrentPlan] = useState<string>('free')
-  const [currentCredits, setCurrentCredits] = useState(0)
-  const [renewalDate, setRenewalDate] = useState<string | null>(null)
-  const [billingInterval, setBillingInterval] = useState<'month' | 'year'>('month')
+  const { user, loading: authLoading } = useAuth()
+  const [invoices, setInvoices] = useState<Invoice[]>([])
+  const [loadingInvoices, setLoadingInvoices] = useState(true)
+  const [cancelling, setCancelling] = useState(false)
+  const [openingPortal, setOpeningPortal] = useState(false)
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false)
+  const [cancelSuccess, setCancelSuccess] = useState(false)
+  const [currentPrice, setCurrentPrice] = useState<number | null>(null)
 
   useEffect(() => {
-    async function loadUserData() {
-      if (!user?.id) {
-        setLoading(false)
-        return
-      }
-      
-      const { data } = await supabase
-        .from('users')
-        .select('plan, credits, subscription_ends_at')
-        .eq('id', user.id)
-        .single()
-      
-      if (data) {
-        setCurrentPlan(data.plan || 'free')
-        setCurrentCredits(data.credits || 0)
-        if (data.subscription_ends_at) {
-          const date = new Date(data.subscription_ends_at)
-          setRenewalDate(date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }))
-          // Determine if annual based on days until renewal (>35 days = likely annual)
-          const daysUntilRenewal = (date.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
-          if (daysUntilRenewal > 35) {
-            setBillingInterval('year')
-          }
-        }
-      }
-      setLoading(false)
-    }
-    loadUserData()
-  }, [user])
+    if (!user?.id) return
+    fetch(`/api/user/invoices?userId=${user.id}`)
+      .then(r => r.json())
+      .then(data => { setInvoices(data.invoices || []); setLoadingInvoices(false) })
+      .catch(() => setLoadingInvoices(false))
+  }, [user?.id])
 
-  const currentPlanData = PLANS.find(p => p.id === currentPlan)
-  const currentPlanIndex = PLANS.findIndex(p => p.id === currentPlan)
+  useEffect(() => {
+    fetch('/api/subscriber-count')
+      .then(r => r.json())
+      .then(data => setCurrentPrice(data.price))
+      .catch(() => setCurrentPrice(7.99))
+  }, [])
 
-  const handlePlanChange = (plan: typeof PLANS[0]) => {
-    if (plan.id === currentPlan) return
-    
-    const newPlanIndex = PLANS.findIndex(p => p.id === plan.id)
-    const isUpgrade = newPlanIndex > currentPlanIndex
-    
-    setConfirmChange({ plan, isUpgrade })
-  }
-
-  const handleConfirmPlanChange = async () => {
-    if (!user || !confirmChange) return
-    
-    setProcessing(confirmChange.plan.id)
-    try {
-      const response = await fetch('/api/subscription/change', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: user.id,
-          newPlanId: confirmChange.plan.id,
-          isUpgrade: confirmChange.isUpgrade,
-          billingInterval,
-        })
-      })
-      
-      const data = await response.json()
-      
-      if (data.success) {
-        await refreshUser()
-        setConfirmChange(null)
-        // Reload to show updated plan
-        window.location.reload()
-      } else if (data.url) {
-        // Redirect to Stripe checkout if needed
-        window.location.href = data.url
-      } else {
-        alert(data.error || 'Failed to change plan')
-      }
-    } catch (error) {
-      console.error('Plan change error:', error)
-      alert('Failed to change plan. Please try again.')
-    } finally {
-      setProcessing(null)
-    }
-  }
-
-  const handleSelectPack = (pack: typeof FREEDOM_PACKS[0]) => {
-    setConfirmPack({ id: pack.id, name: pack.name, price: pack.price, credits: pack.credits })
-  }
-
-  const handleQuickPurchase = async () => {
-    if (!user || !confirmPack) return
-    
-    setProcessing(confirmPack.id)
-    try {
-      const response = await fetch('/api/quick-purchase', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          packId: confirmPack.id,
-          userId: user.id
-        })
-      })
-      const data = await response.json()
-      
-      if (data.success) {
-        await refreshUser()
-        setConfirmPack(null)
-        // Reload to show updated credits
-        window.location.reload()
-      } else {
-        alert(data.error || 'Purchase failed. Please try again.')
-        setConfirmPack(null)
-      }
-    } catch (error) {
-      console.error('Purchase error:', error)
-      alert('Purchase failed. Please try again.')
-      setConfirmPack(null)
-    } finally {
-      setProcessing(null)
-    }
-  }
-
-  if (loading) {
+  if (authLoading) {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ width: '40px', height: '40px', border: '4px solid #f97316', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+        <div style={{ width: '32px', height: '32px', border: '4px solid #f97316', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     )
@@ -186,271 +53,197 @@ export default function ManageSubscriptionPage() {
     return null
   }
 
+  const isActive = user.subscription_status === 'active' || user.subscription_status === 'trialing'
+  const isCancelling = user.subscription_status === 'cancelling'
+  const isFree = !isActive && !isCancelling
+  const hasSubscription = isActive || isCancelling
+
+  // Determine what price the user is paying (from their plan or DB)
+  const userPrice = (user as any).subscription_price ?? null
+  const displayPrice = userPrice ? `$${parseFloat(userPrice).toFixed(2)} / month` : '$7.99 / month'
+
+  const cardStyle = { backgroundColor: '#0f172a', borderRadius: '16px', padding: '20px', marginBottom: '16px', border: '1px solid #334155' }
+  const labelStyle = { fontSize: '13px', color: '#94a3b8', marginBottom: '12px', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }
+
+  const handleManagePayment = async () => {
+    setOpeningPortal(true)
+    try {
+      const res = await fetch('/api/user/portal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id }),
+      })
+      const data = await res.json()
+      if (data.url) window.location.href = data.url
+      else alert('Could not open billing portal. Please try again.')
+    } catch {
+      alert('Could not open billing portal. Please try again.')
+    } finally {
+      setOpeningPortal(false)
+    }
+  }
+
+  const handleCancel = async () => {
+    setCancelling(true)
+    try {
+      const res = await fetch('/api/user/cancel-subscription', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setCancelSuccess(true)
+        setShowCancelConfirm(false)
+      } else {
+        alert(data.error || 'Failed to cancel. Please try again.')
+      }
+    } catch {
+      alert('Failed to cancel. Please try again.')
+    } finally {
+      setCancelling(false)
+    }
+  }
+
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#020617', color: 'white' }}>
-      {/* Header */}
-      <header style={{ position: 'sticky', top: 0, zIndex: 50, backgroundColor: '#030712', borderBottom: '1px solid #1f2937', padding: '12px 16px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <button onClick={() => router.back()} style={{ width: '44px', height: '44px', borderRadius: '50%', backgroundColor: '#1f2937', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <span style={{ color: 'white', fontSize: '20px' }}>‹</span>
-          </button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '20px' }}>🚛</span>
-            <span style={{ fontSize: '20px' }}>🚗</span>
-            <span style={{ color: 'white', fontWeight: 'bold', marginLeft: '4px' }}>Drive Time </span>
-            <span style={{ color: '#fb923c', fontWeight: 'bold' }}>Tales</span>
-          </div>
-          <div style={{ width: '44px' }} />
-        </div>
-      </header>
+      <StickyHeaderFull />
 
-      <main style={{ padding: '16px', maxWidth: '500px', margin: '0 auto' }}>
-        {/* Current Plan Card */}
-        <div style={{ backgroundColor: '#1e293b', borderRadius: '16px', padding: '20px', marginBottom: '24px', border: '2px solid #334155' }}>
-          <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Your Current Plan</div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ padding: '20px 20px 0', maxWidth: '480px', margin: '0 auto' }}>
+        <h1 style={{ fontSize: '22px', fontWeight: '700', color: 'white', margin: '0 0 20px' }}>Billing &amp; Subscription</h1>
+      </div>
+
+      <div style={{ padding: '0 20px 40px', maxWidth: '480px', margin: '0 auto' }}>
+
+        {/* Cancel Success Banner */}
+        {cancelSuccess && (
+          <div style={{ backgroundColor: '#052e16', border: '1px solid #16a34a', borderRadius: '12px', padding: '16px', marginBottom: '20px', color: '#86efac' }}>
+            ✅ Subscription cancelled. You'll keep access until the end of your billing period.
+          </div>
+        )}
+
+        {/* Current Plan */}
+        <div style={cardStyle}>
+          <div style={labelStyle}>Current Plan</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div>
-              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#f97316' }}>
-                {currentPlanData?.name || 'Free'}
+              <div style={{ fontSize: '22px', fontWeight: '700', color: 'white', marginBottom: '4px' }}>
+                {isFree ? 'Free' : 'Unlimited'}
               </div>
-              <div style={{ fontSize: '14px', color: '#94a3b8' }}>
-                {currentPlanData ? `$${billingInterval === 'month' ? currentPlanData.monthlyPrice : currentPlanData.yearlyPrice}/${billingInterval}` : 'No subscription'}
+              <div style={{ fontSize: '15px', color: 'white' }}>
+                {isFree ? 'Free access' : displayPrice}
               </div>
-              {renewalDate && (
-                <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
-                  Renews {renewalDate}
+              {isCancelling && user.subscription_ends_at && (
+                <div style={{ fontSize: '13px', color: '#f97316', marginTop: '4px' }}>
+                  Access until {new Date(user.subscription_ends_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
                 </div>
               )}
             </div>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: '36px', fontWeight: 'bold', color: 'white' }}>{currentCredits}</div>
-              <div style={{ fontSize: '14px', color: '#94a3b8' }}>credits</div>
+            <div style={{
+              padding: '6px 14px', borderRadius: '20px', fontSize: '13px', fontWeight: '600',
+              backgroundColor: isActive ? '#052e16' : isCancelling ? '#431407' : '#1e293b',
+              color: isActive ? '#4ade80' : isCancelling ? '#f97316' : 'white',
+              border: `1px solid ${isActive ? '#16a34a' : isCancelling ? '#f97316' : '#334155'}`
+            }}>
+              {isActive ? 'Active' : isCancelling ? 'Cancelling' : 'Free'}
             </div>
           </div>
         </div>
 
-        {/* Change Plan Section */}
-        <div style={{ marginBottom: '32px' }}>
-          <h2 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '16px', color: 'white' }}>Change Plan</h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {PLANS.map((plan, index) => {
-              const isCurrent = plan.id === currentPlan
-              const isUpgrade = index > currentPlanIndex
-              const isDowngrade = index < currentPlanIndex
-              
-              return (
-                <div
-                  key={plan.id}
-                  style={{
-                    backgroundColor: isCurrent ? '#1e3a2f' : '#1e293b',
-                    borderRadius: '12px',
-                    padding: '16px',
-                    border: isCurrent ? '2px solid #22c55e' : '2px solid #334155',
-                    opacity: processing ? 0.7 : 1,
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontSize: '16px', fontWeight: 'bold', color: 'white' }}>{plan.name}</span>
-                        {isCurrent && (
-                          <span style={{ fontSize: '10px', backgroundColor: '#22c55e', color: 'black', padding: '2px 8px', borderRadius: '10px', fontWeight: 'bold' }}>CURRENT</span>
-                        )}
-                      </div>
-                      <div style={{ fontSize: '14px', color: '#94a3b8', marginTop: '4px' }}>
-                        {plan.credits} credits/month
-                      </div>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: '20px', fontWeight: 'bold', color: 'white' }}>${plan.monthlyPrice}</div>
-                      <div style={{ fontSize: '12px', color: '#64748b' }}>/month</div>
-                    </div>
+        {/* Payment Method — only for subscribers */}
+        {hasSubscription && !cancelSuccess && (
+          <div style={cardStyle}>
+            <div style={labelStyle}>Payment Method</div>
+            <button
+              onClick={handleManagePayment}
+              disabled={openingPortal}
+              style={{ width: '100%', padding: '14px', backgroundColor: '#1e293b', color: 'white', border: 'none', borderRadius: '10px', fontSize: '15px', fontWeight: '500', cursor: 'pointer', opacity: openingPortal ? 0.6 : 1 }}
+            >
+              {openingPortal ? 'Opening…' : 'Manage Payment Method'}
+            </button>
+          </div>
+        )}
+
+        {/* Purchase History */}
+        <div style={cardStyle}>
+          <div style={labelStyle}>Purchase History</div>
+          {loadingInvoices ? (
+            <div style={{ color: 'white', fontSize: '14px' }}>Loading…</div>
+          ) : invoices.length === 0 ? (
+            <div style={{ color: 'white', fontSize: '14px' }}>No purchase history yet</div>
+          ) : (
+            invoices.map(inv => (
+              <div key={inv.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid #334155' }}>
+                <div>
+                  <div style={{ fontSize: '14px', fontWeight: '500', color: 'white' }}>{inv.description}</div>
+                  <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+                    {new Date(inv.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                   </div>
-                  
-                  {!isCurrent && (
-                    <button
-                      onClick={() => handlePlanChange(plan)}
-                      disabled={!!processing}
-                      style={{
-                        width: '100%',
-                        marginTop: '12px',
-                        padding: '10px',
-                        borderRadius: '8px',
-                        border: 'none',
-                        fontWeight: '600',
-                        fontSize: '14px',
-                        cursor: processing ? 'not-allowed' : 'pointer',
-                        backgroundColor: isUpgrade ? '#f97316' : '#475569',
-                        color: isUpgrade ? 'black' : 'white',
-                      }}
-                    >
-                      {processing === plan.id ? 'Processing...' : isUpgrade ? 'Upgrade' : 'Downgrade'}
-                    </button>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{ fontSize: '14px', fontWeight: '600', color: 'white' }}>${inv.amount.toFixed(2)}</span>
+                  {inv.invoice_url && (
+                    <a href={inv.invoice_url} target="_blank" rel="noreferrer" style={{ fontSize: '12px', color: '#f97316' }}>Receipt</a>
                   )}
                 </div>
-              )
-            })}
-          </div>
-          
-          {currentPlan !== 'free' && (
-            <p style={{ fontSize: '12px', color: '#64748b', marginTop: '12px', textAlign: 'center' }}>
-              Upgrades take effect immediately. Downgrades take effect at your next billing date.
-            </p>
+              </div>
+            ))
           )}
         </div>
 
-        {/* Divider */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
-          <div style={{ flex: 1, height: '1px', backgroundColor: '#334155' }} />
-          <span style={{ color: '#64748b', fontSize: '14px' }}>Or Buy Credits</span>
-          <div style={{ flex: 1, height: '1px', backgroundColor: '#334155' }} />
-        </div>
-
-        {/* Freedom Packs */}
-        <div style={{ marginBottom: '32px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
-            {FREEDOM_PACKS.map((pack) => (
-              <div
-                key={pack.id}
-                style={{
-                  backgroundColor: '#1e293b',
-                  borderRadius: '12px',
-                  padding: '16px',
-                  textAlign: 'center',
-                  border: pack.bestValue ? '2px solid #22c55e' : '2px solid #334155',
-                  position: 'relative',
-                }}
+        {/* Cancel Subscription — only for active subscribers */}
+        {isActive && !cancelSuccess && (
+          <div style={cardStyle}>
+            {!showCancelConfirm ? (
+              <button
+                onClick={() => setShowCancelConfirm(true)}
+                style={{ width: '100%', padding: '14px', backgroundColor: 'transparent', color: '#ef4444', border: '1px solid #ef4444', borderRadius: '10px', fontSize: '15px', fontWeight: '500', cursor: 'pointer' }}
               >
-                {pack.bestValue && (
-                  <div style={{ position: 'absolute', top: '-10px', left: '50%', transform: 'translateX(-50%)', backgroundColor: '#22c55e', color: 'black', fontSize: '10px', fontWeight: 'bold', padding: '2px 8px', borderRadius: '10px' }}>
-                    BEST VALUE
-                  </div>
-                )}
-                <div style={{ fontSize: '14px', fontWeight: 'bold', color: 'white', marginBottom: '4px' }}>{pack.name}</div>
-                <div style={{ fontSize: '24px', fontWeight: 'bold', color: 'white' }}>${pack.price}</div>
-                <div style={{ fontSize: '14px', color: '#f97316', fontWeight: '600', marginBottom: '12px' }}>{pack.credits} credits</div>
-                <button
-                  onClick={() => handleSelectPack(pack)}
-                  disabled={!!processing}
-                  style={{
-                    width: '100%',
-                    padding: '8px',
-                    borderRadius: '8px',
-                    border: 'none',
-                    fontWeight: '600',
-                    fontSize: '14px',
-                    cursor: processing ? 'not-allowed' : 'pointer',
-                    backgroundColor: pack.bestValue ? '#22c55e' : '#475569',
-                    color: pack.bestValue ? 'black' : 'white',
-                  }}
-                >
-                  {processing === pack.id ? '...' : 'Buy Now'}
-                </button>
-              </div>
-            ))}
-          </div>
-          <p style={{ fontSize: '12px', color: '#64748b', marginTop: '12px', textAlign: 'center' }}>
-            Freedom Pack credits are added to your balance and never expire.
-          </p>
-        </div>
-      </main>
-
-      {/* Plan Change Confirmation Modal */}
-      {confirmChange && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: '16px' }}>
-          <div style={{ backgroundColor: '#0f172a', borderRadius: '16px', padding: '24px', maxWidth: '400px', width: '100%', border: '1px solid #334155' }}>
-            <h3 style={{ fontSize: '20px', fontWeight: 'bold', color: 'white', textAlign: 'center', marginBottom: '16px' }}>
-              {confirmChange.isUpgrade ? 'Confirm Upgrade' : 'Confirm Downgrade'}
-            </h3>
-            
-            <div style={{ backgroundColor: '#1e293b', borderRadius: '12px', padding: '16px', marginBottom: '16px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                <span style={{ color: '#94a3b8' }}>From:</span>
-                <span style={{ color: 'white', fontWeight: 'bold' }}>{currentPlanData?.name || 'Free'}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '12px' }}>
-                <span style={{ color: '#f97316', fontSize: '20px' }}>↓</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ color: '#94a3b8' }}>To:</span>
-                <span style={{ color: '#f97316', fontWeight: 'bold' }}>{confirmChange.plan.name}</span>
-              </div>
-            </div>
-
-            <div style={{ backgroundColor: '#1e293b', borderRadius: '12px', padding: '16px', marginBottom: '16px' }}>
-              <div style={{ fontSize: '14px', color: 'white', marginBottom: '8px' }}>
-                <strong>New credits:</strong> {confirmChange.plan.credits}/month
-              </div>
-              <div style={{ fontSize: '14px', color: 'white' }}>
-                <strong>New price:</strong> ${confirmChange.plan.monthlyPrice}/month
-              </div>
-            </div>
-
-            {confirmChange.isUpgrade ? (
-              <p style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '16px', textAlign: 'center' }}>
-                Your card will be charged a prorated amount. Your credits will reset to {confirmChange.plan.credits} immediately.
-              </p>
+                Cancel Subscription
+              </button>
             ) : (
-              <p style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '16px', textAlign: 'center' }}>
-                This change will take effect on your next billing date. Your current credits will reset to {confirmChange.plan.credits} at that time.
-              </p>
+              <div>
+                <div style={{ fontSize: '15px', fontWeight: '600', color: 'white', marginBottom: '8px' }}>Are you sure?</div>
+                <div style={{ fontSize: '14px', color: 'white', marginBottom: '16px' }}>
+                  You'll keep access until the end of your current billing period. This cannot be undone.
+                </div>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button
+                    onClick={() => setShowCancelConfirm(false)}
+                    style={{ flex: 1, padding: '12px', backgroundColor: '#1e293b', color: 'white', border: 'none', borderRadius: '10px', fontSize: '15px', cursor: 'pointer' }}
+                  >
+                    Keep Plan
+                  </button>
+                  <button
+                    onClick={handleCancel}
+                    disabled={cancelling}
+                    style={{ flex: 1, padding: '12px', backgroundColor: '#7f1d1d', color: '#fca5a5', border: 'none', borderRadius: '10px', fontSize: '15px', fontWeight: '600', cursor: 'pointer', opacity: cancelling ? 0.6 : 1 }}
+                  >
+                    {cancelling ? 'Cancelling…' : 'Yes, Cancel'}
+                  </button>
+                </div>
+              </div>
             )}
-
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <button
-                onClick={() => setConfirmChange(null)}
-                disabled={!!processing}
-                style={{ flex: 1, padding: '12px', backgroundColor: '#475569', border: 'none', borderRadius: '12px', color: 'white', fontWeight: '600', cursor: 'pointer' }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmPlanChange}
-                disabled={!!processing}
-                style={{ flex: 1, padding: '12px', backgroundColor: confirmChange.isUpgrade ? '#f97316' : '#475569', border: 'none', borderRadius: '12px', color: confirmChange.isUpgrade ? 'black' : 'white', fontWeight: 'bold', cursor: 'pointer' }}
-              >
-                {processing ? 'Processing...' : 'Confirm'}
-              </button>
-            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Quick Purchase Confirmation Modal */}
-      {confirmPack && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: '16px' }}>
-          <div style={{ backgroundColor: '#0f172a', borderRadius: '16px', padding: '24px', maxWidth: '400px', width: '100%', border: '1px solid #334155' }}>
-            <h3 style={{ fontSize: '20px', fontWeight: 'bold', color: 'white', textAlign: 'center', marginBottom: '8px' }}>Confirm Purchase</h3>
-            
-            <div style={{ backgroundColor: '#1e293b', borderRadius: '12px', padding: '16px', margin: '16px 0', textAlign: 'center' }}>
-              <p style={{ fontSize: '24px', fontWeight: 'bold', color: 'white' }}>{confirmPack.name}</p>
-              <p style={{ color: '#f97316', fontWeight: '600' }}>{confirmPack.credits} credits</p>
-              <p style={{ fontSize: '32px', fontWeight: 'bold', color: 'white', marginTop: '8px' }}>${confirmPack.price}</p>
+        {/* Subscribe card — only for free users (no existing subscription) */}
+        {isFree && (
+          <div style={{ ...cardStyle, textAlign: 'center' }}>
+            <div style={{ fontSize: '15px', color: 'white', marginBottom: '8px' }}>Unlimited access to all stories</div>
+            <div style={{ fontSize: '28px', fontWeight: '700', color: '#f97316', marginBottom: '16px' }}>
+              {currentPrice !== null ? `$${currentPrice.toFixed(2)} / month` : '…'}
             </div>
-
-            <p style={{ color: '#94a3b8', fontSize: '14px', textAlign: 'center', marginBottom: '16px' }}>
-              Your card on file will be charged
-            </p>
-
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <button
-                onClick={() => setConfirmPack(null)}
-                disabled={!!processing}
-                style={{ flex: 1, padding: '12px', backgroundColor: '#475569', border: 'none', borderRadius: '12px', color: 'white', fontWeight: '600', cursor: 'pointer' }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleQuickPurchase}
-                disabled={!!processing}
-                style={{ flex: 1, padding: '12px', backgroundColor: '#f97316', border: 'none', borderRadius: '12px', color: 'black', fontWeight: 'bold', cursor: 'pointer' }}
-              >
-                {processing ? 'Processing...' : 'Confirm'}
-              </button>
-            </div>
+            <button
+              onClick={() => router.push('/signup')}
+              style={{ width: '100%', padding: '14px', backgroundColor: '#f97316', color: 'white', border: 'none', borderRadius: '10px', fontSize: '15px', fontWeight: '700', cursor: 'pointer' }}
+            >
+              Subscribe Now
+            </button>
           </div>
-        </div>
-      )}
+        )}
+
+      </div>
     </div>
   )
 }

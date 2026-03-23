@@ -4,6 +4,7 @@ import { useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext'
+import { supabaseBrowser } from '@/lib/supabase-browser'
 
 function SignInContent() {
   const router = useRouter()
@@ -17,6 +18,21 @@ function SignInContent() {
   const [loading, setLoading] = useState(false)
 
   const returnTo = searchParams.get('returnTo') || '/home'
+
+  // Show any error passed back from OAuth callback in the URL
+  const urlError = searchParams.get('error')
+  const urlDesc = searchParams.get('desc')
+
+  const handleGoogleSignIn = async () => {
+    // Save returnTo so the callback page knows where to send the user
+    sessionStorage.setItem('authReturnTo', returnTo)
+    await supabaseBrowser.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+      },
+    })
+  }
 
 
 
@@ -52,9 +68,9 @@ function SignInContent() {
           <h1 style={{ color:'white', fontSize:'22px', fontWeight:800, margin:'0 0 6px', textAlign:'center' }}>Welcome back</h1>
           <p style={{ color:'#64748b', fontSize:'14px', textAlign:'center', margin:'0 0 24px' }}>Sign in to your Endless Tales account</p>
 
-          {/* Google — plain anchor so iOS Safari doesn't block the redirect */}
-          <a href="/api/auth/google"
-            style={{ width:'100%', padding:'13px', backgroundColor:'#fff', color:'#1f2937', border:'1px solid #e2e8f0', borderRadius:'12px', fontSize:'15px', fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'10px', marginBottom:'16px', textDecoration:'none', boxSizing:'border-box' }}>
+          {/* Google — client-side OAuth so PKCE verifier lives in localStorage */}
+          <button onClick={handleGoogleSignIn} type="button"
+            style={{ width:'100%', padding:'13px', backgroundColor:'#fff', color:'#1f2937', border:'1px solid #e2e8f0', borderRadius:'12px', fontSize:'15px', fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'10px', marginBottom:'16px', boxSizing:'border-box' }}>
             <svg width="18" height="18" viewBox="0 0 24 24">
               <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
               <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
@@ -62,7 +78,7 @@ function SignInContent() {
               <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
             </svg>
             Continue with Google
-          </a>
+          </button>
 
           <div style={{ display:'flex', alignItems:'center', marginBottom:'16px' }}>
             <div style={{ flex:1, height:'1px', backgroundColor:'#1e293b' }} />
@@ -70,9 +86,9 @@ function SignInContent() {
             <div style={{ flex:1, height:'1px', backgroundColor:'#1e293b' }} />
           </div>
 
-          {error && (
+          {(error || urlError) && (
             <div style={{ backgroundColor:'#450a0a', border:'1px solid #7f1d1d', color:'#fca5a5', padding:'12px 16px', borderRadius:'10px', marginBottom:'20px', fontSize:'14px' }}>
-              {error}
+              {error || `Auth error: ${urlError}${urlDesc ? ` — ${urlDesc}` : ''}`}
             </div>
           )}
 
@@ -124,13 +140,7 @@ function SignInContent() {
           </form>
         </div>
 
-        {/* New user link — secondary, below the form */}
-        <div style={{ textAlign:'center', marginTop:'24px' }}>
-          <span style={{ color:'#475569', fontSize:'14px' }}>Don't have an account? </span>
-          <Link href="/signup" style={{ color:'#f97316', fontSize:'14px', fontWeight:700, textDecoration:'none' }}>
-            Start free trial →
-          </Link>
-        </div>
+        {/* No signup link on sign-in page */}
 
       </div>
     </div>

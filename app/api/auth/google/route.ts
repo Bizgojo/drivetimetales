@@ -3,7 +3,12 @@ import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
-  const origin = new URL(request.url).origin
+  const url = new URL(request.url)
+  const returnTo = url.searchParams.get('returnTo') || '/home'
+  const origin = url.origin
+
+  // Keep redirect URL clean (no query params) so it matches Supabase's allowed redirect list exactly.
+  // Pass returnTo via a short-lived cookie that the callback Route Handler will read.
   const redirectTo = `${origin}/auth/callback`
 
   const cookieStore = cookies()
@@ -25,6 +30,18 @@ export async function GET(request: Request) {
     options: { redirectTo, skipBrowserRedirect: true }
   })
 
-  if (data?.url) return NextResponse.redirect(data.url)
-  return NextResponse.redirect(`${origin}/signin?error=auth_failed`)
+  if (!data?.url) {
+    return NextResponse.redirect(`${origin}/signin?error=auth_failed`)
+  }
+
+  // Set the returnTo cookie so the callback handler knows where to send the user
+  const response = NextResponse.redirect(data.url)
+  response.cookies.set('auth_return_to', returnTo, {
+    httpOnly: true,
+    secure: false, // localhost — set to true in production
+    sameSite: 'lax',
+    maxAge: 300, // 5 minutes — just long enough to survive the OAuth round-trip
+    path: '/',
+  })
+  return response
 }
