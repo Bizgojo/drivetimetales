@@ -48,8 +48,8 @@ function SignInContent() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#020617', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
-      <div style={{ width: '100%', maxWidth: '400px' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: '#020617', overflowY: 'auto', WebkitOverflowScrolling: 'touch' as any, padding: '16px 16px 80px' }}>
+      <div style={{ width: '100%', maxWidth: '400px', margin: '0 auto', paddingTop: '40px' }}>
 
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: '28px' }}>
@@ -101,15 +101,17 @@ function SignInContent() {
             <div style={{ marginBottom: '14px' }}>
               <label style={{ display: 'block', color: '#94a3b8', fontSize: '13px', marginBottom: '5px' }}>Email</label>
               <input type="email" value={email} onChange={e => setEmail(e.target.value)} required
-                style={{ width: '100%', padding: '11px', backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: 'white', fontSize: '15px', boxSizing: 'border-box' }}
-                placeholder="you@example.com" />
+                onFocus={e => setTimeout(() => e.target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300)}
+                style={{ width: '100%', padding: '11px', backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: 'white', fontSize: '16px', boxSizing: 'border-box' }}
+                placeholder="you@example.com" autoComplete="email" />
             </div>
             <div style={{ marginBottom: '20px' }}>
               <label style={{ display: 'block', color: '#94a3b8', fontSize: '13px', marginBottom: '5px' }}>Password</label>
               <div style={{ position: 'relative' }}>
                 <input type={showPassword ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} required
-                  style={{ width: '100%', padding: '11px', paddingRight: '44px', backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: 'white', fontSize: '15px', boxSizing: 'border-box' }}
-                  placeholder="••••••••" />
+                  onFocus={e => setTimeout(() => e.target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300)}
+                  style={{ width: '100%', padding: '11px', paddingRight: '44px', backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: 'white', fontSize: '16px', boxSizing: 'border-box' }}
+                  placeholder="••••••••" autoComplete="current-password" />
                 <button type="button" onClick={() => setShowPassword(!showPassword)}
                   style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '16px' }}>
                   {showPassword ? '🙈' : '👁️'}
