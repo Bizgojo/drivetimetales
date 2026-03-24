@@ -49,23 +49,10 @@ export default function GuestPage() {
         .from('story_analytics')
         .select('id, title, author, genre, duration_mins, cover_url, description')
         .not('cover_url', 'is', null)
-        .gte('duration_mins', 15)
-        .lte('duration_mins', 20)
-        .order('published_on', { ascending: false })
+        .lte('duration_mins', 60)
+        .order('duration_mins', { ascending: true })
         .limit(12)
-      if (!data || data.length < 4) {
-        const { data: wider } = await supabase
-          .from('story_analytics')
-          .select('id, title, author, genre, duration_mins, cover_url, description')
-          .not('cover_url', 'is', null)
-          .gte('duration_mins', 12)
-          .lte('duration_mins', 22)
-          .order('published_on', { ascending: false })
-          .limit(12)
-        setStories(wider || [])
-      } else {
-        setStories(data)
-      }
+      setStories(data || [])
       setLoading(false)
     }
     fetchStories()
