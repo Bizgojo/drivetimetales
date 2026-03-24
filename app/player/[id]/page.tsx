@@ -58,6 +58,7 @@ function PlayerContent() {
   const noMusicRef    = useRef(true)   // music disabled globally — voice only
   const segDursRef    = useRef<number[]>([])
   const completedRef  = useRef(0)
+  const sessionStartRef = useRef<number | null>(null)
   const [totalDur, setTotalDur] = useState(0)
   const [cumTime, setCumTime]   = useState(0)
 
@@ -202,6 +203,7 @@ function PlayerContent() {
     } else {
       audioRef.current.play().then(() => {
         setIsPlaying(true)
+        if (!user && !sessionStartRef.current) { sessionStartRef.current = Date.now() }
         const m = musicRef.current
         if (!noMusicRef.current && m?.src && m.src !== 'about:blank') {
           m.volume = 0
@@ -232,7 +234,16 @@ function PlayerContent() {
     if (user?.id) await supabase.from('user_library').upsert({ user_id: user.id, story_id: storyId, not_for_me: true, progress: Math.floor(currentTime), last_played: new Date().toISOString() })
     router.push('/library')
   }
-  const handleBack = () => { audioRef.current?.pause(); musicRef.current?.pause(); saveProgress(currentTime); router.push('/library') }
+  const handleBack = () => {
+    audioRef.current?.pause(); musicRef.current?.pause(); saveProgress(currentTime)
+    if (!user && sessionStartRef.current) {
+      const mins = (Date.now() - sessionStartRef.current) / 60000
+      const prev = parseFloat(localStorage.getItem('et_guest_minutes') || '0')
+      localStorage.setItem('et_guest_minutes', String(prev + mins))
+      sessionStartRef.current = null
+    }
+    router.push(user ? '/library' : '/guest')
+  }
 
   const fmt = (s: number) => `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, '0')}`
   const effTotal = totalDur > 0 ? totalDur : (story?.duration_mins || 0) * 60

@@ -12,7 +12,7 @@ export default function WelcomePage() {
       if (session) {
         router.replace('/home')
       } else {
-        router.replace('/signin')
+        router.replace('/guest')
       }
     }
     check()
