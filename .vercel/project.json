@@ -1,1 +1,16 @@
-{"projectId":"prj_HtlHgc0PWIK9dHtocd5QJn3cNoO5","orgId":"team_tTsYIqToEOIhi4uMIlRavESf","projectName":"drivetimetales"}
+{
+  "projectId": "prj_HtlHgc0PWIK9dHtocd5QJn3cNoO5",
+  "orgId": "team_tTsYIqToEOIhi4uMIlRavESf",
+  "projectName": "drivetimetales",
+  "settings": {
+    "createdAt": 1768006065919,
+    "framework": "nextjs",
+    "devCommand": null,
+    "installCommand": null,
+    "buildCommand": "npm run build",
+    "outputDirectory": ".next",
+    "rootDirectory": null,
+    "directoryListing": false,
+    "nodeVersion": "24.x"
+  }
+}
