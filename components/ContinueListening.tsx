@@ -319,7 +319,7 @@ export default function ContinueListening() {
   const [dismissModal, setDismissModal] = useState<'single' | 'series' | 'playlist' | null>(null)
 
   useEffect(() => {
-    if (!user) return
+    if (!user) { setLoading(false); return }
     fetchCards()
   }, [user, hiddenSingle, hiddenSeries])
 
