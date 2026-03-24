@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 
 const PUBLIC_ROUTES = new Set([
-  '/signin', '/signup', '/welcome', '/forgot-password',
+  '/signin', '/signup', '/welcome', '/guest', '/forgot-password',
   '/reset-password', '/auth/callback', '/auth/signup',
 ])
 
