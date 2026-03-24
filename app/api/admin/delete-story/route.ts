@@ -21,10 +21,10 @@ export async function DELETE(req: NextRequest) {
 
     console.log('[Delete Story] Looking up story:', storyId)
 
-    // Step 1: Get the story's audio_url and cover_url before deleting
+    // Step 1: Get the story's audio_url and cover_url before deleting (use table, not view)
     const { data: story, error: fetchError } = await supabase
-      .from('stories')
-      .select('id, title, audio_url, cover_url')
+      .from('Story')
+      .select('id, title, "audioUrl", "coverUrl"')
       .eq('id', storyId)
       .single()
 
@@ -73,8 +73,9 @@ export async function DELETE(req: NextRequest) {
     }
 
     // Step 5: Delete audio file from Supabase storage (if stored there)
-    if (story.audio_url && story.audio_url.includes('supabase.co/storage')) {
-      const audioMatch = story.audio_url.match(/\/object\/public\/([^/]+)\/(.+)$/)
+    const audioUrl = story.audioUrl
+    if (audioUrl && audioUrl.includes('supabase.co/storage')) {
+      const audioMatch = audioUrl.match(/\/object\/public\/([^/]+)\/(.+)$/)
       if (audioMatch) {
         const bucket = audioMatch[1]
         const filePath = decodeURIComponent(audioMatch[2])
@@ -91,8 +92,9 @@ export async function DELETE(req: NextRequest) {
     }
 
     // Step 6: Delete cover file from Supabase storage (if stored there)
-    if (story.cover_url && story.cover_url.includes('supabase.co/storage')) {
-      const coverMatch = story.cover_url.match(/\/object\/public\/([^/]+)\/(.+)$/)
+    const coverUrl = story.coverUrl
+    if (coverUrl && coverUrl.includes('supabase.co/storage')) {
+      const coverMatch = coverUrl.match(/\/object\/public\/([^/]+)\/(.+)$/)
       if (coverMatch) {
         const bucket = coverMatch[1]
         const filePath = decodeURIComponent(coverMatch[2])
@@ -108,9 +110,9 @@ export async function DELETE(req: NextRequest) {
       }
     }
 
-    // Step 7: Delete the story row itself
+    // Step 7: Delete the story row itself (must use the table, not the view)
     const { error: storyDeleteError } = await supabase
-      .from('stories')
+      .from('Story')
       .delete()
       .eq('id', storyId)
 
@@ -128,8 +130,8 @@ export async function DELETE(req: NextRequest) {
         storyId: story.id,
         clearedTables: ['user_library', 'user_preferences', 'story_reviews'],
         storageFiles: {
-          audio: story.audio_url ? 'attempted' : 'none',
-          cover: story.cover_url ? 'attempted' : 'none',
+          audio: story.audioUrl ? 'attempted' : 'none',
+          cover: story.coverUrl ? 'attempted' : 'none',
         }
       }
     })
