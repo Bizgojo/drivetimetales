@@ -2,6 +2,7 @@
 ASC3 Genres API
 GET: List all genres, or get authors for a specific genre by ?id=
 */
+export const dynamic = 'force-dynamic'
 
 import { supabase } from '@/lib/supabase';
 import { NextRequest, NextResponse } from 'next/server';
