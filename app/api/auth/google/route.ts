@@ -38,7 +38,7 @@ export async function GET(request: Request) {
   const response = NextResponse.redirect(data.url)
   response.cookies.set('auth_return_to', returnTo, {
     httpOnly: true,
-    secure: false, // localhost — set to true in production
+    secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
     maxAge: 300, // 5 minutes — just long enough to survive the OAuth round-trip
     path: '/',

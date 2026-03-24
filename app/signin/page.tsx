@@ -4,7 +4,6 @@ import { useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext'
-import { supabaseBrowser } from '@/lib/supabase-browser'
 
 function SignInContent() {
   const router = useRouter()
@@ -23,15 +22,11 @@ function SignInContent() {
   const urlError = searchParams.get('error')
   const urlDesc = searchParams.get('desc')
 
-  const handleGoogleSignIn = async () => {
-    // Save returnTo so the callback page knows where to send the user
-    sessionStorage.setItem('authReturnTo', returnTo)
-    await supabaseBrowser.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
-    })
+  const handleGoogleSignIn = () => {
+    // Use server-side OAuth route — works on iOS Safari, Android, all browsers
+    // (avoids sessionStorage/PKCE issues that break mobile Google Sign-In)
+    const params = returnTo !== '/home' ? `?returnTo=${encodeURIComponent(returnTo)}` : ''
+    window.location.href = `/api/auth/google${params}`
   }
 
 
