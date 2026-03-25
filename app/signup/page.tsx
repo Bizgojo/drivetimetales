@@ -135,8 +135,10 @@ function SignUpContent() {
         {/* Trial badge */}
         <div style={{ background: 'linear-gradient(135deg, rgba(249,115,22,0.2), rgba(249,115,22,0.05))', border: '1px solid rgba(249,115,22,0.4)', borderRadius: '12px', padding: '12px 16px', marginBottom: '1.5rem', textAlign: 'center' }}>
           <div style={{ color: '#f97316', fontSize: '16px', fontWeight: 800, marginBottom: '2px' }}>🎉 {trialDays}-Day Free Trial</div>
-          <div style={{ color: '#94a3b8', fontSize: '13px' }}>Full access to hundreds of stories. Cancel anytime before your trial ends — you won't be charged.</div>
+          <div style={{ color: '#94a3b8', fontSize: '13px' }}>Full access to hundreds of stories. Credit card required — cancel before trial ends and you won't be charged.</div>
         </div>
+
+        <FoundingMemberBanner variant="dark" />
 
         {/* Referral banner */}
         {referralCode && referrerName && (
@@ -199,7 +201,7 @@ function SignUpContent() {
 
         <p style={{ color: '#475569', fontSize: '12px', textAlign: 'center', marginTop: '1rem', lineHeight: 1.5 }}>
           By signing up you agree to our Terms of Service and Privacy Policy.<br/>
-          $2.99/mo after trial — founding member price (first 500 only). Cancel anytime.
+          $7.99/mo after trial. Founding members — price locked for life.
         </p>
       </div>
     </div>
