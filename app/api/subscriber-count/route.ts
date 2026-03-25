@@ -18,13 +18,15 @@ export async function GET() {
     if (error) throw error
 
     const total = count ?? 0
-    const price = total < 500 ? 2.99 : 7.99
-    const spotsLeft = Math.max(0, 500 - total)
-    const foundingAvailable = total < 500
+    const FOUNDING_OFFSET = 27
+    const adjustedTotal = total + FOUNDING_OFFSET
+    const price = 7.99
+    const spotsLeft = Math.max(0, 500 - adjustedTotal)
+    const foundingAvailable = adjustedTotal < 500
 
-    return NextResponse.json({ count: total, price, spotsLeft, foundingAvailable })
+    return NextResponse.json({ count: adjustedTotal, price, spotsLeft, foundingAvailable })
   } catch (err) {
     console.error('[subscriber-count]', err)
-    return NextResponse.json({ count: 0, price: 2.99, spotsLeft: 500, foundingAvailable: true })
+    return NextResponse.json({ count: 27, price: 7.99, spotsLeft: 473, foundingAvailable: true })
   }
 }

@@ -221,7 +221,7 @@ export default function AdminPage() {
         commuterCount: commuterCount || 0,
         roadWarriorCount: roadWarriorCount || 0,
         freedomPacksSold: 0,
-        testDriverRevenue: (testDriverCount || 0) * 2.99,
+        testDriverRevenue: (testDriverCount || 0) * 7.99,
         commuterRevenue: (commuterCount || 0) * 7.99,
         roadWarriorRevenue: (roadWarriorCount || 0) * 14.99,
         freedomPacksRevenue: 0,
@@ -567,7 +567,7 @@ export default function AdminPage() {
               <div className="space-y-4">
                 <div>
                   <div className="flex justify-between mb-1">
-                    <span className="text-gray-700">Test Driver ($2.99/mo)</span>
+                    <span className="text-gray-700">Test Driver ($7.99/mo)</span>
                     <span className="text-black">{financialData.testDriverCount} subscribers = ${financialData.testDriverRevenue.toFixed(2)}/mo</span>
                   </div>
                   <div className="h-2 bg-gray-300 rounded-full">

@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
 
     // Auto-select founding member or standard price (ignore client-supplied priceId)
     const { priceId, isFoundingMember } = await resolvePrice()
-    console.log(`[checkout] Assigned price: ${isFoundingMember ? 'founding member $2.99' : 'standard $7.99'}`)
+    console.log(`[checkout] Assigned price: ${isFoundingMember ? 'founding member $7.99 locked' : 'standard $7.99'}`)
 
     // Check if user already has a Stripe customer
     const { data: userData } = await supabase

@@ -62,7 +62,7 @@ export default function AdminAnalyticsPage() {
       // Calculate subscription stats
       const subCounts: Record<string, number> = {}
       const prices: Record<string, number> = {
-        'test_driver': 2.99,
+        'test_driver': 7.99,
         'commuter': 7.99,
         'road_warrior': 14.99
       }
@@ -93,7 +93,7 @@ export default function AdminAnalyticsPage() {
       
       // Format subscription stats
       const stats: SubscriptionStats[] = [
-        { tier: 'test_driver', name: 'Test Driver', count: subCounts['test_driver'] || 0, mrr: (subCounts['test_driver'] || 0) * 2.99 },
+        { tier: 'test_driver', name: 'Test Driver', count: subCounts['test_driver'] || 0, mrr: (subCounts['test_driver'] || 0) * 7.99 },
         { tier: 'commuter', name: 'Commuter', count: subCounts['commuter'] || 0, mrr: (subCounts['commuter'] || 0) * 7.99 },
         { tier: 'road_warrior', name: 'Road Warrior', count: subCounts['road_warrior'] || 0, mrr: (subCounts['road_warrior'] || 0) * 14.99 }
       ]
@@ -233,7 +233,7 @@ export default function AdminAnalyticsPage() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                     <span style={{ color: textPrimary, fontWeight: 600 }}>{stat.name}</span>
                     <span style={{ backgroundColor: stat.tier === 'road_warrior' ? '#f97316' : stat.tier === 'commuter' ? '#3b82f6' : '#22c55e', color: 'white', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 600 }}>
-                      {stat.tier === 'road_warrior' ? '$14.99' : stat.tier === 'commuter' ? '$7.99' : '$2.99'}/mo
+                      {stat.tier === 'road_warrior' ? '$14.99' : '$7.99'}/mo
                     </span>
                   </div>
                   <div style={{ color: textPrimary, fontSize: '24px', fontWeight: 'bold' }}>{stat.count}</div>
@@ -292,7 +292,7 @@ export default function AdminAnalyticsPage() {
             <tbody>
               <tr style={{ borderBottom: `1px solid ${border}` }}>
                 <td style={{ padding: '0.75rem', color: textPrimary, fontWeight: 500 }}>🚗 Test Driver</td>
-                <td style={{ padding: '0.75rem', textAlign: 'center', color: textPrimary }}>$2.99/mo</td>
+                <td style={{ padding: '0.75rem', textAlign: 'center', color: textPrimary }}>$7.99/mo</td>
                 <td style={{ padding: '0.75rem', textAlign: 'center', color: '#f97316' }}>10</td>
                 <td style={{ padding: '0.75rem', textAlign: 'center', color: textPrimary, fontWeight: 600 }}>{subscriptionStats[0]?.count || 0}</td>
                 <td style={{ padding: '0.75rem', textAlign: 'center', color: '#16a34a', fontWeight: 600 }}>${subscriptionStats[0]?.mrr.toFixed(2) || '0.00'}</td>

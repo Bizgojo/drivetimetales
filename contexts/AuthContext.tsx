@@ -18,6 +18,7 @@ interface DbUser {
   plan: string | null
   subscription_type: string | null
   subscription_ends_at: string | null
+  is_founding_member: boolean | null
 }
 
 interface AuthContextType {
@@ -49,7 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     
     try {
-      const apiUrl = `${url}/rest/v1/users?id=eq.${authUser.id}&select=first_name,last_name,display_name,credits,plan,subscription_type,subscription_ends_at`
+      const apiUrl = `${url}/rest/v1/users?id=eq.${authUser.id}&select=first_name,last_name,display_name,credits,plan,subscription_type,subscription_ends_at,is_founding_member`
       
       const response = await fetch(apiUrl, {
         headers: {

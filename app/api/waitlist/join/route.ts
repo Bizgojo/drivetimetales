@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
       medium: medium || null,
       campaign: campaign || null,
       referrer: referrer || null,
-      locked_price: 2.99,
+      locked_price: 7.99,
     })
 
     if (error?.code === '23505') {

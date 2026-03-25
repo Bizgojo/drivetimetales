@@ -23,6 +23,9 @@ export default function StickyHeaderFull() {
             <span style={{ color: 'white' }}>Endless </span>
             <span style={{ color: '#fb923c' }}>Tales</span>
           </span>
+          {user?.is_founding_member && (
+            <span style={{ fontSize: '0.6rem', fontWeight: 700, background: '#f0a030', color: '#0a0a0f', padding: '2px 7px', borderRadius: '20px', marginLeft: '6px', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Founding Member</span>
+          )}
         </Link>
         <Link href="/account" className="w-11 h-11 rounded-full bg-orange-500 hover:bg-orange-400 flex items-center justify-center text-black font-bold text-lg transition-colors flex-shrink-0">
           {userInitial}

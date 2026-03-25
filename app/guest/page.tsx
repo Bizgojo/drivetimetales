@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import GuestSignupPrompt from '@/components/GuestSignupPrompt'
 import Link from 'next/link'
+import FoundingMemberBanner from '@/components/FoundingMemberBanner'
 
 interface Story {
   id: string
