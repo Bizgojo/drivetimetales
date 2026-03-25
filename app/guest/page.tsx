@@ -49,7 +49,8 @@ export default function GuestPage() {
         .from('story_analytics')
         .select('id, title, author, genre, duration_mins, cover_url, description, series_name')
         .not('cover_url', 'is', null)
-        .lte('duration_mins', 60)
+        .gte('duration_mins', 15)
+        .lte('duration_mins', 20)
         .order('duration_mins', { ascending: true })
         .limit(50)
       // Only show standalone stories — no series episodes

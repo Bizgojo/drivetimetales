@@ -57,8 +57,8 @@ export default function ForgotPasswordPage() {
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
           <Link href="/">
             <img 
-              src="/images/dtt-logo.png" 
-              alt="Drive Time Tales" 
+              src="/images/et-logo.png" 
+              alt="Endless Tales" 
               style={{ height: '60px', margin: '0 auto' }}
             />
           </Link>

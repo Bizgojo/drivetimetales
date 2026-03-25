@@ -123,13 +123,8 @@ function ResetPasswordContent() {
       <div className="min-h-screen bg-slate-950 text-white">
         <div className="max-w-md mx-auto px-4 py-8">
           <div className="flex justify-center mb-8">
-            <Link href="/welcome" className="flex items-center gap-2">
-              <span className="text-3xl">🚛</span>
-              <span className="text-3xl">🚗</span>
-              <div className="flex items-baseline ml-1">
-                <span className="text-lg font-bold text-white">Drive Time </span>
-                <span className="text-lg font-bold text-orange-500">Tales</span>
-              </div>
+            <Link href="/welcome">
+              <img src="/images/et-logo.png" alt="Endless Tales" style={{ height: '52px' }} />
             </Link>
           </div>
           
@@ -173,13 +168,8 @@ function ResetPasswordContent() {
       <div className="max-w-md mx-auto px-4 py-8">
         
         <div className="flex justify-center mb-8">
-          <Link href="/welcome" className="flex items-center gap-2">
-            <span className="text-3xl">🚛</span>
-            <span className="text-3xl">🚗</span>
-            <div className="flex items-baseline ml-1">
-              <span className="text-lg font-bold text-white">Drive Time </span>
-              <span className="text-lg font-bold text-orange-500">Tales</span>
-            </div>
+          <Link href="/welcome">
+            <img src="/images/et-logo.png" alt="Endless Tales" style={{ height: '52px' }} />
           </Link>
         </div>
 

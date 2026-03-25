@@ -316,7 +316,7 @@ function LibraryContent() {
           id={story.id}
           title={story.title}
           genre={story.genre}
-          author={story.author || 'Drive Time Tales'}
+          author={story.author || 'Endless Tales'}
           duration_mins={story.duration_mins}
           cover_url={story.cover_url}
           series_number={story.series_number}
