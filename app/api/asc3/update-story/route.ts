@@ -20,6 +20,14 @@ async function handleUpdate(req: NextRequest) {
       status,
       music_volume,
       io_volume,
+      intro_audio_url,
+      outro_audio_url,
+      story_audio_url,
+      background_music_url,
+      intro_before_url,
+      intro_after_url,
+      guest_outro_url,
+      has_name_slot,
     } = body
 
     const storyIdentifier = id || storyId
@@ -34,6 +42,14 @@ async function handleUpdate(req: NextRequest) {
         ...(status && { status }),
         ...(music_volume !== undefined && { music_volume }),
         ...(io_volume !== undefined && { io_volume }),
+        ...(intro_audio_url !== undefined && { intro_audio_url }),
+        ...(outro_audio_url !== undefined && { outro_audio_url }),
+        ...(story_audio_url !== undefined && { story_audio_url }),
+        ...(background_music_url !== undefined && { background_music_url }),
+        ...(intro_before_url !== undefined && { intro_before_url }),
+        ...(intro_after_url !== undefined && { intro_after_url }),
+        ...(guest_outro_url !== undefined && { guest_outro_url }),
+        ...(has_name_slot !== undefined && { has_name_slot }),
       })
       .eq('id', storyIdentifier)
 
