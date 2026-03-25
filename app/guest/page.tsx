@@ -47,12 +47,16 @@ export default function GuestPage() {
     async function fetchStories() {
       const { data } = await supabase
         .from('story_analytics')
-        .select('id, title, author, genre, duration_mins, cover_url, description')
+        .select('id, title, author, genre, duration_mins, cover_url, description, series_name')
         .not('cover_url', 'is', null)
         .lte('duration_mins', 60)
         .order('duration_mins', { ascending: true })
-        .limit(12)
-      setStories(data || [])
+        .limit(50)
+      // Only show standalone stories — no series episodes
+      const standalone = (data || []).filter(s =>
+        !s.series_name || s.series_name === 'None'
+      ).slice(0, 12)
+      setStories(standalone)
       setLoading(false)
     }
     fetchStories()
