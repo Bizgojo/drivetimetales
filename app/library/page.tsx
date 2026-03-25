@@ -233,7 +233,7 @@ function LibraryContent() {
   // Build series groups
   const seriesMap = new Map<string, SeriesGroup>()
   filteredStories.forEach(story => {
-    if (story.series_name) {
+    if (story.series_name && story.series_name !== 'None') {
       const existing = seriesMap.get(story.series_name)
       if (existing) {
         existing.episode_count++
@@ -273,7 +273,7 @@ function LibraryContent() {
   })
   // Singles = stories with no series_name OR demoted single-episode series (Rule 5)
   const singles = filteredStories
-    .filter(s => !s.series_name || singleEpSeriesStories.includes(s))
+    .filter(s => !s.series_name || s.series_name === 'None' || singleEpSeriesStories.includes(s))
     .sort((a, b) => (a.duration_mins || 0) - (b.duration_mins || 0))
   seriesGroups.sort((a, b) => (a.total_duration_mins || 0) - (b.total_duration_mins || 0))
 
