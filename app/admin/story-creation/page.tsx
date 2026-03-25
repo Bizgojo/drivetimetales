@@ -22,6 +22,8 @@ interface StoryPrompt {
   authorStyle: string;
   targetDestination: string;
   useOpus?: boolean;
+  narratorVoiceId?: string;
+  narratorVoiceName?: string;
 }
 
 interface StorySegment {
@@ -276,6 +278,8 @@ const CreateStoryStage: React.FC<{
 }> = ({ onSubmit, isLoading = false, sunoCookie, setSunoCookie, showSunoSettings, setShowSunoSettings }) => {
   const [genres, setGenres] = useState<string[]>([]);
   const [genresLoading, setGenresLoading] = useState(true);
+  const [narrators, setNarrators] = useState<any[]>([]);
+  const [selectedNarrator, setSelectedNarrator] = useState<any | null>(null);
   const authorStyleOptions = Object.keys(AUTHOR_STYLE_PROFILES);
   
   const [form, setForm] = useState<StoryPrompt>({
