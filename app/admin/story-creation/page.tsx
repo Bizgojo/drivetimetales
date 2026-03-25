@@ -1121,7 +1121,7 @@ const ReviewEditStage: React.FC<{
     setIsRenderingFinalMix(true)
     try {
       // Use local render route (runs Mac ffmpeg script) — Vercel can't run ffmpeg
-      const res = await fetch('/api/asc3/render-local', {
+      const res = await fetch('/api/asc3/render-final-mix', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ storyId: story.id }),
