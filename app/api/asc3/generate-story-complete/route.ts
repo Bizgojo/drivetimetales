@@ -958,6 +958,8 @@ Now write the complete audio drama:`
       duration_label: `${Math.ceil(actualWordCount / 150)} min`,
       credits: 0,
       source_tool: 'ASC3',
+      asc_version: '3',
+      color: 'from-purple-600 to-purple-900',
       is_new: true,
       is_featured: false,
       play_count: 0,
