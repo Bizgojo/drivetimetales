@@ -217,6 +217,20 @@ function StoryEditorPanel({
             </div>
           </div>
 
+          {/* Audio Player */}
+          {story.audio_url && (
+            <div>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: textSecondary, display: 'block', marginBottom: '8px' }}>PREVIEW AUDIO</label>
+              <audio
+                controls
+                src={story.audio_url}
+                style={{ width: '100%', borderRadius: '6px', accentColor: '#f97316' }}
+              >
+                Your browser does not support audio playback.
+              </audio>
+            </div>
+          )}
+
           {/* Title */}
           <div>
             <label style={{ fontSize: '12px', fontWeight: 600, color: textSecondary, display: 'block', marginBottom: '6px' }}>TITLE</label>
