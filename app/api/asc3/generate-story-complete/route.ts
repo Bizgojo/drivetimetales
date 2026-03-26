@@ -948,6 +948,7 @@ Now write the complete audio drama:`
 
     // Try full schema first (with character_guide if column exists)
     const fullRecord: Record<string, unknown> = {
+      id: storyId,
       title,
       author: authorName,
       genre: body.primaryGenre || 'Drama',
@@ -991,6 +992,7 @@ Now write the complete audio drama:`
         dbError = `Extended insert failed: ${retry1Err.message}`
 
         const baseRecord = {
+          id: storyId,
           title,
           author: authorName,
           genre: body.primaryGenre || 'Drama',
