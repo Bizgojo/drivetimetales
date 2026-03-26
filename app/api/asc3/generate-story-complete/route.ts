@@ -397,8 +397,8 @@ async function generateElevenLabsAudio(
   if (json.history_item_id) {
     await logELUsage(json.history_item_id, voiceName, text.length, storyTitle, text)
   }
-  // audio is base64 in json.audio
-  return Buffer.from(json.audio || '', 'base64')
+  // audio is base64 in json.audio_base64 (with-timestamps endpoint)
+  return Buffer.from(json.audio_base64 || json.audio || '', 'base64')
 }
 
 async function uploadAudioToStorage(
