@@ -1327,14 +1327,6 @@ const ReviewEditStage: React.FC<{
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold text-black">🎵 Audio Player</h3>
             <div className="flex items-center gap-2">
-              <button
-                onClick={handleRenderFinalMix}
-                disabled={isRenderingFinalMix}
-                className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition disabled:opacity-40"
-                title={`Mixes all audio + music at ${Math.round(musicVolume * 100)}% volume into one publishable MP3`}
-              >
-                {isRenderingFinalMix ? '⏳ Rendering...' : '🎬 Render Final Mix'}
-              </button>
               {!fullPlayMode ? (
                 <button
                   onClick={startFullPlay}
