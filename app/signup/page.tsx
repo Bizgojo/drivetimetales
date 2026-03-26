@@ -138,7 +138,6 @@ function SignUpContent() {
           <div style={{ color: '#94a3b8', fontSize: '13px' }}>Full access to hundreds of stories. Credit card required — cancel before trial ends and you won't be charged.</div>
         </div>
 
-        <FoundingMemberBanner variant="dark" />
 
         {/* Referral banner */}
         {referralCode && referrerName && (
