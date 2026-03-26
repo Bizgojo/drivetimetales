@@ -236,7 +236,6 @@ export async function POST(req: NextRequest) {
       // Phase 3: musicFadeStart to musicFadeEnd — rise from ducked back to full, then fade to 0
       const musicVolFilter =
         `[1:a]aformat=sample_rates=44100:channel_layouts=stereo,` +
-        `stream_loop=-1,` +
         `atrim=end=${totalDur},` +
         `adelay=${Math.round(musicStart * 1000)}|${Math.round(musicStart * 1000)},` +
         // Apply volume envelope
