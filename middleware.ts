@@ -4,10 +4,11 @@ import { createServerClient } from '@supabase/ssr'
 
 const PUBLIC_ROUTES = new Set([
   '/signin', '/signup', '/welcome', '/guest', '/forgot-password',
+  '/player',
   '/reset-password', '/auth/callback', '/auth/signup',
 ])
 
-const PUBLIC_PREFIXES = ['/api/', '/_next/', '/images/', '/icons/', '/favicon', '/podcast']
+const PUBLIC_PREFIXES = ['/api/', '/_next/', '/images/', '/icons/', '/favicon', '/podcast', '/player/']
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
