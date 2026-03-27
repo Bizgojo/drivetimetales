@@ -290,6 +290,16 @@ function PlayerContent() {
           } else advanceQueue()
         }}
         onCanPlay={() => { if (!isASC3 && resumeRef.current > 0 && audioRef.current) audioRef.current.currentTime = resumeRef.current }}
+        onError={() => {
+          // If a segment fails to load, skip to next segment instead of dying
+          if (isASC3 && queue.length > 0) {
+            const ni = queueIndex + 1
+            if (ni < queue.length) {
+              console.warn('[player] Segment failed, skipping to next:', queue[queueIndex]?.url)
+              advanceQueue()
+            }
+          }
+        }}
         src={!isASC3 ? story.audio_url : undefined}
       />
       <audio ref={musicRef} loop style={{ display:'none' }} />
