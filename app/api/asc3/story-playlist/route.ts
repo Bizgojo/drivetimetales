@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
 
   // If story has a rendered final_mix.mp3, return empty queue so the player
   // uses audio_url directly (all mixing already done — no segment queue needed)
-  if (story.audio_url?.includes('final_mix')) {
+  if (story.audio_url?.includes('final_mix') || story.audio_url?.includes('/final.mp3')) {
     return NextResponse.json({
       queue: [],
       useFinalMix: true,
