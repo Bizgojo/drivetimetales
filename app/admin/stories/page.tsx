@@ -494,6 +494,7 @@ function StoryRow({
   index,
   onEditClick,
   onDelete,
+  onApprove,
   deleteConfirm,
   setDeleteConfirm,
 }: {
@@ -501,6 +502,7 @@ function StoryRow({
   index: number
   onEditClick: (s: Story) => void
   onDelete: (id: string) => void
+  onApprove: (id: string) => void
   deleteConfirm: string | null
   setDeleteConfirm: (id: string | null) => void
 }) {
@@ -523,6 +525,7 @@ function StoryRow({
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
           <div style={{ color: textPrimary, fontWeight: 600, fontSize: '13px', lineHeight: 1.2 }}>{story.title}</div>
           {story.is_hidden && <span style={{ backgroundColor: '#dc2626', color: '#000000', borderRadius: '3px', padding: '1px 5px', fontSize: '9px', fontWeight: 700 }}>HIDDEN</span>}
+          {story.is_hidden && <button onClick={() => onApprove(story.id)} style={{ backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '3px', padding: '1px 6px', fontSize: '9px', fontWeight: 700, cursor: 'pointer', marginLeft: '2px' }}>✅ APPROVE</button>}
         </div>
         {story.episode_title && <div style={{ color: textSecondary, fontSize: '11px', fontStyle: 'italic' }}>{story.episode_title}</div>}
         <div style={{ color: textSecondary, fontSize: '11px' }}>by {story.author}</div>
@@ -738,6 +741,15 @@ export default function AdminStoriesPage() {
     if (data) setGenres(data)
   }
 
+  const approveStory = async (id: string) => {
+    const { error } = await supabase
+      .from('stories')
+      .update({ is_hidden: false, is_new: true })
+      .eq('id', id)
+    if (error) { alert('Approve failed: ' + error.message); return }
+    setStories(prev => prev.map(s => s.id === id ? { ...s, is_hidden: false } : s))
+  }
+
   async function deleteStory(storyId: string) {
     try {
       const res = await fetch('/api/admin/delete-story', {
@@ -908,6 +920,7 @@ export default function AdminStoriesPage() {
                   index={i}
                   onEditClick={s => { editingStoryRef.current = s; setEditingStory(s) }}
                   onDelete={deleteStory}
+                  onApprove={approveStory}
                   deleteConfirm={deleteConfirm}
                   setDeleteConfirm={setDeleteConfirm}
                 />
@@ -930,6 +943,7 @@ export default function AdminStoriesPage() {
                   index={i}
                   onEditClick={s => { editingStoryRef.current = s; setEditingStory(s) }}
                   onDelete={deleteStory}
+                  onApprove={approveStory}
                   deleteConfirm={deleteConfirm}
                   setDeleteConfirm={setDeleteConfirm}
                 />
