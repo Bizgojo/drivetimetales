@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase'
 
 interface Offer { id: string; name: string; offer_type: 'free_days' | 'credits'; referrer_reward: number; referred_reward: number }
 
-// Trial is locked at 7 days for all users
+// Trial is locked at 14 days for all users
 function getTrialVariant(): { days: number; variant: 'A' | 'B' } {
   return { days: 7, variant: 'A' }
 }
@@ -38,7 +38,7 @@ function SignUpContent() {
   const [referrerEmail, setReferrerEmail] = useState<string | null>(null)
   const [offer, setOffer] = useState<Offer | null>(null)
   const [referralId, setReferralId] = useState<string | null>(null)
-  const [trialDays, setTrialDays] = useState(7)
+  const [trialDays, setTrialDays] = useState(14)
   const [trialVariant, setTrialVariant] = useState<'A' | 'B'>('A')
 
   useEffect(() => {

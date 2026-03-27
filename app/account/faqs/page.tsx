@@ -24,7 +24,7 @@ const faqs: FAQ[] = [
   },
   {
     question: "When are refunds considered?",
-    answer: "We evaluate refund requests on a case-by-case basis. Credit pack refunds may be considered if requested within 7 days of purchase. Subscription refunds are evaluated based on circumstances. Please note that individual story purchases cannot be refunded once you've listened past the 3-minute preview. Contact our support team to discuss your specific situation."
+    answer: "We evaluate refund requests on a case-by-case basis. Credit pack refunds may be considered if requested within 14 days of purchase. Subscription refunds are evaluated based on circumstances. Please note that individual story purchases cannot be refunded once you've listened past the 3-minute preview. Contact our support team to discuss your specific situation."
   },
   {
     question: "How do I cancel my subscription?",

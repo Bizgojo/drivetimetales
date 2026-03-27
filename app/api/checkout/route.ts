@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Use trial days from client (A/B assigned), referrals always get at least 14
-    let trialDays = trialDaysParam || 7
+    let trialDays = trialDaysParam || 14
     if (referralCode) {
       const { data: referrer } = await supabase.from('users').select('id').eq('referral_code', referralCode).single()
       if (referrer) trialDays = Math.max(trialDays, 14)
