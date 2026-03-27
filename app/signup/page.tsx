@@ -198,7 +198,7 @@ function SignUpContent() {
         </form>
 
         <p style={{ color: '#475569', fontSize: '12px', textAlign: 'center', marginTop: '1rem', lineHeight: 1.5 }}>
-          By signing up you agree to our Terms of Service and Privacy Policy.<br/>
+          By signing up you agree to our <a href="/terms" style={{ color: "#f0a030", textDecoration: "none" }}>Terms of Service</a> and <a href="/privacy" style={{ color: "#f0a030", textDecoration: "none" }}>Privacy Policy</a>.<br/>
           $7.99/mo after trial. Founding members — price locked for life.
         </p>
       </div>
