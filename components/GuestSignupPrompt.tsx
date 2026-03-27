@@ -14,7 +14,7 @@ export default function GuestSignupPrompt({ minutesPlayed, storiesPlayed }: Prop
         You've enjoyed<br /><span style={{ color: '#f97316' }}>{minutesPlayed} minutes free!</span>
       </h1>
       <p style={{ color: 'white', fontSize: '14px', textAlign: 'center', lineHeight: 1.6, marginBottom: '32px', maxWidth: '300px' }}>
-        You've listened to {storiesPlayed} {storiesPlayed === 1 ? 'story' : 'stories'}. Sign up now and get <strong style={{ color: '#22c55e' }}>2 weeks completely free</strong> — no credit card needed.
+        You've listened to {storiesPlayed} {storiesPlayed === 1 ? 'story' : 'stories'}. Sign up now and get <strong style={{ color: '#22c55e' }}>2 weeks completely free</strong> — cancel before then and you won't be charged.
       </p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%', maxWidth: '320px' }}>
         <Link href="/signup" style={{ width: '100%', background: '#22c55e', color: '#042013', padding: '16px', borderRadius: '14px', fontSize: '17px', fontWeight: 900, textAlign: 'center', textDecoration: 'none', display: 'block' }}>
@@ -25,7 +25,7 @@ export default function GuestSignupPrompt({ minutesPlayed, storiesPlayed }: Prop
         </Link>
       </div>
       <p style={{ color: '#475569', fontSize: '11px', marginTop: '20px', textAlign: 'center' }}>
-        No credit card required · Cancel anytime
+        Credit card required · Won't be charged for 14 days
       </p>
     </div>
   )

@@ -141,9 +141,9 @@ export default function GuestPage() {
 
       <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, padding: '1rem', background: 'linear-gradient(to top, #0a0a0f 80%, transparent)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
         <Link href="/signup" style={{ display: 'block', width: '100%', maxWidth: '380px', background: '#f0a030', color: '#0a0a0f', padding: '14px', borderRadius: '50px', fontSize: '0.95rem', fontWeight: 700, textAlign: 'center', textDecoration: 'none', boxShadow: '0 0 30px rgba(240,160,48,0.3)' }}>
-          🎉 Get 2 Weeks Free — No Credit Card
+          🎉 Get 2 Weeks Free — Cancel Anytime
         </Link>
-        <p style={{ color: 'rgba(240,236,228,0.4)', fontSize: '0.72rem' }}>Cancel anytime · $7.99/month after trial</p>
+        <p style={{ color: 'rgba(240,236,228,0.4)', fontSize: '0.72rem' }}>Free for 14 days · then $7.99/mo · cancel anytime</p>
       </div>
     </div>
   )
