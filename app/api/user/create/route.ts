@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
 
     // Check if already exists in "User" base table
     const { data: existing } = await supabaseAdmin
-      .from('User')
+      .from('users')
       .select('id')
       .eq('id', id)
       .single();
@@ -29,20 +29,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, exists: true });
     }
 
-    // Insert into base "User" table using correct camelCase columns
-    const now = new Date().toISOString();
+    // Insert into users table
     const { data, error } = await supabaseAdmin
-      .from('User')
+      .from('users')
       .insert({
         id,
         email,
-        firstName,
-        name: displayName,
-        subscriptionTier: 'free',
-        creditsRemaining: 2,
-        createdAt: now,
-        updatedAt: now,
-        state: 'active',
+        first_name: firstName,
+        display_name: displayName,
+        credits: 0,
+        plan: 'free',
       })
       .select()
       .single();
