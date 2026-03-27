@@ -90,7 +90,6 @@ function SignUpContent() {
     if (!user) { setError('Failed to create account'); setLoading(false); return }
 
     // Save trial variant to users table for A/B tracking
-    try { await supabase.from('users').update({ trial_variant: trialVariant }).eq('id', user.id) } catch (_) {}
 
     // Handle referral tracking
     if (referralId && referrerId) {
