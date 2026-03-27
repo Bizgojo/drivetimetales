@@ -217,14 +217,10 @@ function LibraryContent() {
       if (!story.group_name || story.group_name !== selectedGroup) return false
     }
     if (selectedGenre !== 'All Categories') {
-      const genreLower = story.genre?.toLowerCase() || ''
-      if (selectedGenre === 'Mystery' && !genreLower.includes('mystery')) return false
-      if (selectedGenre === 'Romance' && !genreLower.includes('romance')) return false
-      if (selectedGenre === 'Horror' && !genreLower.includes('horror')) return false
-      if (selectedGenre === 'Thriller' && !genreLower.includes('thriller')) return false
-      if (selectedGenre === 'Sci-Fi' && !genreLower.includes('sci')) return false
-      if (selectedGenre === 'Western' && !genreLower.includes('western')) return false
-      if (selectedGenre === 'Drama' && !genreLower.includes('drama')) return false
+      const match = [story.genre, (story as any).genre_secondary, (story as any).genre_third]
+        .filter(Boolean)
+        .some(g => g?.toLowerCase() === selectedGenre.toLowerCase())
+      if (!match) return false
     }
     
     return true
