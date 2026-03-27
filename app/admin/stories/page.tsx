@@ -105,6 +105,16 @@ function StoryEditorPanel({
   const [groupName, setGroupName] = useState(story.group_name || '')
   const [groups, setGroups] = useState<Group[]>([])
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [productionCost, setProductionCost] = useState<Record<string, string>>(() => {
+    const c = (story as any).production_cost || {}
+    return {
+      claude: c.claude?.toString() || '',
+      elevenlabs: c.elevenlabs?.toString() || '',
+      openai: c.openai?.toString() || '',
+      suno: c.suno?.toString() || '',
+      other: c.other?.toString() || '',
+    }
+  })
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -154,6 +164,11 @@ function StoryEditorPanel({
         is_hidden: isHidden,
         group_name: groupName || null,
         cover_url: coverUrl || null,
+        production_cost: Object.fromEntries(
+          Object.entries(productionCost)
+            .filter(([_, v]) => v !== '' && !isNaN(parseFloat(v)))
+            .map(([k, v]) => [k, parseFloat(v)])
+        ),
       })
       .eq('id', story.id)
       .select()
@@ -354,6 +369,42 @@ function StoryEditorPanel({
               <option value="">— No group —</option>
               {groups.map(g => <option key={g.id} value={g.name}>{g.name}</option>)}
             </select>
+          </div>
+
+          {/* Production Cost */}
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: textSecondary }}>PRODUCTION COST</label>
+              <span style={{ fontSize: '12px', fontWeight: 700, color: '#16a34a' }}>
+                Total: ${Object.values(productionCost).reduce((sum, v) => sum + (parseFloat(v) || 0), 0).toFixed(2)}
+              </span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {[
+                { key: 'claude', label: 'Claude (Anthropic)', icon: '🤖' },
+                { key: 'elevenlabs', label: 'ElevenLabs', icon: '🎙️' },
+                { key: 'openai', label: 'OpenAI', icon: '🧠' },
+                { key: 'suno', label: 'Suno', icon: '🎵' },
+                { key: 'other', label: 'Other', icon: '💰' },
+              ].map(({ key, label, icon }) => (
+                <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '13px', width: '20px' }}>{icon}</span>
+                  <span style={{ fontSize: '11px', color: textSecondary, width: '120px', flexShrink: 0 }}>{label}</span>
+                  <div style={{ position: 'relative', flex: 1 }}>
+                    <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', fontSize: '12px', color: textSecondary }}>$</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={productionCost[key]}
+                      onChange={e => setProductionCost(prev => ({ ...prev, [key]: e.target.value }))}
+                      placeholder="0.00"
+                      style={{ width: '100%', padding: '6px 8px 6px 20px', borderRadius: '6px', border: `1px solid ${border}`, fontSize: '12px', color: '#000000', backgroundColor: '#ffffff', boxSizing: 'border-box' as 'border-box' }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
 
           {/* Visibility */}
