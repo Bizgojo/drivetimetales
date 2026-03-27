@@ -99,7 +99,6 @@ export async function POST(req: NextRequest) {
         trial_period_days: trialDays > 0 ? trialDays : undefined
       },
       success_url: `${process.env.NEXT_PUBLIC_BASE_URL || 'https://drivetimetales.vercel.app'}/home?welcome=true`,
-      // DEBUG
       cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL || 'https://drivetimetales.vercel.app'}/signup?canceled=true`,
       metadata: { userId, referralCode: referralCode || '' }
     })
