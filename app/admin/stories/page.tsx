@@ -713,6 +713,8 @@ export default function AdminStoriesPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [genreFilter, setGenreFilter] = useState('All')
+  const [viewMode, setViewMode] = useState<'all' | 'series' | 'standalone'>('all')
+  const [pendingOnly, setPendingOnly] = useState(false)
   const [sortBy, setSortBy] = useState<'title' | 'genre' | 'duration_mins' | 'series_name' | 'downloads_total' | 'pct_finished' | 'rating' | 'created_at'>('created_at')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
@@ -778,7 +780,11 @@ export default function AdminStoriesPage() {
         s.genre === genreFilter ||
         s.genre_secondary === genreFilter ||
         s.genre_third === genreFilter
-      return matchesSearch && matchesGenre
+      const matchesPending = !pendingOnly || s.is_hidden
+      const matchesView = viewMode === 'all' ||
+        (viewMode === 'series' && !!s.series_name) ||
+        (viewMode === 'standalone' && !s.series_name)
+      return matchesSearch && matchesGenre && matchesPending && matchesView
     })
 
   // Split into series groups and standalone stories
@@ -874,7 +880,7 @@ export default function AdminStoriesPage() {
       </div>
 
       {/* Filters */}
-      <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
         <input
           type="text"
           placeholder="Search title, author, or series..."
@@ -885,8 +891,20 @@ export default function AdminStoriesPage() {
         <select value={genreFilter} onChange={e => setGenreFilter(e.target.value)} style={{ padding: '0.5rem 0.75rem', borderRadius: '6px', border: `1px solid ${border}`, color: '#000000', backgroundColor: '#ffffff', fontSize: '14px' }}>
           {genreNames.map(g => <option key={g} value={g}>{g}</option>)}
         </select>
-        <div style={{ padding: '0.5rem 0.75rem', fontSize: '12px', color: textSecondary, background: '#fff', border: `1px solid ${border}`, borderRadius: '6px' }}>
-          Click column headers to sort
+      </div>
+      {/* View toggle + Pending filter */}
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+        {(['all', 'series', 'standalone'] as const).map(mode => (
+          <button key={mode} onClick={() => setViewMode(mode)} style={{ padding: '0.4rem 0.9rem', borderRadius: '6px', border: `1px solid ${border}`, backgroundColor: viewMode === mode ? '#1a1a1a' : '#ffffff', color: viewMode === mode ? '#ffffff' : '#000000', fontSize: '13px', fontWeight: viewMode === mode ? 700 : 400, cursor: 'pointer', textTransform: 'capitalize' }}>
+            {mode === 'all' ? '📋 All' : mode === 'series' ? '📺 Series' : '🎯 Standalone'}
+          </button>
+        ))}
+        <div style={{ width: '1px', height: '24px', backgroundColor: border, margin: '0 4px' }} />
+        <button onClick={() => setPendingOnly(!pendingOnly)} style={{ padding: '0.4rem 0.9rem', borderRadius: '6px', border: `1px solid ${pendingOnly ? '#dc2626' : border}`, backgroundColor: pendingOnly ? '#dc2626' : '#ffffff', color: pendingOnly ? '#ffffff' : '#000000', fontSize: '13px', fontWeight: pendingOnly ? 700 : 400, cursor: 'pointer' }}>
+          🔴 Pending Approval {pendingOnly ? '(ON)' : ''}
+        </button>
+        <div style={{ marginLeft: 'auto', padding: '0.4rem 0.75rem', fontSize: '12px', color: textSecondary }}>
+          {filteredStories.length} stories · Click headers to sort
         </div>
       </div>
 
