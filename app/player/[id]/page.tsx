@@ -255,7 +255,7 @@ function PlayerContent() {
 
   return (
     <div style={{ height:'100dvh', backgroundColor:'#020617', color:'white', display:'flex', flexDirection:'column', overflow:'hidden' }}>
-      <audio ref={audioRef} crossOrigin="anonymous"
+      <audio ref={audioRef}
         onLoadedMetadata={(e) => {
           const d = e.currentTarget.duration; setDuration(d)
           segDursRef.current[queueIndex] = d
@@ -302,7 +302,7 @@ function PlayerContent() {
         }}
         src={!isASC3 ? story.audio_url : undefined}
       />
-      <audio ref={musicRef} crossOrigin="anonymous" loop style={{ display:'none' }} />
+      <audio ref={musicRef} loop style={{ display:'none' }} />
 
       {/* Header */}
       <div style={{ padding:'10px 16px', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'space-between', background:'#0f172a', borderBottom:'1px solid rgba(148,163,184,0.06)' }}>
