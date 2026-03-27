@@ -34,9 +34,8 @@ export async function GET(req: NextRequest) {
     }, { headers: { 'Cache-Control': 'no-store' } })
   }
 
-  // Extract storage folder ID — always prefer story_audio_url (segments folder)
-  // intro_audio_url may use a different/incorrect folder ID from DB auto-generated ID
-  const refUrl = story.story_audio_url || story.intro_audio_url || ''
+  // Extract storage folder ID — prefer story_audio_url, fall back to audio_url
+  const refUrl = story.story_audio_url || story.intro_audio_url || story.audio_url || ''
   const folderMatch = refUrl.match(/asc3\/([^/]+)\//)
   const folderId = folderMatch?.[1]
 
