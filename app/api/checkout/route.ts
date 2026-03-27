@@ -82,8 +82,10 @@ export async function POST(req: NextRequest) {
     }
 
     // Create checkout session
-    const successUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'https://drivetimetales.vercel.app'}/home?welcome=true`
-    console.log('[checkout] success_url:', successUrl)
+    const host = req.headers.get('host') || 'drivetimetales.vercel.app'
+    const protocol = host.includes('localhost') ? 'http' : 'https'
+    const baseUrl = `${protocol}://${host}`
+    console.log('[checkout] baseUrl:', baseUrl)
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       payment_method_types: ['card'],
@@ -98,8 +100,8 @@ export async function POST(req: NextRequest) {
         metadata: { userId, isFoundingMember: isFoundingMember ? 'true' : 'false' },
         trial_period_days: trialDays > 0 ? trialDays : undefined
       },
-      success_url: `${process.env.NEXT_PUBLIC_BASE_URL || 'https://drivetimetales.vercel.app'}/home?welcome=true`,
-      cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL || 'https://drivetimetales.vercel.app'}/signup?canceled=true`,
+      success_url: `${baseUrl}/home?welcome=true`,
+      cancel_url: `${baseUrl}/signup?canceled=true`,
       metadata: { userId, referralCode: referralCode || '' }
     })
 
