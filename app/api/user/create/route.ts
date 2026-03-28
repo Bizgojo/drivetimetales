@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
                 <div style="font-size:32px;text-align:center;margin-bottom:16px;">🎧</div>
                 <h1 style="color:#ffffff;font-size:22px;font-weight:800;text-align:center;margin:0 0 12px;">Welcome${displayName && displayName !== 'Friend' ? `, ${displayName}` : ''}!</h1>
                 <p style="color:rgba(255,255,255,0.75);font-size:15px;line-height:1.7;margin:0 0 20px;text-align:center;">
-                  Your 7-day free trial has started. Dive in and discover original audio dramas made for people on the move.
+                  Your 14-day free trial has started. Dive in and discover original audio dramas made for people on the move.
                 </p>
                 <div style="text-align:center;margin-bottom:24px;">
                   <a href="https://app.endless-tales.com/library" style="display:inline-block;background:#f97316;color:white;text-decoration:none;padding:14px 32px;border-radius:10px;font-size:15px;font-weight:800;letter-spacing:0.01em;">Start Listening →</a>
