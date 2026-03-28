@@ -29,6 +29,7 @@ interface Story {
   is_free?: boolean
   group_name?: string | null
   created_at?: string
+  narrator_voice_name?: string | null
   // From story_analytics view
   avg_rating?: number | null
   review_count?: number

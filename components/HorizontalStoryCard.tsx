@@ -39,6 +39,7 @@ interface HorizontalStoryCardProps {
   avg_rating?: number | null; review_count?: number
   is_completed?: boolean; has_reviewed?: boolean
   not_for_me?: boolean
+  narrator_voice_name?: string | null
   onReviewClick?: (e: React.MouseEvent) => void
 }
 
@@ -75,7 +76,7 @@ function PlayPill({ label }: { label: string }) {
   )
 }
 
-export default function HorizontalStoryCard({ id, title, genre, author, duration_mins, cover_url, description, credits, series_name, episode_title, series_number, series_total, flags = [], flag, progress_percent, avg_rating, review_count, is_completed, has_reviewed, not_for_me, onReviewClick }: HorizontalStoryCardProps) {
+export default function HorizontalStoryCard({ id, title, genre, author, duration_mins, cover_url, description, credits, series_name, episode_title, series_number, series_total, flags = [], flag, progress_percent, avg_rating, review_count, is_completed, has_reviewed, not_for_me, narrator_voice_name, onReviewClick }: HorizontalStoryCardProps) {
 
   let finalFlags = flags
   if ((!flags || flags.length === 0) && flag) {
@@ -114,12 +115,11 @@ export default function HorizontalStoryCard({ id, title, genre, author, duration
         ) : (
           <h3 style={{ color: 'white', fontSize: '15px', fontWeight: 700, margin: 0, lineHeight: 1.2, letterSpacing: '-0.01em', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{title}</h3>
         )}
-        <div style={{ fontSize: '11px', lineHeight: 1.3 }}>
-          <div style={{ color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{author}</div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ color: '#94a3b8' }}>{genre}</span>
-            {durationLabel && <span style={{ color: 'white', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0, marginLeft: '6px' }}>{durationLabel}</span>}
-          </div>
+        <div style={{ fontSize: '11px', lineHeight: 1.3, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '4px' }}>
+          <span style={{ color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+            {author}{genre ? ` · ${genre}` : ''}{narrator_voice_name ? ` · Narrated by ${narrator_voice_name}` : ''}
+          </span>
+          {durationLabel && <span style={{ color: 'white', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0, marginLeft: '6px' }}>{durationLabel}</span>}
         </div>
         {!showReviewPrompt && description && (
           <p style={{ color: '#94a3b8', fontSize: '11px', lineHeight: 1.35, margin: 0, display: '-webkit-box', WebkitLineClamp: avg_rating ? 2 : 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{description}</p>
