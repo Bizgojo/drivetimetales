@@ -806,6 +806,9 @@ interface StoryCostRow {
   production_cost: {
     claude?: number
     elevenlabs?: number
+    elevenlabs_credits?: number
+    elevenlabs_estimated?: number
+    el_verified_at?: string
     openai?: number
     suno?: number
     other?: number
@@ -872,6 +875,23 @@ function StoriesCostTab({ supabase }: { supabase: any }) {
     if (!s.production_cost) return 0
     if (key) return (s.production_cost as any)[key] || 0
     return STORY_COST_KEYS.reduce((sum, k) => sum + ((s.production_cost as any)?.[k] || 0), 0)
+  }
+
+  const elVerified = (s: StoryCostRow) => !!s.production_cost?.el_verified_at
+  const elDiscrepancy = (s: StoryCostRow) => {
+    const est = s.production_cost?.elevenlabs_estimated
+    const actual = s.production_cost?.elevenlabs
+    if (!est || !actual) return null
+    return Math.abs((actual - est) / est) * 100
+  }
+  const elVerifyStatus = (s: StoryCostRow): { icon: string; color: string; label: string } => {
+    if (!s.production_cost?.elevenlabs) return { icon: '—', color: '#bbb', label: 'No EL cost' }
+    if (!elVerified(s)) return { icon: '⏳', color: '#f59e0b', label: 'Pending verification' }
+    const disc = elDiscrepancy(s)
+    if (disc === null) return { icon: '✅', color: '#16a34a', label: 'Verified' }
+    if (disc > 10) return { icon: '🚨', color: '#dc2626', label: `${disc.toFixed(1)}% discrepancy` }
+    if (disc > 5) return { icon: '⚠️', color: '#ea580c', label: `${disc.toFixed(1)}% discrepancy` }
+    return { icon: '✅', color: '#16a34a', label: `Verified (${disc.toFixed(1)}% diff)` }
   }
 
   const monthCatTotal = (m: number, key: string) =>
@@ -1051,10 +1071,14 @@ function StoriesCostTab({ supabase }: { supabase: any }) {
                     <th style={S.th}>Status</th>
                     {STORY_COST_KEYS.map(k => <th key={k} style={S.th}>{STORY_COST_LABELS[k]}</th>)}
                     <th style={S.th}>Total</th>
+                    <th style={S.th}>EL Verified</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {activeMonthStories.map(s => (
+                  {activeMonthStories.map(s => {
+                    const vs = elVerifyStatus(s)
+                    const disc = elDiscrepancy(s)
+                    return (
                     <tr key={s.id}>
                       <td style={S.tdLeft}>
                         <div style={{ fontWeight: 600, fontSize: 13 }}>{s.title}</div>
@@ -1069,13 +1093,24 @@ function StoriesCostTab({ supabase }: { supabase: any }) {
                         <td key={k} style={{ ...S.td, color: storyCost(s, k) > 0 ? '#000' : '#ddd' }}>{fmtC(storyCost(s, k))}</td>
                       ))}
                       <td style={{ ...S.td, fontWeight: 700 }}>{fmtC(storyCost(s))}</td>
+                      <td style={{ ...S.td, fontSize: 11, color: vs.color, fontWeight: disc && disc > 5 ? 700 : 400 }}>
+                        <div>{vs.icon} {vs.label}</div>
+                        {s.production_cost?.elevenlabs_credits && (
+                          <div style={{ color: '#888', marginTop: 2 }}>{s.production_cost.elevenlabs_credits.toLocaleString()} credits</div>
+                        )}
+                        {s.production_cost?.el_verified_at && (
+                          <div style={{ color: '#aaa', fontSize: 10 }}>{new Date(s.production_cost.el_verified_at).toLocaleDateString()}</div>
+                        )}
+                      </td>
                     </tr>
-                  ))}
+                    )
+                  })}
                   <tr style={{ background: '#fff7ed', fontWeight: 700, borderTop: '2px solid #ddd' }}>
                     <td style={S.tdLeft}>TOTAL</td>
                     <td style={S.td} />
                     {STORY_COST_KEYS.map(k => <td key={k} style={{ ...S.td, fontWeight: 700 }}>{fmtC(monthCatTotal(selectedMonth, k))}</td>)}
                     <td style={{ ...S.td, fontWeight: 700 }}>{fmtC(monthTotal(selectedMonth))}</td>
+                    <td style={S.td} />
                   </tr>
                 </tbody>
               </table>
@@ -1099,11 +1134,14 @@ function StoriesCostTab({ supabase }: { supabase: any }) {
                 <th style={S.th}>Status</th>
                 {STORY_COST_KEYS.map(k => <th key={k} style={S.th}>{STORY_COST_LABELS[k]}</th>)}
                 <th style={S.th}>Total</th>
+                <th style={S.th}>EL Verified</th>
               </tr>
             </thead>
             <tbody>
               {stories.map(s => {
                 const m = storyMonth(s)
+                const vs = elVerifyStatus(s)
+                const disc = elDiscrepancy(s)
                 return (
                   <tr key={s.id}>
                     <td style={S.tdLeft}>
@@ -1120,6 +1158,12 @@ function StoriesCostTab({ supabase }: { supabase: any }) {
                       <td key={k} style={{ ...S.td, color: storyCost(s, k) > 0 ? '#000' : '#ddd' }}>{fmtC(storyCost(s, k))}</td>
                     ))}
                     <td style={{ ...S.td, fontWeight: 700 }}>{fmtC(storyCost(s))}</td>
+                    <td style={{ ...S.td, fontSize: 11, color: vs.color, fontWeight: disc && disc > 5 ? 700 : 400 }}>
+                      <div>{vs.icon} {vs.label}</div>
+                      {s.production_cost?.elevenlabs_credits && (
+                        <div style={{ color: '#888', fontSize: 10 }}>{s.production_cost.elevenlabs_credits.toLocaleString()} cr</div>
+                      )}
+                    </td>
                   </tr>
                 )
               })}
