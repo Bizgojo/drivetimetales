@@ -34,11 +34,6 @@ export async function GET(req: NextRequest) {
     }, { headers: { 'Cache-Control': 'no-store' } })
   }
 
-  // Extract storage folder ID — prefer story_audio_url, fall back to audio_url
-  const refUrl = story.story_audio_url || story.intro_audio_url || story.audio_url || ''
-  const folderMatch = refUrl.match(/asc3\/([^/]+)\//)
-  const folderId = folderMatch?.[1]
-
   const queue: { url: string; type: 'intro' | 'story' | 'outro'; label: string }[] = []
 
   // 1. Intro
@@ -46,7 +41,31 @@ export async function GET(req: NextRequest) {
     queue.push({ url: story.intro_audio_url, type: 'intro', label: 'Intro' })
   }
 
-  // 2. Story segments (from storage)
+  // 2. Detect architecture: new ASC (asc/slug/story_body.mp3) vs old ASC3 (asc3/id/segment_*.mp3)
+  const refUrl = story.story_audio_url || story.audio_url || ''
+  const isNewASC = refUrl.includes('/asc/') && !refUrl.includes('/asc3/')
+
+  if (isNewASC) {
+    // New 3-file architecture — story_body.mp3 is the full pre-mixed story + BG music
+    const storyUrl = story.story_audio_url || story.audio_url
+    if (storyUrl) {
+      queue.push({ url: storyUrl, type: 'story', label: 'Story' })
+    }
+    if (story.outro_audio_url) {
+      queue.push({ url: story.outro_audio_url, type: 'outro', label: 'Outro' })
+    }
+    return NextResponse.json({
+      queue,
+      introOutroMusicUrl: INTRO_OUTRO_MUSIC,
+      backgroundMusicUrl: null,
+      totalSegments: queue.length,
+    }, { headers: { 'Cache-Control': 'no-store' } })
+  }
+
+  // Old ASC3 architecture — segments in asc3/{folderId}/
+  const folderMatch = refUrl.match(/asc3\/([^/]+)\//)
+  const folderId = folderMatch?.[1]
+
   if (folderId) {
     const { data: files } = await supabase.storage
       .from('audio')
@@ -60,17 +79,15 @@ export async function GET(req: NextRequest) {
       queue.push({
         url: `${BASE_URL}/asc3/${folderId}/${seg.name}`,
         type: 'story',
-        label: `Story`
+        label: 'Story'
       })
     }
 
-    // Background music URL
     const bgFile = (files || []).find(f => f.name === 'background_music.mp3')
     const backgroundMusicUrl = bgFile
       ? `${BASE_URL}/asc3/${folderId}/background_music.mp3`
       : null
 
-    // 3. Outro
     if (story.outro_audio_url) {
       queue.push({ url: story.outro_audio_url, type: 'outro', label: 'Outro' })
     }
@@ -79,11 +96,11 @@ export async function GET(req: NextRequest) {
       queue,
       introOutroMusicUrl: INTRO_OUTRO_MUSIC,
       backgroundMusicUrl,
-      totalSegments: queue.length
+      totalSegments: queue.length,
     })
   }
 
-  // Fallback: just return what we have
+  // Fallback
   if (story.outro_audio_url) {
     queue.push({ url: story.outro_audio_url, type: 'outro', label: 'Outro' })
   }
@@ -92,6 +109,6 @@ export async function GET(req: NextRequest) {
     queue,
     introOutroMusicUrl: INTRO_OUTRO_MUSIC,
     backgroundMusicUrl: null,
-    totalSegments: queue.length
+    totalSegments: queue.length,
   })
 }
