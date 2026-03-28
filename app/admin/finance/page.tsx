@@ -795,9 +795,347 @@ function ELDetailTab() {
   )
 }
 
+// ─── STORIES COST TAB ─────────────────────────────────────────────────────────
+interface StoryCostRow {
+  id: string
+  title: string
+  author: string
+  published_on: string | null
+  created_at: string | null
+  is_hidden: boolean
+  production_cost: {
+    claude?: number
+    elevenlabs?: number
+    openai?: number
+    suno?: number
+    other?: number
+  } | null
+}
+
+const STORY_COST_KEYS = ['claude','elevenlabs','openai','suno','other'] as const
+const STORY_COST_LABELS: Record<string, string> = {
+  claude: '🤖 Claude',
+  elevenlabs: '🎙️ ElevenLabs',
+  openai: '🧠 OpenAI',
+  suno: '🎵 Suno',
+  other: '💰 Other',
+}
+const BUDGET_STORAGE_KEY = 'et_story_cost_budgets_2026'
+const DEFAULT_BUDGETS: Record<string, number> = {
+  claude: 50,
+  elevenlabs: 500,
+  openai: 20,
+  suno: 20,
+  other: 50,
+}
+
+function StoriesCostTab({ supabase }: { supabase: any }) {
+  const [stories, setStories] = useState<StoryCostRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [selectedMonth, setSelectedMonth] = useState<number | null>(null)
+  const [budgets, setBudgets] = useState<Record<string, number>>(DEFAULT_BUDGETS)
+  const [editingBudget, setEditingBudget] = useState<string | null>(null)
+  const [budgetDraft, setBudgetDraft] = useState('')
+
+  useEffect(() => {
+    const saved = localStorage.getItem(BUDGET_STORAGE_KEY)
+    if (saved) setBudgets(JSON.parse(saved))
+  }, [])
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true)
+      const { data, error } = await supabase
+        .from('stories')
+        .select('id, title, author, published_on, created_at, is_hidden, production_cost')
+        .order('created_at', { ascending: false })
+      if (!error && data) setStories(data)
+      setLoading(false)
+    }
+    load()
+  }, [])
+
+  const saveBudgets = (next: Record<string, number>) => {
+    setBudgets(next)
+    localStorage.setItem(BUDGET_STORAGE_KEY, JSON.stringify(next))
+  }
+
+  const storyMonth = (s: StoryCostRow) => {
+    const d = s.published_on || s.created_at
+    if (!d) return -1
+    return new Date(d).getMonth()
+  }
+
+  const storiesInMonth = (m: number) => stories.filter(s => storyMonth(s) === m)
+
+  const storyCost = (s: StoryCostRow, key?: string) => {
+    if (!s.production_cost) return 0
+    if (key) return (s.production_cost as any)[key] || 0
+    return STORY_COST_KEYS.reduce((sum, k) => sum + ((s.production_cost as any)?.[k] || 0), 0)
+  }
+
+  const monthCatTotal = (m: number, key: string) =>
+    storiesInMonth(m).reduce((sum, s) => sum + storyCost(s, key), 0)
+
+  const monthTotal = (m: number) =>
+    STORY_COST_KEYS.reduce((sum, k) => sum + monthCatTotal(m, k), 0)
+
+  const ytdCatTotal = (key: string) =>
+    Array.from({ length: 12 }, (_, i) => monthCatTotal(i, key)).reduce((a, b) => a + b, 0)
+
+  const fmtC = (n: number) => n === 0 ? '—' : `$${n.toFixed(2)}`
+  const pct = (n: number, budget: number) => budget > 0 ? Math.round((n / budget) * 100) : 0
+
+  const S: Record<string, React.CSSProperties> = {
+    card: { background: '#fff', border: '1px solid #ddd', borderRadius: 10, overflow: 'hidden', marginBottom: 20 },
+    cardHead: { background: '#fafafa', borderBottom: '1px solid #eee', padding: '12px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+    table: { width: '100%', borderCollapse: 'collapse' as const, fontSize: 13 },
+    th: { textAlign: 'right' as const, padding: '8px 10px', borderBottom: '2px solid #eee', fontWeight: 700, color: '#000', whiteSpace: 'nowrap' as const, background: '#fafafa' },
+    thLeft: { textAlign: 'left' as const, padding: '8px 14px', borderBottom: '2px solid #eee', fontWeight: 700, color: '#000', background: '#fafafa' },
+    td: { padding: '8px 10px', borderBottom: '1px solid #f0f0f0', textAlign: 'right' as const },
+    tdLeft: { padding: '8px 14px', borderBottom: '1px solid #f0f0f0', textAlign: 'left' as const },
+  }
+
+  const monthBtn = (active: boolean): React.CSSProperties => ({
+    padding: '6px 12px', borderRadius: 6, border: `1px solid ${active ? '#f97316' : '#ddd'}`,
+    background: active ? '#f97316' : '#fff', color: active ? '#fff' : '#333',
+    fontWeight: 600, fontSize: 12, cursor: 'pointer',
+  })
+
+  const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  const MONTH_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December']
+
+  if (loading) return (
+    <div style={{ padding: 40, textAlign: 'center', color: '#888' }}>Loading story cost data...</div>
+  )
+
+  const currentMonth = new Date().getMonth()
+  const activeMonthStories = selectedMonth !== null ? storiesInMonth(selectedMonth) : []
+
+  return (
+    <div>
+      {/* Budget Panel */}
+      <div style={S.card}>
+        <div style={S.cardHead}>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>📊 Monthly Production Budget</div>
+          <div style={{ fontSize: 12, color: '#888' }}>Per-category monthly caps · 90% threshold alerts · click amount to edit</div>
+        </div>
+        <div style={{ padding: '16px 20px' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 12 }}>
+            {STORY_COST_KEYS.map(key => {
+              const spent = monthCatTotal(currentMonth, key)
+              const budget = budgets[key] || 0
+              const p = pct(spent, budget)
+              const atRisk = p >= 90
+              const over = p >= 100
+              return (
+                <div key={key} style={{
+                  flex: '1 1 160px',
+                  background: over ? '#fef2f2' : atRisk ? '#fff7ed' : '#f9fafb',
+                  border: `1px solid ${over ? '#fecaca' : atRisk ? '#fed7aa' : '#e5e7eb'}`,
+                  borderRadius: 8, padding: '12px 16px',
+                }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>{STORY_COST_LABELS[key]}</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <span style={{ fontSize: 18, fontWeight: 900, color: over ? '#dc2626' : atRisk ? '#ea580c' : '#000' }}>
+                      {fmtC(spent)}
+                    </span>
+                    <span style={{ fontSize: 11, color: '#888' }}>of&nbsp;
+                      {editingBudget === key ? (
+                        <input type="number" value={budgetDraft} autoFocus
+                          onChange={e => setBudgetDraft(e.target.value)}
+                          onBlur={() => { saveBudgets({ ...budgets, [key]: parseFloat(budgetDraft) || 0 }); setEditingBudget(null) }}
+                          onKeyDown={e => { if (e.key === 'Enter') { saveBudgets({ ...budgets, [key]: parseFloat(budgetDraft) || 0 }); setEditingBudget(null) } }}
+                          style={{ width: 60, fontSize: 11, border: '1px solid #f97316', borderRadius: 4, padding: '1px 4px' }}
+                        />
+                      ) : (
+                        <span onClick={() => { setEditingBudget(key); setBudgetDraft(budget.toString()) }}
+                          style={{ cursor: 'pointer', textDecoration: 'underline dotted', color: '#666' }}>
+                          ${budget}
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                  <div style={{ background: '#e5e7eb', borderRadius: 99, height: 6, overflow: 'hidden' }}>
+                    <div style={{
+                      height: '100%', borderRadius: 99,
+                      width: `${Math.min(p, 100)}%`,
+                      background: over ? '#dc2626' : atRisk ? '#f97316' : '#22c55e',
+                      transition: 'width 0.3s',
+                    }} />
+                  </div>
+                  <div style={{ fontSize: 11, marginTop: 4, color: over ? '#dc2626' : atRisk ? '#ea580c' : '#888', fontWeight: atRisk ? 700 : 400 }}>
+                    {over ? `⛔ Over by $${(spent - budget).toFixed(2)}` : atRisk ? `⚠️ ${p}% used` : `${p}% used`}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          <div style={{ fontSize: 11, color: '#aaa', marginTop: 12 }}>Showing {MONTH_FULL[currentMonth]} spend vs budget.</div>
+        </div>
+      </div>
+
+      {/* Monthly Summary */}
+      <div style={S.card}>
+        <div style={S.cardHead}>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>📅 Monthly Story Production Costs</div>
+          <div style={{ fontSize: 12, color: '#888' }}>Click a month to drill down</div>
+        </div>
+        <div style={{ overflowX: 'auto' as const }}>
+          <table style={S.table}>
+            <thead>
+              <tr>
+                <th style={S.thLeft}>Category</th>
+                {MONTH_NAMES.map((m, i) => (
+                  <th key={m} style={S.th}>
+                    <button style={monthBtn(selectedMonth === i)} onClick={() => setSelectedMonth(selectedMonth === i ? null : i)}>{m}</button>
+                  </th>
+                ))}
+                <th style={S.th}>YTD</th>
+              </tr>
+            </thead>
+            <tbody>
+              {STORY_COST_KEYS.map(key => (
+                <tr key={key}>
+                  <td style={S.tdLeft}>{STORY_COST_LABELS[key]}</td>
+                  {Array.from({ length: 12 }, (_, i) => {
+                    const val = monthCatTotal(i, key)
+                    const budget = budgets[key] || 0
+                    const p = pct(val, budget)
+                    const atRisk = p >= 90 && val > 0
+                    return (
+                      <td key={i} style={{ ...S.td, color: atRisk ? (p >= 100 ? '#dc2626' : '#ea580c') : val > 0 ? '#000' : '#bbb', fontWeight: atRisk ? 700 : 400, background: selectedMonth === i ? '#fff7ed' : 'transparent' }}>
+                        {fmtC(val)}{atRisk ? (p >= 100 ? ' ⛔' : ' ⚠️') : ''}
+                      </td>
+                    )
+                  })}
+                  <td style={{ ...S.td, fontWeight: 700 }}>{fmtC(ytdCatTotal(key))}</td>
+                </tr>
+              ))}
+              <tr style={{ background: '#f9fafb' }}>
+                <td style={{ ...S.tdLeft, color: '#666', fontSize: 12 }}>📖 Stories</td>
+                {Array.from({ length: 12 }, (_, i) => (
+                  <td key={i} style={{ ...S.td, color: '#666', fontSize: 12, background: selectedMonth === i ? '#fff7ed' : 'transparent' }}>
+                    {storiesInMonth(i).length || '—'}
+                  </td>
+                ))}
+                <td style={{ ...S.td, color: '#666', fontSize: 12 }}>{stories.length}</td>
+              </tr>
+              <tr style={{ background: '#fff7ed', fontWeight: 700, borderTop: '2px solid #ddd' }}>
+                <td style={S.tdLeft}>TOTAL</td>
+                {Array.from({ length: 12 }, (_, i) => (
+                  <td key={i} style={{ ...S.td, fontWeight: 700, background: selectedMonth === i ? '#fed7aa' : '#fff7ed' }}>{fmtC(monthTotal(i))}</td>
+                ))}
+                <td style={{ ...S.td, fontWeight: 700 }}>{fmtC(STORY_COST_KEYS.reduce((s, k) => s + ytdCatTotal(k), 0))}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Drilldown */}
+      {selectedMonth !== null && (
+        <div style={S.card}>
+          <div style={S.cardHead}>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>📖 {MONTH_FULL[selectedMonth]} — Story Breakdown</div>
+            <div style={{ fontSize: 12, color: '#888' }}>{activeMonthStories.length} stories</div>
+          </div>
+          {activeMonthStories.length === 0 ? (
+            <div style={{ padding: '24px 20px', color: '#888', fontSize: 13 }}>No stories this month.</div>
+          ) : (
+            <div style={{ overflowX: 'auto' as const }}>
+              <table style={S.table}>
+                <thead>
+                  <tr>
+                    <th style={S.thLeft}>Story</th>
+                    <th style={S.th}>Status</th>
+                    {STORY_COST_KEYS.map(k => <th key={k} style={S.th}>{STORY_COST_LABELS[k]}</th>)}
+                    <th style={S.th}>Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {activeMonthStories.map(s => (
+                    <tr key={s.id}>
+                      <td style={S.tdLeft}>
+                        <div style={{ fontWeight: 600, fontSize: 13 }}>{s.title}</div>
+                        <div style={{ fontSize: 11, color: '#888' }}>{s.author}</div>
+                      </td>
+                      <td style={S.td}>
+                        <span style={{ padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 600, background: s.is_hidden ? '#fef2f2' : '#f0fdf4', color: s.is_hidden ? '#dc2626' : '#16a34a' }}>
+                          {s.is_hidden ? 'Hidden' : 'Live'}
+                        </span>
+                      </td>
+                      {STORY_COST_KEYS.map(k => (
+                        <td key={k} style={{ ...S.td, color: storyCost(s, k) > 0 ? '#000' : '#ddd' }}>{fmtC(storyCost(s, k))}</td>
+                      ))}
+                      <td style={{ ...S.td, fontWeight: 700 }}>{fmtC(storyCost(s))}</td>
+                    </tr>
+                  ))}
+                  <tr style={{ background: '#fff7ed', fontWeight: 700, borderTop: '2px solid #ddd' }}>
+                    <td style={S.tdLeft}>TOTAL</td>
+                    <td style={S.td} />
+                    {STORY_COST_KEYS.map(k => <td key={k} style={{ ...S.td, fontWeight: 700 }}>{fmtC(monthCatTotal(selectedMonth, k))}</td>)}
+                    <td style={{ ...S.td, fontWeight: 700 }}>{fmtC(monthTotal(selectedMonth))}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* All Stories */}
+      <div style={S.card}>
+        <div style={S.cardHead}>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>📚 All Stories — Production Cost Summary</div>
+          <div style={{ fontSize: 12, color: '#888' }}>{stories.length} total</div>
+        </div>
+        <div style={{ overflowX: 'auto' as const }}>
+          <table style={S.table}>
+            <thead>
+              <tr>
+                <th style={S.thLeft}>Story</th>
+                <th style={S.th}>Month</th>
+                <th style={S.th}>Status</th>
+                {STORY_COST_KEYS.map(k => <th key={k} style={S.th}>{STORY_COST_LABELS[k]}</th>)}
+                <th style={S.th}>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stories.map(s => {
+                const m = storyMonth(s)
+                return (
+                  <tr key={s.id}>
+                    <td style={S.tdLeft}>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>{s.title}</div>
+                      <div style={{ fontSize: 11, color: '#888' }}>{s.author}</div>
+                    </td>
+                    <td style={{ ...S.td, color: '#666', fontSize: 12 }}>{m >= 0 ? MONTH_NAMES[m] : '—'}</td>
+                    <td style={S.td}>
+                      <span style={{ padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 600, background: s.is_hidden ? '#fef2f2' : '#f0fdf4', color: s.is_hidden ? '#dc2626' : '#16a34a' }}>
+                        {s.is_hidden ? 'Hidden' : 'Live'}
+                      </span>
+                    </td>
+                    {STORY_COST_KEYS.map(k => (
+                      <td key={k} style={{ ...S.td, color: storyCost(s, k) > 0 ? '#000' : '#ddd' }}>{fmtC(storyCost(s, k))}</td>
+                    ))}
+                    <td style={{ ...S.td, fontWeight: 700 }}>{fmtC(storyCost(s))}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
+
 // ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
 export default function FinancePage() {
-  const [tab, setTab] = useState<'expenses'|'revenue'|'pl'|'balance'|'el'|'anthropic'|'openai'>('expenses')
+  const [tab, setTab] = useState<'expenses'|'revenue'|'pl'|'balance'|'el'|'anthropic'|'openai'|'stories'>('expenses')
 
   const expDefaults = Object.fromEntries(EXPENSES.map(e => [e.id, [...e.defaults]]))
   const revDefaults = Object.fromEntries(REVENUES.map(r => [r.id, [...r.defaults]]))
@@ -863,7 +1201,7 @@ export default function FinancePage() {
 
       {/* Tabs */}
       <div style={S.tabs}>
-        {([['expenses','📋 Expenses'],['revenue','💵 Revenue'],['pl','📊 P&L'],['balance','🏦 Balance Sheet'],['el','🎙️ EL Detail'],['anthropic','🤖 Anthropic'],['openai','🎨 OpenAI']] as const).map(([id,label]) => (
+        {([['expenses','📋 Expenses'],['revenue','💵 Revenue'],['pl','📊 P&L'],['balance','🏦 Balance Sheet'],['el','🎙️ EL Detail'],['anthropic','🤖 Anthropic'],['openai','🎨 OpenAI'],['stories','📚 Stories']] as const).map(([id,label]) => (
           <button key={id} style={S.tab(tab===id)} onClick={() => setTab(id)}>{label}</button>
         ))}
       </div>
@@ -1143,6 +1481,7 @@ export default function FinancePage() {
 
       {/* ── OPENAI TAB ── */}
       {tab === 'openai' && <OpenAITab />}
+      {tab === 'stories' && <StoriesCostTab supabase={supabase} />}
 
     </div>
   )
