@@ -1069,7 +1069,6 @@ function StoriesCostTab() {
                 <thead>
                   <tr>
                     <th style={S.thLeft}>Story</th>
-                    <th style={S.th}>Status</th>
                     {STORY_COST_KEYS.map(k => <th key={k} style={S.th}>{STORY_COST_LABELS[k]}</th>)}
                     <th style={S.th}>Total</th>
                     <th style={S.th}>EL Verified</th>
@@ -1084,11 +1083,6 @@ function StoriesCostTab() {
                       <td style={S.tdLeft}>
                         <div style={{ fontWeight: 600, fontSize: 13 }}>{s.title}</div>
                         <div style={{ fontSize: 11, color: '#888' }}>{s.author}</div>
-                      </td>
-                      <td style={S.td}>
-                        <span style={{ padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 600, background: s.is_hidden ? '#fef2f2' : '#f0fdf4', color: s.is_hidden ? '#dc2626' : '#16a34a' }}>
-                          {s.is_hidden ? 'Hidden' : 'Live'}
-                        </span>
                       </td>
                       {STORY_COST_KEYS.map(k => (
                         <td key={k} style={{ ...S.td, color: storyCost(s, k) > 0 ? '#000' : '#ddd' }}>{fmtC(storyCost(s, k))}</td>
@@ -1108,7 +1102,6 @@ function StoriesCostTab() {
                   })}
                   <tr style={{ background: '#fff7ed', fontWeight: 700, borderTop: '2px solid #ddd' }}>
                     <td style={S.tdLeft}>TOTAL</td>
-                    <td style={S.td} />
                     {STORY_COST_KEYS.map(k => <td key={k} style={{ ...S.td, fontWeight: 700 }}>{fmtC(monthCatTotal(selectedMonth, k))}</td>)}
                     <td style={{ ...S.td, fontWeight: 700 }}>{fmtC(monthTotal(selectedMonth))}</td>
                     <td style={S.td} />
@@ -1124,7 +1117,7 @@ function StoriesCostTab() {
       <div style={S.card}>
         <div style={S.cardHead}>
           <div style={{ fontWeight: 700, fontSize: 15 }}>📚 All Stories — Production Cost Summary</div>
-          <div style={{ fontSize: 12, color: '#888' }}>{stories.length} total</div>
+          <div style={{ fontSize: 12, color: '#888' }}>{stories.filter(s => storyCost(s) > 0).length} stories with cost data · costs are one-time at generation</div>
         </div>
         <div style={{ overflowX: 'auto' as const }}>
           <table style={S.table}>
@@ -1132,14 +1125,13 @@ function StoriesCostTab() {
               <tr>
                 <th style={S.thLeft}>Story</th>
                 <th style={S.th}>Month</th>
-                <th style={S.th}>Status</th>
                 {STORY_COST_KEYS.map(k => <th key={k} style={S.th}>{STORY_COST_LABELS[k]}</th>)}
                 <th style={S.th}>Total</th>
                 <th style={S.th}>EL Verified</th>
               </tr>
             </thead>
             <tbody>
-              {stories.map(s => {
+              {stories.filter(s => storyCost(s) > 0).map(s => {
                 const m = storyMonth(s)
                 const vs = elVerifyStatus(s)
                 const disc = elDiscrepancy(s)
@@ -1150,11 +1142,6 @@ function StoriesCostTab() {
                       <div style={{ fontSize: 11, color: '#888' }}>{s.author}</div>
                     </td>
                     <td style={{ ...S.td, color: '#666', fontSize: 12 }}>{m >= 0 ? MONTH_NAMES[m] : '—'}</td>
-                    <td style={S.td}>
-                      <span style={{ padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 600, background: s.is_hidden ? '#fef2f2' : '#f0fdf4', color: s.is_hidden ? '#dc2626' : '#16a34a' }}>
-                        {s.is_hidden ? 'Hidden' : 'Live'}
-                      </span>
-                    </td>
                     {STORY_COST_KEYS.map(k => (
                       <td key={k} style={{ ...S.td, color: storyCost(s, k) > 0 ? '#000' : '#ddd' }}>{fmtC(storyCost(s, k))}</td>
                     ))}
