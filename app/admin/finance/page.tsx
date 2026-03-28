@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
+import { supabase } from '@/lib/supabase'
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -832,7 +833,7 @@ const DEFAULT_BUDGETS: Record<string, number> = {
   other: 50,
 }
 
-function StoriesCostTab({ supabase }: { supabase: any }) {
+function StoriesCostTab() {
   const [stories, setStories] = useState<StoryCostRow[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedMonth, setSelectedMonth] = useState<number | null>(null)
@@ -1525,7 +1526,7 @@ export default function FinancePage() {
 
       {/* ── OPENAI TAB ── */}
       {tab === 'openai' && <OpenAITab />}
-      {tab === 'stories' && <StoriesCostTab supabase={supabase} />}
+      {tab === 'stories' && <StoriesCostTab />}
 
     </div>
   )
