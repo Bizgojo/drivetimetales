@@ -356,7 +356,6 @@ function StoryEditorPanel({
               ))}
             </div>
           </div>
-          </div>
 
           {/* Group */}
           <div>
@@ -535,6 +534,7 @@ function StoryEditorPanel({
         </div>
       </div>
     </div>
+  </div>
   )
 }
 
