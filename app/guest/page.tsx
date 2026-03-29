@@ -101,7 +101,7 @@ export default function GuestPage() {
       <div style={{ padding: '2rem 1rem 1.5rem', textAlign: 'center' }}>
         <p style={{ fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.15em', textTransform: 'uppercase' as const, color: '#f0a030', marginBottom: '0.75rem' }}>No account needed</p>
         <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 'clamp(1.6rem, 5vw, 2.2rem)', fontWeight: 700, lineHeight: 1.2, marginBottom: '0.75rem' }}>
-          Pick a story.<br />Press play. Drive.
+          Pick a story.<br />Press play.
         </h1>
         <p style={{ color: 'rgba(240,236,228,0.7)', fontSize: '0.9rem', maxWidth: '320px', margin: '0 auto 1rem', lineHeight: 1.5 }}>
           {GUEST_STORY_GATE - guestStories > 0
