@@ -197,7 +197,7 @@ export default function AdminLayout({
         {/* Back to Site */}
         <div style={{ marginTop: '1.5rem', paddingBottom: '0.5rem' }}>
           <Link 
-            href="/" 
+            href="/home" 
             style={{
               display: 'flex',
               alignItems: 'center',
