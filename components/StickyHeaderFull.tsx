@@ -8,6 +8,7 @@ export default function StickyHeaderFull() {
   const router = useRouter()
   const { user } = useAuth()
   const userInitial = user?.email?.charAt(0).toUpperCase() || user?.user_metadata?.name?.charAt(0).toUpperCase() || '?'
+  const isAdmin = user?.email === 'm.postlewaite@gmail.com'
 
   return (
     <header className="sticky top-0 z-50 bg-slate-950 border-b border-slate-800 px-4 py-3">
@@ -27,9 +28,16 @@ export default function StickyHeaderFull() {
             <span style={{ fontSize: '0.6rem', fontWeight: 700, background: '#f0a030', color: '#0a0a0f', padding: '2px 7px', borderRadius: '20px', marginLeft: '6px', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Founding Member</span>
           )}
         </Link>
-        <Link href="/account" className="w-11 h-11 rounded-full bg-orange-500 hover:bg-orange-400 flex items-center justify-center text-black font-bold text-lg transition-colors flex-shrink-0">
-          {userInitial}
-        </Link>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {isAdmin && (
+            <Link href="/admin" style={{ fontSize: '0.7rem', fontWeight: 700, color: '#f97316', border: '1px solid rgba(249,115,22,0.4)', borderRadius: '20px', padding: '4px 10px', textDecoration: 'none', whiteSpace: 'nowrap' }}>
+              Admin
+            </Link>
+          )}
+          <Link href="/account" className="w-11 h-11 rounded-full bg-orange-500 hover:bg-orange-400 flex items-center justify-center text-black font-bold text-lg transition-colors flex-shrink-0">
+            {userInitial}
+          </Link>
+        </div>
       </div>
     </header>
   )
