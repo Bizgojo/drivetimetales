@@ -86,12 +86,11 @@ export default function GuestPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: '#0a0a0f', color: 'white' }}>
-      <div style={{ padding: '1.25rem 1rem 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ padding: '1.25rem 1rem 0', display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
         <div style={{ fontFamily: "'Playfair Display', serif", fontSize: '1.3rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span style={{ fontSize: '1.4rem' }}>🎧</span>
           Endless <span style={{ color: '#f0a030', fontStyle: 'italic', marginLeft: '4px' }}>Tales</span>
         </div>
-        <Link href="/signin" style={{ color: '#f0a030', fontSize: '0.85rem', fontWeight: 600, textDecoration: 'none', padding: '6px 14px', border: '1px solid rgba(240,160,48,0.3)', borderRadius: '20px' }}>Sign In</Link>
       </div>
 
       <div style={{ padding: '2rem 1rem 1.5rem', textAlign: 'center' }}>
