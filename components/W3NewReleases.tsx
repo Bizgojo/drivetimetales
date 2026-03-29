@@ -90,6 +90,7 @@ export default function W3NewReleases({ credits }: W3NewReleasesProps) {
           .from('stories')
           .select('id, title, genre, author, duration_mins, cover_url, published_on')
           .not('cover_url', 'is', null)
+          .eq('is_hidden', false)
           .lt('duration_mins', 60)
           .order('published_on', { ascending: false })
           .limit(2)
