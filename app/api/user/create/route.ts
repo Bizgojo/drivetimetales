@@ -63,8 +63,8 @@ export async function POST(request: NextRequest) {
           <body style="margin:0;padding:0;background:#0f0f1a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
             <div style="max-width:560px;margin:0 auto;padding:40px 24px;">
               <div style="text-align:center;margin-bottom:32px;">
-                <div style="font-size:28px;font-weight:900;color:#ffffff;letter-spacing:-0.5px;">Endless Tales</div>
-                <div style="font-size:13px;color:#f97316;letter-spacing:0.1em;text-transform:uppercase;margin-top:4px;">Audio Stories</div>
+                <img src="https://app.endless-tales.com/images/et-logo.png" alt="Endless Tales" style="height:48px;object-fit:contain;display:inline-block;" />
+                <div style="font-size:22px;font-weight:900;color:#ffffff;letter-spacing:-0.5px;margin-top:8px;">Endless <span style="color:#f97316;">Tales</span></div>
               </div>
               <div style="background:#1a1a2e;border-radius:16px;padding:32px 28px;border:1px solid rgba(249,115,22,0.2);">
                 <div style="font-size:32px;text-align:center;margin-bottom:16px;">🎧</div>
@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
                   Your 14-day free trial has started. Dive in and discover original audio dramas made for people on the move.
                 </p>
                 <div style="text-align:center;margin-bottom:24px;">
-                  <a href="https://app.endless-tales.com/library" style="display:inline-block;background:#f97316;color:white;text-decoration:none;padding:14px 32px;border-radius:10px;font-size:15px;font-weight:800;letter-spacing:0.01em;">Start Listening →</a>
+                  <a href="https://app.endless-tales.com/home" style="display:inline-block;background:#f97316;color:white;text-decoration:none;padding:14px 32px;border-radius:10px;font-size:15px;font-weight:800;letter-spacing:0.01em;">Start Listening →</a>
                 </div>
                 <div style="background:rgba(249,115,22,0.1);border:1px solid rgba(249,115,22,0.3);border-radius:10px;padding:16px 20px;margin-bottom:20px;">
                   <div style="color:#f97316;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;">Your trial includes</div>
@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
                     ✓ Full access to all audio stories<br>
                     ✓ New stories added weekly<br>
                     ✓ Listen anywhere — commute, gym, road trip<br>
-                    ✓ Cancel anytime before day 7 — no charge
+                    ✓ Cancel anytime before day 14 — no charge
                   </div>
                 </div>
                 <p style="color:rgba(255,255,255,0.5);font-size:13px;line-height:1.6;margin:0;text-align:center;">
