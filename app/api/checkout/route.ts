@@ -50,6 +50,10 @@ export async function POST(req: NextRequest) {
     // Auto-select founding member or standard price (ignore client-supplied priceId)
     const { priceId: resolvedPrice, isFoundingMember } = await resolvePrice()
     // Override with annual price if selected (annual not eligible for founding member rate)
+    if (billingCycle === 'annual' && !ANNUAL_PRICE_ID) {
+      console.error('[checkout] STRIPE_PRICE_ANNUAL env var is not set')
+      return NextResponse.json({ error: 'Annual plan not available' }, { status: 500 })
+    }
     const priceId = billingCycle === 'annual' ? ANNUAL_PRICE_ID : resolvedPrice
     console.log(`[checkout] Assigned price: ${billingCycle === 'annual' ? 'annual $59.99' : isFoundingMember ? 'founding member $7.99 locked' : 'standard $7.99'}`)
 
