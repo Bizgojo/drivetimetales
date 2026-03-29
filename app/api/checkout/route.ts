@@ -12,6 +12,7 @@ const supabase = createClient(
 const FOUNDING_LIMIT = parseInt(process.env.ET_FOUNDING_MEMBER_LIMIT || '500')
 const FOUNDING_PRICE_ID = process.env.STRIPE_PRICE_FOUNDING_MEMBER!
 const STANDARD_PRICE_ID = process.env.STRIPE_PRICE_STANDARD!
+const ANNUAL_PRICE_ID = process.env.STRIPE_PRICE_ANNUAL!
 
 async function resolvePrice(): Promise<{ priceId: string; isFoundingMember: boolean }> {
   try {
@@ -40,15 +41,17 @@ async function resolvePrice(): Promise<{ priceId: string; isFoundingMember: bool
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId, email, priceId: clientPriceId, referralCode, trialDays: trialDaysParam } = await req.json()
+    const { userId, email, priceId: clientPriceId, referralCode, trialDays: trialDaysParam, billingCycle } = await req.json()
 
     if (!userId || !email) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
     // Auto-select founding member or standard price (ignore client-supplied priceId)
-    const { priceId, isFoundingMember } = await resolvePrice()
-    console.log(`[checkout] Assigned price: ${isFoundingMember ? 'founding member $7.99 locked' : 'standard $7.99'}`)
+    const { priceId: resolvedPrice, isFoundingMember } = await resolvePrice()
+    // Override with annual price if selected (annual not eligible for founding member rate)
+    const priceId = billingCycle === 'annual' ? ANNUAL_PRICE_ID : resolvedPrice
+    console.log(`[checkout] Assigned price: ${billingCycle === 'annual' ? 'annual $59.99' : isFoundingMember ? 'founding member $7.99 locked' : 'standard $7.99'}`)
 
     // Check if user already has a Stripe customer
     const { data: userData } = await supabase

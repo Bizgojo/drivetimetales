@@ -40,6 +40,7 @@ function SignUpContent() {
   const [referralId, setReferralId] = useState<string | null>(null)
   const [trialDays, setTrialDays] = useState(14)
   const [trialVariant, setTrialVariant] = useState<'A' | 'B'>('A')
+  const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly')
 
   useEffect(() => {
     const { days, variant } = getTrialVariant()
@@ -106,7 +107,7 @@ function SignUpContent() {
       const response = await fetch('/api/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id, email, referralCode: referralCode || undefined, offerId: offer?.id || undefined, trialDays: finalTrialDays })
+        body: JSON.stringify({ userId: user.id, email, referralCode: referralCode || undefined, offerId: offer?.id || undefined, trialDays: finalTrialDays, billingCycle })
       })
       const data = await response.json()
       if (data.url) { window.location.href = data.url }
@@ -174,6 +175,26 @@ function SignUpContent() {
             </div>
           </div>
 
+          {/* Billing cycle toggle */}
+          <div style={{ marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', borderRadius: '10px', overflow: 'hidden', border: '1px solid #334155' }}>
+              <button
+                type="button"
+                onClick={() => setBillingCycle('monthly')}
+                style={{ flex: 1, padding: '0.75rem', border: 'none', backgroundColor: billingCycle === 'monthly' ? '#f97316' : '#0f172a', color: billingCycle === 'monthly' ? 'white' : '#94a3b8', fontSize: '14px', fontWeight: 700, cursor: 'pointer' }}>
+                Monthly<br/>
+                <span style={{ fontSize: '12px', fontWeight: 400 }}>$7.99/mo</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setBillingCycle('annual')}
+                style={{ flex: 1, padding: '0.75rem', border: 'none', borderLeft: '1px solid #334155', backgroundColor: billingCycle === 'annual' ? '#f97316' : '#0f172a', color: billingCycle === 'annual' ? 'white' : '#94a3b8', fontSize: '14px', fontWeight: 700, cursor: 'pointer' }}>
+                Annual 🏷️ Save 37%<br/>
+                <span style={{ fontSize: '12px', fontWeight: 400 }}>$59.99/yr — just $5/mo</span>
+              </button>
+            </div>
+          </div>
+
           <button
             type={alreadyExists ? 'button' : 'submit'}
             onClick={alreadyExists ? () => window.location.href = '/signin' : undefined}
@@ -199,7 +220,7 @@ function SignUpContent() {
 
         <p style={{ color: '#475569', fontSize: '12px', textAlign: 'center', marginTop: '1rem', lineHeight: 1.5 }}>
           By signing up you agree to our <a href="/terms" style={{ color: "#f0a030", textDecoration: "none" }}>Terms of Service</a> and <a href="/privacy" style={{ color: "#f0a030", textDecoration: "none" }}>Privacy Policy</a>.<br/>
-          $7.99/mo after trial. Founding members — price locked for life.
+          $7.99/mo or $59.99/yr after trial. Founding members — price locked for life.
         </p>
       </div>
     </div>
