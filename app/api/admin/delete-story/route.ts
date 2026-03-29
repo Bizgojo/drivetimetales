@@ -23,8 +23,8 @@ export async function DELETE(req: NextRequest) {
 
     // Step 1: Get the story's audio_url and cover_url before deleting (use table, not view)
     const { data: story, error: fetchError } = await supabase
-      .from('Story')
-      .select('id, title, "audioUrl", "coverUrl"')
+      .from('stories')
+      .select('id, title, audio_url, cover_url')
       .eq('id', storyId)
       .single()
 
@@ -73,7 +73,7 @@ export async function DELETE(req: NextRequest) {
     }
 
     // Step 5: Delete audio file from Supabase storage (if stored there)
-    const audioUrl = story.audioUrl
+    const audioUrl = story.audio_url
     if (audioUrl && audioUrl.includes('supabase.co/storage')) {
       const audioMatch = audioUrl.match(/\/object\/public\/([^/]+)\/(.+)$/)
       if (audioMatch) {
@@ -92,7 +92,7 @@ export async function DELETE(req: NextRequest) {
     }
 
     // Step 6: Delete cover file from Supabase storage (if stored there)
-    const coverUrl = story.coverUrl
+    const coverUrl = story.cover_url
     if (coverUrl && coverUrl.includes('supabase.co/storage')) {
       const coverMatch = coverUrl.match(/\/object\/public\/([^/]+)\/(.+)$/)
       if (coverMatch) {
@@ -112,7 +112,7 @@ export async function DELETE(req: NextRequest) {
 
     // Step 7: Delete the story row itself (must use the table, not the view)
     const { error: storyDeleteError } = await supabase
-      .from('Story')
+      .from('stories')
       .delete()
       .eq('id', storyId)
 
@@ -130,8 +130,8 @@ export async function DELETE(req: NextRequest) {
         storyId: story.id,
         clearedTables: ['user_library', 'user_preferences', 'story_reviews'],
         storageFiles: {
-          audio: story.audioUrl ? 'attempted' : 'none',
-          cover: story.coverUrl ? 'attempted' : 'none',
+          audio: story.audio_url ? 'attempted' : 'none',
+          cover: story.cover_url ? 'attempted' : 'none',
         }
       }
     })
