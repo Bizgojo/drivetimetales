@@ -111,8 +111,16 @@ function SignUpContent() {
       })
       const data = await response.json()
       if (data.url) { window.location.href = data.url }
-      else { setError('Failed to start checkout'); setLoading(false) }
-    } catch (err) { setError('Failed to connect to payment system'); setLoading(false) }
+      else {
+        // Checkout failed — delete the orphaned auth user so they can retry
+        try { await fetch('/api/user/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: user.id }) }) } catch {}
+        setError('Failed to start checkout. Please try again.'); setLoading(false)
+      }
+    } catch (err) {
+        // Checkout error — delete the orphaned auth user so they can retry
+        try { await fetch('/api/user/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: user.id }) }) } catch {}
+        setError('Failed to connect to payment system. Please try again.'); setLoading(false)
+      }
   }
 
   const rewardText = offer
