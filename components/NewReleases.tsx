@@ -27,7 +27,7 @@ export default function NewReleases({ excludeIds = [] }: { excludeIds?: string[]
     async function fetch() {
       const { data } = await supabase.from('story_analytics')
         .select('id, title, genre, author, duration_mins, cover_url, published_on, avg_rating, review_count')
-        .not('cover_url', 'is', null).order('published_on', { ascending: false }).limit(20)
+        .not('cover_url', 'is', null).eq('is_hidden', false).gte('duration_mins', 10).order('published_on', { ascending: false }).limit(20)
       if (!data) { setLoading(false); return }
       let ex = new Set(excludeIds)
       if (user?.id) {
