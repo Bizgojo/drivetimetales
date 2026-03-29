@@ -18,7 +18,7 @@ function StarDisplay({ rating, count }: { rating: number; count?: number }) {
   </span>
 }
 
-export default function NewReleases({ excludeIds = [] }: { excludeIds?: string[] }) {
+export default function NewReleases({ excludeIds = [], onIdsLoaded }: { excludeIds?: string[], onIdsLoaded?: (ids: string[]) => void }) {
   const { user } = useAuth()
   const [stories, setStories] = useState<Story[]>([])
   const [loading, setLoading] = useState(true)
@@ -34,7 +34,9 @@ export default function NewReleases({ excludeIds = [] }: { excludeIds?: string[]
         const { data: lib } = await supabase.from('user_library').select('story_id, progress, completed, not_for_me').eq('user_id', user.id)
         if (lib) lib.forEach((e: any) => { if (e.progress > 0 || e.completed || e.not_for_me) ex.add(e.story_id) })
       }
-      setStories(data.filter((s: Story) => !ex.has(s.id)).slice(0, 2))
+      const filtered = data.filter((s: Story) => !ex.has(s.id)).slice(0, 2)
+      setStories(filtered)
+      if (onIdsLoaded) onIdsLoaded(filtered.map((s: Story) => s.id))
       setLoading(false)
     }
     fetch()

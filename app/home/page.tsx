@@ -1,6 +1,7 @@
 'use client'
 
-import { Suspense } from 'react'
+import { Suspense, useState, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import StickyHeaderFull from '@/components/StickyHeaderFull'
 import ContinueListening from '@/components/ContinueListening'
@@ -41,15 +42,43 @@ function HomeSkeleton() {
 }
 
 function HomeContent() {
-  const { loading } = useAuth()
+  const { loading, user } = useAuth()
+  const searchParams = useSearchParams()
+  const [newReleaseIds, setNewReleaseIds] = useState<string[]>([])
+  const [showWelcome, setShowWelcome] = useState(false)
+
+  useEffect(() => {
+    if (searchParams.get('welcome') === 'true') {
+      setShowWelcome(true)
+      const t = setTimeout(() => setShowWelcome(false), 6000)
+      return () => clearTimeout(t)
+    }
+  }, [searchParams])
+
   if (loading) return <HomeSkeleton />
+
+  const firstName = (user as any)?.user_metadata?.first_name || ''
+
   return (
     <div className="min-h-screen bg-slate-950">
       <StickyHeaderFull />
       <main className="pb-20">
+        {showWelcome && (
+          <div style={{ margin: '1rem', padding: '1rem 1.25rem', background: 'linear-gradient(135deg, rgba(249,115,22,0.2), rgba(249,115,22,0.05))', border: '1px solid rgba(249,115,22,0.4)', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+            <div>
+              <div style={{ color: '#f97316', fontWeight: 800, fontSize: '15px', marginBottom: '2px' }}>
+                🎉 Welcome{firstName ? `, ${firstName}` : ''}!
+              </div>
+              <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '13px' }}>
+                Your 14-day free trial has started. Pick a story and press play.
+              </div>
+            </div>
+            <button onClick={() => setShowWelcome(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: '18px', cursor: 'pointer', flexShrink: 0 }}>✕</button>
+          </div>
+        )}
         <ContinueListening />
-        <NewReleases />
-        <RecommendedForYou />
+        <NewReleases onIdsLoaded={setNewReleaseIds} />
+        <RecommendedForYou excludeIds={newReleaseIds} />
       </main>
       <BottomStickyButtons />
     </div>
