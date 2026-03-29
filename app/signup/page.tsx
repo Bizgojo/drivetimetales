@@ -9,7 +9,7 @@ interface Offer { id: string; name: string; offer_type: 'free_days' | 'credits';
 
 // Trial is locked at 14 days for all users
 function getTrialVariant(): { days: number; variant: 'A' | 'B' } {
-  return { days: 7, variant: 'A' }
+  return { days: 14, variant: 'A' }
 }
 
 function LoadingFallback() {
@@ -147,7 +147,7 @@ function SignUpContent() {
         )}
 
         <form onSubmit={handleSubmit} style={{ backgroundColor: '#1e293b', borderRadius: '16px', padding: '1.5rem' }}>
-          <h2 style={{ color: 'white', fontSize: '20px', fontWeight: 'bold', marginBottom: '1.5rem', textAlign: 'center' }}>Create Your Account</h2>
+          <h2 style={{ color: 'white', fontSize: '20px', fontWeight: 'bold', marginBottom: '1.5rem', textAlign: 'center' }}>Create Your Free Account</h2>
 
           {error && <div style={{ backgroundColor: '#dc2626', color: 'white', padding: '0.75rem', borderRadius: '8px', marginBottom: '1rem', fontSize: '14px', textAlign: 'center' }}>{error}</div>}
           {alreadyExists && (
