@@ -552,9 +552,9 @@
         },
         {
           "id": "6.7",
-          "name": "QR code system for physical locations",
-          "status": "not-started",
-          "dueDate": "2026-04-10",
+          "name": "QR Code Partner System \u2014 full spec complete, ready to build post-launch",
+          "status": "on-hold",
+          "dueDate": "2026-04-17",
           "completedDate": null
         }
       ]
