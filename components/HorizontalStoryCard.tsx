@@ -7,7 +7,6 @@ const FLAG_CONFIG: Record<string, { bg: string; text: string; priority: number }
   'continue':       { bg: '#22c55e', text: 'black',  priority: 1 },
   'reserved':       { bg: '#eab308', text: 'black',  priority: 2 },
   'owned':          { bg: '#f97316', text: 'white',  priority: 3 },
-  'series':         { bg: '#f59e0b', text: 'black',  priority: 4 },
   'trending':       { bg: '#14b8a6', text: 'white',  priority: 5 },
   'new':            { bg: '#3b82f6', text: 'white',  priority: 6 },
   'free':           { bg: '#9333ea', text: 'white',  priority: 7 },
@@ -16,7 +15,7 @@ const FLAG_CONFIG: Record<string, { bg: string; text: string; priority: number }
 }
 
 const FLAG_LABELS: Record<string, string> = {
-  'continue': 'Continue', 'reserved': 'Reserved', 'owned': 'Owned',
+  'continue': 'Continue', 'reserved': 'Reserved',
   'trending': 'Trending', 'new': 'NEW', 'free': 'FREE',
   'editors-pick': "Editor's Pick", 'listeners-pick': "Listener's Pick",
   'not-for-me': '👎 Not For Me',
@@ -45,7 +44,7 @@ interface HorizontalStoryCardProps {
 
 function getDisplayFlags(flags: string[]): string[] {
   if (!flags || flags.length === 0) return []
-  return [...flags].sort((a, b) => (FLAG_CONFIG[a]?.priority ?? 99) - (FLAG_CONFIG[b]?.priority ?? 99)).slice(0, 3)
+  return [...flags].sort((a, b) => (FLAG_CONFIG[a]?.priority ?? 99) - (FLAG_CONFIG[b]?.priority ?? 99)).slice(0, 1)
 }
 
 function FlagBadge({ flag, seriesNumber }: { flag: string; seriesNumber?: number | null }) {
@@ -85,10 +84,10 @@ export default function HorizontalStoryCard({ id, title, genre, author, duration
     if (mappedFlag) finalFlags = [mappedFlag]
   }
   if (not_for_me) finalFlags = ['not-for-me']
-  finalFlags = finalFlags.filter(f => f !== 'continue')
+  finalFlags = finalFlags.filter(f => f !== 'continue' && f !== 'owned')
 
   const displayFlags = getDisplayFlags(finalFlags)
-  const durationLabel = duration_mins ? `${duration_mins} min` : series_total ? `~${series_total} min avg` : null
+  const durationLabel = duration_mins ? `${duration_mins} min` : null
   const showReviewPrompt = is_completed && !has_reviewed && !not_for_me
 
   let playLabel = 'Play'
@@ -104,12 +103,14 @@ export default function HorizontalStoryCard({ id, title, genre, author, duration
         </div>
       </div>
       <div style={{ flex: 1, padding: '10px 12px 10px 10px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minWidth: 0 }}>
-        <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', minHeight: '18px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '5px', flexWrap: 'nowrap', minHeight: '18px', alignItems: 'center', overflow: 'hidden' }}>
+          <span style={{ fontSize: '8px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.07em', padding: '2px 7px', borderRadius: '3px', background: series_name ? '#f59e0b' : '#e11d48', color: series_name ? 'black' : 'white', whiteSpace: 'nowrap', flexShrink: 0 }}>
+            {series_name ? `Episodes - ${series_total ? series_total : ''}`.trim() : 'Single'}
+          </span>
           {displayFlags.map(f => <FlagBadge key={f} flag={f} seriesNumber={series_number} />)}
         </div>
         {series_name && episode_title ? (
           <>
-            <div style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 500, letterSpacing: '0.03em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{series_name}</div>
             <h3 style={{ color: 'white', fontSize: '15px', fontWeight: 700, margin: 0, lineHeight: 1.2, letterSpacing: '-0.01em', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{episode_title}</h3>
           </>
         ) : (
@@ -119,7 +120,7 @@ export default function HorizontalStoryCard({ id, title, genre, author, duration
           <span style={{ color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
             {author}{genre ? ` · ${genre}` : ''}{narrator_voice_name ? ` · Narrated by ${narrator_voice_name}` : ''}
           </span>
-          {durationLabel && <span style={{ color: 'white', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0, marginLeft: '6px' }}>{durationLabel}</span>}
+          {durationLabel && <span style={{ color: 'white', fontWeight: 800, whiteSpace: 'nowrap', fontSize: '15px', position: 'absolute', top: '10px', right: '10px' }}>{durationLabel}</span>}
         </div>
         {!showReviewPrompt && description && (
           <p style={{ color: '#94a3b8', fontSize: '11px', lineHeight: 1.35, margin: 0, display: '-webkit-box', WebkitLineClamp: avg_rating ? 2 : 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{description}</p>

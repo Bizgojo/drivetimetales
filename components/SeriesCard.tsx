@@ -58,6 +58,7 @@ export default function SeriesCard({
         textDecoration: 'none',
         alignItems: 'stretch',
         padding: 0,
+        position: 'relative',
       }}
     >
       <div style={{
@@ -106,7 +107,7 @@ export default function SeriesCard({
             whiteSpace: 'nowrap',
             lineHeight: 1,
           }}>
-            Series
+            {`Episodes - ${episode_count || ''}`}
           </span>
         </div>
 
@@ -133,8 +134,8 @@ export default function SeriesCard({
             <span style={{ color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {genre}
             </span>
-            <span style={{ color: 'white', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0, marginLeft: '6px' }}>
-              {episode_count} ep · ~{avgDuration} min
+            <span style={{ color: 'white', fontWeight: 800, whiteSpace: 'nowrap', flexShrink: 0, marginLeft: '6px', fontSize: '15px', position: 'absolute', top: '10px', right: '10px' }}>
+              Avg. {avgDuration} min
             </span>
           </div>
         </div>

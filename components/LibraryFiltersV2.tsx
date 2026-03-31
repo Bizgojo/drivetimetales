@@ -108,9 +108,6 @@ export default function LibraryFiltersV2({
 
   useEffect(() => {
     loadGenresWithStories()
-    supabase.from('groups').select('id, name').order('display_order', { ascending: true }).then(({ data }) => {
-      if (data) setGroups(data)
-    })
   }, [])
 
   async function loadGenresWithStories() {
@@ -174,13 +171,14 @@ export default function LibraryFiltersV2({
   const btnStyle = (isActive: boolean) => ({
     backgroundColor: isActive ? '#f97316' : '#334155',
     color: 'white',
-    padding: '0.5rem 0.6rem',
+    padding: '0.55rem 0rem',
     borderRadius: '6px',
-    fontSize: '14px',
+    fontSize: '15px',
     fontWeight: 500,
     border: 'none',
     cursor: 'pointer',
-    minHeight: '44px',
+    minHeight: '46px',
+    flex: 1,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -219,31 +217,8 @@ export default function LibraryFiltersV2({
     <div style={{ position: 'sticky', top: '60px', zIndex: 40, padding: '0 1rem' }}>
       <div style={{ backgroundColor: '#1e293b', borderRadius: '12px', padding: '0.5rem' }}>
         
-        {/* Row 1: Duration | Type */}
-        <div style={{ display: 'flex', gap: '0.35rem', marginBottom: '0.35rem', alignItems: 'center', justifyContent: 'center' }}>
-          {DURATIONS.map(d => (
-            <button
-              key={d.value}
-              onClick={() => setSelectedDuration(d.value)}
-              style={btnStyle(selectedDuration === d.value)}
-            >
-              {d.label}
-            </button>
-          ))}
-          <span style={{ color: '#475569', padding: '0 2px' }}>|</span>
-          {TYPES.map(t => (
-            <button
-              key={t.value}
-              onClick={() => setSelectedType(t.value)}
-              style={btnStyle(selectedType === t.value)}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Row 2: Genre + More */}
-        <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', justifyContent: 'center' }}>
+        {/* Genre + More */}
+        <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', justifyContent: 'stretch' }}>
           <button
             onClick={() => handleVisibleGenreClick('All Categories')}
             style={btnStyle(selectedGenre === 'All Categories')}
@@ -267,7 +242,7 @@ export default function LibraryFiltersV2({
             <div style={{ position: 'relative' }}>
               <button
                 onClick={() => setShowMoreMenu(!showMoreMenu)}
-                style={btnStyle(false)}
+                style={{ ...btnStyle(false), backgroundColor: '#2563eb', minWidth: '72px', fontSize: '16px', flex: 'none' }}
               >
                 More ▼
               </button>
@@ -307,35 +282,7 @@ export default function LibraryFiltersV2({
                       {genre.emoji} {genre.label}
                     </button>
                   ))}
-                  {groups.length > 0 && (
-                    <>
-                      <div style={{ borderTop: '1px solid #cbd5e1', margin: '6px 0' }} />
-                      <div style={{ color: '#64748b', fontSize: '11px', fontWeight: 600, padding: '2px 12px 4px', letterSpacing: '0.05em' }}>COLLECTIONS</div>
-                      {groups.map(group => (
-                        <button
-                          key={group.id}
-                          onClick={() => { setSelectedGroup(selectedGroup === group.name ? '' : group.name); setShowMoreMenu(false) }}
-                          style={{
-                            display: 'block',
-                            width: '100%',
-                            padding: '10px 12px',
-                            backgroundColor: selectedGroup === group.name ? '#e2e8f0' : 'transparent',
-                            border: 'none',
-                            color: selectedGroup === group.name ? '#f97316' : '#111',
-                            fontSize: '14px',
-                            textAlign: 'left',
-                            cursor: 'pointer',
-                            borderRadius: '4px',
-                            fontWeight: selectedGroup === group.name ? 600 : 400,
-                          }}
-                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#e2e8f0'}
-                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = selectedGroup === group.name ? '#e2e8f0' : 'transparent'}
-                        >
-                          📦 {group.name}
-                        </button>
-                      ))}
-                    </>
-                  )}
+
                 </div>
               )}
             </div>
