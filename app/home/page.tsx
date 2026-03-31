@@ -3,7 +3,7 @@
 import { Suspense, useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
-import StickyHeaderFull from '@/components/StickyHeaderFull'
+import HomeHeader from '@/components/HomeHeader'
 import ContinueListening from '@/components/ContinueListening'
 import NewReleases from '@/components/NewReleases'
 import RecommendedForYou from '@/components/RecommendedForYou'
@@ -61,7 +61,7 @@ function HomeContent() {
 
   return (
     <div className="min-h-screen bg-slate-950">
-      <StickyHeaderFull />
+      <HomeHeader />
       <main className="pb-20">
         {showWelcome && (
           <div style={{ margin: '1rem', padding: '1rem 1.25rem', background: 'linear-gradient(135deg, rgba(249,115,22,0.2), rgba(249,115,22,0.05))', border: '1px solid rgba(249,115,22,0.4)', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>

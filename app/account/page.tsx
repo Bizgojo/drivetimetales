@@ -8,6 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 
 export default function AccountPage() {
   const { user, signOut, loading } = useAuth();
+  const isAdmin = user?.email === 'm.postlewaite@gmail.com';
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
 
