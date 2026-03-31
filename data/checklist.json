@@ -193,6 +193,985 @@
           "completedDate": null
         }
       ]
+    },
+    {
+      "id": "stories",
+      "name": "2 \u2014 Story Production",
+      "goal": "10+ approved stories in app library at launch -- diverse genres, all QA passed",
+      "tasks": [
+        {
+          "id": "2.1",
+          "name": "\"When Rosie Came Home\" -- produced & published",
+          "status": "complete",
+          "owner": "Hal",
+          "hours": 4,
+          "dueDate": "2026-03-08",
+          "completedDate": "2026-03-08"
+        },
+        {
+          "id": "2.2",
+          "name": "\"The Grave He Dug Himself\" -- produced & published",
+          "status": "complete",
+          "owner": "Hal",
+          "hours": 4,
+          "dueDate": "2026-03-19",
+          "completedDate": "2026-03-19"
+        },
+        {
+          "id": "2.3",
+          "name": "\"The Letters He Was Meant to Carry\" -- produced & published",
+          "status": "complete",
+          "owner": "Hal",
+          "hours": 4,
+          "dueDate": "2026-03-19",
+          "completedDate": "2026-03-19"
+        },
+        {
+          "id": "2.4",
+          "name": "\"The Creek Doesn't Hurry\" -- produced & published",
+          "status": "complete",
+          "owner": "Hal",
+          "hours": 4,
+          "dueDate": "2026-03-29",
+          "completedDate": "2026-03-29"
+        },
+        {
+          "id": "2.5",
+          "name": "Story #5 produced & published to app",
+          "status": "not-started",
+          "owner": "Hal",
+          "hours": 4,
+          "dueDate": "2026-04-01",
+          "completedDate": null
+        },
+        {
+          "id": "2.6",
+          "name": "Story #6 produced & published to app",
+          "status": "not-started",
+          "owner": "Hal",
+          "hours": 4,
+          "dueDate": "2026-04-03",
+          "completedDate": null
+        },
+        {
+          "id": "2.7",
+          "name": "Story #7 produced & published to app",
+          "status": "not-started",
+          "owner": "Hal",
+          "hours": 4,
+          "dueDate": "2026-04-05",
+          "completedDate": null
+        },
+        {
+          "id": "2.8",
+          "name": "Story #8 produced & published to app",
+          "status": "not-started",
+          "owner": "Hal",
+          "hours": 4,
+          "dueDate": "2026-04-07",
+          "completedDate": null
+        },
+        {
+          "id": "2.9",
+          "name": "Story #9 produced & published to app",
+          "status": "not-started",
+          "owner": "Hal",
+          "hours": 4,
+          "dueDate": "2026-04-09",
+          "completedDate": null
+        },
+        {
+          "id": "2.10",
+          "name": "Story #10 produced & published -- 10-story milestone hit",
+          "status": "not-started",
+          "owner": "Hal",
+          "hours": 4,
+          "dueDate": "2026-04-11",
+          "completedDate": null
+        },
+        {
+          "id": "2.11",
+          "name": "Origin 2.0 -- Episode 1 published to correct Supabase project",
+          "status": "not-started",
+          "owner": "Hal",
+          "hours": 2,
+          "dueDate": "2026-04-10",
+          "completedDate": null
+        },
+        {
+          "id": "2.12",
+          "name": "Genre diversity check: 5+ different genres represented in launch library",
+          "status": "not-started",
+          "owner": "Marc",
+          "hours": 1,
+          "dueDate": "2026-04-14",
+          "completedDate": null
+        },
+        {
+          "id": "2.13",
+          "name": "All published stories: cover art approved, narrator populated, duration correct",
+          "status": "not-started",
+          "owner": "Marc",
+          "hours": 2,
+          "dueDate": "2026-04-15",
+          "completedDate": null
+        }
+      ]
+    },
+    {
+      "id": "webapp",
+      "name": "3 -- Web App: UX/UI & Performance",
+      "goal": "Full subscriber flow works flawlessly -- signup to subscribe to play to complete",
+      "tasks": [
+        {
+          "id": "3.1",
+          "name": "Rebrand to Endless Tales complete (logo, name, metadata)",
+          "status": "complete",
+          "owner": "Claude",
+          "hours": 3,
+          "dueDate": "2026-02-25",
+          "completedDate": "2026-02-25"
+        },
+        {
+          "id": "3.2",
+          "name": "Domain app.endless-tales.com live (DNS CNAME via GoDaddy -> Vercel)",
+          "status": "complete",
+          "owner": "Claude",
+          "hours": 2,
+          "dueDate": "2026-03-29",
+          "completedDate": "2026-03-29"
+        },
+        {
+          "id": "3.3",
+          "name": "Landing page with 3 sample stories live",
+          "status": "complete",
+          "owner": "Claude",
+          "hours": 6,
+          "dueDate": "2026-03-08",
+          "completedDate": "2026-03-08"
+        },
+        {
+          "id": "3.4",
+          "name": "Audio playback on landing page fully working",
+          "status": "complete",
+          "owner": "Claude",
+          "hours": 3,
+          "dueDate": "2026-03-08",
+          "completedDate": "2026-03-08"
+        },
+        {
+          "id": "3.5",
+          "name": "Waitlist signup + confirmation email working",
+          "status": "complete",
+          "owner": "Claude",
+          "hours": 4,
+          "dueDate": "2026-03-13",
+          "completedDate": "2026-03-13"
+        },
+        {
+          "id": "3.6",
+          "name": "Referral system + emails working",
+          "status": "complete",
+          "owner": "Claude",
+          "hours": 6,
+          "dueDate": "2026-03-13",
+          "completedDate": "2026-03-13"
+        },
+        {
+          "id": "3.7",
+          "name": "Series page (2+ episode rule enforced, redirects working)",
+          "status": "complete",
+          "owner": "Claude",
+          "hours": 4,
+          "dueDate": "2026-03-21",
+          "completedDate": "2026-03-21"
+        },
+        {
+          "id": "3.8",
+          "name": "Monthly/annual billing toggle on signup page",
+          "status": "complete",
+          "owner": "Claude",
+          "hours": 3,
+          "dueDate": "2026-03-29",
+          "completedDate": "2026-03-29"
+        },
+        {
+          "id": "3.9",
+          "name": "Welcome banner on /home?welcome=true",
+          "status": "complete",
+          "owner": "Claude",
+          "hours": 2,
+          "dueDate": "2026-03-29",
+          "completedDate": "2026-03-29"
+        },
+        {
+          "id": "3.10",
+          "name": "Admin link in header (Marc email only)",
+          "status": "complete",
+          "owner": "Claude",
+          "hours": 1,
+          "dueDate": "2026-03-29",
+          "completedDate": "2026-03-29"
+        },
+        {
+          "id": "3.11",
+          "name": "NewReleases / RecommendedForYou deduplication",
+          "status": "complete",
+          "owner": "Claude",
+          "hours": 2,
+          "dueDate": "2026-03-29",
+          "completedDate": "2026-03-29"
+        },
+        {
+          "id": "3.12",
+          "name": "is_hidden=false filter on New Releases enforced",
+          "status": "complete",
+          "owner": "Claude",
+          "hours": 1,
+          "dueDate": "2026-03-29",
+          "completedDate": "2026-03-29"
+        },
+        {
+          "id": "3.13",
+          "name": "Orphaned auth user cleanup on Stripe checkout failure",
+          "status": "complete",
+          "owner": "Claude",
+          "hours": 2,
+          "dueDate": "2026-03-29",
+          "completedDate": "2026-03-29"
+        },
+        {
+          "id": "3.14",
+          "name": "Guest page redesign (infinity SVG logo, 10-45 min range, no Sign In button)",
+          "status": "complete",
+          "owner": "Claude",
+          "hours": 4,
+          "dueDate": "2026-03-29",
+          "completedDate": "2026-03-29"
+        },
+        {
+          "id": "3.15",
+          "name": "GuestSignupPrompt -- full test (triggers after 2 stories or 30 min)",
+          "status": "complete",
+          "owner": "Claude",
+          "hours": 3,
+          "dueDate": "2026-03-29",
+          "completedDate": "2026-03-29"
+        },
+        {
+          "id": "3.16",
+          "name": "Guest page flicker on redirect -- fix",
+          "status": "not-started",
+          "owner": "Claude",
+          "hours": 2,
+          "dueDate": "2026-03-31",
+          "completedDate": null
+        },
+        {
+          "id": "3.17",
+          "name": "GuestSignupPrompt -- fix 0 minutes free bug (save on player unload, not just back button)",
+          "status": "not-started",
+          "owner": "Claude",
+          "hours": 3,
+          "dueDate": "2026-04-03",
+          "completedDate": null
+        },
+        {
+          "id": "3.18",
+          "name": "Continue Listening -- live test with real story data",
+          "status": "not-started",
+          "owner": "Claude",
+          "hours": 2,
+          "dueDate": "2026-04-01",
+          "completedDate": null
+        },
+        {
+          "id": "3.19",
+          "name": "Story player -- all features confirmed (Not For Me, Start Over, progress save, /library on complete)",
+          "status": "not-started",
+          "owner": "Claude",
+          "hours": 3,
+          "dueDate": "2026-04-03",
+          "completedDate": null
+        },
+        {
+          "id": "3.20",
+          "name": "Search & browse working (genre filters from DB)",
+          "status": "not-started",
+          "owner": "Claude",
+          "hours": 3,
+          "dueDate": "2026-04-05",
+          "completedDate": null
+        },
+        {
+          "id": "3.21",
+          "name": "Subscription paywall enforced -- non-subscribers blocked from paid content",
+          "status": "not-started",
+          "owner": "Claude",
+          "hours": 4,
+          "dueDate": "2026-04-05",
+          "completedDate": null
+        },
+        {
+          "id": "3.22",
+          "name": "Pixel tracking: Meta + TikTok pixels firing on signup, trial start, subscription events",
+          "status": "not-started",
+          "owner": "Claude",
+          "hours": 3,
+          "dueDate": "2026-04-07",
+          "completedDate": null
+        },
+        {
+          "id": "3.23",
+          "name": "Trial lifecycle emails: Day 0/3/10/13 sequences configured in Resend",
+          "status": "not-started",
+          "owner": "Claude",
+          "hours": 4,
+          "dueDate": "2026-04-07",
+          "completedDate": null
+        },
+        {
+          "id": "3.24",
+          "name": "Home page personalization: greeting by name, personalized intro/outro display",
+          "status": "not-started",
+          "owner": "Claude",
+          "hours": 4,
+          "dueDate": "2026-04-07",
+          "completedDate": null
+        },
+        {
+          "id": "3.25",
+          "name": "Promo/invite code system for testers (free access codes)",
+          "status": "not-started",
+          "owner": "Claude",
+          "hours": 4,
+          "dueDate": "2026-04-07",
+          "completedDate": null
+        },
+        {
+          "id": "3.26",
+          "name": "Full mobile UX polish pass (touch targets, overflow, font sizes)",
+          "status": "not-started",
+          "owner": "Claude",
+          "hours": 5,
+          "dueDate": "2026-04-10",
+          "completedDate": null
+        },
+        {
+          "id": "3.27",
+          "name": "Delete account flow (Apple hard requirement)",
+          "status": "not-started",
+          "owner": "Claude",
+          "hours": 3,
+          "dueDate": "2026-04-10",
+          "completedDate": null
+        },
+        {
+          "id": "3.28",
+          "name": "Performance optimization (image compression, lazy load, caching)",
+          "status": "not-started",
+          "owner": "Claude",
+          "hours": 4,
+          "dueDate": "2026-04-12",
+          "completedDate": null
+        },
+        {
+          "id": "3.29",
+          "name": "Final QA pass -- full signup to subscribe to play to cancel flow on real device",
+          "status": "not-started",
+          "owner": "Marc",
+          "hours": 3,
+          "dueDate": "2026-04-17",
+          "completedDate": null
+        }
+      ]
+    },
+    {
+      "id": "payments",
+      "name": "4 -- Pricing & Payments",
+      "goal": "Stripe payouts working, all payment flows tested, bank account ready to receive revenue",
+      "tasks": [
+        {
+          "id": "4.1",
+          "name": "Stripe monthly subscription flow complete ($7.99/mo)",
+          "status": "complete",
+          "owner": "Claude",
+          "hours": 5,
+          "dueDate": "2026-03-13",
+          "completedDate": "2026-03-13"
+        },
+        {
+          "id": "4.2",
+          "name": "Stripe annual subscription flow complete ($59.99/yr)",
+          "status": "complete",
+          "owner": "Claude",
+          "hours": 3,
+          "dueDate": "2026-03-29",
+          "completedDate": "2026-03-29"
+        },
+        {
+          "id": "4.3",
+          "name": "Welcome email after annual signup -- debug & confirm delivery via Resend",
+          "status": "not-started",
+          "owner": "Claude",
+          "hours": 2,
+          "dueDate": "2026-03-31",
+          "completedDate": null
+        },
+        {
+          "id": "4.4",
+          "name": "Open business bank account (Mercury or Relay) -- standalone task, no LLC required",
+          "status": "not-started",
+          "owner": "Marc",
+          "hours": 1,
+          "dueDate": "2026-04-05",
+          "completedDate": null
+        },
+        {
+          "id": "4.5",
+          "name": "Connect Stripe payouts to business bank account",
+          "status": "not-started",
+          "owner": "Marc",
+          "hours": 1,
+          "dueDate": "2026-04-07",
+          "completedDate": null
+        },
+        {
+          "id": "4.6",
+          "name": "$7.99/month + 2 Weeks Free messaging consistent across all pages",
+          "status": "not-started",
+          "owner": "Claude",
+          "hours": 2,
+          "dueDate": "2026-04-01",
+          "completedDate": null
+        },
+        {
+          "id": "4.7",
+          "name": "Subscription paywall enforced -- non-subscribers blocked from paid content",
+          "status": "not-started",
+          "owner": "Claude",
+          "hours": 4,
+          "dueDate": "2026-04-05",
+          "completedDate": null
+        },
+        {
+          "id": "4.8",
+          "name": "Apple/Google IAP -- confirmed NO in-app purchase (direct to endless-tales.com only)",
+          "status": "not-started",
+          "owner": "Marc",
+          "hours": 1,
+          "dueDate": "2026-04-05",
+          "completedDate": null
+        }
+      ]
+    },
+    {
+      "id": "admin",
+      "name": "5 -- Admin Dashboard",
+      "goal": "Marc can monitor key metrics, manage stories, and track launch performance",
+      "tasks": [
+        {
+          "id": "5.1",
+          "name": "Story Creation page built (all 4 stages)",
+          "status": "complete",
+          "owner": "Claude",
+          "hours": 8,
+          "dueDate": "2026-03-13",
+          "completedDate": "2026-03-13"
+        },
+        {
+          "id": "5.2",
+          "name": "Admin navigation updated (new menu structure)",
+          "status": "complete",
+          "owner": "Claude",
+          "hours": 2,
+          "dueDate": "2026-03-13",
+          "completedDate": "2026-03-13"
+        },
+        {
+          "id": "5.3",
+          "name": "Finance page with production cost tracking by category",
+          "status": "complete",
+          "owner": "Claude",
+          "hours": 6,
+          "dueDate": "2026-03-28",
+          "completedDate": "2026-03-28"
+        },
+        {
+          "id": "5.4",
+          "name": "EL usage dashboard at /admin/el-usage",
+          "status": "complete",
+          "owner": "Claude",
+          "hours": 4,
+          "dueDate": "2026-03-28",
+          "completedDate": "2026-03-28"
+        },
+        {
+          "id": "5.5",
+          "name": "checklist_overrides table confirmed in Supabase (checklist statuses save correctly)",
+          "status": "not-started",
+          "owner": "Marc",
+          "hours": 1,
+          "dueDate": "2026-03-31",
+          "completedDate": null
+        },
+        {
+          "id": "5.6",
+          "name": "Cancel all test Stripe subscriptions (dashboard cleanup)",
+          "status": "not-started",
+          "owner": "Marc",
+          "hours": 1,
+          "dueDate": "2026-03-31",
+          "completedDate": null
+        },
+        {
+          "id": "5.7",
+          "name": "Analytics dashboard (active users, plays per day, trial conversion rate)",
+          "status": "not-started",
+          "owner": "Claude",
+          "hours": 8,
+          "dueDate": "2026-04-14",
+          "completedDate": null
+        },
+        {
+          "id": "5.8",
+          "name": "User management page (view, suspend, manage subscriptions)",
+          "status": "not-started",
+          "owner": "Claude",
+          "hours": 6,
+          "dueDate": "2026-04-14",
+          "completedDate": null
+        }
+      ]
+    },
+    {
+      "id": "landing",
+      "name": "6 -- Landing Page & Launch Messaging",
+      "goal": "Landing page ready for April 24 public launch with correct date and pricing",
+      "tasks": [
+        {
+          "id": "6.1",
+          "name": "Core landing page live at endless-tales.com",
+          "status": "complete",
+          "owner": "Claude",
+          "hours": 8,
+          "dueDate": "2026-03-08",
+          "completedDate": "2026-03-08"
+        },
+        {
+          "id": "6.2",
+          "name": "3 sample stories with fully working audio",
+          "status": "complete",
+          "owner": "Claude",
+          "hours": 4,
+          "dueDate": "2026-03-08",
+          "completedDate": "2026-03-08"
+        },
+        {
+          "id": "6.3",
+          "name": "Waitlist signup working + email confirmed",
+          "status": "complete",
+          "owner": "Claude",
+          "hours": 3,
+          "dueDate": "2026-03-13",
+          "completedDate": "2026-03-13"
+        },
+        {
+          "id": "6.4",
+          "name": "Founding member counter live (500 spots, live progress bar)",
+          "status": "complete",
+          "owner": "Claude",
+          "hours": 3,
+          "dueDate": "2026-03-21",
+          "completedDate": "2026-03-21"
+        },
+        {
+          "id": "6.5",
+          "name": "Copy update: $7.99/month, 2 Weeks Free, commuter-focused messaging",
+          "status": "not-started",
+          "owner": "Claude",
+          "hours": 2,
+          "dueDate": "2026-04-01",
+          "completedDate": null
+        },
+        {
+          "id": "6.6",
+          "name": "Launch countdown + April 24 announcement live on landing page",
+          "status": "not-started",
+          "owner": "Claude",
+          "hours": 2,
+          "dueDate": "2026-04-07",
+          "completedDate": null
+        },
+        {
+          "id": "6.7",
+          "name": "Waitlist blast email -- launch day announcement to all subscribers",
+          "status": "not-started",
+          "owner": "Marc",
+          "hours": 1,
+          "dueDate": "2026-04-24",
+          "completedDate": null
+        },
+        {
+          "id": "6.8",
+          "name": "QR Code Partner System -- spec complete, build post-launch",
+          "status": "on-hold",
+          "owner": "Claude",
+          "hours": 20,
+          "dueDate": "2026-05-31",
+          "completedDate": null
+        }
+      ]
+    },
+    {
+      "id": "legal",
+      "name": "7 -- Legal & Infrastructure",
+      "goal": "Business is legal, email infrastructure solid, compliance ready",
+      "tasks": [
+        {
+          "id": "7.1",
+          "name": "Terms of Service published at /terms",
+          "status": "complete",
+          "owner": "Claude",
+          "hours": 3,
+          "dueDate": "2026-03-21",
+          "completedDate": "2026-03-21"
+        },
+        {
+          "id": "7.2",
+          "name": "Privacy Policy published at /privacy",
+          "status": "complete",
+          "owner": "Claude",
+          "hours": 2,
+          "dueDate": "2026-03-21",
+          "completedDate": "2026-03-21"
+        },
+        {
+          "id": "7.3",
+          "name": "Custom SMTP: noreply@endless-tales.com via Resend configured",
+          "status": "complete",
+          "owner": "Claude",
+          "hours": 2,
+          "dueDate": "2026-03-28",
+          "completedDate": "2026-03-28"
+        },
+        {
+          "id": "7.4",
+          "name": "All 5 Supabase auth email templates branded (dark theme, orange accent)",
+          "status": "complete",
+          "owner": "Claude",
+          "hours": 2,
+          "dueDate": "2026-03-28",
+          "completedDate": "2026-03-28"
+        },
+        {
+          "id": "7.5",
+          "name": "Microsoft 365 email tested (marc@, support@, sales@)",
+          "status": "not-started",
+          "owner": "Marc",
+          "hours": 1,
+          "dueDate": "2026-04-01",
+          "completedDate": null
+        },
+        {
+          "id": "7.6",
+          "name": "Content licensing / DMCA policy in place",
+          "status": "not-started",
+          "owner": "Marc",
+          "hours": 2,
+          "dueDate": "2026-04-07",
+          "completedDate": null
+        },
+        {
+          "id": "7.7",
+          "name": "Register Wonder Books Press LLC (state filing)",
+          "status": "not-started",
+          "owner": "Marc",
+          "hours": 3,
+          "dueDate": "2026-05-31",
+          "completedDate": null
+        }
+      ]
+    },
+    {
+      "id": "marketing",
+      "name": "8 -- Pre-Launch Marketing",
+      "goal": "QR materials ordered and deployed, TikTok creative ready, waitlist notified",
+      "tasks": [
+        {
+          "id": "8.1",
+          "name": "QR materials designed and ordered (counter cards, posters, clings) -- ORDER BY APR 7",
+          "status": "not-started",
+          "owner": "Marc",
+          "hours": 3,
+          "dueDate": "2026-04-07",
+          "completedDate": null
+        },
+        {
+          "id": "8.2",
+          "name": "Bitly QR tracking codes created (one per location cluster)",
+          "status": "not-started",
+          "owner": "Marc",
+          "hours": 1,
+          "dueDate": "2026-04-07",
+          "completedDate": null
+        },
+        {
+          "id": "8.3",
+          "name": "Phase 1 truck stop location list finalized (250 locations target)",
+          "status": "not-started",
+          "owner": "Marc",
+          "hours": 3,
+          "dueDate": "2026-04-10",
+          "completedDate": null
+        },
+        {
+          "id": "8.4",
+          "name": "TikTok/Reels creative: 4 x 60-sec story clip ads produced",
+          "status": "not-started",
+          "owner": "Marc",
+          "hours": 6,
+          "dueDate": "2026-04-14",
+          "completedDate": null
+        },
+        {
+          "id": "8.5",
+          "name": "TikTok Business Manager + Meta Ads Manager accounts configured",
+          "status": "not-started",
+          "owner": "Marc",
+          "hours": 2,
+          "dueDate": "2026-04-14",
+          "completedDate": null
+        },
+        {
+          "id": "8.6",
+          "name": "GA4 analytics confirmed firing on key events (signup, trial start, subscribe)",
+          "status": "not-started",
+          "owner": "Claude",
+          "hours": 3,
+          "dueDate": "2026-04-14",
+          "completedDate": null
+        },
+        {
+          "id": "8.7",
+          "name": "Launch day: waitlist email blast sent, paid social campaigns live ($5K Month 1)",
+          "status": "not-started",
+          "owner": "Marc",
+          "hours": 2,
+          "dueDate": "2026-04-24",
+          "completedDate": null
+        },
+        {
+          "id": "8.8",
+          "name": "QR physical placement: materials installed at first truck stop locations",
+          "status": "not-started",
+          "owner": "Marc",
+          "hours": 8,
+          "dueDate": "2026-04-30",
+          "completedDate": null
+        }
+      ]
+    },
+    {
+      "id": "buffer",
+      "name": "9 -- Buffer Week QA (Apr 17-24)",
+      "goal": "Full end-to-end QA pass -- nothing ships broken on launch day",
+      "tasks": [
+        {
+          "id": "9.1",
+          "name": "New subscriber test: complete signup to 14-day trial to subscribe flow",
+          "status": "not-started",
+          "owner": "Marc",
+          "hours": 2,
+          "dueDate": "2026-04-19",
+          "completedDate": null
+        },
+        {
+          "id": "9.2",
+          "name": "Audio playback test: play 3 stories start to finish, verify progress saves",
+          "status": "not-started",
+          "owner": "Marc",
+          "hours": 2,
+          "dueDate": "2026-04-19",
+          "completedDate": null
+        },
+        {
+          "id": "9.3",
+          "name": "Mobile test: full flow on iPhone + Android real device",
+          "status": "not-started",
+          "owner": "Marc",
+          "hours": 3,
+          "dueDate": "2026-04-20",
+          "completedDate": null
+        },
+        {
+          "id": "9.4",
+          "name": "Trial email sequence: confirm Day 0/3/10/13 emails arrive correctly",
+          "status": "not-started",
+          "owner": "Marc",
+          "hours": 1,
+          "dueDate": "2026-04-20",
+          "completedDate": null
+        },
+        {
+          "id": "9.5",
+          "name": "Paywall test: guest and expired-trial users blocked from paid content",
+          "status": "not-started",
+          "owner": "Marc",
+          "hours": 1,
+          "dueDate": "2026-04-21",
+          "completedDate": null
+        },
+        {
+          "id": "9.6",
+          "name": "Pixel verification: Meta/TikTok events confirming in ads manager",
+          "status": "not-started",
+          "owner": "Marc",
+          "hours": 1,
+          "dueDate": "2026-04-21",
+          "completedDate": null
+        },
+        {
+          "id": "9.7",
+          "name": "All known bugs from QA pass fixed and deployed",
+          "status": "not-started",
+          "owner": "Claude",
+          "hours": 6,
+          "dueDate": "2026-04-23",
+          "completedDate": null
+        },
+        {
+          "id": "9.8",
+          "name": "LAUNCH: Remove waitlist gate, activate founding member pricing -- April 24",
+          "status": "not-started",
+          "owner": "Marc",
+          "hours": 1,
+          "dueDate": "2026-04-24",
+          "completedDate": null
+        }
+      ]
+    },
+    {
+      "id": "month1",
+      "name": "10 -- Month 1 Validation (Apr 24 to May 24)",
+      "goal": "Validate CAC, trial conversion, and channel performance before scaling spend",
+      "tasks": [
+        {
+          "id": "10.1",
+          "name": "QR scan rate tracked daily -- target: 2%+ scan-to-trial rate",
+          "status": "not-started",
+          "owner": "Marc",
+          "hours": 1,
+          "dueDate": "2026-05-10",
+          "completedDate": null
+        },
+        {
+          "id": "10.2",
+          "name": "TikTok/Reels CAC calculated from first $5K spend (target: <$35)",
+          "status": "not-started",
+          "owner": "Marc",
+          "hours": 1,
+          "dueDate": "2026-05-10",
+          "completedDate": null
+        },
+        {
+          "id": "10.3",
+          "name": "Trial-to-paid conversion rate from Day 14 cohort (target: 30%+)",
+          "status": "not-started",
+          "owner": "Marc",
+          "hours": 1,
+          "dueDate": "2026-05-10",
+          "completedDate": null
+        },
+        {
+          "id": "10.4",
+          "name": "Hal produces stories 11-14 via ASC (2/month cadence begins after April 9)",
+          "status": "not-started",
+          "owner": "Hal",
+          "hours": 16,
+          "dueDate": "2026-05-20",
+          "completedDate": null
+        },
+        {
+          "id": "10.5",
+          "name": "May 24 Checkpoint: QR expand or hold? TikTok scale or pull back? Marc decision",
+          "status": "not-started",
+          "owner": "Marc",
+          "hours": 2,
+          "dueDate": "2026-05-24",
+          "completedDate": null
+        }
+      ]
+    },
+    {
+      "id": "postlaunch",
+      "name": "11 -- Post-Launch: Admin Reorganization (Month 2-3)",
+      "goal": "Consolidate admin pages, add budget-vs-actuals dashboard, clean up admin nav",
+      "tasks": [
+        {
+          "id": "11.1",
+          "name": "Consolidate Finance + EL Usage into single dashboard",
+          "status": "not-started",
+          "owner": "Claude",
+          "hours": 8,
+          "dueDate": "2026-05-31",
+          "completedDate": null
+        },
+        {
+          "id": "11.2",
+          "name": "Budget vs proforma analysis panel (actuals vs FINAL financial model)",
+          "status": "not-started",
+          "owner": "Claude",
+          "hours": 12,
+          "dueDate": "2026-05-31",
+          "completedDate": null
+        },
+        {
+          "id": "11.3",
+          "name": "Admin dashboard homepage: MRR, subscribers, churn, EL spend at a glance",
+          "status": "not-started",
+          "owner": "Claude",
+          "hours": 8,
+          "dueDate": "2026-06-15",
+          "completedDate": null
+        },
+        {
+          "id": "11.4",
+          "name": "Consolidate 20+ admin routes: remove placeholders, merge overlapping pages",
+          "status": "not-started",
+          "owner": "Claude",
+          "hours": 6,
+          "dueDate": "2026-06-15",
+          "completedDate": null
+        },
+        {
+          "id": "11.5",
+          "name": "App Store submission: iOS + Android (Capacitor build, store assets, TestFlight QA)",
+          "status": "not-started",
+          "owner": "Claude",
+          "hours": 20,
+          "dueDate": "2026-06-25",
+          "completedDate": null
+        },
+        {
+          "id": "11.6",
+          "name": "Jun 17 Checkpoint: Churn rate, referral lift, community growth -- Marc decision on Plan 3 budget",
+          "status": "not-started",
+          "owner": "Marc",
+          "hours": 2,
+          "dueDate": "2026-06-17",
+          "completedDate": null
+        },
+        {
+          "id": "11.7",
+          "name": "Jul 17 Checkpoint: Full model validation -- Hal rewrites pro forma with real data",
+          "status": "not-started",
+          "owner": "Hal",
+          "hours": 4,
+          "dueDate": "2026-07-17",
+          "completedDate": null
+        }
+      ]
     }
   ]
 }
