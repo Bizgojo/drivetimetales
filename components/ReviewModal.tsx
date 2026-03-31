@@ -22,8 +22,9 @@ export default function ReviewModal({ storyId, storyTitle, userId, genre, durati
   async function handleSubmit() {
     if (!rating) return
     setSubmitting(true); setError(null)
-    const { error: insertError } = await supabase.from('reviews').insert({ story_id: storyId, user_id: userId, rating, review_text: reviewText.trim() || null })
-    if (insertError) { setError(insertError.message); setSubmitting(false); return }
+    const res = await fetch('/api/reviews', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ story_id: storyId, user_id: userId, rating, review_text: reviewText.trim() || null }) })
+    const result = await res.json()
+    if (!res.ok) { setError(result.error || 'Failed to submit'); setSubmitting(false); return }
     setSubmitted(true); onSubmitted(rating)
   }
 
