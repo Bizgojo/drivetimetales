@@ -272,7 +272,7 @@ function LibraryContent() {
   const singles = filteredStories
     .filter(s => !s.series_name || s.series_name === 'None' || singleEpSeriesStories.includes(s))
     .sort((a, b) => (a.duration_mins || 0) - (b.duration_mins || 0))
-  seriesGroups.sort((a, b) => (a.total_duration_mins || 0) - (b.total_duration_mins || 0))
+  seriesGroups.sort((a, b) => (a.episode_count > 0 ? Math.round(a.total_duration_mins / a.episode_count) : 0) - (b.episode_count > 0 ? Math.round(b.total_duration_mins / b.episode_count) : 0))
 
   type DisplayItem = { type: 'single', story: Story, sortDate: string } | { type: 'series', group: SeriesGroup, sortDate: string }
   const mixedItems: DisplayItem[] = []
@@ -282,10 +282,14 @@ function LibraryContent() {
   seriesGroups.forEach(group => {
     mixedItems.push({ type: 'series', group, sortDate: group.earliest_created_at || '' })
   })
-  // Sort shortest to longest (singles by duration; series by total duration)
+  // Sort shortest to longest (singles by duration; series by avg episode duration)
   mixedItems.sort((a, b) => {
-    const aDur = a.type === 'single' ? (a.story.duration_mins || 0) : (a.group.total_duration_mins || 0)
-    const bDur = b.type === 'single' ? (b.story.duration_mins || 0) : (b.group.total_duration_mins || 0)
+    const aDur = a.type === 'single'
+      ? (a.story.duration_mins || 0)
+      : (a.group.episode_count > 0 ? Math.round((a.group.total_duration_mins || 0) / a.group.episode_count) : 0)
+    const bDur = b.type === 'single'
+      ? (b.story.duration_mins || 0)
+      : (b.group.episode_count > 0 ? Math.round((b.group.total_duration_mins || 0) / b.group.episode_count) : 0)
     return aDur - bDur
   })
 
