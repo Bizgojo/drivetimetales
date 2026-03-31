@@ -1,759 +1,133 @@
-{
-  "meta": {
-    "launchDate": "2026-04-17",
-    "lastUpdated": "2026-03-30T08:00:00-05:00",
-    "totalTasks": 98,
-    "completedTasks": 47
+[
+  {
+    "area": "ASC3 — Audio Story Creator",
+    "description": "Fully automated, production-quality audio pipeline",
+    "tasks": [
+      { "id": "1.1", "title": "ElevenLabs TTS locked (no OpenAI fallback)", "due": "Mar 19", "status": "complete" },
+      { "id": "1.2", "title": "Belle B announcer voice locked permanently", "due": "Mar 19", "status": "complete" },
+      { "id": "1.3", "title": "Narrator: random American voice per story", "due": "Mar 19", "status": "complete" },
+      { "id": "1.4", "title": "Gender detection fixed (male names → male voices)", "due": "Mar 19", "status": "complete" },
+      { "id": "1.5", "title": "Proper audio ducking (dynamic, not flat)", "due": "Mar 20", "status": "complete" },
+      { "id": "1.6", "title": "Genre background music library (4 tracks)", "due": "Mar 19", "status": "complete" },
+      { "id": "1.7", "title": "Suno custom music integration (CDP browser)", "due": "Mar 20", "status": "complete" },
+      { "id": "1.8", "title": "SFX system (Freesound API integration)", "due": "Mar 20", "status": "complete" },
+      { "id": "1.9", "title": "Story Creation admin page → ASC3 pipeline connected", "due": "Mar 20", "status": "complete" },
+      { "id": "1.10", "title": "End-to-end pipeline test (full story, publish to app)", "due": "Mar 26", "status": "not-started" }
+    ]
   },
-  "areas": [
-    {
-      "id": "asc3",
-      "name": "1 \u2014 ASC3: Audio Story Creator",
-      "goal": "Fully automated, production-quality audio pipeline",
-      "tasks": [
-        {
-          "id": "1.1",
-          "name": "ElevenLabs TTS locked (no OpenAI fallback)",
-          "status": "complete",
-          "dueDate": "2026-03-19",
-          "completedDate": "2026-03-19"
-        },
-        {
-          "id": "1.2",
-          "name": "Belle B announcer voice locked permanently",
-          "status": "complete",
-          "dueDate": "2026-03-19",
-          "completedDate": "2026-03-19"
-        },
-        {
-          "id": "1.3",
-          "name": "Narrator: random American voice per story",
-          "status": "complete",
-          "dueDate": "2026-03-19",
-          "completedDate": "2026-03-19"
-        },
-        {
-          "id": "1.4",
-          "name": "Gender detection fixed (male names \u2192 male voices)",
-          "status": "complete",
-          "dueDate": "2026-03-19",
-          "completedDate": "2026-03-19"
-        },
-        {
-          "id": "1.5",
-          "name": "Proper audio ducking (dynamic, not flat)",
-          "status": "complete",
-          "dueDate": "2026-03-20",
-          "completedDate": "2026-03-20"
-        },
-        {
-          "id": "1.6",
-          "name": "Genre background music library (4 tracks)",
-          "status": "complete",
-          "dueDate": "2026-03-19",
-          "completedDate": "2026-03-19"
-        },
-        {
-          "id": "1.7",
-          "name": "Suno custom music integration (CDP browser)",
-          "status": "complete",
-          "dueDate": "2026-03-20",
-          "completedDate": "2026-03-20"
-        },
-        {
-          "id": "1.8",
-          "name": "SFX system (Freesound API integration)",
-          "status": "complete",
-          "dueDate": "2026-03-20",
-          "completedDate": "2026-03-20"
-        },
-        {
-          "id": "1.9",
-          "name": "Story Creation admin page \u2192 ASC3 pipeline connected",
-          "status": "complete",
-          "dueDate": "2026-03-20",
-          "completedDate": "2026-03-20"
-        },
-        {
-          "id": "1.10",
-          "name": "3-file architecture (intro + body + outro) end-to-end test complete",
-          "status": "complete",
-          "dueDate": "2026-03-28",
-          "completedDate": "2026-03-28"
-        },
-        {
-          "id": "1.11",
-          "name": "EL overage resolved \u2014 dedicated Hal key, 500k limit, reconcile script",
-          "status": "complete",
-          "dueDate": "2026-03-28",
-          "completedDate": "2026-03-28"
-        },
-        {
-          "id": "1.12",
-          "name": "Send 25 story prompts to Hal before April 9 EL credit reset",
-          "status": "not-started",
-          "dueDate": "2026-04-08",
-          "completedDate": null
-        }
-      ]
-    },
-    {
-      "id": "stories",
-      "name": "2 \u2014 Story Production",
-      "goal": "10+ publishable stories in app before launch",
-      "tasks": [
-        {
-          "id": "2.1",
-          "name": "\"When Rosie Came Home\" \u2014 produced & published",
-          "status": "complete",
-          "dueDate": "2026-03-08",
-          "completedDate": "2026-03-08"
-        },
-        {
-          "id": "2.2",
-          "name": "\"The Grave He Dug Himself\" \u2014 produced & published",
-          "status": "complete",
-          "dueDate": "2026-03-19",
-          "completedDate": "2026-03-19"
-        },
-        {
-          "id": "2.3",
-          "name": "\"The Letters He Was Meant to Carry\" \u2014 produced & published",
-          "status": "complete",
-          "dueDate": "2026-03-19",
-          "completedDate": "2026-03-19"
-        },
-        {
-          "id": "2.4",
-          "name": "\"The Creek Doesn't Hurry\" \u2014 produced & published",
-          "status": "complete",
-          "dueDate": "2026-03-29",
-          "completedDate": "2026-03-29"
-        },
-        {
-          "id": "2.5",
-          "name": "Story #5 produced & published to app",
-          "status": "not-started",
-          "dueDate": "2026-04-01",
-          "completedDate": null
-        },
-        {
-          "id": "2.6",
-          "name": "Story #6 produced & published to app",
-          "status": "not-started",
-          "dueDate": "2026-04-03",
-          "completedDate": null
-        },
-        {
-          "id": "2.7",
-          "name": "Story #7 produced & published to app",
-          "status": "not-started",
-          "dueDate": "2026-04-05",
-          "completedDate": null
-        },
-        {
-          "id": "2.8",
-          "name": "Story #8 produced & published to app",
-          "status": "not-started",
-          "dueDate": "2026-04-07",
-          "completedDate": null
-        },
-        {
-          "id": "2.9",
-          "name": "Story #9 produced & published to app",
-          "status": "not-started",
-          "dueDate": "2026-04-09",
-          "completedDate": null
-        },
-        {
-          "id": "2.10",
-          "name": "Reach 10+ stories in app library",
-          "status": "not-started",
-          "dueDate": "2026-04-10",
-          "completedDate": null
-        },
-        {
-          "id": "2.11",
-          "name": "Origin 2.0 \u2014 Episode 1 published to correct Supabase project",
-          "status": "not-started",
-          "dueDate": "2026-04-10",
-          "completedDate": null
-        }
-      ]
-    },
-    {
-      "id": "webapp",
-      "name": "3 \u2014 Web App: UX/UI & Performance",
-      "goal": "Flawless subscriber experience on mobile",
-      "tasks": [
-        {
-          "id": "3.1",
-          "name": "Rebrand to Endless Tales complete (logo, name, metadata)",
-          "status": "complete",
-          "dueDate": "2026-02-25",
-          "completedDate": "2026-02-25"
-        },
-        {
-          "id": "3.2",
-          "name": "Domain app.endless-tales.com live (DNS CNAME via GoDaddy \u2192 Vercel)",
-          "status": "complete",
-          "dueDate": "2026-03-29",
-          "completedDate": "2026-03-29"
-        },
-        {
-          "id": "3.3",
-          "name": "Landing page with 3 sample stories live",
-          "status": "complete",
-          "dueDate": "2026-03-08",
-          "completedDate": "2026-03-08"
-        },
-        {
-          "id": "3.4",
-          "name": "Audio playback on landing page fully working",
-          "status": "complete",
-          "dueDate": "2026-03-08",
-          "completedDate": "2026-03-08"
-        },
-        {
-          "id": "3.5",
-          "name": "Waitlist signup + confirmation email working",
-          "status": "complete",
-          "dueDate": "2026-03-13",
-          "completedDate": "2026-03-13"
-        },
-        {
-          "id": "3.6",
-          "name": "Referral system + emails working",
-          "status": "complete",
-          "dueDate": "2026-03-13",
-          "completedDate": "2026-03-13"
-        },
-        {
-          "id": "3.7",
-          "name": "Series page (2+ episode rule enforced, redirects working)",
-          "status": "complete",
-          "dueDate": "2026-03-21",
-          "completedDate": "2026-03-21"
-        },
-        {
-          "id": "3.8",
-          "name": "Monthly/annual billing toggle on signup page",
-          "status": "complete",
-          "dueDate": "2026-03-29",
-          "completedDate": "2026-03-29"
-        },
-        {
-          "id": "3.9",
-          "name": "Welcome banner on /home?welcome=true",
-          "status": "complete",
-          "dueDate": "2026-03-29",
-          "completedDate": "2026-03-29"
-        },
-        {
-          "id": "3.10",
-          "name": "Admin link in header (Marc's email only)",
-          "status": "complete",
-          "dueDate": "2026-03-29",
-          "completedDate": "2026-03-29"
-        },
-        {
-          "id": "3.11",
-          "name": "NewReleases / RecommendedForYou deduplication",
-          "status": "complete",
-          "dueDate": "2026-03-29",
-          "completedDate": "2026-03-29"
-        },
-        {
-          "id": "3.12",
-          "name": "is_hidden=false filter on New Releases enforced",
-          "status": "complete",
-          "dueDate": "2026-03-29",
-          "completedDate": "2026-03-29"
-        },
-        {
-          "id": "3.13",
-          "name": "Orphaned auth user cleanup on Stripe checkout failure",
-          "status": "complete",
-          "dueDate": "2026-03-29",
-          "completedDate": "2026-03-29"
-        },
-        {
-          "id": "3.14",
-          "name": "Guest page redesign (infinity SVG logo, 10-45 min range, no Sign In button)",
-          "status": "complete",
-          "dueDate": "2026-03-29",
-          "completedDate": "2026-03-29"
-        },
-        {
-          "id": "3.15",
-          "name": "GuestSignupPrompt \u2014 full test (triggers after 2 stories or 30 min)",
-          "status": "complete",
-          "dueDate": "2026-03-29",
-          "completedDate": "2026-03-29"
-        },
-        {
-          "id": "3.16",
-          "name": "Guest page flicker on redirect \u2014 fix",
-          "status": "not-started",
-          "dueDate": "2026-03-31",
-          "completedDate": null
-        },
-        {
-          "id": "3.17",
-          "name": "GuestSignupPrompt \u2014 fix '0 minutes free' bug (save on player unload)",
-          "status": "not-started",
-          "dueDate": "2026-04-03",
-          "completedDate": null
-        },
-        {
-          "id": "3.18",
-          "name": "Continue Listening \u2014 live test with real story data",
-          "status": "not-started",
-          "dueDate": "2026-04-01",
-          "completedDate": null
-        },
-        {
-          "id": "3.19",
-          "name": "Story player \u2014 all features confirmed (Not For Me, Start Over, progress save, /library on complete)",
-          "status": "not-started",
-          "dueDate": "2026-04-03",
-          "completedDate": null
-        },
-        {
-          "id": "3.20",
-          "name": "Search & browse working (genre filters from DB)",
-          "status": "not-started",
-          "dueDate": "2026-04-05",
-          "completedDate": null
-        },
-        {
-          "id": "3.21",
-          "name": "Subscription paywall enforced \u2014 non-subscribers blocked from paid content",
-          "status": "not-started",
-          "dueDate": "2026-04-05",
-          "completedDate": null
-        },
-        {
-          "id": "3.22",
-          "name": "Home page personalization (greeting by name, personalized intro/outro)",
-          "status": "not-started",
-          "dueDate": "2026-04-07",
-          "completedDate": null
-        },
-        {
-          "id": "3.23",
-          "name": "Promo/invite code system for testers",
-          "status": "not-started",
-          "dueDate": "2026-04-07",
-          "completedDate": null
-        },
-        {
-          "id": "3.24",
-          "name": "Full mobile UX polish pass (touch targets, overflow, font sizes)",
-          "status": "not-started",
-          "dueDate": "2026-04-10",
-          "completedDate": null
-        },
-        {
-          "id": "3.25",
-          "name": "Delete account flow (Apple hard requirement)",
-          "status": "not-started",
-          "dueDate": "2026-04-10",
-          "completedDate": null
-        },
-        {
-          "id": "3.26",
-          "name": "Performance optimization (image compression, lazy load, caching)",
-          "status": "not-started",
-          "dueDate": "2026-04-12",
-          "completedDate": null
-        },
-        {
-          "id": "3.27",
-          "name": "Final QA pass \u2014 full signup \u2192 subscribe \u2192 play \u2192 cancel flow",
-          "status": "not-started",
-          "dueDate": "2026-04-14",
-          "completedDate": null
-        }
-      ]
-    },
-    {
-      "id": "admin",
-      "name": "4 \u2014 Admin Dashboard",
-      "goal": "Story data, user analytics, retention intel",
-      "tasks": [
-        {
-          "id": "4.1",
-          "name": "Story Creation page built (all 4 stages)",
-          "status": "complete",
-          "dueDate": "2026-03-13",
-          "completedDate": "2026-03-13"
-        },
-        {
-          "id": "4.2",
-          "name": "Admin navigation updated (new menu structure)",
-          "status": "complete",
-          "dueDate": "2026-03-13",
-          "completedDate": "2026-03-13"
-        },
-        {
-          "id": "4.3",
-          "name": "Finance page with production cost tracking by category",
-          "status": "complete",
-          "dueDate": "2026-03-28",
-          "completedDate": "2026-03-28"
-        },
-        {
-          "id": "4.4",
-          "name": "EL usage dashboard at /admin/el-usage",
-          "status": "complete",
-          "dueDate": "2026-03-28",
-          "completedDate": "2026-03-28"
-        },
-        {
-          "id": "4.5",
-          "name": "checklist_overrides table confirmed in Supabase (checklist statuses save correctly)",
-          "status": "not-started",
-          "dueDate": "2026-03-31",
-          "completedDate": null
-        },
-        {
-          "id": "4.6",
-          "name": "Cancel all test Stripe subscriptions (dashboard cleanup)",
-          "status": "not-started",
-          "dueDate": "2026-03-31",
-          "completedDate": null
-        },
-        {
-          "id": "4.7",
-          "name": "Analytics dashboard (users, plays, retention)",
-          "status": "not-started",
-          "dueDate": "2026-04-14",
-          "completedDate": null
-        },
-        {
-          "id": "4.8",
-          "name": "User management page (view, suspend, manage subs)",
-          "status": "not-started",
-          "dueDate": "2026-04-14",
-          "completedDate": null
-        }
-      ]
-    },
-    {
-      "id": "payments",
-      "name": "5 \u2014 Pricing & Payments",
-      "goal": "Stripe subscriptions + Apple/Google IAP strategy",
-      "tasks": [
-        {
-          "id": "5.1",
-          "name": "Stripe monthly subscription flow complete ($7.99/mo)",
-          "status": "complete",
-          "dueDate": "2026-03-13",
-          "completedDate": "2026-03-13"
-        },
-        {
-          "id": "5.2",
-          "name": "Stripe annual subscription flow complete ($59.99/yr)",
-          "status": "complete",
-          "dueDate": "2026-03-29",
-          "completedDate": "2026-03-29"
-        },
-        {
-          "id": "5.3",
-          "name": "Welcome email after annual signup \u2014 debug & confirm delivery",
-          "status": "not-started",
-          "dueDate": "2026-03-31",
-          "completedDate": null
-        },
-        {
-          "id": "5.4",
-          "name": "Stripe bank account setup for payouts",
-          "status": "not-started",
-          "dueDate": "2026-04-01",
-          "completedDate": null
-        },
-        {
-          "id": "5.5",
-          "name": "PayPal as additional payment method",
-          "status": "not-started",
-          "dueDate": "2026-04-07",
-          "completedDate": null
-        },
-        {
-          "id": "5.6",
-          "name": "Subscription paywall enforced \u2014 non-subscribers blocked from paid content",
-          "status": "not-started",
-          "dueDate": "2026-04-05",
-          "completedDate": null
-        },
-        {
-          "id": "5.7",
-          "name": "Apple/Google IAP decision \u2014 direct to endless-tales.com (no in-app purchase)",
-          "status": "not-started",
-          "dueDate": "2026-04-05",
-          "completedDate": null
-        },
-        {
-          "id": "5.8",
-          "name": "$7.99/month + 2 Weeks Free messaging consistent across all pages",
-          "status": "not-started",
-          "dueDate": "2026-04-01",
-          "completedDate": null
-        }
-      ]
-    },
-    {
-      "id": "landing",
-      "name": "6 \u2014 Landing Page",
-      "goal": "Converts visitors \u2192 waitlist/subscribers",
-      "tasks": [
-        {
-          "id": "6.1",
-          "name": "Core landing page live at endless-tales.com",
-          "status": "complete",
-          "dueDate": "2026-03-08",
-          "completedDate": "2026-03-08"
-        },
-        {
-          "id": "6.2",
-          "name": "3 sample stories with fully working audio",
-          "status": "complete",
-          "dueDate": "2026-03-08",
-          "completedDate": "2026-03-08"
-        },
-        {
-          "id": "6.3",
-          "name": "Waitlist signup working + email confirmed",
-          "status": "complete",
-          "dueDate": "2026-03-13",
-          "completedDate": "2026-03-13"
-        },
-        {
-          "id": "6.4",
-          "name": "Founding member counter live (500 spots, live progress bar)",
-          "status": "complete",
-          "dueDate": "2026-03-21",
-          "completedDate": "2026-03-21"
-        },
-        {
-          "id": "6.5",
-          "name": "Copy update \u2014 $7.99/month, '2 Weeks Free', commuter-focused messaging",
-          "status": "not-started",
-          "dueDate": "2026-04-01",
-          "completedDate": null
-        },
-        {
-          "id": "6.6",
-          "name": "Launch countdown + April 17 announcement live",
-          "status": "not-started",
-          "dueDate": "2026-04-07",
-          "completedDate": null
-        },
-        {
-          "id": "6.7",
-          "name": "QR Code Partner System \u2014 full spec complete, ready to build post-launch",
-          "status": "on-hold",
-          "dueDate": "2026-04-17",
-          "completedDate": null
-        }
-      ]
-    },
-    {
-      "id": "legal",
-      "name": "7 \u2014 Legal & Infrastructure",
-      "goal": "Protected and compliant at launch",
-      "tasks": [
-        {
-          "id": "7.1",
-          "name": "Terms of Service published at /terms",
-          "status": "complete",
-          "dueDate": "2026-03-21",
-          "completedDate": "2026-03-29"
-        },
-        {
-          "id": "7.2",
-          "name": "Privacy Policy published at /privacy",
-          "status": "complete",
-          "dueDate": "2026-03-21",
-          "completedDate": "2026-03-29"
-        },
-        {
-          "id": "7.3",
-          "name": "Custom SMTP \u2014 noreply@endless-tales.com via Resend configured in Supabase Auth",
-          "status": "complete",
-          "dueDate": "2026-03-28",
-          "completedDate": "2026-03-28"
-        },
-        {
-          "id": "7.4",
-          "name": "All 5 Supabase auth email templates branded (dark theme, orange accent)",
-          "status": "complete",
-          "dueDate": "2026-03-28",
-          "completedDate": "2026-03-28"
-        },
-        {
-          "id": "7.5",
-          "name": "Microsoft 365 email tested (marc@, support@, sales@)",
-          "status": "not-started",
-          "dueDate": "2026-04-01",
-          "completedDate": null
-        },
-        {
-          "id": "7.6",
-          "name": "Content licensing / DMCA policy in place",
-          "status": "not-started",
-          "dueDate": "2026-04-07",
-          "completedDate": null
-        },
-        {
-          "id": "7.7",
-          "name": "Register Wonder Books Press LLC (state filing)",
-          "status": "not-started",
-          "dueDate": "2026-04-30",
-          "completedDate": null
-        },
-        {
-          "id": "7.8",
-          "name": "Open business bank account for Wonder Books Press LLC",
-          "status": "not-started",
-          "dueDate": "2026-05-15",
-          "completedDate": null
-        }
-      ]
-    },
-    {
-      "id": "mobile",
-      "name": "8 \u2014 Mobile App: Store Submission",
-      "goal": "iOS App Store + Google Play submission by April 12",
-      "tasks": [
-        {
-          "id": "8.1",
-          "name": "Mobile wrapper decision \u2014 Capacitor vs PWA",
-          "status": "not-started",
-          "dueDate": "2026-03-31",
-          "completedDate": null
-        },
-        {
-          "id": "8.2",
-          "name": "Capacitor wrapper build (iOS + Android)",
-          "status": "not-started",
-          "dueDate": "2026-04-05",
-          "completedDate": null
-        },
-        {
-          "id": "8.3",
-          "name": "App icons + splash screens (all required sizes)",
-          "status": "not-started",
-          "dueDate": "2026-04-05",
-          "completedDate": null
-        },
-        {
-          "id": "8.4",
-          "name": "Apple Developer account + provisioning + App Store Connect setup",
-          "status": "not-started",
-          "dueDate": "2026-04-05",
-          "completedDate": null
-        },
-        {
-          "id": "8.5",
-          "name": "Google Play Console setup + data safety form",
-          "status": "not-started",
-          "dueDate": "2026-04-07",
-          "completedDate": null
-        },
-        {
-          "id": "8.6",
-          "name": "App Store + Play Store listing (description, keywords, screenshots)",
-          "status": "not-started",
-          "dueDate": "2026-04-08",
-          "completedDate": null
-        },
-        {
-          "id": "8.7",
-          "name": "TestFlight / internal test track \u2014 QA pass on real device",
-          "status": "not-started",
-          "dueDate": "2026-04-10",
-          "completedDate": null
-        },
-        {
-          "id": "8.8",
-          "name": "Submit to Apple App Store",
-          "status": "not-started",
-          "dueDate": "2026-04-12",
-          "completedDate": null
-        },
-        {
-          "id": "8.9",
-          "name": "Submit to Google Play Store",
-          "status": "not-started",
-          "dueDate": "2026-04-12",
-          "completedDate": null
-        },
-        {
-          "id": "8.10",
-          "name": "WEB APP PUBLIC LAUNCH \u2014 remove waitlist gate, activate subscriptions, founding members notified",
-          "status": "not-started",
-          "dueDate": "2026-04-17",
-          "completedDate": null
-        }
-      ]
-    },
-    {
-      "id": "social",
-      "name": "9 \u2014 Social & Marketing (POST-LAUNCH)",
-      "goal": "Audience primed and ready \u2014 all tasks deferred until after April 17",
-      "tasks": [
-        {
-          "id": "9.1",
-          "name": "X account set up (@EndlessTalesAudio)",
-          "status": "complete",
-          "dueDate": "2026-03-05",
-          "completedDate": "2026-03-05"
-        },
-        {
-          "id": "9.2",
-          "name": "Reddit account set up (u/EndlessTalesAudio)",
-          "status": "complete",
-          "dueDate": "2026-03-03",
-          "completedDate": "2026-03-03"
-        },
-        {
-          "id": "9.3",
-          "name": "X API credentials configured (OAuth keys in Vercel)",
-          "status": "complete",
-          "dueDate": "2026-03-21",
-          "completedDate": "2026-03-21"
-        },
-        {
-          "id": "9.4",
-          "name": "X API Basic plan activated ($100/mo)",
-          "status": "on-hold",
-          "dueDate": "2026-04-17",
-          "completedDate": null
-        },
-        {
-          "id": "9.5",
-          "name": "30-day content calendar built (pre + post-launch)",
-          "status": "on-hold",
-          "dueDate": "2026-04-17",
-          "completedDate": null
-        },
-        {
-          "id": "9.6",
-          "name": "Influencer outreach list built + first contacts sent",
-          "status": "on-hold",
-          "dueDate": "2026-04-17",
-          "completedDate": null
-        },
-        {
-          "id": "9.7",
-          "name": "Physical marketing materials ready (QR cards/posters)",
-          "status": "on-hold",
-          "dueDate": "2026-04-17",
-          "completedDate": null
-        }
-      ]
-    }
-  ]
-}
+  {
+    "area": "Story Production",
+    "description": "10+ publishable stories in app before launch",
+    "tasks": [
+      { "id": "2.1", "title": "\"When Rosie Came Home\" — produced & published", "due": "Mar 8", "status": "complete" },
+      { "id": "2.2", "title": "\"The Grave He Dug Himself\" — produced & published", "due": "Mar 19", "status": "complete" },
+      { "id": "2.3", "title": "\"The Letters He Was Meant to Carry\" — produced & published", "due": "Mar 19", "status": "complete" },
+      { "id": "2.4", "title": "Story #4 produced & published to app", "due": "Mar 28", "status": "not-started" },
+      { "id": "2.5", "title": "Story #5 produced & published to app", "due": "Apr 1", "status": "not-started" },
+      { "id": "2.6", "title": "Story #6 produced & published to app", "due": "Apr 3", "status": "not-started" },
+      { "id": "2.7", "title": "Story #7 produced & published to app", "due": "Apr 5", "status": "not-started" },
+      { "id": "2.8", "title": "Origin 2.0 — Episode 1 published to correct Supabase project", "due": "Apr 5", "status": "not-started" },
+      { "id": "2.9", "title": "Reach 10+ stories in app library", "due": "Apr 10", "status": "not-started" }
+    ]
+  },
+  {
+    "area": "Web App — UX/UI & Performance",
+    "description": "Flawless subscriber experience on mobile",
+    "tasks": [
+      { "id": "3.1", "title": "Rebrand to Endless Tales complete (logo, name, metadata)", "due": "Feb 25", "status": "complete" },
+      { "id": "3.2", "title": "Domain endless-tales.com live + email configured", "due": "Feb 25", "status": "complete" },
+      { "id": "3.3", "title": "Landing page with 3 sample stories live", "due": "Mar 8", "status": "complete" },
+      { "id": "3.4", "title": "Audio playback on landing page fully working", "due": "Mar 8", "status": "complete" },
+      { "id": "3.5", "title": "Waitlist signup + confirmation email working", "due": "Mar 13", "status": "complete" },
+      { "id": "3.6", "title": "Referral system + emails working", "due": "Mar 13", "status": "complete" },
+      { "id": "3.7", "title": "Series page (2+ episode rule enforced, redirects working)", "due": "Mar 21", "status": "complete" },
+      { "id": "3.8", "title": "Continue Listening — live test with real story data", "due": "Mar 28", "status": "not-started" },
+      { "id": "3.9", "title": "Series player bug fix — Play Now routes to /player/series not /player/[id]", "due": "Mar 27", "status": "not-started" },
+      { "id": "3.10", "title": "Help a Friend — seed referral_offers table with default active offer", "due": "Mar 27", "status": "not-started" },
+      { "id": "3.11", "title": "GuestSignupPrompt — full test (triggers after 2 stories or 30 min)", "due": "Mar 31", "status": "not-started" },
+      { "id": "3.12", "title": "Story player — all features confirmed (Not For Me, Start Over, progress save, /library on complete)", "due": "Apr 1", "status": "not-started" },
+      { "id": "3.13", "title": "Search & browse working (genre filters from DB)", "due": "Apr 3", "status": "not-started" },
+      { "id": "3.14", "title": "Full mobile UX polish pass (touch targets, overflow, font sizes)", "due": "Apr 5", "status": "not-started" },
+      { "id": "3.15", "title": "Performance optimization (image compression, lazy load, caching)", "due": "Apr 7", "status": "not-started" },
+      { "id": "3.16", "title": "Delete account flow (Apple hard requirement)", "due": "Apr 7", "status": "not-started" }
+    ]
+  },
+  {
+    "area": "Admin Dashboard",
+    "description": "Story data, user analytics, retention intel",
+    "tasks": [
+      { "id": "4.1", "title": "Story Creation page built (all 4 stages)", "due": "Mar 13", "status": "complete" },
+      { "id": "4.2", "title": "Admin navigation updated (new menu structure)", "due": "Mar 13", "status": "complete" },
+      { "id": "4.3", "title": "Story Creation → backend APIs fully connected (pipeline end-to-end)", "due": "Mar 26", "status": "not-started" },
+      { "id": "4.4", "title": "checklist_overrides table confirmed in Supabase (checklist statuses save correctly)", "due": "Mar 26", "status": "not-started" },
+      { "id": "4.5", "title": "Analytics dashboard (users, plays, retention)", "due": "Apr 14", "status": "not-started" },
+      { "id": "4.6", "title": "User management page (view, suspend, manage subs)", "due": "Apr 14", "status": "not-started" }
+    ]
+  },
+  {
+    "area": "Pricing & Payments",
+    "description": "Stripe subscriptions + Apple/Google IAP strategy",
+    "tasks": [
+      { "id": "5.1", "title": "Stripe web subscription flow complete", "due": "Mar 13", "status": "complete" },
+      { "id": "5.2", "title": "Subscription paywall enforced — non-subscribers cannot access paid content", "due": "Mar 31", "status": "not-started" },
+      { "id": "5.3", "title": "Apple/Google IAP decision — direct to endless-tales.com for subscribe (no in-app purchase button)", "due": "Mar 31", "status": "not-started" },
+      { "id": "5.4", "title": "$7.99/month + 2 Weeks Free messaging consistent across all pages", "due": "Mar 28", "status": "not-started" }
+    ]
+  },
+  {
+    "area": "Landing Page",
+    "description": "Converts visitors → waitlist/subscribers",
+    "tasks": [
+      { "id": "6.1", "title": "Core landing page live at endless-tales.com", "due": "Mar 8", "status": "complete" },
+      { "id": "6.2", "title": "3 sample stories with fully working audio", "due": "Mar 8", "status": "complete" },
+      { "id": "6.3", "title": "Waitlist signup working + email confirmed", "due": "Mar 13", "status": "complete" },
+      { "id": "6.4", "title": "Founding member counter live (500 spots, live progress bar)", "due": "Mar 21", "status": "complete" },
+      { "id": "6.5", "title": "Copy update — $7.99/month, '2 Weeks Free', commuter-focused messaging", "due": "Mar 28", "status": "not-started" },
+      { "id": "6.6", "title": "Launch countdown + April 17 announcement live", "due": "Apr 7", "status": "not-started" },
+      { "id": "6.7", "title": "QR code system for physical locations", "due": "Apr 10", "status": "not-started" }
+    ]
+  },
+  {
+    "area": "Legal & Infrastructure",
+    "description": "Protected and compliant at launch",
+    "tasks": [
+      { "id": "7.1", "title": "Terms of Service published at endless-tales.com/terms.html", "due": "Mar 21", "status": "complete" },
+      { "id": "7.2", "title": "Privacy Policy published at endless-tales.com/privacy.html", "due": "Mar 21", "status": "complete" },
+      { "id": "7.3", "title": "Microsoft 365 email tested (marc@, support@, sales@) — OVERDUE", "due": "Mar 25", "status": "not-started" },
+      { "id": "7.4", "title": "Custom SMTP — noreply@endless-tales.com via Resend configured in Supabase Auth", "due": "Mar 27", "status": "not-started" },
+      { "id": "7.5", "title": "Brand all transactional email templates (welcome, confirm, reset)", "due": "Mar 31", "status": "not-started" },
+      { "id": "7.6", "title": "Content licensing / DMCA policy in place", "due": "Apr 1", "status": "not-started" },
+      { "id": "7.7", "title": "Register Wonder Books Press LLC (state filing)", "due": "Apr 30", "status": "not-started" },
+      { "id": "7.8", "title": "Open business bank account for Wonder Books Press LLC", "due": "May 15", "status": "not-started" }
+    ]
+  },
+  {
+    "area": "Mobile App — Store Submission",
+    "description": "iOS App Store + Google Play submission",
+    "tasks": [
+      { "id": "8.1", "title": "Mobile wrapper decision — Capacitor vs PWA", "due": "Mar 26", "status": "not-started" },
+      { "id": "8.2", "title": "Capacitor wrapper build (iOS + Android)", "due": "Apr 3", "status": "not-started" },
+      { "id": "8.3", "title": "App icons + splash screens (all required sizes)", "due": "Apr 5", "status": "not-started" },
+      { "id": "8.4", "title": "Apple Developer account + provisioning + App Store Connect setup", "due": "Apr 5", "status": "not-started" },
+      { "id": "8.5", "title": "Google Play Console setup + data safety form", "due": "Apr 5", "status": "not-started" },
+      { "id": "8.6", "title": "App Store + Play Store listing (description, keywords, screenshots)", "due": "Apr 8", "status": "not-started" },
+      { "id": "8.7", "title": "TestFlight / internal test track — QA pass on real device", "due": "Apr 10", "status": "not-started" },
+      { "id": "8.8", "title": "Submit to Apple App Store", "due": "Apr 12", "status": "not-started" },
+      { "id": "8.9", "title": "Submit to Google Play Store", "due": "Apr 12", "status": "not-started" },
+      { "id": "8.10", "title": "WEB APP PUBLIC LAUNCH — remove waitlist gate, activate subscriptions, founding members notified", "due": "Apr 17", "status": "not-started" }
+    ]
+  },
+  {
+    "area": "Social & Marketing",
+    "description": "Audience primed and ready — POST-LAUNCH",
+    "tasks": [
+      { "id": "9.1", "title": "X account set up (@EndlessTalesAudio)", "due": "Mar 5", "status": "complete" },
+      { "id": "9.2", "title": "Reddit account set up (u/EndlessTalesAudio)", "due": "Mar 3", "status": "complete" },
+      { "id": "9.3", "title": "X API credentials configured (OAuth keys in Vercel)", "due": "Mar 21", "status": "complete" },
+      { "id": "9.4", "title": "X API Basic plan activated ($100/mo)", "due": "Apr 17", "status": "on-hold" },
+      { "id": "9.5", "title": "30-day content calendar built (pre + post-launch)", "due": "Apr 17", "status": "on-hold" },
+      { "id": "9.6", "title": "Influencer outreach list built + first contacts sent", "due": "Apr 17", "status": "on-hold" },
+      { "id": "9.7", "title": "Physical marketing materials ready (QR cards/posters)", "due": "Apr 17", "status": "on-hold" }
+    ]
+  }
+]
