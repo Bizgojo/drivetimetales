@@ -8,7 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 
 export default function AccountPage() {
   const { user, signOut, loading } = useAuth();
-  const isAdmin = user?.email === 'm.postlewaite@gmail.com';
+  const isAdmin = user?.email?.toLowerCase().trim() === 'm.postlewaite@gmail.com';
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
 
@@ -106,14 +106,12 @@ export default function AccountPage() {
 
         </div>
 
-        {/* Sign Out */}
-        <div className="border-t border-gray-800 pt-6">
-          <button 
-            onClick={handleSignOut}
-            className="w-full py-3 text-red-400 text-sm"
-          >
-            Sign Out
-          </button>
+        {/* Sign Out + Admin */}
+        <div className="border-t border-gray-800 pt-6 flex flex-col gap-2">
+          <button onClick={handleSignOut} className="w-full py-3 text-red-400 text-sm">Sign Out</button>
+          {isAdmin && (
+            <a href="/admin" className="w-full py-3 text-center text-sm font-bold" style={{ color: '#f97316', border: '1px solid rgba(249,115,22,0.3)', borderRadius: '10px' }}>Admin Panel</a>
+          )}
         </div>
       </div>
     </div>
