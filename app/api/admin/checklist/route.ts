@@ -14,16 +14,16 @@ const supabase = createClient(
 const TABLE = 'checklist_overrides'
 
 export async function GET() {
-  try {
-    // Load base from static JSON
-    const data = JSON.parse(JSON.stringify(checklistData))
+  // Always start from static JSON — Supabase is optional overlay only
+  const data = JSON.parse(JSON.stringify(checklistData))
 
-    // Apply any overrides stored in Supabase
-    const { data: overrides } = await supabase
+  try {
+    // Try to apply overrides from Supabase — silently skip if table missing or any error
+    const { data: overrides, error } = await supabase
       .from(TABLE)
       .select('task_id, status, completed_date')
 
-    if (overrides && overrides.length > 0) {
+    if (!error && overrides && overrides.length > 0) {
       const overrideMap: Record<string, { status: string; completed_date: string | null }> = {}
       overrides.forEach((o: any) => { overrideMap[o.task_id] = o })
 
@@ -36,21 +36,21 @@ export async function GET() {
         }
       }
     }
-
-    // Recount
-    let total = 0, done = 0
-    for (const area of data.areas) {
-      total += area.tasks.length
-      done  += area.tasks.filter((t: any) => t.status === 'complete').length
-    }
-    data.meta.totalTasks = total
-    data.meta.completedTasks = done
-    data.meta.lastUpdated = new Date().toISOString()
-
-    return NextResponse.json(data)
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+  } catch {
+    // Supabase unavailable or table missing — serve static data anyway
   }
+
+  // Recount
+  let total = 0, done = 0
+  for (const area of data.areas) {
+    total += area.tasks.length
+    done  += area.tasks.filter((t: any) => t.status === 'complete').length
+  }
+  data.meta.totalTasks = total
+  data.meta.completedTasks = done
+  data.meta.lastUpdated = new Date().toISOString()
+
+  return NextResponse.json(data)
 }
 
 export async function POST(req: NextRequest) {
