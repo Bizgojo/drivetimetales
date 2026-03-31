@@ -1,133 +1,198 @@
-[
-  {
-    "area": "ASC3 — Audio Story Creator",
-    "description": "Fully automated, production-quality audio pipeline",
-    "tasks": [
-      { "id": "1.1", "title": "ElevenLabs TTS locked (no OpenAI fallback)", "due": "Mar 19", "status": "complete" },
-      { "id": "1.2", "title": "Belle B announcer voice locked permanently", "due": "Mar 19", "status": "complete" },
-      { "id": "1.3", "title": "Narrator: random American voice per story", "due": "Mar 19", "status": "complete" },
-      { "id": "1.4", "title": "Gender detection fixed (male names → male voices)", "due": "Mar 19", "status": "complete" },
-      { "id": "1.5", "title": "Proper audio ducking (dynamic, not flat)", "due": "Mar 20", "status": "complete" },
-      { "id": "1.6", "title": "Genre background music library (4 tracks)", "due": "Mar 19", "status": "complete" },
-      { "id": "1.7", "title": "Suno custom music integration (CDP browser)", "due": "Mar 20", "status": "complete" },
-      { "id": "1.8", "title": "SFX system (Freesound API integration)", "due": "Mar 20", "status": "complete" },
-      { "id": "1.9", "title": "Story Creation admin page → ASC3 pipeline connected", "due": "Mar 20", "status": "complete" },
-      { "id": "1.10", "title": "End-to-end pipeline test (full story, publish to app)", "due": "Mar 26", "status": "not-started" }
-    ]
+{
+  "meta": {
+    "launchDate": "2026-04-24",
+    "bufferStart": "2026-04-17",
+    "lastUpdated": "2026-03-31",
+    "totalTasks": 0,
+    "completedTasks": 0
   },
-  {
-    "area": "Story Production",
-    "description": "10+ publishable stories in app before launch",
-    "tasks": [
-      { "id": "2.1", "title": "\"When Rosie Came Home\" — produced & published", "due": "Mar 8", "status": "complete" },
-      { "id": "2.2", "title": "\"The Grave He Dug Himself\" — produced & published", "due": "Mar 19", "status": "complete" },
-      { "id": "2.3", "title": "\"The Letters He Was Meant to Carry\" — produced & published", "due": "Mar 19", "status": "complete" },
-      { "id": "2.4", "title": "Story #4 produced & published to app", "due": "Mar 28", "status": "not-started" },
-      { "id": "2.5", "title": "Story #5 produced & published to app", "due": "Apr 1", "status": "not-started" },
-      { "id": "2.6", "title": "Story #6 produced & published to app", "due": "Apr 3", "status": "not-started" },
-      { "id": "2.7", "title": "Story #7 produced & published to app", "due": "Apr 5", "status": "not-started" },
-      { "id": "2.8", "title": "Origin 2.0 — Episode 1 published to correct Supabase project", "due": "Apr 5", "status": "not-started" },
-      { "id": "2.9", "title": "Reach 10+ stories in app library", "due": "Apr 10", "status": "not-started" }
-    ]
-  },
-  {
-    "area": "Web App — UX/UI & Performance",
-    "description": "Flawless subscriber experience on mobile",
-    "tasks": [
-      { "id": "3.1", "title": "Rebrand to Endless Tales complete (logo, name, metadata)", "due": "Feb 25", "status": "complete" },
-      { "id": "3.2", "title": "Domain endless-tales.com live + email configured", "due": "Feb 25", "status": "complete" },
-      { "id": "3.3", "title": "Landing page with 3 sample stories live", "due": "Mar 8", "status": "complete" },
-      { "id": "3.4", "title": "Audio playback on landing page fully working", "due": "Mar 8", "status": "complete" },
-      { "id": "3.5", "title": "Waitlist signup + confirmation email working", "due": "Mar 13", "status": "complete" },
-      { "id": "3.6", "title": "Referral system + emails working", "due": "Mar 13", "status": "complete" },
-      { "id": "3.7", "title": "Series page (2+ episode rule enforced, redirects working)", "due": "Mar 21", "status": "complete" },
-      { "id": "3.8", "title": "Continue Listening — live test with real story data", "due": "Mar 28", "status": "not-started" },
-      { "id": "3.9", "title": "Series player bug fix — Play Now routes to /player/series not /player/[id]", "due": "Mar 27", "status": "not-started" },
-      { "id": "3.10", "title": "Help a Friend — seed referral_offers table with default active offer", "due": "Mar 27", "status": "not-started" },
-      { "id": "3.11", "title": "GuestSignupPrompt — full test (triggers after 2 stories or 30 min)", "due": "Mar 31", "status": "not-started" },
-      { "id": "3.12", "title": "Story player — all features confirmed (Not For Me, Start Over, progress save, /library on complete)", "due": "Apr 1", "status": "not-started" },
-      { "id": "3.13", "title": "Search & browse working (genre filters from DB)", "due": "Apr 3", "status": "not-started" },
-      { "id": "3.14", "title": "Full mobile UX polish pass (touch targets, overflow, font sizes)", "due": "Apr 5", "status": "not-started" },
-      { "id": "3.15", "title": "Performance optimization (image compression, lazy load, caching)", "due": "Apr 7", "status": "not-started" },
-      { "id": "3.16", "title": "Delete account flow (Apple hard requirement)", "due": "Apr 7", "status": "not-started" }
-    ]
-  },
-  {
-    "area": "Admin Dashboard",
-    "description": "Story data, user analytics, retention intel",
-    "tasks": [
-      { "id": "4.1", "title": "Story Creation page built (all 4 stages)", "due": "Mar 13", "status": "complete" },
-      { "id": "4.2", "title": "Admin navigation updated (new menu structure)", "due": "Mar 13", "status": "complete" },
-      { "id": "4.3", "title": "Story Creation → backend APIs fully connected (pipeline end-to-end)", "due": "Mar 26", "status": "not-started" },
-      { "id": "4.4", "title": "checklist_overrides table confirmed in Supabase (checklist statuses save correctly)", "due": "Mar 26", "status": "not-started" },
-      { "id": "4.5", "title": "Analytics dashboard (users, plays, retention)", "due": "Apr 14", "status": "not-started" },
-      { "id": "4.6", "title": "User management page (view, suspend, manage subs)", "due": "Apr 14", "status": "not-started" }
-    ]
-  },
-  {
-    "area": "Pricing & Payments",
-    "description": "Stripe subscriptions + Apple/Google IAP strategy",
-    "tasks": [
-      { "id": "5.1", "title": "Stripe web subscription flow complete", "due": "Mar 13", "status": "complete" },
-      { "id": "5.2", "title": "Subscription paywall enforced — non-subscribers cannot access paid content", "due": "Mar 31", "status": "not-started" },
-      { "id": "5.3", "title": "Apple/Google IAP decision — direct to endless-tales.com for subscribe (no in-app purchase button)", "due": "Mar 31", "status": "not-started" },
-      { "id": "5.4", "title": "$7.99/month + 2 Weeks Free messaging consistent across all pages", "due": "Mar 28", "status": "not-started" }
-    ]
-  },
-  {
-    "area": "Landing Page",
-    "description": "Converts visitors → waitlist/subscribers",
-    "tasks": [
-      { "id": "6.1", "title": "Core landing page live at endless-tales.com", "due": "Mar 8", "status": "complete" },
-      { "id": "6.2", "title": "3 sample stories with fully working audio", "due": "Mar 8", "status": "complete" },
-      { "id": "6.3", "title": "Waitlist signup working + email confirmed", "due": "Mar 13", "status": "complete" },
-      { "id": "6.4", "title": "Founding member counter live (500 spots, live progress bar)", "due": "Mar 21", "status": "complete" },
-      { "id": "6.5", "title": "Copy update — $7.99/month, '2 Weeks Free', commuter-focused messaging", "due": "Mar 28", "status": "not-started" },
-      { "id": "6.6", "title": "Launch countdown + April 17 announcement live", "due": "Apr 7", "status": "not-started" },
-      { "id": "6.7", "title": "QR code system for physical locations", "due": "Apr 10", "status": "not-started" }
-    ]
-  },
-  {
-    "area": "Legal & Infrastructure",
-    "description": "Protected and compliant at launch",
-    "tasks": [
-      { "id": "7.1", "title": "Terms of Service published at endless-tales.com/terms.html", "due": "Mar 21", "status": "complete" },
-      { "id": "7.2", "title": "Privacy Policy published at endless-tales.com/privacy.html", "due": "Mar 21", "status": "complete" },
-      { "id": "7.3", "title": "Microsoft 365 email tested (marc@, support@, sales@) — OVERDUE", "due": "Mar 25", "status": "not-started" },
-      { "id": "7.4", "title": "Custom SMTP — noreply@endless-tales.com via Resend configured in Supabase Auth", "due": "Mar 27", "status": "not-started" },
-      { "id": "7.5", "title": "Brand all transactional email templates (welcome, confirm, reset)", "due": "Mar 31", "status": "not-started" },
-      { "id": "7.6", "title": "Content licensing / DMCA policy in place", "due": "Apr 1", "status": "not-started" },
-      { "id": "7.7", "title": "Register Wonder Books Press LLC (state filing)", "due": "Apr 30", "status": "not-started" },
-      { "id": "7.8", "title": "Open business bank account for Wonder Books Press LLC", "due": "May 15", "status": "not-started" }
-    ]
-  },
-  {
-    "area": "Mobile App — Store Submission",
-    "description": "iOS App Store + Google Play submission",
-    "tasks": [
-      { "id": "8.1", "title": "Mobile wrapper decision — Capacitor vs PWA", "due": "Mar 26", "status": "not-started" },
-      { "id": "8.2", "title": "Capacitor wrapper build (iOS + Android)", "due": "Apr 3", "status": "not-started" },
-      { "id": "8.3", "title": "App icons + splash screens (all required sizes)", "due": "Apr 5", "status": "not-started" },
-      { "id": "8.4", "title": "Apple Developer account + provisioning + App Store Connect setup", "due": "Apr 5", "status": "not-started" },
-      { "id": "8.5", "title": "Google Play Console setup + data safety form", "due": "Apr 5", "status": "not-started" },
-      { "id": "8.6", "title": "App Store + Play Store listing (description, keywords, screenshots)", "due": "Apr 8", "status": "not-started" },
-      { "id": "8.7", "title": "TestFlight / internal test track — QA pass on real device", "due": "Apr 10", "status": "not-started" },
-      { "id": "8.8", "title": "Submit to Apple App Store", "due": "Apr 12", "status": "not-started" },
-      { "id": "8.9", "title": "Submit to Google Play Store", "due": "Apr 12", "status": "not-started" },
-      { "id": "8.10", "title": "WEB APP PUBLIC LAUNCH — remove waitlist gate, activate subscriptions, founding members notified", "due": "Apr 17", "status": "not-started" }
-    ]
-  },
-  {
-    "area": "Social & Marketing",
-    "description": "Audience primed and ready — POST-LAUNCH",
-    "tasks": [
-      { "id": "9.1", "title": "X account set up (@EndlessTalesAudio)", "due": "Mar 5", "status": "complete" },
-      { "id": "9.2", "title": "Reddit account set up (u/EndlessTalesAudio)", "due": "Mar 3", "status": "complete" },
-      { "id": "9.3", "title": "X API credentials configured (OAuth keys in Vercel)", "due": "Mar 21", "status": "complete" },
-      { "id": "9.4", "title": "X API Basic plan activated ($100/mo)", "due": "Apr 17", "status": "on-hold" },
-      { "id": "9.5", "title": "30-day content calendar built (pre + post-launch)", "due": "Apr 17", "status": "on-hold" },
-      { "id": "9.6", "title": "Influencer outreach list built + first contacts sent", "due": "Apr 17", "status": "on-hold" },
-      { "id": "9.7", "title": "Physical marketing materials ready (QR cards/posters)", "due": "Apr 17", "status": "on-hold" }
-    ]
-  }
-]
+  "areas": [
+    {
+      "id": "asc3",
+      "name": "1 \u2014 ASC Pipeline: Stage 1\u20134 Quality",
+      "goal": "Every story produced meets the ET Quality Standard before publishing",
+      "tasks": [
+        {
+          "id": "1.1",
+          "name": "ElevenLabs TTS locked (no OpenAI fallback)",
+          "status": "complete",
+          "owner": "Hal",
+          "hours": 1,
+          "dueDate": "2026-03-19",
+          "completedDate": "2026-03-19"
+        },
+        {
+          "id": "1.2",
+          "name": "Belle B announcer voice locked permanently",
+          "status": "complete",
+          "owner": "Hal",
+          "hours": 1,
+          "dueDate": "2026-03-19",
+          "completedDate": "2026-03-19"
+        },
+        {
+          "id": "1.3",
+          "name": "Narrator: random American voice per story",
+          "status": "complete",
+          "owner": "Hal",
+          "hours": 1,
+          "dueDate": "2026-03-19",
+          "completedDate": "2026-03-19"
+        },
+        {
+          "id": "1.4",
+          "name": "Gender detection fixed (male names -> male voices)",
+          "status": "complete",
+          "owner": "Hal",
+          "hours": 1,
+          "dueDate": "2026-03-19",
+          "completedDate": "2026-03-19"
+        },
+        {
+          "id": "1.5",
+          "name": "Proper audio ducking (dynamic, not flat)",
+          "status": "complete",
+          "owner": "Hal",
+          "hours": 2,
+          "dueDate": "2026-03-20",
+          "completedDate": "2026-03-20"
+        },
+        {
+          "id": "1.6",
+          "name": "Genre background music library (4 tracks)",
+          "status": "complete",
+          "owner": "Hal",
+          "hours": 2,
+          "dueDate": "2026-03-19",
+          "completedDate": "2026-03-19"
+        },
+        {
+          "id": "1.7",
+          "name": "Suno custom music integration (CDP browser)",
+          "status": "complete",
+          "owner": "Hal",
+          "hours": 3,
+          "dueDate": "2026-03-20",
+          "completedDate": "2026-03-20"
+        },
+        {
+          "id": "1.8",
+          "name": "SFX system (Freesound API integration)",
+          "status": "complete",
+          "owner": "Hal",
+          "hours": 2,
+          "dueDate": "2026-03-20",
+          "completedDate": "2026-03-20"
+        },
+        {
+          "id": "1.9",
+          "name": "Story Creation admin page -> ASC pipeline connected",
+          "status": "complete",
+          "owner": "Claude",
+          "hours": 4,
+          "dueDate": "2026-03-20",
+          "completedDate": "2026-03-20"
+        },
+        {
+          "id": "1.10",
+          "name": "3-file architecture (intro + body + outro) end-to-end test complete",
+          "status": "complete",
+          "owner": "Hal",
+          "hours": 3,
+          "dueDate": "2026-03-28",
+          "completedDate": "2026-03-28"
+        },
+        {
+          "id": "1.11",
+          "name": "EL overage resolved: dedicated Hal key, 500k limit, reconcile script",
+          "status": "complete",
+          "owner": "Hal",
+          "hours": 2,
+          "dueDate": "2026-03-28",
+          "completedDate": "2026-03-28"
+        },
+        {
+          "id": "1.12",
+          "name": "MIX FIX: Music must NOT sneak under intro voice -- fix ducking trigger point",
+          "status": "in-progress",
+          "owner": "Claude",
+          "hours": 2,
+          "dueDate": "2026-04-09",
+          "completedDate": null
+        },
+        {
+          "id": "1.13",
+          "name": "MIX FIX: Sting length reduced to 2-3 sec Netflix-style (currently too long)",
+          "status": "in-progress",
+          "owner": "Claude",
+          "hours": 1,
+          "dueDate": "2026-04-09",
+          "completedDate": null
+        },
+        {
+          "id": "1.14",
+          "name": "MIX FIX: Per-line peak limiting on top of -14 LUFS (prevent voice clipping)",
+          "status": "in-progress",
+          "owner": "Claude",
+          "hours": 2,
+          "dueDate": "2026-04-09",
+          "completedDate": null
+        },
+        {
+          "id": "1.15",
+          "name": "ASC Bible re-read protocol: Hal reads ASC Bible at every new session start (no exceptions)",
+          "status": "not-started",
+          "owner": "Marc",
+          "hours": 1,
+          "dueDate": "2026-04-09",
+          "completedDate": null
+        },
+        {
+          "id": "1.16",
+          "name": "Quality gate: Claude reviews mix spec before Hal produces any story (Stage 2->3 handoff)",
+          "status": "not-started",
+          "owner": "Claude",
+          "hours": 1,
+          "dueDate": "2026-04-09",
+          "completedDate": null
+        },
+        {
+          "id": "1.17",
+          "name": "Sting test: produce test clip with 2-sec sting, Marc approves before batch use",
+          "status": "in-progress",
+          "owner": "Hal",
+          "hours": 1,
+          "dueDate": "2026-04-10",
+          "completedDate": null
+        },
+        {
+          "id": "1.18",
+          "name": "Send 25 story prompts to Hal -- batch before April 9 EL credit reset",
+          "status": "not-started",
+          "owner": "Marc",
+          "hours": 2,
+          "dueDate": "2026-04-08",
+          "completedDate": null
+        },
+        {
+          "id": "1.19",
+          "name": "Personalized intro/outro (ASC): Hal generates with {first_name} placeholder using split voice files",
+          "status": "not-started",
+          "owner": "Hal",
+          "hours": 3,
+          "dueDate": "2026-04-12",
+          "completedDate": null
+        },
+        {
+          "id": "1.20",
+          "name": "Voice leveling: all narrator lines normalized to -14 LUFS before mixing",
+          "status": "not-started",
+          "owner": "Claude",
+          "hours": 2,
+          "dueDate": "2026-04-10",
+          "completedDate": null
+        }
+      ]
+    }
+  ]
+}
