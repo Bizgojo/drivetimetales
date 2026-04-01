@@ -1,24 +1,23 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { usePathname } from 'next/navigation'
 
-export default function HomeHintToast() {
+function ToastInner() {
   const [visible, setVisible] = useState(false)
   const pathname = usePathname()
 
   useEffect(() => {
-    // Only show on non-home pages, once ever
     if (pathname === '/home') return
-    const seen = localStorage.getItem('et_home_hint_seen')
-    if (seen) return
-    // Small delay so page loads first
-    const t = setTimeout(() => {
-      setVisible(true)
-      localStorage.setItem('et_home_hint_seen', '1')
-      // Auto-dismiss after 3.5 seconds
-      setTimeout(() => setVisible(false), 4000)
-    }, 1200)
-    return () => clearTimeout(t)
+    try {
+      const seen = localStorage.getItem('et_home_hint_seen')
+      if (seen) return
+      const t = setTimeout(() => {
+        setVisible(true)
+        localStorage.setItem('et_home_hint_seen', '1')
+        setTimeout(() => setVisible(false), 4000)
+      }, 1200)
+      return () => clearTimeout(t)
+    } catch {}
   }, [pathname])
 
   if (!visible) return null
@@ -27,21 +26,14 @@ export default function HomeHintToast() {
     <div
       onClick={() => setVisible(false)}
       style={{
-        position: 'fixed',
-        top: 72,
-        left: '50%',
+        position: 'fixed', top: 72, left: '50%',
         transform: 'translateX(-50%)',
-        background: 'white',
-        color: '#111',
-        padding: '10px 18px',
-        borderRadius: '20px',
-        fontSize: '13px',
-        fontWeight: 600,
-        whiteSpace: 'nowrap',
-        zIndex: 999,
+        background: 'white', color: '#111',
+        padding: '10px 18px', borderRadius: '20px',
+        fontSize: '13px', fontWeight: 600,
+        whiteSpace: 'nowrap', zIndex: 999,
         boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
-        animation: 'fadeInDown 0.3s ease',
-        cursor: 'pointer',
+        animation: 'fadeInDown 0.3s ease', cursor: 'pointer',
       }}
     >
       ∞ Tap the logo anytime to go home
@@ -53,4 +45,8 @@ export default function HomeHintToast() {
       `}</style>
     </div>
   )
+}
+
+export default function HomeHintToast() {
+  return <Suspense fallback={null}><ToastInner /></Suspense>
 }
