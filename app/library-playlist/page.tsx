@@ -271,10 +271,10 @@ function LibraryPlaylistContent() {
         <div style={{ padding: '8px 16px 16px' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {playlist.map((entry, i) => (
-              <div key={`${entry.id}-${i}`} style={{ background: '#0f1f35', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 10, padding: '0 10px 0 0', border: '2px solid rgba(249,115,22,0.4)', overflow: 'hidden' }}>
+              <div key={`${entry.id}-${i}`} style={{ background: '#253347', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 10, padding: '0 10px 0 0', border: '2px solid rgba(249,115,22,0.4)', overflow: 'hidden' }}>
                 <div style={{ position: 'relative', flexShrink: 0, width: 72, alignSelf: 'stretch', minHeight: 72 }}>
                   <img src={entry.cover_url || '/images/et-logo.png'} alt={entry.title} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                  <div style={{ position: 'absolute', bottom: 4, left: 4, background: 'rgba(0,0,0,0.75)', color: 'white', fontSize: 11, fontWeight: 900, width: 20, height: 20, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{i + 1}</div>
+                  <div style={{ position: 'absolute', bottom: 4, left: 4, background: 'rgba(0,0,0,0.75)', color: 'white', fontSize: 15, fontWeight: 900, width: 26, height: 26, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{i + 1}</div>
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ color: 'white', fontSize: 14, fontWeight: 700, marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{entry.title}</div>
