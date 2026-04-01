@@ -332,7 +332,7 @@ function PlayerContent() {
         <button onClick={handleBack} style={{ width:'36px', height:'36px', borderRadius:'50%', backgroundColor:'#3b82f6', border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
           <svg width="18" height="18" fill="none" stroke="white" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7"/></svg>
         </button>
-        <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+        <div onClick={() => router.push('/home')} style={{ display:'flex', alignItems:'center', gap:'8px', cursor:'pointer' }}>
           <img src="/images/et-logo.png" alt="Endless Tales" style={{ width:'28px', height:'28px', objectFit:'contain' }} />
           <span style={{ fontWeight:800, fontSize:'18px', color:'white' }}>Endless <span style={{ color:'#f97316' }}>Tales</span></span>
         </div>

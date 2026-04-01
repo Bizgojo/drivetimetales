@@ -1,7 +1,8 @@
 import { Analytics } from '@vercel/analytics/react'
 import type { Metadata } from 'next';
 import './globals.css';
-import { AuthProvider } from '@/contexts/AuthContext';
+import { AuthProvider } from '@/contexts/AuthContext'
+import HomeHintToast from '@/components/HomeHintToast';
 import PWABackGuard from '@/components/PWABackGuard';
 
 export const metadata: Metadata = {
@@ -43,6 +44,7 @@ export default function RootLayout({
       </head>
       <body className="bg-gray-950 text-white min-h-screen antialiased">
         <AuthProvider>
+        <HomeHintToast />
           <PWABackGuard />
           {children}
         </AuthProvider>
