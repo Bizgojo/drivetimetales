@@ -306,7 +306,7 @@ function PlaylistCardUI({
 // MAIN COMPONENT
 // =============================================================================
 
-export default function ContinueListening() {
+export default function ContinueListening({ onIdsLoaded }: { onIdsLoaded?: (ids: string[]) => void } = {}) {
   const { user } = useAuth()
   const [singleCard, setSingleCard] = useState<SingleStoryCard | null>(null)
   const [seriesCard, setSeriesCard] = useState<SeriesCard | null>(null)
@@ -450,6 +450,13 @@ export default function ContinueListening() {
       setPlaylistCard(null)
     }
 
+    // Report loaded story IDs to parent so they can be excluded from other sections
+    if (onIdsLoaded) {
+      const ids: string[] = []
+      if (singleCard) ids.push((singleCard as any).story_id)
+      if (seriesCard) ids.push((seriesCard as any).story_id)
+      onIdsLoaded(ids)
+    }
     setLoading(false)
   }
 
