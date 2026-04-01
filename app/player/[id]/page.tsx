@@ -96,6 +96,29 @@ function PlayerContent() {
     schedTimer.current = setTimeout(() => swapMusic(newSrc, targetVol, leadSec * 1000), delay)
   }
 
+
+  // Guest minute save on tab close / app background
+  useEffect(() => {
+    const saveGuestMinutes = () => {
+      if (!user && sessionStartRef.current) {
+        const mins = (Date.now() - sessionStartRef.current) / 60000
+        const prev = parseFloat(localStorage.getItem('et_guest_minutes') || '0')
+        localStorage.setItem('et_guest_minutes', String(prev + mins))
+        sessionStartRef.current = Date.now()
+      }
+    }
+    const handleVisibility = () => {
+      if (document.visibilityState === 'hidden') saveGuestMinutes()
+      if (document.visibilityState === 'visible' && !user) sessionStartRef.current = Date.now()
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    window.addEventListener('beforeunload', saveGuestMinutes)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility)
+      window.removeEventListener('beforeunload', saveGuestMinutes)
+    }
+  }, [user])
+
   // ── Load story ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
