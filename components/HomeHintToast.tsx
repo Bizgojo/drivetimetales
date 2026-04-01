@@ -1,20 +1,15 @@
 'use client'
-import { useState, useEffect, Suspense } from 'react'
-import { usePathname } from 'next/navigation'
+import { useState, useEffect } from 'react'
 
-function ToastInner() {
+export default function HomeHintToast() {
   const [visible, setVisible] = useState(false)
-  const pathname = usePathname()
 
   useEffect(() => {
-    try {
-      const t = setTimeout(() => setVisible(true), 500)
-      return () => clearTimeout(t)
-    } catch {}
-  }, [pathname])
+    const t = setTimeout(() => setVisible(true), 500)
+    return () => clearTimeout(t)
+  }, [])
 
   function dismiss() {
-    try { localStorage.setItem('et_home_hint_seen', '1') } catch {}
     setVisible(false)
   }
 
@@ -30,31 +25,14 @@ function ToastInner() {
       zIndex: 9999, boxShadow: '0 4px 24px rgba(0,0,0,0.2)',
       border: '1px solid rgba(0,0,0,0.08)',
       display: 'flex', flexDirection: 'column', alignItems: 'center',
-      gap: '12px', minWidth: '240px', textAlign: 'center',
-      animation: 'fadeInUp 0.35s ease',
+      gap: '12px', width: '260px', textAlign: 'center',
     }}>
-      <span>∞ Tap <strong>Endless Tales</strong> in the header<br />anytime to return home</span>
-      <button
-        onClick={dismiss}
-        style={{
-          background: '#f97316', color: 'white', border: 'none',
-          borderRadius: '20px', padding: '8px 24px',
-          fontSize: '13px', fontWeight: 700, cursor: 'pointer',
-          width: '100%',
-        }}
-      >
-        Got It
-      </button>
-      <style>{`
-        @keyframes fadeInUp {
-          from { opacity: 0; transform: translateX(-50%) translateY(12px); }
-          to   { opacity: 1; transform: translateX(-50%) translateY(0); }
-        }
-      `}</style>
+      <span>Tap <strong>Endless Tales</strong> in the header anytime to return home</span>
+      <button onClick={dismiss} style={{
+        background: '#f97316', color: 'white', border: 'none',
+        borderRadius: '20px', padding: '8px 24px',
+        fontSize: '13px', fontWeight: 700, cursor: 'pointer', width: '100%',
+      }}>Got It</button>
     </div>
   )
-}
-
-export default function HomeHintToast() {
-  return <Suspense fallback={null}><ToastInner /></Suspense>
 }
