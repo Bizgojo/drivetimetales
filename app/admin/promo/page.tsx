@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 
 const bg = '#FAF9F6'
@@ -31,7 +31,9 @@ export default function AdminPromoPage() {
   const [codes, setCodes] = useState<any[]>([])
   const [redemptions, setRedemptions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'codes' | 'redemptions'>('codes')
+  const [tab, setTab] = useState<'codes' | 'redemptions' | 'freeusers'>('codes')
+  const [freeUsers, setFreeUsers] = useState<any[]>([])
+  const [sortBy, setSortBy] = useState<'name' | 'lastname' | 'date' | 'expiry'>('date')
   const [form, setForm] = useState({ code: '', description: '', campaign: '', label: '', subscription_days: '30', max_uses: '1' })
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
@@ -48,12 +50,14 @@ export default function AdminPromoPage() {
 
   async function load() {
     setLoading(true)
-    const [{ data: c }, { data: r }] = await Promise.all([
+    const [{ data: c }, { data: r }, { data: fu }] = await Promise.all([
       supabase.from('promo_codes').select('*').order('created_at', { ascending: false }),
-      supabase.from('promo_redemptions').select('*').order('redeemed_at', { ascending: false })
+      supabase.from('promo_redemptions').select('*').order('redeemed_at', { ascending: false }),
+      supabase.from('promo_redemptions').select('*, users(first_name, display_name, email, subscription_ends_at)').order('redeemed_at', { ascending: false }),
     ])
     setCodes(c || [])
     setRedemptions(r || [])
+    setFreeUsers(fu || [])
     setLoading(false)
   }
 
@@ -107,6 +111,24 @@ export default function AdminPromoPage() {
     if (data.success) { setSendMsg('Sent!'); setTimeout(() => { setComposing(null); setSendMsg('') }, 1500) }
     else { setSendMsg('Error: ' + data.error) }
     setSending(false)
+  }
+
+
+  function getSortedFreeUsers(list: any[]) {
+    return [...list].sort((a, b) => {
+      const aName = (a.users && (a.users.first_name || a.users.display_name)) || a.email || ''
+      const bName = (b.users && (b.users.first_name || b.users.display_name)) || b.email || ''
+      const aLast = aName.split(' ').pop() || ''
+      const bLast = bName.split(' ').pop() || ''
+      if (sortBy === 'name') return aName.localeCompare(bName)
+      if (sortBy === 'lastname') return aLast.localeCompare(bLast)
+      if (sortBy === 'expiry') {
+        const aExp = a.users && a.users.subscription_ends_at ? new Date(a.users.subscription_ends_at).getTime() : 0
+        const bExp = b.users && b.users.subscription_ends_at ? new Date(b.users.subscription_ends_at).getTime() : 0
+        return aExp - bExp
+      }
+      return new Date(b.redeemed_at).getTime() - new Date(a.redeemed_at).getTime()
+    })
   }
 
   const input = { width: '100%', padding: '8px 10px', border: `1px solid ${border}`, borderRadius: 6, fontSize: 13, color: text, background: '#fff', boxSizing: 'border-box' as const }
@@ -259,6 +281,56 @@ export default function AdminPromoPage() {
                 </tbody>
               </table>
             )}
+          </div>
+        )}
+
+        {/* Free Users tab */}
+        {!loading && tab === 'freeusers' && (
+          <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 12, overflow: 'hidden' }}>
+            <div style={{ padding: '12px 16px', borderBottom: `1px solid ${border}`, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: muted }}>Sort by:</span>
+              {([['name', 'First Name'], ['lastname', 'Last Name'], ['date', 'Date Redeemed'], ['expiry', 'Expiry']] as Array<[string, string]>).map(([s, lbl]) => (
+                <button key={s} onClick={() => setSortBy(s as any)} style={{ padding: '4px 12px', borderRadius: 6, border: `1px solid ${border}`, background: sortBy === s ? orange : '#f9fafb', color: sortBy === s ? '#fff' : text, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>{lbl}</button>
+              ))}
+            </div>
+            {freeUsers.length === 0
+              ? <p style={{ padding: 20, color: muted }}>No free users yet.</p>
+              : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ background: '#f9fafb', borderBottom: `1px solid ${border}` }}>
+                      {['Name', 'Email', 'Code', 'Campaign', 'Days', 'Redeemed', 'Expires', 'Status'].map(h => (
+                        <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: muted, fontSize: 12 }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {getSortedFreeUsers(freeUsers).map((r, i) => {
+                      const u = r.users || {}
+                      const name = u.first_name || u.display_name || '--'
+                      const expiry = u.subscription_ends_at ? new Date(u.subscription_ends_at) : null
+                      const expired = expiry ? expiry < new Date() : false
+                      const daysLeft = expiry ? Math.ceil((expiry.getTime() - Date.now()) / 86400000) : null
+                      return (
+                        <tr key={r.id} style={{ borderBottom: i < freeUsers.length - 1 ? `1px solid ${border}` : 'none' }}>
+                          <td style={{ padding: '10px 14px', fontWeight: 600 }}>{name}</td>
+                          <td style={{ padding: '10px 14px', color: muted }}>{r.email}</td>
+                          <td style={{ padding: '10px 14px', fontWeight: 800, fontFamily: 'monospace', color: orange }}>{r.code}</td>
+                          <td style={{ padding: '10px 14px', color: muted }}>{r.campaign || '--'}</td>
+                          <td style={{ padding: '10px 14px', fontWeight: 700 }}>{r.days_granted}d</td>
+                          <td style={{ padding: '10px 14px', color: muted }}>{new Date(r.redeemed_at).toLocaleDateString()}</td>
+                          <td style={{ padding: '10px 14px', fontWeight: 600, color: expired ? '#dc2626' : '#16a34a' }}>
+                            {expiry ? expiry.toLocaleDateString() : '--'}
+                          </td>
+                          <td style={{ padding: '10px 14px' }}>
+                            {expired ? <Badge color="#dc2626">Expired</Badge> : daysLeft !== null ? <Badge color="#16a34a">{daysLeft}d left</Badge> : <Badge color="#6b7280">Unknown</Badge>}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              )}
           </div>
         )}
       </div>
