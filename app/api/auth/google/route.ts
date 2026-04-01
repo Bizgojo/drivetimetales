@@ -9,7 +9,8 @@ export async function GET(request: Request) {
 
   // Keep redirect URL clean (no query params) so it matches Supabase's allowed redirect list exactly.
   // Pass returnTo via a short-lived cookie that the callback Route Handler will read.
-  const redirectTo = `${origin}/auth/callback`
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || origin
+  const redirectTo = `${appUrl}/auth/callback`
 
   const cookieStore = cookies()
   const supabase = createServerClient(
