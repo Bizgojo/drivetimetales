@@ -265,7 +265,7 @@ function PlayerContent() {
       localStorage.setItem('et_guest_minutes', String(prev + mins))
       sessionStartRef.current = null
     }
-    router.push(user ? '/library' : '/guest')
+    router.push(user ? '/home' : '/guest')
   }
 
   const fmt = (s: number) => `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, '0')}`
