@@ -182,9 +182,9 @@ export default function AdminPromoPage() {
 
         {/* Tabs */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-          {(['codes', 'redemptions'] as const).map(t => (
-            <button key={t} onClick={() => setTab(t)} style={{ padding: '8px 18px', borderRadius: 8, border: `1px solid ${border}`, background: tab === t ? text : card, color: tab === t ? '#fff' : muted, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-              {t === 'codes' ? `Codes (${codes.length})` : `Redemptions (${redemptions.length})`}
+          {([['codes', `Codes (${codes.length})`], ['redemptions', `Redemptions (${redemptions.length})`], ['freeusers', `Free Users (${freeUsers.length})`], ['people', `People (${codes.filter((c: any) => c.sent_to_email).length})`]] as Array<[string, string]>).map(([t, label]) => (
+            <button key={t} onClick={() => setTab(t as any)} style={{ padding: '8px 18px', borderRadius: 8, border: `1px solid ${border}`, background: tab === t ? text : card, color: tab === t ? '#fff' : muted, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+              {label}
             </button>
           ))}
         </div>
