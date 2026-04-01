@@ -1,12 +1,18 @@
 'use client'
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 
-export default function PromoPage() {
+function PromoContent() {
   const { user } = useAuth()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [code, setCode] = useState('')
+
+  useEffect(() => {
+    const urlCode = searchParams.get('code')
+    if (urlCode) setCode(urlCode.toUpperCase())
+  }, [searchParams])
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -77,5 +83,13 @@ export default function PromoPage() {
         Back
       </button>
     </div>
+  )
+}
+
+export default function PromoPage() {
+  return (
+    <Suspense fallback={<div style={{ minHeight: '100dvh', backgroundColor: '#020617' }} />}>
+      <PromoContent />
+    </Suspense>
   )
 }
