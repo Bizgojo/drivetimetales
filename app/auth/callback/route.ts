@@ -16,7 +16,10 @@ import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url)
+  const { searchParams } = new URL(request.url)
+  // Use the configured app URL so redirect works correctly in all environments.
+  // request.url origin can be the Supabase callback domain, not the app domain.
+  const origin = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin
   const code = searchParams.get('code')
   const errorParam = searchParams.get('error')
   const errorDesc = searchParams.get('error_description')
