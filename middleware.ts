@@ -73,7 +73,7 @@ export async function middleware(request: NextRequest) {
       .eq('id', user.id)
       .single()
 
-    const isMarc = user.email === 'marc@endless-tales.com' || user.email === 'm.postlewaite@gmail.com'
+    const isMarc = user.email === 'marc@endless-tales.com' || user.email === 'm.postlewaite@gmail.com' || user.email === 'm.postlewaite@gmail.com'
 
     if (!isMarc && !hasActiveSubscription(
       dbUser?.subscription_type ?? null,
