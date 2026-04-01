@@ -16,7 +16,7 @@ export default function HomeHintToast() {
       setVisible(true)
       localStorage.setItem('et_home_hint_seen', '1')
       // Auto-dismiss after 3.5 seconds
-      setTimeout(() => setVisible(false), 3500)
+      setTimeout(() => setVisible(false), 4000)
     }, 1200)
     return () => clearTimeout(t)
   }, [pathname])
@@ -31,8 +31,8 @@ export default function HomeHintToast() {
         top: 72,
         left: '50%',
         transform: 'translateX(-50%)',
-        background: 'rgba(249,115,22,0.95)',
-        color: 'white',
+        background: 'white',
+        color: '#111',
         padding: '10px 18px',
         borderRadius: '20px',
         fontSize: '13px',
