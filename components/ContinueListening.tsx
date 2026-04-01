@@ -34,7 +34,6 @@ interface SeriesCard {
   progress: number        // seconds into episode
   episode_number: number
   total_episodes: number
-  total_remaining_mins: number  // total mins left across all remaining episodes
   last_played: string
 }
 
@@ -127,7 +126,6 @@ function SingleStoryCardUI({
   const resumeAt = Math.max(0, card.progress - 5)
   const pct = progressPercent(card.duration_mins, card.progress)
   const minsLeft = minsRemaining(card.duration_mins, card.progress)
-  const notStarted = card.progress === 0
 
   return (
     <div
@@ -146,11 +144,12 @@ function SingleStoryCardUI({
       {/* Body */}
       <div style={{ flex: 1, padding: '9px 28px 9px 9px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minWidth: 0 }}>
         <div>
-          <div style={{ fontWeight: 700, fontSize: 14, color: 'white', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.title}</div>
-          <div style={{ fontSize: 11, color: '#ffffff', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.author} · {card.genre}</div>
+          <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#f97316', marginBottom: 2 }}>Single Story</div>
+          <div style={{ fontWeight: 700, fontSize: 13, color: 'white', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.title}</div>
+          <div style={{ fontSize: 10, color: '#64748b', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.author} · {card.genre}</div>
         </div>
         <div>
-          <div style={{ fontSize: 11, color: '#ffffff', marginBottom: 4 }}><strong style={{ color: '#ffffff' }}>{minsLeft} min</strong> Remaining</div>
+          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}><strong style={{ color: 'white' }}>{minsLeft} min</strong> left of {card.duration_mins} min</div>
           <div style={{ height: 3, background: '#334155', borderRadius: 2, overflow: 'hidden' }}>
             <div style={{ height: '100%', width: `${pct}%`, background: '#f97316', borderRadius: 2 }} />
           </div>
@@ -204,21 +203,14 @@ function SeriesCardUI({
       {/* Body */}
       <div style={{ flex: 1, padding: '9px 28px 9px 9px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minWidth: 0 }}>
         <div>
-          <div style={{ fontWeight: 700, fontSize: 14, color: 'white', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.series_name}</div>
-          <div style={{ fontSize: 11, color: '#ffffff', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.author}</div>
+          <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#f97316', marginBottom: 2 }}>
+            Series · Ep {card.episode_number} of {card.total_episodes}
+          </div>
+          <div style={{ fontWeight: 700, fontSize: 13, color: 'white', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.series_name}</div>
+          <div style={{ fontSize: 10, color: '#64748b', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.author} · {card.genre}</div>
         </div>
         <div>
-          <div style={{ fontSize: 11, color: '#ffffff', marginBottom: 4 }}>
-            {(() => {
-              const fullEpsAfter = card.total_episodes - card.episode_number
-              const isPartial = card.progress > 0
-              const epCount = isPartial ? `${fullEpsAfter}+` : `${fullEpsAfter + 1}`
-              const hrs = Math.floor(card.total_remaining_mins / 60)
-              const mins = card.total_remaining_mins % 60
-              const timeStr = hrs > 0 ? `${hrs}hr ${mins}min` : `${mins}min`
-              return <><strong style={{ color: '#ffffff' }}>{epCount} Episodes, {timeStr} Remaining</strong></>
-            })()}
-          </div>
+          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}><strong style={{ color: 'white' }}>{minsLeft} min</strong> left of {card.duration_mins} min</div>
           <div style={{ height: 3, background: '#334155', borderRadius: 2, overflow: 'hidden' }}>
             <div style={{ height: '100%', width: `${pct}%`, background: '#f97316', borderRadius: 2 }} />
           </div>
@@ -263,22 +255,27 @@ function PlaylistCardUI({
       }}
     >
       {/* Playlist cover icon */}
-      <div style={{ width: 76, height: 76, flexShrink: 0, margin: '9px 0 9px 9px', borderRadius: 7, overflow: 'hidden', boxShadow: '0 0 10px rgba(255,255,255,0.18)' }}>
-        <img src="/images/playlist_icon.png" alt="Playlist" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+      <div style={{ width: 76, height: 76, flexShrink: 0, margin: '9px 0 9px 9px', borderRadius: 7, overflow: 'hidden', boxShadow: '0 0 10px rgba(255,255,255,0.18)', background: '#1a1a2e', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <img src="/images/playlist_icon.png" alt="Playlist" style={{ width: '90%', height: '90%', objectFit: 'contain' }} />
       </div>
 
       {/* Body */}
       <div style={{ flex: 1, padding: '9px 28px 9px 9px', minWidth: 0 }}>
-        <div style={{ fontWeight: 700, fontSize: 14, color: 'white', lineHeight: 1.2, marginBottom: 4 }}>
-          {card.total_stories} Stories · {card.remaining_mins} min Remaining
+        <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#f97316', marginBottom: 2 }}>Your Playlist</div>
+        <div style={{ fontWeight: 700, fontSize: 13, color: 'white', lineHeight: 1.2, marginBottom: 2 }}>
+          {card.total_stories} Stories · {card.remaining_mins} min remaining
         </div>
+        <div style={{ fontSize: 10, color: '#64748b', marginBottom: 5 }}>
+          {card.completed_stories} of {card.total_stories} completed
+        </div>
+        {/* Remaining story titles — cut off cleanly at container boundary */}
         <div style={{ overflow: 'hidden' }}>
           {card.next_stories.map((title, i) => (
             <div
               key={i}
               style={{
-                fontSize: 11, lineHeight: 1.6,
-                color: '#ffffff',
+                fontSize: 10, lineHeight: 1.6,
+                color: i === 0 ? '#94a3b8' : '#475569',
                 whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'clip',
               }}
             >
@@ -306,7 +303,7 @@ function PlaylistCardUI({
 // MAIN COMPONENT
 // =============================================================================
 
-export default function ContinueListening({ onIdsLoaded }: { onIdsLoaded?: (ids: string[]) => void } = {}) {
+export default function ContinueListening() {
   const { user } = useAuth()
   const [singleCard, setSingleCard] = useState<SingleStoryCard | null>(null)
   const [seriesCard, setSeriesCard] = useState<SeriesCard | null>(null)
@@ -319,7 +316,7 @@ export default function ContinueListening({ onIdsLoaded }: { onIdsLoaded?: (ids:
   const [dismissModal, setDismissModal] = useState<'single' | 'series' | 'playlist' | null>(null)
 
   useEffect(() => {
-    if (!user) { setLoading(false); return }
+    if (!user) return
     fetchCards()
   }, [user, hiddenSingle, hiddenSeries])
 
@@ -336,14 +333,13 @@ export default function ContinueListening({ onIdsLoaded }: { onIdsLoaded?: (ids:
       .eq('user_id', user!.id)
       .eq('completed', false)
       .eq('hide_from_home', false)
+      .is('stories.series_id', null)
       .order('last_played', { ascending: false })
-      .limit(20)
+      .limit(10)
 
-    const validSingles = (singles || []).filter(r => {
-      if (!r.stories || r.completed || r.story_id === hiddenSingle) return false
-      // Keep only non-series stories
-      return !(r.stories as any).series_id
-    })
+    const validSingles = (singles || []).filter(
+      r => r.progress > 0 && r.story_id !== hiddenSingle
+    )
     if (validSingles.length > 0) {
       const r = validSingles[0]
       const s = r.stories as any
@@ -363,64 +359,39 @@ export default function ContinueListening({ onIdsLoaded }: { onIdsLoaded?: (ids:
     }
 
     // --- Series episode: most recent in-progress series episode ---
-    // NOTE: .not() on a related table column (stories.series_id) is not supported
-    // by PostgREST — filter in JS instead.
     const { data: seriesRows } = await supabase
       .from('user_library')
       .select(`
         story_id, progress, last_played, completed,
         stories(title, author, genre, cover_url, duration_mins, series_id, episode_number,
-          series(title, total_episodes))
+          series(name, episode_count))
       `)
       .eq('user_id', user!.id)
       .eq('completed', false)
       .eq('hide_from_home', false)
+      .not('stories.series_id', 'is', null)
       .order('last_played', { ascending: false })
-      .limit(20)
+      .limit(10)
 
-    const validSeries = (seriesRows || []).filter(r => {
-      if (r.completed || r.story_id === hiddenSeries) return false
-      if (!r.stories) return false
+    const validSeries = (seriesRows || []).filter(
+      r => r.progress > 0 && r.story_id !== hiddenSeries
+    )
+    if (validSeries.length > 0) {
+      const r = validSeries[0]
       const s = r.stories as any
-      // RULE: Must be a series with more than 1 episode
-      if (!s.series_id) return false
-      if ((s.series?.total_episodes || 1) <= 1) return false
-      return true
-    })
-    const firstValidSeries = validSeries[0] ?? null
-    if (firstValidSeries) {
-      const r = firstValidSeries
-      const s = r.stories as any
-      const currentEp = s.episode_number || 1
-
-      // Fetch durations of remaining episodes only (current ep onwards)
-      let totalRemainingMins = minsRemaining(s.duration_mins, r.progress)  // time left on current ep
-      if (s.series_id) {
-        const { data: futureEps } = await supabase
-          .from('stories')
-          .select('duration_mins')
-          .eq('series_id', s.series_id)
-          .gt('episode_number', currentEp)  // episodes AFTER current
-        for (const ep of (futureEps || [])) {
-          totalRemainingMins += ep.duration_mins || 0
-        }
-      }
-      if (totalRemainingMins === 0) totalRemainingMins = minsRemaining(s.duration_mins, r.progress)
-
       setSeriesCard({
         type: 'series',
         story_id: r.story_id,
         series_id: s.series_id,
-        series_name: s.series?.title || s.title,
+        series_name: s.series?.name || s.title,
         title: s.title,
         author: s.author,
         genre: s.genre,
         cover_url: s.cover_url,
         duration_mins: s.duration_mins,
         progress: r.progress,
-        episode_number: currentEp,
-        total_episodes: s.series?.total_episodes || 1,
-        total_remaining_mins: totalRemainingMins,
+        episode_number: s.episode_number || 1,
+        total_episodes: s.series?.episode_count || 1,
         last_played: r.last_played,
       })
     } else {
@@ -450,13 +421,6 @@ export default function ContinueListening({ onIdsLoaded }: { onIdsLoaded?: (ids:
       setPlaylistCard(null)
     }
 
-    // Report loaded story IDs to parent so they can be excluded from other sections
-    if (onIdsLoaded) {
-      const ids: string[] = []
-      if (singleCard) ids.push((singleCard as any).story_id)
-      if (seriesCard) ids.push((seriesCard as any).story_id)
-      onIdsLoaded(ids)
-    }
     setLoading(false)
   }
 
@@ -484,7 +448,7 @@ export default function ContinueListening({ onIdsLoaded }: { onIdsLoaded?: (ids:
   }
 
   const dismissPlaylist = () => {
-    localStorage.removeItem('dtt_active_playlist'); localStorage.removeItem('dtt_playlist'); localStorage.removeItem('dtt_playlist_index'); localStorage.removeItem('dtt_playlist_progress')
+    localStorage.removeItem('dtt_active_playlist')
     setPlaylistCard(null)
     setDismissModal(null)
   }
@@ -493,34 +457,32 @@ export default function ContinueListening({ onIdsLoaded }: { onIdsLoaded?: (ids:
   if (!singleCard && !seriesCard && !playlistCard) return null
 
   return (
-    <section style={{ padding: '1.5rem 1rem 0' }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <section style={{ padding: '18px 14px 0' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 12 }}>
+        <span style={{ fontSize: 13 }}>▶</span>
+        <span style={{ fontFamily: 'var(--font-outfit, sans-serif)', fontSize: 11, fontWeight: 800, color: 'white', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+          Continue Listening
+        </span>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {singleCard && (
-          <div>
-            <h2 style={{ color: 'white', fontSize: 18, fontWeight: 800, margin: '0 0 8px' }}>Your Saved Story</h2>
-            <SingleStoryCardUI
-              card={singleCard}
-              onDismiss={() => setDismissModal('single')}
-            />
-          </div>
+          <SingleStoryCardUI
+            card={singleCard}
+            onDismiss={() => setDismissModal('single')}
+          />
         )}
         {seriesCard && (
-          <div>
-            <h2 style={{ color: 'white', fontSize: 18, fontWeight: 800, margin: '0 0 8px' }}>Your Saved Series</h2>
-            <SeriesCardUI
-              card={seriesCard}
-              onDismiss={() => setDismissModal('series')}
-            />
-          </div>
+          <SeriesCardUI
+            card={seriesCard}
+            onDismiss={() => setDismissModal('series')}
+          />
         )}
         {playlistCard && (
-          <div>
-            <h2 style={{ color: 'white', fontSize: 18, fontWeight: 800, margin: '0 0 8px' }}>Your Saved Playlist</h2>
-            <PlaylistCardUI
-              card={playlistCard}
-              onDismiss={() => setDismissModal('playlist')}
-            />
-          </div>
+          <PlaylistCardUI
+            card={playlistCard}
+            onDismiss={() => setDismissModal('playlist')}
+          />
         )}
       </div>
 
