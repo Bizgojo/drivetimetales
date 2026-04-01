@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
   try {
     const { code, userId, email } = await req.json()
     if (!code || !userId) return NextResponse.json({ error: 'Missing code or userId' }, { status: 400 })
-    const upper = code.trim().toUpperCase()
+    const upper = code.trim().toUpperCase().replace(/\s+/g, '').replace(/\+/g, '')
 
     const { data: promo, error: promoError } = await supabase
       .from('promo_codes')

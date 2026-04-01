@@ -61,7 +61,7 @@ function PromoContent() {
         <input
           type="text"
           value={code}
-          onChange={e => setCode(e.target.value.toUpperCase())}
+          onChange={e => setCode(e.target.value.toUpperCase().replace(/\s+/g, '').replace(/\+/g, ''))}
           onKeyDown={e => e.key === 'Enter' && handleRedeem()}
           placeholder="ENTER CODE"
           style={{ width: '100%', padding: '16px', background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', color: 'white', fontSize: '18px', fontWeight: 800, textAlign: 'center', letterSpacing: '0.1em', marginBottom: '16px', outline: 'none', boxSizing: 'border-box' }}

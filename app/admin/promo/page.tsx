@@ -147,7 +147,7 @@ export default function AdminPromoPage() {
             <div>
               <label style={label}>Code *</label>
               <div style={{ display: 'flex', gap: 6 }}>
-                <input style={{ ...input, flex: 1 }} value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value.toUpperCase() }))} placeholder="LAUNCH2026" />
+                <input style={{ ...input, flex: 1 }} value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value.toUpperCase().replace(/\s+/g, '-') }))} placeholder="LAUNCH2026" />
                 <button onClick={generateUnique} style={{ padding: '8px 10px', background: '#f3f4f6', border: `1px solid ${border}`, borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>Auto</button>
               </div>
             </div>
