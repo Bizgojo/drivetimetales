@@ -1,8 +1,8 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { usePathname } from 'next/navigation'
 
-export default function HomeHintToast() {
+function HomeHintToastInner() {
   const [visible, setVisible] = useState(false)
   const pathname = usePathname()
 
@@ -53,4 +53,8 @@ export default function HomeHintToast() {
       `}</style>
     </div>
   )
+}
+
+export default function HomeHintToastWrapper() {
+  return <Suspense fallback={null}><HomeHintToast /></Suspense>
 }
