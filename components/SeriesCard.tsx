@@ -135,7 +135,7 @@ export default function SeriesCard({
               {genre}
             </span>
             <span style={{ color: 'white', fontWeight: 800, whiteSpace: 'nowrap', flexShrink: 0, marginLeft: '6px', fontSize: '15px', position: 'absolute', top: '10px', right: '10px' }}>
-              Avg. {avgDuration} min
+              {avgDuration} min/ep
             </span>
           </div>
         </div>
