@@ -5,34 +5,30 @@ export default function HomeHintToast() {
   const [visible, setVisible] = useState(false)
 
   useEffect(() => {
-    const t = setTimeout(() => setVisible(true), 500)
-    return () => clearTimeout(t)
+    console.log('[HomeHintToast] mounted')
+    setVisible(true)
   }, [])
 
-  function dismiss() {
-    setVisible(false)
-  }
+  console.log('[HomeHintToast] render, visible:', visible)
 
   if (!visible) return null
 
   return (
     <div style={{
-      position: 'fixed', bottom: 100, left: '50%',
-      transform: 'translateX(-50%)',
-      background: 'white', color: '#111',
-      padding: '14px 20px', borderRadius: '16px',
-      fontSize: '13px', fontWeight: 600,
-      zIndex: 9999, boxShadow: '0 4px 24px rgba(0,0,0,0.2)',
-      border: '1px solid rgba(0,0,0,0.08)',
-      display: 'flex', flexDirection: 'column', alignItems: 'center',
-      gap: '12px', width: '260px', textAlign: 'center',
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      background: 'red',
+      color: 'white',
+      padding: '20px',
+      fontSize: '20px',
+      fontWeight: 900,
+      zIndex: 99999,
+      textAlign: 'center',
     }}>
-      <span>Tap <strong>Endless Tales</strong> in the header anytime to return home</span>
-      <button onClick={dismiss} style={{
-        background: '#f97316', color: 'white', border: 'none',
-        borderRadius: '20px', padding: '8px 24px',
-        fontSize: '13px', fontWeight: 700, cursor: 'pointer', width: '100%',
-      }}>Got It</button>
+      TOAST TEST — TAP TO CLOSE
+      <button onClick={() => setVisible(false)} style={{ marginLeft: 20, background: 'white', color: 'red', border: 'none', padding: '8px 16px', borderRadius: 8, cursor: 'pointer', fontWeight: 700 }}>X</button>
     </div>
   )
 }
