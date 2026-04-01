@@ -39,9 +39,9 @@ function PromoContent() {
 
   return (
     <div style={{ minHeight: '100dvh', backgroundColor: '#020617', color: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
-      <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-        <img src="/images/et-logo.png" alt="Endless Tales" style={{ width: '52px', height: '52px', objectFit: 'contain' }} />
-        <div style={{ fontSize: '22px', fontWeight: 900, marginTop: '8px' }}>Endless <span style={{ color: '#f97316' }}>Tales</span></div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginBottom: '32px' }}>
+        <img src="/images/et-logo.png" alt="Endless Tales" style={{ width: '36px', height: '36px', objectFit: 'contain' }} />
+        <div style={{ fontSize: '22px', fontWeight: 900 }}>Endless <span style={{ color: '#f97316' }}>Tales</span></div>
       </div>
       <div style={{ background: '#0f172a', border: '1px solid rgba(249,115,22,0.25)', borderRadius: '20px', padding: '36px 28px', maxWidth: '400px', width: '100%' }}>
         <h1 style={{ fontSize: '22px', fontWeight: 900, margin: '0 0 8px', textAlign: 'center' }}>Redeem a Code</h1>
