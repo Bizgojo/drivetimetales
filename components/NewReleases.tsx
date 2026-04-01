@@ -25,15 +25,37 @@ export default function NewReleases({ excludeIds = [], onIdsLoaded }: { excludeI
 
   useEffect(() => {
     async function fetch() {
+      // Fetch recent stories including series info
       const { data } = await supabase.from('story_analytics')
-        .select('id, title, genre, author, duration_mins, cover_url, published_on, avg_rating, review_count')
-        .not('cover_url', 'is', null).eq('is_hidden', false).gte('duration_mins', 10).order('published_on', { ascending: false }).limit(20)
+        .select('id, title, genre, author, duration_mins, cover_url, published_on, avg_rating, review_count, series_id, episode_number')
+        .not('cover_url', 'is', null).eq('is_hidden', false).gte('duration_mins', 10).order('published_on', { ascending: false }).limit(40)
       if (!data) { setLoading(false); return }
+
       let ex = new Set(excludeIds)
+      let userLib: any[] = []
+      let seriesInProgress = new Map<string, number>() // series_id -> highest completed episode_number
+
       if (user?.id) {
-        const { data: lib } = await supabase.from('user_library').select('story_id, progress, completed, not_for_me, last_played').eq('user_id', user.id)
-        if (lib) lib.forEach((e: any) => { if (e.progress > 0 || e.completed || e.not_for_me || e.last_played) ex.add(e.story_id) })
-        // Also exclude stories in active playlist
+        const { data: lib } = await supabase.from('user_library')
+          .select('story_id, progress, completed, not_for_me, last_played')
+          .eq('user_id', user.id)
+        userLib = lib || []
+
+        // Build exclude set — any story user has interacted with
+        userLib.forEach((e: any) => {
+          if (e.progress > 0 || e.completed || e.not_for_me || e.last_played) ex.add(e.story_id)
+        })
+
+        // Find which series the user has started/completed episodes in
+        // and what the highest episode number they've reached is
+        const playedIds = new Set(userLib.filter((e: any) => e.last_played).map((e: any) => e.story_id))
+        const playedStories = data.filter((s: any) => playedIds.has(s.id) && s.series_id)
+        playedStories.forEach((s: any) => {
+          const cur = seriesInProgress.get(s.series_id) || 0
+          if ((s.episode_number || 0) > cur) seriesInProgress.set(s.series_id, s.episode_number || 0)
+        })
+
+        // Exclude stories in active playlist
         try {
           const raw = localStorage.getItem('dtt_active_playlist') || localStorage.getItem('dtt_playlist')
           if (raw) {
@@ -42,9 +64,30 @@ export default function NewReleases({ excludeIds = [], onIdsLoaded }: { excludeI
           }
         } catch {}
       }
-      const filtered = data.filter((s: Story) => !ex.has(s.id)).slice(0, 2)
-      setStories(filtered)
-      if (onIdsLoaded) onIdsLoaded(filtered.map((s: Story) => s.id))
+
+      const result: any[] = []
+
+      for (const s of data) {
+        if (result.length >= 2) break
+        if (ex.has(s.id)) continue
+
+        const seriesId = (s as any).series_id
+        const epNum = (s as any).episode_number
+
+        if (seriesId) {
+          // Series episode rules:
+          // 1. User must have started this series (has a played episode)
+          // 2. This must be the next episode (highest played + 1)
+          const highestPlayed = seriesInProgress.get(seriesId)
+          if (!highestPlayed) continue // user hasn't started this series — skip
+          if (epNum !== highestPlayed + 1) continue // not the next episode — skip
+        }
+
+        result.push(s)
+      }
+
+      setStories(result)
+      if (onIdsLoaded) onIdsLoaded(result.map((s: any) => s.id))
       setLoading(false)
     }
     fetch()
