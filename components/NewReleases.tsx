@@ -32,7 +32,7 @@ export default function NewReleases({ excludeIds = [], onIdsLoaded }: { excludeI
       let ex = new Set(excludeIds)
       if (user?.id) {
         const { data: lib } = await supabase.from('user_library').select('story_id, progress, completed, not_for_me').eq('user_id', user.id)
-        if (lib) lib.forEach((e: any) => { if (e.progress > 0 || e.completed || e.not_for_me) ex.add(e.story_id) })
+        if (lib) lib.forEach((e: any) => { if (e.progress > 0 || e.completed || e.not_for_me || e.last_played) ex.add(e.story_id) })
         // Also exclude stories in active playlist
         try {
           const raw = localStorage.getItem('dtt_active_playlist') || localStorage.getItem('dtt_playlist')
