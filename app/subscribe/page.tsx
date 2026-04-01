@@ -86,6 +86,12 @@ export default function SubscribePage() {
         >
           Browse as guest
         </button>
+        <button
+          onClick={() => router.push('/account/promo')}
+          style={{ width: '100%', padding: '12px', background: 'transparent', color: 'rgba(255,255,255,0.3)', border: 'none', fontSize: '13px', fontWeight: 500, cursor: 'pointer', marginTop: '4px' }}
+        >
+          Have a promo code?
+        </button>
       </div>
 
       <p style={{ marginTop: '24px', fontSize: '13px', color: 'rgba(255,255,255,0.35)', textAlign: 'center' }}>
