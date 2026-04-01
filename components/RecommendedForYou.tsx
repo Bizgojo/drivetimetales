@@ -1,220 +1,136 @@
-/*
-================================================================================
-🔒 PROTECTED MODULE - RECOMMENDED FOR YOU
-================================================================================
-File: RecommendedForYou.tsx
-Location: ~/Projects/drivetimetales/components/
-
-Updated: February 14, 2026 - Groups series episodes into single SeriesCard
-Owner: Marc (Wonder Books Press / Drive Time Tales)
-
-PURPOSE:
-Shows recommended stories with series grouped into a single card (like Library).
-Singles show as HorizontalStoryCard, series show as SeriesCard.
-
-⚠️  DO NOT MODIFY WITHOUT MARC'S APPROVAL
-================================================================================
-*/
-
 'use client'
-
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/contexts/AuthContext'
 import HorizontalStoryCard from '@/components/HorizontalStoryCard'
 import SeriesCard from '@/components/SeriesCard'
 
-// =============================================================================
-// TYPES
-// =============================================================================
-
 interface Story {
-  id: string
-  title: string
-  genre: string
-  author: string
-  duration_mins: number
-  cover_url: string | null
-  series_id: string | null
-  series_name: string | null
-  series_number: number | null
-  created_at: string
+  id: string; title: string; genre: string; author: string
+  duration_mins: number; cover_url: string | null
+  series_id: string | null; series_name: string | null
+  avg_rating?: number | null; review_count?: number
 }
-
 interface SeriesGroup {
-  id: string
-  series_name: string
-  genre: string
-  episode_count: number
-  total_duration_mins: number
-  cover_url: string | null
-  description: string | null
-  earliest_created_at: string
+  id: string; series_name: string; genre: string; episode_count: number
+  total_duration_mins: number; cover_url: string | null; description: string | null
+  avg_episode_duration: number
 }
+type DisplayItem = { type: 'single'; story: Story } | { type: 'series'; group: SeriesGroup }
 
-type DisplayItem =
-  | { type: 'single'; story: Story; sortDate: string }
-  | { type: 'series'; group: SeriesGroup; sortDate: string }
-
-// =============================================================================
-// COMPONENT
-// =============================================================================
-
-export default function RecommendedForYou() {
+export default function RecommendedForYou({ excludeIds = [] }: { excludeIds?: string[] }) {
+  const router = useRouter()
+  const { user } = useAuth()
   const [displayItems, setDisplayItems] = useState<DisplayItem[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    async function fetchRecommendations() {
-      try {
-        // Fetch all stories with series info
-        const { data, error } = await supabase
-          .from('stories')
-          .select('id, title, genre, author, duration_mins, cover_url, series_id, series_name, series_number, created_at')
-          .not('cover_url', 'is', null)
+  useEffect(() => { load() }, [user?.id, excludeIds.join(',')])
 
-        if (error) {
-          console.error('Error fetching recommendations:', error)
-          return
+  async function load() {
+    setLoading(true)
+    const { data } = await supabase.from('story_analytics')
+      .select('id, title, genre, author, duration_mins, cover_url, series_id, series_name, avg_rating, review_count')
+      .not('cover_url', 'is', null).eq('is_hidden', false).gte('duration_mins', 10).limit(100)
+    if (!data || !data.length) { setLoading(false); return }
+
+    const ex = new Set(excludeIds)
+    let topGenres: string[] = []
+    let prefersSeries = false
+    let avgDuration = 20
+
+    if (user?.id) {
+      const { data: lib } = await supabase.from('user_library').select('story_id, progress, completed, not_for_me, last_played').eq('user_id', user.id)
+      if (lib) {
+        lib.forEach((e: any) => { if (e.progress > 0 || e.completed || e.not_for_me || e.last_played) ex.add(e.story_id) })
+        const playedIds = new Set(lib.filter((e: any) => e.last_played || e.progress > 0).map((e: any) => e.story_id))
+        const played = data.filter((s: any) => playedIds.has(s.id))
+        if (played.length > 0) {
+          const gc: Record<string, number> = {}
+          let sc = 0, snc = 0, td = 0
+          played.forEach((s: any) => {
+            if (s.genre) gc[s.genre] = (gc[s.genre] || 0) + 1
+            if (s.series_id) sc++; else snc++
+            td += s.duration_mins || 0
+          })
+          topGenres = Object.entries(gc).sort((a, b) => b[1] - a[1]).map(([g]) => g)
+          prefersSeries = sc >= snc
+          avgDuration = Math.round(td / played.length)
         }
-        if (!data || data.length === 0) return
-
-        // Fetch series table for covers and descriptions
-        const { data: seriesRows } = await supabase
-          .from('series')
-          .select('title, cover_image, description')
-        const seriesLookup: Record<string, { cover_image: string | null; description: string | null }> = {}
-        if (seriesRows) {
-          seriesRows.forEach((s: any) => { seriesLookup[s.title] = { cover_image: s.cover_image, description: s.description } })
-        }
-
-        // Group series episodes
-        const seriesMap = new Map<string, SeriesGroup>()
-        const singles: Story[] = []
-
-        data.forEach((story: Story) => {
-          if (story.series_name) {
-            const existing = seriesMap.get(story.series_name)
-            if (existing) {
-              existing.episode_count++
-              existing.total_duration_mins += story.duration_mins || 0
-              if (story.created_at < existing.earliest_created_at) {
-                existing.earliest_created_at = story.created_at
-              }
-            } else {
-              const seriesInfo = seriesLookup[story.series_name]
-              seriesMap.set(story.series_name, {
-                id: story.series_id || story.id,
-                series_name: story.series_name,
-                genre: story.genre,
-                episode_count: 1,
-                total_duration_mins: story.duration_mins || 0,
-                cover_url: seriesInfo?.cover_image || story.cover_url,
-                description: seriesInfo?.description || null,
-                earliest_created_at: story.created_at,
-              })
-            }
-          } else {
-            singles.push(story)
-          }
-        })
-
-        // Build mixed display items
-        const items: DisplayItem[] = []
-        seriesMap.forEach(group => {
-          items.push({ type: 'series', group, sortDate: group.earliest_created_at })
-        })
-        singles.forEach(story => {
-          items.push({ type: 'single', story, sortDate: story.created_at })
-        })
-
-        // Sort by date descending (newest first), limit to 5
-        items.sort((a, b) => b.sortDate.localeCompare(a.sortDate))
-        setDisplayItems(items.slice(0, 5))
-      } catch (err) {
-        console.error('Error in fetchRecommendations:', err)
-      } finally {
-        setLoading(false)
       }
     }
 
-    fetchRecommendations()
-  }, [])
+    const filtered = data.filter((s: any) => !ex.has(s.id))
+    const seriesMap = new Map<string, SeriesGroup>()
+    const singles: Story[] = []
 
-  // =============================================================================
-  // LOADING STATE
-  // =============================================================================
+    filtered.forEach((story: any) => {
+      if (story.series_id) {
+        if (seriesMap.has(story.series_id)) {
+          const g = seriesMap.get(story.series_id)!
+          g.episode_count++; g.total_duration_mins += story.duration_mins || 0
+          g.avg_episode_duration = Math.round(g.total_duration_mins / g.episode_count)
+        } else {
+          seriesMap.set(story.series_id, { id: story.series_id, series_name: story.series_name || story.title, genre: story.genre, episode_count: 1, total_duration_mins: story.duration_mins || 0, cover_url: story.cover_url, description: null, avg_episode_duration: story.duration_mins || 0 })
+        }
+      } else {
+        singles.push(story)
+      }
+    })
 
-  if (loading) {
-    return (
-      <section style={{ paddingLeft: '1rem', paddingRight: '1rem', paddingTop: '1.5rem', paddingBottom: '1rem' }}>
-        <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>⭐ RECOMMENDED FOR YOU</h2>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          {[1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="bg-slate-800 rounded-xl overflow-hidden animate-pulse" style={{ display: 'flex' }}>
-              <div style={{ width: '7rem', height: '7rem', flexShrink: 0, padding: '0.5rem' }}>
-                <div className="rounded-lg bg-slate-700" style={{ width: '100%', height: '100%' }} />
-              </div>
-              <div style={{ flex: 1, paddingTop: '0.5rem', paddingBottom: '0.5rem', paddingRight: '0.75rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '0.5rem' }}>
-                <div className="bg-slate-700 rounded" style={{ height: '1rem', width: '75%' }} />
-                <div className="bg-slate-700 rounded" style={{ height: '0.75rem', width: '50%' }} />
-                <div className="bg-slate-700 rounded" style={{ height: '0.75rem', width: '66%' }} />
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-    )
+    const seriesList = Array.from(seriesMap.values()).filter(g => g.episode_count > 1)
+
+    function scoreStory(s: Story): number {
+      let score = 0
+      const gr = topGenres.indexOf(s.genre)
+      if (gr === 0) score += 30; else if (gr === 1) score += 20; else if (gr >= 2) score += 10
+      const dd = Math.abs((s.duration_mins || 0) - avgDuration)
+      if (dd <= 5) score += 15; else if (dd <= 10) score += 8
+      return score
+    }
+
+    function scoreSeries(g: SeriesGroup): number {
+      let score = 0
+      const gr = topGenres.indexOf(g.genre)
+      if (gr === 0) score += 30; else if (gr === 1) score += 20; else if (gr >= 2) score += 10
+      if (prefersSeries) score += 20
+      const dd = Math.abs(g.avg_episode_duration - avgDuration)
+      if (dd <= 5) score += 15; else if (dd <= 10) score += 8
+      return score
+    }
+
+    const all = [
+      ...singles.map(s => ({ type: 'single' as const, story: s, score: scoreStory(s) })),
+      ...seriesList.map(g => ({ type: 'series' as const, group: g, score: scoreSeries(g) }))
+    ].sort((a, b) => b.score - a.score)
+
+    setDisplayItems(all.slice(0, 5).map(item => item.type === 'series' ? { type: 'series', group: item.group } : { type: 'single', story: item.story }))
+    setLoading(false)
   }
 
-  // =============================================================================
-  // EMPTY STATE
-  // =============================================================================
-
-  if (displayItems.length === 0) {
-    return (
-      <section style={{ paddingLeft: '1rem', paddingRight: '1rem', paddingTop: '1.5rem', paddingBottom: '1rem' }}>
-        <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>⭐ RECOMMENDED FOR YOU</h2>
-        <p className="text-white text-sm">No recommendations yet.</p>
-      </section>
-    )
-  }
-
-  // =============================================================================
-  // RENDER
-  // =============================================================================
+  if (loading) return (
+    <section style={{ padding: '1.5rem 1rem 1rem' }}>
+      <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>RECOMMENDED FOR YOU</h2>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+        {[1,2,3].map(i => <div key={i} className="bg-slate-800 rounded-xl animate-pulse" style={{ height: '80px' }} />)}
+      </div>
+    </section>
+  )
+  if (!displayItems.length) return null
 
   return (
-    <section style={{ paddingLeft: '1rem', paddingRight: '1rem', paddingTop: '1.5rem', paddingBottom: '1rem' }}>
-      <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>⭐ RECOMMENDED FOR YOU</h2>
-      
+    <section style={{ padding: '1.5rem 1rem 1rem' }}>
+      <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>RECOMMENDED FOR YOU</h2>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
         {displayItems.map(item => {
           if (item.type === 'series') {
-            return (
-              <SeriesCard
-                key={`series-${item.group.series_name}`}
-                id={item.group.id}
-                series_name={item.group.series_name}
-                genre={item.group.genre}
-                episode_count={item.group.episode_count}
-                total_duration_mins={item.group.total_duration_mins}
-                cover_url={item.group.cover_url}
-                description={item.group.description}
-              />
-            )
-          } else {
-            return (
-              <HorizontalStoryCard
-                key={item.story.id}
-                id={item.story.id}
-                title={item.story.title}
-                genre={item.story.genre}
-                author={item.story.author}
-                duration_mins={item.story.duration_mins}
-                cover_url={item.story.cover_url}
-              />
-            )
+            return <SeriesCard key={'series-' + item.group.id} id={item.group.id} series_name={item.group.series_name} genre={item.group.genre} episode_count={item.group.episode_count} total_duration_mins={item.group.total_duration_mins} cover_url={item.group.cover_url} description={item.group.description} />
           }
+          return (
+            <div key={item.story.id} onClick={() => router.push('/player/' + item.story.id)} style={{ cursor: 'pointer' }}>
+              <HorizontalStoryCard id={item.story.id} title={item.story.title} genre={item.story.genre} author={item.story.author || 'Endless Tales'} duration_mins={item.story.duration_mins} cover_url={item.story.cover_url} avg_rating={item.story.avg_rating} review_count={item.story.review_count} />
+            </div>
+          )
         })}
       </div>
     </section>
