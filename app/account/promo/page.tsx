@@ -79,7 +79,7 @@ function PromoContent() {
           </button>
         )}
       </div>
-      <button onClick={() => router.back()} style={{ marginTop: '24px', background: 'none', border: 'none', color: 'rgba(255,255,255,0.35)', cursor: 'pointer', fontSize: '13px' }}>
+      <button onClick={() => { try { router.back() } catch { router.push('/home') } }} style={{ marginTop: '24px', background: 'none', border: 'none', color: 'rgba(255,255,255,0.35)', cursor: 'pointer', fontSize: '13px' }}>
         Back
       </button>
     </div>
