@@ -10,6 +10,9 @@ export async function GET(request: Request) {
   // Keep redirect URL clean (no query params) so it matches Supabase's allowed redirect list exactly.
   // Pass returnTo via a short-lived cookie that the callback Route Handler will read.
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || origin
+  if (!process.env.NEXT_PUBLIC_APP_URL) {
+    console.warn('[Google OAuth] WARNING: NEXT_PUBLIC_APP_URL is not set — falling back to request origin. OAuth may break in some environments. Set NEXT_PUBLIC_APP_URL in .env.local and Vercel.')
+  }
   const redirectTo = `${appUrl}/auth/callback`
 
   const cookieStore = cookies()
