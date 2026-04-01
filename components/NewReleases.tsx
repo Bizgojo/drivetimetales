@@ -1,120 +1,110 @@
-'use client'
-import { useState, useEffect } from 'react'
-import Link from 'next/link'
-import { supabase } from '@/lib/supabase'
-import { useAuth } from '@/contexts/AuthContext'
+// Preview version - uses mock data to show layout in Claude artifact panel
 
-interface Story {
-  id: string; title: string; genre: string; author: string
-  duration_mins: number; cover_url: string | null; published_on: string
-  avg_rating?: number | null; review_count?: number
-}
+export default function NewReleasesPreview() {
+  // Mock data for preview
+  const stories = [
+    {
+      id: '1',
+      title: 'The Midnight Detective',
+      genre: 'Mystery',
+      author: 'Sarah Johnson',
+      duration_mins: 45,
+      cover_url: 'https://picsum.photos/200?random=1',
+      published_on: '2026-01-15',
+    },
+    {
+      id: '2',
+      title: 'Love in the Time of Algorithms',
+      genre: 'Romance',
+      author: 'Michael Chen',
+      duration_mins: 32,
+      cover_url: 'https://picsum.photos/200?random=2',
+      published_on: '2026-01-14',
+    },
+  ];
 
+  function getCredits(duration_mins) {
+    return Math.max(1, Math.floor(duration_mins / 15));
+  }
 
-function StarDisplay({ rating, count }: { rating: number; count?: number }) {
-  return <span style={{ display: 'inline-flex', gap: '1px' }}>
-    {[1,2,3,4,5].map(i => <span key={i} style={{ color: i <= rating ? '#f59e0b' : '#334155', fontSize: '10px' }}>{i <= rating ? '★' : '☆'}</span>)}
-    {count ? <span style={{ color: '#64748b', fontSize: '9px', marginLeft: '3px' }}>({count})</span> : null}
-  </span>
-}
-
-export default function NewReleases({ excludeIds = [], onIdsLoaded }: { excludeIds?: string[], onIdsLoaded?: (ids: string[]) => void }) {
-  const { user } = useAuth()
-  const [stories, setStories] = useState<Story[]>([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    async function fetch() {
-      // Fetch recent stories including series info
-      const { data } = await supabase.from('story_analytics')
-        .select('id, title, genre, author, duration_mins, cover_url, published_on, avg_rating, review_count, series_id, episode_number')
-        .not('cover_url', 'is', null).eq('is_hidden', false).gte('duration_mins', 10).order('published_on', { ascending: false }).limit(40)
-      if (!data) { setLoading(false); return }
-
-      let ex = new Set(excludeIds)
-      let userLib: any[] = []
-      let seriesInProgress = new Map<string, number>() // series_id -> highest completed episode_number
-
-      if (user?.id) {
-        const { data: lib } = await supabase.from('user_library')
-          .select('story_id, progress, completed, not_for_me, last_played')
-          .eq('user_id', user.id)
-        userLib = lib || []
-
-        // Build exclude set — any story user has interacted with
-        userLib.forEach((e: any) => {
-          if (e.progress > 0 || e.completed || e.not_for_me || e.last_played) ex.add(e.story_id)
-        })
-
-        // Find which series the user has started/completed episodes in
-        // and what the highest episode number they've reached is
-        const playedIds = new Set(userLib.filter((e: any) => e.last_played).map((e: any) => e.story_id))
-        const playedStories = data.filter((s: any) => playedIds.has(s.id) && s.series_id)
-        playedStories.forEach((s: any) => {
-          const cur = seriesInProgress.get(s.series_id) || 0
-          if ((s.episode_number || 0) > cur) seriesInProgress.set(s.series_id, s.episode_number || 0)
-        })
-
-        // Exclude stories in active playlist
-        try {
-          const raw = localStorage.getItem('dtt_active_playlist') || localStorage.getItem('dtt_playlist')
-          if (raw) {
-            const pl = JSON.parse(raw)
-            ;(pl.stories || pl).forEach((s: any) => { if (s.id) ex.add(s.id) })
-          }
-        } catch {}
-      }
-
-      const result: any[] = []
-
-      for (const s of data) {
-        if (result.length >= 2) break
-        if (ex.has(s.id)) continue
-
-        const seriesId = (s as any).series_id
-        const epNum = (s as any).episode_number
-
-        if (seriesId) {
-          // Series episode rules:
-          // 1. User must have started this series (has a played episode)
-          // 2. This must be the next episode (highest played + 1)
-          const highestPlayed = seriesInProgress.get(seriesId)
-          if (!highestPlayed) continue // user hasn't started this series — skip
-          if (epNum !== highestPlayed + 1) continue // not the next episode — skip
-        }
-
-        result.push(s)
-      }
-
-      setStories(result)
-      if (onIdsLoaded) onIdsLoaded(result.map((s: any) => s.id))
-      setLoading(false)
-    }
-    fetch()
-  }, [user?.id, excludeIds.join(',')])
-
-  if (loading) return <section style={{ padding: '1.5rem 1rem 1rem' }}><h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>🆕 NEW RELEASES</h2><div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem' }}>{[1,2].map(i => <div key={i} className="animate-pulse bg-slate-800 rounded-xl" style={{ padding: '0.5rem' }}><div className="rounded-lg bg-slate-700" style={{ aspectRatio: '1/1', marginBottom: '0.5rem' }} /></div>)}</div></section>
-  if (!stories.length) return null
+  function formatDate(dateString) {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { 
+      month: 'short', 
+      day: 'numeric', 
+      year: 'numeric' 
+    });
+  }
 
   return (
-    <section style={{ padding: '1.5rem 1rem 1rem' }}>
-      <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>🆕 NEW RELEASES</h2>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem' }}>
-        {stories.map(s => (
-          <Link key={s.id} href={`/player/${s.id}`} className="bg-slate-800 rounded-xl hover:bg-slate-700 transition" style={{ display: 'block', padding: '0.5rem', textDecoration: 'none' }}>
-            <div className="rounded-lg overflow-hidden cover-glow">
-              <img src={s.cover_url || '/images/default-cover.png'} alt={s.title} style={{ width: '100%', aspectRatio: '1/1', objectFit: 'cover' }} />
-            </div>
-            <div style={{ marginTop: '0.5rem' }}>
-              <h3 className="text-xs font-bold text-white line-clamp-2 leading-tight">{s.title}</h3>
-              <p style={{ color: '#94a3b8', fontSize: '0.7rem' }}>{s.genre}</p>
-              <p style={{ color: '#94a3b8', fontSize: '0.7rem' }}>by {s.author}</p>
-              <p style={{ color: '#fff', fontSize: '0.7rem', fontWeight: 600 }}>{s.duration_mins} min</p>
-              {s.avg_rating != null && s.avg_rating > 0 && <StarDisplay rating={Math.round(s.avg_rating)} count={s.review_count} />}
-            </div>
-          </Link>
-        ))}
+    <div style={{ backgroundColor: '#0f172a', minHeight: '100vh', padding: '1rem' }}>
+      {/* Module container */}
+      <section style={{ paddingLeft: '1rem', paddingRight: '1rem', paddingTop: '1.5rem', paddingBottom: '1rem' }}>
+        <h2 style={{ fontSize: '1.125rem', fontWeight: 'bold', color: 'white', marginBottom: '1rem' }}>
+          🆕 New Releases
+        </h2>
+        
+        {/* 2-column grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem' }}>
+          {stories.map((story) => (
+            <a 
+              key={story.id} 
+              href={`/player/${story.id}`}
+              style={{ 
+                display: 'block', 
+                backgroundColor: '#1e293b', 
+                borderRadius: '0.75rem', 
+                padding: '0.5rem',
+                textDecoration: 'none',
+                cursor: 'pointer'
+              }}
+            >
+              {/* Cover with glow */}
+              <div style={{ 
+                borderRadius: '0.5rem', 
+                overflow: 'hidden',
+                boxShadow: '0 0 15px rgba(255, 255, 255, 0.4)'
+              }}>
+                <img 
+                  src={story.cover_url} 
+                  alt={story.title}
+                  style={{ width: '100%', aspectRatio: '1 / 1', objectFit: 'cover' }}
+                />
+              </div>
+              
+              {/* Metadata */}
+              <div style={{ marginTop: '0.5rem' }}>
+                <h3 style={{ 
+                  fontSize: '0.75rem', 
+                  fontWeight: 'bold', 
+                  color: 'white', 
+                  margin: 0,
+                  lineHeight: '1.25',
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden'
+                }}>
+                  {story.title}
+                </h3>
+                <p style={{ color: 'white', fontSize: '0.75rem', margin: 0 }}>{story.genre}</p>
+                <p style={{ color: 'white', fontSize: '0.75rem', margin: 0 }}>by {story.author}</p>
+                <p style={{ color: 'white', fontSize: '0.75rem', margin: 0 }}>
+                  {story.duration_mins} min • {getCredits(story.duration_mins)} cr
+                </p>
+                <p style={{ color: '#94a3b8', fontSize: '0.75rem', margin: 0 }}>{formatDate(story.published_on)}</p>
+              </div>
+            </a>
+          ))}
+        </div>
+      </section>
+      
+      {/* Label showing this is a preview */}
+      <div style={{ textAlign: 'center', color: '#64748b', fontSize: '0.75rem', marginTop: '2rem' }}>
+        ↑ Preview of Module 07: NewReleases with inline styles ↑
+        <br />
+        2-column grid, square covers with glow
       </div>
-    </section>
-  )
+    </div>
+  );
 }
