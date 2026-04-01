@@ -7,10 +7,8 @@ function ToastInner() {
   const pathname = usePathname()
 
   useEffect(() => {
-    if (pathname === '/home') return
     try {
-      if (localStorage.getItem('et_home_hint_seen')) return
-      const t = setTimeout(() => setVisible(true), 1500)
+      const t = setTimeout(() => setVisible(true), 500)
       return () => clearTimeout(t)
     } catch {}
   }, [pathname])
