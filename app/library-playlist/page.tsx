@@ -271,16 +271,18 @@ function LibraryPlaylistContent() {
         <div style={{ padding: '8px 16px 16px' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {playlist.map((entry, i) => (
-              <div key={`${entry.id}-${i}`} style={{ background: '#1e293b', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', border: '1px solid rgba(249,115,22,0.25)' }}>
-                <div style={{ color: 'white', fontSize: 12, fontWeight: 700, flexShrink: 0, width: 18, textAlign: 'center' }}>{i + 1}</div>
-                <img src={entry.cover_url || '/images/et-logo.png'} alt={entry.title} style={{ width: 60, height: 60, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }} />
+              <div key={`${entry.id}-${i}`} style={{ background: '#0f1f35', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 10, padding: '0 10px 0 0', border: '2px solid rgba(249,115,22,0.4)', overflow: 'hidden' }}>
+                <div style={{ position: 'relative', flexShrink: 0, width: 72, alignSelf: 'stretch', minHeight: 72 }}>
+                  <img src={entry.cover_url || '/images/et-logo.png'} alt={entry.title} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                  <div style={{ position: 'absolute', bottom: 4, left: 4, background: 'rgba(0,0,0,0.75)', color: 'white', fontSize: 11, fontWeight: 900, width: 20, height: 20, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{i + 1}</div>
+                </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ color: 'white', fontSize: 14, fontWeight: 700, marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{entry.title}</div>
                   <div style={{ color: '#ffffff', fontSize: 12 }}>{formatDuration(entry.duration_mins)} · {entry.author}</div>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                   {i > 0 && <button onClick={() => moveUp(i)} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: 'white', cursor: 'pointer', fontSize: 12, width: 28, height: 28, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>▲</button>}
-                  {i < playlist.length - 1 && <button onClick={() => moveDown(i)} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: 'white', cursor: 'pointer', fontSize: 12, width: 28, height: 28, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>▼</button>}
+                  {i === 0 && playlist.length > 1 && <button onClick={() => moveDown(i)} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: 'white', cursor: 'pointer', fontSize: 12, width: 28, height: 28, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>▼</button>}
                   <button onClick={() => removeFromPlaylist(i)} style={{ background: 'rgba(220,38,38,0.15)', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: 14, width: 28, height: 28, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
                 </div>
               </div>
