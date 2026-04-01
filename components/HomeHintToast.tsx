@@ -26,7 +26,7 @@ function ToastInner() {
     <div
       onClick={() => setVisible(false)}
       style={{
-        position: 'fixed', top: 72, left: '50%',
+        position: 'fixed', bottom: 90, left: '50%',
         transform: 'translateX(-50%)',
         background: 'white', color: '#111',
         padding: '10px 18px', borderRadius: '20px',
