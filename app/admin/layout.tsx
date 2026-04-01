@@ -50,6 +50,7 @@ export default function AdminLayout({
     { href: '/admin/referrals', label: 'Referrals', icon: '🎁' },
     { href: '/admin/marketing', label: 'Marketing', icon: '📱' },
     { href: '/admin/waitlist', label: 'Waitlist', icon: '📋' },
+    { href: '/admin/promo', label: 'Promo Codes', icon: '🎟️' },
     { href: '/admin/landing-stories', label: 'Landing Stories', icon: '🎧' },
     { href: '/admin/social-analytics', label: 'Social Analytics', icon: '📊' },
     { href: '/admin/social-posting', label: 'Social Posting', icon: '🌐' },
