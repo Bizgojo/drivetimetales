@@ -31,7 +31,7 @@ export default function AdminPromoPage() {
   const [codes, setCodes] = useState<any[]>([])
   const [redemptions, setRedemptions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'codes' | 'redemptions' | 'freeusers'>('codes')
+  const [tab, setTab] = useState<'codes' | 'redemptions' | 'freeusers' | 'people'>('codes')
   const [freeUsers, setFreeUsers] = useState<any[]>([])
   const [sortBy, setSortBy] = useState<'name' | 'lastname' | 'date' | 'expiry'>('date')
   const [form, setForm] = useState({ code: '', description: '', campaign: '', label: '', subscription_days: '30', max_uses: '1' })
@@ -105,7 +105,7 @@ export default function AdminPromoPage() {
     const res = await fetch('/api/promo/send-code', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ to: emailTo, subject: emailSubject, body: emailBody, code: c.code, days: c.subscription_days })
+      body: JSON.stringify({ to: emailTo, subject: emailSubject, body: emailBody, code: c.code, days: c.subscription_days, codeId: c.id })
     })
     const data = await res.json()
     if (data.success) { setSendMsg('Sent!'); setTimeout(() => { setComposing(null); setSendMsg('') }, 1500) }
@@ -324,6 +324,53 @@ export default function AdminPromoPage() {
                           </td>
                           <td style={{ padding: '10px 14px' }}>
                             {expired ? <Badge color="#dc2626">Expired</Badge> : daysLeft !== null ? <Badge color="#16a34a">{daysLeft}d left</Badge> : <Badge color="#6b7280">Unknown</Badge>}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              )}
+          </div>
+        )}
+
+        {/* People tab — everyone who was sent a code */}
+        {!loading && tab === 'people' && (
+          <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 12, overflow: 'hidden' }}>
+            {codes.filter((c: any) => c.sent_to_email).length === 0
+              ? <p style={{ padding: 20, color: muted }}>No codes have been sent yet. Use Send Email on any code to record the recipient.</p>
+              : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ background: '#f9fafb', borderBottom: `1px solid ${border}` }}>
+                      {['Name', 'Email', 'Code', 'Days', 'Sent', 'Last Used', 'Redeemed', 'Actions'].map(h => (
+                        <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: muted, fontSize: 12 }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {codes.filter((c: any) => c.sent_to_email).map((c: any, i: number, arr: any[]) => {
+                      const redemption = redemptions.find((r: any) => r.code === c.code)
+                      return (
+                        <tr key={c.id} style={{ borderBottom: i < arr.length - 1 ? `1px solid ${border}` : 'none' }}>
+                          <td style={{ padding: '10px 14px', fontWeight: 600 }}>{c.label || c.sent_to_name || '--'}</td>
+                          <td style={{ padding: '10px 14px', color: muted }}>{c.sent_to_email}</td>
+                          <td style={{ padding: '10px 14px', fontWeight: 800, fontFamily: 'monospace', color: orange }}>{c.code}</td>
+                          <td style={{ padding: '10px 14px', fontWeight: 700 }}>{c.subscription_days}d</td>
+                          <td style={{ padding: '10px 14px', color: muted }}>{c.sent_at ? new Date(c.sent_at).toLocaleDateString() : '--'}</td>
+                          <td style={{ padding: '10px 14px', color: muted }}>{redemption ? new Date(redemption.redeemed_at).toLocaleDateString() : '--'}</td>
+                          <td style={{ padding: '10px 14px' }}>
+                            {redemption ? <Badge color="#16a34a">Yes</Badge> : <Badge color="#6b7280">Not yet</Badge>}
+                          </td>
+                          <td style={{ padding: '10px 14px' }}>
+                            <button onClick={async () => {
+                              if (confirm('Deactivate this code?')) {
+                                await supabase.from('promo_codes').update({ is_active: false }).eq('id', c.id)
+                                load()
+                              }
+                            }} style={{ padding: '4px 10px', border: `1px solid #dc2626`, borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer', background: '#fff', color: '#dc2626' }}>
+                              Revoke
+                            </button>
                           </td>
                         </tr>
                       )
