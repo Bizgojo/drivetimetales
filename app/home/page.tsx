@@ -46,6 +46,7 @@ function HomeContent() {
   const searchParams = useSearchParams()
   const [newReleaseIds, setNewReleaseIds] = useState<string[]>([])
   const [continueIds, setContinueIds] = useState<string[]>([])
+  const [continueReady, setContinueReady] = useState(false)
   const [showWelcome, setShowWelcome] = useState(false)
 
   useEffect(() => {
@@ -77,8 +78,8 @@ function HomeContent() {
             <button onClick={() => setShowWelcome(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: '18px', cursor: 'pointer', flexShrink: 0 }}>✕</button>
           </div>
         )}
-        <ContinueListening onIdsLoaded={setContinueIds} />
-        <NewReleases excludeIds={continueIds} onIdsLoaded={(ids) => setNewReleaseIds([...continueIds, ...ids])} />
+        <ContinueListening onIdsLoaded={(ids) => { setContinueIds(ids); setContinueReady(true) }} />
+        {continueReady && <NewReleases excludeIds={continueIds} onIdsLoaded={(ids) => setNewReleaseIds([...continueIds, ...ids])} />}
         <RecommendedForYou excludeIds={newReleaseIds} />
       </main>
       <BottomStickyButtons />
