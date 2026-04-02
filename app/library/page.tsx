@@ -398,6 +398,7 @@ function LibraryContent() {
                       cover_url={item.group.cover_url} 
                       description={item.group.description}
                       completed_episodes={item.group.completed_episodes}
+                      not_for_me={item.group.not_for_me === true}
                     />
                   )
                 } else {
