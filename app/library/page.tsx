@@ -231,6 +231,7 @@ function LibraryContent() {
   })
 
   // Build series groups
+  console.log('[Library] building series map, libraryLookup size:', libraryLookup.size)
   const seriesMap = new Map<string, SeriesGroup>()
   filteredStories.forEach(story => {
     if (story.series_name && story.series_name !== 'None') {
