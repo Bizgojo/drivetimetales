@@ -242,7 +242,7 @@ function LibraryContent() {
         if ((story.created_at || '') < (existing.earliest_created_at || '')) {
           existing.earliest_created_at = story.created_at
         }
-        if (libraryLookup.get(story.id)?.not_for_me) existing.not_for_me = true
+        if (libraryLookup.get(story.id)?.not_for_me) { existing.not_for_me = true; console.log('[Library] series not_for_me set for', story.series_name, story.id) }
       } else {
         const seriesInfo = seriesTableData[story.series_name]
         seriesMap.set(story.series_name, {
