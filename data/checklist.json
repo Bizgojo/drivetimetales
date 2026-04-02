@@ -596,11 +596,11 @@
         {
           "id": "3.30",
           "name": "PWA install prompt: 'Put Us On Your Phone' button on home page \u2014 one-time, iOS instructions + Android native prompt, disappears after dismissed/installed",
-          "status": "todo",
+          "status": "complete",
           "owner": "Claude",
           "hours": 3,
           "dueDate": "2026-04-16",
-          "completedDate": null
+          "completedDate": "2026-04-02"
         }
       ]
     },
