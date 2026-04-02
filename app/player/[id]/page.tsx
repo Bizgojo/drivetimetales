@@ -254,7 +254,14 @@ function PlayerContent() {
 
   const handleNotForMe = async () => {
     audioRef.current?.pause(); musicRef.current?.pause()
-    if (user?.id) await supabase.from('user_library').upsert({ user_id: user.id, story_id: storyId, not_for_me: true, progress: Math.floor(currentTime), last_played: new Date().toISOString() })
+    if (user?.id) {
+      const { error } = await supabase.from('user_library').upsert(
+        { user_id: user.id, story_id: storyId, not_for_me: true, progress: Math.floor(currentTime), last_played: new Date().toISOString() },
+        { onConflict: 'user_id,story_id' }
+      )
+      if (error) console.error('[NotForMe] upsert error:', error)
+      else console.log('[NotForMe] saved successfully')
+    }
     router.back()
   }
   const handleBack = () => {
