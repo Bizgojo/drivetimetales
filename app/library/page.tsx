@@ -231,7 +231,6 @@ function LibraryContent() {
   })
 
   // Build series groups
-  console.log('[Library] building series map, libraryLookup size:', libraryLookup.size)
   const seriesMap = new Map<string, SeriesGroup>()
   filteredStories.forEach(story => {
     if (story.series_name && story.series_name !== 'None') {
@@ -243,7 +242,7 @@ function LibraryContent() {
         if ((story.created_at || '') < (existing.earliest_created_at || '')) {
           existing.earliest_created_at = story.created_at
         }
-        if (libraryLookup.get(story.id)?.not_for_me) { existing.not_for_me = true; console.log('[Library] series not_for_me set for', story.series_name, story.id) }
+        if (libraryLookup.get(story.id)?.not_for_me) { existing.not_for_me = true }
       } else {
         const seriesInfo = seriesTableData[story.series_name]
         seriesMap.set(story.series_name, {
