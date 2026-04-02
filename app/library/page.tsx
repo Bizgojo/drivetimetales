@@ -56,6 +56,7 @@ interface SeriesGroup {
   episode_ids: string[]
   earliest_created_at?: string
   not_for_me?: boolean
+  first_episode_id?: string
 }
 
 // Review modal target type
@@ -258,7 +259,8 @@ function LibraryContent() {
 
   // Build series groups
   const seriesMap = new Map<string, SeriesGroup>()
-  filteredStories.forEach(story => {
+  const sortedForSeries = [...filteredStories].sort((a, b) => ((a as any).episode_number || 99) - ((b as any).episode_number || 99))
+  sortedForSeries.forEach(story => {
     if (story.series_name && story.series_name !== 'None') {
       const existing = seriesMap.get(story.series_name)
       if (existing) {
@@ -268,9 +270,9 @@ function LibraryContent() {
         if ((story.created_at || '') < (existing.earliest_created_at || '')) {
           existing.earliest_created_at = story.created_at
         }
-        if (libraryLookup.get(story.id)?.not_for_me) { existing.not_for_me = true }
       } else {
         const seriesInfo = seriesTableData[story.series_name]
+        const isEp1 = ((story as any).episode_number || 1) <= 1
         seriesMap.set(story.series_name, {
           id: story.series_id || story.id,
           series_name: story.series_name,
@@ -282,7 +284,8 @@ function LibraryContent() {
           description: seriesInfo?.description || null,
           episode_ids: [story.id],
           earliest_created_at: story.created_at,
-          not_for_me: libraryLookup.get(story.id)?.not_for_me === true
+          not_for_me: isEp1 ? (libraryLookup.get(story.id)?.not_for_me === true) : false,
+          first_episode_id: story.id
         })
       }
     }
@@ -424,6 +427,7 @@ function LibraryContent() {
                       description={item.group.description}
                       completed_episodes={item.group.completed_episodes}
                       not_for_me={item.group.not_for_me === true}
+                      first_episode_id={item.group.first_episode_id}
                     />
                   )
                 } else {
@@ -455,6 +459,7 @@ function LibraryContent() {
                   description={series.description}
                   completed_episodes={series.completed_episodes}
                   not_for_me={series.not_for_me === true}
+                  first_episode_id={series.first_episode_id}
                 />
               ))
             )}

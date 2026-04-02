@@ -171,7 +171,7 @@ function PlayerContent() {
       if (user?.id) {
         const { data: lib } = await supabase.from('user_library')
           .select('progress,completed,not_for_me').eq('user_id', user.id).eq('story_id', storyId).single()
-        if (lib?.progress > 0 && !lib?.not_for_me) { resumeRef.current = lib.completed ? 0 : Math.max(0, lib.progress - 3); setHasProgress(true) }
+        if (lib?.progress > 0 && !lib?.not_for_me) { resumeRef.current = lib.completed ? 0 : Math.max(0, lib.progress - 15); setHasProgress(true) }
       }
       setLoading(false)
     }
