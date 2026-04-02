@@ -57,6 +57,7 @@ interface SeriesGroup {
   earliest_created_at?: string
   not_for_me?: boolean
   first_episode_id?: string
+  smart_continue_episode_id?: string
 }
 
 // Review modal target type
@@ -301,6 +302,24 @@ function LibraryContent() {
     group.completed_episodes = group.episode_ids.filter(eid =>
       libraryLookup.get(eid)?.completed
     ).length
+    // Smart continue: last in-progress ep, or first unstarted after last completed, or ep1
+    const inProgress = group.episode_ids.find(eid => {
+      const e = libraryLookup.get(eid)
+      return e && e.progress > 0 && !e.completed
+    })
+    const lastCompletedIdx = (() => {
+      let idx = -1
+      group.episode_ids.forEach((eid, i) => { if (libraryLookup.get(eid)?.completed) idx = i })
+      return idx
+    })()
+    const firstUnstarted = group.episode_ids.find(eid => {
+      const e = libraryLookup.get(eid)
+      return !e || e.progress === 0
+    })
+    group.smart_continue_episode_id = inProgress
+      || (lastCompletedIdx >= 0 && lastCompletedIdx < group.episode_ids.length - 1 ? group.episode_ids[lastCompletedIdx + 1] : undefined)
+      || firstUnstarted
+      || group.first_episode_id
   })
   // Singles = stories with no series_name OR demoted single-episode series (Rule 5)
   const singles = filteredStories
@@ -427,7 +446,7 @@ function LibraryContent() {
                       description={item.group.description}
                       completed_episodes={item.group.completed_episodes}
                       not_for_me={item.group.not_for_me === true}
-                      first_episode_id={item.group.first_episode_id}
+                      first_episode_id={item.group.smart_continue_episode_id || item.group.first_episode_id}
                     />
                   )
                 } else {
@@ -459,7 +478,7 @@ function LibraryContent() {
                   description={series.description}
                   completed_episodes={series.completed_episodes}
                   not_for_me={series.not_for_me === true}
-                  first_episode_id={series.first_episode_id}
+                  first_episode_id={series.smart_continue_episode_id || series.first_episode_id}
                 />
               ))
             )}
