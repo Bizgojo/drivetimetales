@@ -145,7 +145,7 @@ function PlayerContent() {
     async function load() {
       const { data } = await supabase
         .from('stories')
-        .select('id,title,author,audio_url,cover_url,duration_mins,intro_audio_url,outro_audio_url,background_music_url,episode_number,series_id')
+        .select('id,title,author,audio_url,cover_url,duration_mins,intro_audio_url,outro_audio_url,background_music_url,episode_number,series_id,is_free')
         .eq('id', storyId).single()
       if (data) setStory(data)
       if (data?.intro_audio_url) {
@@ -188,6 +188,29 @@ function PlayerContent() {
           }
         }
       } catch (_) {}
+      // ── Paywall check ──────────────────────────────────────────────────────
+      if (data && !data.is_free) {
+        if (!user) {
+          // Not logged in — middleware should have caught this, but belt+suspenders
+          router.replace(`/signin?returnTo=/player/${storyId}`)
+          return
+        }
+        const { data: dbUser } = await supabase
+          .from('users')
+          .select('subscription_type, subscription_ends_at')
+          .eq('id', user.id)
+          .single()
+        const isMarc = user.email === 'marc@endless-tales.com' || user.email === 'm.postlewaite@gmail.com'
+        const hasAccess = isMarc || (
+          dbUser?.subscription_type === 'active' &&
+          (!dbUser?.subscription_ends_at || new Date(dbUser.subscription_ends_at) > new Date())
+        )
+        if (!hasAccess) {
+          router.replace(`/subscribe?returnTo=/player/${storyId}`)
+          return
+        }
+      }
+
       if (user?.id) {
         const { data: lib } = await supabase.from('user_library')
           .select('progress,completed,not_for_me').eq('user_id', user.id).eq('story_id', storyId).single()
