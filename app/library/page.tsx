@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense, useMemo } from 'react'
 import LibraryAuthOverlay from '@/components/LibraryAuthOverlay'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import StickyHeaderFull from '@/components/StickyHeaderFull'
@@ -121,6 +121,7 @@ function computeStoryFlags(story: Story, userLibraryEntry?: UserLibraryEntry | n
 
 function LibraryContent() {
   const router = useRouter()
+  const pathname = usePathname()
   const { user, loading: authLoading } = useAuth()
   const [stories, setStories] = useState<Story[]>([])
   const [userLibrary, setUserLibrary] = useState<UserLibraryEntry[]>([])
@@ -203,14 +204,14 @@ function LibraryContent() {
     fetchData()
   }, [user, authLoading])
 
-  // Re-fetch user library on every navigation to this page
+  // Re-fetch user library on every navigation to this page (pathname changes on each visit)
   useEffect(() => {
     if (!user?.id) return
     supabase.from('user_library')
       .select('story_id, progress, completed, not_for_me')
       .eq('user_id', user.id)
       .then(({ data }) => { if (data) setUserLibrary(data) })
-  }, [user?.id])
+  }, [user?.id, pathname])
 
   // Re-fetch user library when page becomes visible (e.g. back from player)
   useEffect(() => {
