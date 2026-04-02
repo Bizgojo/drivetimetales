@@ -191,6 +191,15 @@
           "hours": 2,
           "dueDate": "2026-04-10",
           "completedDate": null
+        },
+        {
+          "id": "1.21",
+          "name": "ASC Bible update: Stage 2 quality gate \u2014 enforce opening hook within 30s, episode-end cliffhanger creates burning question, ANNOUNCER outro names specific character/threat from next episode",
+          "status": "todo",
+          "owner": "Claude",
+          "hours": 1,
+          "dueDate": "2026-04-08",
+          "completedDate": null
         }
       ]
     },
@@ -582,6 +591,15 @@
           "owner": "Marc",
           "hours": 3,
           "dueDate": "2026-04-17",
+          "completedDate": null
+        },
+        {
+          "id": "3.30",
+          "name": "PWA install prompt: 'Put Us On Your Phone' button on home page \u2014 one-time, iOS instructions + Android native prompt, disappears after dismissed/installed",
+          "status": "todo",
+          "owner": "Claude",
+          "hours": 3,
+          "dueDate": "2026-04-16",
           "completedDate": null
         }
       ]
