@@ -107,7 +107,11 @@ export default function HorizontalStoryCard({ id, title, genre, author, duration
           <span style={{ fontSize: '8px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.07em', padding: '2px 7px', borderRadius: '3px', background: series_name ? '#f59e0b' : '#e11d48', color: series_name ? 'black' : 'white', whiteSpace: 'nowrap', flexShrink: 0 }}>
             {series_name ? `Episodes - ${series_total ? series_total : ''}`.trim() : 'Single'}
           </span>
-          {displayFlags.map(f => <FlagBadge key={f} flag={f} seriesNumber={series_number} />)}
+          {displayFlags.map(f => 
+            f === 'not-for-me' 
+              ? <span key={f} style={{ fontSize: '14px', background: '#111', borderRadius: '4px', padding: '1px 5px', flexShrink: 0, filter: 'sepia(1) saturate(5) hue-rotate(340deg)' }}>👎</span>
+              : <FlagBadge key={f} flag={f} seriesNumber={series_number} />
+          )}
         </div>
         {series_name && episode_title ? (
           <>
