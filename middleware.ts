@@ -10,7 +10,7 @@ const PUBLIC_ROUTES = new Set([
   '/terms', '/privacy',
 ])
 
-const PUBLIC_PREFIXES = ['/api/', '/_next/', '/images/', '/icons/', '/favicon', '/podcast']
+const PUBLIC_PREFIXES = ['/api/', '/_next/', '/images/', '/icons/', '/favicon', '/podcast', '/player/']
 
 const SUBSCRIPTION_REQUIRED_PREFIXES = [
   '/home',
