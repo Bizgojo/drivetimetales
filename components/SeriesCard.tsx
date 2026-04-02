@@ -12,6 +12,7 @@ interface SeriesCardProps {
   cover_url: string | null
   description?: string | null
   completed_episodes?: number
+  not_for_me?: boolean
 }
 
 

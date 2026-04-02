@@ -55,6 +55,7 @@ interface SeriesGroup {
   completed_episodes?: number
   episode_ids: string[]
   earliest_created_at?: string
+  not_for_me?: boolean
 }
 
 // Review modal target type
@@ -241,6 +242,7 @@ function LibraryContent() {
         if ((story.created_at || '') < (existing.earliest_created_at || '')) {
           existing.earliest_created_at = story.created_at
         }
+        if (libraryLookup.get(story.id)?.not_for_me) existing.not_for_me = true
       } else {
         const seriesInfo = seriesTableData[story.series_name]
         seriesMap.set(story.series_name, {
@@ -253,7 +255,8 @@ function LibraryContent() {
           cover_url: seriesInfo?.cover_image || story.cover_url,
           description: seriesInfo?.description || null,
           episode_ids: [story.id],
-          earliest_created_at: story.created_at
+          earliest_created_at: story.created_at,
+          not_for_me: libraryLookup.get(story.id)?.not_for_me === true
         })
       }
     }
@@ -424,6 +427,7 @@ function LibraryContent() {
                   cover_url={series.cover_url} 
                   description={series.description}
                   completed_episodes={series.completed_episodes}
+                  not_for_me={series.not_for_me === true}
                 />
               ))
             )}
