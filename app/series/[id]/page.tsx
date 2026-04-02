@@ -97,6 +97,37 @@ export default function SeriesDetailPage() {
     router.push(`/player/${ep.id}${resumeAt > 0 ? `?resume=${resumeAt}` : ''}`)
   }
 
+  const handlePlayAll = () => {
+    if (episodes.length === 0) return
+    // Find smart start: last in-progress, or first unstarted, or ep1
+    const inProgress = episodes.find(ep => {
+      const p = userProgress[ep.id]
+      return p && p.progress_seconds > 0 && !p.completed
+    })
+    const lastCompletedIdx = (() => {
+      let idx = -1
+      episodes.forEach((ep, i) => { if (userProgress[ep.id]?.completed) idx = i })
+      return idx
+    })()
+    const firstUnstarted = episodes.find(ep => !userProgress[ep.id] || userProgress[ep.id].progress_seconds === 0)
+    const startEp = inProgress
+      || (lastCompletedIdx >= 0 && lastCompletedIdx < episodes.length - 1 ? episodes[lastCompletedIdx + 1] : undefined)
+      || firstUnstarted
+      || episodes[0]
+    if (!startEp) return
+    const startIdx = episodes.findIndex(ep => ep.id === startEp.id)
+    const playlist = episodes.slice(startIdx).map(ep => ({ id: ep.id, episode_number: ep.episode_number }))
+    localStorage.setItem('dtt_series_playlist', JSON.stringify(playlist))
+    localStorage.setItem('dtt_series_index', '0')
+    const resumeAt = (() => {
+      const p = userProgress[startEp.id]
+      if (!p || p.progress_seconds === 0) return 0
+      if (p.progress_seconds < 120) return 0
+      return Math.max(0, p.progress_seconds - 15)
+    })()
+    router.push(`/player/${startEp.id}${resumeAt > 0 ? `?resume=${resumeAt}` : ''}`)
+  }
+
   const totalMins = episodes.reduce((sum, ep) => sum + ep.duration_mins, 0)
   const totalHours = Math.floor(totalMins / 60)
   const totalRemMins = totalMins % 60
@@ -119,6 +150,17 @@ export default function SeriesDetailPage() {
           <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>{seriesInfo.author}</div>
           <div style={{ fontSize: 11, color: '#64748b' }}>{episodes.length} episodes · <span style={{ color: '#f97316', fontWeight: 700 }}>{durationText}</span></div>
         </div>
+      </div>
+
+      {/* Play All button */}
+      <div style={{ padding: '14px 16px 0' }}>
+        <button
+          onClick={handlePlayAll}
+          style={{ width: '100%', padding: '14px', background: '#f97316', color: 'white', border: 'none', borderRadius: 12, fontFamily: 'var(--font-outfit, sans-serif)', fontSize: 15, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: '0 4px 12px rgba(249,115,22,0.35)' }}
+        >
+          <svg width="12" height="14" viewBox="0 0 12 14" fill="white"><path d="M1 1l10 6-10 6V1z"/></svg>
+          Play All Episodes
+        </button>
       </div>
 
       {/* Episode list */}

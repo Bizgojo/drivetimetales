@@ -59,6 +59,9 @@ function PlayerContent() {
   const segDursRef    = useRef<number[]>([])
   const completedRef  = useRef(0)
   const sessionStartRef = useRef<number | null>(null)
+  const playlistRef      = useRef<{id:string,episode_number:number}[]>([])
+  const playlistIndexRef = useRef<number>(-1)
+  const [nowPlayingLabel, setNowPlayingLabel] = useState<string | null>(null)
   const [totalDur, setTotalDur] = useState(0)
   const [cumTime, setCumTime]   = useState(0)
 
@@ -119,6 +122,23 @@ function PlayerContent() {
     }
   }, [user])
 
+  // ── Load playlist from localStorage ──────────────────────────────────────────
+  useEffect(() => {
+    try {
+      const pl = localStorage.getItem('dtt_series_playlist')
+      const idx = localStorage.getItem('dtt_series_index')
+      if (pl) {
+        const parsed = JSON.parse(pl)
+        playlistRef.current = parsed
+        const i = idx ? parseInt(idx) : 0
+        playlistIndexRef.current = i
+        // Sync index to current storyId in case user navigated directly
+        const found = parsed.findIndex((ep: any) => ep.id === storyId)
+        if (found >= 0) playlistIndexRef.current = found
+      }
+    } catch(_) {}
+  }, [storyId])
+
   // ── Load story ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -171,7 +191,7 @@ function PlayerContent() {
       if (user?.id) {
         const { data: lib } = await supabase.from('user_library')
           .select('progress,completed,not_for_me').eq('user_id', user.id).eq('story_id', storyId).single()
-        if (lib?.progress > 0 && !lib?.not_for_me) { resumeRef.current = lib.completed ? 0 : Math.max(0, lib.progress - 15); setHasProgress(true) }
+        if (lib?.progress > 0 && !lib?.not_for_me) { resumeRef.current = lib.completed ? 0 : lib.progress < 120 ? 0 : Math.max(0, lib.progress - 15); setHasProgress(true) }
       }
       setLoading(false)
     }
@@ -188,6 +208,25 @@ function PlayerContent() {
     const m = musicRef.current
     if (m && introMusicRef.current) { m.src = introMusicRef.current; m.loop = true; m.volume = 0 }
   }, [isASC3, queue, loading])
+
+  // ── Playlist advance (binge listening) ────────────────────────────────────
+  const advancePlaylist = () => {
+    const pl = playlistRef.current
+    const ci = playlistIndexRef.current
+    if (!pl || ci < 0 || ci >= pl.length - 1) {
+      // No more episodes — go to library
+      router.push('/library')
+      return
+    }
+    const next = pl[ci + 1]
+    playlistIndexRef.current = ci + 1
+    localStorage.setItem('dtt_series_index', String(ci + 1))
+    // Show "Now Playing" overlay
+    const epNum = next.episode_number ? `Episode ${next.episode_number}` : 'Next Episode'
+    setNowPlayingLabel(epNum)
+    setTimeout(() => setNowPlayingLabel(null), 3000)
+    setTimeout(() => router.push(`/player/${next.id}`), 2500)
+  }
 
   // ── Queue advance ──────────────────────────────────────────────────────────
 
@@ -212,7 +251,11 @@ function PlayerContent() {
       }
     } else {
       raise(0); setIsPlaying(false); saveProgress(duration, true)
-      setTimeout(() => router.push('/library'), 3000)
+      if (playlistRef.current.length > 0 && playlistIndexRef.current < playlistRef.current.length - 1) {
+        setTimeout(() => advancePlaylist(), 2500)
+      } else {
+        setTimeout(() => router.push('/library'), 3000)
+      }
     }
   }
 
@@ -331,7 +374,15 @@ function PlayerContent() {
         }}
         onPause={() => setIsPlaying(false)}
         onEnded={() => {
-          if (!isASC3) { setIsPlaying(false); saveProgress(duration, true); setTimeout(() => router.push('/library'), 1500); return }
+          if (!isASC3) {
+            setIsPlaying(false); saveProgress(duration, true)
+            if (playlistRef.current.length > 0 && playlistIndexRef.current < playlistRef.current.length - 1) {
+              setTimeout(() => advancePlaylist(), 2500)
+            } else {
+              setTimeout(() => router.push('/library'), 1500)
+            }
+            return
+          }
           const ni = queueIndex + 1
           const lastStory = typeRef.current === 'story' && ni < queue.length && queue[ni]?.type === 'outro'
           if (lastStory) {
@@ -391,6 +442,13 @@ function PlayerContent() {
           )}
           {/* DEBUG — remove after testing */}
           <MusicVolumeDebug musicRef={musicRef} />
+          {/* Now Playing overlay — shown during playlist advance */}
+          {nowPlayingLabel && (
+            <div style={{ position:'fixed', top:'50%', left:'50%', transform:'translate(-50%,-50%)', background:'rgba(0,0,0,0.85)', borderRadius:16, padding:'20px 32px', textAlign:'center', zIndex:999, backdropFilter:'blur(8px)', border:'1px solid rgba(249,115,22,0.3)' }}>
+              <div style={{ color:'#f97316', fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:6 }}>Up Next</div>
+              <div style={{ color:'white', fontSize:18, fontWeight:800 }}>{nowPlayingLabel}</div>
+            </div>
+          )}
         </div>
         <div>
           <div onClick={handleSeek} style={{ height:'6px', backgroundColor:'#334155', borderRadius:'3px', overflow:'hidden', cursor:'pointer' }}>
