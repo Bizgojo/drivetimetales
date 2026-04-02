@@ -195,11 +195,11 @@
         {
           "id": "1.21",
           "name": "ASC Bible update: Stage 2 quality gate \u2014 enforce opening hook within 30s, episode-end cliffhanger creates burning question, ANNOUNCER outro names specific character/threat from next episode",
-          "status": "todo",
+          "status": "complete",
           "owner": "Claude",
           "hours": 1,
           "dueDate": "2026-04-08",
-          "completedDate": null
+          "completedDate": "2026-04-02"
         }
       ]
     },
