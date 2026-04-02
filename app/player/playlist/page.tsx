@@ -20,6 +20,7 @@ function PlaylistPlayerContent() {
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
   const autoPlayNext = useRef(false)
+  const [nowPlayingLabel, setNowPlayingLabel] = useState<string | null>(null)
   const [audioReady, setAudioReady] = useState(false)
   const audioRef = useRef<HTMLAudioElement>(null)
   const saveTimer = useRef<NodeJS.Timeout | null>(null)
@@ -73,7 +74,10 @@ function PlaylistPlayerContent() {
     await saveProgress(duration, true)
     if (currentIndex < playlist.length - 1) {
       autoPlayNext.current = true  // signal next story to auto-play
-      const n = currentIndex + 1; localStorage.setItem('dtt_playlist_index', String(n)); setCurrentIndex(n)
+      const n = currentIndex + 1
+      const nextItem = playlist[n]
+      if (nextItem) { setNowPlayingLabel(nextItem.title); setTimeout(() => setNowPlayingLabel(null), 3000) }
+      localStorage.setItem('dtt_playlist_index', String(n)); setCurrentIndex(n)
     } else {
       setIsPlaying(false)
       localStorage.removeItem('dtt_active_playlist'); localStorage.removeItem('dtt_playlist_index'); router.replace('/library')
@@ -145,6 +149,12 @@ function PlaylistPlayerContent() {
         </div>
       </div>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      {nowPlayingLabel && (
+        <div style={{ position:'fixed', top:'50%', left:'50%', transform:'translate(-50%,-50%)', background:'rgba(0,0,0,0.85)', borderRadius:16, padding:'20px 32px', textAlign:'center', zIndex:999, backdropFilter:'blur(8px)', border:'1px solid rgba(249,115,22,0.3)', maxWidth:'80vw' }}>
+          <div style={{ color:'#f97316', fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:6 }}>Up Next</div>
+          <div style={{ color:'white', fontSize:16, fontWeight:800, lineHeight:1.3 }}>{nowPlayingLabel}</div>
+        </div>
+      )}
     </div>
   )
 }
