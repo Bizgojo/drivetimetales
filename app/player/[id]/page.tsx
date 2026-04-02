@@ -282,8 +282,7 @@ function PlayerContent() {
         }
       }
     }
-    if (window.history.length > 1) router.back()
-    else router.push('/library')
+    router.push('/library')
   }
   const handleBack = () => {
     audioRef.current?.pause(); musicRef.current?.pause(); saveProgress(currentTime)
