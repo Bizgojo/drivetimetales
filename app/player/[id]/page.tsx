@@ -227,6 +227,8 @@ function PlayerContent() {
       audioRef.current.play().then(() => {
         setIsPlaying(true)
         if (!user && !sessionStartRef.current) { sessionStartRef.current = Date.now() }
+        // Clear not_for_me immediately when user chooses to play
+        if (user?.id) supabase.from('user_library').upsert({ user_id: user.id, story_id: storyId, not_for_me: false, last_played: new Date().toISOString() }, { onConflict: 'user_id,story_id' }).then(() => {})
         const m = musicRef.current
         if (!noMusicRef.current && m?.src && m.src !== 'about:blank') {
           m.volume = 0
