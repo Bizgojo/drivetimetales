@@ -41,6 +41,7 @@ export default function SeriesCard({
   cover_url,
   description,
   completed_episodes = 0,
+  not_for_me = false,
 }: SeriesCardProps) {
 
   const avgDuration = episode_count > 0 ? Math.round(total_duration_mins / episode_count) : 0
