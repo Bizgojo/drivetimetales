@@ -246,7 +246,7 @@ function LibraryPlaylistContent() {
         <p style={{ color: '#ffffff', fontSize: 13, margin: '4px 0 0' }}>Tap a story or series to add it to your queue.</p>
       </div>
 
-      <div style={{ position: 'sticky', top: '60px', zIndex: 40, background: '#020617' }}>
+      <div style={{ position: 'sticky', top: '60px', zIndex: 50, background: '#020617' }}>
         <LibraryFiltersV2
           selectedDuration={selectedDuration}
           setSelectedDuration={setSelectedDuration}
@@ -341,7 +341,7 @@ function LibraryPlaylistContent() {
 
       {/* ── Bottom action bar ── */}
       {playlist.length > 0 && (
-        <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: '#0f172a', padding: '0.5rem 1rem 0.75rem', borderTop: '1px solid #334155', zIndex: 40 }}>
+        <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: '#0f172a', padding: '0.5rem 1rem 0.75rem', borderTop: '1px solid #334155', zIndex: 100 }}>
           <div style={{ display: 'flex', gap: 10 }}>
             <button onClick={playNow} style={{ flex: 1, padding: '14px', background: '#22c55e', color: '#042013', border: 'none', borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>▶ Play Now</button>
             <button onClick={saveForLater} style={{ flex: 1, padding: '14px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>💾 Save for Later</button>
