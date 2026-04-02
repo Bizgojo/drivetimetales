@@ -203,6 +203,15 @@ function LibraryContent() {
     fetchData()
   }, [user, authLoading])
 
+  // Re-fetch user library on every navigation to this page
+  useEffect(() => {
+    if (!user?.id) return
+    supabase.from('user_library')
+      .select('story_id, progress, completed, not_for_me')
+      .eq('user_id', user.id)
+      .then(({ data }) => { if (data) setUserLibrary(data) })
+  }, [user?.id])
+
   // Re-fetch user library when page becomes visible (e.g. back from player)
   useEffect(() => {
     if (!user?.id) return
