@@ -262,7 +262,9 @@ function PlayerContent() {
       if (error) console.error('[NotForMe] upsert error:', error)
       else console.log('[NotForMe] saved successfully')
     }
-    router.back()
+    // Go back to previous page, fall back to /library if no history
+    if (window.history.length > 1) router.back()
+    else router.push('/library')
   }
   const handleBack = () => {
     audioRef.current?.pause(); musicRef.current?.pause(); saveProgress(currentTime)
