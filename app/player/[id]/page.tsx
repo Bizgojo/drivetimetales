@@ -255,7 +255,7 @@ function PlayerContent() {
   const handleNotForMe = async () => {
     audioRef.current?.pause(); musicRef.current?.pause()
     if (user?.id) await supabase.from('user_library').upsert({ user_id: user.id, story_id: storyId, not_for_me: true, progress: Math.floor(currentTime), last_played: new Date().toISOString() })
-    router.push('/library')
+    router.back()
   }
   const handleBack = () => {
     audioRef.current?.pause(); musicRef.current?.pause(); saveProgress(currentTime)

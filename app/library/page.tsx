@@ -40,6 +40,7 @@ interface UserLibraryEntry {
   progress?: number
   completed?: boolean
   reserved?: boolean
+  not_for_me?: boolean
 }
 
 interface SeriesGroup {
@@ -66,6 +67,7 @@ interface ReviewTarget {
 
 
 function computeStoryFlags(story: Story, userLibraryEntry?: UserLibraryEntry | null): string[] {
+  if (userLibraryEntry?.not_for_me) return ['not-for-me']
   if (userLibraryEntry?.completed) return []
   const flags: string[] = []
   
@@ -166,7 +168,7 @@ function LibraryContent() {
           // Fetch user library
           const { data: libraryData } = await supabase
             .from('user_library')
-            .select('story_id, progress, completed')
+            .select('story_id, progress, completed, not_for_me')
             .eq('user_id', user.id)
           if (libraryData) {
             setUserLibrary(libraryData)
@@ -323,6 +325,7 @@ function LibraryContent() {
           series_number={story.series_number}
           series_total={story.series_total}
           episode_title={story.episode_title}
+          not_for_me={libraryEntry?.not_for_me === true}
           series_name={story.series_name}
           description={story.description}
           flags={flags}
