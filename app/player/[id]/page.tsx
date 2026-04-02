@@ -125,7 +125,7 @@ function PlayerContent() {
     async function load() {
       const { data } = await supabase
         .from('stories')
-        .select('id,title,author,audio_url,cover_url,duration_mins,intro_audio_url,outro_audio_url,background_music_url')
+        .select('id,title,author,audio_url,cover_url,duration_mins,intro_audio_url,outro_audio_url,background_music_url,episode_number,series_id')
         .eq('id', storyId).single()
       if (data) setStory(data)
       if (data?.intro_audio_url) {
@@ -255,14 +255,32 @@ function PlayerContent() {
   const handleNotForMe = async () => {
     audioRef.current?.pause(); musicRef.current?.pause()
     if (user?.id) {
+      // Mark this episode as not_for_me
       const { error } = await supabase.from('user_library').upsert(
         { user_id: user.id, story_id: storyId, not_for_me: true, progress: Math.floor(currentTime), last_played: new Date().toISOString() },
         { onConflict: 'user_id,story_id' }
       )
       if (error) console.error('[NotForMe] upsert error:', error)
       else console.log('[NotForMe] saved successfully')
+      // If this is episode 1 of a series, mark ALL episodes of the series
+      const seriesId = (story as any)?.series_id
+      if (seriesId) {
+        const { data: seriesEps } = await supabase
+          .from('stories')
+          .select('id')
+          .eq('series_id', seriesId)
+        if (seriesEps) {
+          for (const ep of seriesEps) {
+            if (ep.id === storyId) continue
+            await supabase.from('user_library').upsert(
+              { user_id: user.id, story_id: ep.id, not_for_me: true, last_played: new Date().toISOString() },
+              { onConflict: 'user_id,story_id' }
+            )
+          }
+          console.log('[NotForMe] marked', seriesEps.length, 'series episodes')
+        }
+      }
     }
-    // Go back to previous page, fall back to /library if no history
     if (window.history.length > 1) router.back()
     else router.push('/library')
   }
@@ -402,7 +420,7 @@ function PlayerContent() {
                   setCurrentTime(0); setCumTime(0)
                 }
               }} style={{ flex:1, padding:'16px', borderRadius:'14px', border:'none', fontSize:'13px', fontWeight:600, cursor:'pointer', backgroundColor:'#1e293b', color:'#94a3b8' }}>Start Over</button>
-            : <button onClick={handleNotForMe} style={{ flex:1, padding:'16px', borderRadius:'14px', border:'none', fontSize:'13px', fontWeight:600, cursor:'pointer', backgroundColor:'#1e293b', color:'#94a3b8' }}>Not for Me</button>
+            : (story as any)?.episode_number && (story as any).episode_number > 1 ? null : <button onClick={handleNotForMe} style={{ flex:1, padding:'16px', borderRadius:'14px', border:'none', fontSize:'13px', fontWeight:600, cursor:'pointer', backgroundColor:'#1e293b', color:'#94a3b8' }}>Not for Me</button>
           }
         </div>
       </div>
