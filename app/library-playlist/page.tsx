@@ -58,7 +58,17 @@ function LibraryPlaylistContent() {
   const router = useRouter()
   const { user, loading: authLoading } = useAuth()
   const [cards, setCards] = useState<LibraryCard[]>([])
-  const [playlist, setPlaylist] = useState<PlaylistEntry[]>([])
+  const [playlist, setPlaylist] = useState<PlaylistEntry[]>(() => {
+    // Initialize immediately from localStorage so bottom bar shows on first render
+    try {
+      const raw = localStorage.getItem('dtt_playlist') || localStorage.getItem('dtt_active_playlist')
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        return Array.isArray(parsed) ? parsed : (parsed.stories || [])
+      }
+    } catch {}
+    return []
+  })
   const [loading, setLoading] = useState(true)
   const [selectedDuration, setSelectedDuration] = useState('All Lengths')
   const [selectedGenre, setSelectedGenre] = useState('All Categories')
