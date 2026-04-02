@@ -242,6 +242,7 @@ function PlayerContent() {
     if (user?.id) await supabase.from('user_library').upsert({
       user_id: user.id, story_id: storyId, progress: Math.floor(t), completed: done,
       hide_from_home: false,  // Reset dismiss if user plays again
+      not_for_me: false,      // Clear not_for_me if user plays again
       last_played: new Date().toISOString()
     })
   }
