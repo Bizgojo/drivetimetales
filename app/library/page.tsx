@@ -203,6 +203,22 @@ function LibraryContent() {
     fetchData()
   }, [user, authLoading])
 
+  // Re-fetch user library when page becomes visible (e.g. back from player)
+  useEffect(() => {
+    if (!user?.id) return
+    const handleVisibility = async () => {
+      if (document.visibilityState === 'visible') {
+        const { data: libData } = await supabase
+          .from('user_library')
+          .select('story_id, progress, completed, not_for_me')
+          .eq('user_id', user.id)
+        if (libData) setUserLibrary(libData)
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
+  }, [user?.id])
+
   const libraryLookup = useMemo(() => {
     const map = new Map<string, UserLibraryEntry>()
     userLibrary.forEach(entry => map.set(entry.story_id, entry))
