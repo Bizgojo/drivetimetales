@@ -51,7 +51,7 @@ function PlaylistPlayerContent() {
       if (item.audio_url) { setStoryData({ id: item.id, title: item.title, author: '', cover_url: item.cover_url, audio_url: item.audio_url, duration_mins: item.duration_mins }); setLoading(false) }
       else { const { data } = await supabase.from('stories').select('id, title, author, cover_url, audio_url, duration_mins').eq('id', item.id).single(); if (data) setStoryData(data); setLoading(false) }
       const saved = localStorage.getItem(`et_progress_${item.id}`)
-      if (saved) { const resume = Math.max(0, parseInt(saved) - 3); if (audioRef.current) audioRef.current.currentTime = resume; setCurrentTime(resume) }
+      if (saved) { const prog = parseInt(saved); const resume = prog < 120 ? 0 : Math.max(0, prog - 15); if (audioRef.current) audioRef.current.currentTime = resume; setCurrentTime(resume) }
     }
     loadStory()
   }, [playlist, currentIndex])
