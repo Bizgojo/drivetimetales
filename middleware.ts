@@ -27,7 +27,9 @@ function hasActiveSubscription(
   subscriptionEndsAt: string | null
 ): boolean {
   if (subscriptionType !== 'active') return false
-  if (!subscriptionEndsAt) return false
+  // If no end date set yet (e.g. during trial setup), allow access
+  if (!subscriptionEndsAt) return true
+  // If end date is in the past, block access
   return new Date(subscriptionEndsAt) > new Date()
 }
 
