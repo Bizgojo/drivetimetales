@@ -6,7 +6,7 @@ export default function HomeHintToast() {
 
   useEffect(() => {
     try {
-      if (window.location.pathname === '/home') return
+      if (window.location.pathname !== '/home') return
       if (localStorage.getItem('et_home_hint_seen')) return
     } catch {}
     const t = setTimeout(() => setVisible(true), 1500)
