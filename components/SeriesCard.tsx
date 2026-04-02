@@ -110,6 +110,7 @@ export default function SeriesCard({
           }}>
             {`Episodes - ${episode_count || ''}`}
           </span>
+          {not_for_me && <span style={{ fontSize: '14px', background: '#111', borderRadius: '4px', padding: '1px 5px', flexShrink: 0, filter: 'sepia(1) saturate(5) hue-rotate(340deg)' }}>👎</span>}
         </div>
 
         <h3 style={{
