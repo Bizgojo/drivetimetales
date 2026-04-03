@@ -42,6 +42,7 @@ function PlayerContent() {
   const [queue, setQueue]           = useState<QueueItem[]>([])
   const [queueIndex, setQueueIndex] = useState(0)
   const [isASC3, setIsASC3]         = useState(false)
+  const [audioSrc, setAudioSrc]     = useState("")
   const [sectionLabel, setSectionLabel] = useState('')
   const introMusicRef = useRef('')
   const bgMusicRef    = useRef<string | null>(null)
@@ -144,46 +145,32 @@ function PlayerContent() {
         .select('id,title,author,audio_url,cover_url,duration_mins,intro_audio_url,outro_audio_url,background_music_url,episode_number,series_id,is_free,prose_text,author_id,narrator_voice_id,narrator_voice_name')
         .eq('id', storyId).single()
       if (data) setStory(data)
-      if (data?.intro_audio_url) {
-        // If audio_url is a pre-rendered final mix, skip ALL music and queue setup immediately.
-        // Don't wait for the story-playlist API — set noMusicRef now so there's no race condition.
-        if ((data as any).audio_url?.includes('final_mix')) {
-          noMusicRef.current = true
-          introMusicRef.current = ''
-          bgMusicRef.current = null
-          // isASC3 stays false, queue stays empty → <audio src={story.audio_url}> plays directly
-        } else {
-          const IM = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio/intro_outro_music.mp3`
-          introMusicRef.current = IM
-          bgMusicRef.current = (data as any).background_music_url || null
-          const q: QueueItem[] = []
-          if (data.intro_audio_url) q.push({ url: data.intro_audio_url, type: 'intro', label: 'Intro'  })
-          if (data.audio_url)       q.push({ url: data.audio_url,       type: 'story', label: 'Story'  })
-          if (data.outro_audio_url) q.push({ url: data.outro_audio_url, type: 'outro', label: 'Outro'  })
-          setQueue(q); setIsASC3(true)
-        }
-      }
+      // Await API first — no early guesses, no race conditions
       try {
         const res = await fetch(`/api/asc3/story-playlist?storyId=${storyId}`)
         if (res.ok) {
           const pl = await res.json()
           if (pl.useFinalMix && pl.finalMixUrl) {
-            // Story has a pre-rendered final mix — play the audio_url directly.
-            // Override the early isASC3=true set above, clear the segment queue,
-            // and silence the separate music ref (music is already baked into final_mix.mp3).
-            setIsASC3(false)
-            setQueue([])
-            introMusicRef.current = ''
-            bgMusicRef.current = null
+            setAudioSrc(pl.finalMixUrl)
             noMusicRef.current = true
-            if (musicRef.current) { musicRef.current.pause(); musicRef.current.src = 'about:blank'; musicRef.current.volume = 0 }
-          } else if (pl.queue?.length > 1) {
-            introMusicRef.current = pl.introOutroMusicUrl || introMusicRef.current
-            bgMusicRef.current    = pl.backgroundMusicUrl || bgMusicRef.current
-            setQueue(pl.queue); setIsASC3(true)
+          } else if (pl.queue?.length > 0) {
+            introMusicRef.current = pl.introOutroMusicUrl || ''
+            bgMusicRef.current    = pl.backgroundMusicUrl || null
+            noMusicRef.current    = false
+            setQueue(pl.queue)
+            setIsASC3(true)
+          } else {
+            setAudioSrc(data?.audio_url || '')
+            noMusicRef.current = true
           }
+        } else {
+          setAudioSrc(data?.audio_url || '')
+          noMusicRef.current = true
         }
-      } catch (_) {}
+      } catch (_) {
+        setAudioSrc(data?.audio_url || '')
+        noMusicRef.current = true
+      }
       // ── Paywall check ──────────────────────────────────────────────────────
       if (data && !data.is_free) {
         if (!user) {
@@ -191,19 +178,21 @@ function PlayerContent() {
           router.replace(`/signin?returnTo=/player/${storyId}`)
           return
         }
-        const { data: dbUser } = await supabase
-          .from('users')
-          .select('subscription_type, subscription_ends_at')
-          .eq('id', user.id)
-          .single()
         const isMarc = user.email === 'marc@endless-tales.com' || user.email === 'm.postlewaite@gmail.com'
-        const hasAccess = isMarc || (
-          dbUser?.subscription_type === 'active' &&
-          (!dbUser?.subscription_ends_at || new Date(dbUser.subscription_ends_at) > new Date())
-        )
-        if (!hasAccess) {
-          router.replace(`/subscribe?returnTo=/player/${storyId}`)
-          return
+        if (!isMarc) {
+          const { data: dbUser } = await supabase
+            .from('users')
+            .select('plan, subscription_ends_at')
+            .eq('id', user.id)
+            .single()
+          const hasAccess = (
+            dbUser?.plan === 'active' &&
+            (!dbUser?.subscription_ends_at || new Date(dbUser.subscription_ends_at) > new Date())
+          )
+          if (!hasAccess) {
+            router.replace(`/subscribe?returnTo=/player/${storyId}`)
+            return
+          }
         }
       }
 
@@ -228,14 +217,11 @@ function PlayerContent() {
       setSectionLabel(queue[0].label); typeRef.current = 'intro'
       const m = musicRef.current
       if (m && introMusicRef.current) { m.src = introMusicRef.current; m.loop = true; m.volume = 0 }
-    } else if (!isASC3 && story?.audio_url) {
-      // Single file mode — pre-load src so it is ready when user taps Play
-      if (!audioRef.current.src || audioRef.current.src === window.location.href) {
-        audioRef.current.src = story.audio_url
-        audioRef.current.load()
-      }
+    } else if (!isASC3 && audioSrc) {
+      audioRef.current.src = audioSrc
+      audioRef.current.load()
     }
-  }, [isASC3, queue, loading, story])
+  }, [isASC3, queue, loading, audioSrc])
 
   // ── Fetch author + narrator data for pills ─────────────────────────────────
   useEffect(() => {
@@ -445,7 +431,6 @@ function PlayerContent() {
             }
           }
         }}
-        src={!isASC3 ? story.audio_url : undefined}
       />
       <audio ref={musicRef} loop style={{ display:'none' }} />
 
