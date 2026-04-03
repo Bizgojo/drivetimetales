@@ -23,8 +23,10 @@ export async function GET(req: NextRequest) {
 
   // If story has a rendered final_mix.mp3, return empty queue so the player
   // uses audio_url directly (all mixing already done — no segment queue needed)
-  const isPlainAudio = story.audio_url && !story.audio_url.includes('/asc/') && !story.audio_url.includes('/asc3/')
-  if (isPlainAudio || story.audio_url?.includes('final_mix') || story.audio_url?.includes('/final.mp3')) {
+  // If intro_audio_url exists, always use the 3-file queue — never useFinalMix
+  const has3Files = !!(story.intro_audio_url)
+  const isPlainAudio = !has3Files && story.audio_url && !story.audio_url.includes('/asc/') && !story.audio_url.includes('/asc3/')
+  if (isPlainAudio || (!has3Files && (story.audio_url?.includes('final_mix') || story.audio_url?.includes('/final.mp3')))) {
     return NextResponse.json({
       queue: [],
       useFinalMix: true,
@@ -45,8 +47,9 @@ export async function GET(req: NextRequest) {
   // 2. Detect architecture: new ASC (asc/slug/story_body.mp3) vs old ASC3 (asc3/id/segment_*.mp3)
   const refUrl = story.story_audio_url || story.audio_url || ''
   const isNewASC = refUrl.includes('/asc/') && !refUrl.includes('/asc3/')
+  const isHal3File = has3Files && !isNewASC
 
-  if (isNewASC) {
+  if (isNewASC || isHal3File) {
     // New 3-file architecture — story_body.mp3 is the full pre-mixed story + BG music
     const storyUrl = story.story_audio_url || story.audio_url
     if (storyUrl) {
