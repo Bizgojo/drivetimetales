@@ -16,16 +16,6 @@ const DUCK_TARGET     = 0.015  // music while voice is active (1.5%)
 const DUCK_MS         = 250    // ms to duck
 const RAISE_MS        = 600    // ms to raise after voice ends
 
-/** Temp debug: shows live music volume so we can confirm ducking works */
-function MusicVolumeDebug({ musicRef }: { musicRef: React.RefObject<HTMLAudioElement | null> }) {
-  const [vol, setVol] = useState(0)
-  useEffect(() => {
-    const t = setInterval(() => { if (musicRef.current) setVol(Math.round(musicRef.current.volume * 1000) / 10) }, 100)
-    return () => clearInterval(t)
-  }, [])
-  return <p style={{ color:'#64748b', fontSize:'10px', textAlign:'center', margin:'2px 0 0' }}>🎵 v0.1 · music: {vol}%</p>
-}
-
 function PlayerContent() {
   const params  = useParams()
   const router  = useRouter()
@@ -67,6 +57,7 @@ function PlayerContent() {
 
   // ── Pills state ────────────────────────────────────────────────────────────
   const [activeModal, setActiveModal] = useState<'author' | 'narrator' | 'prose' | null>(null)
+  const [proseDark, setProseDark] = useState(false)
   const [authorData, setAuthorData]   = useState<any | null>(null)
   const [narratorData, setNarratorData] = useState<any | null>(null)
 
@@ -228,14 +219,23 @@ function PlayerContent() {
 
   // Init audio once loaded
   useEffect(() => {
-    if (!isASC3 || !queue.length || loading || !audioRef.current) return
-    if (!audioRef.current.src || audioRef.current.src === window.location.href) {
-      audioRef.current.src = queue[0].url; audioRef.current.load()
+    if (loading || !audioRef.current) return
+    if (isASC3 && queue.length) {
+      // ASC3 mode — load first segment
+      if (!audioRef.current.src || audioRef.current.src === window.location.href) {
+        audioRef.current.src = queue[0].url; audioRef.current.load()
+      }
+      setSectionLabel(queue[0].label); typeRef.current = 'intro'
+      const m = musicRef.current
+      if (m && introMusicRef.current) { m.src = introMusicRef.current; m.loop = true; m.volume = 0 }
+    } else if (!isASC3 && story?.audio_url) {
+      // Single file mode — pre-load src so it is ready when user taps Play
+      if (!audioRef.current.src || audioRef.current.src === window.location.href) {
+        audioRef.current.src = story.audio_url
+        audioRef.current.load()
+      }
     }
-    setSectionLabel(queue[0].label); typeRef.current = 'intro'
-    const m = musicRef.current
-    if (m && introMusicRef.current) { m.src = introMusicRef.current; m.loop = true; m.volume = 0 }
-  }, [isASC3, queue, loading])
+  }, [isASC3, queue, loading, story])
 
   // ── Fetch author + narrator data for pills ─────────────────────────────────
   useEffect(() => {
@@ -311,26 +311,17 @@ function PlayerContent() {
       audioRef.current.pause(); musicRef.current?.pause()
       saveProgress(currentTime); setIsPlaying(false)
     } else {
-      const doPlay = () => {
-        audioRef.current!.play().then(() => {
-          setIsPlaying(true)
-          if (!user && !sessionStartRef.current) { sessionStartRef.current = Date.now() }
-          if (user?.id) supabase.from('user_library').upsert({ user_id: user.id, story_id: storyId, not_for_me: false, last_played: new Date().toISOString() }, { onConflict: 'user_id,story_id' }).then(() => {})
-          const m = musicRef.current
-          if (!noMusicRef.current && m?.src && m.src !== 'about:blank') {
-            m.volume = 0; m.play().catch(() => {})
-            animVol(m, 0, VOL_INTRO_MUSIC, 2000)
-          }
-        }).catch(() => {})
-      }
-      // Non-ASC3: ensure src is loaded before playing
-      if (!isASC3 && story?.audio_url && (!audioRef.current.src || audioRef.current.src === window.location.href || audioRef.current.readyState === 0)) {
-        audioRef.current.src = story.audio_url
-        audioRef.current.oncanplay = () => { audioRef.current!.oncanplay = null; doPlay() }
-        audioRef.current.load()
-      } else {
-        doPlay()
-      }
+      // src is pre-loaded in useEffect — play directly to preserve user gesture
+      audioRef.current.play().then(() => {
+        setIsPlaying(true)
+        if (!user && !sessionStartRef.current) { sessionStartRef.current = Date.now() }
+        if (user?.id) supabase.from('user_library').upsert({ user_id: user.id, story_id: storyId, not_for_me: false, last_played: new Date().toISOString() }, { onConflict: 'user_id,story_id' }).then(() => {})
+        const m = musicRef.current
+        if (!noMusicRef.current && m?.src && m.src !== 'about:blank') {
+          m.volume = 0; m.play().catch(() => {})
+          animVol(m, 0, VOL_INTRO_MUSIC, 2000)
+        }
+      }).catch((e) => { console.error('[player] play() failed:', e) })
     }
   }
 
@@ -569,7 +560,7 @@ function PlayerContent() {
         >
           <div
             onClick={e => e.stopPropagation()}
-            style={{ width:'100%', maxHeight:'75dvh', background:'#0f172a', borderRadius:'20px 20px 0 0', border:'1px solid rgba(148,163,184,0.1)', display:'flex', flexDirection:'column', overflow:'hidden' }}
+            style={{ width:'100%', maxHeight:'88dvh', background: activeModal === 'prose' && !proseDark ? '#faf7f2' : '#0f172a', borderRadius:'20px 20px 0 0', border:'1px solid rgba(148,163,184,0.1)', display:'flex', flexDirection:'column', overflow:'hidden', transition:'background 0.2s' }}
           >
             {/* Modal handle */}
             <div style={{ display:'flex', justifyContent:'center', padding:'12px 0 4px' }}>
@@ -578,12 +569,12 @@ function PlayerContent() {
 
             {/* Modal header */}
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 20px 16px' }}>
-              <span style={{ fontSize:'16px', fontWeight:800, color:'white' }}>
+              <span style={{ fontSize:'16px', fontWeight:800, color: activeModal === 'prose' && !proseDark ? '#1a1a1a' : 'white' }}>
                 {activeModal === 'author'   && `✍️ About ${authorData?.name || story.author || 'the Author'}`}
                 {activeModal === 'narrator' && `🎙️ About ${narratorData?.name || (story as any).narrator_voice_name || 'the Narrator'}`}
                 {activeModal === 'prose'    && `📖 ${story.title}`}
               </span>
-              <button onClick={() => setActiveModal(null)} style={{ background:'rgba(148,163,184,0.15)', border:'none', borderRadius:'50%', width:'32px', height:'32px', color:'#94a3b8', fontSize:'18px', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', lineHeight:1 }}>×</button>
+              <button onClick={() => setActiveModal(null)} style={{ background: activeModal === 'prose' && !proseDark ? 'rgba(0,0,0,0.08)' : 'rgba(148,163,184,0.15)', border:'none', borderRadius:'50%', width:'32px', height:'32px', color: activeModal === 'prose' && !proseDark ? '#555' : '#94a3b8', fontSize:'18px', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', lineHeight:1 }}>×</button>
             </div>
 
             {/* Modal body — scrollable */}
@@ -682,13 +673,35 @@ function PlayerContent() {
                 )
               )}
 
-              {/* PROSE */}
+              {/* PROSE — ebook reader */}
               {activeModal === 'prose' && (
                 (story as any).prose_text ? (
-                  <div style={{ color:'#cbd5e1', fontSize:'15px', lineHeight:1.8 }}>
-                    {(story as any).prose_text.split('\n\n').map((para: string, i: number) => (
-                      <p key={i} style={{ margin:'0 0 16px' }}>{para}</p>
-                    ))}
+                  <div style={{ background: proseDark ? '#0f172a' : '#faf7f2', borderRadius:12, padding:'4px 0', marginBottom:8 }}>
+                    {/* Ebook toolbar */}
+                    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 20px 16px', borderBottom: proseDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(0,0,0,0.06)' }}>
+                      <span style={{ fontSize:'11px', fontWeight:700, color: proseDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.35)', textTransform:'uppercase', letterSpacing:'0.08em' }}>
+                        {Math.ceil((story as any).prose_text.split(' ').length / 200)} min read
+                      </span>
+                      <button
+                        onClick={() => setProseDark(d => !d)}
+                        style={{ display:'flex', alignItems:'center', gap:6, padding:'5px 12px', borderRadius:'999px', border: proseDark ? '1px solid rgba(255,255,255,0.15)' : '1px solid rgba(0,0,0,0.12)', background:'transparent', color: proseDark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.5)', fontSize:'12px', fontWeight:600, cursor:'pointer' }}
+                      >{proseDark ? '☀️ Light' : '🌙 Dark'}</button>
+                    </div>
+                    {/* Story text */}
+                    <div style={{ padding:'24px 24px 8px', fontFamily: 'Georgia, "Times New Roman", serif' }}>
+                      <h2 style={{ fontSize:'22px', fontWeight:700, color: proseDark ? 'white' : '#1a1a1a', margin:'0 0 6px', lineHeight:1.3, textAlign:'center' }}>{story.title}</h2>
+                      <p style={{ fontSize:'13px', color: proseDark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.4)', textAlign:'center', margin:'0 0 28px', fontFamily:'system-ui,sans-serif' }}>by {story.author || 'Endless Tales'}</p>
+                      {(story as any).prose_text.split('\n\n').map((para: string, i: number) => (
+                        <p key={i} style={{
+                          fontSize:'17px',
+                          lineHeight:1.85,
+                          color: proseDark ? '#e2d9c8' : '#2c2c2c',
+                          margin:'0 0 20px',
+                          textIndent: i === 0 ? 0 : '1.5em',
+                          letterSpacing:'0.01em'
+                        }}>{para}</p>
+                      ))}
+                    </div>
                   </div>
                 ) : (
                   <p style={{ color:'#475569', fontSize:'14px', textAlign:'center', marginTop:'24px' }}>Prose version coming soon.</p>
