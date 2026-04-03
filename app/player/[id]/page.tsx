@@ -211,17 +211,20 @@ function PlayerContent() {
     if (loading || !audioRef.current) return
     if (isASC3 && queue.length) {
       // ASC3 mode — load first segment
-      if (!audioRef.current.src || audioRef.current.src === window.location.href) {
-        audioRef.current.src = queue[0].url; audioRef.current.load()
-      }
+      audioRef.current.src = queue[0].url; audioRef.current.load()
       setSectionLabel(queue[0].label); typeRef.current = 'intro'
+      if (musicConfig) {
+        introMusicRef.current = musicConfig.intro
+        bgMusicRef.current = musicConfig.bg
+        noMusicRef.current = !musicConfig.enabled
+      }
       const m = musicRef.current
       if (m && introMusicRef.current) { m.src = introMusicRef.current; m.loop = true; m.volume = 0 }
     } else if (!isASC3 && audioSrc) {
       audioRef.current.src = audioSrc
       audioRef.current.load()
     }
-  }, [isASC3, queue, loading, audioSrc])
+  }, [isASC3, queue, loading, audioSrc, musicConfig])
 
   // ── Fetch author + narrator data for pills ─────────────────────────────────
   useEffect(() => {
