@@ -8,7 +8,12 @@
 ALTER TABLE narrator_voices
   ADD COLUMN IF NOT EXISTS photo_url TEXT,
   ADD COLUMN IF NOT EXISTS bio TEXT,
-  ADD COLUMN IF NOT EXISTS follower_count INTEGER DEFAULT 0;
+  ADD COLUMN IF NOT EXISTS follower_count INTEGER DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS is_platform_narrator BOOLEAN DEFAULT false;
+
+-- All 12 platform narrators are RESERVED — never cast as story characters.
+-- ASC must filter these out of the character voice pool entirely.
+UPDATE narrator_voices SET is_platform_narrator = true;
 
 -- ── 2. Extend authors ────────────────────────────────────────
 ALTER TABLE authors
