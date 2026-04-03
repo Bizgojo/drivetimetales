@@ -162,6 +162,7 @@ function PlayerContent() {
           bgMusicRef.current = null
           // isASC3 stays false, queue stays empty → <audio src={story.audio_url}> plays directly
         } else {
+      if (!isASC3 && story?.audio_url && (!audioRef.current.src || audioRef.current.src === window.location.href)) { audioRef.current.src = story.audio_url; audioRef.current.load() }
           const IM = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio/intro_outro_music.mp3`
           introMusicRef.current = IM
           bgMusicRef.current = (data as any).background_music_url || null
@@ -294,10 +295,12 @@ function PlayerContent() {
         }
       }
     } else {
+      if (!isASC3 && story?.audio_url && (!audioRef.current.src || audioRef.current.src === window.location.href)) { audioRef.current.src = story.audio_url; audioRef.current.load() }
       raise(0); setIsPlaying(false); saveProgress(duration, true)
       if (playlistRef.current.length > 0 && playlistIndexRef.current < playlistRef.current.length - 1) {
         setTimeout(() => advancePlaylist(), 2500)
       } else {
+      if (!isASC3 && story?.audio_url && (!audioRef.current.src || audioRef.current.src === window.location.href)) { audioRef.current.src = story.audio_url; audioRef.current.load() }
         setTimeout(() => router.push('/library'), 3000)
       }
     }
@@ -311,6 +314,7 @@ function PlayerContent() {
       audioRef.current.pause(); musicRef.current?.pause()
       saveProgress(currentTime); setIsPlaying(false)
     } else {
+      if (!isASC3 && story?.audio_url && (!audioRef.current.src || audioRef.current.src === window.location.href)) { audioRef.current.src = story.audio_url; audioRef.current.load() }
       audioRef.current.play().then(() => {
         setIsPlaying(true)
         if (!user && !sessionStartRef.current) { sessionStartRef.current = Date.now() }
@@ -423,6 +427,7 @@ function PlayerContent() {
             if (playlistRef.current.length > 0 && playlistIndexRef.current < playlistRef.current.length - 1) {
               setTimeout(() => advancePlaylist(), 2500)
             } else {
+      if (!isASC3 && story?.audio_url && (!audioRef.current.src || audioRef.current.src === window.location.href)) { audioRef.current.src = story.audio_url; audioRef.current.load() }
               setTimeout(() => router.push('/library'), 1500)
             }
             return
@@ -542,6 +547,7 @@ function PlayerContent() {
                   if (a) { a.currentTime = 0; a.play().catch(() => {}) }
                   setCurrentTime(0); setCumTime(0); setIsPlaying(true)
                 } else {
+      if (!isASC3 && story?.audio_url && (!audioRef.current.src || audioRef.current.src === window.location.href)) { audioRef.current.src = story.audio_url; audioRef.current.load() }
                   completedRef.current=0; segDursRef.current=[]; setQueueIndex(0); setSectionLabel(queue[0]?.label||''); typeRef.current='intro'
                   const m=musicRef.current; if(m){m.src=introMusicRef.current;m.loop=true;m.volume=0}
                   if(audioRef.current){audioRef.current.src=queue[0]?.url||'';audioRef.current.load()}
@@ -603,6 +609,7 @@ function PlayerContent() {
                               await supabase.from('user_follows').delete().eq('user_id', user.id).eq('entity_type', 'author').eq('entity_id', (story as any).author_id)
                               setAuthorData((p: any) => ({ ...p, _following: false }))
                             } else {
+      if (!isASC3 && story?.audio_url && (!audioRef.current.src || audioRef.current.src === window.location.href)) { audioRef.current.src = story.audio_url; audioRef.current.load() }
                               await supabase.from('user_follows').insert({ user_id: user.id, entity_type: 'author', entity_id: (story as any).author_id })
                               setAuthorData((p: any) => ({ ...p, _following: true }))
                             }
@@ -649,6 +656,7 @@ function PlayerContent() {
                               await supabase.from('user_follows').delete().eq('user_id', user.id).eq('entity_type', 'narrator').eq('entity_id', nvRow.id)
                               setNarratorData((p: any) => ({ ...p, _following: false }))
                             } else {
+      if (!isASC3 && story?.audio_url && (!audioRef.current.src || audioRef.current.src === window.location.href)) { audioRef.current.src = story.audio_url; audioRef.current.load() }
                               await supabase.from('user_follows').insert({ user_id: user.id, entity_type: 'narrator', entity_id: nvRow.id })
                               setNarratorData((p: any) => ({ ...p, _following: true }))
                             }
