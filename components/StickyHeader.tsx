@@ -34,7 +34,7 @@ export default function StickyHeader({ showBack = true }: StickyHeaderProps) {
           </span>
         </Link>
         {user ? (
-          <Link href="/account" style={{ width: '2.75rem', height: '2.75rem', borderRadius: '50%', backgroundColor: '#f97316', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'black', fontWeight: 700, fontSize: '1.125rem', textDecoration: 'none', flexShrink: 0 }}>
+          <Link href="/account" style={{ width: '2.75rem', height: '2.75rem', borderRadius: '50%', backgroundColor: '#f97316', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: '1.25rem', textDecoration: 'none', flexShrink: 0 }}>
             {userInitial}
           </Link>
         ) : (

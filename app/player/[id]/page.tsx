@@ -453,14 +453,14 @@ function PlayerContent() {
 
       {/* Header */}
       <div style={{ padding:'10px 16px', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'space-between', background:'#0f172a', borderBottom:'1px solid rgba(148,163,184,0.06)' }}>
-        <button onClick={handleBack} style={{ width:'36px', height:'36px', borderRadius:'50%', backgroundColor:'#3b82f6', border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+        <button onClick={handleBack} style={{ width:'40px', height:'40px', borderRadius:'50%', backgroundColor:'#3b82f6', border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
           <svg width="18" height="18" fill="none" stroke="white" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7"/></svg>
         </button>
         <div onClick={() => router.push('/home')} style={{ display:'flex', alignItems:'center', gap:'8px', cursor:'pointer' }}>
           <img src="/images/et-logo.png" alt="Endless Tales" style={{ width:'28px', height:'28px', objectFit:'contain' }} />
           <span style={{ fontWeight:800, fontSize:'18px', color:'white' }}>Endless <span style={{ color:'#f97316' }}>Tales</span></span>
         </div>
-        <div style={{ width:'36px', height:'36px', borderRadius:'50%', backgroundColor:'#f97316', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:'14px', color:'white' }}>
+        <div style={{ width:'40px', height:'40px', borderRadius:'50%', backgroundColor:'#f97316', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:'16px', color:'white' }}>
           {user?.email?.[0]?.toUpperCase() || 'M'}
         </div>
       </div>
