@@ -86,7 +86,7 @@ export default function ChecklistPage() {
     if (res.ok) { setData(await res.json()); setLastRefresh(new Date()) }
   }
 
-  useEffect(() => { load(); const t = setInterval(load, 30000); return () => clearInterval(t) }, [])
+  useEffect(() => { load(); const t = setInterval(load, 300000); return () => clearInterval(t) }, [])
 
   async function updateStatus(taskId: string, status: TaskStatus) {
     setUpdating(taskId)
