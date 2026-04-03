@@ -43,6 +43,7 @@ function PlayerContent() {
   const [queueIndex, setQueueIndex] = useState(0)
   const [isASC3, setIsASC3]         = useState(false)
   const [audioSrc, setAudioSrc]     = useState("")
+  const [musicConfig, setMusicConfig] = useState<{intro: string, bg: string | null, enabled: boolean} | null>(null)
   const [sectionLabel, setSectionLabel] = useState('')
   const introMusicRef = useRef('')
   const bgMusicRef    = useRef<string | null>(null)
