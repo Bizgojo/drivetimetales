@@ -474,18 +474,31 @@ function PlayerContent() {
 
       {/* ── Info Pills — between cover and title ─────────────────────────── */}
       <div style={{ display:'flex', gap:'8px', justifyContent:'center', padding:'12px 20px 0' }}>
-        <button
-          onClick={() => setActiveModal('author')}
-          style={{ padding:'7px 16px', borderRadius:'999px', border:'1px solid rgba(255,255,255,0.15)', background: authorData ? '#f97316' : 'rgba(255,255,255,0.08)', color:'white', fontSize:'12px', fontWeight:600, cursor:'pointer', whiteSpace:'nowrap' }}
-        >✍️ The Author</button>
-        <button
-          onClick={() => setActiveModal('narrator')}
-          style={{ padding:'7px 16px', borderRadius:'999px', border:'1px solid rgba(255,255,255,0.15)', background: narratorData ? '#f97316' : 'rgba(255,255,255,0.08)', color:'white', fontSize:'12px', fontWeight:600, cursor:'pointer', whiteSpace:'nowrap' }}
-        >🎙️ The Narrator</button>
-        <button
-          onClick={() => setActiveModal('prose')}
-          style={{ padding:'7px 16px', borderRadius:'999px', border:'1px solid rgba(255,255,255,0.15)', background: (story as any).prose_text ? '#f97316' : 'rgba(255,255,255,0.08)', color:'white', fontSize:'12px', fontWeight:600, cursor:'pointer', whiteSpace:'nowrap' }}
-        >📖 Read It</button>
+
+        {/* Author pill */}
+        <button onClick={() => setActiveModal('author')} style={{ display:'flex', flexDirection:'column', alignItems:'center', padding:'8px 14px', borderRadius:'14px', border:'1px solid rgba(255,255,255,0.18)', background:'rgba(255,255,255,0.12)', color:'white', cursor:'pointer', minWidth:90 }}>
+          <span style={{ fontSize:'12px', fontWeight:700, whiteSpace:'nowrap' }}>✍️ The Author</span>
+          {authorData && <>
+            <span style={{ fontSize:'10px', color:'rgba(255,255,255,0.6)', marginTop:'2px' }}>{(authorData.follower_count||0).toLocaleString()} followers</span>
+            <span style={{ fontSize:'10px', fontWeight:700, color: authorData._following ? '#22c55e' : '#f97316', marginTop:'1px' }}>{authorData._following ? '✓ Following' : '+ Follow'}</span>
+          </>}
+        </button>
+
+        {/* Narrator pill */}
+        <button onClick={() => setActiveModal('narrator')} style={{ display:'flex', flexDirection:'column', alignItems:'center', padding:'8px 14px', borderRadius:'14px', border:'1px solid rgba(255,255,255,0.18)', background:'rgba(255,255,255,0.12)', color:'white', cursor:'pointer', minWidth:90 }}>
+          <span style={{ fontSize:'12px', fontWeight:700, whiteSpace:'nowrap' }}>🎙️ The Narrator</span>
+          {narratorData && <>
+            <span style={{ fontSize:'10px', color:'rgba(255,255,255,0.6)', marginTop:'2px' }}>{(narratorData.follower_count||0).toLocaleString()} followers</span>
+            <span style={{ fontSize:'10px', fontWeight:700, color: narratorData._following ? '#22c55e' : '#f97316', marginTop:'1px' }}>{narratorData._following ? '✓ Following' : '+ Follow'}</span>
+          </>}
+        </button>
+
+        {/* Read It pill */}
+        <button onClick={() => setActiveModal('prose')} style={{ display:'flex', flexDirection:'column', alignItems:'center', padding:'8px 14px', borderRadius:'14px', border:'1px solid rgba(255,255,255,0.18)', background:'rgba(255,255,255,0.12)', color:'white', cursor:'pointer', minWidth:90 }}>
+          <span style={{ fontSize:'12px', fontWeight:700, whiteSpace:'nowrap' }}>📖 Read It</span>
+          {(story as any).prose_text && <span style={{ fontSize:'10px', color:'rgba(255,255,255,0.6)', marginTop:'2px' }}>Available</span>}
+        </button>
+
       </div>
 
       {/* Controls */}
