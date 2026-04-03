@@ -42,12 +42,11 @@ function PlayerContent() {
   const [queue, setQueue]           = useState<QueueItem[]>([])
   const [queueIndex, setQueueIndex] = useState(0)
   const [isASC3, setIsASC3]         = useState(false)
-  const [audioSrc, setAudioSrc]     = useState("")
-  const [musicConfig, setMusicConfig] = useState<{intro: string, bg: string | null, enabled: boolean} | null>(null)
   const [sectionLabel, setSectionLabel] = useState('')
   const introMusicRef = useRef('')
   const bgMusicRef    = useRef<string | null>(null)
   const noMusicRef    = useRef(true)   // music disabled globally — voice only
+  const [audioSrc, setAudioSrc] = useState('')  // resolved single-file URL (state so init effect re-runs)
   const segDursRef    = useRef<number[]>([])
   const completedRef  = useRef(0)
   const sessionStartRef = useRef<number | null>(null)
@@ -146,20 +145,26 @@ function PlayerContent() {
         .select('id,title,author,audio_url,cover_url,duration_mins,intro_audio_url,outro_audio_url,background_music_url,episode_number,series_id,is_free,prose_text,author_id,narrator_voice_id,narrator_voice_name')
         .eq('id', storyId).single()
       if (data) setStory(data)
-      // Await API first — no early guesses, no race conditions
+      // Resolve audio mode from API FIRST — single decision, no races, no overrides
+      let resolvedQueue: QueueItem[] = []
+      let resolvedIsASC3 = false
       try {
         const res = await fetch(`/api/asc3/story-playlist?storyId=${storyId}`)
         if (res.ok) {
           const pl = await res.json()
           if (pl.useFinalMix && pl.finalMixUrl) {
+            // Plain single-file audio — store URL in ref for init useEffect
             setAudioSrc(pl.finalMixUrl)
             noMusicRef.current = true
+            introMusicRef.current = ''
+            bgMusicRef.current = null
           } else if (pl.queue?.length > 0) {
+            // Multi-segment ASC mode
             introMusicRef.current = pl.introOutroMusicUrl || ''
             bgMusicRef.current    = pl.backgroundMusicUrl || null
             noMusicRef.current    = false
-            setQueue(pl.queue)
-            setIsASC3(true)
+            resolvedQueue  = pl.queue
+            resolvedIsASC3 = true
           } else {
             setAudioSrc(data?.audio_url || '')
             noMusicRef.current = true
@@ -172,6 +177,8 @@ function PlayerContent() {
         setAudioSrc(data?.audio_url || '')
         noMusicRef.current = true
       }
+      setQueue(resolvedQueue)
+      setIsASC3(resolvedIsASC3)
       // ── Paywall check ──────────────────────────────────────────────────────
       if (data && !data.is_free) {
         if (!user) {
@@ -214,18 +221,15 @@ function PlayerContent() {
       // ASC3 mode — load first segment
       audioRef.current.src = queue[0].url; audioRef.current.load()
       setSectionLabel(queue[0].label); typeRef.current = 'intro'
-      if (musicConfig) {
-        introMusicRef.current = musicConfig.intro
-        bgMusicRef.current = musicConfig.bg
-        noMusicRef.current = !musicConfig.enabled
-      }
       const m = musicRef.current
       if (m && introMusicRef.current) { m.src = introMusicRef.current; m.loop = true; m.volume = 0 }
     } else if (!isASC3 && audioSrc) {
+      // Single file — audioSrcRef set by load() before setLoading(false),
+      // so audioRef is guaranteed mounted here. No race possible.
       audioRef.current.src = audioSrc
       audioRef.current.load()
     }
-  }, [isASC3, queue, loading, audioSrc, musicConfig])
+  }, [isASC3, queue, loading, audioSrc])
 
   // ── Fetch author + narrator data for pills ─────────────────────────────────
   useEffect(() => {
