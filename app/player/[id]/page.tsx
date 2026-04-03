@@ -242,15 +242,15 @@ function PlayerContent() {
     if (!story) return
     // Author
     if ((story as any).author_id) {
-      supabase.from('authors').select('name,description,techniques,audio_adaptation').eq('id', (story as any).author_id).single()
+      supabase.from('authors').select('name,description,bio,techniques,audio_adaptation,photo_url,follower_count').eq('id', (story as any).author_id).single()
         .then(({ data }) => { if (data) setAuthorData(data) })
     }
     // Narrator
     if ((story as any).narrator_voice_id) {
-      supabase.from('narrator_voices').select('name,description,tone,accent,gender,best_genres').eq('voice_id', (story as any).narrator_voice_id).single()
+      supabase.from('narrator_voices').select('name,description,bio,tone,accent,gender,best_genres,photo_url,follower_count').eq('elevenlabs_voice_id', (story as any).narrator_voice_id).single()
         .then(({ data }) => { if (data) setNarratorData(data) })
     } else if ((story as any).narrator_voice_name) {
-      supabase.from('narrator_voices').select('name,description,tone,accent,gender,best_genres').eq('name', (story as any).narrator_voice_name).single()
+      supabase.from('narrator_voices').select('name,description,bio,tone,accent,gender,best_genres,photo_url,follower_count').eq('name', (story as any).narrator_voice_name).single()
         .then(({ data }) => { if (data) setNarratorData(data) })
     }
   }, [story])
@@ -577,18 +577,38 @@ function PlayerContent() {
               {/* AUTHOR */}
               {activeModal === 'author' && (
                 authorData ? (
-                  <div style={{ display:'flex', flexDirection:'column', gap:'16px' }}>
-                    <p style={{ color:'#f97316', fontSize:'13px', fontWeight:700, margin:0, textTransform:'uppercase', letterSpacing:'0.05em' }}>{authorData.description}</p>
+                  <div style={{ display:'flex', flexDirection:'column', gap:'20px' }}>
+                    {/* Portrait + follow row */}
+                    <div style={{ display:'flex', alignItems:'center', gap:'16px' }}>
+                      {authorData.photo_url
+                        ? <img src={authorData.photo_url} alt={authorData.name} style={{ width:72, height:72, borderRadius:'50%', objectFit:'cover', border:'2px solid rgba(249,115,22,0.4)', flexShrink:0 }} />
+                        : <div style={{ width:72, height:72, borderRadius:'50%', background:'linear-gradient(135deg,#f97316,#7c3aed)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:28, flexShrink:0 }}>✍️</div>
+                      }
+                      <div style={{ flex:1 }}>
+                        <p style={{ color:'white', fontSize:'17px', fontWeight:800, margin:'0 0 2px' }}>{authorData.name}</p>
+                        <p style={{ color:'#64748b', fontSize:'12px', margin:'0 0 8px' }}>{(authorData.follower_count || 0).toLocaleString()} followers</p>
+                        <button
+                          onClick={async () => {
+                            if (!user) { router.push('/signin'); return }
+                            const { data: existing } = await supabase.from('user_follows').select('id').eq('user_id', user.id).eq('entity_type', 'author').eq('entity_id', (story as any).author_id).single().catch(() => ({ data: null }))
+                            if (existing) {
+                              await supabase.from('user_follows').delete().eq('user_id', user.id).eq('entity_type', 'author').eq('entity_id', (story as any).author_id)
+                              setAuthorData((p: any) => ({ ...p, _following: false }))
+                            } else {
+                              await supabase.from('user_follows').insert({ user_id: user.id, entity_type: 'author', entity_id: (story as any).author_id })
+                              setAuthorData((p: any) => ({ ...p, _following: true }))
+                            }
+                          }}
+                          style={{ padding:'6px 16px', borderRadius:'999px', border: authorData._following ? '1px solid #f97316' : 'none', background: authorData._following ? 'transparent' : '#f97316', color: authorData._following ? '#f97316' : 'white', fontSize:'12px', fontWeight:700, cursor:'pointer' }}
+                        >{authorData._following ? '✓ Following' : '+ Follow'}</button>
+                      </div>
+                    </div>
+                    <p style={{ color:'#f97316', fontSize:'12px', fontWeight:700, margin:0, textTransform:'uppercase', letterSpacing:'0.05em' }}>{authorData.description}</p>
+                    {authorData.bio && <p style={{ color:'#cbd5e1', fontSize:'14px', lineHeight:1.7, margin:0 }}>{authorData.bio}</p>}
                     {authorData.techniques && (
                       <div>
                         <p style={{ color:'#64748b', fontSize:'11px', fontWeight:700, margin:'0 0 6px', textTransform:'uppercase', letterSpacing:'0.08em' }}>Writing Style</p>
-                        <p style={{ color:'#cbd5e1', fontSize:'14px', lineHeight:1.6, margin:0 }}>{authorData.techniques}</p>
-                      </div>
-                    )}
-                    {authorData.audio_adaptation && (
-                      <div>
-                        <p style={{ color:'#64748b', fontSize:'11px', fontWeight:700, margin:'0 0 6px', textTransform:'uppercase', letterSpacing:'0.08em' }}>In Audio</p>
-                        <p style={{ color:'#cbd5e1', fontSize:'14px', lineHeight:1.6, margin:0 }}>{authorData.audio_adaptation}</p>
+                        <p style={{ color:'#94a3b8', fontSize:'13px', lineHeight:1.6, margin:0 }}>{authorData.techniques}</p>
                       </div>
                     )}
                   </div>
@@ -600,11 +620,37 @@ function PlayerContent() {
               {/* NARRATOR */}
               {activeModal === 'narrator' && (
                 narratorData ? (
-                  <div style={{ display:'flex', flexDirection:'column', gap:'16px' }}>
-                    <p style={{ color:'#f97316', fontSize:'13px', fontWeight:700, margin:0, textTransform:'uppercase', letterSpacing:'0.05em' }}>
-                      {narratorData.gender} · {narratorData.accent} accent · {narratorData.tone} tone
-                    </p>
-                    <p style={{ color:'#cbd5e1', fontSize:'14px', lineHeight:1.6, margin:0 }}>{narratorData.description}</p>
+                  <div style={{ display:'flex', flexDirection:'column', gap:'20px' }}>
+                    {/* Portrait + follow row */}
+                    <div style={{ display:'flex', alignItems:'center', gap:'16px' }}>
+                      {narratorData.photo_url
+                        ? <img src={narratorData.photo_url} alt={narratorData.name} style={{ width:72, height:72, borderRadius:'50%', objectFit:'cover', border:'2px solid rgba(249,115,22,0.4)', flexShrink:0 }} />
+                        : <div style={{ width:72, height:72, borderRadius:'50%', background:'linear-gradient(135deg,#3b82f6,#8b5cf6)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:28, flexShrink:0 }}>🎙️</div>
+                      }
+                      <div style={{ flex:1 }}>
+                        <p style={{ color:'white', fontSize:'17px', fontWeight:800, margin:'0 0 2px' }}>{narratorData.name}</p>
+                        <p style={{ color:'#64748b', fontSize:'12px', margin:'0 0 8px' }}>{(narratorData.follower_count || 0).toLocaleString()} followers</p>
+                        <button
+                          onClick={async () => {
+                            if (!user) { router.push('/signin'); return }
+                            const nvId = (story as any).narrator_voice_id
+                            const { data: nvRow } = await supabase.from('narrator_voices').select('id').eq('elevenlabs_voice_id', nvId).single().catch(() => ({ data: null }))
+                            if (!nvRow) return
+                            const { data: existing } = await supabase.from('user_follows').select('id').eq('user_id', user.id).eq('entity_type', 'narrator').eq('entity_id', nvRow.id).single().catch(() => ({ data: null }))
+                            if (existing) {
+                              await supabase.from('user_follows').delete().eq('user_id', user.id).eq('entity_type', 'narrator').eq('entity_id', nvRow.id)
+                              setNarratorData((p: any) => ({ ...p, _following: false }))
+                            } else {
+                              await supabase.from('user_follows').insert({ user_id: user.id, entity_type: 'narrator', entity_id: nvRow.id })
+                              setNarratorData((p: any) => ({ ...p, _following: true }))
+                            }
+                          }}
+                          style={{ padding:'6px 16px', borderRadius:'999px', border: narratorData._following ? '1px solid #f97316' : 'none', background: narratorData._following ? 'transparent' : '#f97316', color: narratorData._following ? '#f97316' : 'white', fontSize:'12px', fontWeight:700, cursor:'pointer' }}
+                        >{narratorData._following ? '✓ Following' : '+ Follow'}</button>
+                      </div>
+                    </div>
+                    <p style={{ color:'#f97316', fontSize:'12px', fontWeight:700, margin:0, textTransform:'uppercase', letterSpacing:'0.05em' }}>{narratorData.gender} · {narratorData.accent} accent · {narratorData.tone} tone</p>
+                    {narratorData.bio && <p style={{ color:'#cbd5e1', fontSize:'14px', lineHeight:1.7, margin:0 }}>{narratorData.bio}</p>}
                     {narratorData.best_genres?.length > 0 && (
                       <div>
                         <p style={{ color:'#64748b', fontSize:'11px', fontWeight:700, margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'0.08em' }}>Best For</p>
