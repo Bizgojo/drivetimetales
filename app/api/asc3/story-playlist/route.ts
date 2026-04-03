@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
 
   const { data: story, error } = await supabase
     .from('stories')
-    .select('id, title, author, audio_url, intro_audio_url, story_audio_url, outro_audio_url')
+    .select('id, title, author, audio_url, intro_audio_url, story_audio_url, outro_audio_url, background_music_url')
     .eq('id', storyId)
     .single()
 
@@ -61,7 +61,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       queue,
       introOutroMusicUrl: INTRO_OUTRO_MUSIC,
-      backgroundMusicUrl: null,
+      backgroundMusicUrl: (story as any).background_music_url || null,
       totalSegments: queue.length,
     }, { headers: { 'Cache-Control': 'no-store' } })
   }
