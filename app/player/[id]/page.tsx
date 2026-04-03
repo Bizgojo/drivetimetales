@@ -472,20 +472,34 @@ function PlayerContent() {
           : <div style={{ width:'100%', height:'100%', background:'linear-gradient(135deg,#475569,#1e293b)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'64px' }}>🎧</div>}
       </div>
 
+      {/* ── Info Pills — between cover and title ─────────────────────────── */}
+      <div style={{ display:'flex', gap:'8px', justifyContent:'center', padding:'12px 20px 0' }}>
+        <button
+          onClick={() => setActiveModal('author')}
+          style={{ padding:'7px 16px', borderRadius:'999px', border:'1px solid rgba(255,255,255,0.15)', background: authorData ? '#f97316' : 'rgba(255,255,255,0.08)', color:'white', fontSize:'12px', fontWeight:600, cursor:'pointer', whiteSpace:'nowrap' }}
+        >✍️ The Author</button>
+        <button
+          onClick={() => setActiveModal('narrator')}
+          style={{ padding:'7px 16px', borderRadius:'999px', border:'1px solid rgba(255,255,255,0.15)', background: narratorData ? '#f97316' : 'rgba(255,255,255,0.08)', color:'white', fontSize:'12px', fontWeight:600, cursor:'pointer', whiteSpace:'nowrap' }}
+        >🎙️ The Narrator</button>
+        <button
+          onClick={() => setActiveModal('prose')}
+          style={{ padding:'7px 16px', borderRadius:'999px', border:'1px solid rgba(255,255,255,0.15)', background: (story as any).prose_text ? '#f97316' : 'rgba(255,255,255,0.08)', color:'white', fontSize:'12px', fontWeight:600, cursor:'pointer', whiteSpace:'nowrap' }}
+        >📖 Read It</button>
+      </div>
+
       {/* Controls */}
-      <div style={{ flex:1, display:'flex', flexDirection:'column', justifyContent:'center', padding:'16px 20px', gap:'12px' }}>
+      <div style={{ flex:1, display:'flex', flexDirection:'column', justifyContent:'center', padding:'12px 20px 16px', gap:'12px' }}>
         <div>
           <h1 style={{ fontSize:'20px', fontWeight:800, margin:0, color:'white', textAlign:'center', lineHeight:1.2 }}>{story.title}</h1>
-          <p style={{ color:'#94a3b8', fontSize:'13px', margin:'4px 0 0', textAlign:'center' }}>
-            by {story.author || 'Endless Tales'} · {fmt(Math.max(0,effTotal-effCur))} remaining
+          <p style={{ color:'white', fontSize:'13px', margin:'4px 0 0', textAlign:'center', opacity:0.7 }}>
+            by {story.author || 'Endless Tales'}
           </p>
           {isASC3 && sectionLabel && isPlaying && (
             <p style={{ color:'#f97316', fontSize:'11px', margin:'4px 0 0', textAlign:'center', fontWeight:600 }}>
               🎙️ {sectionLabel} · {queueIndex+1}/{queue.length}
             </p>
           )}
-          {/* DEBUG — remove after testing */}
-          <MusicVolumeDebug musicRef={musicRef} />
           {/* Now Playing overlay — shown during playlist advance */}
           {nowPlayingLabel && (
             <div style={{ position:'fixed', top:'50%', left:'50%', transform:'translate(-50%,-50%)', background:'rgba(0,0,0,0.85)', borderRadius:16, padding:'20px 32px', textAlign:'center', zIndex:999, backdropFilter:'blur(8px)', border:'1px solid rgba(249,115,22,0.3)' }}>
@@ -495,10 +509,10 @@ function PlayerContent() {
           )}
         </div>
         <div>
-          <div onClick={handleSeek} style={{ height:'6px', backgroundColor:'#334155', borderRadius:'3px', overflow:'hidden', cursor:'pointer' }}>
+          <div onClick={handleSeek} style={{ height:'6px', backgroundColor:'rgba(255,255,255,0.15)', borderRadius:'3px', overflow:'hidden', cursor:'pointer' }}>
             <div style={{ height:'100%', backgroundColor:'#f97316', width:`${pct}%`, transition:'width 0.1s', borderRadius:'3px' }} />
           </div>
-          <div style={{ display:'flex', justifyContent:'space-between', fontSize:'11px', color:'#64748b', marginTop:'4px' }}>
+          <div style={{ display:'flex', justifyContent:'space-between', fontSize:'11px', color:'white', opacity:0.5, marginTop:'4px' }}>
             <span>{fmt(effCur)}</span><span>{fmt(effTotal)}</span>
           </div>
         </div>
@@ -521,28 +535,9 @@ function PlayerContent() {
                   setTimeout(()=>{audioRef.current?.play().catch(()=>{});const mu=musicRef.current;if(mu){mu.play().catch(()=>{});animVol(mu,0,VOL_INTRO_MUSIC,2000)};setIsPlaying(true)},100)
                   setCurrentTime(0); setCumTime(0)
                 }
-              }} style={{ flex:1, padding:'16px', borderRadius:'14px', border:'none', fontSize:'13px', fontWeight:600, cursor:'pointer', backgroundColor:'#1e293b', color:'#94a3b8' }}>Start Over</button>
-            : (story as any)?.episode_number && (story as any).episode_number > 1 ? null : <button onClick={handleNotForMe} style={{ flex:1, padding:'16px', borderRadius:'14px', border:'none', fontSize:'13px', fontWeight:600, cursor:'pointer', backgroundColor:'#1e293b', color:'#94a3b8' }}>Not for Me</button>
+              }} style={{ flex:1, padding:'16px', borderRadius:'14px', border:'none', fontSize:'13px', fontWeight:600, cursor:'pointer', backgroundColor:'rgba(255,255,255,0.08)', color:'white' }}>Start Over</button>
+            : (story as any)?.episode_number && (story as any).episode_number > 1 ? null : <button onClick={handleNotForMe} style={{ flex:1, padding:'16px', borderRadius:'14px', border:'none', fontSize:'13px', fontWeight:600, cursor:'pointer', backgroundColor:'rgba(255,255,255,0.08)', color:'white' }}>Not for Me</button>
           }
-        </div>
-
-        {/* ── Info Pills ──────────────────────────────────────────────────── */}
-        <div style={{ display:'flex', gap:'8px', justifyContent:'center', paddingTop:'4px' }}>
-          {/* About the Author */}
-          <button
-            onClick={() => setActiveModal('author')}
-            style={{ padding:'7px 14px', borderRadius:'999px', border:'1px solid rgba(148,163,184,0.25)', background: authorData ? 'rgba(249,115,22,0.1)' : 'rgba(255,255,255,0.04)', color: authorData ? '#f97316' : '#475569', fontSize:'12px', fontWeight:600, cursor: authorData ? 'pointer' : 'default', whiteSpace:'nowrap' }}
-          >✍️ The Author</button>
-          {/* About the Narrator */}
-          <button
-            onClick={() => setActiveModal('narrator')}
-            style={{ padding:'7px 14px', borderRadius:'999px', border:'1px solid rgba(148,163,184,0.25)', background: narratorData ? 'rgba(249,115,22,0.1)' : 'rgba(255,255,255,0.04)', color: narratorData ? '#f97316' : '#475569', fontSize:'12px', fontWeight:600, cursor: narratorData ? 'pointer' : 'default', whiteSpace:'nowrap' }}
-          >🎙️ The Narrator</button>
-          {/* Read the Story */}
-          <button
-            onClick={() => setActiveModal('prose')}
-            style={{ padding:'7px 14px', borderRadius:'999px', border:'1px solid rgba(148,163,184,0.25)', background: (story as any).prose_text ? 'rgba(249,115,22,0.1)' : 'rgba(255,255,255,0.04)', color: (story as any).prose_text ? '#f97316' : '#475569', fontSize:'12px', fontWeight:600, cursor: (story as any).prose_text ? 'pointer' : 'default', whiteSpace:'nowrap' }}
-          >📖 Read It</button>
         </div>
       </div>
 
