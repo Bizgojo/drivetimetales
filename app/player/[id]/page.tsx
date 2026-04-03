@@ -65,6 +65,11 @@ function PlayerContent() {
   const [totalDur, setTotalDur] = useState(0)
   const [cumTime, setCumTime]   = useState(0)
 
+  // ── Pills state ────────────────────────────────────────────────────────────
+  const [activeModal, setActiveModal] = useState<'author' | 'narrator' | 'prose' | null>(null)
+  const [authorData, setAuthorData]   = useState<any | null>(null)
+  const [narratorData, setNarratorData] = useState<any | null>(null)
+
   // ── Volume helpers ─────────────────────────────────────────────────────────
 
   const animVol = (el: HTMLAudioElement, from: number, to: number, ms: number, done?: () => void) => {
@@ -145,7 +150,7 @@ function PlayerContent() {
     async function load() {
       const { data } = await supabase
         .from('stories')
-        .select('id,title,author,audio_url,cover_url,duration_mins,intro_audio_url,outro_audio_url,background_music_url,episode_number,series_id,is_free')
+        .select('id,title,author,audio_url,cover_url,duration_mins,intro_audio_url,outro_audio_url,background_music_url,episode_number,series_id,is_free,prose_text,author_id,narrator_voice_id,narrator_voice_name')
         .eq('id', storyId).single()
       if (data) setStory(data)
       if (data?.intro_audio_url) {
@@ -232,7 +237,23 @@ function PlayerContent() {
     if (m && introMusicRef.current) { m.src = introMusicRef.current; m.loop = true; m.volume = 0 }
   }, [isASC3, queue, loading])
 
-  // ── Playlist advance (binge listening) ────────────────────────────────────
+  // ── Fetch author + narrator data for pills ─────────────────────────────────
+  useEffect(() => {
+    if (!story) return
+    // Author
+    if ((story as any).author_id) {
+      supabase.from('authors').select('name,description,techniques,audio_adaptation').eq('id', (story as any).author_id).single()
+        .then(({ data }) => { if (data) setAuthorData(data) })
+    }
+    // Narrator
+    if ((story as any).narrator_voice_id) {
+      supabase.from('narrator_voices').select('name,description,tone,accent,gender,best_genres').eq('voice_id', (story as any).narrator_voice_id).single()
+        .then(({ data }) => { if (data) setNarratorData(data) })
+    } else if ((story as any).narrator_voice_name) {
+      supabase.from('narrator_voices').select('name,description,tone,accent,gender,best_genres').eq('name', (story as any).narrator_voice_name).single()
+        .then(({ data }) => { if (data) setNarratorData(data) })
+    }
+  }, [story])
   const advancePlaylist = () => {
     const pl = playlistRef.current
     const ci = playlistIndexRef.current
@@ -488,14 +509,12 @@ function PlayerContent() {
           {hasProgress
             ? <button onClick={() => {
                 if (!isASC3 && story?.audio_url) {
-                  // Final mix mode — clear resume ref so onCanPlay doesn't seek back, then seek to 0
                   resumeRef.current = 0
                   setHasProgress(false)
                   const a = audioRef.current
                   if (a) { a.currentTime = 0; a.play().catch(() => {}) }
                   setCurrentTime(0); setCumTime(0); setIsPlaying(true)
                 } else {
-                  // Segment queue mode
                   completedRef.current=0; segDursRef.current=[]; setQueueIndex(0); setSectionLabel(queue[0]?.label||''); typeRef.current='intro'
                   const m=musicRef.current; if(m){m.src=introMusicRef.current;m.loop=true;m.volume=0}
                   if(audioRef.current){audioRef.current.src=queue[0]?.url||'';audioRef.current.load()}
@@ -506,7 +525,120 @@ function PlayerContent() {
             : (story as any)?.episode_number && (story as any).episode_number > 1 ? null : <button onClick={handleNotForMe} style={{ flex:1, padding:'16px', borderRadius:'14px', border:'none', fontSize:'13px', fontWeight:600, cursor:'pointer', backgroundColor:'#1e293b', color:'#94a3b8' }}>Not for Me</button>
           }
         </div>
+
+        {/* ── Info Pills ──────────────────────────────────────────────────── */}
+        <div style={{ display:'flex', gap:'8px', justifyContent:'center', paddingTop:'4px' }}>
+          {/* About the Author */}
+          <button
+            onClick={() => setActiveModal('author')}
+            style={{ padding:'7px 14px', borderRadius:'999px', border:'1px solid rgba(148,163,184,0.25)', background: authorData ? 'rgba(249,115,22,0.1)' : 'rgba(255,255,255,0.04)', color: authorData ? '#f97316' : '#475569', fontSize:'12px', fontWeight:600, cursor: authorData ? 'pointer' : 'default', whiteSpace:'nowrap' }}
+          >✍️ The Author</button>
+          {/* About the Narrator */}
+          <button
+            onClick={() => setActiveModal('narrator')}
+            style={{ padding:'7px 14px', borderRadius:'999px', border:'1px solid rgba(148,163,184,0.25)', background: narratorData ? 'rgba(249,115,22,0.1)' : 'rgba(255,255,255,0.04)', color: narratorData ? '#f97316' : '#475569', fontSize:'12px', fontWeight:600, cursor: narratorData ? 'pointer' : 'default', whiteSpace:'nowrap' }}
+          >🎙️ The Narrator</button>
+          {/* Read the Story */}
+          <button
+            onClick={() => setActiveModal('prose')}
+            style={{ padding:'7px 14px', borderRadius:'999px', border:'1px solid rgba(148,163,184,0.25)', background: (story as any).prose_text ? 'rgba(249,115,22,0.1)' : 'rgba(255,255,255,0.04)', color: (story as any).prose_text ? '#f97316' : '#475569', fontSize:'12px', fontWeight:600, cursor: (story as any).prose_text ? 'pointer' : 'default', whiteSpace:'nowrap' }}
+          >📖 Read It</button>
+        </div>
       </div>
+
+      {/* ── Info Modal Sheet ─────────────────────────────────────────────────── */}
+      {activeModal && (
+        <div
+          onClick={() => setActiveModal(null)}
+          style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.7)', zIndex:200, display:'flex', alignItems:'flex-end', backdropFilter:'blur(4px)' }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ width:'100%', maxHeight:'75dvh', background:'#0f172a', borderRadius:'20px 20px 0 0', border:'1px solid rgba(148,163,184,0.1)', display:'flex', flexDirection:'column', overflow:'hidden' }}
+          >
+            {/* Modal handle */}
+            <div style={{ display:'flex', justifyContent:'center', padding:'12px 0 4px' }}>
+              <div style={{ width:'40px', height:'4px', borderRadius:'2px', background:'rgba(148,163,184,0.3)' }} />
+            </div>
+
+            {/* Modal header */}
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 20px 16px' }}>
+              <span style={{ fontSize:'16px', fontWeight:800, color:'white' }}>
+                {activeModal === 'author'   && `✍️ About ${authorData?.name || story.author || 'the Author'}`}
+                {activeModal === 'narrator' && `🎙️ About ${narratorData?.name || (story as any).narrator_voice_name || 'the Narrator'}`}
+                {activeModal === 'prose'    && `📖 ${story.title}`}
+              </span>
+              <button onClick={() => setActiveModal(null)} style={{ background:'rgba(148,163,184,0.15)', border:'none', borderRadius:'50%', width:'32px', height:'32px', color:'#94a3b8', fontSize:'18px', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', lineHeight:1 }}>×</button>
+            </div>
+
+            {/* Modal body — scrollable */}
+            <div style={{ overflowY:'auto', padding:'0 20px 32px', flex:1 }}>
+
+              {/* AUTHOR */}
+              {activeModal === 'author' && (
+                authorData ? (
+                  <div style={{ display:'flex', flexDirection:'column', gap:'16px' }}>
+                    <p style={{ color:'#f97316', fontSize:'13px', fontWeight:700, margin:0, textTransform:'uppercase', letterSpacing:'0.05em' }}>{authorData.description}</p>
+                    {authorData.techniques && (
+                      <div>
+                        <p style={{ color:'#64748b', fontSize:'11px', fontWeight:700, margin:'0 0 6px', textTransform:'uppercase', letterSpacing:'0.08em' }}>Writing Style</p>
+                        <p style={{ color:'#cbd5e1', fontSize:'14px', lineHeight:1.6, margin:0 }}>{authorData.techniques}</p>
+                      </div>
+                    )}
+                    {authorData.audio_adaptation && (
+                      <div>
+                        <p style={{ color:'#64748b', fontSize:'11px', fontWeight:700, margin:'0 0 6px', textTransform:'uppercase', letterSpacing:'0.08em' }}>In Audio</p>
+                        <p style={{ color:'#cbd5e1', fontSize:'14px', lineHeight:1.6, margin:0 }}>{authorData.audio_adaptation}</p>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p style={{ color:'#475569', fontSize:'14px', textAlign:'center', marginTop:'24px' }}>Author profile coming soon.</p>
+                )
+              )}
+
+              {/* NARRATOR */}
+              {activeModal === 'narrator' && (
+                narratorData ? (
+                  <div style={{ display:'flex', flexDirection:'column', gap:'16px' }}>
+                    <p style={{ color:'#f97316', fontSize:'13px', fontWeight:700, margin:0, textTransform:'uppercase', letterSpacing:'0.05em' }}>
+                      {narratorData.gender} · {narratorData.accent} accent · {narratorData.tone} tone
+                    </p>
+                    <p style={{ color:'#cbd5e1', fontSize:'14px', lineHeight:1.6, margin:0 }}>{narratorData.description}</p>
+                    {narratorData.best_genres?.length > 0 && (
+                      <div>
+                        <p style={{ color:'#64748b', fontSize:'11px', fontWeight:700, margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'0.08em' }}>Best For</p>
+                        <div style={{ display:'flex', flexWrap:'wrap', gap:'6px' }}>
+                          {narratorData.best_genres.map((g: string) => (
+                            <span key={g} style={{ padding:'4px 10px', borderRadius:'999px', background:'rgba(249,115,22,0.15)', color:'#f97316', fontSize:'12px', fontWeight:600 }}>{g}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p style={{ color:'#475569', fontSize:'14px', textAlign:'center', marginTop:'24px' }}>Narrator profile coming soon.</p>
+                )
+              )}
+
+              {/* PROSE */}
+              {activeModal === 'prose' && (
+                (story as any).prose_text ? (
+                  <div style={{ color:'#cbd5e1', fontSize:'15px', lineHeight:1.8 }}>
+                    {(story as any).prose_text.split('\n\n').map((para: string, i: number) => (
+                      <p key={i} style={{ margin:'0 0 16px' }}>{para}</p>
+                    ))}
+                  </div>
+                ) : (
+                  <p style={{ color:'#475569', fontSize:'14px', textAlign:'center', marginTop:'24px' }}>Prose version coming soon.</p>
+                )
+              )}
+
+            </div>
+          </div>
+        </div>
+      )}
+
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   )
