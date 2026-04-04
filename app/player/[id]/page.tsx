@@ -62,6 +62,7 @@ function PlayerContent() {
   const [proseFontSize, setProseFontSize] = useState(17)
   const [prosePage, setProsePage] = useState(1)
   const [proseControlsOpen, setProseControlsOpen] = useState(false)
+  const [proseHintVisible, setProseHintVisible] = useState(false)
   const [proseHintSeen, setProseHintSeen] = useState(false)
   const proseScrollRef = useRef<HTMLDivElement>(null)
   const [authorData, setAuthorData]   = useState<any | null>(null)
@@ -235,6 +236,16 @@ function PlayerContent() {
     }
   }, [isASC3, queue, loading, audioSrc])
 
+  useEffect(() => {
+    if (activeModal !== 'prose') return
+    try { if (localStorage.getItem('et_prose_hint_seen')) return } catch(_) {}
+    const t = setTimeout(() => setProseHintVisible(true), 800)
+    return () => clearTimeout(t)
+  }, [activeModal])
+  function dismissProseHint() {
+    try { localStorage.setItem('et_prose_hint_seen', '1') } catch(_) {}
+    setProseHintVisible(false)
+  }
   // ── Fetch author + narrator data for pills ─────────────────────────────────
   useEffect(() => {
     if (!story) return
