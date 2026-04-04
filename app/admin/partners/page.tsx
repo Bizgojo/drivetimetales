@@ -377,6 +377,18 @@ export default function AdminPartnersPage() {
                     <input type="number" step="0.01" value={(agreement as any)[f.key]} onChange={e => setAgreement(a => ({ ...a, [f.key]: parseFloat(e.target.value) || 0 }))} style={{ width: 80, padding: '5px 8px', border: `1px solid ${border}`, borderRadius: 6, fontSize: 13, background: '#fff', color: '#111' }} />
                   </div>
                 ))}
+                {/* Sub payout type */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <label style={{ fontSize: 12, color: muted, width: 120 }}>Sub payout</label>
+                  <select value={agreement.sub_payout_type} onChange={e => setAgreement(a => ({ ...a, sub_payout_type: e.target.value }))} style={{ padding: '5px 8px', border: `1px solid ${border}`, borderRadius: 6, fontSize: 13, background: '#fff', color: '#111' }}>
+                    <option value="one_time">One-time</option>
+                    <option value="monthly">Monthly</option>
+                  </select>
+                  {agreement.sub_payout_type === 'monthly' && (
+                    <input type="number" min={1} max={24} value={agreement.sub_payout_months} onChange={e => setAgreement(a => ({ ...a, sub_payout_months: parseInt(e.target.value) || 1 }))} style={{ width: 50, padding: '5px 8px', border: `1px solid ${border}`, borderRadius: 6, fontSize: 13, background: '#fff', color: '#111' }} />
+                  )}
+                  {agreement.sub_payout_type === 'monthly' && <span style={{ fontSize: 11, color: muted }}>months</span>}
+                </div>
               </div>
               <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>
                 <button onClick={() => setShowForm(false)} style={{ background: 'none', border: `1px solid ${border}`, borderRadius: 8, padding: '8px 18px', fontSize: 13, cursor: 'pointer', color: muted }}>Cancel</button>
