@@ -568,11 +568,11 @@ function PlayerContent() {
       {activeModal && (
         <div
           onClick={() => setActiveModal(null)}
-          style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.7)', zIndex:200, display:'flex', alignItems:'flex-end', backdropFilter:'blur(4px)' }}
+          style={{ position:'fixed', inset:0, background:'#000', zIndex:200, display:'flex', alignItems:'flex-end' }}
         >
           <div
             onClick={e => e.stopPropagation()}
-            style={{ width:'100%', height: activeModal === 'prose' ? '100dvh' : 'auto', maxHeight: activeModal === 'prose' ? '100dvh' : '88dvh', background: activeModal === 'prose' ? (proseDark ? '#0f172a' : '#faf7f2') : '#0f172a', borderRadius: activeModal === 'prose' ? '0' : '20px 20px 0 0', border:'none', display:'flex', flexDirection:'column', overflow:'hidden', transition:'background 0.2s', position:'relative' }}
+            style={{ width:'100%', height:'100dvh', maxHeight:'100dvh', background: activeModal === 'prose' ? (proseDark ? '#0f172a' : '#faf7f2') : '#020617', borderRadius:'0', border:'none', display:'flex', flexDirection:'column', overflow:'hidden', transition:'background 0.2s', position:'relative' }}
           >
             {/* Modal handle — hidden in prose */}
             {activeModal !== 'prose' && (
