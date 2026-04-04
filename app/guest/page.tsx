@@ -75,7 +75,7 @@ export default function GuestPage() {
     router.push(`/player/${story.id}`)
   }
 
-  if (authLoading) return (
+if (authLoading || loading) return (
     <div style={{ height:'100dvh', backgroundColor:'#020617', display:'flex', alignItems:'center', justifyContent:'center' }}>
       <div style={{ width:'36px', height:'36px', border:'3px solid #f97316', borderTopColor:'transparent', borderRadius:'50%', animation:'spin 0.8s linear infinite' }} />
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
