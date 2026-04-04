@@ -221,8 +221,7 @@ function PlayerContent() {
       // ASC3 mode — load first segment
       audioRef.current.src = queue[0].url; audioRef.current.load()
       setSectionLabel(queue[0].label); typeRef.current = 'intro'
-      const m = musicRef.current
-      if (m && introMusicRef.current) { m.src = introMusicRef.current; m.loop = true; m.volume = 0 }
+      // Music src set on Play tap only -- prevents audio leaking on page load
     } else if (!isASC3 && audioSrc) {
       // Single file — audioSrcRef set by load() before setLoading(false),
       // so audioRef is guaranteed mounted here. No race possible.
@@ -311,7 +310,10 @@ function PlayerContent() {
         if (!user && !sessionStartRef.current) { sessionStartRef.current = Date.now() }
         if (user?.id) supabase.from('user_library').upsert({ user_id: user.id, story_id: storyId, not_for_me: false, last_played: new Date().toISOString() }, { onConflict: 'user_id,story_id' }).then(() => {})
         const m = musicRef.current
-        if (!noMusicRef.current && m?.src && m.src !== 'about:blank') {
+        if (!noMusicRef.current && m && introMusicRef.current) {
+          if (!m.src || m.src === 'about:blank' || m.src === window.location.href) {
+            m.src = introMusicRef.current; m.loop = true
+          }
           m.volume = 0; m.play().catch(() => {})
           animVol(m, 0, VOL_INTRO_MUSIC, 2000)
         }
