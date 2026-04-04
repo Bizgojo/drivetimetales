@@ -212,17 +212,18 @@ export default function AdminPartnersPage() {
                     </div>
                   </div>
 
-                  {/* Stats row */}
+                  {/* Stats row — count + amount per column */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', borderBottom: `1px solid ${border}` }}>
                     {[
-                      { label: 'Scans', value: p.stats?.scans || 0 },
-                      { label: 'Trials', value: p.stats?.trials || 0 },
-                      { label: 'Subscriptions', value: p.stats?.subs || 0 },
-                      { label: 'Total owed', value: fmt$(p.stats?.owed || 0) },
+                      { label: 'Scans', count: p.stats?.scans || 0, amount: fmt$(((p.agreement?.scan_rate||0) * (p.stats?.scans||0))) },
+                      { label: 'Trials', count: p.stats?.trials || 0, amount: fmt$(((p.agreement?.trial_rate||0) * (p.stats?.trials||0))) },
+                      { label: 'Subscriptions', count: p.stats?.subs || 0, amount: fmt$(((p.agreement?.sub_rate||0) * (p.stats?.subs||0))) },
+                      { label: 'Total owed', count: null, amount: fmt$(p.stats?.owed || 0) },
                     ].map(s => (
                       <div key={s.label} style={{ padding: '10px 16px', borderRight: `1px solid ${border}` }}>
-                        <div style={{ fontSize: 11, color: muted, marginBottom: 2 }}>{s.label}</div>
-                        <div style={{ fontSize: 18, fontWeight: 700, color: text }}>{s.value}</div>
+                        <div style={{ fontSize: 11, color: muted, marginBottom: 4 }}>{s.label}</div>
+                        {s.count !== null && <div style={{ fontSize: 20, fontWeight: 700, color: text, lineHeight: 1 }}>{s.count}</div>}
+                        <div style={{ fontSize: 13, fontWeight: 600, color: s.label === 'Total owed' ? '#92400e' : muted, marginTop: s.count !== null ? 2 : 0 }}>{s.amount}</div>
                       </div>
                     ))}
                   </div>
