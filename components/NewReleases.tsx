@@ -22,8 +22,8 @@ export default function NewReleases({ excludeIds = [], onIdsLoaded }: { excludeI
     setLoading(true)
     const { data } = await supabase.from('story_analytics')
       .select('id, title, genre, author, duration_mins, cover_url, avg_rating, review_count, series_id, episode_number, series_name')
-      .not('cover_url', 'is', null).eq('is_hidden', false).gte('duration_mins', 10)
-      .order('published_on', { ascending: false }).limit(60)
+      .not('cover_url', 'is', null).eq('is_hidden', false)
+      .order('created_at', { ascending: false }).limit(60)
     if (!data) { setLoading(false); onIdsLoaded?.([]); return }
 
     const ex = new Set(excludeIds)
