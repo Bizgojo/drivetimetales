@@ -50,6 +50,7 @@ export default function AdminPartnersPage() {
   const [tab, setTab] = useState<'directory' | 'payouts'>('directory')
   const [selected, setSelected] = useState<Partner | null>(null)
   const [showForm, setShowForm] = useState(false)
+  const [editingPartner, setEditingPartner] = useState<Partner | null>(null)
   const [form, setForm] = useState({
     name: '', slug: '', email: '', phone: '',
     contact_name: '', contact_title: '', contact_email: '', contact_phone: '',
@@ -156,6 +157,22 @@ export default function AdminPartnersPage() {
     setMsg('Partner created!'); setShowForm(false)
     setForm({ name: '', slug: '', email: '', phone: '', contact_name: '', contact_title: '', contact_email: '', contact_phone: '', address: '', city: '', state: '', zip: '', notes: '' })
     load(); setSaving(false)
+  }
+
+  async function updatePartner() {
+    if (!editingPartner) return
+    setSaving(true); setMsg('')
+    const { error } = await supabase.from('partners').update({
+      name: form.name.trim(),
+      email: form.email || null, phone: form.phone || null,
+      contact_name: form.contact_name || null, contact_title: form.contact_title || null,
+      contact_email: form.contact_email || null, contact_phone: form.contact_phone || null,
+      address: form.address || null, city: form.city || null,
+      state: form.state || null, zip: form.zip || null,
+      notes: form.notes || null,
+    }).eq('id', editingPartner.id)
+    if (error) { setMsg('Error: ' + error.message); setSaving(false); return }
+    setMsg('Partner updated!'); setEditingPartner(null); load(); setSaving(false)
   }
 
   async function saveAgreement(partnerId: string) {
@@ -303,6 +320,10 @@ export default function AdminPartnersPage() {
                     </div>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                       <span style={{ background: '#fef3c7', color: '#92400e', borderRadius: 6, padding: '3px 10px', fontSize: 12, fontWeight: 700 }}>Owes {fmt$(p.stats?.owed || 0)}</span>
+                      <button onClick={() => {
+                        setEditingPartner(p)
+                        setForm({ name: p.name, slug: p.slug, email: p.email||'', phone: p.phone||'', contact_name: (p as any).contact_name||'', contact_title: (p as any).contact_title||'', contact_email: (p as any).contact_email||'', contact_phone: (p as any).contact_phone||'', address: (p as any).address||'', city: (p as any).city||'', state: (p as any).state||'', zip: (p as any).zip||'', notes: p.notes||'' })
+                      }} style={{ background: 'none', border: `1px solid ${border}`, borderRadius: 6, padding: '5px 14px', fontSize: 12, cursor: 'pointer', color: muted, fontWeight: 600 }}>Edit</button>
                       <button onClick={() => { setSelected(selected?.id === p.id ? null : p); if (p.agreement) setAgreement(p.agreement); setQrDataUrl(null); setNewMaterial(blankMaterial()) }} style={{ background: 'none', border: `1px solid ${border}`, borderRadius: 6, padding: '5px 14px', fontSize: 12, cursor: 'pointer', color: muted, fontWeight: 600 }}>
                         {selected?.id === p.id ? 'Close' : 'Manage'}
                       </button>
@@ -514,6 +535,47 @@ export default function AdminPartnersPage() {
               </tbody>
             </table>
           )}
+        </div>
+      )}
+
+      {/* Edit Partner Modal */}
+      {editingPartner && (
+        <div onClick={() => setEditingPartner(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 20 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: card, borderRadius: 16, padding: 28, width: 540, maxWidth: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: text, margin: '0 0 20px' }}>Edit: {editingPartner.name}</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div style={{ gridColumn: '1 / -1' }}>{label('Partner name *')}<input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} style={inp} /></div>
+                <div>{label('Business email')}<input value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} style={inp} /></div>
+                <div>{label('Business phone')}<input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: fmtPhone(e.target.value) }))} placeholder='(555) 000-0000' style={inp} /></div>
+              </div>
+              <div style={{ borderTop: `1px solid ${border}`, paddingTop: 12 }}>
+                <div style={{ fontWeight: 600, fontSize: 13, color: text, marginBottom: 10 }}>Contact Person</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div>{label('Name')}<input value={form.contact_name} onChange={e => setForm(f => ({ ...f, contact_name: e.target.value }))} placeholder='Jane Smith' style={inp} /></div>
+                  <div>{label('Title')}<input value={form.contact_title} onChange={e => setForm(f => ({ ...f, contact_title: e.target.value }))} placeholder='Manager' style={inp} /></div>
+                  <div>{label('Email')}<input value={form.contact_email} onChange={e => setForm(f => ({ ...f, contact_email: e.target.value }))} style={inp} /></div>
+                  <div>{label('Phone')}<input value={form.contact_phone} onChange={e => setForm(f => ({ ...f, contact_phone: fmtPhone(e.target.value) }))} placeholder='(555) 111-2222' style={inp} /></div>
+                </div>
+              </div>
+              <div style={{ borderTop: `1px solid ${border}`, paddingTop: 12 }}>
+                <div style={{ fontWeight: 600, fontSize: 13, color: text, marginBottom: 10 }}>Address</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div>{label('Street address')}<input value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} placeholder='123 Main St' style={inp} /></div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 10 }}>
+                    <div>{label('City')}<input value={form.city} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} style={inp} /></div>
+                    <div>{label('State')}<input value={form.state} onChange={e => setForm(f => ({ ...f, state: e.target.value }))} maxLength={2} style={inp} /></div>
+                    <div>{label('ZIP')}<input value={form.zip} onChange={e => setForm(f => ({ ...f, zip: e.target.value }))} style={inp} /></div>
+                  </div>
+                </div>
+              </div>
+              <div>{label('Notes')}<textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} style={{ ...inp, resize: 'none' as const }} /></div>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                <button onClick={() => setEditingPartner(null)} style={{ background: 'none', border: `1px solid ${border}`, borderRadius: 8, padding: '9px 20px', fontSize: 14, cursor: 'pointer', color: muted }}>Cancel</button>
+                <button onClick={updatePartner} disabled={saving || !form.name} style={{ background: orange, color: '#fff', border: 'none', borderRadius: 8, padding: '9px 20px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>{saving ? 'Saving...' : 'Save Changes'}</button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
