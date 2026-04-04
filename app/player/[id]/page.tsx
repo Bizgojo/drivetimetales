@@ -91,7 +91,7 @@ function PlayerContent() {
   /** Schedule a music swap leadSec seconds before the current voice audio ends */
   const schedSwap = (newSrc: string, targetVol: number, leadSec: number) => {
     if (schedTimer.current) clearTimeout(schedTimer.current)
-    const a = audioRef.current; if (!a?.duration || isNaN(a.duration)) return
+    const a = audioRef.current; if (!a?.duration || isNaN(a.duration) || a.paused) return
     const delay = Math.max(0, (a.duration - a.currentTime - leadSec) * 1000)
     schedTimer.current = setTimeout(() => swapMusic(newSrc, targetVol, leadSec * 1000), delay)
   }
@@ -393,8 +393,8 @@ function PlayerContent() {
           const d = e.currentTarget.duration; setDuration(d)
           segDursRef.current[queueIndex] = d
           const tot = segDursRef.current.reduce((a,b) => a+(b||0), 0); if (tot>0) setTotalDur(tot)
-          // 3s before intro ends → swap to background story music
-          if (typeRef.current === 'intro' && bgMusicRef.current) schedSwap(bgMusicRef.current, VOL_STORY_MUSIC, 3)
+          // 3s before intro ends → swap to background story music (only if playing)
+          if (isPlaying && typeRef.current === 'intro' && bgMusicRef.current) schedSwap(bgMusicRef.current, VOL_STORY_MUSIC, 3)
         }}
         onTimeUpdate={(e) => {
           const t = e.currentTarget.currentTime; setCurrentTime(t); setCumTime(completedRef.current + t)
