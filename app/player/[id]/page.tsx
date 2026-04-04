@@ -256,10 +256,10 @@ function PlayerContent() {
     }
     // Narrator
     if ((story as any).narrator_voice_id) {
-      supabase.from('narrator_voices').select('name,description,bio,tone,accent,gender,best_genres,photo_url,follower_count').eq('elevenlabs_voice_id', (story as any).narrator_voice_id).single()
+      supabase.from('narrator_voices').select('name,description,bio,tone,accent,gender,tone_tags,photo_url,follower_count').eq('elevenlabs_voice_id', (story as any).narrator_voice_id).single()
         .then(({ data }) => { if (data) setNarratorData(data) })
     } else if ((story as any).narrator_voice_name) {
-      supabase.from('narrator_voices').select('name,description,bio,tone,accent,gender,best_genres,photo_url,follower_count').eq('name', (story as any).narrator_voice_name).single()
+      supabase.from('narrator_voices').select('name,description,bio,tone,accent,gender,tone_tags,photo_url,follower_count').eq('name', (story as any).narrator_voice_name).single()
         .then(({ data }) => { if (data) setNarratorData(data) })
     }
   }, [story])
@@ -673,11 +673,11 @@ function PlayerContent() {
                     </div>
                     <p style={{ color:'#f97316', fontSize:'12px', fontWeight:700, margin:0, textTransform:'uppercase', letterSpacing:'0.05em' }}>{narratorData.gender} · {narratorData.accent} accent · {narratorData.tone} tone</p>
                     {narratorData.bio && <p style={{ color:'#cbd5e1', fontSize:'14px', lineHeight:1.7, margin:0 }}>{narratorData.bio}</p>}
-                    {narratorData.best_genres?.length > 0 && (
+                    {narratorData.tone_tags?.length > 0 && (
                       <div>
                         <p style={{ color:'#64748b', fontSize:'11px', fontWeight:700, margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'0.08em' }}>Best For</p>
                         <div style={{ display:'flex', flexWrap:'wrap', gap:'6px' }}>
-                          {narratorData.best_genres.map((g: string) => (
+                          {narratorData.tone_tags.map((g: string) => (
                             <span key={g} style={{ padding:'4px 10px', borderRadius:'999px', background:'rgba(249,115,22,0.15)', color:'#f97316', fontSize:'12px', fontWeight:600 }}>{g}</span>
                           ))}
                         </div>
