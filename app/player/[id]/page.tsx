@@ -681,18 +681,15 @@ function PlayerContent() {
                 (story as any).prose_text ? (
                   <div style={{ position:'relative', flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
 
-                    {/* One-time hint */}
-                    {!proseHintSeen && (
-                      <div onClick={() => setProseHintSeen(true)} style={{ position:'absolute', top:12, left:'50%', transform:'translateX(-50%)', zIndex:30, background:'rgba(0,0,0,0.78)', color:'white', fontSize:'12px', padding:'7px 14px', borderRadius:'20px', backdropFilter:'blur(6px)', cursor:'pointer', whiteSpace:'nowrap' }}>
-                        📖 Tap the book icon for text size &amp; theme &nbsp;✕
+
+                    {/* Sticky header: × | title | book */}
+                    <div style={{ flexShrink:0, display:'flex', alignItems:'center', padding:'10px 12px', borderBottom: proseDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(0,0,0,0.07)', background: proseDark ? '#0f172a' : '#faf7f2' }}>
+                      <button onClick={() => setActiveModal(null)} style={{ width:34, height:34, flexShrink:0, borderRadius:'50%', border: proseDark ? '1px solid rgba(255,255,255,0.18)' : '1px solid rgba(0,0,0,0.13)', background: proseDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.05)', color: proseDark ? 'rgba(255,255,255,0.7)' : '#555', fontSize:'17px', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>×</button>
+                      <div style={{ flex:1, textAlign:'center', padding:'0 8px' }}>
+                        <div style={{ fontSize:'15px', fontWeight:800, color: proseDark ? 'white' : '#1a1a1a' }}>{story.title}</div>
+                        <div style={{ fontSize:'11px', color: proseDark ? 'rgba(255,255,255,0.38)' : 'rgba(0,0,0,0.38)', marginTop:1, fontFamily:'system-ui,sans-serif' }}>by {story.author || 'Endless Tales'}</div>
                       </div>
-                    )}
-
-                    {/* Close button — top left */}
-                    <button onClick={() => setActiveModal(null)} style={{ position:'absolute', top:10, left:14, zIndex:25, width:34, height:34, borderRadius:'50%', border: proseDark ? '1px solid rgba(255,255,255,0.18)' : '1px solid rgba(0,0,0,0.13)', background: proseDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.05)', color: proseDark ? 'rgba(255,255,255,0.7)' : '#555', fontSize:'17px', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>×</button>
-
-                    {/* Book icon — top right, opens controls */}
-                    <div style={{ position:'absolute', top:10, right:14, zIndex:25 }}>
+                      <div style={{ position:'relative', flexShrink:0 }}>
                       <button
                         onClick={() => { setProseControlsOpen(o => !o); setProseHintSeen(true) }}
                         style={{ width:34, height:34, borderRadius:'50%', border: proseDark ? '1px solid rgba(255,255,255,0.18)' : '1px solid rgba(0,0,0,0.13)', background: proseDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.05)', fontSize:17, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}
@@ -715,6 +712,7 @@ function PlayerContent() {
                       )}
                     </div>
 
+                    </div>
                     {/* Scrollable text */}
                     <div
                       ref={proseScrollRef}
@@ -722,14 +720,13 @@ function PlayerContent() {
                       onScroll={() => {
                         const el = proseScrollRef.current
                         if (!el || el.scrollHeight <= el.clientHeight) return
+                        try { localStorage.setItem('et_prose_'+storyId, String(el.scrollTop)) } catch(_) {}
                         const pct = el.scrollTop / (el.scrollHeight - el.clientHeight)
                         const total = (story as any).prose_text.split('\n\n').length
                         setProsePage(Math.max(1, Math.min(total, Math.round(pct * total) || 1)))
                       }}
-                      style={{ flex:1, overflowY:'auto', padding:'56px 24px 72px', fontFamily:'Georgia, "Times New Roman", serif' }}
+                      style={{ flex:1, overflowY:'auto', padding:'20px 24px 72px', fontFamily:'Georgia, "Times New Roman", serif' }}
                     >
-                      <h2 style={{ fontSize:'21px', fontWeight:700, color: proseDark ? 'white' : '#1a1a1a', margin:'0 0 4px', lineHeight:1.3, textAlign:'center' }}>{story.title}</h2>
-                      <p style={{ fontSize:'12px', color: proseDark ? 'rgba(255,255,255,0.38)' : 'rgba(0,0,0,0.38)', textAlign:'center', margin:'0 0 32px', fontFamily:'system-ui,sans-serif' }}>by {story.author || 'Endless Tales'}</p>
                       {(story as any).prose_text.split('\n\n').map((para: string, i: number) => {
                         if (i === 0) {
                           const first = para.charAt(0)
