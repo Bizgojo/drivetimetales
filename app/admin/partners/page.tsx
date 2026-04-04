@@ -263,17 +263,17 @@ export default function AdminPartnersPage() {
                           ].map(f => (
                             <div key={f.key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                               <label style={{ fontSize: 12, color: muted, width: 110 }}>{f.label}</label>
-                              <input type="number" step="0.01" value={(agreement as any)[f.key]} onChange={e => setAgreement(a => ({ ...a, [f.key]: parseFloat(e.target.value) || 0 }))} style={{ width: 80, padding: '5px 8px', border: `1px solid ${border}`, borderRadius: 6, fontSize: 13 }} />
+                              <input type="number" step="0.01" value={(agreement as any)[f.key]} onChange={e => setAgreement(a => ({ ...a, [f.key]: parseFloat(e.target.value) || 0 }))} style={{ width: 80, padding: '5px 8px', border: `1px solid ${border}`, borderRadius: 6, fontSize: 13, background: '#fff', color: '#111' }} />
                             </div>
                           ))}
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <label style={{ fontSize: 12, color: muted, width: 110 }}>Sub payout</label>
-                            <select value={agreement.sub_payout_type} onChange={e => setAgreement(a => ({ ...a, sub_payout_type: e.target.value }))} style={{ padding: '5px 8px', border: `1px solid ${border}`, borderRadius: 6, fontSize: 13 }}>
+                            <select value={agreement.sub_payout_type} onChange={e => setAgreement(a => ({ ...a, sub_payout_type: e.target.value }))} style={{ padding: '5px 8px', border: `1px solid ${border}`, borderRadius: 6, fontSize: 13, background: '#fff', color: '#111' }}>
                               <option value="one_time">One-time</option>
                               <option value="monthly">Monthly</option>
                             </select>
                             {agreement.sub_payout_type === 'monthly' && (
-                              <input type="number" value={agreement.sub_payout_months} onChange={e => setAgreement(a => ({ ...a, sub_payout_months: parseInt(e.target.value) || 1 }))} style={{ width: 50, padding: '5px 8px', border: `1px solid ${border}`, borderRadius: 6, fontSize: 13 }} />
+                              <input type="number" value={agreement.sub_payout_months} onChange={e => setAgreement(a => ({ ...a, sub_payout_months: parseInt(e.target.value) || 1 }))} style={{ width: 50, padding: '5px 8px', border: `1px solid ${border}`, borderRadius: 6, fontSize: 13, background: '#fff', color: '#111' }} />
                             )}
                             {agreement.sub_payout_type === 'monthly' && <span style={{ fontSize: 11, color: muted }}>months</span>}
                           </div>
@@ -358,12 +358,12 @@ export default function AdminPartnersPage() {
               ].map(f => (
                 <div key={f.key}>
                   <label style={{ fontSize: 12, color: muted, display: 'block', marginBottom: 4 }}>{f.label}</label>
-                  <input value={(form as any)[f.key]} onChange={e => setForm(fm => ({ ...fm, [f.key]: e.target.value }))} placeholder={f.placeholder} style={{ width: '100%', padding: '8px 10px', border: `1px solid ${border}`, borderRadius: 8, fontSize: 14, boxSizing: 'border-box' }} />
+                  <input value={(form as any)[f.key]} onChange={e => setForm(fm => ({ ...fm, [f.key]: e.target.value }))} placeholder={f.placeholder} style={{ width: '100%', padding: '8px 10px', border: `1px solid ${border}`, borderRadius: 8, fontSize: 14, boxSizing: 'border-box', background: '#fff', color: '#111' }} />
                 </div>
               ))}
               <div>
                 <label style={{ fontSize: 12, color: muted, display: 'block', marginBottom: 4 }}>Notes</label>
-                <textarea value={form.notes} onChange={e => setForm(fm => ({ ...fm, notes: e.target.value }))} rows={2} style={{ width: '100%', padding: '8px 10px', border: `1px solid ${border}`, borderRadius: 8, fontSize: 14, boxSizing: 'border-box', resize: 'none' }} />
+                <textarea value={form.notes} onChange={e => setForm(fm => ({ ...fm, notes: e.target.value }))} rows={2} style={{ width: '100%', padding: '8px 10px', border: `1px solid ${border}`, borderRadius: 8, fontSize: 14, boxSizing: 'border-box', resize: 'none', background: '#fff', color: '#111' }} />
               </div>
               <div style={{ borderTop: `1px solid ${border}`, paddingTop: 12 }}>
                 <div style={{ fontWeight: 600, fontSize: 13, color: text, marginBottom: 8 }}>Pay rates (optional — set now or later)</div>
@@ -374,7 +374,7 @@ export default function AdminPartnersPage() {
                 ].map(f => (
                   <div key={f.key} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                     <label style={{ fontSize: 12, color: muted, width: 120 }}>{f.label}</label>
-                    <input type="number" step="0.01" value={(agreement as any)[f.key]} onChange={e => setAgreement(a => ({ ...a, [f.key]: parseFloat(e.target.value) || 0 }))} style={{ width: 80, padding: '5px 8px', border: `1px solid ${border}`, borderRadius: 6, fontSize: 13 }} />
+                    <input type="number" step="0.01" value={(agreement as any)[f.key]} onChange={e => setAgreement(a => ({ ...a, [f.key]: parseFloat(e.target.value) || 0 }))} style={{ width: 80, padding: '5px 8px', border: `1px solid ${border}`, borderRadius: 6, fontSize: 13, background: '#fff', color: '#111' }} />
                   </div>
                 ))}
               </div>
