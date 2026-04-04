@@ -487,19 +487,17 @@ function PlayerContent() {
         {/* Author pill */}
         <button onClick={() => setActiveModal('author')} style={{ display:'flex', flexDirection:'column', alignItems:'center', padding:'8px 14px', borderRadius:'14px', border:'1px solid rgba(255,255,255,0.18)', background:'rgba(255,255,255,0.12)', color:'white', cursor:'pointer', minWidth:90 }}>
           <span style={{ fontSize:'12px', fontWeight:700, whiteSpace:'nowrap' }}>✍️ The Author</span>
-          {authorData && <>
-            <span style={{ fontSize:'10px', color:'rgba(255,255,255,0.6)', marginTop:'2px' }}>{(authorData.follower_count||0).toLocaleString()} followers</span>
-            <span style={{ fontSize:'10px', fontWeight:700, color: authorData._following ? '#22c55e' : '#f97316', marginTop:'1px' }}>{authorData._following ? '✓ Following' : '+ Follow'}</span>
-          </>}
+          {authorData && (
+            <span style={{ fontSize:'10px', color:'rgba(255,255,255,0.8)', marginTop:'2px' }}>{(authorData.follower_count||0).toLocaleString()} followers</span>
+          )}
         </button>
 
         {/* Narrator pill */}
         <button onClick={() => setActiveModal('narrator')} style={{ display:'flex', flexDirection:'column', alignItems:'center', padding:'8px 14px', borderRadius:'14px', border:'1px solid rgba(255,255,255,0.18)', background:'rgba(255,255,255,0.12)', color:'white', cursor:'pointer', minWidth:90 }}>
           <span style={{ fontSize:'12px', fontWeight:700, whiteSpace:'nowrap' }}>🎙️ The Narrator</span>
-          {narratorData && <>
-            <span style={{ fontSize:'10px', color:'rgba(255,255,255,0.6)', marginTop:'2px' }}>{(narratorData.follower_count||0).toLocaleString()} followers</span>
-            <span style={{ fontSize:'10px', fontWeight:700, color: narratorData._following ? '#22c55e' : '#f97316', marginTop:'1px' }}>{narratorData._following ? '✓ Following' : '+ Follow'}</span>
-          </>}
+          {narratorData && (
+            <span style={{ fontSize:'10px', color:'rgba(255,255,255,0.8)', marginTop:'2px' }}>{(narratorData.follower_count||0).toLocaleString()} followers</span>
+          )}
         </button>
 
         {/* Read It pill */}
@@ -514,9 +512,10 @@ function PlayerContent() {
       <div style={{ flex:1, display:'flex', flexDirection:'column', justifyContent:'center', padding:'12px 20px 16px', gap:'12px' }}>
         <div>
           <h1 style={{ fontSize:'20px', fontWeight:800, margin:0, color:'white', textAlign:'center', lineHeight:1.2 }}>{story.title}</h1>
-          <p style={{ color:'white', fontSize:'13px', margin:'4px 0 0', textAlign:'center', opacity:0.7 }}>
-            by {story.author || 'Endless Tales'}
-          </p>
+          {(story as any).episode_number && (
+            <p style={{ color:'white', fontSize:'13px', margin:'3px 0 0', textAlign:'center', fontWeight:600 }}>Episode {(story as any).episode_number}</p>
+          )}
+          <p style={{ color:'white', fontSize:'13px', margin:'3px 0 0', textAlign:'center', opacity:0.7 }}>by {story.author || 'Endless Tales'}</p>
           {isASC3 && sectionLabel && isPlaying && (
             <p style={{ color:'#f97316', fontSize:'11px', margin:'4px 0 0', textAlign:'center', fontWeight:600 }}>
               🎙️ {sectionLabel} · {queueIndex+1}/{queue.length}
@@ -610,7 +609,8 @@ function PlayerContent() {
                         <button
                           onClick={async () => {
                             if (!user) { router.push('/signin'); return }
-                            const { data: existing } = await supabase.from('user_follows').select('id').eq('user_id', user.id).eq('entity_type', 'author').eq('entity_id', (story as any).author_id).single().catch(() => ({ data: null }))
+                            let existing = null
+                            try { const r = await supabase.from('user_follows').select('id').eq('user_id', user.id).eq('entity_type', 'author').eq('entity_id', (story as any).author_id).single(); existing = r.data } catch(_) {}
                             if (existing) {
                               await supabase.from('user_follows').delete().eq('user_id', user.id).eq('entity_type', 'author').eq('entity_id', (story as any).author_id)
                               setAuthorData((p: any) => ({ ...p, _following: false }))
