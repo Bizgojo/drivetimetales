@@ -37,6 +37,10 @@ function LandingContent() {
       }
     }
     checkAuth()
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session) router.push('/home')
+    })
+    return () => subscription.unsubscribe()
   }, [router])
 
   // Load Google Fonts via link tag (avoids hydration mismatch from @import in style)
