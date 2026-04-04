@@ -49,16 +49,10 @@ export default function GuestPage() {
       const { data } = await supabase
         .from('story_analytics')
         .select('id, title, author, genre, duration_mins, cover_url, description, series_name')
+        .eq('is_free', true)
         .not('cover_url', 'is', null)
-        .gte('duration_mins', 10)
-        .lte('duration_mins', 45)
-        .order('duration_mins', { ascending: true })
-        .limit(50)
-      // Only show standalone stories — no series episodes
-      const standalone = (data || []).filter(s =>
-        !s.series_name || s.series_name === 'None'
-      ).slice(0, 12)
-      setStories(standalone)
+        .order('title', { ascending: true })
+      setStories(data || [])
       setLoading(false)
     }
     fetchStories()
@@ -75,7 +69,7 @@ export default function GuestPage() {
     router.push(`/player/${story.id}`)
   }
 
-if (authLoading || loading) return (
+  if (authLoading || loading) return (
     <div style={{ height:'100dvh', backgroundColor:'#020617', display:'flex', alignItems:'center', justifyContent:'center' }}>
       <div style={{ width:'36px', height:'36px', border:'3px solid #f97316', borderTopColor:'transparent', borderRadius:'50%', animation:'spin 0.8s linear infinite' }} />
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
