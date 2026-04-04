@@ -196,11 +196,11 @@ function PlayerContent() {
         if (!isMarc) {
           const { data: dbUser } = await supabase
             .from('users')
-            .select('plan, subscription_ends_at')
+            .select('subscription_type, subscription_ends_at')
             .eq('id', user.id)
             .single()
           const hasAccess = (
-            dbUser?.plan === 'active' &&
+            dbUser?.subscription_type === 'active' &&
             (!dbUser?.subscription_ends_at || new Date(dbUser.subscription_ends_at) > new Date())
           )
           if (!hasAccess) {
