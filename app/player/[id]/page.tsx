@@ -59,6 +59,9 @@ function PlayerContent() {
   // ── Pills state ────────────────────────────────────────────────────────────
   const [activeModal, setActiveModal] = useState<'author' | 'narrator' | 'prose' | null>(null)
   const [proseDark, setProseDark] = useState(false)
+  const [proseFontSize, setProseFontSize] = useState(17)
+  const [prosePage, setProsePage] = useState(1)
+  const proseScrollRef = useRef<HTMLDivElement>(null)
   const [authorData, setAuthorData]   = useState<any | null>(null)
   const [narratorData, setNarratorData] = useState<any | null>(null)
 
@@ -555,7 +558,7 @@ function PlayerContent() {
         >
           <div
             onClick={e => e.stopPropagation()}
-            style={{ width:'100%', maxHeight:'88dvh', background: activeModal === 'prose' && !proseDark ? '#faf7f2' : '#0f172a', borderRadius:'20px 20px 0 0', border:'1px solid rgba(148,163,184,0.1)', display:'flex', flexDirection:'column', overflow:'hidden', transition:'background 0.2s' }}
+            style={{ width:'100%', maxHeight:'88dvh', background: activeModal === 'prose' && !proseDark ? '#faf7f2' : '#0f172a', borderRadius:'20px 20px 0 0', border:'1px solid rgba(148,163,184,0.1)', display:'flex', flexDirection:'column', overflow:'hidden', transition:'background 0.2s', position:'relative' }}
           >
             {/* Modal handle */}
             <div style={{ display:'flex', justifyContent:'center', padding:'12px 0 4px' }}>
@@ -572,8 +575,8 @@ function PlayerContent() {
               <button onClick={() => setActiveModal(null)} style={{ background: activeModal === 'prose' && !proseDark ? 'rgba(0,0,0,0.08)' : 'rgba(148,163,184,0.15)', border:'none', borderRadius:'50%', width:'32px', height:'32px', color: activeModal === 'prose' && !proseDark ? '#555' : '#94a3b8', fontSize:'18px', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', lineHeight:1 }}>×</button>
             </div>
 
-            {/* Modal body — scrollable */}
-            <div style={{ overflowY:'auto', padding:'0 20px 32px', flex:1 }}>
+            {/* Modal body — scrollable (prose manages own scroll) */}
+            <div style={{ overflowY: activeModal === 'prose' ? 'hidden' : 'auto', padding: activeModal === 'prose' ? '0' : '0 20px 32px', flex:1, display:'flex', flexDirection:'column' }}>
 
               {/* AUTHOR */}
               {activeModal === 'author' && (
@@ -671,24 +674,38 @@ function PlayerContent() {
               {/* PROSE — ebook reader */}
               {activeModal === 'prose' && (
                 (story as any).prose_text ? (
-                  <div style={{ background: proseDark ? '#0f172a' : '#faf7f2', borderRadius:12, padding:'4px 0', marginBottom:8 }}>
-                    {/* Ebook toolbar */}
-                    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 20px 16px', borderBottom: proseDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(0,0,0,0.06)' }}>
-                      <span style={{ fontSize:'11px', fontWeight:700, color: proseDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.35)', textTransform:'uppercase', letterSpacing:'0.08em' }}>
-                        {Math.ceil((story as any).prose_text.split(' ').length / 200)} min read
-                      </span>
-                      <button
-                        onClick={() => setProseDark(d => !d)}
-                        style={{ display:'flex', alignItems:'center', gap:6, padding:'5px 12px', borderRadius:'999px', border: proseDark ? '1px solid rgba(255,255,255,0.15)' : '1px solid rgba(0,0,0,0.12)', background:'transparent', color: proseDark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.5)', fontSize:'12px', fontWeight:600, cursor:'pointer' }}
+                  <>
+                    {/* Sticky toolbar — always visible */}
+                    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'4px 16px 10px', borderBottom: proseDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(0,0,0,0.08)', flexShrink:0 }}>
+                      {/* Font size controls */}
+                      <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                        <button onClick={() => setProseFontSize(s => Math.max(13, s - 1))}
+                          style={{ padding:'4px 10px', borderRadius:'6px', border: proseDark ? '1px solid rgba(255,255,255,0.15)' : '1px solid rgba(0,0,0,0.12)', background:'transparent', color: proseDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.45)', fontSize:'13px', fontWeight:700, cursor:'pointer', lineHeight:1 }}>A−</button>
+                        <button onClick={() => setProseFontSize(s => Math.min(24, s + 1))}
+                          style={{ padding:'4px 10px', borderRadius:'6px', border: proseDark ? '1px solid rgba(255,255,255,0.15)' : '1px solid rgba(0,0,0,0.12)', background:'transparent', color: proseDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.45)', fontSize:'16px', fontWeight:700, cursor:'pointer', lineHeight:1 }}>A+</button>
+                      </div>
+                      {/* Dark/light toggle */}
+                      <button onClick={() => setProseDark(d => !d)}
+                        style={{ padding:'4px 12px', borderRadius:'999px', border: proseDark ? '1px solid rgba(255,255,255,0.15)' : '1px solid rgba(0,0,0,0.12)', background:'transparent', color: proseDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.45)', fontSize:'12px', fontWeight:600, cursor:'pointer' }}
                       >{proseDark ? '☀️ Light' : '🌙 Dark'}</button>
                     </div>
-                    {/* Story text */}
-                    <div style={{ padding:'24px 24px 8px', fontFamily: 'Georgia, "Times New Roman", serif' }}>
-                      <h2 style={{ fontSize:'22px', fontWeight:700, color: proseDark ? 'white' : '#1a1a1a', margin:'0 0 6px', lineHeight:1.3, textAlign:'center' }}>{story.title}</h2>
-                      <p style={{ fontSize:'13px', color: proseDark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.4)', textAlign:'center', margin:'0 0 28px', fontFamily:'system-ui,sans-serif' }}>by {story.author || 'Endless Tales'}</p>
+                    {/* Scrollable story text */}
+                    <div
+                      ref={proseScrollRef}
+                      onScroll={() => {
+                        const el = proseScrollRef.current
+                        if (!el) return
+                        const totalPages = Math.ceil((story as any).prose_text.split('\n\n').length / 3)
+                        const pct = el.scrollTop / (el.scrollHeight - el.clientHeight)
+                        setProsePage(Math.max(1, Math.ceil(pct * totalPages) || 1))
+                      }}
+                      style={{ overflowY:'auto', flex:1, padding:'20px 24px 80px', fontFamily:'Georgia, "Times New Roman", serif' }}
+                    >
+                      <h2 style={{ fontSize:'22px', fontWeight:700, color: proseDark ? 'white' : '#1a1a1a', margin:'0 0 4px', lineHeight:1.3, textAlign:'center' }}>{story.title}</h2>
+                      <p style={{ fontSize:'13px', color: proseDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.35)', textAlign:'center', margin:'0 0 28px', fontFamily:'system-ui,sans-serif' }}>by {story.author || 'Endless Tales'}</p>
                       {(story as any).prose_text.split('\n\n').map((para: string, i: number) => (
                         <p key={i} style={{
-                          fontSize:'17px',
+                          fontSize: proseFontSize + 'px',
                           lineHeight:1.85,
                           color: proseDark ? '#e2d9c8' : '#2c2c2c',
                           margin:'0 0 20px',
@@ -697,7 +714,13 @@ function PlayerContent() {
                         }}>{para}</p>
                       ))}
                     </div>
-                  </div>
+                    {/* Sticky page counter at bottom */}
+                    <div style={{ position:'absolute', bottom:0, left:0, right:0, padding:'10px 0', textAlign:'center', background: proseDark ? 'linear-gradient(to top, #0f172a 60%, transparent)' : 'linear-gradient(to top, #faf7f2 60%, transparent)', pointerEvents:'none' }}>
+                      <span style={{ fontSize:'11px', fontWeight:600, color: proseDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.25)', letterSpacing:'0.05em' }}>
+                        {prosePage} of {Math.max(1, Math.ceil((story as any).prose_text.split('\n\n').length / 3))}
+                      </span>
+                    </div>
+                  </>
                 ) : (
                   <p style={{ color:'#475569', fontSize:'14px', textAlign:'center', marginTop:'24px' }}>Prose version coming soon.</p>
                 )
