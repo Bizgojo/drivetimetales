@@ -8,6 +8,7 @@ import ContinueListening from '@/components/ContinueListening'
 import NewReleases from '@/components/NewReleases'
 import RecommendedForYou from '@/components/RecommendedForYou'
 import BottomStickyButtons from '@/components/BottomStickyButtons'
+import YourPlaylist from '@/components/YourPlaylist'
 
 function HomeSkeleton() {
   return (
@@ -78,6 +79,7 @@ function HomeContent() {
           </div>
         )}
         <ContinueListening onIdsLoaded={(ids) => { setContinueIds(ids); setAllExcludeIds(ids) }} />
+        <YourPlaylist />
         <NewReleases excludeIds={continueIds} onIdsLoaded={(ids) => setAllExcludeIds(prev => [...new Set([...prev, ...ids])])} />
         <RecommendedForYou excludeIds={allExcludeIds} />
       </main>
