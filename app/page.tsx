@@ -23,20 +23,18 @@ function LandingContent() {
   const partner = searchParams.get('partner')
   const [partnerName, setPartnerName] = useState<string | null>(null)
 
-  // Redirect logged-in users to /home
+  // Redirect logged-in users to /home — also listens for OAuth callback session
   useEffect(() => {
     async function checkAuth() {
       try {
         const { data: { session } } = await supabase.auth.getSession()
-        if (session) {
-          router.push('/home')
-          return
-        }
+        if (session) { router.push('/home'); return }
       } catch (err) {
         console.log('[DTT] Auth check skipped:', err)
       }
     }
     checkAuth()
+    // Also listen for auth state changes — catches Google OAuth callback on iOS
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session) router.push('/home')
     })
@@ -53,13 +51,23 @@ function LandingContent() {
     }
   }, [])
 
-  // Load partner name if ?partner= is present
+  // Load partner name + fire scan tracking
   useEffect(() => {
-    if (partner) {
-      // Future: fetch from Supabase partners table
-      // For now, format the slug nicely
-      setPartnerName(partner.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()))
-    }
+    if (!partner) return
+    // Fetch real partner name from DB
+    fetch('/api/partner/name?slug=' + partner)
+      .then(r => r.json())
+      .then(d => { if (d.name) setPartnerName(d.name); else setPartnerName(partner.replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())) })
+      .catch(() => setPartnerName(partner.replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())))
+    // Fire scan event — dedupe by sessionId stored in sessionStorage
+    try {
+      const key = 'et_scan_' + partner
+      if (!sessionStorage.getItem(key)) {
+        sessionStorage.setItem(key, '1')
+        const sessionId = Math.random().toString(36).slice(2)
+        fetch('/api/partner/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slug: partner, eventType: 'scan', sessionId }) })
+      }
+    } catch (_) {}
   }, [partner])
 
   const ctaHref = partner ? `/welcome?partner=${partner}` : '/welcome'
