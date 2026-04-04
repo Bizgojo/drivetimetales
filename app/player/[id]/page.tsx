@@ -61,6 +61,8 @@ function PlayerContent() {
   const [proseDark, setProseDark] = useState(false)
   const [proseFontSize, setProseFontSize] = useState(17)
   const [prosePage, setProsePage] = useState(1)
+  const [proseControlsOpen, setProseControlsOpen] = useState(false)
+  const [proseHintSeen, setProseHintSeen] = useState(false)
   const proseScrollRef = useRef<HTMLDivElement>(null)
   const [authorData, setAuthorData]   = useState<any | null>(null)
   const [narratorData, setNarratorData] = useState<any | null>(null)
@@ -558,24 +560,27 @@ function PlayerContent() {
         >
           <div
             onClick={e => e.stopPropagation()}
-            style={{ width:'100%', maxHeight:'88dvh', background: activeModal === 'prose' && !proseDark ? '#faf7f2' : '#0f172a', borderRadius:'20px 20px 0 0', border:'1px solid rgba(148,163,184,0.1)', display:'flex', flexDirection:'column', overflow:'hidden', transition:'background 0.2s', position:'relative' }}
+            style={{ width:'100%', height: activeModal === 'prose' ? '100dvh' : 'auto', maxHeight: activeModal === 'prose' ? '100dvh' : '88dvh', background: activeModal === 'prose' ? (proseDark ? '#0f172a' : '#faf7f2') : '#0f172a', borderRadius: activeModal === 'prose' ? '0' : '20px 20px 0 0', border:'none', display:'flex', flexDirection:'column', overflow:'hidden', transition:'background 0.2s', position:'relative' }}
           >
-            {/* Modal handle */}
-            <div style={{ display:'flex', justifyContent:'center', padding:'12px 0 4px' }}>
-              <div style={{ width:'40px', height:'4px', borderRadius:'2px', background:'rgba(148,163,184,0.3)' }} />
-            </div>
+            {/* Modal handle — hidden in prose */}
+            {activeModal !== 'prose' && (
+              <div style={{ display:'flex', justifyContent:'center', padding:'12px 0 4px' }}>
+                <div style={{ width:'40px', height:'4px', borderRadius:'2px', background:'rgba(148,163,184,0.3)' }} />
+              </div>
+            )}
 
-            {/* Modal header */}
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 20px 16px' }}>
-              <span style={{ fontSize:'16px', fontWeight:800, color: activeModal === 'prose' && !proseDark ? '#1a1a1a' : 'white' }}>
-                {activeModal === 'author'   && `✍️ About ${authorData?.name || story.author || 'the Author'}`}
-                {activeModal === 'narrator' && `🎙️ About ${narratorData?.name || (story as any).narrator_voice_name || 'the Narrator'}`}
-                {activeModal === 'prose'    && `📖 ${story.title}`}
-              </span>
-              <button onClick={() => setActiveModal(null)} style={{ background: activeModal === 'prose' && !proseDark ? 'rgba(0,0,0,0.08)' : 'rgba(148,163,184,0.15)', border:'none', borderRadius:'50%', width:'32px', height:'32px', color: activeModal === 'prose' && !proseDark ? '#555' : '#94a3b8', fontSize:'18px', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', lineHeight:1 }}>×</button>
-            </div>
+            {/* Modal header — hidden in prose (prose has its own controls) */}
+            {activeModal !== 'prose' && (
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 20px 16px' }}>
+                <span style={{ fontSize:'16px', fontWeight:800, color:'white' }}>
+                  {activeModal === 'author'   && `✍️ About ${authorData?.name || story.author || 'the Author'}`}
+                  {activeModal === 'narrator' && `🎙️ About ${narratorData?.name || (story as any).narrator_voice_name || 'the Narrator'}`}
+                </span>
+                <button onClick={() => setActiveModal(null)} style={{ background:'rgba(148,163,184,0.15)', border:'none', borderRadius:'50%', width:'32px', height:'32px', color:'#94a3b8', fontSize:'18px', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', lineHeight:1 }}>×</button>
+              </div>
+            )}
 
-            {/* Modal body — scrollable (prose manages own scroll) */}
+            {/* Modal body */}
             <div style={{ overflowY: activeModal === 'prose' ? 'hidden' : 'auto', padding: activeModal === 'prose' ? '0' : '0 20px 32px', flex:1, display:'flex', flexDirection:'column' }}>
 
               {/* AUTHOR */}
@@ -671,56 +676,83 @@ function PlayerContent() {
                 )
               )}
 
-              {/* PROSE — ebook reader */}
+              {/* PROSE — full-screen ebook reader */}
               {activeModal === 'prose' && (
                 (story as any).prose_text ? (
-                  <>
-                    {/* Sticky toolbar — always visible */}
-                    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'4px 16px 10px', borderBottom: proseDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(0,0,0,0.08)', flexShrink:0 }}>
-                      {/* Font size controls */}
-                      <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                        <button onClick={() => setProseFontSize(s => Math.max(13, s - 1))}
-                          style={{ padding:'4px 10px', borderRadius:'6px', border: proseDark ? '1px solid rgba(255,255,255,0.15)' : '1px solid rgba(0,0,0,0.12)', background:'transparent', color: proseDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.45)', fontSize:'13px', fontWeight:700, cursor:'pointer', lineHeight:1 }}>A−</button>
-                        <button onClick={() => setProseFontSize(s => Math.min(24, s + 1))}
-                          style={{ padding:'4px 10px', borderRadius:'6px', border: proseDark ? '1px solid rgba(255,255,255,0.15)' : '1px solid rgba(0,0,0,0.12)', background:'transparent', color: proseDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.45)', fontSize:'16px', fontWeight:700, cursor:'pointer', lineHeight:1 }}>A+</button>
+                  <div style={{ position:'relative', flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
+
+                    {/* One-time hint */}
+                    {!proseHintSeen && (
+                      <div onClick={() => setProseHintSeen(true)} style={{ position:'absolute', top:12, left:'50%', transform:'translateX(-50%)', zIndex:30, background:'rgba(0,0,0,0.78)', color:'white', fontSize:'12px', padding:'7px 14px', borderRadius:'20px', backdropFilter:'blur(6px)', cursor:'pointer', whiteSpace:'nowrap' }}>
+                        📖 Tap the book icon for text size &amp; theme &nbsp;✕
                       </div>
-                      {/* Dark/light toggle */}
-                      <button onClick={() => setProseDark(d => !d)}
-                        style={{ padding:'4px 12px', borderRadius:'999px', border: proseDark ? '1px solid rgba(255,255,255,0.15)' : '1px solid rgba(0,0,0,0.12)', background:'transparent', color: proseDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.45)', fontSize:'12px', fontWeight:600, cursor:'pointer' }}
-                      >{proseDark ? '☀️ Light' : '🌙 Dark'}</button>
+                    )}
+
+                    {/* Close button — top left */}
+                    <button onClick={() => setActiveModal(null)} style={{ position:'absolute', top:10, left:14, zIndex:25, width:34, height:34, borderRadius:'50%', border: proseDark ? '1px solid rgba(255,255,255,0.18)' : '1px solid rgba(0,0,0,0.13)', background: proseDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.05)', color: proseDark ? 'rgba(255,255,255,0.7)' : '#555', fontSize:'17px', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>×</button>
+
+                    {/* Book icon — top right, opens controls */}
+                    <div style={{ position:'absolute', top:10, right:14, zIndex:25 }}>
+                      <button
+                        onClick={() => { setProseControlsOpen(o => !o); setProseHintSeen(true) }}
+                        style={{ width:34, height:34, borderRadius:'50%', border: proseDark ? '1px solid rgba(255,255,255,0.18)' : '1px solid rgba(0,0,0,0.13)', background: proseDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.05)', fontSize:17, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}
+                      >📖</button>
+                      {proseControlsOpen && (
+                        <div style={{ position:'absolute', top:42, right:0, background: proseDark ? '#1e293b' : '#fff', border: proseDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.1)', borderRadius:12, padding:'14px 16px', display:'flex', flexDirection:'column', gap:14, minWidth:190, boxShadow:'0 6px 24px rgba(0,0,0,0.18)', zIndex:40 }}>
+                          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                            <span style={{ fontSize:'12px', fontWeight:600, color: proseDark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.4)' }}>Text Size</span>
+                            <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                              <button onClick={() => setProseFontSize(s => Math.max(13, s - 1))} style={{ width:32, height:32, borderRadius:6, border: proseDark ? '1px solid rgba(255,255,255,0.18)' : '1px solid rgba(0,0,0,0.12)', background:'transparent', color: proseDark ? 'white' : '#222', fontSize:'14px', fontWeight:700, cursor:'pointer' }}>A−</button>
+                              <span style={{ fontSize:'12px', color: proseDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.35)', minWidth:22, textAlign:'center' }}>{proseFontSize}</span>
+                              <button onClick={() => setProseFontSize(s => Math.min(26, s + 1))} style={{ width:32, height:32, borderRadius:6, border: proseDark ? '1px solid rgba(255,255,255,0.18)' : '1px solid rgba(0,0,0,0.12)', background:'transparent', color: proseDark ? 'white' : '#222', fontSize:'17px', fontWeight:700, cursor:'pointer' }}>A+</button>
+                            </div>
+                          </div>
+                          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                            <span style={{ fontSize:'12px', fontWeight:600, color: proseDark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.4)' }}>Theme</span>
+                            <button onClick={() => setProseDark(d => !d)} style={{ padding:'5px 12px', borderRadius:'999px', border: proseDark ? '1px solid rgba(255,255,255,0.18)' : '1px solid rgba(0,0,0,0.12)', background: proseDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.04)', color: proseDark ? 'white' : '#333', fontSize:'12px', fontWeight:600, cursor:'pointer' }}>{proseDark ? '☀️ Light' : '🌙 Dark'}</button>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    {/* Scrollable story text */}
+
+                    {/* Scrollable text */}
                     <div
                       ref={proseScrollRef}
+                      onClick={() => proseControlsOpen && setProseControlsOpen(false)}
                       onScroll={() => {
                         const el = proseScrollRef.current
-                        if (!el) return
-                        const totalPages = Math.ceil((story as any).prose_text.split('\n\n').length / 3)
+                        if (!el || el.scrollHeight <= el.clientHeight) return
                         const pct = el.scrollTop / (el.scrollHeight - el.clientHeight)
-                        setProsePage(Math.max(1, Math.ceil(pct * totalPages) || 1))
+                        const total = (story as any).prose_text.split('\n\n').length
+                        setProsePage(Math.max(1, Math.min(total, Math.round(pct * total) || 1)))
                       }}
-                      style={{ overflowY:'auto', flex:1, padding:'20px 24px 80px', fontFamily:'Georgia, "Times New Roman", serif' }}
+                      style={{ flex:1, overflowY:'auto', padding:'56px 24px 72px', fontFamily:'Georgia, "Times New Roman", serif' }}
                     >
-                      <h2 style={{ fontSize:'22px', fontWeight:700, color: proseDark ? 'white' : '#1a1a1a', margin:'0 0 4px', lineHeight:1.3, textAlign:'center' }}>{story.title}</h2>
-                      <p style={{ fontSize:'13px', color: proseDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.35)', textAlign:'center', margin:'0 0 28px', fontFamily:'system-ui,sans-serif' }}>by {story.author || 'Endless Tales'}</p>
-                      {(story as any).prose_text.split('\n\n').map((para: string, i: number) => (
-                        <p key={i} style={{
-                          fontSize: proseFontSize + 'px',
-                          lineHeight:1.85,
-                          color: proseDark ? '#e2d9c8' : '#2c2c2c',
-                          margin:'0 0 20px',
-                          textIndent: i === 0 ? 0 : '1.5em',
-                          letterSpacing:'0.01em'
-                        }}>{para}</p>
-                      ))}
+                      <h2 style={{ fontSize:'21px', fontWeight:700, color: proseDark ? 'white' : '#1a1a1a', margin:'0 0 4px', lineHeight:1.3, textAlign:'center' }}>{story.title}</h2>
+                      <p style={{ fontSize:'12px', color: proseDark ? 'rgba(255,255,255,0.38)' : 'rgba(0,0,0,0.38)', textAlign:'center', margin:'0 0 32px', fontFamily:'system-ui,sans-serif' }}>by {story.author || 'Endless Tales'}</p>
+                      {(story as any).prose_text.split('\n\n').map((para: string, i: number) => {
+                        if (i === 0) {
+                          const first = para.charAt(0)
+                          const rest  = para.slice(1)
+                          return (
+                            <p key={0} style={{ fontSize: proseFontSize + 'px', lineHeight:1.85, color: proseDark ? '#e2d9c8' : '#2c2c2c', margin:'0 0 20px', letterSpacing:'0.01em', overflow:'hidden' }}>
+                              <span style={{ float:'left', fontSize:(proseFontSize * 3.6) + 'px', lineHeight:0.82, fontWeight:700, color: proseDark ? '#e2d9c8' : '#1a1a1a', marginRight:'5px', marginTop:'4px', fontFamily:'Georgia, serif' }}>{first}</span>
+                              {rest}
+                            </p>
+                          )
+                        }
+                        return <p key={i} style={{ fontSize: proseFontSize + 'px', lineHeight:1.85, color: proseDark ? '#e2d9c8' : '#2c2c2c', margin:'0 0 20px', textIndent:'1.5em', letterSpacing:'0.01em' }}>{para}</p>
+                      })}
                     </div>
-                    {/* Sticky page counter at bottom */}
-                    <div style={{ position:'absolute', bottom:0, left:0, right:0, padding:'10px 0', textAlign:'center', background: proseDark ? 'linear-gradient(to top, #0f172a 60%, transparent)' : 'linear-gradient(to top, #faf7f2 60%, transparent)', pointerEvents:'none' }}>
-                      <span style={{ fontSize:'11px', fontWeight:600, color: proseDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.25)', letterSpacing:'0.05em' }}>
-                        {prosePage} of {Math.max(1, Math.ceil((story as any).prose_text.split('\n\n').length / 3))}
+
+                    {/* Page counter — pinned bottom */}
+                    <div style={{ position:'absolute', bottom:0, left:0, right:0, height:52, display:'flex', alignItems:'center', justifyContent:'center', background: proseDark ? 'linear-gradient(to top,#0f172a 55%,transparent)' : 'linear-gradient(to top,#faf7f2 55%,transparent)', pointerEvents:'none' }}>
+                      <span style={{ fontSize:'13px', fontWeight:600, color: proseDark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.45)', letterSpacing:'0.04em' }}>
+                        {prosePage} of {Math.max(1, (story as any).prose_text.split('\n\n').length)}
                       </span>
                     </div>
-                  </>
+
+                  </div>
                 ) : (
                   <p style={{ color:'#475569', fontSize:'14px', textAlign:'center', marginTop:'24px' }}>Prose version coming soon.</p>
                 )
