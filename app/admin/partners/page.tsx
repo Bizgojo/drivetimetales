@@ -322,7 +322,7 @@ export default function AdminPartnersPage() {
                           ].map(f => (
                             <div key={f.key}>
                               {label(f.label)}
-                              <input type="number" step="0.01" value={(agreement as any)[f.key]} onChange={e => setAgreement(a => ({ ...a, [f.key]: parseFloat(e.target.value) || 0 }))} style={{ ...inpSm, width: '100%' }} />
+                              <input type="text" inputMode="decimal" value={(agreement as any)[f.key]} onChange={e => setAgreement(a => ({ ...a, [f.key]: parseFloat(e.target.value) || 0 }))} style={{ ...inpSm, width: '100%' }} />
                             </div>
                           ))}
                         </div>
@@ -333,7 +333,7 @@ export default function AdminPartnersPage() {
                             <option value="monthly">Monthly</option>
                           </select>
                           {agreement.sub_payout_type === 'monthly' && <>
-                            <input type="number" min={1} max={24} value={agreement.sub_payout_months} onChange={e => setAgreement(a => ({ ...a, sub_payout_months: parseInt(e.target.value) || 1 }))} style={{ ...inpSm, width: 60 }} />
+                            <input type="text" inputMode="numeric" value={agreement.sub_payout_months} onChange={e => setAgreement(a => ({ ...a, sub_payout_months: parseInt(e.target.value) || 1 }))} style={{ ...inpSm, width: 60 }} />
                             <span style={{ fontSize: 13, color: muted }}>months</span>
                             {agreement.sub_payout_months > 0 && <span style={{ fontSize: 12, color: '#059669', fontWeight: 600 }}>{fmt$(agreement.sub_rate / agreement.sub_payout_months)}/mo per sub</span>}
                           </>}
@@ -387,11 +387,11 @@ export default function AdminPartnersPage() {
                             </div>
                             <div>
                               {label('Qty')}
-                              <input type="number" min={0} value={newMaterial.quantity} onChange={e => setNewMaterial(m => ({ ...m, quantity: parseInt(e.target.value) || 0 }))} style={{ ...inpSm, width: '100%' }} />
+                              <input type="text" inputMode="numeric" value={newMaterial.quantity} onChange={e => setNewMaterial(m => ({ ...m, quantity: parseInt(e.target.value) || 0 }))} style={{ ...inpSm, width: '100%' }} />
                             </div>
                             <div>
                               {label('Cost $')}
-                              <input type="number" step="0.01" min={0} value={newMaterial.cost} onChange={e => setNewMaterial(m => ({ ...m, cost: parseFloat(e.target.value) || 0 }))} style={{ ...inpSm, width: '100%' }} />
+                              <input type="text" inputMode="decimal" value={newMaterial.cost} onChange={e => setNewMaterial(m => ({ ...m, cost: parseFloat(e.target.value) || 0 }))} style={{ ...inpSm, width: '100%' }} />
                             </div>
                             <div>
                               {label('Shipped')}
@@ -497,7 +497,7 @@ export default function AdminPartnersPage() {
                 <div style={{ fontWeight: 600, fontSize: 13, color: text, marginBottom: 10 }}>Pay Rates (optional)</div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
                   {[{ label: '$ per scan', key: 'scan_rate' }, { label: '$ per trial', key: 'trial_rate' }, { label: '$ per subscription', key: 'sub_rate' }].map(f => (
-                    <div key={f.key}>{label(f.label)}<input type="number" step="0.01" value={(agreement as any)[f.key]} onChange={e => setAgreement(a => ({ ...a, [f.key]: parseFloat(e.target.value) || 0 }))} style={inp} /></div>
+                    <div key={f.key}>{label(f.label)}<input type="text" inputMode="decimal" value={(agreement as any)[f.key]} onChange={e => setAgreement(a => ({ ...a, [f.key]: parseFloat(e.target.value) || 0 }))} style={inp} /></div>
                   ))}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
@@ -507,7 +507,7 @@ export default function AdminPartnersPage() {
                     <option value="monthly">Monthly</option>
                   </select>
                   {agreement.sub_payout_type === 'monthly' && <>
-                    <input type="number" min={1} max={24} value={agreement.sub_payout_months} onChange={e => setAgreement(a => ({ ...a, sub_payout_months: parseInt(e.target.value) || 1 }))} style={{ ...inpSm, width: 60 }} />
+                    <input type="text" inputMode="numeric" value={agreement.sub_payout_months} onChange={e => setAgreement(a => ({ ...a, sub_payout_months: parseInt(e.target.value) || 1 }))} style={{ ...inpSm, width: 60 }} />
                     <span style={{ fontSize: 13, color: muted }}>months</span>
                     {agreement.sub_payout_months > 0 && <span style={{ fontSize: 12, color: '#059669', fontWeight: 600 }}>{fmt$(agreement.sub_rate / agreement.sub_payout_months)}/mo per sub</span>}
                   </>}
