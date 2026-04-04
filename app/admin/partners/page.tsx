@@ -62,6 +62,9 @@ export default function AdminPartnersPage() {
   const [msg, setMsg] = useState('')
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
   const [generatingPayout, setGeneratingPayout] = useState(false)
+  const [sortBy, setSortBy] = useState<'name' | 'scans' | 'trial_rate' | 'sub_rate' | 'owed'>('name')
+  const [period, setPeriod] = useState<'all' | 'month' | 'lastmonth' | '90days'>('all')
+  const [allEvents, setAllEvents] = useState<any[]>([])
 
   useEffect(() => { load() }, [])
 
@@ -75,6 +78,7 @@ export default function AdminPartnersPage() {
       supabase.from('partner_materials').select('*').order('created_at', { ascending: false }),
     ])
 
+    setAllEvents(events || [])
     const statsMap: Record<string, Partner['stats']> = {}
     ;(events || []).forEach((e: any) => {
       if (!statsMap[e.partner_id]) statsMap[e.partner_id] = { scans: 0, trials: 0, subs: 0, owed: 0 }
@@ -197,6 +201,39 @@ export default function AdminPartnersPage() {
     load()
   }
 
+  // Filter events by period
+  const now = new Date()
+  const periodStart = period === 'all' ? null
+    : period === 'month' ? new Date(now.getFullYear(), now.getMonth(), 1)
+    : period === 'lastmonth' ? new Date(now.getFullYear(), now.getMonth() - 1, 1)
+    : new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
+  const periodEnd = period === 'lastmonth' ? new Date(now.getFullYear(), now.getMonth(), 0) : now
+
+  const filteredPartners = [...partners].map(p => {
+    const pevents = allEvents.filter((e: any) => {
+      if (e.partner_id !== p.id) return false
+      if (periodStart) {
+        const t = new Date(e.created_at)
+        if (t < periodStart || t > periodEnd) return false
+      }
+      return true
+    })
+    const scans = pevents.filter((e: any) => e.event_type === 'scan').length
+    const trials = pevents.filter((e: any) => e.event_type === 'trial').length
+    const subs = pevents.filter((e: any) => e.event_type === 'subscription').length
+    const owed = pevents.filter((e: any) => !e.paid_out).reduce((s: number, e: any) => s + Number(e.amount_owed), 0)
+    const trialRate = scans > 0 ? Math.round((trials / scans) * 100) : 0
+    const subRate = trials > 0 ? Math.round((subs / trials) * 100) : 0
+    return { ...p, filteredStats: { scans, trials, subs, owed, trialRate, subRate } }
+  }).sort((a, b) => {
+    if (sortBy === 'name') return a.name.localeCompare(b.name)
+    if (sortBy === 'scans') return b.filteredStats.scans - a.filteredStats.scans
+    if (sortBy === 'trial_rate') return b.filteredStats.trialRate - a.filteredStats.trialRate
+    if (sortBy === 'sub_rate') return b.filteredStats.subRate - a.filteredStats.subRate
+    if (sortBy === 'owed') return b.filteredStats.owed - a.filteredStats.owed
+    return 0
+  })
+
   const cell = { padding: '10px 12px', borderBottom: `1px solid ${border}`, fontSize: 13, color: text }
   const th = { ...cell, fontWeight: 600, color: muted, background: '#f9fafb', fontSize: 12 }
   const label = (txt: string) => <label style={{ fontSize: 12, color: muted, display: 'block', marginBottom: 4, fontWeight: 500 }}>{txt}</label>
@@ -225,11 +262,33 @@ export default function AdminPartnersPage() {
       {/* Directory */}
       {tab === 'directory' && (
         <div>
+          {/* Sort + Period controls */}
+          <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 12, color: muted, fontWeight: 600 }}>Period:</span>
+              {(['all', 'month', 'lastmonth', '90days'] as const).map(p => (
+                <button key={p} onClick={() => setPeriod(p)} style={{ background: period === p ? orange : '#f3f4f6', color: period === p ? '#fff' : muted, border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                  {p === 'all' ? 'All time' : p === 'month' ? 'This month' : p === 'lastmonth' ? 'Last month' : '90 days'}
+                </button>
+              ))}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
+              <span style={{ fontSize: 12, color: muted, fontWeight: 600 }}>Sort:</span>
+              <select value={sortBy} onChange={e => setSortBy(e.target.value as any)} style={{ padding: '4px 8px', border: `1px solid ${border}`, borderRadius: 6, fontSize: 12, background: '#fff', color: text }}>
+                <option value='name'>Name</option>
+                <option value='scans'>Most scans</option>
+                <option value='trial_rate'>Trial rate %</option>
+                <option value='sub_rate'>Sub rate %</option>
+                <option value='owed'>Amount owed</option>
+              </select>
+            </div>
+          </div>
+
           {partners.length === 0 ? (
             <div style={{ textAlign: 'center', padding: 48, color: muted }}>No partners yet. Add your first partner above.</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {partners.map(p => (
+              {filteredPartners.map(p => (
                 <div key={p.id} style={{ background: card, border: `1px solid ${border}`, borderRadius: 12, overflow: 'hidden' }}>
 
                   {/* Header */}
@@ -253,15 +312,16 @@ export default function AdminPartnersPage() {
                   {/* Stats */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', borderBottom: `1px solid ${border}` }}>
                     {[
-                      { label: 'Scans', count: p.stats?.scans || 0, amount: fmt$((p.agreement?.scan_rate || 0) * (p.stats?.scans || 0)) },
-                      { label: 'Trials', count: p.stats?.trials || 0, amount: fmt$((p.agreement?.trial_rate || 0) * (p.stats?.trials || 0)) },
-                      { label: 'Subscriptions', count: p.stats?.subs || 0, amount: fmt$((p.agreement?.sub_rate || 0) * (p.stats?.subs || 0)) },
-                      { label: 'Total owed', count: null, amount: fmt$(p.stats?.owed || 0) },
+                      { label: 'Scans', count: (p as any).filteredStats?.scans ?? p.stats?.scans ?? 0, sub: null, amount: fmt$((p.agreement?.scan_rate || 0) * ((p as any).filteredStats?.scans ?? p.stats?.scans ?? 0)) },
+                      { label: 'Trials', count: (p as any).filteredStats?.trials ?? p.stats?.trials ?? 0, sub: (p as any).filteredStats?.trialRate != null ? `${(p as any).filteredStats.trialRate}% of scans` : null, amount: fmt$((p.agreement?.trial_rate || 0) * ((p as any).filteredStats?.trials ?? p.stats?.trials ?? 0)) },
+                      { label: 'Subscriptions', count: (p as any).filteredStats?.subs ?? p.stats?.subs ?? 0, sub: (p as any).filteredStats?.subRate != null ? `${(p as any).filteredStats.subRate}% of trials` : null, amount: fmt$((p.agreement?.sub_rate || 0) * ((p as any).filteredStats?.subs ?? p.stats?.subs ?? 0)) },
+                      { label: 'Total owed', count: null, sub: null, amount: fmt$((p as any).filteredStats?.owed ?? p.stats?.owed ?? 0) },
                     ].map(s => (
                       <div key={s.label} style={{ padding: '12px 16px', borderRight: `1px solid ${border}` }}>
                         <div style={{ fontSize: 11, color: muted, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{s.label}</div>
                         {s.count !== null && <div style={{ fontSize: 22, fontWeight: 700, color: text, lineHeight: 1 }}>{s.count}</div>}
-                        <div style={{ fontSize: 13, fontWeight: 600, color: s.label === 'Total owed' ? '#92400e' : '#059669', marginTop: s.count !== null ? 3 : 0 }}>{s.amount}</div>
+                        {(s as any).sub && <div style={{ fontSize: 11, color: muted, marginTop: 1 }}>{(s as any).sub}</div>}
+                        <div style={{ fontSize: 13, fontWeight: 600, color: s.label === 'Total owed' ? '#92400e' : '#059669', marginTop: 2 }}>{s.amount}</div>
                       </div>
                     ))}
                   </div>
