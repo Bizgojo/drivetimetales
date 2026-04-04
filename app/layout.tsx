@@ -3,7 +3,6 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { AuthProvider } from '@/contexts/AuthContext'
 import HomeHintToast from '@/components/HomeHintToast';
-import InstallAppBanner from '@/components/InstallAppBanner';
 import PWABackGuard from '@/components/PWABackGuard';
 
 export const metadata: Metadata = {
@@ -46,7 +45,6 @@ export default function RootLayout({
       <body className="bg-gray-950 text-white min-h-screen antialiased">
         <AuthProvider>
         <HomeHintToast />
-          <InstallAppBanner />
           <PWABackGuard />
           {children}
         </AuthProvider>

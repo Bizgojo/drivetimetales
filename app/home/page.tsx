@@ -8,6 +8,7 @@ import ContinueListening from '@/components/ContinueListening'
 import NewReleases from '@/components/NewReleases'
 import RecommendedForYou from '@/components/RecommendedForYou'
 import BottomStickyButtons from '@/components/BottomStickyButtons'
+import InstallAppBanner from '@/components/InstallAppBanner'
 import YourPlaylist from '@/components/YourPlaylist'
 
 function HomeSkeleton() {
@@ -83,6 +84,7 @@ function HomeContent() {
         <NewReleases excludeIds={continueIds} onIdsLoaded={(ids) => setAllExcludeIds(prev => [...new Set([...prev, ...ids])])} />
         <RecommendedForYou excludeIds={allExcludeIds} />
       </main>
+      <InstallAppBanner />
       <BottomStickyButtons />
     </div>
   )
