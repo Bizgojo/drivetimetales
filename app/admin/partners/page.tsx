@@ -6,7 +6,7 @@ import QRCode from 'qrcode'
 const bg = '#FAF9F6', card = '#fff', border = '#e5e7eb', text = '#111', muted = '#6b7280', orange = '#f97316'
 
 const inp = { width: '100%', padding: '9px 12px', border: `1.5px solid #d1d5db`, borderRadius: 8, fontSize: 14, boxSizing: 'border-box' as const, background: '#fff', color: '#111', outline: 'none' }
-const inpSm = { padding: '7px 10px', border: `1.5px solid #d1d5db`, borderRadius: 6, fontSize: 14, background: '#fff', color: '#111', outline: 'none' }
+const inpSm = { padding: '7px 10px', border: `1.5px solid #d1d5db`, borderRadius: 6, fontSize: 14, background: '#fff', color: '#111', outline: 'none', appearance: 'none' as const }
 
 interface Partner {
   id: string; name: string; slug: string; email: string | null; phone: string | null
@@ -35,6 +35,12 @@ interface Payout {
 const APP_URL = 'https://endless-tales.com'
 const MATERIAL_TYPES = ['Posters', 'Static Cling (Window)', 'Stickers', 'Table Tents', 'Business Cards', 'Flyers', 'Other']
 function fmt$(n: number) { return '$' + Number(n).toFixed(2) }
+function fmtPhone(v: string): string {
+  const d = v.replace(/\D/g, '').slice(0, 10)
+  if (d.length < 4) return d
+  if (d.length < 7) return `(${d.slice(0,3)}) ${d.slice(3)}`
+  return `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`
+}
 const blankMaterial = (): Material => ({ material_type: 'Posters', quantity: 0, cost: 0, shipped_at: '', notes: '' })
 
 export default function AdminPartnersPage() {
@@ -308,6 +314,7 @@ export default function AdminPartnersPage() {
                           {agreement.sub_payout_type === 'monthly' && <>
                             <input type="number" min={1} max={24} value={agreement.sub_payout_months} onChange={e => setAgreement(a => ({ ...a, sub_payout_months: parseInt(e.target.value) || 1 }))} style={{ ...inpSm, width: 60 }} />
                             <span style={{ fontSize: 13, color: muted }}>months</span>
+                            {agreement.sub_payout_months > 0 && <span style={{ fontSize: 12, color: '#059669', fontWeight: 600 }}>{fmt$(agreement.sub_rate / agreement.sub_payout_months)}/mo per sub</span>}
                           </>}
                           <button onClick={() => saveAgreement(p.id)} disabled={saving} style={{ marginLeft: 'auto', background: orange, color: '#fff', border: 'none', borderRadius: 6, padding: '7px 18px', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>{saving ? 'Saving...' : 'Save Agreement'}</button>
                         </div>
@@ -440,7 +447,7 @@ export default function AdminPartnersPage() {
                 <div style={{ gridColumn: '1 / -1' }}>{label('Partner name *')}<input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Acme Trucking Co." style={inp} /></div>
                 <div>{label('Slug (URL) *')}<input value={form.slug} onChange={e => setForm(f => ({ ...f, slug: e.target.value }))} placeholder="acme-trucking" style={inp} /></div>
                 <div>{label('Business email')}<input value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="info@acme.com" style={inp} /></div>
-                <div>{label('Business phone')}<input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="+1 555 000 0000" style={inp} /></div>
+                <div>{label('Business phone')}<input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: fmtPhone(e.target.value) }))} placeholder="(555) 000-0000" style={inp} /></div>
               </div>
 
               <div style={{ borderTop: `1px solid ${border}`, paddingTop: 12 }}>
@@ -449,7 +456,7 @@ export default function AdminPartnersPage() {
                   <div>{label('Name')}<input value={form.contact_name} onChange={e => setForm(f => ({ ...f, contact_name: e.target.value }))} placeholder="Jane Smith" style={inp} /></div>
                   <div>{label('Title')}<input value={form.contact_title} onChange={e => setForm(f => ({ ...f, contact_title: e.target.value }))} placeholder="Manager" style={inp} /></div>
                   <div>{label('Email')}<input value={form.contact_email} onChange={e => setForm(f => ({ ...f, contact_email: e.target.value }))} placeholder="jane@acme.com" style={inp} /></div>
-                  <div>{label('Phone')}<input value={form.contact_phone} onChange={e => setForm(f => ({ ...f, contact_phone: e.target.value }))} placeholder="+1 555 111 2222" style={inp} /></div>
+                  <div>{label('Phone')}<input value={form.contact_phone} onChange={e => setForm(f => ({ ...f, contact_phone: fmtPhone(e.target.value) }))} placeholder="(555) 111-2222" style={inp} /></div>
                 </div>
               </div>
 
@@ -481,6 +488,7 @@ export default function AdminPartnersPage() {
                   {agreement.sub_payout_type === 'monthly' && <>
                     <input type="number" min={1} max={24} value={agreement.sub_payout_months} onChange={e => setAgreement(a => ({ ...a, sub_payout_months: parseInt(e.target.value) || 1 }))} style={{ ...inpSm, width: 60 }} />
                     <span style={{ fontSize: 13, color: muted }}>months</span>
+                    {agreement.sub_payout_months > 0 && <span style={{ fontSize: 12, color: '#059669', fontWeight: 600 }}>{fmt$(agreement.sub_rate / agreement.sub_payout_months)}/mo per sub</span>}
                   </>}
                 </div>
               </div>
