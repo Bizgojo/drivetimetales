@@ -65,8 +65,8 @@ export default function YourPlaylist() {
         }}
       >
         {/* Playlist icon */}
-        <div style={{ width: 76, height: 76, flexShrink: 0, margin: '9px 0 9px 9px', borderRadius: 7, background: '#0a0a0f', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <img src="/images/playlist_icon.png" alt="Playlist" style={{ width: '90%', height: '90%', objectFit: 'contain' }} />
+        <div style={{ width: 76, height: 76, flexShrink: 0, margin: '9px 0 9px 9px', borderRadius: 7, background: 'linear-gradient(135deg, #1e3a5f, #1a1a2e)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32 }}>
+          🎧
         </div>
 
         {/* Body */}
