@@ -23,7 +23,7 @@ const GUEST_MINUTE_GATE = 30
 
 export default function GuestPage() {
   const router = useRouter()
-  const { user } = useAuth()
+  const { user, loading: authLoading } = useAuth()
   const [stories, setStories] = useState<Story[]>([])
   const [loading, setLoading] = useState(true)
   const [showPrompt, setShowPrompt] = useState(false)
@@ -31,8 +31,8 @@ export default function GuestPage() {
   const [guestMinutes, setGuestMinutes] = useState(0)
 
   useEffect(() => {
-    if (user) router.replace('/home')
-  }, [user, router])
+    if (!authLoading && user) router.replace('/home')
+  }, [user, authLoading, router])
 
   useEffect(() => {
     const s = parseInt(localStorage.getItem('et_guest_stories') || '0', 10)
@@ -74,6 +74,13 @@ export default function GuestPage() {
     setGuestStories(newCount)
     router.push(`/player/${story.id}`)
   }
+
+  if (authLoading) return (
+    <div style={{ height:'100dvh', backgroundColor:'#020617', display:'flex', alignItems:'center', justifyContent:'center' }}>
+      <div style={{ width:'36px', height:'36px', border:'3px solid #f97316', borderTopColor:'transparent', borderRadius:'50%', animation:'spin 0.8s linear infinite' }} />
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  )
 
   if (showPrompt) {
     return (
