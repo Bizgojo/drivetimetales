@@ -49,7 +49,8 @@ export default function YourPlaylist() {
   const nextTitles = stories.slice(completed, completed + 3).map(s => s.title)
 
   return (
-    <section style={{ padding: '1rem 1rem 0' }}>
+    <section style={{ padding: '1.5rem 1rem 0' }}>
+      <h2 style={{ color: 'white', fontSize: 18, fontWeight: 800, margin: '0 0 8px' }}>Your Playlist</h2>
       <div
         onClick={() => router.push('/player/playlist')}
         style={{
@@ -70,7 +71,6 @@ export default function YourPlaylist() {
 
         {/* Body */}
         <div style={{ flex: 1, padding: '9px 36px 9px 9px', minWidth: 0 }}>
-          <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#f97316', marginBottom: 2 }}>Your Playlist</div>
           <div style={{ fontWeight: 700, fontSize: 13, color: 'white', lineHeight: 1.2, marginBottom: 2 }}>
             {remaining} {remaining === 1 ? 'Story' : 'Stories'} · {totalMins} min remaining
           </div>
@@ -91,10 +91,8 @@ export default function YourPlaylist() {
         {/* Delete button */}
         <button
           onClick={e => { e.stopPropagation(); clear() }}
-          style={{ position: 'absolute', top: 8, right: 8, background: 'none', border: 'none', color: 'rgba(255,255,255,0.25)', fontSize: 16, cursor: 'pointer', lineHeight: 1, padding: '2px 4px' }}
-        >
-          ✕
-        </button>
+          style={{ position: 'absolute', top: 8, right: 8, width: 24, height: 24, background: 'rgba(100,116,139,0.4)', border: '1px solid rgba(148,163,184,0.2)', borderRadius: '50%', color: '#94a3b8', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >x</button>
       </div>
     </section>
   )
