@@ -395,6 +395,7 @@ function PlayerContent() {
   }
 
   const fmt = (s: number) => `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, '0')}`
+  const fmtMin = (s: number) => (s / 60).toFixed(1) + ' min'
   const effTotal = totalDur > 0 ? totalDur : (story?.duration_mins || 0) * 60
   const effCur   = isASC3 ? cumTime : currentTime
   const pct      = effTotal > 0 ? Math.min(100, (effCur / effTotal) * 100) : 0
@@ -533,8 +534,9 @@ function PlayerContent() {
           <div onClick={handleSeek} style={{ height:'6px', backgroundColor:'rgba(255,255,255,0.15)', borderRadius:'3px', overflow:'hidden', cursor:'pointer' }}>
             <div style={{ height:'100%', backgroundColor:'#f97316', width:`${pct}%`, transition:'width 0.1s', borderRadius:'3px' }} />
           </div>
-          <div style={{ display:'flex', justifyContent:'space-between', fontSize:'11px', color:'white', opacity:0.5, marginTop:'4px' }}>
-            <span>{fmt(effCur)}</span><span>{fmt(effTotal)}</span>
+          <div style={{ display:'flex', justifyContent:'space-between', fontSize:'11px', color:'white', marginTop:'5px' }}>
+            <span style={{ opacity:0.9 }}>{fmtMin(effTotal)} total</span>
+            <span style={{ opacity:0.9 }}>{fmtMin(Math.max(0, effTotal - effCur))} left</span>
           </div>
         </div>
         <div style={{ display:'flex', gap:'12px' }}>
