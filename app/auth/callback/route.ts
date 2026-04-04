@@ -56,10 +56,13 @@ export async function GET(request: Request) {
   )
 
   const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+  console.log('[AuthCallback] Exchange result:', { hasSession: !!data?.session, hasError: !!error, errorMsg: error?.message, userId: data?.session?.user?.id?.slice(0,8) })
+  console.log('[AuthCallback] Cookies to set:', cookiesToSet.length)
+  console.log('[AuthCallback] Return URL:', origin)
 
   if (error || !data.session) {
     console.error('[AuthCallback] Code exchange failed:', error?.message)
-    return NextResponse.redirect(`${origin}/signin?error=auth_failed`)
+    return NextResponse.redirect(`${origin}/signin?error=auth_failed&reason=${encodeURIComponent(error?.message || 'no_session')}`)
   }
 
   // Ensure user profile exists in DB (non-blocking)
@@ -83,6 +86,7 @@ export async function GET(request: Request) {
 
   // Read returnTo from cookie set by /api/auth/google
   const returnTo = cookieStore.get('auth_return_to')?.value || '/home'
+  console.log('[AuthCallback] returnTo:', returnTo, '| auth_return_to cookie:', cookieStore.get('auth_return_to')?.value)
 
   const response = NextResponse.redirect(`${origin}${returnTo}`)
 
