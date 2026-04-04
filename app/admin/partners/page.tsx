@@ -107,8 +107,29 @@ export default function AdminPartnersPage() {
   async function generateQR(partner: Partner) {
     const url = `${APP_URL}/?partner=${partner.slug}`
     try {
-      const dataUrl = await QRCode.toDataURL(url, { width: 400, margin: 2, color: { dark: '#000', light: '#fff' } })
-      setQrDataUrl(dataUrl)
+      const qr = await QRCode.toDataURL(url, { width: 400, margin: 2, color: { dark: '#000', light: '#fff' } })
+      // Composite QR + partner name onto canvas
+      const canvas = document.createElement('canvas')
+      const size = 400
+      const pad = 16
+      const nameH = 48
+      canvas.width = size + pad * 2
+      canvas.height = size + pad * 2 + nameH
+      const ctx = canvas.getContext('2d')!
+      ctx.fillStyle = '#fff'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      const img = new Image()
+      img.src = qr
+      await new Promise(r => { img.onload = r })
+      ctx.drawImage(img, pad, pad, size, size)
+      ctx.fillStyle = '#111'
+      ctx.font = 'bold 22px system-ui, sans-serif'
+      ctx.textAlign = 'center'
+      ctx.fillText(partner.name, canvas.width / 2, size + pad * 2 + 18)
+      ctx.font = '14px system-ui, sans-serif'
+      ctx.fillStyle = '#666'
+      ctx.fillText(`${APP_URL}/?partner=${partner.slug}`, canvas.width / 2, size + pad * 2 + 38)
+      setQrDataUrl(canvas.toDataURL('image/png'))
     } catch {}
   }
 
