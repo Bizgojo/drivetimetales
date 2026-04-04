@@ -43,6 +43,7 @@ export default function AdminLayout({
     { href: '/admin/el-usage', label: 'ElevenLabs Usage', icon: '🎙️' },
     { href: '/admin/story-creation', label: 'Story Creation', icon: '✍️' },
     { href: '/admin/stories', label: 'Stories', icon: '📚' },
+    { href: '/admin/guest-stories', label: 'Guest Stories', icon: '👤' },
     { href: '/admin/genres', label: 'Genres', icon: '🎭' },
     { href: '/admin/users', label: 'Users', icon: '👥' },
     { href: '/admin/analytics', label: 'Analytics', icon: '📈' },
