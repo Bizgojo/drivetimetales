@@ -21,6 +21,7 @@ export default function SubscribePage() {
     }}>
       <div style={{ textAlign: 'center', marginBottom: '32px' }}>
         <img src="/images/et-logo.png" alt="Endless Tales" style={{ height: '80px', objectFit: 'contain' }} />
+        <div style={{ fontSize: '22px', fontWeight: 900, color: 'white', marginTop: '8px', letterSpacing: '-0.5px' }}>Endless <span style={{ color: '#f97316' }}>Tales</span></div>
       </div>
 
       <div style={{
