@@ -87,7 +87,7 @@ export default function ReferPage() {
     setLoading(false)
   }
 
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://drivetimetales.vercel.app'
+  const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://endless-tales.com').trim().replace(/\/+$/, '')
   const referralLink = baseUrl + '/welcome?ref=' + referralCode
   const rewardText = currentOffer ? (currentOffer.offer_type === 'free_days' ? currentOffer.referrer_reward + ' days free' : currentOffer.referrer_reward + ' credits') : '2 weeks free'
   const shareText = 'Hey! ' + userName + ' is giving you 2 weeks free on Endless Tales — audio stories for your commute, road trip, or downtime. ' + userName + ' says you\'ll love it! Click the link and you both get ' + rewardText + ':'
