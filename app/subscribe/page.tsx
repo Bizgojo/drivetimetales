@@ -35,11 +35,11 @@ export default function SubscribePage() {
         <div style={{ fontSize: '44px', marginBottom: '16px' }}>🎧</div>
 
         <h1 style={{ fontSize: '22px', fontWeight: 900, margin: '0 0 12px', lineHeight: 1.2 }}>
-          {firstName ? `${firstName}, your` : 'Your'} free trial has ended
+          {firstName ? `${firstName}, unlock` : 'Unlock'} full access
         </h1>
 
         <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: '15px', lineHeight: 1.7, margin: '0 0 28px' }}>
-          Subscribe to keep listening to original audio dramas — made for people on the move.
+          Original audio dramas made for people on the move. Subscribe to get full access to every story.
         </p>
 
         <div style={{
@@ -54,7 +54,7 @@ export default function SubscribePage() {
           <div style={{ marginTop: '12px', fontSize: '13px', color: 'rgba(255,255,255,0.75)', lineHeight: 1.8 }}>
             ✓ Full access to all stories<br />
             ✓ New stories added weekly<br />
-            ✓ Listen anywhere — offline ready
+            ✓ Listen or read — even offline
           </div>
         </div>
 
@@ -66,19 +66,10 @@ export default function SubscribePage() {
             cursor: 'pointer', marginBottom: '12px',
           }}
         >
-          Start 14-Day Free Trial →
+          Subscribe Now →
         </button>
 
-        <button
-          onClick={() => router.push('/guest')}
-          style={{
-            width: '100%', padding: '14px', background: 'transparent',
-            color: 'rgba(255,255,255,0.45)', border: '1px solid rgba(255,255,255,0.1)',
-            borderRadius: '12px', fontSize: '14px', fontWeight: 600, cursor: 'pointer',
-          }}
-        >
-          Browse as guest
-        </button>
+
         <button
           onClick={() => router.push('/account/promo')}
           style={{ width: '100%', padding: '12px', background: 'transparent', color: 'rgba(255,255,255,0.3)', border: 'none', fontSize: '13px', fontWeight: 500, cursor: 'pointer', marginTop: '4px' }}
