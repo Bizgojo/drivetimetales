@@ -18,7 +18,6 @@ interface StoryItem {
   episode_number?: number | null
 }
 
-// What gets added to the actual playlist queue (always individual episodes)
 interface PlaylistEntry {
   id: string
   title: string
@@ -26,9 +25,9 @@ interface PlaylistEntry {
   genre: string
   duration_mins: number
   cover_url: string | null
+  audio_url?: string | null
 }
 
-// Display item: either a single story or a whole series collapsed into one card
 interface SingleCard {
   kind: 'single'
   story: StoryItem
@@ -40,12 +39,13 @@ interface SeriesCard {
   cover_url: string | null
   total_mins: number
   episode_count: number
-  episodes: PlaylistEntry[]   // ordered ep1→epN
+  episodes: PlaylistEntry[]
   genre: string
 }
 type LibraryCard = SingleCard | SeriesCard
 
 const STORAGE_KEY = 'dtt_active_playlist'
+const OFFLINE_KEY  = 'dtt_offline_ready'
 
 function formatDuration(mins: number): string {
   if (mins < 60) return `${mins} min`
@@ -54,14 +54,49 @@ function formatDuration(mins: number): string {
   return m > 0 ? `${h}h ${m}m` : `${h}h`
 }
 
+// ── Download helpers ──────────────────────────────────────────────────────────
+
+async function resolveAudioUrls(entries: PlaylistEntry[]): Promise<PlaylistEntry[]> {
+  return Promise.all(entries.map(async entry => {
+    if (entry.audio_url) return entry
+    try {
+      const { data } = await supabase
+        .from('stories')
+        .select('audio_url')
+        .eq('id', entry.id)
+        .single()
+      return { ...entry, audio_url: data?.audio_url || null }
+    } catch {
+      return entry
+    }
+  }))
+}
+
+async function cacheAudioFile(url: string): Promise<boolean> {
+  try {
+    const cache = await caches.open('et-audio-v1')
+    const existing = await cache.match(url)
+    if (existing) return true // already cached
+    const response = await fetch(url, { cache: 'no-store' })
+    if (response.ok) {
+      await cache.put(url, response)
+      return true
+    }
+    return false
+  } catch {
+    return false
+  }
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
+
 function LibraryPlaylistContent() {
   const router = useRouter()
   const { user, loading: authLoading } = useAuth()
   const [cards, setCards] = useState<LibraryCard[]>([])
   const [playlist, setPlaylist] = useState<PlaylistEntry[]>(() => {
-    // Initialize immediately from localStorage so bottom bar shows on first render
     try {
-      const raw = localStorage.getItem('dtt_playlist') || localStorage.getItem('dtt_active_playlist')
+      const raw = localStorage.getItem('dtt_playlist') || localStorage.getItem(STORAGE_KEY)
       if (raw) {
         const parsed = JSON.parse(raw)
         return Array.isArray(parsed) ? parsed : (parsed.stories || [])
@@ -75,6 +110,13 @@ function LibraryPlaylistContent() {
   const [selectedType, setSelectedType] = useState('Singles & Series')
   const [selectedGroup, setSelectedGroup] = useState('')
 
+  // Download state
+  const [downloading, setDownloading] = useState(false)
+  const [downloadProgress, setDownloadProgress] = useState(0) // 0-100
+  const [downloadTotal, setDownloadTotal] = useState(0)
+  const [downloadDone, setDownloadDone] = useState(false)
+  const [downloadLabel, setDownloadLabel] = useState('')
+
   useEffect(() => {
     if (authLoading) return
     if (!user) { setLoading(false); return }
@@ -83,8 +125,6 @@ function LibraryPlaylistContent() {
 
   const loadData = async () => {
     setLoading(true)
-
-    // Fetch ALL published stories (not just user library — so all content is available for playlists)
     const { data } = await supabase
       .from('stories')
       .select('id, title, author, genre, duration_mins, cover_url, series_name, episode_number')
@@ -98,19 +138,16 @@ function LibraryPlaylistContent() {
       series_name: s.series_name, episode_number: s.episode_number,
     }))
 
-    // Group series episodes (already fetched above)
     const seriesEpisodesMap: Record<string, StoryItem[]> = {}
     for (const s of libraryStories) {
       if (!s.series_name) continue
       if (!seriesEpisodesMap[s.series_name]) seriesEpisodesMap[s.series_name] = []
       seriesEpisodesMap[s.series_name].push(s)
     }
-    // Sort episodes within each series
     for (const name of Object.keys(seriesEpisodesMap)) {
       seriesEpisodesMap[name].sort((a, b) => (a.episode_number || 0) - (b.episode_number || 0))
     }
 
-    // Restore existing playlist from localStorage
     let existingPlaylist: PlaylistEntry[] = []
     try {
       const raw = localStorage.getItem(STORAGE_KEY)
@@ -121,26 +158,21 @@ function LibraryPlaylistContent() {
     } catch {}
     setPlaylist(existingPlaylist)
 
-    // IDs already in playlist (don't show in available list)
     const inPlaylistIds = new Set(existingPlaylist.map(s => s.id))
-    // Series already (partially or fully) added — hide the whole series card
     const inPlaylistSeriesNames = new Set(
       existingPlaylist.map(s => (s as any).series_name).filter(Boolean)
     )
 
-    // Build display cards
     const builtCards: LibraryCard[] = []
     const seenSeries = new Set<string>()
 
     for (const story of libraryStories) {
       if (story.series_name) {
-        if (seenSeries.has(story.series_name)) continue  // already added card for this series
+        if (seenSeries.has(story.series_name)) continue
         seenSeries.add(story.series_name)
-        if (inPlaylistSeriesNames.has(story.series_name)) continue  // already in playlist
-
+        if (inPlaylistSeriesNames.has(story.series_name)) continue
         const eps = (seriesEpisodesMap[story.series_name] || [story])
           .sort((a, b) => (a.episode_number || 0) - (b.episode_number || 0))
-
         const ep1 = eps[0]
         builtCards.push({
           kind: 'series',
@@ -153,7 +185,7 @@ function LibraryPlaylistContent() {
           episodes: eps.map(e => ({
             id: e.id, title: e.title, author: e.author, genre: e.genre,
             duration_mins: e.duration_mins, cover_url: e.cover_url,
-            series_name: story.series_name,  // kept for "already in playlist" dedup
+            series_name: story.series_name,
           } as any)),
         })
       } else {
@@ -174,13 +206,17 @@ function LibraryPlaylistContent() {
       setPlaylist(prev => [...prev, card.story])
       setCards(prev => prev.filter(c => !(c.kind === 'single' && c.story.id === card.story.id)))
     }
+    // Reset offline state when playlist changes
+    setDownloadDone(false)
+    setDownloadProgress(0)
   }
 
   const removeFromPlaylist = (index: number) => {
     const entry = playlist[index]
     setPlaylist(prev => prev.filter((_, i) => i !== index))
-    // Re-add back as single card
     setCards(prev => [{ kind: 'single', story: entry as any }, ...prev])
+    setDownloadDone(false)
+    setDownloadProgress(0)
   }
 
   const moveUp = (i: number) => {
@@ -192,25 +228,60 @@ function LibraryPlaylistContent() {
     const n = [...playlist];[n[i], n[i+1]] = [n[i+1], n[i]]; setPlaylist(n)
   }
 
-  const persist = () => ({
+  const persist = (entries: PlaylistEntry[]) => ({
     id: 'user-playlist-' + Date.now(),
-    stories: playlist,
+    stories: entries,
     completed: 0,
-    remaining_mins: playlist.reduce((s, x) => s + (x.duration_mins || 0), 0),
+    remaining_mins: entries.reduce((s, x) => s + (x.duration_mins || 0), 0),
     last_played: new Date().toISOString(),
+    offline_ready: downloadDone,
   })
 
-  const saveForLater = () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(persist()))
-    router.push('/home')
+  // ── Save for Later: resolve URLs → cache all audio → save → go home ──────
+  const saveForLater = async () => {
+    setDownloading(true)
+    setDownloadProgress(0)
+    setDownloadLabel('Resolving stories...')
+
+    // Step 1: resolve all audio URLs
+    const resolved = await resolveAudioUrls(playlist)
+    const audioUrls = resolved.map(e => e.audio_url).filter(Boolean) as string[]
+    setDownloadTotal(audioUrls.length)
+
+    if (audioUrls.length === 0) {
+      // No audio URLs found — just save and go
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(persist(resolved)))
+      router.push('/home')
+      return
+    }
+
+    // Step 2: cache each audio file showing progress
+    let cached = 0
+    for (const url of audioUrls) {
+      const title = resolved.find(e => e.audio_url === url)?.title || 'story'
+      setDownloadLabel(`Downloading "${title}"...`)
+      await cacheAudioFile(url)
+      cached++
+      setDownloadProgress(Math.round((cached / audioUrls.length) * 100))
+    }
+
+    // Step 3: save playlist with resolved URLs and offline_ready flag
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(persist(resolved)))
+    localStorage.setItem(OFFLINE_KEY, 'true')
+
+    setDownloadDone(true)
+    setDownloading(false)
+    setDownloadLabel(`✓ ${audioUrls.length} stories saved for offline`)
+
+    // Brief pause to show completion, then navigate
+    setTimeout(() => router.push('/home'), 1200)
   }
 
   const playNow = () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(persist()))
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(persist(playlist)))
     router.push('/player/playlist')
   }
 
-  // Sort available cards shortest → longest (series by total, singles by duration)
   const sortedCards = [...cards].sort((a, b) => {
     const aDur = a.kind === 'series' ? a.total_mins : (a.story.duration_mins || 0)
     const bDur = b.kind === 'series' ? b.total_mins : (b.story.duration_mins || 0)
@@ -276,6 +347,20 @@ function LibraryPlaylistContent() {
         </div>
       </div>
 
+      {/* ── Download progress overlay ── */}
+      {downloading && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(2,6,23,0.92)', zIndex: 200, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+          <div style={{ fontSize: 48, marginBottom: 24 }}>📥</div>
+          <div style={{ color: 'white', fontSize: 20, fontWeight: 800, marginBottom: 8, textAlign: 'center' }}>Saving for Offline</div>
+          <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 14, marginBottom: 28, textAlign: 'center' }}>{downloadLabel}</div>
+          <div style={{ width: '100%', maxWidth: 300, background: '#1e293b', borderRadius: 8, height: 10, overflow: 'hidden', marginBottom: 12 }}>
+            <div style={{ height: '100%', background: '#f97316', borderRadius: 8, width: `${downloadProgress}%`, transition: 'width 0.3s' }} />
+          </div>
+          <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13 }}>{downloadProgress}% — {Math.round(downloadTotal * downloadProgress / 100)} of {downloadTotal} stories</div>
+          <div style={{ marginTop: 20, color: 'rgba(255,255,255,0.3)', fontSize: 12, textAlign: 'center' }}>Keep this screen open while downloading</div>
+        </div>
+      )}
+
       {/* ── Playlist queue ── */}
       {playlist.length > 0 && (
         <div style={{ padding: '8px 16px 16px' }}>
@@ -317,7 +402,6 @@ function LibraryPlaylistContent() {
                   <div style={{ position: 'relative', flexShrink: 0 }}>
                     <img src={card.cover_url || '/images/et-logo.png'} alt={card.series_name}
                       style={{ width: 80, height: 80, borderRadius: 10, objectFit: 'cover' }} />
-                    {/* Series badge */}
                     <div style={{ position: 'absolute', bottom: 4, left: 4, background: 'rgba(249,115,22,0.9)', borderRadius: 4, padding: '2px 5px', fontSize: 9, fontWeight: 800, color: 'white', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                       Series
                     </div>
@@ -354,7 +438,13 @@ function LibraryPlaylistContent() {
         <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: '#0f172a', padding: '0.5rem 1rem 0.75rem', borderTop: '1px solid #334155', zIndex: 100 }}>
           <div style={{ display: 'flex', gap: 10 }}>
             <button onClick={playNow} style={{ flex: 1, padding: '14px', background: '#22c55e', color: '#042013', border: 'none', borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>▶ Play Now</button>
-            <button onClick={saveForLater} style={{ flex: 1, padding: '14px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>💾 Save for Later</button>
+            <button
+              onClick={saveForLater}
+              disabled={downloading}
+              style={{ flex: 1, padding: '14px', background: downloadDone ? '#16a34a' : '#3b82f6', color: 'white', border: 'none', borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: downloading ? 'not-allowed' : 'pointer', opacity: downloading ? 0.8 : 1 }}
+            >
+              {downloadDone ? '✓ Saved Offline' : downloading ? 'Saving...' : '📥 Save for Later'}
+            </button>
           </div>
         </div>
       )}

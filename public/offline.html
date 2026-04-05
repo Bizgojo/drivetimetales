@@ -6,16 +6,30 @@
 <title>Endless Tales — Offline</title>
 <style>
   body { margin: 0; background: #0f172a; color: white; font-family: system-ui, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; text-align: center; padding: 24px; box-sizing: border-box; }
-  h1 { font-size: 24px; margin: 0 0 12px; } p { color: rgba(255,255,255,0.6); margin: 0 0 24px; }
-  a { background: #f97316; color: white; padding: 12px 28px; border-radius: 10px; text-decoration: none; font-weight: 700; }
+  h1 { font-size: 24px; margin: 0 0 12px; }
+  p { color: rgba(255,255,255,0.6); margin: 0 0 24px; line-height: 1.6; }
+  .btn { display: inline-block; background: #f97316; color: white; padding: 14px 32px; border-radius: 12px; text-decoration: none; font-weight: 700; font-size: 16px; margin: 6px; }
+  .btn-ghost { background: transparent; border: 1px solid rgba(255,255,255,0.2); color: rgba(255,255,255,0.6); font-size: 14px; padding: 12px 24px; }
+  .tip { margin-top: 32px; background: rgba(249,115,22,0.1); border: 1px solid rgba(249,115,22,0.3); border-radius: 12px; padding: 16px 20px; text-align: left; }
+  .tip-title { color: #f97316; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+  .tip-body { color: rgba(255,255,255,0.7); font-size: 13px; line-height: 1.6; }
 </style>
 </head>
 <body>
-  <div>
-    <div style="font-size:48px;margin-bottom:16px">🎧</div>
+  <div style="max-width: 360px; width: 100%;">
+    <div style="font-size:56px;margin-bottom:16px">🎧</div>
     <h1>You're offline</h1>
-    <p>Check your connection and try again.</p>
-    <a href="/home">Try again</a>
+    <p>If you saved a playlist for offline listening,<br>tap below to open your playlist.</p>
+    <div>
+      <a href="/player/playlist" class="btn">▶ Open My Playlist</a>
+    </div>
+    <div style="margin-top: 12px;">
+      <a href="/home" class="btn btn-ghost">Try reconnecting</a>
+    </div>
+    <div class="tip">
+      <div class="tip-title">💡 Tip for drivers</div>
+      <div class="tip-body">Before your next trip, build a playlist and tap <strong>"📥 Save for Later"</strong> — your stories will download automatically so you can listen anywhere, even without signal.</div>
+    </div>
   </div>
 </body>
 </html>
