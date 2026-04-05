@@ -9,6 +9,16 @@ import StickyHeaderFull from '@/components/StickyHeaderFull'
 interface PlaylistItem { id: string; title: string; duration_mins: number; cover_url: string | null; audio_url?: string | null }
 interface StoryData { id: string; title: string; author: string; cover_url: string | null; audio_url: string; duration_mins: number }
 
+// Tell service worker to pre-cache a list of audio URLs
+function precacheAudioUrls(urls: string[]) {
+  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage({
+      type: 'CACHE_AUDIO',
+      urls: urls.filter(Boolean)
+    })
+  }
+}
+
 function PlaylistPlayerContent() {
   const router = useRouter()
   const { user } = useAuth()
@@ -22,12 +32,13 @@ function PlaylistPlayerContent() {
   const autoPlayNext = useRef(false)
   const [nowPlayingLabel, setNowPlayingLabel] = useState<string | null>(null)
   const [audioReady, setAudioReady] = useState(false)
+  const [offlineReady, setOfflineReady] = useState(false)
   const audioRef = useRef<HTMLAudioElement>(null)
   const saveTimer = useRef<NodeJS.Timeout | null>(null)
+  // Store all resolved story data keyed by story id for offline playback
+  const resolvedStories = useRef<Map<string, StoryData>>(new Map())
 
   useEffect(() => {
-    // Read from dtt_active_playlist (saved by library-playlist page)
-    // Format: { id, stories: PlaylistItem[] } OR legacy plain array
     const raw = localStorage.getItem('dtt_active_playlist') || localStorage.getItem('dtt_playlist')
     const idx = parseInt(localStorage.getItem('dtt_playlist_index') || '0')
     if (raw) {
@@ -35,8 +46,9 @@ function PlaylistPlayerContent() {
         const parsed = JSON.parse(raw)
         const items = Array.isArray(parsed) ? parsed : (parsed.stories || [])
         if (items.length) {
-          autoPlayNext.current = true  // auto-play immediately on first load
+          autoPlayNext.current = true
           setPlaylist(items); setCurrentIndex(idx)
+          prefetchAllStories(items)
         } else { router.replace('/library') }
       } catch { router.replace('/library') }
     } else {
@@ -44,13 +56,71 @@ function PlaylistPlayerContent() {
     }
   }, [])
 
+  // Pre-fetch ALL stories in playlist upfront — resolves audio URLs and caches audio files
+  async function prefetchAllStories(items: PlaylistItem[]) {
+    const audioUrlsToCache: string[] = []
+
+    await Promise.all(items.map(async (item) => {
+      try {
+        let audioUrl = item.audio_url || null
+
+        if (!audioUrl) {
+          const { data } = await supabase
+            .from('stories')
+            .select('id, title, author, cover_url, audio_url, duration_mins')
+            .eq('id', item.id)
+            .single()
+          if (data) {
+            audioUrl = data.audio_url
+            resolvedStories.current.set(item.id, data)
+          }
+        } else {
+          resolvedStories.current.set(item.id, {
+            id: item.id,
+            title: item.title,
+            author: '',
+            cover_url: item.cover_url,
+            audio_url: audioUrl,
+            duration_mins: item.duration_mins
+          })
+        }
+
+        if (audioUrl) audioUrlsToCache.push(audioUrl)
+      } catch {
+        // Silently fail — will retry when story loads
+      }
+    }))
+
+    if (audioUrlsToCache.length > 0) {
+      precacheAudioUrls(audioUrlsToCache)
+      setOfflineReady(true)
+    }
+  }
+
   useEffect(() => {
     if (!playlist.length) return
     const item = playlist[currentIndex]; if (!item) return
     async function loadStory() {
       setLoading(true); setAudioReady(false); setCurrentTime(0); setDuration(0)
-      if (item.audio_url) { setStoryData({ id: item.id, title: item.title, author: '', cover_url: item.cover_url, audio_url: item.audio_url, duration_mins: item.duration_mins }); setLoading(false) }
-      else { const { data } = await supabase.from('stories').select('id, title, author, cover_url, audio_url, duration_mins').eq('id', item.id).single(); if (data) setStoryData(data); setLoading(false) }
+
+      // Use pre-fetched data if available (works offline)
+      const prefetched = resolvedStories.current.get(item.id)
+      if (prefetched) {
+        setStoryData(prefetched); setLoading(false)
+      } else if (item.audio_url) {
+        const story = { id: item.id, title: item.title, author: '', cover_url: item.cover_url, audio_url: item.audio_url, duration_mins: item.duration_mins }
+        resolvedStories.current.set(item.id, story)
+        setStoryData(story); setLoading(false)
+      } else {
+        try {
+          const { data } = await supabase.from('stories').select('id, title, author, cover_url, audio_url, duration_mins').eq('id', item.id).single()
+          if (data) { resolvedStories.current.set(item.id, data); setStoryData(data) }
+        } catch {
+          // Truly offline and not pre-fetched
+        }
+        setLoading(false)
+      }
+
       const saved = localStorage.getItem(`et_progress_${item.id}`)
       if (saved) { const prog = parseInt(saved); const resume = prog < 120 ? 0 : Math.max(0, prog - 15); if (audioRef.current) audioRef.current.currentTime = resume; setCurrentTime(resume) }
     }
@@ -60,7 +130,13 @@ function PlaylistPlayerContent() {
   const saveProgress = async (time: number, completed = false) => {
     const item = playlist[currentIndex]; if (!item) return
     localStorage.setItem(`et_progress_${item.id}`, String(Math.floor(time)))
-    if (user) await supabase.from('user_library').upsert({ user_id: user.id, story_id: item.id, progress: Math.floor(time), completed, last_played: new Date().toISOString() })
+    if (user) {
+      try {
+        await supabase.from('user_library').upsert({ user_id: user.id, story_id: item.id, progress: Math.floor(time), completed, last_played: new Date().toISOString() })
+      } catch {
+        // Offline — saved to localStorage, syncs when back online
+      }
+    }
   }
 
   const handleTimeUpdate = () => {
@@ -73,7 +149,7 @@ function PlaylistPlayerContent() {
   const handleEnded = async () => {
     await saveProgress(duration, true)
     if (currentIndex < playlist.length - 1) {
-      autoPlayNext.current = true  // signal next story to auto-play
+      autoPlayNext.current = true
       const n = currentIndex + 1
       const nextItem = playlist[n]
       if (nextItem) { setNowPlayingLabel(nextItem.title); setTimeout(() => setNowPlayingLabel(null), 3000) }
@@ -127,7 +203,10 @@ function PlaylistPlayerContent() {
       </div>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '16px 20px', gap: '12px' }}>
         <div>
-          <p style={{ color: '#f59e0b', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 2px', textAlign: 'center' }}>Playlist · {currentIndex + 1} of {playlist.length}</p>
+          <p style={{ color: '#f59e0b', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 2px', textAlign: 'center' }}>
+            Playlist · {currentIndex + 1} of {playlist.length}
+            {offlineReady && <span style={{ marginLeft: '8px', color: '#22c55e' }}>✓ offline ready</span>}
+          </p>
           <h1 style={{ fontSize: '20px', fontWeight: 800, margin: 0, color: 'white', textAlign: 'center', lineHeight: 1.2 }}>{storyData.title}</h1>
           <p style={{ color: '#94a3b8', fontSize: '13px', margin: '4px 0 0', textAlign: 'center' }}>{storyData.author ? `by ${storyData.author} · ` : ''}{formatTime(timeRemaining)} remaining</p>
         </div>
