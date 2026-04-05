@@ -151,7 +151,7 @@ Return all ${epCount} episode outlines as a single JSON array.`
         method:'POST',
         headers:{'Content-Type':'application/json'},
         body:JSON.stringify({
-          model:'claude-opus-4-6', max_tokens:isSeries?6000:4000,
+          model:'claude-opus-4-6', max_tokens:isSeries?16000:8000,
           system:SYSTEM_PROMPT,
           messages:[{role:'user',content:prompt}]
         })
