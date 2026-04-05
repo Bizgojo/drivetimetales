@@ -46,9 +46,10 @@ export async function GET(request: NextRequest) {
   // Fetch all trialing users with subscription_start set
   const { data: users, error } = await supabase
     .from('users')
-    .select('id, email, first_name, display_name, subscription_start, subscription_type')
-    .eq('subscription_type', 'active')
-    .not('subscription_start', 'is', null)
+    .select('id, email, first_name, display_name, plan, subscription_ends_at')
+    .not('plan', 'is', null)
+    .neq('plan', 'free')
+    .not('subscription_ends_at', 'is', null)
 
   if (error || !users) {
     console.error('[trial-emails] Failed to fetch users:', error)
@@ -57,7 +58,8 @@ export async function GET(request: NextRequest) {
 
   for (const user of users) {
     try {
-      const start = new Date(user.subscription_start)
+      const trialEnd = new Date(user.subscription_ends_at)
+      const start = new Date(trialEnd.getTime() - 14 * 24 * 60 * 60 * 1000)
       const daysSinceStart = Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
       const name = user.first_name || user.display_name || 'there'
       const email = user.email
