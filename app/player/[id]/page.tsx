@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, Suspense } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { trackPlayStart, trackPlayEnd } from '@/lib/analytics'
 import { useAuth } from '@/contexts/AuthContext'
 
 interface QueueItem { url: string; type: 'intro' | 'story' | 'outro'; label: string }
@@ -32,6 +33,7 @@ function PlayerContent() {
   const resumeRef  = useRef(0)
   const typeRef    = useRef<'intro' | 'story' | 'outro'>('intro')
   const switchingRef = useRef(false) // true while swapping music src
+  const analyticsTrackedRef = useRef(false) // true after first play tracked
 
   const [story, setStory]       = useState<any | null>(null)
   const [loading, setLoading]   = useState(true)
@@ -325,6 +327,18 @@ function PlayerContent() {
         setIsPlaying(true)
         if (!user && !sessionStartRef.current) { sessionStartRef.current = Date.now() }
         if (user?.id) supabase.from('user_library').upsert({ user_id: user.id, story_id: storyId, not_for_me: false, last_played: new Date().toISOString() }, { onConflict: 'user_id,story_id' }).then(() => {})
+        // Analytics: track play start (only once per session)
+        if (!analyticsTrackedRef.current) {
+          analyticsTrackedRef.current = true
+          trackPlayStart({
+            userId: user?.id,
+            storyId,
+            genre: (story as any)?.genre,
+            author: (story as any)?.author,
+            narrator: (story as any)?.narrator_voice_name,
+            durationMins: (story as any)?.duration_mins,
+          }).catch(() => {})
+        }
         const m = musicRef.current
         if (!noMusicRef.current && m && introMusicRef.current) {
           if (!m.src || m.src === 'about:blank' || m.src === window.location.href) {
@@ -338,6 +352,17 @@ function PlayerContent() {
   }
 
   const saveProgress = async (t: number, done = false) => {
+    // Analytics: track play end on completion
+    if (done && analyticsTrackedRef.current) {
+      trackPlayEnd({
+        userId: user?.id,
+        storyId,
+        currentTime: t,
+        totalDuration: duration || (story as any)?.duration_mins * 60 || 0,
+        stopReason: 'completed',
+      }).catch(() => {})
+      analyticsTrackedRef.current = false
+    }
     if (user?.id) await supabase.from('user_library').upsert({
       user_id: user.id, story_id: storyId, progress: Math.floor(t), completed: done,
       hide_from_home: false,  // Reset dismiss if user plays again
@@ -354,6 +379,17 @@ function PlayerContent() {
 
   const handleNotForMe = async () => {
     audioRef.current?.pause(); musicRef.current?.pause()
+    // Analytics: track not_for_me
+    if (analyticsTrackedRef.current) {
+      trackPlayEnd({
+        userId: user?.id,
+        storyId,
+        currentTime: currentTime,
+        totalDuration: duration || (story as any)?.duration_mins * 60 || 0,
+        stopReason: 'not_for_me',
+      }).catch(() => {})
+      analyticsTrackedRef.current = false
+    }
     if (user?.id) {
       // Mark this episode as not_for_me
       const { error } = await supabase.from('user_library').upsert(
@@ -385,6 +421,17 @@ function PlayerContent() {
   }
   const handleBack = () => {
     audioRef.current?.pause(); musicRef.current?.pause(); saveProgress(currentTime)
+    // Analytics: track navigated_away
+    if (analyticsTrackedRef.current) {
+      trackPlayEnd({
+        userId: user?.id,
+        storyId,
+        currentTime: currentTime,
+        totalDuration: duration || (story as any)?.duration_mins * 60 || 0,
+        stopReason: 'navigated_away',
+      }).catch(() => {})
+      analyticsTrackedRef.current = false
+    }
     if (!user && sessionStartRef.current) {
       const mins = (Date.now() - sessionStartRef.current) / 60000
       const prev = parseFloat(localStorage.getItem('et_guest_minutes') || '0')
