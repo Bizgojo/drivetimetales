@@ -23,10 +23,10 @@ function requiresSubscription(pathname: string): boolean {
 }
 
 function hasActiveSubscription(
-  subscriptionType: string | null,
+  plan: string | null,
   subscriptionEndsAt: string | null
 ): boolean {
-  if (subscriptionType !== 'active') return false
+  if (!plan || plan === 'free') return false
   // If no end date set yet (e.g. during trial setup), allow access
   if (!subscriptionEndsAt) return true
   // If end date is in the past, block access
@@ -71,14 +71,14 @@ export async function middleware(request: NextRequest) {
   if (requiresSubscription(pathname)) {
     const { data: dbUser } = await supabase
       .from('users')
-      .select('plan, subscription_type, subscription_ends_at')
+      .select('plan, subscription_ends_at')
       .eq('id', user.id)
       .single()
 
     const isMarc = user.email === 'marc@endless-tales.com' || user.email === 'm.postlewaite@gmail.com' || user.email === 'm.postlewaite@gmail.com'
 
     if (!isMarc && !hasActiveSubscription(
-      dbUser?.subscription_type ?? null,
+      dbUser?.plan ?? null,
       dbUser?.subscription_ends_at ?? null
     )) {
       const subscribeUrl = new URL('/subscribe', request.url)
