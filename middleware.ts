@@ -38,6 +38,17 @@ export async function middleware(request: NextRequest) {
 
   if (PUBLIC_PREFIXES.some(p => pathname.startsWith(p))) return NextResponse.next()
   if (PUBLIC_ROUTES.has(pathname)) return NextResponse.next()
+  // If user hits the root landing page with an active session, send them home
+  if (pathname === '/') {
+    const tempSupabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { cookies: { getAll: () => request.cookies.getAll(), setAll: () => {} } }
+    )
+    const { data: { user: landingUser } } = await tempSupabase.auth.getUser()
+    if (landingUser) return NextResponse.redirect(new URL('/home', request.url))
+    return NextResponse.next()
+  }
 
   const response = NextResponse.next()
 
