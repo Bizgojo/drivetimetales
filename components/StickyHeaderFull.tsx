@@ -11,14 +11,14 @@ export default function StickyHeaderFull() {
 
   return (
     <header className="sticky top-0 z-50 bg-slate-950 border-b border-slate-800 px-4 py-3">
-      <div className="flex items-center justify-between max-w-7xl mx-auto">
+      <div className="flex items-center justify-between max-w-7xl mx-auto" style={{ position: 'relative' }}>
         <button onClick={() => router.back()} className="w-11 h-11 rounded-full flex items-center justify-center transition-colors flex-shrink-0" style={{ backgroundColor: '#3b82f6' }} aria-label="Go back">
           <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
         </button>
-        <Link href="/home" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}>
-          <img src="/icons/icon-192x192.png" alt="Endless Tales" style={{ width: '36px', height: '36px', borderRadius: '8px', marginRight: '8px' }} />
+        <Link href="/home" style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', display: 'flex', alignItems: 'center', textDecoration: 'none', gap: '8px' }}>
+          <img src="/icons/icon-192x192.png" alt="Endless Tales" style={{ width: '32px', height: '32px', borderRadius: '7px', flexShrink: 0 }} />
           <span style={{ fontSize: '1.25rem', fontWeight: 700, letterSpacing: '-0.025em', whiteSpace: 'nowrap' }}>
             <span style={{ color: 'white' }}>Endless </span>
             <span style={{ color: '#fb923c' }}>Tales</span>

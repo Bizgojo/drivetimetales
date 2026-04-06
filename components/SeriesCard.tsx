@@ -51,12 +51,7 @@ export default function SeriesCard({
   const pillLabel = completed_episodes >= episode_count && episode_count > 0 ? 'Play Again' : completed_episodes > 0 ? 'Continue' : 'Play'
 
   const handleCardClick = () => {
-    // Go directly to player — use first_episode_id if available, else series page
-    if (first_episode_id) {
-      router.push(`/player/${first_episode_id}`)
-    } else {
-      router.push(`/series/${id}`)
-    }
+    router.push(`/series/${id}`)
   }
 
   const handleEpisodeBadgeClick = (e: React.MouseEvent) => {

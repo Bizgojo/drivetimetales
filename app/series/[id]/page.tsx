@@ -153,15 +153,27 @@ export default function SeriesDetailPage() {
       </div>
 
       {/* Play All button */}
-      <div style={{ padding: '14px 16px 0' }}>
-        <button
-          onClick={handlePlayAll}
-          style={{ width: '100%', padding: '14px', background: '#f97316', color: 'white', border: 'none', borderRadius: 12, fontFamily: 'var(--font-outfit, sans-serif)', fontSize: 15, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: '0 4px 12px rgba(249,115,22,0.35)' }}
-        >
-          <svg width="12" height="14" viewBox="0 0 12 14" fill="white"><path d="M1 1l10 6-10 6V1z"/></svg>
-          Play All Episodes
-        </button>
-      </div>
+      {(() => {
+        const allCompleted = episodes.length > 0 && episodes.every(ep => userProgress[ep.id]?.completed)
+        const anyInProgress = episodes.some(ep => {
+          const p = userProgress[ep.id]
+          return p && p.progress_seconds > 0 && !p.completed
+        })
+        const btnLabel = allCompleted ? 'Play Again' : anyInProgress ? 'Continue Where You Left Off' : 'Play Series'
+        const btnColor = allCompleted ? '#3b82f6' : anyInProgress ? '#22c55e' : '#f97316'
+        const btnShadow = allCompleted ? '0 4px 12px rgba(59,130,246,0.35)' : anyInProgress ? '0 4px 12px rgba(34,197,94,0.35)' : '0 4px 12px rgba(249,115,22,0.35)'
+        return (
+          <div style={{ padding: '14px 16px 0' }}>
+            <button
+              onClick={handlePlayAll}
+              style={{ width: '100%', padding: '14px', background: btnColor, color: 'white', border: 'none', borderRadius: 12, fontFamily: 'var(--font-outfit, sans-serif)', fontSize: 15, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: btnShadow }}
+            >
+              <svg width="12" height="14" viewBox="0 0 12 14" fill="white"><path d="M1 1l10 6-10 6V1z"/></svg>
+              {btnLabel}
+            </button>
+          </div>
+        )
+      })()}
 
       {/* Episode list */}
       <div style={{ padding: '14px 16px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>

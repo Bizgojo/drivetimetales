@@ -104,8 +104,8 @@ export default function HorizontalStoryCard({ id, title, genre, author, duration
       </div>
       <div style={{ flex: 1, padding: '10px 12px 10px 10px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minWidth: 0 }}>
         <div style={{ display: 'flex', gap: '5px', flexWrap: 'nowrap', minHeight: '18px', alignItems: 'center', overflow: 'hidden' }}>
-          <span style={{ fontSize: '8px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.07em', padding: '2px 7px', borderRadius: '3px', background: series_name ? '#f59e0b' : '#e11d48', color: series_name ? 'black' : 'white', whiteSpace: 'nowrap', flexShrink: 0 }}>
-            {series_name ? `Episodes - ${series_total ? series_total : ''}`.trim() : 'Single'}
+          <span style={{ fontSize: '8px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.07em', padding: '2px 7px', borderRadius: '3px', background: series_name && series_total && series_total > 1 ? '#f59e0b' : '#e11d48', color: series_name && series_total && series_total > 1 ? 'black' : 'white', whiteSpace: 'nowrap', flexShrink: 0 }}>
+            {series_name && series_total && series_total > 1 ? `Episodes - ${series_total}` : 'Single'}
           </span>
           {displayFlags.map(f => 
             f === 'not-for-me' 
