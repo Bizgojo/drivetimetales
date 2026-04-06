@@ -13,6 +13,16 @@ const AUTHORS = [
   'Caroline Drake','Marc Hobelman',
 ]
 
+const DURATIONS = [
+  { label: 'AI decides', value: '', words: 0 },
+  { label: '15 min (~2,000 words)', value: '15 min', words: 2000 },
+  { label: '20 min (~2,600 words)', value: '20 min', words: 2600 },
+  { label: '30 min (~3,900 words)', value: '30 min', words: 3900 },
+  { label: '45 min (~5,850 words)', value: '45 min', words: 5850 },
+  { label: '60 min (~7,800 words)', value: '60 min', words: 7800 },
+  { label: '90 min (~11,700 words)', value: '90 min', words: 11700 },
+]
+
 // Best authors per genre (primary, secondary)
 const GENRE_AUTHORS: Record<string, string[]> = {
   'Thriller':         ['Sara Keene','Mark Holbrook'],
@@ -113,6 +123,7 @@ export default function StoryGeneratorPage() {
   const [outlines,setOutlines] = useState<Outline[]>([])
   const [error,setError] = useState('')
   const [expandedIdx,setExpandedIdx] = useState<number|null>(null)
+  const [duration,setDuration] = useState('')
 
   const bg='#FAF9F6',card='#fff',border='#e5e7eb',text='#111',muted='#6b7280',orange='#f97316'
   const inp = {padding:'10px 14px',border:`1.5px solid ${border}`,borderRadius:10,fontSize:14,color:text,background:'#fff',outline:'none',boxSizing:'border-box' as const}
@@ -131,8 +142,10 @@ export default function StoryGeneratorPage() {
       const genreInstr = genre !== 'Any' ? `Genre: ${genre}. ` : ''
       const authorInstr = author !== 'Any' ? `Author: ${author}. ` : suggestedAuthors.length > 0 ? `Suggested authors for this genre: ${suggestedAuthors.join(' or ')}. Pick one. ` : ''
       const seedInstr = seedIdea.trim() ? `Series concept: "${seedIdea.trim()}". ` : ''
+      const selectedDurSeries = DURATIONS.find(d => d.value === duration)
+      const durationInstrSeries = duration ? `Target duration per episode: ${duration} (approx ${selectedDurSeries?.words.toLocaleString()} words at 130 wpm). Set duration_target to "${duration}" for all episodes. ` : ''
 
-      prompt = `${titleHint}${genreInstr}${authorInstr}${seedInstr}
+      prompt = `${titleHint}${genreInstr}${authorInstr}${durationInstrSeries}${seedInstr}
 Generate a complete series of ${epCount} episode outlines. 
 Episodes 1 through ${epCount-1} must each end on a HARD CLIFFHANGER.
 Episode ${epCount} is the SERIES FINALE — it must resolve ALL threads completely with a satisfying ending. No cliffhanger on the finale.
@@ -143,7 +156,9 @@ Return all ${epCount} episode outlines as a single JSON array.`
       const genreInstr = genre !== 'Any' ? `Genre: ${genre}. ` : ''
       const authorInstr = author !== 'Any' ? `Author: ${author}. ` : suggestedAuthors.length > 0 ? `Suggested authors for this genre: ${suggestedAuthors.join(' or ')}. ` : ''
       const seedInstr = seedIdea.trim() ? `Seed idea: "${seedIdea.trim()}". ` : ''
-      prompt = `${genreInstr}${authorInstr}${seedInstr}Generate ${count} standalone story outlines. Each must have a complete, satisfying, clearly-signaled ending — the listener must know the story is finished. Describe the ending in the ending_note field. Set episode_number and total_episodes to null, is_finale to false.`
+      const selectedDur = DURATIONS.find(d => d.value === duration)
+      const durationInstr = duration ? `Target duration: ${duration} (approximately ${selectedDur?.words.toLocaleString()} words at 130 words per minute). Set duration_target to "${duration}". ` : ''
+      prompt = `${genreInstr}${authorInstr}${durationInstr}${seedInstr}Generate ${count} standalone story outlines. Each must have a complete, satisfying, clearly-signaled ending — the listener must know the story is finished. Describe the ending in the ending_note field. Set episode_number and total_episodes to null, is_finale to false.`
     }
 
     try {
@@ -185,7 +200,7 @@ Return all ${epCount} episode outlines as a single JSON array.`
           </button>
         </div>
 
-        <div style={{display:'grid',gridTemplateColumns:isSeries?'1fr 1fr 1fr 1fr':'140px 1fr 1fr 1fr',gap:16,marginBottom:16}}>
+        <div style={{display:'grid',gridTemplateColumns:isSeries?'1fr 1fr 1fr 1fr 1fr':'140px 1fr 1fr 1fr 1fr',gap:16,marginBottom:16}}>
 
           {/* Count — standalone only */}
           {!isSeries&&(
@@ -214,6 +229,15 @@ Return all ${epCount} episode outlines as a single JSON array.`
               </div>
             </>
           )}
+
+          {/* Duration */}
+          <div>
+            <label style={{display:'block',color:muted,fontSize:12,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:6}}>Duration</label>
+            <select value={duration} onChange={e=>setDuration(e.target.value)} style={{...inp,width:'100%'}}>
+              {DURATIONS.map(d=><option key={d.value} value={d.value}>{d.label}</option>)}
+            </select>
+            {duration&&<div style={{color:orange,fontSize:11,fontWeight:600,marginTop:4}}>≈ {DURATIONS.find(d=>d.value===duration)?.words.toLocaleString()} words</div>}
+          </div>
 
           {/* Genre */}
           <div>
