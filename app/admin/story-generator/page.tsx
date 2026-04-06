@@ -165,6 +165,25 @@ Return all ${epCount} episode outlines as a single JSON array.`
     setLoading(false)
   }
 
+  async function approveAndSend(outline: Outline, idx: number) {
+    setPipelineStatus(p => ({ ...p, [idx]: 'writing' }))
+    setPipelineMsg(p => ({ ...p, [idx]: 'Claude Opus is writing the full script...' }))
+    try {
+      const res = await fetch('/api/admin/pipeline', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ outline }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Pipeline failed')
+      setPipelineStatus(p => ({ ...p, [idx]: 'done' }))
+      setPipelineMsg(p => ({ ...p, [idx]: `✅ Sent to Hal as ${data.filename}` }))
+    } catch (e: any) {
+      setPipelineStatus(p => ({ ...p, [idx]: 'error' }))
+      setPipelineMsg(p => ({ ...p, [idx]: `❌ ${e.message}` }))
+    }
+  }
+
   return (
     <div style={{minHeight:'100vh',background:bg,padding:28,fontFamily:'-apple-system,sans-serif'}}>
       <div style={{marginBottom:24}}>
