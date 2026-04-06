@@ -28,6 +28,24 @@ interface PlaylistEntry {
   audio_url?: string | null
 }
 
+interface PlaylistItem {
+  type: 'single' | 'series'
+  // single fields
+  id?: string
+  title?: string
+  author?: string
+  genre?: string
+  duration_mins?: number
+  cover_url?: string | null
+  audio_url?: string | null
+  // series fields
+  series_name?: string
+  series_id?: string
+  total_mins?: number
+  episode_count?: number
+  episodes?: PlaylistEntry[]
+}
+
 interface SingleCard {
   kind: 'single'
   story: StoryItem
@@ -94,7 +112,7 @@ function LibraryPlaylistContent() {
   const router = useRouter()
   const { user, loading: authLoading } = useAuth()
   const [cards, setCards] = useState<LibraryCard[]>([])
-  const [playlist, setPlaylist] = useState<PlaylistEntry[]>(() => {
+  const [playlist, setPlaylist] = useState<PlaylistItem[]>(() => {
     try {
       const raw = localStorage.getItem('dtt_playlist') || localStorage.getItem(STORAGE_KEY)
       if (raw) {
@@ -200,21 +218,58 @@ function LibraryPlaylistContent() {
 
   const addToPlaylist = (card: LibraryCard) => {
     if (card.kind === 'series') {
-      setPlaylist(prev => [...prev, ...card.episodes])
+      const seriesItem: PlaylistItem = {
+        type: 'series',
+        series_name: card.series_name,
+        series_id: card.episodes[0]?.id,
+        cover_url: card.cover_url,
+        author: card.author,
+        genre: card.genre,
+        total_mins: card.total_mins,
+        episode_count: card.episode_count,
+        episodes: card.episodes,
+      }
+      setPlaylist(prev => [...prev, seriesItem])
       setCards(prev => prev.filter(c => !(c.kind === 'series' && c.series_name === card.series_name)))
     } else {
-      setPlaylist(prev => [...prev, card.story])
+      const singleItem: PlaylistItem = {
+        type: 'single',
+        id: card.story.id,
+        title: card.story.title,
+        author: card.story.author,
+        genre: card.story.genre,
+        duration_mins: card.story.duration_mins,
+        cover_url: card.story.cover_url,
+      }
+      setPlaylist(prev => [...prev, singleItem])
       setCards(prev => prev.filter(c => !(c.kind === 'single' && c.story.id === card.story.id)))
     }
-    // Reset offline state when playlist changes
     setDownloadDone(false)
     setDownloadProgress(0)
   }
 
   const removeFromPlaylist = (index: number) => {
-    const entry = playlist[index]
+    const item = playlist[index]
     setPlaylist(prev => prev.filter((_, i) => i !== index))
-    setCards(prev => [{ kind: 'single', story: entry as any }, ...prev])
+    if (item.type === 'series') {
+      const seriesCard: SeriesCard = {
+        kind: 'series',
+        series_name: item.series_name!,
+        author: item.author!,
+        cover_url: item.cover_url || null,
+        total_mins: item.total_mins!,
+        episode_count: item.episode_count!,
+        episodes: item.episodes!,
+        genre: item.genre!,
+      }
+      setCards(prev => [seriesCard, ...prev])
+    } else {
+      const singleCard: SingleCard = {
+        kind: 'single',
+        story: { id: item.id!, title: item.title!, author: item.author!, genre: item.genre!, duration_mins: item.duration_mins!, cover_url: item.cover_url || null }
+      }
+      setCards(prev => [singleCard, ...prev])
+    }
     setDownloadDone(false)
     setDownloadProgress(0)
   }
@@ -228,11 +283,11 @@ function LibraryPlaylistContent() {
     const n = [...playlist];[n[i], n[i+1]] = [n[i+1], n[i]]; setPlaylist(n)
   }
 
-  const persist = (entries: PlaylistEntry[]) => ({
+  const persist = (items: PlaylistItem[]) => ({
     id: 'user-playlist-' + Date.now(),
-    stories: entries,
+    items,
     completed: 0,
-    remaining_mins: entries.reduce((s, x) => s + (x.duration_mins || 0), 0),
+    remaining_mins: items.reduce((s, x) => s + (x.type === 'series' ? (x.total_mins || 0) : (x.duration_mins || 0)), 0),
     last_played: new Date().toISOString(),
     offline_ready: downloadDone,
   })
@@ -309,7 +364,7 @@ function LibraryPlaylistContent() {
     return true
   })
 
-  const totalPlaylistMins = playlist.reduce((s, x) => s + (x.duration_mins || 0), 0)
+  const totalPlaylistMins = playlist.reduce((s, x) => s + (x.type === 'series' ? (x.total_mins || 0) : (x.duration_mins || 0)), 0)
 
   if (loading) return (
     <div style={{ background: '#020617', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -365,15 +420,27 @@ function LibraryPlaylistContent() {
       {playlist.length > 0 && (
         <div style={{ padding: '8px 16px 16px' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {playlist.map((entry, i) => (
-              <div key={`${entry.id}-${i}`} style={{ background: '#253347', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 10, padding: '0 10px 0 0', border: '2px solid rgba(249,115,22,0.4)', overflow: 'hidden' }}>
+            {playlist.map((item, i) => (
+              <div key={`${item.type === 'series' ? item.series_name : item.id}-${i}`} style={{ background: '#253347', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 10, padding: '0 10px 0 0', border: '2px solid rgba(249,115,22,0.4)', overflow: 'hidden' }}>
                 <div style={{ position: 'relative', flexShrink: 0, width: 72, alignSelf: 'stretch', minHeight: 72 }}>
-                  <img src={entry.cover_url || '/images/et-logo.png'} alt={entry.title} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                  <img src={item.cover_url || '/images/et-logo.png'} alt={item.type === 'series' ? item.series_name : item.title} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                   <div style={{ position: 'absolute', bottom: 4, left: 4, background: 'rgba(0,0,0,0.75)', color: 'white', fontSize: 15, fontWeight: 900, width: 26, height: 26, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{i + 1}</div>
+                  {item.type === 'series' && (
+                    <div style={{ position: 'absolute', top: 4, left: 4, background: 'rgba(249,115,22,0.9)', borderRadius: 3, padding: '1px 4px', fontSize: 8, fontWeight: 800, color: 'white', textTransform: 'uppercase' }}>Series</div>
+                  )}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ color: 'white', fontSize: 14, fontWeight: 700, marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{entry.title}</div>
-                  <div style={{ color: '#ffffff', fontSize: 12 }}>{formatDuration(entry.duration_mins)} · {entry.author}</div>
+                  <div style={{ color: 'white', fontSize: 14, fontWeight: 700, marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {item.type === 'series' ? item.series_name : item.title}
+                  </div>
+                  <div style={{ color: '#ffffff', fontSize: 12 }}>
+                    {item.type === 'series'
+                      ? `${item.episode_count} episodes · ${formatDuration(item.total_mins || 0)} · ${item.author}`
+                      : `${formatDuration(item.duration_mins || 0)} · ${item.author}`}
+                  </div>
+                  {item.type === 'series' && (
+                    <div style={{ color: '#22c55e', fontSize: 11, marginTop: 2 }}>▶ Continues where you left off</div>
+                  )}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                   {i > 0 && <button onClick={() => moveUp(i)} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: 'white', cursor: 'pointer', fontSize: 12, width: 28, height: 28, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>▲</button>}
@@ -411,7 +478,7 @@ function LibraryPlaylistContent() {
                     <div style={{ color: '#ffffff', fontSize: 12 }}>{card.genre}</div>
                     <div style={{ color: '#ffffff', fontSize: 12 }}>{card.episode_count} episodes · {formatDuration(card.total_mins)} total · {card.author}</div>
                   </div>
-                  <div style={{ flexShrink: 0, background: '#22c55e', borderRadius: 20, padding: '6px 14px', fontSize: 13, fontWeight: 700, color: '#042013' }}>+ Add All</div>
+                  <div style={{ flexShrink: 0, background: '#f97316', borderRadius: 20, padding: '6px 14px', fontSize: 13, fontWeight: 700, color: 'white' }}>+ Add All</div>
                 </div>
               )
             } else {

@@ -6,7 +6,21 @@ import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 import StickyHeaderFull from '@/components/StickyHeaderFull'
 
-interface PlaylistItem { id: string; title: string; duration_mins: number; cover_url: string | null; audio_url?: string | null }
+interface EpisodeEntry { id: string; title: string; duration_mins: number; cover_url: string | null; audio_url?: string | null }
+interface PlaylistItem {
+  type: 'single' | 'series'
+  // single fields
+  id?: string
+  title?: string
+  duration_mins?: number
+  cover_url?: string | null
+  audio_url?: string | null
+  // series fields
+  series_name?: string
+  total_mins?: number
+  episode_count?: number
+  episodes?: EpisodeEntry[]
+}
 interface StoryData { id: string; title: string; author: string; cover_url: string | null; audio_url: string; duration_mins: number }
 
 // Tell service worker to pre-cache a list of audio URLs
@@ -44,11 +58,15 @@ function PlaylistPlayerContent() {
     if (raw) {
       try {
         const parsed = JSON.parse(raw)
-        const items = Array.isArray(parsed) ? parsed : (parsed.stories || [])
+        // Support new format (items array) and legacy format (stories array)
+        const items: PlaylistItem[] = parsed.items
+          ? parsed.items
+          : Array.isArray(parsed)
+            ? parsed.map((s: any) => ({ type: 'single', ...s }))
+            : (parsed.stories || []).map((s: any) => ({ type: 'single', ...s }))
         if (items.length) {
           autoPlayNext.current = true
           setPlaylist(items); setCurrentIndex(idx)
-          prefetchAllStories(items)
         } else { router.replace('/library') }
       } catch { router.replace('/library') }
     } else {
@@ -97,42 +115,100 @@ function PlaylistPlayerContent() {
     }
   }
 
+  // Track which episode we're on within a series item
+  const [seriesEpisodeIndex, setSeriesEpisodeIndex] = useState(0)
+
+  // Resolve the actual episode to play from current playlist item
+  async function resolveCurrentEpisode(item: PlaylistItem, epIdx: number): Promise<{ storyId: string; resumeAt: number } | null> {
+    if (item.type === 'single') {
+      const storyId = item.id!
+      // Check user_library for resume point
+      let resumeAt = 0
+      if (user?.id) {
+        const { data } = await supabase.from('user_library').select('progress, completed').eq('user_id', user.id).eq('story_id', storyId).single().catch(() => ({ data: null }))
+        if (data && !data.completed && data.progress > 120) resumeAt = Math.max(0, data.progress - 15)
+      }
+      return { storyId, resumeAt }
+    } else {
+      // Series — find smart episode to start from
+      const episodes = item.episodes || []
+      if (episodes.length === 0) return null
+      if (epIdx > 0 && epIdx < episodes.length) {
+        // Already mid-series, use provided index
+        const ep = episodes[epIdx]
+        let resumeAt = 0
+        if (user?.id) {
+          const { data } = await supabase.from('user_library').select('progress, completed').eq('user_id', user.id).eq('story_id', ep.id).single().catch(() => ({ data: null }))
+          if (data && !data.completed && data.progress > 120) resumeAt = Math.max(0, data.progress - 15)
+        }
+        return { storyId: ep.id, resumeAt }
+      }
+      // Smart start: find in-progress ep, or first unstarted, or ep1
+      if (user?.id) {
+        const ids = episodes.map(e => e.id)
+        const { data: progressData } = await supabase.from('user_library').select('story_id, progress, completed').eq('user_id', user.id).in('story_id', ids).catch(() => ({ data: null }))
+        const progressMap: Record<string, { progress: number; completed: boolean }> = {}
+        if (progressData) progressData.forEach((p: any) => { progressMap[p.story_id] = { progress: p.progress || 0, completed: p.completed || false } })
+        // Find in-progress episode
+        const inProgressEp = episodes.find(e => { const p = progressMap[e.id]; return p && p.progress > 0 && !p.completed })
+        if (inProgressEp) {
+          const p = progressMap[inProgressEp.id]
+          const resumeAt = p.progress > 120 ? Math.max(0, p.progress - 15) : 0
+          const idx = episodes.findIndex(e => e.id === inProgressEp.id)
+          setSeriesEpisodeIndex(idx)
+          return { storyId: inProgressEp.id, resumeAt }
+        }
+        // Find first unstarted after last completed
+        let lastCompletedIdx = -1
+        episodes.forEach((e, i) => { if (progressMap[e.id]?.completed) lastCompletedIdx = i })
+        if (lastCompletedIdx >= 0 && lastCompletedIdx < episodes.length - 1) {
+          const nextEp = episodes[lastCompletedIdx + 1]
+          setSeriesEpisodeIndex(lastCompletedIdx + 1)
+          return { storyId: nextEp.id, resumeAt: 0 }
+        }
+        // All completed — play from ep1
+        const allCompleted = episodes.every(e => progressMap[e.id]?.completed)
+        if (allCompleted) { setSeriesEpisodeIndex(0); return { storyId: episodes[0].id, resumeAt: 0 } }
+      }
+      // No user or no progress — start from ep1
+      setSeriesEpisodeIndex(0)
+      return { storyId: episodes[0].id, resumeAt: 0 }
+    }
+  }
+
   useEffect(() => {
     if (!playlist.length) return
     const item = playlist[currentIndex]; if (!item) return
+    setSeriesEpisodeIndex(0)
     async function loadStory() {
       setLoading(true); setAudioReady(false); setCurrentTime(0); setDuration(0)
-
-      // Use pre-fetched data if available (works offline)
-      const prefetched = resolvedStories.current.get(item.id)
+      const resolved = await resolveCurrentEpisode(item, 0)
+      if (!resolved) { setLoading(false); return }
+      const { storyId, resumeAt } = resolved
+      const prefetched = resolvedStories.current.get(storyId)
       if (prefetched) {
-        setStoryData(prefetched); setLoading(false)
-      } else if (item.audio_url) {
-        const story = { id: item.id, title: item.title, author: '', cover_url: item.cover_url, audio_url: item.audio_url, duration_mins: item.duration_mins }
-        resolvedStories.current.set(item.id, story)
-        setStoryData(story); setLoading(false)
+        setStoryData(prefetched)
+        if (resumeAt > 0 && audioRef.current) { audioRef.current.currentTime = resumeAt; setCurrentTime(resumeAt) }
+        setLoading(false)
       } else {
         try {
-          const { data } = await supabase.from('stories').select('id, title, author, cover_url, audio_url, duration_mins').eq('id', item.id).single()
-          if (data) { resolvedStories.current.set(item.id, data); setStoryData(data) }
-        } catch {
-          // Truly offline and not pre-fetched
-        }
+          const { data } = await supabase.from('stories').select('id, title, author, cover_url, audio_url, duration_mins').eq('id', storyId).single()
+          if (data) { resolvedStories.current.set(storyId, data); setStoryData(data) }
+        } catch {}
         setLoading(false)
+        if (resumeAt > 0 && audioRef.current) { audioRef.current.currentTime = resumeAt; setCurrentTime(resumeAt) }
       }
-
-      const saved = localStorage.getItem(`et_progress_${item.id}`)
-      if (saved) { const prog = parseInt(saved); const resume = prog < 120 ? 0 : Math.max(0, prog - 15); if (audioRef.current) audioRef.current.currentTime = resume; setCurrentTime(resume) }
     }
     loadStory()
   }, [playlist, currentIndex])
 
   const saveProgress = async (time: number, completed = false) => {
-    const item = playlist[currentIndex]; if (!item) return
-    localStorage.setItem(`et_progress_${item.id}`, String(Math.floor(time)))
+    if (!storyData?.id) return
+    const storyId = storyData.id
+    localStorage.setItem(`et_progress_${storyId}`, String(Math.floor(time)))
     if (user) {
       try {
-        await supabase.from('user_library').upsert({ user_id: user.id, story_id: item.id, progress: Math.floor(time), completed, last_played: new Date().toISOString() })
+        await supabase.from('user_library').upsert({ user_id: user.id, story_id: storyId, progress: Math.floor(time), completed, last_played: new Date().toISOString() })
       } catch {
         // Offline — saved to localStorage, syncs when back online
       }
@@ -148,11 +224,40 @@ function PlaylistPlayerContent() {
 
   const handleEnded = async () => {
     await saveProgress(duration, true)
+    const item = playlist[currentIndex]
+    // If current item is a series, check if there are more episodes
+    if (item?.type === 'series') {
+      const episodes = item.episodes || []
+      const nextEpIdx = seriesEpisodeIndex + 1
+      if (nextEpIdx < episodes.length) {
+        // Play next episode in series
+        setSeriesEpisodeIndex(nextEpIdx)
+        setLoading(true); setAudioReady(false); setCurrentTime(0); setDuration(0)
+        const nextEp = episodes[nextEpIdx]
+        setNowPlayingLabel(nextEp.title); setTimeout(() => setNowPlayingLabel(null), 3000)
+        const prefetched = resolvedStories.current.get(nextEp.id)
+        if (prefetched) {
+          setStoryData(prefetched); setLoading(false)
+        } else {
+          try {
+            const { data } = await supabase.from('stories').select('id, title, author, cover_url, audio_url, duration_mins').eq('id', nextEp.id).single()
+            if (data) { resolvedStories.current.set(nextEp.id, data); setStoryData(data) }
+          } catch {}
+          setLoading(false)
+        }
+        autoPlayNext.current = true
+        return
+      }
+    }
+    // Advance to next playlist item
     if (currentIndex < playlist.length - 1) {
       autoPlayNext.current = true
       const n = currentIndex + 1
       const nextItem = playlist[n]
-      if (nextItem) { setNowPlayingLabel(nextItem.title); setTimeout(() => setNowPlayingLabel(null), 3000) }
+      if (nextItem) {
+        const label = nextItem.type === 'series' ? nextItem.series_name! : nextItem.title!
+        setNowPlayingLabel(label); setTimeout(() => setNowPlayingLabel(null), 3000)
+      }
       localStorage.setItem('dtt_playlist_index', String(n)); setCurrentIndex(n)
     } else {
       setIsPlaying(false)
@@ -204,7 +309,7 @@ function PlaylistPlayerContent() {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '16px 20px', gap: '12px' }}>
         <div>
           <p style={{ color: '#f59e0b', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 2px', textAlign: 'center' }}>
-            Playlist · {currentIndex + 1} of {playlist.length}
+            {playlist[currentIndex]?.type === 'series' ? playlist[currentIndex].series_name : 'Playlist'} · {currentIndex + 1} of {playlist.length}
             {offlineReady && <span style={{ marginLeft: '8px', color: '#22c55e' }}>✓ offline ready</span>}
           </p>
           <h1 style={{ fontSize: '20px', fontWeight: 800, margin: 0, color: 'white', textAlign: 'center', lineHeight: 1.2 }}>{storyData.title}</h1>

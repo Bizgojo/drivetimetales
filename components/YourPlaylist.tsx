@@ -3,15 +3,20 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 
-interface PlaylistEntry {
-  id: string
-  title: string
+interface PlaylistItem {
+  type: 'single' | 'series'
+  id?: string
+  title?: string
   duration_mins?: number
+  series_name?: string
+  total_mins?: number
+  episode_count?: number
+  cover_url?: string | null
 }
-
 interface SavedPlaylist {
   id: string
-  stories: PlaylistEntry[]
+  items?: PlaylistItem[]
+  stories?: PlaylistItem[]
   remaining_mins: number
   completed?: number
 }
@@ -27,11 +32,19 @@ export default function YourPlaylist() {
       const raw = localStorage.getItem(STORAGE_KEY)
       if (!raw) return
       const parsed = JSON.parse(raw)
-      const stories = Array.isArray(parsed) ? parsed : (parsed.stories || [])
-      if (stories.length === 0) return
-      setPlaylist(Array.isArray(parsed)
-        ? { id: 'legacy', stories: parsed, remaining_mins: parsed.reduce((s: number, x: any) => s + (x.duration_mins || 0), 0), completed: 0 }
-        : parsed)
+      // Support new format (items) and legacy format (stories/array)
+      const items: PlaylistItem[] = parsed.items
+        ? parsed.items
+        : Array.isArray(parsed)
+          ? parsed.map((s: any) => ({ type: 'single', ...s }))
+          : (parsed.stories || []).map((s: any) => ({ type: s.type || 'single', ...s }))
+      if (items.length === 0) return
+      setPlaylist({
+        id: parsed.id || 'legacy',
+        items,
+        remaining_mins: parsed.remaining_mins || items.reduce((s: number, x: any) => s + (x.type === 'series' ? (x.total_mins || 0) : (x.duration_mins || 0)), 0),
+        completed: parsed.completed || 0
+      })
     } catch {}
   }, [])
 
@@ -40,13 +53,13 @@ export default function YourPlaylist() {
     setPlaylist(null)
   }
 
-  if (!playlist || playlist.stories.length === 0) return null
+  if (!playlist || !playlist.items || playlist.items.length === 0) return null
 
-  const stories = playlist.stories
+  const items = playlist.items
   const completed = playlist.completed || 0
-  const remaining = stories.length - completed
+  const remaining = items.length - completed
   const totalMins = Math.round(playlist.remaining_mins || stories.reduce((s, x) => s + (x.duration_mins || 0), 0))
-  const nextTitles = stories.slice(completed, completed + 3).map(s => s.title)
+  const nextTitles = items.slice(completed, completed + 3).map(s => s.type === 'series' ? (s.series_name || 'Series') : (s.title || ''))
 
   return (
     <section style={{ padding: '1.5rem 1rem 0' }}>
@@ -72,7 +85,7 @@ export default function YourPlaylist() {
         {/* Body */}
         <div style={{ flex: 1, padding: '9px 36px 9px 9px', minWidth: 0 }}>
           <div style={{ fontWeight: 700, fontSize: 13, color: 'white', lineHeight: 1.2, marginBottom: 2 }}>
-            {remaining} {remaining === 1 ? 'Story' : 'Stories'} · {totalMins} min remaining
+            {remaining} {remaining === 1 ? 'Item' : 'Items'} · {totalMins} min remaining
           </div>
           {completed > 0 && (
             <div style={{ fontSize: 10, color: '#64748b', marginBottom: 4 }}>
