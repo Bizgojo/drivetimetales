@@ -611,10 +611,45 @@ export default function StoryProductionPage() {
         <div style={{padding:'36px 40px'}}>
           <h1 style={{margin:'0 0 8px',fontSize:28,fontWeight:'bold',color:'#111'}}>Story Queue</h1>
           <p style={{margin:'0 0 32px',fontSize:16,color:'#666'}}>{approvedStories.length} approved and ready for Hal.{pendingStories.length>0&&` ${pendingStories.length} waiting for review.`}{waitingCount>0&&` ${waitingCount} still generating.`}</p>
-          {approvedStories.length>0&&(
-            <div style={{marginBottom:28,padding:'16px 20px',background:'#e0f2f1',border:'1px solid #b2dfdb',borderRadius:8,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-              <div><div style={{fontSize:16,fontWeight:700,color:'#00695c'}}>{approvedStories.length} {approvedStories.length===1?'story':'stories'} approved</div><div style={{fontSize:14,color:'#00695c',marginTop:4}}>Send to Hal via Telegram when ready</div></div>
-              <button onClick={()=>{ const scripts=approvedStories.map(s=>`\n\n${'='.repeat(60)}\n${s.title} — ${s.author} — ${s.runtime}\n${'='.repeat(60)}\n${s.script}`).join(''); navigator.clipboard.writeText(`HAL — Please produce these ${approvedStories.length} stories. Run full ASC pipeline on each. Set is_hidden = true. Send UUIDs when done.\n${scripts}`); alert('Copied — paste into Telegram') }} style={{background:'#00695c',color:'#fff',border:'none',borderRadius:6,padding:'12px 20px',cursor:'pointer',fontFamily:'inherit',fontSize:15,fontWeight:700}}>Copy Scripts for Hal</button>
+          {/* Action bar */}
+          <div style={{display:'flex',gap:12,marginBottom:28,alignItems:'flex-start'}}>
+            {approvedStories.length>0&&(
+              <div style={{flex:1,padding:'16px 20px',background:'#e0f2f1',border:'1px solid #b2dfdb',borderRadius:8,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                <div><div style={{fontSize:16,fontWeight:700,color:'#00695c'}}>{approvedStories.length} {approvedStories.length===1?'story':'stories'} approved</div><div style={{fontSize:14,color:'#00695c',marginTop:4}}>Send to Hal via Telegram when ready</div></div>
+                <button onClick={()=>{ const scripts=approvedStories.map(s=>`\n\n${'='.repeat(60)}\n${s.title} — ${s.author} — ${s.runtime}\n${'='.repeat(60)}\n${s.script}`).join(''); navigator.clipboard.writeText(`HAL — Please produce these ${approvedStories.length} stories. Run full ASC pipeline on each. Set is_hidden = true. Send UUIDs when done.\n${scripts}`); alert('Copied — paste into Telegram') }} style={{background:'#00695c',color:'#fff',border:'none',borderRadius:6,padding:'12px 20px',cursor:'pointer',fontFamily:'inherit',fontSize:15,fontWeight:700}}>Copy Scripts for Hal</button>
+              </div>
+            )}
+            {stories.length>0&&(
+              <button onClick={clearQueue} style={{padding:'12px 20px',background:'#fff',border:'2px solid #e0e0e0',borderRadius:8,cursor:'pointer',fontFamily:'inherit',fontSize:14,fontWeight:700,color:'#c62828',whiteSpace:'nowrap'}}>
+                🗑 Clear Queue
+              </button>
+            )}
+          </div>
+
+          {/* Generating pipeline */}
+          {premiseQueue.filter(q=>q.status==='waiting'||q.status==='generating').length>0&&(
+            <div style={{marginBottom:28}}>
+              <div style={{fontSize:12,color:'#888',textTransform:'uppercase',letterSpacing:1,fontWeight:700,marginBottom:12}}>Generating Pipeline</div>
+              <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                {premiseQueue.filter(q=>q.status!=='done').map(q=>{
+                  const isActive=q.status==='generating'
+                  return(
+                    <div key={q.id} style={{display:'flex',alignItems:'center',gap:16,padding:'14px 20px',background:isActive?'#f0f7ff':'#fafafa',border:`1px solid ${isActive?'#90caf9':'#e0e0e0'}`,borderRadius:8,borderLeft:`4px solid ${isActive?'#1976d2':'#bdbdbd'}`}}>
+                      <div style={{width:20,height:20,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                        {isActive
+                          ?<div style={{width:18,height:18,border:'2px solid #1976d2',borderTopColor:'transparent',borderRadius:'50%',animation:'spin 0.8s linear infinite'}}/>
+                          :<div style={{width:10,height:10,borderRadius:'50%',background:'#bdbdbd'}}/>
+                        }
+                      </div>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:15,fontWeight:700,color:'#111'}}>{q.title}</div>
+                        <div style={{fontSize:12,color:'#888',marginTop:2}}>{q.author} · {q.genre} · {q.runtime}{q.isSeries?` · Ep ${q.episodeNumber}/${q.totalEpisodes}`:''}</div>
+                      </div>
+                      <div style={{fontSize:13,fontWeight:700,color:isActive?'#1976d2':'#aaa'}}>{isActive?'Writing...':'In queue'}</div>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           )}
           {stories.length===0?(<div style={{textAlign:'center',padding:'60px 0',color:'#aaa'}}><div style={{fontSize:48,marginBottom:16}}>📖</div><p style={{fontSize:16}}>No stories yet. Use the Premise Picker to get started.</p></div>):(
