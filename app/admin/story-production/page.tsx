@@ -572,6 +572,28 @@ export default function StoryProductionPage() {
       const r1=await fetch('/api/claude-proxy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:16000,messages:[{role:'user',content:buildStoryPrompt(pp)}]})})
       const story=(await r1.json()).content?.[0]?.text||''
 
+      // Check Call 1 completed properly — must end with [END OF STORY]
+      const storyComplete = story.includes('[END OF STORY]')
+      if(!storyComplete) {
+        setStatus(`Story incomplete — requesting ending "${q.title}"...`)
+        const endResp = await fetch('/api/claude-proxy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:4000,messages:[{role:'user',content:`This audio drama story was cut off before the ending. Continue and complete it now.
+
+The story MUST end with the final scene resolution and then: [END OF STORY]
+
+${p.isSeries && !p.isFinale ? 'End on a hard cliffhanger — a shocking revelation or immediate danger with no resolution.' : p.isSeries && p.isFinale ? 'Resolve ALL story threads. Give the protagonist a clear earned outcome.' : 'Resolve the central conflict completely. Leave the listener with an emotional final image.'}
+
+CONTINUE FROM WHERE IT STOPPED:
+${story.slice(-2000)}`}]})})
+        const endData = await endResp.json()
+        const ending = endData.content?.[0]?.text || ''
+        if(ending.includes('[END OF STORY]')) {
+          // Replace last scene with the completed version
+          const lastSceneIdx = story.lastIndexOf('[SCENE')
+          const storyWithEnding = story.slice(0, lastSceneIdx) + ending
+          story = storyWithEnding
+        }
+      }
+
       // Call 2: Audio Layer — SFX, BEAT, music cues
       setStatus(`Adding audio production "${q.title}"... (2/3)`)
       const r2=await fetch('/api/claude-proxy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:16000,messages:[{role:'user',content:buildAudioPrompt(story,pp)}]})})
