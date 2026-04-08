@@ -152,69 +152,70 @@ function genrePacingRules(genre: string): string {
   return rules[genre] || 'Serve the story. Every scene moves something forward.'
 }
 
-function buildStoryPrompt(p: PipelineParams): string {
+function buildScenePrompt(p: PipelineParams, sceneNumber: number, totalScenes: number, previousScenes: string, sceneRole: string): string {
   const profile = AUTHOR_PROFILES[p.author] || `${p.authorVoice} voice. ${p.authorTone}.`
   const narrativeVoice = p.authorVoice || 'third_limited'
+  const cliffhanger = p.isSeries && p.premise.includes('CLIFFHANGER:') ? p.premise.split('CLIFFHANGER:')[1].trim() : 'Create a powerful cliffhanger that makes stopping feel impossible'
+
+  const roleInstruction = sceneRole === 'opening'
+    ? `OPENING SCENE: Begin mid-action — something already happening. Establish the protagonist with one specific detail. Create a dramatic question the listener MUST have answered. End at a point of tension that pulls forward.`
+    : sceneRole === 'escalation'
+    ? `ESCALATION SCENE ${sceneNumber}/${totalScenes}: Stakes must be higher than previous scene. Something must change — a revelation, complication, or new threat. Listener understanding should shift. End with forward momentum.`
+    : p.isSeries && !p.isFinale
+    ? `FINAL SCENE — SERIES CLIFFHANGER REQUIRED. End on: (a) shocking revelation that reframes everything, OR (b) character in immediate danger with no resolution, OR (c) betrayal that destroys listener assumptions. Final line = burning question. CLIFFHANGER: ${cliffhanger}. THIS SCENE MUST BE COMPLETE.`
+    : p.isSeries && p.isFinale
+    ? `FINAL SCENE — SERIES FINALE. Resolve ALL story threads. Every question answered. Protagonist reaches clear earned outcome. Emotional landing that makes the whole series feel complete. WRITE UNTIL DONE.`
+    : `FINAL SCENE — STANDALONE RESOLUTION. Resolve the central conflict completely. Final narrator line must feel conclusive — listener knows story is over. Leave a resonant emotional image. WRITE UNTIL DONE.`
+
+  const voiceReminder = narrativeVoice === 'first_person'
+    ? 'MAINTAIN FIRST PERSON — every narration line uses I, me, my.'
+    : narrativeVoice === 'third_omniscient'
+    ? 'MAINTAIN THIRD OMNISCIENT — narrator knows all, can move between characters.'
+    : 'MAINTAIN THIRD LIMITED — follow protagonist closely, narrator shows their thoughts and feelings.'
+
+  const prevContext = previousScenes
+    ? `STORY SO FAR — continue seamlessly:
+${previousScenes.slice(-2000)}`
+    : ''
+
+  return `You are ${p.author}, writing one scene of a ${p.runtime} audio drama for Endless Tales.
+
+VOICE: ${profile}
+GENRE: ${p.genre} — ${genrePacingRules(p.genre)}
+${voiceReminder}
+${p.isSeries ? `SERIES: ${p.seriesName} | Episode ${p.episodeNumber}/${p.totalEpisodes} | ${p.episodeTitle}` : ''}
+
+PREMISE: ${p.premise.split('CLIFFHANGER:')[0].trim()}
+${p.requirements ? `REQUIREMENTS: ${p.requirements}` : ''}
+
+${prevContext}
+
+WRITE SCENE ${sceneNumber} ONLY:
+${roleInstruction}
+
+RULES:
+- No parentheticals in dialogue — tone through words and narrator only
+- Every character sounds distinct under pressure
+- Dialogue turns: 1-3 sentences maximum
+- ${sceneNumber === 1 ? 'Open mid-action — NEVER "It was a quiet morning"' : 'Open with one narrator line re-anchoring: who, where, what changed'}
+- Introduce NEW characters immediately with one specific detail
+- No exposition dumps — information through action and pressure
+
+OUTPUT FORMAT:
+[SCENE ${sceneNumber} — evocative title]
+[write the complete scene content, then stop]
+
+Output ONLY this one scene. No preamble. No other scenes.`
+}
+
+function buildStoryPrompt(p: PipelineParams): string {
+  // Legacy fallback — scene-by-scene used in pipeline
+  const profile = AUTHOR_PROFILES[p.author] || `${p.authorVoice} voice. ${p.authorTone}.`
   const runtimeMins = parseInt(p.runtime) || 15
   const sceneCount = runtimeMins <= 10 ? 3 : runtimeMins <= 15 ? 4 : runtimeMins <= 20 ? 5 : 6
-  const cliffhanger = p.isSeries && p.premise.includes('CLIFFHANGER:') ? p.premise.split('CLIFFHANGER:')[1].trim() : 'Create a powerful cliffhanger that makes stopping feel impossible'
-  const endingInstruction = p.isSeries && !p.isFinale
-    ? `END ON A HARD CLIFFHANGER. One of: (a) shocking revelation that reframes everything, (b) character in immediate danger with no resolution, (c) betrayal that destroys listener assumptions. CLIFFHANGER TO HIT: ${cliffhanger}`
-    : p.isSeries && p.isFinale
-    ? `THIS IS THE FINALE. Resolve ALL story threads. Every question raised must be answered. Protagonist reaches clear earned outcome. No ambiguity.`
-    : `RESOLVE COMPLETELY. Central conflict settled. Final narrator line conclusive — listener knows story is over. Leave an emotional image, not a dangling thread.`
-
-  return `You are ${p.author}, writing a ${p.runtime} audio drama for Endless Tales.
-
-YOUR VOICE: ${profile}
-GENRE: ${p.genre}
-GENRE PACING: ${genrePacingRules(p.genre)}
-NARRATIVE VOICE: ${narrativeVoice} — maintain throughout without exception
-${narrativeVoice === 'first_person' ? 'FIRST PERSON: Every narration is the protagonist speaking from direct experience. Use I, me, my throughout.' : 'THIRD LIMITED: Follow one character closely. Use narrator lines to go inside protagonist head — not just describe action.'}
-
-PREMISE:
-${p.premise}
-${p.requirements ? `REQUIREMENTS:
-${p.requirements}` : ''}
-${p.isSeries ? `SERIES: ${p.seriesName} | Episode ${p.episodeNumber} of ${p.totalEpisodes} | Title: ${p.episodeTitle}` : ''}
-
-AUDIENCE: Commuters and truckers. Listening while driving. Cannot rewind. 90 seconds to hook them.
-
-STRUCTURE — write exactly ${sceneCount} scenes:
-Scene 1 (OPENING): Begin mid-action. Something already happening. Establish character and stakes in first 3 exchanges. Create a question the listener MUST have answered.
-Scenes 2-${sceneCount - 1} (ESCALATION): Each scene raises stakes or reveals something that changes listener understanding. No scene leaves world in same state it found it.
-Scene ${sceneCount} (ENDING): ${endingInstruction}
-
-WRITING RULES — non-negotiable:
-1. Open mid-action — never "It was a quiet morning" or any variant
-2. Every character sounds distinct — speech patterns reveal character under pressure
-3. Protagonist: clipped, controlled — pressure shows in what they do NOT say
-4. Antagonist: smoother, more words, false confidence
-5. Supporting characters: each has distinct verbal rhythm
-6. Introduce every character the moment they appear with one specific detail
-7. Re-anchor listener after every scene change — one narrator line: who, where, what changed
-8. No parentheticals inside dialogue — tone through words and narrator only
-9. No exposition dumps — information emerges through action and pressure
-10. Dialogue turns: 1-3 sentences maximum. No speeches.
-
-SCENE LENGTH BUDGET — this is critical:
-- Each scene maximum 300 words of dialogue and narration
-- ${sceneCount} scenes × 300 words = ${sceneCount * 300} words total maximum
-- If a scene reaches 300 words, END IT and move to the next scene
-- The final scene MUST be written — it is more important than any earlier scene
-- If you are running long in scenes 2-${sceneCount - 1}, cut them short — NEVER skip scene ${sceneCount}
-
-OUTPUT FORMAT — label each scene:
-[SCENE 1 — title]
-content — maximum 300 words...
-
-[SCENE 2 — title]
-content — maximum 300 words...
-
-[END OF STORY]
-
-Output ONLY the labeled scenes. No preamble. No SFX markers yet.`
+  return `You are ${p.author}. Write a ${p.runtime} audio drama. VOICE: ${profile}. GENRE: ${p.genre}. PREMISE: ${p.premise}. Write ${sceneCount} scenes labeled [SCENE N — title]. End with [END OF STORY].`
 }
+
 
 function buildAudioPrompt(story: string, p: PipelineParams): string {
   const runtimeMins = parseInt(p.runtime) || 15
@@ -567,32 +568,22 @@ export default function StoryProductionPage() {
     try {
       const pp: PipelineParams = { author:q.author, authorTone:authorObj?.tone||'', authorVoice:authorObj?.narrative_voice||'third_limited', genre:q.genre, runtime:q.runtime, narrator:q.narrator, premise:q.premise, requirements:q.requirements, isSeries:q.isSeries, seriesName:q.seriesName, episodeNumber:q.episodeNumber, totalEpisodes:q.totalEpisodes, isFinale:q.isFinale, episodeTitle:q.title }
 
-      // Call 1: Story Engine — pure dramatic content
-      setStatus(`Writing story "${q.title}"... (1/3)`)
-      const r1=await fetch('/api/claude-proxy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:16000,messages:[{role:'user',content:buildStoryPrompt(pp)}]})})
-      const story=(await r1.json()).content?.[0]?.text||''
+      // Call 1: Story Engine — scene by scene, guaranteed complete ending
+      const runtimeMins = parseInt(pp.runtime) || 15
+      const sceneCount = runtimeMins <= 10 ? 3 : runtimeMins <= 15 ? 4 : runtimeMins <= 20 ? 5 : 6
+      const scenes: string[] = []
 
-      // Check Call 1 completed properly — must end with [END OF STORY]
-      const storyComplete = story.includes('[END OF STORY]')
-      if(!storyComplete) {
-        setStatus(`Story incomplete — requesting ending "${q.title}"...`)
-        const endResp = await fetch('/api/claude-proxy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:4000,messages:[{role:'user',content:`This audio drama story was cut off before the ending. Continue and complete it now.
-
-The story MUST end with the final scene resolution and then: [END OF STORY]
-
-${p.isSeries && !p.isFinale ? 'End on a hard cliffhanger — a shocking revelation or immediate danger with no resolution.' : p.isSeries && p.isFinale ? 'Resolve ALL story threads. Give the protagonist a clear earned outcome.' : 'Resolve the central conflict completely. Leave the listener with an emotional final image.'}
-
-CONTINUE FROM WHERE IT STOPPED:
-${story.slice(-2000)}`}]})})
-        const endData = await endResp.json()
-        const ending = endData.content?.[0]?.text || ''
-        if(ending.includes('[END OF STORY]')) {
-          // Replace last scene with the completed version
-          const lastSceneIdx = story.lastIndexOf('[SCENE')
-          const storyWithEnding = story.slice(0, lastSceneIdx) + ending
-          story = storyWithEnding
-        }
+      for(let sceneNum = 1; sceneNum <= sceneCount; sceneNum++) {
+        const sceneRole = sceneNum === 1 ? 'opening' : sceneNum === sceneCount ? 'finale' : 'escalation'
+        setStatus(`Writing scene ${sceneNum}/${sceneCount} — "${pp.episodeTitle || pp.seriesName || pp.genre}"...`)
+        const previousScenes = scenes.join('\n\n')
+        const scenePrompt = buildScenePrompt(pp, sceneNum, sceneCount, previousScenes, sceneRole)
+        const sr = await fetch('/api/claude-proxy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:4000,messages:[{role:'user',content:scenePrompt}]})})
+        const sceneText = (await sr.json()).content?.[0]?.text || ''
+        scenes.push(sceneText)
       }
+
+      const story = scenes.join('\n\n') + '\n\n[END OF STORY]'
 
       // Call 2: Audio Layer — SFX, BEAT, music cues
       setStatus(`Adding audio production "${q.title}"... (2/3)`)
