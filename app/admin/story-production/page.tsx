@@ -393,8 +393,12 @@ export default function StoryProductionPage() {
     const authorObj=authors.find(a=>a.name===q.author)
     const storyId=`story_${Date.now()}`
     const newStory: Story = { id:storyId, title:'Generating...', author:q.author, narrator:q.narrator, genre:q.genre, runtime:q.runtime, status:'generating', script:'', ai_score:null, created_at:new Date().toISOString(), notes:'' }
-    const current=JSON.parse(localStorage.getItem('et_stories_v2')||'[]')
-    saveStories([newStory,...current])
+    setStories(prev => {
+      const updated = [newStory, ...prev.filter(s => s.id !== storyId)]
+      localStorage.setItem('et_stories_v2', JSON.stringify(updated))
+      supabase.from('story_drafts').upsert({ id:newStory.id, title:newStory.title, author:newStory.author, narrator:newStory.narrator, genre:newStory.genre, runtime:newStory.runtime, status:newStory.status, script:'', ai_score:null, notes:'', updated_at:new Date().toISOString() })
+      return updated
+    })
     try {
       setStatus(`Writing "${q.title}"... (attempt 1/3)`)
       const prompt=buildScriptPrompt({ author:q.author, authorTone:authorObj?.tone||'', authorVoice:authorObj?.narrative_voice||'third_limited', genre:q.genre, runtime:q.runtime, narrator:q.narrator, premise:q.premise, requirements:q.requirements, isSeries:q.isSeries, seriesName:q.seriesName, episodeNumber:q.episodeNumber, totalEpisodes:q.totalEpisodes, isFinale:q.isFinale, episodeTitle:q.title })
@@ -414,12 +418,19 @@ export default function StoryProductionPage() {
       }
       const finalNote = attempt > 1 ? `Auto-revised ${attempt-1}x. Best: ${scoreOf25(bestScore)}/25.` : ''
       const finished: Story = {...newStory, status:'ready', script:bestScript, ai_score:bestScore, notes:finalNote}
-      const latest=JSON.parse(localStorage.getItem('et_stories_v2')||'[]')
-      saveStories(latest.map((s: Story)=>s.id===storyId?finished:s))
+      setStories(prev => {
+        const updated = prev.map((s: Story) => s.id===storyId ? finished : s)
+        localStorage.setItem('et_stories_v2', JSON.stringify(updated))
+        updated.forEach(async (s) => { await supabase.from('story_drafts').upsert({ id:s.id, title:s.title, author:s.author, narrator:s.narrator, genre:s.genre, runtime:s.runtime, status:s.status, script:s.script, ai_score:s.ai_score, notes:s.notes, updated_at:new Date().toISOString() }) })
+        return updated
+      })
       setSelected(finished)
     } catch(err) {
-      const latest=JSON.parse(localStorage.getItem('et_stories_v2')||'[]')
-      saveStories(latest.map((s: Story)=>s.id===storyId?{...s,status:'rejected' as StoryStatus,notes:`Error: ${err}`}:s))
+      setStories(prev => {
+        const updated = prev.map((s: Story) => s.id===storyId ? {...s, status:'rejected' as StoryStatus, notes:`Error: ${err}`} : s)
+        localStorage.setItem('et_stories_v2', JSON.stringify(updated))
+        return updated
+      })
     }
     setPremiseQueue(prev=>{ const updated=prev.map(p=>p.id===q.id?{...p,status:'done' as const}:p); const stillWaiting=updated.filter(p=>p.status==='waiting').length; if(stillWaiting>0) setTimeout(()=>setQueueRunning(true),200); else setQueueRunning(false); return updated })
     setStatus('')
@@ -504,7 +515,24 @@ ${script}`
 
   async function gradeScript(script: string, author: string, g: string): Promise<AIScore|null> {
     try {
-      const resp=await fetch('/api/claude-proxy',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:1500, messages:[{role:'user',content:`Grade this Endless Tales audio drama for commuters/truckers who cannot look at a screen. Brutally honest. Scores 1-10.\n\nWeights: opening_hook 25%, overall_listenability 25%, dialogue_quality 20%, structure_and_pacing 15%, audio_suitability 15%.\ncomposite_score = weighted average max 10. Shown as x2.5=/25. Policy fail = auto Rejected.\n\nReturn ONLY valid JSON:\n{"opening_hook":{"score":0,"feedback":""},"overall_listenability":{"score":0,"feedback":""},"dialogue_quality":{"score":0,"feedback":""},"structure_and_pacing":{"score":0,"feedback":""},"audio_suitability":{"score":0,"feedback":""},"policy_compliance":{"pass":true,"feedback":""},"composite_score":0,"recommendation":"Proceed","top_fixes":[],"evaluator_summary":""}\n\nrecommendation = "Proceed"|"Revise and Resubmit"|"Rejected"\nAuthor: ${author} | Genre: ${g}\nSCRIPT:\n${script.slice(0,6000)}`}] }) })
+      const resp=await fetch('/api/claude-proxy',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:1500, messages:[{role:'user',content:`Grade this Endless Tales audio drama for commuters/truckers who cannot look at a screen. Brutally honest. Scores 1-10.
+
+Weights: opening_hook 25%, overall_listenability 25%, dialogue_quality 20%, structure_and_pacing 15%, audio_suitability 15%.
+composite_score = weighted average max 10, displayed as x2.5=/25. Policy fail = auto Rejected.
+
+VOICE CALIBRATION: Author ${author} | Genre: ${g}
+- First person narrators (Sara Keene, Elias Thorn, Silas Graves): intimate voice IS the style — do not penalize for "cinematic distance". Judge listenability on whether the internal voice grips a distracted driver.
+- Third limited (Holbrook, Mercer, Harmon, Hobelman): judge on clarity of external action and scene-setting.
+- Score dialogue_quality on distinctiveness between characters and how well speech reveals character under pressure — not on volume of dialogue.
+
+Return ONLY valid JSON, no markdown:
+{"opening_hook":{"score":0,"feedback":""},"overall_listenability":{"score":0,"feedback":""},"dialogue_quality":{"score":0,"feedback":""},"structure_and_pacing":{"score":0,"feedback":""},"audio_suitability":{"score":0,"feedback":""},"policy_compliance":{"pass":true,"feedback":""},"composite_score":0,"recommendation":"Proceed","top_fixes":[],"evaluator_summary":""}
+
+recommendation = "Proceed"|"Revise and Resubmit"|"Rejected"
+top_fixes = up to 3 specific actionable fixes if any score < 9
+
+SCRIPT:
+${script.slice(0,6000)}`}] }) })
       const data=await resp.json()
       const raw=data.content?.[0]?.text?.replace(/```json|```/g,'').trim()
       return raw?JSON.parse(raw):null
