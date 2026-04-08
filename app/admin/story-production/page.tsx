@@ -111,7 +111,7 @@ const NARRATOR_MAP: Record<string, string> = {
 }
 
 const GENRE_AUTHOR_MAP: Record<string, string[]> = {
-  'Thriller': ['Sara Keene','Lena Holt','Jack Malone'],
+  'Thriller': ['Sara Keene','Lena Holt','Jack Malone'],  // Holbrook removed — verbose style causes truncation at 15min
   'Horror': ['Silas Graves','Elias Thorn','Vera Moss'],
   'Dark Mystery': ['Elias Thorn','Julian Mercer','Vera Moss'],
   'Mystery/Crime': ['Julian Mercer','Caroline Drake','Iris Pemberton'],
