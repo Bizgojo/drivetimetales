@@ -395,18 +395,28 @@ export default function StoryProductionPage() {
     const newStory: Story = { id:storyId, title:'Generating...', author:q.author, narrator:q.narrator, genre:q.genre, runtime:q.runtime, status:'generating', script:'', ai_score:null, created_at:new Date().toISOString(), notes:'' }
     const current=JSON.parse(localStorage.getItem('et_stories_v2')||'[]')
     saveStories([newStory,...current])
-    setStatus(`Writing "${q.title}"...`)
     try {
+      setStatus(`Writing "${q.title}"... (attempt 1/3)`)
       const prompt=buildScriptPrompt({ author:q.author, authorTone:authorObj?.tone||'', authorVoice:authorObj?.narrative_voice||'third_limited', genre:q.genre, runtime:q.runtime, narrator:q.narrator, premise:q.premise, requirements:q.requirements, isSeries:q.isSeries, seriesName:q.seriesName, episodeNumber:q.episodeNumber, totalEpisodes:q.totalEpisodes, isFinale:q.isFinale, episodeTitle:q.title })
       const resp=await fetch('/api/claude-proxy',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:16000, messages:[{role:'user',content:prompt}] }) })
       const data=await resp.json()
-      const script=data.content?.[0]?.text||''
-      const title=script.match(/"([^"]{5,80})"/)?.[1]||q.title
-      setStatus(`Grading "${q.title}"...`)
-      const aiScore=await gradeScript(script,q.author,q.genre)
+      let script=data.content?.[0]?.text||''
+      setStatus(`Grading "${q.title}"... (attempt 1/3)`)
+      let aiScore=await gradeScript(script,q.author,q.genre)
+      let bestScript=script; let bestScore=aiScore; let attempt=1
+      while(attempt < 3 && aiScore && scoreOf25(aiScore) < 23) {
+        attempt++
+        setStatus(`Revising "${q.title}"... (attempt ${attempt}/3 — score was ${scoreOf25(aiScore)}/25)`)
+        const revised=await reviseScript(script,aiScore,q.author,q.genre,attempt)
+        const revisedScore=await gradeScript(revised,q.author,q.genre)
+        if(revisedScore && scoreOf25(revisedScore) > scoreOf25(bestScore)) { bestScript=revised; bestScore=revisedScore }
+        script=revised; aiScore=revisedScore
+      }
+      const finalNote = attempt > 1 ? `Auto-revised ${attempt-1}x. Best: ${scoreOf25(bestScore)}/25.` : ''
+      const finished: Story = {...newStory, status:'ready', script:bestScript, ai_score:bestScore, notes:finalNote}
       const latest=JSON.parse(localStorage.getItem('et_stories_v2')||'[]')
-      saveStories(latest.map((s: Story)=>s.id===storyId?{...s,title:q.title,status:'ready',script,ai_score:aiScore}:s))
-      setSelected({...newStory,title:q.title,status:'ready',script,ai_score:aiScore})
+      saveStories(latest.map((s: Story)=>s.id===storyId?finished:s))
+      setSelected(finished)
     } catch(err) {
       const latest=JSON.parse(localStorage.getItem('et_stories_v2')||'[]')
       saveStories(latest.map((s: Story)=>s.id===storyId?{...s,status:'rejected' as StoryStatus,notes:`Error: ${err}`}:s))
@@ -427,15 +437,69 @@ export default function StoryProductionPage() {
       const resp=await fetch('/api/claude-proxy',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:16000, messages:[{role:'user',content:prompt}] }) })
       const data=await resp.json(); const script=data.content?.[0]?.text||''
       const title=script.match(/"([^"]{5,60})"/)?.[1]||`${genre} Story`
-      setStatus('Grading your story...')
-      const aiScore=await gradeScript(script,pickedAuthor.name,genre)
-      const finished: Story={...newStory,title,status:'ready',script,ai_score:aiScore}
+      setStatus('Grading... (attempt 1/3)')
+      let aiScore=await gradeScript(script,pickedAuthor.name,genre)
+      let bestScript=script; let bestScore=aiScore; let attempt=1
+      while(attempt < 3 && aiScore && scoreOf25(aiScore) < 23) {
+        attempt++
+        setStatus(`Revising... (attempt ${attempt}/3 — score was ${scoreOf25(aiScore)}/25)`)
+        const revised=await reviseScript(script,aiScore,pickedAuthor.name,genre,attempt)
+        const revisedScore=await gradeScript(revised,pickedAuthor.name,genre)
+        if(revisedScore && scoreOf25(revisedScore) > scoreOf25(bestScore)) { bestScript=revised; bestScore=revisedScore }
+        script=revised; aiScore=revisedScore
+      }
+      const finalNote = attempt > 1 ? `Auto-revised ${attempt-1}x. Best: ${scoreOf25(bestScore)}/25.` : ''
+      const finished: Story={...newStory,title,status:'ready',script:bestScript,ai_score:bestScore,notes:finalNote}
       saveStories(updated.map(s=>s.id===storyId?finished:s))
       setSelected(finished); setTab('queue')
     } catch(err) {
       saveStories(updated.map(s=>s.id===storyId?{...s,status:'rejected' as StoryStatus,notes:`Error: ${err}`}:s))
       setStatus(`Failed: ${err}`)
     } finally{ setGenerating(false); setStatus('') }
+  }
+
+  function scoreOf25(aiScore: AIScore|null): number {
+    if(!aiScore) return 0
+    return Math.round(aiScore.composite_score * 2.5 * 10) / 10
+  }
+
+  async function reviseScript(script: string, aiScore: AIScore, author: string, genre: string, attempt: number): Promise<string> {
+    const score = scoreOf25(aiScore)
+    const fixes = aiScore.top_fixes?.join('\n') || ''
+    const dimFeedback = [
+      `Hook (${aiScore.opening_hook.score}/10): ${aiScore.opening_hook.feedback}`,
+      `Listenability (${aiScore.overall_listenability.score}/10): ${aiScore.overall_listenability.feedback}`,
+      `Dialogue (${aiScore.dialogue_quality.score}/10): ${aiScore.dialogue_quality.feedback}`,
+      `Pacing (${aiScore.structure_and_pacing.score}/10): ${aiScore.structure_and_pacing.feedback}`,
+      `Audio (${aiScore.audio_suitability.score}/10): ${aiScore.audio_suitability.feedback}`,
+    ].join('\n')
+    const revisePrompt = `You are the Endless Tales script editor. This script scored ${score}/25 — below the 23/25 target. Revision attempt ${attempt} of 3.
+
+SCORE BREAKDOWN:
+${dimFeedback}
+
+TOP FIXES REQUIRED:
+${fixes}
+
+REVISION RULES:
+- Fix every issue listed above specifically and completely
+- Do NOT change the story concept, characters, or setting
+- Do NOT truncate — the script MUST end with the complete BELLE B outro line
+- Maintain the author voice (${author}) and genre (${genre}) throughout
+- If dialogue scored below 8: make each character speech pattern more distinct
+- If listenability scored below 8: add more narrator re-anchoring after scene changes
+- If hook scored below 8: rewrite the first 3 exchanges to open with more immediate action
+- If pacing scored below 8: add a harder act break at the 40% mark
+- Return ONLY the complete revised script — no commentary, no preamble, no markdown
+
+ORIGINAL SCRIPT TO REVISE:
+${script}`
+    const resp = await fetch('/api/claude-proxy', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 16000, messages: [{role:'user', content: revisePrompt}] })
+    })
+    const data = await resp.json()
+    return data.content?.[0]?.text || script
   }
 
   async function gradeScript(script: string, author: string, g: string): Promise<AIScore|null> {
