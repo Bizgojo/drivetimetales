@@ -177,7 +177,18 @@ ENDING — CRITICAL:
 - A truncated script scores below 18/25 automatically. A complete script with a strong ending scores 23+.
 
 - ANNOUNCER INTRO: "Endless Tales presents... [title]. [episode if series]. [one-sentence hook]."
-- ANNOUNCER OUTRO: ${p.isSeries && !p.isFinale ? 'Two beats: land emotional moment + tease SPECIFIC thing from next episode. Format as BELLE B: line.' : 'BELLE B: That was "[Title]" — an Endless Tales original. Written by [Author].'}
+- ANNOUNCER OUTRO:
+${p.isSeries && !p.isFinale ? `Series episode outro — THREE beats in ONE Belle B line:
+  Beat 1: Land this episode's emotional punch in one sentence — what just happened that the listener can't unhear.
+  Beat 2: Re-hook the series premise — remind them in one clause why they started listening. Not a summary. A gut-punch reminder.
+  Beat 3: Name something SPECIFIC and REAL from the next episode that makes stopping feel impossible. Never vague. Never "find out what happens next."
+  Format: BELLE B: [Beat 1]. [Beat 2 + Beat 3].
+  Example: BELLE B: The coordinates were real. A trucker who knows the highway is the only one who can stop what's coming — and next episode, someone finds Jake's radio still transmitting from a ditch on mile marker 237.` : 'BELLE B: That was "[Title]" — an Endless Tales original. Written by [Author].'}
+${p.isSeries && p.isFinale ? `Series FINALE outro — Belle B closes the series completely:
+  One sentence that lands the series as a whole — not just this episode. What did it all mean?
+  Then one sentence that makes the listener feel the series is complete and worth recommending.
+  Format: BELLE B: [Series landing]. [Closing stamp with series name, author, episode count].
+  Example: BELLE B: The highway keeps its secrets — but Jake didn't. That was "Mile Marker 237" — an Endless Tales original series by Sara Keene. Three episodes. One truth.` : ''}
 
 Output ONLY the script. No preamble. No markdown.`
 }
