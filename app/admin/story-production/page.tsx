@@ -160,7 +160,13 @@ function buildScenePrompt(p: PipelineParams, sceneNumber: number, totalScenes: n
   const roleInstruction = sceneRole === 'opening'
     ? `OPENING SCENE: Begin mid-action — something already happening. Establish the protagonist with one specific detail. Create a dramatic question the listener MUST have answered. End at a point of tension that pulls forward.`
     : sceneRole === 'escalation'
-    ? `ESCALATION SCENE ${sceneNumber}/${totalScenes}: Stakes must be higher than previous scene. Something must change — a revelation, complication, or new threat. Listener understanding should shift. End with forward momentum.`
+    ? `ESCALATION SCENE ${sceneNumber}/${totalScenes}: Stakes must be higher than previous scene. Something must change — a revelation, complication, or new threat. Listener understanding should shift. End with forward momentum.
+
+ESCALATION ANTI-EXPOSITION RULE: If you need to reveal information (a pattern, a clue, a backstory), reveal it through:
+- A character discovering it under pressure, not narrating it calmly
+- A confrontation that forces the truth out
+- A physical object or event that makes it undeniable
+NEVER have the narrator list facts, dates, or patterns. Show the discovery, not the data.`
     : p.isSeries && !p.isFinale
     ? `FINAL SCENE — THIS IS THE LAST SCENE OF THE EPISODE. You have unlimited space to complete it fully.
 
