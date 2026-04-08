@@ -171,12 +171,19 @@ WRITING RULES — non-negotiable:
 9. No exposition dumps — information emerges through action and pressure
 10. Dialogue turns: 1-3 sentences maximum. No speeches.
 
+SCENE LENGTH BUDGET — this is critical:
+- Each scene maximum 300 words of dialogue and narration
+- ${sceneCount} scenes × 300 words = ${sceneCount * 300} words total maximum
+- If a scene reaches 300 words, END IT and move to the next scene
+- The final scene MUST be written — it is more important than any earlier scene
+- If you are running long in scenes 2-${sceneCount - 1}, cut them short — NEVER skip scene ${sceneCount}
+
 OUTPUT FORMAT — label each scene:
 [SCENE 1 — title]
-content...
+content — maximum 300 words...
 
 [SCENE 2 — title]
-content...
+content — maximum 300 words...
 
 [END OF STORY]
 
