@@ -418,9 +418,45 @@ export default function StoryProductionPage() {
       const resp=await fetch('/api/claude-proxy',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:16000, messages:[{role:'user',content:prompt}] }) })
       const data=await resp.json()
       let script=data.content?.[0]?.text||''
+      // Truncation check — script must end with BELLE B outro
+      const isTruncated = (s: string) => {
+        const last200 = s.slice(-200).toUpperCase()
+        return !last200.includes('BELLE B:') && !last200.includes('ENDLESS TALES ORIGINAL')
+      }
+
       setStatus(`Grading "${q.title}"... (attempt 1/3)`)
       let aiScore=await gradeScript(script,q.author,q.genre)
       let bestScript=script; let bestScore=aiScore; let attempt=1
+
+      // If truncated, force revision regardless of score
+      if(isTruncated(script)) {
+        setStatus(`Script truncated — requesting completion (attempt 2/3)`)
+        attempt++
+        const completionPrompt = `This audio drama script was cut off before the ending. Complete it from where it stops.
+
+CRITICAL: Output the COMPLETE script from the beginning. The script MUST end with:
+BELLE B: That was "[Title]" — an Endless Tales original. Written by [Author].
+OR for series:
+BELLE B: [emotional beat]. [next episode tease].
+
+Keep all existing content. Only add the missing ending. Do not truncate.
+
+TRUNCATED SCRIPT:
+${script}`
+        const compResp = await fetch('/api/claude-proxy', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:16000, messages:[{role:'user',content:completionPrompt}] })
+        })
+        const compData = await compResp.json()
+        const completed = compData.content?.[0]?.text || script
+        if(!isTruncated(completed)) {
+          script = completed
+          bestScript = completed
+          const completedScore = await gradeScript(completed, q.author, q.genre)
+          if(completedScore) { aiScore = completedScore; bestScore = completedScore }
+          setStatus(`Grading completed script...`)
+        }
+      }
       while(attempt < 3 && (!bestScore || scoreOf25(bestScore) < 23)) {
         attempt++
         setStatus(`Revising "${q.title}"... (attempt ${attempt}/3 — score was ${scoreOf25(aiScore)}/25)`)
