@@ -349,8 +349,14 @@ export default function StoryProductionPage() {
     try {
       const resp = await fetch('/api/claude-proxy',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:2000, messages:[{role:'user',content:buildPickerPrompt({genre:pickerGenre,runtime:pickerRuntime,isSeries:pickerIsSeries,seriesName:pickerSeriesName,totalEpisodes:pickerTotalEps,episodeNumber:pickerEpisodeNum,extraNotes:pickerNotes})}] }) })
       const data=await resp.json()
-      const raw=data.content?.[0]?.text?.replace(/```json|```/g,'').trim()
-      const parsed=JSON.parse(raw)
+      let raw=data.content?.[0]?.text||''
+      raw = raw.replace(/```json|```/g,'').trim()
+      const jsonStart2 = raw.indexOf('{')
+      const jsonEnd2 = raw.lastIndexOf('}')
+      if(jsonStart2 >= 0 && jsonEnd2 > jsonStart2) raw = raw.slice(jsonStart2, jsonEnd2+1)
+      let parsed
+      try { parsed = JSON.parse(raw) }
+      catch { parsed = JSON.parse(raw.replace(/,\s*}/g,'}').replace(/,\s*]/g,']')) }
       setPremiseOptions(parsed.options.map((o: Record<string,string>,i: number)=>({ id:`opt_${Date.now()}_${i}`, title:o.title||`Option ${i+1}`, hook:o.hook||'', premise:o.premise||'', author:o.author||'', narrator:o.narrator||'', genre:pickerGenre, runtime:pickerRuntime, seriesNote:o.seriesNote||'', scoringNote:o.scoringNote||'', queued:false })))
     } catch(err){ alert(`Failed: ${err}`) }
     finally{ setPickerLoading(false) }
@@ -362,8 +368,25 @@ export default function StoryProductionPage() {
     try {
       const resp = await fetch('/api/claude-proxy',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:4000, messages:[{role:'user',content:buildSeriesPrompt({genre:seriesGenre,runtime:seriesRuntime,episodeCount:seriesEpisodeCount,notes:seriesNotes})}] }) })
       const data=await resp.json()
-      const raw=data.content?.[0]?.text?.replace(/```json|```/g,'').trim()
-      const parsed=JSON.parse(raw)
+      let raw=data.content?.[0]?.text||''
+      // Strip markdown fences and find the JSON object
+      raw = raw.replace(/```json|```/g,'').trim()
+      // Extract just the JSON object if there's extra text
+      const jsonStart = raw.indexOf('{')
+      const jsonEnd = raw.lastIndexOf('}')
+      if(jsonStart >= 0 && jsonEnd > jsonStart) raw = raw.slice(jsonStart, jsonEnd+1)
+      let parsed
+      try {
+        parsed = JSON.parse(raw)
+      } catch(e) {
+        // Try to fix common JSON issues — trailing commas, smart quotes
+        const cleaned = raw
+          .replace(/,\s*}/g, '}')
+          .replace(/,\s*]/g, ']')
+          .replace(/[‘’]/g, "'")
+          .replace(/[“”]/g, '"')
+        parsed = JSON.parse(cleaned)
+      }
       setSeriesPlan({ ...parsed, genre:seriesGenre, runtime:seriesRuntime, episodes:parsed.episodes.map((e: Record<string,unknown>,i: number)=>({ ...e, id:`ep_${Date.now()}_${i}`, queued:false })) })
     } catch(err){ alert(`Failed to generate series: ${err}`) }
     finally{ setSeriesLoading(false) }
