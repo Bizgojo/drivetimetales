@@ -431,6 +431,7 @@ export default function StoryProductionPage() {
       setStatus(`Grading "${q.title}"... (attempt 1/3)`)
       let aiScore=await gradeScript(script,q.author,q.genre)
       let bestScript=script; let bestScore=aiScore; let attempt=1
+      const attemptHistory: string[] = [bestScore ? `1: ${scoreOf25(bestScore)}/25` : '1: grading failed']
 
       // If truncated, force revision regardless of score
       if(isTruncated(script)) {
