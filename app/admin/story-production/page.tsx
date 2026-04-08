@@ -446,7 +446,7 @@ export default function StoryProductionPage() {
     try {
       const prompt=buildScriptPrompt({ author:pickedAuthor.name, authorTone:pickedAuthor.tone, authorVoice:pickedAuthor.narrative_voice, genre, runtime, narrator:pickedNarrator?.name||'Assigned narrator', premise, requirements, isSeries:false, seriesName:'', episodeNumber:1, totalEpisodes:1, isFinale:false, episodeTitle:'' })
       const resp=await fetch('/api/claude-proxy',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:16000, messages:[{role:'user',content:prompt}] }) })
-      const data=await resp.json(); const script=data.content?.[0]?.text||''
+      const data=await resp.json(); let script=data.content?.[0]?.text||''
       const title=script.match(/"([^"]{5,60})"/)?.[1]||`${genre} Story`
       setStatus('Grading... (attempt 1/3)')
       let aiScore=await gradeScript(script,pickedAuthor.name,genre)
