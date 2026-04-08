@@ -312,8 +312,19 @@ ADD IN EXACT ORDER:
 1. BELLE B INTRO BLOCK (first):
 BELLE B INTRO
 ---
-BELLE B: [one intro line — register: ${register} — include [LISTENER_NAME] naturally mid-sentence, story title in quotes, specific sensory detail from the story, never time-of-day, works without the name]
+BELLE B: [one intro line — register: ${register}]
 ---
+
+Belle B intro rules — this is the most important line in the script:
+- Include [LISTENER_NAME] naturally mid-sentence (never forced to the front)
+- Include the story title in quotes
+- Create IMMEDIATE STAKES — the listener must feel danger, urgency, or desperate curiosity BEFORE the title is spoken
+- Reference something SPECIFIC and VISCERAL from THIS story — a specific object, sound, or moment that only exists in this episode
+- Never time-of-day. Never genre labels. Never "a world of mystery." Never "welcome back."
+- Works gracefully if [LISTENER_NAME] is omitted
+- One or two short sentences maximum — every word earns its place
+- BAD EXAMPLE: "Step into a world of danger, [LISTENER_NAME], in 'The Missing Hour.'" — too generic, no stakes
+- GOOD EXAMPLE: "The voice on Jake's CB radio has been dead for six years, [LISTENER_NAME] — and it just said your name, in 'The Signal.'" — specific, visceral, immediate stakes
 
 2. HEADER BLOCK:
 SERIES: ${p.isSeries ? p.seriesName : ''}
