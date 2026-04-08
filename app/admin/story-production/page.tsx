@@ -227,6 +227,14 @@ RULES:
 - Introduce NEW characters immediately with one specific detail
 - No exposition dumps — information through action and pressure
 
+DIALOGUE ANTI-MECHANICAL RULES — these are the difference between 7/10 and 9/10:
+- Characters NEVER explain the plot to each other — they only speak from self-interest, fear, or agenda
+- If a character needs to reveal information, they do it under pressure, reluctantly, or as a threat — never as explanation
+- Every line of dialogue must do one of: reveal character, raise stakes, or change the situation — if it does none of these, cut it
+- Protagonist speaks in fragments under pressure — full sentences only when in control
+- Antagonist speaks in complete sentences — control is their weapon
+- Subtext over text: what characters DON'T say is as important as what they do say
+
 OUTPUT FORMAT:
 [SCENE ${sceneNumber} — evocative title]
 [write the complete scene content, then stop]
