@@ -433,12 +433,21 @@ export default function StoryProductionPage() {
   function approve() { if(!selected) return; const updated=stories.map(s=>s.id===selected.id?{...s,status:'approved' as StoryStatus}:s); saveStories(updated); setSelected({...selected,status:'approved'}) }
   function reject(reason: string) { if(!selected) return; const updated=stories.map(s=>s.id===selected.id?{...s,status:'rejected' as StoryStatus,notes:reason}:s); saveStories(updated); setSelected({...selected,status:'rejected',notes:reason}) }
 
+  function clearQueue() {
+    if(!confirm('Clear all stories from the queue? This cannot be undone.')) return
+    saveStories([])
+    setSelected(null)
+    setPremiseQueue([])
+    setQueueRunning(false)
+  }
+
   const approvedStories=stories.filter(s=>s.status==='approved')
   const pendingStories=stories.filter(s=>s.status==='ready'||s.status==='generating')
   const waitingCount=premiseQueue.filter(q=>q.status==='waiting').length
 
   return (
     <div style={{fontFamily:'Georgia, serif',color:'#111',background:'#FAF9F6',minHeight:'100vh'}}>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       {status&&<div style={{background:'#e8f5e9',borderBottom:'1px solid #c8e6c9',padding:'12px 32px',color:'#2e7d32',fontSize:15}}>● {status}</div>}
 
       <div style={{borderBottom:'2px solid #e0e0e0',padding:'0 32px',display:'flex',gap:0,background:'#fff'}}>
