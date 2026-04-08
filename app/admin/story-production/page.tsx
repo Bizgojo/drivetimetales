@@ -205,9 +205,10 @@ MANDATORY: Write all three parts completely. Do not stop mid-scene. The final li
     ? 'MAINTAIN THIRD OMNISCIENT — narrator knows all, can move between characters.'
     : 'MAINTAIN THIRD LIMITED — follow protagonist closely, narrator shows their thoughts and feelings.'
 
+  const contextLength = sceneRole === 'finale' ? 1000 : 2000
   const prevContext = previousScenes
     ? `STORY SO FAR — continue seamlessly:
-${previousScenes.slice(-2000)}`
+${previousScenes.slice(-contextLength)}`
     : ''
 
   return `You are ${p.author}, writing one scene of a ${p.runtime} audio drama for Endless Tales.
