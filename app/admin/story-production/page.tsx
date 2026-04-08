@@ -160,13 +160,7 @@ function buildScenePrompt(p: PipelineParams, sceneNumber: number, totalScenes: n
   const roleInstruction = sceneRole === 'opening'
     ? `OPENING SCENE: Begin mid-action — something already happening. Establish the protagonist with one specific detail. Create a dramatic question the listener MUST have answered. End at a point of tension that pulls forward.
 
-OPENING SCENE DIALOGUE RULES — the difference between 7/10 and 9/10:
-- The protagonist's FIRST LINE of dialogue must reveal character instantly — not just react to the situation, but show who they ARE under pressure
-- Give the protagonist a verbal signature in scene 1 that carries through the story: a phrase, a rhythm, a habit of speech that is uniquely theirs
-- The first exchange between any two characters must establish their power dynamic through speech patterns alone — who is in control, who is afraid, who is hiding something
-- NEVER open with a character explaining their situation — open with them already in it, already speaking from it
-- Example of weak opening dialogue: "What's going on? Something feels wrong." — generic, could be anyone
-- Example of strong opening dialogue: "Mile marker 247. That's where I always lose the signal." — specific, reveals character, creates place
+WORD BUDGET: Target 350–500 words for this scene. Do NOT exceed 500 words. Hook fast, end sharp.
 
 OPENING SCENE DIALOGUE RULES — the difference between 7/10 and 9/10:
 - The protagonist's FIRST LINE of dialogue must reveal character instantly — not just react to the situation, but show who they ARE under pressure
@@ -177,6 +171,8 @@ OPENING SCENE DIALOGUE RULES — the difference between 7/10 and 9/10:
 - Example of strong opening dialogue: "Mile marker 247. That's where I always lose the signal." — specific, reveals character, creates place`
     : sceneRole === 'escalation'
     ? `ESCALATION SCENE ${sceneNumber}/${totalScenes}: Stakes must be higher than previous scene. Something must change — a revelation, complication, or new threat. Listener understanding should shift. End with forward momentum.
+
+WORD BUDGET: Target 400–600 words for this scene. Do NOT exceed 600 words. When you hit 600 words, end the scene immediately — cut to the sharpest possible exit line.
 
 ESCALATION ANTI-EXPOSITION RULE: If you need to reveal information (a pattern, a clue, a backstory), reveal it through:
 - A character discovering it under pressure, not narrating it calmly
