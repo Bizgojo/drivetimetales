@@ -421,7 +421,7 @@ export default function StoryProductionPage() {
       setStatus(`Grading "${q.title}"... (attempt 1/3)`)
       let aiScore=await gradeScript(script,q.author,q.genre)
       let bestScript=script; let bestScore=aiScore; let attempt=1
-      while(attempt < 3 && aiScore && scoreOf25(aiScore) < 23) {
+      while(attempt < 3 && (!bestScore || scoreOf25(bestScore) < 23)) {
         attempt++
         setStatus(`Revising "${q.title}"... (attempt ${attempt}/3 — score was ${scoreOf25(aiScore)}/25)`)
         const revised=await reviseScript(script,aiScore,q.author,q.genre,attempt)
@@ -464,7 +464,7 @@ export default function StoryProductionPage() {
       setStatus('Grading... (attempt 1/3)')
       let aiScore=await gradeScript(script,pickedAuthor.name,genre)
       let bestScript=script; let bestScore=aiScore; let attempt=1
-      while(attempt < 3 && aiScore && scoreOf25(aiScore) < 23) {
+      while(attempt < 3 && (!bestScore || scoreOf25(bestScore) < 23)) {
         attempt++
         setStatus(`Revising... (attempt ${attempt}/3 — score was ${scoreOf25(aiScore)}/25)`)
         const revised=await reviseScript(script,aiScore,pickedAuthor.name,genre,attempt)
