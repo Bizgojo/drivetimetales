@@ -123,7 +123,7 @@ If Act 2 is running long, cut it short and move to Act 3. A complete story that 
 AUTHOR: ${p.author}
 VOICE PROFILE: ${profile}
 GENRE: ${p.genre}
-RUNTIME: ${p.runtime} — TARGET: ${wordCount} words dialogue+narration at 130 wpm
+RUNTIME: ${p.runtime} — PACING GUIDE: ${wordCount} words at 130 wpm. This is a guide not a ceiling. NEVER sacrifice the ending to hit a word count.
 NARRATOR: ${p.narrator}${seriesBlock}
 
 PREMISE:
