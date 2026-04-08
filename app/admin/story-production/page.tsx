@@ -100,43 +100,148 @@ const GENRE_AUTHOR_MAP: Record<string, string[]> = {
   'Family/Heartwarming': ['Daniel Wren'], 'Comedy': ['Daniel Wren'],
 }
 
-function buildScriptPrompt(p: {
+// THREE-CALL PIPELINE
+type PipelineParams = {
   author: string; authorTone: string; authorVoice: string; genre: string
   runtime: string; narrator: string; premise: string; requirements: string
   isSeries: boolean; seriesName: string; episodeNumber: number
   totalEpisodes: number; isFinale: boolean; episodeTitle: string
-}): string {
-  const wordCount = p.runtime === '10 min' ? '~1,200' : p.runtime === '15 min' ? '~1,800' : p.runtime === '20 min' ? '~2,600' : '~3,200'
+}
+
+function genrePacingRules(genre: string): string {
+  const rules: Record<string, string> = {
+    'Thriller': 'Fast cuts. Every scene raises stakes. Threat felt in every exchange. No wasted moments.',
+    'Horror': 'Slow dread building to sudden violence. Silence as important as sound. Nature and setting are antagonists.',
+    'Mystery/Crime': 'Every detail is a clue or misdirect. Revelation comes from evidence not coincidence.',
+    'Dark Mystery': 'Atmosphere is everything. Wrongness builds slowly. The answer is worse than the question.',
+    'Western': 'Landscape drives pacing. Violence sudden and final. Dialogue spare — men say half of what they mean.',
+    'Adventure': 'Forward momentum always. Physical stakes clear and immediate. Hero competent under pressure.',
+    'Drama': 'Character change is the plot. What people say and mean are different. Small moments carry large weight.',
+    'Sci-Fi': 'World-building serves the human story. Science is real, consequences emotional.',
+    'Supernatural': 'Rational explanation fails first. Supernatural is matter-of-fact, not theatrical. Terror is quiet.',
+    'Historical Drama': 'Period detail grounds the story. Social constraints create dramatic tension.',
+    'Family/Heartwarming': 'Conflict is internal or relational, never violent. Resolution earns its warmth.',
+    'Comedy': 'Comic timing is everything. Escalation through misunderstanding.',
+  }
+  return rules[genre] || 'Serve the story. Every scene moves something forward.'
+}
+
+function buildStoryPrompt(p: PipelineParams): string {
   const profile = AUTHOR_PROFILES[p.author] || `${p.authorVoice} voice. ${p.authorTone}.`
-  const endingRule = p.isSeries && !p.isFinale ? 'SERIES EPISODE: End on hard cliffhanger. No resolution. Final line = burning question.' : p.isSeries && p.isFinale ? 'FINALE: Resolve ALL threads. Clear earned outcome. No cliffhanger.' : 'STANDALONE: Resolve completely. Final NARRATOR line conclusive.'
-  const seriesBlock = p.isSeries ? `\nSERIES: ${p.seriesName}\nEPISODE: ${p.episodeNumber} of ${p.totalEpisodes}\nEPISODE_TITLE: ${p.episodeTitle}\nSERIES_IS_FINALE: ${p.isFinale}\n${p.isFinale ? '\nFINALE RULE: Resolve ALL story threads. Clear earned outcome. Close the series formally.' : '\nSERIES RULE: End on HARD CLIFFHANGER — shocking revelation, immediate danger, or betrayal. Final line = burning question. "To be continued" FORBIDDEN. ANNOUNCER outro teases something SPECIFIC from next episode.'}` : ''
-  return `You are the Endless Tales script writer. Write a complete professional audio drama script.
+  const narrativeVoice = p.authorVoice || 'third_limited'
+  const runtimeMins = parseInt(p.runtime) || 15
+  const sceneCount = runtimeMins <= 10 ? 3 : runtimeMins <= 15 ? 4 : runtimeMins <= 20 ? 5 : 6
+  const cliffhanger = p.isSeries && p.premise.includes('CLIFFHANGER:') ? p.premise.split('CLIFFHANGER:')[1].trim() : 'Create a powerful cliffhanger that makes stopping feel impossible'
+  const endingInstruction = p.isSeries && !p.isFinale
+    ? `END ON A HARD CLIFFHANGER. One of: (a) shocking revelation that reframes everything, (b) character in immediate danger with no resolution, (c) betrayal that destroys listener assumptions. CLIFFHANGER TO HIT: ${cliffhanger}`
+    : p.isSeries && p.isFinale
+    ? `THIS IS THE FINALE. Resolve ALL story threads. Every question raised must be answered. Protagonist reaches clear earned outcome. No ambiguity.`
+    : `RESOLVE COMPLETELY. Central conflict settled. Final narrator line conclusive — listener knows story is over. Leave an emotional image, not a dangling thread.`
 
-AUDIENCE: Commuters and truckers. Listening while driving. Cannot rewind. 90 seconds to hook them.
+  return `You are ${p.author}, writing a ${p.runtime} audio drama for Endless Tales.
 
-⚠️ ENDING IS MANDATORY: You MUST reach the final BELLE B outro line. The ending is more important than any scene in the middle. Structure your story in 3 acts:
-- Act 1 (opening to first major turn): 30% of runtime
-- Act 2 (escalation and complications): 40% of runtime  
-- Act 3 (climax and resolution): 30% of runtime
-If Act 2 is running long, cut it short and move to Act 3. A complete story that ends properly scores 23+. A truncated story scores below 18 regardless of quality.
-
-AUTHOR: ${p.author}
-VOICE PROFILE: ${profile}
+YOUR VOICE: ${profile}
 GENRE: ${p.genre}
-RUNTIME: ${p.runtime} — PACING GUIDE: ${wordCount} words at 130 wpm. This is a guide not a ceiling. NEVER sacrifice the ending to hit a word count.
-NARRATOR: ${p.narrator}${seriesBlock}
+GENRE PACING: ${genrePacingRules(p.genre)}
+NARRATIVE VOICE: ${narrativeVoice} — maintain throughout without exception
+${narrativeVoice === 'first_person' ? 'FIRST PERSON: Every narration is the protagonist speaking from direct experience. Use I, me, my throughout.' : 'THIRD LIMITED: Follow one character closely. Use narrator lines to go inside protagonist head — not just describe action.'}
 
 PREMISE:
 ${p.premise}
-${p.requirements ? `\nREQUIREMENTS:\n${p.requirements}` : ''}
+${p.requirements ? `REQUIREMENTS:
+${p.requirements}` : ''}
+${p.isSeries ? `SERIES: ${p.seriesName} | Episode ${p.episodeNumber} of ${p.totalEpisodes} | Title: ${p.episodeTitle}` : ''}
 
-FORMAT — Begin with:
+AUDIENCE: Commuters and truckers. Listening while driving. Cannot rewind. 90 seconds to hook them.
+
+STRUCTURE — write exactly ${sceneCount} scenes:
+Scene 1 (OPENING): Begin mid-action. Something already happening. Establish character and stakes in first 3 exchanges. Create a question the listener MUST have answered.
+Scenes 2-${sceneCount - 1} (ESCALATION): Each scene raises stakes or reveals something that changes listener understanding. No scene leaves world in same state it found it.
+Scene ${sceneCount} (ENDING): ${endingInstruction}
+
+WRITING RULES — non-negotiable:
+1. Open mid-action — never "It was a quiet morning" or any variant
+2. Every character sounds distinct — speech patterns reveal character under pressure
+3. Protagonist: clipped, controlled — pressure shows in what they do NOT say
+4. Antagonist: smoother, more words, false confidence
+5. Supporting characters: each has distinct verbal rhythm
+6. Introduce every character the moment they appear with one specific detail
+7. Re-anchor listener after every scene change — one narrator line: who, where, what changed
+8. No parentheticals inside dialogue — tone through words and narrator only
+9. No exposition dumps — information emerges through action and pressure
+10. Dialogue turns: 1-3 sentences maximum. No speeches.
+
+OUTPUT FORMAT — label each scene:
+[SCENE 1 — title]
+content...
+
+[SCENE 2 — title]
+content...
+
+[END OF STORY]
+
+Output ONLY the labeled scenes. No preamble. No SFX markers yet.`
+}
+
+function buildAudioPrompt(story: string, p: PipelineParams): string {
+  const runtimeMins = parseInt(p.runtime) || 15
+  const sfxMin = Math.floor(runtimeMins * 0.67)
+  return `You are the audio producer for Endless Tales. Add professional audio production elements WITHOUT changing any story content or wording.
+
+ADD THESE ELEMENTS:
+1. [SFX: specific concrete description] — minimum ${sfxMin} throughout. Place at scene openings and action beats. Each key location gets a distinct sonic identity. Specific: not [SFX: door] but [SFX: heavy steel door grinding on rusted hinges]
+2. DIALOGUE FORMAT — convert all speech to: NARRATOR: text or CHARACTER NAME: text (ALL CAPS names)
+3. [BEAT] = 1 second pause at moments of revelation. [PAUSE:X] = X seconds, use deliberately.
+4. [MUSIC: description] at scene openings and major emotional shifts
+
+RULES:
+- Do NOT change any story content, dialogue wording, or structure
+- Do NOT add or remove scenes or characters  
+- Every scene must open with at least one SFX cue
+- Never put SFX, BEAT, or PAUSE inline with dialogue — always own line
+- Remove any parentheticals like (quietly) or (sharply) found in dialogue
+
+GENRE: ${p.genre} — audio design matches genre mood
+
+OUTPUT: Complete production script with audio elements. End with [END OF PRODUCTION SCRIPT].
+
+STORY TO PRODUCE:
+${story}`
+}
+
+function buildWrapperPrompt(productionScript: string, p: PipelineParams): string {
+  const belleRegister: Record<string, string> = {
+    'Thriller': 'urgent, leaning forward — this one does not stop',
+    'Horror': 'quietly conspiratorial, a hint of relish — this one gets into you',
+    'Mystery/Crime': 'intrigued, slightly teasing',
+    'Dark Mystery': 'low and deliberate — you wanted something that stays with you',
+    'Western': 'understated, spare — wide country. No easy answers.',
+    'Adventure': 'energized, forward-moving',
+    'Drama': 'warm, careful — this one is going to stay with you',
+    'Sci-Fi': 'curious, slightly awed',
+    'Supernatural': 'conspiratorial, relishing — this one starts quiet. It will not stay that way.',
+    'Historical Drama': 'measured, inviting — this one goes back a ways. Worth the trip.',
+    'Family/Heartwarming': 'warm, genuine',
+    'Comedy': 'warm, conspiratorial',
+  }
+  const register = belleRegister[p.genre] || 'warm and direct'
+  const outroInstruction = p.isSeries && !p.isFinale
+    ? `Series episode outro — ONE Belle B line with three beats: (1) land this episode emotional punch, (2) re-hook the series premise in one clause, (3) name something SPECIFIC from next episode that makes stopping impossible. Format: BELLE B: [Beat 1]. [Beat 2 + Beat 3].`
+    : p.isSeries && p.isFinale
+    ? `BELLE B: [What the series meant in one sentence]. That was "${p.seriesName}" — an Endless Tales original series by ${p.author}.`
+    : `BELLE B: That was "[Story Title]" — an Endless Tales original. Written by ${p.author}.`
+
+  return `You are the Endless Tales platform team. Wrap this produced audio drama with platform elements.
+
+ADD IN EXACT ORDER:
+
+1. BELLE B INTRO BLOCK (first):
 BELLE B INTRO
 ---
-BELLE B: [one line — [LISTENER_NAME] placed naturally, story title in quotes, specific sensory detail, never time-of-day]
+BELLE B: [one intro line — register: ${register} — include [LISTENER_NAME] naturally mid-sentence, story title in quotes, specific sensory detail from the story, never time-of-day, works without the name]
 ---
 
-Header (all fields):
+2. HEADER BLOCK:
 SERIES: ${p.isSeries ? p.seriesName : ''}
 EPISODE: ${p.isSeries ? p.episodeNumber : ''}
 EPISODE_TITLE: ${p.isSeries ? p.episodeTitle : ''}
@@ -144,60 +249,47 @@ SERIES_TOTAL_EPISODES: ${p.isSeries ? p.totalEpisodes : ''}
 SERIES_IS_FINALE: ${p.isSeries ? p.isFinale : ''}
 AUTHOR: ${p.author}
 GENRE: ${p.genre}
-DESCRIPTION: [24 words max, punchy present-tense hook]
+DESCRIPTION: [24 words max — punchy present-tense hook, no spoilers, makes driver press play]
 NARRATOR: ${p.narrator}
 ANNOUNCER: Belle B
-NARRATIVE_VOICE: [match author profile]
+NARRATIVE_VOICE: ${p.authorVoice || 'third_limited'}
 NARRATOR_IS_CHARACTER: false
-SUNO PROMPT: [2-3 sentences: genre, instrumentation, tempo, mood]
+SUNO PROMPT: [2-3 sentences: music genre, instrumentation, tempo, mood — specific to this story]
 
+3. CHARACTER GUIDE:
 CHARACTER GUIDE
 ---
-[NAME — age, gender, accent, personality]
+[Every speaking character: NAME — age, gender, accent, one-sentence personality]
 
-[START AUDIO DRAMA SCRIPT]
+4. ANNOUNCER INTRO:
+ANNOUNCER: Endless Tales presents... [title]${'. Episode ' + p.episodeNumber + ': ' + p.episodeTitle if p.isSeries else ''}. [one punchy present-tense hook sentence — no spoilers]
 
-RULES:
-- DIALOGUE: CHARACTER NAME: text — ALL CAPS, no parentheticals ever
-- [SFX: description] own line. [BEAT] own line. [PAUSE:X] own line.
-- SFX every 60-90 seconds
-- Open mid-action. Never "It was a quiet..."
-- Introduce every character on first appearance
-- Re-anchor listener after every scene change
+5. THE PRODUCTION SCRIPT (copy exactly as provided — do not change anything)
 
-DIALOGUE DIFFERENTIATION — every character must sound distinct:
-- Protagonist: clipped, controlled, thinks before speaking — pressure shows in what he DOESN'T say
-- Antagonist/threat: smoother, more words, false confidence
-- Supporting characters: different rhythms — nervous = short bursts, authority = declarative
-- Never two characters with the same sentence length pattern
+6. ANNOUNCER OUTRO:
+${outroInstruction}
 
-INTERNAL VOICE (third limited):
-- Use NARRATOR lines to carry the protagonist's thoughts and feelings — not just action
-- At least one NARRATOR line per scene that goes inside the protagonist's head
-- Example: NARRATOR: He knew the answer before she finished the sentence. He wished he didn't.
+Output ONLY the complete wrapped script. Begin with BELLE B INTRO. End with the BELLE B outro line. No preamble.
 
-ENDING — CRITICAL:
-- ${endingRule}
-- ⚠️ YOU MUST COMPLETE THE ENDING. If running long, compress middle scenes — NEVER cut off before the final BELLE B outro line.
-- The script is not complete until BELLE B speaks the final outro. Budget your words to get there.
-- A truncated script scores below 18/25 automatically. A complete script with a strong ending scores 23+.
+PRODUCTION SCRIPT TO WRAP:
+${productionScript}`
+}
 
-- ANNOUNCER INTRO: "Endless Tales presents... [title]. [episode if series]. [one-sentence hook]."
-- ANNOUNCER OUTRO:
-${p.isSeries && !p.isFinale ? `Series episode outro — THREE beats in ONE Belle B line:
-  Beat 1: Land this episode's emotional punch in one sentence — what just happened that the listener can't unhear.
-  Beat 2: Re-hook the series premise — remind them in one clause why they started listening. Not a summary. A gut-punch reminder.
-  Beat 3: Name something SPECIFIC and REAL from the next episode that makes stopping feel impossible. Never vague. Never "find out what happens next."
-  Format: BELLE B: [Beat 1]. [Beat 2 + Beat 3].
-  Example: BELLE B: The coordinates were real. A trucker who knows the highway is the only one who can stop what's coming — and next episode, someone finds Jake's radio still transmitting from a ditch on mile marker 237.` : 'BELLE B: That was "[Title]" — an Endless Tales original. Written by [Author].'}
-${p.isSeries && p.isFinale ? `Series FINALE outro — Belle B closes the series completely:
-  One sentence that lands the series as a whole — not just this episode. What did it all mean?
-  Then one sentence that makes the listener feel the series is complete and worth recommending.
-  Format: BELLE B: [Series landing]. [Closing stamp with series name, author, episode count].
-  Example: BELLE B: The highway keeps its secrets — but Jake didn't. That was "Mile Marker 237" — an Endless Tales original series by Sara Keene. Three episodes. One truth.` : ''}
-
+function buildScriptPrompt(p: PipelineParams): string {
+  const profile = AUTHOR_PROFILES[p.author] || `${p.authorVoice} voice. ${p.authorTone}.`
+  const endingRule = p.isSeries && !p.isFinale ? 'End on hard cliffhanger. Final line = burning question.' : p.isSeries && p.isFinale ? 'FINALE: Resolve ALL threads.' : 'Resolve completely. Final NARRATOR line conclusive.'
+  return `You are the Endless Tales script writer. Write a complete professional audio drama script.
+AUDIENCE: Commuters and truckers. Cannot rewind. 90 seconds to hook them.
+AUTHOR: ${p.author} | VOICE: ${profile} | GENRE: ${p.genre} | RUNTIME: ${p.runtime} | NARRATOR: ${p.narrator}
+${p.isSeries ? `SERIES: ${p.seriesName} | EP: ${p.episodeNumber}/${p.totalEpisodes} | TITLE: ${p.episodeTitle}` : ''}
+PREMISE: ${p.premise}
+${p.requirements ? `REQUIREMENTS: ${p.requirements}` : ''}
+FORMAT: Begin BELLE B INTRO block, then header (SERIES/EPISODE/AUTHOR/GENRE/DESCRIPTION/NARRATOR/ANNOUNCER: Belle B/NARRATIVE_VOICE/NARRATOR_IS_CHARACTER: false/SUNO PROMPT), then CHARACTER GUIDE, then [START AUDIO DRAMA SCRIPT].
+RULES: ALL CAPS character names. No parentheticals. [SFX:] own line. [BEAT] own line. Open mid-action. ${endingRule}
+YOU MUST COMPLETE THE ENDING — script not done until BELLE B speaks final outro line.
 Output ONLY the script. No preamble. No markdown.`
 }
+
 
 function buildSeriesPrompt(p: { genre: string; runtime: string; episodeCount: number; notes: string }): string {
   const eligible = (GENRE_AUTHOR_MAP[p.genre] || [p.genre]).join(', ')
