@@ -158,7 +158,24 @@ RULES:
 - Open mid-action. Never "It was a quiet..."
 - Introduce every character on first appearance
 - Re-anchor listener after every scene change
-- ENDING: ${endingRule}
+
+DIALOGUE DIFFERENTIATION — every character must sound distinct:
+- Protagonist: clipped, controlled, thinks before speaking — pressure shows in what he DOESN'T say
+- Antagonist/threat: smoother, more words, false confidence
+- Supporting characters: different rhythms — nervous = short bursts, authority = declarative
+- Never two characters with the same sentence length pattern
+
+INTERNAL VOICE (third limited):
+- Use NARRATOR lines to carry the protagonist's thoughts and feelings — not just action
+- At least one NARRATOR line per scene that goes inside the protagonist's head
+- Example: NARRATOR: He knew the answer before she finished the sentence. He wished he didn't.
+
+ENDING — CRITICAL:
+- ${endingRule}
+- ⚠️ YOU MUST COMPLETE THE ENDING. If running long, compress middle scenes — NEVER cut off before the final BELLE B outro line.
+- The script is not complete until BELLE B speaks the final outro. Budget your words to get there.
+- A truncated script scores below 18/25 automatically. A complete script with a strong ending scores 23+.
+
 - ANNOUNCER INTRO: "Endless Tales presents... [title]. [episode if series]. [one-sentence hook]."
 - ANNOUNCER OUTRO: ${p.isSeries && !p.isFinale ? 'Two beats: land emotional moment + tease SPECIFIC thing from next episode. Format as BELLE B: line.' : 'BELLE B: That was "[Title]" — an Endless Tales original. Written by [Author].'}
 
