@@ -532,11 +532,22 @@ export default function StoryProductionPage() {
       return updated
     })
     try {
-      setStatus(`Writing "${q.title}"... (attempt 1/3)`)
-      const prompt=buildScriptPrompt({ author:q.author, authorTone:authorObj?.tone||'', authorVoice:authorObj?.narrative_voice||'third_limited', genre:q.genre, runtime:q.runtime, narrator:q.narrator, premise:q.premise, requirements:q.requirements, isSeries:q.isSeries, seriesName:q.seriesName, episodeNumber:q.episodeNumber, totalEpisodes:q.totalEpisodes, isFinale:q.isFinale, episodeTitle:q.title })
-      const resp=await fetch('/api/claude-proxy',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:16000, messages:[{role:'user',content:prompt}] }) })
-      const data=await resp.json()
-      let script=data.content?.[0]?.text||''
+      const pp: PipelineParams = { author:q.author, authorTone:authorObj?.tone||'', authorVoice:authorObj?.narrative_voice||'third_limited', genre:q.genre, runtime:q.runtime, narrator:q.narrator, premise:q.premise, requirements:q.requirements, isSeries:q.isSeries, seriesName:q.seriesName, episodeNumber:q.episodeNumber, totalEpisodes:q.totalEpisodes, isFinale:q.isFinale, episodeTitle:q.title }
+
+      // Call 1: Story Engine — pure dramatic content
+      setStatus(`Writing story "${q.title}"... (1/3)`)
+      const r1=await fetch('/api/claude-proxy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:16000,messages:[{role:'user',content:buildStoryPrompt(pp)}]})})
+      const story=(await r1.json()).content?.[0]?.text||''
+
+      // Call 2: Audio Layer — SFX, BEAT, music cues
+      setStatus(`Adding audio production "${q.title}"... (2/3)`)
+      const r2=await fetch('/api/claude-proxy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:16000,messages:[{role:'user',content:buildAudioPrompt(story,pp)}]})})
+      const production=(await r2.json()).content?.[0]?.text||story
+
+      // Call 3: Platform Wrapper — Belle B, headers, announcer
+      setStatus(`Wrapping platform elements "${q.title}"... (3/3)`)
+      const r3=await fetch('/api/claude-proxy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:8000,messages:[{role:'user',content:buildWrapperPrompt(production,pp)}]})})
+      let script=(await r3.json()).content?.[0]?.text||production
       // Truncation check — script must end with BELLE B outro
       const isTruncated = (s: string) => {
         const last200 = s.slice(-200).toUpperCase()
