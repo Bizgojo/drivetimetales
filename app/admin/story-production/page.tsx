@@ -162,6 +162,8 @@ function buildScenePrompt(p: PipelineParams, sceneNumber: number, totalScenes: n
 
 WORD BUDGET: Target 350–500 words for this scene. Do NOT exceed 500 words. Hook fast, end sharp.
 
+WORD BUDGET: Target 350–500 words for this scene. Do NOT exceed 500 words. Hook fast, end sharp.
+
 OPENING SCENE DIALOGUE RULES — the difference between 7/10 and 9/10:
 - The protagonist's FIRST LINE of dialogue must reveal character instantly — not just react to the situation, but show who they ARE under pressure
 - Give the protagonist a verbal signature in scene 1 that carries through the story: a phrase, a rhythm, a habit of speech that is uniquely theirs
@@ -171,6 +173,8 @@ OPENING SCENE DIALOGUE RULES — the difference between 7/10 and 9/10:
 - Example of strong opening dialogue: "Mile marker 247. That's where I always lose the signal." — specific, reveals character, creates place`
     : sceneRole === 'escalation'
     ? `ESCALATION SCENE ${sceneNumber}/${totalScenes}: Stakes must be higher than previous scene. Something must change — a revelation, complication, or new threat. Listener understanding should shift. End with forward momentum.
+
+WORD BUDGET: Target 400–600 words for this scene. Do NOT exceed 600 words. When you hit 600 words, end the scene — cut to the sharpest possible exit line.
 
 WORD BUDGET: Target 400–600 words for this scene. Do NOT exceed 600 words. When you hit 600 words, end the scene immediately — cut to the sharpest possible exit line.
 
