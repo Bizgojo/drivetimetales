@@ -539,19 +539,53 @@ ${script.slice(0,6000)}`}] }) })
     } catch{ return null }
   }
 
-  function approve() { if(!selected) return; const updated=stories.map(s=>s.id===selected.id?{...s,status:'approved' as StoryStatus}:s); saveStories(updated); setSelected({...selected,status:'approved'}) }
+  function approve() {
+    if(!selected) return
+    const updated=stories.map(s=>s.id===selected.id?{...s,status:'approved' as StoryStatus}:s)
+    saveStories(updated)
+    setSelected({...selected,status:'approved'})
+    // Record score to author tracking table
+    const score = selected.ai_score ? scoreOf25(selected.ai_score) : 0
+    recordAuthorScore(selected, score)
+  }
   function reject(reason: string) { if(!selected) return; const updated=stories.map(s=>s.id===selected.id?{...s,status:'rejected' as StoryStatus,notes:reason}:s); saveStories(updated); setSelected({...selected,status:'rejected',notes:reason}) }
 
-  function clearQueue() {
-    if(!confirm('Clear the generation pipeline? Completed and approved stories will be kept.')) return
+  function clearPipeline() {
+    if(!confirm('Clear the generation pipeline? Stories already completed will be kept.')) return
     setPremiseQueue([])
     setQueueRunning(false)
+    supabase.from('story_drafts').delete().eq('status','generating')
+  }
+
+  function clearAllStories() {
+    if(!confirm('Clear ALL stories from the queue including completed ones? This cannot be undone.')) return
+    setStories([])
+    setSelected(null)
+    setPremiseQueue([])
+    setQueueRunning(false)
+    localStorage.removeItem('et_stories_v2')
+    supabase.from('story_drafts').delete().neq('id','none')
   }
 
   function deleteStory(id: string) {
     const updated = stories.filter(s => s.id !== id)
     saveStories(updated)
     if(selected?.id === id) setSelected(null)
+    supabase.from('story_drafts').delete().eq('id', id)
+  }
+
+  // Record author score to tracking table
+  async function recordAuthorScore(story: Story, score: number) {
+    if(!story.author || !story.genre || score === 0) return
+    await supabase.from('author_score_history').insert({
+      author: story.author,
+      genre: story.genre,
+      story_type: story.notes?.includes('E1/')||story.notes?.includes('Ep ')? 'series' : 'standalone',
+      score: score,
+      title: story.title,
+      runtime: story.runtime,
+      recorded_at: new Date().toISOString(),
+    })
   }
 
   const approvedStories=stories.filter(s=>s.status==='approved')
@@ -732,11 +766,13 @@ ${script.slice(0,6000)}`}] }) })
                 <button onClick={()=>{ const scripts=approvedStories.map(s=>`\n\n${'='.repeat(60)}\n${s.title} — ${s.author} — ${s.runtime}\n${'='.repeat(60)}\n${s.script}`).join(''); navigator.clipboard.writeText(`HAL — Please produce these ${approvedStories.length} stories. Run full ASC pipeline on each. Set is_hidden = true. Send UUIDs when done.\n${scripts}`); alert('Copied — paste into Telegram') }} style={{background:'#00695c',color:'#fff',border:'none',borderRadius:6,padding:'12px 20px',cursor:'pointer',fontFamily:'inherit',fontSize:15,fontWeight:700}}>Copy Scripts for Hal</button>
               </div>
             )}
-            {stories.length>0&&(
-              <button onClick={clearQueue} style={{padding:'12px 20px',background:'#fff',border:'2px solid #e0e0e0',borderRadius:8,cursor:'pointer',fontFamily:'inherit',fontSize:14,fontWeight:700,color:'#c62828',whiteSpace:'nowrap'}}>
-                🗑 Clear Queue
-              </button>
-            )}
+            <div style={{display:'flex',gap:8,alignSelf:'center'}}>
+              {stories.length>0&&(
+                <button onClick={clearAllStories} style={{padding:'12px 16px',background:'#fff',border:'2px solid #e0e0e0',borderRadius:8,cursor:'pointer',fontFamily:'inherit',fontSize:13,fontWeight:700,color:'#c62828',whiteSpace:'nowrap'}}>
+                  🗑 Clear All
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Generating pipeline */}
