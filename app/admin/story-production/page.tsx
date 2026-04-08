@@ -434,11 +434,15 @@ export default function StoryProductionPage() {
   function reject(reason: string) { if(!selected) return; const updated=stories.map(s=>s.id===selected.id?{...s,status:'rejected' as StoryStatus,notes:reason}:s); saveStories(updated); setSelected({...selected,status:'rejected',notes:reason}) }
 
   function clearQueue() {
-    if(!confirm('Clear all stories from the queue? This cannot be undone.')) return
-    saveStories([])
-    setSelected(null)
+    if(!confirm('Clear the generation pipeline? Completed and approved stories will be kept.')) return
     setPremiseQueue([])
     setQueueRunning(false)
+  }
+
+  function deleteStory(id: string) {
+    const updated = stories.filter(s => s.id !== id)
+    saveStories(updated)
+    if(selected?.id === id) setSelected(null)
   }
 
   const approvedStories=stories.filter(s=>s.status==='approved')
@@ -666,7 +670,14 @@ export default function StoryProductionPage() {
                   </div>
                   {isSel&&(
                     <div style={{borderTop:'1px solid #e0e0e0'}}>
-                      {s.status==='ready'&&(<div style={{padding:'16px 24px',background:'#f8f8f8',display:'flex',gap:12,borderBottom:'1px solid #e0e0e0'}}><button onClick={e=>{e.stopPropagation();approve()}} style={{background:'#2e7d32',color:'#fff',border:'none',borderRadius:6,padding:'12px 24px',cursor:'pointer',fontFamily:'inherit',fontSize:15,fontWeight:700}}>✓ Approve for Hal</button><button onClick={e=>{e.stopPropagation();const r=prompt('Reason?');if(r!==null)reject(r)}} style={{background:'#fff',color:'#c62828',border:'1px solid #c62828',borderRadius:6,padding:'12px 24px',cursor:'pointer',fontFamily:'inherit',fontSize:15,fontWeight:700}}>Reject</button></div>)}
+                      {s.status==='ready'&&(<div style={{padding:'16px 24px',background:'#f8f8f8',display:'flex',gap:12,borderBottom:'1px solid #e0e0e0',alignItems:'center'}}>
+                        <button onClick={e=>{e.stopPropagation();approve()}} style={{background:'#2e7d32',color:'#fff',border:'none',borderRadius:6,padding:'12px 24px',cursor:'pointer',fontFamily:'inherit',fontSize:15,fontWeight:700}}>✓ Approve for Hal</button>
+                        <button onClick={e=>{e.stopPropagation();const r=prompt('Reason?');if(r!==null)reject(r)}} style={{background:'#fff',color:'#c62828',border:'1px solid #c62828',borderRadius:6,padding:'12px 24px',cursor:'pointer',fontFamily:'inherit',fontSize:15,fontWeight:700}}>Reject</button>
+                        <button onClick={e=>{e.stopPropagation();if(confirm('Delete this story?'))deleteStory(s.id)}} style={{marginLeft:'auto',background:'none',color:'#aaa',border:'1px solid #e0e0e0',borderRadius:6,padding:'12px 16px',cursor:'pointer',fontFamily:'inherit',fontSize:13}}>🗑 Delete</button>
+                      </div>)}
+                      {(s.status==='approved'||s.status==='rejected')&&(<div style={{padding:'12px 24px',background:'#f8f8f8',display:'flex',justifyContent:'flex-end',borderBottom:'1px solid #e0e0e0'}}>
+                        <button onClick={e=>{e.stopPropagation();if(confirm('Delete this story?'))deleteStory(s.id)}} style={{background:'none',color:'#aaa',border:'1px solid #e0e0e0',borderRadius:6,padding:'8px 14px',cursor:'pointer',fontFamily:'inherit',fontSize:13}}>🗑 Delete</button>
+                      </div>)}
                       <div style={{display:'grid',gridTemplateColumns:'1fr 340px'}}>
                         <div style={{borderRight:'1px solid #e0e0e0'}}>
                           <div style={{padding:'12px 20px',borderBottom:'1px solid #e0e0e0',fontSize:12,color:'#888',letterSpacing:1,textTransform:'uppercase',fontWeight:700}}>Script</div>
