@@ -72,15 +72,34 @@ const STATUS_CONFIG: Record<StoryStatus, { bg: string; color: string; label: str
 }
 
 const AUTHOR_PROFILES: Record<string, string> = {
+  // THRILLER
   'Sara Keene': 'First person. Tense, intimate, psychological. Fast pacing. Female protagonists, unreliable narrators. Example: "I knew before I opened the door. I always know."',
-  'Elias Thorn': 'First person. Dark, lyrical, dread-soaked. Slow-burn. Rural settings, folklore, nature as threat.',
-  'Dale Harmon': 'Third person limited. Warm, grounded, cinematic. Blue-collar male heroes, moral clarity.',
+  'Lena Holt': 'Third person limited. Ruthless, institutional, airtight. Female protagonists fighting institutional corruption. Law firms, hospitals, government as settings. Plots built like legal briefs.',
+  'Jack Malone': 'First person. Hard-boiled, sardonic, street-smart. Male protagonists, urban environments, moral clarity in a corrupt world. Short declarative sentences. Chandler-adjacent.',
+  // MYSTERY
   'Julian Mercer': 'Third person limited. Precise, cool, procedural. Detective POV, urban, twist endings.',
+  'Caroline Drake': 'Third person limited. Elegant, quietly menacing. Female protagonists, historical 1920s-1960s.',
+  'Iris Pemberton': 'Third person limited. Elegant, witty, quietly devastating. Female protagonists in 1930s-1940s high society. Society as backdrop, secrets as currency.',
+  // HORROR
+  'Silas Graves': 'First person. Raw, visceral, confessional. Working-class protagonists, isolated settings.',
+  'Elias Thorn': 'First person. Dark, lyrical, dread-soaked. Slow-burn. Rural settings, folklore, nature as threat.',
+  'Vera Moss': 'First person. Claustrophobic, paranoid, psychologically precise. Urban settings, apartment buildings. Dread builds from mundane details. Female protagonists.',
+  // SCI-FI
+  'Nina Vasquez': 'Third person omniscient. Clinical, curious. Female scientists, near-future, ethical dilemmas.',
+  'Dr. Kai Osei': 'Third person omniscient. Clinical precision expanding into wonder. Scientists as protagonists. Near-future plausible. The antagonist is usually physics.',
+  'Zara Storm': 'Third person omniscient. Epic, cinematic, emotional. Space opera scale with human intimacy. Ensemble casts across multiple worlds. Diverse protagonists.',
+  // COMEDY
+  'Archie Vale': 'Third person omniscient. Absurdist, warm, deadpan. Situations escalate with perfect internal logic. British settings. Characters convinced they are the only reasonable person.',
+  'Maeve Kelly': 'Third person omniscient. Warm, chaotic, generous. Large family ensembles. Irish settings. The disaster is always the protagonist's fault. Resolution is always love.',
+  'Rex Bright': 'Third person omniscient. Dark, sardonic, finds comedy in catastrophe. Genuine crisis treated with bureaucratic seriousness. The protagonist is the only one who noticed the real problem.',
+  // ROMANCE
+  'Claire Ashford': 'Third person limited. Sharp, witty, emotionally honest. Female protagonists who are competent at work and terrible at feelings. Professional settings. Slow burn.',
+  'Edmund Worth': 'Third person limited. Restrained, charged, elegant. Regency and Victorian settings. Desire expressed through what is withheld. Class and propriety as obstacles.',
+  'Dani Reeves': 'Third person limited. Fast, tense, emotionally relentless. Romantic suspense — the thriller plot and love story accelerate each other. Female protagonists in genuine danger.',
+  // DRAMA / WESTERN / ADVENTURE
   'Daniel Wren': 'Third person omniscient. Warm, observational. Ensemble casts, small-town, redemption arcs.',
   'Mark Holbrook': 'Third person limited. Cinematic, restrained. Male protagonists under pressure, moral ambiguity.',
-  'Silas Graves': 'First person. Raw, visceral, confessional. Working-class protagonists, isolated settings.',
-  'Nina Vasquez': 'Third person omniscient. Clinical, curious. Female scientists, near-future, ethical dilemmas.',
-  'Caroline Drake': 'Third person limited. Elegant, quietly menacing. Female protagonists, historical 1920s-1960s.',
+  'Dale Harmon': 'Third person limited. Warm, grounded, cinematic. Blue-collar male heroes, moral clarity.',
   'Marc Hobelman': 'Third person limited. Spare, weathered, laconic. Lone protagonists, frontier justice, moral gray zones. Sentences 8-12 words.',
 }
 
@@ -92,12 +111,19 @@ const NARRATOR_MAP: Record<string, string> = {
 }
 
 const GENRE_AUTHOR_MAP: Record<string, string[]> = {
-  'Thriller': ['Sara Keene','Mark Holbrook'], 'Horror': ['Silas Graves','Elias Thorn'],
-  'Dark Mystery': ['Elias Thorn','Julian Mercer'], 'Mystery/Crime': ['Julian Mercer','Caroline Drake'],
-  'Adventure': ['Dale Harmon','Mark Holbrook'], 'Drama': ['Daniel Wren','Mark Holbrook'],
-  'Sci-Fi': ['Nina Vasquez'], 'Western': ['Marc Hobelman'],
-  'Historical Drama': ['Caroline Drake','Daniel Wren'], 'Supernatural': ['Silas Graves','Sara Keene'],
-  'Family/Heartwarming': ['Daniel Wren'], 'Comedy': ['Daniel Wren'],
+  'Thriller': ['Sara Keene','Lena Holt','Jack Malone'],
+  'Horror': ['Silas Graves','Elias Thorn','Vera Moss'],
+  'Dark Mystery': ['Elias Thorn','Julian Mercer','Vera Moss'],
+  'Mystery/Crime': ['Julian Mercer','Caroline Drake','Iris Pemberton'],
+  'Adventure': ['Dale Harmon','Mark Holbrook','Zara Storm'],
+  'Drama': ['Daniel Wren','Mark Holbrook','Maeve Kelly'],
+  'Sci-Fi': ['Nina Vasquez','Dr. Kai Osei','Zara Storm'],
+  'Western': ['Marc Hobelman'],
+  'Historical Drama': ['Caroline Drake','Iris Pemberton','Edmund Worth'],
+  'Supernatural': ['Silas Graves','Sara Keene','Vera Moss'],
+  'Family/Heartwarming': ['Daniel Wren','Maeve Kelly','Archie Vale'],
+  'Comedy': ['Archie Vale','Maeve Kelly','Rex Bright'],
+  'Romance': ['Claire Ashford','Edmund Worth','Dani Reeves'],
 }
 
 // THREE-CALL PIPELINE
