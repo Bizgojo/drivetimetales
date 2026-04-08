@@ -604,7 +604,7 @@ export default function StoryProductionPage() {
         setStatus(`Writing scene ${sceneNum}/${sceneCount} — "${pp.episodeTitle || pp.seriesName || pp.genre}"...`)
         const previousScenes = scenes.join('\n\n')
         const scenePrompt = buildScenePrompt(pp, sceneNum, sceneCount, previousScenes, sceneRole)
-        const sceneTokens = sceneRole === 'finale' ? 8000 : 4000
+        const sceneTokens = sceneRole === 'finale' ? 8000 : sceneRole === 'escalation' ? 6000 : 4000
         const sr = await fetch('/api/claude-proxy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:sceneTokens,messages:[{role:'user',content:scenePrompt}]})})
         const sceneText = (await sr.json()).content?.[0]?.text || ''
         scenes.push(sceneText)
