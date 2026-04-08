@@ -65,7 +65,7 @@ export default function AdminLayout({
   const mainBg = '#FAF9F6'
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: '#FAF9F6', color: '#111' }}>
       {/* Sidebar */}
       <aside style={{ 
         width: '220px', 
