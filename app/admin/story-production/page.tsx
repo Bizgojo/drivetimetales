@@ -106,13 +106,15 @@ function buildScriptPrompt(p: {
   isSeries: boolean; seriesName: string; episodeNumber: number
   totalEpisodes: number; isFinale: boolean; episodeTitle: string
 }): string {
-  const wordCount = p.runtime === '10 min' ? '1,200-1,400' : p.runtime === '15 min' ? '1,800-2,100' : p.runtime === '20 min' ? '2,400-2,800' : '3,000-3,500'
+  const wordCount = p.runtime === '10 min' ? '1,100-1,300' : p.runtime === '15 min' ? '1,600-1,900' : p.runtime === '20 min' ? '2,000-2,400' : '2,600-3,000'
   const profile = AUTHOR_PROFILES[p.author] || `${p.authorVoice} voice. ${p.authorTone}.`
   const endingRule = p.isSeries && !p.isFinale ? 'SERIES EPISODE: End on hard cliffhanger. No resolution. Final line = burning question.' : p.isSeries && p.isFinale ? 'FINALE: Resolve ALL threads. Clear earned outcome. No cliffhanger.' : 'STANDALONE: Resolve completely. Final NARRATOR line conclusive.'
   const seriesBlock = p.isSeries ? `\nSERIES: ${p.seriesName}\nEPISODE: ${p.episodeNumber} of ${p.totalEpisodes}\nEPISODE_TITLE: ${p.episodeTitle}\nSERIES_IS_FINALE: ${p.isFinale}\n${p.isFinale ? '\nFINALE RULE: Resolve ALL story threads. Clear earned outcome. Close the series formally.' : '\nSERIES RULE: End on HARD CLIFFHANGER — shocking revelation, immediate danger, or betrayal. Final line = burning question. "To be continued" FORBIDDEN. ANNOUNCER outro teases something SPECIFIC from next episode.'}` : ''
   return `You are the Endless Tales script writer. Write a complete professional audio drama script.
 
 AUDIENCE: Commuters and truckers. Listening while driving. Cannot rewind. 90 seconds to hook them.
+
+⚠️ WORD BUDGET: You MUST finish the complete script including the final BELLE B outro within the token limit. Budget ~60% of words for Act 1+2, reserve ~40% for Act 3 + ending. If you are running long, cut dialogue in the middle — NEVER cut the ending. An incomplete script is a failed script.
 
 AUTHOR: ${p.author}
 VOICE PROFILE: ${profile}
