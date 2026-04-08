@@ -162,10 +162,36 @@ function buildScenePrompt(p: PipelineParams, sceneNumber: number, totalScenes: n
     : sceneRole === 'escalation'
     ? `ESCALATION SCENE ${sceneNumber}/${totalScenes}: Stakes must be higher than previous scene. Something must change — a revelation, complication, or new threat. Listener understanding should shift. End with forward momentum.`
     : p.isSeries && !p.isFinale
-    ? `FINAL SCENE — SERIES CLIFFHANGER REQUIRED. End on: (a) shocking revelation that reframes everything, OR (b) character in immediate danger with no resolution, OR (c) betrayal that destroys listener assumptions. Final line = burning question. CLIFFHANGER: ${cliffhanger}. THIS SCENE MUST BE COMPLETE.`
+    ? `FINAL SCENE — THIS IS THE LAST SCENE OF THE EPISODE. You have unlimited space to complete it fully.
+
+STRUCTURE THIS SCENE IN THREE PARTS:
+Part 1 — CLIMAX: The central conflict of this episode reaches its peak. The protagonist faces the most intense moment yet.
+Part 2 — TURN: Something changes irrevocably. A revelation, a decision, an action that cannot be undone.
+Part 3 — CLIFFHANGER ENDING: Land on one of these:
+  (a) A shocking revelation delivered in the final line of dialogue or narration — reframes everything the listener just heard
+  (b) The protagonist in immediate physical or emotional danger with zero resolution — leave them hanging
+  (c) A betrayal revealed in the final moment — destroys the listener's assumptions about who to trust
+
+CLIFFHANGER TO HIT: ${cliffhanger}
+
+MANDATORY: Write all three parts completely. Do not stop in the middle of the climax. Do not stop in the middle of a sentence. The final line must land with impact — it is the last thing the listener hears before silence.`
     : p.isSeries && p.isFinale
-    ? `FINAL SCENE — SERIES FINALE. Resolve ALL story threads. Every question answered. Protagonist reaches clear earned outcome. Emotional landing that makes the whole series feel complete. WRITE UNTIL DONE.`
-    : `FINAL SCENE — STANDALONE RESOLUTION. Resolve the central conflict completely. Final narrator line must feel conclusive — listener knows story is over. Leave a resonant emotional image. WRITE UNTIL DONE.`
+    ? `FINAL SCENE — THIS IS THE SERIES FINALE. You have unlimited space to complete it fully.
+
+STRUCTURE THIS SCENE IN THREE PARTS:
+Part 1 — FINAL CONFRONTATION: Every story thread converges. The protagonist faces the ultimate version of the central conflict.
+Part 2 — RESOLUTION: The conflict is resolved. The protagonist reaches a clear outcome — earned through everything that came before.
+Part 3 — LANDING: One final narrator line or moment that makes the listener feel the whole series was worth it. Resonant. Complete. No loose threads.
+
+MANDATORY: Write all three parts completely. This is the end of the series — give it the weight it deserves. Do not stop mid-scene.`
+    : `FINAL SCENE — THIS IS THE LAST SCENE. You have unlimited space to complete it fully.
+
+STRUCTURE THIS SCENE IN THREE PARTS:
+Part 1 — CLIMAX: The central conflict reaches its peak. Maximum tension.
+Part 2 — RESOLUTION: The conflict resolves. The protagonist reaches a clear outcome.
+Part 3 — CLOSING IMAGE: One final line — narrator or dialogue — that feels conclusive. The listener must know the story is over.
+
+MANDATORY: Write all three parts completely. Do not stop mid-scene. The final line is the most important line in the entire script.`
 
   const voiceReminder = narrativeVoice === 'first_person'
     ? 'MAINTAIN FIRST PERSON — every narration line uses I, me, my.'
