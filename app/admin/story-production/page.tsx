@@ -182,7 +182,9 @@ ESCALATION ANTI-EXPOSITION RULE: If you need to reveal information (a pattern, a
 - A character discovering it under pressure, not narrating it calmly
 - A confrontation that forces the truth out
 - A physical object or event that makes it undeniable
-NEVER have the narrator list facts, dates, or patterns. Show the discovery, not the data.`
+NEVER have the narrator list facts, dates, or patterns. Show the discovery, not the data.
+BAD: "NARRATOR: The files showed three missing truckers, all on Route 9, all in October." — this is data, not drama
+GOOD: "JAKE: Wait. Miller. Conroy. Basset. They all ran Route 9. They all disappeared in October. NARRATOR: His hands went cold on the wheel." — same information, discovered under pressure`
     : p.isSeries && !p.isFinale
     ? `FINAL SCENE — THIS IS THE LAST SCENE OF THE EPISODE. You have unlimited space to complete it fully.
 
@@ -254,6 +256,7 @@ DIALOGUE ANTI-MECHANICAL RULES — these are the difference between 7/10 and 9/1
 - Characters NEVER explain the plot to each other — they only speak from self-interest, fear, or agenda
 - If a character needs to reveal information, they do it under pressure, reluctantly, or as a threat — never as explanation
 - Every line of dialogue must do one of: reveal character, raise stakes, or change the situation — if it does none of these, cut it
+- Character verbal signatures (catchphrases, endearments, speech tics) must be SPARSE — used once or twice for impact, never every line. Repetition kills distinctiveness.
 - Protagonist speaks in fragments under pressure — full sentences only when in control
 - Antagonist speaks in complete sentences — control is their weapon
 - Subtext over text: what characters DON'T say is as important as what they do say
@@ -261,6 +264,8 @@ DIALOGUE ANTI-MECHANICAL RULES — these are the difference between 7/10 and 9/1
 OUTPUT FORMAT:
 [SCENE ${sceneNumber} — evocative title]
 [write the complete scene content, then stop]
+
+CRITICAL: Write every sentence completely. Never stop mid-sentence or mid-word. The last line of your output must be a complete sentence with proper punctuation. If you are approaching your limit, finish the current sentence, then stop.
 
 Output ONLY this one scene. No preamble. No other scenes.`
 }
