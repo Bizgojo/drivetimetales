@@ -186,36 +186,42 @@ NEVER have the narrator list facts, dates, or patterns. Show the discovery, not 
 BAD: "NARRATOR: The files showed three missing truckers, all on Route 9, all in October." — this is data, not drama
 GOOD: "JAKE: Wait. Miller. Conroy. Basset. They all ran Route 9. They all disappeared in October. NARRATOR: His hands went cold on the wheel." — same information, discovered under pressure`
     : p.isSeries && !p.isFinale
-    ? `FINAL SCENE — THIS IS THE LAST SCENE OF THE EPISODE. You have unlimited space to complete it fully.
+    ? `FINAL SCENE — THIS IS THE LAST SCENE OF THE EPISODE.
+
+WORD BUDGET: Target 600–900 words for this scene. Do NOT exceed 900 words. Stay tight — every line earns its place.
 
 STRUCTURE THIS SCENE IN THREE PARTS:
-Part 1 — CLIMAX: The central conflict of this episode reaches its peak. The protagonist faces the most intense moment yet.
-Part 2 — TURN: Something changes irrevocably. A revelation, a decision, an action that cannot be undone.
-Part 3 — CLIFFHANGER ENDING: Land on one of these:
+Part 1 — CLIMAX (200–350 words): The central conflict of this episode reaches its peak. The protagonist faces the most intense moment yet.
+Part 2 — TURN (150–250 words): Something changes irrevocably. A revelation, a decision, an action that cannot be undone.
+Part 3 — CLIFFHANGER ENDING (100–200 words): Land on one of these:
   (a) A shocking revelation delivered in the final line of dialogue or narration — reframes everything the listener just heard
   (b) The protagonist in immediate physical or emotional danger with zero resolution — leave them hanging
   (c) A betrayal revealed in the final moment — destroys the listener's assumptions about who to trust
 
-CLIFFHANGER TO HIT: ${cliffhanger}
+CLIFFHANGER TO HIT: \${cliffhanger}
 
-MANDATORY: Write all three parts completely. Do not stop in the middle of the climax. Do not stop in the middle of a sentence. The final line must land with impact — it is the last thing the listener hears before silence.`
+MANDATORY: Complete all three parts within the word budget. The final sentence must be a complete sentence with a period. The final line must land with impact — it is the last thing the listener hears before silence.\`
     : p.isSeries && p.isFinale
-    ? `FINAL SCENE — THIS IS THE SERIES FINALE. You have unlimited space to complete it fully.
+    ? `FINAL SCENE — THIS IS THE SERIES FINALE.
+
+WORD BUDGET: Target 600–900 words for this scene. Do NOT exceed 900 words. Stay tight — every line earns its place.
 
 STRUCTURE THIS SCENE IN THREE PARTS:
-Part 1 — FINAL CONFRONTATION: Every story thread converges. The protagonist faces the ultimate version of the central conflict.
-Part 2 — RESOLUTION: The conflict is resolved. The protagonist reaches a clear outcome — earned through everything that came before.
-Part 3 — LANDING: One final narrator line or moment that makes the listener feel the whole series was worth it. Resonant. Complete. No loose threads.
+Part 1 — FINAL CONFRONTATION (200–350 words): Every story thread converges. The protagonist faces the ultimate version of the central conflict.
+Part 2 — RESOLUTION (150–250 words): The conflict is resolved. The protagonist reaches a clear outcome — earned through everything that came before.
+Part 3 — LANDING (100–200 words): One final narrator line or moment that makes the listener feel the whole series was worth it. Resonant. Complete. No loose threads.
 
-MANDATORY: Write all three parts completely. This is the end of the series — give it the weight it deserves. Do not stop mid-scene.`
-    : `FINAL SCENE — THIS IS THE LAST SCENE. You have unlimited space to complete it fully.
+MANDATORY: Complete all three parts within the word budget. This is the end of the series — give it the weight it deserves. The final sentence must be a complete sentence with a period.\`
+    : `FINAL SCENE — THIS IS THE LAST SCENE.
+
+WORD BUDGET: Target 600–900 words for this scene. Do NOT exceed 900 words. Stay tight — every line earns its place.
 
 STRUCTURE THIS SCENE IN THREE PARTS:
-Part 1 — CLIMAX: The central conflict reaches its peak. Maximum tension.
-Part 2 — RESOLUTION: The conflict resolves. The protagonist reaches a clear outcome.
-Part 3 — CLOSING IMAGE: One final line — narrator or dialogue — that feels conclusive. The listener must know the story is over.
+Part 1 — CLIMAX (200–350 words): The central conflict reaches its peak. Maximum tension.
+Part 2 — RESOLUTION (150–250 words): The conflict resolves. The protagonist reaches a clear outcome.
+Part 3 — CLOSING IMAGE (100–200 words): One final line — narrator or dialogue — that feels conclusive. The listener must know the story is over.
 
-MANDATORY: Write all three parts completely. Do not stop mid-scene. The final line is the most important line in the entire script.`
+MANDATORY: Complete all three parts within the word budget. The final sentence must be a complete sentence with a period. The final line is the most important line in the entire script.\`
 
   const voiceReminder = narrativeVoice === 'first_person'
     ? 'MAINTAIN FIRST PERSON — every narration line uses I, me, my.'
@@ -223,7 +229,7 @@ MANDATORY: Write all three parts completely. Do not stop mid-scene. The final li
     ? 'MAINTAIN THIRD OMNISCIENT — narrator knows all, can move between characters.'
     : 'MAINTAIN THIRD LIMITED — follow protagonist closely, narrator shows their thoughts and feelings.'
 
-  const contextLength = sceneRole === 'finale' ? 1000 : 2000
+  const contextLength = sceneRole === 'finale' ? 2500 : 2000
   const prevContext = previousScenes
     ? `STORY SO FAR — continue seamlessly:
 ${previousScenes.slice(-contextLength)}`
