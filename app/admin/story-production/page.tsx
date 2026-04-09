@@ -482,7 +482,7 @@ Eligible authors: ${eligible}${avoidList}\n\nDIVERSITY RULES — all 3 options m
 Narrator pairings: Marc Hobelman→Ray Dolan | Sara Keene→Cole Hargrove | Elias Thorn→Cole Hargrove | Dale Harmon→Finn Calloway | Julian Mercer→Iris Calloway | Daniel Wren→Elliott Crane | Mark Holbrook→Morgan Veil | Silas Graves→Cole Hargrove | Nina Vasquez→Marcus Hale | Caroline Drake→Iris Calloway
 
 Return ONLY valid JSON:
-{"options":[{"title":"","author":"","narrator":"","hook":"Exact first-sentence hook — specific, sensory, mid-action","premise":"3-4 sentences: protagonist, want, obstacle, stakes","seriesNote":"${p.isSeries ? 'How this fits the series arc' : ''}","scoringNote":"What drives this to 23+/25"}]}`
+{"options":[{"title":"","author":"","narrator":"","hook":"Exact first-sentence hook — specific, sensory, mid-action","premise":"3-4 sentences: protagonist, want, obstacle, stakes","seriesNote":"${p.isSeries ? 'How this fits the series arc' : ''}","scoringNote":"What drives this to 20+/25"}]}`
 }
 
 export default function StoryProductionPage() {
@@ -735,7 +735,7 @@ ${script}`
           setStatus(`Grading completed script...`)
         }
       }
-      while(attempt < 3 && (!bestScore || scoreOf25(bestScore) < 23)) {
+      while(attempt < 3 && (!bestScore || scoreOf25(bestScore) < 20)) {
         attempt++
         setStatus(`Revising "${q.title}"... (attempt ${attempt}/3 — score was ${scoreOf25(aiScore)}/25)`)
         const revised=await reviseScript(script,aiScore,q.author,q.genre,attempt)
@@ -779,7 +779,7 @@ ${script}`
       setStatus('Grading... (attempt 1/3)')
       let aiScore=await gradeScript(script,pickedAuthor.name,genre)
       let bestScript=script; let bestScore=aiScore; let attempt=1
-      while(attempt < 3 && (!bestScore || scoreOf25(bestScore) < 23)) {
+      while(attempt < 3 && (!bestScore || scoreOf25(bestScore) < 20)) {
         attempt++
         setStatus(`Revising... (attempt ${attempt}/3 — score was ${scoreOf25(aiScore)}/25)`)
         const revised=await reviseScript(script,aiScore,pickedAuthor.name,genre,attempt)
