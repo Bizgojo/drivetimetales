@@ -753,7 +753,7 @@ ${script}`
       setSelected(finished)
     } catch(err) {
       setStories(prev => {
-        const updated = prev.map((s: Story) => s.id===storyId ? {...s, status:'rejected' as StoryStatus, notes:`Error: ${err}`} : s)
+        const updated = prev.map((s: Story) => s.id===storyId ? {...s, status:'rejected' as StoryStatus, notes:`Error: ${err}`, ai_score: bestScore || s.ai_score, script: bestScript || s.script} : s)
         localStorage.setItem('et_stories_v2', JSON.stringify(updated))
         return updated
       })
