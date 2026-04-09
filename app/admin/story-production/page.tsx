@@ -841,7 +841,7 @@ ${script}`
 
   async function gradeScript(script: string, author: string, g: string): Promise<AIScore|null> {
     try {
-      const resp=await fetch('/api/claude-proxy',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:1500, messages:[{role:'user',content:`Grade this Endless Tales audio drama for commuters/truckers who cannot look at a screen. Brutally honest. Scores 1-10.
+      const resp=await fetch('/api/claude-proxy',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ model:'claude-sonnet-4-6', max_tokens:2500, messages:[{role:'user',content:`Grade this Endless Tales audio drama for a general audience listener who cannot look at a screen. Brutally honest. Scores 1-10.
 
 Weights: opening_hook 25%, overall_listenability 25%, dialogue_quality 20%, structure_and_pacing 15%, audio_suitability 15%.
 composite_score = weighted average max 10, displayed as x2.5=/25. Policy fail = auto Rejected.
