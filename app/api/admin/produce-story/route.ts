@@ -112,9 +112,33 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     const { storyId, script, title, author, narrator, genre } = body
-    if (!storyId || !script || !title || !author || !genre) {
+    if (!script || !title || !author || !genre) {
       return NextResponse.json({ success: false, error: 'Missing required fields' }, { status: 400 })
     }
+
+    // Narrator map — resolve correct narrator from author name
+    const NARRATOR_MAP: Record<string, string> = {
+      'Marc Hobelman': 'Ray Dolan', 'Sara Keene': 'Cole Hargrove', 'Elias Thorn': 'Cole Hargrove',
+      'Dale Harmon': 'Finn Calloway', 'Julian Mercer': 'Iris Calloway', 'Daniel Wren': 'Elliott Crane',
+      'Mark Holbrook': 'Morgan Veil', 'Silas Graves': 'Cole Hargrove', 'Nina Vasquez': 'Marcus Hale',
+      'Caroline Drake': 'Iris Calloway', 'Claire Ashford': 'Iris Calloway', 'Edmund Worth': 'James Alcott',
+      'Dani Reeves': 'Nora Ashby', 'Vera Blackwood': 'Quinn Merritt', 'Buck Callahan': 'Finn Calloway',
+      'Zara Osei': 'Marcus Hale', 'Vera Moss': 'Nora Ashby', 'Dr. Kai Osei': 'Elliott Crane',
+      'Zara Storm': 'Sage Wilder', 'Coop Delray': 'Ray Dolan'
+    }
+    const resolvedNarrator = NARRATOR_MAP[author] || narrator
+
+    // Create real DB row if storyId looks like a localStorage key
+    let realStoryId = storyId
+    if (!storyId || storyId.startsWith('story_')) {
+      const { data: inserted } = await supabase.from('stories').insert({
+        title, author, genre,
+        duration_mins: 15, is_hidden: true,
+        published_on: new Date().toISOString().split('T')[0]
+      }).select('id').single()
+      if (inserted?.id) realStoryId = inserted.id
+    }
+
     const updates: Record<string, any> = {}
 
     try { const d = await generateDescription(script, title, genre); updates.description = d; steps.description = { status: 'done', message: d.slice(0, 80) } }
@@ -126,7 +150,7 @@ export async function POST(req: NextRequest) {
     try {
       const base64 = await generateCover(script, title, author, genre)
       const imgBuffer = Buffer.from(base64, 'base64')
-      const storagePath = `stories/${storyId}/cover_${Date.now()}.jpg`
+      const storagePath = `stories/${realStoryId}/cover_${Date.now()}.jpg`
       const { error: uploadErr } = await supabase.storage.from('audio').upload(storagePath, imgBuffer, { contentType: 'image/jpeg', upsert: true })
       if (uploadErr) throw new Error(uploadErr.message)
       const { data: { publicUrl } } = supabase.storage.from('audio').getPublicUrl(storagePath)
@@ -137,21 +161,21 @@ export async function POST(req: NextRequest) {
     try { const id = await resolveAuthorId(author); if (id) { updates.author_id = id; steps.author = { status: 'done', message: author } } else steps.author = { status: 'error', message: `Not found: ${author}` } }
     catch (e) { steps.author = { status: 'error', message: String(e) } }
 
-    if (narrator) {
-      try { const n = await resolveNarratorVoiceId(narrator); if (n) { updates.narrator_voice_id = n.voiceId; updates.narrator_voice_name = narrator; steps.narrator = { status: 'done', message: narrator } } else steps.narrator = { status: 'error', message: `Not found: ${narrator}` } }
+    if (resolvedNarrator) {
+      try { const n = await resolveNarratorVoiceId(resolvedNarrator); if (n) { updates.narrator_voice_id = n.voiceId; updates.narrator_voice_name = resolvedNarrator; steps.narrator = { status: 'done', message: resolvedNarrator } } else steps.narrator = { status: 'error', message: `Not found: ${resolvedNarrator}` } }
       catch (e) { steps.narrator = { status: 'error', message: String(e) } }
     } else steps.narrator = { status: 'done', message: 'No narrator specified' }
 
     try {
       if (Object.keys(updates).length > 0) {
-        const { error: updateErr } = await supabase.from('stories').update(updates).eq('id', storyId)
+        const { error: updateErr } = await supabase.from('stories').update(updates).eq('id', realStoryId)
         if (updateErr) throw new Error(updateErr.message)
       }
       steps.save = { status: 'done', message: Object.keys(updates).join(', ') }
     } catch (e) { steps.save = { status: 'error', message: String(e) } }
 
     const anyError = Object.values(steps).some(s => s.status === 'error')
-    return NextResponse.json({ success: !anyError, steps, updates: Object.keys(updates), coverUrl: updates.cover_url, description: updates.description })
+    return NextResponse.json({ success: !anyError, steps, updates: Object.keys(updates), coverUrl: updates.cover_url, description: updates.description, storyId: realStoryId })
   } catch (err) {
     return NextResponse.json({ success: false, error: String(err), steps }, { status: 500 })
   }
