@@ -432,8 +432,7 @@ function buildSeriesPrompt(p: { genre: string; runtime: string; episodeCount: nu
     : p.episodeCount === 7 ? 'Ep1: setup, Ep2: escalation, Ep3: complication, Ep4: midpoint reversal, Ep5: darkest hour, Ep6: penultimate, Ep7: finale'
     : 'Ep1: setup, Ep2-3: escalation, Ep4: midpoint reversal, Ep5: darkest moment, Ep6-7: confrontation building, Ep8: finale'
 
-  return `You are the Endless Tales series developer. Create a complete ${p.episodeCount}-episode audio drama series for Endless Tales general audience listeners.
-
+  return `You are the Endless Tales series developer. Create a complete ${p.episodeCount}-episode audio drama series for Endless Tales general audience listeners.\n\nSETTING DIVERSITY RULE: Do NOT default to road, highway, trucking, or commuter settings unless the genre specifically calls for it. Stories should span all walks of life — urban professionals, small towns, historical periods, workplaces, families, institutions. Driving and trucking contexts should appear in no more than 1 in 3 stories across the catalog.\n
 Genre: ${p.genre} | Runtime per episode: ${p.runtime} | Episodes: ${p.episodeCount}
 Eligible authors: ${eligible}
 ${p.notes ? `Notes from Marc: ${p.notes}` : ''}
