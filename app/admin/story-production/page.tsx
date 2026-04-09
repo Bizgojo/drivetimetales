@@ -571,7 +571,7 @@ export default function StoryProductionPage() {
     if(!pickerGenre){ alert('Select a genre first.'); return }
     setPickerLoading(true); setPremiseOptions([])
     try {
-      const resp = await fetch('/api/claude-proxy',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:2000, messages:[{role:'user',content:buildPickerPrompt({genre:pickerGenre,runtime:pickerRuntime,isSeries:pickerIsSeries,seriesName:pickerSeriesName,totalEpisodes:pickerTotalEps,episodeNumber:pickerEpisodeNum,extraNotes:pickerNotes})}] }) })
+      const resp = await fetch('/api/claude-proxy',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ model:'claude-opus-4-6', max_tokens:2000, messages:[{role:'user',content:buildPickerPrompt({genre:pickerGenre,runtime:pickerRuntime,isSeries:pickerIsSeries,seriesName:pickerSeriesName,totalEpisodes:pickerTotalEps,episodeNumber:pickerEpisodeNum,extraNotes:pickerNotes})}] }) })
       const data=await resp.json()
       let raw=data.content?.[0]?.text||''
       raw = raw.replace(/```json|```/g,'').trim()
@@ -590,7 +590,7 @@ export default function StoryProductionPage() {
     if(!seriesGenre){ alert('Select a genre first.'); return }
     setSeriesLoading(true); setSeriesPlan(null)
     try {
-      const resp = await fetch('/api/claude-proxy',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:4000, messages:[{role:'user',content:buildSeriesPrompt({genre:seriesGenre,runtime:seriesRuntime,episodeCount:seriesEpisodeCount,notes:seriesNotes})}] }) })
+      const resp = await fetch('/api/claude-proxy',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ model:'claude-opus-4-6', max_tokens:4000, messages:[{role:'user',content:buildSeriesPrompt({genre:seriesGenre,runtime:seriesRuntime,episodeCount:seriesEpisodeCount,notes:seriesNotes})}] }) })
       const data=await resp.json()
       let raw=data.content?.[0]?.text||''
       // Strip markdown fences and find the JSON object
@@ -677,7 +677,7 @@ export default function StoryProductionPage() {
         const previousScenes = scenes.join('\n\n')
         const scenePrompt = buildScenePrompt(pp, sceneNum, sceneCount, previousScenes, sceneRole)
         const sceneTokens = sceneRole === 'finale' ? 12000 : sceneRole === 'escalation' ? 6000 : 4000
-        const sr = await fetch('/api/claude-proxy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:sceneTokens,messages:[{role:'user',content:scenePrompt}]})})
+        const sr = await fetch('/api/claude-proxy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-opus-4-6',max_tokens:sceneTokens,messages:[{role:'user',content:scenePrompt}]})})
         const sceneText = (await sr.json()).content?.[0]?.text || ''
         scenes.push(sceneText)
       }
@@ -686,12 +686,12 @@ export default function StoryProductionPage() {
 
       // Call 2: Audio Layer — SFX, BEAT, music cues
       setStatus(`Adding audio production "${q.title}"... (2/3)`)
-      const r2=await fetch('/api/claude-proxy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:16000,messages:[{role:'user',content:buildAudioPrompt(story,pp)}]})})
+      const r2=await fetch('/api/claude-proxy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:16000,messages:[{role:'user',content:buildAudioPrompt(story,pp)}]})})
       const production=(await r2.json()).content?.[0]?.text||story
 
       // Call 3: Platform Wrapper — Belle B, headers, announcer
       setStatus(`Wrapping platform elements "${q.title}"... (3/3)`)
-      const r3=await fetch('/api/claude-proxy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:8000,messages:[{role:'user',content:buildWrapperPrompt(production,pp)}]})})
+      const r3=await fetch('/api/claude-proxy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:8000,messages:[{role:'user',content:buildWrapperPrompt(production,pp)}]})})
       let script=(await r3.json()).content?.[0]?.text||production
       // Truncation check — script must end with BELLE B outro
       const isTruncated = (s: string) => {
@@ -721,7 +721,7 @@ TRUNCATED SCRIPT:
 ${script}`
         const compResp = await fetch('/api/claude-proxy', {
           method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:16000, messages:[{role:'user',content:completionPrompt}] })
+          body: JSON.stringify({ model:'claude-opus-4-6', max_tokens:16000, messages:[{role:'user',content:completionPrompt}] })
         })
         const compData = await compResp.json()
         const completed = compData.content?.[0]?.text || script
@@ -771,7 +771,7 @@ ${script}`
     const updated=[newStory,...stories]; saveStories(updated)
     try {
       const prompt=buildScriptPrompt({ author:pickedAuthor.name, authorTone:pickedAuthor.tone, authorVoice:pickedAuthor.narrative_voice, genre, runtime, narrator:pickedNarrator?.name||'Assigned narrator', premise, requirements, isSeries:false, seriesName:'', episodeNumber:1, totalEpisodes:1, isFinale:false, episodeTitle:'' })
-      const resp=await fetch('/api/claude-proxy',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:16000, messages:[{role:'user',content:prompt}] }) })
+      const resp=await fetch('/api/claude-proxy',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ model:'claude-opus-4-6', max_tokens:16000, messages:[{role:'user',content:prompt}] }) })
       const data=await resp.json(); let script=data.content?.[0]?.text||''
       const title=script.match(/"([^"]{5,60})"/)?.[1]||`${genre} Story`
       setStatus('Grading... (attempt 1/3)')
@@ -833,7 +833,7 @@ ORIGINAL SCRIPT TO REVISE:
 ${script}`
     const resp = await fetch('/api/claude-proxy', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 16000, messages: [{role:'user', content: revisePrompt}] })
+      body: JSON.stringify({ model: 'claude-opus-4-6', max_tokens: 16000, messages: [{role:'user', content: revisePrompt}] })
     })
     const data = await resp.json()
     return data.content?.[0]?.text || script
@@ -847,7 +847,7 @@ Weights: opening_hook 25%, overall_listenability 25%, dialogue_quality 20%, stru
 composite_score = weighted average max 10, displayed as x2.5=/25. Policy fail = auto Rejected.
 
 VOICE CALIBRATION: Author ${author} | Genre: ${g}
-- First person narrators (Sara Keene, Elias Thorn, Silas Graves): intimate voice IS the style — do not penalize for "cinematic distance". Judge listenability on whether the internal voice grips a distracted driver.
+- First person narrators (Sara Keene, Elias Thorn, Silas Graves): intimate voice IS the style — do not penalize for "cinematic distance". Judge listenability on whether the internal voice grips a distracted listener.
 - Third limited (Holbrook, Mercer, Harmon, Hobelman): judge on clarity of external action and scene-setting.
 - Score dialogue_quality on distinctiveness between characters and how well speech reveals character under pressure — not on volume of dialogue.
 
