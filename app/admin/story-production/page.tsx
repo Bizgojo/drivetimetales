@@ -274,6 +274,13 @@ SECONDARY CHARACTER VOICES — the most common failure point:
 - GOOD: "HARRIS: Six months I've been on this. My wife thinks I'm having an affair. Come with me or don't — I'm taking him down either way." — specific, personal, reveals character under pressure
 - Villains must want something specific, not just power or money — the more specific the want, the more distinct the voice
 
+SECONDARY CHARACTER VOICES — the most common failure point:
+- Every speaking character needs ONE specific verbal trait that identifies them instantly: a cadence, a word choice, a way of deflecting
+- Generic authority figures (cops, agents, officials) are the #1 score killer — give them a personal stake, not a job function
+- BAD: "AGENT HARRIS: We've been tracking this operation for six months. You need to come with us." — generic, functional, reveals nothing
+- GOOD: "HARRIS: Six months I've been on this. My wife thinks I'm having an affair. Come with me or don't — I'm taking him down either way." — specific, personal, reveals character under pressure
+- Villains must want something specific, not just power or money — the more specific the want, the more distinct the voice
+
 OUTPUT FORMAT:
 [SCENE ${sceneNumber} — evocative title]
 [write the complete scene content, then stop]
