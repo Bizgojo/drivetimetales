@@ -490,6 +490,8 @@ export default function StoryProductionPage() {
   const [pickerMode, setPickerMode] = useState<'single'|'series'>('single')
   const [stories, setStories] = useState<Story[]>([])
   const [selected, setSelected] = useState<Story|null>(null)
+  const [producing, setProducing] = useState<string|null>(null)
+  const [produceSteps, setProduceSteps] = useState<Record<string,{status:string,message?:string}>>({}) 
   const [authors, setAuthors] = useState<Author[]>([])
   const [narrators, setNarrators] = useState<Narrator[]>([])
   const [generating, setGenerating] = useState(false)
@@ -867,6 +869,41 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
     } catch{ return null }
   }
 
+  async function produceStory(s: Story) {
+    if (!s.script || !s.title || !s.author) { alert('Story needs script, title, and author'); return }
+    setProducing(s.id)
+    setProduceSteps({description:{status:'pending'},prose:{status:'pending'},cover:{status:'pending'},author:{status:'pending'},narrator:{status:'pending'},save:{status:'pending'}})
+    try {
+      // First save script to stories table so we have a storyId to work with
+      const { data: existing } = await supabase.from('stories').select('id').eq('id', s.id).single()
+      let storyId = s.id
+      if (!existing) {
+        const { data: inserted } = await supabase.from('stories').insert({
+          id: s.id, title: s.title, author: s.author, genre: s.genre,
+          duration_mins: parseInt(s.runtime) || 15, is_hidden: true,
+          published_on: new Date().toISOString().split('T')[0]
+        }).select('id').single()
+        storyId = inserted?.id || s.id
+      }
+      const resp = await fetch('/api/admin/produce-story', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ storyId, script: s.script, title: s.title, author: s.author, narrator: s.narrator, genre: s.genre })
+      })
+      const result = await resp.json()
+      setProduceSteps(result.steps || {})
+      if (result.success) {
+        alert(`✅ Production complete!\n\nDescription: ${result.description?.slice(0,80)}...\nCover: ${result.coverUrl ? '✅' : '❌'}\nProse: ${result.steps?.prose?.message || '?'}\n\nStory ID: ${storyId}\nPublished as is_hidden=TRUE — approve in Supabase when ready.`)
+      } else {
+        alert(`⚠️ Production finished with some errors. Check steps:\n${JSON.stringify(result.steps, null, 2)}`)
+      }
+    } catch(err) {
+      alert(`Production failed: ${err}`)
+    } finally {
+      setProducing(null)
+    }
+  }
+
   function approve() {
     if(!selected) return
     const updated=stories.map(s=>s.id===selected.id?{...s,status:'approved' as StoryStatus}:s)
@@ -1154,6 +1191,7 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
                     <div style={{borderTop:'1px solid #e0e0e0'}}>
                       {s.status==='ready'&&(<div style={{padding:'16px 24px',background:'#f8f8f8',display:'flex',gap:12,borderBottom:'1px solid #e0e0e0',alignItems:'center'}}>
                         <button onClick={e=>{e.stopPropagation();approve()}} style={{background:'#2e7d32',color:'#fff',border:'none',borderRadius:6,padding:'12px 24px',cursor:'pointer',fontFamily:'inherit',fontSize:15,fontWeight:700}}>✓ Approve for Hal</button>
+                        <button onClick={e=>{e.stopPropagation();produceStory(s)}} disabled={producing===s.id} style={{background:producing===s.id?'#ccc':'#1565c0',color:'#fff',border:'none',borderRadius:6,padding:'12px 24px',cursor:producing===s.id?'not-allowed':'pointer',fontFamily:'inherit',fontSize:15,fontWeight:700}}>{producing===s.id?'⏳ Producing...':'🎬 Produce'}</button>
                         <button onClick={e=>{e.stopPropagation();const r=prompt('Reason?');if(r!==null)reject(r)}} style={{background:'#fff',color:'#c62828',border:'1px solid #c62828',borderRadius:6,padding:'12px 24px',cursor:'pointer',fontFamily:'inherit',fontSize:15,fontWeight:700}}>Reject</button>
                         <button onClick={e=>{e.stopPropagation();if(confirm('Delete this story?'))deleteStory(s.id)}} style={{marginLeft:'auto',background:'none',color:'#aaa',border:'1px solid #e0e0e0',borderRadius:6,padding:'12px 16px',cursor:'pointer',fontFamily:'inherit',fontSize:13}}>🗑 Delete</button>
                       </div>)}
