@@ -571,7 +571,7 @@ export default function StoryProductionPage() {
     if(!pickerGenre){ alert('Select a genre first.'); return }
     setPickerLoading(true); setPremiseOptions([])
     try {
-      const resp = await fetch('/api/claude-proxy',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ model:'claude-opus-4-6', max_tokens:2000, messages:[{role:'user',content:buildPickerPrompt({genre:pickerGenre,runtime:pickerRuntime,isSeries:pickerIsSeries,seriesName:pickerSeriesName,totalEpisodes:pickerTotalEps,episodeNumber:pickerEpisodeNum,extraNotes:pickerNotes})}] }) })
+      const resp = await fetch('/api/claude-proxy',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ model:'claude-opus-4-6', max_tokens:2000, messages:[{role:'user',content:buildPickerPrompt({genre:pickerGenre,runtime:pickerRuntime,isSeries:pickerIsSeries,seriesName:pickerSeriesName,totalEpisodes:pickerTotalEps,episodeNumber:pickerEpisodeNum,extraNotes:pickerNotes,existingTitles:stories.filter(s=>s.title&&s.title!=='Generating...').map(s=>s.title)})}] }) })
       const data=await resp.json()
       let raw=data.content?.[0]?.text||''
       raw = raw.replace(/```json|```/g,'').trim()
