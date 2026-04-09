@@ -471,13 +471,14 @@ Return ONLY valid JSON, no markdown:
 }`
 }
 
-function buildPickerPrompt(p: { genre: string; runtime: string; isSeries: boolean; seriesName: string; totalEpisodes: number; episodeNumber: number; extraNotes: string }): string {
+function buildPickerPrompt(p: { genre: string; runtime: string; isSeries: boolean; seriesName: string; totalEpisodes: number; episodeNumber: number; extraNotes: string; existingTitles?: string[] }): string {
   const eligible = (GENRE_AUTHOR_MAP[p.genre] || [p.genre]).join(', ')
+  const avoidList = p.existingTitles && p.existingTitles.length > 0 ? `\n\nALREADY PRODUCED — do NOT repeat or resemble these:\n${p.existingTitles.map(t => '- ' + t).join('\n')}\nEvery premise must differ in protagonist, setting, conflict, and tone.` : ''
   return `Generate exactly 3 distinct high-scoring premise options for an Endless Tales audio drama for a general audience.
 
 Genre: ${p.genre} | Runtime: ${p.runtime} | Type: ${p.isSeries ? `Series "${p.seriesName}" Episode ${p.episodeNumber} of ${p.totalEpisodes}` : 'Standalone'}
 ${p.extraNotes ? `Notes: ${p.extraNotes}` : ''}
-Eligible authors: ${eligible}
+Eligible authors: ${eligible}${avoidList}\n\nDIVERSITY RULES — all 3 options must differ from each other AND the avoid list:\n- Different protagonist gender, age, or profession\n- Different setting (no two in the same location type)\n- Different conflict type\n- Vary time period, geography, and social world freely
 
 Narrator pairings: Marc Hobelman→Ray Dolan | Sara Keene→Cole Hargrove | Elias Thorn→Cole Hargrove | Dale Harmon→Finn Calloway | Julian Mercer→Iris Calloway | Daniel Wren→Elliott Crane | Mark Holbrook→Morgan Veil | Silas Graves→Cole Hargrove | Nina Vasquez→Marcus Hale | Caroline Drake→Iris Calloway
 
