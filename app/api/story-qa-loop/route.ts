@@ -208,7 +208,7 @@ ${scriptSample}`
     const clean = raw.replace(/```json|```/g, '').trim()
     const parsed = JSON.parse(clean)
     return {
-      score: Math.round(parsed.composite_score * 2.5 * 10) / 10,
+      score: Math.round(parsed.composite_score * 2.5 * 10) / 10 > 25 ? Math.round(parsed.composite_score * 10) / 10 : Math.round(parsed.composite_score * 2.5 * 10) / 10,
       truncated: parsed.truncated || false,
       topFixes: parsed.top_fixes || [],
       dimensions: { hook: parsed.opening_hook?.score || 0, listenability: parsed.overall_listenability?.score || 0, dialogue: parsed.dialogue_quality?.score || 0, pacing: parsed.structure_and_pacing?.score || 0, audio: parsed.audio_suitability?.score || 0 },
@@ -254,7 +254,7 @@ Generate targeted prompt additions to fix these patterns. Return ONLY valid JSON
 }
 
 async function log(data: Record<string, unknown>) {
-  await supabase.from('qa_loop_runs').insert({ ...data, created_at: new Date().toISOString() }).catch(() => {})
+  try { await supabase.from('qa_loop_runs').insert({ ...data, created_at: new Date().toISOString() }) } catch(_e) {}
 }
 
 async function runQALoop() {
