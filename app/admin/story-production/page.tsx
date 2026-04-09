@@ -742,7 +742,8 @@ ${script}`
         script=revised; aiScore=revisedScore
       }
       const finalNote = attempt > 1 ? `Auto-revised ${attempt-1}x. Best: ${scoreOf25(bestScore)}/25.` : ''
-      const finished: Story = {...newStory, status:'ready', script:bestScript, ai_score:bestScore, notes:finalNote}
+      const extractedTitle = bestScript.match(/^EPISODE_TITLE:\s*(.+)$/m)?.[1]?.trim() || q.title
+      const finished: Story = {...newStory, title:extractedTitle, status:'ready', script:bestScript, ai_score:bestScore, notes:finalNote}
       setStories(prev => {
         const updated = prev.map((s: Story) => s.id===storyId ? finished : s)
         localStorage.setItem('et_stories_v2', JSON.stringify(updated))
@@ -1140,7 +1141,7 @@ ${script.length > 6000 ? script.slice(0,4000) + '\n\n[...middle omitted...]\n\n'
               {stories.map(s=>{ const st=STATUS_CONFIG[s.status]; const ai=s.ai_score?.composite_score; const aiOf25=ai?(ai*2.5).toFixed(1):null; const isSel=selected?.id===s.id; return(
                 <div key={s.id} onClick={()=>setSelected(isSel?null:s)} style={{background:'#fff',border:`2px solid ${isSel?'#111':'#e0e0e0'}`,borderRadius:10,overflow:'hidden',cursor:'pointer'}}>
                   <div style={{padding:'18px 24px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                    <div><div style={{fontSize:18,fontWeight:700,color:'#111',marginBottom:4}}>{s.title}</div><div style={{fontSize:14,color:'#666'}}>{s.author} · {s.genre} · {s.runtime}{s.narrator?` · ${s.narrator}`:''}</div></div>
+                    <div><div style={{fontSize:18,fontWeight:700,color:'#111',marginBottom:4}}>{s.title}</div><div style={{fontSize:14,color:'#666'}}>{s.author} · {s.genre} · {s.runtime}{s.narrator?` · ${s.narrator}`:''}{s.script.match(/^SERIES:\s*(.+)$/m)?.[1]?` · Series: ${s.script.match(/^SERIES:\s*(.+)$/m)?.[1]?.trim()}`:''}</div></div>
                     <div style={{display:'flex',alignItems:'center',gap:16}}>
                       {aiOf25&&<div style={{textAlign:'center'}}><div style={{fontSize:22,fontWeight:700,color:scoreColor(parseFloat(aiOf25),25)}}>{aiOf25}</div><div style={{fontSize:11,color:'#888',textTransform:'uppercase',letterSpacing:1}}>/25</div></div>}
                       <span style={{background:st.bg,color:st.color,padding:'4px 14px',borderRadius:20,fontSize:13,fontWeight:700}}>{st.label}</span>
