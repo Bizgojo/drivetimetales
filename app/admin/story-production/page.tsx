@@ -53,7 +53,7 @@ type QueuedPremise = {
   totalEpisodes: number; isFinale: boolean
 }
 
-const GENRES = ['Thriller','Horror','Dark Mystery','Mystery/Crime','Adventure','Drama','Sci-Fi','Western','Historical Drama','Supernatural','Family/Heartwarming','Comedy']
+const GENRES = ['Thriller','Horror','Dark Mystery','Mystery/Crime','Adventure','Drama','Sci-Fi','Western','Historical Drama','Supernatural','Family/Heartwarming','Comedy','Romance']
 const RUNTIMES = ['10 min','15 min','20 min','25 min']
 const EPISODE_COUNTS = [3,4,5,6,7,8]
 
