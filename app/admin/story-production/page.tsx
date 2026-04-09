@@ -663,6 +663,8 @@ export default function StoryProductionPage() {
       supabase.from('story_drafts').upsert({ id:newStory.id, title:newStory.title, author:newStory.author, narrator:newStory.narrator, genre:newStory.genre, runtime:newStory.runtime, status:newStory.status, script:'', ai_score:null, notes:'', updated_at:new Date().toISOString() })
       return updated
     })
+    let bestScript = ''
+    let bestScore: AIScore | null = null
     try {
       const pp: PipelineParams = { author:q.author, authorTone:authorObj?.tone||'', authorVoice:authorObj?.narrative_voice||'third_limited', genre:q.genre, runtime:q.runtime, narrator:q.narrator, premise:q.premise, requirements:q.requirements, isSeries:q.isSeries, seriesName:q.seriesName, episodeNumber:q.episodeNumber, totalEpisodes:q.totalEpisodes, isFinale:q.isFinale, episodeTitle:q.title }
 
