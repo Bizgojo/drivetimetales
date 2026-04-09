@@ -381,7 +381,7 @@ SERIES_TOTAL_EPISODES: ${p.isSeries ? p.totalEpisodes : ''}
 SERIES_IS_FINALE: ${p.isSeries ? p.isFinale : ''}
 AUTHOR: ${p.author}
 GENRE: ${p.genre}
-DESCRIPTION: [24 words max — punchy present-tense hook, no spoilers, makes driver press play]
+DESCRIPTION: [24 words max — punchy present-tense hook, no spoilers, makes a listener press play]
 NARRATOR: ${p.narrator}
 ANNOUNCER: Belle B
 NARRATIVE_VOICE: ${p.authorVoice || 'third_limited'}
@@ -411,7 +411,7 @@ function buildScriptPrompt(p: PipelineParams): string {
   const profile = AUTHOR_PROFILES[p.author] || `${p.authorVoice} voice. ${p.authorTone}.`
   const endingRule = p.isSeries && !p.isFinale ? 'End on hard cliffhanger. Final line = burning question.' : p.isSeries && p.isFinale ? 'FINALE: Resolve ALL threads.' : 'Resolve completely. Final NARRATOR line conclusive.'
   return `You are the Endless Tales script writer. Write a complete professional audio drama script.
-AUDIENCE: Commuters and truckers. Cannot rewind. 90 seconds to hook them.
+AUDIENCE: General listeners — commuting, working, exercising, or anything hands-busy. Cannot rewind. 90 seconds to hook them.
 AUTHOR: ${p.author} | VOICE: ${profile} | GENRE: ${p.genre} | RUNTIME: ${p.runtime} | NARRATOR: ${p.narrator}
 ${p.isSeries ? `SERIES: ${p.seriesName} | EP: ${p.episodeNumber}/${p.totalEpisodes} | TITLE: ${p.episodeTitle}` : ''}
 PREMISE: ${p.premise}
@@ -432,7 +432,7 @@ function buildSeriesPrompt(p: { genre: string; runtime: string; episodeCount: nu
     : p.episodeCount === 7 ? 'Ep1: setup, Ep2: escalation, Ep3: complication, Ep4: midpoint reversal, Ep5: darkest hour, Ep6: penultimate, Ep7: finale'
     : 'Ep1: setup, Ep2-3: escalation, Ep4: midpoint reversal, Ep5: darkest moment, Ep6-7: confrontation building, Ep8: finale'
 
-  return `You are the Endless Tales series developer. Create a complete ${p.episodeCount}-episode audio drama series for commuters and truckers.
+  return `You are the Endless Tales series developer. Create a complete ${p.episodeCount}-episode audio drama series for Endless Tales general audience listeners.
 
 Genre: ${p.genre} | Runtime per episode: ${p.runtime} | Episodes: ${p.episodeCount}
 Eligible authors: ${eligible}
@@ -451,7 +451,7 @@ REQUIREMENTS:
 - Each episode premise must be specific enough to write a full script from
 - Episode titles should be evocative, not generic ("The Reckoning" is weak — "The Name on the Bullet" is strong)
 - The series name should be distinctive and memorable
-- Listener hook: commuters decide in 90 seconds — first sentence must grab immediately
+- Listener hook: listeners decide in 90 seconds — first sentence must grab immediately
 
 Return ONLY valid JSON, no markdown:
 {
@@ -463,7 +463,7 @@ Return ONLY valid JSON, no markdown:
     {
       "episodeNumber": 1,
       "episodeTitle": "Episode title",
-      "hook": "Exact first-sentence hook — specific, sensory, mid-action, grabs a trucker in 10 seconds",
+      "hook": "Exact first-sentence hook — specific, sensory, mid-action, grabs a listener in 10 seconds",
       "premise": "3-4 sentences: who, what they want, what stands in their way, what is at stake. Specific enough to write a complete script.",
       "cliffhanger": "One sentence describing the specific cliffhanger that ends this episode (leave blank for finale)"
     }
@@ -473,7 +473,7 @@ Return ONLY valid JSON, no markdown:
 
 function buildPickerPrompt(p: { genre: string; runtime: string; isSeries: boolean; seriesName: string; totalEpisodes: number; episodeNumber: number; extraNotes: string }): string {
   const eligible = (GENRE_AUTHOR_MAP[p.genre] || [p.genre]).join(', ')
-  return `Generate exactly 3 distinct high-scoring premise options for an Endless Tales audio drama for commuters and truckers.
+  return `Generate exactly 3 distinct high-scoring premise options for an Endless Tales audio drama for a general audience.
 
 Genre: ${p.genre} | Runtime: ${p.runtime} | Type: ${p.isSeries ? `Series "${p.seriesName}" Episode ${p.episodeNumber} of ${p.totalEpisodes}` : 'Standalone'}
 ${p.extraNotes ? `Notes: ${p.extraNotes}` : ''}
