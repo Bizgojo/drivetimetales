@@ -29,6 +29,13 @@ body {
   min-width: 375px;
 }
 
+/* Admin pages — force light background */
+body.admin-page {
+  background: #FAF9F6 !important;
+  color: #111 !important;
+  color-scheme: light !important;
+}
+
 /* Smooth scrolling */
 html {
   scroll-behavior: smooth;
