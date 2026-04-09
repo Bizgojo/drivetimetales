@@ -131,12 +131,14 @@ export async function POST(req: NextRequest) {
     // Create real DB row if storyId looks like a localStorage key
     let realStoryId = storyId
     if (!storyId || storyId.startsWith('story_')) {
-      const { data: inserted } = await supabase.from('stories').insert({
+      const { data: inserted, error: insertErr } = await supabase.from('stories').insert({
         title, author, genre,
         duration_mins: 15, is_hidden: true,
         published_on: new Date().toISOString().split('T')[0]
       }).select('id').single()
+      if (insertErr) console.error('Story insert error:', JSON.stringify(insertErr))
       if (inserted?.id) realStoryId = inserted.id
+      else return NextResponse.json({ success: false, error: `Failed to create story row: ${insertErr?.message}`, steps }, { status: 500 })
     }
 
     const updates: Record<string, any> = {}
