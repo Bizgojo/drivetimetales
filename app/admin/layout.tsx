@@ -29,6 +29,11 @@ export default function AdminLayout({
     }
   }, [user, loading, router])
 
+  useEffect(() => {
+    document.body.classList.add('admin-page')
+    return () => document.body.classList.remove('admin-page')
+  }, [])
+
   // Don't render while auth resolves or if not admin
   if (loading) return <div style={{ minHeight: '100vh', background: '#f5f5f5' }} />
   const email = (user?.email || '').toLowerCase()
