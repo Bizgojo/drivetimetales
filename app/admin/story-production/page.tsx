@@ -90,7 +90,7 @@ const AUTHOR_PROFILES: Record<string, string> = {
   'Zara Storm': 'Third person omniscient. Epic, cinematic, emotional. Space opera scale with human intimacy. Ensemble casts across multiple worlds. Diverse protagonists.',
   // COMEDY
   'Archie Vale': 'Third person omniscient. Absurdist, warm, deadpan. Situations escalate with perfect internal logic. British settings. Characters convinced they are the only reasonable person.',
-  'Maeve Kelly': 'Third person omniscient. Warm, chaotic, generous. Large family ensembles. Irish settings. The disaster is always the protagonist's fault. Resolution is always love.',
+  'Maeve Kelly': "Third person omniscient. Warm, chaotic, generous. Large family ensembles. Irish settings. The disaster is always the protagonist's fault. Resolution is always love.",
   'Rex Bright': 'Third person omniscient. Dark, sardonic, finds comedy in catastrophe. Genuine crisis treated with bureaucratic seriousness. The protagonist is the only one who noticed the real problem.',
   // ROMANCE
   'Claire Ashford': 'Third person limited. Sharp, witty, emotionally honest. Female protagonists who are competent at work and terrible at feelings. Professional settings. Slow burn.',
@@ -198,9 +198,9 @@ Part 3 — CLIFFHANGER ENDING (100–200 words): Land on one of these:
   (b) The protagonist in immediate physical or emotional danger with zero resolution — leave them hanging
   (c) A betrayal revealed in the final moment — destroys the listener's assumptions about who to trust
 
-CLIFFHANGER TO HIT: \${cliffhanger}
+CLIFFHANGER TO HIT: ${cliffhanger}
 
-MANDATORY: Complete all three parts within the word budget. The final sentence must be a complete sentence with a period. The final line must land with impact — it is the last thing the listener hears before silence.\`
+MANDATORY: Complete all three parts within the word budget. The final sentence must be a complete sentence with a period. The final line must land with impact — it is the last thing the listener hears before silence.`
     : p.isSeries && p.isFinale
     ? `FINAL SCENE — THIS IS THE SERIES FINALE.
 
@@ -211,7 +211,7 @@ Part 1 — FINAL CONFRONTATION (200–350 words): Every story thread converges. 
 Part 2 — RESOLUTION (150–250 words): The conflict is resolved. The protagonist reaches a clear outcome — earned through everything that came before.
 Part 3 — LANDING (100–200 words): One final narrator line or moment that makes the listener feel the whole series was worth it. Resonant. Complete. No loose threads.
 
-MANDATORY: Complete all three parts within the word budget. This is the end of the series — give it the weight it deserves. The final sentence must be a complete sentence with a period.\`
+MANDATORY: Complete all three parts within the word budget. This is the end of the series — give it the weight it deserves. The final sentence must be a complete sentence with a period.`
     : `FINAL SCENE — THIS IS THE LAST SCENE.
 
 WORD BUDGET: Target 600–900 words for this scene. Do NOT exceed 900 words. Stay tight — every line earns its place.
@@ -221,7 +221,7 @@ Part 1 — CLIMAX (200–350 words): The central conflict reaches its peak. Maxi
 Part 2 — RESOLUTION (150–250 words): The conflict resolves. The protagonist reaches a clear outcome.
 Part 3 — CLOSING IMAGE (100–200 words): One final line — narrator or dialogue — that feels conclusive. The listener must know the story is over.
 
-MANDATORY: Complete all three parts within the word budget. The final sentence must be a complete sentence with a period. The final line is the most important line in the entire script.\`
+MANDATORY: Complete all three parts within the word budget. The final sentence must be a complete sentence with a period. The final line is the most important line in the entire script.`
 
   const voiceReminder = narrativeVoice === 'first_person'
     ? 'MAINTAIN FIRST PERSON — every narration line uses I, me, my.'
@@ -389,7 +389,7 @@ CHARACTER GUIDE
 [Every speaking character: NAME — age, gender, accent, one-sentence personality]
 
 4. ANNOUNCER INTRO:
-ANNOUNCER: Endless Tales presents... [title]${'. Episode ' + p.episodeNumber + ': ' + p.episodeTitle if p.isSeries else ''}. [one punchy present-tense hook sentence — no spoilers]
+ANNOUNCER: Endless Tales presents... [title]${p.isSeries ? '. Episode ' + p.episodeNumber + ': ' + p.episodeTitle : ''}. [one punchy present-tense hook sentence — no spoilers]
 
 5. THE PRODUCTION SCRIPT (copy exactly as provided — do not change anything)
 
@@ -913,7 +913,7 @@ ${script.length > 6000 ? script.slice(0,4000) + '\n\n[...middle omitted...]\n\n'
   const waitingCount=premiseQueue.filter(q=>q.status==='waiting').length
 
   return (
-    <div style={{fontFamily:'Georgia, serif',color:'#111',background:'#FAF9F6',minHeight:'100vh'}}>
+    <div style={{fontFamily:'Georgia, serif',color:'#111',background:'#FAF9F6',minHeight:'100vh',position:'relative',zIndex:1}}>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       {status&&<div style={{background:'#e8f5e9',borderBottom:'1px solid #c8e6c9',padding:'12px 32px',color:'#2e7d32',fontSize:15}}>● {status}</div>}
 
