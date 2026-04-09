@@ -13,7 +13,7 @@ interface Story {
   avg_rating?: number | null; review_count?: number
 }
 interface SeriesGroup {
-  id: string; series_name: string; genre: string; episode_count: number
+  id: string; series_name: string; genre: string; author: string | null; episode_count: number
   total_duration_mins: number; cover_url: string | null; description: string | null
   avg_episode_duration: number
 }
@@ -71,7 +71,7 @@ export default function RecommendedForYou({ excludeIds = [] }: { excludeIds?: st
           g.episode_count++; g.total_duration_mins += story.duration_mins || 0
           g.avg_episode_duration = Math.round(g.total_duration_mins / g.episode_count)
         } else {
-          seriesMap.set(story.series_id, { id: story.series_id, series_name: story.series_name || story.title, genre: story.genre, episode_count: 1, total_duration_mins: story.duration_mins || 0, cover_url: story.cover_url, description: null, avg_episode_duration: story.duration_mins || 0 })
+          seriesMap.set(story.series_id, { id: story.series_id, series_name: story.series_name || story.title, genre: story.genre, author: story.author || null, episode_count: 1, total_duration_mins: story.duration_mins || 0, cover_url: story.cover_url, description: null, avg_episode_duration: story.duration_mins || 0 })
         }
       } else {
         singles.push(story)
@@ -124,7 +124,7 @@ export default function RecommendedForYou({ excludeIds = [] }: { excludeIds?: st
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
         {displayItems.map(item => {
           if (item.type === 'series') {
-            return <SeriesCard key={'series-' + item.group.id} id={item.group.id} series_name={item.group.series_name} genre={item.group.genre} episode_count={item.group.episode_count} total_duration_mins={item.group.total_duration_mins} cover_url={item.group.cover_url} description={item.group.description} />
+            return <SeriesCard key={'series-' + item.group.id} id={item.group.id} series_name={item.group.series_name} genre={item.group.genre} author={item.group.author} episode_count={item.group.episode_count} total_duration_mins={item.group.total_duration_mins} cover_url={item.group.cover_url} description={item.group.description} />
           }
           return (
             <div key={item.story.id} onClick={() => router.push('/player/' + item.story.id)} style={{ cursor: 'pointer' }}>
