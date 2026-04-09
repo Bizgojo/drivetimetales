@@ -858,7 +858,7 @@ recommendation = "Proceed"|"Revise and Resubmit"|"Rejected"
 top_fixes = up to 3 specific actionable fixes if any score < 9
 
 SCRIPT:
-${script.length > 6000 ? script.slice(0,4000) + '\n\n[...middle omitted...]\n\n' + script.slice(-2000) : script}`}] }) })
+${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\n' + script.slice(-4000) : script}`}] }) })
       const data=await resp.json()
       const raw=data.content?.[0]?.text?.replace(/```json|```/g,'').trim()
       return raw?JSON.parse(raw):null
