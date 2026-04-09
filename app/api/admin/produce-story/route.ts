@@ -148,7 +148,12 @@ export async function POST(req: NextRequest) {
     catch (e) { steps.prose = { status: 'error', message: String(e) } }
 
     try {
-      const base64 = await generateCover(script, title, author, genre)
+      // Retry DALL-E up to 3 times on 500 errors
+      let base64 = ''
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try { base64 = await generateCover(script, title, author, genre); break }
+        catch (e) { if (attempt === 3) throw e; await new Promise(r => setTimeout(r, 2000 * attempt)) }
+      }
       const imgBuffer = Buffer.from(base64, 'base64')
       const storagePath = `stories/${realStoryId}/cover_${Date.now()}.jpg`
       const { error: uploadErr } = await supabase.storage.from('audio').upload(storagePath, imgBuffer, { contentType: 'image/jpeg', upsert: true })
