@@ -157,12 +157,19 @@ function buildScenePrompt(p: PipelineParams, sceneNumber: number, totalScenes: n
   const narrativeVoice = p.authorVoice || 'third_limited'
   const cliffhanger = p.isSeries && p.premise.includes('CLIFFHANGER:') ? p.premise.split('CLIFFHANGER:')[1].trim() : 'Create a powerful cliffhanger that makes stopping feel impossible'
 
+  const runtimeMins = parseInt(p.runtime) || 15
+  const totalTargetWords = runtimeMins * 130
+  const openingBudgetLow = Math.round(totalTargetWords * 0.15)
+  const openingBudgetHigh = Math.round(totalTargetWords * 0.20)
+  const escalationBudgetLow = Math.round(totalTargetWords * 0.18)
+  const escalationBudgetHigh = Math.round(totalTargetWords * 0.25)
+  const finaleBudgetLow = Math.round(totalTargetWords * 0.22)
+  const finaleBudgetHigh = Math.round(totalTargetWords * 0.30)
+
   const roleInstruction = sceneRole === 'opening'
     ? `OPENING SCENE: Begin mid-action — something already happening. Establish the protagonist with one specific detail. Create a dramatic question the listener MUST have answered. End at a point of tension that pulls forward.
 
-WORD BUDGET: Target 350–500 words for this scene. Do NOT exceed 500 words. Hook fast, end sharp.
-
-WORD BUDGET: Target 350–500 words for this scene. Do NOT exceed 500 words. Hook fast, end sharp.
+WORD BUDGET: Target ${openingBudgetLow}–${openingBudgetHigh} words for this scene (${p.runtime} episode = ~${totalTargetWords} total spoken words). Hook fast, end sharp — but hit the word count.
 
 OPENING SCENE DIALOGUE RULES — the difference between 7/10 and 9/10:
 - The protagonist's FIRST LINE of dialogue must reveal character instantly — not just react to the situation, but show who they ARE under pressure
@@ -174,9 +181,7 @@ OPENING SCENE DIALOGUE RULES — the difference between 7/10 and 9/10:
     : sceneRole === 'escalation'
     ? `ESCALATION SCENE ${sceneNumber}/${totalScenes}: Stakes must be higher than previous scene. Something must change — a revelation, complication, or new threat. Listener understanding should shift. End with forward momentum.
 
-WORD BUDGET: Target 400–600 words for this scene. Do NOT exceed 600 words. When you hit 600 words, end the scene — cut to the sharpest possible exit line.
-
-WORD BUDGET: Target 400–600 words for this scene. Do NOT exceed 600 words. When you hit 600 words, end the scene immediately — cut to the sharpest possible exit line.
+WORD BUDGET: Target ${escalationBudgetLow}–${escalationBudgetHigh} words for this scene (${p.runtime} episode = ~${totalTargetWords} total spoken words). When you hit the upper limit, end on the sharpest possible exit line.
 
 ESCALATION ANTI-EXPOSITION RULE: If you need to reveal information (a pattern, a clue, a backstory), reveal it through:
 - A character discovering it under pressure, not narrating it calmly
@@ -188,7 +193,7 @@ GOOD: "JAKE: Wait. Miller. Conroy. Basset. They all ran Route 9. They all disapp
     : p.isSeries && !p.isFinale
     ? `FINAL SCENE — THIS IS THE LAST SCENE OF THE EPISODE.
 
-WORD BUDGET: Target 600–900 words for this scene. Do NOT exceed 900 words. Stay tight — every line earns its place.
+WORD BUDGET: Target ${finaleBudgetLow}–${finaleBudgetHigh} words for this scene (${p.runtime} episode = ~${totalTargetWords} total spoken words). Stay tight — every line earns its place.
 
 STRUCTURE THIS SCENE IN THREE PARTS:
 Part 1 — CLIMAX (200–350 words): The central conflict of this episode reaches its peak. The protagonist faces the most intense moment yet.
@@ -204,7 +209,7 @@ MANDATORY: Complete all three parts within the word budget. The final sentence m
     : p.isSeries && p.isFinale
     ? `FINAL SCENE — THIS IS THE SERIES FINALE.
 
-WORD BUDGET: Target 600–900 words for this scene. Do NOT exceed 900 words. Stay tight — every line earns its place.
+WORD BUDGET: Target ${finaleBudgetLow}–${finaleBudgetHigh} words for this scene (${p.runtime} episode = ~${totalTargetWords} total spoken words). Stay tight — every line earns its place.
 
 STRUCTURE THIS SCENE IN THREE PARTS:
 Part 1 — FINAL CONFRONTATION (200–350 words): Every story thread converges. The protagonist faces the ultimate version of the central conflict.
@@ -214,7 +219,7 @@ Part 3 — LANDING (100–200 words): One final narrator line or moment that mak
 MANDATORY: Complete all three parts within the word budget. This is the end of the series — give it the weight it deserves. The final sentence must be a complete sentence with a period.`
     : `FINAL SCENE — THIS IS THE LAST SCENE.
 
-WORD BUDGET: Target 600–900 words for this scene. Do NOT exceed 900 words. Stay tight — every line earns its place.
+WORD BUDGET: Target ${finaleBudgetLow}–${finaleBudgetHigh} words for this scene (${p.runtime} episode = ~${totalTargetWords} total spoken words). Stay tight — every line earns its place.
 
 STRUCTURE THIS SCENE IN THREE PARTS:
 Part 1 — CLIMAX (200–350 words): The central conflict reaches its peak. Maximum tension.
