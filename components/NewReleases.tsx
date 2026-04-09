@@ -7,7 +7,7 @@ import { useAuth } from '@/contexts/AuthContext'
 interface Story {
   id: string; title: string; genre: string; author: string
   duration_mins: number; cover_url: string | null
-  series_id: string | null; episode_number: number | null; series_name: string | null
+  series_id: string | null; series_number: number | null; series_name: string | null
   avg_rating?: number | null; review_count?: number
 }
 
@@ -21,9 +21,9 @@ export default function NewReleases({ excludeIds = [], onIdsLoaded }: { excludeI
   async function load() {
     setLoading(true)
     const { data } = await supabase.from('story_analytics')
-      .select('id, title, genre, author, duration_mins, cover_url, avg_rating, review_count, series_id, episode_number, series_name')
+      .select('id, title, genre, author, duration_mins, cover_url, avg_rating, review_count, series_id, series_number, series_name')
       .not('cover_url', 'is', null).eq('is_hidden', false)
-      .order('created_at', { ascending: false }).limit(60)
+      .order('published_on', { ascending: false }).limit(60)
     if (!data) { setLoading(false); onIdsLoaded?.([]); return }
 
     const ex = new Set(excludeIds)
@@ -39,7 +39,7 @@ export default function NewReleases({ excludeIds = [], onIdsLoaded }: { excludeI
           if (s.series_id && playedIds.has(s.id)) {
             playedSeriesIds.add(s.series_id)
             const cur = seriesInProgress.get(s.series_id) || 0
-            if ((s.episode_number || 0) > cur) seriesInProgress.set(s.series_id, s.episode_number || 0)
+            if ((s.series_number || 0) > cur) seriesInProgress.set(s.series_id, s.series_number || 0)
           }
         })
       }
@@ -54,7 +54,7 @@ export default function NewReleases({ excludeIds = [], onIdsLoaded }: { excludeI
     // Pass 1: next episode for series user is already in
     for (const [seriesId, highestPlayed] of seriesInProgress.entries()) {
       if (result.length >= 2) break
-      const nextEp = data.find((s: any) => s.series_id === seriesId && s.episode_number === highestPlayed + 1 && !ex.has(s.id))
+      const nextEp = data.find((s: any) => s.series_id === seriesId && s.series_number === highestPlayed + 1 && !ex.has(s.id))
       if (nextEp) result.push(nextEp as Story)
     }
 
@@ -67,7 +67,7 @@ export default function NewReleases({ excludeIds = [], onIdsLoaded }: { excludeI
       if (seenSeries.has(sid)) continue
       seenSeries.add(sid)
       if (playedSeriesIds.has(sid)) continue
-      if ((s as any).episode_number !== 1) continue
+      if ((s as any).series_number !== 1) continue
       if (ex.has(s.id)) continue
       result.push(s as Story)
     }
@@ -104,8 +104,8 @@ export default function NewReleases({ excludeIds = [], onIdsLoaded }: { excludeI
           <Link key={s.id} href={'/player/' + s.id} className="bg-slate-800 rounded-xl hover:bg-slate-700 transition" style={{ display: 'block', padding: '0.5rem', textDecoration: 'none' }}>
             <div className="rounded-lg overflow-hidden cover-glow" style={{ position: 'relative' }}>
               <img src={s.cover_url || '/images/default-cover.png'} alt={s.title} style={{ width: '100%', aspectRatio: '1/1', objectFit: 'cover' }} />
-              {s.series_name && s.episode_number && (
-                <div style={{ position: 'absolute', bottom: 4, left: 4, background: 'rgba(0,0,0,0.75)', borderRadius: 4, padding: '2px 6px', fontSize: 9, fontWeight: 700, color: '#f97316' }}>EP. {s.episode_number}</div>
+              {s.series_name && s.series_number && (
+                <div style={{ position: 'absolute', bottom: 4, left: 4, background: 'rgba(0,0,0,0.75)', borderRadius: 4, padding: '2px 6px', fontSize: 9, fontWeight: 700, color: '#f97316' }}>EP. {s.series_number}</div>
               )}
             </div>
             <div style={{ marginTop: '0.5rem' }}>
