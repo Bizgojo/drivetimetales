@@ -1132,9 +1132,14 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
               </div>
             )}
             <div style={{display:'flex',gap:8,alignSelf:'center'}}>
-              {stories.length>0&&(
+              {(stories.length>0||premiseQueue.length>0)&&(
                 <button onClick={clearAllStories} style={{padding:'12px 16px',background:'#fff',border:'2px solid #e0e0e0',borderRadius:8,cursor:'pointer',fontFamily:'inherit',fontSize:13,fontWeight:700,color:'#c62828',whiteSpace:'nowrap'}}>
                   🗑 Clear All
+                </button>
+              )}
+              {premiseQueue.some(p=>p.status==='waiting')&&!queueRunning&&(
+                <button onClick={()=>setQueueRunning(true)} style={{padding:'12px 16px',background:'#f97316',color:'#fff',border:'none',borderRadius:8,cursor:'pointer',fontFamily:'inherit',fontSize:13,fontWeight:700,whiteSpace:'nowrap'}}>
+                  ▶ Resume Queue
                 </button>
               )}
               {stories.filter(s=>{ const score = s.ai_score ? s.ai_score.composite_score * 2.5 : 0; return score > 0 && score < 20 }).length>0&&(
