@@ -1092,6 +1092,15 @@ ${script.length > 6000 ? script.slice(0,4000) + '\n\n[...middle omitted...]\n\n'
                   🗑 Clear All
                 </button>
               )}
+              {stories.filter(s=>{ const score = s.ai_score ? s.ai_score.composite_score * 2.5 : 0; return score > 0 && score < 20 }).length>0&&(
+                <button onClick={()=>{
+                  const failures = stories.filter(s=>{ const score = s.ai_score ? s.ai_score.composite_score * 2.5 : 0; return score > 0 && score < 20 })
+                  if (!confirm(`Delete ${failures.length} stories scoring below 20/25?`)) return
+                  failures.forEach(s => deleteStory(s.id))
+                }} style={{padding:'12px 16px',background:'#fff',border:'2px solid #ffcdd2',borderRadius:8,cursor:'pointer',fontFamily:'inherit',fontSize:13,fontWeight:700,color:'#c62828',whiteSpace:'nowrap'}}>
+                  🗑 Delete Below 20
+                </button>
+              )}
             </div>
           </div>
 
