@@ -932,11 +932,11 @@ ${script.length > 6000 ? script.slice(0,4000) + '\n\n[...middle omitted...]\n\n'
       {tab==='pick'&&(
         <div style={{padding:'36px 40px',maxWidth:900}}>
           <h1 style={{margin:'0 0 6px',fontSize:28,fontWeight:'bold',color:'#111'}}>Premise Picker</h1>
-          <p style={{margin:'0 0 28px',fontSize:16,color:'#666'}}>Generate premises for a single story or a complete series.</p>
+          <p style={{margin:'0 0 28px',fontSize:16,color:'#666'}}>Pick a premise for one episode, or plan an entire series arc.</p>
 
           {/* Mode toggle */}
           <div style={{display:'flex',gap:0,marginBottom:36,border:'2px solid #111',borderRadius:10,overflow:'hidden',width:'fit-content'}}>
-            {([{v:'single' as const,label:'Single Story'},{v:'series' as const,label:'Full Series'}]).map(({v,label})=>(
+            {([{v:'single' as const,label:'Single Episode'},{v:'series' as const,label:'Plan Full Series'}]).map(({v,label})=>(
               <button key={v} onClick={()=>setPickerMode(v)} style={{padding:'12px 32px',border:'none',background:pickerMode===v?'#111':'#fff',color:pickerMode===v?'#fff':'#111',cursor:'pointer',fontFamily:'inherit',fontSize:15,fontWeight:700,letterSpacing:0.5}}>{label}</button>
             ))}
           </div>
@@ -952,9 +952,9 @@ ${script.length > 6000 ? script.slice(0,4000) + '\n\n[...middle omitted...]\n\n'
                 </div>
               </div>
               <div style={{marginBottom:28}}>
-                <label style={labelStyle}>Story Type</label>
+                <label style={labelStyle}>Is this part of an existing series?</label>
                 <div style={{display:'flex',gap:12}}>
-                  {[{v:false,label:'Standalone'},{v:true,label:'Series Episode'}].map(({v,label})=>(
+                  {[{v:false,label:'New Standalone'},{v:true,label:'Episode of Existing Series'}].map(({v,label})=>(
                     <button key={String(v)} onClick={()=>setPickerIsSeries(v)} style={{padding:'12px 28px',border:`2px solid ${pickerIsSeries===v?'#111':'#e0e0e0'}`,background:pickerIsSeries===v?'#111':'#fff',color:pickerIsSeries===v?'#fff':'#444',borderRadius:8,cursor:'pointer',fontFamily:'inherit',fontSize:15,fontWeight:pickerIsSeries===v?700:400}}>{label}</button>
                   ))}
                 </div>
