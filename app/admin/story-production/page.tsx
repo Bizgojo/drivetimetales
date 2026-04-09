@@ -875,20 +875,20 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
     setProduceSteps({description:{status:'pending'},prose:{status:'pending'},cover:{status:'pending'},author:{status:'pending'},narrator:{status:'pending'},save:{status:'pending'}})
     try {
       // First save script to stories table so we have a storyId to work with
-      const { data: existing } = await supabase.from('stories').select('id').eq('id', s.id).single()
+      // Insert fresh story row with real UUID
       let storyId = s.id
-      if (!existing) {
+      try {
         const { data: inserted } = await supabase.from('stories').insert({
-          id: s.id, title: s.title, author: s.author, genre: s.genre,
+          title: s.title, author: s.author, genre: s.genre,
           duration_mins: parseInt(s.runtime) || 15, is_hidden: true,
           published_on: new Date().toISOString().split('T')[0]
         }).select('id').single()
-        storyId = inserted?.id || s.id
-      }
+        if (inserted?.id) storyId = inserted.id
+      } catch(e) { console.warn('Story insert skipped:', e) }
       const resp = await fetch('/api/admin/produce-story', {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ storyId, script: s.script, title: s.title, author: s.author, narrator: s.narrator, genre: s.genre })
+        body: JSON.stringify({ storyId, script: s.script, title: s.title, author: s.author, narrator: NARRATOR_MAP[s.author] || s.narrator, genre: s.genre })
       })
       const result = await resp.json()
       setProduceSteps(result.steps || {})
