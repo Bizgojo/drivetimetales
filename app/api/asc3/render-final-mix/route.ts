@@ -109,26 +109,28 @@ export async function POST(req: NextRequest) {
     await generateSilence(sil100Path, 1.0)
 
     if (!musicPath) {
-      console.log('  No music — concat with sting fade under Belle B')
+      console.log('  No music — sting fades under full Belle B intro')
       const stingDur = await getAudioDuration(stingPath)
       const introDur = await getAudioDuration(introPath)
-      // Step 1: Fade the sting out over its full duration + intro duration
-      const stingFadePath = path.join(tmpDir, 'sting_faded.mp3')
-      const totalFadeDur = stingDur + introDur + 0.5
+      const totalDur = stingDur + introDur
+      // Step 1: Loop/pad sting to cover full sting+intro duration, then fade out across entire duration
+      const stingExtPath = path.join(tmpDir, 'sting_ext.mp3')
       await execFileAsync(FFMPEG_PATH, [
-        '-i', stingPath,
-        '-af', `apad=whole_dur=${totalFadeDur},afade=t=out:st=0:d=${totalFadeDur}`,
-        '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', stingFadePath
+        '-stream_loop', '-1', '-i', stingPath,
+        '-t', String(totalDur),
+        '-af', `afade=t=out:st=${stingDur * 0.5}:d=${stingDur * 0.5 + introDur}`,
+        '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', stingExtPath
       ])
-      // Step 2: Mix faded sting with Belle B intro (Belle at full volume over fading sting)
+      // Step 2: Mix extended fading sting with Belle B intro at full volume
       const stingIntroPath = path.join(tmpDir, 'sting_intro.mp3')
       await execFileAsync(FFMPEG_PATH, [
-        '-i', stingFadePath, '-i', introPath,
-        '-filter_complex', '[0:a][1:a]amix=inputs=2:duration=longest:normalize=0[out]',
+        '-i', stingExtPath, '-i', introPath,
+        '-filter_complex',
+        `[0:a]volume=0.7[sting_vol];[sting_vol][1:a]amix=inputs=2:duration=longest:normalize=0[out]`,
         '-map', '[out]',
         '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', stingIntroPath
       ])
-      // Step 3: Concat: sting+intro mixed | 0.75s silence | story segments | 1.0s silence | outro
+      // Step 3: Concat everything
       const concatFile = path.join(tmpDir, 'concat.txt')
       await fs.writeFile(concatFile, [stingIntroPath, sil075Path, ...segPaths, sil100Path, outroPath].map(p => `file '${p}'`).join('\n'))
       await execFileAsync(FFMPEG_PATH, [
