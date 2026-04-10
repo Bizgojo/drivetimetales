@@ -363,18 +363,17 @@ BELLE B: [one intro line — register: ${register}]
 ---
 
 Belle B intro rules — this is the most important line in the script:
-- Belle B does EVERYTHING in one line: hook the listener, set up the story, name the title
-- NO separate ANNOUNCER intro line — Belle B handles it all
-- Include [LISTENER_NAME] naturally mid-sentence (never forced to the front)
-- Include the story title in quotes
-- Create IMMEDIATE STAKES — the listener must feel something BEFORE the title is spoken
-- Reference something SPECIFIC and VISCERAL from THIS story — a specific object, sound, or moment
-- Sound like a friend leaning in to tell you something — warm, intimate, never formal
-- Never time-of-day. Never genre labels. Never "a world of mystery." Never "welcome back." Never "Endless Tales presents."
-- Works gracefully if [LISTENER_NAME] is omitted
-- One or two short sentences maximum
-- BAD: "Endless Tales presents 'The Signal' — a story about mystery." — formal, cold, generic
-- GOOD: "The voice on Jake's CB radio has been dead for six years, [LISTENER_NAME] — and it just said your name, in 'The Signal.'" — warm, specific, immediate
+- Belle B is a warm friend talking directly to the listener — never a radio announcer, never formal
+- The listener must understand WHO the story is about, WHAT situation they are in, and WHY it matters — before the title lands
+- Give enough context that someone starting cold is not confused when the story begins
+- Include [LISTENER_NAME] naturally mid-sentence (never at the very start, never forced)
+- Include the story title in quotes at the end of the line
+- Reference something SPECIFIC from THIS story — a character name, a place, an object, a tension
+- Never time-of-day. Never "welcome back." Never "Endless Tales presents." Never genre labels
+- One or two sentences maximum — warm, intimate, conversational
+- BAD: "A mystery unfolds, [LISTENER_NAME], in 'The Signal.'" — no context, listener has no idea who or what
+- BAD: "Endless Tales presents 'The Signal.'" — cold, formal, not Belle B
+- GOOD: "Jake's CB radio has been silent for six years, [LISTENER_NAME] — so when a voice comes through at 2am calling his name, he has no idea what to do, in 'The Signal.'" — listener knows who, what, why
 
 2. HEADER BLOCK:
 SERIES: ${p.isSeries ? p.seriesName : ''}
