@@ -385,7 +385,7 @@ DESCRIPTION: [24 words max — punchy present-tense hook, no spoilers, makes a l
 NARRATOR: ${p.narrator}
 ANNOUNCER: Belle B
 NARRATIVE_VOICE: ${p.authorVoice || 'third_limited'}
-NARRATOR_IS_CHARACTER: false
+NARRATOR_IS_CHARACTER: ${p.authorVoice === 'first_person' ? 'true' : 'false'}
 SUNO PROMPT: [2-3 sentences: music genre, instrumentation, tempo, mood — specific to this story]
 
 3. CHARACTER GUIDE:
@@ -410,13 +410,24 @@ ${productionScript}`
 function buildScriptPrompt(p: PipelineParams): string {
   const profile = AUTHOR_PROFILES[p.author] || `${p.authorVoice} voice. ${p.authorTone}.`
   const endingRule = p.isSeries && !p.isFinale ? 'End on hard cliffhanger. Final line = burning question.' : p.isSeries && p.isFinale ? 'FINALE: Resolve ALL threads.' : 'Resolve completely. Final NARRATOR line conclusive.'
+  const narrativeVoice = p.authorVoice || 'third_limited'
+  const voiceRule = narrativeVoice === 'first_person'
+    ? 'NARRATIVE VOICE: first_person. NARRATOR IS THE PROTAGONIST — every narration line uses I/me/my. The narrator voice and the protagonist character voice are THE SAME PERSON. Do NOT write the protagonist as a separate character with their own dialogue lines — their voice IS the narrator. Other characters speak in dialogue. This must be consistent in EVERY episode of this series.'
+    : narrativeVoice === 'third_omniscient'
+    ? 'NARRATIVE VOICE: third_omniscient. Narrator knows all, can enter any character\'s mind. Use he/she/they. Consistent across all episodes.'
+    : 'NARRATIVE VOICE: third_limited. Follow protagonist closely. Show their thoughts and feelings but use he/she/they. Consistent across all episodes.'
+  const seriesVoiceRule = p.isSeries && p.episodeNumber > 1
+    ? `SERIES CONSISTENCY: This is Episode ${p.episodeNumber} of ${p.totalEpisodes}. The narrative voice (${narrativeVoice}) is LOCKED for the entire series. Do not switch to a different POV from previous episodes.`
+    : ''
   return `You are the Endless Tales script writer. Write a complete professional audio drama script.
 AUDIENCE: General listeners — commuting, working, exercising, or anything hands-busy. Cannot rewind. 90 seconds to hook them.
 AUTHOR: ${p.author} | VOICE: ${profile} | GENRE: ${p.genre} | RUNTIME: ${p.runtime} | NARRATOR: ${p.narrator}
 ${p.isSeries ? `SERIES: ${p.seriesName} | EP: ${p.episodeNumber}/${p.totalEpisodes} | TITLE: ${p.episodeTitle}` : ''}
 PREMISE: ${p.premise}
 ${p.requirements ? `REQUIREMENTS: ${p.requirements}` : ''}
-FORMAT: Begin BELLE B INTRO block, then header (SERIES/EPISODE/AUTHOR/GENRE/DESCRIPTION/NARRATOR/ANNOUNCER: Belle B/NARRATIVE_VOICE/NARRATOR_IS_CHARACTER: false/SUNO PROMPT), then CHARACTER GUIDE, then [START AUDIO DRAMA SCRIPT].
+${voiceRule}
+${seriesVoiceRule}
+FORMAT: Begin BELLE B INTRO block, then header (SERIES/EPISODE/AUTHOR/GENRE/DESCRIPTION/NARRATOR/ANNOUNCER: Belle B/NARRATIVE_VOICE/NARRATOR_IS_CHARACTER/SUNO PROMPT), then CHARACTER GUIDE, then [START AUDIO DRAMA SCRIPT].
 RULES: ALL CAPS character names. No parentheticals. [SFX:] own line. [BEAT] own line. Open mid-action. ${endingRule}
 YOU MUST COMPLETE THE ENDING — script not done until BELLE B speaks final outro line.
 Output ONLY the script. No preamble. No markdown.`
@@ -929,11 +940,12 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
   async function startGenerateAudio(s: Story, charAssignments?: Record<string,string>) {
     const supabaseId = supabaseIds[s.id]
     if (!supabaseId) { alert('Run 🎬 Produce first to create the story in Supabase.'); return }
-    // Find narrator voice ID from narrators list
+    // Find narrator voice ID from narrators list — fall back to Cole Hargrove if not found
     const narratorName = NARRATOR_MAP[s.author] || s.narrator
     const narratorRec = narrators.find(n => n.name === narratorName)
-    const narratorVoiceId = narratorRec?.elevenlabs_voice_id
-    if (!narratorVoiceId) { alert(`Could not find ElevenLabs voice ID for narrator "${narratorName}". Check narrator_voices table.`); return }
+    const fallbackVoice = narrators.find(n => n.name === 'Cole Hargrove')
+    const narratorVoiceId = narratorRec?.elevenlabs_voice_id || fallbackVoice?.elevenlabs_voice_id
+    if (!narratorVoiceId) { alert(`Could not find any narrator voice. Check narrator_voices table.`); return }
 
     setAudioProgress(prev => ({ ...prev, [s.id]: { step: 'voices' } }))
 
