@@ -931,13 +931,25 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
   // Extract character names from script (non-NARRATOR, non-ANNOUNCER/BELLE B speakers)
   function extractCharacters(script: string): string[] {
     const chars = new Set<string>()
-    const lines = script.split('\n')
-    for (const line of lines) {
-      const m = line.trim().match(/^([A-Z][A-ZÀ-Ú\s']+?):\s*.+$/)
+    // Only parse lines after [START AUDIO DRAMA SCRIPT] or CHARACTER GUIDE
+    const scriptStart = script.indexOf('[START AUDIO DRAMA SCRIPT]')
+    const guideStart = script.indexOf('CHARACTER GUIDE')
+    const bodyStart = Math.min(
+      scriptStart > -1 ? scriptStart : Infinity,
+      guideStart > -1 ? guideStart : Infinity
+    )
+    const body = bodyStart < Infinity ? script.slice(bodyStart) : script
+    const SKIP = ['NARRATOR','ANNOUNCER','BELLE B','SFX','BEAT','PAUSE',
+      'SERIES','EPISODE','AUTHOR','GENRE','DESCRIPTION','SUNO PROMPT',
+      'NARRATIVE VOICE','NARRATOR IS CHARACTER','CHARACTER GUIDE',
+      'EPISODE TITLE','SERIES TOTAL','SERIES IS FINALE']
+    for (const line of body.split('\n')) {
+      const m = line.trim().match(/^([A-Z][A-ZÀ-Ú\s'().]+?):\s*.+$/)
       if (!m) continue
       const spk = m[1].trim()
-      if (['NARRATOR','ANNOUNCER','BELLE B','SFX','BEAT','PAUSE'].includes(spk)) continue
+      if (SKIP.includes(spk)) continue
       if (spk.startsWith('[')) continue
+      if (spk.length > 40) continue // header fields tend to be long
       chars.add(spk)
     }
     return [...chars]
