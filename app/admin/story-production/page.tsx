@@ -395,6 +395,14 @@ CHARACTER GUIDE
 ---
 [Every speaking character: NAME — age, gender, accent, one-sentence personality]
 
+Character naming rules:
+- Names must feel specific to the character's cultural background, region, and era
+- Never use generic placeholder names: no Marcus, Elena, James, Sara, Kate, John, Mike, David, Lisa, Tom, Anna
+- Each character must have a completely unique first name — no two characters share a name
+- Names should surprise the listener slightly — real but unexpected
+- Match name to accent/origin: Nigerian character gets a Nigerian name, Portuguese gets Portuguese, etc.
+- A name should tell you something about who the person is before they speak
+
 4. THE PRODUCTION SCRIPT (copy exactly as provided — do not change anything)
 
 5. BELLE B OUTRO:
