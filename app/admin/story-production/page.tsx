@@ -913,7 +913,7 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
         setSupabaseIds(prev => ({ ...prev, [s.id]: storyId }))
         const realId = result.storyId || storyId
         setSupabaseIds(prev => ({ ...prev, [s.id]: realId }))
-        alert(`✅ Production complete! Story ID: ${realId}\nNow click 🔊 Generate Audio.`)
+        setStatus(`✅ Produced! — click 🔊 Generate Audio`)
       } else {
         if (result.storyId) {
           const realId = result.storyId
