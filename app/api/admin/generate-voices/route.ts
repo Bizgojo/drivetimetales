@@ -122,6 +122,8 @@ function parseScript(script: string): ScriptLine[] {
     if (pauseMatch) { lines.push({ index: lineIndex++, speaker: 'PAUSE', text: pauseMatch[1], type: 'pause', isIntro: false, isOutro: false }); return }
     if (trimmed.startsWith('[SFX:')) { const sfxText = trimmed.replace(/^\[SFX:\s*/, '').replace(/\]$/, '').trim(); lines.push({ index: lineIndex++, speaker: 'SFX', text: sfxText, type: 'sfx', isIntro: false, isOutro: false }); return }
     if (trimmed.startsWith('[')) return
+    // Skip ANNOUNCER intro lines that slipped through
+    if (trimmed.startsWith('ANNOUNCER:') && trimmed.toLowerCase().includes('endless tales presents')) return
     const dm = trimmed.match(/^([A-Z][A-ZÀ-Ú\s'.()]+?):\s*(.+)$/)
     if (dm) {
       const speaker = dm[1].trim(); const text = dm[2].trim()
@@ -208,9 +210,13 @@ export async function POST(req: NextRequest) {
         voiceMap[key] = (characterVoices[char.name] || characterVoices[key]) as string
         continue
       }
+      // Child characters (under 12) use female voice — sounds more natural in audio drama
+      const ageMatch = char.description?.match(/(\d+)/)
+      const age = ageMatch ? parseInt(ageMatch[1]) : 30
+      const effectiveGender = (age < 12) ? 'female' : char.gender
       // Search EL library for best matching voice
       voiceMap[key] = await findVoiceForCharacter(
-        char.name, char.gender, char.description || char.name,
+        char.name, effectiveGender, char.description || char.name,
         resolvedNarratorVoiceId, voiceByName
       )
     }
