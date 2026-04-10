@@ -1017,12 +1017,36 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
   function handleGenerateAudio(s: Story) {
     const chars = extractCharacters(s.script)
     if (chars.length > 0) {
-      // Show character voice assignment modal
       const defaultAssignments: Record<string,string> = {}
-      // Auto-assign from narrators list (round-robin, skip narrator's voice)
       const narratorName = NARRATOR_MAP[s.author] || s.narrator
-      const otherVoices = narrators.filter(n => n.name !== narratorName && n.name !== 'Belle B')
-      chars.forEach((c, i) => { defaultAssignments[c] = otherVoices[i % otherVoices.length]?.elevenlabs_voice_id || '' })
+
+      // Parse CHARACTER GUIDE for gender
+      const guideMatch = s.script?.match(/CHARACTER GUIDE\s*\n---\s*\n([\s\S]*?)(?:\n---|\[START AUDIO DRAMA SCRIPT\])/i)
+      const genderMap: Record<string,'male'|'female'|'unknown'> = {}
+      if (guideMatch) {
+        for (const line of guideMatch[1].split('\n')) {
+          const nm = line.match(/^([A-Z][A-Z\s'.()]+?)\s*[—–-]/)
+          if (!nm) continue
+          const lower = line.toLowerCase()
+          const gender = lower.includes(', female') || lower.includes(' female,') ? 'female'
+            : lower.includes(', male') || lower.includes(' male,') ? 'male' : 'unknown'
+          genderMap[nm[1].trim().toUpperCase()] = gender
+        }
+      }
+
+      const MALE_VOICES = ['Cole Hargrove','Elliott Crane','Finn Calloway','James Alcott','Marcus Hale','Ray Dolan']
+      const FEMALE_VOICES = ['Iris Calloway','June Harlow','Morgan Veil','Nora Ashby','Quinn Merritt','Sage Wilder']
+      const maleVoices = narrators.filter(n => MALE_VOICES.includes(n.name) && n.name !== narratorName)
+      const femaleVoices = narrators.filter(n => FEMALE_VOICES.includes(n.name))
+      let maleIdx = 0; let femaleIdx = 0
+
+      chars.forEach(c => {
+        const gender = genderMap[c.toUpperCase()] || 'unknown'
+        if (gender === 'male') { defaultAssignments[c] = maleVoices[maleIdx % maleVoices.length]?.elevenlabs_voice_id || ''; maleIdx++ }
+        else if (gender === 'female') { defaultAssignments[c] = femaleVoices[femaleIdx % femaleVoices.length]?.elevenlabs_voice_id || ''; femaleIdx++ }
+        else { defaultAssignments[c] = narrators.find(n => n.name !== narratorName && n.name !== 'Belle B')?.elevenlabs_voice_id || '' }
+      })
+
       setCharVoiceModal({ storyId: s.id, chars, assignments: defaultAssignments })
     } else {
       startGenerateAudio(s)
