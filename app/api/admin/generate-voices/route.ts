@@ -12,13 +12,38 @@ const supabase = createClient(
 const EL_API_KEY = process.env.ELEVENLABS_API_KEY!
 const BELLE_B_VOICE_ID = 'KWDD3Wyq30ZF5NEL01EJ'
 const BASE_STORAGE = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio`
-
 const EL_SETTINGS = { stability: 0.5, similarity_boost: 0.75, style: 0.0, use_speaker_boost: true }
+
+const MALE_VOICE_NAMES = ['Cole Hargrove', 'Elliott Crane', 'Finn Calloway', 'James Alcott', 'Marcus Hale', 'Ray Dolan']
+const FEMALE_VOICE_NAMES = ['Iris Calloway', 'June Harlow', 'Morgan Veil', 'Nora Ashby', 'Quinn Merritt', 'Sage Wilder']
 
 interface ScriptLine {
   index: number; speaker: string; text: string
   type: 'announcer' | 'narrator' | 'character' | 'sfx' | 'beat' | 'pause'
   isIntro: boolean; isOutro: boolean
+}
+
+interface CharacterInfo {
+  name: string
+  gender: 'male' | 'female' | 'unknown'
+}
+
+function parseCharacterGuide(script: string): CharacterInfo[] {
+  const chars: CharacterInfo[] = []
+  const guideMatch = script.match(/CHARACTER GUIDE\s*\n---\s*\n([\s\S]*?)(?:\n---|\[START AUDIO DRAMA SCRIPT\])/i)
+  if (!guideMatch) return chars
+  const guideLines = guideMatch[1].split('\n').filter(l => l.trim())
+  for (const line of guideLines) {
+    const nameMatch = line.match(/^([A-Z][A-Z\s'.()]+?)\s*[—–-]/)
+    if (!nameMatch) continue
+    const name = nameMatch[1].trim()
+    const lower = line.toLowerCase()
+    let gender: CharacterInfo['gender'] = 'unknown'
+    if (lower.includes(', male') || lower.includes(' male,') || lower.includes('male ')) gender = 'male'
+    if (lower.includes(', female') || lower.includes(' female,') || lower.includes('female ')) gender = 'female'
+    chars.push({ name, gender })
+  }
+  return chars
 }
 
 function parseScript(script: string): ScriptLine[] {
@@ -30,21 +55,30 @@ function parseScript(script: string): ScriptLine[] {
   })
   const firstAnnouncerIdx = announcerIndices[0] ?? -1
   const lastAnnouncerIdx = announcerIndices[announcerIndices.length - 1] ?? -1
-  const HEADER_KEYS = ['SERIES:','EPISODE:','AUTHOR:','GENRE:','DESCRIPTION:','SUNO PROMPT:',
-    'NARRATIVE_VOICE:','NARRATOR_IS_CHARACTER:','EPISODE_TITLE:','SERIES_TOTAL','SERIES_IS_FINALE:',
-    '[START AUDIO DRAMA SCRIPT]','CHARACTER GUIDE','---']
+  const scriptStartIdx = rawLines.findIndex(l =>
+    l.includes('[START AUDIO DRAMA SCRIPT]') || l.includes('CHARACTER GUIDE')
+  )
+  const headerEndIdx = scriptStartIdx > -1 ? scriptStartIdx : (firstAnnouncerIdx + 1)
+  const HEADER_KEYS = [
+    'SERIES:', 'EPISODE:', 'AUTHOR:', 'GENRE:', 'DESCRIPTION:', 'SUNO PROMPT:',
+    'NARRATIVE_VOICE:', 'NARRATOR_IS_CHARACTER:', 'NARRATOR_IS_', 'EPISODE_TITLE:',
+    'SERIES_TOTAL', 'SERIES_IS_FINALE:', '[START AUDIO DRAMA SCRIPT]',
+    'CHARACTER GUIDE', '---'
+  ]
   let lineIndex = 0
   rawLines.forEach((line, rawIdx) => {
     const trimmed = line.trim()
     if (!trimmed) return
     if (HEADER_KEYS.some(k => trimmed.startsWith(k))) return
-    if (trimmed.startsWith('NARRATOR:') && rawIdx < firstAnnouncerIdx) return
-    if (trimmed.startsWith('ANNOUNCER:') && rawIdx < firstAnnouncerIdx) return
-    if (trimmed === '[BEAT]') { lines.push({ index: lineIndex++, speaker: 'BEAT', text: '1', type: 'beat', isIntro: false, isOutro: false }); return }
+    if (rawIdx < headerEndIdx && rawIdx !== firstAnnouncerIdx && rawIdx !== lastAnnouncerIdx) {
+      if (trimmed.startsWith('NARRATOR:') || trimmed.startsWith('ANNOUNCER:')) return
+    }
+    if (trimmed === '[BEAT]') { lines.push({ index: lineIndex++, speaker: 'BEAT', text: '0.75', type: 'beat', isIntro: false, isOutro: false }); return }
     const pauseMatch = trimmed.match(/^\[PAUSE:(\d+)\]$/)
     if (pauseMatch) { lines.push({ index: lineIndex++, speaker: 'PAUSE', text: pauseMatch[1], type: 'pause', isIntro: false, isOutro: false }); return }
-    if (trimmed.startsWith('[SFX:')) { lines.push({ index: lineIndex++, speaker: 'SFX', text: trimmed.replace(/^\[SFX:\s*/,'').replace(/\]$/,''), type: 'sfx', isIntro: false, isOutro: false }); return }
-    const dm = trimmed.match(/^([A-Z][A-Z\s'.]+?):\s*(.+)$/)
+    if (trimmed.startsWith('[SFX:')) { const sfxText = trimmed.replace(/^\[SFX:\s*/, '').replace(/\]$/, '').trim(); lines.push({ index: lineIndex++, speaker: 'SFX', text: sfxText, type: 'sfx', isIntro: false, isOutro: false }); return }
+    if (trimmed.startsWith('[')) return
+    const dm = trimmed.match(/^([A-Z][A-ZÀ-Ú\s'.()]+?):\s*(.+)$/)
     if (dm) {
       const speaker = dm[1].trim(); const text = dm[2].trim()
       const isAnnouncer = speaker === 'ANNOUNCER' || speaker === 'BELLE B'
@@ -59,59 +93,104 @@ function parseScript(script: string): ScriptLine[] {
   return lines
 }
 
-async function generateVoiceLine(text: string, voiceId: string, storyId: string, lineIndex: number, segment: string): Promise<string> {
-  const cachePath = `asc3/${storyId}/${segment}_${lineIndex.toString().padStart(4,'0')}.mp3`
+async function generateVoiceLine(text: string, voiceId: string, storyId: string, lineIndex: number, prefix: string): Promise<string> {
+  const fileName = `${prefix}_${lineIndex.toString().padStart(4, '0')}.mp3`
+  const cachePath = `asc3/${storyId}/${fileName}`
   const cacheUrl = `${BASE_STORAGE}/${cachePath}`
-  try { const r = await fetch(cacheUrl,{method:'HEAD'}); if(r.ok) return cacheUrl } catch {}
-  const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,{
-    method:'POST',
-    headers:{'xi-api-key':EL_API_KEY,'Content-Type':'application/json','Accept':'audio/mpeg'},
-    body:JSON.stringify({text,model_id:'eleven_multilingual_v2',voice_settings:EL_SETTINGS})
+  try { const r = await fetch(cacheUrl, { method: 'HEAD' }); if (r.ok) return cacheUrl } catch {}
+  const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+    method: 'POST',
+    headers: { 'xi-api-key': EL_API_KEY, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
+    body: JSON.stringify({ text, model_id: 'eleven_multilingual_v2', voice_settings: EL_SETTINGS })
   })
-  if(!res.ok) throw new Error(`EL error ${res.status}: ${(await res.text()).slice(0,200)}`)
+  if (!res.ok) throw new Error(`ElevenLabs error ${res.status}: ${(await res.text()).slice(0, 200)}`)
   const buf = Buffer.from(await res.arrayBuffer())
-  const {error:ue} = await supabase.storage.from('audio').upload(cachePath,buf,{contentType:'audio/mpeg',upsert:true})
-  if(ue) throw new Error(`Upload error: ${ue.message}`)
+  const { error: ue } = await supabase.storage.from('audio').upload(cachePath, buf, { contentType: 'audio/mpeg', upsert: true })
+  if (ue) throw new Error(`Upload error: ${ue.message}`)
   return cacheUrl
+}
+
+async function generateSFX(description: string, storyId: string, lineIndex: number): Promise<string | null> {
+  const fileName = `sfx_${lineIndex.toString().padStart(4, '0')}.mp3`
+  const cachePath = `asc3/${storyId}/${fileName}`
+  const cacheUrl = `${BASE_STORAGE}/${cachePath}`
+  try { const r = await fetch(cacheUrl, { method: 'HEAD' }); if (r.ok) return cacheUrl } catch {}
+  try {
+    const res = await fetch('https://api.elevenlabs.io/v1/sound-generation', {
+      method: 'POST',
+      headers: { 'xi-api-key': EL_API_KEY, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
+      body: JSON.stringify({ text: description, duration_seconds: 3.0, prompt_influence: 0.3 })
+    })
+    if (!res.ok) { console.warn(`SFX failed: ${res.status}`); return null }
+    const buf = Buffer.from(await res.arrayBuffer())
+    await supabase.storage.from('audio').upload(cachePath, buf, { contentType: 'audio/mpeg', upsert: true })
+    return cacheUrl
+  } catch (e) { console.warn('SFX error:', e); return null }
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const {storyId,script,narratorVoiceId,narratorVoiceName,characterVoices} = await req.json()
-    if(!storyId||!script) return NextResponse.json({success:false,error:'storyId and script required'},{status:400})
-    const lines = parseScript(script)
+    const { storyId, script: scriptParam, narratorVoiceId, narratorVoiceName, characterVoices } = await req.json()
+    if (!storyId) return NextResponse.json({ success: false, error: 'storyId required' }, { status: 400 })
+    let script = scriptParam
+    if (!script) {
+      const { data: row } = await supabase.from('stories').select('script').eq('id', storyId).single()
+      script = row?.script
+      if (!script) return NextResponse.json({ success: false, error: 'Script not found in database' }, { status: 400 })
+    }
+    console.log(`\n🎙 generate-voices: ${storyId}`)
+    const { data: allVoices } = await supabase.from('narrator_voices').select('name,elevenlabs_voice_id')
+    const voiceByName: Record<string, string> = {}
+    if (allVoices) allVoices.forEach((v: any) => { voiceByName[v.name] = v.elevenlabs_voice_id })
     let resolvedNarratorVoiceId = narratorVoiceId
-    if(!resolvedNarratorVoiceId&&narratorVoiceName) {
-      const {data:nv} = await supabase.from('narrator_voices').select('elevenlabs_voice_id').ilike('name',`%${narratorVoiceName}%`).single()
-      resolvedNarratorVoiceId = nv?.elevenlabs_voice_id
+    if (!resolvedNarratorVoiceId && narratorVoiceName) resolvedNarratorVoiceId = voiceByName[narratorVoiceName]
+    if (!resolvedNarratorVoiceId) {
+      const { data: row } = await supabase.from('stories').select('narrator_voice_id,narrator_voice_name').eq('id', storyId).single()
+      if (row?.narrator_voice_id) resolvedNarratorVoiceId = row.narrator_voice_id
+      else if (row?.narrator_voice_name) resolvedNarratorVoiceId = voiceByName[row.narrator_voice_name]
     }
-    if(!resolvedNarratorVoiceId) return NextResponse.json({success:false,error:'Narrator voice ID required'},{status:400})
-    const {data:allVoices} = await supabase.from('narrator_voices').select('name,elevenlabs_voice_id')
-    const voiceMap: Record<string,string> = {}
-    if(allVoices) allVoices.forEach((v:any)=>{ voiceMap[v.name.toUpperCase()]=v.elevenlabs_voice_id })
-    if(characterVoices) Object.entries(characterVoices).forEach(([n,id])=>{ voiceMap[n.toUpperCase()]=id as string })
-    const announcerLines = lines.filter(l=>l.type==='announcer')
+    if (!resolvedNarratorVoiceId) resolvedNarratorVoiceId = voiceByName['Cole Hargrove']
+    if (!resolvedNarratorVoiceId) return NextResponse.json({ success: false, error: 'No narrator voice found' }, { status: 400 })
+    const characterGuide = parseCharacterGuide(script)
+    const narratorName = allVoices?.find((v: any) => v.elevenlabs_voice_id === resolvedNarratorVoiceId)?.name || ''
+    const maleVoices = MALE_VOICE_NAMES.filter(n => n !== narratorName && voiceByName[n]).map(n => voiceByName[n])
+    const femaleVoices = FEMALE_VOICE_NAMES.filter(n => voiceByName[n]).map(n => voiceByName[n])
+    let maleIdx = 0; let femaleIdx = 0
+    const voiceMap: Record<string, string> = {}
+    characterGuide.forEach(char => {
+      const key = char.name.toUpperCase()
+      if (char.gender === 'male') { voiceMap[key] = maleVoices[maleIdx % maleVoices.length] || resolvedNarratorVoiceId; maleIdx++ }
+      else if (char.gender === 'female') { voiceMap[key] = femaleVoices[femaleIdx % femaleVoices.length] || resolvedNarratorVoiceId; femaleIdx++ }
+      else voiceMap[key] = resolvedNarratorVoiceId
+    })
+    if (characterVoices) Object.entries(characterVoices).forEach(([name, id]) => { voiceMap[name.toUpperCase()] = id as string })
+    console.log(`  Characters:`, characterGuide.map(c => `${c.name}(${c.gender})`).join(', '))
+    const lines = parseScript(script)
+    const announcerLines = lines.filter(l => l.type === 'announcer')
     const introLine = announcerLines[0]
-    const outroLine = announcerLines[announcerLines.length-1]
-    const storyLines = lines.filter(l=>!l.isIntro&&!l.isOutro)
-    const results: {intro?:string;outro?:string;segments:any[]} = {segments:[]}
-    if(introLine) { try { results.intro = await generateVoiceLine(introLine.text,BELLE_B_VOICE_ID,storyId,introLine.index,'intro') } catch(e){console.error('Intro failed:',e)} }
-    if(outroLine&&outroLine.index!==introLine?.index) { try { results.outro = await generateVoiceLine(outroLine.text,BELLE_B_VOICE_ID,storyId,outroLine.index,'outro') } catch(e){console.error('Outro failed:',e)} }
-    for(const line of storyLines) {
-      if(line.type==='beat'||line.type==='pause'||line.type==='sfx') { results.segments.push({index:line.index,speaker:line.speaker,type:line.type}); continue }
+    const outroLine = announcerLines[announcerLines.length - 1]
+    const storyLines = lines.filter(l => !l.isIntro && !l.isOutro)
+    const results: { intro?: string; outro?: string; segments: any[] } = { segments: [] }
+    let succeeded = 0; let failed = 0
+    if (introLine) { try { results.intro = await generateVoiceLine(introLine.text, BELLE_B_VOICE_ID, storyId, introLine.index, 'intro'); console.log('  ✅ Belle B intro') } catch (e) { console.error('  ❌ Intro failed:', e) } }
+    if (outroLine && outroLine.index !== introLine?.index) { try { results.outro = await generateVoiceLine(outroLine.text, BELLE_B_VOICE_ID, storyId, outroLine.index, 'outro'); console.log('  ✅ Belle B outro') } catch (e) { console.error('  ❌ Outro failed:', e) } }
+    for (const line of storyLines) {
+      if (line.type === 'beat' || line.type === 'pause') { results.segments.push({ index: line.index, speaker: line.speaker, type: line.type, duration: line.text }); continue }
+      if (line.type === 'sfx') { const sfxUrl = await generateSFX(line.text, storyId, line.index); results.segments.push({ index: line.index, speaker: 'SFX', type: 'sfx', url: sfxUrl || undefined }); continue }
       let voiceId = resolvedNarratorVoiceId
-      if(line.type==='character') voiceId = voiceMap[line.speaker.toUpperCase()]||resolvedNarratorVoiceId
-      try { const url = await generateVoiceLine(line.text,voiceId,storyId,line.index,'segment'); results.segments.push({index:line.index,speaker:line.speaker,type:line.type,url}) }
-      catch(e) { console.error(`Line ${line.index} failed:`,e); results.segments.push({index:line.index,speaker:line.speaker,type:line.type}) }
+      if (line.type === 'character') voiceId = voiceMap[line.speaker.toUpperCase()] || resolvedNarratorVoiceId
+      try { const url = await generateVoiceLine(line.text, voiceId, storyId, line.index, 'segment'); results.segments.push({ index: line.index, speaker: line.speaker, type: line.type, url }); succeeded++ }
+      catch (e) { console.error(`  ❌ Line ${line.index} (${line.speaker}):`, e); results.segments.push({ index: line.index, speaker: line.speaker, type: line.type }); failed++ }
     }
-    const updates: Record<string,string> = {}
-    if(results.intro) updates.intro_audio_url = results.intro
-    if(results.outro) updates.outro_audio_url = results.outro
-    if(Object.keys(updates).length>0) await supabase.from('stories').update(updates).eq('id',storyId)
-    const succeeded = results.segments.filter(s=>s.url).length
-    const total = storyLines.filter(l=>l.type!=='beat'&&l.type!=='pause'&&l.type!=='sfx').length
-    return NextResponse.json({success:true,intro:results.intro,outro:results.outro,segments:results.segments,stats:{total:lines.length,voice:total,succeeded,failed:total-succeeded}})
-  } catch(err) {
-    return NextResponse.json({success:false,error:String(err)},{status:500})
+    const updates: Record<string, string> = {}
+    if (results.intro) updates.intro_audio_url = results.intro
+    if (results.outro) updates.outro_audio_url = results.outro
+    if (Object.keys(updates).length > 0) await supabase.from('stories').update(updates).eq('id', storyId)
+    const voiceTotal = storyLines.filter(l => l.type === 'narrator' || l.type === 'character').length
+    console.log(`  ✅ Done: ${succeeded}/${voiceTotal} lines, ${failed} failed`)
+    return NextResponse.json({ success: failed === 0, intro: results.intro, outro: results.outro, segments: results.segments, stats: { total: lines.length, voice: voiceTotal, succeeded, failed } })
+  } catch (err) {
+    console.error('generate-voices error:', err)
+    return NextResponse.json({ success: false, error: String(err) }, { status: 500 })
   }
 }
