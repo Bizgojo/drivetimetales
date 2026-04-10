@@ -116,7 +116,7 @@ export async function POST(req: NextRequest) {
     console.log('  Normalizing audio levels...')
     const normalizedIntroPath = path.join(tmpDir, 'intro_norm.mp3')
     const normalizedOutroPath = path.join(tmpDir, 'outro_norm.mp3')
-    await normalizeAudio(normalizedIntroPath, normalizedIntroPath, -14) // Belle B slightly louder
+    await normalizeAudio(introPath, normalizedIntroPath, -14) // Belle B slightly louder
     await normalizeAudio(outroPath, normalizedOutroPath, -14)
     const normalizedSegPaths: string[] = []
     for (const segPath of segPaths) {
