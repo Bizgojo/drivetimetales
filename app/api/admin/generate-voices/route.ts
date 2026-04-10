@@ -33,13 +33,16 @@ function parseScript(script: string): ScriptLine[] {
   const HEADER_KEYS = ['SERIES:','EPISODE:','AUTHOR:','GENRE:','DESCRIPTION:','SUNO PROMPT:',
     'NARRATIVE_VOICE:','NARRATOR_IS_CHARACTER:','EPISODE_TITLE:','SERIES_TOTAL','SERIES_IS_FINALE:',
     '[START AUDIO DRAMA SCRIPT]','CHARACTER GUIDE','---']
+  const scriptStartIdx = rawLines.findIndex(l => l.includes('[START AUDIO DRAMA SCRIPT]') || l.includes('CHARACTER GUIDE'))
+  const headerEndIdx = scriptStartIdx > -1 ? scriptStartIdx : (firstAnnouncerIdx + 1)
   let lineIndex = 0
   rawLines.forEach((line, rawIdx) => {
     const trimmed = line.trim()
     if (!trimmed) return
     if (HEADER_KEYS.some(k => trimmed.startsWith(k))) return
-    if (trimmed.startsWith('NARRATOR:') && rawIdx < firstAnnouncerIdx) return
-    if (trimmed.startsWith('ANNOUNCER:') && rawIdx < firstAnnouncerIdx) return
+    if (rawIdx < headerEndIdx && rawIdx !== firstAnnouncerIdx && rawIdx !== lastAnnouncerIdx) {
+      if (trimmed.startsWith('NARRATOR:') || trimmed.startsWith('ANNOUNCER:')) return
+    }
     if (trimmed === '[BEAT]') { lines.push({ index: lineIndex++, speaker: 'BEAT', text: '1', type: 'beat', isIntro: false, isOutro: false }); return }
     const pauseMatch = trimmed.match(/^\[PAUSE:(\d+)\]$/)
     if (pauseMatch) { lines.push({ index: lineIndex++, speaker: 'PAUSE', text: pauseMatch[1], type: 'pause', isIntro: false, isOutro: false }); return }
