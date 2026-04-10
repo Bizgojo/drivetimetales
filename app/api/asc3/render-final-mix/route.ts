@@ -109,16 +109,15 @@ export async function POST(req: NextRequest) {
     await generateSilence(sil100Path, 1.0)
 
     if (!musicPath) {
-      console.log('  No music — sting fades under full Belle B intro')
+      console.log('  No music — sting tail held and faded under Belle B intro')
       const stingDur = await getAudioDuration(stingPath)
       const introDur = await getAudioDuration(introPath)
       const totalDur = stingDur + introDur
-      // Step 1: Loop/pad sting to cover full sting+intro duration, then fade out across entire duration
+      // Hold the last sample of the sting with apad, then fade to zero across the full intro
       const stingExtPath = path.join(tmpDir, 'sting_ext.mp3')
       await execFileAsync(FFMPEG_PATH, [
-        '-stream_loop', '-1', '-i', stingPath,
-        '-t', String(totalDur),
-        '-af', `afade=t=out:st=${stingDur * 0.5}:d=${stingDur * 0.5 + introDur}`,
+        '-i', stingPath,
+        '-af', `apad=whole_dur=${totalDur},afade=t=out:st=${stingDur * 0.5}:d=${stingDur * 0.5 + introDur}`,
         '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', stingExtPath
       ])
       // Step 2: Mix extended fading sting with Belle B intro at full volume
