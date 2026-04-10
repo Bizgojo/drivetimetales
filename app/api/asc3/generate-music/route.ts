@@ -31,7 +31,8 @@ export async function POST(req: NextRequest) {
         customMode: false,
         instrumental: true,
         model: 'V4',
-        title: `ET-${storyId.slice(0, 8)}`
+        title: `ET-${storyId.slice(0, 8)}`,
+        callBackUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.endless-tales.com'}/api/asc3/music-callback`
       })
     })
 
