@@ -347,12 +347,12 @@ function buildWrapperPrompt(productionScript: string, p: PipelineParams): string
   }
   const register = belleRegister[p.genre] || 'warm and direct'
   const outroInstruction = p.isSeries && !p.isFinale
-    ? `Series episode outro — ONE Belle B line with three beats: (1) land this episode emotional punch, (2) re-hook the series premise in one clause, (3) name something SPECIFIC from next episode that makes stopping impossible. Format: BELLE B: [Beat 1]. [Beat 2 + Beat 3].`
-    : p.isSeries && p.isFinale
-    ? `BELLE B: [What the series meant in one sentence]. That was "${p.seriesName}" — an Endless Tales original series by ${p.author}.`
-    : `BELLE B: That was "[Story Title]" — an Endless Tales original. Written by ${p.author}.`
+    ? `ONE Belle B outro line — warm, personal, like a friend who just listened with you. Three beats: (1) name ONE specific emotional moment from THIS episode that will stay with the listener, (2) tease something irresistible from next episode without spoiling it, (3) sign off warmly. BELLE B: [Beat 1]. [Beat 2]. [Warm sign-off].`
+    : `ONE Belle B outro line — warm and personal, like a friend reflecting on what you both just heard. Name ONE specific moment or image from THIS story that landed hardest, then sign off like you mean it. Never just read credits. BELLE B: [Specific reflection on this story]. That was "[Story Title]" by ${p.author} — an Endless Tales original.`
 
   return `You are the Endless Tales platform team. Wrap this produced audio drama with platform elements.
+
+Belle B is the warm, personal voice of Endless Tales. She sounds like a trusted friend who loves stories — never a radio announcer, never corporate. She speaks directly to the listener as if they are sitting together.
 
 ADD IN EXACT ORDER:
 
@@ -363,15 +363,18 @@ BELLE B: [one intro line — register: ${register}]
 ---
 
 Belle B intro rules — this is the most important line in the script:
+- Belle B does EVERYTHING in one line: hook the listener, set up the story, name the title
+- NO separate ANNOUNCER intro line — Belle B handles it all
 - Include [LISTENER_NAME] naturally mid-sentence (never forced to the front)
 - Include the story title in quotes
-- Create IMMEDIATE STAKES — the listener must feel danger, urgency, or desperate curiosity BEFORE the title is spoken
-- Reference something SPECIFIC and VISCERAL from THIS story — a specific object, sound, or moment that only exists in this episode
-- Never time-of-day. Never genre labels. Never "a world of mystery." Never "welcome back."
+- Create IMMEDIATE STAKES — the listener must feel something BEFORE the title is spoken
+- Reference something SPECIFIC and VISCERAL from THIS story — a specific object, sound, or moment
+- Sound like a friend leaning in to tell you something — warm, intimate, never formal
+- Never time-of-day. Never genre labels. Never "a world of mystery." Never "welcome back." Never "Endless Tales presents."
 - Works gracefully if [LISTENER_NAME] is omitted
-- One or two short sentences maximum — every word earns its place
-- BAD EXAMPLE: "Step into a world of danger, [LISTENER_NAME], in 'The Missing Hour.'" — too generic, no stakes
-- GOOD EXAMPLE: "The voice on Jake's CB radio has been dead for six years, [LISTENER_NAME] — and it just said your name, in 'The Signal.'" — specific, visceral, immediate stakes
+- One or two short sentences maximum
+- BAD: "Endless Tales presents 'The Signal' — a story about mystery." — formal, cold, generic
+- GOOD: "The voice on Jake's CB radio has been dead for six years, [LISTENER_NAME] — and it just said your name, in 'The Signal.'" — warm, specific, immediate
 
 2. HEADER BLOCK:
 SERIES: ${p.isSeries ? p.seriesName : ''}
@@ -393,15 +396,12 @@ CHARACTER GUIDE
 ---
 [Every speaking character: NAME — age, gender, accent, one-sentence personality]
 
-4. ANNOUNCER INTRO:
-ANNOUNCER: Endless Tales presents... [title]${p.isSeries ? '. Episode ' + p.episodeNumber + ': ' + p.episodeTitle : ''}. [one punchy present-tense hook sentence — no spoilers]
+4. THE PRODUCTION SCRIPT (copy exactly as provided — do not change anything)
 
-5. THE PRODUCTION SCRIPT (copy exactly as provided — do not change anything)
-
-6. ANNOUNCER OUTRO:
+5. BELLE B OUTRO:
 ${outroInstruction}
 
-Output ONLY the complete wrapped script. Begin with BELLE B INTRO. End with the BELLE B outro line. No preamble.
+Output ONLY the complete wrapped script. Begin with BELLE B INTRO. End with the BELLE B outro line. No preamble. Do NOT include any ANNOUNCER: line.
 
 PRODUCTION SCRIPT TO WRAP:
 ${productionScript}`
