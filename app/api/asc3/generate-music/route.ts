@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
+export const runtime = 'nodejs'
+export const maxDuration = 300
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -19,22 +22,23 @@ export async function POST(req: NextRequest) {
     console.log(`🎵 Generating music for ${storyId}`)
     console.log(`  Prompt: ${prompt.slice(0, 100)}...`)
 
-    // Step 1: Submit generation task (custom mode, instrumental)
-    const genResp = await fetch(`${KIE_BASE}/api/v1/music/generate`, {
+    // Step 1: Submit generation task
+    const genResp = await fetch(`${KIE_BASE}/api/v1/generate`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${KIE_API_KEY}`
-      },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${KIE_API_KEY}` },
       body: JSON.stringify({
-        customMode: true,
+        prompt: prompt,
+        customMode: false,
         instrumental: true,
-        model: 'V4_5',
-        title: `ET Story ${storyId.slice(0, 8)}`,
-        style: prompt,
-        prompt: ''
+        model: 'V4',
+        title: `ET-${storyId.slice(0, 8)}`
       })
     })
+
+    if (!genResp.ok) {
+      const errText = await genResp.text()
+      throw new Error(`kie.ai generate failed ${genResp.status}: ${errText}`)
+    }
 
     const genData = await genResp.json()
     console.log('  Gen response:', JSON.stringify(genData).slice(0, 200))
@@ -43,41 +47,39 @@ export async function POST(req: NextRequest) {
     if (!taskId) throw new Error(`No taskId returned: ${JSON.stringify(genData)}`)
     console.log(`  Task ID: ${taskId}`)
 
-    // Step 2: Poll for completion (up to 5 minutes)
+    // Step 2: Poll for completion
     let audioUrl: string | null = null
     for (let i = 0; i < 60; i++) {
       await sleep(5000)
-      const statusResp = await fetch(`${KIE_BASE}/api/v1/music/record-info?taskId=${taskId}`, {
+      const statusResp = await fetch(`${KIE_BASE}/api/v1/generate/record-info?taskId=${taskId}`, {
         headers: { 'Authorization': `Bearer ${KIE_API_KEY}` }
       })
+      if (!statusResp.ok) { console.warn(`  Poll ${i+1} failed: ${statusResp.status}`); continue }
       const statusData = await statusResp.json()
-      const tracks = statusData?.data?.response?.sunoData || statusData?.data || []
-      const track = Array.isArray(tracks) ? tracks.find((t: any) => t.audioUrl) : null
-      console.log(`  Poll ${i + 1}: status=${track?.status}, hasUrl=${!!track?.audioUrl}`)
-      if (track?.audioUrl) {
-        audioUrl = track.audioUrl
-        break
-      }
+      const sunoData = statusData?.data?.response?.sunoData || statusData?.data?.sunoData || []
+      const tracks = Array.isArray(sunoData) ? sunoData : [sunoData]
+      const done = tracks.find((t: any) => t?.audioUrl && t?.status === 'complete')
+      console.log(`  Poll ${i+1}: ${tracks.length} tracks, done=${!!done}`)
+      if (done?.audioUrl) { audioUrl = done.audioUrl; break }
     }
 
-    if (!audioUrl) throw new Error('Music generation timed out after 5 minutes')
+    if (!audioUrl) throw new Error('Music generation timed out')
     console.log(`  ✅ Audio URL: ${audioUrl}`)
 
-    // Step 3: Download audio
+    // Step 3: Download and upload to Supabase
     const audioResp = await fetch(audioUrl)
-    if (!audioResp.ok) throw new Error(`Failed to download audio: ${audioResp.status}`)
+    if (!audioResp.ok) throw new Error(`Download failed: ${audioResp.status}`)
     const audioBuffer = Buffer.from(await audioResp.arrayBuffer())
-    console.log(`  Downloaded ${audioBuffer.length} bytes`)
+    console.log(`  Downloaded: ${audioBuffer.length} bytes`)
 
-    // Step 4: Upload to Supabase storage
     const storagePath = `asc3/${storyId}/background_music.mp3`
-    const { error: uploadErr } = await supabase.storage
-      .from('audio')
-      .upload(storagePath, audioBuffer, { contentType: 'audio/mpeg', upsert: true })
+    const { error: uploadErr } = await supabase.storage.from('audio').upload(storagePath, audioBuffer, {
+      contentType: 'audio/mpeg', upsert: true
+    })
     if (uploadErr) throw new Error(`Upload failed: ${uploadErr.message}`)
 
     const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio/${storagePath}`
-    console.log(`  ✅ Uploaded to Supabase: ${publicUrl}`)
+    console.log(`  ✅ Uploaded: ${publicUrl}`)
 
     return NextResponse.json({ success: true, url: publicUrl })
   } catch (err) {
