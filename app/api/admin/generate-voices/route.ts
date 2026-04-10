@@ -17,6 +17,49 @@ const EL_SETTINGS = { stability: 0.5, similarity_boost: 0.75, style: 0.0, use_sp
 const MALE_VOICE_NAMES = ['Cole Hargrove', 'Elliott Crane', 'Finn Calloway', 'James Alcott', 'Marcus Hale', 'Ray Dolan']
 const FEMALE_VOICE_NAMES = ['Iris Calloway', 'June Harlow', 'Morgan Veil', 'Nora Ashby', 'Quinn Merritt', 'Sage Wilder']
 
+async function findVoiceForCharacter(
+  characterName: string,
+  gender: 'male' | 'female' | 'unknown',
+  charDescription: string,
+  narratorVoiceId: string,
+  voiceByName: Record<string,string>
+): Promise<string> {
+  const cacheKey = `char:${characterName.toLowerCase().replace(/[^a-z0-9]/g,'-')}`
+  try {
+    const { data: cached } = await supabase.from('narrator_voices').select('elevenlabs_voice_id').eq('name', cacheKey).single()
+    if (cached?.elevenlabs_voice_id) { console.log(`  Cache hit: ${characterName}`); return cached.elevenlabs_voice_id }
+    const lower = charDescription.toLowerCase()
+    const ageNum = lower.match(/(\d+)/)?.[1] ? parseInt(lower.match(/(\d+)/)![1]) : 30
+    const age = ageNum < 25 ? 'young' : ageNum < 55 ? 'middle_aged' : 'old'
+    const accent = lower.includes('british')||lower.includes('london') ? 'british'
+      : lower.includes('australian') ? 'australian'
+      : lower.includes('irish') ? 'irish'
+      : lower.includes('african')||lower.includes('nigerian') ? 'african'
+      : lower.includes('indian') ? 'indian'
+      : 'american'
+    let voices: any[] = []
+    const params = new URLSearchParams({ gender: gender==='male'?'male':'female', age, accent, use_cases: 'characters_animation', page_size: '30', category: 'high_quality' })
+    const res = await fetch(`https://api.elevenlabs.io/v1/shared-voices?${params}`, { headers: { 'xi-api-key': EL_API_KEY } })
+    if (res.ok) { const d = await res.json(); voices = d.voices || [] }
+    if (voices.length === 0) {
+      const p2 = new URLSearchParams({ gender: gender==='male'?'male':'female', age, use_cases: 'characters_animation', page_size: '30' })
+      const r2 = await fetch(`https://api.elevenlabs.io/v1/shared-voices?${p2}`, { headers: { 'xi-api-key': EL_API_KEY } })
+      if (r2.ok) { const d2 = await r2.json(); voices = d2.voices || [] }
+    }
+    if (voices.length === 0) return gender==='male' ? (voiceByName[MALE_VOICE_NAMES[0]]||narratorVoiceId) : (voiceByName[FEMALE_VOICE_NAMES[0]]||narratorVoiceId)
+    const pick = voices[Math.floor(Math.random() * Math.min(5, voices.length))]
+    const addRes = await fetch(`https://api.elevenlabs.io/v1/voices/add/${pick.voice_id}`, { method: 'POST', headers: { 'xi-api-key': EL_API_KEY } })
+    const addData = addRes.ok ? await addRes.json() : null
+    const finalVoiceId = addData?.voice_id || pick.voice_id
+    await supabase.from('narrator_voices').upsert({ name: cacheKey, elevenlabs_voice_id: finalVoiceId }, { onConflict: 'name' })
+    console.log(`  Voice for ${characterName}: ${pick.name} (${finalVoiceId})`)
+    return finalVoiceId
+  } catch(e) {
+    console.warn(`  Voice search failed for ${characterName}:`, e)
+    return gender==='male' ? (voiceByName[MALE_VOICE_NAMES[0]]||narratorVoiceId) : (voiceByName[FEMALE_VOICE_NAMES[0]]||narratorVoiceId)
+  }
+}
+
 interface ScriptLine {
   index: number; speaker: string; text: string
   type: 'announcer' | 'narrator' | 'character' | 'sfx' | 'beat' | 'pause'
@@ -26,6 +69,7 @@ interface ScriptLine {
 interface CharacterInfo {
   name: string
   gender: 'male' | 'female' | 'unknown'
+  description: string
 }
 
 function parseCharacterGuide(script: string): CharacterInfo[] {
@@ -41,7 +85,7 @@ function parseCharacterGuide(script: string): CharacterInfo[] {
     let gender: CharacterInfo['gender'] = 'unknown'
     if (lower.includes(', male') || lower.includes(' male,') || lower.includes('male ')) gender = 'male'
     if (lower.includes(', female') || lower.includes(' female,') || lower.includes('female ')) gender = 'female'
-    chars.push({ name, gender })
+    chars.push({ name, gender, description: line })
   }
   return chars
 }
@@ -155,14 +199,22 @@ export async function POST(req: NextRequest) {
     const narratorName = allVoices?.find((v: any) => v.elevenlabs_voice_id === resolvedNarratorVoiceId)?.name || ''
     const maleVoices = MALE_VOICE_NAMES.filter(n => n !== narratorName && voiceByName[n]).map(n => voiceByName[n])
     const femaleVoices = FEMALE_VOICE_NAMES.filter(n => voiceByName[n]).map(n => voiceByName[n])
-    let maleIdx = 0; let femaleIdx = 0
+    // Build voice map using ElevenLabs library search
     const voiceMap: Record<string, string> = {}
-    characterGuide.forEach(char => {
+    for (const char of characterGuide) {
       const key = char.name.toUpperCase()
-      if (char.gender === 'male') { voiceMap[key] = maleVoices[maleIdx % maleVoices.length] || resolvedNarratorVoiceId; maleIdx++ }
-      else if (char.gender === 'female') { voiceMap[key] = femaleVoices[femaleIdx % femaleVoices.length] || resolvedNarratorVoiceId; femaleIdx++ }
-      else voiceMap[key] = resolvedNarratorVoiceId
-    })
+      // Check if manually overridden
+      if (characterVoices?.[char.name] || characterVoices?.[key]) {
+        voiceMap[key] = (characterVoices[char.name] || characterVoices[key]) as string
+        continue
+      }
+      // Search EL library for best matching voice
+      voiceMap[key] = await findVoiceForCharacter(
+        char.name, char.gender, char.description || char.name,
+        resolvedNarratorVoiceId, voiceByName
+      )
+    }
+    // Apply any remaining manual overrides
     if (characterVoices) Object.entries(characterVoices).forEach(([name, id]) => { voiceMap[name.toUpperCase()] = id as string })
     console.log(`  Characters:`, characterGuide.map(c => `${c.name}(${c.gender})`).join(', '))
     const lines = parseScript(script)
