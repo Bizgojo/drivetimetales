@@ -77,14 +77,8 @@ async function generateVoiceLine(text: string, voiceId: string, storyId: string,
 
 export async function POST(req: NextRequest) {
   try {
-    const {storyId,script:scriptParam,narratorVoiceId,narratorVoiceName,characterVoices} = await req.json()
-    if(!storyId) return NextResponse.json({success:false,error:'storyId required'},{status:400})
-    let script = scriptParam
-    if(!script) {
-      const {data:storyRow} = await supabase.from('stories').select('script').eq('id',storyId).single()
-      script = storyRow?.script
-      if(!script) return NextResponse.json({success:false,error:'Script not found'},{status:400})
-    }
+    const {storyId,script,narratorVoiceId,narratorVoiceName,characterVoices} = await req.json()
+    if(!storyId||!script) return NextResponse.json({success:false,error:'storyId and script required'},{status:400})
     const lines = parseScript(script)
     let resolvedNarratorVoiceId = narratorVoiceId
     if(!resolvedNarratorVoiceId&&narratorVoiceName) {

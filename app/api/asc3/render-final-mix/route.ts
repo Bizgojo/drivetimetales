@@ -168,7 +168,6 @@ export async function POST(req: NextRequest) {
       await execFileAsync(FFMPEG_PATH, [
         '-f', 'concat', '-safe', '0', '-i', concatListPath,
         '-ar', '44100', '-ac', '2', '-b:a', '192k',
-        '-af', 'loudnorm=I=-14:TP=-1.5:LRA=11',
         '-y', outputPath
       ])
     } else {
