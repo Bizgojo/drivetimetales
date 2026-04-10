@@ -101,7 +101,7 @@ export async function POST(req: NextRequest) {
       if(line.type==='beat'||line.type==='pause'||line.type==='sfx') { results.segments.push({index:line.index,speaker:line.speaker,type:line.type}); continue }
       let voiceId = resolvedNarratorVoiceId
       if(line.type==='character') voiceId = voiceMap[line.speaker.toUpperCase()]||resolvedNarratorVoiceId
-      try { const url = await generateVoiceLine(line.text,voiceId,storyId,line.index,'story'); results.segments.push({index:line.index,speaker:line.speaker,type:line.type,url}) }
+      try { const url = await generateVoiceLine(line.text,voiceId,storyId,line.index,'segment'); results.segments.push({index:line.index,speaker:line.speaker,type:line.type,url}) }
       catch(e) { console.error(`Line ${line.index} failed:`,e); results.segments.push({index:line.index,speaker:line.speaker,type:line.type}) }
     }
     const updates: Record<string,string> = {}

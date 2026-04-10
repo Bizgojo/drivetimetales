@@ -521,6 +521,11 @@ export default function StoryProductionPage() {
   const [queueRunning, setQueueRunning] = useState(false)
   const processingRef = useRef(false)
 
+  // Audio generation
+  const [audioProgress, setAudioProgress] = useState<Record<string, AudioState>>({})
+  const [supabaseIds, setSupabaseIds] = useState<Record<string, string>>({}) // localId → supabase UUID
+  const [charVoiceModal, setCharVoiceModal] = useState<{storyId:string;chars:string[];assignments:Record<string,string>}|null>(null)
+
   // Manual write
   const [genre, setGenre] = useState('')
   const [premise, setPremise] = useState('')
@@ -893,7 +898,9 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
       const result = await resp.json()
       setProduceSteps(result.steps || {})
       if (result.success) {
-        alert(`✅ Production complete!\n\nDescription: ${result.description?.slice(0,80)}...\nCover: ${result.coverUrl ? '✅' : '❌'}\nProse: ${result.steps?.prose?.message || '?'}\n\nStory ID: ${storyId}\nPublished as is_hidden=TRUE — approve in Supabase when ready.`)
+        // Store the real Supabase UUID so Generate Audio knows where to write
+        setSupabaseIds(prev => ({ ...prev, [s.id]: storyId }))
+        alert(`✅ Production complete!\n\nDescription: ${result.description?.slice(0,80)}...\nCover: ${result.coverUrl ? '✅' : '❌'}\nProse: ${result.steps?.prose?.message || '?'}\n\nStory ID: ${storyId}\nPublished as is_hidden=TRUE — now click 🔊 Generate Audio to produce the audio files.`)
       } else {
         alert(`⚠️ Production finished with some errors. Check steps:\n${JSON.stringify(result.steps, null, 2)}`)
       }
@@ -901,6 +908,133 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
       alert(`Production failed: ${err}`)
     } finally {
       setProducing(null)
+    }
+  }
+
+  // Extract character names from script (non-NARRATOR, non-ANNOUNCER/BELLE B speakers)
+  function extractCharacters(script: string): string[] {
+    const chars = new Set<string>()
+    const lines = script.split('\n')
+    for (const line of lines) {
+      const m = line.trim().match(/^([A-Z][A-ZÀ-Ú\s']+?):\s*.+$/)
+      if (!m) continue
+      const spk = m[1].trim()
+      if (['NARRATOR','ANNOUNCER','BELLE B','SFX','BEAT','PAUSE'].includes(spk)) continue
+      if (spk.startsWith('[')) continue
+      chars.add(spk)
+    }
+    return [...chars]
+  }
+
+  async function startGenerateAudio(s: Story, charAssignments?: Record<string,string>) {
+    const supabaseId = supabaseIds[s.id]
+    if (!supabaseId) { alert('Run 🎬 Produce first to create the story in Supabase.'); return }
+    // Find narrator voice ID from narrators list
+    const narratorName = NARRATOR_MAP[s.author] || s.narrator
+    const narratorRec = narrators.find(n => n.name === narratorName)
+    const narratorVoiceId = narratorRec?.elevenlabs_voice_id
+    if (!narratorVoiceId) { alert(`Could not find ElevenLabs voice ID for narrator "${narratorName}". Check narrator_voices table.`); return }
+
+    setAudioProgress(prev => ({ ...prev, [s.id]: { step: 'voices' } }))
+
+    try {
+      // Stage 1: Generate all voice lines
+      const voiceResp = await fetch('/api/admin/generate-voices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storyId: supabaseId,
+          script: s.script,
+          narratorVoiceId,
+          characterVoices: charAssignments || {}
+        })
+      })
+      const voiceResult = await voiceResp.json()
+      if (!voiceResult.success) throw new Error(voiceResult.error || 'Voice generation failed')
+      setAudioProgress(prev => ({ ...prev, [s.id]: { step: 'mixing', voiceStats: voiceResult.stats } }))
+
+      // Stage 2: Render final mix
+      const mixResp = await fetch('/api/asc3/render-final-mix', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storyId: supabaseId })
+      })
+      const mixResult = await mixResp.json()
+      if (!mixResult.success) throw new Error(mixResult.error || 'Mix failed')
+
+      setAudioProgress(prev => ({ ...prev, [s.id]: { step: 'done', voiceStats: voiceResult.stats, finalUrl: mixResult.finalAudioUrl } }))
+    } catch(err) {
+      setAudioProgress(prev => ({ ...prev, [s.id]: { ...prev[s.id], step: 'error', error: String(err) } }))
+    }
+  }
+
+  function handleGenerateAudio(s: Story) {
+    const chars = extractCharacters(s.script)
+    if (chars.length > 0) {
+      // Show character voice assignment modal
+      const defaultAssignments: Record<string,string> = {}
+      // Auto-assign from narrators list (round-robin, skip narrator's voice)
+      const narratorName = NARRATOR_MAP[s.author] || s.narrator
+      const otherVoices = narrators.filter(n => n.name !== narratorName && n.name !== 'Belle B')
+      chars.forEach((c, i) => { defaultAssignments[c] = otherVoices[i % otherVoices.length]?.elevenlabs_voice_id || '' })
+      setCharVoiceModal({ storyId: s.id, chars, assignments: defaultAssignments })
+    } else {
+      startGenerateAudio(s)
+    }
+  }
+
+  // Extract non-narrator/announcer speakers from script
+  function extractCharacters(script: string): string[] {
+    const chars = new Set<string>()
+    for (const line of script.split('\n')) {
+      const m = line.trim().match(/^([A-Z][A-ZÀ-Ú\s']+?):\s*.+$/)
+      if (!m) continue
+      const spk = m[1].trim()
+      if (['NARRATOR','ANNOUNCER','BELLE B','SFX','BEAT','PAUSE'].includes(spk)) continue
+      if (spk.startsWith('[')) continue
+      chars.add(spk)
+    }
+    return [...chars]
+  }
+
+  async function startGenerateAudio(s: Story, charAssignments?: Record<string,string>) {
+    const supabaseId = supabaseIds[s.id]
+    if (!supabaseId) { alert('Run 🎬 Produce first to create the story in Supabase.'); return }
+    const narratorName = NARRATOR_MAP[s.author] || s.narrator
+    const narratorRec = narrators.find(n => n.name === narratorName)
+    const narratorVoiceId = narratorRec?.elevenlabs_voice_id
+    if (!narratorVoiceId) { alert(`Could not find ElevenLabs voice ID for narrator "${narratorName}". Check narrator_voices table.`); return }
+    setAudioProgress(prev => ({ ...prev, [s.id]: { step: 'voices' } }))
+    try {
+      const voiceResp = await fetch('/api/admin/generate-voices', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storyId: supabaseId, script: s.script, narratorVoiceId, characterVoices: charAssignments || {} })
+      })
+      const voiceResult = await voiceResp.json()
+      if (!voiceResult.success) throw new Error(voiceResult.error || 'Voice generation failed')
+      setAudioProgress(prev => ({ ...prev, [s.id]: { step: 'mixing', voiceStats: voiceResult.stats } }))
+      const mixResp = await fetch('/api/asc3/render-final-mix', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storyId: supabaseId })
+      })
+      const mixResult = await mixResp.json()
+      if (!mixResult.success) throw new Error(mixResult.error || 'Mix failed')
+      setAudioProgress(prev => ({ ...prev, [s.id]: { step: 'done', voiceStats: voiceResult.stats, finalUrl: mixResult.finalAudioUrl } }))
+    } catch(err) {
+      setAudioProgress(prev => ({ ...prev, [s.id]: { ...prev[s.id], step: 'error', error: String(err) } }))
+    }
+  }
+
+  function handleGenerateAudio(s: Story) {
+    const chars = extractCharacters(s.script)
+    if (chars.length > 0) {
+      const narratorName = NARRATOR_MAP[s.author] || s.narrator
+      const otherVoices = narrators.filter(n => n.name !== narratorName && n.name !== 'Belle B')
+      const defaultAssignments: Record<string,string> = {}
+      chars.forEach((c, i) => { defaultAssignments[c] = otherVoices[i % otherVoices.length]?.elevenlabs_voice_id || '' })
+      setCharVoiceModal({ storyId: s.id, chars, assignments: defaultAssignments })
+    } else {
+      startGenerateAudio(s)
     }
   }
 
@@ -957,10 +1091,39 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
   const pendingStories=stories.filter(s=>s.status==='ready'||s.status==='generating')
   const waitingCount=premiseQueue.filter(q=>q.status==='waiting').length
 
+  const charModalEl = charVoiceModal ? (
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={()=>setCharVoiceModal(null)}>
+      <div style={{background:'#fff',borderRadius:12,padding:32,width:520,maxHeight:'80vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
+        <div style={{fontSize:20,fontWeight:700,color:'#111',marginBottom:6}}>Assign Character Voices</div>
+        <div style={{fontSize:14,color:'#666',marginBottom:24}}>The script has {charVoiceModal.chars.length} speaking character{charVoiceModal.chars.length!==1?'s':''}. Assign a voice to each, or leave as narrator voice.</div>
+        {charVoiceModal.chars.map(char=>(
+          <div key={char} style={{marginBottom:16}}>
+            <div style={{fontSize:14,fontWeight:700,color:'#111',marginBottom:6}}>{char}</div>
+            <select
+              value={charVoiceModal.assignments[char]||''}
+              onChange={e=>setCharVoiceModal(prev=>prev?{...prev,assignments:{...prev.assignments,[char]:e.target.value}}:null)}
+              style={{width:'100%',padding:'10px 12px',border:'1px solid #ccc',borderRadius:6,fontSize:14,fontFamily:'inherit',color:'#111'}}
+            >
+              <option value="">— Use narrator voice —</option>
+              {narrators.filter(n=>n.name!=='Belle B').map(n=>(
+                <option key={n.id} value={n.elevenlabs_voice_id}>{n.name}</option>
+              ))}
+            </select>
+          </div>
+        ))}
+        <div style={{display:'flex',gap:12,marginTop:24}}>
+          <button onClick={()=>{const {storyId,assignments}=charVoiceModal; setCharVoiceModal(null); const s=stories.find(x=>x.id===storyId); if(s) startGenerateAudio(s,assignments)}} style={{flex:1,background:'#f97316',color:'#fff',border:'none',borderRadius:8,padding:'14px',cursor:'pointer',fontFamily:'inherit',fontSize:15,fontWeight:700}}>🔊 Generate Audio</button>
+          <button onClick={()=>setCharVoiceModal(null)} style={{background:'#fff',color:'#666',border:'1px solid #ccc',borderRadius:8,padding:'14px 20px',cursor:'pointer',fontFamily:'inherit',fontSize:15}}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  ) : null
+
   return (
     <div style={{fontFamily:'Georgia, serif',color:'#111',background:'#FAF9F6',minHeight:'100vh',position:'relative',zIndex:1}}>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       {status&&<div style={{background:'#e8f5e9',borderBottom:'1px solid #c8e6c9',padding:'12px 32px',color:'#2e7d32',fontSize:15}}>● {status}</div>}
+      {charModalEl}
 
       <div style={{borderBottom:'2px solid #e0e0e0',padding:'0 32px',display:'flex',gap:0,background:'#fff'}}>
         {([{key:'pick' as const,label:'Premise Picker'},{key:'write' as const,label:'Write Manually'},{key:'queue' as const,label:`Queue (${approvedStories.length} approved${waitingCount>0?` · ${waitingCount} pending`:''})`}]).map(t=>(
@@ -1182,7 +1345,7 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
           )}
           {stories.length===0?(<div style={{textAlign:'center',padding:'60px 0',color:'#aaa'}}><div style={{fontSize:48,marginBottom:16}}>📖</div><p style={{fontSize:16}}>No stories yet. Use the Premise Picker to get started.</p></div>):(
             <div style={{display:'flex',flexDirection:'column',gap:16}}>
-              {stories.map(s=>{ const st=STATUS_CONFIG[s.status]; const ai=s.ai_score?.composite_score; const aiOf25=ai?(ai*2.5).toFixed(1):null; const isSel=selected?.id===s.id; return(
+              {stories.map(s=>{ const st=STATUS_CONFIG[s.status]; const ai=s.ai_score?.composite_score; const aiOf25=ai?(ai<=10?(ai*2.5).toFixed(1):ai.toFixed(1)):null; const isSel=selected?.id===s.id; return(
                 <div key={s.id} onClick={()=>setSelected(isSel?null:s)} style={{background:'#fff',border:`2px solid ${isSel?'#111':'#e0e0e0'}`,borderRadius:10,overflow:'hidden',cursor:'pointer'}}>
                   <div style={{padding:'18px 24px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                     <div><div style={{fontSize:18,fontWeight:700,color:'#111',marginBottom:4}}>{s.title}</div><div style={{fontSize:14,color:'#666'}}>{s.author} · {s.genre} · {s.runtime}{s.narrator?` · ${s.narrator}`:''}{s.script.match(/^SERIES:\s*(.+)$/m)?.[1]?` · Series: ${s.script.match(/^SERIES:\s*(.+)$/m)?.[1]?.trim()}`:''}</div></div>
@@ -1194,11 +1357,15 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
                   </div>
                   {isSel&&(
                     <div style={{borderTop:'1px solid #e0e0e0'}}>
-                      {s.status==='ready'&&(<div style={{padding:'16px 24px',background:'#f8f8f8',display:'flex',gap:12,borderBottom:'1px solid #e0e0e0',alignItems:'center'}}>
-                        <button onClick={e=>{e.stopPropagation();approve()}} style={{background:'#2e7d32',color:'#fff',border:'none',borderRadius:6,padding:'12px 24px',cursor:'pointer',fontFamily:'inherit',fontSize:15,fontWeight:700}}>✓ Approve for Hal</button>
-                        <button onClick={e=>{e.stopPropagation();produceStory(s)}} disabled={producing===s.id} style={{background:producing===s.id?'#ccc':'#1565c0',color:'#fff',border:'none',borderRadius:6,padding:'12px 24px',cursor:producing===s.id?'not-allowed':'pointer',fontFamily:'inherit',fontSize:15,fontWeight:700}}>{producing===s.id?'⏳ Producing...':'🎬 Produce'}</button>
-                        <button onClick={e=>{e.stopPropagation();const r=prompt('Reason?');if(r!==null)reject(r)}} style={{background:'#fff',color:'#c62828',border:'1px solid #c62828',borderRadius:6,padding:'12px 24px',cursor:'pointer',fontFamily:'inherit',fontSize:15,fontWeight:700}}>Reject</button>
-                        <button onClick={e=>{e.stopPropagation();if(confirm('Delete this story?'))deleteStory(s.id)}} style={{marginLeft:'auto',background:'none',color:'#aaa',border:'1px solid #e0e0e0',borderRadius:6,padding:'12px 16px',cursor:'pointer',fontFamily:'inherit',fontSize:13}}>🗑 Delete</button>
+                      {s.status==='ready'&&(<div style={{padding:'16px 24px',background:'#f8f8f8',borderBottom:'1px solid #e0e0e0'}}>
+                        <div style={{display:'flex',gap:12,alignItems:'center',flexWrap:'wrap'}}>
+                          <button onClick={e=>{e.stopPropagation();produceStory(s)}} disabled={producing===s.id} style={{background:producing===s.id?'#ccc':'#1565c0',color:'#fff',border:'none',borderRadius:6,padding:'12px 24px',cursor:producing===s.id?'not-allowed':'pointer',fontFamily:'inherit',fontSize:15,fontWeight:700}}>{producing===s.id?'⏳ Producing...':'🎬 Produce'}</button>
+                          {supabaseIds[s.id]&&<AudioGenButton ap={audioProgress[s.id]} onGenerate={e=>{e.stopPropagation();handleGenerateAudio(s)}}/>}
+                          <button onClick={e=>{e.stopPropagation();approve()}} style={{background:'#2e7d32',color:'#fff',border:'none',borderRadius:6,padding:'12px 24px',cursor:'pointer',fontFamily:'inherit',fontSize:15,fontWeight:700}}>✓ Approve</button>
+                          <button onClick={e=>{e.stopPropagation();const r=prompt('Reason?');if(r!==null)reject(r)}} style={{background:'#fff',color:'#c62828',border:'1px solid #c62828',borderRadius:6,padding:'12px 24px',cursor:'pointer',fontFamily:'inherit',fontSize:15,fontWeight:700}}>Reject</button>
+                          <button onClick={e=>{e.stopPropagation();if(confirm('Delete this story?'))deleteStory(s.id)}} style={{marginLeft:'auto',background:'none',color:'#aaa',border:'1px solid #e0e0e0',borderRadius:6,padding:'12px 16px',cursor:'pointer',fontFamily:'inherit',fontSize:13}}>🗑 Delete</button>
+                        </div>
+                        {audioProgress[s.id]&&audioProgress[s.id].step!=='idle'&&<AudioProgressBar ap={audioProgress[s.id]}/>}
                       </div>)}
                       {(s.status==='approved'||s.status==='rejected')&&(<div style={{padding:'12px 24px',background:'#f8f8f8',display:'flex',justifyContent:'flex-end',borderBottom:'1px solid #e0e0e0'}}>
                         <button onClick={e=>{e.stopPropagation();if(confirm('Delete this story?'))deleteStory(s.id)}} style={{background:'none',color:'#aaa',border:'1px solid #e0e0e0',borderRadius:6,padding:'8px 14px',cursor:'pointer',fontFamily:'inherit',fontSize:13}}>🗑 Delete</button>
@@ -1229,6 +1396,38 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+type AudioStep = 'idle'|'voices'|'mixing'|'done'|'error'
+type AudioState = { step: AudioStep; voiceStats?: {succeeded:number;total:number;failed:number}; finalUrl?: string; error?: string }
+
+function AudioGenButton({ap,onGenerate}:{ap:AudioState|undefined;onGenerate:(e:React.MouseEvent<HTMLButtonElement>)=>void}) {
+  const busy = ap?.step==='voices'||ap?.step==='mixing'
+  const label = busy ? (ap?.step==='voices' ? '🎙 Generating voices...' : '🎛 Mixing audio...') : ap?.step==='done' ? '✅ Audio Done' : '🔊 Generate Audio'
+  const bg = busy ? '#ccc' : ap?.step==='done' ? '#2e7d32' : '#f97316'
+  return <button onClick={onGenerate} disabled={busy} style={{background:bg,color:'#fff',border:'none',borderRadius:6,padding:'12px 24px',cursor:busy?'not-allowed':'pointer',fontFamily:'inherit',fontSize:15,fontWeight:700}}>{label}</button>
+}
+
+function AudioProgressBar({ap}:{ap:AudioState}) {
+  const voiceDone = ap.step==='mixing'||ap.step==='done'||ap.step==='error'
+  const mixDone = ap.step==='done'
+  return(
+    <div style={{marginTop:12,padding:'12px 16px',background:'#fff',border:'1px solid #e0e0e0',borderRadius:8}}>
+      <div style={{display:'flex',gap:16,alignItems:'center',flexWrap:'wrap'}}>
+        <div style={{display:'flex',gap:8,alignItems:'center'}}>
+          {ap.step==='voices'?<div style={{width:14,height:14,border:'2px solid #1976d2',borderTopColor:'transparent',borderRadius:'50%',animation:'spin 0.8s linear infinite'}}/>:<div style={{width:10,height:10,borderRadius:'50%',background:voiceDone?'#2e7d32':'#e0e0e0'}}/>}
+          <span style={{fontSize:13,fontWeight:ap.step==='voices'?700:400,color:ap.step==='voices'?'#1976d2':voiceDone?'#2e7d32':'#999'}}>Voice gen{ap.voiceStats?` ${ap.voiceStats.succeeded}/${ap.voiceStats.total} lines`:''}</span>
+        </div>
+        <span style={{color:'#ddd',fontSize:12}}>→</span>
+        <div style={{display:'flex',gap:8,alignItems:'center'}}>
+          {ap.step==='mixing'?<div style={{width:14,height:14,border:'2px solid #1976d2',borderTopColor:'transparent',borderRadius:'50%',animation:'spin 0.8s linear infinite'}}/>:<div style={{width:10,height:10,borderRadius:'50%',background:mixDone?'#2e7d32':'#e0e0e0'}}/>}
+          <span style={{fontSize:13,fontWeight:ap.step==='mixing'?700:400,color:ap.step==='mixing'?'#1976d2':mixDone?'#2e7d32':'#999'}}>ffmpeg mix</span>
+        </div>
+        {mixDone&&ap.finalUrl&&<a href={ap.finalUrl} target="_blank" rel="noreferrer" style={{marginLeft:'auto',fontSize:13,color:'#1565c0',fontWeight:700,textDecoration:'none'}}>▶ Listen to final mix →</a>}
+      </div>
+      {ap.step==='error'&&<div style={{marginTop:8,fontSize:13,color:'#c62828'}}>❌ {ap.error}</div>}
     </div>
   )
 }
