@@ -918,7 +918,7 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
         if (result.storyId) {
           const realId = result.storyId
           setSupabaseIds(prev => ({ ...prev, [s.id]: realId }))
-          alert(`⚠️ Minor errors but story saved. Story ID: ${realId}\nNow click 🔊 Generate Audio.`)
+          setStatus(`✅ Produced! Story ID: ${realId} — click 🔊 Generate Audio`)
         } else {
           alert(`⚠️ Production failed:\n${JSON.stringify(result.steps, null, 2)}`)
         }
