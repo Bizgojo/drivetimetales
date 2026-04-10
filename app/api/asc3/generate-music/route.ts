@@ -59,8 +59,8 @@ export async function POST(req: NextRequest) {
       const statusData = await statusResp.json()
       const sunoData = statusData?.data?.response?.sunoData || statusData?.data?.sunoData || []
       const tracks = Array.isArray(sunoData) ? sunoData : [sunoData]
-      const done = tracks.find((t: any) => t?.audioUrl && t?.status === 'complete')
-      console.log(`  Poll ${i+1}: ${tracks.length} tracks, done=${!!done}`)
+      const done = tracks.find((t: any) => t?.audioUrl)
+      console.log(`  Poll ${i+1}: ${tracks.length} tracks, done=${!!done}, status=${tracks[0]?.status}`)
       if (done?.audioUrl) { audioUrl = done.audioUrl; break }
     }
 
