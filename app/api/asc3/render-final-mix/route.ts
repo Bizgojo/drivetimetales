@@ -49,6 +49,15 @@ async function getAudioDuration(filePath: string): Promise<number> {
   return parseInt(m[1]) * 3600 + parseInt(m[2]) * 60 + parseFloat(m[3])
 }
 
+async function normalizeAudio(inputPath: string, outputPath: string, targetLufs: number = -16): Promise<void> {
+  await execFileAsync(FFMPEG_PATH, [
+    '-i', inputPath,
+    '-af', `loudnorm=I=${targetLufs}:TP=-1.5:LRA=11`,
+    '-ar', '44100', '-ac', '2', '-b:a', '192k',
+    '-y', outputPath
+  ])
+}
+
 async function generateSilence(dest: string, seconds: number): Promise<void> {
   await execFileAsync(FFMPEG_PATH, [
     '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo',
@@ -103,6 +112,22 @@ export async function POST(req: NextRequest) {
     }
     console.log(`  Downloaded ${segPaths.length}/${segmentFiles.length} segments`)
 
+    // Normalize all voice segments to consistent volume levels
+    console.log('  Normalizing audio levels...')
+    const normalizedIntroPath = path.join(tmpDir, 'intro_norm.mp3')
+    const normalizedOutroPath = path.join(tmpDir, 'outro_norm.mp3')
+    await normalizeAudio(normalizedIntroPath, normalizedIntroPath, -14) // Belle B slightly louder
+    await normalizeAudio(outroPath, normalizedOutroPath, -14)
+    const normalizedSegPaths: string[] = []
+    for (const segPath of segPaths) {
+      const segName = path.basename(segPath)
+      const normPath = path.join(tmpDir, `norm_${segName}`)
+      const isSfx = segName.startsWith('sfx_')
+      await normalizeAudio(segPath, normPath, isSfx ? -18 : -16)
+      normalizedSegPaths.push(normPath)
+    }
+    console.log(`  ✅ Normalized ${normalizedSegPaths.length} segments`)
+
     const sil075Path = path.join(tmpDir, 'sil075.mp3')
     const sil100Path = path.join(tmpDir, 'sil100.mp3')
     await generateSilence(sil075Path, 0.75)
@@ -123,7 +148,7 @@ export async function POST(req: NextRequest) {
       // Step 2: Mix extended fading sting with Belle B intro at full volume
       const stingIntroPath = path.join(tmpDir, 'sting_intro.mp3')
       await execFileAsync(FFMPEG_PATH, [
-        '-i', stingExtPath, '-i', introPath,
+        '-i', stingExtPath, '-i', normalizedIntroPath,
         '-filter_complex',
         `[0:a]volume=0.7[sting_vol];[sting_vol][1:a]amix=inputs=2:duration=longest:normalize=0[out]`,
         '-map', '[out]',
@@ -131,14 +156,14 @@ export async function POST(req: NextRequest) {
       ])
       // Step 3: Concat everything
       const concatFile = path.join(tmpDir, 'concat.txt')
-      await fs.writeFile(concatFile, [stingIntroPath, sil075Path, ...segPaths, sil100Path, outroPath].map(p => `file '${p}'`).join('\n'))
+      await fs.writeFile(concatFile, [stingIntroPath, sil075Path, ...normalizedSegPaths, sil100Path, normalizedOutroPath].map(p => `file '${p}'`).join('\n'))
       await execFileAsync(FFMPEG_PATH, [
         '-f', 'concat', '-safe', '0', '-i', concatFile,
         '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', outputPath
       ])
     } else {
       console.log('  Full mix with background music')
-      const dialogueParts = [stingPath, introPath, sil075Path, ...segPaths]
+      const dialogueParts = [stingPath, normalizedIntroPath, sil075Path, ...segPaths]
       const dialogueConcatFile = path.join(tmpDir, 'dialogue.txt')
       await fs.writeFile(dialogueConcatFile, dialogueParts.map(p => `file '${p}'`).join('\n'))
       const dialoguePath = path.join(tmpDir, 'dialogue.mp3')
@@ -173,7 +198,7 @@ export async function POST(req: NextRequest) {
       ])
 
       const finalConcatFile = path.join(tmpDir, 'final.txt')
-      await fs.writeFile(finalConcatFile, [mixedPath, sil100Path, outroPath].map(p => `file '${p}'`).join('\n'))
+      await fs.writeFile(finalConcatFile, [mixedPath, sil100Path, normalizedOutroPath].map(p => `file '${p}'`).join('\n'))
       await execFileAsync(FFMPEG_PATH, [
         '-f', 'concat', '-safe', '0', '-i', finalConcatFile,
         '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', outputPath
