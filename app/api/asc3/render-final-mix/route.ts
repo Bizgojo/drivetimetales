@@ -109,9 +109,23 @@ export async function POST(req: NextRequest) {
     await generateSilence(sil100Path, 1.0)
 
     if (!musicPath) {
-      console.log('  No music — simple concat')
+      console.log('  No music — concat with sting fade')
+      // Get durations for sting fade timing
+      const stingDur = await getAudioDuration(stingPath)
+      const introDur = await getAudioDuration(introPath)
+      // Sting fades out over the duration of Belle B intro
+      // Mix sting (fading) + intro (full volume) together, then concat story + outro
+      const stingFadePath = path.join(tmpDir, 'sting_fade.mp3')
+      const fadeDur = stingDur + introDur
+      await execFileAsync(FFMPEG_PATH, [
+        '-i', stingPath, '-i', introPath,
+        '-filter_complex',
+        `[0:a]apad=whole_dur=${fadeDur},afade=t=out:st=${stingDur * 0.3}:d=${stingDur * 0.7 + introDur}[sting_faded];[sting_faded][1:a]amix=inputs=2:duration=longest:normalize=0[mixed]`,
+        '-map', '[mixed]',
+        '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', stingFadePath
+      ])
       const concatFile = path.join(tmpDir, 'concat.txt')
-      await fs.writeFile(concatFile, [stingPath, introPath, sil075Path, ...segPaths, sil100Path, outroPath].map(p => `file '${p}'`).join('\n'))
+      await fs.writeFile(concatFile, [stingFadePath, sil075Path, ...segPaths, sil100Path, outroPath].map(p => `file '${p}'`).join('\n'))
       await execFileAsync(FFMPEG_PATH, [
         '-f', 'concat', '-safe', '0', '-i', concatFile,
         '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', outputPath
