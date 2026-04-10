@@ -908,19 +908,17 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
       })
       const result = await resp.json()
       setProduceSteps(result.steps || {})
+      // Always store the UUID if we got one back — even partial success
+      if (result.storyId) {
+        setSupabaseIds(prev => ({ ...prev, [s.id]: result.storyId }))
+      }
       if (result.success) {
-        // Store the real Supabase UUID so Generate Audio knows where to write
-        setSupabaseIds(prev => ({ ...prev, [s.id]: storyId }))
-        const realId = result.storyId || storyId
-        setSupabaseIds(prev => ({ ...prev, [s.id]: realId }))
-        setStatus(`✅ Produced! — click 🔊 Generate Audio`)
+        setStatus('✅ Produced! — click 🔊 Generate Audio')
       } else {
         if (result.storyId) {
-          const realId = result.storyId
-          setSupabaseIds(prev => ({ ...prev, [s.id]: realId }))
-          setStatus(`✅ Produced! Story ID: ${realId} — click 🔊 Generate Audio`)
+          setStatus('✅ Produced! (minor errors) — click 🔊 Generate Audio')
         } else {
-          alert(`⚠️ Production failed:\n${JSON.stringify(result.steps, null, 2)}`)
+          setStatus(`⚠️ Production failed — check console`)
         }
       }
     } catch(err) {
@@ -996,61 +994,6 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
       // Auto-assign from narrators list (round-robin, skip narrator's voice)
       const narratorName = NARRATOR_MAP[s.author] || s.narrator
       const otherVoices = narrators.filter(n => n.name !== narratorName && n.name !== 'Belle B')
-      chars.forEach((c, i) => { defaultAssignments[c] = otherVoices[i % otherVoices.length]?.elevenlabs_voice_id || '' })
-      setCharVoiceModal({ storyId: s.id, chars, assignments: defaultAssignments })
-    } else {
-      startGenerateAudio(s)
-    }
-  }
-
-  // Extract non-narrator/announcer speakers from script
-  function extractCharacters(script: string): string[] {
-    const chars = new Set<string>()
-    for (const line of script.split('\n')) {
-      const m = line.trim().match(/^([A-Z][A-ZÀ-Ú\s']+?):\s*.+$/)
-      if (!m) continue
-      const spk = m[1].trim()
-      if (['NARRATOR','ANNOUNCER','BELLE B','SFX','BEAT','PAUSE'].includes(spk)) continue
-      if (spk.startsWith('[')) continue
-      chars.add(spk)
-    }
-    return [...chars]
-  }
-
-  async function startGenerateAudio(s: Story, charAssignments?: Record<string,string>) {
-    const supabaseId = supabaseIds[s.id]
-    if (!supabaseId) { alert('Run 🎬 Produce first to create the story in Supabase.'); return }
-    const narratorName = NARRATOR_MAP[s.author] || s.narrator
-    const narratorRec = narrators.find(n => n.name === narratorName)
-    const narratorVoiceId = narratorRec?.elevenlabs_voice_id
-    if (!narratorVoiceId) { alert(`Could not find ElevenLabs voice ID for narrator "${narratorName}". Check narrator_voices table.`); return }
-    setAudioProgress(prev => ({ ...prev, [s.id]: { step: 'voices' } }))
-    try {
-      const voiceResp = await fetch('/api/admin/generate-voices', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storyId: supabaseId, script: s.script, narratorVoiceId, characterVoices: charAssignments || {} })
-      })
-      const voiceResult = await voiceResp.json()
-      if (!voiceResult.success) throw new Error(voiceResult.error || 'Voice generation failed')
-      setAudioProgress(prev => ({ ...prev, [s.id]: { step: 'mixing', voiceStats: voiceResult.stats } }))
-      const mixResp = await fetch('/api/asc3/render-final-mix', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storyId: supabaseId })
-      })
-      const mixResult = await mixResp.json()
-      if (!mixResult.success) throw new Error(mixResult.error || 'Mix failed')
-      setAudioProgress(prev => ({ ...prev, [s.id]: { step: 'done', voiceStats: voiceResult.stats, finalUrl: mixResult.finalAudioUrl } }))
-    } catch(err) {
-      setAudioProgress(prev => ({ ...prev, [s.id]: { ...prev[s.id], step: 'error', error: String(err) } }))
-    }
-  }
-
-  function handleGenerateAudio(s: Story) {
-    const chars = extractCharacters(s.script)
-    if (chars.length > 0) {
-      const narratorName = NARRATOR_MAP[s.author] || s.narrator
-      const otherVoices = narrators.filter(n => n.name !== narratorName && n.name !== 'Belle B')
-      const defaultAssignments: Record<string,string> = {}
       chars.forEach((c, i) => { defaultAssignments[c] = otherVoices[i % otherVoices.length]?.elevenlabs_voice_id || '' })
       setCharVoiceModal({ storyId: s.id, chars, assignments: defaultAssignments })
     } else {
