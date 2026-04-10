@@ -33,16 +33,13 @@ function parseScript(script: string): ScriptLine[] {
   const HEADER_KEYS = ['SERIES:','EPISODE:','AUTHOR:','GENRE:','DESCRIPTION:','SUNO PROMPT:',
     'NARRATIVE_VOICE:','NARRATOR_IS_CHARACTER:','EPISODE_TITLE:','SERIES_TOTAL','SERIES_IS_FINALE:',
     '[START AUDIO DRAMA SCRIPT]','CHARACTER GUIDE','---']
-  const scriptStartIdx = rawLines.findIndex(l => l.includes('[START AUDIO DRAMA SCRIPT]') || l.includes('CHARACTER GUIDE'))
-  const headerEndIdx = scriptStartIdx > -1 ? scriptStartIdx : (firstAnnouncerIdx + 1)
   let lineIndex = 0
   rawLines.forEach((line, rawIdx) => {
     const trimmed = line.trim()
     if (!trimmed) return
     if (HEADER_KEYS.some(k => trimmed.startsWith(k))) return
-    if (rawIdx < headerEndIdx && rawIdx !== firstAnnouncerIdx && rawIdx !== lastAnnouncerIdx) {
-      if (trimmed.startsWith('NARRATOR:') || trimmed.startsWith('ANNOUNCER:')) return
-    }
+    if (trimmed.startsWith('NARRATOR:') && rawIdx < firstAnnouncerIdx) return
+    if (trimmed.startsWith('ANNOUNCER:') && rawIdx < firstAnnouncerIdx) return
     if (trimmed === '[BEAT]') { lines.push({ index: lineIndex++, speaker: 'BEAT', text: '1', type: 'beat', isIntro: false, isOutro: false }); return }
     const pauseMatch = trimmed.match(/^\[PAUSE:(\d+)\]$/)
     if (pauseMatch) { lines.push({ index: lineIndex++, speaker: 'PAUSE', text: pauseMatch[1], type: 'pause', isIntro: false, isOutro: false }); return }
@@ -80,14 +77,8 @@ async function generateVoiceLine(text: string, voiceId: string, storyId: string,
 
 export async function POST(req: NextRequest) {
   try {
-    const {storyId,script:scriptParam,narratorVoiceId,narratorVoiceName,characterVoices} = await req.json()
-    if(!storyId) return NextResponse.json({success:false,error:'storyId required'},{status:400})
-    let script = scriptParam
-    if(!script) {
-      const {data:storyRow} = await supabase.from('stories').select('script').eq('id',storyId).single()
-      script = storyRow?.script
-      if(!script) return NextResponse.json({success:false,error:'Script not found in database'},{status:400})
-    }
+    const {storyId,script,narratorVoiceId,narratorVoiceName,characterVoices} = await req.json()
+    if(!storyId||!script) return NextResponse.json({success:false,error:'storyId and script required'},{status:400})
     const lines = parseScript(script)
     let resolvedNarratorVoiceId = narratorVoiceId
     if(!resolvedNarratorVoiceId&&narratorVoiceName) {
