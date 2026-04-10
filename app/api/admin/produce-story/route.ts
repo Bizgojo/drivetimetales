@@ -98,7 +98,11 @@ async function resolveAuthorId(authorName: string): Promise<string | null> {
 
 async function resolveNarratorVoiceId(narratorName: string): Promise<{ id: string, voiceId: string } | null> {
   const { data } = await supabase.from('narrator_voices').select('id, name, elevenlabs_voice_id').ilike('name', `%${narratorName.split(' ')[0]}%`).limit(5)
-  if (!data || data.length === 0) return null
+  if (!data || data.length === 0) {
+    // Fallback to Cole Hargrove if narrator not found
+    const { data: fallback } = await supabase.from('narrator_voices').select('id, name, elevenlabs_voice_id').eq('name', 'Cole Hargrove').single()
+    return fallback ? { id: fallback.id, voiceId: fallback.elevenlabs_voice_id } : null
+  }
   const exact = data.find((n: any) => n.name.toLowerCase() === narratorName.toLowerCase())
   const match = exact || data[0]
   return match ? { id: match.id, voiceId: match.elevenlabs_voice_id } : null
