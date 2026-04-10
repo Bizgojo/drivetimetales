@@ -56,6 +56,9 @@ function PlayerContent() {
   const playlistIndexRef = useRef<number>(-1)
   const [nowPlayingLabel, setNowPlayingLabel] = useState<string | null>(null)
   const [totalDur, setTotalDur] = useState(0)
+  const welcomeQueueRef = useRef<string[]>([])  // [welcome_A, name_clip, welcome_B]
+  const welcomeIndexRef = useRef(0)
+  const inWelcomeRef    = useRef(false)
   const [cumTime, setCumTime]   = useState(0)
 
   // ── Pills state ────────────────────────────────────────────────────────────
@@ -216,6 +219,27 @@ function PlayerContent() {
         const { data: lib } = await supabase.from('user_library')
           .select('progress,completed,not_for_me').eq('user_id', user.id).eq('story_id', storyId).single()
         if (lib?.progress > 0 && !lib?.not_for_me) { resumeRef.current = lib.completed ? 0 : lib.progress < 120 ? 0 : Math.max(0, lib.progress - 15); setHasProgress(true) }
+
+        // ── Welcome experience — first play only ─────────────────────────────
+        const { data: dbUser } = await supabase.from('users')
+          .select('first_name, welcome_played').eq('id', user.id).single()
+        if (dbUser && !dbUser.welcome_played && !lib?.progress) {
+          try {
+            const firstName = dbUser.first_name || ''
+            const BASE = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio/welcome`
+            const welcomeA = `${BASE}/welcome_A.mp3`
+            const welcomeB = `${BASE}/welcome_B.mp3`
+            // Get or generate the name clip
+            const nameRes = await fetch(`/api/name-audio?name=${encodeURIComponent(firstName)}`)
+            const nameData = nameRes.ok ? await nameRes.json() : null
+            const nameClip = nameData?.audio_url || ''
+            if (nameClip) {
+              welcomeQueueRef.current = [welcomeA, nameClip, welcomeB]
+              inWelcomeRef.current = true
+              welcomeIndexRef.current = 0
+            }
+          } catch (_) { /* welcome fails silently — story plays normally */ }
+        }
       }
       setLoading(false)
     }
@@ -225,7 +249,11 @@ function PlayerContent() {
   // Init audio once loaded
   useEffect(() => {
     if (loading || !audioRef.current) return
-    if (isASC3 && queue.length) {
+    if (inWelcomeRef.current && welcomeQueueRef.current.length > 0) {
+      // Welcome mode — load first welcome clip
+      audioRef.current.src = welcomeQueueRef.current[0]
+      audioRef.current.load()
+    } else if (isASC3 && queue.length) {
       // ASC3 mode — load first segment
       audioRef.current.src = queue[0].url; audioRef.current.load()
       setSectionLabel(queue[0].label); typeRef.current = 'intro'
@@ -476,6 +504,36 @@ function PlayerContent() {
         }}
         onPause={() => setIsPlaying(false)}
         onEnded={() => {
+          // ── Welcome chain ────────────────────────────────────────────────
+          if (inWelcomeRef.current) {
+            const nextIdx = welcomeIndexRef.current + 1
+            if (nextIdx < welcomeQueueRef.current.length) {
+              // Play next welcome clip
+              welcomeIndexRef.current = nextIdx
+              if (audioRef.current) {
+                audioRef.current.src = welcomeQueueRef.current[nextIdx]
+                audioRef.current.load()
+                audioRef.current.play().catch(() => {})
+              }
+            } else {
+              // Welcome finished — mark played, start story
+              inWelcomeRef.current = false
+              if (user?.id) {
+                supabase.from('users').update({ welcome_played: true }).eq('id', user.id).then(() => {})
+              }
+              // Start the actual story
+              if (audioRef.current) {
+                if (isASC3 && queue.length) {
+                  audioRef.current.src = queue[0].url; audioRef.current.load()
+                  setSectionLabel(queue[0].label); typeRef.current = 'intro'
+                } else if (audioSrc) {
+                  audioRef.current.src = audioSrc; audioRef.current.load()
+                }
+                audioRef.current.play().catch(() => {})
+              }
+            }
+            return
+          }
           if (!isASC3) {
             setIsPlaying(false); saveProgress(duration, true)
             if (playlistRef.current.length > 0 && playlistIndexRef.current < playlistRef.current.length - 1) {
