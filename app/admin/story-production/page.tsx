@@ -915,7 +915,13 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
         setSupabaseIds(prev => ({ ...prev, [s.id]: realId }))
         alert(`✅ Production complete! Story ID: ${realId}\nNow click 🔊 Generate Audio.`)
       } else {
-        alert(`⚠️ Production finished with some errors. Check steps:\n${JSON.stringify(result.steps, null, 2)}`)
+        if (result.storyId) {
+          const realId = result.storyId
+          setSupabaseIds(prev => ({ ...prev, [s.id]: realId }))
+          alert(`⚠️ Minor errors but story saved. Story ID: ${realId}\nNow click 🔊 Generate Audio.`)
+        } else {
+          alert(`⚠️ Production failed:\n${JSON.stringify(result.steps, null, 2)}`)
+        }
       }
     } catch(err) {
       alert(`Production failed: ${err}`)
