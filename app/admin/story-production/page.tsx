@@ -911,7 +911,9 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
       if (result.success) {
         // Store the real Supabase UUID so Generate Audio knows where to write
         setSupabaseIds(prev => ({ ...prev, [s.id]: storyId }))
-        alert(`✅ Production complete!\n\nDescription: ${result.description?.slice(0,80)}...\nCover: ${result.coverUrl ? '✅' : '❌'}\nProse: ${result.steps?.prose?.message || '?'}\n\nStory ID: ${storyId}\nPublished as is_hidden=TRUE — now click 🔊 Generate Audio to produce the audio files.`)
+        const realId = result.storyId || storyId
+        setSupabaseIds(prev => ({ ...prev, [s.id]: realId }))
+        alert(`✅ Production complete! Story ID: ${realId}\nNow click 🔊 Generate Audio.`)
       } else {
         alert(`⚠️ Production finished with some errors. Check steps:\n${JSON.stringify(result.steps, null, 2)}`)
       }
