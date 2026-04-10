@@ -953,6 +953,10 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
     const narratorVoiceId = narratorRec?.elevenlabs_voice_id || fallbackVoice?.elevenlabs_voice_id
     if (!narratorVoiceId) { alert(`Could not find any narrator voice. Check narrator_voices table.`); return }
 
+    // Extract SUNO PROMPT from script header
+    const sunoPromptMatch = s.script?.match(/^SUNO PROMPT:\s*(.+)$/m)
+    const sunoPrompt = sunoPromptMatch?.[1]?.trim() || ''
+
     setAudioProgress(prev => ({ ...prev, [s.id]: { step: 'voices' } }))
 
     try {
@@ -969,9 +973,21 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
       })
       const voiceResult = await voiceResp.json()
       if (!voiceResult.success) throw new Error(voiceResult.error || 'Voice generation failed')
+      setAudioProgress(prev => ({ ...prev, [s.id]: { step: 'music', voiceStats: voiceResult.stats } }))
+
+      // Stage 2: Generate background music
+      if (sunoPrompt) {
+        const musicResp = await fetch('/api/asc3/generate-music', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ storyId: supabaseId, prompt: sunoPrompt })
+        })
+        const musicResult = await musicResp.json()
+        if (!musicResult.success) console.warn('Music generation failed (continuing):', musicResult.error)
+      }
       setAudioProgress(prev => ({ ...prev, [s.id]: { step: 'mixing', voiceStats: voiceResult.stats } }))
 
-      // Stage 2: Render final mix
+      // Stage 3: Render final mix
       const mixResp = await fetch('/api/asc3/render-final-mix', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1363,12 +1379,12 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
   )
 }
 
-type AudioStep = 'idle'|'voices'|'mixing'|'done'|'error'
+type AudioStep = 'idle'|'voices'|'music'|'mixing'|'done'|'error'
 type AudioState = { step: AudioStep; voiceStats?: {succeeded:number;total:number;failed:number}; finalUrl?: string; error?: string }
 
 function AudioGenButton({ap,onGenerate}:{ap:AudioState|undefined;onGenerate:(e:React.MouseEvent<HTMLButtonElement>)=>void}) {
-  const busy = ap?.step==='voices'||ap?.step==='mixing'
-  const label = busy ? (ap?.step==='voices' ? '🎙 Generating voices...' : '🎛 Mixing audio...') : ap?.step==='done' ? '✅ Audio Done' : '🔊 Generate Audio'
+  const busy = ap?.step==='voices'||ap?.step==='music'||ap?.step==='mixing'
+  const label = busy ? (ap?.step==='voices' ? '🎙 Generating voices...' : ap?.step==='music' ? '🎵 Generating music...' : '🎛 Mixing audio...') : ap?.step==='done' ? '✅ Audio Done' : '🔊 Generate Audio'
   const bg = busy ? '#ccc' : ap?.step==='done' ? '#2e7d32' : '#f97316'
   return <button onClick={onGenerate} disabled={busy} style={{background:bg,color:'#fff',border:'none',borderRadius:6,padding:'12px 24px',cursor:busy?'not-allowed':'pointer',fontFamily:'inherit',fontSize:15,fontWeight:700}}>{label}</button>
 }
