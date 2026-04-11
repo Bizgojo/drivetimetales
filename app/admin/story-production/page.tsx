@@ -992,7 +992,7 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
   }
 
   async function startGenerateAudio(s: Story, charAssignments?: Record<string,string>) {
-    const supabaseId = supabaseIds[s.id]
+    const supabaseId = supabaseIds[s.id] || s.id
     if (!supabaseId) { alert('Run 🎬 Produce first to create the story in Supabase.'); return }
     // Find narrator voice ID from narrators list — fall back to Cole Hargrove if not found
     const narratorName = NARRATOR_MAP[s.author] || s.narrator
