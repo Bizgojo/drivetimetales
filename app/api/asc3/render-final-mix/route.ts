@@ -178,7 +178,7 @@ export async function POST(req: NextRequest) {
       await execFileAsync(FFMPEG_PATH, [
         '-i', musicPath,
         '-filter_complex',
-        `[0:a]atrim=0:${musicEnd + 3},asetpts=PTS-STARTPTS,volume=enable='between(t,0,${musicEnd + 3})':volume=1.0,volume=enable='between(t,${musicStoryStart},${musicEnd})':volume=0.15,adelay=${delayMs}|${delayMs},apad[music_out]`,
+        `[0:a]atrim=0:${musicEnd + 3},asetpts=PTS-STARTPTS,afade=t=in:st=0:d=2.5,volume=0.15,adelay=${delayMs}|${delayMs},apad[music_out]`,
         '-map', '[music_out]',
         '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', musicMixedPath
       ])
