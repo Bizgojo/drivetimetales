@@ -9,7 +9,12 @@ import * as os from 'os'
 export const runtime = 'nodejs'
 export const maxDuration = 300
 
-const execFileAsync = promisify(execFile)
+const execFileAsync = (cmd: string, args: string[]) => new Promise<{stdout:string,stderr:string}>((resolve, reject) => {
+  execFile(cmd, args, { maxBuffer: 1024 * 1024 * 100 }, (err, stdout, stderr) => {
+    if (err) reject(Object.assign(err, { stdout, stderr }))
+    else resolve({ stdout, stderr })
+  })
+})
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -52,7 +57,7 @@ async function getAudioDuration(filePath: string): Promise<number> {
 async function normalizeAudio(inputPath: string, outputPath: string, targetLufs: number = -16): Promise<void> {
   await execFileAsync(FFMPEG_PATH, [
     '-i', inputPath,
-    '-af', `loudnorm=I=${targetLufs}:TP=-1.5:LRA=11`,
+    '-af', `volume=${targetLufs === -14 ? '1.5' : targetLufs === -18 ? '0.7' : '1.0'}`,
     '-ar', '44100', '-ac', '2', '-b:a', '192k',
     '-y', outputPath
   ])
