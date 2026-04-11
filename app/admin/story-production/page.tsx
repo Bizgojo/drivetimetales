@@ -570,7 +570,32 @@ export default function StoryProductionPage() {
     const {data:nData} = await supabase.from('narrator_voices').select('id,name,elevenlabs_voice_id')
     if(nData) setNarrators(nData as Narrator[])
     const stored = localStorage.getItem('et_stories_v2')
-    if(stored){ try{ setStories(JSON.parse(stored)) }catch{} }
+    if(stored){ try{ setStories(JSON.parse(stored)); return }catch{} }
+    // localStorage empty — recover from Supabase story_drafts
+    const {data:drafts} = await supabase.from('story_drafts')
+      .select('id,title,author,genre,runtime,narrator,script,ai_score,status,notes,series_name,episode_number,is_series')
+      .in('status',['ready','approved','generating'])
+      .order('created_at',{ascending:false})
+      .limit(20)
+    if(drafts && drafts.length > 0) {
+      const recovered = drafts.map((d:any) => ({
+        id: d.id,
+        title: d.title || 'Untitled',
+        author: d.author || '',
+        genre: d.genre || '',
+        runtime: d.runtime || '20 min',
+        narrator: d.narrator || '',
+        script: d.script || '',
+        ai_score: d.ai_score || null,
+        status: d.status === 'approved' ? 'approved' : 'ready',
+        notes: d.notes || '',
+        isSeries: d.is_series || false,
+        seriesName: d.series_name || '',
+        episodeNumber: d.episode_number || 1,
+      }))
+      setStories(recovered)
+      localStorage.setItem('et_stories_v2', JSON.stringify(recovered))
+    }
   }
 
   function saveStories(updated: Story[]) { setStories(updated); localStorage.setItem('et_stories_v2',JSON.stringify(updated)) }
