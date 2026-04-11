@@ -932,7 +932,7 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
       try {
         const { data: inserted } = await supabase.from('stories').insert({
           title: s.title, author: s.author, genre: s.genre,
-          duration_mins: parseInt(s.runtime) || 15, is_hidden: true,
+          duration_mins: parseInt(s.runtime) || 15, is_hidden: false,
           published_on: new Date().toISOString().split('T')[0]
         }).select('id').single()
         if (inserted?.id) storyId = inserted.id
