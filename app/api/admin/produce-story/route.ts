@@ -137,7 +137,7 @@ export async function POST(req: NextRequest) {
     if (!storyId || storyId.startsWith('story_')) {
       const { data: inserted, error: insertErr } = await supabase.from('stories').insert({
         title, author, genre,
-        duration_mins: 15, duration_label: '15 min', is_hidden: true,
+        duration_mins: 15, duration_label: '15 min', is_hidden: false,
         published_on: new Date().toISOString().split('T')[0]
       }).select('id').single()
       if (insertErr) console.error('Story insert error:', JSON.stringify(insertErr))
