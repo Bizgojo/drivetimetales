@@ -145,7 +145,7 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
     .replace(/\*+/g, '')        // remove asterisks (bold/italic markdown)
     .replace(/\_/g, '')         // remove underscores
     .replace(/#{1,6}\s/g, '')   // remove markdown headers
-    .replace(/\[LISTENER_NAME\]/g, 'friend')  // replace listener placeholder
+    .replace(/\[LISTENER_NAME\]/g, 'friend')  // fallback — split handled by generateIntroWithName
     .trim()
   const fileName = `${prefix}_${lineIndex.toString().padStart(4, '0')}.mp3`
   const cachePath = `asc3/${storyId}/${fileName}`
@@ -237,7 +237,28 @@ export async function POST(req: NextRequest) {
     const storyLines = lines.filter(l => !l.isIntro && !l.isOutro)
     const results: { intro?: string; outro?: string; segments: any[] } = { segments: [] }
     let succeeded = 0; let failed = 0
-    if (introLine) { try { results.intro = await generateVoiceLine(introLine.text, BELLE_B_VOICE_ID, storyId, introLine.index, 'intro'); console.log('  ✅ Belle B intro') } catch (e) { console.error('  ❌ Intro failed:', e) } }
+    if (introLine) {
+      try {
+        const introText = introLine.text
+        if (introText.includes('[LISTENER_NAME]')) {
+          // Split into before/after name
+          const parts = introText.split('[LISTENER_NAME]')
+          const beforeText = parts[0].trim()
+          const afterText = parts[1].trim()
+          const [beforeUrl, afterUrl] = await Promise.all([
+            generateVoiceLine(beforeText, BELLE_B_VOICE_ID, storyId, introLine.index, 'intro_before'),
+            generateVoiceLine(afterText, BELLE_B_VOICE_ID, storyId, introLine.index + 0.1, 'intro_after'),
+          ])
+          results.intro = beforeUrl
+          await supabase.from('stories').update({ intro_before_url: beforeUrl, intro_after_url: afterUrl }).eq('id', storyId)
+          console.log('  ✅ Belle B intro split (before/after name)')
+        } else {
+          results.intro = await generateVoiceLine(introText, BELLE_B_VOICE_ID, storyId, introLine.index, 'intro')
+          await supabase.from('stories').update({ intro_before_url: results.intro, intro_after_url: null }).eq('id', storyId)
+          console.log('  ✅ Belle B intro (no name split)')
+        }
+      } catch (e) { console.error('  ❌ Intro failed:', e) }
+    }
     if (outroLine && outroLine.index !== introLine?.index) { try { results.outro = await generateVoiceLine(outroLine.text, BELLE_B_VOICE_ID, storyId, outroLine.index, 'outro'); console.log('  ✅ Belle B outro') } catch (e) { console.error('  ❌ Outro failed:', e) } }
     for (const line of storyLines) {
       if (line.type === 'beat' || line.type === 'pause') { results.segments.push({ index: line.index, speaker: line.speaker, type: line.type, duration: line.text }); continue }
@@ -251,6 +272,7 @@ export async function POST(req: NextRequest) {
     if (results.intro) updates.intro_audio_url = results.intro
     if (results.outro) updates.outro_audio_url = results.outro
     if (Object.keys(updates).length > 0) await supabase.from('stories').update(updates).eq('id', storyId)
+    // Note: intro_before_url and intro_after_url set above during intro generation
     const voiceTotal = storyLines.filter(l => l.type === 'narrator' || l.type === 'character').length
     console.log(`  ✅ Done: ${succeeded}/${voiceTotal} lines, ${failed} failed`)
     return NextResponse.json({ success: failed === 0, intro: results.intro, outro: results.outro, segments: results.segments, stats: { total: lines.length, voice: voiceTotal, succeeded, failed } })

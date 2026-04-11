@@ -11,11 +11,12 @@ const INTRO_OUTRO_MUSIC = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/ob
 
 export async function GET(req: NextRequest) {
   const storyId = req.nextUrl.searchParams.get('storyId')
+  const firstName = req.nextUrl.searchParams.get('firstName') || ''
   if (!storyId) return NextResponse.json({ error: 'storyId required' }, { status: 400 })
 
   const { data: story, error } = await supabase
     .from('stories')
-    .select('id, title, author, audio_url, intro_audio_url, story_audio_url, outro_audio_url, background_music_url')
+    .select('id, title, author, audio_url, intro_audio_url, intro_before_url, intro_after_url, story_audio_url, outro_audio_url, background_music_url')
     .eq('id', storyId)
     .single()
 
@@ -39,8 +40,38 @@ export async function GET(req: NextRequest) {
 
   const queue: { url: string; type: 'intro' | 'story' | 'outro'; label: string }[] = []
 
-  // 1. Intro
-  if (story.intro_audio_url) {
+  // 1. Intro — split by name if before/after urls exist
+  if ((story as any).intro_before_url && firstName) {
+    // Get or generate name clip
+    let nameClipUrl = ''
+    const BELLE_B_VOICE_ID = 'KWDD3Wyq30ZF5NEL01EJ'
+    const { data: nameRow } = await supabase.from('name_audio')
+      .select('audio_url').eq('first_name', firstName).eq('voice_id', BELLE_B_VOICE_ID).single()
+    if (nameRow?.audio_url) {
+      nameClipUrl = nameRow.audio_url
+    } else {
+      // Generate name clip via ElevenLabs
+      try {
+        const EL_KEY = process.env.ELEVENLABS_API_KEY!
+        const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${BELLE_B_VOICE_ID}`, {
+          method: 'POST',
+          headers: { 'xi-api-key': EL_KEY, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
+          body: JSON.stringify({ text: firstName, model_id: 'eleven_multilingual_v2', voice_settings: { stability: 0.5, similarity_boost: 0.8, style: 0.0, use_speaker_boost: true } })
+        })
+        if (res.ok) {
+          const buf = Buffer.from(await res.arrayBuffer())
+          const safeName = firstName.toLowerCase().replace(/[^a-z0-9]/g, '-')
+          const uploadPath = `names/${safeName}_${BELLE_B_VOICE_ID}.mp3`
+          await supabase.storage.from('audio').upload(uploadPath, buf, { contentType: 'audio/mpeg', upsert: true })
+          nameClipUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio/${uploadPath}`
+          await supabase.from('name_audio').upsert({ first_name: firstName, voice_id: BELLE_B_VOICE_ID, audio_url: nameClipUrl })
+        }
+      } catch(e) { console.error('Name clip generation failed:', e) }
+    }
+    queue.push({ url: (story as any).intro_before_url, type: 'intro', label: 'Intro' })
+    if (nameClipUrl) queue.push({ url: nameClipUrl, type: 'intro', label: 'Name' })
+    queue.push({ url: (story as any).intro_after_url, type: 'intro', label: 'Intro' })
+  } else if (story.intro_audio_url) {
     queue.push({ url: story.intro_audio_url, type: 'intro', label: 'Intro' })
   }
 

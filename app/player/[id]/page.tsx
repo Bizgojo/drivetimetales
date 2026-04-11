@@ -160,7 +160,9 @@ function PlayerContent() {
       let resolvedQueue: QueueItem[] = []
       let resolvedIsASC3 = false
       try {
-        const res = await fetch(`/api/asc3/story-playlist?storyId=${storyId}`)
+        const { data: userRow } = await supabase.from('users').select('first_name').eq('id', user?.id || '').single().catch(() => ({ data: null }))
+        const firstName = userRow?.first_name || ''
+        const res = await fetch(`/api/asc3/story-playlist?storyId=${storyId}&firstName=${encodeURIComponent(firstName)}`)
         if (res.ok) {
           const pl = await res.json()
           if (pl.useFinalMix && pl.finalMixUrl) {
