@@ -139,7 +139,14 @@ function parseScript(script: string): ScriptLine[] {
   return lines
 }
 
-async function generateVoiceLine(text: string, voiceId: string, storyId: string, lineIndex: number, prefix: string): Promise<string> {
+async function generateVoiceLine(rawText: string, voiceId: string, storyId: string, lineIndex: number, prefix: string): Promise<string> {
+  // Clean markdown and special characters before sending to ElevenLabs
+  const text = rawText
+    .replace(/\*+/g, '')        // remove asterisks (bold/italic markdown)
+    .replace(/\_/g, '')         // remove underscores
+    .replace(/#{1,6}\s/g, '')   // remove markdown headers
+    .replace(/\[LISTENER_NAME\]/g, 'friend')  // replace listener placeholder
+    .trim()
   const fileName = `${prefix}_${lineIndex.toString().padStart(4, '0')}.mp3`
   const cachePath = `asc3/${storyId}/${fileName}`
   const cacheUrl = `${BASE_STORAGE}/${cachePath}`
