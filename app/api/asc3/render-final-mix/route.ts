@@ -117,21 +117,10 @@ export async function POST(req: NextRequest) {
     }
     console.log(`  Downloaded ${segPaths.length}/${segmentFiles.length} segments`)
 
-    // Normalize all voice segments to consistent volume levels
-    console.log('  Normalizing audio levels...')
-    const normalizedIntroPath = path.join(tmpDir, 'intro_norm.mp3')
-    const normalizedOutroPath = path.join(tmpDir, 'outro_norm.mp3')
-    await normalizeAudio(introPath, normalizedIntroPath, -14) // Belle B slightly louder
-    await normalizeAudio(outroPath, normalizedOutroPath, -14)
-    const normalizedSegPaths: string[] = []
-    for (const segPath of segPaths) {
-      const segName = path.basename(segPath)
-      const normPath = path.join(tmpDir, `norm_${segName}`)
-      const isSfx = segName.startsWith('sfx_')
-      await normalizeAudio(segPath, normPath, isSfx ? -18 : -16)
-      normalizedSegPaths.push(normPath)
-    }
-    console.log(`  ✅ Normalized ${normalizedSegPaths.length} segments`)
+    // Use source paths directly — ElevenLabs output is already consistent
+    const normalizedIntroPath = introPath
+    const normalizedOutroPath = outroPath
+    const normalizedSegPaths = segPaths
 
     const sil075Path = path.join(tmpDir, 'sil075.mp3')
     const sil100Path = path.join(tmpDir, 'sil100.mp3')
