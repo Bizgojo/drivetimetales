@@ -595,6 +595,10 @@ export default function StoryProductionPage() {
       }))
       setStories(recovered)
       localStorage.setItem('et_stories_v2', JSON.stringify(recovered))
+      // Restore supabaseIds so Generate Audio button appears
+      const idMap: Record<string,string> = {}
+      drafts.forEach((d:any) => { idMap[d.id] = d.id })
+      setSupabaseIds(idMap)
     }
   }
 
