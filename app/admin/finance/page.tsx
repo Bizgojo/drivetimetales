@@ -1165,9 +1165,134 @@ function StoriesCostTab() {
 
 
 
+
+// ─── MERCURY TAB ─────────────────────────────────────────────────────────────
+function MercuryTab() {
+  const [data, setData] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    fetch('/api/admin/mercury')
+      .then(r => r.json())
+      .then(d => { setData(d); setLoading(false) })
+      .catch(e => { setError(String(e)); setLoading(false) })
+  }, [])
+
+  const fmt$ = (n: number) => `$${(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  const fmtDate = (s: string) => s ? new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'
+
+  const S: Record<string, React.CSSProperties> = {
+    card: { background: '#fff', border: '1px solid #ddd', borderRadius: 10, overflow: 'hidden', marginBottom: 20 },
+    cardHead: { background: '#fafafa', borderBottom: '1px solid #eee', padding: '12px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+    table: { width: '100%', borderCollapse: 'collapse' as const, fontSize: 13 },
+    th: { textAlign: 'right' as const, padding: '8px 14px', borderBottom: '2px solid #eee', fontWeight: 700, background: '#fafafa' },
+    thL: { textAlign: 'left' as const, padding: '8px 14px', borderBottom: '2px solid #eee', fontWeight: 700, background: '#fafafa' },
+    td: { textAlign: 'right' as const, padding: '10px 14px', borderBottom: '1px solid #f0f0f0' },
+    tdL: { textAlign: 'left' as const, padding: '10px 14px', borderBottom: '1px solid #f0f0f0' },
+  }
+
+  if (loading) return <div style={{ padding: 40, textAlign: 'center', color: '#888' }}>Loading Mercury data…</div>
+  if (error || data?.error) return <div style={{ padding: 40, textAlign: 'center', color: '#dc2626' }}>Error: {error || data?.error}</div>
+
+  const checking = data?.accounts?.find((a: any) => a.kind === 'checking')
+  const savings = data?.accounts?.find((a: any) => a.kind === 'savings')
+  const transactions = data?.transactions || []
+  const totalBalance = (checking?.currentBalance || 0) + (savings?.currentBalance || 0)
+
+  return (
+    <div>
+      {/* Account Balance Cards */}
+      <div style={{ display: 'flex', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 200, background: '#fff', border: '2px solid #f97316', borderRadius: 10, padding: '20px 24px' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: '#888', marginBottom: 4 }}>Checking ••0493</div>
+          <div style={{ fontSize: 32, fontWeight: 900, color: '#111' }}>{fmt$(checking?.currentBalance || 0)}</div>
+          <div style={{ fontSize: 12, color: '#888', marginTop: 4 }}>Available: {fmt$(checking?.availableBalance || 0)}</div>
+          <a href={checking?.dashboardLink} target="_blank" rel="noopener noreferrer"
+            style={{ display: 'inline-block', marginTop: 10, fontSize: 12, color: '#f97316', textDecoration: 'none', fontWeight: 600 }}>
+            Open in Mercury ↗
+          </a>
+        </div>
+        <div style={{ flex: 1, minWidth: 200, background: '#fff', border: '1px solid #ddd', borderRadius: 10, padding: '20px 24px' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: '#888', marginBottom: 4 }}>Savings ••8608</div>
+          <div style={{ fontSize: 32, fontWeight: 900, color: '#111' }}>{fmt$(savings?.currentBalance || 0)}</div>
+          <div style={{ fontSize: 12, color: '#888', marginTop: 4 }}>Available: {fmt$(savings?.availableBalance || 0)}</div>
+          <a href={savings?.dashboardLink} target="_blank" rel="noopener noreferrer"
+            style={{ display: 'inline-block', marginTop: 10, fontSize: 12, color: '#f97316', textDecoration: 'none', fontWeight: 600 }}>
+            Open in Mercury ↗
+          </a>
+        </div>
+        <div style={{ flex: 1, minWidth: 200, background: '#f0fdf4', border: '2px solid #22c55e', borderRadius: 10, padding: '20px 24px' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: '#888', marginBottom: 4 }}>Total Cash</div>
+          <div style={{ fontSize: 32, fontWeight: 900, color: '#22c55e' }}>{fmt$(totalBalance)}</div>
+          <div style={{ fontSize: 12, color: '#888', marginTop: 4 }}>Endless Tales, LLC</div>
+          <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>Routing: 121145433</div>
+        </div>
+      </div>
+
+      {/* Transactions */}
+      <div style={S.card}>
+        <div style={S.cardHead}>
+          <span style={{ fontWeight: 700 }}>📋 Recent Transactions</span>
+          <span style={{ fontSize: 12, color: '#888' }}>Last 15 — live from Mercury API</span>
+        </div>
+        {transactions.length === 0 ? (
+          <div style={{ padding: '32px 24px', textAlign: 'center', color: '#888' }}>
+            <div style={{ fontSize: 28, marginBottom: 8 }}>🏦</div>
+            <div style={{ fontWeight: 600 }}>No transactions yet</div>
+            <div style={{ fontSize: 13, marginTop: 4 }}>Your $5,000 deposit from SouthState is pending.</div>
+          </div>
+        ) : (
+          <table style={S.table}>
+            <thead>
+              <tr>
+                <th style={S.thL}>Date</th>
+                <th style={S.thL}>Description</th>
+                <th style={S.th}>Status</th>
+                <th style={S.th}>Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {transactions.map((tx: any) => {
+                const isCredit = tx.amount > 0
+                const isPending = tx.status === 'pending'
+                return (
+                  <tr key={tx.id}>
+                    <td style={{ ...S.tdL, color: '#666', whiteSpace: 'nowrap' }}>{fmtDate(tx.postedAt || tx.createdAt)}</td>
+                    <td style={S.tdL}>
+                      <div style={{ fontWeight: 500 }}>{tx.counterpartyName || tx.bankDescription || '—'}</div>
+                      {tx.note && <div style={{ fontSize: 11, color: '#888' }}>{tx.note}</div>}
+                    </td>
+                    <td style={{ ...S.td }}>
+                      <span style={{
+                        background: isPending ? '#fef3c7' : '#dcfce7',
+                        color: isPending ? '#92400e' : '#166534',
+                        borderRadius: 10, padding: '2px 8px', fontSize: 11, fontWeight: 700
+                      }}>
+                        {isPending ? '⏳ Pending' : '✅ Posted'}
+                      </span>
+                    </td>
+                    <td style={{ ...S.td, fontWeight: 700, color: isCredit ? '#16a34a' : '#dc2626' }}>
+                      {isCredit ? '+' : ''}{fmt$(tx.amount)}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div style={{ fontSize: 12, color: '#888', padding: '4px 0' }}>
+        💡 Data is live from Mercury API. Refresh the page to update balances.
+      </div>
+    </div>
+  )
+}
+
 // ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
 export default function FinancePage() {
-  const [tab, setTab] = useState<'expenses'|'revenue'|'pl'|'balance'|'el'|'anthropic'|'openai'|'stories'>('expenses')
+  const [tab, setTab] = useState<'expenses'|'revenue'|'pl'|'balance'|'el'|'anthropic'|'openai'|'stories'|'mercury'>('expenses')
 
   const expDefaults = Object.fromEntries(EXPENSES.map(e => [e.id, [...e.defaults]]))
   const revDefaults = Object.fromEntries(REVENUES.map(r => [r.id, [...r.defaults]]))
@@ -1233,7 +1358,7 @@ export default function FinancePage() {
 
       {/* Tabs */}
       <div style={S.tabs}>
-        {([['expenses','📋 Expenses'],['revenue','💵 Revenue'],['pl','📊 P&L'],['balance','🏦 Balance Sheet'],['el','🎙️ EL Detail'],['anthropic','🤖 Anthropic'],['openai','🎨 OpenAI'],['stories','📚 Stories']] as const).map(([id,label]) => (
+        {([['expenses','📋 Expenses'],['revenue','💵 Revenue'],['pl','📊 P&L'],['balance','🏦 Balance Sheet'],['el','🎙️ EL Detail'],['anthropic','🤖 Anthropic'],['openai','🎨 OpenAI'],['stories','📚 Stories'],['mercury','🏦 Mercury']] as const).map(([id,label]) => (
           <button key={id} style={S.tab(tab===id)} onClick={() => setTab(id)}>{label}</button>
         ))}
       </div>
@@ -1514,6 +1639,7 @@ export default function FinancePage() {
       {/* ── OPENAI TAB ── */}
       {tab === 'openai' && <OpenAITab />}
       {tab === 'stories' && <StoriesCostTab />}
+      {tab === 'mercury' && <MercuryTab />}
 
     </div>
   )
