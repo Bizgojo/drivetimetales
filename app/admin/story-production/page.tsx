@@ -542,7 +542,7 @@ export default function StoryProductionPage() {
   // Audio generation
   const [audioProgress, setAudioProgress] = useState<Record<string, AudioState>>({})
   const [supabaseIds, setSupabaseIds] = useState<Record<string, string>>({}) // localId → supabase UUID
-  const [charVoiceModal, setCharVoiceModal] = useState<{storyId:string;chars:string[];assignments:Record<string,string>}|null>(null)
+  // charVoiceModal removed — EL auto-assigns voices
 
   // Manual write
   const [genre, setGenre] = useState('')
@@ -1021,43 +1021,51 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
     }
   }
 
-  function handleGenerateAudio(s: Story) {
+  async function handleGenerateAudio(s: Story) {
     const chars = extractCharacters(s.script)
-    if (chars.length > 0) {
-      const defaultAssignments: Record<string,string> = {}
-      const narratorName = NARRATOR_MAP[s.author] || s.narrator
+    if (chars.length === 0) { startGenerateAudio(s); return }
 
-      // Parse CHARACTER GUIDE for gender
-      const guideMatch = s.script?.match(/CHARACTER GUIDE\s*\n---\s*\n([\s\S]*?)(?:\n---|\[START AUDIO DRAMA SCRIPT\])/i)
-      const genderMap: Record<string,'male'|'female'|'unknown'> = {}
-      if (guideMatch) {
-        for (const line of guideMatch[1].split('\n')) {
-          const nm = line.match(/^([A-Z][A-Z\s'.()]+?)\s*[—–-]/)
-          if (!nm) continue
-          const lower = line.toLowerCase()
-          const gender = lower.includes(', female') || lower.includes(' female,') ? 'female'
-            : lower.includes(', male') || lower.includes(' male,') ? 'male' : 'unknown'
-          genderMap[nm[1].trim().toUpperCase()] = gender
-        }
+    const guideMatch = s.script?.match(/CHARACTER GUIDE\s*\n---\s*\n([\s\S]*?)(?:\n---|\[START AUDIO DRAMA SCRIPT\])/i)
+    const charMeta: Record<string,{gender:string;age:string;accent:string}> = {}
+    if (guideMatch) {
+      for (const line of guideMatch[1].split('\n')) {
+        const nm = line.match(/^([A-Z][A-Z\s\'.()]+?)\s*[\u2014\u2013-]/)
+        if (!nm) continue
+        const lower = line.toLowerCase()
+        const gender = lower.includes(' female') ? 'female' : lower.includes(' male') ? 'male' : ''
+        const age = lower.includes('young') || lower.includes('teen') || lower.includes('20s') ? 'young'
+          : lower.includes('60s') || lower.includes('70s') || lower.includes('elder') || lower.includes('old') ? 'old'
+          : lower.includes('30s') || lower.includes('40s') || lower.includes('50s') ? 'middle_aged' : ''
+        const accent = lower.includes('british') || lower.includes('english') ? 'british'
+          : lower.includes('irish') ? 'irish'
+          : lower.includes('scottish') ? 'scottish'
+          : lower.includes('australian') ? 'australian'
+          : lower.includes('american') || lower.includes('southern') || lower.includes('midwest') ? 'american' : ''
+        charMeta[nm[1].trim().toUpperCase()] = { gender, age, accent }
       }
-
-      const MALE_VOICES = ['Cole Hargrove','Elliott Crane','Finn Calloway','James Alcott','Marcus Hale','Ray Dolan']
-      const FEMALE_VOICES = ['Iris Calloway','June Harlow','Morgan Veil','Nora Ashby','Quinn Merritt','Sage Wilder']
-      const maleVoices = narrators.filter(n => MALE_VOICES.includes(n.name) && n.name !== narratorName)
-      const femaleVoices = narrators.filter(n => FEMALE_VOICES.includes(n.name))
-      let maleIdx = 0; let femaleIdx = 0
-
-      chars.forEach(c => {
-        const gender = genderMap[c.toUpperCase()] || 'unknown'
-        if (gender === 'male') { defaultAssignments[c] = maleVoices[maleIdx % maleVoices.length]?.elevenlabs_voice_id || ''; maleIdx++ }
-        else if (gender === 'female') { defaultAssignments[c] = femaleVoices[femaleIdx % femaleVoices.length]?.elevenlabs_voice_id || ''; femaleIdx++ }
-        else { defaultAssignments[c] = narrators.find(n => n.name !== narratorName && n.name !== 'Belle B')?.elevenlabs_voice_id || '' }
-      })
-
-      setCharVoiceModal({ storyId: s.id, chars, assignments: defaultAssignments })
-    } else {
-      startGenerateAudio(s)
     }
+
+    const assignments: Record<string,string> = {}
+    const usedVoiceIds = new Set<string>()
+    for (const char of chars) {
+      const meta = charMeta[char.toUpperCase()] || { gender: '', age: '', accent: '' }
+      try {
+        const resp = await fetch('/api/admin/el-voice-search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(meta)
+        })
+        const data = await resp.json()
+        const voices = (data.voices || []).filter((v: any) => !usedVoiceIds.has(v.voice_id))
+        if (voices.length > 0) {
+          assignments[char] = voices[0].voice_id
+          usedVoiceIds.add(voices[0].voice_id)
+        }
+      } catch(e) {
+        console.warn('EL voice search failed for ' + char, e)
+      }
+    }
+    startGenerateAudio(s, assignments)
   }
 
   function approve() {
@@ -1113,39 +1121,13 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
   const pendingStories=stories.filter(s=>s.status==='ready'||s.status==='generating')
   const waitingCount=premiseQueue.filter(q=>q.status==='waiting').length
 
-  const charModalEl = charVoiceModal ? (
-    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={()=>setCharVoiceModal(null)}>
-      <div style={{background:'#fff',borderRadius:12,padding:32,width:520,maxHeight:'80vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
-        <div style={{fontSize:20,fontWeight:700,color:'#111',marginBottom:6}}>Assign Character Voices</div>
-        <div style={{fontSize:14,color:'#666',marginBottom:24}}>The script has {charVoiceModal.chars.length} speaking character{charVoiceModal.chars.length!==1?'s':''}. Assign a voice to each, or leave as narrator voice.</div>
-        {charVoiceModal.chars.map(char=>(
-          <div key={char} style={{marginBottom:16}}>
-            <div style={{fontSize:14,fontWeight:700,color:'#111',marginBottom:6}}>{char}</div>
-            <select
-              value={charVoiceModal.assignments[char]||''}
-              onChange={e=>setCharVoiceModal(prev=>prev?{...prev,assignments:{...prev.assignments,[char]:e.target.value}}:null)}
-              style={{width:'100%',padding:'10px 12px',border:'1px solid #ccc',borderRadius:6,fontSize:14,fontFamily:'inherit',color:'#111'}}
-            >
-              <option value="">— Use narrator voice —</option>
-              {narrators.filter(n=>n.name!=='Belle B').map(n=>(
-                <option key={n.id} value={n.elevenlabs_voice_id}>{n.name}</option>
-              ))}
-            </select>
-          </div>
-        ))}
-        <div style={{display:'flex',gap:12,marginTop:24}}>
-          <button onClick={()=>{const {storyId,assignments}=charVoiceModal; setCharVoiceModal(null); const s=stories.find(x=>x.id===storyId); if(s) startGenerateAudio(s,assignments)}} style={{flex:1,background:'#f97316',color:'#fff',border:'none',borderRadius:8,padding:'14px',cursor:'pointer',fontFamily:'inherit',fontSize:15,fontWeight:700}}>🔊 Generate Audio</button>
-          <button onClick={()=>setCharVoiceModal(null)} style={{background:'#fff',color:'#666',border:'1px solid #ccc',borderRadius:8,padding:'14px 20px',cursor:'pointer',fontFamily:'inherit',fontSize:15}}>Cancel</button>
-        </div>
-      </div>
-    </div>
-  ) : null
+  // charModalEl removed — EL auto-assigns voices
 
   return (
     <div style={{fontFamily:'Georgia, serif',color:'#111',background:'#FAF9F6',minHeight:'100vh',position:'relative',zIndex:1}}>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       {status&&<div style={{background:'#e8f5e9',borderBottom:'1px solid #c8e6c9',padding:'12px 32px',color:'#2e7d32',fontSize:15}}>● {status}</div>}
-      {charModalEl}
+      {/* EL auto-assigns voices */}
 
       <div style={{borderBottom:'2px solid #e0e0e0',padding:'0 32px',display:'flex',gap:0,background:'#fff'}}>
         {([{key:'pick' as const,label:'Premise Picker'},{key:'write' as const,label:'Write Manually'},{key:'queue' as const,label:`Queue (${approvedStories.length} approved${waitingCount>0?` · ${waitingCount} pending`:''})`}]).map(t=>(
