@@ -1,78 +1,64 @@
 'use client'
 import { useState, useRef } from 'react'
 
+const BASE = 'https://vmyhlfeouzslixtkmddy.supabase.co/storage/v1/object/public/audio'
+
+const VERSIONS = [
+  { name: 'Version 1 — Turbo, Natural', url: `${BASE}/welcome/test_v1_turbo_natural.mp3` },
+  { name: 'Version 2 — Multilingual, Expressive', url: `${BASE}/welcome/test_v2_multilingual_expressive.mp3` },
+  { name: 'Version 3 — Multilingual, Natural', url: `${BASE}/welcome/test_v3_multilingual_natural.mp3` },
+]
+
 export default function WelcomeTest() {
-  const [name, setName] = useState('Marc')
-  const [status, setStatus] = useState('')
-  const [playing, setPlaying] = useState(false)
+  const [playing, setPlaying] = useState<string | null>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
 
-  async function handlePlay() {
-    if (playing || !name) return
-    setPlaying(true)
-    setStatus('Stitching audio...')
-
-    try {
-      const res = await fetch('/api/admin/stitch-welcome', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ firstName: name })
-      })
-      const data = await res.json()
-      if (!data.url) { setStatus('Failed to stitch audio'); setPlaying(false); return }
-
-      setStatus('Playing...')
-      const audio = audioRef.current!
-      audio.src = data.url + '?t=' + Date.now()
-      audio.load()
-      await audio.play()
-    } catch(e) {
-      setStatus('Error: ' + e)
-      setPlaying(false)
-    }
+  function play(url: string, name: string) {
+    const audio = audioRef.current
+    if (!audio) return
+    audio.src = url + '?t=' + Date.now()
+    audio.load()
+    audio.play()
+    setPlaying(name)
   }
 
   return (
     <div style={{ fontFamily: 'Georgia, serif', background: '#FAF9F6', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ background: '#fff', borderRadius: 16, padding: 48, width: 480, boxShadow: '0 4px 24px rgba(0,0,0,0.08)' }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700, color: '#111', marginBottom: 8 }}>Belle B Welcome Test</h1>
-        <p style={{ color: '#666', fontSize: 14, marginBottom: 32 }}>Seamlessly stitched via ffmpeg — no gaps between clips.</p>
-
-        <div style={{ marginBottom: 24 }}>
-          <label style={{ fontSize: 13, fontWeight: 600, color: '#444', display: 'block', marginBottom: 8 }}>Listener First Name</label>
-          <input
-            value={name}
-            onChange={e => { setName(e.target.value); setStatus('') }}
-            style={{ width: '100%', padding: '12px 16px', border: '1px solid #ddd', borderRadius: 8, fontSize: 16, fontFamily: 'inherit', color: '#111', boxSizing: 'border-box' }}
-            placeholder="Enter first name..."
-          />
+      <div style={{ background: '#fff', borderRadius: 16, padding: 48, width: 520, boxShadow: '0 4px 24px rgba(0,0,0,0.08)' }}>
+        <h1 style={{ fontSize: 24, fontWeight: 700, color: '#111', marginBottom: 8 }}>Belle B Voice Test</h1>
+        <p style={{ color: '#666', fontSize: 14, marginBottom: 8 }}>Three versions — same script, different model/settings. Pick the most natural one.</p>
+        <div style={{ background: '#f8f8f8', borderRadius: 8, padding: 16, fontSize: 13, color: '#555', marginBottom: 32, lineHeight: 1.6 }}>
+          <strong>Script:</strong> "Oh good you found us Marc. I'm Belle and I'll be right here before every story. Just think of me as a friend who always knows what's worth your time. You are going to love this one."
         </div>
 
-        <button
-          onClick={handlePlay}
-          disabled={playing || !name}
-          style={{ width: '100%', background: playing ? '#ccc' : '#f97316', color: '#fff', border: 'none', borderRadius: 10, padding: '16px', fontSize: 17, fontWeight: 700, cursor: playing ? 'not-allowed' : 'pointer', fontFamily: 'inherit', marginBottom: 16 }}
-        >
-          {playing ? '⏳ Stitching & Playing...' : '▶ Play Welcome'}
-        </button>
-
-        {status && (
-          <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, padding: '12px 16px', fontSize: 13, color: '#0369a1' }}>
-            {status}
+        {VERSIONS.map(v => (
+          <div key={v.name} style={{ marginBottom: 16 }}>
+            <button
+              onClick={() => play(v.url, v.name)}
+              style={{
+                width: '100%', textAlign: 'left',
+                background: playing === v.name ? '#fff7ed' : '#fff',
+                border: playing === v.name ? '2px solid #f97316' : '2px solid #e5e7eb',
+                borderRadius: 10, padding: '16px 20px',
+                fontSize: 15, fontWeight: 600, color: '#111',
+                cursor: 'pointer', fontFamily: 'inherit',
+                display: 'flex', alignItems: 'center', gap: 12
+              }}
+            >
+              <span style={{ fontSize: 20 }}>{playing === v.name ? '▶' : '○'}</span>
+              {v.name}
+            </button>
           </div>
-        )}
+        ))}
 
         <audio
           ref={audioRef}
-          onEnded={() => { setPlaying(false); setStatus('✅ Done — click Play again to replay') }}
-          onError={() => { setStatus('Audio error'); setPlaying(false) }}
+          onEnded={() => setPlaying(null)}
+          onError={() => setPlaying(null)}
         />
 
-        <div style={{ marginTop: 24, padding: 16, background: '#f8f8f8', borderRadius: 8, fontSize: 12, color: '#666', lineHeight: 1.6 }}>
-          <div style={{ fontWeight: 600, marginBottom: 8, color: '#444' }}>Script:</div>
-          <div>"Oh good, you found us — <strong style={{ color: '#f97316' }}>{name || '[name]'}</strong>"</div>
-          <div style={{ marginTop: 4 }}>"I'm Belle. I'll be here before every story — just a friend who knows what's worth your time. You're going to love this one."</div>
-          <div style={{ marginTop: 8, color: '#999', fontSize: 11 }}>First play stitches via ffmpeg and caches. Subsequent plays are instant.</div>
+        <div style={{ marginTop: 24, padding: 16, background: '#f0fdf4', borderRadius: 8, fontSize: 13, color: '#166534' }}>
+          Tell Claude which version sounds most natural — 1, 2, or 3.
         </div>
       </div>
     </div>
