@@ -55,7 +55,8 @@ export async function POST(req: NextRequest) {
     const tmpIn = path.join(os.tmpdir(), `belle_mono_${Date.now()}.mp3`)
     const tmpOut = path.join(os.tmpdir(), `belle_stereo_${Date.now()}.mp3`)
     fsNode.writeFileSync(tmpIn, monoBuf)
-    await execFileAsync('/opt/homebrew/bin/ffmpeg', [
+    const ffmpegPath = process.platform === 'darwin' ? '/opt/homebrew/bin/ffmpeg' : 'ffmpeg'
+    await execFileAsync(ffmpegPath, [
       '-i', tmpIn, '-ac', '2', '-ar', '44100', '-b:a', '192k', '-y', tmpOut
     ])
     const buf = fsNode.readFileSync(tmpOut)
