@@ -43,29 +43,31 @@ export async function GET(req: NextRequest) {
   // Always start with the sting
   queue.push({ url: STING_URL, type: 'intro', label: 'Sting' })
 
-  // 1. Intro — always generate personalized Belle B intro with name baked in
+  // 1. Intro — check if personalized intro already cached, use it; otherwise use fallback
+  // Personalized intros are cached in Supabase at belle/intro_{storyId}_{firstName}.mp3
+  const BASE_AUDIO = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio`
   if (firstName && (story as any).script) {
-    try {
+    const safeName = firstName.toLowerCase().replace(/[^a-z0-9]/g, '-')
+    const cachedUrl = `${BASE_AUDIO}/belle/intro_${storyId}_${safeName}.mp3`
+    // Check if cached version exists
+    const cacheCheck = await fetch(cachedUrl, { method: 'HEAD' }).catch(() => ({ ok: false }))
+    if (cacheCheck.ok) {
+      // Cached — use it immediately
+      queue.push({ url: cachedUrl, type: 'intro', label: 'Intro' })
+    } else {
+      // Not cached — use fallback and trigger async generation
+      if (story.intro_audio_url) queue.push({ url: story.intro_audio_url, type: 'intro', label: 'Intro' })
+      // Fire-and-forget generation so next play will be personalized
       const introMatch = (story as any).script?.match(/BELLE B INTRO\s*\n---\s*\n([\s\S]*?)\n---/i)
       const introLine = introMatch?.[1]?.match(/BELLE B:\s*(.+)/i)?.[1]?.trim()
       if (introLine) {
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.endless-tales.com'
-        const res = await fetch(`${appUrl}/api/admin/generate-belle-intro`, {
+        fetch(`${appUrl}/api/admin/generate-belle-intro`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ storyId, firstName, introText: introLine, type: 'intro' })
-        })
-        const data = res.ok ? await res.json() : null
-        if (data?.url) {
-          queue.push({ url: data.url, type: 'intro', label: 'Intro' })
-        } else if (story.intro_audio_url) {
-          queue.push({ url: story.intro_audio_url, type: 'intro', label: 'Intro' })
-        }
-      } else if (story.intro_audio_url) {
-        queue.push({ url: story.intro_audio_url, type: 'intro', label: 'Intro' })
+        }).catch(() => {})
       }
-    } catch(e) {
-      if (story.intro_audio_url) queue.push({ url: story.intro_audio_url, type: 'intro', label: 'Intro' })
     }
   } else if (story.intro_audio_url) {
     queue.push({ url: story.intro_audio_url, type: 'intro', label: 'Intro' })
