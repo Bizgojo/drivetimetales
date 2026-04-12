@@ -393,7 +393,17 @@ SUNO PROMPT: [2-3 sentences: music genre, instrumentation, tempo, mood — speci
 3. CHARACTER GUIDE:
 CHARACTER GUIDE
 ---
-[Every speaking character: NAME — age, gender, accent, one-sentence personality]
+[Every speaking character: NAME — gender, age_range, accent, tone, one-sentence personality]
+
+CRITICAL: Use ONLY these exact values so voices can be matched automatically:
+- gender: male | female
+- age_range: young (teens-24) | middle_aged (25-54) | old (55+)
+- accent: american | british | irish | scottish | australian | us southern | canadian
+- tone: calm | warm | intense | deep | confident | professional | casual | raspy | husky | mature | wise | gentle | serious | rough | crisp | upbeat | sassy | whispery | meditative | neutral | pleasant | classy | chill | relaxed
+
+WESTERN STORIES: Characters get us southern or american accent + tone of: rough | wise | calm | deep
+SCI-FI/AI CHARACTERS: Non-human AI/robot characters get tone: neutral or serious with accent: american
+Example: MAREN — female, middle_aged, american, calm — An archivist who speaks precisely and reveals nothing by accident.
 
 Character naming rules:
 - Names must feel specific to the character's cultural background, region, and era
