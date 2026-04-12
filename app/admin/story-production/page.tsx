@@ -354,6 +354,15 @@ function buildWrapperPrompt(productionScript: string, p: PipelineParams): string
 
 Belle B is the warm, personal voice of Endless Tales. She sounds like a trusted friend who loves stories — never a radio announcer, never corporate. She speaks directly to the listener as if they are sitting together.
 
+BELLE B SPEECH RULES — CRITICAL:
+- Write in SHORT punchy sentences. Max 2 sentences total. Never one long sentence with multiple clauses.
+- Write the way a real person TALKS, not the way someone reads an announcement.
+- No formal constructions. No "in [Story Title]" at the end. No dependent clauses chained together.
+- Each sentence must have natural breathing room — EL reads long clauses slowly and mechanically.
+- GOOD: "Marc, Maren catalogs the dead for a living. But her dead husband just wrote something in his logbook — three days from now."
+- BAD: "Maren is an archivist who catalogs the dead for a living, [LISTENER_NAME] — but when she opens the lighthouse logbook she starts to understand that some records were never meant to be found, in The Keeper's Hand."
+- The [LISTENER_NAME] placeholder must appear naturally mid-sentence — never at the start, never bolted on.
+
 ADD IN EXACT ORDER:
 
 1. BELLE B INTRO BLOCK (first):
