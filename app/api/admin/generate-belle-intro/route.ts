@@ -8,9 +8,9 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
-const BELLE_B = 'KWDD3Wyq30ZF5NEL01EJ'
+const BELLE_B = 'wewocdDkjSLm9ZwjO7TD'
 const EL_KEY = process.env.ELEVENLABS_API_KEY!
-const EL_SETTINGS = { stability: 0.5, similarity_boost: 0.75, style: 0.0, use_speaker_boost: true, speed: 1.1 }
+const EL_SETTINGS = { stability: 0.49, similarity_boost: 0.51, style: 0.0, use_speaker_boost: true, speed: 1.0 }
 const BASE = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio`
 
 async function generateAudio(text: string): Promise<Buffer> {

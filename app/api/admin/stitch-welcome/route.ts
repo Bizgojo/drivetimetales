@@ -12,7 +12,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 const BASE = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio`
-const BELLE_B_ID = 'KWDD3Wyq30ZF5NEL01EJ'
+const BELLE_B_ID = 'wewocdDkjSLm9ZwjO7TD'
 
 export const runtime = 'nodejs'
 export const maxDuration = 30

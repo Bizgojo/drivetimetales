@@ -10,13 +10,13 @@ const supabase = createClient(
 )
 
 const EL_API_KEY = process.env.ELEVENLABS_API_KEY!
-const BELLE_B_VOICE_ID = 'KWDD3Wyq30ZF5NEL01EJ'
+const BELLE_B_VOICE_ID = 'wewocdDkjSLm9ZwjO7TD'
 const BASE_STORAGE = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio`
 const EL_SETTINGS = { stability: 0.5, similarity_boost: 0.75, style: 0.0, use_speaker_boost: true }
 
 // Permanent narrator voices — excluded from character pool
 const NARRATOR_VOICE_NAMES = ['Cole Hargrove','Elliott Crane','Finn Calloway','James Alcott','Marcus Hale','Ray Dolan','Iris Calloway','June Harlow','Morgan Veil','Nora Ashby','Quinn Merritt','Sage Wilder']
-const BELLE_B_ID = 'KWDD3Wyq30ZF5NEL01EJ'
+const BELLE_B_ID = 'wewocdDkjSLm9ZwjO7TD'
 
 // Load all My Voices from ElevenLabs — used as the character voice pool
 async function loadMyVoices(): Promise<any[]> {

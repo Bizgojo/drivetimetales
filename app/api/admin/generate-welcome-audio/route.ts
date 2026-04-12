@@ -6,7 +6,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const BELLE_B_VOICE_ID = 'KWDD3Wyq30ZF5NEL01EJ'
+const BELLE_B_VOICE_ID = 'wewocdDkjSLm9ZwjO7TD'
 const EL_SETTINGS = { stability: 0.55, similarity_boost: 0.8, style: 0.2, use_speaker_boost: true }
 
 // Welcome script split at [LISTENER_NAME] insertion point
