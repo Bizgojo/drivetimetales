@@ -144,6 +144,21 @@ export async function POST(req: NextRequest) {
         insertData.series_name = seriesName
         insertData.episode_number = episodeNumber || 1
         insertData.series_total = seriesTotal || 1
+        // Auto-create series row if it doesn't exist
+        const { data: existingSeries } = await supabase.from('series').select('id').eq('title', seriesName).single()
+        if (existingSeries?.id) {
+          insertData.series_id = existingSeries.id
+        } else {
+          const { data: newSeries } = await supabase.from('series').insert({
+            title: seriesName,
+            author,
+            category: genre,
+            description: '',
+            total_episodes: seriesTotal || 1,
+            is_complete: false,
+          }).select('id').single()
+          if (newSeries?.id) insertData.series_id = newSeries.id
+        }
       }
       const { data: inserted, error: insertErr } = await supabase.from('stories').insert(insertData).select('id').single()
       if (insertErr) console.error('Story insert error:', JSON.stringify(insertErr))
