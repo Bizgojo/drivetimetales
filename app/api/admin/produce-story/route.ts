@@ -168,6 +168,8 @@ export async function POST(req: NextRequest) {
 
     const updates: Record<string, any> = {}
 
+    // Save script to stories table so personalization and player can access it
+    updates.script = script
     try { const d = await generateDescription(script, title, genre); updates.description = d; steps.description = { status: 'done', message: d.slice(0, 80) } }
     catch (e) { steps.description = { status: 'error', message: String(e) } }
 
