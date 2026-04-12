@@ -10,6 +10,9 @@ const PUBLIC_ROUTES = new Set([
   '/terms', '/privacy',
 ])
 
+// Path prefixes that are always public (checked below)
+const ADDITIONAL_PUBLIC_PREFIXES = ['/promo/']
+
 const PUBLIC_PREFIXES = ['/api/', '/_next/', '/images/', '/icons/', '/favicon', '/podcast', '/player/']
 
 const SUBSCRIPTION_REQUIRED_PREFIXES = [
@@ -37,6 +40,7 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   if (PUBLIC_PREFIXES.some(p => pathname.startsWith(p))) return NextResponse.next()
+  if (ADDITIONAL_PUBLIC_PREFIXES.some(p => pathname.startsWith(p))) return NextResponse.next()
   if (PUBLIC_ROUTES.has(pathname)) return NextResponse.next()
   // If user hits the root landing page with an active session, send them home
   if (pathname === '/') {
