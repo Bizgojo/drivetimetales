@@ -299,6 +299,11 @@ export async function POST(req: NextRequest) {
     if (!resolvedNarratorVoiceId) resolvedNarratorVoiceId = voiceByName['Cole Hargrove']
     if (!resolvedNarratorVoiceId) return NextResponse.json({ success: false, error: 'No narrator voice found' }, { status: 400 })
     const characterGuide = parseCharacterGuide(script)
+    // Check if narrator IS the protagonist (first person stories)
+    const narratorIsCharacter = /NARRATOR_IS_CHARACTER:\s*true/i.test(script)
+    const narrativeVoice = script.match(/NARRATIVE_VOICE:\s*(\S+)/i)?.[1]?.toLowerCase() || ''
+    const isFirstPerson = narrativeVoice === 'first_person' || narratorIsCharacter
+    console.log(`  Narrative: ${narrativeVoice}, narratorIsCharacter: ${isFirstPerson}`)
     // Load My Voices pool once — used for all character assignments
     const myVoices = await loadMyVoices()
     console.log(`  My Voices pool: ${myVoices.length} voices`)
@@ -319,9 +324,16 @@ export async function POST(req: NextRequest) {
       const ageNum = char.description?.match(/(\d+)/)?.[1] ? parseInt(char.description.match(/(\d+)/)![1]) : 30
       if (ageNum < 12) meta.gender = 'female'
       else if (!meta.gender) meta.gender = char.gender === 'male' ? 'male' : char.gender === 'female' ? 'female' : ''
-      // Find best matching voice from pool
-      voiceMap[key] = findVoiceForCharacter(char.name, meta, myVoices, usedVoiceIds, resolvedNarratorVoiceId)
-      usedVoiceIds.add(voiceMap[key])
+      // First person: protagonist IS the narrator — use narrator voice
+      const isProtagonist = isFirstPerson && (char.isProtagonist || characterGuide.indexOf(char) === 0)
+      if (isProtagonist) {
+        console.log(`  ${char.name}: protagonist = narrator voice (first person)`)
+        voiceMap[key] = resolvedNarratorVoiceId
+      } else {
+        // Find best matching voice from pool
+        voiceMap[key] = findVoiceForCharacter(char.name, meta, myVoices, usedVoiceIds, resolvedNarratorVoiceId)
+        usedVoiceIds.add(voiceMap[key])
+      }
     }
     // Apply any remaining manual overrides
     if (characterVoices) Object.entries(characterVoices).forEach(([name, id]) => { voiceMap[name.toUpperCase()] = id as string })
