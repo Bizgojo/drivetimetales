@@ -177,6 +177,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await authClient.auth.signOut()
     setUser(null)
     setSession(null)
+    // Redirect to landing page — never to signin
+    window.location.href = 'https://endless-tales.com'
   }
 
   return (
