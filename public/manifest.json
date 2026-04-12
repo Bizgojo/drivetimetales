@@ -2,7 +2,7 @@
   "name": "Endless Tales",
   "short_name": "Endless Tales",
   "description": "Audio stories for people with free ears and active minds",
-  "start_url": "/",
+  "start_url": "/signin",
   "display": "standalone",
   "background_color": "#0f172a",
   "theme_color": "#0f172a",

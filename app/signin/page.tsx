@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, Suspense } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext'
+import { supabaseBrowser } from '@/lib/supabase-browser'
 
 function SignInContent() {
   const router = useRouter()
@@ -18,18 +19,21 @@ function SignInContent() {
 
   const returnTo = searchParams.get('returnTo') || '/home'
 
+  // If already signed in, skip straight to home — handles PWA launch with existing session
+  useEffect(() => {
+    supabaseBrowser.auth.getSession().then(({ data: { session } }) => {
+      if (session) router.replace(returnTo)
+    })
+  }, [returnTo, router])
+
   // Show any error passed back from OAuth callback in the URL
   const urlError = searchParams.get('error')
   const urlDesc = searchParams.get('desc')
 
   const handleGoogleSignIn = () => {
-    // Use server-side OAuth route — works on iOS Safari, Android, all browsers
-    // (avoids sessionStorage/PKCE issues that break mobile Google Sign-In)
     const params = returnTo !== '/home' ? `?returnTo=${encodeURIComponent(returnTo)}` : ''
     window.location.href = `/api/auth/google${params}`
   }
-
-
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -63,7 +67,6 @@ function SignInContent() {
           <h1 style={{ color:'white', fontSize:'22px', fontWeight:800, margin:'0 0 6px', textAlign:'center' }}>Welcome back</h1>
           <p style={{ color:'#64748b', fontSize:'14px', textAlign:'center', margin:'0 0 24px' }}>Sign in to your Endless Tales account</p>
 
-          {/* Google — client-side OAuth so PKCE verifier lives in localStorage */}
           <button onClick={handleGoogleSignIn} type="button"
             style={{ width:'100%', padding:'13px', backgroundColor:'#fff', color:'#1f2937', border:'1px solid #e2e8f0', borderRadius:'12px', fontSize:'15px', fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'10px', marginBottom:'16px', boxSizing:'border-box' }}>
             <svg width="18" height="18" viewBox="0 0 24 24">
@@ -88,7 +91,6 @@ function SignInContent() {
           )}
 
           <form onSubmit={handleSubmit}>
-            {/* Email */}
             <div style={{ marginBottom:'16px' }}>
               <label style={{ display:'block', color:'#94a3b8', fontSize:'13px', fontWeight:600, marginBottom:'6px' }}>Email</label>
               <input
@@ -103,7 +105,6 @@ function SignInContent() {
               />
             </div>
 
-            {/* Password */}
             <div style={{ marginBottom:'24px' }}>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'6px' }}>
                 <label style={{ color:'#94a3b8', fontSize:'13px', fontWeight:600 }}>Password</label>
@@ -127,15 +128,12 @@ function SignInContent() {
               </div>
             </div>
 
-            {/* Sign In Button */}
             <button type="submit" disabled={loading}
               style={{ width:'100%', padding:'15px', backgroundColor: loading ? '#7c3f10' : '#f97316', color:'white', border:'none', borderRadius:'12px', fontSize:'16px', fontWeight:800, cursor: loading ? 'not-allowed' : 'pointer', letterSpacing:'0.3px' }}>
               {loading ? 'Signing in…' : 'Sign In'}
             </button>
           </form>
         </div>
-
-        {/* No signup link on sign-in page */}
 
       </div>
     </div>
