@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
 
   const { data: story, error } = await supabase
     .from('stories')
-    .select('id, title, author, audio_url, intro_audio_url, intro_before_url, intro_after_url, story_audio_url, outro_audio_url, background_music_url')
+    .select('id, title, author, audio_url, intro_audio_url, intro_before_url, intro_after_url, story_audio_url, outro_audio_url, background_music_url, script')
     .eq('id', storyId)
     .single()
 
@@ -40,16 +40,14 @@ export async function GET(req: NextRequest) {
 
   const queue: { url: string; type: 'intro' | 'story' | 'outro'; label: string }[] = []
 
-  // 1. Intro — generate personalized version with name baked in (cached per story+name)
-  if (story.intro_audio_url && firstName) {
+  // 1. Intro — always generate personalized Belle B intro with name baked in
+  if (firstName && (story as any).script) {
     try {
-      // Fetch the intro script text from story
-      const { data: storyData } = await supabase.from('stories')
-        .select('script').eq('id', storyId).single()
-      const introMatch = storyData?.script?.match(/BELLE B INTRO\s*\n---\s*\n([\s\S]*?)\n---/i)
+      const introMatch = (story as any).script?.match(/BELLE B INTRO\s*\n---\s*\n([\s\S]*?)\n---/i)
       const introLine = introMatch?.[1]?.match(/BELLE B:\s*(.+)/i)?.[1]?.trim()
-      if (introLine && introLine.includes('[LISTENER_NAME]')) {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/admin/generate-belle-intro`, {
+      if (introLine) {
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.endless-tales.com'
+        const res = await fetch(`${appUrl}/api/admin/generate-belle-intro`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ storyId, firstName, introText: introLine, type: 'intro' })
@@ -57,27 +55,40 @@ export async function GET(req: NextRequest) {
         const data = res.ok ? await res.json() : null
         if (data?.url) {
           queue.push({ url: data.url, type: 'intro', label: 'Intro' })
-        } else {
+        } else if (story.intro_audio_url) {
           queue.push({ url: story.intro_audio_url, type: 'intro', label: 'Intro' })
         }
-      } else {
+      } else if (story.intro_audio_url) {
         queue.push({ url: story.intro_audio_url, type: 'intro', label: 'Intro' })
       }
     } catch(e) {
-      queue.push({ url: story.intro_audio_url, type: 'intro', label: 'Intro' })
+      if (story.intro_audio_url) queue.push({ url: story.intro_audio_url, type: 'intro', label: 'Intro' })
     }
   } else if (story.intro_audio_url) {
     queue.push({ url: story.intro_audio_url, type: 'intro', label: 'Intro' })
   }
 
-  // 2. Detect architecture: new ASC (asc/slug/story_body.mp3) vs old ASC3 (asc3/id/segment_*.mp3)
-  const refUrl = story.story_audio_url || story.audio_url || ''
+  // 2. Use story_audio_url (story_body.mp3) if available — queue mode with personalized intro
+  if ((story as any).story_audio_url) {
+    queue.push({ url: (story as any).story_audio_url, type: 'story', label: 'Story' })
+    if (story.outro_audio_url) {
+      queue.push({ url: story.outro_audio_url, type: 'outro', label: 'Outro' })
+    }
+    return NextResponse.json({
+      queue,
+      introOutroMusicUrl: INTRO_OUTRO_MUSIC,
+      backgroundMusicUrl: (story as any).background_music_url || null,
+      totalSegments: queue.length,
+    }, { headers: { 'Cache-Control': 'no-store' } })
+  }
+
+  // Detect architecture: new ASC (asc/slug/story_body.mp3) vs old ASC3 (asc3/id/segment_*.mp3)
+  const refUrl = story.audio_url || ''
   const isNewASC = refUrl.includes('/asc/') && !refUrl.includes('/asc3/')
   const isHal3File = has3Files && !isNewASC
 
   if (isNewASC || isHal3File) {
-    // New 3-file architecture — story_body.mp3 is the full pre-mixed story + BG music
-    const storyUrl = story.story_audio_url || story.audio_url
+    const storyUrl = story.audio_url
     if (storyUrl) {
       queue.push({ url: storyUrl, type: 'story', label: 'Story' })
     }
