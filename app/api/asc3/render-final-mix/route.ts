@@ -128,29 +128,10 @@ export async function POST(req: NextRequest) {
     await generateSilence(sil100Path, 1.0)
 
     if (!musicPath) {
-      console.log('  No music — sting tail held and faded under Belle B intro')
-      const stingDur = await getAudioDuration(stingPath)
-      const introDur = await getAudioDuration(introPath)
-      const totalDur = stingDur + introDur
-      // Hold the last sample of the sting with apad, then fade to zero across the full intro
-      const stingExtPath = path.join(tmpDir, 'sting_ext.mp3')
-      await execFileAsync(FFMPEG_PATH, [
-        '-i', stingPath,
-        '-af', `apad=whole_dur=${totalDur},afade=t=out:st=${stingDur * 0.5}:d=${stingDur * 0.5 + introDur}`,
-        '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', stingExtPath
-      ])
-      // Step 2: Mix extended fading sting with Belle B intro at full volume
-      const stingIntroPath = path.join(tmpDir, 'sting_intro.mp3')
-      await execFileAsync(FFMPEG_PATH, [
-        '-i', stingExtPath, '-i', normalizedIntroPath,
-        '-filter_complex',
-        `[0:a]volume=0.7[sting_vol];[sting_vol][1:a]amix=inputs=2:duration=longest:normalize=0[out]`,
-        '-map', '[out]',
-        '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', stingIntroPath
-      ])
-      // Step 3: Concat everything
+      console.log('  No music — sting then silence then Belle B intro sequentially')
+      // Play sting, then 0.75s silence, then Belle B intro, then story segments
       const concatFile = path.join(tmpDir, 'concat.txt')
-      await fs.writeFile(concatFile, [stingIntroPath, sil075Path, sil075Path, ...normalizedSegPaths, sil100Path, normalizedOutroPath].map(p => `file '${p}'`).join('\n'))
+      await fs.writeFile(concatFile, [stingPath, sil075Path, normalizedIntroPath, sil075Path, ...normalizedSegPaths, sil100Path, normalizedOutroPath].map(p => `file '${p}'`).join('\n'))
       await execFileAsync(FFMPEG_PATH, [
         '-f', 'concat', '-safe', '0', '-i', concatFile,
         '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', outputPath
