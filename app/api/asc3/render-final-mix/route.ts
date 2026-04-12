@@ -150,14 +150,14 @@ export async function POST(req: NextRequest) {
       ])
       // Step 3: Concat everything
       const concatFile = path.join(tmpDir, 'concat.txt')
-      await fs.writeFile(concatFile, [stingIntroPath, sil075Path, ...normalizedSegPaths, sil100Path, normalizedOutroPath].map(p => `file '${p}'`).join('\n'))
+      await fs.writeFile(concatFile, [stingIntroPath, sil075Path, sil075Path, ...normalizedSegPaths, sil100Path, normalizedOutroPath].map(p => `file '${p}'`).join('\n'))
       await execFileAsync(FFMPEG_PATH, [
         '-f', 'concat', '-safe', '0', '-i', concatFile,
         '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', outputPath
       ])
     } else {
       console.log('  Full mix with background music')
-      const dialogueParts = [stingPath, normalizedIntroPath, sil075Path, ...segPaths]
+      const dialogueParts = [stingPath, sil075Path, normalizedIntroPath, sil075Path, ...segPaths]
       const dialogueConcatFile = path.join(tmpDir, 'dialogue.txt')
       await fs.writeFile(dialogueConcatFile, dialogueParts.map(p => `file '${p}'`).join('\n'))
       const dialoguePath = path.join(tmpDir, 'dialogue.mp3')

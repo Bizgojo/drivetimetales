@@ -23,6 +23,8 @@ export async function POST(req: NextRequest) {
     console.log(`  Prompt: ${prompt.slice(0, 100)}...`)
 
     // Step 1: Submit generation task
+    // Always use production URL for callback — kie.ai can't reach localhost
+    const callbackBase = 'https://app.endless-tales.com'
     const genResp = await fetch(`${KIE_BASE}/api/v1/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${KIE_API_KEY}` },
@@ -32,7 +34,7 @@ export async function POST(req: NextRequest) {
         instrumental: true,
         model: 'V4',
         title: `ET-${storyId.slice(0, 8)}`,
-        callBackUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.endless-tales.com'}/api/asc3/music-callback`
+        callBackUrl: `${callbackBase}/api/asc3/music-callback`
       })
     })
 
