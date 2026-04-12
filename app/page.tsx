@@ -15,7 +15,7 @@ Supports ?partner=slug for QR code partner promotions.
 import React, { useEffect, useState, Suspense } from 'react'
 import Link from 'next/link'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { supabaseBrowser as supabase } from '@/lib/supabase-browser'
 
 function LandingContent() {
   const router = useRouter()
