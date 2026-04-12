@@ -16,7 +16,8 @@ const EL_SETTINGS = { stability: 0.5, similarity_boost: 0.75, style: 0.0, use_sp
 
 // Permanent narrator voices — excluded from character pool
 const NARRATOR_VOICE_NAMES = ['Cole Hargrove','Elliott Crane','Finn Calloway','James Alcott','Marcus Hale','Ray Dolan','Iris Calloway','June Harlow','Morgan Veil','Nora Ashby','Quinn Merritt','Sage Wilder']
-const BELLE_B_ID = 'wewocdDkjSLm9ZwjO7TD'
+// BELLE B — EXCLUSIVE ANNOUNCER VOICE. NEVER use as character or narrator.
+const BELLE_B_ID = 'wewocdDkjSLm9ZwjO7TD' // Belle B – Warm Healthcare Support. Locked permanently.
 
 // Load all My Voices from ElevenLabs — used as the character voice pool
 async function loadMyVoices(): Promise<any[]> {
