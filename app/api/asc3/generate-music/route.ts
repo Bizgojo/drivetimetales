@@ -49,8 +49,10 @@ export async function POST(req: NextRequest) {
     const taskId = genData?.data?.taskId || genData?.taskId
     if (!taskId) throw new Error(`No taskId returned: ${JSON.stringify(genData)}`)
     console.log(`  Task ID: ${taskId}`)
+    // Mark story as pending so callback can find it
+    await supabase.from('stories').update({ background_music_url: `pending:${taskId}` }).eq('id', storyId)
 
-    // Step 2: Poll for completion
+    // Step 2: Poll for completion (backup)
     let audioUrl: string | null = null
     for (let i = 0; i < 60; i++) {
       await sleep(5000)
