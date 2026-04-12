@@ -19,23 +19,23 @@ export async function GET(request: Request) {
   const url = new URL(request.url)
   const returnTo = url.searchParams.get('returnTo') || '/home'
   const origin = url.origin
-
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || origin
   if (!process.env.NEXT_PUBLIC_APP_URL) {
     console.warn('[Google OAuth] WARNING: NEXT_PUBLIC_APP_URL is not set')
   }
   const redirectTo = `${appUrl}/auth/callback`
-
   const cookieStore = cookies()
+
+  // Collect cookies to set — PKCE code verifier must be set on the response
+  const cookiesToSet: Array<{ name: string; value: string; options: Record<string, unknown> }> = []
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
         getAll: () => cookieStore.getAll(),
-        setAll: (toSet) => {
-          try { toSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options)) } catch {}
-        }
+        setAll: (toSet) => { cookiesToSet.push(...toSet) }
       }
     }
   )
@@ -46,12 +46,22 @@ export async function GET(request: Request) {
   })
 
   if (!data?.url) {
+    console.error('[Google OAuth] No URL returned:', error)
     return NextResponse.redirect(`${origin}/signin?error=auth_failed`)
   }
 
   const response = NextResponse.redirect(data.url)
 
+  // Set ALL cookies on the response — including PKCE code verifier
   // ⚠️  sameSite:'none' is REQUIRED for iOS PWA — do not change to 'lax'
+  cookiesToSet.forEach(({ name, value, options }) => {
+    response.cookies.set(name, value, {
+      ...(options as Parameters<typeof response.cookies.set>[2]),
+      sameSite: 'none',
+      secure: true,
+    })
+  })
+
   response.cookies.set('auth_return_to', returnTo, {
     httpOnly: true,
     secure: true,
@@ -59,5 +69,7 @@ export async function GET(request: Request) {
     maxAge: 300,
     path: '/',
   })
+
+  console.log(`[Google OAuth] Redirecting to Google. PKCE cookies set: ${cookiesToSet.length}`)
   return response
 }
