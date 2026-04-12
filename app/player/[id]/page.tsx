@@ -227,16 +227,16 @@ function PlayerContent() {
           .select('first_name, welcome_played').eq('id', user.id).single()
         if (dbUser && !dbUser.welcome_played && !lib?.progress) {
           try {
-            const firstName = dbUser.first_name || ''
-            const BASE = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio/welcome`
-            const welcomeA = `${BASE}/welcome_A.mp3`
-            const welcomeB = `${BASE}/welcome_B.mp3`
-            // Get or generate the name clip
-            const nameRes = await fetch(`/api/name-audio?name=${encodeURIComponent(firstName)}`)
-            const nameData = nameRes.ok ? await nameRes.json() : null
-            const nameClip = nameData?.audio_url || ''
-            if (nameClip) {
-              welcomeQueueRef.current = [welcomeA, nameClip, welcomeB]
+            const firstName = dbUser.first_name || 'friend'
+            const welcomeText = `Hey ${firstName}! I'm Belle. I'll be here before every story. Just a friend who knows what's worth your time. You're going to love this one.`
+            const res = await fetch('/api/admin/generate-belle-intro', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ type: 'welcome', firstName, introText: welcomeText })
+            })
+            const data = res.ok ? await res.json() : null
+            if (data?.url) {
+              welcomeQueueRef.current = [data.url]
               inWelcomeRef.current = true
               welcomeIndexRef.current = 0
             }
