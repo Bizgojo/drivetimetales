@@ -14,7 +14,7 @@ const EL_SETTINGS = { stability: 0.49, similarity_boost: 0.51, style: 0.0, use_s
 const BASE = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio`
 
 async function generateAudio(text: string): Promise<Buffer> {
-  const body = JSON.stringify({ text, model_id: 'eleven_multilingual_v2', voice_settings: EL_SETTINGS })
+  const body = JSON.stringify({ text, model_id: 'eleven_multilingual_v2', voice_settings: EL_SETTINGS, output_format: 'mp3_44100_192' })
   const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${BELLE_B}`, {
     method: 'POST',
     headers: { 'xi-api-key': EL_KEY, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
@@ -44,24 +44,7 @@ export async function POST(req: NextRequest) {
   try {
     // Bake the name into the text
     const personalizedText = introText.replace(/\[LISTENER_NAME\]/g, firstName)
-    const monoBuf = await generateAudio(personalizedText)
-    // Convert mono to stereo so it plays seamlessly with stereo story segments on iOS
-    const { execFile } = require('child_process')
-    const { promisify } = require('util')
-    const execFileAsync = promisify(execFile)
-    const os = require('os')
-    const path = require('path')
-    const fsNode = require('fs')
-    const tmpIn = path.join(os.tmpdir(), `belle_mono_${Date.now()}.mp3`)
-    const tmpOut = path.join(os.tmpdir(), `belle_stereo_${Date.now()}.mp3`)
-    fsNode.writeFileSync(tmpIn, monoBuf)
-    const ffmpegPath = process.platform === 'darwin' ? '/opt/homebrew/bin/ffmpeg' : 'ffmpeg'
-    await execFileAsync(ffmpegPath, [
-      '-i', tmpIn, '-ac', '2', '-ar', '44100', '-b:a', '192k', '-y', tmpOut
-    ])
-    const buf = fsNode.readFileSync(tmpOut)
-    fsNode.unlinkSync(tmpIn)
-    fsNode.unlinkSync(tmpOut)
+    const buf = await generateAudio(personalizedText)
     const { error } = await supabase.storage.from('audio').upload(cacheKey, buf, {
       contentType: 'audio/mpeg', upsert: true
     })
