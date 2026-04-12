@@ -208,6 +208,13 @@ export default function SuggestStoryPage() {
             )}
           </div>
 
+          {/* Kind note */}
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+            <p className="text-gray-300 text-sm leading-relaxed">
+              ✨ <span className="text-white font-semibold">Stories on Endless Tales should be fun.</span> They should never be meant to harm or embarrass anyone — no person, community, nationality, or ethnic group. If you've got a great idea, we'd love to see it. Just be kind.
+            </p>
+          </div>
+
           {/* Terms */}
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
             <p className="text-sm font-semibold text-white mb-4">Submission Terms</p>
