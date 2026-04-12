@@ -38,7 +38,10 @@ export async function GET(req: NextRequest) {
     }, { headers: { 'Cache-Control': 'no-store' } })
   }
 
+  const STING_URL = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio/sting/ET_Signature_Sting_v6.mp3`
   const queue: { url: string; type: 'intro' | 'story' | 'outro'; label: string }[] = []
+  // Always start with the sting
+  queue.push({ url: STING_URL, type: 'intro', label: 'Sting' })
 
   // 1. Intro — always generate personalized Belle B intro with name baked in
   if (firstName && (story as any).script) {
