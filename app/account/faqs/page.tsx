@@ -11,44 +11,20 @@ interface FAQ {
 
 const faqs: FAQ[] = [
   {
-    question: "How do I access my collection and reserved stories?",
-    answer: "From the home screen, tap your avatar in the top right corner to open your Account page. You'll see two buttons: 'My Collection' shows all stories you've unlocked and can listen to anytime. 'Reserved Stories' shows stories you've saved to listen to later. You can also access your collection directly from the bottom navigation bar."
-  },
-  {
-    question: "How does listening work?",
-    answer: "Credits are used to unlock stories. Each story costs 1-4 credits depending on its length. When you start listening, you get a 3-minute preview before credits are charged. Once you unlock a story, it's yours forever - listen as many times as you like! Credits refresh monthly on your billing date but don't roll over to the next month."
-  },
-  {
-    question: "How do I get started?",
-    answer: "Sign up for a free account to browse the library. Subscribe to unlock unlimited listening on all stories."
-  },
-  {
-    question: "When are refunds considered?",
-    answer: "We evaluate refund requests on a case-by-case basis. Credit pack refunds may be considered if requested within 14 days of purchase. Subscription refunds are evaluated based on circumstances. Please note that individual story purchases cannot be refunded once you've listened past the 3-minute preview. Contact our support team to discuss your specific situation."
+    question: "How do I add an Endless Tales icon to my iPhone or Android?",
+    answer: "You can add Endless Tales to your home screen just like a regular app — no app store needed!\n\niPhone (Safari): Open endless-tales.com in Safari, tap the Share button at the bottom of the screen (the box with an arrow pointing up), then scroll down and tap 'Add to Home Screen.' Give it a name and tap 'Add.' The icon will appear on your home screen.\n\nAndroid (Chrome): Open endless-tales.com in Chrome, tap the three-dot menu in the top right corner, then tap 'Add to Home screen.' Tap 'Add' to confirm. The Endless Tales icon will be placed on your home screen and works just like an app."
   },
   {
     question: "How do I cancel my subscription?",
-    answer: "You can cancel your subscription anytime from Account > Billing & Credits. Your access continues until the end of your current billing period - you won't lose access immediately. After cancellation, you'll keep access to any stories you've already unlocked, but you won't receive new monthly credits."
+    answer: "You can cancel anytime — no hoops to jump through.\n\nGo to Account > Billing & Subscription and tap 'Cancel Subscription.' Your access continues until the end of your current billing period, so you won't lose anything right away. After cancellation, you can still browse the library, but you'll need an active subscription to keep listening. If you change your mind, you can resubscribe anytime."
   },
   {
-    question: "Can I suggest stories or make recommendations?",
-    answer: "Absolutely! We love hearing from our listeners. Go to Account > Help & Support and send us a message with your story ideas, genre preferences, or any content you'd like to see. Our content team reviews all suggestions and we're always looking to expand our library based on what our community wants to hear."
+    question: "How do I suggest a story idea?",
+    answer: "We'd love to hear your ideas! Go to Account > Help & Support and send us a message with your story idea — genre, setting, characters, whatever you've got in mind. Our team reads every suggestion. If your idea inspires a story, we'll make it happen."
   },
   {
-    question: "Why won't my audio play?",
-    answer: "If you're having trouble with audio playback, try these steps: 1) Check your device volume and make sure it's not on silent. 2) If using Bluetooth, verify your car or speaker is connected properly. 3) Close and reopen the app. 4) If using the web version, try clearing your browser cache. 5) Check your internet connection. If issues persist, contact our support team."
-  },
-  {
-    question: "What's the difference between subscription plans?",
-    answer: "We offer simple subscription plans for every kind of listener. All plans include full access to every story in our library."
-  },
-  {
-    question: "Can I listen offline?",
-    answer: "Offline listening is coming soon! We're working on a download feature that will let you save stories for areas without cell service. In the meantime, stories will buffer as you listen, so a brief loss of signal usually won't interrupt playback."
-  },
-  {
-    question: "How do I update my payment method?",
-    answer: "Go to Account > Billing & Credits to manage your payment information. You can update your credit card, view your billing history, and see your next renewal date. All payments are processed securely through Stripe."
+    question: "How do I invite a friend?",
+    answer: "Sharing is easy! Go to Account > Invite a Friend, and you'll find a link you can send via text, email, or any app. Your friend gets to check out Endless Tales, and you'll both feel great about it. The more the merrier — great stories are even better when shared."
   }
 ];
 
@@ -95,7 +71,7 @@ export default function FAQsPage() {
               {openIndex === index && (
                 <div className="px-4 pb-4">
                   <div className="border-t border-gray-800 pt-4">
-                    <p className="text-gray-300 leading-relaxed">{faq.answer}</p>
+                    <p className="text-gray-300 leading-relaxed whitespace-pre-line">{faq.answer}</p>
                   </div>
                 </div>
               )}
