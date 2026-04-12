@@ -1,3 +1,16 @@
+/**
+ * /api/auth/google — Initiates Google OAuth flow
+ *
+ * ⚠️  DO NOT CHANGE sameSite TO 'lax' — THIS WILL BREAK iOS PWA LOGIN ⚠️
+ *
+ * iOS PWA (home screen app) runs in a completely isolated cookie container,
+ * separate from Safari. When Google OAuth redirects back to the app, cookies
+ * set with sameSite:'lax' are dropped at the PWA/Safari boundary.
+ *
+ * sameSite:'none' + secure:true is the ONLY setting that survives the
+ * PWA → Google → PWA redirect chain on iOS. Confirmed working April 12 2026.
+ * Do not revert this.
+ */
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
@@ -38,7 +51,7 @@ export async function GET(request: Request) {
 
   const response = NextResponse.redirect(data.url)
 
-  // sameSite:none so this cookie survives the PWA → Google → PWA redirect chain
+  // ⚠️  sameSite:'none' is REQUIRED for iOS PWA — do not change to 'lax'
   response.cookies.set('auth_return_to', returnTo, {
     httpOnly: true,
     secure: true,

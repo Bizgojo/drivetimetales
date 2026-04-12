@@ -1,3 +1,12 @@
+/**
+ * /auth/callback — Server-side OAuth callback
+ *
+ * ⚠️  DO NOT CHANGE sameSite TO 'lax' ON ANY COOKIE HERE — THIS WILL BREAK iOS PWA LOGIN ⚠️
+ *
+ * iOS PWA runs in an isolated cookie container separate from Safari.
+ * sameSite:'none' + secure:true on ALL cookies is the ONLY configuration
+ * that allows the PWA to maintain a login session. Confirmed April 12 2026.
+ */
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
@@ -70,7 +79,7 @@ export async function GET(request: Request) {
   const returnTo = cookieStore.get('auth_return_to')?.value || '/home'
   const response = NextResponse.redirect(`${origin}${returnTo}`)
 
-  // sameSite:none so session cookies work across the PWA/Safari boundary
+  // ⚠️  sameSite:'none' + secure:true REQUIRED on ALL cookies for iOS PWA
   cookiesToSet.forEach(({ name, value, options }) => {
     response.cookies.set(name, value, {
       ...(options as Parameters<typeof response.cookies.set>[2]),
