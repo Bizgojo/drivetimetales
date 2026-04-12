@@ -127,9 +127,19 @@ export async function POST(req: NextRequest) {
     await generateSilence(sil075Path, 0.75)
     await generateSilence(sil100Path, 1.0)
 
+    // Architecture: produce story_body.mp3 (segments+music only) for queue mode
+    // The player handles: sting → personalized Belle intro → story_body → outro
+    const storyBodyPath = path.join(tmpDir, 'story_body.mp3')
+
     if (!musicPath) {
-      console.log('  No music — sting then silence then Belle B intro sequentially')
-      // Play sting, then 0.75s silence, then Belle B intro, then story segments
+      console.log('  No music — concatenating segments only for story_body')
+      const bodyConcatFile = path.join(tmpDir, 'body_concat.txt')
+      await fs.writeFile(bodyConcatFile, normalizedSegPaths.map(p => `file '${p}'`).join('\n'))
+      await execFileAsync(FFMPEG_PATH, [
+        '-f', 'concat', '-safe', '0', '-i', bodyConcatFile,
+        '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', storyBodyPath
+      ])
+      // Also produce full final_mix for backward compat
       const concatFile = path.join(tmpDir, 'concat.txt')
       await fs.writeFile(concatFile, [stingPath, sil075Path, normalizedIntroPath, sil075Path, ...normalizedSegPaths, sil100Path, normalizedOutroPath].map(p => `file '${p}'`).join('\n'))
       await execFileAsync(FFMPEG_PATH, [
@@ -138,6 +148,30 @@ export async function POST(req: NextRequest) {
       ])
     } else {
       console.log('  Full mix with background music')
+      // Mix segments with music for story_body
+      const segConcatFile = path.join(tmpDir, 'seg_concat.txt')
+      await fs.writeFile(segConcatFile, segPaths.map(p => `file '${p}'`).join('\n'))
+      const segsOnlyPath = path.join(tmpDir, 'segs_only.mp3')
+      await execFileAsync(FFMPEG_PATH, [
+        '-f', 'concat', '-safe', '0', '-i', segConcatFile,
+        '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', segsOnlyPath
+      ])
+      const segsDur = await getAudioDuration(segsOnlyPath)
+      const musicBodyMixedPath = path.join(tmpDir, 'music_body.mp3')
+      await execFileAsync(FFMPEG_PATH, [
+        '-i', musicPath,
+        '-filter_complex',
+        `[0:a]atrim=0:${segsDur + 3},asetpts=PTS-STARTPTS,afade=t=in:st=0:d=2.5,afade=t=out:st=${segsDur}:d=3,volume=0.15[music_out]`,
+        '-map', '[music_out]',
+        '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', musicBodyMixedPath
+      ])
+      await execFileAsync(FFMPEG_PATH, [
+        '-i', segsOnlyPath, '-i', musicBodyMixedPath,
+        '-filter_complex', '[0:a][1:a]amix=inputs=2:duration=first:normalize=0[mixed]',
+        '-map', '[mixed]',
+        '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', storyBodyPath
+      ])
+      // Also produce full final_mix for backward compat
       const dialogueParts = [stingPath, sil075Path, normalizedIntroPath, sil075Path, ...segPaths]
       const dialogueConcatFile = path.join(tmpDir, 'dialogue.txt')
       await fs.writeFile(dialogueConcatFile, dialogueParts.map(p => `file '${p}'`).join('\n'))
@@ -146,14 +180,10 @@ export async function POST(req: NextRequest) {
         '-f', 'concat', '-safe', '0', '-i', dialogueConcatFile,
         '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', dialoguePath
       ])
-
-      const stingDur  = await getAudioDuration(stingPath)
-      const introDur  = await getAudioDuration(introPath)
-      const segsDur   = await getAudioDuration(dialoguePath) - stingDur - introDur - 0.75
-      const musicStart      = stingDur + introDur + 0.75
-      const musicStoryStart = musicStart + 2.5
-      const musicEnd        = musicStoryStart + segsDur
-
+      const stingDur = await getAudioDuration(stingPath)
+      const introDur = await getAudioDuration(introPath)
+      const musicStart = stingDur + introDur + 0.75
+      const musicEnd = musicStart + segsDur
       const musicMixedPath = path.join(tmpDir, 'music_mixed.mp3')
       const delayMs = Math.round(musicStart * 1000)
       await execFileAsync(FFMPEG_PATH, [
@@ -163,7 +193,6 @@ export async function POST(req: NextRequest) {
         '-map', '[music_out]',
         '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', musicMixedPath
       ])
-
       const mixedPath = path.join(tmpDir, 'mixed.mp3')
       await execFileAsync(FFMPEG_PATH, [
         '-i', dialoguePath, '-i', musicMixedPath,
@@ -171,7 +200,6 @@ export async function POST(req: NextRequest) {
         '-map', '[mixed]',
         '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', mixedPath
       ])
-
       const finalConcatFile = path.join(tmpDir, 'final.txt')
       await fs.writeFile(finalConcatFile, [mixedPath, sil100Path, normalizedOutroPath].map(p => `file '${p}'`).join('\n'))
       await execFileAsync(FFMPEG_PATH, [
@@ -183,15 +211,27 @@ export async function POST(req: NextRequest) {
     const durationSecs = await getAudioDuration(outputPath)
     console.log(`  ✅ Mix complete: ${durationSecs.toFixed(1)}s`)
 
+    // Upload story_body.mp3 (segments only — for queue mode personalization)
+    const bodyBuffer = await fs.readFile(storyBodyPath)
+    const bodyStoragePath = `asc3/${storyId}/story_body.mp3`
+    const { error: bodyUploadErr } = await supabase.storage.from('audio').upload(bodyStoragePath, bodyBuffer, { contentType: 'audio/mpeg', upsert: true })
+    if (bodyUploadErr) throw new Error(`Body upload error: ${bodyUploadErr.message}`)
+    const storyBodyUrl = `${BASE_STORAGE}/${bodyStoragePath}`
+
+    // Upload final_mix.mp3 (full mix for backward compat)
     const mixBuffer = await fs.readFile(outputPath)
     const mixPath = `asc3/${storyId}/final_mix.mp3`
     const { error: uploadErr } = await supabase.storage.from('audio').upload(mixPath, mixBuffer, { contentType: 'audio/mpeg', upsert: true })
     if (uploadErr) throw new Error(`Upload error: ${uploadErr.message}`)
-
     const finalAudioUrl = `${BASE_STORAGE}/${mixPath}`
-    await supabase.from('stories').update({ audio_url: finalAudioUrl }).eq('id', storyId)
 
-    return NextResponse.json({ success: true, finalAudioUrl, durationSecs })
+    // Update story — story_audio_url for queue mode, audio_url for fallback
+    await supabase.from('stories').update({
+      story_audio_url: storyBodyUrl,
+      audio_url: finalAudioUrl
+    }).eq('id', storyId)
+
+    return NextResponse.json({ success: true, finalAudioUrl, storyBodyUrl, durationSecs })
   } catch (err) {
     console.error('render-final-mix error:', err)
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 })
