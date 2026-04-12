@@ -44,7 +44,23 @@ export async function POST(req: NextRequest) {
   try {
     // Bake the name into the text
     const personalizedText = introText.replace(/\[LISTENER_NAME\]/g, firstName)
-    const buf = await generateAudio(personalizedText)
+    const monoBuf = await generateAudio(personalizedText)
+    // Convert mono to stereo so it plays seamlessly with stereo story segments on iOS
+    const { execFile } = require('child_process')
+    const { promisify } = require('util')
+    const execFileAsync = promisify(execFile)
+    const os = require('os')
+    const path = require('path')
+    const fsNode = require('fs')
+    const tmpIn = path.join(os.tmpdir(), `belle_mono_${Date.now()}.mp3`)
+    const tmpOut = path.join(os.tmpdir(), `belle_stereo_${Date.now()}.mp3`)
+    fsNode.writeFileSync(tmpIn, monoBuf)
+    await execFileAsync('/opt/homebrew/bin/ffmpeg', [
+      '-i', tmpIn, '-ac', '2', '-ar', '44100', '-b:a', '192k', '-y', tmpOut
+    ])
+    const buf = fsNode.readFileSync(tmpOut)
+    fsNode.unlinkSync(tmpIn)
+    fsNode.unlinkSync(tmpOut)
     const { error } = await supabase.storage.from('audio').upload(cacheKey, buf, {
       contentType: 'audio/mpeg', upsert: true
     })
