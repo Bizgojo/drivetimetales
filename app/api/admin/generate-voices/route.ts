@@ -14,50 +14,143 @@ const BELLE_B_VOICE_ID = 'KWDD3Wyq30ZF5NEL01EJ'
 const BASE_STORAGE = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio`
 const EL_SETTINGS = { stability: 0.5, similarity_boost: 0.75, style: 0.0, use_speaker_boost: true }
 
-const MALE_VOICE_NAMES = ['Cole Hargrove', 'Elliott Crane', 'Finn Calloway', 'James Alcott', 'Marcus Hale', 'Ray Dolan']
-const FEMALE_VOICE_NAMES = ['Iris Calloway', 'June Harlow', 'Morgan Veil', 'Nora Ashby', 'Quinn Merritt', 'Sage Wilder']
+// Permanent narrator voices — excluded from character pool
+const NARRATOR_VOICE_NAMES = ['Cole Hargrove','Elliott Crane','Finn Calloway','James Alcott','Marcus Hale','Ray Dolan','Iris Calloway','June Harlow','Morgan Veil','Nora Ashby','Quinn Merritt','Sage Wilder']
+const BELLE_B_ID = 'KWDD3Wyq30ZF5NEL01EJ'
 
-async function findVoiceForCharacter(
-  characterName: string,
-  gender: 'male' | 'female' | 'unknown',
-  charDescription: string,
-  narratorVoiceId: string,
-  voiceByName: Record<string,string>
-): Promise<string> {
-  const cacheKey = `char:${characterName.toLowerCase().replace(/[^a-z0-9]/g,'-')}`
+// Load all My Voices from ElevenLabs — used as the character voice pool
+async function loadMyVoices(): Promise<any[]> {
   try {
-    const { data: cached } = await supabase.from('narrator_voices').select('elevenlabs_voice_id').eq('name', cacheKey).single()
-    if (cached?.elevenlabs_voice_id) { console.log(`  Cache hit: ${characterName}`); return cached.elevenlabs_voice_id }
-    const lower = charDescription.toLowerCase()
-    const ageNum = lower.match(/(\d+)/)?.[1] ? parseInt(lower.match(/(\d+)/)![1]) : 30
-    const age = ageNum < 25 ? 'young' : ageNum < 55 ? 'middle_aged' : 'old'
-    const accent = lower.includes('british')||lower.includes('london') ? 'british'
-      : lower.includes('australian') ? 'australian'
-      : lower.includes('irish') ? 'irish'
-      : lower.includes('african')||lower.includes('nigerian') ? 'african'
-      : lower.includes('indian') ? 'indian'
-      : 'american'
-    let voices: any[] = []
-    const params = new URLSearchParams({ gender: gender==='male'?'male':'female', age, accent, use_cases: 'characters_animation', page_size: '30', category: 'high_quality' })
-    const res = await fetch(`https://api.elevenlabs.io/v1/shared-voices?${params}`, { headers: { 'xi-api-key': EL_API_KEY } })
-    if (res.ok) { const d = await res.json(); voices = d.voices || [] }
-    if (voices.length === 0) {
-      const p2 = new URLSearchParams({ gender: gender==='male'?'male':'female', age, use_cases: 'characters_animation', page_size: '30' })
-      const r2 = await fetch(`https://api.elevenlabs.io/v1/shared-voices?${p2}`, { headers: { 'xi-api-key': EL_API_KEY } })
-      if (r2.ok) { const d2 = await r2.json(); voices = d2.voices || [] }
-    }
-    if (voices.length === 0) return gender==='male' ? (voiceByName[MALE_VOICE_NAMES[0]]||narratorVoiceId) : (voiceByName[FEMALE_VOICE_NAMES[0]]||narratorVoiceId)
-    const pick = voices[Math.floor(Math.random() * Math.min(5, voices.length))]
-    const addRes = await fetch(`https://api.elevenlabs.io/v1/voices/add/${pick.voice_id}`, { method: 'POST', headers: { 'xi-api-key': EL_API_KEY } })
-    const addData = addRes.ok ? await addRes.json() : null
-    const finalVoiceId = addData?.voice_id || pick.voice_id
-    await supabase.from('narrator_voices').upsert({ name: cacheKey, elevenlabs_voice_id: finalVoiceId }, { onConflict: 'name' })
-    console.log(`  Voice for ${characterName}: ${pick.name} (${finalVoiceId})`)
-    return finalVoiceId
+    const res = await fetch('https://api.elevenlabs.io/v1/voices', { headers: { 'xi-api-key': EL_API_KEY } })
+    if (!res.ok) return []
+    const data = await res.json()
+    // Filter to only usable character voices — exclude narrators, Belle B, ET voices, generated voices
+    return (data.voices || []).filter((v: any) => {
+      if (v.voice_id === BELLE_B_ID) return false
+      if (v.labels?.language && v.labels.language !== 'en') return false
+      if (v.category === 'generated') return false
+      if (NARRATOR_VOICE_NAMES.includes(v.name)) return false
+      return true
+    })
   } catch(e) {
-    console.warn(`  Voice search failed for ${characterName}:`, e)
-    return gender==='male' ? (voiceByName[MALE_VOICE_NAMES[0]]||narratorVoiceId) : (voiceByName[FEMALE_VOICE_NAMES[0]]||narratorVoiceId)
+    console.warn('Failed to load My Voices:', e)
+    return []
   }
+}
+
+// Extract EL-compatible attributes from character description
+function parseCharacterMeta(description: string): { gender: string; age: string; accent: string; tones: string[] } {
+  const d = description.toLowerCase()
+  // Gender
+  const gender = d.includes('female') || d.includes('woman') || d.includes('girl') ? 'female'
+    : d.includes('male') || d.includes('man') || d.includes('boy') ? 'male' : ''
+  // Age
+  const ageNum = d.match(/(\d+)/)?.[1] ? parseInt(d.match(/(\d+)/)![1]) : 35
+  const age = ageNum < 25 ? 'young' : ageNum < 55 ? 'middle_aged' : 'old'
+  // Accent — map to EL accent labels
+  const accent = d.includes('british') || d.includes('english') || d.includes('london') ? 'british'
+    : d.includes('irish') ? 'irish'
+    : d.includes('scottish') ? 'scottish'
+    : d.includes('australian') ? 'australian'
+    : d.includes('southern') || d.includes('southern us') ? 'us southern'
+    : d.includes('new england') || d.includes('boston') ? 'american'
+    : d.includes('midwest') ? 'american'
+    : d.includes('west coast') || d.includes('california') ? 'american'
+    : d.includes('canadian') ? 'canadian'
+    : 'american'
+  // Tone descriptives — map character traits to EL descriptive labels
+  const toneMap: Record<string,string> = {
+    'calm': 'calm', 'quiet': 'calm', 'measured': 'calm', 'soft': 'calm', 'gentle': 'gentle',
+    'intense': 'intense', 'fierce': 'intense', 'aggressive': 'intense', 'passionate': 'intense',
+    'deep': 'deep', 'resonant': 'deep', 'low': 'deep', 'baritone': 'deep',
+    'warm': 'warm', 'friendly': 'pleasant', 'approachable': 'pleasant', 'kind': 'gentle',
+    'raspy': 'raspy', 'gravelly': 'raspy', 'rough': 'rough', 'hoarse': 'raspy',
+    'husky': 'husky', 'smoky': 'husky',
+    'confident': 'confident', 'authoritative': 'confident', 'commanding': 'serious',
+    'wise': 'wise', 'mature': 'mature', 'experienced': 'mature',
+    'nervous': 'calm', 'anxious': 'calm', 'timid': 'gentle',
+    'sarcastic': 'sassy', 'dry': 'casual', 'sardonic': 'casual',
+    'upbeat': 'upbeat', 'cheerful': 'upbeat', 'bright': 'upbeat',
+    'serious': 'serious', 'stern': 'serious', 'formal': 'professional',
+    'professional': 'professional', 'crisp': 'crisp', 'precise': 'professional',
+    'casual': 'casual', 'relaxed': 'relaxed', 'laid-back': 'chill',
+    'whispery': 'whispery', 'breathy': 'soft', 'intimate': 'soft',
+    'gruff': 'rough', 'tough': 'intense', 'dark': 'serious',
+    'meditative': 'meditative', 'soothing': 'calm', 'peaceful': 'meditative',
+  }
+  const tones: string[] = []
+  for (const [trait, label] of Object.entries(toneMap)) {
+    if (d.includes(trait) && !tones.includes(label)) tones.push(label)
+  }
+  return { gender, age, accent, tones }
+}
+
+// Score a voice candidate against character requirements
+function scoreVoice(voice: any, meta: { gender: string; age: string; accent: string; tones: string[] }): number {
+  const labels = voice.labels || {}
+  let score = 0
+  // Gender — hard requirement, massive penalty for mismatch
+  if (meta.gender && labels.gender) {
+    if (labels.gender.toLowerCase() === meta.gender.toLowerCase()) score += 100
+    else return -999 // Wrong gender — never use
+  }
+  // Age match
+  if (labels.age === meta.age) score += 20
+  else if (labels.age && meta.age) {
+    const ages = ['young','middle_aged','old']
+    const diff = Math.abs(ages.indexOf(labels.age) - ages.indexOf(meta.age))
+    score += Math.max(0, 10 - diff * 10)
+  }
+  // Accent match
+  if (meta.accent && labels.accent) {
+    if (labels.accent.toLowerCase() === meta.accent.toLowerCase()) score += 15
+    else if (meta.accent === 'american' && labels.accent === 'american') score += 15
+  }
+  // Tone/descriptive match
+  const desc = (labels.descriptive || '').toLowerCase()
+  for (const tone of meta.tones) {
+    if (desc.includes(tone.toLowerCase())) score += 10
+  }
+  // Prefer narrative_story use case
+  const useCase = (labels.use_case || '').toLowerCase()
+  if (useCase.includes('narrative') || useCase.includes('story')) score += 8
+  else if (useCase.includes('character')) score += 5
+  return score
+}
+
+// Find best matching voice from My Voices pool
+function findVoiceForCharacter(
+  characterName: string,
+  meta: { gender: string; age: string; accent: string; tones: string[] },
+  myVoices: any[],
+  usedVoiceIds: Set<string>,
+  narratorVoiceId: string
+): string {
+  // Score all candidates
+  const scored = myVoices
+    .filter(v => !usedVoiceIds.has(v.voice_id) && v.voice_id !== narratorVoiceId && v.voice_id !== BELLE_B_ID)
+    .map(v => ({ voice: v, score: scoreVoice(v, meta) }))
+    .filter(x => x.score > -999) // Remove wrong gender
+    .sort((a, b) => b.score - a.score)
+
+  if (scored.length === 0) {
+    // Gender mismatch fallback — try any voice of right gender
+    const genderFallback = myVoices.find(v =>
+      !usedVoiceIds.has(v.voice_id) &&
+      v.voice_id !== narratorVoiceId &&
+      (v.labels?.gender?.toLowerCase() === meta.gender.toLowerCase())
+    )
+    if (genderFallback) {
+      console.log(`  ${characterName}: gender fallback → ${genderFallback.name}`)
+      return genderFallback.voice_id
+    }
+    console.log(`  ${characterName}: absolute fallback`)
+    return narratorVoiceId
+  }
+
+  const pick = scored[0].voice
+  console.log(`  ${characterName}: ${pick.name} (score:${scored[0].score}, ${pick.labels?.gender}, ${pick.labels?.age}, ${pick.labels?.accent}, ${pick.labels?.descriptive})`)
+  return pick.voice_id
 }
 
 interface ScriptLine {
@@ -205,27 +298,29 @@ export async function POST(req: NextRequest) {
     if (!resolvedNarratorVoiceId) resolvedNarratorVoiceId = voiceByName['Cole Hargrove']
     if (!resolvedNarratorVoiceId) return NextResponse.json({ success: false, error: 'No narrator voice found' }, { status: 400 })
     const characterGuide = parseCharacterGuide(script)
-    const narratorName = allVoices?.find((v: any) => v.elevenlabs_voice_id === resolvedNarratorVoiceId)?.name || ''
-    const maleVoices = MALE_VOICE_NAMES.filter(n => n !== narratorName && voiceByName[n]).map(n => voiceByName[n])
-    const femaleVoices = FEMALE_VOICE_NAMES.filter(n => voiceByName[n]).map(n => voiceByName[n])
-    // Build voice map using ElevenLabs library search
+    // Load My Voices pool once — used for all character assignments
+    const myVoices = await loadMyVoices()
+    console.log(`  My Voices pool: ${myVoices.length} voices`)
+    const usedVoiceIds = new Set<string>([resolvedNarratorVoiceId, BELLE_B_ID])
+    // Build voice map using local My Voices scoring
     const voiceMap: Record<string, string> = {}
     for (const char of characterGuide) {
       const key = char.name.toUpperCase()
       // Check if manually overridden
       if (characterVoices?.[char.name] || characterVoices?.[key]) {
         voiceMap[key] = (characterVoices[char.name] || characterVoices[key]) as string
+        usedVoiceIds.add(voiceMap[key])
         continue
       }
-      // Child characters (under 12) use female voice — sounds more natural in audio drama
-      const ageMatch = char.description?.match(/(\d+)/)
-      const age = ageMatch ? parseInt(ageMatch[1]) : 30
-      const effectiveGender = (age < 12) ? 'female' : char.gender
-      // Search EL library for best matching voice
-      voiceMap[key] = await findVoiceForCharacter(
-        char.name, effectiveGender, char.description || char.name,
-        resolvedNarratorVoiceId, voiceByName
-      )
+      // Parse character description into EL-compatible attributes
+      const meta = parseCharacterMeta(char.description || char.name)
+      // Children under 12 always get female voice
+      const ageNum = char.description?.match(/(\d+)/)?.[1] ? parseInt(char.description.match(/(\d+)/)![1]) : 30
+      if (ageNum < 12) meta.gender = 'female'
+      else if (!meta.gender) meta.gender = char.gender === 'male' ? 'male' : char.gender === 'female' ? 'female' : ''
+      // Find best matching voice from pool
+      voiceMap[key] = findVoiceForCharacter(char.name, meta, myVoices, usedVoiceIds, resolvedNarratorVoiceId)
+      usedVoiceIds.add(voiceMap[key])
     }
     // Apply any remaining manual overrides
     if (characterVoices) Object.entries(characterVoices).forEach(([name, id]) => { voiceMap[name.toUpperCase()] = id as string })
