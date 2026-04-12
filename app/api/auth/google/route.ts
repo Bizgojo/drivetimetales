@@ -7,11 +7,9 @@ export async function GET(request: Request) {
   const returnTo = url.searchParams.get('returnTo') || '/home'
   const origin = url.origin
 
-  // Keep redirect URL clean (no query params) so it matches Supabase's allowed redirect list exactly.
-  // Pass returnTo via a short-lived cookie that the callback Route Handler will read.
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || origin
   if (!process.env.NEXT_PUBLIC_APP_URL) {
-    console.warn('[Google OAuth] WARNING: NEXT_PUBLIC_APP_URL is not set — falling back to request origin. OAuth may break in some environments. Set NEXT_PUBLIC_APP_URL in .env.local and Vercel.')
+    console.warn('[Google OAuth] WARNING: NEXT_PUBLIC_APP_URL is not set')
   }
   const redirectTo = `${appUrl}/auth/callback`
 
@@ -38,13 +36,14 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${origin}/signin?error=auth_failed`)
   }
 
-  // Set the returnTo cookie so the callback handler knows where to send the user
   const response = NextResponse.redirect(data.url)
+
+  // sameSite:none so this cookie survives the PWA → Google → PWA redirect chain
   response.cookies.set('auth_return_to', returnTo, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 300, // 5 minutes — just long enough to survive the OAuth round-trip
+    secure: true,
+    sameSite: 'none',
+    maxAge: 300,
     path: '/',
   })
   return response

@@ -1,30 +1,14 @@
-/**
- * /auth/callback — Server-side OAuth callback (works on iOS Safari, Android, all browsers)
- *
- * Exchanges the OAuth code for a session server-side using Supabase SSR.
- * This avoids all client-side PKCE / sessionStorage / localStorage issues
- * that break Google Sign-In on iOS Safari (ITP).
- *
- * Flow:
- *   1. User clicks "Continue with Google" → /api/auth/google (server route)
- *   2. /api/auth/google → sets auth_return_to cookie + redirects to Google
- *   3. Google → /auth/callback?code=...
- *   4. This route exchanges code → sets session cookies → redirects to /home (or returnTo)
- */
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
-  // Use the configured app URL so redirect works correctly in all environments.
-  // request.url origin can be the Supabase callback domain, not the app domain.
   const origin = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin
   const code = searchParams.get('code')
   const errorParam = searchParams.get('error')
   const errorDesc = searchParams.get('error_description')
 
-  // Handle OAuth errors from Google/Supabase
   if (errorParam) {
     console.error('[AuthCallback] OAuth error:', errorParam, errorDesc)
     return NextResponse.redirect(
@@ -38,8 +22,6 @@ export async function GET(request: Request) {
   }
 
   const cookieStore = cookies()
-
-  // Collect cookies Supabase wants to set, then apply to the response
   const cookiesToSet: Array<{ name: string; value: string; options: Record<string, unknown> }> = []
 
   const supabase = createServerClient(
@@ -48,24 +30,27 @@ export async function GET(request: Request) {
     {
       cookies: {
         getAll: () => cookieStore.getAll(),
-        setAll: (toSet) => {
-          cookiesToSet.push(...toSet)
-        },
+        setAll: (toSet) => { cookiesToSet.push(...toSet) },
       },
     }
   )
 
   const { data, error } = await supabase.auth.exchangeCodeForSession(code)
-  console.log('[AuthCallback] Exchange result:', { hasSession: !!data?.session, hasError: !!error, errorMsg: error?.message, userId: data?.session?.user?.id?.slice(0,8) })
-  console.log('[AuthCallback] Cookies to set:', cookiesToSet.length)
-  console.log('[AuthCallback] Return URL:', origin)
+  console.log('[AuthCallback] Exchange result:', {
+    hasSession: !!data?.session,
+    hasError: !!error,
+    errorMsg: error?.message,
+    userId: data?.session?.user?.id?.slice(0, 8),
+    cookieCount: cookiesToSet.length,
+  })
 
   if (error || !data.session) {
     console.error('[AuthCallback] Code exchange failed:', error?.message)
-    return NextResponse.redirect(`${origin}/signin?error=auth_failed&reason=${encodeURIComponent(error?.message || 'no_session')}`)
+    return NextResponse.redirect(
+      `${origin}/signin?error=auth_failed&reason=${encodeURIComponent(error?.message || 'no_session')}`
+    )
   }
 
-  // Ensure user profile exists in DB (non-blocking)
   try {
     const { user } = data.session
     fetch(`${origin}/api/user/create`, {
@@ -80,23 +65,20 @@ export async function GET(request: Request) {
           user.email?.split('@')[0],
       }),
     }).catch((e) => console.error('[AuthCallback] User create error (non-fatal):', e))
-  } catch (e) {
-    // non-fatal
-  }
+  } catch (e) {}
 
-  // Read returnTo from cookie set by /api/auth/google
   const returnTo = cookieStore.get('auth_return_to')?.value || '/home'
-  console.log('[AuthCallback] returnTo:', returnTo, '| auth_return_to cookie:', cookieStore.get('auth_return_to')?.value)
-
   const response = NextResponse.redirect(`${origin}${returnTo}`)
 
-  // Apply all session cookies Supabase wants to set
+  // sameSite:none so session cookies work across the PWA/Safari boundary
   cookiesToSet.forEach(({ name, value, options }) => {
-    response.cookies.set(name, value, options as Parameters<typeof response.cookies.set>[2])
+    response.cookies.set(name, value, {
+      ...(options as Parameters<typeof response.cookies.set>[2]),
+      sameSite: 'none',
+      secure: true,
+    })
   })
 
-  // Clear the returnTo cookie
   response.cookies.set('auth_return_to', '', { maxAge: 0, path: '/' })
-
   return response
 }

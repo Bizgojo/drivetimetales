@@ -1,12 +1,3 @@
-/**
- * supabase-browser.ts
- *
- * Cookie-aware Supabase client for browser/client components ONLY.
- * Uses @supabase/ssr createBrowserClient so sessions are stored in cookies
- * that middleware can read server-side.
- *
- * DO NOT import in API routes or server components.
- */
 import { createBrowserClient } from '@supabase/ssr'
 
 export const supabaseBrowser = createBrowserClient(
@@ -15,7 +6,7 @@ export const supabaseBrowser = createBrowserClient(
   {
     cookieOptions: {
       maxAge: 60 * 60 * 24 * 365,
-      sameSite: 'lax',
+      sameSite: 'none',
       secure: true,
       path: '/',
     },
