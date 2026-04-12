@@ -6,6 +6,37 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+const COOLDOWN_DAYS = 7;
+
+async function getLastSubmission(email: string) {
+  const since = new Date(Date.now() - COOLDOWN_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const { data } = await supabaseAdmin
+    .from('support_messages')
+    .select('created_at')
+    .eq('email', email)
+    .like('subject', '[Story Idea]%')
+    .gte('created_at', since)
+    .order('created_at', { ascending: false })
+    .limit(1);
+  return data?.[0] ?? null;
+}
+
+// GET — check eligibility for this email
+export async function GET(request: NextRequest) {
+  const email = request.nextUrl.searchParams.get('email');
+  if (!email) return NextResponse.json({ eligible: true });
+
+  try {
+    const last = await getLastSubmission(email);
+    if (!last) return NextResponse.json({ eligible: true });
+
+    const nextAvailable = new Date(new Date(last.created_at).getTime() + COOLDOWN_DAYS * 24 * 60 * 60 * 1000);
+    return NextResponse.json({ eligible: false, nextAvailable: nextAvailable.toISOString(), lastSubmitted: last.created_at });
+  } catch {
+    return NextResponse.json({ eligible: true });
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { name, email, genre, title, idea, userId } = await request.json();
@@ -17,6 +48,16 @@ export async function POST(request: NextRequest) {
     const wordCount = idea.trim().split(/\s+/).filter(Boolean).length;
     if (wordCount > 50) {
       return NextResponse.json({ error: 'Story idea must be 50 words or less' }, { status: 400 });
+    }
+
+    // Enforce one submission per 7 days
+    const last = await getLastSubmission(email);
+    if (last) {
+      const nextAvailable = new Date(new Date(last.created_at).getTime() + COOLDOWN_DAYS * 24 * 60 * 60 * 1000);
+      return NextResponse.json(
+        { error: 'You can only submit one story idea per week.', nextAvailable: nextAvailable.toISOString() },
+        { status: 429 }
+      );
     }
 
     // Store in support_messages with a [Story Idea] subject prefix

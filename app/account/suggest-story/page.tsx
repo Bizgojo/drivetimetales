@@ -41,6 +41,8 @@ export default function SuggestStoryPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
+  const [cooldown, setCooldown] = useState<{ active: boolean; nextAvailable: Date | null }>({ active: false, nextAvailable: null });
+  const [checkingEligibility, setCheckingEligibility] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -52,6 +54,24 @@ export default function SuggestStoryPage() {
       }));
     }
   }, [user]);
+
+  // Check cooldown once email is known
+  useEffect(() => {
+    const email = form.email || user?.email;
+    if (!email) return;
+    setCheckingEligibility(true);
+    fetch(`/api/suggest-story?email=${encodeURIComponent(email)}`)
+      .then(r => r.json())
+      .then(data => {
+        if (!data.eligible) {
+          setCooldown({ active: true, nextAvailable: new Date(data.nextAvailable) });
+        } else {
+          setCooldown({ active: false, nextAvailable: null });
+        }
+      })
+      .catch(() => {})
+      .finally(() => setCheckingEligibility(false));
+  }, [user?.email]);
 
   const wordCount = form.idea.trim().split(/\s+/).filter(Boolean).length;
   const allTermsAccepted = termsChecked.every(Boolean);
@@ -93,6 +113,44 @@ export default function SuggestStoryPage() {
       setSubmitting(false);
     }
   };
+
+  const formatDate = (d: Date) =>
+    d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+
+  if (checkingEligibility) {
+    return (
+      <div className="min-h-screen bg-gray-950 text-white">
+        <StickyHeaderFull />
+        <div className="flex items-center justify-center py-20">
+          <div className="text-gray-400 text-sm">Checking eligibility…</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (cooldown.active && cooldown.nextAvailable) {
+    return (
+      <div className="min-h-screen bg-gray-950 text-white">
+        <StickyHeaderFull />
+        <div className="flex flex-col items-center justify-center px-6 py-20 text-center">
+          <span className="text-6xl mb-6">⏳</span>
+          <h1 className="text-2xl font-bold text-white mb-3">You're All Set for Now</h1>
+          <p className="text-gray-400 max-w-sm mb-3">
+            You already submitted an idea this week — we're on it! You can submit your next idea on:
+          </p>
+          <div className="bg-gray-900 border border-gray-800 rounded-xl px-6 py-4 mb-8">
+            <span className="text-orange-400 font-bold text-lg">{formatDate(cooldown.nextAvailable)}</span>
+          </div>
+          <button
+            onClick={() => router.push('/account/faqs')}
+            className="px-6 py-3 bg-orange-500 text-black font-bold rounded-xl"
+          >
+            Back to FAQs
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (submitted) {
     return (
