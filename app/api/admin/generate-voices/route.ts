@@ -164,6 +164,7 @@ interface CharacterInfo {
   name: string
   gender: 'male' | 'female' | 'unknown'
   description: string
+  isProtagonist: boolean
 }
 
 function parseCharacterGuide(script: string): CharacterInfo[] {
@@ -179,7 +180,8 @@ function parseCharacterGuide(script: string): CharacterInfo[] {
     let gender: CharacterInfo['gender'] = 'unknown'
     if (lower.includes(', male') || lower.includes(' male,') || lower.includes('male ')) gender = 'male'
     if (lower.includes(', female') || lower.includes(' female,') || lower.includes('female ')) gender = 'female'
-    chars.push({ name, gender, description: line })
+    const isProtagonist = lower.includes('protagonist') || lower.includes('narrator') || chars.length === 0
+    chars.push({ name, gender, description: line, isProtagonist })
   }
   return chars
 }
