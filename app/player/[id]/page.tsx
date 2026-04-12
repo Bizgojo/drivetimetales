@@ -555,13 +555,26 @@ function PlayerContent() {
           } else advanceQueue()
         }}
         onCanPlay={() => { if (!isASC3 && resumeRef.current > 0 && audioRef.current) audioRef.current.currentTime = resumeRef.current }}
-        onError={() => {
+        onError={(e) => {
           // If a segment fails to load, skip to next segment instead of dying
           if (isASC3 && queue.length > 0) {
-            const ni = queueIndex + 1
-            if (ni < queue.length) {
-              console.warn('[player] Segment failed, skipping to next:', queue[queueIndex]?.url)
-              advanceQueue()
+            const failedUrl = queue[queueIndex]?.url || ''
+            console.error('[player] Segment failed:', failedUrl, e)
+            // For intro segments (sting/Belle), retry once before skipping
+            const isIntro = queue[queueIndex]?.type === 'intro'
+            if (isIntro && audioRef.current && !audioRef.current.dataset.retried) {
+              console.warn('[player] Retrying intro segment:', failedUrl)
+              audioRef.current.dataset.retried = '1'
+              audioRef.current.src = failedUrl
+              audioRef.current.load()
+              audioRef.current.play().catch(() => advanceQueue())
+            } else {
+              if (audioRef.current) delete audioRef.current.dataset.retried
+              const ni = queueIndex + 1
+              if (ni < queue.length) {
+                console.warn('[player] Skipping failed segment to next:', failedUrl)
+                advanceQueue()
+              }
             }
           }
         }}
