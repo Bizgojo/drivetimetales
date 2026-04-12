@@ -940,7 +940,7 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
       const resp = await fetch('/api/admin/produce-story', {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ storyId, script: s.script, title: s.title, author: s.author, narrator: NARRATOR_MAP[s.author] || s.narrator, genre: s.genre })
+        body: JSON.stringify({ storyId, script: s.script, title: s.title, author: s.author, narrator: NARRATOR_MAP[s.author] || s.narrator, genre: s.genre, seriesName: s.seriesName || '', episodeNumber: s.episodeNumber || 1, seriesTotal: s.totalEpisodes || 1, isSeries: s.isSeries || false })
       })
       const result = await resp.json()
       setProduceSteps(result.steps || {})
@@ -1045,6 +1045,9 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
       if (!mixResult.success) throw new Error(mixResult.error || 'Mix failed')
 
       setAudioProgress(prev => ({ ...prev, [s.id]: { step: 'done', voiceStats: voiceResult.stats, finalUrl: mixResult.finalAudioUrl } }))
+      // Publish story now that audio is ready
+      const supabaseId = supabaseIds[s.id] || s.id
+      await supabase.from('stories').update({ is_hidden: false }).eq('id', supabaseId)
     } catch(err) {
       setAudioProgress(prev => ({ ...prev, [s.id]: { ...prev[s.id], step: 'error', error: String(err) } }))
     }

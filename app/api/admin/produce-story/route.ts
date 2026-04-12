@@ -115,7 +115,7 @@ export async function POST(req: NextRequest) {
   }
   try {
     const body = await req.json()
-    const { storyId, script, title, author, narrator, genre } = body
+    const { storyId, script, title, author, narrator, genre, seriesName, episodeNumber, seriesTotal, isSeries } = body
     if (!script || !title || !author || !genre) {
       return NextResponse.json({ success: false, error: 'Missing required fields' }, { status: 400 })
     }
@@ -135,11 +135,17 @@ export async function POST(req: NextRequest) {
     // Create real DB row if storyId looks like a localStorage key
     let realStoryId = storyId
     if (!storyId || storyId.startsWith('story_')) {
-      const { data: inserted, error: insertErr } = await supabase.from('stories').insert({
+      const insertData: Record<string,any> = {
         title, author, genre,
-        duration_mins: 15, duration_label: '15 min', is_hidden: false,
+        duration_mins: 15, duration_label: '15 min', is_hidden: true,
         published_on: new Date().toISOString().split('T')[0]
-      }).select('id').single()
+      }
+      if (isSeries && seriesName) {
+        insertData.series_name = seriesName
+        insertData.episode_number = episodeNumber || 1
+        insertData.series_total = seriesTotal || 1
+      }
+      const { data: inserted, error: insertErr } = await supabase.from('stories').insert(insertData).select('id').single()
       if (insertErr) console.error('Story insert error:', JSON.stringify(insertErr))
       if (inserted?.id) realStoryId = inserted.id
       else return NextResponse.json({ success: false, error: `Failed to create story row: ${insertErr?.message}`, steps }, { status: 500 })
