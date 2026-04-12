@@ -495,7 +495,7 @@ function PlayerContent() {
           if (saveTimer.current) clearTimeout(saveTimer.current)
           saveTimer.current = setTimeout(() => saveProgress(t), 5000)
           const rem = e.currentTarget.duration - t
-          if (rem < 3 && rem > 0 && isASC3) {
+          if (rem < 6 && rem > 0 && isASC3) {
             const ni = queueIndex + 1
             if (ni < queue.length && !nextSegRef.current) { const p = new Audio(queue[ni].url); p.preload='auto'; p.load(); nextSegRef.current = p }
           }
