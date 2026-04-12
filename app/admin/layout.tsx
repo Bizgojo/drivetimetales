@@ -49,6 +49,7 @@ export default function AdminLayout({
     { href: '/admin/story-production', label: 'Story Production', icon: '🎬' },
     { href: '/admin/stories', label: 'Stories', icon: '📚' },
     { href: '/admin/guest-stories', label: 'Guest Stories', icon: '👤' },
+    { href: '/admin/story-ideas', label: 'Story Ideas', icon: '💡' },
     { href: '/admin/genres', label: 'Genres', icon: '🎭' },
     { href: '/admin/users', label: 'Users', icon: '👥' },
     { href: '/admin/analytics', label: 'Analytics', icon: '📈' },

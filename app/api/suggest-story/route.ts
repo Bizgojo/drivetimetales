@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
 export async function POST(request: NextRequest) {
   try {
-    const { name, email, genre, title, idea } = await request.json();
+    const { name, email, genre, title, idea, userId } = await request.json();
 
     if (!name || !email || !genre || !title || !idea) {
       return NextResponse.json({ error: 'All fields are required' }, { status: 400 });
@@ -13,11 +19,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Story idea must be 50 words or less' }, { status: 400 });
     }
 
-    if (process.env.RESEND_API_KEY) {
-      const emailBody = `
-New Story Idea Submission
-=========================
+    // Store in support_messages with a [Story Idea] subject prefix
+    // message field holds JSON with structured submission data
+    const { error: dbError } = await supabaseAdmin
+      .from('support_messages')
+      .insert({
+        user_id: userId || null,
+        name,
+        email,
+        subject: `[Story Idea] ${title}`,
+        message: JSON.stringify({ genre, title, idea, wordCount }),
+        status: 'new',
+      });
 
+    if (dbError) {
+      console.error('[SuggestStory] DB insert error:', dbError);
+      return NextResponse.json({ error: 'Failed to save submission' }, { status: 500 });
+    }
+
+    // Also fire off an email to Marc
+    if (process.env.RESEND_API_KEY) {
+      const emailBody = `New Story Idea Submission
+=========================
 From:   ${name} <${email}>
 Genre:  ${genre}
 Title:  ${title}
@@ -26,10 +49,9 @@ Story Idea (${wordCount} words):
 ${idea}
 
 ---
-Submitted via the Endless Tales app.
-      `.trim();
+Review it at: https://endless-tales.com/admin/story-ideas`;
 
-      const res = await fetch('https://api.resend.com/emails', {
+      await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
@@ -42,16 +64,7 @@ Submitted via the Endless Tales app.
           subject: `💡 Story Idea: ${title} (${genre})`,
           text: emailBody,
         }),
-      });
-
-      if (!res.ok) {
-        const err = await res.text();
-        console.error('[SuggestStory] Resend error:', err);
-        return NextResponse.json({ error: 'Failed to send submission' }, { status: 500 });
-      }
-    } else {
-      console.log('[SuggestStory] No RESEND_API_KEY — logging submission:');
-      console.log({ name, email, genre, title, idea });
+      }).catch(err => console.error('[SuggestStory] Email send failed:', err));
     }
 
     return NextResponse.json({ success: true });

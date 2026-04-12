@@ -78,7 +78,7 @@ export default function SuggestStoryPage() {
       const res = await fetch('/api/suggest-story', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, userId: user?.id || null }),
       });
 
       if (res.ok) {
