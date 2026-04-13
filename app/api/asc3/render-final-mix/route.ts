@@ -1,20 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
+
+export const maxDuration = 300
+export const runtime = 'nodejs'
 import { createClient } from '@supabase/supabase-js'
+import { promises as fs } from 'fs'
+import path from 'path'
+import os from 'os'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
-import * as fs from 'fs/promises'
-import * as path from 'path'
-import * as os from 'os'
 
-export const runtime = 'nodejs'
-export const maxDuration = 300
-
-const execFileAsync = (cmd: string, args: string[]) => new Promise<{stdout:string,stderr:string}>((resolve, reject) => {
-  execFile(cmd, args, { maxBuffer: 1024 * 1024 * 100 }, (err, stdout, stderr) => {
-    if (err) reject(Object.assign(err, { stdout, stderr }))
-    else resolve({ stdout, stderr })
-  })
-})
+const _execFileAsync = promisify(execFile)
+const execFileAsync = (cmd: string, args: string[], opts?: any) => _execFileAsync(cmd, args, { maxBuffer: 1024 * 1024 * 100, ...opts })
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
