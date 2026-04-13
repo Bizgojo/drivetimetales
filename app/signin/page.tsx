@@ -11,64 +11,83 @@ function SignInContent() {
   const searchParams = useSearchParams()
   const { signIn } = useAuth()
 
-  const [email, setEmail]       = useState('')
-  const [password, setPassword] = useState('')
-  const [showPw, setShowPw]     = useState(false)
-  const [error, setError]       = useState('')
-  const [loading, setLoading] = useState(false)
+  const [email, setEmail]             = useState('')
+  const [password, setPassword]       = useState('')
+  const [showPw, setShowPw]           = useState(false)
+  const [showPasswordForm, setShowPasswordForm] = useState(false)
+  const [error, setError]             = useState('')
+  const [magicLoading, setMagicLoading] = useState(false)
+  const [pwLoading, setPwLoading]     = useState(false)
 
   const returnTo = searchParams.get('returnTo') || '/home'
 
-  // If already signed in, skip straight to home — handles PWA launch with existing session
   useEffect(() => {
     supabaseBrowser.auth.getSession().then(({ data: { session } }) => {
       if (session) router.replace(returnTo)
     })
   }, [returnTo, router])
 
-  // Show any error passed back from OAuth callback in the URL
   const urlError = searchParams.get('error')
-  const urlDesc = searchParams.get('desc')
+  const urlDesc  = searchParams.get('desc')
 
   const handleGoogleSignIn = () => {
     const params = returnTo !== '/home' ? `?returnTo=${encodeURIComponent(returnTo)}` : ''
     window.location.href = `/api/auth/google${params}`
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleMagicLink = async () => {
+    if (!email.trim()) {
+      setError('Please enter your email address above.')
+      return
+    }
+    setError('')
+    setMagicLoading(true)
+    try {
+      const res = await fetch('/api/auth/magic-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim(), returnTo }),
+      })
+      if (!res.ok) throw new Error('Request failed')
+      router.push(`/auth/magic-sent?email=${encodeURIComponent(email.trim())}`)
+    } catch {
+      setError('Something went wrong. Please try again.')
+      setMagicLoading(false)
+    }
+  }
+
+  const handlePasswordSignIn = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
-    setLoading(true)
+    setPwLoading(true)
     const { error } = await signIn(email, password)
     if (error) {
       setError(error.message === 'Invalid login credentials'
         ? 'Email or password is incorrect.'
         : error.message)
-      setLoading(false)
+      setPwLoading(false)
     } else {
       router.push(returnTo)
     }
   }
 
   return (
-    <div style={{ minHeight:'100vh', backgroundColor:'#020617', overflowY:'auto', WebkitOverflowScrolling:'touch' as any, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'24px 16px 60px' }}>
-      <div style={{ width:'100%', maxWidth:'380px' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: '#020617', overflowY: 'auto', WebkitOverflowScrolling: 'touch' as any, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px 16px 60px' }}>
+      <div style={{ width: '100%', maxWidth: '380px' }}>
 
-        {/* Logo */}
-        <div style={{ textAlign:'center', marginBottom:'32px', display:'flex', flexDirection:'column', alignItems:'center', gap:'10px' }}>
-          <img src="/images/et-logo.png" alt="Endless Tales" style={{ height:'52px', objectFit:'contain' }} />
-          <span style={{ color:'#ffffff', fontSize:'22px', fontWeight:800, letterSpacing:'-0.3px' }}>
-            Endless <span style={{ color:'#f97316' }}>Tales</span>
+        <div style={{ textAlign: 'center', marginBottom: '32px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
+          <img src="/images/et-logo.png" alt="Endless Tales" style={{ height: '52px', objectFit: 'contain' }} />
+          <span style={{ color: '#ffffff', fontSize: '22px', fontWeight: 800, letterSpacing: '-0.3px' }}>
+            Endless <span style={{ color: '#f97316' }}>Tales</span>
           </span>
         </div>
 
-        {/* Sign In Card */}
-        <div style={{ backgroundColor:'#0f172a', borderRadius:'20px', padding:'28px 24px', border:'1px solid #1e293b' }}>
-          <h1 style={{ color:'white', fontSize:'22px', fontWeight:800, margin:'0 0 6px', textAlign:'center' }}>Welcome back</h1>
-          <p style={{ color:'#64748b', fontSize:'14px', textAlign:'center', margin:'0 0 24px' }}>Sign in to your Endless Tales account</p>
+        <div style={{ backgroundColor: '#0f172a', borderRadius: '20px', padding: '28px 24px', border: '1px solid #1e293b' }}>
+          <h1 style={{ color: 'white', fontSize: '22px', fontWeight: 800, margin: '0 0 6px', textAlign: 'center' }}>Welcome back</h1>
+          <p style={{ color: '#64748b', fontSize: '14px', textAlign: 'center', margin: '0 0 24px' }}>Sign in to your Endless Tales account</p>
 
           <button onClick={handleGoogleSignIn} type="button"
-            style={{ width:'100%', padding:'13px', backgroundColor:'#fff', color:'#1f2937', border:'1px solid #e2e8f0', borderRadius:'12px', fontSize:'15px', fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'10px', marginBottom:'16px', boxSizing:'border-box' }}>
+            style={{ width: '100%', padding: '13px', backgroundColor: '#fff', color: '#1f2937', border: '1px solid #e2e8f0', borderRadius: '12px', fontSize: '15px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginBottom: '16px', boxSizing: 'border-box' }}>
             <svg width="18" height="18" viewBox="0 0 24 24">
               <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
               <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
@@ -78,62 +97,93 @@ function SignInContent() {
             Continue with Google
           </button>
 
-          <div style={{ display:'flex', alignItems:'center', marginBottom:'16px' }}>
-            <div style={{ flex:1, height:'1px', backgroundColor:'#1e293b' }} />
-            <span style={{ padding:'0 12px', color:'#475569', fontSize:'13px' }}>or</span>
-            <div style={{ flex:1, height:'1px', backgroundColor:'#1e293b' }} />
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '16px' }}>
+            <div style={{ flex: 1, height: '1px', backgroundColor: '#1e293b' }} />
+            <span style={{ padding: '0 12px', color: '#475569', fontSize: '13px' }}>or</span>
+            <div style={{ flex: 1, height: '1px', backgroundColor: '#1e293b' }} />
           </div>
 
           {(error || urlError) && (
-            <div style={{ backgroundColor:'#450a0a', border:'1px solid #7f1d1d', color:'#fca5a5', padding:'12px 16px', borderRadius:'10px', marginBottom:'20px', fontSize:'14px' }}>
+            <div style={{ backgroundColor: '#450a0a', border: '1px solid #7f1d1d', color: '#fca5a5', padding: '12px 16px', borderRadius: '10px', marginBottom: '16px', fontSize: '14px' }}>
               {error || `Auth error: ${urlError}${urlDesc ? ` — ${urlDesc}` : ''}`}
             </div>
           )}
 
-          <form onSubmit={handleSubmit}>
-            <div style={{ marginBottom:'16px' }}>
-              <label style={{ display:'block', color:'#94a3b8', fontSize:'13px', fontWeight:600, marginBottom:'6px' }}>Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                onFocus={e => setTimeout(() => e.target.scrollIntoView({ behavior:'smooth', block:'center' }), 300)}
-                required
-                autoComplete="email"
-                placeholder="you@example.com"
-                style={{ width:'100%', padding:'13px 14px', backgroundColor:'#1e293b', border:'1px solid #334155', borderRadius:'10px', color:'white', fontSize:'16px', boxSizing:'border-box', outline:'none' }}
-              />
-            </div>
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ display: 'block', color: '#94a3b8', fontSize: '13px', fontWeight: 600, marginBottom: '6px' }}>Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              onFocus={e => setTimeout(() => e.target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300)}
+              onKeyDown={e => { if (e.key === 'Enter' && !showPasswordForm) handleMagicLink() }}
+              autoComplete="email"
+              placeholder="you@example.com"
+              style={{ width: '100%', padding: '13px 14px', backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '10px', color: 'white', fontSize: '16px', boxSizing: 'border-box', outline: 'none' }}
+            />
+          </div>
 
-            <div style={{ marginBottom:'24px' }}>
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'6px' }}>
-                <label style={{ color:'#94a3b8', fontSize:'13px', fontWeight:600 }}>Password</label>
-                <Link href="/forgot-password" style={{ color:'#f97316', fontSize:'12px', textDecoration:'none' }}>Forgot password?</Link>
-              </div>
-              <div style={{ position:'relative' }}>
-                <input
-                  type={showPw ? 'text' : 'password'}
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  onFocus={e => setTimeout(() => e.target.scrollIntoView({ behavior:'smooth', block:'center' }), 300)}
-                  required
-                  autoComplete="current-password"
-                  placeholder="••••••••"
-                  style={{ width:'100%', padding:'13px 44px 13px 14px', backgroundColor:'#1e293b', border:'1px solid #334155', borderRadius:'10px', color:'white', fontSize:'16px', boxSizing:'border-box', outline:'none' }}
-                />
-                <button type="button" onClick={() => setShowPw(!showPw)}
-                  style={{ position:'absolute', right:'12px', top:'50%', transform:'translateY(-50%)', background:'none', border:'none', color:'#64748b', cursor:'pointer', fontSize:'18px', lineHeight:1, padding:0 }}>
-                  {showPw ? '🙈' : '👁️'}
-                </button>
-              </div>
-            </div>
+          {!showPasswordForm && (
+            <>
+              <button
+                type="button"
+                onClick={handleMagicLink}
+                disabled={magicLoading}
+                style={{ width: '100%', padding: '15px', backgroundColor: magicLoading ? '#7c3f10' : '#f97316', color: 'white', border: 'none', borderRadius: '12px', fontSize: '16px', fontWeight: 800, cursor: magicLoading ? 'not-allowed' : 'pointer', letterSpacing: '0.3px', marginBottom: '12px' }}>
+                {magicLoading ? 'Sending link…' : '✉️  Send me a login link'}
+              </button>
 
-            <button type="submit" disabled={loading}
-              style={{ width:'100%', padding:'15px', backgroundColor: loading ? '#7c3f10' : '#f97316', color:'white', border:'none', borderRadius:'12px', fontSize:'16px', fontWeight:800, cursor: loading ? 'not-allowed' : 'pointer', letterSpacing:'0.3px' }}>
-              {loading ? 'Signing in…' : 'Sign In'}
-            </button>
-          </form>
+              <button
+                type="button"
+                onClick={() => { setError(''); setShowPasswordForm(true) }}
+                style={{ width: '100%', padding: '12px', backgroundColor: 'transparent', color: '#64748b', border: '1px solid #1e293b', borderRadius: '12px', fontSize: '14px', cursor: 'pointer' }}>
+                Sign in with password instead
+              </button>
+            </>
+          )}
+
+          {showPasswordForm && (
+            <form onSubmit={handlePasswordSignIn}>
+              <div style={{ marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <label style={{ color: '#94a3b8', fontSize: '13px', fontWeight: 600 }}>Password</label>
+                  <Link href="/forgot-password" style={{ color: '#f97316', fontSize: '12px', textDecoration: 'none' }}>Forgot password?</Link>
+                </div>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type={showPw ? 'text' : 'password'}
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    onFocus={e => setTimeout(() => e.target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300)}
+                    required
+                    autoComplete="current-password"
+                    placeholder="••••••••"
+                    style={{ width: '100%', padding: '13px 44px 13px 14px', backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '10px', color: 'white', fontSize: '16px', boxSizing: 'border-box', outline: 'none' }}
+                  />
+                  <button type="button" onClick={() => setShowPw(!showPw)}
+                    style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '18px', lineHeight: 1, padding: 0 }}>
+                    {showPw ? '🙈' : '👁️'}
+                  </button>
+                </div>
+              </div>
+
+              <button type="submit" disabled={pwLoading}
+                style={{ width: '100%', padding: '15px', backgroundColor: pwLoading ? '#7c3f10' : '#f97316', color: 'white', border: 'none', borderRadius: '12px', fontSize: '16px', fontWeight: 800, cursor: pwLoading ? 'not-allowed' : 'pointer', letterSpacing: '0.3px', marginBottom: '12px' }}>
+                {pwLoading ? 'Signing in…' : 'Sign In'}
+              </button>
+
+              <button type="button" onClick={() => { setError(''); setShowPasswordForm(false) }}
+                style={{ width: '100%', padding: '12px', backgroundColor: 'transparent', color: '#64748b', border: '1px solid #1e293b', borderRadius: '12px', fontSize: '14px', cursor: 'pointer' }}>
+                ← Send me a login link instead
+              </button>
+            </form>
+          )}
         </div>
+
+        <p style={{ textAlign: 'center', color: '#475569', fontSize: '13px', marginTop: '20px' }}>
+          Don't have an account?{' '}
+          <Link href="/signup" style={{ color: '#f97316', textDecoration: 'none', fontWeight: 600 }}>Sign up</Link>
+        </p>
 
       </div>
     </div>
@@ -143,8 +193,8 @@ function SignInContent() {
 export default function SignInPage() {
   return (
     <Suspense fallback={
-      <div style={{ minHeight:'100vh', backgroundColor:'#020617', display:'flex', alignItems:'center', justifyContent:'center' }}>
-        <div style={{ width:'32px', height:'32px', border:'4px solid #f97316', borderTopColor:'transparent', borderRadius:'50%', animation:'spin 1s linear infinite' }} />
+      <div style={{ minHeight: '100vh', backgroundColor: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ width: '32px', height: '32px', border: '4px solid #f97316', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     }>
