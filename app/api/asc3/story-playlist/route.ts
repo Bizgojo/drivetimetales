@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
     }, { headers: { 'Cache-Control': 'no-store' } })
   }
 
-  const STING_URL = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio/sting/ET_Signature_Sting_v6.mp3`
+  const STING_URL = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio/sting/ET_Signature_Sting_v7.mp3`
   const queue: { url: string; type: 'intro' | 'story' | 'outro'; label: string }[] = []
 
   queue.push({ url: STING_URL, type: 'intro', label: 'Sting' })
