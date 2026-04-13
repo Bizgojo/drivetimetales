@@ -4,8 +4,8 @@ module.exports = {
   experimental: {
     serverComponentsExternalPackages: ['ws', 'bufferutil', 'utf-8-validate', 'fluent-ffmpeg', 'sharp'],
     outputFileTracingIncludes: {
-      '/api/asc3/render-final-mix': ['./node_modules/ffmpeg-static/**/*'],
-      '/api/landing/render-mix': ['./node_modules/ffmpeg-static/**/*'],
+      '/api/asc3/render-final-mix': ['./node_modules/@ffmpeg-installer/**/*'],
+      '/api/landing/render-mix': ['./node_modules/@ffmpeg-installer/**/*'],
     },
   },
   webpack: (config, { isServer }) => {
