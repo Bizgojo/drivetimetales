@@ -157,57 +157,6 @@ async function fetchMyVoices(): Promise<typeof CURATED_VOICES> {
     }
     const data = await resp.json()
     const voices = (data.voices || []) as any[]
-    return voices
-      .filter((v: any) => v.voice_id !== BELLE_B_VOICE_ID)
-      .map((v: any) => {
-        const labels = v.labels || {}
-        const desc = (v.description || v.name || '').toLowerCase()
-        const labelDesc = Object.values(labels).join(' ').toLowerCase()
-        const fullDesc = desc + ' ' + labelDesc
-        let gender: 'male'|'female'|'neutral' = 'neutral'
-        if (labels.gender === 'male') gender = 'male'
-        else if (labels.gender === 'female') gender = 'female'
-        else if (fullDesc.includes('female') || fullDesc.includes('woman')) gender = 'female'
-        else if (fullDesc.includes('male') && fullDesc.indexOf('female') === -1) gender = 'male'
-        let age: 'young'|'middle_aged'|'old' = 'middle_aged'
-        if (labels.age) age = labels.age.includes('young') ? 'young' : labels.age.includes('old') ? 'old' : 'middle_aged'
-        else if (fullDesc.includes('young') || fullDesc.includes('teen')) age = 'young'
-        else if (fullDesc.includes('elder') || fullDesc.includes('senior') || fullDesc.includes('mature')) age = 'old'
-        let accent = labels.accent || 'american'
-        if (fullDesc.includes('british') || fullDesc.includes('english')) accent = 'british'
-        else if (fullDesc.includes('irish')) accent = 'irish'
-        else if (fullDesc.includes('australian')) accent = 'australian'
-        else if (fullDesc.includes('scottish')) accent = 'scottish'
-        return {
-          voice_id: v.voice_id,
-          name: v.name,
-          gender,
-          age,
-          accent,
-          description: v.description || v.name || ''
-        }
-      })
-  } catch (e) {
-    console.warn('fetchMyVoices error, using curated fallback:', e)
-    return CURATED_VOICES
-  }
-}
-
-
-// ─── Fetch My Voices from ElevenLabs — ALWAYS search full library ────────────
-// PERMANENT: Never revert to CURATED_VOICES for character assignment.
-// CURATED_VOICES is fallback only if EL API fails.
-async function fetchMyVoices(): Promise<typeof CURATED_VOICES> {
-  try {
-    const resp = await fetch('https://api.elevenlabs.io/v1/voices', {
-      headers: { 'xi-api-key': ELEVENLABS_API_KEY }
-    })
-    if (!resp.ok) {
-      console.warn('fetchMyVoices: EL API failed, using curated fallback')
-      return CURATED_VOICES
-    }
-    const data = await resp.json()
-    const voices = (data.voices || []) as any[]
     const mapped = voices
       .filter((v: any) => v.voice_id !== BELLE_B_VOICE_ID)
       .map((v: any) => {
