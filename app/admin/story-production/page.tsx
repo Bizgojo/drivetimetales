@@ -531,6 +531,7 @@ export default function StoryProductionPage() {
   const [stories, setStories] = useState<Story[]>([])
   const [selected, setSelected] = useState<Story|null>(null)
   const [producing, setProducing] = useState<string|null>(null)
+  const [producedIds, setProducedIds] = useState<Set<string>>(new Set())
   const [produceSteps, setProduceSteps] = useState<Record<string,{status:string,message?:string}>>({}) 
   const [authors, setAuthors] = useState<Author[]>([])
   const [narrators, setNarrators] = useState<Narrator[]>([])
@@ -983,6 +984,7 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
     } catch(err) {
       alert(`Production failed: ${err}`)
     } finally {
+      setProducedIds(prev => { const n=new Set(prev); n.add(s.id); return n })
       setProducing(null)
     }
   }
@@ -1421,7 +1423,7 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
                     <div style={{borderTop:'1px solid #e0e0e0'}}>
                       {(s.status==='ready'||s.status==='approved')&&(<div style={{padding:'16px 24px',background:'#f8f8f8',borderBottom:'1px solid #e0e0e0'}}>
                         <div style={{display:'flex',gap:12,alignItems:'center',flexWrap:'wrap'}}>
-                          <button onClick={e=>{e.stopPropagation();produceStory(s)}} disabled={producing===s.id} style={{background:producing===s.id?'#ccc':'#1565c0',color:'#fff',border:'none',borderRadius:6,padding:'12px 24px',cursor:producing===s.id?'not-allowed':'pointer',fontFamily:'inherit',fontSize:15,fontWeight:700}}>{producing===s.id?'⏳ Producing...':'🎬 Produce'}</button>
+                          <button onClick={e=>{e.stopPropagation();produceStory(s)}} disabled={producing===s.id} style={{background:producing===s.id?'#ccc':'#1565c0',color:'#fff',border:'none',borderRadius:6,padding:'12px 24px',cursor:producing===s.id?'not-allowed':'pointer',fontFamily:'inherit',fontSize:15,fontWeight:700}}>{producing===s.id?'⏳ Producing...':'🎬 Produce'}</button>{producedIds.has(s.id)&&<span style={{color:'#2e7d32',fontWeight:700,fontSize:14}}>✓ Produced — ready for audio</span>}
                           {(s.status==='ready'||s.status==='approved')&&<AudioGenButton ap={audioProgress[s.id]} onGenerate={e=>{e.stopPropagation();handleGenerateAudio(s)}}/>}
                           <button onClick={e=>{e.stopPropagation();approve()}} disabled={producing===s.id} style={{background:producing===s.id?'#ccc':'#2e7d32',color:'#fff',border:'none',borderRadius:6,padding:'12px 24px',cursor:'pointer',fontFamily:'inherit',fontSize:15,fontWeight:700}}>✓ Approve</button>
                           <button onClick={e=>{e.stopPropagation();if(producing===s.id)return;const r=prompt('Reason?');if(r!==null)reject(r)}} disabled={producing===s.id} style={{background:'#fff',color:producing===s.id?'#ccc':'#c62828',border:'1px solid #c62828',borderRadius:6,padding:'12px 24px',cursor:'pointer',fontFamily:'inherit',fontSize:15,fontWeight:700}}>Reject</button>
