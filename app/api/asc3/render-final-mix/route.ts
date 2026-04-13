@@ -33,11 +33,15 @@ const STING_URL = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/pub
 // 7. 1.0s silence
 // 8. BELLE B OUTRO — full volume, no music
 
-let FFMPEG_PATH = 'ffmpeg'
+let FFMPEG_PATH = ''
 async function findFfmpeg() {
-  const candidates = ['/usr/bin/ffmpeg', '/usr/local/bin/ffmpeg']
-  try { const s = require('ffmpeg-static'); if (s) candidates.unshift(s) } catch {}
-  for (const p of candidates) { try { await fs.access(p); FFMPEG_PATH = p; return } catch {} }
+  try {
+    const ffmpegStatic = require('ffmpeg-static')
+    if (ffmpegStatic) { console.log('ffmpeg-static path:', ffmpegStatic); FFMPEG_PATH = ffmpegStatic; return }
+  } catch (e) { console.warn('ffmpeg-static not available:', e) }
+  const candidates = ['/usr/bin/ffmpeg', '/usr/local/bin/ffmpeg', 'ffmpeg']
+  for (const p of candidates) { try { await fs.access(p); FFMPEG_PATH = p; console.log('Found system ffmpeg:', p); return } catch {} }
+  throw new Error('ffmpeg not found - ensure ffmpeg-static is installed')
 }
 
 async function download(url: string, dest: string): Promise<void> {

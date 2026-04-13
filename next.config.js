@@ -2,7 +2,7 @@
 module.exports = {
   typescript: { ignoreBuildErrors: true },
   experimental: {
-    serverComponentsExternalPackages: ['ws', 'bufferutil', 'utf-8-validate', 'ffmpeg-static', 'fluent-ffmpeg', 'sharp'],
+    serverComponentsExternalPackages: ['ws', 'bufferutil', 'utf-8-validate', 'fluent-ffmpeg', 'sharp'],
   },
   webpack: (config, { isServer }) => {
     if (isServer) {
