@@ -17,7 +17,7 @@ export async function POST(request: Request) {
   const url = new URL(request.url)
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || url.origin
   const isLocalhost = appUrl.includes('localhost')
-  const redirectTo = `${appUrl}/auth/callback`
+  const redirectTo = `${appUrl}/auth/confirm`
 
   const cookieStore = cookies()
   const cookiesToSet: Array<{ name: string; value: string; options: Record<string, unknown> }> = []
