@@ -5,7 +5,7 @@ import { createServerClient } from '@supabase/ssr'
 const PUBLIC_ROUTES = new Set([
   '/signin', '/signup', '/welcome', '/guest', '/forgot-password',
   '/player',
-  '/reset-password', '/auth/callback', '/auth/signup',
+  '/reset-password', '/auth/callback', '/auth/signup', '/auth/confirm', '/auth/magic-sent',
   '/subscribe',
   '/terms', '/privacy',
 ])
