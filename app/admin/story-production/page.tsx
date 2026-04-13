@@ -1421,17 +1421,32 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
                   </div>
                   {isSel&&(
                     <div style={{borderTop:'1px solid #e0e0e0'}}>
-                      {(s.status==='ready'||s.status==='approved')&&(<div style={{padding:'16px 24px',background:'#f8f8f8',borderBottom:'1px solid #e0e0e0'}}>
-                        <div style={{display:'flex',gap:12,alignItems:'center',flexWrap:'wrap'}}>
-                          <button onClick={e=>{e.stopPropagation();produceStory(s)}} disabled={producing===s.id} style={{background:producing===s.id?'#ccc':'#1565c0',color:'#fff',border:'none',borderRadius:6,padding:'12px 24px',cursor:producing===s.id?'not-allowed':'pointer',fontFamily:'inherit',fontSize:15,fontWeight:700}}>{producing===s.id?'⏳ Producing...':'🎬 Produce'}</button>{producedIds.has(s.id)&&<span style={{color:'#2e7d32',fontWeight:700,fontSize:14}}>✓ Produced — ready for audio</span>}
-                          {(s.status==='ready'||s.status==='approved')&&<AudioGenButton ap={audioProgress[s.id]} onGenerate={e=>{e.stopPropagation();handleGenerateAudio(s)}}/>}
-                          <button onClick={e=>{e.stopPropagation();approve()}} disabled={producing===s.id} style={{background:producing===s.id?'#ccc':'#2e7d32',color:'#fff',border:'none',borderRadius:6,padding:'12px 24px',cursor:'pointer',fontFamily:'inherit',fontSize:15,fontWeight:700}}>✓ Approve</button>
-                          <button onClick={e=>{e.stopPropagation();if(producing===s.id)return;const r=prompt('Reason?');if(r!==null)reject(r)}} disabled={producing===s.id} style={{background:'#fff',color:producing===s.id?'#ccc':'#c62828',border:'1px solid #c62828',borderRadius:6,padding:'12px 24px',cursor:'pointer',fontFamily:'inherit',fontSize:15,fontWeight:700}}>Reject</button>
-                          <button onClick={e=>{e.stopPropagation();if(confirm('Delete this story?'))deleteStory(s.id)}} style={{marginLeft:'auto',background:'none',color:'#aaa',border:'1px solid #e0e0e0',borderRadius:6,padding:'12px 16px',cursor:'pointer',fontFamily:'inherit',fontSize:13}}>🗑 Delete</button>
-                        </div>
-                        {producing===s.id?<div style={{display:'flex',alignItems:'center',gap:10,padding:'12px 0 4px'}}><div style={{width:16,height:16,border:'2px solid #1565c0',borderTopColor:'transparent',borderRadius:'50%',animation:'spin 0.8s linear infinite',flexShrink:0}}/><span style={{fontSize:13,color:'#1565c0',fontWeight:600}}>Saving script to database and preparing audio pipeline...</span></div>:null}
-        {audioProgress[s.id]&&audioProgress[s.id].step!=='idle'&&<AudioProgressBar ap={audioProgress[s.id]}/>}
-                      </div>)}
+                      {(s.status==='ready'||s.status==='approved')&&(()=>{
+                        const sid=s.id
+                        const isProducing=producing===sid
+                        const isProduced=producedIds.has(sid)
+                        const ap=audioProgress[sid]
+                        const isGenerating=ap?.step==='voices'||ap?.step==='music'||ap?.step==='mixing'
+                        const isAudioDone=ap?.step==='done'
+                        const hasError=ap?.step==='error'
+                        return(
+                        <div style={{padding:'16px 24px',background:'#f8f8f8',borderBottom:'1px solid #e0e0e0'}}>
+                          <div style={{display:'flex',gap:12,alignItems:'center',flexWrap:'wrap'}}>
+                            <button onClick={e=>{e.stopPropagation();if(!isProducing&&!isProduced)produceStory(s)}} disabled={isProducing||isProduced} style={{background:isProducing?'#90caf9':isProduced?'#e8f5e9':'#1565c0',color:isProduced?'#2e7d32':'#fff',border:isProduced?'2px solid #2e7d32':'none',borderRadius:6,padding:'12px 24px',cursor:isProducing||isProduced?'default':'pointer',fontFamily:'inherit',fontSize:15,fontWeight:700,display:'flex',alignItems:'center',gap:8}}>
+                              {isProducing&&<div style={{width:14,height:14,border:'2px solid #1565c0',borderTopColor:'transparent',borderRadius:'50%',animation:'spin 0.8s linear infinite',flexShrink:0}}/>}
+                              {isProducing?'Producing...':(isProduced?'✓ Produced':'🎬 Produce')}
+                            </button>
+                            <button onClick={e=>{e.stopPropagation();if(isProduced&&!isGenerating&&!isAudioDone)handleGenerateAudio(s)}} disabled={!isProduced||isGenerating||isAudioDone} style={{background:isAudioDone?'#2e7d32':isGenerating?'#90caf9':isProduced?'#f97316':'#e0e0e0',color:isProduced||isAudioDone||isGenerating?'#fff':'#aaa',border:'none',borderRadius:6,padding:'12px 24px',cursor:isProduced&&!isGenerating&&!isAudioDone?'pointer':'default',fontFamily:'inherit',fontSize:15,fontWeight:700,display:'flex',alignItems:'center',gap:8}}>
+                              {isGenerating&&<div style={{width:14,height:14,border:'2px solid #fff',borderTopColor:'transparent',borderRadius:'50%',animation:'spin 0.8s linear infinite',flexShrink:0}}/>}
+                              {isAudioDone?'✓ Audio Complete':isGenerating?(ap?.step==='voices'?'Generating Voices...':ap?.step==='music'?'Generating Music...':'Mixing Audio...'):(hasError?'🔄 Retry Audio':'🔊 Generate Audio')}
+                            </button>
+                            <button onClick={e=>{e.stopPropagation();if(isAudioDone)approve()}} disabled={!isAudioDone} style={{background:isAudioDone?'#2e7d32':'#e0e0e0',color:isAudioDone?'#fff':'#aaa',border:'none',borderRadius:6,padding:'12px 24px',cursor:isAudioDone?'pointer':'default',fontFamily:'inherit',fontSize:15,fontWeight:700}}>✓ Approve</button>
+                            <button onClick={e=>{e.stopPropagation();if(!isProducing&&!isGenerating){const r=prompt('Reason?');if(r!==null)reject(r)}}} disabled={isProducing||isGenerating} style={{background:'#fff',color:isProducing||isGenerating?'#ccc':'#c62828',border:`1px solid ${isProducing||isGenerating?'#e0e0e0':'#c62828'}`,borderRadius:6,padding:'12px 24px',cursor:isProducing||isGenerating?'default':'pointer',fontFamily:'inherit',fontSize:15,fontWeight:700}}>Reject</button>
+                            <button onClick={e=>{e.stopPropagation();if(confirm('Delete?'))deleteStory(sid)}} style={{marginLeft:'auto',background:'none',color:'#aaa',border:'1px solid #e0e0e0',borderRadius:6,padding:'12px 16px',cursor:'pointer',fontFamily:'inherit',fontSize:13}}>🗑</button>
+                          </div>
+                          {ap&&ap.step!=='idle'&&<AudioProgressBar ap={ap}/>}
+                        </div>)
+                      })()}
                       {(s.status==='approved'||s.status==='rejected')&&(<div style={{padding:'12px 24px',background:'#f8f8f8',display:'flex',justifyContent:'flex-end',borderBottom:'1px solid #e0e0e0'}}>
                         <button onClick={e=>{e.stopPropagation();if(confirm('Delete this story?'))deleteStory(s.id)}} style={{background:'none',color:'#aaa',border:'1px solid #e0e0e0',borderRadius:6,padding:'8px 14px',cursor:'pointer',fontFamily:'inherit',fontSize:13}}>🗑 Delete</button>
                       </div>)}
