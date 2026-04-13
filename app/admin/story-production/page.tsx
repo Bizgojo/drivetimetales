@@ -388,11 +388,11 @@ Belle B intro rules — this is the most important line in the script:
 - GOOD: "Jake's CB radio has been silent for six years — so when a voice comes through at 2am calling his name, he has no idea what to do, in 'The Signal.'" — listener knows who, what, why
 
 2. HEADER BLOCK:
-SERIES: ${p.isSeries ? p.seriesName : ''}
-EPISODE: ${p.isSeries ? p.episodeNumber : ''}
-EPISODE_TITLE: ${p.isSeries ? p.episodeTitle : ''}
-SERIES_TOTAL_EPISODES: ${p.isSeries ? p.totalEpisodes : ''}
-SERIES_IS_FINALE: ${p.isSeries ? p.isFinale : ''}
+${p.isSeries ? `SERIES: ${p.seriesName}
+EPISODE: ${p.episodeNumber}
+EPISODE_TITLE: ${p.episodeTitle}
+SERIES_TOTAL_EPISODES: ${p.totalEpisodes}
+SERIES_IS_FINALE: ${p.isFinale}` : 'TYPE: standalone'}
 AUTHOR: ${p.author}
 GENRE: ${p.genre}
 DESCRIPTION: [24 words max — punchy present-tense hook, no spoilers, makes a listener press play]
