@@ -33,16 +33,8 @@ const STING_URL = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/pub
 // 7. 1.0s silence
 // 8. BELLE B OUTRO — full volume, no music
 
-let FFMPEG_PATH = ''
-async function findFfmpeg() {
-  try {
-    const ffmpegStatic = require('ffmpeg-static')
-    if (ffmpegStatic) { console.log('ffmpeg-static path:', ffmpegStatic); FFMPEG_PATH = ffmpegStatic; return }
-  } catch (e) { console.warn('ffmpeg-static not available:', e) }
-  const candidates = ['/usr/bin/ffmpeg', '/usr/local/bin/ffmpeg', 'ffmpeg']
-  for (const p of candidates) { try { await fs.access(p); FFMPEG_PATH = p; console.log('Found system ffmpeg:', p); return } catch {} }
-  throw new Error('ffmpeg not found - ensure ffmpeg-static is installed')
-}
+let FFMPEG_PATH = 'ffmpeg'
+try { FFMPEG_PATH = eval('require')('ffmpeg-static') as string } catch { /* system ffmpeg */ }
 
 async function download(url: string, dest: string): Promise<void> {
   const res = await fetch(url)
@@ -75,7 +67,6 @@ async function generateSilence(dest: string, seconds: number): Promise<void> {
 }
 
 export async function POST(req: NextRequest) {
-  await findFfmpeg()
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'et-mix-'))
   try {
     const { storyId } = await req.json()
