@@ -1421,7 +1421,7 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
                   </div>
                   {isSel&&(
                     <div style={{borderTop:'1px solid #e0e0e0'}}>
-                      {(s.status==='ready'||s.status==='approved')&&(()=>{
+                      {(()=>{
                         const sid=s.id
                         const isProducing=producing===sid
                         const isProduced=producedIds.has(sid)
@@ -1432,11 +1432,11 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
                         return(
                         <div style={{padding:'16px 24px',background:'#f8f8f8',borderBottom:'1px solid #e0e0e0'}}>
                           <div style={{display:'flex',gap:12,alignItems:'center',flexWrap:'wrap'}}>
-                            <button onClick={e=>{e.stopPropagation();if(!isProducing&&!isProduced)produceStory(s)}} disabled={isProducing||isProduced} style={{background:isProducing?'#90caf9':isProduced?'#e8f5e9':'#1565c0',color:isProduced?'#2e7d32':'#fff',border:isProduced?'2px solid #2e7d32':'none',borderRadius:6,padding:'12px 24px',cursor:isProducing||isProduced?'default':'pointer',fontFamily:'inherit',fontSize:15,fontWeight:700,display:'flex',alignItems:'center',gap:8}}>
+                            <button onClick={e=>{e.stopPropagation();if(!isProducing&&!isProduced)produceStory(s)}} disabled={isProducing||isProduced} style={{background:isProducing?'#bbdefb':isProduced?'#e8f5e9':'#1565c0',color:isProduced?'#2e7d32':'#fff',border:isProduced?'2px solid #2e7d32':'none',borderRadius:6,padding:'12px 24px',cursor:isProducing||isProduced?'default':'pointer',fontFamily:'inherit',fontSize:15,fontWeight:700,display:'flex',alignItems:'center',gap:8}}>
                               {isProducing&&<div style={{width:14,height:14,border:'2px solid #1565c0',borderTopColor:'transparent',borderRadius:'50%',animation:'spin 0.8s linear infinite',flexShrink:0}}/>}
                               {isProducing?'Producing...':(isProduced?'✓ Produced':'🎬 Produce')}
                             </button>
-                            <button onClick={e=>{e.stopPropagation();if(isProduced&&!isGenerating&&!isAudioDone)handleGenerateAudio(s)}} disabled={!isProduced||isGenerating||isAudioDone} style={{background:isAudioDone?'#2e7d32':isGenerating?'#90caf9':isProduced?'#f97316':'#e0e0e0',color:isProduced||isAudioDone||isGenerating?'#fff':'#aaa',border:'none',borderRadius:6,padding:'12px 24px',cursor:isProduced&&!isGenerating&&!isAudioDone?'pointer':'default',fontFamily:'inherit',fontSize:15,fontWeight:700,display:'flex',alignItems:'center',gap:8}}>
+                            <button onClick={e=>{e.stopPropagation();if(isProduced&&!isGenerating&&!isAudioDone)handleGenerateAudio(s)}} disabled={!isProduced||isGenerating||isAudioDone} style={{background:isAudioDone?'#2e7d32':isGenerating?'#bbdefb':isProduced?'#f97316':'#e0e0e0',color:isProduced||isAudioDone||isGenerating?'#fff':'#aaa',border:'none',borderRadius:6,padding:'12px 24px',cursor:isProduced&&!isGenerating&&!isAudioDone?'pointer':'default',fontFamily:'inherit',fontSize:15,fontWeight:700,display:'flex',alignItems:'center',gap:8}}>
                               {isGenerating&&<div style={{width:14,height:14,border:'2px solid #fff',borderTopColor:'transparent',borderRadius:'50%',animation:'spin 0.8s linear infinite',flexShrink:0}}/>}
                               {isAudioDone?'✓ Audio Complete':isGenerating?(ap?.step==='voices'?'Generating Voices...':ap?.step==='music'?'Generating Music...':'Mixing Audio...'):(hasError?'🔄 Retry Audio':'🔊 Generate Audio')}
                             </button>
@@ -1447,9 +1447,6 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
                           {ap&&ap.step!=='idle'&&<AudioProgressBar ap={ap}/>}
                         </div>)
                       })()}
-                      {(s.status==='approved'||s.status==='rejected')&&(<div style={{padding:'12px 24px',background:'#f8f8f8',display:'flex',justifyContent:'flex-end',borderBottom:'1px solid #e0e0e0'}}>
-                        <button onClick={e=>{e.stopPropagation();if(confirm('Delete this story?'))deleteStory(s.id)}} style={{background:'none',color:'#aaa',border:'1px solid #e0e0e0',borderRadius:6,padding:'8px 14px',cursor:'pointer',fontFamily:'inherit',fontSize:13}}>🗑 Delete</button>
-                      </div>)}
                       <div style={{display:'grid',gridTemplateColumns:'1fr 340px'}}>
                         <div style={{borderRight:'1px solid #e0e0e0'}}>
                           <div style={{padding:'12px 20px',borderBottom:'1px solid #e0e0e0',fontSize:12,color:'#888',letterSpacing:1,textTransform:'uppercase',fontWeight:700,display:'flex',justifyContent:'space-between',alignItems:'center'}}><span>Script</span><button onClick={()=>{navigator.clipboard.writeText(s.script);alert('Script copied to clipboard')}} style={{fontSize:11,padding:'4px 10px',background:'#f0f0f0',border:'1px solid #ccc',borderRadius:4,cursor:'pointer',fontWeight:600,textTransform:'none',letterSpacing:0}}>Copy Script</button></div>
