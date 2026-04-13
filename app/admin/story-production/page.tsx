@@ -1055,8 +1055,12 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ storyId: supabaseId, prompt: sunoPrompt })
         })
-        const musicResult = await musicResp.json()
-        if (!musicResult.success) console.warn('Music generation failed (continuing):', musicResult.error)
+        if (musicResp.ok === false) {
+          console.warn('Music generation failed (continuing):', musicResp.status)
+        } else {
+          const musicResult = await musicResp.json()
+          if (musicResult.success === false) console.warn('Music generation failed (continuing):', musicResult.error)
+        }
       }
       setAudioProgress(prev => ({ ...prev, [s.id]: { step: 'mixing', voiceStats: voiceResult.stats } }))
 
@@ -1066,6 +1070,10 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ storyId: supabaseId })
       })
+      if (mixResp.ok === false) {
+        const text = await mixResp.text()
+        throw new Error('Mix failed (' + mixResp.status + '): ' + text.slice(0, 200))
+      }
       const mixResult = await mixResp.json()
       if (!mixResult.success) throw new Error(mixResult.error || 'Mix failed')
 
