@@ -1418,7 +1418,7 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
                   </div>
                   {isSel&&(
                     <div style={{borderTop:'1px solid #e0e0e0'}}>
-                      {s.status==='ready'&&(<div style={{padding:'16px 24px',background:'#f8f8f8',borderBottom:'1px solid #e0e0e0'}}>
+                      {(s.status==='ready'||s.status==='approved')&&(<div style={{padding:'16px 24px',background:'#f8f8f8',borderBottom:'1px solid #e0e0e0'}}>
                         <div style={{display:'flex',gap:12,alignItems:'center',flexWrap:'wrap'}}>
                           <button onClick={e=>{e.stopPropagation();produceStory(s)}} disabled={producing===s.id} style={{background:producing===s.id?'#ccc':'#1565c0',color:'#fff',border:'none',borderRadius:6,padding:'12px 24px',cursor:producing===s.id?'not-allowed':'pointer',fontFamily:'inherit',fontSize:15,fontWeight:700}}>{producing===s.id?'⏳ Producing...':'🎬 Produce'}</button>
                           {(s.status==='ready'||s.status==='approved'||supabaseIds[s.id])&&<AudioGenButton ap={audioProgress[s.id]} onGenerate={e=>{e.stopPropagation();handleGenerateAudio(s)}}/>}
