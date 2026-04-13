@@ -37,7 +37,7 @@ export async function POST(request: Request) {
     email,
     options: {
       emailRedirectTo: redirectTo,
-      shouldCreateUser: false,
+      shouldCreateUser: true,
     },
   })
 
