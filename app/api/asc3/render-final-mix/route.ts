@@ -30,7 +30,7 @@ const STING_URL = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/pub
 // 8. BELLE B OUTRO — full volume, no music
 
 let FFMPEG_PATH = 'ffmpeg'
-try { FFMPEG_PATH = eval('require')('ffmpeg-static') as string } catch { /* system ffmpeg */ }
+try { FFMPEG_PATH = require('@ffmpeg-installer/ffmpeg').path } catch { /* system ffmpeg */ }
 
 async function download(url: string, dest: string): Promise<void> {
   const res = await fetch(url)
