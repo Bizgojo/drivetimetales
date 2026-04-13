@@ -1068,6 +1068,9 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
 
       setAudioProgress(prev => ({ ...prev, [s.id]: { step: 'done', voiceStats: voiceResult.stats, finalUrl: mixResult.finalAudioUrl } }))
       // Publish story now that audio is ready
+      const supabaseId = supabaseIds[s.id] || s.id
+      await supabase.from('stories').update({ is_hidden: false }).eq('id', supabaseId)
+      // Publish story now that audio is ready
       const publishId = supabaseIds[s.id] || s.id
       await supabase.from('stories').update({ is_hidden: false }).eq('id', publishId)
     } catch(err) {
@@ -1430,7 +1433,7 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
                       </div>)}
                       <div style={{display:'grid',gridTemplateColumns:'1fr 340px'}}>
                         <div style={{borderRight:'1px solid #e0e0e0'}}>
-                          <div style={{padding:'12px 20px',borderBottom:'1px solid #e0e0e0',fontSize:12,color:'#888',letterSpacing:1,textTransform:'uppercase',fontWeight:700}}>Script</div>
+                          <div style={{padding:'12px 20px',borderBottom:'1px solid #e0e0e0',fontSize:12,color:'#888',letterSpacing:1,textTransform:'uppercase',fontWeight:700,display:'flex',justifyContent:'space-between',alignItems:'center'}}><span>Script</span><button onClick={()=>{navigator.clipboard.writeText(s.script);alert('Script copied to clipboard')}} style={{fontSize:11,padding:'4px 10px',background:'#f0f0f0',border:'1px solid #ccc',borderRadius:4,cursor:'pointer',fontWeight:600,textTransform:'none',letterSpacing:0}}>Copy Script</button></div>
                           <pre style={{margin:0,padding:20,fontSize:13,lineHeight:1.7,color:'#333',whiteSpace:'pre-wrap',wordBreak:'break-word',maxHeight:500,overflowY:'auto',fontFamily:'Courier New, monospace'}}>
                             {s.script.split('\n').map((line,i)=>{ if(line.match(/^\[SFX:|^\[MUSIC:|^\[BEAT\]|^\[PAUSE/)) return <span key={i} style={{color:'#3949ab'}}>{line}{'\n'}</span>; if(line.match(/^[A-Z][A-Z\s]+:/)) return <span key={i} style={{color:'#e65100',fontWeight:700}}>{line}{'\n'}</span>; return <span key={i}>{line}{'\n'}</span> })}
                           </pre>
