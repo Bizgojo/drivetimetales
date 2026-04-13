@@ -1071,11 +1071,7 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
 
       setAudioProgress(prev => ({ ...prev, [s.id]: { step: 'done', voiceStats: voiceResult.stats, finalUrl: mixResult.finalAudioUrl } }))
       // Publish story now that audio is ready
-      const supabaseId = supabaseIds[s.id] || s.id
       await supabase.from('stories').update({ is_hidden: false }).eq('id', supabaseId)
-      // Publish story now that audio is ready
-      const publishId = supabaseIds[s.id] || s.id
-      await supabase.from('stories').update({ is_hidden: false }).eq('id', publishId)
     } catch(err) {
       setAudioProgress(prev => ({ ...prev, [s.id]: { ...prev[s.id], step: 'error', error: String(err) } }))
     }
