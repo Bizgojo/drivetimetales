@@ -363,7 +363,7 @@ BELLE B SPEECH RULES — CRITICAL:
 - GOOD: "She catalogs the dead for a living — until her dead husband starts writing back."
 - BAD: "Hi! Maren is an archivist who catalogs the dead for a living..."
 - TONE RULE: Belle speaks like she and the listener have already shared many stories together. Never a first-meeting greeting. Never "Hi" or "Hello". She picks up mid-friendship — warm, casual, assuming familiarity.
-- No listener name placeholder — Belle speaks directly and warmly without using a name.
+- HARD RULE: Never write [LISTENER_NAME] or any name placeholder anywhere in the script. Belle never addresses the listener by name.
 - Belle recommends the story the way a trusted friend would — not an announcer, not a host. She assumes the listener trusts her taste.
 
 ADD IN EXACT ORDER:
@@ -378,7 +378,7 @@ Belle B intro rules — this is the most important line in the script:
 - Belle B is a warm friend talking directly to the listener — never a radio announcer, never formal
 - The listener must understand WHO the story is about, WHAT situation they are in, and WHY it matters — before the title lands
 - Give enough context that someone starting cold is not confused when the story begins
-- No name placeholder — Belle speaks directly without using the listener's name
+- HARD RULE: Never write [LISTENER_NAME] or any placeholder. Belle never uses the listener's name
 - Include the story title in quotes at the end of the line
 - Reference something SPECIFIC from THIS story — a character name, a place, an object, a tension
 - Never time-of-day. Never "welcome back." Never "Endless Tales presents." Never genre labels
