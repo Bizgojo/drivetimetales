@@ -945,6 +945,7 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
 
   async function produceStory(s: Story) {
     if (!s.script || !s.title || !s.author) { alert('Story needs script, title, and author'); return }
+    setAudioProgress(prev => { const n={...prev}; delete n[s.id]; return n })
     setProducing(s.id)
     setProduceSteps({description:{status:'pending'},prose:{status:'pending'},cover:{status:'pending'},author:{status:'pending'},narrator:{status:'pending'},save:{status:'pending'}})
     try {
@@ -1467,7 +1468,7 @@ type AudioState = { step: AudioStep; voiceStats?: {succeeded:number;total:number
 
 function AudioGenButton({ap,onGenerate}:{ap:AudioState|undefined;onGenerate:(e:React.MouseEvent<HTMLButtonElement>)=>void}) {
   const busy = ap?.step==='voices'||ap?.step==='music'||ap?.step==='mixing'
-  const label = busy ? (ap?.step==='voices' ? '🎙 Generating voices...' : ap?.step==='music' ? '🎵 Generating music...' : '🎛 Mixing audio...') : ap?.step==='done' ? '✅ Audio Done' : '🔊 Generate Audio'
+  const label = busy ? (ap?.step==='voices' ? '🎙 Generating voices...' : ap?.step==='music' ? '🎵 Generating music...' : '🎛 Mixing audio...') : ap?.step==='done' ? '✅ Audio Done' : ap?.step==='error' ? '🔄 Retry Audio' : '🔊 Generate Audio'
   const bg = busy ? '#ccc' : ap?.step==='done' ? '#2e7d32' : '#f97316'
   return <button onClick={onGenerate} disabled={busy} style={{background:bg,color:'#fff',border:'none',borderRadius:6,padding:'12px 24px',cursor:busy?'not-allowed':'pointer',fontFamily:'inherit',fontSize:15,fontWeight:700}}>{label}</button>
 }
