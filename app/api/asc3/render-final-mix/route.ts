@@ -150,7 +150,7 @@ export async function POST(req: NextRequest) {
       const segsDur = await getAudioDuration(segsOnlyPath)
       const musicBodyMixedPath = path.join(tmpDir, 'music_body.mp3')
       await execFileAsync(FFMPEG_PATH, [
-        '-i', musicPath,
+        '-stream_loop', '-1', '-i', musicPath,
         '-filter_complex',
         `[0:a]atrim=0:${segsDur + 3},asetpts=PTS-STARTPTS,afade=t=in:st=0:d=2.5,afade=t=out:st=${segsDur}:d=3,volume=0.15[music_out]`,
         '-map', '[music_out]',
@@ -158,7 +158,7 @@ export async function POST(req: NextRequest) {
       ])
       await execFileAsync(FFMPEG_PATH, [
         '-i', segsOnlyPath, '-i', musicBodyMixedPath,
-        '-filter_complex', '[0:a][1:a]amix=inputs=2:duration=first:normalize=0[mixed]',
+        '-filter_complex', '[0:a][1:a]amix=inputs=2:duration=first[mixed]',
         '-map', '[mixed]',
         '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', storyBodyPath
       ])
@@ -178,7 +178,7 @@ export async function POST(req: NextRequest) {
       const musicMixedPath = path.join(tmpDir, 'music_mixed.mp3')
       const delayMs = Math.round(musicStart * 1000)
       await execFileAsync(FFMPEG_PATH, [
-        '-i', musicPath,
+        '-stream_loop', '-1', '-i', musicPath,
         '-filter_complex',
         `[0:a]atrim=0:${musicEnd + 3},asetpts=PTS-STARTPTS,afade=t=in:st=0:d=2.5,afade=t=out:st=${musicEnd}:d=3,volume=0.15,adelay=${delayMs}|${delayMs}[music_out]`,
         '-map', '[music_out]',
@@ -187,7 +187,7 @@ export async function POST(req: NextRequest) {
       const mixedPath = path.join(tmpDir, 'mixed.mp3')
       await execFileAsync(FFMPEG_PATH, [
         '-i', dialoguePath, '-i', musicMixedPath,
-        '-filter_complex', '[0:a][1:a]amix=inputs=2:duration=first:normalize=0[mixed]',
+        '-filter_complex', '[0:a][1:a]amix=inputs=2:duration=first[mixed]',
         '-map', '[mixed]',
         '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', mixedPath
       ])
