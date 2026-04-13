@@ -1,11 +1,15 @@
 /**
- * /auth/callback — Server-side OAuth callback
+ * /auth/callback — Server-side OAuth + Magic Link callback
  *
  * ⚠️  DO NOT CHANGE sameSite TO 'lax' ON ANY COOKIE HERE — THIS WILL BREAK iOS PWA LOGIN ⚠️
  *
  * iOS PWA runs in an isolated cookie container separate from Safari.
  * sameSite:'none' + secure:true on ALL cookies is the ONLY configuration
  * that allows the PWA to maintain a login session. Confirmed April 12 2026.
+ *
+ * Handles two flows:
+ * 1. PKCE (Google OAuth): ?code=xxx
+ * 2. Token hash (Magic Link): ?token_hash=xxx&type=magiclink
  */
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
@@ -14,9 +18,11 @@ import { NextResponse } from 'next/server'
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const origin = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin
-  const code = searchParams.get('code')
+  const code       = searchParams.get('code')
+  const tokenHash  = searchParams.get('token_hash')
+  const type       = searchParams.get('type') as 'magiclink' | 'email' | null
   const errorParam = searchParams.get('error')
-  const errorDesc = searchParams.get('error_description')
+  const errorDesc  = searchParams.get('error_description')
 
   if (errorParam) {
     console.error('[AuthCallback] OAuth error:', errorParam, errorDesc)
@@ -25,8 +31,8 @@ export async function GET(request: Request) {
     )
   }
 
-  if (!code) {
-    console.error('[AuthCallback] No code in callback')
+  if (!code && !tokenHash) {
+    console.error('[AuthCallback] No code or token_hash in callback')
     return NextResponse.redirect(`${origin}/signin?error=no_code`)
   }
 
@@ -44,8 +50,24 @@ export async function GET(request: Request) {
     }
   )
 
-  const { data, error } = await supabase.auth.exchangeCodeForSession(code)
-  console.log('[AuthCallback] Exchange result:', {
+  let data: any = {}
+  let error: any = null
+
+  if (tokenHash && type) {
+    // Magic link flow — no PKCE cookies needed
+    console.log('[AuthCallback] Magic link flow, type:', type)
+    const result = await supabase.auth.verifyOtp({ token_hash: tokenHash, type })
+    data = result.data
+    error = result.error
+  } else if (code) {
+    // PKCE flow — Google OAuth
+    console.log('[AuthCallback] PKCE flow')
+    const result = await supabase.auth.exchangeCodeForSession(code)
+    data = result.data
+    error = result.error
+  }
+
+  console.log('[AuthCallback] Result:', {
     hasSession: !!data?.session,
     hasError: !!error,
     errorMsg: error?.message,
@@ -53,8 +75,8 @@ export async function GET(request: Request) {
     cookieCount: cookiesToSet.length,
   })
 
-  if (error || !data.session) {
-    console.error('[AuthCallback] Code exchange failed:', error?.message)
+  if (error || !data?.session) {
+    console.error('[AuthCallback] Auth failed:', error?.message)
     return NextResponse.redirect(
       `${origin}/signin?error=auth_failed&reason=${encodeURIComponent(error?.message || 'no_session')}`
     )
