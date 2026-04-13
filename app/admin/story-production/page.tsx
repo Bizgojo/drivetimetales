@@ -531,7 +531,7 @@ export default function StoryProductionPage() {
   const [stories, setStories] = useState<Story[]>([])
   const [selected, setSelected] = useState<Story|null>(null)
   const [producing, setProducing] = useState<string|null>(null)
-  const [producedIds, setProducedIds] = useState<Set<string>>(()=>{ try { const s=sessionStorage.getItem('et_produced_ids'); return s ? new Set(JSON.parse(s)) : new Set() } catch { return new Set() } })
+  const [producedIds, setProducedIds] = useState<Set<string>>(()=>{ try { const stored=sessionStorage.getItem('et_produced_ids'); return stored ? new Set(JSON.parse(stored)) : new Set() } catch { return new Set() } })
   const [produceSteps, setProduceSteps] = useState<Record<string,{status:string,message?:string}>>({}) 
   const [authors, setAuthors] = useState<Author[]>([])
   const [narrators, setNarrators] = useState<Narrator[]>([])
