@@ -193,6 +193,52 @@ async function fetchMyVoices(): Promise<typeof CURATED_VOICES> {
   }
 }
 
+
+// ─── Fetch My Voices from ElevenLabs — ALWAYS search full library ────────────
+// PERMANENT: Never revert to CURATED_VOICES for character assignment.
+// CURATED_VOICES is fallback only if EL API fails.
+async function fetchMyVoices(): Promise<typeof CURATED_VOICES> {
+  try {
+    const resp = await fetch('https://api.elevenlabs.io/v1/voices', {
+      headers: { 'xi-api-key': ELEVENLABS_API_KEY }
+    })
+    if (!resp.ok) {
+      console.warn('fetchMyVoices: EL API failed, using curated fallback')
+      return CURATED_VOICES
+    }
+    const data = await resp.json()
+    const voices = (data.voices || []) as any[]
+    const mapped = voices
+      .filter((v: any) => v.voice_id !== BELLE_B_VOICE_ID)
+      .map((v: any) => {
+        const labels = v.labels || {}
+        const desc = (v.description || v.name || '').toLowerCase()
+        const labelDesc = Object.values(labels).join(' ').toLowerCase()
+        const full = desc + ' ' + labelDesc
+        let gender: 'male'|'female'|'neutral' = 'neutral'
+        if (labels.gender === 'male') gender = 'male'
+        else if (labels.gender === 'female') gender = 'female'
+        else if (full.includes('female') || full.includes('woman')) gender = 'female'
+        else if (full.includes(' male') && !full.includes('female')) gender = 'male'
+        let age: 'young'|'middle_aged'|'old' = 'middle_aged'
+        if (labels.age) age = labels.age.includes('young') ? 'young' : labels.age.includes('old') ? 'old' : 'middle_aged'
+        else if (full.includes('young') || full.includes('teen')) age = 'young'
+        else if (full.includes('elder') || full.includes('senior') || full.includes('mature')) age = 'old'
+        let accent = labels.accent || 'american'
+        if (full.includes('british') || full.includes('english')) accent = 'british'
+        else if (full.includes('irish')) accent = 'irish'
+        else if (full.includes('australian')) accent = 'australian'
+        else if (full.includes('scottish')) accent = 'scottish'
+        return { voice_id: v.voice_id, name: v.name, gender, age, accent, description: v.description || v.name || '' }
+      })
+    console.log(`fetchMyVoices: loaded ${mapped.length} voices from EL My Voices library`)
+    return mapped.length > 0 ? mapped : CURATED_VOICES
+  } catch (e) {
+    console.warn('fetchMyVoices error, using curated fallback:', e)
+    return CURATED_VOICES
+  }
+}
+
 // ─── Voice Matching ───────────────────────────────────────────────────────────
 
 function matchVoices(
