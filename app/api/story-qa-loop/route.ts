@@ -169,10 +169,10 @@ ${story}`
   const wrapPrompt = `You are the Endless Tales platform team. Wrap this produced audio drama.
 
 ADD IN ORDER:
-1. BELLE B INTRO\n---\nBELLE B: [one intro line — urgent, leaning forward — include [LISTENER_NAME] mid-sentence, story title in quotes, SPECIFIC VISCERAL detail, IMMEDIATE STAKES before title, never time-of-day]\n---
+1. BELLE B INTRO\n---\nBELLE B: [one intro line — she is a warm friend recommending this story. Max two short sentences. SPECIFIC detail from the story that hooks. Never formal, never say Welcome to or presents. Never use LISTENER_NAME or any name placeholder. Never reference time of day.]\n---
 2. HEADER:\nSERIES: ${series.seriesName}\nEPISODE: ${ep.episodeNumber}\nEPISODE_TITLE: ${ep.episodeTitle}\nSERIES_TOTAL_EPISODES: ${series.totalEpisodes}\nSERIES_IS_FINALE: ${isFinale}\nAUTHOR: ${series.author}\nGENRE: Thriller\nDESCRIPTION: [24 words max]\nNARRATOR: ${series.narrator}\nANNOUNCER: Belle B\nNARRATIVE_VOICE: ${narrativeVoice}\nNARRATOR_IS_CHARACTER: false\nSUNO PROMPT: [2-3 sentences]
 3. CHARACTER GUIDE\n---\n[NAME — age, gender, accent, personality]
-4. ANNOUNCER: Endless Tales presents... ${series.seriesName}. Episode ${ep.episodeNumber}: ${ep.episodeTitle}. [hook sentence]
+4. [START AUDIO DRAMA SCRIPT] ${series.seriesName}. Episode ${ep.episodeNumber}: ${ep.episodeTitle}. [hook sentence]
 5. THE PRODUCTION SCRIPT (copy exactly)
 6. ${outroInstruction}
 
