@@ -197,6 +197,8 @@ VOICE CALIBRATION: Author ${author}
 
 TRUNCATION: If script ends mid-sentence, mid-word, or without complete Belle B outro, set truncated=true and give structure_and_pacing 5 or below.
 
+ENDING RULE: Every standalone MUST have a definitive ending. The central conflict must be resolved. The listener must know the story is over and feel satisfied. The last 2 minutes should contain: (1) climax or final revelation, (2) resolution showing consequences, (3) closing image or moment that lands emotionally. If the ending is ambiguous, trails off, or leaves the central conflict unresolved, give structure_and_pacing 4 or below. Test: could a listener summarize how the story ended in one sentence? If not, the ending fails.
+
 Return ONLY valid JSON:
 {"opening_hook":{"score":0,"feedback":""},"overall_listenability":{"score":0,"feedback":""},"dialogue_quality":{"score":0,"feedback":""},"structure_and_pacing":{"score":0,"feedback":""},"audio_suitability":{"score":0,"feedback":""},"policy_compliance":{"pass":true,"feedback":""},"composite_score":0,"recommendation":"Proceed","top_fixes":[],"evaluator_summary":"","truncated":false}
 
