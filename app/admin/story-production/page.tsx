@@ -564,7 +564,9 @@ export default function StoryProductionPage() {
 
   // Audio generation
   const [audioProgress, setAudioProgress] = useState<Record<string, AudioState>>({})
-  const [supabaseIds, setSupabaseIds] = useState<Record<string, string>>({}) // localId → supabase UUID
+  const [supabaseIds, setSupabaseIds] = useState<Record<string, string>>(() => {
+    try { const stored = sessionStorage.getItem('et_supabase_ids'); return stored ? JSON.parse(stored) : {} } catch { return {} }
+  }) // localId → supabase UUID
   // charVoiceModal removed — EL auto-assigns voices
 
   // Manual write
@@ -956,7 +958,7 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
       try {
         const { data: inserted } = await supabase.from('stories').insert({
           title: s.title, author: s.author, genre: s.genre,
-          duration_mins: parseInt(s.runtime) || 15, is_hidden: false,
+          duration_mins: parseInt(s.runtime) || 15, is_hidden: true,
           published_on: new Date().toISOString().split('T')[0]
         }).select('id').single()
         if (inserted?.id) storyId = inserted.id
@@ -970,7 +972,11 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
       setProduceSteps(result.steps || {})
       // Always store the UUID if we got one back — even partial success
       if (result.storyId) {
-        setSupabaseIds(prev => ({ ...prev, [s.id]: result.storyId }))
+        setSupabaseIds(prev => {
+          const updated = { ...prev, [s.id]: result.storyId }
+          try { sessionStorage.setItem('et_supabase_ids', JSON.stringify(updated)) } catch {}
+          return updated
+        })
       }
       if (result.success) {
         setStatus('✅ Produced! — click 🔊 Generate Audio')
