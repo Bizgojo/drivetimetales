@@ -13,38 +13,38 @@ const ADMIN_EMAILS = new Set([
 ])
 
 const NAV_GROUPS = [
-  { id: 'dashboard', label: 'Dashboard', icon: '\U0001f4ca', items: [
+  { id: 'dashboard', label: 'Dashboard', icon: '📊', items: [
     { href: '/admin', label: 'Overview' },
     { href: '/admin/checklist', label: 'Launch Checklist' },
   ]},
-  { id: 'production', label: 'Production', icon: '\U0001f3ac', items: [
+  { id: 'production', label: 'Production', icon: '🎬', items: [
     { href: '/admin/story-production', label: 'Story Production' },
     { href: '/admin/story-ideas', label: 'Story Ideas' },
     { href: '/admin/authors-narrators', label: 'Authors & Narrators' },
     { href: '/admin/genres', label: 'Genres' },
     { href: '/admin/el-usage', label: 'ElevenLabs Usage' },
   ]},
-  { id: 'library', label: 'Library', icon: '\U0001f4da', items: [
+  { id: 'library', label: 'Library', icon: '📚', items: [
     { href: '/admin/stories', label: 'Published Stories' },
     { href: '/admin/guest-stories', label: 'Guest Stories' },
     { href: '/admin/landing-stories', label: 'Landing Stories' },
   ]},
-  { id: 'subscribers', label: 'Subscribers', icon: '\U0001f465', items: [
+  { id: 'subscribers', label: 'Subscribers', icon: '👥', items: [
     { href: '/admin/users', label: 'Users' },
     { href: '/admin/subscriptions', label: 'Subscriptions' },
     { href: '/admin/promo', label: 'Promo Codes' },
     { href: '/admin/referrals', label: 'Referrals' },
   ]},
-  { id: 'marketing', label: 'Marketing', icon: '\U0001f4f1', items: [
+  { id: 'marketing', label: 'Marketing', icon: '📱', items: [
     { href: '/admin/marketing', label: 'Campaigns' },
     { href: '/admin/waitlist', label: 'Waitlist' },
     { href: '/admin/social-posting', label: 'Social Posting' },
     { href: '/admin/social-analytics', label: 'Social Analytics' },
   ]},
-  { id: 'analytics', label: 'Analytics', icon: '\U0001f4c8', items: [
+  { id: 'analytics', label: 'Analytics', icon: '📈', items: [
     { href: '/admin/analytics', label: 'Overview' },
   ]},
-  { id: 'finance', label: 'Finance', icon: '\U0001f4b0', items: [
+  { id: 'finance', label: 'Finance', icon: '💰', items: [
     { href: '/admin/finance', label: 'Revenue & Costs' },
   ]},
 ]
@@ -130,10 +130,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <div style={{ marginTop: '1.5rem', borderTop: '1px solid #334155', paddingTop: '0.75rem' }}>
           <div style={{ color: '#475569', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem', paddingLeft: '0.75rem' }}>External Tools</div>
           {[
-            { href: 'https://dashboard.stripe.com', label: 'Stripe', icon: '\U0001f4b3' },
-            { href: 'https://vercel.com/dashboard', label: 'Vercel', icon: '\u25b2' },
-            { href: 'https://supabase.com/dashboard', label: 'Supabase', icon: '\U0001f5c4' },
-            { href: 'https://elevenlabs.io', label: 'ElevenLabs', icon: '\U0001f399' },
+            { href: 'https://dashboard.stripe.com', label: 'Stripe', icon: '💳' },
+            { href: 'https://vercel.com/dashboard', label: 'Vercel', icon: '▲' },
+            { href: 'https://supabase.com/dashboard', label: 'Supabase', icon: '🗄' },
+            { href: 'https://elevenlabs.io', label: 'ElevenLabs', icon: '🎙' },
           ].map(tool => (
             <a key={tool.href} href={tool.href} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.4rem 0.75rem', color: '#64748b', textDecoration: 'none', fontSize: '12px' }}>
               <span style={{ fontSize: '14px', width: '20px', textAlign: 'center' }}>{tool.icon}</span>
