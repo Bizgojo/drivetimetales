@@ -141,22 +141,11 @@ export async function POST(req: NextRequest) {
     const storyBodyPath = path.join(tmpDir, 'story_body.mp3')
 
     if (!musicPath) {
-      console.log('  No music \u2014 concatenating segments only for story_body')
-      const bodyConcatFile = path.join(tmpDir, 'body_concat.txt')
-      await fs.writeFile(bodyConcatFile, normalizedSegPaths.map(p => `file '${p}'`).join('\n'))
-      await execFileAsync(FFMPEG_PATH, [
-        '-f', 'concat', '-safe', '0', '-i', bodyConcatFile,
-        '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', storyBodyPath
-      ])
+      console.log('  No music - using normalized segments as story_body')
+      await fs.copyFile(normalizedConcatPath, storyBodyPath)
     } else {
       console.log('  Full mix with background music')
-      const segConcatFile = path.join(tmpDir, 'seg_concat.txt')
-      await fs.writeFile(segConcatFile, segPaths.map(p => `file '${p}'`).join('\n'))
-      const segsOnlyPath = path.join(tmpDir, 'segs_only.mp3')
-      await execFileAsync(FFMPEG_PATH, [
-        '-f', 'concat', '-safe', '0', '-i', segConcatFile,
-        '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', segsOnlyPath
-      ])
+      const segsOnlyPath = normalizedConcatPath
       const segsDur = await getAudioDuration(segsOnlyPath)
       const musicBodyMixedPath = path.join(tmpDir, 'music_body.mp3')
       await execFileAsync(FFMPEG_PATH, [
