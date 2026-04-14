@@ -13,6 +13,8 @@ type AIScore = {
   opening_hook: { score: number; feedback: string }
   overall_listenability: { score: number; feedback: string }
   dialogue_quality: { score: number; feedback: string }
+  story_clarity: { score: number; feedback: string }
+  ending_resolution: { score: number; feedback: string }
   structure_and_pacing: { score: number; feedback: string }
   audio_suitability: { score: number; feedback: string }
   policy_compliance: { pass: boolean; feedback: string }
@@ -862,6 +864,8 @@ ${script}`
       `Hook (${aiScore.opening_hook.score}/10): ${aiScore.opening_hook.feedback}`,
       `Listenability (${aiScore.overall_listenability.score}/10): ${aiScore.overall_listenability.feedback}`,
       `Dialogue (${aiScore.dialogue_quality.score}/10): ${aiScore.dialogue_quality.feedback}`,
+      `Clarity (${aiScore.story_clarity?.score || 0}/10): ${aiScore.story_clarity?.feedback || "N/A"}`,
+      `Ending (${aiScore.ending_resolution?.score || 0}/10): ${aiScore.ending_resolution?.feedback || "N/A"}`,
       `Pacing (${aiScore.structure_and_pacing.score}/10): ${aiScore.structure_and_pacing.feedback}`,
       `Audio (${aiScore.audio_suitability.score}/10): ${aiScore.audio_suitability.feedback}`,
     ].join('\n')
@@ -882,6 +886,8 @@ REVISION RULES:
 - If listenability scored below 8: add more narrator re-anchoring after scene changes
 - If hook scored below 8: rewrite the first 3 exchanges to open with more immediate action
 - If pacing scored below 8: add a harder act break at the 40% mark
+- If clarity scored below 8: add narrator lines before each speaker change identifying who is talking and where we are
+- If ending scored below 8: rewrite the final scene to fully resolve the central conflict with a clear climax, resolution, and closing image
 - Return ONLY the complete revised script — no commentary, no preamble, no markdown
 
 ORIGINAL SCRIPT TO REVISE:
@@ -898,8 +904,12 @@ ${script}`
     try {
       const resp=await fetch('/api/claude-proxy',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ model:'claude-sonnet-4-6', max_tokens:2500, messages:[{role:'user',content:`Grade this Endless Tales audio drama for a general audience listener who cannot look at a screen. Brutally honest. Scores 1-10.
 
-Weights: opening_hook 25%, overall_listenability 25%, dialogue_quality 20%, structure_and_pacing 15%, audio_suitability 15%.
+Weights: opening_hook 15%, overall_listenability 15%, dialogue_quality 15%, story_clarity 20%, ending_resolution 20%, structure_and_pacing 10%, audio_suitability 5%.
 composite_score = weighted average max 10, displayed as x2.5=/25. Policy fail = auto Rejected.
+
+STORY CLARITY (20%): Can a listener who is driving follow the story without confusion? At every moment, is it clear WHO is speaking, WHERE we are, and WHAT is happening? Does the narrator identify speakers before or after dialogue? Score 9-10 only if a distracted driver could follow every scene change and speaker switch.
+
+ENDING RESOLUTION (20%): Does the story have a clear, satisfying ending? Is the central conflict fully resolved? Could the listener summarize how the story ended in one sentence? Score below 5 if the story trails off, ends ambiguously, or leaves the main question unanswered. Score 9-10 only if the ending delivers a climax, resolution, and emotional landing.
 
 VOICE CALIBRATION: Author ${author} | Genre: ${g}
 - First person narrators (Sara Keene, Elias Thorn, Silas Graves): intimate voice IS the style — do not penalize for "cinematic distance". Judge listenability on whether the internal voice grips a distracted listener.
@@ -907,7 +917,7 @@ VOICE CALIBRATION: Author ${author} | Genre: ${g}
 - Score dialogue_quality on distinctiveness between characters and how well speech reveals character under pressure — not on volume of dialogue.
 
 Return ONLY valid JSON, no markdown:
-{"opening_hook":{"score":0,"feedback":""},"overall_listenability":{"score":0,"feedback":""},"dialogue_quality":{"score":0,"feedback":""},"structure_and_pacing":{"score":0,"feedback":""},"audio_suitability":{"score":0,"feedback":""},"policy_compliance":{"pass":true,"feedback":""},"composite_score":0,"recommendation":"Proceed","top_fixes":[],"evaluator_summary":""}
+{"opening_hook":{"score":0,"feedback":""},"overall_listenability":{"score":0,"feedback":""},"dialogue_quality":{"score":0,"feedback":""},"story_clarity":{"score":0,"feedback":""},"ending_resolution":{"score":0,"feedback":""},"structure_and_pacing":{"score":0,"feedback":""},"audio_suitability":{"score":0,"feedback":""},"policy_compliance":{"pass":true,"feedback":""},"composite_score":0,"recommendation":"Proceed","top_fixes":[],"evaluator_summary":""}
 
 recommendation = "Proceed"|"Revise and Resubmit"|"Rejected"
 top_fixes = up to 3 specific actionable fixes if any score < 9
