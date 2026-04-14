@@ -116,7 +116,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     {group.items.map((item) => {
                       const isActive = pathname === item.href || (item.href !== '/admin' && pathname.startsWith(item.href))
                       return (
-                        <Link key={item.href} href={item.href} style={{ display: 'block', padding: '0.45rem 0.75rem', borderRadius: '5px', backgroundColor: isActive ? '#f97316' : 'transparent', color: isActive ? 'white' : '#94a3b8', textDecoration: 'none', fontWeight: isActive ? 600 : 400, fontSize: '13px' }}>
+                        <Link key={item.href} href={item.href} style={{ display: 'block', padding: '0.45rem 0.75rem', borderRadius: '5px', backgroundColor: isActive ? '#f97316' : 'transparent', color: isActive ? 'white' : '#e2e8f0', textDecoration: 'none', fontWeight: isActive ? 600 : 400, fontSize: '13px' }}>
                           {item.label}
                         </Link>
                       )
@@ -128,14 +128,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           })}
         </nav>
         <div style={{ marginTop: '1.5rem', borderTop: '1px solid #334155', paddingTop: '0.75rem' }}>
-          <div style={{ color: '#475569', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem', paddingLeft: '0.75rem' }}>External Tools</div>
+          <div style={{ color: '#94a3b8', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem', paddingLeft: '0.75rem' }}>External Tools</div>
           {[
             { href: 'https://dashboard.stripe.com', label: 'Stripe', icon: '💳' },
             { href: 'https://vercel.com/dashboard', label: 'Vercel', icon: '▲' },
             { href: 'https://supabase.com/dashboard', label: 'Supabase', icon: '🗄' },
             { href: 'https://elevenlabs.io', label: 'ElevenLabs', icon: '🎙' },
           ].map(tool => (
-            <a key={tool.href} href={tool.href} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.4rem 0.75rem', color: '#64748b', textDecoration: 'none', fontSize: '12px' }}>
+            <a key={tool.href} href={tool.href} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.4rem 0.75rem', color: '#cbd5e1', textDecoration: 'none', fontSize: '12px' }}>
               <span style={{ fontSize: '14px', width: '20px', textAlign: 'center' }}>{tool.icon}</span>
               {tool.label}
             </a>
