@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-export const maxDuration = 300
+export const maxDuration = 800
 export const runtime = 'nodejs'
 import { createClient } from '@supabase/supabase-js'
 import { promises as fs } from 'fs'

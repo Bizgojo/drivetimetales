@@ -4,16 +4,16 @@
   "framework": "nextjs",
   "functions": {
     "app/api/asc3/generate-story-complete/route.ts": {
-      "maxDuration": 300
+      "maxDuration": 800
     },
     "app/api/asc3/render-final-mix/route.ts": {
-      "maxDuration": 300
+      "maxDuration": 800
     },
     "app/api/asc3/generate-music/route.ts": {
-      "maxDuration": 300
+      "maxDuration": 800
     },
     "app/api/admin/generate-voices/route.ts": {
-      "maxDuration": 300
+      "maxDuration": 800
     }
   },
   "crons": [

@@ -7,7 +7,7 @@ import path from 'path'
 import os from 'os'
 
 export const runtime = 'nodejs'
-export const maxDuration = 300
+export const maxDuration = 800
 
 let FFMPEG_PATH = 'ffmpeg'
 try { FFMPEG_PATH = eval('require')('@ffmpeg-installer/ffmpeg').path } catch {}
