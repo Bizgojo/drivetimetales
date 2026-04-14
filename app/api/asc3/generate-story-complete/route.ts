@@ -11,7 +11,7 @@ const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY!
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY!
 
 // Belle B is RESERVED for intro/outro ONLY — never used for characters
-const BELLE_B_VOICE_ID = 'EXAVITQu4vr4xnSDxMaL'
+const BELLE_B_VOICE_ID = 'wewocdDkjSLm9ZwjO7TD'
 const ELEVENLABS_CHUNK_SIZE = 4500
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
@@ -847,8 +847,8 @@ Now write the complete audio drama:`
 
     const authorName = body.authorName || body.authorStyle || 'the author'
 
-    const introText = `Welcome to Endless Tales.\n\nToday's story: "${title}" by ${authorName}.\n\n${conceptHook}\n\nLet's begin.`
-    const outroText = `Thank you for listening to "${title}" on Endless Tales. Visit endless-tales.com to explore more stories.`
+    const introText = conceptHook
+    const outroText = `That was "${title}" by ${authorName} \u2014 an Endless Tales original.`
 
     let introAudioUrl = ''
     let storySegmentResults: StorySegmentResult[] = []

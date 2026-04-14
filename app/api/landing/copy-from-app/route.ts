@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
 
     // Build default landing page intro (same as app intro to start — user will customise)
     const introText = story.intro_text ||
-      `Welcome to Endless Tales.\n\nToday's story: "${story.title}" by ${story.author}.\n\nLet's begin.`
+      story.description || `"${story.title}" by ${story.author}.`
 
     // Default landing page outro with CTA
     const outroText = story.outro_text ||
