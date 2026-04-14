@@ -160,9 +160,24 @@ export async function POST(req: NextRequest) {
       ])
     }
 
-    // Build final_mix by concatenating: sting + silence + intro + silence + story_body + silence + outro
+    // Build sting+intro crossfade: Belle B starts at 1.2s into sting, sting fades under her
+    const stingDur = await getAudioDuration(stingPath)
+    const crossfadeStart = 1.2 // Belle B begins at 1200ms into sting
+    const stingIntroPath = path.join(tmpDir, 'sting_intro.mp3')
+    const delayMs = Math.round(crossfadeStart * 1000)
+    await execFileAsync(FFMPEG_PATH, [
+      '-i', stingPath, '-i', normalizedIntroPath,
+      '-filter_complex',
+      `[0:a]afade=t=out:st=${crossfadeStart}:d=${Math.max(0.5, stingDur - crossfadeStart)}[sting_fade];` +
+      `[1:a]adelay=${delayMs}|${delayMs}[intro_delayed];` +
+      `[sting_fade][intro_delayed]amix=inputs=2:duration=longest[out]`,
+      '-map', '[out]',
+      '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', stingIntroPath
+    ])
+
+    // Build final_mix: crossfaded sting+intro + silence + story_body + silence + outro
     const finalConcatFile = path.join(tmpDir, 'final.txt')
-    await fs.writeFile(finalConcatFile, [stingPath, sil075Path, normalizedIntroPath, sil075Path, storyBodyPath, sil100Path, normalizedOutroPath].map(p => `file '${p}'`).join('\n'))
+    await fs.writeFile(finalConcatFile, [stingIntroPath, sil075Path, storyBodyPath, sil100Path, normalizedOutroPath].map(p => `file '${p}'`).join('\n'))
     await execFileAsync(FFMPEG_PATH, [
       '-f', 'concat', '-safe', '0', '-i', finalConcatFile,
       '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', outputPath
