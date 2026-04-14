@@ -111,6 +111,13 @@ export async function POST(req: NextRequest) {
       }
     }
     console.log(`  Downloaded ${segPaths.length}/${segmentFiles.length} segments`)
+    // Diagnostic: log file sizes
+    let totalSize = 0
+    for (const sp of segPaths) {
+      const st = await fs.stat(sp)
+      totalSize += st.size
+    }
+    console.log(`  Total segment data: ${(totalSize/1024/1024).toFixed(2)} MB`)
 
     // Normalize all voice segments to consistent volume
     console.log('  Normalizing voice levels...')
@@ -130,6 +137,9 @@ export async function POST(req: NextRequest) {
       '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', normalizedConcatPath
     ])
     const normalizedSegPaths = [normalizedConcatPath]
+    const concatStat = await fs.stat(normalizedConcatPath)
+    const concatDur = await getAudioDuration(normalizedConcatPath)
+    console.log(`  Concatenated segments: ${(concatStat.size/1024/1024).toFixed(2)} MB, ${concatDur.toFixed(1)}s duration`)
 
     const sil075Path = path.join(tmpDir, 'sil075.mp3')
     const sil100Path = path.join(tmpDir, 'sil100.mp3')
