@@ -438,7 +438,11 @@ ${productionScript}`
 
 function buildScriptPrompt(p: PipelineParams): string {
   const profile = AUTHOR_PROFILES[p.author] || `${p.authorVoice} voice. ${p.authorTone}.`
-  const endingRule = p.isSeries && !p.isFinale ? 'End on hard cliffhanger. Final line = burning question.' : p.isSeries && p.isFinale ? 'FINALE: Resolve ALL threads.' : 'Resolve completely. Final NARRATOR line conclusive.'
+  const endingRule = p.isSeries && !p.isFinale
+    ? 'End on hard cliffhanger. Final line = burning question — a specific moment of danger, revelation, or impossible choice.'
+    : p.isSeries && p.isFinale
+    ? 'FINALE: Resolve ALL threads. Every question answered. Listener must feel complete satisfaction.'
+    : 'ENDING — NON-NEGOTIABLE: The central conflict MUST be fully resolved. The listener MUST know the story is over and feel satisfied. The last 2 minutes MUST contain: (1) the climax or final revelation, (2) the resolution showing what happened as a result, (3) a closing image or moment that lands emotionally. NO ambiguous endings. NO trailing off. NO life-goes-on non-endings. Test: could a listener summarize how the story ended in one sentence? If not, the ending is not done.'
   const narrativeVoice = p.authorVoice || 'third_limited'
   const voiceRule = narrativeVoice === 'first_person'
     ? 'NARRATIVE VOICE: first_person. NARRATOR IS THE PROTAGONIST — every narration line uses I/me/my. The narrator voice and the protagonist character voice are THE SAME PERSON. Do NOT write the protagonist as a separate character with their own dialogue lines — their voice IS the narrator. Other characters speak in dialogue. This must be consistent in EVERY episode of this series.'
