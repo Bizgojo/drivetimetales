@@ -46,6 +46,14 @@ export default function AdminPromoPage() {
   const [sending, setSending] = useState(false)
   const [sendMsg, setSendMsg] = useState('')
 
+  // Magic link state
+  const [mlEmail, setMlEmail] = useState('')
+  const [mlName, setMlName] = useState('')
+  const [mlCode, setMlCode] = useState('')
+  const [mlDays, setMlDays] = useState('30')
+  const [mlSending, setMlSending] = useState(false)
+  const [mlMsg, setMlMsg] = useState('')
+
   useEffect(() => { load() }, [])
 
   async function load() {
@@ -178,6 +186,58 @@ export default function AdminPromoPage() {
           <button onClick={createCode} disabled={saving || !form.code} style={{ padding: '10px 24px', background: orange, color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
             {saving ? 'Creating...' : 'Create Code'}
           </button>
+        </div>
+
+        {/* Send Magic Link */}
+        <div style={{ background: card, border: '1px solid ' + border, borderRadius: 12, padding: 20, marginBottom: 24 }}>
+          <h2 style={{ fontSize: 15, fontWeight: 800, margin: '0 0 4px' }}>Send Magic Link Invite</h2>
+          <p style={{ color: muted, fontSize: 12, margin: '0 0 16px' }}>One-click invite: creates account, applies promo, stores name for Belle B. Recipient clicks one link and they are in.</p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 120px', gap: 12, marginBottom: 12 }}>
+            <div>
+              <label style={label}>Email *</label>
+              <input style={input} value={mlEmail} onChange={e => setMlEmail(e.target.value)} placeholder="friend@gmail.com" />
+            </div>
+            <div>
+              <label style={label}>First Name *</label>
+              <input style={input} value={mlName} onChange={e => setMlName(e.target.value)} placeholder="Sarah" />
+            </div>
+            <div>
+              <label style={label}>Promo Code *</label>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input style={{ ...input, flex: 1 }} value={mlCode} onChange={e => setMlCode(e.target.value.toUpperCase())} placeholder="FRIEND30" />
+                <select style={{ ...input, width: 'auto', padding: '8px 6px' }} value={mlCode} onChange={e => setMlCode(e.target.value)}>
+                  <option value="">Pick...</option>
+                  {codes.filter((c) => c.is_active && (c.max_uses === null || c.uses_count < c.max_uses)).map((c) => (
+                    <option key={c.id} value={c.code}>{c.code} ({c.subscription_days}d)</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+              <button
+                onClick={async () => {
+                  if (!mlEmail.includes('@') || !mlName.trim() || !mlCode.trim()) { setMlMsg('All fields required'); return }
+                  setMlSending(true); setMlMsg('')
+                  try {
+                    const res = await fetch('/api/promo/send-magic-link', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ email: mlEmail.trim(), firstName: mlName.trim(), promoCode: mlCode.trim() })
+                    })
+                    const data = await res.json()
+                    if (!res.ok) { setMlMsg('Error: ' + (data.error || 'Failed')); }
+                    else { setMlMsg('Sent to ' + mlName + '! ' + data.daysGranted + ' days granted.'); setMlEmail(''); setMlName(''); load() }
+                  } catch (err) { setMlMsg('Error: ' + String(err)) }
+                  setMlSending(false)
+                }}
+                disabled={mlSending}
+                style={{ padding: '10px 16px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', width: '100%', whiteSpace: 'nowrap' }}
+              >
+                {mlSending ? 'Sending...' : 'Send Invite'}
+              </button>
+            </div>
+          </div>
+          {mlMsg && <p style={{ color: mlMsg.startsWith('Error') ? '#dc2626' : '#16a34a', fontSize: 13, margin: 0, fontWeight: 600 }}>{mlMsg}</p>}
         </div>
 
         {/* Tabs */}
