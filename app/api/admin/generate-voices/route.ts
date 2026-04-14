@@ -261,7 +261,7 @@ function parseScript(script: string): ScriptLine[] {
   return lines
 }
 
-async function generateVoiceLine(rawText: string, voiceId: string, storyId: string, lineIndex: number, prefix: string): Promise<string> {
+async function generateVoiceLine(rawText: string, voiceId: string, storyId: string, lineIndex: number, prefix: string, forceRegenerate = false): Promise<string> {
   // Clean markdown and special characters before sending to ElevenLabs
   const text = rawText
     .replace(/\*+/g, '')        // remove asterisks (bold/italic markdown)
@@ -272,7 +272,11 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
   const fileName = `${prefix}_${lineIndex.toString().padStart(4, '0')}.mp3`
   const cachePath = `asc3/${storyId}/${fileName}`
   const cacheUrl = `${BASE_STORAGE}/${cachePath}`
-  try { const r = await fetch(cacheUrl, { method: 'HEAD' }); if (r.ok) return cacheUrl } catch {}
+  // Skip cache for announcer lines (intro/outro) OR when force=true — these must always be fresh
+  const isAnnouncer = prefix === 'intro' || prefix === 'intro_before' || prefix === 'intro_after' || prefix === 'outro'
+  if (!forceRegenerate && !isAnnouncer) {
+    try { const r = await fetch(cacheUrl, { method: 'HEAD' }); if (r.ok) return cacheUrl } catch {}
+  }
   const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
     method: 'POST',
     headers: { 'xi-api-key': EL_API_KEY, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
