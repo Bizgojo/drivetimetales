@@ -240,10 +240,10 @@ MANDATORY: Complete all three parts within the word budget. The final sentence m
 ${previousScenes.slice(-contextLength)}`
     : ''
 
-  return `You are ${p.author}, writing one scene of a ${p.runtime} audio drama for Endless Tales.
+  return `You are ${p.author}, writing a scene of a ${p.runtime} audio drama.
 
 VOICE: ${profile}
-GENRE: ${p.genre} — ${genrePacingRules(p.genre)}
+GENRE: ${p.genre}
 ${voiceReminder}
 ${p.isSeries ? `SERIES: ${p.seriesName} | Episode ${p.episodeNumber}/${p.totalEpisodes} | ${p.episodeTitle}` : ''}
 
@@ -252,47 +252,20 @@ ${p.requirements ? `REQUIREMENTS: ${p.requirements}` : ''}
 
 ${prevContext}
 
-WRITE SCENE ${sceneNumber} ONLY:
+WRITE SCENE ${sceneNumber} OF ${totalScenes}:
 ${roleInstruction}
 
-RULES:
-- No parentheticals in dialogue — tone through words and narrator only
-- Every character sounds distinct under pressure
-- Dialogue turns: 1-3 sentences maximum
-- ${sceneNumber === 1 ? 'Open mid-action — NEVER "It was a quiet morning"' : 'Open with one narrator line re-anchoring: who, where, what changed'}
-- Introduce NEW characters immediately with one specific detail
-- No exposition dumps — information through action and pressure
+THIS IS AN AUDIO DRAMA — listeners cannot see who is speaking. The narrator must make it clear who is talking, where we are, and what is happening at all times. When a new character speaks, the narrator introduces them first. When the setting changes, the narrator describes the new location.
 
-DIALOGUE ANTI-MECHANICAL RULES — these are the difference between 7/10 and 9/10:
-- Characters NEVER explain the plot to each other — they only speak from self-interest, fear, or agenda
-- If a character needs to reveal information, they do it under pressure, reluctantly, or as a threat — never as explanation
-- Every line of dialogue must do one of: reveal character, raise stakes, or change the situation — if it does none of these, cut it
-- Character verbal signatures (catchphrases, endearments, speech tics) must be SPARSE — used once or twice for impact, never every line. Repetition kills distinctiveness.
-- Protagonist speaks in fragments under pressure — full sentences only when in control
-- Antagonist speaks in complete sentences — control is their weapon
-- Subtext over text: what characters DON'T say is as important as what they do say
+FORMAT:
+- NARRATOR: [narration and scene-setting]
+- CHARACTER NAME: [dialogue — ALL CAPS names]
+- [BEAT] for dramatic pauses between speakers
 
-SECONDARY CHARACTER VOICES — the most common failure point:
-- Every speaking character needs ONE specific verbal trait that identifies them instantly: a cadence, a word choice, a way of deflecting
-- Generic authority figures (cops, agents, officials) are the #1 score killer — give them a personal stake, not a job function
-- BAD: "AGENT HARRIS: We've been tracking this operation for six months. You need to come with us." — generic, functional, reveals nothing
-- GOOD: "HARRIS: Six months I've been on this. My wife thinks I'm having an affair. Come with me or don't — I'm taking him down either way." — specific, personal, reveals character under pressure
-- Villains must want something specific, not just power or money — the more specific the want, the more distinct the voice
+Keep each character's voice distinct — different speech patterns, different rhythms, different concerns. The listener should be able to tell who is speaking from how they talk, not just what the narrator says.
 
-SECONDARY CHARACTER VOICES — the most common failure point:
-- Every speaking character needs ONE specific verbal trait that identifies them instantly: a cadence, a word choice, a way of deflecting
-- Generic authority figures (cops, agents, officials) are the #1 score killer — give them a personal stake, not a job function
-- BAD: "AGENT HARRIS: We've been tracking this operation for six months. You need to come with us." — generic, functional, reveals nothing
-- GOOD: "HARRIS: Six months I've been on this. My wife thinks I'm having an affair. Come with me or don't — I'm taking him down either way." — specific, personal, reveals character under pressure
-- Villains must want something specific, not just power or money — the more specific the want, the more distinct the voice
-
-OUTPUT FORMAT:
-[SCENE ${sceneNumber} — evocative title]
-[write the complete scene content, then stop]
-
-CRITICAL: Write every sentence completely. Never stop mid-sentence or mid-word. The last line of your output must be a complete sentence with proper punctuation. If you are approaching your limit, finish the current sentence, then stop.
-
-Output ONLY this one scene. No preamble. No other scenes.`
+Write the scene completely. End with a complete sentence.
+Output ONLY this one scene. No preamble.`
 }
 
 function buildStoryPrompt(p: PipelineParams): string {
@@ -305,26 +278,20 @@ function buildStoryPrompt(p: PipelineParams): string {
 
 
 function buildAudioPrompt(story: string, p: PipelineParams): string {
-  const runtimeMins = parseInt(p.runtime) || 15
-  const sfxMin = Math.floor(runtimeMins * 0.67)
-  return `You are the audio producer for Endless Tales. Add professional audio production elements WITHOUT changing any story content or wording.
+  return `You are the audio producer for Endless Tales. Format this story for audio production WITHOUT changing any story content or wording.
 
-ADD THESE ELEMENTS:
-1. [SFX: specific concrete description] — minimum ${sfxMin} throughout. Place at scene openings and action beats. Each key location gets a distinct sonic identity. Specific: not [SFX: door] but [SFX: heavy steel door grinding on rusted hinges]
-2. DIALOGUE FORMAT — convert all speech to: NARRATOR: text or CHARACTER NAME: text (ALL CAPS names)
-3. [BEAT] = 1 second pause at moments of revelation. [PAUSE:X] = X seconds, use deliberately.
-4. [MUSIC: description] at scene openings and major emotional shifts
+FORMAT THE SCRIPT:
+1. DIALOGUE FORMAT — ensure all speech uses: NARRATOR: text or CHARACTER NAME: text (ALL CAPS names)
+2. Add [BEAT] between speaker changes for natural pauses
+3. Remove any parentheticals like (quietly) or (sharply)
 
 RULES:
 - Do NOT change any story content, dialogue wording, or structure
-- Do NOT add or remove scenes or characters  
-- Every scene must open with at least one SFX cue
-- Never put SFX, BEAT, or PAUSE inline with dialogue — always own line
-- Remove any parentheticals like (quietly) or (sharply) found in dialogue
+- Do NOT add SFX — stories are voice-only with background music
+- Do NOT add [MUSIC:] cues — music is handled separately
+- Do NOT add or remove scenes or characters
 
-GENRE: ${p.genre} — audio design matches genre mood
-
-OUTPUT: Complete production script with audio elements. End with [END OF PRODUCTION SCRIPT].
+OUTPUT: Complete production script. End with [END OF PRODUCTION SCRIPT].
 
 STORY TO PRODUCE:
 ${story}`
