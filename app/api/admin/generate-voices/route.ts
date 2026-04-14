@@ -107,6 +107,11 @@ function scoreVoice(voice: any, meta: { gender: string; age: string; accent: str
     if (labels.accent.toLowerCase() === meta.accent.toLowerCase()) score += 15
     else if (meta.accent === 'american' && labels.accent === 'american') score += 15
   }
+  // Default: prefer American accent when no accent specified
+  if (!meta.accent && labels.accent) {
+    if (labels.accent.toLowerCase() === 'american') score += 10
+    else if (labels.accent.toLowerCase() === 'british') score -= 5
+  }
   // Tone/descriptive match
   const desc = (labels.descriptive || '').toLowerCase()
   for (const tone of meta.tones) {
@@ -191,7 +196,7 @@ function parseScript(script: string): ScriptLine[] {
   const rawLines = script.split('\n')
   const announcerIndices: number[] = []
   rawLines.forEach((line, i) => {
-    if (line.trim().match(/^(ANNOUNCER|BELLE B):/i)) announcerIndices.push(i)
+    if (line.trim().match(/^(ANNOUNCER|BELLE B|SANDY):/i)) announcerIndices.push(i)
   })
   const firstAnnouncerIdx = announcerIndices[0] ?? -1
   const lastAnnouncerIdx = announcerIndices[announcerIndices.length - 1] ?? -1
@@ -223,7 +228,7 @@ function parseScript(script: string): ScriptLine[] {
     const dm = trimmed.match(/^([A-Z][A-ZÀ-Ú\s'.()]+?):\s*(.+)$/)
     if (dm) {
       const speaker = dm[1].trim(); const text = dm[2].trim()
-      const isAnnouncer = speaker === 'ANNOUNCER' || speaker === 'BELLE B'
+      const isAnnouncer = speaker === 'ANNOUNCER' || speaker === 'BELLE B' || speaker === 'SANDY'
       const isIntro = isAnnouncer && rawIdx === firstAnnouncerIdx
       const isOutro = isAnnouncer && rawIdx === lastAnnouncerIdx
       let type: ScriptLine['type'] = 'character'
