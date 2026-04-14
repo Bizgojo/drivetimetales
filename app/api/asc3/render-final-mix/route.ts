@@ -100,10 +100,13 @@ export async function POST(req: NextRequest) {
     for (let i = 0; i < segmentFiles.length; i += 10) {
       const batch = segmentFiles.slice(i, i + 10)
       const results = await Promise.allSettled(batch.map(async (seg) => {
+        const rawPath = path.join(tmpDir, 'raw_' + seg.name)
         const segPath = path.join(tmpDir, seg.name)
-        await download(`${BASE_STORAGE}/asc3/${storyId}/${seg.name}`, segPath)
-        const stat = await fs.stat(segPath)
-        if (stat.size > 100) return segPath
+        await download(`${BASE_STORAGE}/asc3/${storyId}/${seg.name}`, rawPath)
+        const stat = await fs.stat(rawPath)
+        if (stat.size <= 100) return null
+        await execFileAsync(FFMPEG_PATH, ['-i', rawPath, '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', segPath])
+        return segPath
         return null
       }))
       for (const r of results) {
