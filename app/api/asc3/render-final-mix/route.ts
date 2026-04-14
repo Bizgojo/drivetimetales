@@ -97,14 +97,18 @@ export async function POST(req: NextRequest) {
     if (musicPath && musicFile) await download(`${BASE_STORAGE}/asc3/${storyId}/${musicFile.name}`, musicPath)
 
     const segPaths: string[] = []
-    for (const seg of segmentFiles) {
-      const segPath = path.join(tmpDir, seg.name)
-      try {
+    for (let i = 0; i < segmentFiles.length; i += 10) {
+      const batch = segmentFiles.slice(i, i + 10)
+      const results = await Promise.allSettled(batch.map(async (seg) => {
+        const segPath = path.join(tmpDir, seg.name)
         await download(`${BASE_STORAGE}/asc3/${storyId}/${seg.name}`, segPath)
         const stat = await fs.stat(segPath)
-        if (stat.size > 100) segPaths.push(segPath)
-        else console.warn(`  Skipping empty: ${seg.name}`)
-      } catch (e) { console.warn(`  Failed to download: ${seg.name}`) }
+        if (stat.size > 100) return segPath
+        return null
+      }))
+      for (const r of results) {
+        if (r.status === 'fulfilled' && r.value) segPaths.push(r.value)
+      }
     }
     console.log(`  Downloaded ${segPaths.length}/${segmentFiles.length} segments`)
 
@@ -123,23 +127,15 @@ export async function POST(req: NextRequest) {
     const storyBodyPath = path.join(tmpDir, 'story_body.mp3')
 
     if (!musicPath) {
-      console.log('  No music — concatenating segments only for story_body')
+      console.log('  No music \u2014 concatenating segments only for story_body')
       const bodyConcatFile = path.join(tmpDir, 'body_concat.txt')
       await fs.writeFile(bodyConcatFile, normalizedSegPaths.map(p => `file '${p}'`).join('\n'))
       await execFileAsync(FFMPEG_PATH, [
         '-f', 'concat', '-safe', '0', '-i', bodyConcatFile,
         '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', storyBodyPath
       ])
-      // Also produce full final_mix for backward compat
-      const concatFile = path.join(tmpDir, 'concat.txt')
-      await fs.writeFile(concatFile, [stingPath, sil075Path, normalizedIntroPath, sil075Path, ...normalizedSegPaths, sil100Path, normalizedOutroPath].map(p => `file '${p}'`).join('\n'))
-      await execFileAsync(FFMPEG_PATH, [
-        '-f', 'concat', '-safe', '0', '-i', concatFile,
-        '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', outputPath
-      ])
     } else {
       console.log('  Full mix with background music')
-      // Mix segments with music for story_body
       const segConcatFile = path.join(tmpDir, 'seg_concat.txt')
       await fs.writeFile(segConcatFile, segPaths.map(p => `file '${p}'`).join('\n'))
       const segsOnlyPath = path.join(tmpDir, 'segs_only.mp3')
@@ -162,42 +158,15 @@ export async function POST(req: NextRequest) {
         '-map', '[mixed]',
         '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', storyBodyPath
       ])
-      // Also produce full final_mix for backward compat
-      const dialogueParts = [stingPath, sil075Path, normalizedIntroPath, sil075Path, ...segPaths]
-      const dialogueConcatFile = path.join(tmpDir, 'dialogue.txt')
-      await fs.writeFile(dialogueConcatFile, dialogueParts.map(p => `file '${p}'`).join('\n'))
-      const dialoguePath = path.join(tmpDir, 'dialogue.mp3')
-      await execFileAsync(FFMPEG_PATH, [
-        '-f', 'concat', '-safe', '0', '-i', dialogueConcatFile,
-        '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', dialoguePath
-      ])
-      const stingDur = await getAudioDuration(stingPath)
-      const introDur = await getAudioDuration(introPath)
-      const musicStart = stingDur + introDur + 0.75
-      const musicEnd = musicStart + segsDur
-      const musicMixedPath = path.join(tmpDir, 'music_mixed.mp3')
-      const delayMs = Math.round(musicStart * 1000)
-      await execFileAsync(FFMPEG_PATH, [
-        '-stream_loop', '-1', '-i', musicPath,
-        '-filter_complex',
-        `[0:a]atrim=0:${musicEnd + 3},asetpts=PTS-STARTPTS,afade=t=in:st=0:d=2.5,afade=t=out:st=${musicEnd}:d=3,volume=0.15,adelay=${delayMs}|${delayMs}[music_out]`,
-        '-map', '[music_out]',
-        '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', musicMixedPath
-      ])
-      const mixedPath = path.join(tmpDir, 'mixed.mp3')
-      await execFileAsync(FFMPEG_PATH, [
-        '-i', dialoguePath, '-i', musicMixedPath,
-        '-filter_complex', '[0:a][1:a]amix=inputs=2:duration=first[mixed]',
-        '-map', '[mixed]',
-        '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', mixedPath
-      ])
-      const finalConcatFile = path.join(tmpDir, 'final.txt')
-      await fs.writeFile(finalConcatFile, [mixedPath, sil100Path, normalizedOutroPath].map(p => `file '${p}'`).join('\n'))
-      await execFileAsync(FFMPEG_PATH, [
-        '-f', 'concat', '-safe', '0', '-i', finalConcatFile,
-        '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', outputPath
-      ])
     }
+
+    // Build final_mix by concatenating: sting + silence + intro + silence + story_body + silence + outro
+    const finalConcatFile = path.join(tmpDir, 'final.txt')
+    await fs.writeFile(finalConcatFile, [stingPath, sil075Path, normalizedIntroPath, sil075Path, storyBodyPath, sil100Path, normalizedOutroPath].map(p => `file '${p}'`).join('\n'))
+    await execFileAsync(FFMPEG_PATH, [
+      '-f', 'concat', '-safe', '0', '-i', finalConcatFile,
+      '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', outputPath
+    ])
 
     const durationSecs = await getAudioDuration(outputPath)
     console.log(`  ✅ Mix complete: ${durationSecs.toFixed(1)}s`)
