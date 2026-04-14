@@ -1,8 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { execFile } from 'child_process'
+import { promisify } from 'util'
+import { promises as fs } from 'fs'
+import path from 'path'
+import os from 'os'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
+
+let FFMPEG_PATH = 'ffmpeg'
+try { FFMPEG_PATH = eval('require')('@ffmpeg-installer/ffmpeg').path } catch {}
+
+const _execFileAsync = promisify(execFile)
+
+async function generateSilenceBuffer(seconds: number): Promise<Buffer> {
+  const tmpFile = path.join(os.tmpdir(), 'silence_' + Date.now() + '.mp3')
+  await _execFileAsync(FFMPEG_PATH, [
+    '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo',
+    '-t', String(seconds), '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', tmpFile
+  ])
+  const buf = await fs.readFile(tmpFile)
+  await fs.unlink(tmpFile).catch(() => {})
+  return buf
+}
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -376,7 +397,16 @@ export async function POST(req: NextRequest) {
     }
     if (outroLine && outroLine.index !== introLine?.index) { try { results.outro = await generateVoiceLine(outroLine.text, BELLE_B_VOICE_ID, storyId, outroLine.index, 'outro'); console.log('  ✅ Belle B outro') } catch (e) { console.error('  ❌ Outro failed:', e) } }
     for (const line of storyLines) {
-      if (line.type === 'beat' || line.type === 'pause') { results.segments.push({ index: line.index, speaker: line.speaker, type: line.type, duration: line.text }); continue }
+      if (line.type === 'beat' || line.type === 'pause') {
+        const duration = line.type === 'beat' ? 0.75 : (parseFloat(line.text) || 1.0)
+        const silFileName = 'segment_' + line.index.toString().padStart(4, '0') + '.mp3'
+        const silPath = 'asc3/' + storyId + '/' + silFileName
+        const silBuffer = await generateSilenceBuffer(duration)
+        await supabase.storage.from('audio').upload(silPath, silBuffer, { contentType: 'audio/mpeg', upsert: true })
+        const silUrl = process.env.NEXT_PUBLIC_SUPABASE_URL + '/storage/v1/object/public/audio/' + silPath
+        results.segments.push({ index: line.index, speaker: line.speaker, type: line.type, duration: String(duration), url: silUrl })
+        continue
+      }
       if (line.type === 'sfx') { const sfxUrl = await generateSFX(line.text, storyId, line.index); results.segments.push({ index: line.index, speaker: 'SFX', type: 'sfx', url: sfxUrl || undefined }); continue }
       let voiceId = resolvedNarratorVoiceId
       if (line.type === 'character') voiceId = voiceMap[line.speaker.toUpperCase()] || resolvedNarratorVoiceId
