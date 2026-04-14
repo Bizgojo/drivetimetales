@@ -450,6 +450,7 @@ function buildScriptPrompt(p: PipelineParams): string {
     : ''
   return `You are the Endless Tales script writer. Write a complete professional audio drama script.
 AUDIENCE: General listeners — commuting, working, exercising, or anything hands-busy. Cannot rewind. 90 seconds to hook them.
+OPENING CLARITY RULE — CRITICAL: The first 60 seconds must establish THREE things clearly: (1) WHO is the main character — name and one defining detail, (2) WHERE and WHEN are we — ground the listener in a specific place, (3) WHAT is the situation — what is happening or about to happen. The listener must never be confused about what is going on. No starting mid-action without context. No withholding the premise for dramatic effect. No literary misdirection. A commuter who tunes in must immediately understand the story they are entering. The hook comes FROM clarity, not from confusion.
 AUTHOR: ${p.author} | VOICE: ${profile} | GENRE: ${p.genre} | RUNTIME: ${p.runtime} | NARRATOR: ${p.narrator}
 ${p.isSeries ? `SERIES: ${p.seriesName} | EP: ${p.episodeNumber}/${p.totalEpisodes} | TITLE: ${p.episodeTitle}` : ''}
 PREMISE: ${p.premise}

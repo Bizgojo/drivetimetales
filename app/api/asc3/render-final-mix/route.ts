@@ -112,10 +112,24 @@ export async function POST(req: NextRequest) {
     }
     console.log(`  Downloaded ${segPaths.length}/${segmentFiles.length} segments`)
 
-    // Use source paths directly — ElevenLabs output is already consistent
-    const normalizedIntroPath = introPath
-    const normalizedOutroPath = outroPath
-    const normalizedSegPaths = segPaths
+    // Normalize all voice segments to consistent volume
+    console.log('  Normalizing voice levels...')
+    const normalizedIntroPath = path.join(tmpDir, 'norm_intro.mp3')
+    const normalizedOutroPath = path.join(tmpDir, 'norm_outro.mp3')
+    // Belle B at 1.5x volume, normalize to consistent level
+    await execFileAsync(FFMPEG_PATH, ['-i', introPath, '-af', 'volume=1.5', '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', normalizedIntroPath])
+    await execFileAsync(FFMPEG_PATH, ['-i', outroPath, '-af', 'volume=1.5', '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', normalizedOutroPath])
+    
+    // Concatenate and normalize all story segments in one pass
+    const rawConcatFile = path.join(tmpDir, 'raw_concat.txt')
+    await fs.writeFile(rawConcatFile, segPaths.map(p => `file '${p}'`).join('\n'))
+    const normalizedConcatPath = path.join(tmpDir, 'norm_segments.mp3')
+    await execFileAsync(FFMPEG_PATH, [
+      '-f', 'concat', '-safe', '0', '-i', rawConcatFile,
+      '-af', 'dynaudnorm=p=0.9:s=5',
+      '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', normalizedConcatPath
+    ])
+    const normalizedSegPaths = [normalizedConcatPath]
 
     const sil075Path = path.join(tmpDir, 'sil075.mp3')
     const sil100Path = path.join(tmpDir, 'sil100.mp3')
