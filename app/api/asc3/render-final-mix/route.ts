@@ -176,15 +176,17 @@ export async function POST(req: NextRequest) {
       ])
     }
 
-    // Build sting+intro crossfade: sting plays, Belle B starts at 1.2s, sting fades under her
-    // acrossfade: overlaps last (stingDur - 1.2)s of sting with start of intro
+    // Build sting+intro crossfade: Belle B starts at 1.2s into sting, sting fades under her
     const stingDur = await getAudioDuration(stingPath)
-    const crossfadeDur = Math.max(0.5, stingDur - 1.2) // fade duration = sting tail after 1.2s
+    const crossfadeStart = 1.2
     const stingIntroPath = path.join(tmpDir, 'sting_intro.mp3')
+    const delayMs = Math.round(crossfadeStart * 1000)
     await execFileAsync(FFMPEG_PATH, [
       '-i', stingPath, '-i', normalizedIntroPath,
       '-filter_complex',
-      `[0:a][1:a]acrossfade=d=${crossfadeDur.toFixed(2)}:c1=exp:c2=exp[out]`,
+      `[0:a]afade=t=out:st=${crossfadeStart}:d=${Math.max(0.5, stingDur - crossfadeStart)}[sting_fade];` +
+      `[1:a]adelay=${delayMs}|${delayMs}[intro_delayed];` +
+      `[sting_fade][intro_delayed]amix=inputs=2:duration=longest:normalize=0[out]`,
       '-map', '[out]',
       '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', stingIntroPath
     ])
