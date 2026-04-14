@@ -953,16 +953,18 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
     setProduceSteps({description:{status:'pending'},prose:{status:'pending'},cover:{status:'pending'},author:{status:'pending'},narrator:{status:'pending'},save:{status:'pending'}})
     try {
       // First save script to stories table so we have a storyId to work with
-      // Insert fresh story row with real UUID
-      let storyId = s.id
-      try {
-        const { data: inserted } = await supabase.from('stories').insert({
-          title: s.title, author: s.author, genre: s.genre,
-          duration_mins: parseInt(s.runtime) || 15, is_hidden: true,
-          published_on: new Date().toISOString().split('T')[0]
-        }).select('id').single()
-        if (inserted?.id) storyId = inserted.id
-      } catch(e) { console.warn('Story insert skipped:', e) }
+      // Check if we already have a UUID for this story (from a previous Produce)
+      let storyId = supabaseIds[s.id] || s.id
+      if (!supabaseIds[s.id]) {
+        try {
+          const { data: inserted } = await supabase.from('stories').insert({
+            title: s.title, author: s.author, genre: s.genre,
+            duration_mins: parseInt(s.runtime) || 15, is_hidden: true,
+            published_on: new Date().toISOString().split('T')[0]
+          }).select('id').single()
+          if (inserted?.id) storyId = inserted.id
+        } catch(e) { console.warn('Story insert skipped:', e) }
+      }
       const resp = await fetch('/api/admin/produce-story', {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
