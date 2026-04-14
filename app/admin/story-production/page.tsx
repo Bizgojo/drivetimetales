@@ -255,6 +255,8 @@ ${prevContext}
 WRITE SCENE ${sceneNumber} OF ${totalScenes}:
 ${roleInstruction}
 
+READING LEVEL: Write at a 10th grade level. Clear, direct prose. Short sentences. No literary flourishes that a listener would need to re-hear to understand. The story should be immediately graspable by anyone paying partial attention while driving.
+
 THIS IS AN AUDIO DRAMA — listeners cannot see who is speaking. The narrator must make it clear who is talking, where we are, and what is happening at all times. When a new character speaks, the narrator introduces them first. When the setting changes, the narrator describes the new location.
 
 FORMAT:
