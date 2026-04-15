@@ -75,34 +75,34 @@ const STATUS_CONFIG: Record<StoryStatus, { bg: string; color: string; label: str
 
 const AUTHOR_PROFILES: Record<string, string> = {
   // THRILLER
-  'Sara Keene': 'First person. Tense, intimate, psychological. Fast pacing. Female protagonists, unreliable narrators. Example: "I knew before I opened the door. I always know."',
-  'Lena Holt': 'Third person limited. Ruthless, institutional, airtight. Female protagonists fighting institutional corruption. Law firms, hospitals, government as settings. Plots built like legal briefs.',
-  'Jack Malone': 'First person. Hard-boiled, sardonic, street-smart. Male protagonists, urban environments, moral clarity in a corrupt world. Short declarative sentences. Chandler-adjacent.',
+  'Sara Keene': 'Write in the style of Gillian Flynn. First person. Unreliable narrator who reveals the twist through what she chooses not to tell you. Psychological tension built through intimacy, not action. The protagonist is always part of the problem. Every story ends with a revelation that reframes everything. The ending must shock.',
+  'Lena Holt': 'Write in the style of John Grisham. Third person limited. Institutional thriller — law firms, hospitals, government. The protagonist uncovers corruption through documents, conversations, and one key witness. Build the case piece by piece. The ending must deliver justice or its deliberate absence.',
+  'Jack Malone': 'Write in the style of Lee Child. First person. Lone protagonist walks into trouble, sizes up the situation, and handles it. Short declarative sentences. The hero is always the most competent person in the room. The ending must resolve the threat completely.',
   // MYSTERY
-  'Julian Mercer': 'Third person limited. Precise, cool, procedural. Detective POV, urban, twist endings.',
-  'Caroline Drake': 'Third person limited. Elegant, quietly menacing. Female protagonists, historical 1920s-1960s.',
-  'Iris Pemberton': 'Third person limited. Elegant, witty, quietly devastating. Female protagonists in 1930s-1940s high society. Society as backdrop, secrets as currency.',
+  'Julian Mercer': 'Write in the style of Michael Connelly. Third person limited. Procedural detective fiction. Concrete clues, real police work, a detective who notices what others miss. The case MUST be solved by the final scene. Every clue planted earlier must pay off. The ending must name the killer and explain how.',
+  'Caroline Drake': 'Write in the style of Tana French. Third person limited. Atmospheric, literary mystery. The setting is as important as the crime. Female protagonists. The mystery resolves but leaves an emotional wound. The ending must answer WHO and WHY.',
+  'Iris Pemberton': 'Write in the style of Agatha Christie. Third person limited. Classic whodunit structure — suspects, clues, red herrings, drawing-room reveal. The detective gathers everyone and explains the solution. The ending must unmask the killer with logical proof.',
   // HORROR
-  'Silas Graves': 'First person. Raw, visceral, confessional. Working-class protagonists, isolated settings.',
-  'Elias Thorn': 'First person. Dark, lyrical, dread-soaked. Slow-burn. Rural settings, folklore, nature as threat.',
-  'Vera Moss': 'First person. Claustrophobic, paranoid, psychologically precise. Urban settings, apartment buildings. Dread builds from mundane details. Female protagonists.',
+  'Silas Graves': 'Write in the style of Stephen King. First person. Working-class protagonists in extraordinary situations. The horror is real and must be confronted, not escaped. Build dread through specific mundane details that turn wrong. The ending must face the horror directly — no ambiguity about what happened.',
+  'Elias Thorn': 'Write in the style of Shirley Jackson. First person. Slow atmospheric dread. Rural settings, folklore, nature as threat. The horror creeps in through what the narrator refuses to acknowledge. The ending must deliver the moment the narrator can no longer deny what is happening.',
+  'Vera Moss': 'Write in the style of Paul Tremblay. First person. Claustrophobic urban horror. Apartment buildings, neighbors, mundane settings. Dread builds from small wrong details accumulating. The ending must confront the source of the horror.',
   // SCI-FI
-  'Nina Vasquez': 'Third person omniscient. Clinical, curious. Female scientists, near-future, ethical dilemmas.',
-  'Dr. Kai Osei': 'Third person omniscient. Clinical precision expanding into wonder. Scientists as protagonists. Near-future plausible. The antagonist is usually physics.',
-  'Zara Storm': 'Third person omniscient. Epic, cinematic, emotional. Space opera scale with human intimacy. Ensemble casts across multiple worlds. Diverse protagonists.',
+  'Nina Vasquez': 'Write in the style of Ted Chiang. Third person omniscient. Precise, philosophical science fiction. One scientific concept explored through human consequences. The protagonist faces an ethical choice forced by the science. The ending must resolve the ethical dilemma with a clear decision.',
+  'Dr. Kai Osei': 'Write in the style of Andy Weir. Third person omniscient. Problem-solving science fiction. The protagonist uses real science to survive or solve a crisis. Technical details that a listener can follow. The ending must solve the problem through ingenuity.',
+  'Zara Storm': 'Write in the style of Becky Chambers. Third person omniscient. Character-driven space fiction. Diverse ensemble cast. The real story is about relationships and identity, set against a sci-fi backdrop. The ending must resolve the human conflict, not just the plot.',
   // COMEDY
-  'Archie Vale': 'Third person omniscient. Absurdist, warm, deadpan. Situations escalate with perfect internal logic. British settings. Characters convinced they are the only reasonable person.',
-  'Maeve Kelly': "Third person omniscient. Warm, chaotic, generous. Large family ensembles. Irish settings. The disaster is always the protagonist's fault. Resolution is always love.",
-  'Rex Bright': 'Third person omniscient. Dark, sardonic, finds comedy in catastrophe. Genuine crisis treated with bureaucratic seriousness. The protagonist is the only one who noticed the real problem.',
+  'Archie Vale': 'Write in the style of Bill Bryson. Third person omniscient. Warm observational humor. Ordinary situations that escalate with perfect internal logic. The comedy comes from the gap between how seriously the characters take themselves and how absurd their situation actually is. The ending must resolve the absurdity.',
+  'Maeve Kelly': "Write in the style of Marian Keyes. Third person omniscient. Warm, chaotic family comedy. Large ensemble, everyone talking at once. The disaster is always the protagonist's fault. The humor is generous, never cruel. The ending must be love and forgiveness.",
+  'Rex Bright': 'Write in the style of Carl Hiaasen. Third person omniscient. Dark satirical comedy. A real crisis treated with bureaucratic absurdity. Colorful villains who are too stupid to be scary. The protagonist stumbles into justice. The ending must deliver comeuppance to the villain in an unexpected way.',
   // ROMANCE
-  'Claire Ashford': 'Third person limited. Sharp, witty, emotionally honest. Female protagonists who are competent at work and terrible at feelings. Professional settings. Slow burn.',
-  'Edmund Worth': 'Third person limited. Restrained, charged, elegant. Regency and Victorian settings. Desire expressed through what is withheld. Class and propriety as obstacles.',
-  'Dani Reeves': 'Third person limited. Fast, tense, emotionally relentless. Romantic suspense — the thriller plot and love story accelerate each other. Female protagonists in genuine danger.',
+  'Claire Ashford': 'Write in the style of Emily Henry. Third person limited. Sharp, witty contemporary romance. Two competent people who are terrible at admitting feelings. Professional settings. Banter that reveals vulnerability. The ending must deliver the declaration — no ambiguity about whether they end up together.',
+  'Edmund Worth': 'Write in the style of Jane Austen. Third person limited. Period romance with social commentary. Desire expressed through restraint. Class and propriety as obstacles. Wit as courtship. The ending must deliver the union the reader has been waiting for.',
+  'Dani Reeves': 'Write in the style of Sandra Brown. Third person limited. Romantic suspense — the danger and the attraction accelerate together. Female protagonist in genuine physical danger. The love interest is complicated but ultimately trustworthy. The ending must resolve both the threat and the romance.',
   // DRAMA / WESTERN / ADVENTURE
-  'Daniel Wren': 'Third person omniscient. Warm, observational. Ensemble casts, small-town, redemption arcs.',
-  'Mark Holbrook': 'Third person limited. Cinematic, restrained. Male protagonists under pressure, moral ambiguity.',
-  'Dale Harmon': 'Third person limited. Warm, grounded, cinematic. Blue-collar male heroes, moral clarity.',
-  'Marc Hobelman': 'Third person limited. Spare, weathered, laconic. Lone protagonists, frontier justice, moral gray zones. Sentences 8-12 words.',
+  'Daniel Wren': 'Write in the style of Richard Russo. Third person omniscient. Small-town ensemble drama. Blue-collar characters with big hearts. Humor and heartbreak in equal measure. The ending must deliver a moment of grace or redemption.',
+  'Mark Holbrook': 'Write in the style of Dennis Lehane. Third person limited. Cinematic, morally complex. Male protagonists forced to choose between bad options. Urban settings with grit. The ending must force the protagonist to live with the consequences of their choice.',
+  'Dale Harmon': 'Write in the style of Craig Johnson. Third person limited. Warm, grounded western with heart. A lawman protagonist who cares about his community. Humor mixed with danger. The ending must restore order and affirm the protagonist\'s values.',
+  'Marc Hobelman': 'Write in the style of Larry McMurtry. Third person limited. Spare, weathered frontier fiction. Lone protagonists, vast landscapes, moral gray zones. Sentences are short. The ending must settle the score — quietly, definitively.',
 }
 
 const NARRATOR_MAP: Record<string, string> = {
