@@ -97,20 +97,20 @@ export async function POST(req: NextRequest) {
     if (musicPath && musicFile) await download(`${BASE_STORAGE}/asc3/${storyId}/${musicFile.name}`, musicPath)
 
     const segPaths: string[] = []
-    for (let i = 0; i < segmentFiles.length; i += 10) {
-      const batch = segmentFiles.slice(i, i + 10)
-      const results = await Promise.allSettled(batch.map(async (seg) => {
+    // Download and normalize segments sequentially to avoid memory pressure
+    for (let i = 0; i < segmentFiles.length; i++) {
+      try {
+        const seg = segmentFiles[i]
         const rawPath = path.join(tmpDir, 'raw_' + seg.name)
         const segPath = path.join(tmpDir, seg.name)
         await download(`${BASE_STORAGE}/asc3/${storyId}/${seg.name}`, rawPath)
         const stat = await fs.stat(rawPath)
-        if (stat.size <= 100) return null
+        if (stat.size <= 100) continue
         await execFileAsync(FFMPEG_PATH, ['-i', rawPath, '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', segPath])
-        return segPath
-        return null
-      }))
-      for (const r of results) {
-        if (r.status === 'fulfilled' && r.value) segPaths.push(r.value)
+        segPaths.push(segPath)
+        await fs.unlink(rawPath).catch(() => {})
+      } catch (e) {
+        console.error('  Segment ' + i + ' failed:', e)
       }
     }
     console.log(`  Downloaded ${segPaths.length}/${segmentFiles.length} segments`)
