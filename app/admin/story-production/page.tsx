@@ -128,6 +128,17 @@ const GENRE_AUTHOR_MAP: Record<string, string[]> = {
   'Romance': ['Claire Ashford','Edmund Worth','Dani Reeves'],
 }
 
+const AUTHOR_STYLE_MAP: Record<string, string> = {
+  'Sara Keene':'Gillian Flynn','Lena Holt':'John Grisham','Jack Malone':'Lee Child',
+  'Julian Mercer':'Michael Connelly','Caroline Drake':'Tana French','Iris Pemberton':'Agatha Christie',
+  'Silas Graves':'Stephen King','Elias Thorn':'Shirley Jackson','Vera Moss':'Paul Tremblay',
+  'Nina Vasquez':'Ted Chiang','Dr. Kai Osei':'Andy Weir','Zara Storm':'Becky Chambers',
+  'Archie Vale':'Bill Bryson','Maeve Kelly':'Marian Keyes','Rex Bright':'Carl Hiaasen',
+  'Claire Ashford':'Emily Henry','Edmund Worth':'Jane Austen','Dani Reeves':'Sandra Brown',
+  'Daniel Wren':'Richard Russo','Mark Holbrook':'Dennis Lehane','Dale Harmon':'Craig Johnson',
+  'Marc Hobelman':'Larry McMurtry',
+}
+
 // THREE-CALL PIPELINE
 type PipelineParams = {
   author: string; authorTone: string; authorVoice: string; genre: string
@@ -256,6 +267,8 @@ ${prevContext}
 
 WRITE SCENE ${sceneNumber} OF ${totalScenes}:
 ${roleInstruction}
+
+SETTING: Stories are American stories set in real, specific American locations — metro areas, rural towns, tourist destinations, manufacturing cities, tech hubs, coastal villages, mountain communities, desert highways. Use real place names and landmarks. Characters can travel abroad but the story is American at its core. Vary locations across stories.
 
 READING LEVEL: Write at a 10th grade level. Clear, direct prose. Short sentences. No literary flourishes that a listener would need to re-hear to understand. The story should be immediately graspable by anyone paying partial attention while driving.
 
@@ -493,7 +506,7 @@ function buildPickerPrompt(p: { genre: string; runtime: string; isSeries: boolea
 
 Genre: ${p.genre} | Runtime: ${p.runtime} | Type: ${p.isSeries ? `Series "${p.seriesName}" Episode ${p.episodeNumber} of ${p.totalEpisodes}` : 'Standalone'}
 ${p.extraNotes ? `Notes: ${p.extraNotes}` : ''}
-Eligible authors: ${eligible}${avoidList}\n\nDIVERSITY RULES — all 3 options must differ from each other AND the avoid list:\n- Different protagonist gender, age, or profession\n- Different setting (no two in the same location type)\n- Different conflict type\n- Vary time period, geography, and social world freely
+Eligible authors: ${eligible}${avoidList}\n\nDIVERSITY RULES — all 3 options must differ from each other AND the avoid list:\n- Different protagonist gender, age, or profession\n- Different setting (no two in the same location type)\n- Different conflict type\n- Vary time period, geography, and social world freely\n\nSETTING RULE: All stories set in specific real American locations. Use real city names, landmarks, geography. Vary locations across all 3 options.
 
 Narrator pairings: Marc Hobelman→Ray Dolan | Sara Keene→Cole Hargrove | Elias Thorn→Cole Hargrove | Dale Harmon→Finn Calloway | Julian Mercer→Iris Calloway | Daniel Wren→Elliott Crane | Mark Holbrook→Morgan Veil | Silas Graves→Cole Hargrove | Nina Vasquez→Marcus Hale | Caroline Drake→Iris Calloway
 
@@ -516,6 +529,7 @@ export default function StoryProductionPage() {
 
   // Single picker
   const [pickerGenre, setPickerGenre] = useState('')
+  const [pickerAuthor, setPickerAuthor] = useState('')
   const [pickerRuntime, setPickerRuntime] = useState('20 min')
   const [pickerIsSeries, setPickerIsSeries] = useState(false)
   const [pickerSeriesName, setPickerSeriesName] = useState('')
@@ -626,7 +640,7 @@ export default function StoryProductionPage() {
     if(!pickerGenre){ alert('Select a genre first.'); return }
     setPickerLoading(true); setPremiseOptions([])
     try {
-      const resp = await fetch('/api/claude-proxy',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ model:'claude-opus-4-6', max_tokens:2000, messages:[{role:'user',content:buildPickerPrompt({genre:pickerGenre,runtime:pickerRuntime,isSeries:pickerIsSeries,seriesName:pickerSeriesName,totalEpisodes:pickerTotalEps,episodeNumber:pickerEpisodeNum,extraNotes:pickerNotes,existingTitles:stories.filter(s=>s.title&&s.title!=='Generating...').map(s=>s.title)})}] }) })
+      const resp = await fetch('/api/claude-proxy',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ model:'claude-opus-4-6', max_tokens:2000, messages:[{role:'user',content:buildPickerPrompt({genre:pickerGenre,runtime:pickerRuntime,isSeries:pickerIsSeries,seriesName:pickerSeriesName,totalEpisodes:pickerTotalEps,episodeNumber:pickerEpisodeNum,extraNotes:(pickerAuthor ? 'Use ' + pickerAuthor + ' as author. ' : '') + pickerNotes,existingTitles:stories.filter(s=>s.title&&s.title!=='Generating...').map(s=>s.title)})}] }) })
       const data=await resp.json()
       let raw=data.content?.[0]?.text||''
       raw = raw.replace(/```json|```/g,'').trim()
@@ -1207,8 +1221,16 @@ ${script.length > 18000 ? script.slice(0,12000) + '\n\n[...middle omitted...]\n\
             <>
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:24,marginBottom:28}}>
                 <div><label style={labelStyle}>Genre <span style={{color:'#c62828'}}>*</span></label>
-                  <select value={pickerGenre} onChange={e=>setPickerGenre(e.target.value)} style={inputStyle}><option value="">Select a genre...</option>{GENRES.map(g=><option key={g} value={g}>{g}</option>)}</select>
+                  <select value={pickerGenre} onChange={e=>{setPickerGenre(e.target.value);setPickerAuthor('')}} style={inputStyle}><option value="">Select a genre...</option>{GENRES.map(g=><option key={g} value={g}>{g}</option>)}</select>
                 </div>
+                {pickerGenre && (GENRE_AUTHOR_MAP[pickerGenre]||[]).length > 0 && (
+                <div><label style={labelStyle}>Author Style</label>
+                  <select value={pickerAuthor} onChange={e=>setPickerAuthor(e.target.value)} style={inputStyle}>
+                    <option value="">Random</option>
+                    {(GENRE_AUTHOR_MAP[pickerGenre]||[]).map(a=><option key={a} value={a}>{a} ({AUTHOR_STYLE_MAP[a]||'original'} style)</option>)}
+                  </select>
+                </div>
+                )}
                 <div><label style={labelStyle}>Runtime</label>
                   <div style={{display:'flex',gap:8}}>{RUNTIMES.map(r=><button key={r} onClick={()=>setPickerRuntime(r)} style={{flex:1,padding:'11px 0',border:`2px solid ${pickerRuntime===r?'#111':'#e0e0e0'}`,background:pickerRuntime===r?'#111':'#fff',color:pickerRuntime===r?'#fff':'#444',borderRadius:8,cursor:'pointer',fontFamily:'inherit',fontSize:14,fontWeight:pickerRuntime===r?700:400}}>{r}</button>)}</div>
                 </div>
