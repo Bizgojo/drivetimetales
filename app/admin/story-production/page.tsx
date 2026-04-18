@@ -238,6 +238,7 @@ export default function StoryProductionPage() {
           story_type: premise.storyType,
           episode_count: premise.seriesEpisodeCount,
           duration_mins: runtimeToMinutes(premise.runtime),
+          duration_label: premise.runtime,
           created_at: new Date().toISOString()
         })
         .select()
