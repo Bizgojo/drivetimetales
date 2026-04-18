@@ -16,9 +16,10 @@ interface PremiseData {
   genre: string
   authorStyle: string
   runtime: string
+  storyType: 'single' | 'series'
+  seriesEpisodeCount?: number
   premise: string
   setting: string
-  musicStyle: string
   sfxEnabled: boolean
   additionalNotes?: string
 }
@@ -30,7 +31,17 @@ interface StoryOption {
   plotSummary: string
   endingConclusion: string
   estimatedGrade: number
+  musicPrompt: string
   sfxPlacements: SFXPlacement[]
+  episodes?: SeriesEpisode[] // For series stories
+}
+
+interface SeriesEpisode {
+  episodeNumber: number
+  episodeTitle: string
+  hook: string
+  plotSummary: string
+  cliffhanger?: string // Empty for finale episodes
 }
 
 interface SFXPlacement {
@@ -47,6 +58,8 @@ interface QueueStory {
   title: string
   author: string
   genre: string
+  storyType: 'single' | 'series'
+  episodeCount?: number
   status: 'generating_options' | 'awaiting_selection' | 'generating_script' | 'ready_for_review' | 'rewriting' | 'production_ready'
   script?: string
   grade?: GradingResult
@@ -89,21 +102,25 @@ export default function StoryProductionPage() {
       const { data, error } = await supabase
         .from('stories')
         .select('*')
-        .neq('is_hidden', true)
+        .in('status', ['generating_options', 'awaiting_selection', 'generating_script', 'ready_for_review', 'rewriting'])
         .order('created_at', { ascending: false })
-        .limit(20)
+        .limit(50)
 
       if (error) throw error
 
       const mappedStories: QueueStory[] = (data || []).map(story => ({
         id: story.id,
-        title: story.title || 'Untitled',
+        title: story.title || 'Generating...',
         author: story.author || 'Unknown',
         genre: story.genre || 'Drama',
+        storyType: story.story_type || 'single',
+        episodeCount: story.episode_count,
         status: story.status || 'generating_options',
         script: story.script_text,
         grade: story.grading_result,
         sfxPlacements: story.sfx_settings || [],
+        options: story.options,
+        selectedOption: story.selected_option_id,
         createdAt: story.created_at
       }))
 
@@ -122,7 +139,7 @@ export default function StoryProductionPage() {
             Story Production System v4.0
           </h1>
           <p className="text-gray-700">
-            Complete story creation workflow: Premise → Options → Queue → Production
+            Claude-powered story creation: Premise → Options → Script → Grade → Publish
           </p>
         </div>
 
@@ -194,13 +211,13 @@ export default function StoryProductionPage() {
     </div>
   )
 
-  // ============================================================================
+  // =============================================================================
   // EVENT HANDLERS
-  // ============================================================================
+  // =============================================================================
 
   async function handlePremiseSubmit(premise: PremiseData) {
     setLoading(true)
-    setLoadingMessage('Generating story options...')
+    setLoadingMessage('Claude is generating 3 story options...')
 
     try {
       // Create new story record
@@ -212,6 +229,8 @@ export default function StoryProductionPage() {
           genre: premise.genre,
           status: 'generating_options',
           premise_data: premise,
+          story_type: premise.storyType,
+          episode_count: premise.seriesEpisodeCount,
           created_at: new Date().toISOString()
         })
         .select()
@@ -224,13 +243,15 @@ export default function StoryProductionPage() {
         title: 'Generating...',
         author: premise.authorStyle.split(' (')[0],
         genre: premise.genre,
+        storyType: premise.storyType,
+        episodeCount: premise.seriesEpisodeCount,
         status: 'generating_options',
         createdAt: storyData.created_at
       }
 
       setQueueStories(prev => [newStory, ...prev])
 
-      // Generate story options via Claude
+      // Generate story options via Claude API
       const options = await generateStoryOptions(premise)
 
       // Update story with options
@@ -263,7 +284,7 @@ export default function StoryProductionPage() {
 
   async function handleOptionSelection(storyId: string, optionId: string) {
     setLoading(true)
-    setLoadingMessage('Generating full script...')
+    setLoadingMessage('Claude is writing the full script...')
 
     try {
       // Update story status
@@ -337,7 +358,7 @@ export default function StoryProductionPage() {
     if (!story || !story.script || !story.grade?.topFixes) return
 
     setLoading(true)
-    setLoadingMessage('Applying improvements...')
+    setLoadingMessage('Claude is applying improvements...')
 
     try {
       // Update status
@@ -376,7 +397,7 @@ export default function StoryProductionPage() {
 
     } catch (error) {
       console.error('Error applying fixes:', error)
-      alert('Failed to apply improvements. Please try again.')
+      alert('Failed to apply improvements.')
     } finally {
       setLoading(false)
       setLoadingMessage('')
@@ -384,10 +405,17 @@ export default function StoryProductionPage() {
   }
 
   async function handleApprove(storyId: string) {
+    setLoading(true)
+    setLoadingMessage('Publishing story...')
+
     try {
       const { error } = await supabase
         .from('stories')
-        .update({ status: 'production_ready' })
+        .update({ 
+          status: 'production_ready',
+          is_hidden: false,
+          published_on: new Date().toISOString()
+        })
         .eq('id', storyId)
 
       if (error) throw error
@@ -396,10 +424,13 @@ export default function StoryProductionPage() {
         story.id === storyId ? { ...story, status: 'production_ready' } : story
       ))
 
-      alert('Story approved! Ready for audio production.')
+      alert('Story approved and published!')
     } catch (error) {
       console.error('Error approving story:', error)
       alert('Failed to approve story.')
+    } finally {
+      setLoading(false)
+      setLoadingMessage('')
     }
   }
 
@@ -420,9 +451,9 @@ export default function StoryProductionPage() {
   }
 }
 
-// ============================================================================
+// =============================================================================
 // PREMISE PICKER COMPONENT
-// ============================================================================
+// =============================================================================
 
 function PremisePickerView({
   onSubmit,
@@ -437,37 +468,50 @@ function PremisePickerView({
     genre: '',
     authorStyle: '',
     runtime: '15min',
+    storyType: 'single',
     premise: '',
     setting: '',
-    musicStyle: '',
     sfxEnabled: false
   })
+
+  const [authors, setAuthors] = useState<Array<{id: string; name: string; primary_genre: string}>>([])
+  const [availableAuthors, setAvailableAuthors] = useState<Array<{id: string; name: string; primary_genre: string}>>([])
 
   const genres = [
     'Horror', 'Mystery/Crime', 'Thriller', 'Romance', 'Sci-Fi',
     'Western', 'Comedy', 'Drama', 'Adventure', 'Family/Heartwarming'
   ]
 
-  const authors = [
-    'Silas Cutter (Horror)',
-    'Caroline Drake (Mystery/Crime)',
-    'Sara Keene (Thriller)',
-    'Roman Steele (Thriller)',
-    'Edmund Worth (Romance)',
-    'Rex Bright (Comedy)',
-    'Zara Storm (Sci-Fi)',
-    'Marc Hobelman (Western)',
-    'Daniel Wren (Family/Heartwarming)'
-  ]
+  // Load authors on mount
+  useEffect(() => {
+    loadAuthors()
+  }, [])
 
-  const musicStyles = [
-    'Tense procedural (low strings, urban atmosphere)',
-    'Atmospheric dread (sparse, building tension)',
-    'Warm melancholic (acoustic, bittersweet)',
-    'Driving kinetic (pulse-based, forward momentum)',
-    'Southern Gothic (muted strings, delta blues)',
-    'Mournful atmospheric (church organ undertones)'
-  ]
+  // Filter authors when genre changes
+  useEffect(() => {
+    if (formData.genre) {
+      const filtered = authors.filter(author => 
+        author.primary_genre === formData.genre
+      )
+      setAvailableAuthors(filtered)
+      // Reset author selection when genre changes
+      setFormData(prev => ({ ...prev, authorStyle: '' }))
+    }
+  }, [formData.genre, authors])
+
+  async function loadAuthors() {
+    try {
+      const { data, error } = await supabase
+        .from('authors')
+        .select('id, name, primary_genre')
+        .order('name')
+
+      if (error) throw error
+      setAuthors(data || [])
+    } catch (error) {
+      console.error('Error loading authors:', error)
+    }
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -507,14 +551,68 @@ function PremisePickerView({
                 value={formData.authorStyle}
                 onChange={(e) => setFormData({ ...formData, authorStyle: e.target.value })}
                 required
+                disabled={!formData.genre}
               >
-                <option value="">Select Author</option>
-                {authors.map(author => (
-                  <option key={author} value={author}>{author}</option>
+                <option value="">
+                  {formData.genre ? 'Select Author' : 'Select Genre First'}
+                </option>
+                {availableAuthors.map(author => (
+                  <option key={author.id} value={author.name}>
+                    {author.name}
+                  </option>
                 ))}
               </select>
+              {formData.genre && availableAuthors.length === 0 && (
+                <p className="text-sm text-red-600 mt-1">
+                  No authors available for {formData.genre}
+                </p>
+              )}
             </FormField>
           </div>
+
+          {/* Story Type Selection */}
+          <FormField label="Story Type *">
+            <div className="flex space-x-4">
+              {(['single', 'series'] as const).map(type => (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => setFormData({ ...formData, storyType: type, seriesEpisodeCount: type === 'series' ? 3 : undefined })}
+                  style={{
+                    backgroundColor: formData.storyType === type ? '#f97316' : '#ffffff',
+                    color: formData.storyType === type ? '#ffffff' : '#000000',
+                    border: '1px solid #000000'
+                  }}
+                  className="px-6 py-3 rounded font-medium"
+                >
+                  {type === 'single' ? 'Single Episode' : 'Series'}
+                </button>
+              ))}
+            </div>
+          </FormField>
+
+          {/* Series Episode Count - Only show if Series is selected */}
+          {formData.storyType === 'series' && (
+            <FormField label="Number of Episodes *">
+              <div className="flex space-x-4 flex-wrap">
+                {([3, 4, 5, 6, 7, 8] as const).map(count => (
+                  <button
+                    key={count}
+                    type="button"
+                    onClick={() => setFormData({ ...formData, seriesEpisodeCount: count })}
+                    style={{
+                      backgroundColor: formData.seriesEpisodeCount === count ? '#f97316' : '#ffffff',
+                      color: formData.seriesEpisodeCount === count ? '#ffffff' : '#000000',
+                      border: '1px solid #000000'
+                    }}
+                    className="px-4 py-2 rounded font-medium mb-2"
+                  >
+                    {count} Episodes
+                  </button>
+                ))}
+              </div>
+            </FormField>
+          )}
 
           {/* Runtime */}
           <FormField label="Target Runtime *">
@@ -561,22 +659,7 @@ function PremisePickerView({
             />
           </FormField>
 
-          <FormField label="Music Style *">
-            <select
-              style={{ backgroundColor: '#ffffff', border: '1px solid #000000', color: '#000000' }}
-              className="w-full p-3 rounded"
-              value={formData.musicStyle}
-              onChange={(e) => setFormData({ ...formData, musicStyle: e.target.value })}
-              required
-            >
-              <option value="">Select Music Style</option>
-              {musicStyles.map(style => (
-                <option key={style} value={style}>{style}</option>
-              ))}
-            </select>
-          </FormField>
-
-          {/* SFX Toggle - The Key Feature You Requested */}
+          {/* SFX Toggle */}
           <FormField label="Sound Effects">
             <div className="flex space-x-6">
               <label className="flex items-center text-black">
@@ -616,9 +699,9 @@ function PremisePickerView({
           {/* Submit Button */}
           <button
             type="submit"
-            disabled={loading || !formData.genre || !formData.authorStyle || !formData.premise || !formData.setting || !formData.musicStyle}
+            disabled={loading || !formData.genre || !formData.authorStyle || !formData.premise || !formData.setting}
             style={{
-              backgroundColor: loading ? '#64748b' : '#f97316',
+              backgroundColor: loading ? '#6474bc' : '#f97316',
               color: '#ffffff',
               border: 'none'
             }}
@@ -639,9 +722,9 @@ function PremisePickerView({
   )
 }
 
-// ============================================================================
+// =============================================================================
 // STORY OPTIONS COMPONENT
-// ============================================================================
+// =============================================================================
 
 function StoryOptionsView({
   stories,
@@ -716,15 +799,44 @@ function OptionCard({
           <p className="mt-1">{option.hook}</p>
         </div>
         
-        <div>
-          <strong className="text-orange-600">Plot Development:</strong>
-          <p className="mt-1">{option.plotSummary}</p>
-        </div>
-        
-        <div>
-          <strong className="text-orange-600">Ending Conclusion:</strong>
-          <p className="mt-1">{option.endingConclusion}</p>
-        </div>
+        {/* Series Episodes Display */}
+        {option.episodes ? (
+          <div>
+            <strong className="text-orange-600">Episode Structure ({option.episodes.length} episodes):</strong>
+            <div className="mt-2 space-y-2">
+              {option.episodes.map((episode, index) => (
+                <div key={episode.episodeNumber} style={{ backgroundColor: '#f9fafb', border: '1px solid #e5e7eb' }} className="p-3 rounded">
+                  <div className="font-medium text-black">
+                    Episode {episode.episodeNumber}: {episode.episodeTitle}
+                  </div>
+                  <p className="text-sm text-gray-700 mt-1">{episode.plotSummary}</p>
+                  {episode.cliffhanger && (
+                    <p className="text-sm text-orange-600 mt-1">
+                      <strong>Cliffhanger:</strong> {episode.cliffhanger}
+                    </p>
+                  )}
+                  {index === option.episodes.length - 1 && !episode.cliffhanger && (
+                    <p className="text-sm text-green-600 mt-1">
+                      <strong>Finale:</strong> Complete resolution and satisfaction
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <>
+            <div>
+              <strong className="text-orange-600">Plot Development:</strong>
+              <p className="mt-1">{option.plotSummary}</p>
+            </div>
+            
+            <div>
+              <strong className="text-orange-600">Ending Conclusion:</strong>
+              <p className="mt-1">{option.endingConclusion}</p>
+            </div>
+          </>
+        )}
 
         {option.sfxPlacements.length > 0 && (
           <div>
@@ -744,26 +856,26 @@ function OptionCard({
           </div>
         )}
       </div>
-      
+     
       <button
         onClick={onSelect}
         disabled={disabled}
         style={{
-          backgroundColor: disabled ? '#64748b' : '#f97316',
+          backgroundColor: disabled ? '#6474bc' : '#f97316',
           color: '#ffffff',
           border: 'none'
         }}
         className="w-full py-3 px-4 rounded font-medium hover:bg-orange-600 disabled:cursor-not-allowed"
       >
-        {disabled ? 'PROCESSING...' : 'SELECT THIS OPTION'}
+        {disabled ? 'PROCESSING...' : `SELECT THIS ${option.episodes ? 'SERIES' : 'STORY'}`}
       </button>
     </div>
   )
 }
 
-// ============================================================================
+// =============================================================================
 // QUEUE VIEW COMPONENT
-// ============================================================================
+// =============================================================================
 
 function QueueView({
   stories,
@@ -803,7 +915,9 @@ function QueueView({
                 className="p-3 rounded cursor-pointer transition-colors"
               >
                 <h3 className="font-semibold text-black truncate">{story.title}</h3>
-                <p className="text-sm text-gray-700">{story.author} • {story.genre}</p>
+                <p className="text-sm text-gray-700">
+                  {story.author} • {story.genre} • {story.storyType === 'series' ? `Series (${story.episodeCount} episodes)` : 'Single Episode'}
+                </p>
                 <div className="flex items-center justify-between mt-2">
                   <StatusBadge status={story.status} />
                   {story.grade && (
@@ -844,9 +958,9 @@ function QueueView({
   )
 }
 
-// ============================================================================
+// =============================================================================
 // STORY DETAILS COMPONENT
-// ============================================================================
+// =============================================================================
 
 function StoryDetailsPanel({
   story,
@@ -870,7 +984,9 @@ function StoryDetailsPanel({
         <div className="flex justify-between items-start">
           <div>
             <h2 className="text-xl font-bold text-black">{story.title}</h2>
-            <p className="text-gray-700">{story.author} • {story.genre}</p>
+            <p className="text-gray-700">
+              {story.author} • {story.genre} • {story.storyType === 'series' ? `Series (${story.episodeCount} episodes)` : 'Single Episode'}
+            </p>
           </div>
           <StatusBadge status={story.status} />
         </div>
@@ -922,7 +1038,7 @@ function StoryDetailsPanel({
           </div>
         )}
 
-        {/* SFX Management - The Key Feature You Requested */}
+        {/* SFX Management */}
         {sfxSettings.length > 0 && (
           <div className="mb-6">
             <h3 className="text-lg font-semibold text-black mb-3">Sound Effects Review</h3>
@@ -978,13 +1094,13 @@ function StoryDetailsPanel({
         <div className="flex space-x-4 pt-4 border-t border-gray-300">
           {story.status === 'ready_for_review' && (
             <>
-              {/* Top Fixes Button - The Feature You Requested */}
+              {/* Top Fixes Button */}
               {story.grade && story.grade.total < 24 && story.grade.topFixes.length > 0 && (
                 <button
                   onClick={() => onRewrite(story.id)}
                   disabled={loading}
                   style={{
-                    backgroundColor: loading ? '#64748b' : '#3b82f6',
+                    backgroundColor: loading ? '#6474bc' : '#3b82f6',
                     color: '#ffffff',
                     border: 'none'
                   }}
@@ -998,20 +1114,20 @@ function StoryDetailsPanel({
                 onClick={() => onApprove(story.id)}
                 disabled={loading}
                 style={{
-                  backgroundColor: loading ? '#64748b' : '#10b981',
+                  backgroundColor: loading ? '#6474bc' : '#10b981',
                   color: '#ffffff',
                   border: 'none'
                 }}
                 className="px-6 py-3 rounded font-medium hover:bg-green-700 disabled:cursor-not-allowed"
               >
-                ✓ Approve & Produce
+                ✓ Approve & Publish
               </button>
               
               <button
                 onClick={() => onReject(story.id)}
                 disabled={loading}
                 style={{
-                  backgroundColor: loading ? '#64748b' : '#ef4444',
+                  backgroundColor: loading ? '#6474bc' : '#ef4444',
                   color: '#ffffff',
                   border: 'none'
                 }}
@@ -1024,7 +1140,7 @@ function StoryDetailsPanel({
           
           {story.status === 'production_ready' && (
             <div style={{ backgroundColor: '#10b981', color: '#ffffff' }} className="px-6 py-3 rounded font-medium">
-              ✓ In Production Pipeline
+              ✓ Published & Live
             </div>
           )}
         </div>
@@ -1033,9 +1149,9 @@ function StoryDetailsPanel({
   )
 }
 
-// ============================================================================
+// =============================================================================
 // UTILITY COMPONENTS
-// ============================================================================
+// =============================================================================
 
 function TabButton({
   children,
@@ -1093,270 +1209,266 @@ function FormField({ label, children }: { label: string; children: React.ReactNo
   )
 }
 
-// ============================================================================
+// =============================================================================
 // API FUNCTIONS
-// ============================================================================
+// =============================================================================
 
 async function generateStoryOptions(premise: PremiseData): Promise<StoryOption[]> {
+  const prompt = createStoryOptionsPrompt(premise)
+  
   const response = await fetch('/api/claude-proxy', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: "claude-3-5-sonnet-20241022",
-      max_tokens: 4000,
-      messages: [{
-        role: "user",
-        content: `You are the story generation system for Endless Tales. Generate exactly 3 different story structure options based on this premise.
-
-PREMISE DATA:
-- Genre: ${premise.genre}
-- Author Style: ${premise.authorStyle}
-- Runtime: ${premise.runtime}
-- Core Premise: ${premise.premise}
-- Setting: ${premise.setting}
-- Music Style: ${premise.musicStyle}
-- SFX Enabled: ${premise.sfxEnabled}
-- Additional Notes: ${premise.additionalNotes || 'None'}
-
-For each option, provide:
-1. A compelling title
-2. Opening hook (how the first 2 minutes grab attention)
-3. Plot summary (key story beats and developments)
-4. Ending conclusion (how the central conflict resolves - be specific about the resolution)
-5. Estimated grade (realistic score out of 25 based on Endless Tales quality standards)
-
-${premise.sfxEnabled ? 'Include 3-5 strategic SFX placements that enhance the story.' : 'No SFX - voice and music only.'}
-
-Respond ONLY in this JSON format:
-{
-  "options": [
-    {
-      "id": "option_1",
-      "title": "Story Title Here",
-      "hook": "Detailed description of opening 2 minutes...",
-      "plotSummary": "Key story developments and revelations...",
-      "endingConclusion": "Specific resolution of central conflict...",
-      "estimatedGrade": 23,
-      "sfxPlacements": [
-        {
-          "id": "sfx_1",
-          "lineNumber": 15,
-          "description": "Car door slam",
-          "sfxType": "action",
-          "enabled": true,
-          "audioNote": "Sets arrival tension"
-        }
-      ]
-    }
-  ]
-}`
-      }]
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 4000
     })
   })
-
-  const result = await response.json()
-  const content = result.content?.[0]?.text || result.choices?.[0]?.message?.content || ''
   
-  try {
-    const jsonStart = content.indexOf('{')
-    const jsonEnd = content.lastIndexOf('}') + 1
-    const jsonStr = content.substring(jsonStart, jsonEnd)
-    const parsed = JSON.parse(jsonStr)
-    return parsed.options
-  } catch (error) {
-    console.error('Error parsing Claude response:', error)
-    throw new Error('Failed to parse story options')
-  }
+  if (!response.ok) throw new Error('Failed to generate options')
+  
+  const data = await response.json()
+  return parseStoryOptions(data.content[0].text, premise)
 }
 
-async function generateScript(option: StoryOption, story: QueueStory): Promise<{ script: string; title: string }> {
+async function generateScript(option: StoryOption, story: QueueStory): Promise<{ title: string; script: string }> {
+  const prompt = createScriptPrompt(option, story)
+  
   const response = await fetch('/api/claude-proxy', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: "claude-3-5-sonnet-20241022",
-      max_tokens: 6000,
-      messages: [{
-        role: "user",
-        content: `Write a complete Endless Tales audio drama script based on this approved story structure:
-
-TITLE: ${option.title}
-HOOK: ${option.hook}
-PLOT: ${option.plotSummary}
-ENDING: ${option.endingConclusion}
-AUTHOR: ${story.author}
-GENRE: ${story.genre}
-
-Follow the Endless Tales format exactly:
-
-BELLE B INTRO
----
-BELLE B: [Write warm, specific intro line - no time references, no formal language]
----
-
-AUTHOR: ${story.author}
-GENRE: ${story.genre}
-DESCRIPTION: [24-word present-tense hook for app display]
-NARRATOR: [Assign American narrator based on genre]
-ANNOUNCER: Belle B
-NARRATIVE_VOICE: third_limited
-NARRATOR_IS_CHARACTER: false
-SUNO PROMPT: [Background music description]
-
-CHARACTER GUIDE
----
-[List each character with: NAME — age, gender, american accent, tone]
----
-
-[START AUDIO DRAMA SCRIPT]
-
-NARRATOR: [Begin story here - implement the exact hook, plot, and ending from the approved structure]
-
-[CHARACTER]: [Dialogue]
-
-[BEAT] [Use for pacing]
-
-...
-
-BELLE B: [Outro line - reference something specific from the story, credit author, say "an Endless Tales original"]
-
-CRITICAL REQUIREMENTS:
-- American setting and characters unless specified otherwise
-- Definitive, satisfying ending that resolves the central conflict
-- 15-minute target length (~2200 words)
-- No SFX markers in script (music and voice only)
-- Follow exact format shown above`
-      }]
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 4000
     })
   })
-
-  const result = await response.json()
-  const script = result.content?.[0]?.text || result.choices?.[0]?.message?.content || ''
   
-  return { 
-    script, 
-    title: option.title
+  if (!response.ok) throw new Error('Failed to generate script')
+  
+  const data = await response.json()
+  const script = data.content[0].text
+  
+  return {
+    title: option.title,
+    script: script
   }
 }
 
 async function gradeScript(script: string): Promise<GradingResult> {
+  const prompt = createGradingPrompt(script)
+  
   const response = await fetch('/api/claude-proxy', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: "claude-3-5-sonnet-20241022",
-      max_tokens: 2000,
-      messages: [{
-        role: "user",
-        content: `Grade this Endless Tales audio drama script using the 6-dimension rubric. Each dimension is scored 1-10.
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 2000
+    })
+  })
+  
+  if (!response.ok) throw new Error('Failed to grade script')
+  
+  const data = await response.json()
+  return parseGradingResult(data.content[0].text)
+}
+
+async function applyTopFixes(script: string, fixes: string[]): Promise<string> {
+  const prompt = `Apply these improvements to this Endless Tales script:
+
+IMPROVEMENTS TO APPLY:
+${fixes.map((fix, i) => `${i + 1}. ${fix}`).join('\n')}
+
+CURRENT SCRIPT:
+${script}
+
+IMPROVED SCRIPT:`
+  
+  const response = await fetch('/api/claude-proxy', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 4000
+    })
+  })
+  
+  if (!response.ok) throw new Error('Failed to apply fixes')
+  
+  const data = await response.json()
+  return data.content[0].text
+}
+
+// =============================================================================
+// PROMPT BUILDERS
+// =============================================================================
+
+function createStoryOptionsPrompt(premise: PremiseData): string {
+  const isSeriesPrompt = premise.storyType === 'series' 
+    ? `This is a SERIES with ${premise.seriesEpisodeCount} episodes. Generate episode structures with proper cliffhangers for episodes 1-${(premise.seriesEpisodeCount || 3) - 1} and a complete resolution for the finale.`
+    : 'This is a STANDALONE story. It must have a complete, satisfying ending.'
+
+  return `You are generating story structure options for Endless Tales. Generate exactly 3 different story structure options based on this premise:
+
+PREMISE DETAILS:
+- Genre: ${premise.genre}
+- Author: ${premise.authorStyle}
+- Story Type: ${premise.storyType}
+- Runtime: ${premise.runtime} ${premise.storyType === 'series' ? 'per episode' : 'total'}
+- Core Premise: ${premise.premise}
+- Setting: ${premise.setting}
+- SFX Enabled: ${premise.sfxEnabled}
+${premise.additionalNotes ? `- Additional Notes: ${premise.additionalNotes}` : ''}
+
+${isSeriesPrompt}
+
+For each option, provide:
+1. Title
+2. Opening Hook (first 2 minutes)
+3. Plot Development/Structure
+4. Ending Conclusion (specific resolution)
+5. Estimated Quality Grade (out of 25)
+6. Music Prompt for Suno
+7. ${premise.sfxEnabled ? 'SFX placements with descriptions' : 'No SFX (voice and music only)'}
+
+${premise.storyType === 'series' ? `For series, break down all ${premise.seriesEpisodeCount} episodes with titles, plot summaries, and cliffhangers (except finale).` : ''}
+
+Format as JSON with this structure:
+{
+  "options": [
+    {
+      "id": "option_1",
+      "title": "Story Title",
+      "hook": "Opening hook description",
+      "plotSummary": "Plot development",
+      "endingConclusion": "How it ends specifically",
+      "estimatedGrade": 22,
+      "musicPrompt": "Suno prompt for background music",
+      "sfxPlacements": [],
+      ${premise.storyType === 'series' ? '"episodes": [...episode objects with episodeNumber, episodeTitle, plotSummary, cliffhanger]' : ''}
+    }
+  ]
+}`
+}
+
+function createScriptPrompt(option: StoryOption, story: QueueStory): string {
+  return `Write a complete Endless Tales audio drama script based on this approved story option.
+
+STORY OPTION:
+Title: ${option.title}
+Author: ${story.author}
+Genre: ${story.genre}
+Story Type: ${story.storyType}
+${story.episodeCount ? `Episode Count: ${story.episodeCount}` : ''}
+Hook: ${option.hook}
+Plot: ${option.plotSummary}
+Ending: ${option.endingConclusion}
+
+SERIES EPISODES:
+${option.episodes ? option.episodes.map(ep => 
+  `Episode ${ep.episodeNumber}: ${ep.episodeTitle}
+  Plot: ${ep.plotSummary}
+  ${ep.cliffhanger ? `Cliffhanger: ${ep.cliffhanger}` : 'FINALE: Complete resolution'}`
+).join('\n\n') : 'N/A - Standalone story'}
+
+MUSIC PROMPT: ${option.musicPrompt}
+
+SFX: ${option.sfxPlacements.length > 0 ? option.sfxPlacements.map(sfx => sfx.description).join(', ') : 'No SFX - voice and music only'}
+
+Follow all Endless Tales writing rules:
+- Use proper script format with header block
+- Follow the author's voice profile and narrative style
+- ${story.storyType === 'series' ? 'Each episode except finale MUST end with a cliffhanger' : 'Must have a complete, satisfying ending'}
+- Belle B intro and outro following ET specs
+- Character guide with voice casting info
+- American accents default unless specified otherwise
+
+Write the complete script now:`
+}
+
+function createGradingPrompt(script: string): string {
+  return `Grade this Endless Tales script using the official 25-point rubric:
+
+GRADING DIMENSIONS (each scored 1-5):
+1. Hook - Does it grab attention in first 2 minutes?
+2. Listenability - Clear, engaging audio storytelling?
+3. Dialogue - Natural, distinct character voices?
+4. Clarity - Easy to follow story progression?
+5. Pacing - Proper rhythm and momentum?
+
+ADDITIONAL CHECKS:
+- Audio Quality (production readiness)
+- Policy compliance (content guidelines)
+
+Provide specific top fixes for any dimension scoring below 4.
 
 SCRIPT TO GRADE:
 ${script}
 
-GRADING RUBRIC:
-
-**Dimension 1: Hook (1-10)**
-Does the opening grab attention immediately? Is the listener engaged within 90 seconds?
-
-**Dimension 2: Listenability (1-10)**
-Is the prose controlled and imaginistic? Does it trust listener intelligence? No overwrought descriptions?
-
-**Dimension 3: Dialogue (1-10)**
-Is dialogue lean and character-specific? Does each character have a distinct voice?
-
-**Dimension 4: Clarity (1-10)**
-Can the listener follow the story easily? Are plot points clear? No confusing jumps?
-
-**Dimension 5: Pacing (1-10)**
-Does the story move well? Proper use of [BEAT]? Good three-act structure?
-
-**Dimension 6: Audio (1-10)**
-Belle B intro follows format? American narrator assigned? Proper script structure?
-
-**Policy Check:**
-- Definitive ending that resolves central conflict?
-- No inappropriate content?
-- Follows Endless Tales guidelines?
-
-Respond ONLY in this JSON format:
+Return JSON format:
 {
-  "hook": 8,
-  "listenability": 9,
-  "dialogue": 7,
-  "clarity": 6,
-  "pacing": 8,
-  "audio": 9,
-  "total": 47,
-  "policyPass": true,
-  "topFixes": [
-    "Add bridge section between scenes X and Y",
-    "Clarify the resolution in the final act"
-  ]
+  "total": 22,
+  "hook": 4,
+  "listenability": 5,
+  "dialogue": 4,
+  "clarity": 4,
+  "pacing": 5,
+  "audio": 4,
+  "topFixes": ["Specific improvement 1", "Specific improvement 2"],
+  "policyPass": true
 }`
-      }]
-    })
-  })
+}
 
-  const result = await response.json()
-  const content = result.content?.[0]?.text || result.choices?.[0]?.message?.content || ''
-  
+// =============================================================================
+// RESPONSE PARSERS
+// =============================================================================
+
+function parseStoryOptions(response: string, premise: PremiseData): StoryOption[] {
   try {
-    const jsonStart = content.indexOf('{')
-    const jsonEnd = content.lastIndexOf('}') + 1
-    const jsonStr = content.substring(jsonStart, jsonEnd)
-    const parsed = JSON.parse(jsonStr)
+    const cleaned = response.replace(/```json|```/g, '').trim()
+    const parsed = JSON.parse(cleaned)
     
-    return {
-      hook: parsed.hook,
-      listenability: parsed.listenability,
-      dialogue: parsed.dialogue,
-      clarity: parsed.clarity,
-      pacing: parsed.pacing,
-      audio: parsed.audio,
-      total: parsed.total,
-      policyPass: parsed.policyPass,
-      topFixes: parsed.topFixes || []
-    }
+    return parsed.options.map((opt: any, index: number) => ({
+      id: `option_${index + 1}`,
+      title: opt.title || `Option ${index + 1}`,
+      hook: opt.hook || '',
+      plotSummary: opt.plotSummary || '',
+      endingConclusion: opt.endingConclusion || '',
+      estimatedGrade: opt.estimatedGrade || 20,
+      musicPrompt: opt.musicPrompt || '',
+      sfxPlacements: (opt.sfxPlacements || []).map((sfx: any, sfxIndex: number) => ({
+        id: `sfx_${index}_${sfxIndex}`,
+        lineNumber: sfx.lineNumber || 0,
+        description: sfx.description || '',
+        sfxType: sfx.sfxType || 'atmospheric',
+        enabled: true,
+        audioNote: sfx.audioNote || ''
+      })),
+      episodes: opt.episodes || undefined
+    }))
   } catch (error) {
-    console.error('Error parsing grading result:', error)
-    throw new Error('Failed to parse grading result')
+    console.error('Failed to parse story options:', error)
+    throw new Error('Failed to parse Claude response')
   }
 }
 
-async function applyTopFixes(script: string, fixes: string[]): Promise<string> {
-  const response = await fetch('/api/claude-proxy', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: "claude-3-5-sonnet-20241022",
-      max_tokens: 6000,
-      messages: [{
-        role: "user",
-        content: `Apply these specific improvements to this Endless Tales audio drama script:
-
-IMPROVEMENTS TO MAKE:
-${fixes.map((fix, i) => `${i + 1}. ${fix}`).join('\n')}
-
-ORIGINAL SCRIPT:
-${script}
-
-Return the complete improved script with all fixes applied. Maintain the exact Endless Tales format. Only change what's necessary to address the specific improvements listed above.
-
-Do not change:
-- The core story concept
-- Character names or personalities
-- The overall plot structure
-- The Belle B intro/outro format
-
-Do improve:
-- Story clarity and flow
-- Missing narrative bridges
-- Pacing issues
-- Any structural problems identified`
-      }]
-    })
-  })
-
-  const result = await response.json()
-  return result.content?.[0]?.text || result.choices?.[0]?.message?.content || script
+function parseGradingResult(response: string): GradingResult {
+  try {
+    const cleaned = response.replace(/```json|```/g, '').trim()
+    const parsed = JSON.parse(cleaned)
+    
+    return {
+      total: parsed.total || 0,
+      hook: parsed.hook || 0,
+      listenability: parsed.listenability || 0,
+      dialogue: parsed.dialogue || 0,
+      clarity: parsed.clarity || 0,
+      pacing: parsed.pacing || 0,
+      audio: parsed.audio || 0,
+      topFixes: parsed.topFixes || [],
+      policyPass: parsed.policyPass || false
+    }
+  } catch (error) {
+    console.error('Failed to parse grading result:', error)
+    throw new Error('Failed to parse grading response')
+  }
 }
