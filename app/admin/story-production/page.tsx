@@ -427,7 +427,18 @@ export default function StoryProductionPage() {
 
     } catch (error) {
       console.error('Error applying fixes:', error)
-      alert('Failed to apply improvements.')
+      console.error('FULL apply top fixes error:', error)
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : (error && typeof error === 'object' && 'message' in error && error.message)
+            ? String(error.message)
+            : (error && typeof error === 'object' && 'details' in error && error.details)
+              ? String(error.details)
+              : (error && typeof error === 'object' && 'hint' in error && error.hint)
+                ? String(error.hint)
+                : JSON.stringify(error)
+      alert(`Failed to apply improvements: ${errorMessage}`)
     } finally {
       setLoading(false)
       setLoadingMessage('')
