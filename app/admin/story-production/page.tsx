@@ -340,7 +340,7 @@ export default function StoryProductionPage() {
         .from('stories')
         .update({
           title: result.title,
-          script_text: result.script,
+          script: result.script,
           grading_result: grade,
           sfx_settings: option.sfxPlacements,
           status: 'ready_for_review'
