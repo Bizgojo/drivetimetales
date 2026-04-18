@@ -1228,7 +1228,7 @@ async function generateStoryOptions(premise: PremiseData): Promise<StoryOption[]
   if (!response.ok) throw new Error('Failed to generate options')
   
   const data = await response.json()
-  return parseStoryOptions(data.content[0].text, premise)
+  return parseStoryOptions(data.text, premise)
 }
 
 async function generateScript(option: StoryOption, story: QueueStory): Promise<{ title: string; script: string }> {
@@ -1246,7 +1246,7 @@ async function generateScript(option: StoryOption, story: QueueStory): Promise<{
   if (!response.ok) throw new Error('Failed to generate script')
   
   const data = await response.json()
-  const script = data.content[0].text
+  const script = data.text
   
   return {
     title: option.title,
@@ -1269,7 +1269,7 @@ async function gradeScript(script: string): Promise<GradingResult> {
   if (!response.ok) throw new Error('Failed to grade script')
   
   const data = await response.json()
-  return parseGradingResult(data.content[0].text)
+  return parseGradingResult(data.text)
 }
 
 async function applyTopFixes(script: string, fixes: string[]): Promise<string> {
@@ -1295,7 +1295,7 @@ IMPROVED SCRIPT:`
   if (!response.ok) throw new Error('Failed to apply fixes')
   
   const data = await response.json()
-  return data.content[0].text
+  return data.text
 }
 
 // =============================================================================
