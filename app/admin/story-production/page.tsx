@@ -1225,9 +1225,11 @@ async function generateStoryOptions(premise: PremiseData): Promise<StoryOption[]
     })
   })
   
-  if (!response.ok) throw new Error('Failed to generate options')
-  
   const data = await response.json()
+
+  if (!response.ok || !data?.success) throw new Error(data?.error || 'Failed to generate options')
+  if (!data?.text) throw new Error('Claude returned no text')
+
   return parseStoryOptions(data.text, premise)
 }
 
@@ -1243,9 +1245,11 @@ async function generateScript(option: StoryOption, story: QueueStory): Promise<{
     })
   })
   
-  if (!response.ok) throw new Error('Failed to generate script')
-  
   const data = await response.json()
+
+  if (!response.ok || !data?.success) throw new Error(data?.error || 'Failed to generate script')
+  if (!data?.text) throw new Error('Claude returned no text')
+
   const script = data.text
   
   return {
@@ -1266,9 +1270,11 @@ async function gradeScript(script: string): Promise<GradingResult> {
     })
   })
   
-  if (!response.ok) throw new Error('Failed to grade script')
-  
   const data = await response.json()
+
+  if (!response.ok || !data?.success) throw new Error(data?.error || 'Failed to grade script')
+  if (!data?.text) throw new Error('Claude returned no text')
+
   return parseGradingResult(data.text)
 }
 
@@ -1292,9 +1298,11 @@ IMPROVED SCRIPT:`
     })
   })
   
-  if (!response.ok) throw new Error('Failed to apply fixes')
-  
   const data = await response.json()
+
+  if (!response.ok || !data?.success) throw new Error(data?.error || 'Failed to apply fixes')
+  if (!data?.text) throw new Error('Claude returned no text')
+
   return data.text
 }
 
