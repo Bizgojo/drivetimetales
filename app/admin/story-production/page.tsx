@@ -24,6 +24,12 @@ interface PremiseData {
   additionalNotes?: string
 }
 
+
+function runtimeToMinutes(runtime: string): number {
+  const match = runtime.match(/(\d+)/)
+  return match ? parseInt(match[1], 10) : 15
+}
+
 interface StoryOption {
   id: string
   title: string
@@ -231,6 +237,7 @@ export default function StoryProductionPage() {
           premise_data: premise,
           story_type: premise.storyType,
           episode_count: premise.seriesEpisodeCount,
+          duration_mins: runtimeToMinutes(premise.runtime),
           created_at: new Date().toISOString()
         })
         .select()
