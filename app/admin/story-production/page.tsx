@@ -1342,6 +1342,30 @@ Use exactly this shape:
   ]
 }
 
+IMPORTANT: Return ONLY valid JSON. Do not include any explanation, intro text, markdown, or code fences.
+Use exactly this shape:
+{
+  "options": [
+    {
+      "title": "Option 1 title",
+      "hook": "Opening hook",
+      "plotSummary": "Brief plot summary",
+      "endingConclusion": "How it ends",
+      "estimatedGrade": 22,
+      "musicPrompt": "Music direction",
+      "sfxPlacements": [
+        {
+          "lineNumber": 12,
+          "description": "screen door creaks",
+          "sfxType": "practical",
+          "audioNote": "brief and natural"
+        }
+      ],
+      "episodes": []
+    }
+  ]
+}
+
 PREMISE DETAILS:
 - Genre: ${premise.genre}
 - Author: ${premise.authorStyle}
@@ -1434,6 +1458,21 @@ Use exactly this shape:
   "policyPass": true
 }
 
+
+IMPORTANT: Return ONLY valid JSON. Do not include explanation, markdown, or code fences.
+Use exactly this shape:
+{
+  "total": 0,
+  "hook": 0,
+  "listenability": 0,
+  "dialogue": 0,
+  "clarity": 0,
+  "pacing": 0,
+  "audio": 0,
+  "topFixes": ["fix 1", "fix 2", "fix 3"],
+  "policyPass": true
+}
+
 Grade this Endless Tales script using the official 25-point rubric:
 
 GRADING DIMENSIONS (each scored 1-5):
@@ -1470,11 +1509,32 @@ Return JSON format:
 // RESPONSE PARSERS
 // =============================================================================
 
+function extractJsonObject(response: string): any {
+  const cleaned = response.replace(/```json|```/g, '').trim()
+
+  try {
+    return JSON.parse(cleaned)
+  } catch {}
+
+  const firstBrace = cleaned.indexOf('{')
+  const lastBrace = cleaned.lastIndexOf('}')
+
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    const candidate = cleaned.slice(firstBrace, lastBrace + 1)
+    return JSON.parse(candidate)
+  }
+
+  throw new Error('No valid JSON object found in Claude response')
+}
+
 function parseStoryOptions(response: string, premise: PremiseData): StoryOption[] {
   try {
-    const cleaned = response.replace(/```json|```/g, '').trim()
-    const parsed = JSON.parse(cleaned)
-    
+    const parsed = extractJsonObject(response)
+
+    if (!parsed?.options || !Array.isArray(parsed.options)) {
+      throw new Error('Claude response JSON is missing an options array')
+    }
+
     return parsed.options.map((opt: any, index: number) => ({
       id: `option_${index + 1}`,
       title: opt.title || `Option ${index + 1}`,
@@ -1494,16 +1554,15 @@ function parseStoryOptions(response: string, premise: PremiseData): StoryOption[
       episodes: opt.episodes || undefined
     }))
   } catch (error) {
-    console.error('Failed to parse story options:', error)
-    throw new Error('Failed to parse Claude response')
+    console.error('Failed to parse story options:', error, response)
+    throw new Error(error instanceof Error ? error.message : 'Failed to parse Claude response')
   }
 }
 
 function parseGradingResult(response: string): GradingResult {
   try {
-    const cleaned = response.replace(/```json|```/g, '').trim()
-    const parsed = JSON.parse(cleaned)
-    
+    const parsed = extractJsonObject(response)
+
     return {
       total: parsed.total || 0,
       hook: parsed.hook || 0,
@@ -1516,7 +1575,7 @@ function parseGradingResult(response: string): GradingResult {
       policyPass: parsed.policyPass || false
     }
   } catch (error) {
-    console.error('Failed to parse grading result:', error)
-    throw new Error('Failed to parse grading response')
+    console.error('Failed to parse grading result:', error, response)
+    throw new Error(error instanceof Error ? error.message : 'Failed to parse grading response')
   }
 }
