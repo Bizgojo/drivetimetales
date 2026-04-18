@@ -411,7 +411,7 @@ export default function StoryProductionPage() {
       const { error: updateError } = await supabase
         .from('stories')
         .update({
-          script_text: improvedScript,
+          script: improvedScript,
           grading_result: newGrade,
           status: 'ready_for_review'
         })
