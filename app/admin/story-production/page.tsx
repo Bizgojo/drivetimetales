@@ -365,7 +365,18 @@ export default function StoryProductionPage() {
 
     } catch (error) {
       console.error('Error generating script:', error)
-      alert('Failed to generate script. Please try again.')
+      console.error('FULL generate script error:', error)
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : (error && typeof error === 'object' && 'message' in error && error.message)
+            ? String(error.message)
+            : (error && typeof error === 'object' && 'details' in error && error.details)
+              ? String(error.details)
+              : (error && typeof error === 'object' && 'hint' in error && error.hint)
+                ? String(error.hint)
+                : JSON.stringify(error)
+      alert(`Failed to generate script: ${errorMessage}`)
     } finally {
       setLoading(false)
       setLoadingMessage('')
