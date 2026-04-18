@@ -1318,6 +1318,30 @@ function createStoryOptionsPrompt(premise: PremiseData): string {
 
   return `You are generating story structure options for Endless Tales. Generate exactly 3 different story structure options based on this premise:
 
+IMPORTANT: Return ONLY valid JSON. Do not include any explanation, intro text, markdown, or code fences.
+Use exactly this shape:
+{
+  "options": [
+    {
+      "title": "Option 1 title",
+      "hook": "Opening hook",
+      "plotSummary": "Brief plot summary",
+      "endingConclusion": "How it ends",
+      "estimatedGrade": 22,
+      "musicPrompt": "Music direction",
+      "sfxPlacements": [
+        {
+          "lineNumber": 12,
+          "description": "screen door creaks",
+          "sfxType": "practical",
+          "audioNote": "brief and natural"
+        }
+      ],
+      "episodes": []
+    }
+  ]
+}
+
 PREMISE DETAILS:
 - Genre: ${premise.genre}
 - Author: ${premise.authorStyle}
@@ -1395,7 +1419,22 @@ Write the complete script now:`
 }
 
 function createGradingPrompt(script: string): string {
-  return `Grade this Endless Tales script using the official 25-point rubric:
+  return `
+IMPORTANT: Return ONLY valid JSON. Do not include explanation, markdown, or code fences.
+Use exactly this shape:
+{
+  "total": 0,
+  "hook": 0,
+  "listenability": 0,
+  "dialogue": 0,
+  "clarity": 0,
+  "pacing": 0,
+  "audio": 0,
+  "topFixes": ["fix 1", "fix 2", "fix 3"],
+  "policyPass": true
+}
+
+Grade this Endless Tales script using the official 25-point rubric:
 
 GRADING DIMENSIONS (each scored 1-5):
 1. Hook - Does it grab attention in first 2 minutes?
