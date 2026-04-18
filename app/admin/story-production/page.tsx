@@ -275,7 +275,7 @@ export default function StoryProductionPage() {
       setCurrentView('options')
     } catch (error) {
       console.error('Error generating options:', error)
-      alert('Failed to generate story options. Please try again.')
+      alert(`Failed to generate story options: ${error instanceof Error ? error.message : 'Unknown error'}`)
     } finally {
       setLoading(false)
       setLoadingMessage('')
