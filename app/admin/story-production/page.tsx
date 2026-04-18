@@ -282,7 +282,18 @@ export default function StoryProductionPage() {
       setCurrentView('options')
     } catch (error) {
       console.error('Error generating options:', error)
-      alert(`Failed to generate story options: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      console.error('FULL generate story options error:', error)
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : (error && typeof error === 'object' && 'message' in error && error.message)
+            ? String(error.message)
+            : (error && typeof error === 'object' && 'details' in error && error.details)
+              ? String(error.details)
+              : (error && typeof error === 'object' && 'hint' in error && error.hint)
+                ? String(error.hint)
+                : JSON.stringify(error)
+      alert(`Failed to generate story options: ${errorMessage}`)
     } finally {
       setLoading(false)
       setLoadingMessage('')
