@@ -1359,4 +1359,4 @@ Do improve:
 
   const result = await response.json()
   return result.content?.[0]?.text || result.choices?.[0]?.message?.content || script
-}
+}// Updated Sat Apr 18 14:52:26 EDT 2026
