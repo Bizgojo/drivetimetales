@@ -1230,6 +1230,7 @@ async function generateStoryOptions(premise: PremiseData): Promise<StoryOption[]
   if (!response.ok || !data?.success) throw new Error(data?.error || 'Failed to generate options')
   if (!data?.text) throw new Error('Claude returned no text')
 
+  console.log('RAW STORY OPTIONS TEXT:', data.text)
   return parseStoryOptions(data.text, premise)
 }
 
