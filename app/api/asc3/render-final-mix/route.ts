@@ -72,8 +72,8 @@ export async function POST(req: NextRequest) {
     const { data: files } = await supabase.storage.from('audio').list(`asc3/${storyId}`, { limit: 500 })
     if (!files || files.length === 0) return NextResponse.json({ success: false, error: 'No audio files found' }, { status: 400 })
 
-    const introFile = files.find(f => f.name.startsWith('intro_'))
-    const outroFile = files.find(f => f.name.startsWith('outro_'))
+    const introFile = files.find(f => f.name === 'intro.mp3' || f.name.startsWith('intro_'))
+    const outroFile = files.find(f => f.name === 'outro.mp3' || f.name.startsWith('outro_'))
     const segmentFiles = files
       .filter(f => f.name.startsWith('segment_') || f.name.startsWith('sfx_'))
       .sort((a, b) => (parseInt(a.name.replace(/\D/g, '')) || 0) - (parseInt(b.name.replace(/\D/g, '')) || 0))
