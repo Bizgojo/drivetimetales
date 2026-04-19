@@ -773,6 +773,28 @@ Now write the complete audio drama:`
     const characterGuideRaw = characterGuideMatch ? characterGuideMatch[1].trim() : ''
     const actualWordCount = storyScript.split(/\s+/).length
 
+    const violations: string[] = []
+
+    if ((body.title || '').trim() && title !== (body.title || '').trim()) {
+      violations.push(`Title mismatch: expected "${body.title}", got "${title}"`)
+    }
+
+    if (/\[BELLE B\]\s*:/i.test(storyScript)) {
+      violations.push('BELLE B appeared inside the story body')
+    }
+
+    if (/the music swells|music ducks|fade to silence|cue sting|this has been endless tales|welcome back, listeners/i.test(storyScript)) {
+      violations.push('Story body contains spoken production or announcer instructions')
+    }
+
+    if (violations.length > 0) {
+      console.error('❌ Story validation failed:', violations)
+      return NextResponse.json(
+        { success: false, error: `Story validation failed: ${violations.join(' | ')}` },
+        { status: 400 }
+      )
+    }
+
     // Extract SUNO_PROMPT from script header
     let sunoPrompt = ''
     const sunoMatch = storyScript.match(/SUNO[_ ]PROMPT[:\s]+(.+?)(?:\n|$)/i)
