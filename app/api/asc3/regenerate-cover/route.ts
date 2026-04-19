@@ -5,7 +5,12 @@ import { createClient } from '@supabase/supabase-js'
 import { buildCoverPrompt } from '@/lib/coverPrompt'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let sharp: any
-try { sharp = eval('require')('sharp') } catch { sharp = null }
+try {
+  const sharpMod = eval('require')('sharp')
+  sharp = sharpMod?.default || sharpMod
+} catch {
+  sharp = null
+}
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
