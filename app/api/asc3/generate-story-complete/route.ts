@@ -604,6 +604,17 @@ GENRE CRAFT — ${(body.primaryGenre || 'GENERAL').toUpperCase()}:
 
     const claudePrompt = `You are an expert audio drama writer working in the style of ${body.authorStyle}.
 
+HARD RULES FOR ENDLESS TALES:
+- Use the provided title exactly as given. Do not rename the story.
+- Write ONLY the story body.
+- Do NOT include an intro announcer, outro announcer, Belle B lines, sting lines, or host lines in the script body.
+- BELLE B is reserved for separate intro/outro production only and must never appear as a body speaker.
+- Do NOT write spoken music instructions, mix instructions, or production narration such as "the music swells", "music ducks", "fade to silence", "cue sting", or similar.
+- Do NOT describe audio ingredients as dialogue or narration.
+- Output only story content in speaker format like [NARRATOR]: and [CHARACTER NAME]:.
+- The allowed body speakers are NARRATOR and story characters only.
+- Keep the script clean for downstream audio production.`
+
 Create a complete audio drama script with the following specifications:
 ${genreInstructions}
 
@@ -1018,6 +1029,9 @@ Now write the complete audio drama:`
       intro_audio_url: introAudioUrl || null,
       story_audio_url: storyAudioUrl || null,
       outro_audio_url: outroAudioUrl || null,
+      background_music_url: backgroundMusicUrl || null,
+      narrator_voice_id: NARRATOR_VOICE_ID,
+      narrator_voice_name: NARRATOR_VOICE_NAME,
       cover_image_url: coverImageUrl || null,
       status: 'pending',
       is_hidden: true,
