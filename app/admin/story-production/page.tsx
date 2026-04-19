@@ -465,16 +465,17 @@ export default function StoryProductionPage() {
     setLoadingMessage('Publishing story...')
 
     try {
-      const { error } = await supabase
-        .from('stories')
-        .update({ 
-          status: 'production_ready',
-          is_hidden: false,
-          published_on: new Date().toISOString()
-        })
-        .eq('id', storyId)
+      const response = await fetch('/api/story-publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storyId })
+      })
 
-      if (error) throw error
+      const data = await response.json()
+
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.error || 'Failed to publish story')
+      }
 
       setQueueStories(prev => prev.map(story =>
         story.id === storyId ? { ...story, status: 'production_ready' } : story
@@ -483,7 +484,7 @@ export default function StoryProductionPage() {
       alert('Story approved and published!')
     } catch (error) {
       console.error('Error approving story:', error)
-      alert('Failed to approve story.')
+      alert(`Failed to approve story: ${error instanceof Error ? error.message : 'Unknown error'}`)
     } finally {
       setLoading(false)
       setLoadingMessage('')
