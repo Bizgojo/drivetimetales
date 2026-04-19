@@ -272,6 +272,7 @@ export default function StoryProductionPage() {
         .eq('id', storyData.id)
 
       if (updateError) throw updateError
+      console.log('REWRITE STEP 5: Supabase update finished')
 
       // Update local state
       setQueueStories(prev => prev.map(story =>
@@ -404,10 +405,14 @@ export default function StoryProductionPage() {
       ))
 
       // Apply fixes
+      console.log('REWRITE STEP 1: starting applyTopFixes')
       const improvedScript = await applyTopFixes(story.script, story.grade.topFixes)
+      console.log('REWRITE STEP 2: applyTopFixes finished', improvedScript?.slice?.(0, 120))
       const newGrade = await gradeScript(improvedScript)
+      console.log('REWRITE STEP 3: gradeScript finished', newGrade)
 
       // Update with improved script
+      console.log('REWRITE STEP 4: starting Supabase update')
       const { error: updateError } = await supabase
         .from('stories')
         .update({
