@@ -24,6 +24,11 @@ function escapeXml(s: string): string {
 }
 
 async function overlayText(imageBuffer: Buffer, title: string, author: string): Promise<Buffer> {
+  if (!sharp || typeof sharp !== 'function') {
+    console.warn('sharp unavailable, skipping text overlay')
+    return imageBuffer
+  }
+
   const size = 1024
   const safeTitle = escapeXml(title.toUpperCase())
   const safeAuthor = escapeXml(author)
