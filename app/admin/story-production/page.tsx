@@ -271,7 +271,10 @@ export default function StoryProductionPage() {
         })
         .eq('id', storyData.id)
 
-      if (updateError) throw updateError
+      if (updateError) {
+        console.error('REWRITE STEP 4B: Supabase update error', updateError)
+        throw updateError
+      }
       console.log('REWRITE STEP 5: Supabase update finished')
 
       // Update local state
