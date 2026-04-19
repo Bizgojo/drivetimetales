@@ -999,7 +999,39 @@ Now write the complete audio drama:`
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // STEP 4 — Save to Supabase
+    // STEP 4 — Prepare background music
+    // ═══════════════════════════════════════════════════════════════
+
+    let backgroundMusicUrl = selectBackgroundMusic(body.tone, body.primaryGenre) // fallback
+    const sunoCookie = (body.sunoCookie || process.env.SUNO_COOKIE || '').trim()
+    let sunoStatus = 'library' // track which source was used
+    let sunoWarning: string | null = null
+
+    if (sunoCookie) {
+      try {
+        console.log('🎵 Attempting Suno music generation...')
+        const sunoRes = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/asc3/generate-music`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ storyId, sunoPrompt, title, sunoCookie }),
+        })
+        const sunoData = await sunoRes.json()
+        if (sunoData.success && sunoData.musicUrl) {
+          backgroundMusicUrl = sunoData.musicUrl
+          sunoStatus = 'suno'
+          console.log('✅ Suno music generated:', sunoData.musicUrl)
+        } else {
+          console.warn('⚠️ Suno failed:', sunoData.message || sunoData.error)
+          sunoWarning = `Suno: ${sunoData.message || sunoData.error} — using library track instead`
+        }
+      } catch (e) {
+        console.warn('⚠️ Suno unavailable:', e)
+        sunoWarning = `Suno unavailable — using library track instead`
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // STEP 5 — Save to Supabase
     // ═══════════════════════════════════════════════════════════════
 
     let dbError: string | null = null
@@ -1087,40 +1119,8 @@ Now write the complete audio drama:`
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // STEP 5 — Return response
+    // STEP 6 — Return response
     // ═══════════════════════════════════════════════════════════════
-
-    // ═══════════════════════════════════════════════════════════════
-    // STEP 5 — Suno music generation (optional, falls back to library)
-    // ═══════════════════════════════════════════════════════════════
-
-    let backgroundMusicUrl = selectBackgroundMusic(body.tone, body.primaryGenre) // fallback
-    const sunoCookie = (body.sunoCookie || process.env.SUNO_COOKIE || '').trim()
-    let sunoStatus = 'library' // track which source was used
-    let sunoWarning: string | null = null
-
-    if (sunoCookie) {
-      try {
-        console.log('🎵 Attempting Suno music generation...')
-        const sunoRes = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/asc3/generate-music`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ storyId, sunoPrompt, title, sunoCookie }),
-        })
-        const sunoData = await sunoRes.json()
-        if (sunoData.success && sunoData.musicUrl) {
-          backgroundMusicUrl = sunoData.musicUrl
-          sunoStatus = 'suno'
-          console.log('✅ Suno music generated:', sunoData.musicUrl)
-        } else {
-          console.warn('⚠️ Suno failed:', sunoData.message || sunoData.error)
-          sunoWarning = `Suno: ${sunoData.message || sunoData.error} — using library track instead`
-        }
-      } catch (e) {
-        console.warn('⚠️ Suno unavailable:', e)
-        sunoWarning = `Suno unavailable — using library track instead`
-      }
-    }
 
     const warnings = [audioError, coverError, dbError, parseWarning, fallbackUsed ? '⚠️ Fell back to single Belle B voice — check story format' : null, sunoWarning].filter(Boolean)
 
