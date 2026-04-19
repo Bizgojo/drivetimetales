@@ -416,7 +416,8 @@ export default function StoryProductionPage() {
 
       // Update with improved script
       console.log('REWRITE STEP 4: starting Supabase update')
-      const { error: updateError } = await supabase
+
+      const updatePromise = supabase
         .from('stories')
         .update({
           script: improvedScript,
@@ -424,8 +425,21 @@ export default function StoryProductionPage() {
           status: 'ready_for_review'
         })
         .eq('id', storyId)
+        .select('id,status')
 
-      if (updateError) throw updateError
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Supabase rewrite update timed out after 10 seconds')), 10000)
+      )
+
+      const result = await Promise.race([updatePromise, timeoutPromise])
+      const { error: updateError, data: updateData } = result as any
+
+      if (updateError) {
+        console.error('REWRITE STEP 4B: Supabase update error', updateError)
+        throw updateError
+      }
+
+      console.log('REWRITE STEP 5: Supabase update finished', updateData)
 
       setQueueStories(prev => prev.map(s =>
         s.id === storyId
