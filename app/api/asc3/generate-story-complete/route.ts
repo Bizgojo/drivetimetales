@@ -768,15 +768,16 @@ Now write the complete audio drama:`
       )
     }
 
-    const title = titleMatch[1].trim()
+    const parsedTitle = titleMatch[1].trim()
+    const title = (body.title || parsedTitle).trim()
     const storyScript = storyMatch[1].trim()
     const characterGuideRaw = characterGuideMatch ? characterGuideMatch[1].trim() : ''
     const actualWordCount = storyScript.split(/\s+/).length
 
     const violations: string[] = []
 
-    if ((body.title || '').trim() && title !== (body.title || '').trim()) {
-      violations.push(`Title mismatch: expected "${body.title}", got "${title}"`)
+    if ((body.title || '').trim() && parsedTitle !== (body.title || '').trim()) {
+      console.warn(`⚠️ Claude renamed title from "${body.title}" to "${parsedTitle}" — forcing requested title`)
     }
 
     if (/\[BELLE B\]\s*:/i.test(storyScript)) {
