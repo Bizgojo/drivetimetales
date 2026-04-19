@@ -24,77 +24,8 @@ function escapeXml(s: string): string {
 }
 
 async function overlayText(imageBuffer: Buffer, title: string, author: string): Promise<Buffer> {
-  if (!sharp || typeof sharp !== 'function') {
-    console.warn('sharp unavailable, skipping text overlay')
-    return imageBuffer
-  }
-
-  const size = 1024
-  const safeTitle = escapeXml(title.toUpperCase())
-  const safeAuthor = escapeXml(author)
-
-  // Split title into lines if long
-  const words = title.toUpperCase().split(' ')
-  const lines: string[] = []
-  let current = ''
-  for (const w of words) {
-    const test = current ? `${current} ${w}` : w
-    if (test.length > 16 && current) { lines.push(current); current = w }
-    else current = test
-  }
-  if (current) lines.push(current)
-
-  // Pill badge zone — defined first so title positioning can reference it
-  const pillW = 220, pillH = 64, pillR = 32, pillMargin = 20
-  const pillX = size - pillW - pillMargin
-  const pillY = size - pillH - pillMargin
-
-  const titleFontSize = lines.length > 2 ? 72 : 86
-  const lineHeight = titleFontSize + 10
-  const titleBlockHeight = lines.length * lineHeight
-
-  // Position title so the last line's baseline clears the pill badge zone
-  const safeBottomY = pillY - 30   // 30px above pill top
-  const titleY = safeBottomY - (lines.length - 1) * lineHeight
-
-  const titleLines = lines.map((line, i) =>
-    `<text x="512" y="${titleY + i * lineHeight}" font-family="Georgia, serif" font-size="${titleFontSize}" font-weight="bold" fill="white" text-anchor="middle" filter="url(#shadow)">${escapeXml(line)}</text>`
-  ).join('\n')
-
-  const svg = `
-<svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
-      <feDropShadow dx="2" dy="2" stdDeviation="4" flood-color="black" flood-opacity="0.9"/>
-    </filter>
-    <!-- Dark gradient bar at bottom for text legibility -->
-    <linearGradient id="grad" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="black" stop-opacity="0"/>
-      <stop offset="100%" stop-color="black" stop-opacity="0.75"/>
-    </linearGradient>
-    <!-- Radial darkening for pill badge zone (bottom-right) -->
-    <radialGradient id="pillGrad" cx="100%" cy="100%" r="30%" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="black" stop-opacity="0.6"/>
-      <stop offset="100%" stop-color="black" stop-opacity="0"/>
-    </radialGradient>
-  </defs>
-  <!-- Bottom gradient overlay -->
-  <rect x="0" y="${size - 300}" width="${size}" height="300" fill="url(#grad)"/>
-  <!-- Bottom-right darkening for pill badge -->
-  <rect x="${size - 300}" y="${size - 200}" width="300" height="200" fill="url(#pillGrad)"/>
-  <!-- Pill badge placeholder outline (subtle, ensures area is always clear) -->
-  <rect x="${pillX}" y="${pillY}" width="${pillW}" height="${pillH}" rx="${pillR}" ry="${pillR}" fill="black" fill-opacity="0.45"/>
-  <!-- Title lines -->
-  ${titleLines}
-  <!-- Author -->
-  <text x="512" y="${titleY + titleBlockHeight + 28}" font-family="Georgia, serif" font-size="36" fill="#d4a843" text-anchor="middle" filter="url(#shadow)">${safeAuthor}</text>
-</svg>`
-
-  return sharp(imageBuffer)
-    .resize(size, size)
-    .composite([{ input: Buffer.from(svg), blend: 'over' }])
-    .jpeg({ quality: 90 })
-    .toBuffer()
+  console.warn('Skipping sharp text overlay for launch-safe cover generation')
+  return imageBuffer
 }
 
 async function generateWithDallE(prompt: string): Promise<Buffer> {
