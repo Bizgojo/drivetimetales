@@ -122,7 +122,7 @@ export default function StoryProductionPage() {
         storyType: story.story_type || 'single',
         episodeCount: story.episode_count,
         status: story.status || 'generating_options',
-        script: story.script_text,
+        script: story.script || story.script_text,
         grade: story.grading_result,
         sfxPlacements: story.sfx_settings || [],
         options: story.options,
