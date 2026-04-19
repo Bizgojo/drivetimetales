@@ -60,12 +60,14 @@ Author: ${author}
 Genre: ${genre}
 
 Rules:
-- remove production directions, SFX cues, music cues, and announcer framing
+- remove production directions, SFX cues, music cues, announcer framing, and meta commentary
 - keep story meaning and dialogue
 - format as readable paragraphs
 - plain text only
 - no markdown
 - do not summarize
+- do not introduce the output with phrases like "Here is the story" or similar
+- begin immediately with the story text
 - preserve the story
 
 Script:

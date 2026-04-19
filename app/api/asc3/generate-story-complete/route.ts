@@ -604,6 +604,8 @@ GENRE CRAFT — ${(body.primaryGenre || 'GENERAL').toUpperCase()}:
 
     const claudePrompt = `You are an expert audio drama writer working in the style of ${body.authorStyle}.
 
+Create a complete audio drama script with the following specifications:
+
 HARD RULES FOR ENDLESS TALES:
 - Use the provided title exactly as given. Do not rename the story.
 - Write ONLY the story body.
@@ -613,7 +615,7 @@ HARD RULES FOR ENDLESS TALES:
 - Do NOT describe audio ingredients as dialogue or narration.
 - Output only story content in speaker format like [NARRATOR]: and [CHARACTER NAME]:.
 - The allowed body speakers are NARRATOR and story characters only.
-- Keep the script clean for downstream audio production.`
+- Keep the script clean for downstream audio production.
 
 Create a complete audio drama script with the following specifications:
 ${genreInstructions}
