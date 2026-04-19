@@ -186,7 +186,7 @@ export async function POST(req: NextRequest) {
       '-filter_complex',
       `[0:a]afade=t=out:st=${crossfadeStart}:d=${Math.max(0.5, stingDur - crossfadeStart)}[sting_fade];` +
       `[1:a]adelay=${delayMs}|${delayMs}[intro_delayed];` +
-      `[sting_fade][intro_delayed]amix=inputs=2:duration=longest:normalize=0[out]`,
+      `[sting_fade][intro_delayed]amix=inputs=2:duration=longest[out]`,
       '-map', '[out]',
       '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', stingIntroPath
     ])
