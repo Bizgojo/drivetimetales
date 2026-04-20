@@ -122,11 +122,11 @@ export default function NewStoryCard({
           <div style={{ display: 'flex', gap: '6px', marginTop: '3px' }}>
             {!inPlaylist ? (
               <>
-                <Link href={`/player/${id}`} style={{ flex: 1, background: (is_completed || isInProgress) ? 'rgba(255,255,255,0.08)' : '#f97316', color: 'white', border: (is_completed || isInProgress) ? '1px solid rgba(255,255,255,0.2)' : 'none', borderRadius: '7px', padding: '2px 4px', fontSize: '11px', fontWeight: 700, textAlign: 'center', textDecoration: 'none', display: 'block', lineHeight: '1.6' }}>{playLabel}</Link>
-                <button onClick={onAddToPlaylist} style={{ flex: 1, background: 'rgba(255,255,255,0.08)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '7px', padding: '2px 4px', fontSize: '11px', fontWeight: 500, cursor: 'pointer', lineHeight: '1.6' }}>Add to Playlist</button>
+                <Link href={`/player/${id}`} style={{ flex: 1, background: (is_completed || isInProgress) ? 'rgba(255,255,255,0.08)' : '#f97316', color: 'white', border: (is_completed || isInProgress) ? '1px solid rgba(255,255,255,0.2)' : 'none', borderRadius: '7px', padding: '0', fontSize: '11px', fontWeight: 700, textAlign: 'center', textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '26px' }}>{playLabel}</Link>
+                <button onClick={onAddToPlaylist} style={{ flex: 1, background: 'rgba(255,255,255,0.08)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '7px', padding: '0', fontSize: '11px', fontWeight: 500, cursor: 'pointer', height: '26px' }}>Add to Playlist</button>
               </>
             ) : (
-              <button onClick={onRemoveFromPlaylist} style={{ width: '100%', background: 'rgba(239,68,68,0.12)', color: '#f87171', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '7px', padding: '2px', fontSize: '11px', fontWeight: 500, cursor: 'pointer' }}>✓ In Playlist · Remove</button>
+              <button onClick={onRemoveFromPlaylist} style={{ width: '100%', background: 'rgba(239,68,68,0.12)', color: '#f87171', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '7px', padding: '0', fontSize: '11px', fontWeight: 500, cursor: 'pointer', height: '26px' }}>✓ In Playlist · Remove</button>
             )}
           </div>
 
