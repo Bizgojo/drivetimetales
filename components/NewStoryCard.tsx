@@ -123,7 +123,7 @@ export default function NewStoryCard({
             {!inPlaylist ? (
               <>
                 <Link href={`/player/${id}`} style={{ flex: 1, background: (is_completed || isInProgress) ? 'rgba(255,255,255,0.08)' : '#f97316', color: 'white', border: (is_completed || isInProgress) ? '1px solid rgba(255,255,255,0.2)' : 'none', borderRadius: '7px', padding: '0', fontSize: '10px', fontWeight: 700, textAlign: 'center', textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '22px' }}>{playLabel}</Link>
-                <button onClick={onAddToPlaylist} style={{ flex: 1, background: 'rgba(255,255,255,0.08)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '7px', padding: '0', fontSize: '10px', fontWeight: 500, cursor: 'pointer', height: '22px' }}>Add to Playlist</button>
+                <button onClick={onAddToPlaylist} style={{ flex: 1, background: '#3b82f6', color: 'white', border: 'none', borderRadius: '7px', padding: '0', fontSize: '10px', fontWeight: 600, cursor: 'pointer', height: '22px' }}>Add to Playlist</button>
               </>
             ) : (
               <button onClick={onRemoveFromPlaylist} style={{ width: '100%', background: 'rgba(239,68,68,0.12)', color: '#f87171', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '7px', padding: '0', fontSize: '10px', fontWeight: 500, cursor: 'pointer', height: '22px' }}>✓ In Playlist · Remove</button>
