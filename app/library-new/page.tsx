@@ -88,7 +88,7 @@ function LibraryNewContent() {
       </div>
 
       {/* Genre filters */}
-      <div style={{ padding: '4px 12px 8px', display: 'flex', gap: 8, overflowX: 'auto', scrollbarWidth: 'none' }}>
+      <div style={{ padding: '4px 12px 8px', display: 'flex', gap: 8, overflowX: 'auto', scrollbarWidth: 'none', position: 'sticky', top: '117px', zIndex: 15, background: '#0f1117' }}>
         {['All', ...GENRES.slice(0,6)].map(g => (
           <button key={g} onClick={() => setGenre(g === 'All' ? '' : g)} style={{ background: (g === 'All' ? !genre : genre === g) ? '#f97316' : 'rgba(255,255,255,0.08)', color: 'white', border: 'none', borderRadius: 20, padding: '6px 14px', fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap', cursor: 'pointer', flexShrink: 0 }}>{g}</button>
         ))}
