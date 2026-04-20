@@ -26,13 +26,6 @@ interface NewStoryCardProps {
   onRateClick?: () => void
 }
 
-function truncateWords(text: string, maxWords: number): string {
-  if (!text) return ''
-  const words = text.trim().split(/\s+/)
-  if (words.length <= maxWords) return text
-  return words.slice(0, maxWords).join(' ') + '...'
-}
-
 export default function NewStoryCard({
   id, title, genre, author, duration_mins, cover_url, description,
   progress_percent, is_completed, has_reviewed,
@@ -51,35 +44,31 @@ export default function NewStoryCard({
   else if (isInProgress) playLabel = 'Continue'
 
   const displayTitle = (isSeries && episode_title) ? episode_title : title
-  const shortDesc = truncateWords(description || '', 15)
   const progressPct = Math.min(progress_percent || 0, 100)
   const barColor = is_completed ? '#22c55e' : '#f97316'
   const isNew = !is_completed && !isInProgress
+
+  const playPillBg = is_completed
+    ? 'rgba(59,130,246,0.88)'
+    : isInProgress
+    ? 'rgba(34,197,94,0.88)'
+    : 'rgba(249,115,22,0.88)'
 
   return (
     <div style={{ background: '#1e293b', borderRadius: '14px', overflow: 'hidden', border: '1px solid rgba(148,163,184,0.06)' }}>
       <div style={{ display: 'flex', alignItems: 'stretch' }}>
 
-        {/* Cover — 130px wide matching current app */}
-        <div style={{ flexShrink: 0, padding: '10px 0 10px 10px' }}>
-          <Link href={`/player/${id}`} style={{ textDecoration: 'none', display: 'block', position: 'relative' }}>
-            <div style={{ width: '110px', height: '110px', borderRadius: '6px', overflow: 'hidden', boxShadow: '0 0 15px rgba(255,255,255,0.4)', position: 'relative', background: 'linear-gradient(160deg,#1a3a2a,#2d6a4f)' }}>
-              {cover_url && (
-                <img src={cover_url} alt={title} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-              )}
-              {isSeries && (
-                <div style={{ position: 'absolute', top: 4, left: 0, right: 0, display: 'flex', justifyContent: 'center' }}>
-                  <span style={{ background: 'rgba(249,115,22,0.95)', color: 'white', fontSize: '7px', fontWeight: 800, padding: '2px 5px', borderRadius: '3px' }}>SERIES</span>
-                </div>
-              )}
-              {/* Play pill */}
-              <div style={{ position: 'absolute', bottom: 6, right: 6, background: is_completed ? 'rgba(59,130,246,0.88)' : isInProgress ? 'rgba(34,197,94,0.88)' : 'rgba(249,115,22,0.88)', borderRadius: '20px', padding: '3px 8px 3px 6px', display: 'flex', alignItems: 'center', gap: 3, boxShadow: '0 2px 6px rgba(0,0,0,0.4)' }}>
-                <svg width="6" height="8" viewBox="0 0 12 14" fill="white"><path d="M1 1l10 6-10 6V1z"/></svg>
-                <span style={{ color: 'white', fontSize: '8px', fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase' }}>{playLabel}</span>
-              </div>
-            </div>
-          </Link>
-        </div>
+        {/* Cover — 110px wide, full card height, no padding */}
+        <Link href={`/player/${id}`} style={{ textDecoration: 'none', flexShrink: 0, width: '110px', display: 'block', position: 'relative', background: 'linear-gradient(160deg,#1a3a2a,#2d6a4f)' }}>
+          {cover_url && (
+            <img src={cover_url} alt={title} style={{ width: '110px', height: '100%', objectFit: 'cover', display: 'block', position: 'absolute', top: 0, left: 0 }} />
+          )}
+          {/* Play pill — no series badge on cover */}
+          <div style={{ position: 'absolute', bottom: 8, left: '50%', transform: 'translateX(-50%)', background: playPillBg, borderRadius: '20px', padding: '3px 9px 3px 7px', display: 'flex', alignItems: 'center', gap: 3, boxShadow: '0 2px 6px rgba(0,0,0,0.5)', whiteSpace: 'nowrap' }}>
+            <svg width="6" height="8" viewBox="0 0 12 14" fill="white"><path d="M1 1l10 6-10 6V1z"/></svg>
+            <span style={{ color: 'white', fontSize: '8px', fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase' }}>{playLabel}</span>
+          </div>
+        </Link>
 
         {/* Content */}
         <div style={{ flex: 1, padding: '10px 11px 10px 10px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -107,9 +96,9 @@ export default function NewStoryCard({
             <span style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e', fontSize: '9px', padding: '2px 7px', borderRadius: '10px', fontWeight: 600, whiteSpace: 'nowrap' }}>{genre}</span>
           </div>
 
-          {/* Row 4: description — 15 words max */}
-          {shortDesc && (
-            <div style={{ color: '#94a3b8', fontSize: '11px', lineHeight: 1.4 }}>{shortDesc}</div>
+          {/* Row 4: description — white, 2 lines max */}
+          {description && (
+            <div style={{ color: 'white', fontSize: '11px', lineHeight: 1.45, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{description}</div>
           )}
 
           {/* Row 5: rating row */}
@@ -134,15 +123,15 @@ export default function NewStoryCard({
             </div>
           )}
 
-          {/* Row 6: action buttons */}
+          {/* Row 6: action buttons — slim */}
           <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
             {!inPlaylist ? (
               <>
-                <Link href={`/player/${id}`} style={{ flex: 1, background: (is_completed || isInProgress) ? 'rgba(255,255,255,0.08)' : '#f97316', color: 'white', border: (is_completed || isInProgress) ? '1px solid rgba(255,255,255,0.2)' : 'none', borderRadius: '8px', padding: '8px 4px', fontSize: '12px', fontWeight: 700, textAlign: 'center', textDecoration: 'none', display: 'block' }}>{playLabel}</Link>
-                <button onClick={onAddToPlaylist} style={{ flex: 1, background: 'rgba(255,255,255,0.08)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', padding: '8px 4px', fontSize: '12px', fontWeight: 500, cursor: 'pointer' }}>Add to Playlist</button>
+                <Link href={`/player/${id}`} style={{ flex: 1, background: (is_completed || isInProgress) ? 'rgba(255,255,255,0.08)' : '#f97316', color: 'white', border: (is_completed || isInProgress) ? '1px solid rgba(255,255,255,0.2)' : 'none', borderRadius: '7px', padding: '5px 4px', fontSize: '11px', fontWeight: 700, textAlign: 'center', textDecoration: 'none', display: 'block', lineHeight: '1.4' }}>{playLabel}</Link>
+                <button onClick={onAddToPlaylist} style={{ flex: 1, background: 'rgba(255,255,255,0.08)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '7px', padding: '5px 4px', fontSize: '11px', fontWeight: 500, cursor: 'pointer', lineHeight: '1.4' }}>Add to Playlist</button>
               </>
             ) : (
-              <button onClick={onRemoveFromPlaylist} style={{ width: '100%', background: 'rgba(239,68,68,0.12)', color: '#f87171', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', padding: '8px', fontSize: '12px', fontWeight: 500, cursor: 'pointer' }}>✓ In Playlist · Remove</button>
+              <button onClick={onRemoveFromPlaylist} style={{ width: '100%', background: 'rgba(239,68,68,0.12)', color: '#f87171', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '7px', padding: '5px', fontSize: '11px', fontWeight: 500, cursor: 'pointer' }}>✓ In Playlist · Remove</button>
             )}
           </div>
 
