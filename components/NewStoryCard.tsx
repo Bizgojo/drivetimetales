@@ -63,11 +63,6 @@ export default function NewStoryCard({
           {cover_url && (
             <img src={cover_url} alt={title} style={{ width: '110px', height: '100%', objectFit: 'cover', display: 'block', position: 'absolute', top: 0, left: 0 }} />
           )}
-          {/* Play pill — no series badge on cover */}
-          <div style={{ position: 'absolute', bottom: 8, left: '50%', transform: 'translateX(-50%)', background: playPillBg, borderRadius: '20px', padding: '3px 9px 3px 7px', display: 'flex', alignItems: 'center', gap: 3, boxShadow: '0 2px 6px rgba(0,0,0,0.5)', whiteSpace: 'nowrap' }}>
-            <svg width="6" height="8" viewBox="0 0 12 14" fill="white"><path d="M1 1l10 6-10 6V1z"/></svg>
-            <span style={{ color: 'white', fontSize: '8px', fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase' }}>{playLabel}</span>
-          </div>
         </Link>
 
         {/* Content */}
@@ -127,11 +122,11 @@ export default function NewStoryCard({
           <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
             {!inPlaylist ? (
               <>
-                <Link href={`/player/${id}`} style={{ flex: 1, background: (is_completed || isInProgress) ? 'rgba(255,255,255,0.08)' : '#f97316', color: 'white', border: (is_completed || isInProgress) ? '1px solid rgba(255,255,255,0.2)' : 'none', borderRadius: '7px', padding: '5px 4px', fontSize: '11px', fontWeight: 700, textAlign: 'center', textDecoration: 'none', display: 'block', lineHeight: '1.4' }}>{playLabel}</Link>
-                <button onClick={onAddToPlaylist} style={{ flex: 1, background: 'rgba(255,255,255,0.08)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '7px', padding: '5px 4px', fontSize: '11px', fontWeight: 500, cursor: 'pointer', lineHeight: '1.4' }}>Add to Playlist</button>
+                <Link href={`/player/${id}`} style={{ flex: 1, background: (is_completed || isInProgress) ? 'rgba(255,255,255,0.08)' : '#f97316', color: 'white', border: (is_completed || isInProgress) ? '1px solid rgba(255,255,255,0.2)' : 'none', borderRadius: '7px', padding: '4px 4px', fontSize: '11px', fontWeight: 700, textAlign: 'center', textDecoration: 'none', display: 'block', lineHeight: '1.2' }}>{playLabel}</Link>
+                <button onClick={onAddToPlaylist} style={{ flex: 1, background: 'rgba(255,255,255,0.08)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '7px', padding: '4px 4px', fontSize: '11px', fontWeight: 500, cursor: 'pointer', lineHeight: '1.2' }}>Add to Playlist</button>
               </>
             ) : (
-              <button onClick={onRemoveFromPlaylist} style={{ width: '100%', background: 'rgba(239,68,68,0.12)', color: '#f87171', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '7px', padding: '5px', fontSize: '11px', fontWeight: 500, cursor: 'pointer' }}>✓ In Playlist · Remove</button>
+              <button onClick={onRemoveFromPlaylist} style={{ width: '100%', background: 'rgba(239,68,68,0.12)', color: '#f87171', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '7px', padding: '4px', fontSize: '11px', fontWeight: 500, cursor: 'pointer' }}>✓ In Playlist · Remove</button>
             )}
           </div>
 
