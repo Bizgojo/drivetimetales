@@ -18,9 +18,10 @@ const NAV_GROUPS = [
     { href: '/admin/checklist', label: 'Launch Checklist' },
   ]},
   { id: 'production', label: 'Production', icon: '🎬', items: [
-    { href: '/admin/story-production', label: 'Story Production' },
+    { href: '/admin/story-production-v2', label: 'Story Production V2' },
+    { href: '/admin/authors-narrators-v2', label: 'Authors & Narrators' },
+    { href: '/admin/story-production', label: 'Story Production (Legacy - Do Not Use)' },
     { href: '/admin/story-ideas', label: 'Story Ideas' },
-    { href: '/admin/authors-narrators', label: 'Authors & Narrators' },
     { href: '/admin/genres', label: 'Genres' },
     { href: '/admin/el-usage', label: 'ElevenLabs Usage' },
   ]},
@@ -148,6 +149,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
       </aside>
       <main style={{ flex: 1, marginLeft: '230px', backgroundColor: '#FAF9F6', minHeight: '100vh' }}>
+        <div style={{background:"#fde68a",color:"#111827",fontWeight:800,padding:"6px 10px",borderRadius:8,margin:"8px 12px",display:"inline-block"}}>ADMIN LAYOUT MARKER 2026-04-21 08:25 AM</div>
         {children}
       </main>
     </div>
