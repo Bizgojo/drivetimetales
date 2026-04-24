@@ -765,7 +765,6 @@ export default function AdminStoriesPage() {
   const [search, setSearch] = useState('')
   const [genreFilter, setGenreFilter] = useState('All')
   const [viewMode, setViewMode] = useState<'all' | 'series' | 'standalone'>('all')
-  const [pendingOnly, setPendingOnly] = useState(false)
   const [sortBy, setSortBy] = useState<'title' | 'genre' | 'duration_mins' | 'series_name' | 'downloads_total' | 'pct_finished' | 'rating' | 'created_at'>('created_at')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
@@ -779,9 +778,34 @@ export default function AdminStoriesPage() {
 
   async function fetchStories() {
     setLoading(true)
-    const { data, error } = await supabase.from('story_analytics').select('*')
+    const { data: publishedRows, error: publishedError } = await supabase
+      .from('stories')
+      .select('id')
+      .eq('status', 'published')
+      .eq('is_hidden', false)
+
+    if (publishedError) {
+      console.error('Error fetching published story ids:', publishedError)
+      setStories([])
+      setLoading(false)
+      return
+    }
+
+    const publishedIds = (publishedRows || []).map(row => row.id)
+    if (publishedIds.length === 0) {
+      setStories([])
+      setLoading(false)
+      return
+    }
+
+    const { data, error } = await supabase
+      .from('story_analytics')
+      .select('*')
+      .in('id', publishedIds)
+      .order('created_at', { ascending: false })
+
     if (data) setStories(data)
-    if (error) console.error('Error fetching stories:', error)
+    if (error) console.error('Error fetching published story analytics:', error)
     setLoading(false)
   }
 
@@ -831,11 +855,10 @@ export default function AdminStoriesPage() {
         s.genre === genreFilter ||
         s.genre_secondary === genreFilter ||
         s.genre_third === genreFilter
-      const matchesPending = !pendingOnly || s.is_hidden
       const matchesView = viewMode === 'all' ||
         (viewMode === 'series' && !!s.series_name) ||
         (viewMode === 'standalone' && !s.series_name)
-      return matchesSearch && matchesGenre && matchesPending && matchesView
+      return matchesSearch && matchesGenre && matchesView
     })
 
   // Split into series groups and standalone stories
@@ -922,7 +945,7 @@ export default function AdminStoriesPage() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
         <div>
           <h1 style={{ fontSize: '22px', fontWeight: 'bold', color: textPrimary, margin: 0 }}>
-            📚 Stories ({totalStories})
+            📚 Published Stories ({totalStories})
           </h1>
           <p style={{ color: textSecondary, fontSize: '13px', margin: '4px 0 0 0' }}>
             {seriesGroups.length} series · {standaloneStories.length} standalone · {totalDownloads} total downloads · {avgCompletion}% avg completion
@@ -950,10 +973,6 @@ export default function AdminStoriesPage() {
             {mode === 'all' ? '📋 All' : mode === 'series' ? '📺 Series' : '🎯 Standalone'}
           </button>
         ))}
-        <div style={{ width: '1px', height: '24px', backgroundColor: border, margin: '0 4px' }} />
-        <button onClick={() => setPendingOnly(!pendingOnly)} style={{ padding: '0.4rem 0.9rem', borderRadius: '6px', border: `1px solid ${pendingOnly ? '#dc2626' : border}`, backgroundColor: pendingOnly ? '#dc2626' : '#ffffff', color: pendingOnly ? '#ffffff' : '#000000', fontSize: '13px', fontWeight: pendingOnly ? 700 : 400, cursor: 'pointer' }}>
-          🔴 Pending Approval {pendingOnly ? '(ON)' : ''}
-        </button>
         <div style={{ marginLeft: 'auto', padding: '0.4rem 0.75rem', fontSize: '12px', color: textSecondary }}>
           {filteredStories.length} stories · Click headers to sort
         </div>
@@ -1044,9 +1063,7 @@ export default function AdminStoriesPage() {
           }}
           onSaved={() => {
             // Refresh stories in background without resetting panel state
-            supabase.from('story_analytics').select('*').then(({ data }) => {
-              if (data) setStories(data)
-            })
+            fetchStories()
           }}
         />
       )}

@@ -55,6 +55,10 @@ export default function AuthorsNarratorsV2Page() {
     return genres.filter((g) => g === selectedGenre)
   }, [genres, selectedGenre])
 
+  const visibleAuthorCount = useMemo(() => (
+    visibleGenres.reduce((total, genre) => total + (grouped[genre] || []).length, 0)
+  ), [grouped, visibleGenres])
+
   return (
     <div style={{ minHeight: '100vh', background: '#FAF9F6', padding: '32px 28px' }}>
       <div style={{ maxWidth: 1400, margin: '0 auto' }}>
@@ -64,7 +68,7 @@ export default function AuthorsNarratorsV2Page() {
           </Link>
           <div>
             <h1 style={{ margin: 0, fontSize: 28, fontWeight: 900, color: '#111827' }}>Authors & Narrators V2</h1>
-            <div style={{ color: '#6b7280', marginTop: 6 }}>{genres.length} genres · curated trios</div>
+            <div style={{ color: '#6b7280', marginTop: 6 }}>{genres.length} database genres · 3 ET authors per genre</div>
           </div>
         </div>
 
@@ -96,10 +100,18 @@ export default function AuthorsNarratorsV2Page() {
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: selectedAuthor ? '1.3fr 0.9fr' : '1fr', gap: 24 }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+              <div style={{ color: '#374151', fontSize: 13, fontWeight: 700 }}>
+                Showing {visibleAuthorCount} assigned ET authors across {visibleGenres.length} genre{visibleGenres.length === 1 ? '' : 's'}.
+              </div>
               {visibleGenres.map((genre) => (
                 <div key={genre}>
-                  <div style={{ fontSize: 13, fontWeight: 900, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
-                    {genre}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
+                    <div style={{ fontSize: 13, fontWeight: 900, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      {genre}
+                    </div>
+                    <div style={{ color: (grouped[genre] || []).length === 3 ? '#166534' : '#b91c1c', background: (grouped[genre] || []).length === 3 ? '#dcfce7' : '#fee2e2', borderRadius: 999, padding: '4px 10px', fontSize: 12, fontWeight: 800 }}>
+                      {(grouped[genre] || []).length}/3 assigned
+                    </div>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
                     {(grouped[genre] || []).map((a) => (
@@ -145,10 +157,10 @@ export default function AuthorsNarratorsV2Page() {
 
                 <div style={{ background: '#f9fafb', borderRadius: 12, padding: '14px 16px', marginBottom: 12 }}>
                   <div style={{ color: '#6b7280', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
-                    Style Description
+                    Claude Writing Guide
                   </div>
                   <div style={{ color: '#111827', lineHeight: 1.6 }}>
-                    {selectedAuthor.style_description || 'No style description yet.'}
+                    {selectedAuthor.style_description || 'No Claude writing guide yet.'}
                   </div>
                 </div>
 
