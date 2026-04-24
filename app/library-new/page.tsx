@@ -80,7 +80,7 @@ function LibraryNewContent() {
 
       {/* Search bar */}
       <div style={{ padding: '10px 12px 6px' }}>
-        <div onClick={() => setShowSearch(true)} style={{ background: 'rgba(255,255,255,0.08)', borderRadius: 20, display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', cursor: 'text' }}>
+        <div onClick={() => setShowSearch(true)} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', cursor: 'text' }}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="4.5" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5"/><path d="M10.5 10.5l2.5 2.5" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" strokeLinecap="round"/></svg>
           <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13 }}>{search || 'Search stories, authors, genres...'}</span>
           {search && <button onClick={e => { e.stopPropagation(); setSearch('') }} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: 16 }}>×</button>}
@@ -141,14 +141,11 @@ function LibraryNewContent() {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ flex: 1, minWidth: 0, marginRight: 8 }}>
-                <div style={{ color: 'white', fontSize: 13, fontWeight: 500 }}>{playlist.length} {playlist.length === 1 ? 'story' : 'stories'} · {totalMins} min</div>
-                <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: 11, marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{playlist.map(s => s.title).join(' → ')}</div>
-              </div>
-              <button onClick={() => setPlaylist([])} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.35)', fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap', padding: 0 }}>Clear all</button>
+              <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Your Playlist</span>
+              <span style={{ color: 'white', fontSize: 12, fontWeight: 600 }}>{playlist.length} {playlist.length === 1 ? 'story' : 'stories'} · {totalMins} min</span>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button style={{ flex: 1, background: 'rgba(255,255,255,0.08)', color: 'white', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 10, padding: 10, fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>Save to Home</button>
+              <button style={{ flex: 1, background: '#3b82f6', color: 'white', border: 'none', borderRadius: 10, padding: 10, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Save for Later</button>
               <button style={{ flex: 1, background: '#f97316', color: 'white', border: 'none', borderRadius: 10, padding: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Play Now</button>
             </div>
           </div>
