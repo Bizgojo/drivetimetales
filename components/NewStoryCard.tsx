@@ -127,12 +127,12 @@ export default function NewStoryCard({
           {/* Buttons */}
           {showRatePrompt && rateState === 'prompt' && (
             <div style={{ display: 'flex', gap: '5px', flexShrink: 0 }}>
-              <button onClick={() => setRateState('stars')} style={{ flex: 1, background: '#dc2626', color: 'white', border: 'none', borderRadius: '6px', fontSize: '10px', fontWeight: 700, cursor: 'pointer', height: '22px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 8px' }}>
+              <button onClick={() => setRateState('stars')} style={{ flex: 1, background: '#dc2626', color: 'white', border: 'none', borderRadius: '6px', fontSize: '10px', fontWeight: 700, cursor: 'pointer', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 8px' }}>
                 <span style={{ fontSize: '12px', lineHeight: 1 }}>😊</span>
                 <span>Rate This Story</span>
                 <span style={{ fontSize: '12px', lineHeight: 1 }}>😞</span>
               </button>
-              <button onClick={() => setRateState('skip')} style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.45)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', fontSize: '10px', fontWeight: 500, cursor: 'pointer', height: '22px', whiteSpace: 'nowrap', padding: '0 8px' }}>Not Now</button>
+              <button onClick={() => setRateState('skip')} style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.45)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', fontSize: '10px', fontWeight: 500, cursor: 'pointer', height: '20px', whiteSpace: 'nowrap', padding: '0 8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Not Now</button>
             </div>
           )}
 
@@ -151,11 +151,11 @@ export default function NewStoryCard({
             <div style={{ display: 'flex', gap: '5px', flexShrink: 0 }}>
               {!inPlaylist ? (
                 <>
-                  <Link href={`/player/${id}`} style={{ flex: 1, background: continueBg, color: 'white', border: continueBorder, borderRadius: '6px', fontSize: '10px', fontWeight: 700, textAlign: 'center', textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '22px' }}>{playLabel}</Link>
-                  <button onClick={onAddToPlaylist} style={{ flex: 1, background: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', fontSize: '10px', fontWeight: 600, cursor: 'pointer', height: '22px' }}>Add to Playlist</button>
+                  <Link href={`/player/${id}`} style={{ flex: 1, background: continueBg, color: 'white', border: continueBorder, borderRadius: '6px', fontSize: '10px', fontWeight: 700, textAlign: 'center', textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '20px' }}>{playLabel}</Link>
+                  <button onClick={onAddToPlaylist} style={{ flex: 1, background: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', fontSize: '10px', fontWeight: 600, cursor: 'pointer', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Add to Playlist</button>
                 </>
               ) : (
-                <button onClick={onRemoveFromPlaylist} style={{ width: '100%', background: 'rgba(239,68,68,0.12)', color: '#f87171', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', fontSize: '10px', fontWeight: 500, cursor: 'pointer', height: '22px' }}>✓ In Playlist · Remove</button>
+                <button onClick={onRemoveFromPlaylist} style={{ width: '100%', background: 'rgba(239,68,68,0.12)', color: '#f87171', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', fontSize: '10px', fontWeight: 500, cursor: 'pointer', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✓ In Playlist · Remove</button>
               )}
             </div>
           )}
