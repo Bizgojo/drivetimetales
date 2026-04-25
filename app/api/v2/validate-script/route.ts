@@ -22,7 +22,8 @@ Use the CURRENT rules:
 - Belle B is never narrator or character.
 - No SFX in the published story body.
 - The title must be 1 to 5 words.
-- DESCRIPTION must be present tense and 24 words or fewer.
+- DESCRIPTION must be 15 to 18 words and present tense only.
+- DESCRIPTION fails if it uses past-tense constructions or past-tense story-card phrasing such as "vanished", "was", "were", "had", "found", "discovered", "left", "moved", "sealed", "signed", "forged", "buried", or "hidden".
 - The script must include the required header fields.
 - The script must include a CHARACTER GUIDE.
 - The script must include BELLE B INTRO and BELLE B OUTRO blocks.

@@ -29,7 +29,7 @@ def write_status(job_id, payload):
 def write_pipeline_state(path: Path, payload: dict):
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
-def post_json(url: str, payload: dict):
+def post_json(url: str, payload: dict, timeout: int = 300):
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
         url,
@@ -37,7 +37,7 @@ def post_json(url: str, payload: dict):
         method="POST",
         headers={"Content-Type": "application/json"},
     )
-    with urllib.request.urlopen(req, timeout=300) as r:
+    with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode("utf-8"))
 
 def download_file(url: str, dest: Path):
@@ -162,7 +162,7 @@ def main():
     voices = post_json(f"{BASE_URL}/api/admin/generate-voices", {
         "storyId": story_id,
         "script": script,
-    })
+    }, timeout=900)
 
     if not voices.get("success") and not voices.get("segments"):
         write_status(job_id, {

@@ -18,7 +18,9 @@ const NAV_GROUPS = [
     { href: '/admin/checklist', label: 'Launch Checklist' },
   ]},
   { id: 'production', label: 'Production', icon: '🎬', items: [
-    { href: '/admin/story-production-v2', label: 'Story Production V2' },
+    { href: '/admin/story-queue', label: 'Story Queue' },
+  { href: '/admin/story-production-v2', label: 'Story Production V2' },
+{ href: '/admin/asc', label: 'ASC' },
     { href: '/admin/authors-narrators-v2', label: 'Authors & Narrators' },
     { href: '/admin/story-production', label: 'Story Production (Legacy - Do Not Use)' },
     { href: '/admin/story-ideas', label: 'Story Ideas' },
@@ -27,7 +29,6 @@ const NAV_GROUPS = [
   ]},
   { id: 'library', label: 'Library', icon: '📚', items: [
     { href: '/admin/stories', label: 'Published Stories' },
-    { href: '/admin/guest-stories', label: 'Guest Stories' },
     { href: '/admin/landing-stories', label: 'Landing Stories' },
   ]},
   { id: 'subscribers', label: 'Subscribers', icon: '👥', items: [

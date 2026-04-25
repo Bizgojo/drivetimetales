@@ -24,7 +24,6 @@ interface Story {
   is_free: boolean
   rating: number
   review_count: number
-  credits: number
   downloads_day: number
   downloads_week: number
   downloads_month: number
@@ -590,8 +589,6 @@ function StoryRow({
       </td>
       {/* Duration */}
       <td style={{ padding: '0.5rem', textAlign: 'center', color: textPrimary }}>{story.duration_mins}m</td>
-      {/* Credits */}
-      <td style={{ padding: '0.5rem', textAlign: 'center', color: '#f97316', fontWeight: 600 }}>{story.credits}</td>
       {/* Downloads */}
       <td style={{ padding: '0.5rem', textAlign: 'center', color: textPrimary }}>{story.downloads_day || 0}</td>
       <td style={{ padding: '0.5rem', textAlign: 'center', color: textPrimary }}>{story.downloads_week || 0}</td>
@@ -651,9 +648,6 @@ function SeriesGroupRow({
     <>
       {/* Series header row */}
       <tr style={{ borderBottom: `1px solid ${border}`, backgroundColor: index % 2 === 0 ? '#f0f7ff' : '#e8f0fc' }}>
-        {/* Delete — not applicable at series level */}
-        <td style={{ padding: '0.5rem' }}></td>
-
         {/* Series cover — click to expand/collapse */}
         <td style={{ padding: '0.5rem' }}>
           <div
@@ -683,9 +677,6 @@ function SeriesGroupRow({
         {/* Duration total */}
         <td style={{ padding: '0.5rem', textAlign: 'center', color: textPrimary, fontSize: '12px' }}>{totalDuration}m</td>
 
-        {/* Credits — from first episode */}
-        <td style={{ padding: '0.5rem', textAlign: 'center', color: '#f97316', fontWeight: 600 }}>{group.episodes[0]?.credits || '—'}</td>
-
         {/* Downloads — aggregated */}
         <td colSpan={3} style={{ padding: '0.5rem', textAlign: 'center', color: textSecondary, fontSize: '11px' }}>—</td>
         <td style={{ padding: '0.5rem', textAlign: 'center', color: '#2563eb', fontWeight: 600 }}>{totalDownloads}</td>
@@ -700,8 +691,6 @@ function SeriesGroupRow({
         .sort((a, b) => (a.series_number || 0) - (b.series_number || 0))
         .map((ep, epIdx) => (
           <tr key={ep.id} style={{ borderBottom: `1px solid ${border}`, backgroundColor: epIdx % 2 === 0 ? '#f8faff' : '#f0f4ff' }}>
-            <td></td>
-
             {/* Episode cover — clickable to edit */}
             <td style={{ padding: '0.5rem 0.5rem 0.5rem 0.25rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -730,7 +719,6 @@ function SeriesGroupRow({
             </td>
 
             <td style={{ padding: '0.5rem', textAlign: 'center', color: textPrimary, fontSize: '12px' }}>{ep.duration_mins}m</td>
-            <td style={{ padding: '0.5rem', textAlign: 'center', color: '#f97316', fontWeight: 600, fontSize: '12px' }}>{ep.credits}</td>
             <td style={{ padding: '0.5rem', textAlign: 'center', color: textPrimary, fontSize: '12px' }}>{ep.downloads_day || 0}</td>
             <td style={{ padding: '0.5rem', textAlign: 'center', color: textPrimary, fontSize: '12px' }}>{ep.downloads_week || 0}</td>
             <td style={{ padding: '0.5rem', textAlign: 'center', color: textPrimary, fontSize: '12px' }}>{ep.downloads_month || 0}</td>
@@ -782,7 +770,6 @@ export default function AdminStoriesPage() {
       .from('stories')
       .select('id')
       .eq('status', 'published')
-      .eq('is_hidden', false)
 
     if (publishedError) {
       console.error('Error fetching published story ids:', publishedError)
@@ -988,7 +975,6 @@ export default function AdminStoriesPage() {
                 <SortTh col="title" label="Title" minW="160px" />
                 <SortTh col="genre" label="Genres" minW="110px" />
                 <SortTh col="duration_mins" label="Dur" right />
-                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600 }}>Cr</th>
                 <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600 }}>Day</th>
                 <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600 }}>Week</th>
                 <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600 }}>Month</th>
@@ -1017,7 +1003,7 @@ export default function AdminStoriesPage() {
               {/* Divider if both series and standalones exist */}
               {seriesGroups.length > 0 && sortedStandalones.length > 0 && (
                 <tr>
-                  <td colSpan={14} style={{ padding: '0.5rem 1rem', backgroundColor: '#f0f0f0', borderBottom: `1px solid ${border}`, fontSize: '11px', fontWeight: 700, color: textSecondary, letterSpacing: '0.05em' }}>
+                  <td colSpan={12} style={{ padding: '0.5rem 1rem', backgroundColor: '#f0f0f0', borderBottom: `1px solid ${border}`, fontSize: '11px', fontWeight: 700, color: textSecondary, letterSpacing: '0.05em' }}>
                     STANDALONE STORIES
                   </td>
                 </tr>

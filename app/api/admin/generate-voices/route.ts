@@ -217,7 +217,9 @@ function parseScript(script: string): ScriptLine[] {
   const rawLines = script.split('\n')
   const announcerIndices: number[] = []
   rawLines.forEach((line, i) => {
-    if (line.trim().match(/^(ANNOUNCER|BELLE B|SANDY):/i)) announcerIndices.push(i)
+    const trimmed = line.trim()
+    if (/^ANNOUNCER:\s*Belle B\s*$/i.test(trimmed)) return
+    if (trimmed.match(/^(ANNOUNCER|BELLE B|SANDY):/i)) announcerIndices.push(i)
   })
   const firstAnnouncerIdx = announcerIndices[0] ?? -1
   const lastAnnouncerIdx = announcerIndices[announcerIndices.length - 1] ?? -1
@@ -243,6 +245,19 @@ function parseScript(script: string): ScriptLine[] {
     const pauseMatch = trimmed.match(/^\[PAUSE:(\d+)\]$/)
     if (pauseMatch) { lines.push({ index: lineIndex++, speaker: 'PAUSE', text: pauseMatch[1], type: 'pause', isIntro: false, isOutro: false }); return }
     if (trimmed.startsWith('[SFX:')) { const sfxText = trimmed.replace(/^\[SFX:\s*/, '').replace(/\]$/, '').trim(); lines.push({ index: lineIndex++, speaker: 'SFX', text: sfxText, type: 'sfx', isIntro: false, isOutro: false }); return }
+    // Support bracketed dialogue like [NARRATOR]: text or [COLE DRISCOLL]: text
+    const bracketDm = trimmed.match(/^\[([A-Z][A-ZÀ-Ú\s'.()]+?)\]:\s*(.+)$/)
+    if (bracketDm) {
+      const speaker = bracketDm[1].trim(); const text = bracketDm[2].trim()
+      const isAnnouncer = speaker === 'ANNOUNCER' || speaker === 'BELLE B' || speaker === 'SANDY'
+      const isIntro = isAnnouncer && rawIdx === firstAnnouncerIdx
+      const isOutro = isAnnouncer && rawIdx === lastAnnouncerIdx
+      let type: ScriptLine['type'] = 'character'
+      if (isAnnouncer) type = 'announcer'
+      else if (speaker === 'NARRATOR') type = 'narrator'
+      lines.push({ index: lineIndex++, speaker, text, type, isIntro, isOutro })
+      return
+    }
     if (trimmed.startsWith('[')) return
     // Skip ANNOUNCER intro lines that slipped through
     if (trimmed.startsWith('ANNOUNCER:') && trimmed.toLowerCase().includes('endless tales presents')) return

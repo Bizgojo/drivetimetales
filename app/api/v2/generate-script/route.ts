@@ -46,6 +46,8 @@ Use the CURRENT published rules:
 - Belle B is the only announcer voice.
 - Belle B is never labeled ANNOUNCER or SANDY.
 - Belle B never addresses the listener by name.
+- Belle B intro/outro must never use "Tonight" or any time-of-day reference.
+- Belle B intro must never mention the author, narrator, or "an Endless Tales original"; those credits belong only in the Belle B outro.
 - No SFX in the published story body.
 - The title may be blank in the brief; if blank, choose the best title from the story.
 - Final title must be 1 to 5 words.
@@ -60,11 +62,11 @@ SERIES_TOTAL_EPISODES:
 SERIES_IS_FINALE:
 AUTHOR:
 GENRE:
-DESCRIPTION:
-NARRATOR:
+DESCRIPTION: [15 to 18 words, present tense only]
+NARRATOR: [assigned narrator name, not a story character unless NARRATOR_IS_CHARACTER is true]
 ANNOUNCER: Belle B
 NARRATIVE_VOICE:
-NARRATOR_IS_CHARACTER:
+NARRATOR_IS_CHARACTER: [true/false, must match NARRATOR]
 SUNO PROMPT:
 
 CHARACTER GUIDE
@@ -73,18 +75,28 @@ CHARACTER GUIDE
 
 BELLE B INTRO
 ---
-BELLE B: [one or two short sentences, warm, specific, sensory, no listener name]
+BELLE B: [one or two short sentences, warm, specific, sensory, no listener name, no time-of-day reference, no author/narrator credit, no "Endless Tales original"]
 
 [START AUDIO DRAMA SCRIPT]
-[NARRATOR]: ...
-[CHARACTER NAME]: ...
+NARRATOR: ...
+CHARACTER NAME: ...
 
 BELLE B OUTRO
 ---
-BELLE B: [one or two short sentences, reflective, credits the author and says "an Endless Tales original"]
+BELLE B: [one or two short sentences, reflective, no time-of-day reference, credits the author and says "an Endless Tales original"]
+
+Production-format hard rules:
+- Speaker labels are for spoken words only.
+- Character-labeled lines must contain only words that character says aloud.
+- Never put action, facial reactions, movement, blocking, inner thought, or narration under a character label.
+- Put all action/reaction lines under NARRATOR.
+- Wrong: DEPUTY PIKE: Pike's jaw tightened.
+- Right: NARRATOR: Pike's jaw tightened.
 
 Additional rules:
-- DESCRIPTION must be 24 words maximum and present tense.
+- DESCRIPTION must be 15 to 18 words and present tense only. If the brief-provided description is outside 15 to 18 words or uses past-tense constructions, rewrite it to comply. Reject past-tense story-card phrasing such as "vanished", "was", "were", "had", "found", "discovered", "left", "moved", "sealed", "signed", "forged", "buried", or "hidden".
+- If NARRATOR_IS_CHARACTER is false, NARRATOR must not be a story character name and must not include "(character)".
+- If the narrator is a story character, NARRATOR_IS_CHARACTER must be true and the script must use consistent first-person narration.
 - Standalone stories must end conclusively.
 - Series non-finales must end on a specific cliffhanger.
 - Keep narrator voice consistent.
