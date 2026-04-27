@@ -1,571 +1,811 @@
 'use client'
 
-import { useState, useEffect, Suspense, useMemo } from 'react'
-import LibraryAuthOverlay from '@/components/LibraryAuthOverlay'
-import { useRouter, usePathname } from 'next/navigation'
+import { useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import StickyHeaderFull from '@/components/StickyHeaderFull'
-import HorizontalStoryCard from '@/components/HorizontalStoryCard'
-import SeriesCard from '@/components/SeriesCard'
-import PlaylistButton from '@/components/PlaylistButton'
-import LibraryFiltersV2 from '@/components/LibraryFiltersV2'
-import ReviewModal from '@/components/ReviewModal'
 
-interface Story {
+const PLAYLIST_KEY = 'et_current_playlist'
+const SAVED_PLAYLIST_KEY = 'et_saved_playlist'
+
+type Story = {
   id: string
   title: string
-  genre: string
-  author: string
-  duration_mins: number
+  genre: string | null
+  author: string | null
+  duration_mins: number | null
   cover_url: string | null
-  series_id?: string | null
-  series_name?: string | null
-  series_number?: number | null
-  series_total?: number | null
-  episode_title?: string | null
+  series_id: string | null
+  series_name: string | null
+  series_number: number | null
+  series_total: number | null
+  episode_title: string | null
+  description: string | null
+  flag: string | null
+  is_hidden: boolean
+  is_free: boolean
+  created_at: string
+  avg_rating: number | null
+  review_count: number | null
+}
+
+type LibraryRow = {
+  story_id: string
+  progress: number | null
+  completed: boolean | null
+  not_for_me: boolean | null
+}
+
+type CardItem = {
+  key: string
+  type: 'single' | 'series'
+  story?: Story
+  seriesId?: string
+  seriesName?: string
+  episodeCount?: number
+  avgDuration?: number
+  cover?: string | null
+  author?: string | null
+  genre?: string | null
   description?: string | null
   flag?: string | null
-  is_free?: boolean
-  group_name?: string | null
-  created_at?: string
-  narrator_voice_name?: string | null
-  // From story_analytics view
-  avg_rating?: number | null
-  review_count?: number
+  avgRating?: number | null
+  firstEpisodeId?: string
+  durationForSort: number
+  notForMe: boolean
 }
 
-interface UserLibraryEntry {
-  story_id: string
-  progress?: number
-  completed?: boolean
-  reserved?: boolean
-  not_for_me?: boolean
+const GENRES = ['All', 'Mystery', 'Thriller', 'Drama', 'Horror']
+const VISIBLE_GENRES = ['All', 'Mystery', 'Thriller']
+const MORE_GENRES = GENRES.filter((g) => !VISIBLE_GENRES.includes(g))
+const GENRE_LABELS: Record<string, string> = {
+  All: 'All',
+  Mystery: '🔍Myst',
+  Thriller: '😱Thrill',
+  Horror: '☠️Horr',
+  Drama: '🎭Drama',
 }
 
-interface SeriesGroup {
-  id: string
-  series_name: string
-  genre: string
-  author: string
-  episode_count: number
-  total_duration_mins: number
-  cover_url: string | null
-  description?: string | null
-  completed_episodes?: number
-  episode_ids: string[]
-  earliest_created_at?: string
-  not_for_me?: boolean
-  first_episode_id?: string
-  smart_continue_episode_id?: string
-}
-
-// Review modal target type
-interface ReviewTarget {
-  id: string
-  title: string
-  genre: string
-  duration_mins: number
-}
-
-
-function computeStoryFlags(story: Story, userLibraryEntry?: UserLibraryEntry | null): string[] {
-  if (userLibraryEntry?.not_for_me) return ['not-for-me']
-  if (userLibraryEntry?.completed) return []
-  const flags: string[] = []
-  
-  const isOwned = !!userLibraryEntry && !userLibraryEntry?.completed
-  const isReserved = userLibraryEntry?.reserved === true
-  const isContinue = (userLibraryEntry?.progress ?? 0) > 0 && !userLibraryEntry?.completed
-  
-  if (isContinue) {
-    flags.push('continue')
-  } else if (isReserved) {
-    flags.push('reserved')
-  } else if (isOwned) {
-    flags.push('owned')
-  }
-  
-  const userHasStory = isContinue || isOwned || isReserved
-  
-  if (story.series_number) {
-    flags.push('series')
-  }
-  
-  if (!userHasStory) {
-    if (story.created_at) {
-      const storyDate = new Date(story.created_at)
-      const now = new Date()
-      const daysDiff = (now.getTime() - storyDate.getTime()) / (1000 * 60 * 60 * 24)
-      if (daysDiff <= 25 && !isReserved) {
-        flags.push('new')
-      }
-    }
-    if (story.is_free) {
-      flags.push('free')
-    }
-  }
-  
-  if (story.flag === 'editors-pick') {
-    flags.push('editors-pick')
-  } else if (story.flag === 'listeners-pick') {
-    flags.push('listeners-pick')
-  }
-  
-  const priorityOrder = [
-    'continue', 'reserved', 'owned', 'series', 
-    'trending', 'new', 'free', 'editors-pick', 'listeners-pick'
-  ]
-  
-  flags.sort((a, b) => priorityOrder.indexOf(a) - priorityOrder.indexOf(b))
-  return flags.slice(0, 3)
-}
-
-function LibraryContent() {
+export default function LibraryPage() {
   const router = useRouter()
-  const pathname = usePathname()
   const { user, loading: authLoading } = useAuth()
+
   const [stories, setStories] = useState<Story[]>([])
-  const [userLibrary, setUserLibrary] = useState<UserLibraryEntry[]>([])
-  const [seriesTableData, setSeriesTableData] = useState<Record<string, { cover_image: string | null, description: string | null }>>({})
-  const [loading, setLoading] = useState(true)
-  const [userName, setUserName] = useState('Friend')
-  
-  // Review state
-  const [reviewTarget, setReviewTarget] = useState<ReviewTarget | null>(null)
+  const [userLibrary, setUserLibrary] = useState<LibraryRow[]>([])
   const [userReviewedIds, setUserReviewedIds] = useState<Set<string>>(new Set())
-  const [justReviewed, setJustReviewed] = useState<Set<string>>(new Set())
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [authWaitExpired, setAuthWaitExpired] = useState(false)
+  const [activeGenre, setActiveGenre] = useState('All')
+  const [showMoreGenres, setShowMoreGenres] = useState(false)
+  const [playlist, setPlaylist] = useState<string[]>([])
 
-  const [selectedDuration, setSelectedDuration] = useState('All Lengths')
-  const [selectedGenre, setSelectedGenre] = useState('All Categories')
-  const [selectedGroup, setSelectedGroup] = useState('')
-  const [selectedType, setSelectedType] = useState('Singles & Series')
-  const [showSearch, setShowSearch] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState<any[]>([])
-  const [searchLoading, setSearchLoading] = useState(false)
+  // Hydrate playlist from localStorage
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(PLAYLIST_KEY)
+      if (raw) setPlaylist(JSON.parse(raw))
+    } catch {}
+  }, [])
 
+  // Persist playlist
+  useEffect(() => {
+    try {
+      localStorage.setItem(PLAYLIST_KEY, JSON.stringify(playlist))
+    } catch {}
+  }, [playlist])
 
   useEffect(() => {
-    if (authLoading) return  // wait for auth to resolve before fetching
-    async function fetchData() {
+    if (!authLoading) {
+      setAuthWaitExpired(false)
+      return
+    }
+
+    const timer = window.setTimeout(() => {
+      console.warn('[Library] Auth loading timed out; loading public library data without user state')
+      setAuthWaitExpired(true)
+    }, 2500)
+
+    return () => window.clearTimeout(timer)
+  }, [authLoading])
+
+  // Fetch stories + user data
+  useEffect(() => {
+    if (authLoading && !authWaitExpired) return
+    let cancelled = false
+
+    ;(async () => {
       try {
-        // Fetch stories — order by created_at (published_on may not exist in view)
-        const { data: storiesData } = await supabase
+        setLoading(true)
+        setLoadError(null)
+
+        const { data: storiesData, error: storiesError } = await supabase
           .from('story_analytics')
-          .select('id, title, genre, author, duration_mins, cover_url, series_id, series_name, episode_title, description, is_hidden, series_number, series_total, flag, is_free, created_at, avg_rating, review_count')
+          .select(
+            'id, title, genre, author, duration_mins, cover_url, series_id, series_name, episode_title, description, is_hidden, series_number, series_total, flag, is_free, created_at, avg_rating, review_count'
+          )
           .eq('is_hidden', false)
           .order('created_at', { ascending: false })
-        if (storiesData) setStories(storiesData)
 
-        if (user?.id) {
-          // Fetch user data
-          const { data: userData } = await supabase
-            .from('users')
-            .select('first_name, display_name')
-            .eq('id', user.id)
-            .single()
-          if (userData) {
-            setUserName(userData.first_name || userData.display_name || 'Friend')
-          }
+        if (storiesError) throw new Error(`story_analytics failed: ${storiesError.message}`)
+        if (cancelled) return
+        if (storiesData) setStories(storiesData as Story[])
 
-          // Fetch user library
-          const { data: libraryData } = await supabase
+        if (!authWaitExpired && user?.id) {
+          const { data: libraryData, error: libraryError } = await supabase
             .from('user_library')
             .select('story_id, progress, completed, not_for_me')
             .eq('user_id', user.id)
-          if (libraryData) {
-            setUserLibrary(libraryData)
-          }
+          if (libraryError) throw new Error(`user_library failed: ${libraryError.message}`)
+          if (!cancelled && libraryData) setUserLibrary(libraryData as LibraryRow[])
 
-          // Fetch which stories this user has already reviewed
-          const { data: reviewsData } = await supabase
+          const { data: reviewsData, error: reviewsError } = await supabase
             .from('reviews')
             .select('story_id')
             .eq('user_id', user.id)
-          if (reviewsData) {
+          if (reviewsError) throw new Error(`reviews failed: ${reviewsError.message}`)
+          if (!cancelled && reviewsData) {
             setUserReviewedIds(new Set(reviewsData.map((r: any) => r.story_id)))
           }
         }
-
-        // Fetch series table data
-        const { data: seriesRows } = await supabase
-          .from('series')
-          .select('title, cover_image, description')
-        if (seriesRows) {
-          const lookup: Record<string, { cover_image: string | null, description: string | null }> = {}
-          seriesRows.forEach((s: any) => { lookup[s.title] = { cover_image: s.cover_image, description: s.description } })
-          setSeriesTableData(lookup)
-        }
       } catch (err) {
-        console.error('[Library] fetchData error:', err)
+        console.error('[Library] load failed:', err)
+        if (!cancelled) {
+          setLoadError(err instanceof Error ? err.message : 'Library failed to load')
+        }
       } finally {
-        setLoading(false)  // ALWAYS clear loading, even on error
+        if (!cancelled) setLoading(false)
       }
-    }
-    fetchData()
-  }, [user, authLoading])
+    })()
 
-  // Re-fetch user library on every navigation to this page (pathname changes on each visit)
-  useEffect(() => {
-    if (!user?.id) return
-    supabase.from('user_library')
-      .select('story_id, progress, completed, not_for_me')
-      .eq('user_id', user.id)
-      .then(({ data }) => { if (data) setUserLibrary(data) })
-  }, [user?.id, pathname])
-
-  // Re-fetch user library when page becomes visible (e.g. back from player)
-  useEffect(() => {
-    if (!user?.id) return
-    const handleVisibility = async () => {
-      if (document.visibilityState === 'visible') {
-        const { data: libData } = await supabase
-          .from('user_library')
-          .select('story_id, progress, completed, not_for_me')
-          .eq('user_id', user.id)
-        if (libData) setUserLibrary(libData)
-      }
+    return () => {
+      cancelled = true
     }
-    document.addEventListener('visibilitychange', handleVisibility)
-    return () => document.removeEventListener('visibilitychange', handleVisibility)
-  }, [user?.id])
+  }, [authLoading, authWaitExpired, user?.id])
 
   const libraryLookup = useMemo(() => {
-    const map = new Map<string, UserLibraryEntry>()
-    userLibrary.forEach(entry => map.set(entry.story_id, entry))
-    return map
+    const m = new Map<string, LibraryRow>()
+    userLibrary.forEach((r) => m.set(r.story_id, r))
+    return m
   }, [userLibrary])
 
-  // Filter stories
-  const filteredStories = stories.filter(story => {
-    if (selectedDuration !== 'All Lengths') {
-      if (selectedDuration === '~15 min' && story.duration_mins > 20) return false
-      if (selectedDuration === '~30 min' && (story.duration_mins <= 20 || story.duration_mins > 45)) return false
-      if (selectedDuration === '~1 hr' && story.duration_mins <= 45) return false
-    }
-    
-    if (selectedGroup) {
-      if (!story.group_name || story.group_name !== selectedGroup) return false
-    }
-    if (selectedGenre !== 'All Categories') {
-      const match = [story.genre, (story as any).genre_secondary, (story as any).genre_third]
-        .filter(Boolean)
-        .some(g => g?.toLowerCase() === selectedGenre.toLowerCase())
-      if (!match) return false
-    }
-    
-    return true
-  })
+  // Build card items: standalones one each, series collapsed to one card
+  const cardItems = useMemo<CardItem[]>(() => {
+    const items: CardItem[] = []
+    const seriesGroups = new Map<string, Story[]>()
 
-  // Build series groups
-  const seriesMap = new Map<string, SeriesGroup>()
-  const sortedForSeries = [...filteredStories].sort((a, b) => ((a as any).episode_number || 99) - ((b as any).episode_number || 99))
-  sortedForSeries.forEach(story => {
-    if (story.series_name && story.series_name !== 'None') {
-      const existing = seriesMap.get(story.series_name)
-      if (existing) {
-        existing.episode_count++
-        existing.total_duration_mins += story.duration_mins || 0
-        existing.episode_ids.push(story.id)
-        if ((story.created_at || '') < (existing.earliest_created_at || '')) {
-          existing.earliest_created_at = story.created_at
-        }
+    stories.forEach((s) => {
+      if (s.series_id) {
+        const arr = seriesGroups.get(s.series_id) || []
+        arr.push(s)
+        seriesGroups.set(s.series_id, arr)
       } else {
-        const seriesInfo = seriesTableData[story.series_name]
-        const isEp1 = ((story as any).episode_number || 1) <= 1
-        seriesMap.set(story.series_name, {
-          id: story.series_id || story.id,
-          series_name: story.series_name,
-          genre: story.genre,
-          author: story.author,
-          episode_count: 1,
-          total_duration_mins: story.duration_mins || 0,
-          cover_url: seriesInfo?.cover_image || story.cover_url,
-          description: seriesInfo?.description || null,
-          episode_ids: [story.id],
-          earliest_created_at: story.created_at,
-          not_for_me: isEp1 ? (libraryLookup.get(story.id)?.not_for_me === true) : false,
-          first_episode_id: story.id
+        const lib = libraryLookup.get(s.id)
+        items.push({
+          key: `single-${s.id}`,
+          type: 'single',
+          story: s,
+          cover: s.cover_url,
+          author: s.author,
+          genre: s.genre,
+          description: s.description,
+          flag: s.flag,
+          avgRating: s.avg_rating,
+          durationForSort: s.duration_mins || 0,
+          notForMe: !!lib?.not_for_me,
         })
       }
+    })
+
+    seriesGroups.forEach((eps, seriesId) => {
+      const sorted = eps.slice().sort((a, b) => (a.series_number || 0) - (b.series_number || 0))
+      const first = sorted[0]
+      const totalDuration = sorted.reduce((sum, e) => sum + (e.duration_mins || 0), 0)
+      const avgDuration = sorted.length > 0 ? Math.round(totalDuration / sorted.length) : 0
+      const anyEpisodeNotForMe = sorted.some((e) => !!libraryLookup.get(e.id)?.not_for_me)
+      items.push({
+        key: `series-${seriesId}`,
+        type: 'series',
+        seriesId,
+        seriesName: first.series_name || 'Series',
+        episodeCount: first.series_total || sorted.length,
+        avgDuration,
+        cover: first.cover_url,
+        author: first.author,
+        genre: first.genre,
+        description: first.description,
+        flag: first.flag,
+        avgRating: first.avg_rating,
+        firstEpisodeId: first.id,
+        durationForSort: avgDuration,
+        notForMe: anyEpisodeNotForMe,
+      })
+    })
+
+    return items
+  }, [stories, libraryLookup])
+
+  // Filter by genre, sort short to long, push not-for-me to bottom
+  const filteredItems = useMemo(() => {
+    const filtered =
+      activeGenre === 'All'
+        ? cardItems
+        : cardItems.filter((i) => (i.genre || '').toLowerCase() === activeGenre.toLowerCase())
+    return filtered.slice().sort((a, b) => {
+      if (a.notForMe !== b.notForMe) return a.notForMe ? 1 : -1
+      return a.durationForSort - b.durationForSort
+    })
+  }, [cardItems, activeGenre])
+
+  const validPlaylist = useMemo(() => {
+    const validKeys = new Set(cardItems.map((i) => i.key))
+    return playlist.filter((key) => validKeys.has(key))
+  }, [playlist, cardItems])
+
+  useEffect(() => {
+    if (loading) return
+    if (validPlaylist.length === playlist.length) return
+    setPlaylist(validPlaylist)
+  }, [loading, playlist, validPlaylist])
+
+  // Playlist running totals
+  const playlistTotalMins = useMemo(() => {
+    let mins = 0
+    validPlaylist.forEach((key) => {
+      const item = cardItems.find((i) => i.key === key)
+      if (!item) return
+      if (item.type === 'single') mins += item.story?.duration_mins || 0
+      else mins += (item.avgDuration || 0) * (item.episodeCount || 0)
+    })
+    return mins
+  }, [validPlaylist, cardItems])
+
+  function togglePlaylist(key: string) {
+    setPlaylist((p) => (p.includes(key) ? p.filter((k) => k !== key) : [...p, key]))
+  }
+
+  function playSingle(storyId: string) {
+    router.push(`/player/${storyId}`)
+  }
+
+  function playSeriesFirst(firstEpisodeId: string) {
+    router.push(`/player/${firstEpisodeId}`)
+  }
+
+  function playPlaylistFromBar() {
+    if (validPlaylist.length === 0) return
+    const first = cardItems.find((i) => i.key === validPlaylist[0])
+    if (!first) return
+    const id = first.type === 'single' ? first.story?.id : first.firstEpisodeId
+    if (id) router.push(`/player/${id}?playlist=1`)
+  }
+
+  function savePlaylistToHome() {
+    try {
+      localStorage.setItem(SAVED_PLAYLIST_KEY, JSON.stringify(validPlaylist))
+      alert('Saved to home')
+    } catch {}
+  }
+
+  function getCardState(item: CardItem) {
+    const inPlaylist = validPlaylist.includes(item.key)
+    let progress = 0
+    let completed = false
+    const isNotForMe = item.notForMe
+    if (item.type === 'single' && item.story) {
+      const lib = libraryLookup.get(item.story.id)
+      progress = lib?.progress || 0
+      completed = !!lib?.completed
     }
-  })
-  // RULE 5: A series must have MORE than 1 episode.
-  // Single-episode "series" are demoted to singles — shown as individual story cards.
-  const seriesGroups = Array.from(seriesMap.values()).filter(g => g.episode_count > 1)
-  const singleEpSeriesStories: Story[] = filteredStories.filter(s =>
-    s.series_name && seriesMap.get(s.series_name)?.episode_count === 1
-  )
+    const reviewed =
+      item.type === 'single' && item.story ? userReviewedIds.has(item.story.id) : false
+    return { inPlaylist, progress, completed, isNotForMe, reviewed }
+  }
 
-  seriesGroups.forEach(group => {
-    group.completed_episodes = group.episode_ids.filter(eid =>
-      libraryLookup.get(eid)?.completed
-    ).length
-    // Smart continue: last in-progress ep, or first unstarted after last completed, or ep1
-    const inProgress = group.episode_ids.find(eid => {
-      const e = libraryLookup.get(eid)
-      return e && e.progress > 0 && !e.completed
-    })
-    const lastCompletedIdx = (() => {
-      let idx = -1
-      group.episode_ids.forEach((eid, i) => { if (libraryLookup.get(eid)?.completed) idx = i })
-      return idx
-    })()
-    const firstUnstarted = group.episode_ids.find(eid => {
-      const e = libraryLookup.get(eid)
-      return !e || e.progress === 0
-    })
-    group.smart_continue_episode_id = inProgress
-      || (lastCompletedIdx >= 0 && lastCompletedIdx < group.episode_ids.length - 1 ? group.episode_ids[lastCompletedIdx + 1] : undefined)
-      || firstUnstarted
-      || group.first_episode_id
-  })
-  // Singles = stories with no series_name OR demoted single-episode series (Rule 5)
-  const singles = filteredStories
-    .filter(s => !s.series_name || s.series_name === 'None' || singleEpSeriesStories.includes(s))
-    .sort((a, b) => (a.duration_mins || 0) - (b.duration_mins || 0))
-  seriesGroups.sort((a, b) => (a.episode_count > 0 ? Math.round(a.total_duration_mins / a.episode_count) : 0) - (b.episode_count > 0 ? Math.round(b.total_duration_mins / b.episode_count) : 0))
-
-  type DisplayItem = { type: 'single', story: Story, sortDate: string } | { type: 'series', group: SeriesGroup, sortDate: string }
-  const mixedItems: DisplayItem[] = []
-  singles.forEach(story => {
-    mixedItems.push({ type: 'single', story, sortDate: story.created_at || '' })
-  })
-  seriesGroups.forEach(group => {
-    mixedItems.push({ type: 'series', group, sortDate: group.earliest_created_at || '' })
-  })
-  // Sort shortest to longest (singles by duration; series by avg episode duration)
-  mixedItems.sort((a, b) => {
-    const aDur = a.type === 'single'
-      ? (a.story.duration_mins || 0)
-      : (a.group.episode_count > 0 ? Math.round((a.group.total_duration_mins || 0) / a.group.episode_count) : 0)
-    const bDur = b.type === 'single'
-      ? (b.story.duration_mins || 0)
-      : (b.group.episode_count > 0 ? Math.round((b.group.total_duration_mins || 0) / b.group.episode_count) : 0)
-    return aDur - bDur
-  })
-
-  // Helper to render a single HSC with review props
-  function renderStoryCard(story: Story) {
-    const libraryEntry = libraryLookup.get(story.id)
-    const flags = computeStoryFlags(story, libraryEntry)
-    const is_completed = libraryEntry?.completed === true
-    const has_reviewed = userReviewedIds.has(story.id) || justReviewed.has(story.id)
-    const progress_percent = is_completed
-      ? undefined  // don't show progress bar on completed stories
-      : libraryEntry?.progress && story.duration_mins
-        ? Math.round((libraryEntry.progress / (story.duration_mins * 60)) * 100)
-        : undefined
-
+  if (loading || (authLoading && !authWaitExpired)) {
     return (
-      <div
-        key={story.id}
-        onClick={() => {
-          // Don't navigate if clicking the Rate It button
-        }}
-        className="cursor-pointer"
-      >
-        <HorizontalStoryCard
-          id={story.id}
-          title={story.title}
-          genre={story.genre}
-          author={story.author || 'Endless Tales'}
-          duration_mins={story.duration_mins}
-          cover_url={story.cover_url}
-          series_number={story.series_number}
-          series_total={story.series_total}
-          episode_title={story.episode_title}
-          not_for_me={libraryEntry?.not_for_me === true}
-          series_name={story.series_name}
-          description={story.description}
-          flags={flags}
-          progress_percent={progress_percent}
-          avg_rating={story.avg_rating}
-          review_count={story.review_count}
-          is_completed={is_completed}
-          has_reviewed={has_reviewed}
-          onReviewClick={(e) => {
-            e.preventDefault()
-            setReviewTarget({
-              id: story.id,
-              title: story.title,
-              genre: story.genre,
-              duration_mins: story.duration_mins,
-            })
-          }}
-        />
+      <div style={{ minHeight: '100vh', backgroundColor: '#0a0a0a' }}>
+        <StickyHeaderFull />
+        <div style={{ padding: '40px 16px', color: 'white', textAlign: 'center', fontSize: '14px' }}>
+          Loading library…
+        </div>
       </div>
     )
   }
 
-  if (loading) {
+  if (loadError) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+      <div style={{ minHeight: '100vh', backgroundColor: '#0a0a0a' }}>
+        <StickyHeaderFull />
+        <div style={{ padding: '40px 16px', color: 'white', textAlign: 'center' }}>
+          <div style={{ fontSize: '15px', fontWeight: 600, marginBottom: '8px' }}>Library failed to load</div>
+          <div style={{ color: '#94a3b8', fontSize: '12px', lineHeight: 1.5 }}>{loadError}</div>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-slate-950" style={{ paddingBottom: '55px' }}>
+    <div
+      style={{
+        minHeight: '100vh',
+        backgroundColor: '#0a0a0a',
+        paddingBottom: validPlaylist.length > 0 ? '90px' : '20px',
+      }}
+    >
       <StickyHeaderFull />
-      
-      <LibraryFiltersV2
-        selectedDuration={selectedDuration}
-        setSelectedDuration={setSelectedDuration}
-        selectedGenre={selectedGenre}
-        setSelectedGenre={setSelectedGenre}
-        selectedType={selectedType}
-        setSelectedType={setSelectedType}
-        selectedGroup={selectedGroup}
-        setSelectedGroup={setSelectedGroup}
-      />
-      
-      <div className="px-3 py-2 flex flex-col gap-2">
-        {selectedType === 'Singles & Series' && (
-          <>
-            {mixedItems.length === 0 ? (
-              <div className="bg-slate-800 rounded-xl p-8 text-center">
-                <div className="text-4xl mb-3">😔</div>
-                <p className="text-white text-base mb-2">Sorry {userName}, no stories match your request.</p>
-                <p className="text-white text-sm" style={{ opacity: 0.7 }}>Try a different filter</p>
+
+      {/* Genre picker — established one-row treatment */}
+      <div style={{ position: 'sticky', top: '60px', zIndex: 40, padding: '0 12px 12px' }}>
+        <div style={{ backgroundColor: '#1e293b', borderRadius: '12px', padding: '8px' }}>
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center', justifyContent: 'stretch', overflowX: 'auto' }}>
+            {VISIBLE_GENRES.map((g) => (
+              <button
+                key={g}
+                onClick={() => {
+                  setActiveGenre(g)
+                  setShowMoreGenres(false)
+                }}
+                style={{
+                  backgroundColor: activeGenre === g ? '#f97316' : '#334155',
+                  color: 'white',
+                  padding: '0 8px',
+                  borderRadius: '6px',
+                  fontSize: '13px',
+                  fontWeight: 500,
+                  border: 'none',
+                  cursor: 'pointer',
+                  minHeight: '42px',
+                  minWidth: g === 'All' ? '72px' : '58px',
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {GENRE_LABELS[g] || g}
+              </button>
+            ))}
+            <button
+              onClick={() => {
+                setActiveGenre('Horror')
+                setShowMoreGenres(false)
+              }}
+              style={{
+                backgroundColor: activeGenre === 'Horror' ? '#f97316' : '#334155',
+                color: 'white',
+                padding: '0 8px',
+                borderRadius: '6px',
+                fontSize: '13px',
+                fontWeight: 500,
+                border: 'none',
+                cursor: 'pointer',
+                minHeight: '42px',
+                minWidth: '58px',
+                flex: 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {GENRE_LABELS.Horror}
+            </button>
+            <button
+              onClick={() => setShowMoreGenres((show) => !show)}
+              style={{
+                backgroundColor: MORE_GENRES.includes(activeGenre) ? '#f97316' : '#2563eb',
+                color: 'white',
+                padding: '0 8px',
+                borderRadius: '6px',
+                fontSize: '13px',
+                fontWeight: 500,
+                border: 'none',
+                cursor: 'pointer',
+                minHeight: '42px',
+                minWidth: '72px',
+                flex: 'none',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              More ▼
+            </button>
+            {showMoreGenres && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '58px',
+                  right: '20px',
+                  backgroundColor: '#f1f5f9',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '8px',
+                  padding: '8px',
+                  zIndex: 100,
+                  minWidth: '120px',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
+                }}
+              >
+                {MORE_GENRES.map((g) => (
+                  <button
+                    key={g}
+                    onClick={() => {
+                      setActiveGenre(g)
+                      setShowMoreGenres(false)
+                    }}
+                    style={{
+                      display: 'block',
+                      width: '100%',
+                      padding: '9px 10px',
+                      backgroundColor: activeGenre === g ? '#e2e8f0' : 'transparent',
+                      border: 'none',
+                      color: '#111827',
+                      fontSize: '13px',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      borderRadius: '4px',
+                    }}
+                  >
+                    {g}
+                  </button>
+                ))}
               </div>
-            ) : (
-              mixedItems.map(item => {
-                if (item.type === 'series') {
-                  return (
-                    <SeriesCard 
-                      key={`series-${item.group.series_name}`} 
-                      id={item.group.id} 
-                      series_name={item.group.series_name} 
-                      genre={item.group.genre} 
-                      episode_count={item.group.episode_count} 
-                      total_duration_mins={item.group.total_duration_mins} 
-                      cover_url={item.group.cover_url} 
-                      description={item.group.description}
-                      completed_episodes={item.group.completed_episodes}
-                      not_for_me={item.group.not_for_me === true}
-                      first_episode_id={item.group.smart_continue_episode_id || item.group.first_episode_id}
-                    />
-                  )
-                } else {
-                  return renderStoryCard(item.story)
-                }
-              })
             )}
-          </>
-        )}
-
-        {selectedType === 'Series Only' && (
-          <>
-            {seriesGroups.length === 0 ? (
-              <div className="bg-slate-800 rounded-xl p-8 text-center">
-                <div className="text-4xl mb-3">📺</div>
-                <p className="text-white text-base mb-2">No series found</p>
-                <p className="text-white text-sm" style={{ opacity: 0.7 }}>Try a different filter</p>
-              </div>
-            ) : (
-              seriesGroups.map(series => (
-                <SeriesCard 
-                  key={series.series_name} 
-                  id={series.id} 
-                  series_name={series.series_name} 
-                  genre={series.genre} 
-                  episode_count={series.episode_count} 
-                  total_duration_mins={series.total_duration_mins} 
-                  cover_url={series.cover_url} 
-                  description={series.description}
-                  completed_episodes={series.completed_episodes}
-                  not_for_me={series.not_for_me === true}
-                  first_episode_id={series.smart_continue_episode_id || series.first_episode_id}
-                />
-              ))
-            )}
-          </>
-        )}
-
-        {selectedType === 'Singles Only' && (
-          <>
-            {singles.length === 0 ? (
-              <div className="bg-slate-800 rounded-xl p-8 text-center">
-                <div className="text-4xl mb-3">😔</div>
-                <p className="text-white text-base mb-2">Sorry {userName}, no stories match your request.</p>
-                <p className="text-white text-sm" style={{ opacity: 0.7 }}>Try a different filter</p>
-              </div>
-            ) : (
-              singles.map(story => renderStoryCard(story))
-            )}
-          </>
-        )}
-      </div>
-
-      <div className="fixed bottom-0 left-0 right-0 bg-slate-950 px-3 py-2 border-t border-slate-700 z-50">
-        {selectedType === 'Series Only' ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div style={{ flex: 1, textAlign: 'center' }}>
-              <p className="text-white text-sm" style={{ margin: 0 }}>Select any series to expand</p>
-            </div>
-          </div>
-        ) : (
-          <div className="flex gap-2 items-center">
-            <div className="flex-1"><PlaylistButton /></div>
-            <button onClick={() => setShowSearch(true)} style={{ background: "#f97316", color: "white", padding: "0.5rem 1rem", borderRadius: "10px", fontSize: "18px", fontWeight: 700, border: "none", cursor: "pointer", whiteSpace: "nowrap" }}>Search</button>
-          </div>
-        )}
-      </div>
-
-      {/* Search Overlay */}
-      {showSearch && (
-        <div onClick={() => { setShowSearch(false); setSearchQuery(''); setSearchResults([]) }} style={{ position: 'fixed', inset: 0, background: 'transparent', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: '80px', pointerEvents: 'none' }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: '#f2ede8', borderRadius: '16px', width: '90%', maxWidth: '420px', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.5)', pointerEvents: 'auto' }}>
-            <div style={{ padding: '12px', position: 'relative' }}>
-              <input autoFocus value={searchQuery} onChange={async e => { const q = e.target.value; setSearchQuery(q); if (!q.trim()) { setSearchResults([]); return } setSearchLoading(true); const { data } = await supabase.from('story_analytics').select('id, title, genre, author, duration_mins, cover_url, avg_rating, review_count').or(`title.ilike.%${q}%,author.ilike.%${q}%`).limit(15); setSearchResults(data || []); setSearchLoading(false) }} placeholder="Search by title or author…" style={{ width: '100%', background: '#ffffff', border: '1px solid rgba(0,0,0,0.1)', borderRadius: '10px', padding: '10px 36px 10px 36px', color: '#1c1917', fontSize: '15px', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.06)' }} />
-              <svg style={{ position: 'absolute', left: '22px', top: '50%', transform: 'translateY(-50%)', opacity: 0.4 }} width="16" height="16" fill="none" stroke="white" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path strokeLinecap="round" d="M21 21l-4.35-4.35"/></svg>
-              {searchQuery && <button onClick={() => { setSearchQuery(''); setSearchResults([]) }} style={{ position: 'absolute', right: '22px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#a8a29e', cursor: 'pointer', fontSize: '20px', lineHeight: 1 }}>×</button>}
-            </div>
-            <div style={{ maxHeight: '60vh', overflowY: 'auto', padding: '0 12px 12px', background: '#f2ede8' }}>
-              {searchLoading && <p style={{ color: '#78716c', fontSize: '13px', textAlign: 'center', padding: '20px' }}>Searching…</p>}
-              {!searchLoading && searchQuery && searchResults.length === 0 && <p style={{ color: '#475569', fontSize: '13px', textAlign: 'center', padding: '20px' }}>No results for "{searchQuery}"</p>}
-              {!searchLoading && searchResults.length > 0 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {searchResults.map(story => (
-                    <div key={story.id} onClick={() => { setShowSearch(false); setSearchQuery(''); setSearchResults([]); router.push(`/player/${story.id}`) }}>
-                      <HorizontalStoryCard id={story.id} title={story.title} genre={story.genre} author={story.author} duration_mins={story.duration_mins} cover_url={story.cover_url} avg_rating={story.avg_rating} review_count={(story as any).review_count} />
-                    </div>
-                  ))}
-                </div>
-              )}
-              {!searchQuery && <button onClick={() => { setShowSearch(false); setSearchQuery(''); setSearchResults([]) }} style={{ display: 'block', width: '100%', padding: '12px', background: 'none', border: 'none', color: '#a8a29e', fontSize: '13px', cursor: 'pointer', textAlign: 'center' }}>Dismiss</button>}
-            </div>
           </div>
         </div>
-      )}
+      </div>
 
-      {/* Review Modal — single instance for all stories */}
-      {reviewTarget && user?.id && (
-        <ReviewModal
-          storyId={reviewTarget.id}
-          storyTitle={reviewTarget.title}
-          userId={user.id}
-          genre={reviewTarget.genre}
-          duration_mins={reviewTarget.duration_mins}
-          onClose={() => setReviewTarget(null)}
-          onSubmitted={(rating) => {
-            setJustReviewed(prev => { const s = new Set(prev); s.add(reviewTarget.id); return s })
-            setReviewTarget(null)
+      {/* Cards */}
+      <div style={{ padding: '0 12px' }}>
+        {filteredItems.length === 0 && (
+          <div
+            style={{
+              color: '#94a3b8',
+              textAlign: 'center',
+              padding: '40px 16px',
+              fontSize: '13px',
+            }}
+          >
+            No stories in this genre yet.
+          </div>
+        )}
+        {filteredItems.map((item) => {
+          const state = getCardState(item)
+          return (
+            <StoryCard
+              key={item.key}
+              item={item}
+              state={state}
+              onPlay={() => {
+                if (item.type === 'single' && item.story) playSingle(item.story.id)
+                else if (item.type === 'series' && item.firstEpisodeId)
+                  playSeriesFirst(item.firstEpisodeId)
+              }}
+              onTogglePlaylist={() => togglePlaylist(item.key)}
+              onRate={() => {
+                if (item.type === 'single' && item.story)
+                  router.push(`/player/${item.story.id}?rate=1`)
+              }}
+            />
+          )
+        })}
+      </div>
+
+      {/* Playlist bar */}
+      {validPlaylist.length > 0 && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            background: '#172b4f',
+            borderTop: '1px solid rgba(147,197,253,0.8)',
+            borderRadius: '14px 14px 0 0',
+            padding: '9px 12px',
+            boxShadow: '0 -8px 24px rgba(37,99,235,0.28), 0 -2px 12px rgba(0,0,0,0.45)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            zIndex: 40,
           }}
-        />
+        >
+          <div style={{ flex: 1 }}>
+            <div style={{ color: 'white', fontSize: '13px', fontWeight: 700 }}>Your playlist</div>
+            <div style={{ color: 'white', fontSize: '12px', fontWeight: 600 }}>
+              {validPlaylist.length} {validPlaylist.length === 1 ? 'story' : 'stories'} ·{' '}
+              {formatMinutes(playlistTotalMins)}
+            </div>
+          </div>
+          <button
+            onClick={savePlaylistToHome}
+            style={{
+              background: '#2563eb',
+              color: 'white',
+              border: 'none',
+              padding: '6px 10px',
+              borderRadius: '6px',
+              fontSize: '11px',
+              fontWeight: 500,
+              cursor: 'pointer',
+            }}
+          >
+            Save to home
+          </button>
+          <button
+            onClick={playPlaylistFromBar}
+            style={{
+              background: '#f97316',
+              color: 'white',
+              border: 'none',
+              padding: '6px 12px',
+              borderRadius: '6px',
+              fontSize: '11px',
+              fontWeight: 500,
+              cursor: 'pointer',
+            }}
+          >
+            ▶ Play now
+          </button>
+        </div>
       )}
     </div>
   )
 }
 
-export default function LibraryPage() {
+function formatMinutes(mins: number) {
+  if (mins < 60) return `${mins}min`
+  const h = Math.floor(mins / 60)
+  const m = mins % 60
+  return m === 0 ? `${h}hs` : `${h}hs-${m}min`
+}
+
+function StoryCard({
+  item,
+  state,
+  onPlay,
+  onTogglePlaylist,
+  onRate,
+}: {
+  item: CardItem
+  state: {
+    inPlaylist: boolean
+    progress: number
+    completed: boolean
+    isNotForMe: boolean
+    reviewed: boolean
+  }
+  onPlay: () => void
+  onTogglePlaylist: () => void
+  onRate: () => void
+}) {
+  const isSeries = item.type === 'series'
+  const duration = isSeries
+    ? `~${formatMinutes(item.avgDuration || 0)}`
+    : formatMinutes(item.story?.duration_mins || 0)
+  const ratingValue = Math.round(item.avgRating || 0)
+  const stars = '★'.repeat(ratingValue) + '☆'.repeat(5 - ratingValue)
+  const description = item.description || ''
+  const truncatedDescription =
+    description.length > 70 ? description.slice(0, 67) + '…' : description
+  const showProgress = !isSeries && state.progress > 0 && !state.completed
+  const inProgress = showProgress
+  const showRate = state.completed && !state.reviewed
+  const cardOpacity = state.isNotForMe ? 0.65 : 1
+
   return (
-    <Suspense fallback={<div className="min-h-screen bg-slate-950 flex items-center justify-center"><div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" /></div>}>
-      <LibraryContent />
-      <LibraryAuthOverlay />
-    </Suspense>
+    <div
+      style={{
+        background: '#2b313d',
+        borderRadius: '12px',
+        padding: '10px',
+        marginBottom: '10px',
+        opacity: cardOpacity,
+        border: '1px solid rgba(255,255,255,0.06)',
+        boxShadow: '0 6px 18px rgba(0,0,0,0.24)',
+      }}
+    >
+      <div style={{ display: 'flex', gap: '10px' }}>
+        {/* Cover */}
+        <div
+          onClick={onPlay}
+          style={{
+            width: '108px',
+            height: '108px',
+            borderRadius: '8px',
+            backgroundColor: '#1e1b4b',
+            backgroundImage: item.cover ? `url(${item.cover})` : undefined,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            flexShrink: 0,
+            boxShadow: '0 0 0 1px rgba(255,255,255,0.4), 0 0 12px rgba(255,255,255,0.2)',
+            alignSelf: 'flex-start',
+            cursor: 'pointer',
+          }}
+        />
+        {/* Copy column */}
+        <div
+          style={{
+            flex: 1,
+            minWidth: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '3px',
+          }}
+        >
+          {/* Row 1: type pill + special pill + duration */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <span
+              style={{
+                background: isSeries ? '#a855f7' : '#3b82f6',
+                color: 'white',
+                fontSize: '10px',
+                padding: '2px 7px',
+                borderRadius: '8px',
+                fontWeight: 500,
+              }}
+            >
+              {isSeries ? `Series · ${item.episodeCount} eps` : 'Single'}
+            </span>
+            {item.flag && (
+              <span
+                style={{
+                  background: '#dc2626',
+                  color: 'white',
+                  fontSize: '10px',
+                  padding: '2px 7px',
+                  borderRadius: '8px',
+                  fontWeight: 500,
+                }}
+              >
+                {item.flag}
+              </span>
+            )}
+            <div style={{ flex: 1 }} />
+            <span style={{ color: '#cbd5e1', fontSize: '11px', fontWeight: 500 }}>{duration}</span>
+          </div>
+
+          {/* Row 2: title */}
+          <div style={{ color: 'white', fontSize: '14px', fontWeight: 700, lineHeight: 1.2 }}>
+            {isSeries ? item.seriesName : item.story?.title}
+          </div>
+
+          {/* Row 3: author/genre/stars */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '10px' }}>
+            <span style={{ color: '#4ade80', fontWeight: 500 }}>{item.author || 'Unknown'}</span>
+            {item.genre && <span style={{ color: '#4ade80' }}>· {item.genre}</span>}
+            <div style={{ flex: 1 }} />
+            {(item.avgRating || 0) > 0 && (
+              <span style={{ color: '#ef4444', fontSize: '10px' }}>{stars}</span>
+            )}
+          </div>
+
+          {/* Row 4-5: description (cap 70 chars) */}
+          {truncatedDescription && (
+            <div style={{ color: 'white', fontSize: '11px', lineHeight: 1.4 }}>
+              {truncatedDescription}
+            </div>
+          )}
+
+          {/* Row 6: buttons */}
+          <div style={{ display: 'flex', gap: '5px', marginTop: '2px' }}>
+            {showRate ? (
+              <button
+                onClick={onRate}
+                style={{
+                  flex: 1,
+                  background: '#dc2626',
+                  color: 'white',
+                  border: 'none',
+                  padding: '2px 6px',
+                  borderRadius: '6px',
+                  fontSize: '10px',
+                  lineHeight: 1,
+                  minHeight: '20px',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                }}
+              >
+                <span style={{ fontSize: '14px' }}>☺</span>
+                <span>Rate this {isSeries ? 'series' : 'story'}</span>
+                <span style={{ fontSize: '14px' }}>☹</span>
+              </button>
+            ) : state.inPlaylist ? (
+              <button
+                onClick={onTogglePlaylist}
+                style={{
+                  flex: 1,
+                  background: 'transparent',
+                  color: '#93c5fd',
+                  border: '0.5px solid #3b82f6',
+                  padding: '2px 6px',
+                  borderRadius: '6px',
+                  fontSize: '10px',
+                  lineHeight: 1,
+                  minHeight: '20px',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                }}
+              >
+                ✓ In your playlist · Remove
+              </button>
+            ) : (
+              <>
+                <button
+                  onClick={onPlay}
+                  style={{
+                    flex: 1,
+                    background: inProgress ? '#16a34a' : '#f97316',
+                    color: 'white',
+                    border: 'none',
+                    padding: '2px 6px',
+                    borderRadius: '6px',
+                    fontSize: '10px',
+                    lineHeight: 1,
+                    minHeight: '20px',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {inProgress ? '▶ Continue' : '▶ Play now'}
+                </button>
+                <button
+                  onClick={onTogglePlaylist}
+                  style={{
+                    flex: 1,
+                    background: '#3b82f6',
+                    color: 'white',
+                    border: 'none',
+                    padding: '2px 6px',
+                    borderRadius: '6px',
+                    fontSize: '10px',
+                    lineHeight: 1,
+                    minHeight: '20px',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                  }}
+                >
+                  + Playlist
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* Row 7: progress bar */}
+          <div
+            style={{
+              height: '3px',
+              background: state.completed ? '#16a34a' : 'rgba(148,163,184,0.15)',
+              borderRadius: '2px',
+              marginTop: '2px',
+              position: 'relative',
+              overflow: 'hidden',
+            }}
+          >
+            {showProgress && item.story?.duration_mins && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  bottom: 0,
+                  width: `${Math.min(
+                    100,
+                    (state.progress / (item.story.duration_mins * 60)) * 100
+                  )}%`,
+                  background: '#f97316',
+                  borderRadius: '2px',
+                }}
+              />
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }
