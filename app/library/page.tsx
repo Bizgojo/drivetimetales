@@ -70,9 +70,13 @@ type ReviewTarget = {
   cover_url: string | null
 }
 
-const GENRES = ['All', 'Mystery', 'Thriller', 'Drama', 'Horror']
-const VISIBLE_GENRES = ['All', 'Mystery', 'Thriller']
-const MORE_GENRES = GENRES.filter((g) => !VISIBLE_GENRES.includes(g))
+type CanonicalGenre = {
+  id: string
+  name: string
+  active: boolean | null
+  display_order: number | null
+}
+
 const GENRE_LABELS: Record<string, string> = {
   All: 'All',
   Mystery: '🔍Myst',
@@ -93,8 +97,10 @@ export default function LibraryPage() {
   const [authWaitExpired, setAuthWaitExpired] = useState(false)
   const [activeGenre, setActiveGenre] = useState('All')
   const [showMoreGenres, setShowMoreGenres] = useState(false)
+  const [genreSlots, setGenreSlots] = useState<string[]>([])
   const [playlist, setPlaylist] = useState<string[]>([])
   const [reviewTarget, setReviewTarget] = useState<ReviewTarget | null>(null)
+  const [canonicalGenres, setCanonicalGenres] = useState<CanonicalGenre[]>([])
 
   // Hydrate playlist from localStorage
   useEffect(() => {
@@ -168,6 +174,19 @@ export default function LibraryPage() {
           }
 
           setStories(storyRows)
+        }
+
+        const { data: genreData, error: genreError } = await supabase
+          .from('genres')
+          .select('id,name,active,display_order')
+          .eq('active', true)
+          .order('display_order', { ascending: true })
+          .order('name', { ascending: true })
+
+        if (genreError) {
+          console.warn('[Library] canonical genre lookup failed:', genreError.message)
+        } else if (!cancelled) {
+          setCanonicalGenres((genreData || []) as CanonicalGenre[])
         }
 
         if (!authWaitExpired && user?.id) {
@@ -286,6 +305,68 @@ export default function LibraryPage() {
     })
   }, [cardItems, activeGenre])
 
+  const availableGenres = useMemo(() => {
+    const populated = new Set(cardItems.map((item) => (item.genre || '').toLowerCase()).filter(Boolean))
+    const canonical = canonicalGenres
+      .filter((genre) => genre.active !== false && populated.has(genre.name.toLowerCase()))
+      .map((genre) => genre.name)
+
+    if (canonical.length > 0) return canonical
+
+    return Array.from(new Set(cardItems.map((item) => item.genre).filter(Boolean) as string[])).sort((a, b) =>
+      a.localeCompare(b)
+    )
+  }, [cardItems, canonicalGenres])
+
+  useEffect(() => {
+    setGenreSlots((prev) => {
+      const valid = prev.filter((genre) =>
+        availableGenres.some((available) => available.toLowerCase() === genre.toLowerCase())
+      )
+      const next = [...valid]
+      availableGenres.forEach((genre) => {
+        if (next.length >= 3) return
+        if (!next.some((item) => item.toLowerCase() === genre.toLowerCase())) next.push(genre)
+      })
+      return next.slice(0, 3)
+    })
+  }, [availableGenres])
+
+  const visibleGenres = useMemo(() => ['All', ...genreSlots], [genreSlots])
+  const moreGenres = useMemo(
+    () => availableGenres.filter((genre) => !genreSlots.some((slot) => slot.toLowerCase() === genre.toLowerCase())),
+    [availableGenres, genreSlots]
+  )
+
+  function selectMoreGenre(genre: string) {
+    setGenreSlots((prev) => {
+      const next = prev.slice(0, 3)
+      while (next.length < 3) {
+        const filler = availableGenres.find((item) => !next.some((slot) => slot.toLowerCase() === item.toLowerCase()))
+        if (!filler) break
+        next.push(filler)
+      }
+
+      const activeIndex =
+        activeGenre !== 'All'
+          ? next.findIndex((slot) => slot.toLowerCase() === activeGenre.toLowerCase())
+          : -1
+      const replaceIndex = activeIndex >= 0 ? activeIndex : 0
+      const withoutPicked = next.filter((slot) => slot.toLowerCase() !== genre.toLowerCase())
+      withoutPicked[replaceIndex] = genre
+      return withoutPicked.slice(0, 3)
+    })
+    setActiveGenre(genre)
+    setShowMoreGenres(false)
+  }
+
+  useEffect(() => {
+    if (activeGenre === 'All') return
+    if (availableGenres.some((genre) => genre.toLowerCase() === activeGenre.toLowerCase())) return
+    setActiveGenre('All')
+    setShowMoreGenres(false)
+  }, [activeGenre, availableGenres])
+
   const validPlaylist = useMemo(() => {
     const validKeys = new Set(cardItems.map((i) => i.key))
     return playlist.filter((key) => validKeys.has(key))
@@ -401,7 +482,7 @@ export default function LibraryPage() {
       <div style={{ position: 'sticky', top: '60px', zIndex: 40, padding: '0 12px 12px' }}>
         <div style={{ backgroundColor: '#1e293b', borderRadius: '12px', padding: '8px' }}>
           <div style={{ display: 'flex', gap: '6px', alignItems: 'center', justifyContent: 'stretch', overflowX: 'auto' }}>
-            {VISIBLE_GENRES.map((g) => (
+            {visibleGenres.map((g) => (
               <button
                 key={g}
                 onClick={() => {
@@ -429,51 +510,28 @@ export default function LibraryPage() {
                 {GENRE_LABELS[g] || g}
               </button>
             ))}
-            <button
-              onClick={() => {
-                setActiveGenre('Horror')
-                setShowMoreGenres(false)
-              }}
-              style={{
-                backgroundColor: activeGenre === 'Horror' ? '#f97316' : '#334155',
-                color: 'white',
-                padding: '0 8px',
-                borderRadius: '6px',
-                fontSize: '13px',
-                fontWeight: 500,
-                border: 'none',
-                cursor: 'pointer',
-                minHeight: '42px',
-                minWidth: '58px',
-                flex: 1,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {GENRE_LABELS.Horror}
-            </button>
-            <button
-              onClick={() => setShowMoreGenres((show) => !show)}
-              style={{
-                backgroundColor: MORE_GENRES.includes(activeGenre) ? '#f97316' : '#2563eb',
-                color: 'white',
-                padding: '0 8px',
-                borderRadius: '6px',
-                fontSize: '13px',
-                fontWeight: 500,
-                border: 'none',
-                cursor: 'pointer',
-                minHeight: '42px',
-                minWidth: '72px',
-                flex: 'none',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              More ▼
-            </button>
-            {showMoreGenres && (
+            {moreGenres.length > 0 && (
+              <button
+                onClick={() => setShowMoreGenres((show) => !show)}
+                style={{
+                  backgroundColor: moreGenres.includes(activeGenre) ? '#f97316' : '#2563eb',
+                  color: 'white',
+                  padding: '0 8px',
+                  borderRadius: '6px',
+                  fontSize: '13px',
+                  fontWeight: 500,
+                  border: 'none',
+                  cursor: 'pointer',
+                  minHeight: '42px',
+                  minWidth: '72px',
+                  flex: 'none',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                More ▼
+              </button>
+            )}
+            {showMoreGenres && moreGenres.length > 0 && (
               <div
                 style={{
                   position: 'absolute',
@@ -488,12 +546,11 @@ export default function LibraryPage() {
                   boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
                 }}
               >
-                {MORE_GENRES.map((g) => (
+                {moreGenres.map((g) => (
                   <button
                     key={g}
                     onClick={() => {
-                      setActiveGenre(g)
-                      setShowMoreGenres(false)
+                      selectMoreGenre(g)
                     }}
                     style={{
                       display: 'block',

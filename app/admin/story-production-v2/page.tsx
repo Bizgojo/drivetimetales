@@ -1,7 +1,21 @@
 'use client'
 
 
-function parseTopFixes(reviewText: string): string[] {
+type TopFix = {
+  text: string
+  area: 'Hook' | 'Clarity' | 'Pacing' | 'Character' | 'Landing'
+}
+
+function inferTopFixArea(text: string): TopFix['area'] {
+  const lower = text.toLowerCase()
+  if (lower.includes('opening') || lower.includes('cold open') || lower.includes('hook') || lower.includes('first two minutes')) return 'Hook'
+  if (lower.includes('clarity') || lower.includes('context') || lower.includes('confused') || lower.includes('recall') || lower.includes('re-orientation')) return 'Clarity'
+  if (lower.includes('pacing') || lower.includes('rushed') || lower.includes('montage') || lower.includes('rhythmic') || lower.includes('breath')) return 'Pacing'
+  if (lower.includes('character') || lower.includes('dialogue') || lower.includes('reaction') || lower.includes('emotional')) return 'Character'
+  return 'Landing'
+}
+
+function parseTopFixDetails(reviewText: string): TopFix[] {
   if (!reviewText) return []
 
   const shortVerdictIndex = reviewText.indexOf('SHORT VERDICT:')
@@ -10,10 +24,14 @@ function parseTopFixes(reviewText: string): string[] {
   const lines = relevant.split('\n')
   const fixes: string[] = []
   let collecting = false
+  let current = ''
 
   for (const raw of lines) {
     const line = raw.trim()
-    if (!line) continue
+    if (!line) {
+      if (current) current += '\n'
+      continue
+    }
 
     if (line.toUpperCase() === 'TOP FIXES:') {
       collecting = true
@@ -23,10 +41,25 @@ function parseTopFixes(reviewText: string): string[] {
     if (!collecting) continue
 
     const m = line.match(/^\d+\.\s+(.*)$/)
-    if (m) fixes.push(m[1].trim())
+    if (m) {
+      if (current.trim()) fixes.push(current.trim())
+      current = m[1].trim()
+      continue
+    }
+
+    if (current) current += ` ${line}`
   }
 
-  return fixes
+  if (current.trim()) fixes.push(current.trim())
+
+  return fixes.map((text) => ({
+    text,
+    area: inferTopFixArea(text),
+  }))
+}
+
+function parseTopFixes(reviewText: string): string[] {
+  return parseTopFixDetails(reviewText).map((fix) => fix.text)
 }
 
 function readSavedSeriesId(): string {
@@ -148,6 +181,17 @@ type SeriesPackage = {
   episodes: SeriesEpisodePlan[]
 }
 
+type EpisodeDetailModal =
+  | {
+      kind: 'score'
+      episode: SeriesEpisodePlan
+    }
+  | {
+      kind: 'validation'
+      episode: SeriesEpisodePlan
+    }
+  | null
+
 
 const GENRES = [
   'Thriller',
@@ -169,6 +213,23 @@ const GENRES = [
 
 const SERIES_EPISODE_COUNTS = [3, 5, 7, 13]
 
+const EMPTY_FORM = {
+  title: '',
+  type: 'standalone',
+  author: '',
+  author_style: '',
+  genre: '',
+  narrative_voice: '',
+  premise: '',
+  setting: '',
+  runtime: '15 min',
+  series_name: '',
+  series_episode_number: '',
+  series_total_episodes: '',
+  series_is_finale: 'false',
+  series_arc_plan: '',
+}
+
 function Spinner({ label }: { label: string }) {
   return (
     <div className="flex items-center gap-2 text-sm text-gray-700">
@@ -187,6 +248,12 @@ function StepPill({ label, state }: { label: string; state: StepState }) {
     failed: 'bg-red-100 text-red-800 border-red-300',
   }
   return <div className={`px-3 py-2 rounded-full border text-sm font-medium ${styles[state]}`}>{label}</div>
+}
+
+function formatDetailValue(value: unknown): string {
+  if (value == null || value === '') return 'Not available'
+  if (typeof value === 'string') return value
+  return JSON.stringify(value, null, 2)
 }
 
 export default function StoryProductionV2Page() {
@@ -211,27 +278,56 @@ export default function StoryProductionV2Page() {
   const [authorsLoading, setAuthorsLoading] = useState(true)
   const [selectedAuthorMeta, setSelectedAuthorMeta] = useState<AuthorOption | null>(null)
   const [seriesPackage, setSeriesPackage] = useState<SeriesPackage | null>(null)
+  const [episodeDetailModal, setEpisodeDetailModal] = useState<EpisodeDetailModal>(null)
+  const [applyingTopFixKey, setApplyingTopFixKey] = useState('')
 
   const scriptRef = useRef<HTMLTextAreaElement | null>(null)
   const reviewRef = useRef<HTMLPreElement | null>(null)
   const validateRef = useRef<HTMLPreElement | null>(null)
 
-  const [form, setForm] = useState({
-    title: '',
-    type: 'standalone',
-    author: '',
-    author_style: '',
-    genre: '',
-    narrative_voice: '',
-    premise: '',
-    setting: '',
-    runtime: '15 min',
-    series_name: '',
-    series_episode_number: '',
-    series_total_episodes: '',
-    series_is_finale: 'false',
-    series_arc_plan: '',
-  })
+  const [form, setForm] = useState(EMPTY_FORM)
+
+  function clearLoadedProductionState() {
+    setStoryId('')
+    setStatus('')
+    setScript('')
+    setTitle('')
+    setReviewText('')
+    setReviewTotal(null)
+    setReport('')
+    setSeriesPackage(null)
+    setEpisodeDetailModal(null)
+    setSelectedTopFixes([])
+    setScriptDirty(false)
+
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('et_last_series_id_v2')
+      localStorage.removeItem('et_last_story_id_v2')
+      localStorage.removeItem('et_last_queue_id_v2')
+      localStorage.removeItem('et_asc_package_handoff_v1')
+      localStorage.removeItem('et_asc_handoff_v1')
+
+      const url = new URL(window.location.href)
+      url.searchParams.delete('seriesId')
+      url.searchParams.delete('storyId')
+      window.history.replaceState({}, '', url.toString())
+    }
+  }
+
+  function clearLoadedProductionStateForNewInput() {
+    if (!storyId && !seriesPackage?.series?.id) return
+    clearLoadedProductionState()
+    setStepMessage('Cleared previous story/package state for a new brief')
+  }
+
+  function clearAllForNewStory() {
+    clearLoadedProductionState()
+    setForm(EMPTY_FORM)
+    setSelectedAuthorMeta(null)
+    setWorkingMessage('')
+    setActiveStep('')
+    setStepMessage('Cleared all V2 fields. Ready for a new story.')
+  }
 
   useEffect(() => {
     const savedSeriesId = readSavedSeriesId()
@@ -307,6 +403,7 @@ export default function StoryProductionV2Page() {
         }
 
         if (!loadedSavedStory) {
+          if (!queued.storyId) clearLoadedProductionState()
           setStoryId(queued.storyId || '')
           setTitle(queued.title || '')
           setForm(prev => ({
@@ -641,6 +738,7 @@ export default function StoryProductionV2Page() {
     : neutralActionClass
 
   function pickAuthor(author: AuthorOption) {
+    clearLoadedProductionStateForNewInput()
     setForm((prev) => ({
       ...prev,
       author: author.name,
@@ -681,6 +779,70 @@ export default function StoryProductionV2Page() {
       return canValidate ? 'waiting' : 'locked'
     }
     return 'locked'
+  }
+
+  async function applyEpisodeTopFix(episode: SeriesEpisodePlan, fix: TopFix, index: number) {
+    if (!episode.script) {
+      setReport(`Episode ${episode.episode_number || episode.series_episode_number || '?'} has no script to revise.`)
+      return
+    }
+
+    const applyKey = `${episode.id}:${index}`
+    setApplyingTopFixKey(applyKey)
+    setStepMessage(`Applying ${fix.area.toLowerCase()} fix to Episode ${episode.episode_number || episode.series_episode_number || '?'}`)
+
+    try {
+      const reviseRes = await fetch('/api/v2/apply-top-fixes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          script: episode.script,
+          selectedFixes: [`${fix.area}: ${fix.text}`],
+        }),
+      })
+      const reviseData = await reviseRes.json()
+      if (!reviseRes.ok || !reviseData.success) {
+        throw new Error(reviseData.error || 'Claude revision failed')
+      }
+
+      const saveRes = await fetch('/api/v2/save-revised-script', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storyId: episode.id,
+          script: reviseData.revisedScript,
+        }),
+      })
+      const saveData = await saveRes.json()
+      if (!saveRes.ok || !saveData.success) {
+        throw new Error(saveData.error || 'Failed to save revised script')
+      }
+
+      const updatedEpisode: SeriesEpisodePlan = {
+        ...episode,
+        script: saveData.story?.script || reviseData.revisedScript,
+        status: saveData.story?.status || 'script_revised',
+        validator_result: null,
+        validator_report: null,
+        validator_passed_at: null,
+      }
+
+      setSeriesPackage((pkg) => {
+        if (!pkg) return pkg
+        return {
+          ...pkg,
+          episodes: pkg.episodes.map((candidate) => candidate.id === episode.id ? updatedEpisode : candidate),
+        }
+      })
+      setEpisodeDetailModal({ kind: 'score', episode: updatedEpisode })
+      setReport(`Applied ${fix.area} top fix to Episode ${episode.episode_number || episode.series_episode_number || '?'}: ${episode.title}`)
+      setStepMessage('Script revised. Re-run Score + Validate Package before producing audio.')
+    } catch (e) {
+      setReport(e instanceof Error ? e.message : 'Unknown error')
+      setStepMessage('Top fix revision failed')
+    } finally {
+      setApplyingTopFixKey('')
+    }
   }
 
   async function saveBrief() {
@@ -1063,8 +1225,19 @@ export default function StoryProductionV2Page() {
     <div className="min-h-screen bg-[#FAF9F6] text-black px-6 py-8">
       <div className="max-w-7xl mx-auto space-y-6">
         <div>
-          <h1 className="text-3xl font-bold">Story Production V2</h1>
-          <p className="text-gray-700 mt-2">Bible-first workflow: Brief → Script → Score → Validate → Produce → Grade → Publish</p>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-bold">Story Production V2</h1>
+              <p className="text-gray-700 mt-2">Bible-first workflow: Brief → Script → Score → Validate → Produce → Grade → Publish</p>
+            </div>
+            <button
+              type="button"
+              onClick={clearAllForNewStory}
+              className="rounded bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+            >
+              Clear All
+            </button>
+          </div>
         </div>
 
         <div className="bg-white border border-black rounded-lg p-4">
@@ -1082,11 +1255,15 @@ export default function StoryProductionV2Page() {
 
         <div className="bg-white border border-black rounded-lg p-4 space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <input className="border rounded p-2" placeholder="Title (optional, Claude can choose)" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} />
+            <input className="border rounded p-2" placeholder="Title (optional, Claude can choose)" value={form.title} onChange={e => {
+              clearLoadedProductionStateForNewInput()
+              setForm({ ...form, title: e.target.value })
+            }} />
             <select
               className="border rounded p-2"
               value={form.type}
               onChange={e => {
+                clearLoadedProductionStateForNewInput()
                 const nextType = e.target.value
                 setForm({
                   ...form,
@@ -1109,12 +1286,18 @@ export default function StoryProductionV2Page() {
                   className="border rounded p-2"
                   placeholder="Series Name"
                   value={form.series_name}
-                  onChange={e => setForm({ ...form, series_name: e.target.value })}
+                  onChange={e => {
+                    clearLoadedProductionStateForNewInput()
+                    setForm({ ...form, series_name: e.target.value })
+                  }}
                 />
                 <select
                   className="border rounded p-2"
                   value={form.series_total_episodes}
-                  onChange={e => setForm({ ...form, series_total_episodes: e.target.value, series_episode_number: form.series_episode_number || '1' })}
+                  onChange={e => {
+                    clearLoadedProductionStateForNewInput()
+                    setForm({ ...form, series_total_episodes: e.target.value, series_episode_number: form.series_episode_number || '1' })
+                  }}
                 >
                   <option value="">Episode Count</option>
                   {SERIES_EPISODE_COUNTS.map(count => (
@@ -1122,28 +1305,42 @@ export default function StoryProductionV2Page() {
                   ))}
                 </select>
               </div>
-              <input
-                className="border rounded p-2 w-full"
-                placeholder="Series Episode Number"
-                value={form.series_episode_number || '1'}
-                onChange={e => setForm({ ...form, series_episode_number: e.target.value || '1' })}
-              />
+              {!seriesPackage ? (
+                <input
+                  className="border rounded p-2 w-full"
+                  placeholder="Series Episode Number"
+                  value={form.series_episode_number || '1'}
+                  onChange={e => {
+                    clearLoadedProductionStateForNewInput()
+                    setForm({ ...form, series_episode_number: e.target.value || '1' })
+                  }}
+                />
+              ) : null}
               <textarea
                 className="border rounded p-2 w-full"
                 rows={5}
                 placeholder="Series Bible / Arc Plan: plan the full series continuity, character arcs, episode turns, reveals, and finale before scripting episode one."
                 value={form.series_arc_plan}
-                onChange={e => setForm({ ...form, series_arc_plan: e.target.value })}
+                onChange={e => {
+                  clearLoadedProductionStateForNewInput()
+                  setForm({ ...form, series_arc_plan: e.target.value })
+                }}
               />
             </div>
           ) : null}
 
           <div className="grid grid-cols-2 gap-4">
-            <select className="border rounded p-2" value={form.genre} onChange={e => setForm({ ...form, genre: e.target.value, author: '', author_style: '', narrative_voice: '' })}>
+            <select className="border rounded p-2" value={form.genre} onChange={e => {
+              clearLoadedProductionStateForNewInput()
+              setForm({ ...form, genre: e.target.value, author: '', author_style: '', narrative_voice: '' })
+            }}>
               <option value="">Choose genre first</option>
               {GENRES.map((genre) => <option key={genre} value={genre}>{genre}</option>)}
             </select>
-            <input className="border rounded p-2" placeholder="Narrative voice (optional)" value={form.narrative_voice} onChange={e => setForm({ ...form, narrative_voice: e.target.value })} />
+            <input className="border rounded p-2" placeholder="Narrative voice (optional)" value={form.narrative_voice} onChange={e => {
+              clearLoadedProductionStateForNewInput()
+              setForm({ ...form, narrative_voice: e.target.value })
+            }} />
           </div>
 
           {authorsLoading ? (
@@ -1174,8 +1371,14 @@ export default function StoryProductionV2Page() {
           ) : null}
 
           <div className="grid grid-cols-2 gap-4">
-            <input className="border rounded p-2" placeholder="Author pen name" value={form.author} onChange={e => setForm({ ...form, author: e.target.value })} />
-            <input className="border rounded p-2" placeholder="Author style" value={form.author_style} onChange={e => setForm({ ...form, author_style: e.target.value })} />
+            <input className="border rounded p-2" placeholder="Author pen name" value={form.author} onChange={e => {
+              clearLoadedProductionStateForNewInput()
+              setForm({ ...form, author: e.target.value })
+            }} />
+            <input className="border rounded p-2" placeholder="Author style" value={form.author_style} onChange={e => {
+              clearLoadedProductionStateForNewInput()
+              setForm({ ...form, author_style: e.target.value })
+            }} />
           </div>
 
           {selectedAuthorMeta ? (
@@ -1190,9 +1393,18 @@ export default function StoryProductionV2Page() {
             </div>
           ) : null}
 
-          <textarea className="border rounded p-2 w-full" rows={4} placeholder="Premise" value={form.premise} onChange={e => setForm({ ...form, premise: e.target.value })} />
-          <input className="border rounded p-2 w-full" placeholder="Setting" value={form.setting} onChange={e => setForm({ ...form, setting: e.target.value })} />
-          <input className="border rounded p-2 w-full" placeholder="Runtime" value={form.runtime} onChange={e => setForm({ ...form, runtime: e.target.value })} />
+          <textarea className="border rounded p-2 w-full" rows={4} placeholder="Premise" value={form.premise} onChange={e => {
+            clearLoadedProductionStateForNewInput()
+            setForm({ ...form, premise: e.target.value })
+          }} />
+          <input className="border rounded p-2 w-full" placeholder="Setting" value={form.setting} onChange={e => {
+            clearLoadedProductionStateForNewInput()
+            setForm({ ...form, setting: e.target.value })
+          }} />
+          <input className="border rounded p-2 w-full" placeholder="Runtime" value={form.runtime} onChange={e => {
+            clearLoadedProductionStateForNewInput()
+            setForm({ ...form, runtime: e.target.value })
+          }} />
 
           <div className="flex items-center gap-4">
             <button disabled={loading} className="bg-orange-500 text-white px-4 py-2 rounded disabled:opacity-50" onClick={saveBrief}>
@@ -1235,8 +1447,20 @@ export default function StoryProductionV2Page() {
                   <div key={episode.id} className="border rounded bg-white p-3 text-sm">
                     <div className="font-semibold">Episode {episode.episode_number || episode.series_episode_number}: {episode.title}</div>
                     <div className={`mt-2 grid gap-2 rounded border p-2 sm:grid-cols-3 ${stateClass}`}>
-                      <div><strong>Score:</strong> {typeof score === 'number' ? `${score}/25` : 'Not scored'}</div>
-                      <div><strong>Validation:</strong> {validation || 'Not validated'}</div>
+                      <button
+                        type="button"
+                        onClick={() => setEpisodeDetailModal({ kind: 'score', episode })}
+                        className="text-left underline-offset-2 hover:underline"
+                      >
+                        <strong>Score:</strong> {typeof score === 'number' ? `${score}/25` : 'Not scored'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEpisodeDetailModal({ kind: 'validation', episode })}
+                        className="text-left underline-offset-2 hover:underline"
+                      >
+                        <strong>Validation:</strong> {validation || 'Not validated'}
+                      </button>
                       <div><strong>State:</strong> {state}</div>
                     </div>
                     <div className="text-gray-700 mt-2">Status: {episode.status}</div>
@@ -1431,6 +1655,112 @@ export default function StoryProductionV2Page() {
               )}
             </div>
           </>
+        ) : null}
+
+        {episodeDetailModal ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="max-h-[85vh] w-full max-w-3xl overflow-auto rounded-lg bg-white p-5 text-black shadow-xl">
+              <div className="mb-4 flex items-start justify-between gap-4">
+                <div>
+                  <div className="text-lg font-bold">
+                    {episodeDetailModal.kind === 'score' ? 'Score Details' : 'Validation Details'}
+                  </div>
+                  <div className="text-sm text-gray-700">
+                    Episode {episodeDetailModal.episode.episode_number || episodeDetailModal.episode.series_episode_number}: {episodeDetailModal.episode.title}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEpisodeDetailModal(null)}
+                  className="rounded bg-gray-200 px-3 py-2 text-sm font-medium text-black hover:bg-gray-300"
+                >
+                  Close
+                </button>
+              </div>
+
+              {episodeDetailModal.kind === 'score' ? (
+                <div className="space-y-3 text-sm">
+                  {(() => {
+                    const topFixes = parseTopFixDetails(episodeDetailModal.episode.script_json?.pre_audio_review?.review_text || '')
+                    return topFixes.length > 0 ? (
+                      <div>
+                        <div className="mb-2 font-semibold">Top Fixes</div>
+                        <div className="space-y-2">
+                          {topFixes.map((fix, index) => {
+                            const applyKey = `${episodeDetailModal.episode.id}:${index}`
+                            const isApplying = applyingTopFixKey === applyKey
+                            return (
+                              <div key={`${fix.area}-${index}`} className="rounded border border-orange-200 bg-orange-50 p-3">
+                                <div className="mb-2 flex items-start justify-between gap-3">
+                                  <div className="font-semibold text-orange-900">
+                                    {index + 1}. {fix.area}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    disabled={!!applyingTopFixKey || !episodeDetailModal.episode.script}
+                                    onClick={() => applyEpisodeTopFix(episodeDetailModal.episode, fix, index)}
+                                    className="rounded bg-orange-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                                  >
+                                    {isApplying ? 'Applying...' : 'Apply This Fix with Claude'}
+                                  </button>
+                                </div>
+                                <div className="whitespace-pre-wrap text-gray-900">{fix.text}</div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ) : null
+                  })()}
+                  <div className="grid gap-2 rounded border border-green-200 bg-green-50 p-3 sm:grid-cols-2">
+                    <div>
+                      <strong>Total:</strong>{' '}
+                      {typeof episodeDetailModal.episode.script_json?.pre_audio_review?.total === 'number'
+                        ? `${episodeDetailModal.episode.script_json.pre_audio_review.total}/25`
+                        : typeof episodeDetailModal.episode.script_json?.series_score_validate?.score_total === 'number'
+                          ? `${episodeDetailModal.episode.script_json.series_score_validate.score_total}/25`
+                          : 'Not scored'}
+                    </div>
+                    <div>
+                      <strong>Scored:</strong>{' '}
+                      {episodeDetailModal.episode.script_json?.pre_audio_review?.reviewed_at
+                        || episodeDetailModal.episode.script_json?.series_score_validate?.scored_at
+                        || 'Not available'}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="mb-1 font-semibold">Review Text</div>
+                    <pre className="whitespace-pre-wrap rounded border bg-gray-50 p-3">
+                      {formatDetailValue(episodeDetailModal.episode.script_json?.pre_audio_review?.review_text)}
+                    </pre>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3 text-sm">
+                  <div className="grid gap-2 rounded border border-green-200 bg-green-50 p-3 sm:grid-cols-2">
+                    <div>
+                      <strong>Result:</strong>{' '}
+                      {episodeDetailModal.episode.validator_result
+                        || episodeDetailModal.episode.script_json?.series_score_validate?.validator_result
+                        || 'Not validated'}
+                    </div>
+                    <div>
+                      <strong>Validated:</strong>{' '}
+                      {episodeDetailModal.episode.validator_passed_at
+                        || episodeDetailModal.episode.script_json?.series_score_validate?.validated_at
+                        || 'Not available'}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="mb-1 font-semibold">Validator Report</div>
+                    <pre className="whitespace-pre-wrap rounded border bg-gray-50 p-3">
+                      {formatDetailValue(episodeDetailModal.episode.validator_report)}
+                    </pre>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         ) : null}
       </div>
     </div>

@@ -64,6 +64,11 @@ type ProductionJob = {
 
 const STORAGE_KEY = 'et_asc_handoff_v1'
 const PACKAGE_STORAGE_KEY = 'et_asc_package_handoff_v1'
+const V2_RESTORE_KEYS = [
+  'et_last_series_id_v2',
+  'et_last_story_id_v2',
+  'et_last_queue_id_v2',
+]
 
 function classifyFailure(job: ProductionJob) {
   const phase = (job.phase || '').toLowerCase()
@@ -187,14 +192,27 @@ export default function AscAdminPage() {
 
   function clearHandoff() {
     try {
-      localStorage.removeItem(STORAGE_KEY)
-      localStorage.removeItem(PACKAGE_STORAGE_KEY)
-      setHandoff(null)
-      setPackageJobs([])
+      clearProductionWorkspace()
       setMessage('ASC handoff cleared.')
     } catch {
       setMessage('Could not clear ASC handoff.')
     }
+  }
+
+  function clearProductionWorkspace() {
+    localStorage.removeItem(STORAGE_KEY)
+    localStorage.removeItem(PACKAGE_STORAGE_KEY)
+    V2_RESTORE_KEYS.forEach((key) => localStorage.removeItem(key))
+    setHandoff(null)
+    setPackageJobs([])
+    setJob(null)
+    setForm({
+      audio_url: '',
+      cover_url: '',
+      description: '',
+      duration_mins: '15',
+      is_free: false,
+    })
   }
 
   async function runAscProduction() {
@@ -417,9 +435,8 @@ export default function AscAdminPage() {
           updatedAt: new Date().toISOString(),
         }
         localStorage.setItem(PACKAGE_STORAGE_KEY, JSON.stringify(updated))
-        setHandoff(updated)
-        setPackageJobs(importedJobs)
-        setMessage(`Imported ${importedJobs.length} package episode outputs.`)
+        clearProductionWorkspace()
+        setMessage(`Imported ${importedJobs.length} package episode outputs. Production workspace cleared for the next story.`)
       } catch (err: any) {
         setMessage(err?.message || 'Package import failed')
       } finally {
@@ -522,8 +539,8 @@ export default function AscAdminPage() {
         updatedAt: new Date().toISOString(),
       }
       localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
-      setHandoff(updated)
-      setMessage(`Published: ${data.story?.title || handoff.title || 'Story'}`)
+      clearProductionWorkspace()
+      setMessage(`Published: ${data.story?.title || handoff.title || 'Story'}. Production workspace cleared for the next story.`)
     } catch (err: any) {
       setMessage(err?.message || 'Publish failed')
     } finally {

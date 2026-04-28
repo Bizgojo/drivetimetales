@@ -38,6 +38,9 @@ function PlayerContent() {
   const switchingRef = useRef(false) // true while swapping music src
   const analyticsTrackedRef = useRef(false) // true after first play tracked
   const scrubbingRef = useRef(false)
+  const finalMixRetryCountRef = useRef(0)
+  const finalMixRetryResumeRef = useRef<number | null>(null)
+  const finalMixRetryAutoplayRef = useRef(false)
 
   const [story, setStory]       = useState<any | null>(null)
   const [loading, setLoading]   = useState(true)
@@ -109,6 +112,11 @@ function PlayerContent() {
     const a = audioRef.current; if (!a?.duration || isNaN(a.duration) || a.paused) return
     const delay = Math.max(0, (a.duration - a.currentTime - leadSec) * 1000)
     schedTimer.current = setTimeout(() => swapMusic(newSrc, targetVol, leadSec * 1000), delay)
+  }
+
+  const bustAudioUrl = (url: string) => {
+    const sep = url.includes('?') ? '&' : '?'
+    return `${url}${sep}et_retry=${Date.now()}`
   }
 
 
@@ -216,6 +224,7 @@ function PlayerContent() {
             const pl = await res.json()
             if (pl.useFinalMix && pl.finalMixUrl) {
               // Plain single-file audio — store URL in ref for init useEffect
+              finalMixRetryCountRef.current = 0
               setAudioSrc(pl.finalMixUrl)
               noMusicRef.current = true
               introMusicRef.current = ''
@@ -669,8 +678,49 @@ function PlayerContent() {
             setTimeout(() => advanceQueue(), 3000)
           } else advanceQueue()
         }}
-        onCanPlay={() => { if (!isASC3 && resumeRef.current > 0 && audioRef.current) audioRef.current.currentTime = resumeRef.current }}
+        onCanPlay={() => {
+          if (!isASC3 && audioRef.current) {
+            if (finalMixRetryResumeRef.current !== null) {
+              audioRef.current.currentTime = finalMixRetryResumeRef.current
+              finalMixRetryResumeRef.current = null
+              if (finalMixRetryAutoplayRef.current) {
+                finalMixRetryAutoplayRef.current = false
+                audioRef.current.play().catch((err) => console.error('[player] final mix retry play failed:', err))
+              }
+              return
+            }
+            if (resumeRef.current > 0) audioRef.current.currentTime = resumeRef.current
+          }
+        }}
         onError={(e) => {
+          if (!isASC3 && audioSrc && audioRef.current) {
+            const audio = audioRef.current
+            const retryAt = Math.max(0, Number.isFinite(audio.currentTime) ? audio.currentTime : currentTime)
+            const shouldAutoplay = isPlaying || !audio.paused
+            if (finalMixRetryCountRef.current < 2) {
+              finalMixRetryCountRef.current += 1
+              finalMixRetryResumeRef.current = retryAt
+              finalMixRetryAutoplayRef.current = shouldAutoplay
+              console.warn('[player] Final mix playback error; retrying source', {
+                storyId,
+                retry: finalMixRetryCountRef.current,
+                retryAt,
+                code: audio.error?.code,
+                message: audio.error?.message,
+              })
+              audio.src = bustAudioUrl(audioSrc)
+              audio.load()
+            } else {
+              console.error('[player] Final mix playback failed after retries:', {
+                storyId,
+                audioSrc,
+                code: audio.error?.code,
+                message: audio.error?.message,
+              })
+              setIsPlaying(false)
+            }
+            return
+          }
           // If a segment fails to load, skip to next segment instead of dying
           if (isASC3 && queue.length > 0) {
             const failedUrl = queue[queueIndex]?.url || ''

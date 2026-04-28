@@ -34,6 +34,41 @@ const EL_API_KEY = process.env.ELEVENLABS_API_KEY!
 const BELLE_B_VOICE_ID = 'wewocdDkjSLm9ZwjO7TD'
 const BASE_STORAGE = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio`
 const EL_SETTINGS = { stability: 0.5, similarity_boost: 0.75, style: 0.0, use_speaker_boost: true }
+const SPOKEN_REFERENCE_LUFS = -16
+const SPOKEN_TRUE_PEAK = -1.5
+const SPOKEN_LRA = 11
+
+function getSceneLoudnessOffset(text: string, prefix: string): number {
+  if (prefix === 'intro' || prefix === 'intro_before' || prefix === 'intro_after' || prefix === 'outro') return 0
+  const t = text.toLowerCase()
+  if (/\b(whisper|whispers|whispered|murmur|murmurs|murmured|under his breath|under her breath|hushed)\b/.test(t)) return -5
+  if (/\b(distant|far away|from outside|over the radio|through the radio|radio crackle|phone line|intercom)\b/.test(t)) return -3
+  if (/\b(shout|shouts|shouted|yell|yells|yelled|scream|screams|screamed)\b/.test(t)) return 2
+  return 0
+}
+
+async function normalizeSpokenBuffer(input: Buffer, rawText: string, prefix: string): Promise<Buffer> {
+  const tmpBase = path.join(os.tmpdir(), `et_voice_norm_${Date.now()}_${Math.random().toString(16).slice(2)}`)
+  const inputPath = `${tmpBase}_in.mp3`
+  const outputPath = `${tmpBase}_out.mp3`
+  const target = SPOKEN_REFERENCE_LUFS + getSceneLoudnessOffset(rawText, prefix)
+  try {
+    await fs.writeFile(inputPath, input)
+    await _execFileAsync(FFMPEG_PATH, [
+      '-i', inputPath,
+      '-af', `loudnorm=I=${target}:TP=${SPOKEN_TRUE_PEAK}:LRA=${SPOKEN_LRA}`,
+      '-ar', '44100', '-ac', '2', '-b:a', '192k',
+      '-y', outputPath
+    ])
+    return await fs.readFile(outputPath)
+  } catch (e) {
+    console.warn(`Spoken loudness normalization failed for ${prefix}; using raw ElevenLabs audio:`, e)
+    return input
+  } finally {
+    await fs.unlink(inputPath).catch(() => {})
+    await fs.unlink(outputPath).catch(() => {})
+  }
+}
 
 // Permanent narrator voices — excluded from character pool
 const NARRATOR_VOICE_NAMES = ['Cole Hargrove','Elliott Crane','Finn Calloway','James Alcott','Marcus Hale','Ray Dolan','Iris Calloway','June Harlow','Morgan Veil','Nora Ashby','Quinn Merritt','Sage Wilder']
@@ -212,6 +247,29 @@ function parseCharacterGuide(script: string): CharacterInfo[] {
   return chars
 }
 
+function characterVoiceKeys(name: string): string[] {
+  const cleaned = name
+    .replace(/\b(Dr|Mr|Mrs|Ms|Miss|Director|Deputy|Officer|Agent|Colonel|Captain|Lieutenant|Sergeant)\.?\b/gi, '')
+    .replace(/[()]/g, ' ')
+    .trim()
+  const parts = cleaned
+    .split(/\s+/)
+    .map(part => part.replace(/[^A-Za-zÀ-ÖØ-öø-ÿ'.-]/g, '').trim())
+    .filter(part => part.length > 1)
+
+  const keys = new Set<string>()
+  if (cleaned) keys.add(cleaned.toUpperCase())
+  parts.forEach(part => keys.add(part.toUpperCase()))
+  if (parts.length >= 2) keys.add(parts.slice(-2).join(' ').toUpperCase())
+  return Array.from(keys)
+}
+
+function assignCharacterVoice(voiceMap: Record<string, string>, characterName: string, voiceId: string) {
+  characterVoiceKeys(characterName).forEach(key => {
+    if (!voiceMap[key]) voiceMap[key] = voiceId
+  })
+}
+
 function parseScript(script: string): ScriptLine[] {
   const lines: ScriptLine[] = []
   const rawLines = script.split('\n')
@@ -298,7 +356,8 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
     body: JSON.stringify({ text, model_id: 'eleven_multilingual_v2', voice_settings: EL_SETTINGS })
   })
   if (!res.ok) throw new Error(`ElevenLabs error ${res.status}: ${(await res.text()).slice(0, 200)}`)
-  const buf = Buffer.from(await res.arrayBuffer())
+  const rawBuf = Buffer.from(await res.arrayBuffer())
+  const buf = await normalizeSpokenBuffer(rawBuf, rawText, prefix)
   const { error: ue } = await supabase.storage.from('audio').upload(cachePath, buf, { contentType: 'audio/mpeg', upsert: true })
   if (ue) throw new Error(`Upload error: ${ue.message}`)
   return cacheUrl
@@ -362,6 +421,7 @@ export async function POST(req: NextRequest) {
       // Check if manually overridden
       if (characterVoices?.[char.name] || characterVoices?.[key]) {
         voiceMap[key] = (characterVoices[char.name] || characterVoices[key]) as string
+        assignCharacterVoice(voiceMap, char.name, voiceMap[key])
         usedVoiceIds.add(voiceMap[key])
         continue
       }
@@ -376,9 +436,11 @@ export async function POST(req: NextRequest) {
       if (isProtagonist) {
         console.log(`  ${char.name}: protagonist = narrator voice (first person)`)
         voiceMap[key] = resolvedNarratorVoiceId
+        assignCharacterVoice(voiceMap, char.name, voiceMap[key])
       } else {
         // Find best matching voice from pool
         voiceMap[key] = findVoiceForCharacter(char.name, meta, myVoices, usedVoiceIds, resolvedNarratorVoiceId)
+        assignCharacterVoice(voiceMap, char.name, voiceMap[key])
         usedVoiceIds.add(voiceMap[key])
       }
     }

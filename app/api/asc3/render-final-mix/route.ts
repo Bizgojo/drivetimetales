@@ -50,7 +50,7 @@ async function getAudioDuration(filePath: string): Promise<number> {
 async function normalizeAudio(inputPath: string, outputPath: string, targetLufs: number = -16): Promise<void> {
   await execFileAsync(FFMPEG_PATH, [
     '-i', inputPath,
-    '-af', `volume=${targetLufs === -14 ? '1.5' : targetLufs === -18 ? '0.7' : '1.0'}`,
+    '-af', `loudnorm=I=${targetLufs}:TP=-1.5:LRA=11`,
     '-ar', '44100', '-ac', '2', '-b:a', '192k',
     '-y', outputPath
   ])
@@ -143,13 +143,14 @@ export async function POST(req: NextRequest) {
     }
     console.log(`  Total segment data: ${(totalSize/1024/1024).toFixed(2)} MB`)
 
-    // Normalize all voice segments to consistent volume
+    // Normalize all spoken sections to the Belle B reference loudness.
+    // Individual generated clips are normalized upstream; this pass keeps
+    // cached/older clips and the final story body aligned without changing SFX.
     console.log('  Normalizing voice levels...')
     const normalizedIntroPath = path.join(tmpDir, 'norm_intro.mp3')
     const normalizedOutroPath = path.join(tmpDir, 'norm_outro.mp3')
-    // Belle B at 1.5x volume, normalize to consistent level
-    await execFileAsync(FFMPEG_PATH, ['-i', introPath, '-af', 'volume=1.5', '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', normalizedIntroPath])
-    await execFileAsync(FFMPEG_PATH, ['-i', outroPath, '-af', 'volume=1.5', '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', normalizedOutroPath])
+    await normalizeAudio(introPath, normalizedIntroPath, -16)
+    await normalizeAudio(outroPath, normalizedOutroPath, -16)
     
     // Concatenate and normalize all story segments in one pass
     const rawConcatFile = path.join(tmpDir, 'raw_concat.txt')
@@ -157,7 +158,7 @@ export async function POST(req: NextRequest) {
     const normalizedConcatPath = path.join(tmpDir, 'norm_segments.mp3')
     await execFileAsync(FFMPEG_PATH, [
       '-f', 'concat', '-safe', '0', '-i', rawConcatFile,
-      '-af', 'dynaudnorm=p=0.9:s=5',
+      '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11',
       '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', normalizedConcatPath
     ])
     const normalizedSegPaths = [normalizedConcatPath]
