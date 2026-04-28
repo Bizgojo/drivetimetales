@@ -12,6 +12,56 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY!
 
 // Belle B is RESERVED for intro/outro ONLY — never used for characters
 const BELLE_B_VOICE_ID = 'wewocdDkjSLm9ZwjO7TD'
+
+function stripAscMetadataAndExtractSections(raw: string) {
+  const text = raw.replace(/\r\n/g, '\n').trim()
+
+  const introMatch =
+    text.match(/BELLE B INTRO\s*:?\s*\n(?:---\s*\n)?([\s\S]*?)\n(?:---\s*\n)?BEGIN STORY/i)
+
+  const outroMatch =
+    text.match(/BELLE B OUTRO\s*:?\s*\n(?:---\s*\n)?([\s\S]*?)$/i)
+
+  const bodyMatch =
+    text.match(/BEGIN STORY\s*\n([\s\S]*?)\nEND STORY/i)
+
+  const belleBIntro = introMatch ? introMatch[1].trim() : ''
+  const belleBOutro = outroMatch ? outroMatch[1].trim() : ''
+  let storyBody = bodyMatch ? bodyMatch[1].trim() : text
+
+  storyBody = storyBody
+    .split(/\r?\n/)
+    .filter((line) => {
+      const t = line.trim()
+      if (!t) return true
+      return ![
+        'TITLE:',
+        'SERIES:',
+        'EPISODE:',
+        'EPISODE_TITLE:',
+        'SERIES_TOTAL_EPISODES:',
+        'SERIES_IS_FINALE:',
+        'AUTHOR:',
+        'GENRE:',
+        'DESCRIPTION:',
+        'NARRATOR:',
+        'ANNOUNCER:',
+        'NARRATIVE_VOICE:',
+        'NARRATOR_IS_CHARACTER:',
+        'SUNO PROMPT:',
+        'CHARACTER GUIDE',
+        'BELLE B INTRO',
+        'BELLE B OUTRO',
+        'BEGIN STORY',
+        'END STORY',
+      ].some((prefix) => t === prefix || t.startsWith(prefix))
+    })
+    .join('\n')
+    .trim()
+
+  return { belleBIntro, belleBOutro, storyBody }
+}
+
 const ELEVENLABS_CHUNK_SIZE = 4500
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
@@ -207,7 +257,7 @@ function matchVoices(
     const candidates = availableVoices.filter(v => !usedVoiceIds.has(v.voice_id))
 
     if (candidates.length === 0) {
-      // Fallback: allow reuse (but never Belle B)
+      // No fallback to Belle B or single-voice collapse. Invalid assignments must fail.
       const fallback = availableVoices.find(v => v.voice_id !== BELLE_B_VOICE_ID)
       if (fallback) {
         result.set(char.name, { voice_id: fallback.voice_id, voice_name: fallback.name })
@@ -770,7 +820,23 @@ Now write the complete audio drama:`
 
     const parsedTitle = titleMatch[1].trim()
     const title = (body.title || parsedTitle).trim()
-    const storyScript = storyMatch[1].trim()
+    const rawMatchedScript = storyMatch[1].trim()
+    const extracted = stripAscMetadataAndExtractSections(rawMatchedScript)
+    const belleBIntroText = extracted.belleBIntro
+    const belleBOutroText = extracted.belleBOutro
+    const storyScript = extracted.storyBody
+
+    if (!storyScript) {
+      throw new Error('ASC parsing failed: no story body found after stripping metadata.')
+    }
+
+    if (/^(TITLE:|SERIES:|EPISODE:|AUTHOR:|GENRE:|DESCRIPTION:|NARRATOR:|ANNOUNCER:|NARRATIVE_VOICE:|SUNO PROMPT:)/mi.test(storyScript)) {
+      throw new Error('ASC parsing failed: metadata leaked into story body.')
+    }
+
+    if (/^BELLE B\s*:/mi.test(storyScript)) {
+      throw new Error('ASC parsing failed: Belle B leaked into story body.')
+    }
     const characterGuideRaw = characterGuideMatch ? characterGuideMatch[1].trim() : ''
     const actualWordCount = storyScript.split(/\s+/).length
 
@@ -894,7 +960,7 @@ Now write the complete audio drama:`
 
     try {
       console.log('🎙️ Generating intro audio (Belle B)...')
-      const introBuffer = await generateElevenLabsAudio(introText, BELLE_B_VOICE_ID, 'Belle B', null)
+      const introBuffer = await generateElevenLabsAudio(belleBIntroText || introText, BELLE_B_VOICE_ID, 'Belle B', null)
       introAudioUrl = await uploadAudioToStorage(introBuffer, `asc3/${storyId}/intro.mp3`)
       console.log(`✅ Intro audio: ${introAudioUrl}`)
 
@@ -919,7 +985,7 @@ Now write the complete audio drama:`
       console.log(`✅ All ${storySegmentResults.length} segments generated`)
 
       console.log('🎙️ Generating outro audio (Belle B)...')
-      const outroBuffer = await generateElevenLabsAudio(outroText, BELLE_B_VOICE_ID, 'Belle B', null)
+      const outroBuffer = await generateElevenLabsAudio(belleBOutroText || outroText, BELLE_B_VOICE_ID, 'Belle B', null)
       outroAudioUrl = await uploadAudioToStorage(outroBuffer, `asc3/${storyId}/outro.mp3`)
       console.log(`✅ Outro audio: ${outroAudioUrl}`)
 
@@ -927,10 +993,10 @@ Now write the complete audio drama:`
       audioError = err instanceof Error ? err.message : String(err)
       console.error('⚠️ Audio generation failed:', audioError)
 
-      // Fallback: generate single-voice with Belle B
+      // Forbidden: do not generate single-voice Belle B fallback
       if (storySegmentResults.length === 0) {
         fallbackUsed = true
-        console.log('🔄 Falling back to single-voice Belle B...')
+        throw new Error('Voice assignment failed: ASC may not fall back to single Belle B voice.')
         try {
           const chunks = splitTextIntoChunks(storyScript, ELEVENLABS_CHUNK_SIZE)
           for (let i = 0; i < chunks.length; i++) {
@@ -946,7 +1012,7 @@ Now write the complete audio drama:`
               index: i,
             })
           }
-          audioError = `Multi-voice failed (${audioError}) — fell back to single Belle B voice`
+          audioError = `Multi-voice failed (${audioError}) — production halted because Belle B fallback is forbidden`
         } catch (fallbackErr) {
           audioError = `Both multi-voice and fallback failed: ${fallbackErr}`
         }
@@ -1145,7 +1211,7 @@ Now write the complete audio drama:`
     // STEP 6 — Return response
     // ═══════════════════════════════════════════════════════════════
 
-    const warnings = [audioError, coverError, dbError, parseWarning, fallbackUsed ? '⚠️ Fell back to single Belle B voice — check story format' : null, sunoWarning].filter(Boolean)
+    const warnings = [audioError, coverError, dbError, parseWarning, fallbackUsed ? '❌ Voice assignment invalid — Belle B fallback forbidden' : null, sunoWarning].filter(Boolean)
 
     console.log('🏁 Multi-voice generation complete:', {
       storyId,

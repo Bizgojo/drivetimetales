@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import StickyHeaderFull from '@/components/StickyHeaderFull'
+import ReviewModal from '@/components/ReviewModal'
+import { buildSeriesPlaybackTarget, storeSeriesPlayback } from '@/lib/seriesPlayback'
 
 const PLAYLIST_KEY = 'et_current_playlist'
 const SAVED_PLAYLIST_KEY = 'et_saved_playlist'
@@ -52,8 +54,20 @@ type CardItem = {
   flag?: string | null
   avgRating?: number | null
   firstEpisodeId?: string
+  playEpisodeId?: string
+  resumeSeconds?: number
+  seriesInProgress?: boolean
+  episodePlaylist?: Array<{ id: string; episode_number: number }>
   durationForSort: number
   notForMe: boolean
+}
+
+type ReviewTarget = {
+  id: string
+  title: string
+  genre: string
+  duration_mins: number
+  cover_url: string | null
 }
 
 const GENRES = ['All', 'Mystery', 'Thriller', 'Drama', 'Horror']
@@ -80,6 +94,7 @@ export default function LibraryPage() {
   const [activeGenre, setActiveGenre] = useState('All')
   const [showMoreGenres, setShowMoreGenres] = useState(false)
   const [playlist, setPlaylist] = useState<string[]>([])
+  const [reviewTarget, setReviewTarget] = useState<ReviewTarget | null>(null)
 
   // Hydrate playlist from localStorage
   useEffect(() => {
@@ -130,7 +145,30 @@ export default function LibraryPage() {
 
         if (storiesError) throw new Error(`story_analytics failed: ${storiesError.message}`)
         if (cancelled) return
-        if (storiesData) setStories(storiesData as Story[])
+        if (storiesData) {
+          const storyRows = storiesData as Story[]
+          const seriesIds = Array.from(new Set(storyRows.map((story) => story.series_id).filter(Boolean))) as string[]
+
+          if (seriesIds.length > 0) {
+            const { data: episodeRows, error: episodeError } = await supabase
+              .from('stories')
+              .select('id,episode_number')
+              .in('series_id', seriesIds)
+
+            if (episodeError) {
+              console.warn('[Library] series episode_number lookup failed:', episodeError.message)
+            } else {
+              const episodeNumberById = new Map((episodeRows || []).map((row: any) => [row.id, row.episode_number || null]))
+              storyRows.forEach((story) => {
+                if (!story.series_number && episodeNumberById.get(story.id)) {
+                  story.series_number = episodeNumberById.get(story.id)
+                }
+              })
+            }
+          }
+
+          setStories(storyRows)
+        }
 
         if (!authWaitExpired && user?.id) {
           const { data: libraryData, error: libraryError } = await supabase
@@ -204,6 +242,12 @@ export default function LibraryPage() {
       const totalDuration = sorted.reduce((sum, e) => sum + (e.duration_mins || 0), 0)
       const avgDuration = sorted.length > 0 ? Math.round(totalDuration / sorted.length) : 0
       const anyEpisodeNotForMe = sorted.some((e) => !!libraryLookup.get(e.id)?.not_for_me)
+      const playbackTarget = buildSeriesPlaybackTarget(
+        sorted.map((episode) => ({ id: episode.id, episode_number: episode.series_number || 0 })),
+        sorted
+          .map((episode) => libraryLookup.get(episode.id))
+          .filter(Boolean) as LibraryRow[]
+      )
       items.push({
         key: `series-${seriesId}`,
         type: 'series',
@@ -218,6 +262,10 @@ export default function LibraryPage() {
         flag: first.flag,
         avgRating: first.avg_rating,
         firstEpisodeId: first.id,
+        playEpisodeId: playbackTarget.episodeId || first.id,
+        resumeSeconds: playbackTarget.resumeSeconds,
+        seriesInProgress: playbackTarget.isInProgress,
+        episodePlaylist: playbackTarget.playlist,
         durationForSort: avgDuration,
         notForMe: anyEpisodeNotForMe,
       })
@@ -269,8 +317,21 @@ export default function LibraryPage() {
     router.push(`/player/${storyId}`)
   }
 
-  function playSeriesFirst(firstEpisodeId: string) {
-    router.push(`/player/${firstEpisodeId}`)
+  function playSeries(item: CardItem) {
+    if (!item.playEpisodeId) return
+    try {
+      storeSeriesPlayback({
+        episodeId: item.playEpisodeId,
+        resumeSeconds: item.resumeSeconds || 0,
+        isInProgress: !!item.seriesInProgress,
+        playlist: item.episodePlaylist || [],
+      })
+    } catch {}
+    router.push(`/player/${item.playEpisodeId}${item.resumeSeconds && item.resumeSeconds > 0 ? `?resume=${item.resumeSeconds}` : ''}`)
+  }
+
+  function openSeries(seriesId: string) {
+    router.push(`/series/${seriesId}`)
   }
 
   function playPlaylistFromBar() {
@@ -479,13 +540,23 @@ export default function LibraryPage() {
               state={state}
               onPlay={() => {
                 if (item.type === 'single' && item.story) playSingle(item.story.id)
-                else if (item.type === 'series' && item.firstEpisodeId)
-                  playSeriesFirst(item.firstEpisodeId)
+                else if (item.type === 'series') playSeries(item)
+              }}
+              onCoverClick={() => {
+                if (item.type === 'series' && item.seriesId) openSeries(item.seriesId)
+                else if (item.type === 'single' && item.story) playSingle(item.story.id)
               }}
               onTogglePlaylist={() => togglePlaylist(item.key)}
               onRate={() => {
-                if (item.type === 'single' && item.story)
-                  router.push(`/player/${item.story.id}?rate=1`)
+                if (item.type === 'single' && item.story) {
+                  setReviewTarget({
+                    id: item.story.id,
+                    title: item.story.title,
+                    genre: item.story.genre || 'Story',
+                    duration_mins: item.story.duration_mins || 0,
+                    cover_url: item.story.cover_url,
+                  })
+                }
               }}
             />
           )
@@ -550,6 +621,25 @@ export default function LibraryPage() {
           </button>
         </div>
       )}
+
+      {reviewTarget && user?.id && (
+        <ReviewModal
+          storyId={reviewTarget.id}
+          storyTitle={reviewTarget.title}
+          userId={user.id}
+          genre={reviewTarget.genre}
+          duration_mins={reviewTarget.duration_mins}
+          coverUrl={reviewTarget.cover_url}
+          onClose={() => setReviewTarget(null)}
+          onSubmitted={() => {
+            setUserReviewedIds((prev) => {
+              const next = new Set(prev)
+              next.add(reviewTarget.id)
+              return next
+            })
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -565,6 +655,7 @@ function StoryCard({
   item,
   state,
   onPlay,
+  onCoverClick,
   onTogglePlaylist,
   onRate,
 }: {
@@ -577,6 +668,7 @@ function StoryCard({
     reviewed: boolean
   }
   onPlay: () => void
+  onCoverClick: () => void
   onTogglePlaylist: () => void
   onRate: () => void
 }) {
@@ -590,8 +682,9 @@ function StoryCard({
   const truncatedDescription =
     description.length > 70 ? description.slice(0, 67) + '…' : description
   const showProgress = !isSeries && state.progress > 0 && !state.completed
-  const inProgress = showProgress
+  const inProgress = isSeries ? !!item.seriesInProgress : showProgress
   const showRate = state.completed && !state.reviewed
+  const showPlayAgain = !isSeries && state.completed && state.reviewed
   const cardOpacity = state.isNotForMe ? 0.65 : 1
 
   return (
@@ -606,13 +699,13 @@ function StoryCard({
         boxShadow: '0 6px 18px rgba(0,0,0,0.24)',
       }}
     >
-      <div style={{ display: 'flex', gap: '10px' }}>
+      <div style={{ display: 'flex', alignItems: 'stretch', gap: '10px' }}>
         {/* Cover */}
         <div
-          onClick={onPlay}
+          onClick={onCoverClick}
           style={{
             width: '108px',
-            height: '108px',
+            minHeight: '126px',
             borderRadius: '8px',
             backgroundColor: '#1e1b4b',
             backgroundImage: item.cover ? `url(${item.cover})` : undefined,
@@ -620,7 +713,7 @@ function StoryCard({
             backgroundPosition: 'center',
             flexShrink: 0,
             boxShadow: '0 0 0 1px rgba(255,255,255,0.4), 0 0 12px rgba(255,255,255,0.2)',
-            alignSelf: 'flex-start',
+            alignSelf: 'stretch',
             cursor: 'pointer',
           }}
         />
@@ -740,7 +833,7 @@ function StoryCard({
                   onClick={onPlay}
                   style={{
                     flex: 1,
-                    background: inProgress ? '#16a34a' : '#f97316',
+                    background: showPlayAgain ? '#fb923c' : inProgress ? '#16a34a' : '#f97316',
                     color: 'white',
                     border: 'none',
                     padding: '2px 6px',
@@ -752,7 +845,7 @@ function StoryCard({
                     cursor: 'pointer',
                   }}
                 >
-                  {inProgress ? '▶ Continue' : '▶ Play now'}
+                  {showPlayAgain ? '▶ Play Again' : inProgress ? '▶ Continue' : '▶ Play now'}
                 </button>
                 <button
                   onClick={onTogglePlaylist}

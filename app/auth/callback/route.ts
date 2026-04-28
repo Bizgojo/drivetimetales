@@ -1,11 +1,9 @@
 /**
  * /auth/callback — Server-side OAuth + Magic Link callback
  *
- * ⚠️  DO NOT CHANGE sameSite TO 'lax' ON ANY COOKIE HERE — THIS WILL BREAK iOS PWA LOGIN ⚠️
- *
  * iOS PWA runs in an isolated cookie container separate from Safari.
- * sameSite:'none' + secure:true on ALL cookies is the ONLY configuration
- * that allows the PWA to maintain a login session. Confirmed April 12 2026.
+ * Production/PWA needs sameSite:'none' + secure:true.
+ * Localhost needs sameSite:'lax' + secure:false so PKCE/session cookies persist.
  *
  * Handles two flows:
  * 1. PKCE (Google OAuth): ?code=xxx
@@ -18,6 +16,11 @@ import { NextResponse } from 'next/server'
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const origin = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin
+  const isLocalhost = origin.includes('localhost')
+  const cookieOptions = {
+    sameSite: isLocalhost ? 'lax' : 'none',
+    secure: !isLocalhost,
+  } as const
   const code       = searchParams.get('code')
   const tokenHash  = searchParams.get('token_hash')
   const type       = searchParams.get('type') as 'magiclink' | 'email' | null
@@ -101,12 +104,11 @@ export async function GET(request: Request) {
   const returnTo = cookieStore.get('auth_return_to')?.value || '/home'
   const response = NextResponse.redirect(`${origin}${returnTo}`)
 
-  // ⚠️  sameSite:'none' + secure:true REQUIRED on ALL cookies for iOS PWA
+  // Production/PWA cookies stay none/secure; localhost uses lax/insecure.
   cookiesToSet.forEach(({ name, value, options }) => {
     response.cookies.set(name, value, {
       ...(options as Parameters<typeof response.cookies.set>[2]),
-      sameSite: 'none',
-      secure: true,
+      ...cookieOptions,
     })
   })
 

@@ -1,7 +1,7 @@
-// Endless Tales Service Worker v3
+// Endless Tales Service Worker v4
 // Full offline support: app shell + audio caching
 
-const SHELL_CACHE  = 'et-shell-v3'
+const SHELL_CACHE  = 'et-shell-v4'
 const AUDIO_CACHE  = 'et-audio-v1'
 
 // App shell pages to cache on install
@@ -34,6 +34,16 @@ function isAudioDomain(url) {
 function isAppShell(url) {
   const u = new URL(url)
   return SHELL_URLS.some(p => u.pathname === p || u.pathname.startsWith(p))
+}
+
+function isAdminRoute(url) {
+  const u = new URL(url)
+  return u.pathname === '/admin' || u.pathname.startsWith('/admin/')
+}
+
+function isAdminChunk(url) {
+  const u = new URL(url)
+  return u.pathname.startsWith('/_next/static/chunks/app/admin/')
 }
 
 // ── Install: cache app shell pages ───────────────────────────────────────────
@@ -72,6 +82,10 @@ self.addEventListener('fetch', e => {
   // Skip non-GET requests
   if (e.request.method !== 'GET') return
 
+  // Admin routes must always use the live network shell.
+  // Never cache, serve cached, or fallback admin navigations to app-shell pages.
+  if (e.request.mode === 'navigate' && isAdminRoute(url)) return
+
   // Skip Supabase API calls and Next.js internals — always network
   if (
     url.includes('/rest/v1/') ||
@@ -98,6 +112,9 @@ self.addEventListener('fetch', e => {
     )
     return
   }
+
+  // Admin chunks must also stay live so admin shells cannot hydrate from stale code.
+  if (isAdminChunk(url)) return
 
   // Next.js static assets (_next/static): cache-first
   if (url.includes('/_next/static/')) {
@@ -170,7 +187,7 @@ self.addEventListener('message', e => {
 
   // Cache specific shell pages on demand
   if (e.data && e.data.type === 'CACHE_SHELL') {
-    const urls = e.data.urls || []
+    const urls = (e.data.urls || []).filter(url => !isAdminRoute(url))
     caches.open(SHELL_CACHE).then(cache => {
       urls.forEach(url => {
         fetch(url, { cache: 'reload' })

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, Suspense } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { trackPlayStart, trackPlayEnd } from '@/lib/analytics'
 import { useAuth } from '@/contexts/AuthContext'
@@ -20,12 +20,15 @@ const RAISE_MS        = 600    // ms to raise after voice ends
 function PlayerContent() {
   const params  = useParams()
   const router  = useRouter()
+  const searchParams = useSearchParams()
   const { user } = useAuth()
   const storyId = params.id as string
+  const resumeParam = searchParams.get('resume')
 
   const audioRef = useRef<HTMLAudioElement>(null)  // voice
   const musicRef = useRef<HTMLAudioElement>(null)  // single music track
   const nextSegRef = useRef<HTMLAudioElement | null>(null)
+  const progressBarRef = useRef<HTMLDivElement>(null)
 
   const volTimer   = useRef<ReturnType<typeof setInterval> | null>(null)
   const schedTimer = useRef<ReturnType<typeof setTimeout>  | null>(null)
@@ -34,6 +37,7 @@ function PlayerContent() {
   const typeRef    = useRef<'intro' | 'story' | 'outro'>('intro')
   const switchingRef = useRef(false) // true while swapping music src
   const analyticsTrackedRef = useRef(false) // true after first play tracked
+  const scrubbingRef = useRef(false)
 
   const [story, setStory]       = useState<any | null>(null)
   const [loading, setLoading]   = useState(true)
@@ -150,101 +154,164 @@ function PlayerContent() {
   // ── Load story ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
+    let cancelled = false
     async function load() {
-      const { data } = await supabase
-        .from('stories')
-        .select('id,title,author,audio_url,cover_url,duration_mins,intro_audio_url,outro_audio_url,background_music_url,episode_number,series_id,is_free,prose_text,author_id,narrator_voice_id,narrator_voice_name')
-        .eq('id', storyId).single()
-      if (data) setStory(data)
-      // Resolve audio mode from API FIRST — single decision, no races, no overrides
-      let resolvedQueue: QueueItem[] = []
-      let resolvedIsASC3 = false
+      let redirected = false
+      let stage = 'start'
       try {
-        const res = await fetch(`/api/asc3/story-playlist?storyId=${storyId}`)
-        if (res.ok) {
-          const pl = await res.json()
-          if (pl.useFinalMix && pl.finalMixUrl) {
-            // Plain single-file audio — store URL in ref for init useEffect
-            setAudioSrc(pl.finalMixUrl)
-            noMusicRef.current = true
-            introMusicRef.current = ''
-            bgMusicRef.current = null
-          } else if (pl.queue?.length > 0) {
-            // Multi-segment ASC mode
-            introMusicRef.current = pl.introOutroMusicUrl || ''
-            bgMusicRef.current    = pl.backgroundMusicUrl || null
-            noMusicRef.current    = false
-            resolvedQueue  = pl.queue
-            resolvedIsASC3 = true
+        stage = 'story-row'
+        const { data, error } = await supabase
+          .from('stories')
+          .select('id,title,author,audio_url,cover_url,duration_mins,intro_audio_url,outro_audio_url,background_music_url,episode_number,series_id,is_free,prose_text,author_id,narrator_voice_id,narrator_voice_name')
+          .eq('id', storyId).single()
+
+        if (error) {
+          console.error('[player] load story-row failed:', { storyId, error })
+        }
+
+        if (cancelled) return
+
+        if (data) {
+          setStory(data)
+
+          stage = 'resume-query'
+          const resumeFromUrl = Number(resumeParam || 0)
+          if (Number.isFinite(resumeFromUrl) && resumeFromUrl > 0) {
+            resumeRef.current = resumeFromUrl
+            setHasProgress(true)
+          }
+
+          stage = 'series-playlist'
+          const existingSeriesPlaylist = playlistRef.current
+          const hasCurrentInSeriesPlaylist = existingSeriesPlaylist.some(ep => ep.id === storyId)
+          if ((data as any).series_id && (!existingSeriesPlaylist.length || !hasCurrentInSeriesPlaylist)) {
+            const { data: seriesEpisodes } = await supabase
+              .from('stories')
+              .select('id, episode_number')
+              .eq('series_id', (data as any).series_id)
+              .eq('is_hidden', false)
+              .order('episode_number', { ascending: true })
+
+            const playlist = (seriesEpisodes || [])
+              .filter(ep => ep.id && ep.episode_number)
+              .map(ep => ({ id: ep.id, episode_number: ep.episode_number }))
+            const currentIndex = playlist.findIndex(ep => ep.id === storyId)
+
+            if (currentIndex >= 0) {
+              playlistRef.current = playlist
+              playlistIndexRef.current = currentIndex
+              localStorage.setItem('dtt_series_playlist', JSON.stringify(playlist))
+              localStorage.setItem('dtt_series_index', String(currentIndex))
+            }
+          }
+        }
+
+        // Resolve audio mode from API FIRST — single decision, no races, no overrides
+        stage = 'audio-playlist'
+        let resolvedQueue: QueueItem[] = []
+        let resolvedIsASC3 = false
+        try {
+          const res = await fetch(`/api/asc3/story-playlist?storyId=${storyId}`)
+          if (res.ok) {
+            const pl = await res.json()
+            if (pl.useFinalMix && pl.finalMixUrl) {
+              // Plain single-file audio — store URL in ref for init useEffect
+              setAudioSrc(pl.finalMixUrl)
+              noMusicRef.current = true
+              introMusicRef.current = ''
+              bgMusicRef.current = null
+            } else if (pl.queue?.length > 0) {
+              // Multi-segment ASC mode
+              introMusicRef.current = pl.introOutroMusicUrl || ''
+              bgMusicRef.current    = pl.backgroundMusicUrl || null
+              noMusicRef.current    = false
+              resolvedQueue  = pl.queue
+              resolvedIsASC3 = true
+            } else {
+              setAudioSrc(data?.audio_url || '')
+              noMusicRef.current = true
+            }
           } else {
             setAudioSrc(data?.audio_url || '')
             noMusicRef.current = true
           }
-        } else {
+        } catch (error) {
+          console.error('[player] story-playlist failed; falling back to story audio_url:', { storyId, error })
           setAudioSrc(data?.audio_url || '')
           noMusicRef.current = true
         }
-      } catch (_) {
-        setAudioSrc(data?.audio_url || '')
-        noMusicRef.current = true
-      }
-      setQueue(resolvedQueue)
-      setIsASC3(resolvedIsASC3)
-      // ── Paywall check ──────────────────────────────────────────────────────
-      if (data && !data.is_free) {
-        if (!user) {
-          // Not logged in — middleware should have caught this, but belt+suspenders
-          router.replace(`/signin?returnTo=/player/${storyId}`)
-          return
-        }
-        const isMarc = user.email === 'marc@endless-tales.com' || user.email === 'm.postlewaite@gmail.com'
-        if (!isMarc) {
-          const { data: dbUser } = await supabase
-            .from('users')
-            .select('plan, subscription_ends_at')
-            .eq('id', user.id)
-            .single()
-          const hasAccess = (
-            dbUser?.plan && dbUser.plan !== 'free' &&
-            (!dbUser?.subscription_ends_at || new Date(dbUser.subscription_ends_at) > new Date())
-          )
-          if (!hasAccess) {
-            router.replace(`/subscribe?returnTo=/player/${storyId}`)
+        setQueue(resolvedQueue)
+        setIsASC3(resolvedIsASC3)
+
+        // ── Paywall check ──────────────────────────────────────────────────────
+        stage = 'paywall'
+        if (data && !data.is_free) {
+          if (!user) {
+            // Not logged in — middleware should have caught this, but belt+suspenders
+            redirected = true
+            router.replace(`/signin?returnTo=/player/${storyId}`)
             return
           }
-        }
-      }
-
-      if (user?.id) {
-        const { data: lib } = await supabase.from('user_library')
-          .select('progress,completed,not_for_me').eq('user_id', user.id).eq('story_id', storyId).single()
-        if (lib?.progress > 0 && !lib?.not_for_me) { resumeRef.current = lib.completed ? 0 : lib.progress < 120 ? 0 : Math.max(0, lib.progress - 15); setHasProgress(true) }
-
-        // ── Welcome experience — first play only ─────────────────────────────
-        const { data: dbUser } = await supabase.from('users')
-          .select('first_name, welcome_played').eq('id', user.id).single()
-        if (dbUser && !dbUser.welcome_played && !lib?.progress) {
-          try {
-            const firstName = dbUser.first_name || 'friend'
-            const welcomeText = `Hey ${firstName}! I'm Belle. I'll be here before every story. Just a friend who knows what's worth your time. You're going to love this one.`
-            const res = await fetch('/api/admin/generate-belle-intro', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ type: 'welcome', firstName, introText: welcomeText })
-            })
-            const data = res.ok ? await res.json() : null
-            if (data?.url) {
-              welcomeQueueRef.current = [data.url]
-              inWelcomeRef.current = true
-              welcomeIndexRef.current = 0
+          const isMarc = user.email === 'marc@endless-tales.com' || user.email === 'm.postlewaite@gmail.com'
+          if (!isMarc) {
+            const { data: dbUser } = await supabase
+              .from('users')
+              .select('plan, subscription_ends_at')
+              .eq('id', user.id)
+              .single()
+            const hasAccess = (
+              dbUser?.plan && dbUser.plan !== 'free' &&
+              (!dbUser?.subscription_ends_at || new Date(dbUser.subscription_ends_at) > new Date())
+            )
+            if (!hasAccess) {
+              redirected = true
+              router.replace(`/subscribe?returnTo=/player/${storyId}`)
+              return
             }
-          } catch (_) { /* welcome fails silently — story plays normally */ }
+          }
+        }
+
+        if (user?.id) {
+          stage = 'user-progress'
+          const { data: lib } = await supabase.from('user_library')
+            .select('progress,completed,not_for_me').eq('user_id', user.id).eq('story_id', storyId).single()
+          if (lib?.progress > 0 && !lib?.not_for_me) { resumeRef.current = lib.completed ? 0 : lib.progress < 120 ? 0 : Math.max(0, lib.progress - 15); setHasProgress(true) }
+
+          // ── Welcome experience — first play only ─────────────────────────────
+          stage = 'welcome-check'
+          const { data: dbUser } = await supabase.from('users')
+            .select('first_name, welcome_played').eq('id', user.id).single()
+          if (dbUser && !dbUser.welcome_played && !lib?.progress) {
+            try {
+              const firstName = dbUser.first_name || 'friend'
+              const welcomeText = `Hey ${firstName}! I'm Belle. I'll be here before every story. Just a friend who knows what's worth your time. You're going to love this one.`
+              const res = await fetch('/api/admin/generate-belle-intro', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: 'welcome', firstName, introText: welcomeText })
+              })
+              const data = res.ok ? await res.json() : null
+              if (data?.url) {
+                welcomeQueueRef.current = [data.url]
+                inWelcomeRef.current = true
+                welcomeIndexRef.current = 0
+              }
+            } catch (_) { /* welcome fails silently — story plays normally */ }
+          }
+        }
+      } catch (error) {
+        console.error('[player] load failed:', { storyId, stage, error })
+      } finally {
+        if (!cancelled && !redirected) {
+          setLoading(false)
         }
       }
-      setLoading(false)
     }
     load()
-  }, [storyId, user])
+    return () => {
+      cancelled = true
+    }
+  }, [storyId, user, resumeParam])
 
   // Init audio once loaded
   useEffect(() => {
@@ -297,8 +364,8 @@ function PlayerContent() {
     const pl = playlistRef.current
     const ci = playlistIndexRef.current
     if (!pl || ci < 0 || ci >= pl.length - 1) {
-      // No more episodes — go to library
-      router.push('/library')
+      // No more direct-opened series episodes — return to the public library surface.
+      router.push('/library-new')
       return
     }
     const next = pl[ci + 1]
@@ -337,7 +404,7 @@ function PlayerContent() {
       if (playlistRef.current.length > 0 && playlistIndexRef.current < playlistRef.current.length - 1) {
         setTimeout(() => advancePlaylist(), 2500)
       } else {
-        setTimeout(() => router.push('/library'), 3000)
+        setTimeout(() => router.push('/library-new'), 3000)
       }
     }
   }
@@ -399,10 +466,57 @@ function PlayerContent() {
     })
   }
 
+  const seekToClientX = (clientX: number) => {
+    const audio = audioRef.current
+    const bar = progressBarRef.current
+    if (!audio || !bar || isASC3) return
+
+    const actualDuration = Number.isFinite(audio.duration) && audio.duration > 0
+      ? audio.duration
+      : duration
+    if (!actualDuration || !Number.isFinite(actualDuration)) return
+
+    const rect = bar.getBoundingClientRect()
+    if (!rect.width) return
+
+    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
+    const nextTime = ratio * actualDuration
+    audio.currentTime = nextTime
+    setCurrentTime(nextTime)
+  }
+
   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!audioRef.current || !duration) return
+    if (!isASC3) {
+      seekToClientX(e.clientX)
+      return
+    }
     const rect = e.currentTarget.getBoundingClientRect()
     audioRef.current.currentTime = ((e.clientX - rect.left) / rect.width) * duration
+  }
+
+  const handleSeekPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (isASC3) return
+    e.preventDefault()
+    scrubbingRef.current = true
+    e.currentTarget.setPointerCapture(e.pointerId)
+    seekToClientX(e.clientX)
+  }
+
+  const handleSeekPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!scrubbingRef.current || isASC3) return
+    e.preventDefault()
+    seekToClientX(e.clientX)
+  }
+
+  const handleSeekPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!scrubbingRef.current || isASC3) return
+    e.preventDefault()
+    seekToClientX(e.clientX)
+    scrubbingRef.current = false
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId)
+    }
   }
 
   const handleNotForMe = async () => {
@@ -471,7 +585,10 @@ function PlayerContent() {
 
   const fmt = (s: number) => `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, '0')}`
   const fmtMin = (s: number) => (s / 60).toFixed(1) + ' min'
-  const effTotal = totalDur > 0 ? totalDur : (story?.duration_mins || 0) * 60
+  const actualAudioDuration = Number.isFinite(duration) && duration > 0 ? duration : 0
+  const effTotal = isASC3
+    ? (totalDur > 0 ? totalDur : (story?.duration_mins || 0) * 60)
+    : (actualAudioDuration || (story?.duration_mins || 0) * 60)
   const effCur   = isASC3 ? cumTime : currentTime
   const pct      = effTotal > 0 ? Math.min(100, (effCur / effTotal) * 100) : 0
 
@@ -539,7 +656,7 @@ function PlayerContent() {
             if (playlistRef.current.length > 0 && playlistIndexRef.current < playlistRef.current.length - 1) {
               setTimeout(() => advancePlaylist(), 2500)
             } else {
-              setTimeout(() => router.push('/library'), 1500)
+              setTimeout(() => router.push('/library-new'), 1500)
             }
             return
           }
@@ -649,7 +766,15 @@ function PlayerContent() {
           )}
         </div>
         <div>
-          <div onClick={handleSeek} style={{ height:'6px', backgroundColor:'rgba(255,255,255,0.15)', borderRadius:'3px', overflow:'hidden', cursor:'pointer' }}>
+          <div
+            ref={progressBarRef}
+            onClick={handleSeek}
+            onPointerDown={handleSeekPointerDown}
+            onPointerMove={handleSeekPointerMove}
+            onPointerUp={handleSeekPointerUp}
+            onPointerCancel={handleSeekPointerUp}
+            style={{ height:'6px', backgroundColor:'rgba(255,255,255,0.15)', borderRadius:'3px', overflow:'hidden', cursor:'pointer', touchAction:'none' }}
+          >
             <div style={{ height:'100%', backgroundColor:'#f97316', width:`${pct}%`, transition:'width 0.1s', borderRadius:'3px' }} />
           </div>
           <div style={{ display:'flex', justifyContent:'space-between', fontSize:'11px', color:'white', marginTop:'5px' }}>

@@ -49,6 +49,7 @@ function HomeContent() {
   const [continueIds, setContinueIds] = useState<string[]>([])
   const [allExcludeIds, setAllExcludeIds] = useState<string[]>([])
   const [showWelcome, setShowWelcome] = useState(false)
+  const [authWaitExpired, setAuthWaitExpired] = useState(false)
 
   useEffect(() => {
     if (searchParams.get('welcome') === 'true') {
@@ -58,7 +59,21 @@ function HomeContent() {
     }
   }, [searchParams])
 
-  if (loading) return <HomeSkeleton />
+  useEffect(() => {
+    if (!loading) {
+      setAuthWaitExpired(false)
+      return
+    }
+
+    const timer = window.setTimeout(() => {
+      console.warn('[Home] Auth loading timed out; rendering home without user-specific state')
+      setAuthWaitExpired(true)
+    }, 2500)
+
+    return () => window.clearTimeout(timer)
+  }, [loading])
+
+  if (loading && !authWaitExpired) return <HomeSkeleton />
 
   const firstName = (user as any)?.user_metadata?.first_name || ''
 

@@ -15,12 +15,23 @@ interface Episode {
   series_name: string
   genre: string
   author: string
+  author_id?: string
+  narrator_voice_id?: string
+  narrator_voice_name?: string
+  prose_text?: string
 }
 
 interface UserProgress {
   story_id: string
   progress_seconds: number
   completed: boolean
+}
+
+interface Profile {
+  name: string
+  description?: string
+  bio?: string
+  photo_url?: string
 }
 
 export default function SeriesDetailPage() {
@@ -35,6 +46,10 @@ export default function SeriesDetailPage() {
   const [seriesInfo, setSeriesInfo] = useState<{
     name: string; genre: string; author: string; cover_url: string | null
   } | null>(null)
+  const [authorProfile, setAuthorProfile] = useState<Profile | null>(null)
+  const [narratorProfile, setNarratorProfile] = useState<Profile | null>(null)
+  const [activeProfile, setActiveProfile] = useState<'author' | 'narrator' | null>(null)
+  const [activeReadEpisode, setActiveReadEpisode] = useState<Episode | null>(null)
 
   useEffect(() => { if (seriesId) fetchSeriesData() }, [seriesId, user?.id])
 
@@ -42,14 +57,14 @@ export default function SeriesDetailPage() {
     try {
       let { data: episodesData } = await supabase
         .from('stories')
-        .select('id, title, description, duration_mins, cover_url, episode_number, series_name, genre, author')
+        .select('id, title, description, duration_mins, cover_url, episode_number, series_name, genre, author, author_id, narrator_voice_id, narrator_voice_name, prose_text')
         .eq('series_id', seriesId)
         .order('episode_number', { ascending: true })
 
       if (!episodesData || episodesData.length === 0) {
         const { data: storyData } = await supabase
           .from('stories')
-          .select('id, title, description, duration_mins, cover_url, episode_number, series_name, genre, author')
+          .select('id, title, description, duration_mins, cover_url, episode_number, series_name, genre, author, author_id, narrator_voice_id, narrator_voice_name, prose_text')
           .eq('id', seriesId)
         episodesData = storyData
       }
@@ -66,6 +81,35 @@ export default function SeriesDetailPage() {
           author: firstEp.author || '',
           cover_url: seriesRow?.cover_image || firstEp.cover_url || null,
         })
+
+        if (firstEp.author_id) {
+          const { data: authorRow } = await supabase
+            .from('authors')
+            .select('name, description, bio, photo_url')
+            .eq('id', firstEp.author_id)
+            .maybeSingle()
+          setAuthorProfile(authorRow || null)
+        } else {
+          setAuthorProfile(null)
+        }
+
+        if (firstEp.narrator_voice_id) {
+          const { data: narratorRow } = await supabase
+            .from('narrator_voices')
+            .select('name, description, bio, photo_url')
+            .eq('elevenlabs_voice_id', firstEp.narrator_voice_id)
+            .maybeSingle()
+          setNarratorProfile(narratorRow || null)
+        } else if (firstEp.narrator_voice_name) {
+          const { data: narratorRow } = await supabase
+            .from('narrator_voices')
+            .select('name, description, bio, photo_url')
+            .eq('name', firstEp.narrator_voice_name)
+            .maybeSingle()
+          setNarratorProfile(narratorRow || null)
+        } else {
+          setNarratorProfile(null)
+        }
       }
 
       if (user?.id && episodesData) {
@@ -132,6 +176,9 @@ export default function SeriesDetailPage() {
   const totalHours = Math.floor(totalMins / 60)
   const totalRemMins = totalMins % 60
   const durationText = totalHours > 0 ? `${totalHours}h ${totalRemMins}m total` : `${totalRemMins}m total`
+  const durationShortText = totalHours > 0 ? `${totalHours}h ${totalRemMins}m` : `${totalRemMins} min`
+  const narratorName = narratorProfile?.name || episodes[0]?.narrator_voice_name || ''
+  const modalProfile = activeProfile === 'author' ? authorProfile : activeProfile === 'narrator' ? narratorProfile : null
 
   if (loading) return <div style={{ background: '#020617', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ color: '#64748b', fontSize: '14px' }}>Loading...</div></div>
   if (!seriesInfo) return null
@@ -141,15 +188,55 @@ export default function SeriesDetailPage() {
       <StickyHeaderFull />
 
       {/* Hero */}
-      <div style={{ padding: '16px 16px 0', display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
-        <div style={{ width: 100, height: 100, borderRadius: 10, overflow: 'hidden', flexShrink: 0, boxShadow: '0 0 20px rgba(255,255,255,0.15)' }}>
+      <div style={{ padding: '18px 16px 0', display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
+        <div style={{ width: 112, height: 112, borderRadius: 12, overflow: 'hidden', flexShrink: 0, boxShadow: '0 16px 36px rgba(0,0,0,0.35), 0 0 18px rgba(255,255,255,0.12)' }}>
           <img src={seriesInfo.cover_url || '/images/default-cover.png'} alt={seriesInfo.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         </div>
-        <div style={{ flex: 1, minWidth: 0, paddingTop: 4 }}>
-          <h1 style={{ fontFamily: 'var(--font-outfit, sans-serif)', fontWeight: 800, fontSize: 17, color: 'white', lineHeight: 1.2, marginBottom: 4 }}>{seriesInfo.name}</h1>
-          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>{seriesInfo.author}</div>
-          <div style={{ fontSize: 11, color: '#64748b' }}>{episodes.length} episodes · <span style={{ color: '#f97316', fontWeight: 700 }}>{durationText}</span></div>
+        <div style={{ flex: 1, minWidth: 0, paddingTop: 2 }}>
+          <div style={{ fontSize: 10, color: '#f97316', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 6 }}>{seriesInfo.genre || 'Series'}</div>
+          <h1 style={{ fontFamily: 'var(--font-outfit, sans-serif)', fontWeight: 900, fontSize: 24, color: 'white', lineHeight: 1.05, margin: '0 0 10px' }}>{seriesInfo.name}</h1>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 10px', alignItems: 'center', color: '#94a3b8', fontSize: 11, lineHeight: 1.35 }}>
+            <span>{episodes.length} episodes</span>
+            <span style={{ color: '#334155' }}>•</span>
+            <span style={{ color: '#f97316', fontWeight: 800 }}>{durationShortText}</span>
+            {seriesInfo.author && (
+              <>
+                <span style={{ color: '#334155' }}>•</span>
+                <span>by {seriesInfo.author}</span>
+              </>
+            )}
+          </div>
         </div>
+      </div>
+
+      {/* Profile pills */}
+      <div style={{ padding: '14px 16px 0', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {(authorProfile || seriesInfo.author) && (
+          <button
+            onClick={() => authorProfile && setActiveProfile('author')}
+            disabled={!authorProfile}
+            style={{ flex: '1 1 140px', minWidth: 0, border: '1px solid rgba(148,163,184,0.18)', background: 'rgba(15,23,42,0.9)', color: 'white', borderRadius: 12, padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 8, cursor: authorProfile ? 'pointer' : 'default' }}
+          >
+            {authorProfile?.photo_url && <img src={authorProfile.photo_url} alt={authorProfile.name} style={{ width: 24, height: 24, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />}
+            <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', minWidth: 0 }}>
+              <span style={{ fontSize: 9, color: '#94a3b8', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '0.08em' }}>Author</span>
+              <span style={{ fontSize: 12, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>{authorProfile?.name || seriesInfo.author}</span>
+            </span>
+          </button>
+        )}
+        {(narratorProfile || narratorName) && (
+          <button
+            onClick={() => narratorProfile && setActiveProfile('narrator')}
+            disabled={!narratorProfile}
+            style={{ flex: '1 1 140px', minWidth: 0, border: '1px solid rgba(148,163,184,0.18)', background: 'rgba(15,23,42,0.9)', color: 'white', borderRadius: 12, padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 8, cursor: narratorProfile ? 'pointer' : 'default' }}
+          >
+            {narratorProfile?.photo_url && <img src={narratorProfile.photo_url} alt={narratorProfile.name} style={{ width: 24, height: 24, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />}
+            <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', minWidth: 0 }}>
+              <span style={{ fontSize: 9, color: '#94a3b8', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '0.08em' }}>Narrator</span>
+              <span style={{ fontSize: 12, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>{narratorProfile?.name || narratorName}</span>
+            </span>
+          </button>
+        )}
       </div>
 
       {/* Play All button */}
@@ -176,8 +263,11 @@ export default function SeriesDetailPage() {
       })()}
 
       {/* Episode list */}
-      <div style={{ padding: '14px 16px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <div style={{ fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>Episodes</div>
+      <div style={{ padding: '18px 16px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'baseline', marginBottom: 6 }}>
+          <div style={{ fontSize: 12, fontWeight: 900, color: 'white', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Episodes</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b' }}>{episodes.length} parts · {durationText}</div>
+        </div>
         {episodes.map((ep, idx) => {
           const progress = userProgress[ep.id]
           const isCompleted = progress?.completed || false
@@ -221,6 +311,17 @@ export default function SeriesDetailPage() {
                 {ep.description && (
                   <p style={{ fontSize: 10, color: '#94a3b8', lineHeight: 1.5, margin: 0, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{ep.description}</p>
                 )}
+                {ep.prose_text && (
+                  <button
+                    onClick={event => {
+                      event.stopPropagation()
+                      setActiveReadEpisode(ep)
+                    }}
+                    style={{ alignSelf: 'flex-start', marginTop: 7, border: '1px solid rgba(249,115,22,0.24)', background: 'rgba(249,115,22,0.1)', color: '#fed7aa', borderRadius: 999, padding: '4px 9px', fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', cursor: 'pointer' }}
+                  >
+                    Read It
+                  </button>
+                )}
               </div>
 
               {/* Action pill — right side */}
@@ -241,6 +342,76 @@ export default function SeriesDetailPage() {
           )
         })}
       </div>
+
+      {activeProfile && modalProfile && (
+        <div
+          onClick={() => setActiveProfile(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.82)', zIndex: 50, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: 16 }}
+        >
+          <div
+            onClick={event => event.stopPropagation()}
+            style={{ width: '100%', maxWidth: 460, borderRadius: 16, background: '#0f172a', border: '1px solid rgba(148,163,184,0.16)', boxShadow: '0 24px 80px rgba(0,0,0,0.5)', padding: 18 }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 14 }}>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center', minWidth: 0 }}>
+                <div style={{ width: 54, height: 54, borderRadius: '50%', overflow: 'hidden', background: '#1e293b', flexShrink: 0 }}>
+                  {modalProfile.photo_url ? (
+                    <img src={modalProfile.photo_url} alt={modalProfile.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 20, fontWeight: 800 }}>{modalProfile.name.slice(0, 1)}</div>
+                  )}
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 10, color: '#f97316', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 3 }}>{activeProfile}</div>
+                  <div style={{ fontFamily: 'var(--font-outfit, sans-serif)', color: 'white', fontSize: 18, fontWeight: 800, lineHeight: 1.1 }}>{modalProfile.name}</div>
+                  {modalProfile.description && <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>{modalProfile.description}</div>}
+                </div>
+              </div>
+              <button
+                onClick={() => setActiveProfile(null)}
+                aria-label="Close profile"
+                style={{ width: 32, height: 32, borderRadius: 999, border: '1px solid rgba(148,163,184,0.18)', background: '#1e293b', color: '#cbd5e1', cursor: 'pointer', fontSize: 18, lineHeight: '30px' }}
+              >
+                ×
+              </button>
+            </div>
+            {modalProfile.bio && <p style={{ color: '#cbd5e1', fontSize: 14, lineHeight: 1.6, margin: 0 }}>{modalProfile.bio}</p>}
+          </div>
+        </div>
+      )}
+
+      {activeReadEpisode?.prose_text && (
+        <div
+          onClick={() => setActiveReadEpisode(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.88)', zIndex: 60, display: 'flex', alignItems: 'stretch', justifyContent: 'center', padding: '18px 14px' }}
+        >
+          <div
+            onClick={event => event.stopPropagation()}
+            style={{ width: '100%', maxWidth: 560, background: '#faf7f2', color: '#1f2933', borderRadius: 16, overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 80px rgba(0,0,0,0.55)' }}
+          >
+            <div style={{ flexShrink: 0, padding: '14px 16px', borderBottom: '1px solid rgba(15,23,42,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, background: '#fffaf2' }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ color: '#9a3412', fontSize: 10, fontWeight: 900, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 3 }}>Episode {activeReadEpisode.episode_number}</div>
+                <div style={{ fontFamily: 'var(--font-outfit, sans-serif)', fontSize: 17, lineHeight: 1.15, fontWeight: 900, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{activeReadEpisode.title}</div>
+              </div>
+              <button
+                onClick={() => setActiveReadEpisode(null)}
+                aria-label="Close reader"
+                style={{ width: 34, height: 34, borderRadius: 999, border: '1px solid rgba(15,23,42,0.12)', background: 'rgba(15,23,42,0.04)', color: '#475569', cursor: 'pointer', fontSize: 20, lineHeight: '30px', flexShrink: 0 }}
+              >
+                ×
+              </button>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '22px 24px 34px', fontFamily: 'Georgia, "Times New Roman", serif' }}>
+              {activeReadEpisode.prose_text.split('\n\n').map((para, index) => (
+                <p key={index} style={{ color: '#2c2c2c', fontSize: 17, lineHeight: 1.82, margin: index === 0 ? '0 0 20px' : '0 0 18px', textIndent: index === 0 ? 0 : '1.4em' }}>
+                  {para}
+                </p>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

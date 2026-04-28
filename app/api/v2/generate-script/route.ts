@@ -50,11 +50,11 @@ Use the CURRENT published rules:
 - Belle B intro must never mention the author, narrator, or "an Endless Tales original"; those credits belong only in the Belle B outro.
 - No SFX in the published story body.
 - The title may be blank in the brief; if blank, choose the best title from the story.
-- Final title must be 1 to 5 words.
+- Final title must be 1 to 5 words and 28 characters or fewer so it fits one line on story cards.
 - Output ONLY the script. No commentary.
 
 Required script structure:
-TITLE: [1 to 5 words]
+TITLE: [1 to 5 words, 28 characters or fewer]
 SERIES:
 EPISODE:
 EPISODE_TITLE:
@@ -62,7 +62,7 @@ SERIES_TOTAL_EPISODES:
 SERIES_IS_FINALE:
 AUTHOR:
 GENRE:
-DESCRIPTION: [15 to 18 words, present tense only]
+DESCRIPTION: [15 to 18 words, 70 characters or fewer, present tense only]
 NARRATOR: [assigned narrator name, not a story character unless NARRATOR_IS_CHARACTER is true]
 ANNOUNCER: Belle B
 NARRATIVE_VOICE:
@@ -94,7 +94,7 @@ Production-format hard rules:
 - Right: NARRATOR: Pike's jaw tightened.
 
 Additional rules:
-- DESCRIPTION must be 15 to 18 words and present tense only. If the brief-provided description is outside 15 to 18 words or uses past-tense constructions, rewrite it to comply. Reject past-tense story-card phrasing such as "vanished", "was", "were", "had", "found", "discovered", "left", "moved", "sealed", "signed", "forged", "buried", or "hidden".
+- DESCRIPTION must be 15 to 18 words, 70 characters or fewer, and present tense only so it fits two lines on story cards. If the brief-provided description is outside 15 to 18 words, longer than 70 characters, or uses past-tense constructions, rewrite it to comply. Reject past-tense story-card phrasing such as "vanished", "was", "were", "had", "found", "discovered", "left", "moved", "sealed", "signed", "forged", "buried", or "hidden".
 - If NARRATOR_IS_CHARACTER is false, NARRATOR must not be a story character name and must not include "(character)".
 - If the narrator is a story character, NARRATOR_IS_CHARACTER must be true and the script must use consistent first-person narration.
 - Standalone stories must end conclusively.

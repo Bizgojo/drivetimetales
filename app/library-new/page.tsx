@@ -9,8 +9,10 @@ interface Story {
   id: string; title: string; genre: string; author: string
   duration_mins: number; cover_url: string | null
   description?: string | null; series_name?: string | null
+  series_id?: string | null; is_series_container?: boolean
   series_total?: number | null; series_number?: number | null
   episode_title?: string | null; avg_rating?: number | null
+  created_at?: string | null
   review_count?: number
 }
 interface LibEntry { story_id: string; progress?: number; completed?: boolean }
@@ -32,13 +34,63 @@ function LibraryNewContent() {
   useEffect(() => {
     async function load() {
       setLoading(true)
-      const { data } = await supabase
+      const { data: visibleRows } = await supabase
         .from('story_analytics')
-        .select('id,title,genre,author,duration_mins,cover_url,description,series_name,series_total,series_number,episode_title,avg_rating,review_count')
+        .select('id,title,genre,author,duration_mins,cover_url,description,series_id,series_name,series_total,series_number,episode_title,avg_rating,review_count,created_at')
         .eq('is_hidden', false)
         .order('created_at', { ascending: false })
         .limit(50)
-      setStories(data || [])
+
+      const rows = visibleRows || []
+      const standaloneRows = rows.filter(story => !story.series_id)
+      const episodeRows = rows.filter(story => story.series_id)
+      const visibleSeriesIds = Array.from(new Set(episodeRows.map(story => story.series_id).filter(Boolean))) as string[]
+      let seriesContainers: Story[] = []
+
+      if (visibleSeriesIds.length > 0) {
+        const { data: seriesRows } = await supabase
+          .from('series')
+          .select('id,title,description,cover_image,author,total_episodes,category,created_at')
+          .in('id', visibleSeriesIds)
+
+        const seriesById = new Map((seriesRows || []).map(series => [series.id, series]))
+        seriesContainers = visibleSeriesIds.map(seriesId => {
+          const series = seriesById.get(seriesId)
+          const episodes = episodeRows.filter(story => story.series_id === seriesId)
+          const firstEpisode = [...episodes].sort((a, b) =>
+            (a.series_number || 999) - (b.series_number || 999)
+            || new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime()
+          )[0]
+          const newestEpisode = [...episodes].sort((a, b) =>
+            new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+          )[0]
+          const totalMins = episodes.reduce((sum, story) => sum + (story.duration_mins || 0), 0)
+
+          return {
+            id: seriesId,
+            title: series?.title || firstEpisode?.series_name || newestEpisode?.series_name || newestEpisode?.title || 'Series',
+            genre: series?.category || firstEpisode?.genre || newestEpisode?.genre || '',
+            author: series?.author || firstEpisode?.author || newestEpisode?.author || '',
+            duration_mins: totalMins,
+            cover_url: series?.cover_image || firstEpisode?.cover_url || newestEpisode?.cover_url || null,
+            description: series?.description || firstEpisode?.description || newestEpisode?.description || null,
+            series_id: null,
+            is_series_container: true,
+            series_name: series?.title || firstEpisode?.series_name || newestEpisode?.series_name || null,
+            series_total: episodes.length || series?.total_episodes || null,
+            series_number: null,
+            episode_title: null,
+            avg_rating: newestEpisode?.avg_rating || null,
+            review_count: episodes.reduce((sum, story) => sum + (story.review_count || 0), 0),
+            created_at: newestEpisode?.created_at || series?.created_at || null,
+          }
+        })
+      }
+
+      const topLevelStories = [...standaloneRows, ...seriesContainers]
+        .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
+
+      setStories(topLevelStories)
       if (user?.id) {
         const { data: lib } = await supabase
           .from('user_library')
@@ -123,6 +175,7 @@ function LibraryNewContent() {
               series_total={story.series_total}
               series_number={story.series_number}
               episode_title={story.episode_title}
+              is_series_container={story.is_series_container}
               inPlaylist={inPlaylist(story.id)}
               onAddToPlaylist={() => addToPlaylist(story)}
               onRemoveFromPlaylist={() => removeFromPlaylist(story.id)}

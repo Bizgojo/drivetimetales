@@ -199,7 +199,7 @@ function parseCharacterGuide(script: string): CharacterInfo[] {
   if (!guideMatch) return chars
   const guideLines = guideMatch[1].split('\n').filter(l => l.trim())
   for (const line of guideLines) {
-    const nameMatch = line.match(/^([A-Z][A-Z\s'.()]+?)\s*[—–-]/)
+    const nameMatch = line.match(/^([A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ\s'.()]+?)\s*(?:[—–-]|:)/)
     if (!nameMatch) continue
     const name = nameMatch[1].trim()
     const lower = line.toLowerCase()
@@ -390,6 +390,20 @@ export async function POST(req: NextRequest) {
     const introLine = announcerLines[0]
     const outroLine = announcerLines[announcerLines.length - 1]
     const storyLines = lines.filter(l => !l.isIntro && !l.isOutro)
+    const nonDialogueSpeakers = new Set(['TITLE'])
+    const characterSpeakers = Array.from(new Set(storyLines
+      .filter(l => l.type === 'character' && !nonDialogueSpeakers.has(l.speaker.toUpperCase()))
+      .map(l => l.speaker.toUpperCase())))
+    const warnings: string[] = []
+    if (characterSpeakers.length > 0 && characterGuide.length === 0) {
+      warnings.push(`Character dialogue found (${characterSpeakers.join(', ')}) but no CHARACTER GUIDE entries parsed; character lines will use narrator voice fallback.`)
+    } else {
+      const missingVoiceMap = characterSpeakers.filter(speaker => !voiceMap[speaker])
+      if (missingVoiceMap.length > 0) {
+        warnings.push(`No character voice map entry for ${missingVoiceMap.join(', ')}; those lines will use narrator voice fallback.`)
+      }
+    }
+    warnings.forEach(w => console.warn(`  ⚠️ ${w}`))
     const results: { intro?: string; outro?: string; segments: any[] } = { segments: [] }
     let succeeded = 0; let failed = 0
     if (introLine) {
@@ -439,7 +453,7 @@ export async function POST(req: NextRequest) {
     // Note: intro_before_url and intro_after_url set above during intro generation
     const voiceTotal = storyLines.filter(l => l.type === 'narrator' || l.type === 'character').length
     console.log(`  ✅ Done: ${succeeded}/${voiceTotal} lines, ${failed} failed`)
-    return NextResponse.json({ success: failed === 0, intro: results.intro, outro: results.outro, segments: results.segments, stats: { total: lines.length, voice: voiceTotal, succeeded, failed } })
+    return NextResponse.json({ success: failed === 0, intro: results.intro, outro: results.outro, segments: results.segments, stats: { total: lines.length, voice: voiceTotal, succeeded, failed }, warnings })
   } catch (err) {
     console.error('generate-voices error:', err)
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 })

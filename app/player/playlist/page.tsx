@@ -177,8 +177,17 @@ function PlaylistPlayerContent() {
   }
 
   useEffect(() => {
-    if (!playlist.length) return
-    const item = playlist[currentIndex]; if (!item) return
+    if (!playlist.length) {
+      setLoading(false)
+      setStoryData(null)
+      return
+    }
+    const item = playlist[currentIndex]
+    if (!item) {
+      setLoading(false)
+      setStoryData(null)
+      return
+    }
     setSeriesEpisodeIndex(0)
     async function loadStory() {
       setLoading(true); setAudioReady(false); setCurrentTime(0); setDuration(0)

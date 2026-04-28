@@ -766,33 +766,14 @@ export default function AdminStoriesPage() {
 
   async function fetchStories() {
     setLoading(true)
-    const { data: publishedRows, error: publishedError } = await supabase
-      .from('stories')
-      .select('id')
-      .eq('status', 'published')
-
-    if (publishedError) {
-      console.error('Error fetching published story ids:', publishedError)
-      setStories([])
-      setLoading(false)
-      return
-    }
-
-    const publishedIds = (publishedRows || []).map(row => row.id)
-    if (publishedIds.length === 0) {
-      setStories([])
-      setLoading(false)
-      return
-    }
-
     const { data, error } = await supabase
       .from('story_analytics')
       .select('*')
-      .in('id', publishedIds)
+      .eq('is_hidden', false)
       .order('created_at', { ascending: false })
 
     if (data) setStories(data)
-    if (error) console.error('Error fetching published story analytics:', error)
+    if (error) console.error('Error fetching app-visible story analytics:', error)
     setLoading(false)
   }
 

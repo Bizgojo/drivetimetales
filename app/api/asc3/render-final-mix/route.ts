@@ -18,6 +18,7 @@ const supabase = createClient(
 
 const BASE_STORAGE = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio`
 const STING_URL = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio/sting/ET_Signature_Sting_v7.mp3.mp3`
+const MUSIC_LIBRARY = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio/music-library`
 
 // ASC3 Mix Spec v1.0 (LOCKED)
 // 1. STING         — full volume, no music
@@ -62,6 +63,15 @@ async function generateSilence(dest: string, seconds: number): Promise<void> {
   ])
 }
 
+function selectFallbackMusicUrl(genre = ''): string {
+  const g = genre.toLowerCase()
+  if (g.includes('horror')) return `${MUSIC_LIBRARY}/hollow-crown-of-cinders.mp3`
+  if (g.includes('sci')) return `${MUSIC_LIBRARY}/cosmic-bloom.mp3`
+  if (g.includes('drama')) return `${MUSIC_LIBRARY}/heartbeats-between-chapters.mp3`
+  if (g.includes('western')) return `${MUSIC_LIBRARY}/dust-trail-omen.mp3`
+  return `${MUSIC_LIBRARY}/midnight-red-5th-avenue.mp3`
+}
+
 export async function POST(req: NextRequest) {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'et-mix-'))
   try {
@@ -88,13 +98,24 @@ export async function POST(req: NextRequest) {
     const stingPath  = path.join(tmpDir, 'sting.mp3')
     const introPath  = path.join(tmpDir, 'intro.mp3')
     const outroPath  = path.join(tmpDir, 'outro.mp3')
-    const musicPath  = musicFile ? path.join(tmpDir, 'music.mp3') : null
+    const musicPath  = path.join(tmpDir, 'music.mp3')
     const outputPath = path.join(tmpDir, 'final_mix.mp3')
 
     await download(STING_URL, stingPath)
     await download(`${BASE_STORAGE}/asc3/${storyId}/${introFile.name}`, introPath)
     await download(`${BASE_STORAGE}/asc3/${storyId}/${outroFile.name}`, outroPath)
-    if (musicPath && musicFile) await download(`${BASE_STORAGE}/asc3/${storyId}/${musicFile.name}`, musicPath)
+    if (musicFile) {
+      await download(`${BASE_STORAGE}/asc3/${storyId}/${musicFile.name}`, musicPath)
+    } else {
+      const { data: storyRow } = await supabase
+        .from('stories')
+        .select('genre,primary_genre')
+        .eq('id', storyId)
+        .single()
+      const fallbackMusicUrl = selectFallbackMusicUrl(storyRow?.primary_genre || storyRow?.genre || '')
+      console.log(`  No background_music.mp3 - using fallback music: ${fallbackMusicUrl}`)
+      await download(fallbackMusicUrl, musicPath)
+    }
 
     const segPaths: string[] = []
     // Download and normalize segments sequentially to avoid memory pressure
@@ -153,6 +174,8 @@ export async function POST(req: NextRequest) {
     // The player handles: sting → personalized Belle intro → story_body → outro
     const storyBodyPath = path.join(tmpDir, 'story_body.mp3')
 
+    let musicIntroBedPath: string | null = null
+
     if (!musicPath) {
       console.log('  No music - using normalized segments as story_body')
       await fs.copyFile(normalizedConcatPath, storyBodyPath)
@@ -160,6 +183,13 @@ export async function POST(req: NextRequest) {
       console.log('  Full mix with background music')
       const segsOnlyPath = normalizedConcatPath
       const segsDur = await getAudioDuration(segsOnlyPath)
+      musicIntroBedPath = path.join(tmpDir, 'music_intro_bed.mp3')
+      await execFileAsync(FFMPEG_PATH, [
+        '-i', musicPath,
+        '-t', '2.5',
+        '-af', 'afade=t=in:st=0:d=0.4,afade=t=out:st=2.1:d=0.4,volume=1.0',
+        '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', musicIntroBedPath
+      ])
       const musicBodyMixedPath = path.join(tmpDir, 'music_body.mp3')
       await execFileAsync(FFMPEG_PATH, [
         '-stream_loop', '-1', '-i', musicPath,
@@ -191,9 +221,12 @@ export async function POST(req: NextRequest) {
       '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', stingIntroPath
     ])
 
-    // Build final_mix: crossfaded sting+intro + silence + story_body + silence + outro
+    // Build final_mix: crossfaded sting+intro + silence + optional music bed + story_body + silence + outro
     const finalConcatFile = path.join(tmpDir, 'final.txt')
-    await fs.writeFile(finalConcatFile, [stingIntroPath, sil075Path, storyBodyPath, sil100Path, normalizedOutroPath].map(p => `file '${p}'`).join('\n'))
+    const finalParts = musicIntroBedPath
+      ? [stingIntroPath, sil075Path, musicIntroBedPath, storyBodyPath, sil100Path, normalizedOutroPath]
+      : [stingIntroPath, sil075Path, storyBodyPath, sil100Path, normalizedOutroPath]
+    await fs.writeFile(finalConcatFile, finalParts.map(p => `file '${p}'`).join('\n'))
     await execFileAsync(FFMPEG_PATH, [
       '-f', 'concat', '-safe', '0', '-i', finalConcatFile,
       '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', outputPath

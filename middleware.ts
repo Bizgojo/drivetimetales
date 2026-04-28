@@ -8,6 +8,7 @@ const PUBLIC_ROUTES = new Set([
   '/reset-password', '/auth/callback', '/auth/signup', '/auth/confirm', '/auth/magic-sent',
   '/subscribe',
   '/terms', '/privacy',
+  '/sw.js',
 ])
 
 // Path prefixes that are always public (checked below)
@@ -22,7 +23,9 @@ const SUBSCRIPTION_REQUIRED_PREFIXES = [
 ]
 
 function requiresSubscription(pathname: string): boolean {
-  return SUBSCRIPTION_REQUIRED_PREFIXES.some(p => pathname === p || pathname.startsWith(p))
+  return SUBSCRIPTION_REQUIRED_PREFIXES.some(p =>
+    pathname === p || pathname.startsWith(p.endsWith('/') ? p : `${p}/`)
+  )
 }
 
 function hasActiveSubscription(

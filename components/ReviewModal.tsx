@@ -6,10 +6,11 @@ import { supabase } from '@/lib/supabase'
 interface ReviewModalProps {
   storyId: string; storyTitle: string; userId: string
   genre: string; duration_mins: number
+  coverUrl?: string | null
   onClose: () => void; onSubmitted: (rating: number) => void
 }
 
-export default function ReviewModal({ storyId, storyTitle, userId, genre, duration_mins, onClose, onSubmitted }: ReviewModalProps) {
+export default function ReviewModal({ storyId, storyTitle, userId, genre, duration_mins, coverUrl, onClose, onSubmitted }: ReviewModalProps) {
   const [rating, setRating] = useState(0)
   const [hovered, setHovered] = useState(0)
   const [reviewText, setReviewText] = useState('')
@@ -52,7 +53,22 @@ export default function ReviewModal({ storyId, storyTitle, userId, genre, durati
             <p style={{ fontSize: '12px', color: '#57534e', lineHeight: 1.5, margin: 0 }}>Your voice matters to our community. Reviews help fellow listeners discover great stories — and help our authors grow. <span style={{ fontWeight: 700, color: '#78716c' }}>— The Endless Tales Team</span></p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '16px 20px 0' }}>
-            <div style={{ width: '60px', height: '60px', borderRadius: '8px', background: 'linear-gradient(135deg,#1a2744,#2d1b4e)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '26px', boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }}>🎧</div>
+            <div
+              style={{
+                width: '60px',
+                height: '60px',
+                borderRadius: '8px',
+                background: coverUrl ? `url(${coverUrl}) center / cover` : 'linear-gradient(135deg,#1a2744,#2d1b4e)',
+                flexShrink: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '26px',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+              }}
+            >
+              {coverUrl ? null : '🎧'}
+            </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <p style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#16a34a', marginBottom: '3px' }}>✓ You finished it!</p>
               <h2 style={{ fontWeight: 800, fontSize: '16px', color: '#1c1917', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{storyTitle}</h2>

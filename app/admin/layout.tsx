@@ -22,7 +22,6 @@ const NAV_GROUPS = [
   { href: '/admin/story-production-v2', label: 'Story Production V2' },
 { href: '/admin/asc', label: 'ASC' },
     { href: '/admin/authors-narrators-v2', label: 'Authors & Narrators' },
-    { href: '/admin/story-production', label: 'Story Production (Legacy - Do Not Use)' },
     { href: '/admin/story-ideas', label: 'Story Ideas' },
     { href: '/admin/genres', label: 'Genres' },
     { href: '/admin/el-usage', label: 'ElevenLabs Usage' },
@@ -51,12 +50,18 @@ const NAV_GROUPS = [
   ]},
 ]
 
+function isActivePath(pathname: string, href: string) {
+  if (pathname === href) return true
+  if (href === '/admin') return false
+  return pathname.startsWith(`${href}/`)
+}
+
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
   const { user, loading } = useAuth()
   const [openGroups, setOpenGroups] = useState<Set<string>>(() => {
-    const active = NAV_GROUPS.find(g => g.items.some(i => pathname === i.href || (i.href !== '/admin' && pathname.startsWith(i.href))))
+    const active = NAV_GROUPS.find(g => g.items.some(i => isActivePath(pathname, i.href)))
     return new Set(active ? [active.id] : ['dashboard'])
   })
 
@@ -72,8 +77,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }, [])
 
   useEffect(() => {
-    const active = NAV_GROUPS.find(g => g.items.some(i => pathname === i.href || (i.href !== '/admin' && pathname.startsWith(i.href))))
-    if (active) setOpenGroups(prev => new Set([...prev, active.id]))
+    const active = NAV_GROUPS.find(g => g.items.some(i => isActivePath(pathname, i.href)))
+    if (active) setOpenGroups(prev => new Set([...Array.from(prev), active.id]))
   }, [pathname])
 
   if (loading) return <div style={{ minHeight: '100vh', background: '#f5f5f5' }} />
@@ -105,7 +110,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <nav style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
           {NAV_GROUPS.map((group) => {
             const isOpen = openGroups.has(group.id)
-            const hasActivePage = group.items.some(i => pathname === i.href || (i.href !== '/admin' && pathname.startsWith(i.href)))
+            const hasActivePage = group.items.some(i => isActivePath(pathname, i.href))
             return (
               <div key={group.id}>
                 <button onClick={() => toggleGroup(group.id)} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', width: '100%', padding: '0.6rem 0.75rem', border: 'none', borderRadius: '6px', backgroundColor: hasActivePage ? 'rgba(249,115,22,0.12)' : 'transparent', color: hasActivePage ? '#f97316' : '#cbd5e1', cursor: 'pointer', fontSize: '13px', fontWeight: 700, textAlign: 'left', fontFamily: 'inherit' }}>
@@ -116,7 +121,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 {isOpen && (
                   <div style={{ marginLeft: '20px', borderLeft: '1px solid #334155', paddingLeft: '12px', marginTop: '2px', marginBottom: '6px' }}>
                     {group.items.map((item) => {
-                      const isActive = pathname === item.href || (item.href !== '/admin' && pathname.startsWith(item.href))
+                      const isActive = isActivePath(pathname, item.href)
                       return (
                         <Link key={item.href} href={item.href} style={{ display: 'block', padding: '0.45rem 0.75rem', borderRadius: '5px', backgroundColor: isActive ? '#f97316' : 'transparent', color: isActive ? 'white' : '#e2e8f0', textDecoration: 'none', fontWeight: isActive ? 600 : 400, fontSize: '13px' }}>
                           {item.label}

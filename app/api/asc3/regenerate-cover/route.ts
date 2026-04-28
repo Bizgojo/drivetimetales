@@ -23,6 +23,68 @@ function escapeXml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
+function cleanConceptPart(value: unknown, max = 450): string {
+  if (typeof value !== 'string') return ''
+  return value
+    .replace(/\s+/g, ' ')
+    .replace(/\bkiller\b/gi, 'dangerous man')
+    .replace(/\bkill\b/gi, 'harm')
+    .replace(/\bkills\b/gi, 'harms')
+    .replace(/\bkilled\b/gi, 'lost')
+    .replace(/\bdead\b/gi, 'gone')
+    .replace(/\bdied\b/gi, 'was lost')
+    .replace(/\bdeath\b/gi, 'loss')
+    .replace(/\bcorpse\b/gi, 'evidence')
+    .replace(/\bremains\b/gi, 'evidence')
+    .replace(/\bbody\b/gi, 'evidence')
+    .trim()
+    .slice(0, max)
+}
+
+function visualAnchorsForTitle(title: string): string {
+  const normalized = title.toLowerCase()
+
+  if (normalized.includes('woman at keenan notch')) {
+    return [
+      'Keenan Notch Bridge in heavy Appalachian rain',
+      "Lucia's small gas station and diner nearby",
+      'a sabotaged bridge detail such as a hollow railing, broken deck, or hidden shipping manifest',
+      'danger from a back-office fire or partial bridge-deck collapse',
+    ].join('; ')
+  }
+
+  if (normalized.includes('last crossing')) {
+    return [
+      'Dunmore Gap Bridge at full flood stage',
+      'a washed-out mountain road and a failing bridge over a deep hollow',
+      'Clete crossing the unstable span toward Lucia',
+      'final evidence such as an old refrigerated truck emerging in flood debris',
+    ].join('; ')
+  }
+
+  return ''
+}
+
+function buildStoryVisualConcept(story: any): string | undefined {
+  const brief = story?.brief_json && typeof story.brief_json === 'object' ? story.brief_json : {}
+  const parts = [
+    cleanConceptPart(story?.description, 260),
+    cleanConceptPart(brief?.premise, 420),
+    cleanConceptPart(brief?.setting, 320),
+    cleanConceptPart(brief?.cliffhanger_or_resolution, 320),
+  ].filter(Boolean)
+
+  const anchors = visualAnchorsForTitle(story?.title || '')
+  if (anchors) parts.push(`Required concrete visual anchors: ${anchors}.`)
+
+  if (!parts.length) return story?.intro_text || undefined
+
+  return [
+    parts.join(' '),
+    'Make the cover story-faithful and concrete: show the named place, weather, danger, and key object or action. Avoid generic landscapes, generic portraits, or unrelated scenery.',
+  ].join(' ')
+}
+
 async function overlayText(imageBuffer: Buffer, title: string, author: string): Promise<Buffer> {
   console.warn('Skipping sharp text overlay for launch-safe cover generation')
   return imageBuffer
@@ -76,17 +138,19 @@ export async function POST(req: NextRequest) {
     // Fetch story details — use concept/tone for visual prompt, NOT raw script
     const { data: story, error: storyErr } = await supabase
       .from('stories')
-      .select('title, author, genre, primary_genre, description, intro_text')
+      .select('title, author, genre, primary_genre, description, intro_text, brief_json')
       .eq('id', storyId)
       .single()
 
     if (storyErr) console.error('Story fetch error:', storyErr.message)
 
+    const visualConcept = buildStoryVisualConcept(story)
+
     const dallePrompt = buildCoverPrompt({
       title: story?.title || 'Untitled',
       author: story?.author || 'Unknown Author',
       genre: story?.genre || story?.primary_genre || genre || 'fiction',
-      concept: story?.description || story?.intro_text || undefined,
+      concept: visualConcept,
     })
 
     console.log('🎨 Generating cover via DALL-E 3...')

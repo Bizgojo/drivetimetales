@@ -15,14 +15,62 @@ function bad(message: string, status = 400) {
   return NextResponse.json({ success: false, error: message }, { status })
 }
 
+const TITLE_MAX_CHARS = 28
+const DESCRIPTION_MAX_CHARS = 70
+const DESCRIPTION_PAST_TENSE_RE = /\b(vanished|was|were|had|found|discovered|left|moved|sealed|signed|forged|buried|hidden)\b/i
+
+function countWords(s: string) {
+  return s.trim().split(/\s+/).filter(Boolean).length
+}
+
+function extractHeader(script: string, key: string): string {
+  const m = script.match(new RegExp(`^${key}:\\s*(.+)$`, 'm'))
+  return m?.[1]?.trim() || ''
+}
+
+function validateCardCopy(script: string) {
+  const title = extractHeader(script, 'TITLE')
+  const description = extractHeader(script, 'DESCRIPTION')
+  const issues: string[] = []
+  const titleWords = countWords(title)
+  const descriptionWords = countWords(description)
+
+  if (!title) {
+    issues.push('TITLE is required.')
+  } else {
+    if (titleWords < 1 || titleWords > 5) {
+      issues.push(`TITLE must be 1 to 5 words. Current: ${titleWords} words.`)
+    }
+    if (title.length > TITLE_MAX_CHARS) {
+      issues.push(`TITLE must be ${TITLE_MAX_CHARS} characters or fewer so it fits one line on story cards. Current: ${title.length} characters.`)
+    }
+  }
+
+  if (!description) {
+    issues.push('DESCRIPTION is required.')
+  } else {
+    if (descriptionWords < 15 || descriptionWords > 18) {
+      issues.push(`DESCRIPTION must be 15 to 18 words. Current: ${descriptionWords} words.`)
+    }
+    if (description.length > DESCRIPTION_MAX_CHARS) {
+      issues.push(`DESCRIPTION must be ${DESCRIPTION_MAX_CHARS} characters or fewer so it fits two lines on story cards. Current: ${description.length} characters.`)
+    }
+    if (DESCRIPTION_PAST_TENSE_RE.test(description)) {
+      issues.push('DESCRIPTION contains forbidden past-tense story-card phrasing.')
+    }
+  }
+
+  return issues
+}
+
 const VALIDATOR_PROMPT = `You are validating an Endless Tales production script.
 
 Use the CURRENT rules:
 - Belle B is the announcer.
 - Belle B is never narrator or character.
 - No SFX in the published story body.
-- The title must be 1 to 5 words.
-- DESCRIPTION must be 15 to 18 words and present tense only.
+- The title must be 1 to 5 words and 28 characters or fewer.
+- DESCRIPTION must be 15 to 18 words, 70 characters or fewer, and present tense only.
 - DESCRIPTION fails if it uses past-tense constructions or past-tense story-card phrasing such as "vanished", "was", "were", "had", "found", "discovered", "left", "moved", "sealed", "signed", "forged", "buried", or "hidden".
 - The script must include the required header fields.
 - The script must include a CHARACTER GUIDE.
@@ -56,6 +104,29 @@ export async function POST(req: NextRequest) {
 
     if (error || !story) return bad(error?.message || 'Story not found', 404)
     if (!story.script) return bad('script missing')
+
+    const cardCopyIssues = validateCardCopy(story.script)
+    if (cardCopyIssues.length > 0) {
+      const report = `❌ VALIDATOR RESULT: FAIL
+Do not send to production. Fix the following before resubmitting:
+${cardCopyIssues.map((issue) => `- ${issue}`).join('\n')}`
+
+      const { data: updated, error: updateError } = await supabase
+        .from('stories')
+        .update({
+          validator_result: 'FAIL',
+          validator_report: report,
+          validator_passed_at: null,
+          status: 'validator_failed',
+        })
+        .eq('id', storyId)
+        .select('id,title,status,validator_result,validator_report')
+        .single()
+
+      if (updateError) return bad(updateError.message, 500)
+
+      return NextResponse.json({ success: true, passed: false, story: updated })
+    }
 
     const response = await anthropic.messages.create({
       model,

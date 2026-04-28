@@ -21,20 +21,23 @@ export async function GET(req: NextRequest) {
 
   if (error || !story) return NextResponse.json({ error: 'Story not found' }, { status: 404 })
 
+  const refUrl = story.audio_url || ''
   const has3Files = !!(story.intro_audio_url)
-  const isPlainAudio = !has3Files && story.audio_url && !story.audio_url.includes('/asc/') && !story.audio_url.includes('/asc3/')
-  if (isPlainAudio || (!has3Files && (story.audio_url?.includes('final_mix') || story.audio_url?.includes('/final.mp3')))) {
+  const isImportedAscFinalMix = refUrl.includes('/asc/') && refUrl.endsWith('/final.mp3')
+  const isAsc3FinalMix = refUrl.includes('/asc3/') && refUrl.includes('final_mix.mp3')
+  const isPlainAudio = !has3Files && refUrl && !refUrl.includes('/asc/') && !refUrl.includes('/asc3/')
+  if (isImportedAscFinalMix || isAsc3FinalMix || isPlainAudio || (!has3Files && (refUrl.includes('final_mix') || refUrl.includes('/final.mp3')))) {
     return NextResponse.json({
       queue: [],
       useFinalMix: true,
-      finalMixUrl: story.audio_url,
+      finalMixUrl: refUrl,
       introOutroMusicUrl: null,
       backgroundMusicUrl: null,
       totalSegments: 0,
     }, { headers: { 'Cache-Control': 'no-store' } })
   }
 
-  const STING_URL = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio/sting/ET_Signature_Sting_v7.mp3`
+  const STING_URL = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio/sting/ET_Signature_Sting_v7.mp3.mp3`
   const queue: { url: string; type: 'intro' | 'story' | 'outro'; label: string }[] = []
 
   queue.push({ url: STING_URL, type: 'intro', label: 'Sting' })
@@ -57,7 +60,6 @@ export async function GET(req: NextRequest) {
     }, { headers: { 'Cache-Control': 'no-store' } })
   }
 
-  const refUrl = story.audio_url || ''
   const isNewASC = refUrl.includes('/asc/') && !refUrl.includes('/asc3/')
   const isHal3File = has3Files && !isNewASC
 

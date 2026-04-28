@@ -192,7 +192,7 @@ def main():
 
     mix_result = post_json(f"{BASE_URL}/api/asc3/render-final-mix", {
         "storyId": story_id,
-    })
+    }, timeout=900)
 
     if not mix_result.get("success") or not mix_result.get("finalAudioUrl"):
         write_status(job_id, {

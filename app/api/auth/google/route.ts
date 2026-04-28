@@ -1,7 +1,7 @@
 /**
  * /api/auth/google — Initiates Google OAuth flow
- * Uses implicit flow on localhost (no PKCE needed, avoids cookie/HTTPS issues)
- * Uses PKCE on production (secure, sameSite:none for iOS PWA)
+ * Uses PKCE on localhost and production.
+ * Localhost needs lax/insecure cookies; production/PWA needs none/secure cookies.
  */
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
@@ -14,6 +14,10 @@ export async function GET(request: Request) {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || origin
   const isLocalhost = appUrl.includes('localhost')
   const redirectTo = `${appUrl}/auth/callback`
+  const cookieOptions = {
+    sameSite: isLocalhost ? 'lax' : 'none',
+    secure: !isLocalhost,
+  } as const
 
   const cookieStore = cookies()
   const cookiesToSet: Array<{ name: string; value: string; options: Record<string, unknown> }> = []
@@ -34,8 +38,6 @@ export async function GET(request: Request) {
     options: {
       redirectTo,
       skipBrowserRedirect: true,
-      // Use implicit flow on localhost to avoid PKCE cookie/HTTPS issues
-      queryParams: isLocalhost ? { response_type: 'token' } : undefined,
     }
   })
 
@@ -46,21 +48,17 @@ export async function GET(request: Request) {
 
   const response = NextResponse.redirect(data.url)
 
-  // Set PKCE cookies on response (production only — localhost uses implicit flow)
-  if (!isLocalhost) {
-    cookiesToSet.forEach(({ name, value, options }) => {
-      response.cookies.set(name, value, {
-        ...(options as Parameters<typeof response.cookies.set>[2]),
-        sameSite: 'none',
-        secure: true,
-      })
+  // Set PKCE cookies on response using environment-appropriate options.
+  cookiesToSet.forEach(({ name, value, options }) => {
+    response.cookies.set(name, value, {
+      ...(options as Parameters<typeof response.cookies.set>[2]),
+      ...cookieOptions,
     })
-  }
+  })
 
   response.cookies.set('auth_return_to', returnTo, {
     httpOnly: true,
-    secure: !isLocalhost,
-    sameSite: isLocalhost ? 'lax' : 'none',
+    ...cookieOptions,
     maxAge: 300,
     path: '/',
   })
