@@ -35,7 +35,9 @@ type FeaturedAuthor = {
   narrative_voice?: string | null
   style_reference: string
   style_description: string
+  narrator_id?: string | null
   narrator_name: string
+  narrator_elevenlabs_voice_id?: string | null
   slot: number
 }
 
@@ -45,7 +47,7 @@ type CurationRow = {
   style_reference?: string | null
   style_description?: string | null
   author?: DbAuthor | DbAuthor[] | null
-  narrator?: { id: string; name: string } | { id: string; name: string }[] | null
+  narrator?: { id: string; name: string; elevenlabs_voice_id?: string | null } | { id: string; name: string; elevenlabs_voice_id?: string | null }[] | null
 }
 
 const GENRE_ALIASES: Record<string, string[]> = {
@@ -80,16 +82,16 @@ function matchesGenre(author: DbAuthor, genre: string) {
 function buildAuthorCard(
   author: DbAuthor,
   genre: string,
-  narratorName: string | null | undefined,
+  narrator: { id?: string | null; name?: string | null; elevenlabs_voice_id?: string | null } | null | undefined,
   slot: number,
   styleReference?: string | null,
   styleDescription?: string | null
 ): FeaturedAuthor | null {
   const reference = String(styleReference || author.style_reference || '').trim()
   const description = String(styleDescription || author.style_description || '').trim()
-  const narrator = String(narratorName || '').trim()
+  const narratorName = String(narrator?.name || '').trim()
 
-  if (!author.id || !author.name || !reference || !description || !narrator) return null
+  if (!author.id || !author.name || !reference || !description || !narratorName) return null
 
   return {
     id: author.id,
@@ -99,7 +101,9 @@ function buildAuthorCard(
     narrative_voice: author.narrative_voice,
     style_reference: reference,
     style_description: description,
-    narrator_name: narrator,
+    narrator_id: narrator?.id || author.narrator_id || null,
+    narrator_name: narratorName,
+    narrator_elevenlabs_voice_id: narrator?.elevenlabs_voice_id || null,
     slot,
   }
 }
@@ -142,7 +146,8 @@ export async function GET() {
       ),
       narrator:narrator_voices (
         id,
-        name
+        name,
+        elevenlabs_voice_id
       )
     `)
     .eq('is_active', true)
@@ -165,19 +170,19 @@ export async function GET() {
 
   const activeAuthors = ((authors || []) as DbAuthor[]).filter((author) => author.is_active !== false)
   const narratorIds = Array.from(new Set(activeAuthors.map((author) => author.narrator_id).filter(Boolean))) as string[]
-  let narratorMap: Record<string, string> = {}
+  let narratorMap: Record<string, { id: string; name: string; elevenlabs_voice_id?: string | null }> = {}
 
   if (narratorIds.length > 0) {
     const { data: narrators, error: narratorsError } = await supabase
       .from('narrator_voices')
-      .select('id,name')
+      .select('id,name,elevenlabs_voice_id')
       .in('id', narratorIds)
 
     if (narratorsError) {
       return NextResponse.json({ success: false, error: narratorsError.message }, { status: 500 })
     }
 
-    narratorMap = Object.fromEntries((narrators || []).map((n: any) => [n.id, n.name]))
+    narratorMap = Object.fromEntries((narrators || []).map((n: any) => [n.id, n]))
   }
 
   const grouped: Record<string, FeaturedAuthor[]> = Object.fromEntries(genreNames.map((genre) => [genre, []]))
@@ -191,7 +196,7 @@ export async function GET() {
     const card = buildAuthorCard(
       author,
       genre,
-      narrator?.name || (author.narrator_id ? narratorMap[author.narrator_id] : null),
+      narrator || (author.narrator_id ? narratorMap[author.narrator_id] : null),
       row.slot || grouped[genre].length + 1,
       row.style_reference,
       row.style_description

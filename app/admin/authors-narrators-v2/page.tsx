@@ -12,7 +12,9 @@ type Author = {
   narrative_voice?: string | null
   style_reference?: string | null
   style_description?: string | null
+  narrator_id?: string | null
   narrator_name?: string | null
+  narrator_elevenlabs_voice_id?: string | null
   sort_order?: number | null
 }
 
@@ -126,6 +128,10 @@ export default function AuthorsNarratorsV2Page() {
     return Object.fromEntries(voices.map((voice) => [voice.voice_id, voice])) as Record<string, ElevenLabsVoice>
   }, [voices])
 
+  const narratorById = useMemo(() => {
+    return Object.fromEntries(narrators.map((narrator) => [narrator.id, narrator])) as Record<string, Narrator>
+  }, [narrators])
+
   function stopPreview() {
     if (audioRef.current) {
       audioRef.current.pause()
@@ -165,6 +171,20 @@ export default function AuthorsNarratorsV2Page() {
       if (!res.ok || !data.success) throw new Error(data.error || 'Failed to update narrator voice')
 
       setNarrators((current) => current.map((row) => row.id === narrator.id ? data.narrator : row))
+      setGrouped((current) => {
+        const next: Record<string, Author[]> = {}
+        for (const [genre, authors] of Object.entries(current)) {
+          next[genre] = authors.map((author) => author.narrator_id === narrator.id
+            ? { ...author, narrator_elevenlabs_voice_id: elevenlabsVoiceId }
+            : author
+          )
+        }
+        return next
+      })
+      setSelectedAuthor((current) => current?.narrator_id === narrator.id
+        ? { ...current, narrator_elevenlabs_voice_id: elevenlabsVoiceId }
+        : current
+      )
       setVoiceSaveStatus((current) => ({ ...current, [narrator.id]: 'Saved ✓' }))
       setTimeout(() => {
         setVoiceSaveStatus((current) => ({ ...current, [narrator.id]: '' }))
@@ -172,6 +192,92 @@ export default function AuthorsNarratorsV2Page() {
     } catch (e: any) {
       setVoiceSaveStatus((current) => ({ ...current, [narrator.id]: `Error: ${e.message || 'Save failed'}` }))
     }
+  }
+
+  function narratorForAuthor(author: Author | null): Narrator | null {
+    if (!author?.narrator_id) return null
+    const fullNarrator = narratorById[author.narrator_id]
+    if (fullNarrator) return fullNarrator
+    if (!author.narrator_name) return null
+    return {
+      id: author.narrator_id,
+      name: author.narrator_name,
+      elevenlabs_voice_id: author.narrator_elevenlabs_voice_id,
+    }
+  }
+
+  function renderNarratorVoiceControls(narrator: Narrator, compact = false) {
+    const currentVoice = narrator.elevenlabs_voice_id ? voiceById[narrator.elevenlabs_voice_id] : null
+    const isBelleB = narrator.elevenlabs_voice_id === BELLE_B_VOICE_ID
+    const previewMissing = !currentVoice?.preview_url
+
+    if (isBelleB) {
+      return (
+        <div style={{ color: '#9a3412', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 10, padding: compact ? '8px 10px' : '10px 12px', fontSize: compact ? 13 : 14, fontWeight: 800 }}>
+          Belle B is locked for announcer use only.
+        </div>
+      )
+    }
+
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginTop: compact ? 10 : 0 }}>
+        <button
+          onClick={(event) => {
+            event.stopPropagation()
+            playPreview(narrator)
+          }}
+          disabled={previewMissing}
+          style={{
+            background: previewMissing ? '#d1d5db' : '#f97316',
+            color: 'white',
+            border: 'none',
+            borderRadius: 10,
+            padding: compact ? '9px 12px' : '10px 14px',
+            fontSize: 15,
+            fontWeight: 900,
+            cursor: previewMissing ? 'not-allowed' : 'pointer',
+            minWidth: 104,
+          }}
+        >
+          {previewMissing ? 'No preview' : playingNarratorId === narrator.id ? '⏸ Stop' : '▶ Listen'}
+        </button>
+
+        <select
+          value={narrator.elevenlabs_voice_id || ''}
+          onClick={(event) => event.stopPropagation()}
+          onChange={(event) => {
+            event.stopPropagation()
+            updateNarratorVoice(narrator, event.target.value)
+          }}
+          disabled={voices.length === 0}
+          style={{
+            background: '#fff',
+            color: '#111827',
+            border: '1px solid #d1d5db',
+            borderRadius: 10,
+            padding: '10px 12px',
+            fontSize: 15,
+            minWidth: compact ? 260 : 280,
+          }}
+        >
+          <option value="">Choose voice…</option>
+          {voices.filter((voice) => voice.voice_id !== BELLE_B_VOICE_ID).map((voice) => {
+            const gender = voice.labels?.gender || ''
+            const accent = voice.labels?.accent || ''
+            const detail = [gender, accent].filter(Boolean).join(', ')
+            return (
+              <option key={voice.voice_id} value={voice.voice_id}>
+                {voice.name}{detail ? ` (${detail})` : ''}
+              </option>
+            )
+          })}
+        </select>
+
+        <div style={{ minWidth: 130, color: (voiceSaveStatus[narrator.id] || '').startsWith('Error') ? '#b91c1c' : '#166534', fontSize: 14, fontWeight: 800 }}>
+          {voiceSaveStatus[narrator.id] || ''}
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -229,28 +335,37 @@ export default function AuthorsNarratorsV2Page() {
                     </div>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
-                    {(grouped[genre] || []).map((a) => (
-                      <button
-                        key={a.id}
-                        onClick={() => setSelectedAuthor(a)}
-                        style={{
-                          textAlign: 'left',
-                          background: 'white',
-                          border: selectedAuthor?.id === a.id ? '2px solid #f97316' : '1px solid #d1d5db',
-                          borderRadius: 16,
-                          padding: 16,
-                          cursor: 'pointer',
-                          boxShadow: selectedAuthor?.id === a.id ? '0 10px 24px rgba(249,115,22,0.14)' : 'none',
-                        }}
-                      >
-                        <div style={{ fontWeight: 900, fontSize: 18, color: '#111827', marginBottom: 6 }}>{a.name}</div>
-                        <div style={{ color: '#6b7280', fontSize: 13, marginBottom: 8 }}>
-                          {(a.primary_genre || 'Unknown')}{a.secondary_genre ? ` · ${a.secondary_genre}` : ''}
+                    {(grouped[genre] || []).map((a) => {
+                      const cardNarrator = narratorForAuthor(a)
+                      return (
+                        <div
+                          key={a.id}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => setSelectedAuthor(a)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') setSelectedAuthor(a)
+                          }}
+                          style={{
+                            textAlign: 'left',
+                            background: 'white',
+                            border: selectedAuthor?.id === a.id ? '2px solid #f97316' : '1px solid #d1d5db',
+                            borderRadius: 16,
+                            padding: 16,
+                            cursor: 'pointer',
+                            boxShadow: selectedAuthor?.id === a.id ? '0 10px 24px rgba(249,115,22,0.14)' : 'none',
+                          }}
+                        >
+                          <div style={{ fontWeight: 900, fontSize: 18, color: '#111827', marginBottom: 6 }}>{a.name}</div>
+                          <div style={{ color: '#6b7280', fontSize: 13, marginBottom: 8 }}>
+                            {(a.primary_genre || 'Unknown')}{a.secondary_genre ? ` · ${a.secondary_genre}` : ''}
+                          </div>
+                          <div style={{ color: '#374151', fontSize: 13, marginBottom: 8 }}>✍️ {a.style_reference || 'Not set'}</div>
+                          <div style={{ color: '#f97316', fontSize: 13, fontWeight: 700, marginBottom: cardNarrator ? 8 : 0 }}>🎙 {a.narrator_name || 'Not assigned'}</div>
+                          {cardNarrator ? renderNarratorVoiceControls(cardNarrator, true) : null}
                         </div>
-                        <div style={{ color: '#374151', fontSize: 13, marginBottom: 8 }}>✍️ {a.style_reference || 'Not set'}</div>
-                        <div style={{ color: '#f97316', fontSize: 13, fontWeight: 700 }}>🎙 {a.narrator_name || 'Not assigned'}</div>
-                      </button>
-                    ))}
+                      )
+                    })}
                   </div>
                 </div>
               ))}
@@ -284,6 +399,14 @@ export default function AuthorsNarratorsV2Page() {
                     Paired Narrator
                   </div>
                   <div style={{ color: '#c2410c', fontWeight: 800 }}>{selectedAuthor.narrator_name || 'Not assigned'}</div>
+                  {narratorForAuthor(selectedAuthor) ? (
+                    <div style={{ marginTop: 12 }}>
+                      <div style={{ color: '#9a3412', fontSize: 13, fontWeight: 800, marginBottom: 8 }}>
+                        Current EL voice: {narratorForAuthor(selectedAuthor)?.elevenlabs_voice_id ? voiceById[narratorForAuthor(selectedAuthor)!.elevenlabs_voice_id!]?.name || narratorForAuthor(selectedAuthor)?.elevenlabs_voice_id : 'No voice assigned'}
+                      </div>
+                      {renderNarratorVoiceControls(narratorForAuthor(selectedAuthor)!, true)}
+                    </div>
+                  ) : null}
                 </div>
               </div>
             ) : null}
@@ -307,8 +430,6 @@ export default function AuthorsNarratorsV2Page() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {narrators.map((narrator) => {
                 const currentVoice = narrator.elevenlabs_voice_id ? voiceById[narrator.elevenlabs_voice_id] : null
-                const isBelleB = narrator.elevenlabs_voice_id === BELLE_B_VOICE_ID
-                const previewMissing = !currentVoice?.preview_url
                 const snippet = narrator.bio || narrator.description || `${narrator.accent || 'Unknown accent'} ${narrator.gender || 'voice'}`
                 const photo = narrator.photo_url || narrator.avatar_url
 
@@ -340,62 +461,9 @@ export default function AuthorsNarratorsV2Page() {
                       {currentVoice?.name || narrator.elevenlabs_voice_id || 'No voice assigned'}
                     </div>
 
-                    {isBelleB ? (
-                      <div style={{ minWidth: 430, color: '#9a3412', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 10, padding: '10px 12px', fontSize: 14, fontWeight: 800 }}>
-                        Belle B is locked for announcer use only.
-                      </div>
-                    ) : (
-                      <>
-                        <button
-                          onClick={() => playPreview(narrator)}
-                          disabled={previewMissing}
-                          style={{
-                            background: previewMissing ? '#d1d5db' : '#f97316',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: 10,
-                            padding: '10px 14px',
-                            fontSize: 15,
-                            fontWeight: 900,
-                            cursor: previewMissing ? 'not-allowed' : 'pointer',
-                            minWidth: 104,
-                          }}
-                        >
-                          {previewMissing ? 'No preview' : playingNarratorId === narrator.id ? '⏸ Stop' : '▶ Listen'}
-                        </button>
-
-                        <select
-                          value={narrator.elevenlabs_voice_id || ''}
-                          onChange={(e) => updateNarratorVoice(narrator, e.target.value)}
-                          disabled={voices.length === 0}
-                          style={{
-                            background: '#fff',
-                            color: '#111827',
-                            border: '1px solid #d1d5db',
-                            borderRadius: 10,
-                            padding: '10px 12px',
-                            fontSize: 15,
-                            minWidth: 280,
-                          }}
-                        >
-                          <option value="">Choose voice…</option>
-                          {voices.filter((voice) => voice.voice_id !== BELLE_B_VOICE_ID).map((voice) => {
-                            const gender = voice.labels?.gender || ''
-                            const accent = voice.labels?.accent || ''
-                            const detail = [gender, accent].filter(Boolean).join(', ')
-                            return (
-                              <option key={voice.voice_id} value={voice.voice_id}>
-                                {voice.name}{detail ? ` (${detail})` : ''}
-                              </option>
-                            )
-                          })}
-                        </select>
-
-                        <div style={{ minWidth: 130, color: (voiceSaveStatus[narrator.id] || '').startsWith('Error') ? '#b91c1c' : '#166534', fontSize: 14, fontWeight: 800 }}>
-                          {voiceSaveStatus[narrator.id] || ''}
-                        </div>
-                      </>
-                    )}
+                    <div style={{ minWidth: 520 }}>
+                      {renderNarratorVoiceControls(narrator)}
+                    </div>
                   </div>
                 )
               })}
