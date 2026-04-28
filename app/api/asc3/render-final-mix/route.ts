@@ -127,7 +127,11 @@ export async function POST(req: NextRequest) {
         await download(`${BASE_STORAGE}/asc3/${storyId}/${seg.name}`, rawPath)
         const stat = await fs.stat(rawPath)
         if (stat.size <= 100) continue
-        await execFileAsync(FFMPEG_PATH, ['-i', rawPath, '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', segPath])
+        if (seg.name.startsWith('segment_')) {
+          await normalizeAudio(rawPath, segPath, -16)
+        } else {
+          await execFileAsync(FFMPEG_PATH, ['-i', rawPath, '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', segPath])
+        }
         segPaths.push(segPath)
         await fs.unlink(rawPath).catch(() => {})
       } catch (e) {
@@ -195,13 +199,13 @@ export async function POST(req: NextRequest) {
       await execFileAsync(FFMPEG_PATH, [
         '-stream_loop', '-1', '-i', musicPath,
         '-filter_complex',
-        `[0:a]atrim=0:${segsDur + 3},asetpts=PTS-STARTPTS,afade=t=in:st=0:d=2.5,afade=t=out:st=${segsDur}:d=3,volume=0.15[music_out]`,
+        `[0:a]atrim=0:${segsDur + 3},asetpts=PTS-STARTPTS,afade=t=in:st=0:d=2.5,afade=t=out:st=${segsDur}:d=3,volume=0.08[music_out]`,
         '-map', '[music_out]',
         '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', musicBodyMixedPath
       ])
       await execFileAsync(FFMPEG_PATH, [
         '-i', segsOnlyPath, '-i', musicBodyMixedPath,
-        '-filter_complex', '[0:a][1:a]amix=inputs=2:duration=first[mixed]',
+        '-filter_complex', '[0:a][1:a]amix=inputs=2:duration=first:normalize=0[mixed]',
         '-map', '[mixed]',
         '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', storyBodyPath
       ])
@@ -239,24 +243,25 @@ export async function POST(req: NextRequest) {
     // Upload story_body.mp3 (segments only — for queue mode personalization)
     const bodyBuffer = await fs.readFile(storyBodyPath)
     const bodyStoragePath = `asc3/${storyId}/story_body.mp3`
-    const { error: bodyUploadErr } = await supabase.storage.from('audio').upload(bodyStoragePath, bodyBuffer, { contentType: 'audio/mpeg', upsert: true })
+    const { error: bodyUploadErr } = await supabase.storage.from('audio').upload(bodyStoragePath, bodyBuffer, { contentType: 'audio/mpeg', cacheControl: 'no-cache', upsert: true })
     if (bodyUploadErr) throw new Error(`Body upload error: ${bodyUploadErr.message}`)
     const storyBodyUrl = `${BASE_STORAGE}/${bodyStoragePath}`
 
     // Upload final_mix.mp3 (full mix for backward compat)
     const mixBuffer = await fs.readFile(outputPath)
     const mixPath = `asc3/${storyId}/final_mix.mp3`
-    const { error: uploadErr } = await supabase.storage.from('audio').upload(mixPath, mixBuffer, { contentType: 'audio/mpeg', upsert: true })
+    const { error: uploadErr } = await supabase.storage.from('audio').upload(mixPath, mixBuffer, { contentType: 'audio/mpeg', cacheControl: 'no-cache', upsert: true })
     if (uploadErr) throw new Error(`Upload error: ${uploadErr.message}`)
     const finalAudioUrl = `${BASE_STORAGE}/${mixPath}`
+    const versionedFinalAudioUrl = `${finalAudioUrl}?v=${Date.now()}`
 
     // Update story — story_audio_url for queue mode, audio_url for fallback
     await supabase.from('stories').update({
       story_audio_url: storyBodyUrl,
-      audio_url: finalAudioUrl
+      audio_url: versionedFinalAudioUrl
     }).eq('id', storyId)
 
-    return NextResponse.json({ success: true, finalAudioUrl, storyBodyUrl, durationSecs })
+    return NextResponse.json({ success: true, finalAudioUrl: versionedFinalAudioUrl, storyBodyUrl, durationSecs })
   } catch (err) {
     console.error('render-final-mix error:', err)
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 })
