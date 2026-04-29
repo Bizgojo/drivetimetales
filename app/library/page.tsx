@@ -10,6 +10,7 @@ import { buildSeriesPlaybackTarget, storeSeriesPlayback } from '@/lib/seriesPlay
 
 const PLAYLIST_KEY = 'et_current_playlist'
 const SAVED_PLAYLIST_KEY = 'et_saved_playlist'
+const ACTIVE_PLAYLIST_KEY = 'dtt_active_playlist'
 
 type Story = {
   id: string
@@ -425,7 +426,49 @@ export default function LibraryPage() {
 
   function savePlaylistToHome() {
     try {
+      const items = validPlaylist
+        .map((key) => {
+          const item = cardItems.find((i) => i.key === key)
+          if (!item) return null
+          if (item.type === 'single' && item.story) {
+            return {
+              type: 'single',
+              id: item.story.id,
+              title: item.story.title,
+              author: item.story.author || 'Endless Tales',
+              genre: item.story.genre || '',
+              duration_mins: item.story.duration_mins || 0,
+              cover_url: item.story.cover_url || null,
+            }
+          }
+          if (item.type === 'series') {
+            return {
+              type: 'series',
+              id: item.seriesId,
+              series_id: item.seriesId,
+              series_name: item.seriesName || 'Series',
+              title: item.seriesName || 'Series',
+              author: item.author || 'Endless Tales',
+              genre: item.genre || '',
+              duration_mins: (item.avgDuration || 0) * (item.episodeCount || 0),
+              total_mins: (item.avgDuration || 0) * (item.episodeCount || 0),
+              episode_count: item.episodeCount || 0,
+              cover_url: item.cover || null,
+              episodes: item.episodePlaylist || [],
+            }
+          }
+          return null
+        })
+        .filter(Boolean)
+      const savedPlaylist = {
+        id: `library-${Date.now()}`,
+        items,
+        remaining_mins: playlistTotalMins,
+        completed: 0,
+      }
+      localStorage.setItem(ACTIVE_PLAYLIST_KEY, JSON.stringify(savedPlaylist))
       localStorage.setItem(SAVED_PLAYLIST_KEY, JSON.stringify(validPlaylist))
+      window.dispatchEvent(new Event('et_playlist_saved'))
       alert('Saved to home')
     } catch {}
   }

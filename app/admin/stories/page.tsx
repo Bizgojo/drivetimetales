@@ -73,6 +73,24 @@ const textPrimary = '#1a1a1a'
 const textSecondary = '#4a4a4a'
 const border = '#e0e0e0'
 
+function PlayStoryButton({ storyId, title }: { storyId: string; title: string }) {
+  function handleClick(e: React.MouseEvent<HTMLButtonElement>) {
+    e.stopPropagation()
+    window.open(`/player/${storyId}`, '_blank', 'noopener,noreferrer')
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      title={`Play ${title}`}
+      style={{ padding: '4px 8px', borderRadius: '999px', border: 'none', backgroundColor: '#f97316', color: '#ffffff', fontSize: '11px', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}
+    >
+      ▶ Play
+    </button>
+  )
+}
+
 // ── Story Editor Panel ────────────────────────────────────────────────────────
 
 function StoryEditorPanel({
@@ -556,18 +574,34 @@ function StoryRow({
   deleteConfirm: string | null
   setDeleteConfirm: (id: string | null) => void
 }) {
+  function handleDeleteClick(e: React.MouseEvent<HTMLButtonElement>) {
+    e.stopPropagation()
+    if (!window.confirm(`Delete "${story.title}"?\n\nThis will permanently delete this published story and its related progress/review records.`)) return
+    onDelete(story.id)
+  }
+
   return (
     <tr style={{ borderBottom: `1px solid ${border}`, backgroundColor: index % 2 === 0 ? 'transparent' : '#fafafa' }}>
       {/* Cover — clickable to edit */}
       <td style={{ padding: '0.5rem' }}>
-        <div
-          onClick={() => onEditClick(story)}
-          title="Click to edit"
-          style={{ width: '44px', height: '44px', borderRadius: '6px', overflow: 'hidden', backgroundColor: '#e5e5e5', cursor: 'pointer', border: '2px solid transparent', transition: 'border-color 0.15s' }}
-          onMouseEnter={e => (e.currentTarget.style.borderColor = '#f97316')}
-          onMouseLeave={e => (e.currentTarget.style.borderColor = 'transparent')}
-        >
-          <img src={story.cover_url || '/images/default-cover.png'} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <button
+            type="button"
+            onClick={handleDeleteClick}
+            title="Delete story"
+            style={{ width: '24px', height: '24px', borderRadius: '5px', border: '1px solid #fecaca', backgroundColor: '#fee2e2', color: '#dc2626', cursor: 'pointer', fontSize: '13px', lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+          >
+            🗑
+          </button>
+          <div
+            onClick={() => onEditClick(story)}
+            title="Click to edit"
+            style={{ width: '44px', height: '44px', borderRadius: '6px', overflow: 'hidden', backgroundColor: '#e5e5e5', cursor: 'pointer', border: '2px solid transparent', transition: 'border-color 0.15s', flexShrink: 0 }}
+            onMouseEnter={e => (e.currentTarget.style.borderColor = '#f97316')}
+            onMouseLeave={e => (e.currentTarget.style.borderColor = 'transparent')}
+          >
+            <img src={story.cover_url || '/images/default-cover.png'} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          </div>
         </div>
       </td>
       {/* Title */}
@@ -579,6 +613,10 @@ function StoryRow({
         </div>
         {story.episode_title && <div style={{ color: textSecondary, fontSize: '11px', fontStyle: 'italic' }}>{story.episode_title}</div>}
         <div style={{ color: textSecondary, fontSize: '11px' }}>by {story.author}</div>
+      </td>
+      {/* Play */}
+      <td style={{ padding: '0.5rem', textAlign: 'center' }}>
+        <PlayStoryButton storyId={story.id} title={story.title} />
       </td>
       {/* Genres */}
       <td style={{ padding: '0.5rem' }}>
@@ -644,20 +682,38 @@ function SeriesGroupRow({
     ? Math.round(group.episodes.reduce((sum, e) => sum + (e.pct_finished || 0), 0) / group.episodes.length)
     : 0
 
+  async function handleDeleteSeriesClick(e: React.MouseEvent<HTMLButtonElement>) {
+    e.stopPropagation()
+    if (!window.confirm(`Delete the entire series "${group.name}"?\n\nThis will permanently delete all ${group.episodes.length} child episode stories and their related progress/review records.`)) return
+    for (const episode of group.episodes) {
+      await onDelete(episode.id)
+    }
+  }
+
   return (
     <>
       {/* Series header row */}
       <tr style={{ borderBottom: `1px solid ${border}`, backgroundColor: index % 2 === 0 ? '#f0f7ff' : '#e8f0fc' }}>
         {/* Series cover — click to expand/collapse */}
         <td style={{ padding: '0.5rem' }}>
-          <div
-            onClick={() => setExpanded(!expanded)}
-            title={expanded ? 'Collapse episodes' : 'Expand episodes'}
-            style={{ position: 'relative', width: '44px', height: '44px', borderRadius: '6px', overflow: 'hidden', backgroundColor: '#e5e5e5', cursor: 'pointer', border: '2px solid #2563eb', flexShrink: 0 }}
-          >
-            <img src={group.cover_url || '/images/default-cover.png'} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            <div style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}>
-              {expanded ? '▲' : '▼'}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <button
+              type="button"
+              onClick={handleDeleteSeriesClick}
+              title="Delete entire series"
+              style={{ width: '24px', height: '24px', borderRadius: '5px', border: '1px solid #fecaca', backgroundColor: '#fee2e2', color: '#dc2626', cursor: 'pointer', fontSize: '13px', lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+            >
+              🗑
+            </button>
+            <div
+              onClick={() => setExpanded(!expanded)}
+              title={expanded ? 'Collapse episodes' : 'Expand episodes'}
+              style={{ position: 'relative', width: '44px', height: '44px', borderRadius: '6px', overflow: 'hidden', backgroundColor: '#e5e5e5', cursor: 'pointer', border: '2px solid #2563eb', flexShrink: 0 }}
+            >
+              <img src={group.cover_url || '/images/default-cover.png'} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              <div style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}>
+                {expanded ? '▲' : '▼'}
+              </div>
             </div>
           </div>
         </td>
@@ -667,6 +723,9 @@ function SeriesGroupRow({
           <div style={{ color: '#1d4ed8', fontWeight: 700, fontSize: '13px' }}>{group.name}</div>
           <div style={{ color: textSecondary, fontSize: '11px' }}>{group.episodes.length} episodes · {totalDuration}m total</div>
         </td>
+
+        {/* Series parent is not directly playable */}
+        <td style={{ padding: '0.5rem', textAlign: 'center', color: textSecondary, fontSize: '11px' }}>—</td>
 
         {/* Genres from first episode */}
         <td style={{ padding: '0.5rem' }}>
@@ -711,6 +770,11 @@ function SeriesGroupRow({
             <td style={{ padding: '0.5rem' }}>
               <div style={{ color: textPrimary, fontWeight: 500, fontSize: '12px' }}>{ep.episode_title || ep.title}</div>
               <div style={{ color: textSecondary, fontSize: '10px' }}>by {ep.author}</div>
+            </td>
+
+            {/* Play */}
+            <td style={{ padding: '0.5rem', textAlign: 'center' }}>
+              <PlayStoryButton storyId={ep.id} title={ep.episode_title || ep.title} />
             </td>
 
             {/* Genres */}
@@ -952,8 +1016,9 @@ export default function AdminStoriesPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
             <thead>
               <tr style={{ backgroundColor: '#f5f5f5', borderBottom: `2px solid ${border}` }}>
-                <th style={{ padding: '0.75rem 0.5rem', width: '56px' }}></th>
+                <th style={{ padding: '0.75rem 0.5rem', width: '84px' }}></th>
                 <SortTh col="title" label="Title" minW="160px" />
+                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600, minWidth: '64px' }}>Play</th>
                 <SortTh col="genre" label="Genres" minW="110px" />
                 <SortTh col="duration_mins" label="Dur" right />
                 <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600 }}>Day</th>
@@ -984,7 +1049,7 @@ export default function AdminStoriesPage() {
               {/* Divider if both series and standalones exist */}
               {seriesGroups.length > 0 && sortedStandalones.length > 0 && (
                 <tr>
-                  <td colSpan={12} style={{ padding: '0.5rem 1rem', backgroundColor: '#f0f0f0', borderBottom: `1px solid ${border}`, fontSize: '11px', fontWeight: 700, color: textSecondary, letterSpacing: '0.05em' }}>
+                  <td colSpan={13} style={{ padding: '0.5rem 1rem', backgroundColor: '#f0f0f0', borderBottom: `1px solid ${border}`, fontSize: '11px', fontWeight: 700, color: textSecondary, letterSpacing: '0.05em' }}>
                     STANDALONE STORIES
                   </td>
                 </tr>

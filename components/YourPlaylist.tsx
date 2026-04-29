@@ -23,14 +23,24 @@ interface SavedPlaylist {
 
 const STORAGE_KEY = 'dtt_active_playlist'
 
+function formatRemainingMinutes(minutes: number) {
+  if (minutes < 60) return `${minutes}m remaining`
+  const hours = Math.floor(minutes / 60)
+  const mins = minutes % 60
+  return mins > 0 ? `${hours}h ${mins}m remaining` : `${hours}h remaining`
+}
+
 export default function YourPlaylist() {
   const router = useRouter()
   const [playlist, setPlaylist] = useState<SavedPlaylist | null>(null)
 
-  useEffect(() => {
+  function loadPlaylist() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY)
-      if (!raw) return
+      if (!raw) {
+        setPlaylist(null)
+        return
+      }
       const parsed = JSON.parse(raw)
       // Support new format (items) and legacy format (stories/array)
       const items: PlaylistItem[] = parsed.items
@@ -38,14 +48,45 @@ export default function YourPlaylist() {
         : Array.isArray(parsed)
           ? parsed.map((s: any) => ({ type: 'single', ...s }))
           : (parsed.stories || []).map((s: any) => ({ type: s.type || 'single', ...s }))
-      if (items.length === 0) return
+      if (items.length === 0) {
+        setPlaylist(null)
+        return
+      }
       setPlaylist({
         id: parsed.id || 'legacy',
         items,
         remaining_mins: parsed.remaining_mins || items.reduce((s: number, x: any) => s + (x.type === 'series' ? (x.total_mins || 0) : (x.duration_mins || 0)), 0),
         completed: parsed.completed || 0
       })
-    } catch {}
+    } catch (err) {
+      console.error('[YourPlaylist] failed to load saved playlist:', err)
+      setPlaylist(null)
+    }
+  }
+
+  useEffect(() => {
+    loadPlaylist()
+
+    const handleFocus = () => loadPlaylist()
+    const handlePlaylistSaved = () => loadPlaylist()
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === STORAGE_KEY) loadPlaylist()
+    }
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') loadPlaylist()
+    }
+
+    window.addEventListener('focus', handleFocus)
+    window.addEventListener('storage', handleStorage)
+    window.addEventListener('et_playlist_saved', handlePlaylistSaved)
+    document.addEventListener('visibilitychange', handleVisibility)
+
+    return () => {
+      window.removeEventListener('focus', handleFocus)
+      window.removeEventListener('storage', handleStorage)
+      window.removeEventListener('et_playlist_saved', handlePlaylistSaved)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
   }, [])
 
   function clear() {
@@ -58,7 +99,14 @@ export default function YourPlaylist() {
   const items = playlist.items
   const completed = playlist.completed || 0
   const remaining = items.length - completed
-  const totalMins = Math.round(playlist.remaining_mins || stories.reduce((s, x) => s + (x.duration_mins || 0), 0))
+  const calculatedMins = items.reduce((sum, item) => {
+    return sum + (item.type === 'series' ? (item.total_mins || 0) : (item.duration_mins || 0))
+  }, 0)
+  const totalMins = Math.round(
+    Number.isFinite(playlist.remaining_mins) && playlist.remaining_mins > 0
+      ? playlist.remaining_mins
+      : calculatedMins
+  )
   const nextTitles = items.slice(completed, completed + 3).map(s => s.type === 'series' ? (s.series_name || 'Series') : (s.title || ''))
 
   return (
@@ -85,11 +133,11 @@ export default function YourPlaylist() {
         {/* Body */}
         <div style={{ flex: 1, padding: '9px 36px 9px 9px', minWidth: 0 }}>
           <div style={{ fontWeight: 700, fontSize: 13, color: 'white', lineHeight: 1.2, marginBottom: 2 }}>
-            {remaining} {remaining === 1 ? 'Item' : 'Items'} · {totalMins} min remaining
+            {remaining} {remaining === 1 ? 'Item' : 'Items'} · {formatRemainingMinutes(totalMins)}
           </div>
           {completed > 0 && (
             <div style={{ fontSize: 10, color: '#64748b', marginBottom: 4 }}>
-              {completed} of {stories.length} completed
+              {completed} of {items.length} completed
             </div>
           )}
           <div style={{ overflow: 'hidden', maxHeight: 36 }}>

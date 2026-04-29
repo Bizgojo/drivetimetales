@@ -125,8 +125,15 @@ function PlaylistPlayerContent() {
       // Check user_library for resume point
       let resumeAt = 0
       if (user?.id) {
-        const { data } = await supabase.from('user_library').select('progress, completed').eq('user_id', user.id).eq('story_id', storyId).single().catch(() => ({ data: null }))
-        if (data && !data.completed && data.progress > 120) resumeAt = Math.max(0, data.progress - 15)
+        try {
+          const { data } = await supabase
+            .from('user_library')
+            .select('progress, completed')
+            .eq('user_id', user.id)
+            .eq('story_id', storyId)
+            .single()
+          if (data && !data.completed && data.progress > 120) resumeAt = Math.max(0, data.progress - 15)
+        } catch {}
       }
       return { storyId, resumeAt }
     } else {
@@ -138,15 +145,30 @@ function PlaylistPlayerContent() {
         const ep = episodes[epIdx]
         let resumeAt = 0
         if (user?.id) {
-          const { data } = await supabase.from('user_library').select('progress, completed').eq('user_id', user.id).eq('story_id', ep.id).single().catch(() => ({ data: null }))
-          if (data && !data.completed && data.progress > 120) resumeAt = Math.max(0, data.progress - 15)
+          try {
+            const { data } = await supabase
+              .from('user_library')
+              .select('progress, completed')
+              .eq('user_id', user.id)
+              .eq('story_id', ep.id)
+              .single()
+            if (data && !data.completed && data.progress > 120) resumeAt = Math.max(0, data.progress - 15)
+          } catch {}
         }
         return { storyId: ep.id, resumeAt }
       }
       // Smart start: find in-progress ep, or first unstarted, or ep1
       if (user?.id) {
         const ids = episodes.map(e => e.id)
-        const { data: progressData } = await supabase.from('user_library').select('story_id, progress, completed').eq('user_id', user.id).in('story_id', ids).catch(() => ({ data: null }))
+        let progressData: any[] | null = null
+        try {
+          const { data } = await supabase
+            .from('user_library')
+            .select('story_id, progress, completed')
+            .eq('user_id', user.id)
+            .in('story_id', ids)
+          progressData = data
+        } catch {}
         const progressMap: Record<string, { progress: number; completed: boolean }> = {}
         if (progressData) progressData.forEach((p: any) => { progressMap[p.story_id] = { progress: p.progress || 0, completed: p.completed || false } })
         // Find in-progress episode
@@ -231,6 +253,23 @@ function PlaylistPlayerContent() {
     saveTimer.current = setTimeout(() => saveProgress(t), 10000)
   }
 
+  async function playSeriesEpisode(episode: EpisodeEntry, episodeIndex: number) {
+    setSeriesEpisodeIndex(episodeIndex)
+    setLoading(true); setAudioReady(false); setCurrentTime(0); setDuration(0)
+    setNowPlayingLabel(episode.title); setTimeout(() => setNowPlayingLabel(null), 3000)
+    const prefetched = resolvedStories.current.get(episode.id)
+    if (prefetched) {
+      setStoryData(prefetched); setLoading(false)
+    } else {
+      try {
+        const { data } = await supabase.from('stories').select('id, title, author, cover_url, audio_url, duration_mins').eq('id', episode.id).single()
+        if (data) { resolvedStories.current.set(episode.id, data); setStoryData(data) }
+      } catch {}
+      setLoading(false)
+    }
+    autoPlayNext.current = true
+  }
+
   const handleEnded = async () => {
     await saveProgress(duration, true)
     const item = playlist[currentIndex]
@@ -239,22 +278,7 @@ function PlaylistPlayerContent() {
       const episodes = item.episodes || []
       const nextEpIdx = seriesEpisodeIndex + 1
       if (nextEpIdx < episodes.length) {
-        // Play next episode in series
-        setSeriesEpisodeIndex(nextEpIdx)
-        setLoading(true); setAudioReady(false); setCurrentTime(0); setDuration(0)
-        const nextEp = episodes[nextEpIdx]
-        setNowPlayingLabel(nextEp.title); setTimeout(() => setNowPlayingLabel(null), 3000)
-        const prefetched = resolvedStories.current.get(nextEp.id)
-        if (prefetched) {
-          setStoryData(prefetched); setLoading(false)
-        } else {
-          try {
-            const { data } = await supabase.from('stories').select('id, title, author, cover_url, audio_url, duration_mins').eq('id', nextEp.id).single()
-            if (data) { resolvedStories.current.set(nextEp.id, data); setStoryData(data) }
-          } catch {}
-          setLoading(false)
-        }
-        autoPlayNext.current = true
+        await playSeriesEpisode(episodes[nextEpIdx], nextEpIdx)
         return
       }
     }
@@ -283,6 +307,15 @@ function PlaylistPlayerContent() {
   const handleSkip = async () => {
     if (!audioRef.current) return
     audioRef.current.pause(); await saveProgress(currentTime)
+    const item = playlist[currentIndex]
+    if (item?.type === 'series') {
+      const episodes = item.episodes || []
+      const nextEpIdx = seriesEpisodeIndex + 1
+      if (nextEpIdx < episodes.length) {
+        await playSeriesEpisode(episodes[nextEpIdx], nextEpIdx)
+        return
+      }
+    }
     if (currentIndex < playlist.length - 1) { const n = currentIndex + 1; localStorage.setItem('dtt_playlist_index', String(n)); setCurrentIndex(n) }
     else { localStorage.removeItem('dtt_active_playlist'); localStorage.removeItem('dtt_playlist_index'); router.replace('/library') }
   }
@@ -297,7 +330,14 @@ function PlaylistPlayerContent() {
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, '0')}`
   const timeRemaining = duration > 0 ? Math.max(0, duration - currentTime) : (storyData?.duration_mins || 0) * 60
   const progressPct = duration > 0 ? (currentTime / duration) * 100 : 0
-  const isLast = currentIndex === playlist.length - 1
+  const currentItem = playlist[currentIndex]
+  const isSeriesItem = currentItem?.type === 'series'
+  const hasNextSeriesEpisode = isSeriesItem && seriesEpisodeIndex + 1 < (currentItem.episodes?.length || 0)
+  const hasNextPlaylistItem = currentIndex < playlist.length - 1
+  const seriesEpisodeTotal = isSeriesItem
+    ? currentItem.episode_count || currentItem.episodes?.length || 1
+    : 1
+  const headerTitle = isSeriesItem ? currentItem.series_name || storyData?.title || 'Series' : storyData?.title || 'Playlist'
 
   if (loading || !storyData) return <div style={{ height: '100dvh', backgroundColor: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ width: '40px', height: '40px', border: '4px solid #f97316', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} /><style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style></div>
 
@@ -317,12 +357,19 @@ function PlaylistPlayerContent() {
       </div>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '16px 20px', gap: '12px' }}>
         <div>
-          <p style={{ color: '#f59e0b', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 2px', textAlign: 'center' }}>
-            {playlist[currentIndex]?.type === 'series' ? playlist[currentIndex].series_name : 'Playlist'} · {currentIndex + 1} of {playlist.length}
+          <h1 style={{ fontSize: isSeriesItem ? '24px' : '22px', fontWeight: 900, margin: 0, color: 'white', textAlign: 'center', lineHeight: 1.12 }}>
+            {headerTitle}
+          </h1>
+          <p style={{ color: '#f59e0b', fontSize: '12px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', margin: '6px 0 2px', textAlign: 'center' }}>
+            {isSeriesItem ? `Episode ${seriesEpisodeIndex + 1} of ${seriesEpisodeTotal}` : `Playlist · ${currentIndex + 1} of ${playlist.length}`}
             {offlineReady && <span style={{ marginLeft: '8px', color: '#22c55e' }}>✓ offline ready</span>}
           </p>
-          <h1 style={{ fontSize: '20px', fontWeight: 800, margin: 0, color: 'white', textAlign: 'center', lineHeight: 1.2 }}>{storyData.title}</h1>
-          <p style={{ color: '#94a3b8', fontSize: '13px', margin: '4px 0 0', textAlign: 'center' }}>{storyData.author ? `by ${storyData.author} · ` : ''}{formatTime(timeRemaining)} remaining</p>
+          {isSeriesItem && (
+            <h2 style={{ fontSize: '17px', fontWeight: 800, margin: '2px 0 0', color: 'white', textAlign: 'center', lineHeight: 1.2 }}>
+              {storyData.title}
+            </h2>
+          )}
+          <p style={{ color: '#94a3b8', fontSize: '13px', margin: '5px 0 0', textAlign: 'center' }}>{storyData.author ? `by ${storyData.author} · ` : ''}{formatTime(timeRemaining)} remaining</p>
         </div>
         <div>
           <div onClick={handleSeek} style={{ height: '6px', backgroundColor: '#334155', borderRadius: '3px', overflow: 'hidden', cursor: 'pointer' }}>
@@ -336,8 +383,8 @@ function PlaylistPlayerContent() {
           <button onClick={handlePlayPause} style={{ flex: 2, padding: '16px', borderRadius: '14px', border: 'none', fontSize: '16px', fontWeight: 700, cursor: 'pointer', backgroundColor: isPlaying ? '#f97316' : '#22c55e', color: 'white' }}>
             {!audioReady ? 'Loading...' : isPlaying ? '⏸ Pause' : '▶ Play'}
           </button>
-          <button onClick={handleSkip} style={{ flex: 1, padding: '16px', borderRadius: '14px', border: 'none', fontSize: '14px', fontWeight: 600, cursor: 'pointer', backgroundColor: '#1e293b', color: isLast ? '#64748b' : '#94a3b8' }}>
-            {isLast ? 'Done' : 'Skip ⏭'}
+          <button onClick={handleSkip} style={{ flex: 1, padding: '16px', borderRadius: '14px', border: 'none', fontSize: '14px', fontWeight: 600, cursor: 'pointer', backgroundColor: '#1e293b', color: !hasNextSeriesEpisode && !hasNextPlaylistItem ? '#64748b' : '#94a3b8' }}>
+            {!hasNextSeriesEpisode && !hasNextPlaylistItem ? 'Done' : 'Skip ⏭'}
           </button>
         </div>
       </div>
