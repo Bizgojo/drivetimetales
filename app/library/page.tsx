@@ -152,7 +152,7 @@ export default function LibraryPage() {
         if (storiesError) throw new Error(`story_analytics failed: ${storiesError.message}`)
         if (cancelled) return
         if (storiesData) {
-          const storyRows = storiesData as Story[]
+          const storyRows = (storiesData as Story[]).filter((story) => Boolean(story.cover_url))
           const seriesIds = Array.from(new Set(storyRows.map((story) => story.series_id).filter(Boolean))) as string[]
 
           if (seriesIds.length > 0) {
@@ -731,7 +731,7 @@ function StoryCard({
 }) {
   const isSeries = item.type === 'series'
   const duration = isSeries
-    ? `~${formatMinutes(item.avgDuration || 0)}`
+    ? `Avg. ${formatMinutes(item.avgDuration || 0)}`
     : formatMinutes(item.story?.duration_mins || 0)
   const ratingValue = Math.round(item.avgRating || 0)
   const stars = '★'.repeat(ratingValue) + '☆'.repeat(5 - ratingValue)

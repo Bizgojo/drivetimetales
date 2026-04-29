@@ -49,6 +49,7 @@ export async function POST(req: NextRequest) {
 
     const missing: string[] = []
     if (!audio_url) missing.push('audio_url')
+    if (!cover_url) missing.push('cover_url')
     if (!description) missing.push('description')
     if (!duration_mins) missing.push('duration_mins')
 
@@ -64,7 +65,7 @@ export async function POST(req: NextRequest) {
       author: author || undefined,
       genre: genre || undefined,
       audio_url,
-      cover_url: cover_url || null,
+      cover_url,
       description,
       duration_mins,
       is_free,

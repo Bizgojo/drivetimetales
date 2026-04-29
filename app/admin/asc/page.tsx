@@ -150,20 +150,24 @@ export default function AscAdminPage() {
     refreshHandoff()
   }, [])
 
+  const hasActiveSingleJob = Boolean(handoff?.productionJobId) && (() => {
+    const status = (job?.status || handoff?.status || '').toLowerCase()
+    return status === 'queued' || status === 'running' || status === 'ready_for_asc'
+  })()
   const hasActivePackageJobs = packageJobs.some((packageJob) => {
     const status = (packageJob.status || '').toLowerCase()
     return status === 'queued' || status === 'running'
   })
 
   useEffect(() => {
-    if (!hasActivePackageJobs || working) return
+    if ((!hasActivePackageJobs && !hasActiveSingleJob) || working) return
 
     const timer = window.setInterval(() => {
-      refreshProductionStatus()
+      refreshProductionStatus({ silent: true })
     }, 15000)
 
     return () => window.clearInterval(timer)
-  }, [hasActivePackageJobs, working])
+  }, [hasActivePackageJobs, hasActiveSingleJob, working])
 
   function refreshHandoff() {
     try {
@@ -313,7 +317,7 @@ export default function AscAdminPage() {
     }
   }
 
-  async function refreshProductionStatus() {
+  async function refreshProductionStatus(options: { silent?: boolean } = {}) {
     if ((handoff?.type === 'series_package' || handoff?.episodes?.length) && packageJobs.length) {
       try {
         setWorking(true)
@@ -352,7 +356,9 @@ export default function AscAdminPage() {
         localStorage.setItem(PACKAGE_STORAGE_KEY, JSON.stringify(updated))
         setHandoff(updated)
         setPackageJobs(refreshedJobs)
-        setMessage(`Refreshed ${refreshedJobs.length} package production jobs.`)
+        if (!options.silent) {
+          setMessage(`Refreshed ${refreshedJobs.length} package production jobs.`)
+        }
       } catch (err: any) {
         setMessage(err?.message || 'Failed to load package production status')
       } finally {
@@ -374,7 +380,9 @@ export default function AscAdminPage() {
         throw new Error(data.error || 'Failed to load production status')
       }
       setJob(data.job || null)
-      setMessage(`Production status: ${data.job?.status || 'unknown'}`)
+      if (!options.silent) {
+        setMessage(`Production status: ${data.job?.status || 'unknown'}`)
+      }
     } catch (err: any) {
       setMessage(err?.message || 'Failed to load production status')
     } finally {
@@ -490,7 +498,7 @@ export default function AscAdminPage() {
       cover_url: form.cover_url.trim(),
       description: form.description.trim(),
       duration_mins: Number(form.duration_mins || 15),
-      is_free: form.is_free,
+      is_free: true,
       updatedAt: new Date().toISOString(),
     }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
@@ -518,7 +526,7 @@ export default function AscAdminPage() {
         cover_url: form.cover_url.trim(),
         description: form.description.trim(),
         duration_mins: Number(form.duration_mins || 15),
-        is_free: form.is_free,
+        is_free: true,
       }
 
       const res = await fetch('/api/admin/publish-story', {
@@ -554,8 +562,27 @@ export default function AscAdminPage() {
     && !!handoff?.title
     && packageEpisodes.length > 0
     && packageEpisodes.every((episode) => !!episode.storyId && !!episode.title && !!episode.script)
-  const canRunProduction = isPackageHandoff ? packageCanRun : !!handoff?.storyId
   const canRefreshProductionStatus = isPackageHandoff ? packageJobs.length > 0 : !!handoff?.productionJobId
+  const singleJobPublished = !isPackageHandoff && job?.status === 'complete' && job?.phase === 'published'
+  const singleProductionRunning = !isPackageHandoff && (
+    working
+    || job?.status === 'running'
+    || job?.status === 'queued'
+    || handoff?.status === 'running'
+  )
+  const canRunProduction = isPackageHandoff
+    ? packageCanRun
+    : !!handoff?.storyId && !singleProductionRunning && !singleJobPublished
+  const canImportSingleOutput = !isPackageHandoff
+    && !!handoff?.title
+    && !singleProductionRunning
+  const canPublishSingleStory = !isPackageHandoff
+    && !!handoff?.storyId
+    && !singleProductionRunning
+    && !!form.audio_url
+    && !!form.cover_url
+    && !!form.description
+    && !!form.duration_mins
   const packageCompletionRows = packageEpisodes.map((episode) => {
     const episodeJob = packageJobs.find((packageJob) => packageJob.storyId === episode.storyId)
     return {
@@ -731,7 +758,7 @@ export default function AscAdminPage() {
             <div className="flex flex-wrap gap-3 pt-2">
               <button
                 onClick={importAscOutput}
-                disabled={!handoff?.title || working}
+                disabled={!canImportSingleOutput}
                 className="bg-black text-white px-4 py-2 rounded disabled:opacity-50"
               >
                 {working ? 'Working...' : 'Import ASC Output'}
@@ -746,6 +773,53 @@ export default function AscAdminPage() {
 
             <div className="rounded border border-dashed border-gray-400 p-4 text-sm text-gray-600">
               Package mode does not call the single-story publish route. Use the episode/job states above as the current package completion record.
+            </div>
+          </div>
+        ) : singleJobPublished ? (
+          <div className="bg-white border border-black rounded-lg p-4 space-y-4">
+            <div>
+              <div className="font-semibold text-lg">Story Published</div>
+              <div className="text-sm text-gray-600 mt-1">
+                ASC completed the final mix, imported the output, and published this story.
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+              <div className="rounded border border-green-600 bg-green-50 p-3">
+                <div className="font-semibold">Production</div>
+                <div>complete</div>
+              </div>
+              <div className="rounded border border-green-600 bg-green-50 p-3">
+                <div className="font-semibold">Publish</div>
+                <div>complete</div>
+              </div>
+              <div className="rounded border border-green-600 bg-green-50 p-3">
+                <div className="font-semibold">Workspace</div>
+                <div>ready to clear</div>
+              </div>
+            </div>
+
+            <div className="rounded border border-dashed border-gray-400 p-4 text-sm text-gray-700 space-y-1">
+              <div><strong>Title:</strong> {handoff?.title || '—'}</div>
+              <div><strong>Story ID:</strong> {handoff?.storyId || '—'}</div>
+              <div><strong>Job:</strong> {job?.jobId || '—'}</div>
+              <div><strong>Message:</strong> {job?.message || 'Published by ASC worker.'}</div>
+            </div>
+
+            <div className="flex flex-wrap gap-3 pt-2">
+              <button
+                onClick={clearHandoff}
+                className="bg-black text-white px-4 py-2 rounded"
+              >
+                Clear Workspace for Next Story
+              </button>
+              <button
+                onClick={refreshProductionStatus}
+                disabled={!canRefreshProductionStatus || working}
+                className="bg-gray-200 text-black px-4 py-2 rounded disabled:opacity-50"
+              >
+                Refresh Production Status
+              </button>
             </div>
           </div>
         ) : (
@@ -780,15 +854,6 @@ export default function AscAdminPage() {
               onChange={(e) => setForm(prev => ({ ...prev, duration_mins: e.target.value }))}
             />
 
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={form.is_free}
-                onChange={(e) => setForm(prev => ({ ...prev, is_free: e.target.checked }))}
-              />
-              Publish as free story
-            </label>
-
             <div className="flex flex-wrap gap-3 pt-2">
               <button
                 onClick={importAscOutput}
@@ -807,7 +872,7 @@ export default function AscAdminPage() {
 
               <button
                 onClick={publishStory}
-                disabled={!handoff?.storyId || working}
+                disabled={!canPublishSingleStory}
                 className="bg-green-600 text-white px-4 py-2 rounded disabled:opacity-50"
               >
                 {working ? 'Publishing...' : 'Publish Story Live'}
@@ -815,7 +880,9 @@ export default function AscAdminPage() {
             </div>
 
             <div className="rounded border border-dashed border-gray-400 p-4 text-sm text-gray-600">
-              Publish requires: audio URL, cover URL, description, and duration.
+              {singleProductionRunning
+                ? 'Production is still running. Import ASC Output after it completes, then publish when audio URL, cover URL, description, and duration are present.'
+                : 'Publish requires: audio URL, cover URL, description, and duration.'}
             </div>
           </div>
         )}

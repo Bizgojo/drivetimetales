@@ -84,6 +84,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 type V2Status =
   | 'brief_complete'
   | 'script_drafted'
+  | 'script_revised'
   | 'validator_failed'
   | 'validator_passed'
   | 'audio_pending'
@@ -280,6 +281,7 @@ export default function StoryProductionV2Page() {
   const [seriesPackage, setSeriesPackage] = useState<SeriesPackage | null>(null)
   const [episodeDetailModal, setEpisodeDetailModal] = useState<EpisodeDetailModal>(null)
   const [applyingTopFixKey, setApplyingTopFixKey] = useState('')
+  const [applyingValidatorFix, setApplyingValidatorFix] = useState(false)
 
   const scriptRef = useRef<HTMLTextAreaElement | null>(null)
   const reviewRef = useRef<HTMLPreElement | null>(null)
@@ -719,23 +721,57 @@ export default function StoryProductionV2Page() {
   const primaryActionClass = `${baseActionClass} bg-green-600 text-white`
   const blockedActionClass = `${baseActionClass} bg-red-600 text-white`
   const neutralActionClass = `${baseActionClass} bg-black text-white`
+  const runningActionClass = `${baseActionClass} bg-orange-500 text-white`
+  const standaloneScriptComplete = !!script && ['script_drafted', 'validator_passed', 'validator_failed', 'audio_pending', 'ready_for_production', 'audio_produced', 'ready_to_publish', 'published'].includes(status)
+  const standaloneScoreComplete = !!reviewText
+  const standaloneValidationComplete = status === 'validator_passed' || status === 'validator_failed'
+  const standaloneProduced = ['audio_pending', 'ready_for_production', 'audio_produced', 'ready_to_publish', 'published'].includes(status)
   const generateActionClass = seriesPackage
     ? packageAllScriptsPresent
       ? completedActionClass
       : primaryActionClass
-    : neutralActionClass
+    : activeStep === 'script' && loading
+      ? runningActionClass
+      : standaloneScriptComplete
+        ? completedActionClass
+        : canGenerate
+          ? primaryActionClass
+          : blockedActionClass
   const scoreActionClass = seriesPackage
     ? packageAllValidationsPass
       ? completedActionClass
       : packageAllScriptsPresent
         ? primaryActionClass
         : blockedActionClass
-    : neutralActionClass
+    : activeStep === 'score' && loading
+      ? runningActionClass
+      : standaloneScoreComplete
+        ? completedActionClass
+        : script
+          ? primaryActionClass
+          : blockedActionClass
+  const validateActionClass = seriesPackage
+    ? scoreActionClass
+    : activeStep === 'validate' && loading
+      ? runningActionClass
+      : standaloneValidationComplete
+        ? completedActionClass
+        : standaloneScoreComplete
+          ? primaryActionClass
+          : script
+            ? neutralActionClass
+            : blockedActionClass
   const produceActionClass = seriesPackage
     ? packageReadyForAsc
       ? primaryActionClass
       : blockedActionClass
-    : neutralActionClass
+    : activeStep === 'produce' && loading
+      ? runningActionClass
+      : standaloneProduced
+        ? completedActionClass
+        : canProduce
+          ? primaryActionClass
+          : blockedActionClass
 
   function pickAuthor(author: AuthorOption) {
     clearLoadedProductionStateForNewInput()
@@ -750,12 +786,12 @@ export default function StoryProductionV2Page() {
   function getStepState(step: 'brief' | 'script' | 'score' | 'validate'): StepState {
     if (activeStep === step && loading) return 'running'
     if (step === 'brief') {
-      if (['brief_complete', 'script_drafted', 'validator_passed', 'validator_failed'].includes(status)) return 'complete'
+      if (['brief_complete', 'script_drafted', 'script_revised', 'validator_passed', 'validator_failed'].includes(status)) return 'complete'
       return 'waiting'
     }
     if (step === 'script') {
       if (!storyId) return 'locked'
-      if (['script_drafted', 'validator_passed', 'validator_failed'].includes(status)) return 'complete'
+      if (['script_drafted', 'script_revised', 'validator_passed', 'validator_failed'].includes(status)) return 'complete'
       return canGenerate ? 'waiting' : 'locked'
     }
     if (step === 'score') {
@@ -842,6 +878,58 @@ export default function StoryProductionV2Page() {
       setStepMessage('Top fix revision failed')
     } finally {
       setApplyingTopFixKey('')
+    }
+  }
+
+  async function applyValidatorFix() {
+    if (!storyId || !script || !report) {
+      setReport('A script and validator report are required before applying validator fixes.')
+      return
+    }
+
+    setApplyingValidatorFix(true)
+    setStepMessage('Applying validator fix with Claude...')
+
+    try {
+      const reviseRes = await fetch('/api/v2/apply-top-fixes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          script,
+          selectedFixes: [
+            `VALIDATOR ERROR FIX ONLY:\n${report}\n\nFix only the fields or script formatting required by the validator. If DESCRIPTION is too long, rewrite only the DESCRIPTION header to 70 characters or fewer while keeping it clear, specific, present tense, and story-card friendly. Preserve title, story body, plot, tone, and ending unless the validator explicitly requires a change.`,
+          ],
+        }),
+      })
+      const reviseData = await reviseRes.json()
+      if (!reviseRes.ok || !reviseData.success) {
+        throw new Error(reviseData.error || 'Validator revision failed')
+      }
+
+      const saveRes = await fetch('/api/v2/save-revised-script', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storyId,
+          script: reviseData.revisedScript,
+        }),
+      })
+      const saveData = await saveRes.json()
+      if (!saveRes.ok || !saveData.success) {
+        throw new Error(saveData.error || 'Failed to save validator fix')
+      }
+
+      setScript(saveData.story?.script || reviseData.revisedScript)
+      setStatus((saveData.story?.status || 'script_revised') as V2Status)
+      setReport('Validator fix applied. Re-run Score Script and Validate Script before producing audio.')
+      setStepMessage('Validator fix applied')
+      setScriptDirty(false)
+      setTimeout(() => scriptRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100)
+    } catch (e) {
+      setReport(e instanceof Error ? e.message : 'Unknown error')
+      setStepMessage('Validator fix failed')
+    } finally {
+      setApplyingValidatorFix(false)
     }
   }
 
@@ -1498,7 +1586,7 @@ export default function StoryProductionV2Page() {
                   ? packageAllValidationsPass ? '✓ Score + Validate All Episodes' : 'Score + Validate All Episodes'
                   : 'Score Script'}
             </button>
-            <button disabled={!canValidate || loading} className={scoreActionClass} onClick={validateScript}>
+            <button disabled={!canValidate || loading} className={validateActionClass} onClick={validateScript}>
               {activeStep === 'validate' && loading
                 ? 'Validating Script...'
                 : seriesPackage
@@ -1649,7 +1737,19 @@ export default function StoryProductionV2Page() {
             <div className="bg-white border border-black rounded-lg p-4 space-y-2">
               <div className="font-semibold">Validation Report</div>
               {!!report ? (
-                <pre ref={validateRef} className="border rounded p-3 bg-gray-50 whitespace-pre-wrap text-sm">{report}</pre>
+                <>
+                  {status === 'validator_failed' && script ? (
+                    <button
+                      type="button"
+                      disabled={applyingValidatorFix || loading}
+                      onClick={applyValidatorFix}
+                      className="rounded bg-orange-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                    >
+                      {applyingValidatorFix ? 'Fixing Validator Errors...' : 'Fix Validator Errors with Claude'}
+                    </button>
+                  ) : null}
+                  <pre ref={validateRef} className="border rounded p-3 bg-gray-50 whitespace-pre-wrap text-sm">{report}</pre>
+                </>
               ) : (
                 <div className="text-sm text-gray-500">No validation output yet.</div>
               )}

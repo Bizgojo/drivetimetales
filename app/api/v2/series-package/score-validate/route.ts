@@ -36,7 +36,6 @@ function validateCardCopy(script: string) {
   const description = extractHeader(script, 'DESCRIPTION')
   const issues: string[] = []
   const titleWords = countWords(title)
-  const descriptionWords = countWords(description)
 
   if (!title) {
     issues.push('TITLE is required.')
@@ -52,9 +51,6 @@ function validateCardCopy(script: string) {
   if (!description) {
     issues.push('DESCRIPTION is required.')
   } else {
-    if (descriptionWords < 15 || descriptionWords > 18) {
-      issues.push(`DESCRIPTION must be 15 to 18 words. Current: ${descriptionWords} words.`)
-    }
     if (description.length > DESCRIPTION_MAX_CHARS) {
       issues.push(`DESCRIPTION must be ${DESCRIPTION_MAX_CHARS} characters or fewer so it fits two lines on story cards. Current: ${description.length} characters.`)
     }
@@ -161,7 +157,7 @@ Use the CURRENT rules:
 - Belle B is never narrator or character.
 - No SFX in the published story body.
 - The title must be 1 to 5 words and 28 characters or fewer.
-- DESCRIPTION must be 15 to 18 words, 70 characters or fewer, and present tense only.
+- DESCRIPTION must be 70 characters or fewer and present tense only.
 - DESCRIPTION fails if it uses past-tense constructions or past-tense story-card phrasing such as "vanished", "was", "were", "had", "found", "discovered", "left", "moved", "sealed", "signed", "forged", "buried", or "hidden".
 - The script must include the required header fields.
 - The script must include a CHARACTER GUIDE.

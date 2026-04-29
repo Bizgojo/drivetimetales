@@ -173,10 +173,15 @@ export default function SeriesDetailPage() {
   }
 
   const totalMins = episodes.reduce((sum, ep) => sum + ep.duration_mins, 0)
-  const totalHours = Math.floor(totalMins / 60)
-  const totalRemMins = totalMins % 60
-  const durationText = totalHours > 0 ? `${totalHours}h ${totalRemMins}m total` : `${totalRemMins}m total`
-  const durationShortText = totalHours > 0 ? `${totalHours}h ${totalRemMins}m` : `${totalRemMins} min`
+  const avgMins = episodes.length > 0 ? Math.round(totalMins / episodes.length) : 0
+  const formatDuration = (mins: number) => {
+    if (mins < 60) return `${mins}min`
+    const hours = Math.floor(mins / 60)
+    const remMins = mins % 60
+    return remMins === 0 ? `${hours}hs` : `${hours}hs-${remMins}min`
+  }
+  const durationText = `${episodes.length} parts · Avg. ${formatDuration(avgMins)} · ${formatDuration(totalMins)} total`
+  const avgDurationText = `Avg. ${formatDuration(avgMins)}`
   const narratorName = narratorProfile?.name || episodes[0]?.narrator_voice_name || ''
   const modalProfile = activeProfile === 'author' ? authorProfile : activeProfile === 'narrator' ? narratorProfile : null
 
@@ -189,7 +194,7 @@ export default function SeriesDetailPage() {
 
       {/* Hero */}
       <div style={{ padding: '18px 16px 0', display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
-        <div style={{ width: 112, height: 112, borderRadius: 12, overflow: 'hidden', flexShrink: 0, boxShadow: '0 16px 36px rgba(0,0,0,0.35), 0 0 18px rgba(255,255,255,0.12)' }}>
+        <div style={{ width: 112, height: 112, borderRadius: 12, overflow: 'hidden', flexShrink: 0, backgroundColor: '#1e1b4b', boxShadow: '0 0 0 1px rgba(255,255,255,0.45), 0 16px 36px rgba(0,0,0,0.35), 0 0 18px rgba(255,255,255,0.18)' }}>
           <img src={seriesInfo.cover_url || '/images/default-cover.png'} alt={seriesInfo.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         </div>
         <div style={{ flex: 1, minWidth: 0, paddingTop: 2 }}>
@@ -198,7 +203,9 @@ export default function SeriesDetailPage() {
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 10px', alignItems: 'center', color: '#94a3b8', fontSize: 11, lineHeight: 1.35 }}>
             <span>{episodes.length} episodes</span>
             <span style={{ color: '#334155' }}>•</span>
-            <span style={{ color: '#f97316', fontWeight: 800 }}>{durationShortText}</span>
+            <span style={{ color: '#f97316', fontWeight: 800 }}>{avgDurationText}</span>
+            <span style={{ color: '#334155' }}>•</span>
+            <span>{formatDuration(totalMins)} total</span>
             {seriesInfo.author && (
               <>
                 <span style={{ color: '#334155' }}>•</span>
@@ -266,7 +273,7 @@ export default function SeriesDetailPage() {
       <div style={{ padding: '18px 16px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'baseline', marginBottom: 6 }}>
           <div style={{ fontSize: 12, fontWeight: 900, color: 'white', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Episodes</div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b' }}>{episodes.length} parts · {durationText}</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'white' }}>{durationText}</div>
         </div>
         {episodes.map((ep, idx) => {
           const progress = userProgress[ep.id]
@@ -291,17 +298,17 @@ export default function SeriesDetailPage() {
                 overflow: 'hidden',
                 position: 'relative',
                 cursor: 'pointer',
-                minHeight: 90,
+                minHeight: 118,
                 background: '#1e293b',
               }}
             >
               {/* Cover */}
-              <div style={{ width: 70, height: 70, flexShrink: 0, margin: '10px 0 10px 10px', borderRadius: 6, overflow: 'hidden', boxShadow: '0 0 12px rgba(255,255,255,0.15)' }}>
+              <div style={{ width: 96, height: 96, flexShrink: 0, margin: '12px 0 12px 12px', borderRadius: 8, overflow: 'hidden', backgroundColor: '#1e1b4b', boxShadow: '0 0 0 1px rgba(255,255,255,0.4), 0 0 12px rgba(255,255,255,0.2)' }}>
                 <img src={ep.cover_url || seriesInfo.cover_url || '/images/default-cover.png'} alt={ep.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               </div>
 
               {/* Body */}
-              <div style={{ flex: 1, padding: '10px 70px 10px 10px', display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 0 }}>
+              <div style={{ flex: 1, padding: '12px 70px 12px 12px', display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 0 }}>
                 <div style={{ fontSize: 10, color: isInProgress ? '#22c55e' : isCompleted ? '#3b82f6' : '#64748b', fontWeight: 700, marginBottom: 2 }}>
                   Episode {ep.episode_number} · {ep.duration_mins} min
                   {isInProgress && <span style={{ marginLeft: 6 }}>· In progress</span>}
