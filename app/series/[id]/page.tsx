@@ -49,7 +49,7 @@ export default function SeriesDetailPage() {
   const [authorProfile, setAuthorProfile] = useState<Profile | null>(null)
   const [narratorProfile, setNarratorProfile] = useState<Profile | null>(null)
   const [activeProfile, setActiveProfile] = useState<'author' | 'narrator' | null>(null)
-  const [activeReadEpisode, setActiveReadEpisode] = useState<Episode | null>(null)
+  const [seriesReaderOpen, setSeriesReaderOpen] = useState(false)
 
   useEffect(() => { if (seriesId) fetchSeriesData() }, [seriesId, user?.id])
 
@@ -184,6 +184,7 @@ export default function SeriesDetailPage() {
   const avgDurationText = `Avg. ${formatDuration(avgMins)}`
   const narratorName = narratorProfile?.name || episodes[0]?.narrator_voice_name || ''
   const modalProfile = activeProfile === 'author' ? authorProfile : activeProfile === 'narrator' ? narratorProfile : null
+  const proseChapters = episodes.filter(ep => ep.prose_text)
 
   if (loading) return <div style={{ background: '#020617', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ color: '#64748b', fontSize: '14px' }}>Loading...</div></div>
   if (!seriesInfo) return null
@@ -322,7 +323,7 @@ export default function SeriesDetailPage() {
                   <button
                     onClick={event => {
                       event.stopPropagation()
-                      setActiveReadEpisode(ep)
+                      setSeriesReaderOpen(true)
                     }}
                     style={{ alignSelf: 'flex-start', marginTop: 7, border: '1px solid rgba(249,115,22,0.24)', background: 'rgba(249,115,22,0.1)', color: '#fed7aa', borderRadius: 999, padding: '4px 9px', fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', cursor: 'pointer' }}
                   >
@@ -387,33 +388,45 @@ export default function SeriesDetailPage() {
         </div>
       )}
 
-      {activeReadEpisode?.prose_text && (
+      {seriesReaderOpen && proseChapters.length > 0 && (
         <div
-          onClick={() => setActiveReadEpisode(null)}
+          onClick={() => setSeriesReaderOpen(false)}
           style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.88)', zIndex: 60, display: 'flex', alignItems: 'stretch', justifyContent: 'center', padding: '18px 14px' }}
         >
           <div
             onClick={event => event.stopPropagation()}
-            style={{ width: '100%', maxWidth: 560, background: '#faf7f2', color: '#1f2933', borderRadius: 16, overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 80px rgba(0,0,0,0.55)' }}
+            style={{ width: '100%', maxWidth: 560, background: '#faf7f2', color: '#1f2933', borderRadius: 16, overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 80px rgba(0,0,0,0.55)', fontFamily: 'Inter, system-ui, sans-serif' }}
           >
             <div style={{ flexShrink: 0, padding: '14px 16px', borderBottom: '1px solid rgba(15,23,42,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, background: '#fffaf2' }}>
               <div style={{ minWidth: 0 }}>
-                <div style={{ color: '#9a3412', fontSize: 10, fontWeight: 900, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 3 }}>Episode {activeReadEpisode.episode_number}</div>
-                <div style={{ fontFamily: 'var(--font-outfit, sans-serif)', fontSize: 17, lineHeight: 1.15, fontWeight: 900, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{activeReadEpisode.title}</div>
+                <div style={{ color: '#9a3412', fontSize: 10, fontWeight: 900, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 3 }}>Read It</div>
+                <div style={{ fontFamily: 'Inter, system-ui, sans-serif', fontSize: 17, lineHeight: 1.15, fontWeight: 900, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{seriesInfo.name}</div>
+                <div style={{ color: '#6b7280', fontSize: 11, fontWeight: 700, marginTop: 4 }}>{proseChapters.length} chapters</div>
               </div>
               <button
-                onClick={() => setActiveReadEpisode(null)}
+                onClick={() => setSeriesReaderOpen(false)}
                 aria-label="Close reader"
                 style={{ width: 34, height: 34, borderRadius: 999, border: '1px solid rgba(15,23,42,0.12)', background: 'rgba(15,23,42,0.04)', color: '#475569', cursor: 'pointer', fontSize: 20, lineHeight: '30px', flexShrink: 0 }}
               >
                 ×
               </button>
             </div>
-            <div style={{ flex: 1, overflowY: 'auto', padding: '22px 24px 34px', fontFamily: 'Georgia, "Times New Roman", serif' }}>
-              {activeReadEpisode.prose_text.split('\n\n').map((para, index) => (
-                <p key={index} style={{ color: '#2c2c2c', fontSize: 17, lineHeight: 1.82, margin: index === 0 ? '0 0 20px' : '0 0 18px', textIndent: index === 0 ? 0 : '1.4em' }}>
-                  {para}
-                </p>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '26px 24px 40px', fontFamily: 'Literata, Georgia, "Times New Roman", serif' }}>
+              <h1 style={{ color: '#111827', fontSize: 28, lineHeight: 1.08, margin: '0 0 28px', fontWeight: 700, letterSpacing: 0 }}>{seriesInfo.name}</h1>
+              {proseChapters.map((chapter, chapterIndex) => (
+                <section key={chapter.id} style={{ marginTop: chapterIndex === 0 ? 0 : 42, paddingTop: chapterIndex === 0 ? 0 : 28, borderTop: chapterIndex === 0 ? 'none' : '1px solid rgba(15,23,42,0.12)' }}>
+                  <div style={{ fontFamily: 'Inter, system-ui, sans-serif', color: '#9a3412', fontSize: 11, fontWeight: 900, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 8 }}>
+                    Chapter {chapterIndex + 1}
+                  </div>
+                  <h2 style={{ color: '#111827', fontSize: 22, lineHeight: 1.18, fontWeight: 700, margin: '0 0 22px', letterSpacing: 0 }}>
+                    {chapter.title}
+                  </h2>
+                  {chapter.prose_text?.split('\n\n').map((para, paraIndex) => (
+                    <p key={`${chapter.id}-${paraIndex}`} style={{ color: '#2c2c2c', fontSize: 17, lineHeight: 1.86, margin: paraIndex === 0 ? '0 0 20px' : '0 0 18px', textIndent: paraIndex === 0 ? 0 : '1.4em' }}>
+                      {para}
+                    </p>
+                  ))}
+                </section>
               ))}
             </div>
           </div>

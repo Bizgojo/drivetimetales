@@ -77,6 +77,8 @@ function PlayerContent() {
   const [proseHintVisible, setProseHintVisible] = useState(false)
   const [proseHintSeen, setProseHintSeen] = useState(false)
   const proseScrollRef = useRef<HTMLDivElement>(null)
+  const [seriesBookTitle, setSeriesBookTitle] = useState('')
+  const [seriesProseChapters, setSeriesProseChapters] = useState<Array<{ id: string; title: string; episode_number: number; prose_text: string }>>([])
   const [authorData, setAuthorData]   = useState<any | null>(null)
   const [narratorData, setNarratorData] = useState<any | null>(null)
 
@@ -170,7 +172,7 @@ function PlayerContent() {
         stage = 'story-row'
         const { data, error } = await supabase
           .from('stories')
-          .select('id,title,author,audio_url,cover_url,duration_mins,intro_audio_url,outro_audio_url,background_music_url,episode_number,series_id,is_free,prose_text,author_id,narrator_voice_id,narrator_voice_name')
+          .select('id,title,author,audio_url,cover_url,duration_mins,intro_audio_url,outro_audio_url,background_music_url,episode_number,series_id,series_name,is_free,prose_text,author_id,narrator_voice_id,narrator_voice_name')
           .eq('id', storyId).single()
 
         if (error) {
@@ -192,25 +194,41 @@ function PlayerContent() {
           stage = 'series-playlist'
           const existingSeriesPlaylist = playlistRef.current
           const hasCurrentInSeriesPlaylist = existingSeriesPlaylist.some(ep => ep.id === storyId)
-          if ((data as any).series_id && (!existingSeriesPlaylist.length || !hasCurrentInSeriesPlaylist)) {
+          if ((data as any).series_id) {
             const { data: seriesEpisodes } = await supabase
               .from('stories')
-              .select('id, episode_number')
+              .select('id, title, episode_number, prose_text, series_name')
               .eq('series_id', (data as any).series_id)
               .eq('is_hidden', false)
               .order('episode_number', { ascending: true })
 
-            const playlist = (seriesEpisodes || [])
-              .filter(ep => ep.id && ep.episode_number)
-              .map(ep => ({ id: ep.id, episode_number: ep.episode_number }))
-            const currentIndex = playlist.findIndex(ep => ep.id === storyId)
+            const proseChapters = (seriesEpisodes || [])
+              .filter(ep => ep.id && ep.title && ep.episode_number && ep.prose_text)
+              .map(ep => ({
+                id: ep.id,
+                title: ep.title,
+                episode_number: ep.episode_number,
+                prose_text: ep.prose_text,
+              }))
+            setSeriesBookTitle((seriesEpisodes?.[0] as any)?.series_name || (data as any).series_name || data.title || '')
+            setSeriesProseChapters(proseChapters)
 
-            if (currentIndex >= 0) {
-              playlistRef.current = playlist
-              playlistIndexRef.current = currentIndex
-              localStorage.setItem('dtt_series_playlist', JSON.stringify(playlist))
-              localStorage.setItem('dtt_series_index', String(currentIndex))
+            if (!existingSeriesPlaylist.length || !hasCurrentInSeriesPlaylist) {
+              const playlist = (seriesEpisodes || [])
+                .filter(ep => ep.id && ep.episode_number)
+                .map(ep => ({ id: ep.id, episode_number: ep.episode_number }))
+              const currentIndex = playlist.findIndex(ep => ep.id === storyId)
+
+              if (currentIndex >= 0) {
+                playlistRef.current = playlist
+                playlistIndexRef.current = currentIndex
+                localStorage.setItem('dtt_series_playlist', JSON.stringify(playlist))
+                localStorage.setItem('dtt_series_index', String(currentIndex))
+              }
             }
+          } else {
+            setSeriesBookTitle('')
+            setSeriesProseChapters([])
           }
         }
 
@@ -604,6 +622,12 @@ function PlayerContent() {
   if (loading) return <div style={{ height:'100dvh', backgroundColor:'#020617', display:'flex', alignItems:'center', justifyContent:'center' }}><div style={{ width:'40px', height:'40px', border:'4px solid #f97316', borderTopColor:'transparent', borderRadius:'50%', animation:'spin 1s linear infinite' }} /><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>
   if (!story)   return <div style={{ height:'100dvh', backgroundColor:'#020617', color:'white', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}><p>Story not found</p><button onClick={() => router.back()} style={{ color:'#f97316', background:'none', border:'none', cursor:'pointer' }}>Go Back</button></div>
 
+  const isSeriesReadIt = Boolean((story as any).series_id && seriesProseChapters.length > 0)
+  const proseAvailable = isSeriesReadIt || Boolean((story as any).prose_text)
+  const proseBookTitle = isSeriesReadIt ? (seriesBookTitle || (story as any).series_name || story.title) : story.title
+  const standaloneProseParagraphs = String((story as any).prose_text || '').split('\n\n').filter(Boolean)
+  const playerSeriesTitle = (story as any).series_id ? (seriesBookTitle || (story as any).series_name || '') : ''
+
   return (
     <div style={{ height:'100dvh', backgroundColor:'#020617', color:'white', display:'flex', flexDirection:'column', overflow:'hidden' }}>
       <audio ref={audioRef}
@@ -761,14 +785,14 @@ function PlayerContent() {
       </div>
 
       {/* Cover */}
-      <div style={{ width:'100vw', aspectRatio:'1', flexShrink:0, overflow:'hidden' }}>
+      <div style={{ width:'100vw', height:'min(46vh, 360px)', minHeight:'260px', flexShrink:0, overflow:'hidden' }}>
         {story.cover_url
           ? <img src={story.cover_url} alt={story.title} style={{ width:'100%', height:'100%', objectFit:'cover' }} />
           : <div style={{ width:'100%', height:'100%', background:'linear-gradient(135deg,#475569,#1e293b)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'64px' }}>🎧</div>}
       </div>
 
       {/* ── Info Pills — between cover and title ─────────────────────────── */}
-      <div style={{ display:'flex', gap:'8px', justifyContent:'center', padding:'12px 20px 0' }}>
+      <div style={{ display:'flex', gap:'8px', justifyContent:'center', padding:'10px 20px 0' }}>
 
         {/* Author pill */}
         <button onClick={() => setActiveModal('author')} style={{ display:'flex', flexDirection:'column', alignItems:'center', padding:'8px 14px', borderRadius:'14px', border:'1px solid rgba(255,255,255,0.18)', background:'rgba(255,255,255,0.12)', color:'white', cursor:'pointer', minWidth:90 }}>
@@ -789,18 +813,21 @@ function PlayerContent() {
         {/* Read It pill */}
         <button onClick={() => setActiveModal('prose')} style={{ display:'flex', flexDirection:'column', alignItems:'center', padding:'8px 14px', borderRadius:'14px', border:'1px solid rgba(255,255,255,0.18)', background:'rgba(255,255,255,0.12)', color:'white', cursor:'pointer', minWidth:90 }}>
           <span style={{ fontSize:'12px', fontWeight:700, whiteSpace:'nowrap' }}>📖 Read It</span>
-          {(story as any).prose_text && <span style={{ fontSize:'10px', color:'rgba(255,255,255,0.6)', marginTop:'2px' }}>Available</span>}
+          {proseAvailable && <span style={{ fontSize:'10px', color:'rgba(255,255,255,0.6)', marginTop:'2px' }}>Available</span>}
         </button>
 
       </div>
 
       {/* Controls */}
-      <div style={{ flex:1, display:'flex', flexDirection:'column', justifyContent:'center', padding:'12px 20px 16px', gap:'12px' }}>
+      <div style={{ flex:1, display:'flex', flexDirection:'column', justifyContent:'center', padding:'10px 20px 14px', gap:'10px', minHeight:0 }}>
         <div>
-          <h1 style={{ fontSize:'20px', fontWeight:800, margin:0, color:'white', textAlign:'center', lineHeight:1.2 }}>{story.title}</h1>
-          {(story as any).episode_number && (
-            <p style={{ color:'white', fontSize:'13px', margin:'3px 0 0', textAlign:'center', fontWeight:600 }}>Episode {(story as any).episode_number}</p>
+          {playerSeriesTitle && (
+            <div style={{ color:'white', fontSize:'22px', fontWeight:900, margin:'0 0 6px', textAlign:'center', lineHeight:1.08, fontFamily:'Inter, system-ui, sans-serif' }}>{playerSeriesTitle}</div>
           )}
+          {(story as any).episode_number && (
+            <p style={{ color:'white', fontSize:'13px', margin:'0 0 2px', textAlign:'center', fontWeight:700, opacity:0.9 }}>Episode {(story as any).episode_number}</p>
+          )}
+          <h1 style={{ fontSize: playerSeriesTitle ? '18px' : '20px', fontWeight:800, margin:0, color:'white', textAlign:'center', lineHeight:1.2 }}>{story.title}</h1>
           <p style={{ color:'white', fontSize:'13px', margin:'3px 0 0', textAlign:'center', opacity:0.7 }}>by {story.author || 'Endless Tales'}</p>
           {isASC3 && sectionLabel && isPlaying && (
             <p style={{ color:'#f97316', fontSize:'11px', margin:'4px 0 0', textAlign:'center', fontWeight:600 }}>
@@ -984,7 +1011,7 @@ function PlayerContent() {
 
               {/* PROSE — full-screen ebook reader */}
               {activeModal === 'prose' && (
-                (story as any).prose_text ? (
+                proseAvailable ? (
                   <div style={{ position:'relative', flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
 
 
@@ -992,8 +1019,8 @@ function PlayerContent() {
                     <div style={{ flexShrink:0, display:'flex', alignItems:'center', padding:'10px 12px', borderBottom: proseDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(0,0,0,0.07)', background: proseDark ? '#0f172a' : '#faf7f2' }}>
                       <button onClick={() => setActiveModal(null)} style={{ width:34, height:34, flexShrink:0, borderRadius:'50%', border: proseDark ? '1px solid rgba(255,255,255,0.18)' : '1px solid rgba(0,0,0,0.13)', background: proseDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.05)', color: proseDark ? 'rgba(255,255,255,0.7)' : '#555', fontSize:'17px', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>×</button>
                       <div style={{ flex:1, textAlign:'center', padding:'0 8px' }}>
-                        <div style={{ fontSize:'15px', fontWeight:800, color: proseDark ? 'white' : '#1a1a1a' }}>{story.title}</div>
-                        <div style={{ fontSize:'11px', color: proseDark ? 'rgba(255,255,255,0.38)' : 'rgba(0,0,0,0.38)', marginTop:1, fontFamily:'system-ui,sans-serif' }}>by {story.author || 'Endless Tales'}</div>
+                        <div style={{ fontSize:'15px', fontWeight:800, color: proseDark ? 'white' : '#1a1a1a', fontFamily:'Inter, system-ui, sans-serif' }}>{proseBookTitle}</div>
+                        <div style={{ fontSize:'11px', color: proseDark ? 'rgba(255,255,255,0.38)' : 'rgba(0,0,0,0.38)', marginTop:1, fontFamily:'Inter, system-ui, sans-serif' }}>{isSeriesReadIt ? `${seriesProseChapters.length} chapters` : `by ${story.author || 'Endless Tales'}`}</div>
                       </div>
                       <div style={{ position:'relative', flexShrink:0 }}>
                       <button
@@ -1028,18 +1055,35 @@ function PlayerContent() {
                         if (!el || el.scrollHeight <= el.clientHeight) return
                         try { localStorage.setItem('et_prose_'+storyId, String(el.scrollTop)) } catch(_) {}
                         const pct = el.scrollTop / (el.scrollHeight - el.clientHeight)
-                        const total = (story as any).prose_text.split('\n\n').length
+                        const total = isSeriesReadIt ? seriesProseChapters.length : standaloneProseParagraphs.length
                         setProsePage(Math.max(1, Math.min(total, Math.round(pct * total) || 1)))
                       }}
-                      style={{ flex:1, overflowY:'auto', padding:'20px 24px 72px', fontFamily:'Georgia, "Times New Roman", serif' }}
+                      style={{ flex:1, overflowY:'auto', padding:'20px 24px 72px', fontFamily:'Literata, Georgia, "Times New Roman", serif' }}
                     >
-                      {(story as any).prose_text.split('\n\n').map((para: string, i: number) => {
+                      {isSeriesReadIt ? (
+                        <>
+                          <h1 style={{ fontSize: proseFontSize + 9 + 'px', lineHeight: 1.12, color: proseDark ? '#f8f1e7' : '#1a1a1a', margin:'0 0 28px', letterSpacing:0, fontWeight:700 }}>{proseBookTitle}</h1>
+                          {seriesProseChapters.map((chapter, chapterIndex) => (
+                            <section key={chapter.id} style={{ marginTop: chapterIndex === 0 ? 0 : 42, paddingTop: chapterIndex === 0 ? 0 : 28, borderTop: chapterIndex === 0 ? 'none' : proseDark ? '1px solid rgba(255,255,255,0.09)' : '1px solid rgba(0,0,0,0.12)' }}>
+                              <div style={{ fontFamily:'Inter, system-ui, sans-serif', fontSize:'11px', fontWeight:900, color: proseDark ? '#fb923c' : '#9a3412', letterSpacing:'0.12em', textTransform:'uppercase', marginBottom:8 }}>
+                                Chapter {chapterIndex + 1}
+                              </div>
+                              <h2 style={{ fontSize: proseFontSize + 5 + 'px', lineHeight:1.18, color: proseDark ? '#f8f1e7' : '#1a1a1a', margin:'0 0 22px', letterSpacing:0, fontWeight:700 }}>
+                                {chapter.title}
+                              </h2>
+                              {chapter.prose_text.split('\n\n').filter(Boolean).map((para: string, i: number) => (
+                                <p key={`${chapter.id}-${i}`} style={{ fontSize: proseFontSize + 'px', lineHeight:1.85, color: proseDark ? '#e2d9c8' : '#2c2c2c', margin:'0 0 20px', textIndent: i === 0 ? 0 : '1.5em', letterSpacing:'0.01em' }}>{para}</p>
+                              ))}
+                            </section>
+                          ))}
+                        </>
+                      ) : standaloneProseParagraphs.map((para: string, i: number) => {
                         if (i === 0) {
                           const first = para.charAt(0)
                           const rest  = para.slice(1)
                           return (
                             <p key={0} style={{ fontSize: proseFontSize + 'px', lineHeight:1.85, color: proseDark ? '#e2d9c8' : '#2c2c2c', margin:'0 0 20px', letterSpacing:'0.01em', overflow:'hidden' }}>
-                              <span style={{ float:'left', fontSize:(proseFontSize * 3.6) + 'px', lineHeight:0.82, fontWeight:700, color: proseDark ? '#e2d9c8' : '#1a1a1a', marginRight:'5px', marginTop:'4px', fontFamily:'Georgia, serif' }}>{first}</span>
+                              <span style={{ float:'left', fontSize:(proseFontSize * 3.6) + 'px', lineHeight:0.82, fontWeight:700, color: proseDark ? '#e2d9c8' : '#1a1a1a', marginRight:'5px', marginTop:'4px', fontFamily:'Literata, Georgia, serif' }}>{first}</span>
                               {rest}
                             </p>
                           )
@@ -1051,7 +1095,7 @@ function PlayerContent() {
                     {/* Page counter — pinned bottom */}
                     <div style={{ position:'absolute', bottom:0, left:0, right:0, height:52, display:'flex', alignItems:'center', justifyContent:'center', background: proseDark ? 'linear-gradient(to top,#0f172a 55%,transparent)' : 'linear-gradient(to top,#faf7f2 55%,transparent)', pointerEvents:'none' }}>
                       <span style={{ fontSize:'13px', fontWeight:600, color: proseDark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.45)', letterSpacing:'0.04em' }}>
-                        {prosePage} of {Math.max(1, (story as any).prose_text.split('\n\n').length)}
+                        {prosePage} of {Math.max(1, isSeriesReadIt ? seriesProseChapters.length : standaloneProseParagraphs.length)}
                       </span>
                     </div>
 
