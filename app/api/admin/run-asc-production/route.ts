@@ -6,10 +6,23 @@ import { spawn } from 'child_process'
 
 export const runtime = 'nodejs'
 
-const JOB_DIR = path.join(os.homedir(), '.drivetimetales_jobs')
+function getJobDir() {
+  if (process.env.VERCEL || process.env.NODE_ENV === 'production') {
+    return path.join(os.tmpdir(), 'drivetimetales_jobs')
+  }
+
+  return path.join(os.homedir(), '.drivetimetales_jobs')
+}
 
 function ensureJobDir() {
-  fs.mkdirSync(JOB_DIR, { recursive: true })
+  const jobDir = getJobDir()
+  try {
+    fs.mkdirSync(jobDir, { recursive: true })
+    return jobDir
+  } catch (err) {
+    console.error('[run-asc-production] Failed to create job directory:', { jobDir, err })
+    throw new Error(`Failed to create ASC job directory: ${jobDir}`)
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -31,9 +44,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'script required' }, { status: 400 })
     }
 
-    ensureJobDir()
+    const jobDir = ensureJobDir()
     const jobId = `ascjob_${Date.now()}`
-    const jobPath = path.join(JOB_DIR, `${jobId}.json`)
+    const jobPath = path.join(jobDir, `${jobId}.json`)
 
     const payload = {
       jobId,
@@ -47,10 +60,15 @@ export async function POST(req: NextRequest) {
       updatedAt: new Date().toISOString(),
     }
 
-    fs.writeFileSync(jobPath, JSON.stringify(payload, null, 2), 'utf8')
+    try {
+      fs.writeFileSync(jobPath, JSON.stringify(payload, null, 2), 'utf8')
+    } catch (err) {
+      console.error('[run-asc-production] Failed to write job file:', { jobPath, err })
+      throw new Error(`Failed to write ASC job file: ${jobPath}`)
+    }
 
     const runner = path.join(process.cwd(), 'scripts', 'run_asc_job.py')
-    const child = spawn('python3', [runner, jobId], {
+    const child = spawn('python3', [runner, jobPath], {
       detached: true,
       stdio: 'ignore',
     })

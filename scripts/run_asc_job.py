@@ -11,7 +11,6 @@ from pathlib import Path
 
 HOME = Path.home()
 JOB_DIR = HOME / ".drivetimetales_jobs"
-JOB_DIR.mkdir(parents=True, exist_ok=True)
 
 STORIES_ROOT = HOME / "Projects" / "Audio Dramas" / "Stories"
 BASE_URL = "http://localhost:3000"
@@ -25,6 +24,12 @@ def now_iso():
 def write_status(job_id, payload):
     path = JOB_DIR / f"{job_id}.json"
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+def resolve_job_path(arg: str) -> Path:
+    candidate = Path(arg)
+    if candidate.suffix == ".json" or candidate.parent != Path("."):
+        return candidate.expanduser().resolve()
+    return JOB_DIR / f"{arg}.json"
 
 def write_pipeline_state(path: Path, payload: dict):
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
@@ -64,14 +69,18 @@ def main():
         print("job id required", file=sys.stderr)
         sys.exit(1)
 
-    job_id = sys.argv[1]
-    job_path = JOB_DIR / f"{job_id}.json"
+    job_arg = sys.argv[1]
+    job_path = resolve_job_path(job_arg)
+    global JOB_DIR
+    JOB_DIR = job_path.parent
+    JOB_DIR.mkdir(parents=True, exist_ok=True)
 
     if not job_path.exists():
         print(f"job file not found: {job_path}", file=sys.stderr)
         sys.exit(1)
 
     job = json.loads(job_path.read_text(encoding="utf-8"))
+    job_id = job.get("jobId") or job_path.stem
     title = job.get("title", "").strip()
     script = job.get("script", "")
     story_id = job.get("storyId", "").strip()
@@ -316,14 +325,16 @@ if __name__ == "__main__":
         main()
     except Exception as e:
         if len(sys.argv) >= 2:
-            job_id = sys.argv[1]
-            job_path = JOB_DIR / f"{job_id}.json"
+            job_arg = sys.argv[1]
+            job_path = resolve_job_path(job_arg)
+            JOB_DIR = job_path.parent
             job = {}
             if job_path.exists():
                 try:
                     job = json.loads(job_path.read_text(encoding="utf-8"))
                 except Exception:
                     job = {}
+            job_id = job.get("jobId") or job_path.stem
             write_status(job_id, {
                 **job,
                 "status": "failed",
