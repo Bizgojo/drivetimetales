@@ -266,10 +266,11 @@ export async function POST(req: NextRequest) {
         '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', musicIntroBedPath
       ])
       const musicBodyMixedPath = path.join(tmpDir, 'music_body.mp3')
+      // Keep the story bed low for car intelligibility and reduced masking under speech.
       await execFileAsync(FFMPEG_PATH, [
         '-stream_loop', '-1', '-i', musicPath,
         '-filter_complex',
-        `[0:a]atrim=0:${segsDur + 3},asetpts=PTS-STARTPTS,afade=t=in:st=0:d=2.5,afade=t=out:st=${segsDur}:d=3,volume=0.08[music_out]`,
+        `[0:a]atrim=0:${segsDur + 3},asetpts=PTS-STARTPTS,afade=t=in:st=0:d=2.5,afade=t=out:st=${segsDur}:d=3,volume=0.04[music_out]`,
         '-map', '[music_out]',
         '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', musicBodyMixedPath
       ])
