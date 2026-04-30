@@ -5,7 +5,13 @@ import path from 'path'
 
 export const runtime = 'nodejs'
 
-const JOB_DIR = path.join(os.homedir(), '.drivetimetales_jobs')
+function getJobDir() {
+  if (process.env.VERCEL || process.env.NODE_ENV === 'production') {
+    return path.join(os.tmpdir(), 'drivetimetales_jobs')
+  }
+
+  return path.join(os.homedir(), '.drivetimetales_jobs')
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -14,7 +20,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'jobId required' }, { status: 400 })
     }
 
-    const jobPath = path.join(JOB_DIR, `${jobId}.json`)
+    const jobPath = path.join(getJobDir(), `${jobId}.json`)
     if (!fs.existsSync(jobPath)) {
       return NextResponse.json({ success: false, error: 'job not found' }, { status: 404 })
     }
