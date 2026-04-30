@@ -138,10 +138,7 @@ ${fixesText}`
 async function enforceDescriptionSafeLimit(script: string, selectedFixes: string[], apiKey: string) {
   if (!selectedFixesIncludeDescriptionLimit(selectedFixes)) return script
 
-  const currentDescription = extractHeader(script, 'DESCRIPTION')
-  const shortened = shortenDescriptionLine(currentDescription)
-  const withShortenedDescription = replaceDescriptionLine(script, shortened)
-  return repairDescriptionLine({ script: withShortenedDescription, selectedFixes, apiKey })
+  return repairDescriptionLine({ script, selectedFixes, apiKey })
 }
 
 export async function POST(req: NextRequest) {
