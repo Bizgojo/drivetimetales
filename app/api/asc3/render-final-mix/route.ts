@@ -84,9 +84,36 @@ export async function POST(req: NextRequest) {
 
     const introFile = files.find(f => f.name === 'intro.mp3' || f.name.startsWith('intro_'))
     const outroFile = files.find(f => f.name === 'outro.mp3' || f.name.startsWith('outro_'))
-    const segmentFiles = files
-      .filter(f => f.name.startsWith('segment_') || f.name.startsWith('sfx_'))
-      .sort((a, b) => (parseInt(a.name.replace(/\D/g, '')) || 0) - (parseInt(b.name.replace(/\D/g, '')) || 0))
+    const segmentPattern = /^segment_(\d{4})\.mp3$/
+    const parsedSegments = files
+      .map(f => {
+        const match = f.name.match(segmentPattern)
+        return match ? { file: f, segmentNumber: Number(match[1]) } : null
+      })
+      .filter((item): item is { file: typeof files[number], segmentNumber: number } => item !== null)
+      .sort((a, b) => a.segmentNumber - b.segmentNumber)
+
+    const duplicateSegmentNumbers = parsedSegments
+      .filter((item, index, arr) => index > 0 && item.segmentNumber === arr[index - 1].segmentNumber)
+      .map(item => item.segmentNumber)
+    if (duplicateSegmentNumbers.length > 0) {
+      return NextResponse.json({
+        success: false,
+        error: `Duplicate story segment numbers found: ${duplicateSegmentNumbers.filter((n, i, arr) => arr.indexOf(n) === i).join(', ')}`
+      }, { status: 400 })
+    }
+
+    const missingSegmentNumbers: number[] = []
+    for (let i = 1; i < parsedSegments.length; i++) {
+      for (let n = parsedSegments[i - 1].segmentNumber + 1; n < parsedSegments[i].segmentNumber; n++) {
+        missingSegmentNumbers.push(n)
+      }
+    }
+    if (missingSegmentNumbers.length > 0) {
+      console.log(`  Segment number gaps detected (allowed: script line indexes may skip SFX/non-voice lines): ${missingSegmentNumbers.join(', ')}`)
+    }
+
+    const segmentFiles = parsedSegments.map(item => item.file)
     const musicFile = files.find(f => f.name === 'background_music.mp3')
 
     if (!introFile) return NextResponse.json({ success: false, error: 'No intro audio found' }, { status: 400 })
@@ -94,6 +121,7 @@ export async function POST(req: NextRequest) {
     if (segmentFiles.length === 0) return NextResponse.json({ success: false, error: 'No story segments found' }, { status: 400 })
 
     console.log(`  ${segmentFiles.length} segments | music: ${!!musicFile}`)
+    console.log(`  Selected story segments: ${segmentFiles.map(f => f.name).join(', ')}`)
 
     const stingPath  = path.join(tmpDir, 'sting.mp3')
     const introPath  = path.join(tmpDir, 'intro.mp3')
