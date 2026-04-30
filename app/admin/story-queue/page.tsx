@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 type QueueStatus = 'queued' | 'in_v2' | 'ready_for_asc' | 'published'
+type MessageType = '' | 'success' | 'error'
 
 type QueueItem = {
   id: string
@@ -50,6 +51,7 @@ export default function StoryQueuePage() {
   const [items, setItems] = useState<QueueItem[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [message, setMessage] = useState('')
+  const [messageType, setMessageType] = useState<MessageType>('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
 
@@ -70,7 +72,7 @@ export default function StoryQueuePage() {
       const data = await res.json()
       setItems(Array.isArray(data.items) ? data.items : [])
     } catch (err: any) {
-      setMessage(`Failed to load queue: ${err?.message || err}`)
+      showMessage(`Failed to load queue: ${err?.message || err}`, 'error')
     } finally {
       setIsLoading(false)
     }
@@ -82,15 +84,41 @@ export default function StoryQueuePage() {
 
   useEffect(() => {
     if (!message) return
-    const t = window.setTimeout(() => setMessage(''), 2200)
+    if (messageType === 'error') return
+    const t = window.setTimeout(() => {
+      setMessage('')
+      setMessageType('')
+    }, 2200)
     return () => window.clearTimeout(t)
-  }, [message])
+  }, [message, messageType])
 
   const selected = useMemo(() => items.find((item) => item.id === selectedId) || null, [items, selectedId])
 
+  function showMessage(text: string, type: MessageType = 'success') {
+    setMessage(text)
+    setMessageType(type)
+  }
+
+  async function responseError(step: 'idea generation' | 'queue save', res: Response) {
+    const status = `${res.status}${res.statusText ? ` ${res.statusText}` : ''}`
+    const txt = await res.text()
+    let detail = txt.trim()
+
+    if (detail) {
+      try {
+        const parsed = JSON.parse(detail)
+        detail = String(parsed.error || parsed.message || parsed.status || detail)
+      } catch {
+        // Plain-text responses are still useful diagnostics.
+      }
+    }
+
+    return `${step} failed (${status})${detail ? `: ${detail}` : ''}`
+  }
+
   async function generateIdea() {
     setIsGenerating(true)
-    setMessage('')
+    showMessage('', '')
     try {
       const res = await fetch('/api/admin/generate-story-idea', {
         method: 'POST',
@@ -99,8 +127,7 @@ export default function StoryQueuePage() {
       })
 
       if (!res.ok) {
-        const txt = await res.text()
-        throw new Error(txt || 'Generation failed')
+        throw new Error(await responseError('idea generation', res))
       }
 
       const data = await res.json()
@@ -123,16 +150,15 @@ export default function StoryQueuePage() {
       })
 
       if (!createRes.ok) {
-        const txt = await createRes.text()
-        throw new Error(txt || 'Could not queue generated idea')
+        throw new Error(await responseError('queue save', createRes))
       }
 
       const created = await createRes.json()
       setSelectedId(created?.item?.id || null)
       await loadItems()
-      setMessage('Story idea generated and queued.')
+      showMessage('Story idea generated and queued.')
     } catch (err: any) {
-      setMessage(`Generation failed: ${err?.message || err}`)
+      showMessage(`Generation failed: ${err?.message || err}`, 'error')
     } finally {
       setIsGenerating(false)
     }
@@ -147,9 +173,9 @@ export default function StoryQueuePage() {
       })
       if (!res.ok) throw new Error(await res.text())
       await loadItems()
-      setMessage(`Marked ${STATUS_LABELS[status]}.`)
+      showMessage(`Marked ${STATUS_LABELS[status]}.`)
     } catch (err: any) {
-      setMessage(`Status update failed: ${err?.message || err}`)
+      showMessage(`Status update failed: ${err?.message || err}`, 'error')
     }
   }
 
@@ -167,9 +193,9 @@ export default function StoryQueuePage() {
       if (!res.ok) throw new Error(await res.text())
       if (selectedId === id) setSelectedId(null)
       await loadItems()
-      setMessage('Deleted.')
+      showMessage('Deleted.')
     } catch (err: any) {
-      setMessage(`Delete failed: ${err?.message || err}`)
+      showMessage(`Delete failed: ${err?.message || err}`, 'error')
     }
   }
 
@@ -185,7 +211,7 @@ export default function StoryQueuePage() {
       authorTarget: item.authorTarget || '',
     }))
     window.scrollTo({ top: 0, behavior: 'smooth' })
-    setMessage('Loaded story settings into generator.')
+    showMessage('Loaded story settings into generator.')
   }
 
   return (
