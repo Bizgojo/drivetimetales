@@ -24,41 +24,57 @@ type QueueItem = {
   updatedAt: string
 }
 
-function ensureStore() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true })
-  if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, '[]', 'utf8')
+function ensureQueueFile(operation: string) {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true })
+    if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, '[]', 'utf8')
+  } catch (err) {
+    console.error(`[story-queue] ${operation}: failed to ensure queue file`, err)
+    throw new Error('Failed to initialize story queue storage')
+  }
 }
 
-function readItems(): QueueItem[] {
-  ensureStore()
+function readItems(operation: string): QueueItem[] {
+  ensureQueueFile(operation)
   try {
     const raw = fs.readFileSync(DATA_FILE, 'utf8')
     const parsed = JSON.parse(raw)
     return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
+  } catch (err) {
+    console.error(`[story-queue] ${operation}: failed to read or parse queue file`, err)
+    throw new Error('Failed to read story queue storage')
   }
 }
 
-function writeItems(items: QueueItem[]) {
-  ensureStore()
-  fs.writeFileSync(DATA_FILE, JSON.stringify(items, null, 2), 'utf8')
+function writeItems(items: QueueItem[], operation: string) {
+  ensureQueueFile(operation)
+  try {
+    fs.writeFileSync(DATA_FILE, JSON.stringify(items, null, 2), 'utf8')
+  } catch (err) {
+    console.error(`[story-queue] ${operation}: failed to write queue file`, err)
+    throw new Error('Failed to write story queue storage')
+  }
 }
 
 export async function GET(req: NextRequest) {
-  const items = readItems()
-  const id = req.nextUrl.searchParams.get('id')
-  if (id) {
-    const item = items.find((x) => x.id === id) || null
-    return NextResponse.json({ item })
+  try {
+    const items = readItems('GET')
+    const id = req.nextUrl.searchParams.get('id')
+    if (id) {
+      const item = items.find((x) => x.id === id) || null
+      return NextResponse.json({ item })
+    }
+    return NextResponse.json({ items })
+  } catch (err: any) {
+    console.error('[story-queue] GET failed:', err)
+    return NextResponse.json({ error: err?.message || 'Failed to load queue items' }, { status: 500 })
   }
-  return NextResponse.json({ items })
 }
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const items = readItems()
+    const items = readItems('POST')
     const now = new Date().toISOString()
 
     const item: QueueItem = {
@@ -79,10 +95,11 @@ export async function POST(req: NextRequest) {
     }
 
     items.unshift(item)
-    writeItems(items)
+    writeItems(items, 'POST')
 
     return NextResponse.json({ success: true, item })
   } catch (err: any) {
+    console.error('[story-queue] POST failed:', err)
     return NextResponse.json({ error: err?.message || 'Failed to create queue item' }, { status: 500 })
   }
 }
@@ -90,7 +107,7 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   try {
     const body = await req.json()
-    const items = readItems()
+    const items = readItems('PATCH')
 
     const idx = items.findIndex((x) => x.id === body.id)
     if (idx === -1) {
@@ -104,9 +121,10 @@ export async function PATCH(req: NextRequest) {
       updatedAt: new Date().toISOString(),
     }
 
-    writeItems(items)
+    writeItems(items, 'PATCH')
     return NextResponse.json({ success: true, item: items[idx] })
   } catch (err: any) {
+    console.error('[story-queue] PATCH failed:', err)
     return NextResponse.json({ error: err?.message || 'Failed to update queue item' }, { status: 500 })
   }
 }
@@ -118,12 +136,13 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: 'Missing id' }, { status: 400 })
     }
 
-    const items = readItems()
+    const items = readItems('DELETE')
     const filtered = items.filter((x) => x.id !== id)
-    writeItems(filtered)
+    writeItems(filtered, 'DELETE')
 
     return NextResponse.json({ success: true })
   } catch (err: any) {
+    console.error('[story-queue] DELETE failed:', err)
     return NextResponse.json({ error: err?.message || 'Failed to delete queue item' }, { status: 500 })
   }
 }
