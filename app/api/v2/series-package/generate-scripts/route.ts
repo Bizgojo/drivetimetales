@@ -220,6 +220,18 @@ export async function POST(req: NextRequest) {
         return bad(`Episode ${episodeNumber} brief_json missing`, 422, { failedEpisode: episodeNumber, failedStoryId: episode.id })
       }
 
+      if (episode.script) {
+        console.log(`[series-package/generate-scripts] Skipping episode ${episodeNumber} because script exists`)
+        priorGenerated.push({
+          episode,
+          script: episode.script,
+          scriptJson: episode.script_json && typeof episode.script_json === 'object' ? episode.script_json : {},
+        })
+        continue
+      }
+
+      console.log(`[series-package/generate-scripts] Generating missing episode ${episodeNumber}`)
+
       const continuityBundle = buildContinuityBundle(priorGenerated)
       const prompt = buildPrompt(series, episode, episodes, continuityBundle)
 
