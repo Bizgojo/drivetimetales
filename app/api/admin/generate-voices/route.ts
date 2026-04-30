@@ -468,6 +468,28 @@ export async function POST(req: NextRequest) {
     warnings.forEach(w => console.warn(`  ⚠️ ${w}`))
     const results: { intro?: string; outro?: string; segments: any[] } = { segments: [] }
     let succeeded = 0; let failed = 0
+
+    const segmentFilePattern = /^segment_\d{4}\.mp3$/
+    const storyAudioFolder = `asc3/${storyId}`
+    const { data: existingAudioFiles, error: listAudioError } = await supabase.storage.from('audio').list(storyAudioFolder, { limit: 500 })
+    if (listAudioError) {
+      console.error('  ❌ Failed to list existing story segments:', listAudioError)
+      return NextResponse.json({ success: false, error: `Failed to list existing story segments: ${listAudioError.message}` }, { status: 500 })
+    }
+
+    const staleSegmentPaths = (existingAudioFiles || [])
+      .filter(file => segmentFilePattern.test(file.name))
+      .map(file => `${storyAudioFolder}/${file.name}`)
+
+    if (staleSegmentPaths.length > 0) {
+      const { error: deleteAudioError } = await supabase.storage.from('audio').remove(staleSegmentPaths)
+      if (deleteAudioError) {
+        console.error('  ❌ Failed to delete stale story segments:', deleteAudioError)
+        return NextResponse.json({ success: false, error: `Failed to delete stale story segments: ${deleteAudioError.message}` }, { status: 500 })
+      }
+    }
+    console.log(`  Deleted stale story segments: ${staleSegmentPaths.length > 0 ? staleSegmentPaths.map(file => file.split('/').pop()).join(', ') : 'none'}`)
+
     if (introLine) {
       try {
         const introText = introLine.text
