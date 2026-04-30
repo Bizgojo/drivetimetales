@@ -145,26 +145,43 @@ export async function POST(req: NextRequest) {
       await download(fallbackMusicUrl, musicPath)
     }
 
+    const selectedSegmentNames = segmentFiles.map(seg => seg.name)
+    const preparedSegmentNames: string[] = []
+    const failedSegments: string[] = []
     const segPaths: string[] = []
     // Download and normalize segments sequentially to avoid memory pressure
     for (let i = 0; i < segmentFiles.length; i++) {
+      const seg = segmentFiles[i]
       try {
-        const seg = segmentFiles[i]
         const rawPath = path.join(tmpDir, 'raw_' + seg.name)
         const segPath = path.join(tmpDir, seg.name)
         await download(`${BASE_STORAGE}/asc3/${storyId}/${seg.name}`, rawPath)
         const stat = await fs.stat(rawPath)
-        if (stat.size <= 100) continue
+        if (stat.size <= 100) throw new Error(`Segment file too small (${stat.size} bytes)`)
         if (seg.name.startsWith('segment_')) {
           await normalizeAudio(rawPath, segPath, -16)
         } else {
           await execFileAsync(FFMPEG_PATH, ['-i', rawPath, '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', segPath])
         }
+        preparedSegmentNames.push(seg.name)
         segPaths.push(segPath)
         await fs.unlink(rawPath).catch(() => {})
       } catch (e) {
+        failedSegments.push(seg.name)
         console.error('  Segment ' + i + ' failed:', e)
       }
+    }
+    console.log(`  Selected segment count: ${selectedSegmentNames.length}`)
+    console.log(`  Prepared segment count: ${preparedSegmentNames.length}`)
+    if (failedSegments.length > 0) console.error(`  Failed segment filenames: ${failedSegments.join(', ')}`)
+    if (failedSegments.length > 0 || preparedSegmentNames.length !== selectedSegmentNames.length) {
+      return NextResponse.json({
+        success: false,
+        error: 'Failed to prepare all selected story segments',
+        selectedCount: selectedSegmentNames.length,
+        preparedCount: preparedSegmentNames.length,
+        failedSegments
+      }, { status: 500 })
     }
     console.log(`  Downloaded ${segPaths.length}/${segmentFiles.length} segments`)
     // Diagnostic: log file sizes
@@ -238,6 +255,8 @@ export async function POST(req: NextRequest) {
         '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', storyBodyPath
       ])
     }
+    const storyBodyDur = await getAudioDuration(storyBodyPath)
+    console.log(`  story_body.mp3 duration: ${storyBodyDur.toFixed(1)}s`)
 
     // Build sting+intro crossfade: Belle B starts at 1.2s into sting, sting fades under her
     const stingDur = await getAudioDuration(stingPath)
