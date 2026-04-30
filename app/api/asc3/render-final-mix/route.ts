@@ -47,6 +47,28 @@ async function getAudioDuration(filePath: string): Promise<number> {
   return parseInt(m[1]) * 3600 + parseInt(m[2]) * 60 + parseFloat(m[3])
 }
 
+async function logLoudnessDiagnostics(label: string, filePath: string): Promise<void> {
+  try {
+    const result = await execFileAsync(FFMPEG_PATH, [
+      '-i', filePath,
+      '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11:print_format=json',
+      '-f', 'null', '-'
+    ], { encoding: 'utf8' }).catch(e => ({ stdout: '', stderr: e.stderr || '' }))
+    const out = (result as any).stderr || (result as any).stdout || ''
+    const match = out.match(/\{[\s\S]*?\}/)
+    if (!match) {
+      console.warn(`  Loudness diagnostics unavailable for ${label}: no loudnorm JSON found`)
+      return
+    }
+    const parsed = JSON.parse(match[0])
+    console.log(
+      `  Loudness ${label}: input_i=${parsed.input_i}, input_tp=${parsed.input_tp}, input_lra=${parsed.input_lra}, input_thresh=${parsed.input_thresh}`
+    )
+  } catch (e) {
+    console.warn(`  Loudness diagnostics unavailable for ${label}:`, e)
+  }
+}
+
 async function normalizeAudio(inputPath: string, outputPath: string, targetLufs: number = -16): Promise<void> {
   await execFileAsync(FFMPEG_PATH, [
     '-i', inputPath,
@@ -200,6 +222,8 @@ export async function POST(req: NextRequest) {
     const normalizedOutroPath = path.join(tmpDir, 'norm_outro.mp3')
     await normalizeAudio(introPath, normalizedIntroPath, -16)
     await normalizeAudio(outroPath, normalizedOutroPath, -16)
+    await logLoudnessDiagnostics('normalized intro', normalizedIntroPath)
+    await logLoudnessDiagnostics('normalized outro', normalizedOutroPath)
     
     // Concatenate and normalize all story segments in one pass
     const rawConcatFile = path.join(tmpDir, 'raw_concat.txt')
@@ -214,6 +238,7 @@ export async function POST(req: NextRequest) {
     const concatStat = await fs.stat(normalizedConcatPath)
     const concatDur = await getAudioDuration(normalizedConcatPath)
     console.log(`  Concatenated segments: ${(concatStat.size/1024/1024).toFixed(2)} MB, ${concatDur.toFixed(1)}s duration`)
+    await logLoudnessDiagnostics('normalized segment concat', normalizedConcatPath)
 
     const sil075Path = path.join(tmpDir, 'sil075.mp3')
     const sil100Path = path.join(tmpDir, 'sil100.mp3')
@@ -257,6 +282,7 @@ export async function POST(req: NextRequest) {
     }
     const storyBodyDur = await getAudioDuration(storyBodyPath)
     console.log(`  story_body.mp3 duration: ${storyBodyDur.toFixed(1)}s`)
+    await logLoudnessDiagnostics('story_body.mp3', storyBodyPath)
 
     // Build sting+intro crossfade: Belle B starts at 1.2s into sting, sting fades under her
     const stingDur = await getAudioDuration(stingPath)
@@ -286,6 +312,7 @@ export async function POST(req: NextRequest) {
 
     const durationSecs = await getAudioDuration(outputPath)
     console.log(`  ✅ Mix complete: ${durationSecs.toFixed(1)}s`)
+    await logLoudnessDiagnostics('final_mix.mp3', outputPath)
 
     // Upload story_body.mp3 (segments only — for queue mode personalization)
     const bodyBuffer = await fs.readFile(storyBodyPath)
