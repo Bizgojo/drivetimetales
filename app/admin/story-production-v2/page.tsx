@@ -724,6 +724,8 @@ export default function StoryProductionV2Page() {
   const packageEpisodeCount = seriesPackage?.episodes.length || 0
   const packageExists = !!seriesPackage?.series?.id
   const packageAllScriptsPresent = packageEpisodeCount > 0 && seriesPackage!.episodes.every((episode) => !!episode.script)
+  const packageNoScriptsPresent = packageEpisodeCount > 0 && seriesPackage!.episodes.every((episode) => !episode.script)
+  const packageSomeScriptsPresent = packageEpisodeCount > 0 && !packageAllScriptsPresent && seriesPackage!.episodes.some((episode) => !!episode.script)
   const packageAllValidationsPass = packageEpisodeCount > 0 && seriesPackage!.episodes.every((episode) => {
     const validation = episode.validator_result ?? episode.script_json?.series_score_validate?.validator_result
     return episode.status === 'validator_passed' || validation === 'PASS'
@@ -1614,14 +1616,20 @@ export default function StoryProductionV2Page() {
           ) : null}
 
           <div className="flex gap-3 flex-wrap">
-            <button disabled={!canGenerate || loading || hasActiveAction} className={generateActionClass} onClick={generateScript}>
+            <button disabled={!canGenerate || loading || hasActiveAction || packageAllScriptsPresent} className={generateActionClass} onClick={generateScript}>
               <ButtonLabel loading={activeAction === 'generateScript' || activeAction === 'generateSeriesScripts'}>
                 {activeAction === 'generateSeriesScripts'
-                  ? 'Generating Episodes...'
+                  ? packageSomeScriptsPresent ? 'Generating Missing Episodes...' : 'Generating Episodes...'
                   : activeAction === 'generateScript'
                     ? 'Generating...'
                     : seriesPackage
-                      ? packageAllScriptsPresent ? '✓ Generate All Episode Scripts' : 'Generate All Episode Scripts'
+                      ? packageAllScriptsPresent
+                        ? '✓ Episode Scripts Generated'
+                        : packageSomeScriptsPresent
+                          ? 'Generate Missing Episode Scripts'
+                          : packageNoScriptsPresent
+                            ? 'Generate All Episode Scripts'
+                            : 'Generate All Episode Scripts'
                       : 'Generate Script'}
               </ButtonLabel>
             </button>
