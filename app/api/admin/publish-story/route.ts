@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import fs from 'fs'
-import path from 'path'
 
 export const runtime = 'nodejs'
 
@@ -9,24 +7,6 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
-
-const DATA_FILE = path.join(process.cwd(), '.admin-data', 'story-queue.json')
-
-function readQueue() {
-  try {
-    if (!fs.existsSync(DATA_FILE)) return []
-    const raw = fs.readFileSync(DATA_FILE, 'utf8')
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
-  }
-}
-
-function writeQueue(items: any[]) {
-  fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true })
-  fs.writeFileSync(DATA_FILE, JSON.stringify(items, null, 2), 'utf8')
-}
 
 export async function POST(req: NextRequest) {
   try {
@@ -86,18 +66,21 @@ export async function POST(req: NextRequest) {
     }
 
     if (queueId) {
-      const items = readQueue()
-      const updated = items.map((item: any) =>
-        item.id === queueId
-          ? {
-              ...item,
-              storyId,
-              status: 'published',
-              updatedAt: new Date().toISOString(),
-            }
-          : item
-      )
-      writeQueue(updated)
+      const { error: queueError } = await supabase
+        .from('story_queue_items')
+        .update({
+          story_id: storyId,
+          status: 'published',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', queueId)
+
+      if (queueError) {
+        return NextResponse.json(
+          { success: false, error: `Story published, but failed to update queue item: ${queueError.message}` },
+          { status: 500 }
+        )
+      }
     }
 
     return NextResponse.json({
