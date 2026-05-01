@@ -134,6 +134,7 @@ export default function AscAdminPage() {
   const [handoff, setHandoff] = useState<AscHandoff | null>(null)
   const [message, setMessage] = useState('')
   const [working, setWorking] = useState(false)
+  const [isLocalRuntime, setIsLocalRuntime] = useState(false)
   const [job, setJob] = useState<ProductionJob | null>(null)
   const [packageJobs, setPackageJobs] = useState<ProductionJob[]>([])
   const [failureInspectionJob, setFailureInspectionJob] = useState<ProductionJob | null>(null)
@@ -148,6 +149,12 @@ export default function AscAdminPage() {
 
   useEffect(() => {
     refreshHandoff()
+    const hostname = window.location.hostname
+    setIsLocalRuntime(
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname.endsWith('.local')
+    )
   }, [])
 
   const hasActiveSingleJob = Boolean(handoff?.productionJobId) && (() => {
@@ -573,6 +580,7 @@ export default function AscAdminPage() {
   const canRunProduction = isPackageHandoff
     ? packageCanRun
     : !!handoff?.storyId && !singleProductionRunning && !singleJobPublished
+  const canRunProductionHere = canRunProduction && isLocalRuntime
   const canImportSingleOutput = !isPackageHandoff
     && !!handoff?.title
     && !singleProductionRunning
@@ -691,6 +699,12 @@ export default function AscAdminPage() {
             </div>
           ) : null}
 
+          {!isLocalRuntime ? (
+            <div className="rounded border border-amber-400 bg-amber-50 p-3 text-sm font-semibold text-amber-900">
+              ASC production must be run locally or by an external worker. Vercel serverless cannot run detached Python workers.
+            </div>
+          ) : null}
+
           <div className="flex flex-wrap gap-3 pt-2">
             <button onClick={refreshHandoff} className="bg-black text-white px-4 py-2 rounded">
               Refresh Handoff
@@ -700,10 +714,10 @@ export default function AscAdminPage() {
             </button>
             <button
               onClick={runAscProduction}
-              disabled={!canRunProduction || working}
+              disabled={!canRunProductionHere || working}
               className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50"
             >
-              {working ? 'Working...' : 'Run ASC Production'}
+              {working ? 'Working...' : isLocalRuntime ? 'Run ASC Production' : 'Run ASC Production Locally Only'}
             </button>
             <button
               onClick={refreshProductionStatus}
