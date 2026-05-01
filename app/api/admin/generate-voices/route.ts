@@ -234,7 +234,7 @@ function parseCharacterGuide(script: string): CharacterInfo[] {
   if (!guideMatch) return chars
   const guideLines = guideMatch[1].split('\n').filter(l => l.trim())
   for (const line of guideLines) {
-    const nameMatch = line.match(/^([A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ\s'.()]+?)\s*(?:[—–-]|:)/)
+    const nameMatch = line.match(/^([A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ\s'.()/]+?)\s*(?:[—–-]|:)/)
     if (!nameMatch) continue
     const name = nameMatch[1].trim()
     const lower = line.toLowerCase()
@@ -252,15 +252,23 @@ function characterVoiceKeys(name: string): string[] {
     .replace(/\b(Dr|Mr|Mrs|Ms|Miss|Director|Deputy|Officer|Agent|Colonel|Captain|Lieutenant|Sergeant)\.?\b/gi, '')
     .replace(/[()]/g, ' ')
     .trim()
-  const parts = cleaned
-    .split(/\s+/)
-    .map(part => part.replace(/[^A-Za-zÀ-ÖØ-öø-ÿ'.-]/g, '').trim())
-    .filter(part => part.length > 1)
 
   const keys = new Set<string>()
-  if (cleaned) keys.add(cleaned.toUpperCase())
-  parts.forEach(part => keys.add(part.toUpperCase()))
-  if (parts.length >= 2) keys.add(parts.slice(-2).join(' ').toUpperCase())
+
+  const addKeysForName = (rawName: string) => {
+    const normalized = rawName.replace(/\s+/g, ' ').trim()
+    const parts = normalized
+      .split(/\s+/)
+      .map(part => part.replace(/[^A-Za-zÀ-ÖØ-öø-ÿ'.-]/g, '').trim())
+      .filter(part => part.length > 1)
+
+    if (normalized) keys.add(normalized.toUpperCase())
+    parts.forEach(part => keys.add(part.toUpperCase()))
+    if (parts.length >= 2) keys.add(parts.slice(-2).join(' ').toUpperCase())
+  }
+
+  addKeysForName(cleaned)
+  cleaned.split('/').forEach(alias => addKeysForName(alias))
   return Array.from(keys)
 }
 
@@ -445,24 +453,35 @@ export async function POST(req: NextRequest) {
       }
     }
     // Apply any remaining manual overrides
-    if (characterVoices) Object.entries(characterVoices).forEach(([name, id]) => { voiceMap[name.toUpperCase()] = id as string })
+    if (characterVoices) Object.entries(characterVoices).forEach(([name, id]) => { assignCharacterVoice(voiceMap, name, id as string) })
+    console.log(`  Parsed character guide names:`, characterGuide.map(c => c.name).join(', ') || 'none')
     console.log(`  Characters:`, characterGuide.map(c => `${c.name}(${c.gender})`).join(', '))
     const lines = parseScript(script)
     const announcerLines = lines.filter(l => l.type === 'announcer')
     const introLine = announcerLines[0]
     const outroLine = announcerLines[announcerLines.length - 1]
     const storyLines = lines.filter(l => !l.isIntro && !l.isOutro)
-    const nonDialogueSpeakers = new Set(['TITLE'])
+    const nonDialogueSpeakers = new Set(['TITLE', 'AUTHOR', 'GENRE', 'DESCRIPTION', 'SERIES', 'EPISODE', 'EPISODE_TITLE', 'SUNO PROMPT', 'ANNOUNCER', 'BELLE B', 'SANDY'])
     const characterSpeakers = Array.from(new Set(storyLines
       .filter(l => l.type === 'character' && !nonDialogueSpeakers.has(l.speaker.toUpperCase()))
       .map(l => l.speaker.toUpperCase())))
     const warnings: string[] = []
     if (characterSpeakers.length > 0 && characterGuide.length === 0) {
-      warnings.push(`Character dialogue found (${characterSpeakers.join(', ')}) but no CHARACTER GUIDE entries parsed; character lines will use narrator voice fallback.`)
+      console.error(`  ❌ Missing character voice assignments: ${characterSpeakers.join(', ')}; no CHARACTER GUIDE entries parsed`)
+      return NextResponse.json({
+        success: false,
+        error: 'Missing character voice assignments',
+        missingCharacters: characterSpeakers,
+      }, { status: 422 })
     } else {
       const missingVoiceMap = characterSpeakers.filter(speaker => !voiceMap[speaker])
       if (missingVoiceMap.length > 0) {
-        warnings.push(`No character voice map entry for ${missingVoiceMap.join(', ')}; those lines will use narrator voice fallback.`)
+        console.error(`  ❌ Missing character voice assignments: ${missingVoiceMap.join(', ')}`)
+        return NextResponse.json({
+          success: false,
+          error: 'Missing character voice assignments',
+          missingCharacters: missingVoiceMap,
+        }, { status: 422 })
       }
     }
     warnings.forEach(w => console.warn(`  ⚠️ ${w}`))
@@ -526,7 +545,11 @@ export async function POST(req: NextRequest) {
       }
       if (line.type === 'sfx') { const sfxUrl = await generateSFX(line.text, storyId, line.index); results.segments.push({ index: line.index, speaker: 'SFX', type: 'sfx', url: sfxUrl || undefined }); continue }
       let voiceId = resolvedNarratorVoiceId
-      if (line.type === 'character') voiceId = voiceMap[line.speaker.toUpperCase()] || resolvedNarratorVoiceId
+      if (line.type === 'character') {
+        const characterVoiceId = voiceMap[line.speaker.toUpperCase()]
+        if (!characterVoiceId) throw new Error(`Missing character voice assignment for ${line.speaker}`)
+        voiceId = characterVoiceId
+      }
       try { const url = await generateVoiceLine(line.text, voiceId, storyId, line.index, 'segment'); results.segments.push({ index: line.index, speaker: line.speaker, type: line.type, url }); succeeded++ }
       catch (e) { console.error(`  ❌ Line ${line.index} (${line.speaker}):`, e); results.segments.push({ index: line.index, speaker: line.speaker, type: line.type }); failed++ }
     }
