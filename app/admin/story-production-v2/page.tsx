@@ -1515,17 +1515,6 @@ export default function StoryProductionV2Page() {
                   ))}
                 </select>
               </div>
-              {!seriesPackage ? (
-                <input
-                  className="border rounded p-2 w-full"
-                  placeholder="Series Episode Number"
-                  value={form.series_episode_number || '1'}
-                  onChange={e => {
-                    clearLoadedProductionStateForNewInput()
-                    setForm({ ...form, series_episode_number: e.target.value || '1' })
-                  }}
-                />
-              ) : null}
               <textarea
                 className="border rounded p-2 w-full"
                 rows={5}
