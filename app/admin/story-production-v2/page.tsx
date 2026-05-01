@@ -78,7 +78,7 @@ function readSavedSeriesId(): string {
 }
 
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 
 type V2Status =
@@ -116,6 +116,17 @@ type AuthorOption = {
 type StepState = 'locked' | 'waiting' | 'running' | 'complete' | 'failed'
 
 type QueueStatus = 'queued' | 'in_v2' | 'ready_for_asc' | 'published'
+type ActiveAction =
+  | 'saveBrief'
+  | 'generateScript'
+  | 'generateSeriesScripts'
+  | 'scoreScript'
+  | 'validateScript'
+  | 'scoreValidatePackage'
+  | 'produceAudio'
+  | 'validatorFix'
+  | 'episodeTopFix'
+  | ''
 
 type QueueItem = {
   id: string
@@ -240,6 +251,15 @@ function Spinner({ label }: { label: string }) {
   )
 }
 
+function ButtonLabel({ loading, children }: { loading: boolean; children: ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-2">
+      {loading ? <span className="h-3 w-3 rounded-full border-2 border-white/50 border-t-white animate-spin" /> : null}
+      <span>{children}</span>
+    </span>
+  )
+}
+
 function StepPill({ label, state }: { label: string; state: StepState }) {
   const styles: Record<StepState, string> = {
     locked: 'bg-gray-200 text-gray-500 border-gray-300',
@@ -266,6 +286,7 @@ export default function StoryProductionV2Page() {
   const [status, setStatus] = useState<V2Status | ''>('')
   const [loading, setLoading] = useState(false)
   const [workingMessage, setWorkingMessage] = useState('')
+  const [activeAction, setActiveAction] = useState<ActiveAction>('')
   const [scriptDirty, setScriptDirty] = useState(false)
   const [selectedTopFixes, setSelectedTopFixes] = useState<number[]>([])
   const [report, setReport] = useState('')
@@ -713,6 +734,7 @@ export default function StoryProductionV2Page() {
       const validation = episode.validator_result ?? episode.script_json?.series_score_validate?.validator_result
       return !!episode.script && (episode.status === 'validator_passed' || validation === 'PASS')
     })
+  const hasActiveAction = !!activeAction
   const canScore = seriesPackage ? packageScriptsReady && !loading : !!storyId && !!script && !loading
   const canValidate = seriesPackage ? packageScriptsReady && !loading : !!storyId && !!script && !loading
   const canProduce = seriesPackage ? packageReadyForAsc && !loading : !!storyId && !!script && status === 'validator_passed'
@@ -825,6 +847,7 @@ export default function StoryProductionV2Page() {
 
     const applyKey = `${episode.id}:${index}`
     setApplyingTopFixKey(applyKey)
+    setActiveAction('episodeTopFix')
     setStepMessage(`Applying ${fix.area.toLowerCase()} fix to Episode ${episode.episode_number || episode.series_episode_number || '?'}`)
 
     try {
@@ -878,6 +901,7 @@ export default function StoryProductionV2Page() {
       setStepMessage('Top fix revision failed')
     } finally {
       setApplyingTopFixKey('')
+      setActiveAction('')
     }
   }
 
@@ -888,6 +912,7 @@ export default function StoryProductionV2Page() {
     }
 
     setApplyingValidatorFix(true)
+    setActiveAction('validatorFix')
     setStepMessage('Applying validator fix with Claude...')
 
     try {
@@ -930,6 +955,7 @@ export default function StoryProductionV2Page() {
       setStepMessage('Validator fix failed')
     } finally {
       setApplyingValidatorFix(false)
+      setActiveAction('')
     }
   }
 
@@ -944,6 +970,7 @@ export default function StoryProductionV2Page() {
       await saveSeriesPackage()
       return
     }
+    setActiveAction('saveBrief')
     setLoading(true)
     setActiveStep('brief')
     setWorkingMessage('Saving brief...')
@@ -1049,10 +1076,12 @@ export default function StoryProductionV2Page() {
       setLoading(false)
       setWorkingMessage('')
       setActiveStep('')
+      setActiveAction('')
     }
   }
 
   async function saveSeriesPackage() {
+    setActiveAction('saveBrief')
     setLoading(true)
     setActiveStep('brief')
     setWorkingMessage('Planning series package...')
@@ -1100,6 +1129,7 @@ export default function StoryProductionV2Page() {
       setLoading(false)
       setWorkingMessage('')
       setActiveStep('')
+      setActiveAction('')
     }
   }
 
@@ -1109,6 +1139,7 @@ export default function StoryProductionV2Page() {
       return
     }
 
+    setActiveAction('generateScript')
     setLoading(true)
     setActiveStep('script')
     setWorkingMessage('Generating script...')
@@ -1137,12 +1168,14 @@ export default function StoryProductionV2Page() {
       setLoading(false)
       setWorkingMessage('')
       setActiveStep('')
+      setActiveAction('')
     }
   }
 
   async function generateSeriesScripts() {
     if (!seriesPackage?.series?.id) return
 
+    setActiveAction('generateSeriesScripts')
     setLoading(true)
     setActiveStep('script')
     setWorkingMessage('Generating all episode scripts...')
@@ -1179,6 +1212,7 @@ export default function StoryProductionV2Page() {
       setLoading(false)
       setWorkingMessage('')
       setActiveStep('')
+      setActiveAction('')
     }
   }
 
@@ -1188,6 +1222,7 @@ export default function StoryProductionV2Page() {
       return
     }
 
+    setActiveAction('scoreScript')
     setLoading(true)
     setActiveStep('score')
     setWorkingMessage('Scoring script...')
@@ -1213,6 +1248,7 @@ export default function StoryProductionV2Page() {
       setLoading(false)
       setWorkingMessage('')
       setActiveStep('')
+      setActiveAction('')
     }
   }
 
@@ -1222,6 +1258,7 @@ export default function StoryProductionV2Page() {
       return
     }
 
+    setActiveAction('validateScript')
     setLoading(true)
     setActiveStep('validate')
     setWorkingMessage('Validating script...')
@@ -1246,12 +1283,14 @@ export default function StoryProductionV2Page() {
       setLoading(false)
       setWorkingMessage('')
       setActiveStep('')
+      setActiveAction('')
     }
   }
 
   async function scoreValidateSeriesPackage() {
     if (!seriesPackage?.series?.id) return
 
+    setActiveAction('scoreValidatePackage')
     setLoading(true)
     setActiveStep('validate')
     setWorkingMessage('Scoring and validating episodes...')
@@ -1306,6 +1345,7 @@ export default function StoryProductionV2Page() {
       setLoading(false)
       setWorkingMessage('')
       setActiveStep('')
+      setActiveAction('')
     }
   }
 
@@ -1495,8 +1535,10 @@ export default function StoryProductionV2Page() {
           }} />
 
           <div className="flex items-center gap-4">
-            <button disabled={loading} className="bg-orange-500 text-white px-4 py-2 rounded disabled:opacity-50" onClick={saveBrief}>
-              {activeStep === 'brief' && loading ? 'Saving Brief...' : 'Save Brief'}
+            <button disabled={loading || hasActiveAction} className="bg-orange-500 text-white px-4 py-2 rounded disabled:opacity-50" onClick={saveBrief}>
+              <ButtonLabel loading={activeAction === 'saveBrief'}>
+                {activeAction === 'saveBrief' ? 'Saving Brief...' : 'Save Brief'}
+              </ButtonLabel>
             </button>
             {loading && workingMessage ? <Spinner label={workingMessage} /> : null}
           </div>
@@ -1572,32 +1614,45 @@ export default function StoryProductionV2Page() {
           ) : null}
 
           <div className="flex gap-3 flex-wrap">
-            <button disabled={!canGenerate || loading} className={generateActionClass} onClick={generateScript}>
-              {activeStep === 'script' && loading
-                ? 'Generating Script...'
-                : seriesPackage
-                  ? packageAllScriptsPresent ? '✓ Generate All Episode Scripts' : 'Generate All Episode Scripts'
-                  : 'Generate Script'}
+            <button disabled={!canGenerate || loading || hasActiveAction} className={generateActionClass} onClick={generateScript}>
+              <ButtonLabel loading={activeAction === 'generateScript' || activeAction === 'generateSeriesScripts'}>
+                {activeAction === 'generateSeriesScripts'
+                  ? 'Generating Episodes...'
+                  : activeAction === 'generateScript'
+                    ? 'Generating...'
+                    : seriesPackage
+                      ? packageAllScriptsPresent ? '✓ Generate All Episode Scripts' : 'Generate All Episode Scripts'
+                      : 'Generate Script'}
+              </ButtonLabel>
             </button>
-            <button disabled={!canScore || loading} className={scoreActionClass} onClick={scoreScript}>
-              {activeStep === 'score' && loading
-                ? 'Scoring Script...'
-                : seriesPackage
-                  ? packageAllValidationsPass ? '✓ Score + Validate All Episodes' : 'Score + Validate All Episodes'
-                  : 'Score Script'}
+            <button disabled={!canScore || loading || hasActiveAction} className={scoreActionClass} onClick={scoreScript}>
+              <ButtonLabel loading={activeAction === 'scoreScript' || activeAction === 'scoreValidatePackage'}>
+                {activeAction === 'scoreValidatePackage'
+                  ? 'Scoring + Validating...'
+                  : activeAction === 'scoreScript'
+                    ? 'Scoring...'
+                    : seriesPackage
+                      ? packageAllValidationsPass ? '✓ Score + Validate All Episodes' : 'Score + Validate All Episodes'
+                      : 'Score Script'}
+              </ButtonLabel>
             </button>
-            <button disabled={!canValidate || loading} className={validateActionClass} onClick={validateScript}>
-              {activeStep === 'validate' && loading
-                ? 'Validating Script...'
-                : seriesPackage
-                  ? packageAllValidationsPass ? '✓ Score + Validate Package' : 'Score + Validate Package'
-                  : 'Validate Script'}
+            <button disabled={!canValidate || loading || hasActiveAction} className={validateActionClass} onClick={validateScript}>
+              <ButtonLabel loading={activeAction === 'validateScript' || activeAction === 'scoreValidatePackage'}>
+                {activeAction === 'scoreValidatePackage'
+                  ? 'Scoring + Validating...'
+                  : activeAction === 'validateScript'
+                    ? 'Validating...'
+                    : seriesPackage
+                      ? packageAllValidationsPass ? '✓ Score + Validate Package' : 'Score + Validate Package'
+                      : 'Validate Script'}
+              </ButtonLabel>
             </button>
             <button
-              disabled={!canProduce || loading}
+              disabled={!canProduce || loading || hasActiveAction}
               className={produceActionClass}
               onClick={async () => {
                 try {
+                  setActiveAction('produceAudio')
                   setLoading(true)
                   setActiveStep('produce')
                   setWorkingMessage('Preparing ASC handoff...')
@@ -1700,10 +1755,13 @@ export default function StoryProductionV2Page() {
                   setLoading(false)
                   setWorkingMessage('')
                   setActiveStep('')
+                  setActiveAction('')
                 }
               }}
             >
-              {activeStep === 'produce' && loading ? 'Preparing ASC...' : 'Produce Audio (Phase 2)'}
+              <ButtonLabel loading={activeAction === 'produceAudio'}>
+                {activeAction === 'produceAudio' ? 'Producing Audio...' : 'Produce Audio (Phase 2)'}
+              </ButtonLabel>
             </button>
           </div>
           {seriesPackage ? (
@@ -1741,11 +1799,13 @@ export default function StoryProductionV2Page() {
                   {status === 'validator_failed' && script ? (
                     <button
                       type="button"
-                      disabled={applyingValidatorFix || loading}
+                      disabled={applyingValidatorFix || loading || hasActiveAction}
                       onClick={applyValidatorFix}
                       className="rounded bg-orange-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
                     >
-                      {applyingValidatorFix ? 'Fixing Validator Errors...' : 'Fix Validator Errors with Claude'}
+                      <ButtonLabel loading={activeAction === 'validatorFix'}>
+                        {activeAction === 'validatorFix' ? 'Fixing Validator Errors...' : 'Fix Validator Errors with Claude'}
+                      </ButtonLabel>
                     </button>
                   ) : null}
                   <pre ref={validateRef} className="border rounded p-3 bg-gray-50 whitespace-pre-wrap text-sm">{report}</pre>
@@ -1797,11 +1857,13 @@ export default function StoryProductionV2Page() {
                                   </div>
                                   <button
                                     type="button"
-                                    disabled={!!applyingTopFixKey || !episodeDetailModal.episode.script}
+                                    disabled={!!applyingTopFixKey || hasActiveAction || !episodeDetailModal.episode.script}
                                     onClick={() => applyEpisodeTopFix(episodeDetailModal.episode, fix, index)}
                                     className="rounded bg-orange-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
                                   >
-                                    {isApplying ? 'Applying...' : 'Apply This Fix with Claude'}
+                                    <ButtonLabel loading={isApplying}>
+                                      {isApplying ? 'Applying...' : 'Apply This Fix with Claude'}
+                                    </ButtonLabel>
                                   </button>
                                 </div>
                                 <div className="whitespace-pre-wrap text-gray-900">{fix.text}</div>
