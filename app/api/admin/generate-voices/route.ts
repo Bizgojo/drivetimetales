@@ -533,6 +533,7 @@ export async function POST(req: NextRequest) {
     }
     if (outroLine && outroLine.index !== introLine?.index) { try { results.outro = await generateVoiceLine(outroLine.text, BELLE_B_VOICE_ID, storyId, outroLine.index, 'outro'); console.log('  ✅ Belle B outro') } catch (e) { console.error('  ❌ Outro failed:', e) } }
     for (const line of storyLines) {
+      if (nonDialogueSpeakers.has(line.speaker.toUpperCase())) continue
       if (line.type === 'beat' || line.type === 'pause') {
         const duration = line.type === 'beat' ? 0.75 : (parseFloat(line.text) || 1.0)
         const silFileName = 'segment_' + line.index.toString().padStart(4, '0') + '.mp3'
@@ -558,7 +559,10 @@ export async function POST(req: NextRequest) {
     if (results.outro) updates.outro_audio_url = results.outro
     if (Object.keys(updates).length > 0) await supabase.from('stories').update(updates).eq('id', storyId)
     // Note: intro_before_url and intro_after_url set above during intro generation
-    const voiceTotal = storyLines.filter(l => l.type === 'narrator' || l.type === 'character').length
+    const voiceTotal = storyLines.filter(l =>
+      !nonDialogueSpeakers.has(l.speaker.toUpperCase()) &&
+      (l.type === 'narrator' || l.type === 'character')
+    ).length
     console.log(`  ✅ Done: ${succeeded}/${voiceTotal} lines, ${failed} failed`)
     return NextResponse.json({ success: failed === 0, intro: results.intro, outro: results.outro, segments: results.segments, stats: { total: lines.length, voice: voiceTotal, succeeded, failed }, warnings })
   } catch (err) {
