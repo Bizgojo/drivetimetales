@@ -907,6 +907,75 @@ export default function StoryProductionV2Page() {
     }
   }
 
+  async function applyEpisodeValidatorFix(episode: SeriesEpisodePlan) {
+    if (!episode.script || !episode.validator_report) {
+      setReport(`Episode ${episode.episode_number || episode.series_episode_number || '?'} needs a script and validator report before repair.`)
+      return
+    }
+
+    const applyKey = `${episode.id}:validator`
+    setApplyingTopFixKey(applyKey)
+    setActiveAction('episodeTopFix')
+    setStepMessage(`Fixing validator errors for Episode ${episode.episode_number || episode.series_episode_number || '?'}`)
+
+    try {
+      const reviseRes = await fetch('/api/v2/apply-top-fixes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          script: episode.script,
+          selectedFixes: [
+            `VALIDATOR ERROR FIX ONLY:\n${episode.validator_report}\n\nFix only the fields or formatting required by the validator. If DESCRIPTION is too long, rewrite only the DESCRIPTION header to 70 characters or fewer. Do not change story content unless required.`,
+          ],
+        }),
+      })
+      const reviseData = await reviseRes.json()
+      if (!reviseRes.ok || !reviseData.success) {
+        throw new Error(reviseData.error || 'Validator revision failed')
+      }
+
+      const revisedScript = reviseData.revisedScript || ''
+      const saveRes = await fetch('/api/v2/save-revised-script', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storyId: episode.id,
+          script: revisedScript,
+        }),
+      })
+      const saveData = await saveRes.json()
+      if (!saveRes.ok || !saveData.success) {
+        throw new Error(saveData.error || 'Failed to save validator fix')
+      }
+
+      const updatedEpisode: SeriesEpisodePlan = {
+        ...episode,
+        script: saveData.story?.script || revisedScript,
+        status: 'script_revised',
+        validator_result: null,
+        validator_report: null,
+        validator_passed_at: null,
+      }
+
+      setSeriesPackage((pkg) => {
+        if (!pkg) return pkg
+        return {
+          ...pkg,
+          episodes: pkg.episodes.map((candidate) => candidate.id === episode.id ? updatedEpisode : candidate),
+        }
+      })
+      setEpisodeDetailModal({ kind: 'validation', episode: updatedEpisode })
+      setReport(`Fixed validator errors for Episode ${episode.episode_number || episode.series_episode_number || '?'}: ${episode.title}`)
+      setStepMessage('Episode validator fix saved. Re-run Score + Validate All Episodes.')
+    } catch (e) {
+      setReport(e instanceof Error ? e.message : 'Unknown error')
+      setStepMessage('Episode validator fix failed')
+    } finally {
+      setApplyingTopFixKey('')
+      setActiveAction('')
+    }
+  }
+
   async function applyValidatorFix() {
     if (!storyId || !script || !report) {
       setReport('A script and validator report are required before applying validator fixes.')
@@ -1924,6 +1993,28 @@ export default function StoryProductionV2Page() {
                 </div>
               ) : (
                 <div className="space-y-3 text-sm">
+                  {(() => {
+                    const validationResult = episodeDetailModal.episode.validator_result
+                      || episodeDetailModal.episode.script_json?.series_score_validate?.validator_result
+                    const canFixValidator = (
+                      episodeDetailModal.episode.status === 'validator_failed'
+                      || validationResult === 'FAIL'
+                    ) && !!episodeDetailModal.episode.script && !!episodeDetailModal.episode.validator_report
+                    const isApplying = applyingTopFixKey === `${episodeDetailModal.episode.id}:validator`
+
+                    return canFixValidator ? (
+                      <button
+                        type="button"
+                        disabled={!!applyingTopFixKey || hasActiveAction}
+                        onClick={() => applyEpisodeValidatorFix(episodeDetailModal.episode)}
+                        className="rounded bg-orange-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                      >
+                        <ButtonLabel loading={isApplying}>
+                          {isApplying ? 'Fixing Validator Errors...' : 'Fix Validator Errors'}
+                        </ButtonLabel>
+                      </button>
+                    ) : null
+                  })()}
                   <div className="grid gap-2 rounded border border-green-200 bg-green-50 p-3 sm:grid-cols-2">
                     <div>
                       <strong>Result:</strong>{' '}
