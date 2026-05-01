@@ -233,6 +233,7 @@ const EMPTY_FORM = {
   genre: '',
   narrative_voice: '',
   premise: '',
+  requirements: '',
   setting: '',
   runtime: '15 min',
   series_name: '',
@@ -400,6 +401,7 @@ export default function StoryProductionV2Page() {
                 genre: savedData.story.genre || queued.primaryGenre || prev.genre,
                 narrative_voice: savedData.story.narrative_voice || prev.narrative_voice,
                 premise: savedData.story.premise || queued.premise || prev.premise,
+                requirements: savedData.story.requirements || queued.notes || prev.requirements,
                 setting: savedData.story.setting || queued.setting || prev.setting,
                 runtime: savedData.story.runtime || queued.duration || prev.runtime,
                 series_name: savedData.story.series_name || prev.series_name,
@@ -411,8 +413,12 @@ export default function StoryProductionV2Page() {
               try {
                 const briefRes = await fetch(`/api/v2/story-brief?storyId=${encodeURIComponent(savedData.story.id)}`)
                 const briefData = await briefRes.json()
-                if (!ignore && briefRes.ok && briefData?.success && briefData?.story?.series_arc_plan) {
-                  setForm(prev => ({ ...prev, series_arc_plan: briefData.story.series_arc_plan }))
+                if (!ignore && briefRes.ok && briefData?.success && briefData?.story) {
+                  setForm(prev => ({
+                    ...prev,
+                    series_arc_plan: briefData.story.series_arc_plan || prev.series_arc_plan,
+                    requirements: briefData.story.requirements || queued.notes || prev.requirements,
+                  }))
                 }
               } catch (err) {
                 console.error('series brief detail load failed', err)
@@ -434,6 +440,7 @@ export default function StoryProductionV2Page() {
             title: queued.title || prev.title,
             genre: queued.primaryGenre || prev.genre,
             premise: queued.premise || prev.premise,
+            requirements: queued.notes || prev.requirements,
             setting: queued.setting || prev.setting,
             runtime: queued.duration || prev.runtime,
             author: queued.authorTarget || prev.author,
@@ -1081,7 +1088,8 @@ export default function StoryProductionV2Page() {
               setting: form.setting || '',
               primaryGenre: form.genre || '',
               duration: form.runtime || '',
-              authorTarget: form.author || ''
+              authorTarget: form.author || '',
+              notes: form.requirements || ''
             }),
           })
 
@@ -1134,6 +1142,7 @@ export default function StoryProductionV2Page() {
               primaryGenre: form.genre || '',
               duration: form.runtime || '',
               authorTarget: form.author || '',
+              notes: form.requirements || '',
             }),
           })
         }
@@ -1596,6 +1605,21 @@ export default function StoryProductionV2Page() {
             clearLoadedProductionStateForNewInput()
             setForm({ ...form, premise: e.target.value })
           }} />
+          {form.type === 'standalone' ? (
+            <label className="block space-y-1">
+              <span className="text-sm font-semibold text-gray-700">Notes / Constraints</span>
+              <textarea
+                className="border rounded p-2 w-full"
+                rows={4}
+                placeholder="Optional constraints for this story, such as character count, location limits, ending requirements, or audio restrictions."
+                value={form.requirements}
+                onChange={e => {
+                  clearLoadedProductionStateForNewInput()
+                  setForm({ ...form, requirements: e.target.value })
+                }}
+              />
+            </label>
+          ) : null}
           <input className="border rounded p-2 w-full" placeholder="Setting" value={form.setting} onChange={e => {
             clearLoadedProductionStateForNewInput()
             setForm({ ...form, setting: e.target.value })

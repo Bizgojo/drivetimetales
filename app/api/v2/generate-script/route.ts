@@ -102,6 +102,9 @@ Additional rules:
 - Keep narrator voice consistent.
 - Do not include markdown fences.
 
+USER NOTES / CONSTRAINTS:
+${String(brief.requirements || '').trim() || 'None'}
+
 STORY BRIEF JSON:
 ${JSON.stringify(brief, null, 2)}
 `

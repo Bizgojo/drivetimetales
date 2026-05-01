@@ -47,6 +47,7 @@ export async function GET(req: NextRequest) {
         series_total_episodes: data?.series_total_episodes ?? brief?.series_total_episodes ?? null,
         series_is_finale: data?.series_is_finale ?? brief?.series_is_finale ?? null,
         series_arc_plan: brief?.series_arc_plan || null,
+        requirements: brief?.requirements || null,
       }
     })
   } catch (err) {
@@ -65,6 +66,7 @@ export async function POST(req: NextRequest) {
     const genre = (body.genre || '').trim()
     const narrative_voice = (body.narrative_voice || '').trim() || null
     const premise = (body.premise || '').trim()
+    const requirements = (body.requirements || '').trim()
     const setting = (body.setting || '').trim()
     const runtime_label = (body.runtime || '').trim()
     const storyId = typeof body.storyId === 'string' ? body.storyId.trim() : ''
@@ -105,7 +107,7 @@ export async function POST(req: NextRequest) {
       setting,
       runtime: runtime_label,
       characters: body.characters || null,
-      requirements: body.requirements || null,
+      requirements: requirements || null,
       previous_episode: body.previous_episode || null,
       next_episode: body.next_episode || null,
       music_energy: body.music_energy || null,
