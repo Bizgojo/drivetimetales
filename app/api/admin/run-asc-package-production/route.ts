@@ -14,6 +14,17 @@ function ensureJobDir() {
 
 export async function POST(req: NextRequest) {
   try {
+    if (process.env.VERCEL) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'ASC production must be run from a persistent worker/local environment, not Vercel serverless.',
+          detail: 'Use local ASC runner or external worker.',
+        },
+        { status: 501 }
+      )
+    }
+
     const body = await req.json()
     const seriesId = String(body.seriesId || '').trim()
     const title = String(body.title || '').trim()
