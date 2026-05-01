@@ -134,6 +134,9 @@ Additional rules:
 - Keep narrator voice consistent.
 - Do not include markdown fences.
 
+USER NOTES / CONSTRAINTS:
+${String(brief.requirements || '').trim() || 'None'}
+
 SERIES PACKAGE:
 ${JSON.stringify({
     series_id: series.id,

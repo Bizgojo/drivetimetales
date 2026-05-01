@@ -524,6 +524,7 @@ export default function StoryProductionV2Page() {
             series_is_finale: 'false',
             series_arc_plan: pkg.series?.description || prev.series_arc_plan,
             premise: firstBrief?.premise || prev.premise,
+            requirements: firstBrief?.requirements || prev.requirements,
             setting: firstBrief?.setting || prev.setting,
           }))
 
@@ -659,6 +660,7 @@ export default function StoryProductionV2Page() {
           series_is_finale: 'false',
           series_arc_plan: pkg.series?.description || prev.series_arc_plan,
           premise: firstBrief?.premise || prev.premise,
+          requirements: firstBrief?.requirements || prev.requirements,
           setting: firstBrief?.setting || prev.setting,
         }))
 
@@ -1605,21 +1607,19 @@ export default function StoryProductionV2Page() {
             clearLoadedProductionStateForNewInput()
             setForm({ ...form, premise: e.target.value })
           }} />
-          {form.type === 'standalone' ? (
-            <label className="block space-y-1">
-              <span className="text-sm font-semibold text-gray-700">Notes / Constraints</span>
-              <textarea
-                className="border rounded p-2 w-full"
-                rows={4}
-                placeholder="Optional constraints for this story, such as character count, location limits, ending requirements, or audio restrictions."
-                value={form.requirements}
-                onChange={e => {
-                  clearLoadedProductionStateForNewInput()
-                  setForm({ ...form, requirements: e.target.value })
-                }}
-              />
-            </label>
-          ) : null}
+          <label className="block space-y-1">
+            <span className="text-sm font-semibold text-gray-700">Notes / Constraints</span>
+            <textarea
+              className="border rounded p-2 w-full"
+              rows={4}
+              placeholder="Optional constraints for this story, such as character count, location limits, ending requirements, or audio restrictions."
+              value={form.requirements}
+              onChange={e => {
+                clearLoadedProductionStateForNewInput()
+                setForm({ ...form, requirements: e.target.value })
+              }}
+            />
+          </label>
           <input className="border rounded p-2 w-full" placeholder="Setting" value={form.setting} onChange={e => {
             clearLoadedProductionStateForNewInput()
             setForm({ ...form, setting: e.target.value })

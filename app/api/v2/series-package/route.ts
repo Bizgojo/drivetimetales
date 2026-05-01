@@ -141,6 +141,7 @@ export async function POST(req: NextRequest) {
     const genre = String(body.genre || '').trim()
     const narrative_voice = String(body.narrative_voice || '').trim() || null
     const premise = String(body.premise || '').trim()
+    const requirements = String(body.requirements || '').trim()
     const setting = String(body.setting || '').trim()
     const runtime = String(body.runtime || '').trim()
     const episodeCount = Number(body.series_total_episodes || body.episode_count || 0)
@@ -170,9 +171,13 @@ Rules:
 - The final episode must resolve the season arc.
 - Do not write scripts.
 
+USER NOTES / CONSTRAINTS:
+${requirements || 'None'}
+
 Input:
 ${JSON.stringify({
       premise,
+      requirements: requirements || null,
       setting,
       genre,
       author,
@@ -268,6 +273,7 @@ Return this exact JSON shape:
         genre,
         narrative_voice,
         premise: episode.premise || premise,
+        requirements: requirements || null,
         setting: episode.setting || setting,
         runtime,
         description: episode.description || null,
