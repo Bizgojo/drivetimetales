@@ -279,7 +279,7 @@ def main():
         "updatedAt": now_iso(),
     })
 
-    published = post_json(f"{BASE_URL}/api/admin/publish-story", {
+    publish_payload = {
         "storyId": story_id,
         "title": title,
         "author": author,
@@ -289,7 +289,11 @@ def main():
         "description": description,
         "duration_mins": mins,
         "is_free": True,
-    })
+    }
+    if queue_id:
+        publish_payload["queueId"] = queue_id
+
+    published = post_json(f"{BASE_URL}/api/admin/publish-story", publish_payload)
 
     write_pipeline_state(pipeline_state_path, {
         "jobId": job_id,
