@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import fs from 'fs'
-import path from 'path'
+import { createClient } from '@supabase/supabase-js'
 
-const DATA_DIR = path.join(process.cwd(), '.admin-data')
-const DATA_FILE = path.join(DATA_DIR, 'story-queue.json')
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
 
 type QueueStatus = 'queued' | 'in_v2' | 'ready_for_asc' | 'published'
 
@@ -24,47 +25,109 @@ type QueueItem = {
   updatedAt: string
 }
 
-function ensureQueueFile(operation: string) {
-  try {
-    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true })
-    if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, '[]', 'utf8')
-  } catch (err) {
-    console.error(`[story-queue] ${operation}: failed to ensure queue file`, err)
-    throw new Error('Failed to initialize story queue storage')
+type QueueRow = {
+  id: string
+  story_id: string | null
+  title: string
+  premise: string
+  setting: string
+  primary_genre: string
+  secondary_genre: string
+  tertiary_genre: string
+  duration: string
+  author_target: string
+  notes: string
+  status: QueueStatus
+  created_at: string
+  updated_at: string
+}
+
+function toItem(row: QueueRow): QueueItem {
+  return {
+    id: row.id,
+    storyId: row.story_id || '',
+    title: row.title,
+    premise: row.premise,
+    setting: row.setting,
+    primaryGenre: row.primary_genre,
+    secondaryGenre: row.secondary_genre,
+    tertiaryGenre: row.tertiary_genre,
+    duration: row.duration,
+    authorTarget: row.author_target,
+    notes: row.notes,
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   }
 }
 
-function readItems(operation: string): QueueItem[] {
-  ensureQueueFile(operation)
-  try {
-    const raw = fs.readFileSync(DATA_FILE, 'utf8')
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed : []
-  } catch (err) {
-    console.error(`[story-queue] ${operation}: failed to read or parse queue file`, err)
-    throw new Error('Failed to read story queue storage')
+function storyIdValue(value: unknown): string | null {
+  const clean = String(value || '').trim()
+  return clean || null
+}
+
+function createRow(body: any): QueueRow {
+  const now = new Date().toISOString()
+  return {
+    id: body.id || `queue_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    story_id: storyIdValue(body.storyId),
+    title: body.title || 'Untitled Story Idea',
+    premise: body.premise || '',
+    setting: body.setting || '',
+    primary_genre: body.primaryGenre || '',
+    secondary_genre: body.secondaryGenre || '',
+    tertiary_genre: body.tertiaryGenre || '',
+    duration: body.duration || '15 min',
+    author_target: body.authorTarget || '',
+    notes: body.notes || '',
+    status: body.status || 'queued',
+    created_at: body.createdAt || now,
+    updated_at: now,
   }
 }
 
-function writeItems(items: QueueItem[], operation: string) {
-  ensureQueueFile(operation)
-  try {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(items, null, 2), 'utf8')
-  } catch (err) {
-    console.error(`[story-queue] ${operation}: failed to write queue file`, err)
-    throw new Error('Failed to write story queue storage')
+function patchRow(body: any): Partial<QueueRow> {
+  const patch: Partial<QueueRow> = {
+    updated_at: new Date().toISOString(),
   }
+
+  if ('storyId' in body) patch.story_id = storyIdValue(body.storyId)
+  if ('title' in body) patch.title = body.title || 'Untitled Story Idea'
+  if ('premise' in body) patch.premise = body.premise || ''
+  if ('setting' in body) patch.setting = body.setting || ''
+  if ('primaryGenre' in body) patch.primary_genre = body.primaryGenre || ''
+  if ('secondaryGenre' in body) patch.secondary_genre = body.secondaryGenre || ''
+  if ('tertiaryGenre' in body) patch.tertiary_genre = body.tertiaryGenre || ''
+  if ('duration' in body) patch.duration = body.duration || '15 min'
+  if ('authorTarget' in body) patch.author_target = body.authorTarget || ''
+  if ('notes' in body) patch.notes = body.notes || ''
+  if ('status' in body) patch.status = body.status || 'queued'
+
+  return patch
 }
 
 export async function GET(req: NextRequest) {
   try {
-    const items = readItems('GET')
     const id = req.nextUrl.searchParams.get('id')
+
     if (id) {
-      const item = items.find((x) => x.id === id) || null
-      return NextResponse.json({ item })
+      const { data, error } = await supabase
+        .from('story_queue_items')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle()
+
+      if (error) throw error
+      return NextResponse.json({ item: data ? toItem(data as QueueRow) : null })
     }
-    return NextResponse.json({ items })
+
+    const { data, error } = await supabase
+      .from('story_queue_items')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    if (error) throw error
+    return NextResponse.json({ items: (data || []).map((row) => toItem(row as QueueRow)) })
   } catch (err: any) {
     console.error('[story-queue] GET failed:', err)
     return NextResponse.json({ error: err?.message || 'Failed to load queue items' }, { status: 500 })
@@ -74,30 +137,16 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const items = readItems('POST')
-    const now = new Date().toISOString()
+    const row = createRow(body)
 
-    const item: QueueItem = {
-      id: body.id || `queue_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      storyId: body.storyId || '',
-      title: body.title || 'Untitled Story Idea',
-      premise: body.premise || '',
-      setting: body.setting || '',
-      primaryGenre: body.primaryGenre || '',
-      secondaryGenre: body.secondaryGenre || '',
-      tertiaryGenre: body.tertiaryGenre || '',
-      duration: body.duration || '15 min',
-      authorTarget: body.authorTarget || '',
-      notes: body.notes || '',
-      status: body.status || 'queued',
-      createdAt: body.createdAt || now,
-      updatedAt: now,
-    }
+    const { data, error } = await supabase
+      .from('story_queue_items')
+      .insert(row)
+      .select('*')
+      .single()
 
-    items.unshift(item)
-    writeItems(items, 'POST')
-
-    return NextResponse.json({ success: true, item })
+    if (error) throw error
+    return NextResponse.json({ success: true, item: toItem(data as QueueRow) })
   } catch (err: any) {
     console.error('[story-queue] POST failed:', err)
     return NextResponse.json({ error: err?.message || 'Failed to create queue item' }, { status: 500 })
@@ -107,22 +156,25 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   try {
     const body = await req.json()
-    const items = readItems('PATCH')
+    const id = String(body.id || '').trim()
 
-    const idx = items.findIndex((x) => x.id === body.id)
-    if (idx === -1) {
+    if (!id) {
+      return NextResponse.json({ error: 'Missing id' }, { status: 400 })
+    }
+
+    const { data, error } = await supabase
+      .from('story_queue_items')
+      .update(patchRow(body))
+      .eq('id', id)
+      .select('*')
+      .maybeSingle()
+
+    if (error) throw error
+    if (!data) {
       return NextResponse.json({ error: 'Queue item not found' }, { status: 404 })
     }
 
-    items[idx] = {
-      ...items[idx],
-      ...body,
-      id: items[idx].id,
-      updatedAt: new Date().toISOString(),
-    }
-
-    writeItems(items, 'PATCH')
-    return NextResponse.json({ success: true, item: items[idx] })
+    return NextResponse.json({ success: true, item: toItem(data as QueueRow) })
   } catch (err: any) {
     console.error('[story-queue] PATCH failed:', err)
     return NextResponse.json({ error: err?.message || 'Failed to update queue item' }, { status: 500 })
@@ -136,10 +188,12 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: 'Missing id' }, { status: 400 })
     }
 
-    const items = readItems('DELETE')
-    const filtered = items.filter((x) => x.id !== id)
-    writeItems(filtered, 'DELETE')
+    const { error } = await supabase
+      .from('story_queue_items')
+      .delete()
+      .eq('id', id)
 
+    if (error) throw error
     return NextResponse.json({ success: true })
   } catch (err: any) {
     console.error('[story-queue] DELETE failed:', err)
