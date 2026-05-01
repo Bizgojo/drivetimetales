@@ -22,10 +22,26 @@ export async function POST(req: NextRequest) {
     if (!storyId) return bad('storyId required')
     if (!script) return bad('script required')
 
+    const { data: existing, error: loadError } = await supabase
+      .from('stories')
+      .select('script_json')
+      .eq('id', storyId)
+      .single()
+
+    if (loadError) return bad(loadError.message, 500)
+
+    const existingScriptJson = existing?.script_json && typeof existing.script_json === 'object'
+      ? existing.script_json
+      : {}
+
     const { data, error } = await supabase
       .from('stories')
       .update({
         script,
+        script_json: {
+          ...existingScriptJson,
+          raw_script: script,
+        },
         status: 'script_revised',
         validator_report: null,
       })
