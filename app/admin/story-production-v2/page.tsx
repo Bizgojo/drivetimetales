@@ -1772,6 +1772,23 @@ export default function StoryProductionV2Page() {
           ) : null}
         </div>
 
+        {isPackageMode ? (
+          <div className="bg-white border border-black rounded-lg p-4 space-y-3">
+            <div className="font-semibold">Package Report</div>
+            {loading && workingMessage ? <Spinner label={workingMessage} /> : null}
+            {stepMessage ? <div className="text-sm font-medium text-green-700">{stepMessage}</div> : null}
+            {reviewText ? (
+              <pre ref={reviewRef} className="border rounded p-3 bg-gray-50 whitespace-pre-wrap text-sm">{reviewText}</pre>
+            ) : null}
+            {report ? (
+              <pre ref={validateRef} className="border rounded p-3 bg-gray-50 whitespace-pre-wrap text-sm">{report}</pre>
+            ) : null}
+            {!workingMessage && !stepMessage && !reviewText && !report ? (
+              <div className="text-sm text-gray-500">No package report yet.</div>
+            ) : null}
+          </div>
+        ) : null}
+
         {!isPackageMode ? (
           <>
             <div className="bg-white border border-black rounded-lg p-4 space-y-2">
