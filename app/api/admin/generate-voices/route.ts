@@ -37,6 +37,10 @@ const EL_SETTINGS = { stability: 0.5, similarity_boost: 0.75, style: 0.0, use_sp
 const SPOKEN_REFERENCE_LUFS = -16
 const SPOKEN_TRUE_PEAK = -1.5
 const SPOKEN_LRA = 11
+const SEGMENT_QC_WARN_LUFS = -18.0
+const SEGMENT_QC_RETRY_LUFS = -18.5
+const SEGMENT_QC_HARD_FAIL_LUFS = -20.0
+const SEGMENT_QC_TARGET_LUFS = -17.0
 
 function getSceneLoudnessOffset(text: string, prefix: string): number {
   if (prefix === 'intro' || prefix === 'intro_before' || prefix === 'intro_after' || prefix === 'outro') return 0
@@ -68,6 +72,68 @@ async function normalizeSpokenBuffer(input: Buffer, rawText: string, prefix: str
     await fs.unlink(inputPath).catch(() => {})
     await fs.unlink(outputPath).catch(() => {})
   }
+}
+
+interface LoudnessMetrics {
+  input_i: number
+  input_tp: number
+  input_lra: number
+  input_thresh: number
+}
+
+function parseLoudnessNumber(value: unknown): number {
+  const n = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(n) ? n : NaN
+}
+
+async function analyzeLoudnessBuffer(input: Buffer): Promise<LoudnessMetrics> {
+  const tmpBase = path.join(os.tmpdir(), `et_voice_qc_${Date.now()}_${Math.random().toString(16).slice(2)}`)
+  const inputPath = `${tmpBase}.mp3`
+  try {
+    await fs.writeFile(inputPath, input)
+    const result = await _execFileAsync(FFMPEG_PATH, [
+      '-i', inputPath,
+      '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11:print_format=json',
+      '-f', 'null', '-'
+    ], { encoding: 'utf8', maxBuffer: 1024 * 1024 * 20 }).catch((e: any) => ({ stdout: '', stderr: e.stderr || '' }))
+    const out = (result as any).stderr || (result as any).stdout || ''
+    const match = out.match(/\{[\s\S]*?\}/)
+    if (!match) throw new Error('No loudnorm JSON found')
+    const parsed = JSON.parse(match[0])
+    return {
+      input_i: parseLoudnessNumber(parsed.input_i),
+      input_tp: parseLoudnessNumber(parsed.input_tp),
+      input_lra: parseLoudnessNumber(parsed.input_lra),
+      input_thresh: parseLoudnessNumber(parsed.input_thresh),
+    }
+  } finally {
+    await fs.unlink(inputPath).catch(() => {})
+  }
+}
+
+async function applySegmentGainLimit(input: Buffer, gainDb: number): Promise<Buffer> {
+  const tmpBase = path.join(os.tmpdir(), `et_voice_gain_${Date.now()}_${Math.random().toString(16).slice(2)}`)
+  const inputPath = `${tmpBase}_in.mp3`
+  const outputPath = `${tmpBase}_out.mp3`
+  try {
+    await fs.writeFile(inputPath, input)
+    await _execFileAsync(FFMPEG_PATH, [
+      '-i', inputPath,
+      '-af', `volume=${gainDb.toFixed(2)}dB,alimiter=limit=0.84:level=false`,
+      '-ar', '44100', '-ac', '2', '-b:a', '192k',
+      '-y', outputPath
+    ])
+    return await fs.readFile(outputPath)
+  } finally {
+    await fs.unlink(inputPath).catch(() => {})
+    await fs.unlink(outputPath).catch(() => {})
+  }
+}
+
+function logSegmentQc(fileName: string, speaker: string, text: string, metrics: LoudnessMetrics, action: string) {
+  console.log(
+    `  Segment QC ${fileName} speaker="${speaker}" lufs=${metrics.input_i.toFixed(2)} tp=${metrics.input_tp.toFixed(2)} action=${action} text="${text.slice(0, 120)}"`
+  )
 }
 
 // Permanent narrator voices — excluded from character pool
@@ -342,7 +408,7 @@ function parseScript(script: string): ScriptLine[] {
   return lines
 }
 
-async function generateVoiceLine(rawText: string, voiceId: string, storyId: string, lineIndex: number, prefix: string, forceRegenerate = false): Promise<string> {
+async function generateVoiceLine(rawText: string, voiceId: string, storyId: string, lineIndex: number, prefix: string, forceRegenerate = false, speaker = ''): Promise<string> {
   // Clean markdown and special characters before sending to ElevenLabs
   const text = rawText
     .replace(/\*+/g, '')        // remove asterisks (bold/italic markdown)
@@ -358,14 +424,40 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
   if (!forceRegenerate && !isAnnouncer) {
     try { const r = await fetch(cacheUrl, { method: 'HEAD' }); if (r.ok) return cacheUrl } catch {}
   }
-  const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
-    method: 'POST',
-    headers: { 'xi-api-key': EL_API_KEY, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
-    body: JSON.stringify({ text, model_id: 'eleven_multilingual_v2', voice_settings: EL_SETTINGS })
-  })
-  if (!res.ok) throw new Error(`ElevenLabs error ${res.status}: ${(await res.text()).slice(0, 200)}`)
-  const rawBuf = Buffer.from(await res.arrayBuffer())
-  const buf = await normalizeSpokenBuffer(rawBuf, rawText, prefix)
+  const generateAttempt = async (): Promise<Buffer> => {
+    const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+      method: 'POST',
+      headers: { 'xi-api-key': EL_API_KEY, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
+      body: JSON.stringify({ text, model_id: 'eleven_multilingual_v2', voice_settings: EL_SETTINGS })
+    })
+    if (!res.ok) throw new Error(`ElevenLabs error ${res.status}: ${(await res.text()).slice(0, 200)}`)
+    const rawBuf = Buffer.from(await res.arrayBuffer())
+    return normalizeSpokenBuffer(rawBuf, rawText, prefix)
+  }
+
+  let buf = await generateAttempt()
+  if (prefix === 'segment') {
+    let metrics = await analyzeLoudnessBuffer(buf)
+    if (metrics.input_i < SEGMENT_QC_RETRY_LUFS) {
+      logSegmentQc(fileName, speaker, text, metrics, 'retry_tts')
+      buf = await generateAttempt()
+      metrics = await analyzeLoudnessBuffer(buf)
+    }
+    if (metrics.input_i < SEGMENT_QC_RETRY_LUFS) {
+      const gainDb = Math.max(0, Math.min(10, SEGMENT_QC_TARGET_LUFS - metrics.input_i))
+      logSegmentQc(fileName, speaker, text, metrics, `apply_gain_limiter_${gainDb.toFixed(2)}dB`)
+      buf = await applySegmentGainLimit(buf, gainDb)
+      metrics = await analyzeLoudnessBuffer(buf)
+    }
+    let action = 'accept'
+    if (metrics.input_i < SEGMENT_QC_HARD_FAIL_LUFS) action = 'hard_fail'
+    else if (metrics.input_i < SEGMENT_QC_RETRY_LUFS) action = 'fail_after_qc'
+    else if (metrics.input_i < SEGMENT_QC_WARN_LUFS) action = 'warning_low_loudness'
+    logSegmentQc(fileName, speaker, text, metrics, action)
+    if (metrics.input_i < SEGMENT_QC_RETRY_LUFS) {
+      throw new Error(`Segment loudness QC failed for ${fileName}: ${metrics.input_i.toFixed(2)} LUFS`)
+    }
+  }
   const { error: ue } = await supabase.storage.from('audio').upload(cachePath, buf, { contentType: 'audio/mpeg', upsert: true })
   if (ue) throw new Error(`Upload error: ${ue.message}`)
   return cacheUrl
@@ -551,7 +643,7 @@ export async function POST(req: NextRequest) {
         if (!characterVoiceId) throw new Error(`Missing character voice assignment for ${line.speaker}`)
         voiceId = characterVoiceId
       }
-      try { const url = await generateVoiceLine(line.text, voiceId, storyId, line.index, 'segment'); results.segments.push({ index: line.index, speaker: line.speaker, type: line.type, url }); succeeded++ }
+      try { const url = await generateVoiceLine(line.text, voiceId, storyId, line.index, 'segment', false, line.speaker); results.segments.push({ index: line.index, speaker: line.speaker, type: line.type, url }); succeeded++ }
       catch (e) { console.error(`  ❌ Line ${line.index} (${line.speaker}):`, e); results.segments.push({ index: line.index, speaker: line.speaker, type: line.type }); failed++ }
     }
     const updates: Record<string, string> = {}
