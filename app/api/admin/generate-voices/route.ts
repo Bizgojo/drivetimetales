@@ -474,8 +474,15 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
       const preTrimBuf = buf
       const preTrimMetrics = metrics
       const trimmedBuf = await trimSegmentSilenceBuffer(buf)
-      const trimmedMetrics = await analyzeLoudnessBuffer(trimmedBuf)
-      if (hasUsableLoudness(trimmedMetrics)) {
+      let trimmedMetrics: LoudnessMetrics | null = null
+      try {
+        if (trimmedBuf.length > 1024) {
+          trimmedMetrics = await analyzeLoudnessBuffer(trimmedBuf)
+        }
+      } catch (e) {
+        console.warn(`Segment silence trim analysis failed for ${fileName}; using untrimmed segment:`, e)
+      }
+      if (trimmedMetrics && hasUsableLoudness(trimmedMetrics)) {
         buf = trimmedBuf
         metrics = trimmedMetrics
         logSegmentQc(fileName, speaker, text, metrics, 'after_trim_silence')
