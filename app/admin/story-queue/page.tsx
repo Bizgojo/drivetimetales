@@ -325,12 +325,6 @@ export default function StoryQueuePage() {
                       <button onClick={(e) => { e.stopPropagation(); sendToProduction(item) }} className="px-3 py-1 rounded border bg-black text-white">
                         Send to Production
                       </button>
-                      <button onClick={(e) => { e.stopPropagation(); updateStatus(item.id, 'ready_for_asc') }} className="px-3 py-1 rounded border">
-                        Ready for ASC
-                      </button>
-                      <button onClick={(e) => { e.stopPropagation(); updateStatus(item.id, 'published') }} className="px-3 py-1 rounded border">
-                        Published
-                      </button>
                       <button onClick={(e) => { e.stopPropagation(); removeItem(item.id) }} className="px-3 py-1 rounded border text-red-700">
                         Delete
                       </button>
