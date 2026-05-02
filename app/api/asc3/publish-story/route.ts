@@ -12,13 +12,42 @@ export async function POST(req: NextRequest) {
 
     const { storyId, destinations } = body
 
+    const { data: story, error: storyError } = await supabase
+      .from('stories')
+      .select('id, title, author, genre, audio_url, cover_url, description, duration_mins')
+      .eq('id', storyId)
+      .single()
+
+    if (storyError || !story) {
+      return NextResponse.json(
+        { success: false, error: storyError?.message || `Story not found: ${storyId}` },
+        { status: storyError?.code === 'PGRST116' ? 404 : 500 }
+      )
+    }
+
+    const missing: string[] = []
+    if (!String(story.title || '').trim()) missing.push('title')
+    if (!String(story.author || '').trim()) missing.push('author')
+    if (!String(story.genre || '').trim()) missing.push('genre')
+    if (!String(story.audio_url || '').trim()) missing.push('audio_url')
+    if (!String(story.cover_url || '').trim()) missing.push('cover_url')
+    if (!String(story.description || '').trim()) missing.push('description')
+    if (!Number(story.duration_mins || 0)) missing.push('duration_mins')
+
+    if (missing.length) {
+      return NextResponse.json(
+        { success: false, error: `Missing required publish field(s): ${missing.join(', ')}` },
+        { status: 400 }
+      )
+    }
+
     // Check for existing published story with same title (duplicate guard)
     const { data: existing } = await supabase
       .from('stories')
       .select('id, title')
       .eq('status', 'published')
       .eq('is_hidden', false)
-      .ilike('title', (await supabase.from('stories').select('title').eq('id', storyId).single()).data?.title || '')
+      .ilike('title', story.title || '')
       .neq('id', storyId)
 
     if (existing && existing.length > 0) {
