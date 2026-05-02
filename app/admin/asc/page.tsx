@@ -498,6 +498,70 @@ export default function AscAdminPage() {
     }
   }
 
+  async function completeStoryPackage() {
+    if (!handoff?.storyId) {
+      setMessage('No storyId found in ASC handoff.')
+      return
+    }
+
+    try {
+      setWorking(true)
+      setMessage('Completing story package...')
+
+      const res = await fetch('/api/admin/complete-story-package', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storyId: handoff.storyId }),
+      })
+
+      const data = await res.json()
+      const steps = Array.isArray(data.steps) ? data.steps : []
+      const failedStep = steps.find((step: any) => step?.status === 'failed')
+
+      if (!res.ok || !data.success || failedStep) {
+        const fallback = data.error || 'Package completion failed'
+        const detail = failedStep ? `${failedStep.step}: ${failedStep.message}` : fallback
+        throw new Error(`Package incomplete: ${detail}`)
+      }
+
+      const { data: storyRow, error: storyError } = await supabase
+        .from('stories')
+        .select('audio_url, cover_url, description, duration_mins')
+        .eq('id', handoff.storyId)
+        .single()
+
+      if (storyError) {
+        throw new Error(`Package completed, but failed to reload story fields: ${storyError.message}`)
+      }
+
+      const updated = {
+        ...handoff,
+        audio_url: storyRow?.audio_url || form.audio_url || handoff.audio_url,
+        cover_url: storyRow?.cover_url || form.cover_url || handoff.cover_url,
+        description: storyRow?.description || form.description || handoff.description,
+        duration_mins: storyRow?.duration_mins || form.duration_mins || handoff.duration_mins,
+        updatedAt: new Date().toISOString(),
+      }
+
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
+      setHandoff(updated)
+      setForm(prev => ({
+        ...prev,
+        audio_url: storyRow?.audio_url || prev.audio_url,
+        cover_url: storyRow?.cover_url || prev.cover_url,
+        description: storyRow?.description || prev.description,
+        duration_mins: String(storyRow?.duration_mins || prev.duration_mins),
+      }))
+
+      const summary = steps.map((step: any) => `${step.step} ${step.status}`).join(', ')
+      setMessage(`Package complete: ${summary}.`)
+    } catch (err: any) {
+      setMessage(err?.message || 'Package completion failed')
+    } finally {
+      setWorking(false)
+    }
+  }
+
   function saveDraftPackageLocally() {
     if (!handoff) return
     const updated = {
@@ -585,6 +649,11 @@ export default function AscAdminPage() {
   const canStartProduction = canRunProductionHere && creditsApproved && !working
   const canImportSingleOutput = !isPackageHandoff
     && !!handoff?.title
+    && !singleProductionRunning
+  const canCompleteSingleStoryPackage = !isPackageHandoff
+    && !!handoff?.storyId
+    && !!form.audio_url
+    && !working
     && !singleProductionRunning
   const canPublishSingleStory = !isPackageHandoff
     && !!handoff?.storyId
@@ -916,6 +985,14 @@ export default function AscAdminPage() {
                 className="bg-black text-white px-4 py-2 rounded disabled:opacity-50"
               >
                 {working ? 'Working...' : 'Import ASC Output'}
+              </button>
+
+              <button
+                onClick={completeStoryPackage}
+                disabled={!canCompleteSingleStoryPackage}
+                className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50"
+              >
+                {working ? 'Working...' : 'Complete Story Package'}
               </button>
 
               <button
