@@ -27,11 +27,35 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'storyId required' }, { status: 400 })
     }
 
+    const { data: existingStory, error: existingError } = await supabase
+      .from('stories')
+      .select('id, title, author, genre, audio_url, cover_url, description, duration_mins')
+      .eq('id', storyId)
+      .single()
+
+    if (existingError || !existingStory) {
+      return NextResponse.json(
+        { success: false, error: existingError?.message || `Story not found: ${storyId}` },
+        { status: existingError?.code === 'PGRST116' ? 404 : 500 }
+      )
+    }
+
+    const effectiveTitle = title || String(existingStory.title || '').trim()
+    const effectiveAuthor = author || String(existingStory.author || '').trim()
+    const effectiveGenre = genre || String(existingStory.genre || '').trim()
+    const effectiveAudioUrl = audio_url || String(existingStory.audio_url || '').trim()
+    const effectiveCoverUrl = cover_url || String(existingStory.cover_url || '').trim()
+    const effectiveDescription = description || String(existingStory.description || '').trim()
+    const effectiveDurationMins = duration_mins || Number(existingStory.duration_mins || 0)
+
     const missing: string[] = []
-    if (!audio_url) missing.push('audio_url')
-    if (!cover_url) missing.push('cover_url')
-    if (!description) missing.push('description')
-    if (!duration_mins) missing.push('duration_mins')
+    if (!effectiveTitle) missing.push('title')
+    if (!effectiveAuthor) missing.push('author')
+    if (!effectiveGenre) missing.push('genre')
+    if (!effectiveAudioUrl) missing.push('audio_url')
+    if (!effectiveCoverUrl) missing.push('cover_url')
+    if (!effectiveDescription) missing.push('description')
+    if (!effectiveDurationMins) missing.push('duration_mins')
 
     if (missing.length) {
       return NextResponse.json(
@@ -41,13 +65,13 @@ export async function POST(req: NextRequest) {
     }
 
     const payload: Record<string, any> = {
-      title: title || undefined,
-      author: author || undefined,
-      genre: genre || undefined,
-      audio_url,
-      cover_url,
-      description,
-      duration_mins,
+      title: effectiveTitle,
+      author: effectiveAuthor,
+      genre: effectiveGenre,
+      audio_url: effectiveAudioUrl,
+      cover_url: effectiveCoverUrl,
+      description: effectiveDescription,
+      duration_mins: effectiveDurationMins,
       is_free,
       status: 'published',
       is_hidden: false,
