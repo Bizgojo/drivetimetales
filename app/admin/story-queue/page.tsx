@@ -54,6 +54,7 @@ export default function StoryQueuePage() {
   const [messageType, setMessageType] = useState<MessageType>('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [adminGenres, setAdminGenres] = useState<string[]>(GENRES)
 
   const [form, setForm] = useState({
     primaryGenre: 'Thriller',
@@ -83,6 +84,31 @@ export default function StoryQueuePage() {
   }, [])
 
   useEffect(() => {
+    let ignore = false
+
+    async function loadAdminGenres() {
+      try {
+        const res = await fetch('/api/admin/genres?active=true', { cache: 'no-store' })
+        const data = await res.json()
+        const genreNames = Array.isArray(data?.genres)
+          ? data.genres.map((genre: any) => String(genre?.name || '').trim()).filter(Boolean)
+          : []
+
+        if (!ignore && res.ok && data?.success && genreNames.length > 0) {
+          setAdminGenres(genreNames)
+        }
+      } catch (err) {
+        console.warn('Failed to load admin genres; using fallback genres', err)
+      }
+    }
+
+    loadAdminGenres()
+    return () => {
+      ignore = true
+    }
+  }, [])
+
+  useEffect(() => {
     if (!message) return
     if (messageType === 'error') return
     const t = window.setTimeout(() => {
@@ -93,6 +119,13 @@ export default function StoryQueuePage() {
   }, [message, messageType])
 
   const selected = useMemo(() => items.find((item) => item.id === selectedId) || null, [items, selectedId])
+  const genreOptions = useMemo(() => {
+    const options = [...adminGenres]
+    if (form.primaryGenre && !options.some((genre) => genre.toLowerCase() === form.primaryGenre.toLowerCase())) {
+      options.unshift(form.primaryGenre)
+    }
+    return options
+  }, [adminGenres, form.primaryGenre])
 
   function showMessage(text: string, type: MessageType = 'success') {
     setMessage(text)
@@ -233,7 +266,7 @@ export default function StoryQueuePage() {
           <div className="font-semibold text-lg">Generate Story Idea</div>
 
           <select className="border rounded p-2 w-full" value={form.primaryGenre} onChange={(e) => setForm({ ...form, primaryGenre: e.target.value })}>
-            {GENRES.map((g) => <option key={g} value={g}>{g}</option>)}
+            {genreOptions.map((g) => <option key={g} value={g}>{g}</option>)}
           </select>
 
           <input className="border rounded p-2 w-full" placeholder="Secondary genre (optional)" value={form.secondaryGenre} onChange={(e) => setForm({ ...form, secondaryGenre: e.target.value })} />
