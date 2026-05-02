@@ -46,6 +46,7 @@ const SHORT_SEGMENT_MAX_WORDS = 6
 const SHORT_SEGMENT_QC_WARN_LUFS = -17.5
 const SHORT_SEGMENT_QC_RETRY_LUFS = -18.0
 const SHORT_SEGMENT_QC_TARGET_LUFS = -16.5
+const SHORT_SEGMENT_MAX_CANDIDATES = 3
 
 function getSceneLoudnessOffset(text: string, prefix: string): number {
   if (prefix === 'intro' || prefix === 'intro_before' || prefix === 'intro_after' || prefix === 'outro') return 0
@@ -191,6 +192,12 @@ function logSegmentQc(fileName: string, speaker: string, text: string, metrics: 
 function logShortSegmentQc(fileName: string, speaker: string, wordCount: number, duration: number, target: number, metrics: LoudnessMetrics) {
   console.log(
     `  Short-line QC ${fileName} speaker="${speaker}" words=${wordCount} duration=${duration.toFixed(2)}s target=${target.toFixed(1)} final_lufs=${metrics.input_i.toFixed(2)}`
+  )
+}
+
+function logShortCandidateQc(fileName: string, speaker: string, candidate: number, metrics: LoudnessMetrics, action: string) {
+  console.log(
+    `  Short-line candidate ${fileName} speaker="${speaker}" candidate=${candidate} lufs=${metrics.input_i.toFixed(2)} tp=${metrics.input_tp.toFixed(2)} result=${action}`
   )
 }
 
@@ -501,63 +508,96 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
     const segmentQcTarget = isShortSegment ? SHORT_SEGMENT_QC_TARGET_LUFS : SEGMENT_QC_TARGET_LUFS
     const segmentQcWarn = isShortSegment ? SHORT_SEGMENT_QC_WARN_LUFS : SEGMENT_QC_WARN_LUFS
     const segmentQcRetry = isShortSegment ? SHORT_SEGMENT_QC_RETRY_LUFS : SEGMENT_QC_RETRY_LUFS
-    let metrics = await analyzeLoudnessBuffer(buf)
-    if (metrics.input_i < segmentQcRetry) {
-      logSegmentQc(fileName, speaker, text, metrics, 'retry_tts')
-      buf = await generateAttempt()
-      metrics = await analyzeLoudnessBuffer(buf)
+    const candidateCount = isShortSegment ? SHORT_SEGMENT_MAX_CANDIDATES : 1
+    let accepted: { buf: Buffer; metrics: LoudnessMetrics; action: string; duration: number; candidate: number } | null = null
+    let best: { metrics: LoudnessMetrics; action: string; candidate: number } | null = null
+
+    const actionForMetrics = (metrics: LoudnessMetrics): string => {
+      if (!hasUsableLoudness(metrics)) return 'fail_invalid_loudness'
+      if (metrics.input_tp > SPOKEN_TRUE_PEAK) return 'fail_true_peak'
+      if (metrics.input_i < SEGMENT_QC_HARD_FAIL_LUFS) return 'hard_fail'
+      if (metrics.input_i < segmentQcRetry) return 'fail_after_qc'
+      if (metrics.input_i < segmentQcWarn) return 'warning_low_loudness'
+      return 'accept'
     }
-    if (metrics.input_i < segmentQcRetry) {
-      logSegmentQc(fileName, speaker, text, metrics, 'trim_silence_before_gain')
-      const preTrimBuf = buf
-      const preTrimMetrics = metrics
-      const trimmedBuf = await trimSegmentSilenceBuffer(buf)
-      let trimmedMetrics: LoudnessMetrics | null = null
-      try {
-        if (trimmedBuf.length > 1024) {
-          trimmedMetrics = await analyzeLoudnessBuffer(trimmedBuf)
+
+    const isPassingAction = (action: string) => action === 'accept' || action === 'warning_low_loudness'
+    const updateBest = (candidate: number, metrics: LoudnessMetrics, action: string) => {
+      if (!hasUsableLoudness(metrics)) return
+      if (!best || metrics.input_i > best.metrics.input_i) best = { metrics, action, candidate }
+    }
+
+    for (let candidate = 1; candidate <= candidateCount; candidate++) {
+      if (candidate > 1) buf = await generateAttempt()
+      let candidateBuf = buf
+      let candidateDuration = candidate === 1 ? segmentDuration : await getAudioDurationBuffer(candidateBuf)
+      let metrics = await analyzeLoudnessBuffer(candidateBuf)
+
+      if (!isShortSegment && metrics.input_i < segmentQcRetry) {
+        logSegmentQc(fileName, speaker, text, metrics, 'retry_tts')
+        candidateBuf = await generateAttempt()
+        candidateDuration = await getAudioDurationBuffer(candidateBuf)
+        metrics = await analyzeLoudnessBuffer(candidateBuf)
+      }
+
+      if (metrics.input_i < segmentQcRetry) {
+        logSegmentQc(fileName, speaker, text, metrics, 'trim_silence_before_gain')
+        const preTrimBuf = candidateBuf
+        const preTrimMetrics = metrics
+        const trimmedBuf = await trimSegmentSilenceBuffer(candidateBuf)
+        let trimmedMetrics: LoudnessMetrics | null = null
+        try {
+          if (trimmedBuf.length > 1024) {
+            trimmedMetrics = await analyzeLoudnessBuffer(trimmedBuf)
+          }
+        } catch (e) {
+          console.warn(`Segment silence trim analysis failed for ${fileName}; using untrimmed segment:`, e)
         }
-      } catch (e) {
-        console.warn(`Segment silence trim analysis failed for ${fileName}; using untrimmed segment:`, e)
+        if (trimmedMetrics && hasUsableLoudness(trimmedMetrics) && trimmedMetrics.input_i >= preTrimMetrics.input_i - 0.25) {
+          candidateBuf = trimmedBuf
+          metrics = trimmedMetrics
+          candidateDuration = await getAudioDurationBuffer(candidateBuf)
+          logSegmentQc(fileName, speaker, text, metrics, 'after_trim_silence')
+        } else if (trimmedMetrics && hasUsableLoudness(trimmedMetrics)) {
+          candidateBuf = preTrimBuf
+          metrics = preTrimMetrics
+          logSegmentQc(fileName, speaker, text, metrics, 'trim_silence_degraded_using_untrimmed')
+        } else {
+          candidateBuf = preTrimBuf
+          metrics = preTrimMetrics
+          logSegmentQc(fileName, speaker, text, metrics, 'trim_silence_unusable_using_untrimmed')
+        }
+        const gainDb = Math.max(0, Math.min(18, segmentQcTarget - metrics.input_i))
+        logSegmentQc(fileName, speaker, text, metrics, `apply_adaptive_gain_limiter_${gainDb.toFixed(2)}dB`)
+        candidateBuf = await applySegmentGainLimit(candidateBuf, gainDb)
+        metrics = await analyzeLoudnessBuffer(candidateBuf)
+        logSegmentQc(fileName, speaker, text, metrics, 'after_adaptive_gain')
       }
-      if (trimmedMetrics && hasUsableLoudness(trimmedMetrics) && trimmedMetrics.input_i >= preTrimMetrics.input_i - 0.25) {
-        buf = trimmedBuf
-        metrics = trimmedMetrics
-        logSegmentQc(fileName, speaker, text, metrics, 'after_trim_silence')
-      } else if (trimmedMetrics && hasUsableLoudness(trimmedMetrics)) {
-        buf = preTrimBuf
-        metrics = preTrimMetrics
-        logSegmentQc(fileName, speaker, text, metrics, 'trim_silence_degraded_using_untrimmed')
-      } else {
-        buf = preTrimBuf
-        metrics = preTrimMetrics
-        logSegmentQc(fileName, speaker, text, metrics, 'trim_silence_unusable_using_untrimmed')
+
+      const action = actionForMetrics(metrics)
+      logSegmentQc(fileName, speaker, text, metrics, action)
+      updateBest(candidate, metrics, action)
+      if (isShortSegment) {
+        logShortSegmentQc(fileName, speaker, wordCount, candidateDuration, segmentQcTarget, metrics)
+        logShortCandidateQc(fileName, speaker, candidate, metrics, action)
       }
-      const gainDb = Math.max(0, Math.min(18, segmentQcTarget - metrics.input_i))
-      logSegmentQc(fileName, speaker, text, metrics, `apply_adaptive_gain_limiter_${gainDb.toFixed(2)}dB`)
-      buf = await applySegmentGainLimit(buf, gainDb)
-      metrics = await analyzeLoudnessBuffer(buf)
-      logSegmentQc(fileName, speaker, text, metrics, 'after_adaptive_gain')
+      if (isPassingAction(action)) {
+        accepted = { buf: candidateBuf, metrics, action, duration: candidateDuration, candidate }
+        break
+      }
     }
-    let action = 'accept'
-    if (!hasUsableLoudness(metrics)) action = 'fail_invalid_loudness'
-    else if (metrics.input_tp > SPOKEN_TRUE_PEAK) action = 'fail_true_peak'
-    else if (metrics.input_i < SEGMENT_QC_HARD_FAIL_LUFS) action = 'hard_fail'
-    else if (metrics.input_i < segmentQcRetry) action = 'fail_after_qc'
-    else if (metrics.input_i < segmentQcWarn) action = 'warning_low_loudness'
-    logSegmentQc(fileName, speaker, text, metrics, action)
-    if (isShortSegment) {
-      logShortSegmentQc(fileName, speaker, wordCount, segmentDuration, segmentQcTarget, metrics)
-    }
-    if (!hasUsableLoudness(metrics)) {
+
+    if (!accepted) {
+      if (best?.metrics.input_tp && best.metrics.input_tp > SPOKEN_TRUE_PEAK) {
+        throw new Error(`Segment loudness QC failed for ${fileName}: best candidate ${best.candidate} true peak ${best.metrics.input_tp.toFixed(2)} dBTP exceeds ${SPOKEN_TRUE_PEAK} dBTP`)
+      }
+      if (best) {
+        throw new Error(`Segment loudness QC failed for ${fileName}: best candidate ${best.candidate} ${best.metrics.input_i.toFixed(2)} LUFS, ${best.metrics.input_tp.toFixed(2)} dBTP`)
+      }
       throw new Error(`Segment loudness QC failed for ${fileName}: invalid loudness metrics`)
     }
-    if (metrics.input_tp > SPOKEN_TRUE_PEAK) {
-      throw new Error(`Segment loudness QC failed for ${fileName}: true peak ${metrics.input_tp.toFixed(2)} dBTP exceeds ${SPOKEN_TRUE_PEAK} dBTP`)
-    }
-    if (metrics.input_i < segmentQcRetry) {
-      throw new Error(`Segment loudness QC failed for ${fileName}: ${metrics.input_i.toFixed(2)} LUFS`)
-    }
+
+    buf = accepted.buf
   }
   const { error: ue } = await supabase.storage.from('audio').upload(cachePath, buf, { contentType: 'audio/mpeg', upsert: true })
   if (ue) throw new Error(`Upload error: ${ue.message}`)
