@@ -180,11 +180,9 @@ export async function POST(req: NextRequest) {
         await download(`${BASE_STORAGE}/asc3/${storyId}/${seg.name}`, rawPath)
         const stat = await fs.stat(rawPath)
         if (stat.size <= 100) throw new Error(`Segment file too small (${stat.size} bytes)`)
-        if (seg.name.startsWith('segment_')) {
-          await normalizeAudio(rawPath, segPath, -16)
-        } else {
-          await execFileAsync(FFMPEG_PATH, ['-i', rawPath, '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', segPath])
-        }
+        // Voice segments are already loudness-QC'd upstream. Do not run
+        // per-segment loudnorm here; short clips can be over-attenuated.
+        await execFileAsync(FFMPEG_PATH, ['-i', rawPath, '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', segPath])
         preparedSegmentNames.push(seg.name)
         segPaths.push(segPath)
         await fs.unlink(rawPath).catch(() => {})
