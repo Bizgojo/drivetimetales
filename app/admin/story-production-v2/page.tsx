@@ -126,6 +126,7 @@ type ActiveAction =
   | 'produceAudio'
   | 'validatorFix'
   | 'episodeTopFix'
+  | 'reloadSavedStory'
   | ''
 
 type QueueItem = {
@@ -360,6 +361,87 @@ export default function StoryProductionV2Page() {
     setWorkingMessage('')
     setActiveStep('')
     setStepMessage('Cleared all V2 fields. Ready for a new story.')
+  }
+
+  async function reloadSavedStory(savedStoryId: string) {
+    const cleanStoryId = String(savedStoryId || '').trim()
+    if (!cleanStoryId) {
+      setReport('Cannot reload saved story: missing storyId.')
+      setStepMessage('Reload saved story failed')
+      return
+    }
+
+    setActiveAction('reloadSavedStory')
+    setLoading(true)
+    setWorkingMessage('Reloading saved story...')
+    setStepMessage('')
+    setReport('')
+
+    try {
+      const res = await fetch(`/api/v2/load-story?storyId=${encodeURIComponent(cleanStoryId)}`, { cache: 'no-store' })
+      const data = await res.json()
+
+      if (!res.ok || !data.success || !data.story) {
+        throw new Error(data.error || 'Failed to reload saved story')
+      }
+
+      setSeriesPackage(null)
+      setStoryId(data.story.id || '')
+      setTitle(data.story.title || '')
+      setStatus(data.story.status || '')
+      setScript(data.story.script || '')
+      setReport(data.story.validator_report || '')
+      setReviewText(data.story.grade_notes || '')
+      setReviewTotal(data.story.grade_total != null ? Number(data.story.grade_total) : null)
+      setForm(prev => ({
+        ...prev,
+        title: data.story.title || prev.title,
+        type: data.story.type || prev.type,
+        author: data.story.author || prev.author,
+        author_style: data.story.author_style || prev.author_style,
+        genre: data.story.genre || prev.genre,
+        narrative_voice: data.story.narrative_voice || prev.narrative_voice,
+        premise: data.story.premise || prev.premise,
+        setting: data.story.setting || prev.setting,
+        runtime: data.story.runtime || prev.runtime,
+        series_name: data.story.series_name || prev.series_name,
+        series_episode_number: data.story.series_episode_number != null ? String(data.story.series_episode_number) : prev.series_episode_number,
+        series_total_episodes: data.story.series_total_episodes != null ? String(data.story.series_total_episodes) : prev.series_total_episodes,
+        series_is_finale: data.story.series_is_finale != null ? String(data.story.series_is_finale) : prev.series_is_finale,
+        series_arc_plan: data.story.series_arc_plan || prev.series_arc_plan,
+      }))
+
+      try {
+        const briefRes = await fetch(`/api/v2/story-brief?storyId=${encodeURIComponent(data.story.id)}`, { cache: 'no-store' })
+        const briefData = await briefRes.json()
+        if (briefRes.ok && briefData?.success && briefData?.story) {
+          setForm(prev => ({
+            ...prev,
+            series_arc_plan: briefData.story.series_arc_plan || prev.series_arc_plan,
+            requirements: briefData.story.requirements || prev.requirements,
+          }))
+        }
+      } catch (err) {
+        console.error('story brief detail reload failed', err)
+      }
+
+      try {
+        if (typeof window !== 'undefined' && data?.story?.id) {
+          localStorage.setItem('et_last_story_id_v2', data.story.id)
+        }
+      } catch (err) {
+        console.error('Failed to refresh last active V2 story', err)
+      }
+
+      setStepMessage('Reloaded saved story from database.')
+    } catch (e) {
+      setReport(e instanceof Error ? e.message : 'Unknown error')
+      setStepMessage('Reload saved story failed')
+    } finally {
+      setLoading(false)
+      setWorkingMessage('')
+      setActiveAction('')
+    }
   }
 
   useEffect(() => {
@@ -1945,7 +2027,20 @@ export default function StoryProductionV2Page() {
 
         {!isPackageMode ? (
           <div className="bg-white border border-black rounded-lg p-4 space-y-3">
-            <div className="font-semibold">Action Report</div>
+            <div className="flex items-center justify-between gap-3">
+              <div className="font-semibold">Action Report</div>
+              {storyId ? (
+                <button
+                  className="px-3 py-1.5 rounded bg-gray-900 text-white text-sm disabled:opacity-50"
+                  disabled={loading || hasActiveAction}
+                  onClick={() => reloadSavedStory(storyId)}
+                >
+                  <ButtonLabel loading={activeAction === 'reloadSavedStory'}>
+                    Reload Saved Story
+                  </ButtonLabel>
+                </button>
+              ) : null}
+            </div>
             {loading && workingMessage ? <Spinner label={workingMessage} /> : null}
             {stepMessage ? <div className="text-sm font-medium text-green-700">{stepMessage}</div> : null}
             {report ? (
