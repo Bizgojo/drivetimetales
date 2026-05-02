@@ -299,6 +299,7 @@ export default function StoryProductionV2Page() {
   const [stepMessage, setStepMessage] = useState('')
   const [authors, setAuthors] = useState<AuthorOption[]>([])
   const [authorsLoading, setAuthorsLoading] = useState(true)
+  const [adminGenres, setAdminGenres] = useState<string[]>(GENRES)
   const [selectedAuthorMeta, setSelectedAuthorMeta] = useState<AuthorOption | null>(null)
   const [seriesPackage, setSeriesPackage] = useState<SeriesPackage | null>(null)
   const [episodeDetailModal, setEpisodeDetailModal] = useState<EpisodeDetailModal>(null)
@@ -699,6 +700,30 @@ export default function StoryProductionV2Page() {
 
   useEffect(() => {
     let ignore = false
+    async function loadAdminGenres() {
+      try {
+        const res = await fetch('/api/admin/genres?active=true', { cache: 'no-store' })
+        const data = await res.json()
+        const genreNames = Array.isArray(data?.genres)
+          ? data.genres.map((genre: any) => String(genre?.name || '').trim()).filter(Boolean)
+          : []
+
+        if (!ignore && res.ok && data?.success && genreNames.length > 0) {
+          setAdminGenres(genreNames)
+        }
+      } catch (err) {
+        console.warn('Failed to load admin genres; using fallback genres', err)
+      }
+    }
+
+    loadAdminGenres()
+    return () => {
+      ignore = true
+    }
+  }, [])
+
+  useEffect(() => {
+    let ignore = false
     async function loadAuthors() {
       try {
         setAuthorsLoading(true)
@@ -722,6 +747,14 @@ export default function StoryProductionV2Page() {
       [a.primary_genre, a.secondary_genre].filter(Boolean).some((v) => String(v).toLowerCase() === g)
     )
   }, [authors, form.genre])
+
+  const genreOptions = useMemo(() => {
+    const options = [...adminGenres]
+    if (form.genre && !options.some((genre) => genre.toLowerCase() === form.genre.toLowerCase())) {
+      options.unshift(form.genre)
+    }
+    return options
+  }, [adminGenres, form.genre])
 
   useEffect(() => {
     setSelectedAuthorMeta(authors.find((a) => a.name === form.author) || null)
@@ -1534,7 +1567,7 @@ export default function StoryProductionV2Page() {
               setForm({ ...form, genre: e.target.value, author: '', author_style: '', narrative_voice: '' })
             }}>
               <option value="">Choose genre first</option>
-              {GENRES.map((genre) => <option key={genre} value={genre}>{genre}</option>)}
+              {genreOptions.map((genre) => <option key={genre} value={genre}>{genre}</option>)}
             </select>
             <input className="border rounded p-2" placeholder="Narrative voice (optional)" value={form.narrative_voice} onChange={e => {
               clearLoadedProductionStateForNewInput()
