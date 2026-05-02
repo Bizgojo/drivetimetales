@@ -138,6 +138,7 @@ export default function AscAdminPage() {
   const [job, setJob] = useState<ProductionJob | null>(null)
   const [packageJobs, setPackageJobs] = useState<ProductionJob[]>([])
   const [failureInspectionJob, setFailureInspectionJob] = useState<ProductionJob | null>(null)
+  const [creditsApproved, setCreditsApproved] = useState(false)
 
   const [form, setForm] = useState({
     audio_url: '',
@@ -581,6 +582,7 @@ export default function AscAdminPage() {
     ? packageCanRun
     : !!handoff?.storyId && !singleProductionRunning && !singleJobPublished
   const canRunProductionHere = canRunProduction && isLocalRuntime
+  const canStartProduction = canRunProductionHere && creditsApproved && !working
   const canImportSingleOutput = !isPackageHandoff
     && !!handoff?.title
     && !singleProductionRunning
@@ -705,6 +707,45 @@ export default function AscAdminPage() {
             </div>
           ) : null}
 
+          <div className={`rounded border p-3 text-sm ${canRunProductionHere && creditsApproved ? 'border-green-600 bg-green-50 text-green-900' : 'border-amber-500 bg-amber-50 text-amber-900'}`}>
+            <div className="font-semibold">Local ASC Ready</div>
+            <div className="mt-2 grid gap-1 text-xs">
+              <div>Local runtime: {isLocalRuntime ? 'yes' : 'no'}</div>
+              <div>Handoff loaded: {handoff ? 'yes' : 'no'}</div>
+              <div>Mode: {isPackageHandoff ? 'package' : 'single'}</div>
+              {isPackageHandoff ? (
+                <>
+                  <div>Series ID present: {handoff?.seriesId ? 'yes' : 'no'}</div>
+                  <div>Title present: {handoff?.title ? 'yes' : 'no'}</div>
+                  <div>Episode count: {packageEpisodes.length}</div>
+                  <div>All episodes have storyId/title/script: {packageCanRun ? 'yes' : 'no'}</div>
+                  <div>No running package job: {!hasActivePackageJobs ? 'yes' : 'no'}</div>
+                </>
+              ) : (
+                <>
+                  <div>Story ID present: {handoff?.storyId ? 'yes' : 'no'}</div>
+                  <div>Title present: {handoff?.title ? 'yes' : 'no'}</div>
+                  <div>Script present: {handoff?.script ? 'yes' : 'no'}</div>
+                  <div>No running job: {!singleProductionRunning ? 'yes' : 'no'}</div>
+                </>
+              )}
+            </div>
+            <div className="mt-3 rounded border border-amber-300 bg-white/70 p-2 text-xs font-semibold">
+              <div>Check ElevenLabs credits before producing audio.</div>
+              <div>2,000,000 ElevenLabs credits refresh on the 9th of each month.</div>
+              <div>Recent known remaining credits: 162,515. Confirm before running.</div>
+            </div>
+            <label className="mt-3 flex items-start gap-2 text-xs font-semibold">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={creditsApproved}
+                onChange={(event) => setCreditsApproved(event.target.checked)}
+              />
+              <span>I have checked ElevenLabs credits and Marc approved production.</span>
+            </label>
+          </div>
+
           <div className="flex flex-wrap gap-3 pt-2">
             <button onClick={refreshHandoff} className="bg-black text-white px-4 py-2 rounded">
               Refresh Handoff
@@ -714,7 +755,7 @@ export default function AscAdminPage() {
             </button>
             <button
               onClick={runAscProduction}
-              disabled={!canRunProductionHere || working}
+              disabled={!canStartProduction}
               className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50"
             >
               {working ? 'Working...' : isLocalRuntime ? 'Run ASC Production' : 'Run ASC Production Locally Only'}
