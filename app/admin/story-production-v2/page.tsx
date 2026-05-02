@@ -223,6 +223,14 @@ const GENRES = [
   'Literary',
 ]
 
+// Temporary compatibility layer until author genre data is retagged to canonical Admin Genres.
+const GENRE_ALIASES: Record<string, string[]> = {
+  Historical: ['Historical Drama'],
+  Learn: ['Get Smarter', 'Non-Fiction'],
+  Mystery: ['Mystery/Crime', 'Dark Mystery', 'Noir', 'Crime'],
+  Classics: ['Literary'],
+}
+
 const SERIES_EPISODE_COUNTS = [3, 5, 7, 13]
 
 const EMPTY_FORM = {
@@ -742,9 +750,9 @@ export default function StoryProductionV2Page() {
 
   const filteredAuthors = useMemo(() => {
     if (!form.genre) return []
-    const g = form.genre.toLowerCase()
+    const genreTargets = [form.genre, ...(GENRE_ALIASES[form.genre] || [])].map((value) => value.toLowerCase())
     return authors.filter((a) =>
-      [a.primary_genre, a.secondary_genre].filter(Boolean).some((v) => String(v).toLowerCase() === g)
+      [a.primary_genre, a.secondary_genre].filter(Boolean).some((v) => genreTargets.includes(String(v).toLowerCase()))
     )
   }, [authors, form.genre])
 
