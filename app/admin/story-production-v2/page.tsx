@@ -790,6 +790,22 @@ export default function StoryProductionV2Page() {
   const canScore = seriesPackage ? packageScriptsReady && !loading : !!storyId && !!script && !loading
   const canValidate = seriesPackage ? packageScriptsReady && !loading : !!storyId && !!script && !loading
   const canProduce = seriesPackage ? packageReadyForAsc && !loading : !!storyId && !!script && status === 'validator_passed'
+  const halNoActionRunning = !loading && !activeAction
+  const standaloneReadyForHal = !seriesPackage
+    && halNoActionRunning
+    && !!storyId
+    && !!script
+    && status === 'validator_passed'
+    && canProduce
+  const packageReadyForHal = !!seriesPackage
+    && halNoActionRunning
+    && packageExists
+    && packageEpisodeCount > 0
+    && packageAllScriptsPresent
+    && packageAllValidationsPass
+    && packageReadyForAsc
+    && canProduce
+  const readyForHal = seriesPackage ? packageReadyForHal : standaloneReadyForHal
   const baseActionClass = 'px-4 py-2 rounded disabled:opacity-50'
   const completedActionClass = `${baseActionClass} bg-gray-200 text-gray-800 border border-gray-300`
   const primaryActionClass = `${baseActionClass} bg-green-600 text-white`
@@ -1901,6 +1917,26 @@ export default function StoryProductionV2Page() {
               package {packageExists ? 'yes' : 'no'} | episodes {packageEpisodeCount} | scripts {packageAllScriptsPresent ? 'yes' : 'no'} | validation {packageAllValidationsPass ? 'PASS' : 'not ready'} | loading {loading ? 'yes' : 'no'}
             </div>
           ) : null}
+          <div className={`rounded border p-3 text-sm ${readyForHal ? 'border-green-600 bg-green-50 text-green-900' : 'border-amber-500 bg-amber-50 text-amber-900'}`}>
+            <div className="font-semibold">{readyForHal ? 'Ready for Hal: Produce Audio' : 'Not ready for Hal'}</div>
+            <div className="mt-2 grid gap-1 text-xs">
+              {seriesPackage ? (
+                <>
+                  <div>Package saved: {packageExists ? 'yes' : 'no'}</div>
+                  <div>Episode scripts generated: {packageAllScriptsPresent ? 'yes' : 'no'}</div>
+                  <div>Episode validations passed: {packageAllValidationsPass ? 'yes' : 'no'}</div>
+                  <div>No action running: {halNoActionRunning ? 'yes' : 'no'}</div>
+                </>
+              ) : (
+                <>
+                  <div>Story saved: {storyId ? 'yes' : 'no'}</div>
+                  <div>Script generated: {script ? 'yes' : 'no'}</div>
+                  <div>Validation passed: {status === 'validator_passed' ? 'yes' : 'no'}</div>
+                  <div>No action running: {halNoActionRunning ? 'yes' : 'no'}</div>
+                </>
+              )}
+            </div>
+          </div>
         </div>
 
         {isPackageMode ? (
