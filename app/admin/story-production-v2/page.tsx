@@ -572,8 +572,12 @@ export default function StoryProductionV2Page() {
         try {
           const briefRes = await fetch(`/api/v2/story-brief?storyId=${encodeURIComponent(data.story.id)}`)
           const briefData = await briefRes.json()
-          if (!ignore && briefRes.ok && briefData?.success && briefData?.story?.series_arc_plan) {
-            setForm(prev => ({ ...prev, series_arc_plan: briefData.story.series_arc_plan }))
+          if (!ignore && briefRes.ok && briefData?.success && briefData?.story) {
+            setForm(prev => ({
+              ...prev,
+              series_arc_plan: briefData.story.series_arc_plan || prev.series_arc_plan,
+              requirements: briefData.story.requirements || prev.requirements,
+            }))
           }
         } catch (err) {
           console.error('series brief detail load failed', err)
