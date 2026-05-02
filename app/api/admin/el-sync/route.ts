@@ -27,6 +27,15 @@ const STORY_PATTERNS: [string, string][] = [
 
 const NEWS_PATTERNS = ['mitchell', 'statehouse', 'bringing you the south carolina', 'gamecocks', 'upstate', 'midlands', 'south carolina news']
 
+function elevenLabsErrorBody(status: number, body: any) {
+  const detail = body?.detail
+  if (typeof detail === 'string') return detail
+  if (detail?.message && detail?.status) return `${detail.status}: ${detail.message}`
+  if (detail?.message) return detail.message
+  if (body?.error) return String(body.error)
+  return `ElevenLabs API returned HTTP ${status}`
+}
+
 function classify(text: string, chars: number): { category: string; story_title: string | null } {
   const t = text.toLowerCase()
   if (NEWS_PATTERNS.some(p => t.includes(p))) return { category: 'news', story_title: null }
@@ -46,6 +55,13 @@ function classify(text: string, chars: number): { category: string; story_title:
 
 export async function POST() {
   try {
+    if (!EL_KEY) {
+      return NextResponse.json(
+        { success: false, error: 'ElevenLabs sync unavailable', status: 500, detail: 'ELEVENLABS_API_KEY is not configured' },
+        { status: 500 }
+      )
+    }
+
     let synced = 0
     let lastId: string | null = null
     let hasMore = true
@@ -55,7 +71,18 @@ export async function POST() {
       let url = 'https://api.elevenlabs.io/v1/history?page_size=100'
       if (lastId) url += `&start_after_history_item_id=${lastId}`
       const res = await fetch(url, { headers: { 'xi-api-key': EL_KEY } })
-      if (!res.ok) break
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'ElevenLabs sync unavailable',
+            status: res.status,
+            detail: elevenLabsErrorBody(res.status, body),
+          },
+          { status: res.status }
+        )
+      }
       const data = await res.json()
       const batch = data.history || []
       hasMore = data.has_more
@@ -85,9 +112,12 @@ export async function POST() {
       }
     }
 
-    return NextResponse.json({ ok: true, synced, pages })
+    return NextResponse.json({ success: true, ok: true, synced, pages })
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return NextResponse.json(
+      { success: false, error: 'ElevenLabs sync unavailable', status: 500, detail: e.message },
+      { status: 500 }
+    )
   }
 }
 

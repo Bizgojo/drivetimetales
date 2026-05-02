@@ -8,26 +8,66 @@ export default function ELUsagePage() {
   const [syncing, setSyncing] = useState(false)
   const [view, setView] = useState<'days' | 'stories' | 'categories'>('stories')
   const [lastSync, setLastSync] = useState<string | null>(null)
+  const [error, setError] = useState('')
+
+  async function responseError(label: string, res: Response) {
+    const text = await res.text()
+    let detail = text.trim()
+    try {
+      const parsed = JSON.parse(detail)
+      detail = String(parsed.detail || parsed.error || parsed.message || detail)
+    } catch {
+      // Plain-text responses are still useful.
+    }
+    return `${label} failed (${res.status})${detail ? `: ${detail}` : ''}`
+  }
 
   const loadData = useCallback(async () => {
     setLoading(true)
-    const [subRes, dataRes] = await Promise.all([
-      fetch('/api/admin/el-usage'),
-      fetch('/api/admin/el-sync')
-    ])
-    const subJson = await subRes.json()
-    const dataJson = await dataRes.json()
-    setSub(subJson.subscription)
-    setData(dataJson)
-    setLastSync(new Date().toLocaleTimeString())
-    setLoading(false)
+    setError('')
+    try {
+      const [subRes, dataRes] = await Promise.all([
+        fetch('/api/admin/el-usage'),
+        fetch('/api/admin/el-sync')
+      ])
+
+      if (!subRes.ok) {
+        throw new Error(await responseError('ElevenLabs usage', subRes))
+      }
+
+      const subJson = await subRes.json()
+      const dataJson = dataRes.ok ? await dataRes.json() : null
+
+      if (!dataRes.ok) {
+        setError(await responseError('ElevenLabs logged usage', dataRes))
+      }
+
+      setSub(subJson.subscription)
+      setData(dataJson)
+      setLastSync(new Date().toLocaleTimeString())
+    } catch (err: any) {
+      setSub(null)
+      setData(null)
+      setError(err?.message || 'Failed to load ElevenLabs usage')
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
   const runSync = async () => {
     setSyncing(true)
-    await fetch('/api/admin/el-sync', { method: 'POST' })
-    await loadData()
-    setSyncing(false)
+    setError('')
+    try {
+      const res = await fetch('/api/admin/el-sync', { method: 'POST' })
+      if (!res.ok) {
+        throw new Error(await responseError('ElevenLabs sync', res))
+      }
+      await loadData()
+    } catch (err: any) {
+      setError(err?.message || 'ElevenLabs sync failed')
+    } finally {
+      setSyncing(false)
+    }
   }
 
   useEffect(() => {
@@ -84,20 +124,29 @@ export default function ELUsagePage() {
       </div>
 
       {/* Subscription bar */}
+      {error ? (
+        <div style={{ ...S.card, borderLeft: '4px solid #dc2626', background: '#fef2f2', color: '#991b1b', fontWeight: 700 }}>
+          {error}
+        </div>
+      ) : null}
+
       {sub && (
         <div style={{ ...S.card, borderLeft: `4px solid ${sub.pct > 90 ? '#dc2626' : sub.pct > 70 ? '#f97316' : '#16a34a'}` }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
             <div>
               <div style={{ fontSize: 12, color: '#666', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>Current Billing Period</div>
               <div style={{ fontSize: 20, fontWeight: 800, marginTop: 2 }}>
-                {sub.charUsed.toLocaleString()} <span style={{ color: '#666', fontSize: 14 }}>/ {sub.charLimit.toLocaleString()} chars</span>
+                {sub.charRemaining.toLocaleString()} <span style={{ color: '#666', fontSize: 14 }}>remaining / {sub.charLimit.toLocaleString()} total credits</span>
+              </div>
+              <div style={{ fontSize: 12, color: '#666', marginTop: 4 }}>
+                Used: {sub.charUsed.toLocaleString()} credits · ElevenLabs reports usage as characters/credits.
               </div>
             </div>
             <div style={{ textAlign: 'right' }}>
               <span style={{ background: sub.pct > 90 ? '#fee2e2' : sub.pct > 70 ? '#fff7ed' : '#f0fdf4', color: sub.pct > 90 ? '#dc2626' : sub.pct > 70 ? '#f97316' : '#16a34a', padding: '3px 10px', borderRadius: 12, fontSize: 13, fontWeight: 700 }}>
                 {sub.pct}% used
               </span>
-              <div style={{ fontSize: 12, color: '#666', marginTop: 4 }}>Resets: {sub.resetDate}</div>
+              <div style={{ fontSize: 12, color: '#666', marginTop: 4 }}>Resets: {sub.resetDate || 'Not available'}</div>
             </div>
           </div>
           <div style={{ marginTop: 10, background: '#f0f0f0', borderRadius: 4, height: 8 }}>
