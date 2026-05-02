@@ -27,7 +27,7 @@ export default function ELUsagePage() {
     setError('')
     try {
       const [subRes, dataRes] = await Promise.all([
-        fetch('/api/admin/el-usage'),
+        fetch('/api/admin/el-usage', { cache: 'no-store' }),
         fetch('/api/admin/el-sync')
       ])
 
@@ -42,7 +42,11 @@ export default function ELUsagePage() {
         setError(await responseError('ElevenLabs logged usage', dataRes))
       }
 
-      setSub(subJson.subscription)
+      setSub({
+        ...subJson.subscription,
+        fetchedAt: subJson.fetchedAt,
+        source: subJson.source,
+      })
       setData(dataJson)
       setLastSync(new Date().toLocaleTimeString())
     } catch (err: any) {
@@ -121,6 +125,9 @@ export default function ELUsagePage() {
         >
           {syncing ? '⏳ Syncing...' : '🔄 Sync Now'}
         </button>
+        <div style={{ width: '100%', fontSize: 12, color: '#666' }}>
+          Sync Now updates history logs. Current credits are fetched live from ElevenLabs subscription.
+        </div>
       </div>
 
       {/* Subscription bar */}
@@ -140,6 +147,9 @@ export default function ELUsagePage() {
               </div>
               <div style={{ fontSize: 12, color: '#666', marginTop: 4 }}>
                 Used: {sub.charUsed.toLocaleString()} credits · ElevenLabs reports usage as characters/credits.
+              </div>
+              <div style={{ fontSize: 12, color: '#666', marginTop: 4 }}>
+                Live subscription fetched at: {sub.fetchedAt ? new Date(sub.fetchedAt).toLocaleString() : 'Not available'}
               </div>
             </div>
             <div style={{ textAlign: 'right' }}>

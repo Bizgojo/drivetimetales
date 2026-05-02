@@ -24,6 +24,7 @@ export async function GET() {
 
     // Get subscription info
     const subRes = await fetch('https://api.elevenlabs.io/v1/user/subscription', {
+      cache: 'no-store',
       headers: { 'xi-api-key': EL_KEY }
     })
     const sub = await subRes.json()
@@ -45,6 +46,8 @@ export async function GET() {
 
     return NextResponse.json({
       success: true,
+      fetchedAt: new Date().toISOString(),
+      source: 'elevenlabs_subscription_live',
       charUsed,
       charLimit,
       charRemaining,
