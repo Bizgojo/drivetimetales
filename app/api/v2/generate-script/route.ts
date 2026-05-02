@@ -24,6 +24,23 @@ function extractTitle(script: string): string | null {
   return m?.[1]?.trim() || null
 }
 
+function runtimeTarget(runtime: string) {
+  const minutes = parseInt(String(runtime || '').match(/\d+/)?.[0] || '15', 10)
+  const targets: Record<number, { range: string; max: number }> = {
+    10: { range: '1,200 to 1,450', max: 1550 },
+    15: { range: '1,800 to 2,100', max: 2250 },
+    20: { range: '2,400 to 2,850', max: 3000 },
+    25: { range: '3,000 to 3,550', max: 3750 },
+    30: { range: '3,600 to 4,250', max: 4500 },
+  }
+  const target = targets[minutes] || targets[15]
+
+  return {
+    runtime: targets[minutes] ? runtime || '15 min' : '15 min',
+    ...target,
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { storyId, model = 'claude-opus-4-6' } = await req.json()
@@ -39,6 +56,7 @@ export async function POST(req: NextRequest) {
     if (!story.brief_json) return bad('brief_json missing')
 
     const brief = story.brief_json as any
+    const target = runtimeTarget(brief.runtime || '')
 
     const prompt = `You are the Endless Tales Stage 2 script writer.
 
@@ -104,6 +122,12 @@ Additional rules:
 
 USER NOTES / CONSTRAINTS:
 ${String(brief.requirements || '').trim() || 'None'}
+
+RUNTIME TARGET:
+Requested runtime: ${target.runtime}
+Target script length: ${target.range} words total.
+Hard maximum: ${target.max.toLocaleString()} words total.
+If needed, simplify plot, reduce scene count, and tighten dialogue before exceeding the hard maximum.
 
 STORY BRIEF JSON:
 ${JSON.stringify(brief, null, 2)}
