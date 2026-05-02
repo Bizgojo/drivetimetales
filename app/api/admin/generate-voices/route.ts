@@ -86,6 +86,10 @@ function parseLoudnessNumber(value: unknown): number {
   return Number.isFinite(n) ? n : NaN
 }
 
+function hasUsableLoudness(metrics: LoudnessMetrics): boolean {
+  return Number.isFinite(metrics.input_i) && Number.isFinite(metrics.input_tp)
+}
+
 async function analyzeLoudnessBuffer(input: Buffer): Promise<LoudnessMetrics> {
   const tmpBase = path.join(os.tmpdir(), `et_voice_qc_${Date.now()}_${Math.random().toString(16).slice(2)}`)
   const inputPath = `${tmpBase}.mp3`
@@ -124,6 +128,28 @@ async function applySegmentGainLimit(input: Buffer, gainDb: number): Promise<Buf
       '-y', outputPath
     ])
     return await fs.readFile(outputPath)
+  } finally {
+    await fs.unlink(inputPath).catch(() => {})
+    await fs.unlink(outputPath).catch(() => {})
+  }
+}
+
+async function trimSegmentSilenceBuffer(input: Buffer): Promise<Buffer> {
+  const tmpBase = path.join(os.tmpdir(), `et_voice_trim_${Date.now()}_${Math.random().toString(16).slice(2)}`)
+  const inputPath = `${tmpBase}_in.mp3`
+  const outputPath = `${tmpBase}_out.mp3`
+  try {
+    await fs.writeFile(inputPath, input)
+    await _execFileAsync(FFMPEG_PATH, [
+      '-i', inputPath,
+      '-af', 'silenceremove=start_periods=1:start_duration=0.08:start_threshold=-45dB:stop_periods=1:stop_duration=0.12:stop_threshold=-45dB',
+      '-ar', '44100', '-ac', '2', '-b:a', '192k',
+      '-y', outputPath
+    ])
+    return await fs.readFile(outputPath)
+  } catch (e) {
+    console.warn('Segment silence trim failed; using untrimmed segment:', e)
+    return input
   } finally {
     await fs.unlink(inputPath).catch(() => {})
     await fs.unlink(outputPath).catch(() => {})
@@ -444,16 +470,39 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
       metrics = await analyzeLoudnessBuffer(buf)
     }
     if (metrics.input_i < SEGMENT_QC_RETRY_LUFS) {
-      const gainDb = Math.max(0, Math.min(10, SEGMENT_QC_TARGET_LUFS - metrics.input_i))
-      logSegmentQc(fileName, speaker, text, metrics, `apply_gain_limiter_${gainDb.toFixed(2)}dB`)
+      logSegmentQc(fileName, speaker, text, metrics, 'trim_silence_before_gain')
+      const preTrimBuf = buf
+      const preTrimMetrics = metrics
+      const trimmedBuf = await trimSegmentSilenceBuffer(buf)
+      const trimmedMetrics = await analyzeLoudnessBuffer(trimmedBuf)
+      if (hasUsableLoudness(trimmedMetrics)) {
+        buf = trimmedBuf
+        metrics = trimmedMetrics
+        logSegmentQc(fileName, speaker, text, metrics, 'after_trim_silence')
+      } else {
+        buf = preTrimBuf
+        metrics = preTrimMetrics
+        logSegmentQc(fileName, speaker, text, metrics, 'trim_silence_unusable_using_untrimmed')
+      }
+      const gainDb = Math.max(0, Math.min(18, SEGMENT_QC_TARGET_LUFS - metrics.input_i))
+      logSegmentQc(fileName, speaker, text, metrics, `apply_adaptive_gain_limiter_${gainDb.toFixed(2)}dB`)
       buf = await applySegmentGainLimit(buf, gainDb)
       metrics = await analyzeLoudnessBuffer(buf)
+      logSegmentQc(fileName, speaker, text, metrics, 'after_adaptive_gain')
     }
     let action = 'accept'
-    if (metrics.input_i < SEGMENT_QC_HARD_FAIL_LUFS) action = 'hard_fail'
+    if (!hasUsableLoudness(metrics)) action = 'fail_invalid_loudness'
+    else if (metrics.input_tp > SPOKEN_TRUE_PEAK) action = 'fail_true_peak'
+    else if (metrics.input_i < SEGMENT_QC_HARD_FAIL_LUFS) action = 'hard_fail'
     else if (metrics.input_i < SEGMENT_QC_RETRY_LUFS) action = 'fail_after_qc'
     else if (metrics.input_i < SEGMENT_QC_WARN_LUFS) action = 'warning_low_loudness'
     logSegmentQc(fileName, speaker, text, metrics, action)
+    if (!hasUsableLoudness(metrics)) {
+      throw new Error(`Segment loudness QC failed for ${fileName}: invalid loudness metrics`)
+    }
+    if (metrics.input_tp > SPOKEN_TRUE_PEAK) {
+      throw new Error(`Segment loudness QC failed for ${fileName}: true peak ${metrics.input_tp.toFixed(2)} dBTP exceeds ${SPOKEN_TRUE_PEAK} dBTP`)
+    }
     if (metrics.input_i < SEGMENT_QC_RETRY_LUFS) {
       throw new Error(`Segment loudness QC failed for ${fileName}: ${metrics.input_i.toFixed(2)} LUFS`)
     }
