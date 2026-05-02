@@ -143,7 +143,7 @@ export async function POST(req: NextRequest) {
       steps.push({ step: 'author', status: 'skipped', message: 'Already linked' })
       const { data } = await supabase
         .from('authors')
-        .select('id,name,narrator_voice_id,narrator_id')
+        .select('id,name,narrator_id')
         .eq('id', story.author_id)
         .single()
       authorRow = data || null
@@ -154,7 +154,7 @@ export async function POST(req: NextRequest) {
       } else {
         const { data: authors, error } = await supabase
           .from('authors')
-          .select('id,name,narrator_voice_id,narrator_id')
+          .select('id,name,narrator_id')
           .ilike('name', authorName)
 
         if (error) {
@@ -203,7 +203,7 @@ export async function POST(req: NextRequest) {
         }
       }
     } else {
-      const narratorRowId = authorRow?.narrator_voice_id || authorRow?.narrator_id || null
+      const narratorRowId = authorRow?.narrator_id || null
       if (!narratorRowId) {
         steps.push({ step: 'narrator', status: 'failed', message: 'No narrator on story or author mapping' })
       } else {
