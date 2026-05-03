@@ -13,6 +13,15 @@ const FOUNDING_LIMIT = parseInt(process.env.ET_FOUNDING_MEMBER_LIMIT || '500')
 const FOUNDING_PRICE_ID = process.env.STRIPE_PRICE_FOUNDING_MEMBER!
 const STANDARD_PRICE_ID = process.env.STRIPE_PRICE_STANDARD!
 const ANNUAL_PRICE_ID = process.env.STRIPE_PRICE_ANNUAL!
+const DEFAULT_SUCCESS_PATH = '/home?welcome=true'
+
+function safeReturnTo(returnTo: unknown) {
+  if (typeof returnTo !== 'string') return DEFAULT_SUCCESS_PATH
+  if (!returnTo.startsWith('/') || returnTo.startsWith('//') || returnTo.includes('://')) {
+    return DEFAULT_SUCCESS_PATH
+  }
+  return returnTo
+}
 
 async function resolvePrice(): Promise<{ priceId: string; isFoundingMember: boolean }> {
   try {
@@ -41,7 +50,7 @@ async function resolvePrice(): Promise<{ priceId: string; isFoundingMember: bool
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId, email, priceId: clientPriceId, referralCode, trialDays: trialDaysParam, billingCycle } = await req.json()
+    const { userId, email, priceId: clientPriceId, referralCode, trialDays: trialDaysParam, billingCycle, returnTo } = await req.json()
 
     if (!userId || !email) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
@@ -92,6 +101,10 @@ export async function POST(req: NextRequest) {
     const host = req.headers.get('host') || 'drivetimetales.vercel.app'
     const protocol = host.includes('localhost') ? 'http' : 'https'
     const baseUrl = `${protocol}://${host}`
+    const safeSuccessPath = safeReturnTo(returnTo)
+    const cancelPath = safeSuccessPath === DEFAULT_SUCCESS_PATH
+      ? '/signup?canceled=true'
+      : `/signup?canceled=true&returnTo=${encodeURIComponent(safeSuccessPath)}`
     console.log('[checkout] baseUrl:', baseUrl)
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
@@ -107,8 +120,8 @@ export async function POST(req: NextRequest) {
         metadata: { userId, isFoundingMember: isFoundingMember ? 'true' : 'false' },
         trial_period_days: trialDays > 0 ? trialDays : undefined
       },
-      success_url: `${baseUrl}/home?welcome=true`,
-      cancel_url: `${baseUrl}/signup?canceled=true`,
+      success_url: `${baseUrl}${safeSuccessPath}`,
+      cancel_url: `${baseUrl}${cancelPath}`,
       metadata: { userId, referralCode: referralCode || '' }
     })
 

@@ -1,12 +1,36 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
+import { Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 
-export default function SubscribePage() {
+function safeInternalPath(path: string | null) {
+  if (!path || !path.startsWith('/') || path.startsWith('//') || path.includes('://')) return ''
+  return path
+}
+
+function LoadingFallback() {
+  return (
+    <div style={{
+      minHeight: '100dvh',
+      backgroundColor: '#020617',
+      color: 'white',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+    }}>
+      Loading...
+    </div>
+  )
+}
+
+function SubscribeContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { user } = useAuth()
   const firstName = (user as any)?.first_name || ''
+  const returnTo = safeInternalPath(searchParams.get('returnTo'))
+  const signupPath = returnTo ? `/signup?returnTo=${encodeURIComponent(returnTo)}` : '/signup'
 
   return (
     <div style={{
@@ -61,7 +85,7 @@ export default function SubscribePage() {
         </div>
 
         <button
-          onClick={() => router.push('/signup')}
+          onClick={() => router.push(signupPath)}
           style={{
             width: '100%', padding: '16px', background: '#f97316', color: 'white',
             border: 'none', borderRadius: '12px', fontSize: '16px', fontWeight: 800,
@@ -90,5 +114,13 @@ export default function SubscribePage() {
         </button>
       </p>
     </div>
+  )
+}
+
+export default function SubscribePage() {
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <SubscribeContent />
+    </Suspense>
   )
 }

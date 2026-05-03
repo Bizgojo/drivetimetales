@@ -21,6 +21,11 @@ function LoadingFallback() {
   )
 }
 
+function safeInternalPath(path: string | null) {
+  if (!path || !path.startsWith('/') || path.startsWith('//') || path.includes('://')) return ''
+  return path
+}
+
 function SignUpContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -41,6 +46,7 @@ function SignUpContent() {
   const [trialDays, setTrialDays] = useState(14)
   const [trialVariant, setTrialVariant] = useState<'A' | 'B'>('A')
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly')
+  const returnTo = safeInternalPath(searchParams.get('returnTo'))
 
   useEffect(() => {
     const { days, variant } = getTrialVariant()
@@ -107,7 +113,7 @@ function SignUpContent() {
       const response = await fetch('/api/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id, email, referralCode: referralCode || undefined, offerId: offer?.id || undefined, trialDays: finalTrialDays, billingCycle })
+        body: JSON.stringify({ userId: user.id, email, referralCode: referralCode || undefined, offerId: offer?.id || undefined, trialDays: finalTrialDays, billingCycle, returnTo: returnTo || undefined })
       })
       const data = await response.json()
       if (data.url) { window.location.href = data.url }
