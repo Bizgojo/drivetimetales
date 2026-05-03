@@ -91,7 +91,7 @@ Use the saved series package as the source of truth. Do not invent a new series 
 CURRENT published rules:
 - Belle B is the only announcer voice.
 - Belle B is never labeled ANNOUNCER or SANDY.
-- Belle B never addresses the listener by name.
+- Belle B intro must include exactly one [LISTENER_NAME] placeholder. Do not include the listener's actual name.
 - Belle B intro/outro must never use "Tonight" or any time-of-day reference.
 - Belle B intro must never mention the author, narrator, or "an Endless Tales original"; those credits belong only in the Belle B outro.
 - ${belleOutroRule}
@@ -121,7 +121,7 @@ CHARACTER GUIDE
 
 BELLE B INTRO
 ---
-BELLE B: [one or two short sentences, warm, specific, sensory, no listener name, no time-of-day reference, no author/narrator credit, no "Endless Tales original"]
+BELLE B: [one or two short sentences, warm, specific, sensory, includes exactly one [LISTENER_NAME] placeholder placed naturally and not always at the start, reads gracefully if the name is omitted, includes the episode title in quotes, references something specific from the episode, no time-of-day reference, no author/narrator credit, no "Endless Tales original"]
 
 [START AUDIO DRAMA SCRIPT]
 NARRATOR: ...
