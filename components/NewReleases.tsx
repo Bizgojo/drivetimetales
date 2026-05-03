@@ -20,9 +20,24 @@ export default function NewReleases({ excludeIds = [], onIdsLoaded }: { excludeI
 
   async function load() {
     setLoading(true)
+    const { data: publicRows } = await supabase
+      .from('stories')
+      .select('id')
+      .eq('status', 'published')
+      .eq('is_hidden', false)
+
+    const publicIds = (publicRows || []).map((row) => row.id)
+    if (publicIds.length === 0) {
+      setStories([])
+      setLoading(false)
+      onIdsLoaded?.([])
+      return
+    }
+
     const { data } = await supabase.from('story_analytics')
       .select('id, title, genre, author, duration_mins, cover_url, avg_rating, review_count, series_id, series_number, series_name')
       .not('cover_url', 'is', null).eq('is_hidden', false)
+      .in('id', publicIds)
       .order('published_on', { ascending: false }).limit(60)
     if (!data) { setLoading(false); onIdsLoaded?.([]); return }
 

@@ -108,11 +108,25 @@ function HomeSearchResults({ query }: { query: string }) {
     ;(async () => {
       setLoading(true)
       try {
+        const { data: publicRows, error: publicError } = await supabase
+          .from('stories')
+          .select('id')
+          .eq('status', 'published')
+          .eq('is_hidden', false)
+
+        if (publicError) throw publicError
+        const publicIds = (publicRows || []).map((row) => row.id)
+        if (publicIds.length === 0) {
+          if (!cancelled) setItems([])
+          return
+        }
+
         const { data, error } = await supabase
           .from('story_analytics')
           .select('id, title, genre, author, duration_mins, cover_url, series_id, series_name, series_number, description, avg_rating, review_count')
           .not('cover_url', 'is', null)
           .eq('is_hidden', false)
+          .in('id', publicIds)
           .limit(200)
 
         if (error) throw error

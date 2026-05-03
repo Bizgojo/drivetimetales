@@ -36,9 +36,22 @@ export default function RecommendedForYou({ excludeIds = [] }: { excludeIds?: st
 
   async function load() {
     setLoading(true)
+    const { data: publicRows } = await supabase
+      .from('stories')
+      .select('id')
+      .eq('status', 'published')
+      .eq('is_hidden', false)
+
+    const publicIds = (publicRows || []).map((row) => row.id)
+    if (publicIds.length === 0) {
+      setDisplayItems([])
+      setLoading(false)
+      return
+    }
+
     const { data } = await supabase.from('story_analytics')
       .select('id, title, genre, author, duration_mins, cover_url, series_id, series_name, series_number, description, avg_rating, review_count')
-      .not('cover_url', 'is', null).eq('is_hidden', false).limit(100)
+      .not('cover_url', 'is', null).eq('is_hidden', false).in('id', publicIds).limit(100)
     if (!data || !data.length) { setLoading(false); return }
 
     const storyRows = data as Story[]
@@ -48,6 +61,8 @@ export default function RecommendedForYou({ excludeIds = [] }: { excludeIds?: st
         .from('stories')
         .select('id,episode_number')
         .in('series_id', seriesIds)
+        .eq('status', 'published')
+        .eq('is_hidden', false)
 
       if (episodeError) {
         console.warn('[RecommendedForYou] series episode_number lookup failed:', episodeError.message)

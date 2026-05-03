@@ -142,15 +142,29 @@ export default function LibraryPage() {
         setLoading(true)
         setLoadError(null)
 
-        const { data: storiesData, error: storiesError } = await supabase
-          .from('story_analytics')
-          .select(
-            'id, title, genre, author, duration_mins, cover_url, series_id, series_name, episode_title, description, is_hidden, series_number, series_total, flag, is_free, created_at, avg_rating, review_count'
-          )
+        const { data: publicRows, error: publicError } = await supabase
+          .from('stories')
+          .select('id')
+          .eq('status', 'published')
           .eq('is_hidden', false)
-          .order('created_at', { ascending: false })
 
-        if (storiesError) throw new Error(`story_analytics failed: ${storiesError.message}`)
+        if (publicError) throw new Error(`public stories lookup failed: ${publicError.message}`)
+        const publicIds = (publicRows || []).map((row) => row.id)
+
+        let storiesData: any[] | null = []
+        if (publicIds.length > 0) {
+          const { data: analyticsData, error: storiesError } = await supabase
+            .from('story_analytics')
+            .select(
+              'id, title, genre, author, duration_mins, cover_url, series_id, series_name, episode_title, description, is_hidden, series_number, series_total, flag, is_free, created_at, avg_rating, review_count'
+            )
+            .eq('is_hidden', false)
+            .in('id', publicIds)
+            .order('created_at', { ascending: false })
+
+          if (storiesError) throw new Error(`story_analytics failed: ${storiesError.message}`)
+          storiesData = analyticsData || []
+        }
         if (cancelled) return
         if (storiesData) {
           const storyRows = (storiesData as Story[]).filter((story) => Boolean(story.cover_url))
@@ -161,6 +175,8 @@ export default function LibraryPage() {
               .from('stories')
               .select('id,episode_number')
               .in('series_id', seriesIds)
+              .eq('status', 'published')
+              .eq('is_hidden', false)
 
             if (episodeError) {
               console.warn('[Library] series episode_number lookup failed:', episodeError.message)
