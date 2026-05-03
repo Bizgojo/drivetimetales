@@ -593,7 +593,7 @@ function StoryRow({
   index: number
   onEditClick: (s: Story) => void
   onDelete: (id: string) => void
-  onApprove: (id: string) => void
+  onApprove: (story: Story) => void
   deleteConfirm: string | null
   setDeleteConfirm: (id: string | null) => void
 }) {
@@ -632,7 +632,7 @@ function StoryRow({
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
           <div style={{ color: textPrimary, fontWeight: 600, fontSize: '13px', lineHeight: 1.2 }}>{story.title}</div>
           <StoryVisibilityBadges story={story} />
-          {story.is_hidden && <button onClick={() => onApprove(story.id)} style={{ backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '3px', padding: '1px 6px', fontSize: '9px', fontWeight: 700, cursor: 'pointer', marginLeft: '2px' }}>✅ APPROVE</button>}
+          {isReviewReady(story) && <button onClick={() => onApprove(story)} style={{ backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '3px', padding: '1px 6px', fontSize: '9px', fontWeight: 700, cursor: 'pointer', marginLeft: '2px' }}>✅ PUBLISH LIVE</button>}
         </div>
         {story.episode_title && <div style={{ color: textSecondary, fontSize: '11px', fontStyle: 'italic' }}>{story.episode_title}</div>}
         <div style={{ color: textSecondary, fontSize: '11px' }}>by {story.author}</div>
@@ -688,6 +688,7 @@ function SeriesGroupRow({
   index,
   onEditClick,
   onDelete,
+  onApprove,
   deleteConfirm,
   setDeleteConfirm,
 }: {
@@ -695,6 +696,7 @@ function SeriesGroupRow({
   index: number
   onEditClick: (s: Story) => void
   onDelete: (id: string) => void
+  onApprove: (story: Story) => void
   deleteConfirm: string | null
   setDeleteConfirm: (id: string | null) => void
 }) {
@@ -794,6 +796,7 @@ function SeriesGroupRow({
               <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
                 <div style={{ color: textPrimary, fontWeight: 500, fontSize: '12px' }}>{ep.episode_title || ep.title}</div>
                 <StoryVisibilityBadges story={ep} />
+                {isReviewReady(ep) && <button onClick={() => onApprove(ep)} style={{ backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '3px', padding: '1px 6px', fontSize: '9px', fontWeight: 700, cursor: 'pointer', marginLeft: '2px' }}>✅ PUBLISH LIVE</button>}
               </div>
               <div style={{ color: textSecondary, fontSize: '10px' }}>by {ep.author}</div>
             </td>
@@ -876,13 +879,26 @@ export default function AdminStoriesPage() {
     if (data) setGenres(data)
   }
 
-  const approveStory = async (id: string) => {
-    const { error } = await supabase
-      .from('stories')
-      .update({ is_hidden: false, is_new: true })
-      .eq('id', id)
-    if (error) { alert('Approve failed: ' + error.message); return }
-    setStories(prev => prev.map(s => s.id === id ? { ...s, is_hidden: false } : s))
+  const approveStory = async (story: Story) => {
+    if (!window.confirm('Publish this story live?')) return
+    try {
+      const res = await fetch('/api/admin/publish-story', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storyId: story.id,
+          is_free: story.is_free,
+        }),
+      })
+      const result = await res.json()
+      if (!res.ok || !result.success) {
+        alert('Publish failed: ' + (result.error || `HTTP ${res.status}`))
+        return
+      }
+      await fetchStories()
+    } catch (err) {
+      alert('Publish failed: ' + String(err))
+    }
   }
 
   async function deleteStory(storyId: string) {
