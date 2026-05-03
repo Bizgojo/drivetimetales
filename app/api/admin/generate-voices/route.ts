@@ -418,6 +418,33 @@ function assignCharacterVoice(voiceMap: Record<string, string>, characterName: s
   })
 }
 
+function findUnlabeledStoryBodyLines(script: string) {
+  const rawLines = script.split('\n')
+  const startIdx = rawLines.findIndex(line => line.includes('[START AUDIO DRAMA SCRIPT]'))
+  if (startIdx === -1) return []
+
+  const allowedSectionMarkers = new Set([
+    'BELLE B INTRO',
+    'BELLE B OUTRO',
+    '[START AUDIO DRAMA SCRIPT]',
+    '[END AUDIO DRAMA SCRIPT]',
+  ])
+  const speakerLabelRe = /^([A-Z][A-ZÀ-Ú0-9\s'.()/&-]+?):\s*(.+)$/
+  const bracketCueRe = /^\[(BEAT|PAUSE(?::\d+(?:\.\d+)?)?|SFX:\s*.+)\]$/i
+
+  return rawLines
+    .slice(startIdx + 1)
+    .map((line, offset) => ({ lineNumber: startIdx + offset + 2, text: line.trim() }))
+    .filter(({ text }) => {
+      if (!text) return false
+      if (/^-{3,}$/.test(text)) return false
+      if (allowedSectionMarkers.has(text.toUpperCase())) return false
+      if (bracketCueRe.test(text)) return false
+      if (speakerLabelRe.test(text)) return false
+      return true
+    })
+}
+
 function parseScript(script: string): ScriptLine[] {
   const lines: ScriptLine[] = []
   const rawLines = script.split('\n')
@@ -640,6 +667,16 @@ export async function POST(req: NextRequest) {
       const { data: row } = await supabase.from('stories').select('script').eq('id', storyId).single()
       script = row?.script
       if (!script) return NextResponse.json({ success: false, error: 'Script not found in database' }, { status: 400 })
+    }
+    const unlabeledBodyLines = findUnlabeledStoryBodyLines(script)
+    if (unlabeledBodyLines.length > 0) {
+      return NextResponse.json({
+        success: false,
+        error: 'Unlabeled story body lines found',
+        unlabeledLineCount: unlabeledBodyLines.length,
+        examples: unlabeledBodyLines.slice(0, 5),
+        instruction: 'Every narration/dialogue paragraph after [START AUDIO DRAMA SCRIPT] must begin with a speaker label such as NARRATOR: or CHARACTER:',
+      }, { status: 422 })
     }
     console.log(`\n🎙 generate-voices: ${storyId}`)
     const { data: allVoices } = await supabase.from('narrator_voices').select('name,elevenlabs_voice_id')
