@@ -172,14 +172,22 @@ function PlayerContent() {
         stage = 'story-row'
         const { data, error } = await supabase
           .from('stories')
-          .select('id,title,author,audio_url,cover_url,duration_mins,intro_audio_url,outro_audio_url,background_music_url,episode_number,series_id,series_name,is_free,prose_text,author_id,narrator_voice_id,narrator_voice_name')
-          .eq('id', storyId).single()
+          .select('id,title,author,audio_url,cover_url,duration_mins,intro_audio_url,outro_audio_url,background_music_url,episode_number,series_id,series_name,is_free,prose_text,author_id,narrator_voice_id,narrator_voice_name,status,is_hidden')
+          .eq('id', storyId)
+          .eq('status', 'published')
+          .eq('is_hidden', false)
+          .maybeSingle()
 
         if (error) {
           console.error('[player] load story-row failed:', { storyId, error })
         }
 
         if (cancelled) return
+
+        if (!data || (data as any).status !== 'published' || (data as any).is_hidden !== false) {
+          setStory(null)
+          return
+        }
 
         if (data) {
           setStory(data)
@@ -199,6 +207,7 @@ function PlayerContent() {
               .from('stories')
               .select('id, title, episode_number, prose_text, series_name')
               .eq('series_id', (data as any).series_id)
+              .eq('status', 'published')
               .eq('is_hidden', false)
               .order('episode_number', { ascending: true })
 
@@ -623,7 +632,7 @@ function PlayerContent() {
   const pct      = effTotal > 0 ? Math.min(100, (effCur / effTotal) * 100) : 0
 
   if (loading) return <div style={{ height:'100dvh', backgroundColor:'#020617', display:'flex', alignItems:'center', justifyContent:'center' }}><div style={{ width:'40px', height:'40px', border:'4px solid #f97316', borderTopColor:'transparent', borderRadius:'50%', animation:'spin 1s linear infinite' }} /><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>
-  if (!story)   return <div style={{ height:'100dvh', backgroundColor:'#020617', color:'white', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}><p>Story not found</p><button onClick={() => router.back()} style={{ color:'#f97316', background:'none', border:'none', cursor:'pointer' }}>Go Back</button></div>
+  if (!story)   return <div style={{ height:'100dvh', backgroundColor:'#020617', color:'white', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'24px', textAlign:'center' }}><p style={{ marginBottom:'16px' }}>This story isn’t available yet.</p><button onClick={() => router.push('/library')} style={{ color:'#f97316', background:'none', border:'1px solid rgba(249,115,22,0.35)', borderRadius:'10px', padding:'10px 16px', cursor:'pointer', fontWeight:700 }}>Back to Library</button></div>
 
   const isSeriesReadIt = Boolean((story as any).series_id && seriesProseChapters.length > 0)
   const proseAvailable = isSeriesReadIt || Boolean((story as any).prose_text)

@@ -50,15 +50,19 @@ export default function SeriesDetailPage() {
   const [narratorProfile, setNarratorProfile] = useState<Profile | null>(null)
   const [activeProfile, setActiveProfile] = useState<'author' | 'narrator' | null>(null)
   const [seriesReaderOpen, setSeriesReaderOpen] = useState(false)
+  const [unavailable, setUnavailable] = useState(false)
 
   useEffect(() => { if (seriesId) fetchSeriesData() }, [seriesId, user?.id])
 
   const fetchSeriesData = async () => {
     try {
+      setUnavailable(false)
       let { data: episodesData } = await supabase
         .from('stories')
         .select('id, title, description, duration_mins, cover_url, episode_number, series_name, genre, author, author_id, narrator_voice_id, narrator_voice_name, prose_text')
         .eq('series_id', seriesId)
+        .eq('status', 'published')
+        .eq('is_hidden', false)
         .order('episode_number', { ascending: true })
 
       if (!episodesData || episodesData.length === 0) {
@@ -66,11 +70,13 @@ export default function SeriesDetailPage() {
           .from('stories')
           .select('id, title, description, duration_mins, cover_url, episode_number, series_name, genre, author, author_id, narrator_voice_id, narrator_voice_name, prose_text')
           .eq('id', seriesId)
+          .eq('status', 'published')
+          .eq('is_hidden', false)
         episodesData = storyData
       }
 
       if (episodesData) {
-        if (episodesData.length === 0) { router.replace('/library'); return }
+        if (episodesData.length === 0) { setUnavailable(true); return }
         if (episodesData.length === 1) { router.replace(`/player/${episodesData[0].id}`); return }
         setEpisodes(episodesData)
         const firstEp = episodesData[0]
@@ -129,6 +135,7 @@ export default function SeriesDetailPage() {
       }
     } catch (err) {
       console.error('fetchSeriesData error:', err)
+      setUnavailable(true)
     } finally {
       setLoading(false)
     }
@@ -187,6 +194,7 @@ export default function SeriesDetailPage() {
   const proseChapters = episodes.filter(ep => ep.prose_text)
 
   if (loading) return <div style={{ background: '#020617', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ color: '#64748b', fontSize: '14px' }}>Loading...</div></div>
+  if (unavailable) return <div style={{ background: '#020617', minHeight: '100vh', color: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center' }}><p style={{ marginBottom: 16 }}>This series isn’t available yet.</p><button onClick={() => router.push('/library')} style={{ color: '#f97316', background: 'none', border: '1px solid rgba(249,115,22,0.35)', borderRadius: 10, padding: '10px 16px', cursor: 'pointer', fontWeight: 700 }}>Back to Library</button></div>
   if (!seriesInfo) return null
 
   return (
