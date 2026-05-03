@@ -1874,17 +1874,13 @@ export default function StoryProductionV2Page() {
                       : 'Score Script'}
               </ButtonLabel>
             </button>
-            <button disabled={!canValidate || loading || hasActiveAction} className={validateActionClass} onClick={validateScript}>
-              <ButtonLabel loading={activeAction === 'validateScript' || activeAction === 'scoreValidatePackage'}>
-                {activeAction === 'scoreValidatePackage'
-                  ? 'Scoring + Validating...'
-                  : activeAction === 'validateScript'
-                    ? 'Validating...'
-                    : seriesPackage
-                      ? packageAllValidationsPass ? '✓ Score + Validate Package' : 'Score + Validate Package'
-                      : 'Validate Script'}
-              </ButtonLabel>
-            </button>
+            {!seriesPackage ? (
+              <button disabled={!canValidate || loading || hasActiveAction} className={validateActionClass} onClick={validateScript}>
+                <ButtonLabel loading={activeAction === 'validateScript'}>
+                  {activeAction === 'validateScript' ? 'Validating...' : 'Validate Script'}
+                </ButtonLabel>
+              </button>
+            ) : null}
             <button
               disabled={!canProduce || loading || hasActiveAction}
               className={produceActionClass}
