@@ -35,6 +35,23 @@ function scriptTail(script: string, maxChars = 1400) {
   return clean.length <= maxChars ? clean : clean.slice(-maxChars)
 }
 
+function runtimeTarget(runtime: string) {
+  const minutes = parseInt(String(runtime || '').match(/\d+/)?.[0] || '15', 10)
+  const targets: Record<number, { range: string; max: number }> = {
+    10: { range: '1,200 to 1,450', max: 1550 },
+    15: { range: '1,800 to 2,100', max: 2250 },
+    20: { range: '2,400 to 2,850', max: 3000 },
+    25: { range: '3,000 to 3,550', max: 3750 },
+    30: { range: '3,600 to 4,250', max: 4500 },
+  }
+  const target = targets[minutes] || targets[15]
+
+  return {
+    runtime: targets[minutes] ? runtime || '15 min' : '15 min',
+    ...target,
+  }
+}
+
 function buildContinuityBundle(prior: Array<{ episode: any; script: string; scriptJson: any }>) {
   return prior.map(({ episode, script, scriptJson }) => {
     const brief = episode.brief_json || {}
@@ -54,6 +71,7 @@ function buildContinuityBundle(prior: Array<{ episode: any; script: string; scri
 
 function buildPrompt(series: any, episode: any, allEpisodes: any[], continuityBundle: any[]) {
   const brief = episode.brief_json || {}
+  const target = runtimeTarget(brief.runtime || '')
   const episodeNumber = Number(episode.episode_number || brief.series_episode_number || 1)
   const totalEpisodes = Number(episode.series_total_episodes || brief.series_total_episodes || allEpisodes.length)
   const isFinale = Boolean(episode.series_is_finale ?? brief.series_is_finale ?? episodeNumber === totalEpisodes)
@@ -118,6 +136,10 @@ Production-format hard rules:
 - Character-labeled lines must contain only words that character says aloud.
 - Never put action, facial reactions, movement, blocking, inner thought, or narration under a character label.
 - Put all action/reaction lines under NARRATOR.
+- Every narration/dialogue paragraph after [START AUDIO DRAMA SCRIPT] must begin with a speaker label.
+- Do not write unlabeled continuation paragraphs.
+- If narration continues, start a new NARRATOR: line.
+- Every spoken line sent to audio must begin with NARRATOR: or CHARACTER NAME:.
 - Wrong: DEPUTY PIKE: Pike's jaw tightened.
 - Right: NARRATOR: Pike's jaw tightened.
 
@@ -133,6 +155,12 @@ Additional rules:
 - If the narrator is a story character, NARRATOR_IS_CHARACTER must be true and the script must use consistent first-person narration.
 - Keep narrator voice consistent.
 - Do not include markdown fences.
+
+RUNTIME TARGET:
+Requested runtime: ${target.runtime}
+Target script length: ${target.range} words total.
+Hard maximum: ${target.max.toLocaleString()} words total.
+If needed, simplify plot, reduce scene count, and tighten dialogue before exceeding the hard maximum.
 
 USER NOTES / CONSTRAINTS:
 ${String(brief.requirements || '').trim() || 'None'}
