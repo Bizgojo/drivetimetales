@@ -8,6 +8,7 @@ const supabase = createClient(
 
 const BASE_URL = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio`
 const INTRO_OUTRO_MUSIC = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio/intro_outro_music.mp3`
+const BELLE_B_NAME_VOICE_IDS = ['KWDD3Wyq30ZF5NEL01EJ', 'wewocdDkjSLm9ZwjO7TD']
 
 export async function GET(req: NextRequest) {
   const storyId = req.nextUrl.searchParams.get('storyId')
@@ -36,10 +37,9 @@ export async function GET(req: NextRequest) {
       const firstName = rawFirstName.charAt(0).toUpperCase() + rawFirstName.slice(1).toLowerCase()
       const { data: cachedNameAudio, error: nameAudioError } = await supabase
         .from('name_audio')
-        .select('audio_url')
+        .select('audio_url,voice_id')
         .eq('first_name', firstName)
-        .eq('voice_id', 'KWDD3Wyq30ZF5NEL01EJ')
-        .maybeSingle()
+        .in('voice_id', BELLE_B_NAME_VOICE_IDS)
 
       if (nameAudioError) {
         console.warn('[story-playlist] cached name audio lookup failed:', {
@@ -48,7 +48,9 @@ export async function GET(req: NextRequest) {
           message: nameAudioError.message,
         })
       }
-      nameAudioUrl = cachedNameAudio?.audio_url || null
+      const preferredNameAudio = (cachedNameAudio || [])
+        .sort((a: any, b: any) => BELLE_B_NAME_VOICE_IDS.indexOf(a.voice_id) - BELLE_B_NAME_VOICE_IDS.indexOf(b.voice_id))[0]
+      nameAudioUrl = preferredNameAudio?.audio_url || null
     }
 
     queue.push({ url: story.intro_before_url!, type: 'intro', label: 'Intro' })
