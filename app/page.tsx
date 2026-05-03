@@ -120,12 +120,17 @@ function LandingContent() {
 
       {/* ===== TOP BAR ===== */}
       <header style={{
-        padding: '1rem 1.5rem',
+        padding: 'calc(1rem + env(safe-area-inset-top)) 1.5rem 1rem',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        position: 'relative',
-        zIndex: 10,
+        position: 'sticky',
+        top: 0,
+        zIndex: 60,
+        background: 'rgba(10, 10, 15, 0.94)',
+        borderBottom: '1px solid rgba(240, 236, 228, 0.08)',
+        backdropFilter: 'blur(14px)',
+        WebkitBackdropFilter: 'blur(14px)',
       }}>
         <div style={{
           display: 'flex', alignItems: 'center', gap: '8px',
