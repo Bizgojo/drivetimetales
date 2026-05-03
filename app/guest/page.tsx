@@ -47,9 +47,11 @@ export default function GuestPage() {
   useEffect(() => {
     async function fetchStories() {
       const { data } = await supabase
-        .from('story_analytics')
+        .from('stories')
         .select('id, title, author, genre, duration_mins, cover_url, description, series_name')
         .eq('is_free', true)
+        .eq('status', 'published')
+        .eq('is_hidden', false)
         .not('cover_url', 'is', null)
         .order('title', { ascending: true })
       setStories(data || [])
