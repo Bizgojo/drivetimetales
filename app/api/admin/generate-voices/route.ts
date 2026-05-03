@@ -96,6 +96,68 @@ function hasUsableLoudness(metrics: LoudnessMetrics): boolean {
   return Number.isFinite(metrics.input_i) && Number.isFinite(metrics.input_tp)
 }
 
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+function getUploadErrorDetails(error: any): { name: string; message: string; status?: number | string; statusCode?: number | string } {
+  const original = error?.originalError
+  return {
+    name: error?.name || original?.name || 'UploadError',
+    message: error?.message || original?.message || String(error),
+    status: error?.status || original?.status,
+    statusCode: error?.statusCode || original?.statusCode,
+  }
+}
+
+function isTransientUploadError(error: any): boolean {
+  const details = getUploadErrorDetails(error)
+  const message = details.message.toLowerCase()
+  const status = Number(details.status || details.statusCode)
+  return (
+    details.name === 'StorageUnknownError' ||
+    message.includes('unexpected token') ||
+    message.includes('<html') ||
+    message.includes('fetch failed') ||
+    message.includes('network') ||
+    message.includes('timeout') ||
+    status === 429 ||
+    (Number.isFinite(status) && status >= 500)
+  )
+}
+
+async function uploadedObjectExists(cachePath: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${BASE_STORAGE}/${cachePath}`, { method: 'HEAD', cache: 'no-store' })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+async function uploadAudioBufferWithRetry(cachePath: string, buf: Buffer, context: string): Promise<void> {
+  const maxAttempts = 3
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const { error } = await supabase.storage.from('audio').upload(cachePath, buf, { contentType: 'audio/mpeg', upsert: true })
+    if (!error) {
+      if (attempt > 1) console.log(`  ✅ Upload retry succeeded attempt=${attempt} path=${cachePath} context="${context}"`)
+      return
+    }
+
+    const details = getUploadErrorDetails(error)
+    console.warn(`  ⚠️ Upload failed attempt=${attempt}/${maxAttempts} path=${cachePath} context="${context}" name=${details.name} status=${details.status || 'unknown'} statusCode=${details.statusCode || 'unknown'} message="${details.message.slice(0, 240)}"`)
+
+    if (await uploadedObjectExists(cachePath)) {
+      console.warn(`  ⚠️ Upload response was ambiguous but object exists; continuing path=${cachePath} context="${context}"`)
+      return
+    }
+
+    if (attempt >= maxAttempts || !isTransientUploadError(error)) {
+      throw new Error(`Upload failed after ${attempt} attempt(s) for ${cachePath} (${context}): ${details.name}: ${details.message}`)
+    }
+
+    await sleep(300 * attempt)
+  }
+}
+
 async function analyzeLoudnessBuffer(input: Buffer): Promise<LoudnessMetrics> {
   const tmpBase = path.join(os.tmpdir(), `et_voice_qc_${Date.now()}_${Math.random().toString(16).slice(2)}`)
   const inputPath = `${tmpBase}.mp3`
@@ -635,8 +697,12 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
 
     buf = accepted.buf
   }
-  const { error: ue } = await supabase.storage.from('audio').upload(cachePath, buf, { contentType: 'audio/mpeg', upsert: true })
-  if (ue) throw new Error(`Upload error: ${ue.message}`)
+  if (prefix === 'segment') {
+    await uploadAudioBufferWithRetry(cachePath, buf, `${speaker || 'UNKNOWN'} ${fileName}`)
+  } else {
+    const { error: ue } = await supabase.storage.from('audio').upload(cachePath, buf, { contentType: 'audio/mpeg', upsert: true })
+    if (ue) throw new Error(`Upload error: ${ue.message}`)
+  }
   return cacheUrl
 }
 
