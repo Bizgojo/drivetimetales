@@ -57,6 +57,8 @@ interface SeriesGroup {
   cover_url: string | null
 }
 
+type VisibilityFilter = 'review' | 'visible' | 'hidden' | 'all'
+
 const FLAG_OPTIONS = [
   { value: null, label: 'No Flag', color: '#6b7280' },
   { value: 'free', label: 'Free Today', color: '#22c55e' },
@@ -72,6 +74,27 @@ const cardBg = '#FFFFFF'
 const textPrimary = '#1a1a1a'
 const textSecondary = '#4a4a4a'
 const border = '#e0e0e0'
+
+function isReviewReady(story: Story) {
+  return !!(
+    story.is_hidden &&
+    story.audio_url &&
+    story.cover_url &&
+    story.description &&
+    story.duration_mins
+  )
+}
+
+function StoryVisibilityBadges({ story }: { story: Story }) {
+  const reviewReady = isReviewReady(story)
+  return (
+    <>
+      {reviewReady && <span style={{ backgroundColor: '#f59e0b', color: '#000000', borderRadius: '3px', padding: '1px 5px', fontSize: '9px', fontWeight: 700 }}>READY FOR REVIEW</span>}
+      {story.is_hidden && <span style={{ backgroundColor: '#dc2626', color: '#ffffff', borderRadius: '3px', padding: '1px 5px', fontSize: '9px', fontWeight: 700 }}>HIDDEN</span>}
+      {story.is_hidden && <span style={{ backgroundColor: '#111827', color: '#ffffff', borderRadius: '3px', padding: '1px 5px', fontSize: '9px', fontWeight: 700 }}>NOT PUBLIC</span>}
+    </>
+  )
+}
 
 function PlayStoryButton({ storyId, title }: { storyId: string; title: string }) {
   function handleClick(e: React.MouseEvent<HTMLButtonElement>) {
@@ -608,7 +631,7 @@ function StoryRow({
       <td style={{ padding: '0.5rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
           <div style={{ color: textPrimary, fontWeight: 600, fontSize: '13px', lineHeight: 1.2 }}>{story.title}</div>
-          {story.is_hidden && <span style={{ backgroundColor: '#dc2626', color: '#000000', borderRadius: '3px', padding: '1px 5px', fontSize: '9px', fontWeight: 700 }}>HIDDEN</span>}
+          <StoryVisibilityBadges story={story} />
           {story.is_hidden && <button onClick={() => onApprove(story.id)} style={{ backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '3px', padding: '1px 6px', fontSize: '9px', fontWeight: 700, cursor: 'pointer', marginLeft: '2px' }}>✅ APPROVE</button>}
         </div>
         {story.episode_title && <div style={{ color: textSecondary, fontSize: '11px', fontStyle: 'italic' }}>{story.episode_title}</div>}
@@ -768,7 +791,10 @@ function SeriesGroupRow({
 
             {/* Episode title */}
             <td style={{ padding: '0.5rem' }}>
-              <div style={{ color: textPrimary, fontWeight: 500, fontSize: '12px' }}>{ep.episode_title || ep.title}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                <div style={{ color: textPrimary, fontWeight: 500, fontSize: '12px' }}>{ep.episode_title || ep.title}</div>
+                <StoryVisibilityBadges story={ep} />
+              </div>
               <div style={{ color: textSecondary, fontSize: '10px' }}>by {ep.author}</div>
             </td>
 
@@ -817,6 +843,7 @@ export default function AdminStoriesPage() {
   const [search, setSearch] = useState('')
   const [genreFilter, setGenreFilter] = useState('All')
   const [viewMode, setViewMode] = useState<'all' | 'series' | 'standalone'>('all')
+  const [visibilityFilter, setVisibilityFilter] = useState<VisibilityFilter>('review')
   const [sortBy, setSortBy] = useState<'title' | 'genre' | 'duration_mins' | 'series_name' | 'downloads_total' | 'pct_finished' | 'rating' | 'created_at'>('created_at')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
@@ -833,11 +860,10 @@ export default function AdminStoriesPage() {
     const { data, error } = await supabase
       .from('story_analytics')
       .select('*')
-      .eq('is_hidden', false)
       .order('created_at', { ascending: false })
 
     if (data) setStories(data)
-    if (error) console.error('Error fetching app-visible story analytics:', error)
+    if (error) console.error('Error fetching story analytics:', error)
     setLoading(false)
   }
 
@@ -890,7 +916,11 @@ export default function AdminStoriesPage() {
       const matchesView = viewMode === 'all' ||
         (viewMode === 'series' && !!s.series_name) ||
         (viewMode === 'standalone' && !s.series_name)
-      return matchesSearch && matchesGenre && matchesView
+      const matchesVisibility = visibilityFilter === 'all' ||
+        (visibilityFilter === 'review' && isReviewReady(s)) ||
+        (visibilityFilter === 'visible' && !s.is_hidden) ||
+        (visibilityFilter === 'hidden' && s.is_hidden)
+      return matchesSearch && matchesGenre && matchesView && matchesVisibility
     })
 
   // Split into series groups and standalone stories
@@ -1003,6 +1033,17 @@ export default function AdminStoriesPage() {
         {(['all', 'series', 'standalone'] as const).map(mode => (
           <button key={mode} onClick={() => setViewMode(mode)} style={{ padding: '0.4rem 0.9rem', borderRadius: '6px', border: `1px solid ${border}`, backgroundColor: viewMode === mode ? '#1a1a1a' : '#ffffff', color: viewMode === mode ? '#ffffff' : '#000000', fontSize: '13px', fontWeight: viewMode === mode ? 700 : 400, cursor: 'pointer', textTransform: 'capitalize' }}>
             {mode === 'all' ? '📋 All' : mode === 'series' ? '📺 Series' : '🎯 Standalone'}
+          </button>
+        ))}
+        <div style={{ width: '1px', height: '24px', backgroundColor: border }} />
+        {([
+          ['review', 'Ready for Review'],
+          ['visible', 'Published / Visible'],
+          ['hidden', 'Hidden'],
+          ['all', 'All Visibility'],
+        ] as const).map(([mode, label]) => (
+          <button key={mode} onClick={() => setVisibilityFilter(mode)} style={{ padding: '0.4rem 0.9rem', borderRadius: '6px', border: `1px solid ${border}`, backgroundColor: visibilityFilter === mode ? '#f97316' : '#ffffff', color: visibilityFilter === mode ? '#ffffff' : '#000000', fontSize: '13px', fontWeight: visibilityFilter === mode ? 700 : 400, cursor: 'pointer' }}>
+            {label}
           </button>
         ))}
         <div style={{ marginLeft: 'auto', padding: '0.4rem 0.75rem', fontSize: '12px', color: textSecondary }}>
