@@ -381,6 +381,11 @@ function parseCharacterGuide(script: string): CharacterInfo[] {
 function characterVoiceKeys(name: string): string[] {
   const cleaned = name
     .replace(/\b(Dr|Mr|Mrs|Ms|Miss|Director|Deputy|Officer|Agent|Colonel|Captain|Lieutenant|Sergeant)\.?\b/gi, '')
+    .trim()
+  const withoutParentheticals = cleaned
+    .replace(/\s*\([^)]*\)\s*/g, ' ')
+    .trim()
+  const descriptorExpanded = cleaned
     .replace(/[()]/g, ' ')
     .trim()
 
@@ -398,8 +403,12 @@ function characterVoiceKeys(name: string): string[] {
     if (parts.length >= 2) keys.add(parts.slice(-2).join(' ').toUpperCase())
   }
 
-  addKeysForName(cleaned)
-  cleaned.split('/').forEach(alias => addKeysForName(alias))
+  addKeysForName(withoutParentheticals || descriptorExpanded)
+  addKeysForName(descriptorExpanded)
+  cleaned.split('/').forEach(alias => {
+    addKeysForName(alias.replace(/\s*\([^)]*\)\s*/g, ' '))
+    addKeysForName(alias.replace(/[()]/g, ' '))
+  })
   return Array.from(keys)
 }
 
