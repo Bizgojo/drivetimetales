@@ -11,6 +11,7 @@ const INTRO_OUTRO_MUSIC = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/ob
 
 export async function GET(req: NextRequest) {
   const storyId = req.nextUrl.searchParams.get('storyId')
+  const rawFirstName = req.nextUrl.searchParams.get('firstName')?.trim()
   if (!storyId) return NextResponse.json({ error: 'storyId required' }, { status: 400 })
 
   const { data: story, error } = await supabase
@@ -23,6 +24,52 @@ export async function GET(req: NextRequest) {
 
   const refUrl = story.audio_url || ''
   const has3Files = !!(story.intro_audio_url)
+  const hasSplitIntro = !!(story.intro_before_url && story.intro_after_url && (story as any).story_audio_url)
+  const STING_URL = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio/sting/ET_Signature_Sting_v7.mp3.mp3`
+  const queue: { url: string; type: 'intro' | 'story' | 'outro'; label: string }[] = []
+
+  queue.push({ url: STING_URL, type: 'intro', label: 'Sting' })
+
+  if (hasSplitIntro) {
+    let nameAudioUrl: string | null = null
+    if (rawFirstName) {
+      const firstName = rawFirstName.charAt(0).toUpperCase() + rawFirstName.slice(1).toLowerCase()
+      const { data: cachedNameAudio, error: nameAudioError } = await supabase
+        .from('name_audio')
+        .select('audio_url')
+        .eq('first_name', firstName)
+        .eq('voice_id', 'KWDD3Wyq30ZF5NEL01EJ')
+        .maybeSingle()
+
+      if (nameAudioError) {
+        console.warn('[story-playlist] cached name audio lookup failed:', {
+          storyId,
+          firstName,
+          message: nameAudioError.message,
+        })
+      }
+      nameAudioUrl = cachedNameAudio?.audio_url || null
+    }
+
+    queue.push({ url: story.intro_before_url!, type: 'intro', label: 'Intro' })
+    if (nameAudioUrl) {
+      queue.push({ url: nameAudioUrl, type: 'intro', label: 'Name' })
+    }
+    queue.push({ url: story.intro_after_url!, type: 'intro', label: 'Intro' })
+    queue.push({ url: (story as any).story_audio_url, type: 'story', label: 'Story' })
+    if (story.outro_audio_url) {
+      queue.push({ url: story.outro_audio_url, type: 'outro', label: 'Outro' })
+    }
+
+    return NextResponse.json({
+      queue,
+      useFinalMix: false,
+      introOutroMusicUrl: INTRO_OUTRO_MUSIC,
+      backgroundMusicUrl: (story as any).background_music_url || null,
+      totalSegments: queue.length,
+    }, { headers: { 'Cache-Control': 'no-store' } })
+  }
+
   const isImportedAscFinalMix = refUrl.includes('/asc/') && refUrl.endsWith('/final.mp3')
   const isAsc3FinalMix = refUrl.includes('/asc3/') && refUrl.includes('final_mix.mp3')
   const isPlainAudio = !has3Files && refUrl && !refUrl.includes('/asc/') && !refUrl.includes('/asc3/')
@@ -36,11 +83,6 @@ export async function GET(req: NextRequest) {
       totalSegments: 0,
     }, { headers: { 'Cache-Control': 'no-store' } })
   }
-
-  const STING_URL = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio/sting/ET_Signature_Sting_v7.mp3.mp3`
-  const queue: { url: string; type: 'intro' | 'story' | 'outro'; label: string }[] = []
-
-  queue.push({ url: STING_URL, type: 'intro', label: 'Sting' })
 
   // Intro — always use intro_audio_url directly, no personalization
   if (story.intro_audio_url) {

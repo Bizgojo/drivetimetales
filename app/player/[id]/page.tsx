@@ -237,7 +237,10 @@ function PlayerContent() {
         let resolvedQueue: QueueItem[] = []
         let resolvedIsASC3 = false
         try {
-          const res = await fetch(`/api/asc3/story-playlist?storyId=${storyId}`)
+          const playlistParams = new URLSearchParams({ storyId })
+          const firstName = String((user as any)?.first_name || '').trim()
+          if (firstName) playlistParams.set('firstName', firstName)
+          const res = await fetch(`/api/asc3/story-playlist?${playlistParams.toString()}`)
           if (res.ok) {
             const pl = await res.json()
             if (pl.useFinalMix && pl.finalMixUrl) {
