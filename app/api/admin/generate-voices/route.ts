@@ -532,6 +532,12 @@ function parseScript(script: string): ScriptLine[] {
   rawLines.forEach((line, rawIdx) => {
     const trimmed = line.trim()
     if (!trimmed) return
+    if (
+      explicitScriptStartIdx > -1 &&
+      rawIdx < explicitScriptStartIdx &&
+      rawIdx !== firstAnnouncerIdx &&
+      rawIdx !== lastAnnouncerIdx
+    ) return
     if (HEADER_KEYS.some(k => trimmed.startsWith(k))) return
     if (rawIdx < headerEndIdx && rawIdx !== firstAnnouncerIdx && rawIdx !== lastAnnouncerIdx) {
       if (trimmed.startsWith('NARRATOR:') || trimmed.startsWith('ANNOUNCER:')) return
