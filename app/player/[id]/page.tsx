@@ -404,7 +404,7 @@ function PlayerContent() {
     const ci = playlistIndexRef.current
     if (!pl || ci < 0 || ci >= pl.length - 1) {
       // No more direct-opened series episodes — return to the public library surface.
-      router.push('/library-new')
+      router.push('/library')
       return
     }
     const next = pl[ci + 1]
@@ -443,7 +443,7 @@ function PlayerContent() {
       if (playlistRef.current.length > 0 && playlistIndexRef.current < playlistRef.current.length - 1) {
         setTimeout(() => advancePlaylist(), 2500)
       } else {
-        setTimeout(() => router.push('/library-new'), 3000)
+        setTimeout(() => router.push('/library'), 3000)
       }
     }
   }
@@ -701,7 +701,7 @@ function PlayerContent() {
             if (playlistRef.current.length > 0 && playlistIndexRef.current < playlistRef.current.length - 1) {
               setTimeout(() => advancePlaylist(), 2500)
             } else {
-              setTimeout(() => router.push('/library-new'), 1500)
+              setTimeout(() => router.push('/library'), 1500)
             }
             return
           }
