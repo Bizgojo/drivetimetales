@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import os
 import re
 import sys
 import time
@@ -43,6 +44,50 @@ def post_json(url: str, payload: dict, timeout: int = 300):
         headers={"Content-Type": "application/json"},
     )
     with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+def env_value(key: str) -> str:
+    value = os.environ.get(key, "").strip()
+    if value:
+        return value
+
+    env_path = Path(__file__).resolve().parents[1] / ".env.local"
+    if not env_path.exists():
+        return ""
+
+    for line in env_path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        name, raw = stripped.split("=", 1)
+        if name.strip() != key:
+            continue
+        return raw.strip().strip('"').strip("'")
+    return ""
+
+def patch_story_review_ready(story_id: str):
+    supabase_url = env_value("NEXT_PUBLIC_SUPABASE_URL")
+    service_key = env_value("SUPABASE_SERVICE_ROLE_KEY")
+    if not supabase_url or not service_key:
+        raise RuntimeError("Supabase URL or service role key missing for review-ready update")
+
+    payload = json.dumps({
+        "status": "audio_ready",
+        "is_hidden": True,
+        "published_on": None,
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        f"{supabase_url.rstrip('/')}/rest/v1/stories?id=eq.{story_id}",
+        data=payload,
+        method="PATCH",
+        headers={
+            "Content-Type": "application/json",
+            "apikey": service_key,
+            "Authorization": f"Bearer {service_key}",
+            "Prefer": "return=representation",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=300) as r:
         return json.loads(r.read().decode("utf-8"))
 
 def download_file(url: str, dest: Path):
@@ -272,28 +317,14 @@ def main():
     write_status(job_id, {
         **job,
         "status": "running",
-        "phase": "publishing",
-        "message": "Publishing story to live feed",
+        "phase": "ready_for_review",
+        "message": "Marking audio ready for Marc review",
         "projectDir": str(project_dir),
         "audioUrl": audio_url,
         "updatedAt": now_iso(),
     })
 
-    publish_payload = {
-        "storyId": story_id,
-        "title": title,
-        "author": author,
-        "genre": genre,
-        "audio_url": audio_url,
-        "cover_url": cover_url,
-        "description": description,
-        "duration_mins": mins,
-        "is_free": True,
-    }
-    if queue_id:
-        publish_payload["queueId"] = queue_id
-
-    published = post_json(f"{BASE_URL}/api/admin/publish-story", publish_payload)
+    review_update = patch_story_review_ready(story_id)
 
     write_pipeline_state(pipeline_state_path, {
         "jobId": job_id,
@@ -306,21 +337,22 @@ def main():
         "cover_file": "",
         "audio_url": audio_url,
         "cover_url": cover_url,
-        "status": "published",
+        "status": "ready_for_review",
         "updatedAt": now_iso(),
     })
 
     write_status(job_id, {
         **job,
         "status": "complete",
-        "phase": "published",
-        "message": "Headless worker created final mix, imported audio, and published story",
+        "phase": "ready_for_review",
+        "message": "Audio ready for Marc review",
         "projectDir": str(project_dir),
         "pipelineStatePath": str(pipeline_state_path),
         "finalMix": str(final_mix),
         "coverFile": "",
         "audioUrl": audio_url,
-        "publishResult": published,
+        "durationMins": mins,
+        "reviewReadyUpdate": review_update,
         "updatedAt": now_iso(),
     })
 
