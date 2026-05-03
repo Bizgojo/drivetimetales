@@ -5,7 +5,7 @@ Location: app/page.tsx
 Updated: February 15, 2026
 
 PURPOSE:
-Public landing page for new visitors. Single CTA → /welcome
+Public landing page for new visitors. Primary trial CTA → /signup
 Supports ?partner=slug for QR code partner promotions.
 ================================================================================
 */
@@ -70,7 +70,7 @@ function LandingContent() {
     } catch (_) {}
   }, [partner])
 
-  const ctaHref = partner ? `/welcome?partner=${partner}` : '/welcome'
+  const ctaHref = partner ? `/signup?partner=${partner}` : '/signup'
 
   return (
     <div style={{ 

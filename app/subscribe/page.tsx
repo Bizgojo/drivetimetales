@@ -40,7 +40,7 @@ export default function SubscribePage() {
         </h1>
 
         <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: '15px', lineHeight: 1.7, margin: '0 0 28px' }}>
-          Original audio dramas made for people on the move. Subscribe to get full access to every story.
+          Original audio dramas made for people on the move. Start your 14-day free trial and get full access to every story.
         </p>
 
         <div style={{
@@ -55,7 +55,8 @@ export default function SubscribePage() {
           <div style={{ marginTop: '12px', fontSize: '13px', color: 'rgba(255,255,255,0.75)', lineHeight: 1.8 }}>
             ✓ Full access to all stories<br />
             ✓ New stories added weekly<br />
-            ✓ Listen or read — even offline
+            ✓ Listen or read — even offline<br />
+            ✓ Credit card required · cancel before trial ends and you won't be charged
           </div>
         </div>
 
@@ -67,7 +68,7 @@ export default function SubscribePage() {
             cursor: 'pointer', marginBottom: '12px',
           }}
         >
-          Subscribe Now →
+          Start Free Trial →
         </button>
 
 
