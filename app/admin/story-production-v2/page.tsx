@@ -873,6 +873,11 @@ export default function StoryProductionV2Page() {
       return !!episode.script && (episode.status === 'validator_passed' || validation === 'PASS')
     })
   const hasActiveAction = !!activeAction
+  const canGeneratePackageScripts = !!seriesPackage
+    && packageEpisodeCount > 0
+    && !packageAllScriptsPresent
+    && !loading
+    && !hasActiveAction
   const canScore = seriesPackage ? packageScriptsReady && !loading : !!storyId && !!script && !loading
   const canValidate = seriesPackage ? packageScriptsReady && !loading : !!storyId && !!script && !loading
   const canProduce = seriesPackage ? packageReadyForAsc && !loading : !!storyId && !!script && status === 'validator_passed'
@@ -1841,7 +1846,7 @@ export default function StoryProductionV2Page() {
           ) : null}
 
           <div className="flex gap-3 flex-wrap">
-            <button disabled={!canGenerate || loading || hasActiveAction || packageAllScriptsPresent} className={generateActionClass} onClick={generateScript}>
+            <button disabled={seriesPackage ? !canGeneratePackageScripts : !canGenerate || loading || hasActiveAction} className={generateActionClass} onClick={generateScript}>
               <ButtonLabel loading={activeAction === 'generateScript' || activeAction === 'generateSeriesScripts'}>
                 {activeAction === 'generateSeriesScripts'
                   ? packageSomeScriptsPresent ? 'Generating Missing Episodes...' : 'Generating Episodes...'
