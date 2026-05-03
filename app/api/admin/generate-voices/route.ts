@@ -429,9 +429,9 @@ function parseScript(script: string): ScriptLine[] {
   })
   const firstAnnouncerIdx = announcerIndices[0] ?? -1
   const lastAnnouncerIdx = announcerIndices[announcerIndices.length - 1] ?? -1
-  const scriptStartIdx = rawLines.findIndex(l =>
-    l.includes('[START AUDIO DRAMA SCRIPT]') || l.includes('CHARACTER GUIDE')
-  )
+  const explicitScriptStartIdx = rawLines.findIndex(l => l.includes('[START AUDIO DRAMA SCRIPT]'))
+  const characterGuideStartIdx = rawLines.findIndex(l => l.includes('CHARACTER GUIDE'))
+  const scriptStartIdx = explicitScriptStartIdx > -1 ? explicitScriptStartIdx : characterGuideStartIdx
   const headerEndIdx = scriptStartIdx > -1 ? scriptStartIdx : (firstAnnouncerIdx + 1)
   const HEADER_KEYS = [
     'SERIES:', 'EPISODE:', 'AUTHOR:', 'GENRE:', 'DESCRIPTION:', 'SUNO PROMPT:',
