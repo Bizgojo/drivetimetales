@@ -6,8 +6,8 @@ import { LogoStacked } from '@/components/ui/Logo';
 
 const faqs = [
   {
-    q: 'What is DriveTimeTales?',
-    a: 'DriveTimeTales is an audio story platform designed for drivers. Listen to engaging stories during your commute, road trip, or long haul.'
+    q: 'What is Endless Tales?',
+    a: 'Endless Tales is an audio story platform designed for drivers. Listen to engaging stories during your commute, road trip, or long haul.'
   },
   {
     q: 'How does listening work?',
@@ -15,7 +15,7 @@ const faqs = [
   },
   {
     q: 'Can I cancel my subscription?',
-    a: 'Freedom Pack credits never expire. Subscription credits refresh monthly - unused credits don\'t roll over.'
+    a: 'You can cancel anytime from your account. You keep access until the end of your current billing period.'
   },
   {
     q: 'Can I listen offline?',
@@ -51,7 +51,7 @@ export default function AboutPage() {
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-6">
           <h2 className="text-white font-bold text-lg mb-2">Our Mission</h2>
           <p className="text-white text-sm">
-            We believe every drive should be an adventure. DriveTimeTales brings 
+            We believe every drive should be an adventure. Endless Tales brings 
             professional audio stories to drivers everywhere - truckers, commuters, 
             road trippers, and anyone who loves a good story.
           </p>

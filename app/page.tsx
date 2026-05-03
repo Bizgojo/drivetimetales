@@ -1,6 +1,6 @@
 /*
 ================================================================================
-🏠 LANDING PAGE - Drive Time Tales
+🏠 LANDING PAGE - Endless Tales
 Location: app/page.tsx
 Updated: February 15, 2026
 
@@ -138,7 +138,7 @@ function LandingContent() {
             color: '#f0ece4',
             letterSpacing: '0.02em',
           }}>
-            Drive Time <span style={{ color: '#f0a030', fontStyle: 'italic' }}>Tales</span>
+            Endless <span style={{ color: '#f0a030', fontStyle: 'italic' }}>Tales</span>
           </span>
         </div>
       </header>
@@ -227,11 +227,17 @@ function LandingContent() {
               transition: 'all 0.3s ease',
               boxShadow: '0 0 40px rgba(240,160,48,0.3), 0 4px 20px rgba(0,0,0,0.4)'
             }}>
-              ▶ &nbsp;Start Listening Free
+              ▶ &nbsp;Start your 14-day free trial
             </Link>
             <span style={{ fontSize: '0.85rem', color: 'rgba(240,236,228,0.55)' }}>
-              No credit card required · 2 free stories
+              Credit card required. Cancel before the trial ends and you won&apos;t be charged.
             </span>
+            <Link href="/guest" style={{
+              color: 'rgba(240,236,228,0.72)', fontSize: '0.9rem',
+              textDecoration: 'underline', textUnderlineOffset: '4px'
+            }}>
+              Listen to 2 free stories as a guest
+            </Link>
           </div>
         </div>
       </section>
@@ -272,7 +278,7 @@ function LandingContent() {
             { icon: '🛣️', title: 'Hands-Free Controls', desc: 'Large buttons, simple gestures, sticky playback bar. Designed so you never need to look at your phone while driving.' },
             { icon: '📚', title: 'Something for Everyone', desc: 'Learn something new with our educational series. Laugh out loud with comedy. Get lost in a thriller. Rediscover the classics. New stories added every week.' },
             { icon: '🎵', title: 'Road Trip Playlists', desc: "Heading cross-country? Build a playlist of multiple stories and series to carry you through the whole trip. Hours of entertainment, queued and ready." },
-            { icon: '💰', title: 'Flexible Plans', desc: "Subscribe for monthly credits starting at $2.99, or buy Freedom Packs anytime with no subscription required. Something for every kind of listener." },
+            { icon: '💰', title: 'Simple Access', desc: "Start with a 14-day free trial, then keep listening with one subscription. Cancel anytime before the trial ends and you won't be charged." },
           ].map((f, i) => (
             <div key={i} className="land-card" style={{
               background: '#12121a', border: '1px solid rgba(255,255,255,0.05)',
@@ -304,7 +310,7 @@ function LandingContent() {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 0, maxWidth: '600px', margin: '3rem auto 0' }}>
           {[
-            { num: '1', title: 'Create Your Free Account', desc: 'Sign up in 30 seconds and get 2 stories on the house.' },
+            { num: '1', title: 'Start Your Free Trial', desc: "Create your account, choose a plan, and start a 14-day trial. Credit card required, with no charge if you cancel before the trial ends." },
             { num: '2', title: 'Browse the Library', desc: 'Filter by genre, length, or mood. Find stories that match your drive time.' },
             { num: '3', title: 'Hit Play and Drive', desc: 'Tap play, set your phone down, and let the story carry you to your destination.' },
           ].map((s, i) => (
@@ -427,8 +433,16 @@ function LandingContent() {
           transition: 'all 0.3s ease',
           boxShadow: '0 0 40px rgba(240,160,48,0.3), 0 4px 20px rgba(0,0,0,0.4)'
         }}>
-          ▶ &nbsp;Start Listening Free
+          ▶ &nbsp;Start your 14-day free trial
         </Link>
+        <div style={{ position: 'relative', zIndex: 1, marginTop: '1rem' }}>
+          <Link href="/guest" style={{
+            color: 'rgba(240,236,228,0.72)', fontSize: '0.9rem',
+            textDecoration: 'underline', textUnderlineOffset: '4px'
+          }}>
+            Listen to 2 free stories as a guest
+          </Link>
+        </div>
       </section>
 
       {/* ===== FOOTER ===== */}
@@ -440,19 +454,19 @@ function LandingContent() {
           fontFamily: "'Playfair Display', serif",
           fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.5rem',
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
-        }}><span style={{ fontSize: '1.2rem' }}>🚛🚗</span> Drive Time <span style={{ color: '#f0a030', fontStyle: 'italic', marginLeft: '4px' }}>Tales</span></div>
+        }}><span style={{ fontSize: '1.2rem' }}>🚛🚗</span> Endless <span style={{ color: '#f0a030', fontStyle: 'italic', marginLeft: '4px' }}>Tales</span></div>
         <div style={{
           display: 'flex', justifyContent: 'center', gap: '2rem', marginBottom: '1rem'
         }}>
           {[
-            { label: 'Pricing', href: '/pricing' },
+            { label: 'Subscription', href: '/subscribe' },
             { label: 'About', href: '/about' },
-            { label: 'Start Listening Free', href: '/welcome' },
+            { label: 'Start Free Trial', href: '/signup' },
           ].map((l, i) => (
             <Link key={i} href={l.href} style={{
               fontSize: '0.85rem',
-              color: l.label === 'Start Listening Free' ? '#f0a030' : 'rgba(240,236,228,0.55)',
-              fontWeight: l.label === 'Start Listening Free' ? 600 : 400,
+              color: l.label === 'Start Free Trial' ? '#f0a030' : 'rgba(240,236,228,0.55)',
+              fontWeight: l.label === 'Start Free Trial' ? 600 : 400,
               textDecoration: 'none', transition: 'color 0.3s'
             }}>{l.label}</Link>
           ))}
@@ -569,7 +583,7 @@ function AudioSampleSection() {
             <div style={{
               fontFamily: "'Playfair Display', serif",
               fontSize: '1.1rem', fontWeight: 600, marginBottom: '4px'
-            }}>Drive Time Tales</div>
+            }}>Endless Tales</div>
             <div style={{ fontSize: '0.85rem', color: 'rgba(240,236,228,0.82)' }}>Preview — What You'll Hear</div>
             <div style={{ fontSize: '0.8rem', color: 'rgba(240,236,228,0.55)', marginTop: '2px' }}>
               {duration > 0 ? formatTime(duration) : '1:00'} sample

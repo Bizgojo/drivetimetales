@@ -110,7 +110,7 @@ export default function SettingsPage() {
         </section>
 
         <div className="text-center text-white text-sm">
-          <p>DriveTimeTales v1.0.0</p>
+          <p>Endless Tales v1.0.0</p>
           <p className="mt-1">Made with ❤️ for drivers</p>
         </div>
       </div>

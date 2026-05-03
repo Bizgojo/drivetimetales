@@ -86,7 +86,7 @@ export default function CancelSubscriptionPage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ fontSize: '20px' }}>🚛</span>
               <span style={{ fontSize: '20px' }}>🚗</span>
-              <span style={{ color: 'white', fontWeight: 'bold', marginLeft: '4px' }}>Drive Time </span>
+              <span style={{ color: 'white', fontWeight: 'bold', marginLeft: '4px' }}>Endless </span>
               <span style={{ color: '#fb923c', fontWeight: 'bold' }}>Tales</span>
             </div>
             
@@ -126,7 +126,7 @@ export default function CancelSubscriptionPage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ fontSize: '20px' }}>🚛</span>
               <span style={{ fontSize: '20px' }}>🚗</span>
-              <span style={{ color: 'white', fontWeight: 'bold', marginLeft: '4px' }}>Drive Time </span>
+              <span style={{ color: 'white', fontWeight: 'bold', marginLeft: '4px' }}>Endless </span>
               <span style={{ color: '#fb923c', fontWeight: 'bold' }}>Tales</span>
             </div>
             

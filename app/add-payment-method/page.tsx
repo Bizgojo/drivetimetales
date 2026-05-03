@@ -179,7 +179,7 @@ export default function AddPaymentMethodPage() {
           <Link href="/home" className="flex items-center gap-1">
             <span className="text-lg">🚛</span>
             <span className="text-lg">🚗</span>
-            <span className="font-bold text-white ml-1">Drive Time</span>
+            <span className="font-bold text-white ml-1">Endless</span>
             <span className="font-bold text-orange-400">Tales</span>
           </Link>
           <div className="w-12" />
