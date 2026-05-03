@@ -134,17 +134,20 @@ function SignUpContent() {
     : `${trialDays} days free`
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
-      <div style={{ width: '100%', maxWidth: '400px' }}>
-
-        {/* Header */}
-        <div style={{ textAlign: 'center', marginBottom: '1.5rem', display:'flex', flexDirection:'column', alignItems:'center', gap:'8px' }}>
-          <img src="/images/et-logo.png" alt="Endless Tales" style={{ height: '52px', objectFit: 'contain' }} />
-          <span style={{ color:'#ffffff', fontSize:'22px', fontWeight:800, letterSpacing:'-0.3px' }}>
-            Endless <span style={{ color:'#f97316' }}>Tales</span>
-          </span>
-          <p style={{ color: '#94a3b8', fontSize: '14px', margin: 0 }}>Audio stories for your me-time</p>
+    <div style={{ minHeight: '100vh', backgroundColor: '#020617', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      <header style={{ position: 'sticky', top: 0, zIndex: 60, width: '100%', background: 'rgba(2,6,23,0.96)', borderBottom: '1px solid rgba(148,163,184,0.16)', backdropFilter: 'blur(12px)', padding: 'calc(12px + env(safe-area-inset-top)) 16px 12px', boxSizing: 'border-box' }}>
+        <div style={{ maxWidth: '420px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+          <a href="/" style={{ display: 'flex', alignItems: 'center', gap: '8px', textDecoration: 'none' }}>
+            <img src="/images/et-logo.png" alt="Endless Tales" style={{ width: '32px', height: '32px', objectFit: 'contain' }} />
+            <span style={{ color:'#ffffff', fontSize:'19px', fontWeight:800, letterSpacing:'-0.3px', whiteSpace: 'nowrap' }}>
+              Endless <span style={{ color:'#f97316' }}>Tales</span>
+            </span>
+          </a>
+          <a href="/signin" style={{ color: '#f97316', fontSize: '14px', fontWeight: 700, textDecoration: 'none', whiteSpace: 'nowrap' }}>Sign in</a>
         </div>
+      </header>
+
+      <div style={{ width: '100%', maxWidth: '400px', padding: '24px 16px 16px', boxSizing: 'border-box' }}>
 
         {/* Trial badge */}
         <div style={{ background: 'linear-gradient(135deg, rgba(249,115,22,0.2), rgba(249,115,22,0.05))', border: '1px solid rgba(249,115,22,0.4)', borderRadius: '12px', padding: '12px 16px', marginBottom: '1.5rem', textAlign: 'center' }}>

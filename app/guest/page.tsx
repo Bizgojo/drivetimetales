@@ -89,8 +89,9 @@ export default function GuestPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: '#0a0a0f', color: 'white' }}>
-      <div style={{ padding: '1.25rem 1rem 0', display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+      <header style={{ position: 'sticky', top: 0, zIndex: 60, background: 'rgba(10,10,15,0.96)', borderBottom: '1px solid rgba(240,236,228,0.12)', backdropFilter: 'blur(12px)', padding: 'calc(12px + env(safe-area-inset-top)) 16px 12px' }}>
+        <div style={{ maxWidth: '640px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+          <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none' }}>
           <svg width="28" height="16" viewBox="0 0 28 16" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M7 8C7 5.24 9.24 3 12 3C13.93 3 15.6 4.07 16.5 5.65L14.5 7C14.05 6.1 13.09 5.5 12 5.5C10.62 5.5 9.5 6.62 9.5 8C9.5 9.38 10.62 10.5 12 10.5C13.09 10.5 14.05 9.9 14.5 9L16.5 10.35C15.6 11.93 13.93 13 12 13C9.24 13 7 10.76 7 8Z" fill="#e8541a"/>
             <path d="M21 8C21 10.76 18.76 13 16 13C14.07 13 12.4 11.93 11.5 10.35L13.5 9C13.95 9.9 14.91 10.5 16 10.5C17.38 10.5 18.5 9.38 18.5 8C18.5 6.62 17.38 5.5 16 5.5C14.91 5.5 13.95 6.1 13.5 7L11.5 5.65C12.4 4.07 14.07 3 16 3C18.76 3 21 5.24 21 8Z" fill="#e8541a"/>
@@ -98,8 +99,10 @@ export default function GuestPage() {
           <span style={{ fontSize: '1.1rem', fontWeight: 700, color: 'white', letterSpacing: '-0.01em' }}>
             Endless <span style={{ color: '#f0a030' }}>Tales</span>
           </span>
+          </Link>
+          <Link href="/signup" style={{ color: '#f0a030', fontSize: '0.88rem', fontWeight: 700, textDecoration: 'none', whiteSpace: 'nowrap' }}>Sign up</Link>
         </div>
-      </div>
+      </header>
 
       <div style={{ padding: '2rem 1rem 1.5rem', textAlign: 'center' }}>
         <p style={{ fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.15em', textTransform: 'uppercase' as const, color: '#f0a030', marginBottom: '0.75rem' }}>No account needed</p>

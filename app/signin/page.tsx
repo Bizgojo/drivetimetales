@@ -72,15 +72,20 @@ function SignInContent() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#020617', overflowY: 'auto', WebkitOverflowScrolling: 'touch' as any, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px 16px 60px' }}>
-      <div style={{ width: '100%', maxWidth: '380px' }}>
-
-        <div style={{ textAlign: 'center', marginBottom: '32px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
-          <img src="/images/et-logo.png" alt="Endless Tales" style={{ height: '52px', objectFit: 'contain' }} />
-          <span style={{ color: '#ffffff', fontSize: '22px', fontWeight: 800, letterSpacing: '-0.3px' }}>
-            Endless <span style={{ color: '#f97316' }}>Tales</span>
-          </span>
+    <div style={{ minHeight: '100vh', backgroundColor: '#020617', overflowY: 'auto', WebkitOverflowScrolling: 'touch' as any, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      <header style={{ position: 'sticky', top: 0, zIndex: 60, width: '100%', background: 'rgba(2,6,23,0.96)', borderBottom: '1px solid rgba(148,163,184,0.16)', backdropFilter: 'blur(12px)', padding: 'calc(12px + env(safe-area-inset-top)) 16px 12px', boxSizing: 'border-box' }}>
+        <div style={{ maxWidth: '420px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+          <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '8px', textDecoration: 'none' }}>
+            <img src="/images/et-logo.png" alt="Endless Tales" style={{ width: '32px', height: '32px', objectFit: 'contain' }} />
+            <span style={{ color: '#ffffff', fontSize: '19px', fontWeight: 800, letterSpacing: '-0.3px', whiteSpace: 'nowrap' }}>
+              Endless <span style={{ color: '#f97316' }}>Tales</span>
+            </span>
+          </Link>
+          <Link href="/signup" style={{ color: '#f97316', fontSize: '14px', fontWeight: 700, textDecoration: 'none', whiteSpace: 'nowrap' }}>Sign up</Link>
         </div>
+      </header>
+
+      <div style={{ width: '100%', maxWidth: '380px', padding: '32px 16px 60px', boxSizing: 'border-box' }}>
 
         <div style={{ backgroundColor: '#0f172a', borderRadius: '20px', padding: '28px 24px', border: '1px solid #1e293b' }}>
           <h1 style={{ color: 'white', fontSize: '22px', fontWeight: 800, margin: '0 0 6px', textAlign: 'center' }}>Welcome back</h1>

@@ -40,23 +40,29 @@ function SubscribeContent() {
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
-      justifyContent: 'center',
-      padding: '24px',
     }}>
-      <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-        <img src="/images/et-logo.png" alt="Endless Tales" style={{ height: '80px', objectFit: 'contain' }} />
-        <div style={{ fontSize: '22px', fontWeight: 900, color: 'white', marginTop: '8px', letterSpacing: '-0.5px' }}>Endless <span style={{ color: '#f97316' }}>Tales</span></div>
-      </div>
+      <header style={{ position: 'sticky', top: 0, zIndex: 60, width: '100%', background: 'rgba(2,6,23,0.96)', borderBottom: '1px solid rgba(148,163,184,0.16)', backdropFilter: 'blur(12px)', padding: 'calc(12px + env(safe-area-inset-top)) 16px 12px', boxSizing: 'border-box' }}>
+        <div style={{ maxWidth: '420px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+          <button onClick={() => router.push('/')} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
+            <img src="/images/et-logo.png" alt="Endless Tales" style={{ width: '32px', height: '32px', objectFit: 'contain' }} />
+            <span style={{ color: '#ffffff', fontSize: '19px', fontWeight: 800, letterSpacing: '-0.3px', whiteSpace: 'nowrap' }}>
+              Endless <span style={{ color: '#f97316' }}>Tales</span>
+            </span>
+          </button>
+          <button onClick={() => router.push('/signin')} style={{ background: 'none', border: 'none', color: '#f97316', cursor: 'pointer', fontSize: '14px', fontWeight: 700, padding: 0, whiteSpace: 'nowrap' }}>Sign in</button>
+        </div>
+      </header>
 
-      <div style={{
-        background: '#0f172a',
-        border: '1px solid rgba(249,115,22,0.25)',
-        borderRadius: '20px',
-        padding: '36px 28px',
-        maxWidth: '400px',
-        width: '100%',
-        textAlign: 'center',
-      }}>
+      <div style={{ width: '100%', maxWidth: '400px', padding: '32px 24px 24px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <div style={{
+          background: '#0f172a',
+          border: '1px solid rgba(249,115,22,0.25)',
+          borderRadius: '20px',
+          padding: '36px 28px',
+          width: '100%',
+          textAlign: 'center',
+          boxSizing: 'border-box',
+        }}>
         <div style={{ fontSize: '44px', marginBottom: '16px' }}>🎧</div>
 
         <h1 style={{ fontSize: '22px', fontWeight: 900, margin: '0 0 12px', lineHeight: 1.2 }}>
@@ -102,17 +108,18 @@ function SubscribeContent() {
         >
           Have a promo code?
         </button>
-      </div>
+        </div>
 
-      <p style={{ marginTop: '24px', fontSize: '13px', color: 'rgba(255,255,255,0.35)', textAlign: 'center' }}>
-        Already subscribed?{' '}
-        <button
-          onClick={() => router.push('/signin')}
-          style={{ background: 'none', border: 'none', color: '#f97316', cursor: 'pointer', fontSize: '13px', fontWeight: 600, padding: 0 }}
-        >
-          Sign in
-        </button>
-      </p>
+        <p style={{ marginTop: '24px', fontSize: '13px', color: 'rgba(255,255,255,0.35)', textAlign: 'center' }}>
+          Already subscribed?{' '}
+          <button
+            onClick={() => router.push('/signin')}
+            style={{ background: 'none', border: 'none', color: '#f97316', cursor: 'pointer', fontSize: '13px', fontWeight: 600, padding: 0 }}
+          >
+            Sign in
+          </button>
+        </p>
+      </div>
     </div>
   )
 }
