@@ -875,8 +875,8 @@ function PlayerContent() {
           <button onClick={handlePlayPause} style={{ flex:2, padding:'16px', borderRadius:'14px', border:'none', fontSize:'16px', fontWeight:700, cursor:'pointer', backgroundColor: isPlaying ? '#f97316' : '#22c55e', color:'white' }}>
             {isPlaying ? '⏸ Pause' : hasProgress ? '▶ Continue' : '▶ Play'}
           </button>
-          {hasProgress
-            ? <button onClick={() => {
+          {hasProgress && (
+            <button onClick={() => {
                 if (!isASC3 && story?.audio_url) {
                   resumeRef.current = 0
                   setHasProgress(false)
@@ -891,9 +891,11 @@ function PlayerContent() {
                   setCurrentTime(0); setCumTime(0)
                 }
               }} style={{ flex:1, padding:'16px', borderRadius:'14px', border:'none', fontSize:'13px', fontWeight:600, cursor:'pointer', backgroundColor:'rgba(255,255,255,0.08)', color:'white' }}>Start Over</button>
-            : (story as any)?.episode_number && (story as any).episode_number > 1 ? null : <button onClick={handleNotForMe} style={{ flex:1, padding:'16px', borderRadius:'14px', border:'none', fontSize:'13px', fontWeight:600, cursor:'pointer', backgroundColor:'rgba(255,255,255,0.08)', color:'white' }}>Not for Me</button>
-          }
+          )}
         </div>
+        {!hasProgress && !((story as any)?.episode_number && (story as any).episode_number > 1) && (
+          <button onClick={handleNotForMe} style={{ alignSelf:'center', marginTop:'-2px', padding:'6px 12px', border:'none', background:'transparent', color:'rgba(255,255,255,0.45)', fontSize:'12px', fontWeight:600, cursor:'pointer' }}>Not for me</button>
+        )}
       </div>
 
       {/* ── Info Modal Sheet ─────────────────────────────────────────────────── */}
