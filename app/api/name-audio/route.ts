@@ -9,7 +9,7 @@ const supabase = createClient(
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const rawName = searchParams.get('name')?.trim()
-  const voiceId = searchParams.get('voice_id') || 'wewocdDkjSLm9ZwjO7TD'
+  const voiceId = searchParams.get('voice_id') || 'KWDD3Wyq30ZF5NEL01EJ'
   if (!rawName) return NextResponse.json({ error: 'Missing name' }, { status: 400 })
   const name = rawName.charAt(0).toUpperCase() + rawName.slice(1).toLowerCase()
   const { data: cached } = await supabase.from('name_audio').select('audio_url').eq('first_name', name).eq('voice_id', voiceId).single()
