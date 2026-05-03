@@ -863,7 +863,11 @@ export async function POST(req: NextRequest) {
     if (introLine) {
       try {
         const introText = introLine.text
-        if (introText.includes('[LISTENER_NAME]')) {
+        const listenerNameCount = (introText.match(/\[LISTENER_NAME\]/g) || []).length
+        if (listenerNameCount > 1) {
+          throw new Error('Belle B intro must contain exactly one [LISTENER_NAME] placeholder.')
+        }
+        if (listenerNameCount === 1) {
           // Split into before/after name
           const parts = introText.split('[LISTENER_NAME]')
           const beforeText = parts[0].trim()
