@@ -16,10 +16,12 @@ export default function CancelSubscriptionPage() {
   const planKey = userAny?.plan || userAny?.subscription_type || 'free'
   
   const planNames: Record<string, string> = {
-    'test_driver': 'Test Driver',
-    'commuter': 'Commuter', 
-    'road_warrior': 'Road Warrior',
-    'free': 'Free'
+    'founding_member': 'Founding Member',
+    'standard': 'Unlimited',
+    'test_driver': 'Founding Member',
+    'commuter': 'Unlimited',
+    'road_warrior': 'Unlimited',
+    'free': 'No active subscription'
   }
 
   async function handleCancel() {
@@ -141,7 +143,7 @@ export default function CancelSubscriptionPage() {
             Your subscription has been cancelled. You'll continue to have access until the end of your current billing period.
           </p>
           <p className="text-slate-500 text-sm mb-6">
-            Any stories you've unlocked will remain in your collection forever.
+            You can keep listening to subscriber stories until your current access period ends.
           </p>
           <button
             onClick={() => router.push('/')}
@@ -177,7 +179,7 @@ export default function CancelSubscriptionPage() {
           <ul className="space-y-2 text-slate-400 text-sm">
             <li className="flex items-start gap-2">
               <span className="text-red-400">✕</span>
-              Monthly credit refreshes
+              Subscriber story access
             </li>
             <li className="flex items-start gap-2">
               <span className="text-red-400">✕</span>
@@ -196,11 +198,11 @@ export default function CancelSubscriptionPage() {
           <ul className="space-y-2 text-slate-400 text-sm">
             <li className="flex items-start gap-2">
               <span className="text-green-400">✓</span>
-              All stories you've already unlocked
+              Access through the end of your billing period
             </li>
             <li className="flex items-start gap-2">
               <span className="text-green-400">✓</span>
-              Access until end of billing period
+              Your account and listening preferences
             </li>
             <li className="flex items-start gap-2">
               <span className="text-green-400">✓</span>

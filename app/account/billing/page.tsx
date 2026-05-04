@@ -72,6 +72,9 @@ export default function BillingPage() {
   const planKey = userAny?.plan || userAny?.subscription_type || 'free'
   const plan = PLAN_DETAILS[planKey] || PLAN_DETAILS['free']
   const hasSubscription = planKey && planKey !== 'free'
+  const planPriceDisplay = plan.price.includes('/mo') || plan.price.includes('/month')
+    ? plan.price
+    : `${plan.price}/month`
 
   if (!user) {
     return (
@@ -96,7 +99,7 @@ export default function BillingPage() {
           <div className="flex justify-between items-center">
             <div>
               <p className="text-orange-400 font-bold text-lg">{plan.name}</p>
-              <p className="text-slate-400 text-sm">{plan.price}/month</p>
+              <p className="text-slate-400 text-sm">{planPriceDisplay}</p>
             </div>
             <div className="text-right">
               <p className="text-slate-400 text-sm">Active</p>
