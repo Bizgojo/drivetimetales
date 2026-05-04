@@ -786,7 +786,7 @@ function PlayerContent() {
       <audio ref={musicRef} loop style={{ display:'none' }} />
 
       {/* Header */}
-      <div style={{ padding:'10px 16px', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'space-between', background:'#0f172a', borderBottom:'1px solid rgba(148,163,184,0.06)' }}>
+      <div style={{ padding:'calc(10px + env(safe-area-inset-top)) 16px 10px', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'space-between', background:'#0f172a', borderBottom:'1px solid rgba(148,163,184,0.06)' }}>
         <button onClick={handleBack} style={{ width:'40px', height:'40px', borderRadius:'50%', backgroundColor:'#3b82f6', border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
           <svg width="18" height="18" fill="none" stroke="white" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7"/></svg>
         </button>
@@ -834,7 +834,7 @@ function PlayerContent() {
       </div>
 
       {/* Controls */}
-      <div style={{ flex:1, display:'flex', flexDirection:'column', justifyContent:'center', padding:'10px 20px 14px', gap:'10px', minHeight:0 }}>
+      <div style={{ flex:1, display:'flex', flexDirection:'column', justifyContent:'center', padding:'10px 20px calc(14px + env(safe-area-inset-bottom))', gap:'10px', minHeight:0 }}>
         <div>
           {playerSeriesTitle && (
             <div style={{ color:'white', fontSize:'22px', fontWeight:900, margin:'0 0 6px', textAlign:'center', lineHeight:1.08, fontFamily:'Inter, system-ui, sans-serif' }}>{playerSeriesTitle}</div>
