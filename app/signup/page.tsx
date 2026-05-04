@@ -130,7 +130,7 @@ function SignUpContent() {
   }
 
   const rewardText = offer
-    ? (offer.offer_type === 'free_days' ? offer.referred_reward + ' days free' : offer.referred_reward + ' credits')
+    ? (offer.offer_type === 'free_days' ? offer.referred_reward + ' days free' : 'Referral offer applied')
     : `${trialDays} days free`
 
   return (

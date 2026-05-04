@@ -112,7 +112,7 @@ export default function GuestPage() {
         <p style={{ color: 'rgba(240,236,228,0.7)', fontSize: '0.9rem', maxWidth: '320px', margin: '0 auto 1rem', lineHeight: 1.5 }}>
           {GUEST_STORY_GATE - guestStories > 0
             ? `You have ${GUEST_STORY_GATE - guestStories} free ${GUEST_STORY_GATE - guestStories === 1 ? 'story' : 'stories'} left — no signup required.`
-            : 'Create a free account to keep listening.'}
+            : 'Start your 14-day free trial to keep listening.'}
         </p>
         <div style={{ display: 'flex', justifyContent: 'center', gap: '8px' }}>
           {Array.from({ length: GUEST_STORY_GATE }).map((_, i) => (
