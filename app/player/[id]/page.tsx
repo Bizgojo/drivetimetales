@@ -862,9 +862,11 @@ function PlayerContent() {
             onPointerMove={handleSeekPointerMove}
             onPointerUp={handleSeekPointerUp}
             onPointerCancel={handleSeekPointerUp}
-            style={{ height:'6px', backgroundColor:'rgba(255,255,255,0.15)', borderRadius:'3px', overflow:'hidden', cursor:'pointer', touchAction:'none' }}
+            style={{ height:'22px', display:'flex', alignItems:'center', cursor:'pointer', touchAction:'none' }}
           >
-            <div style={{ height:'100%', backgroundColor:'#f97316', width:`${pct}%`, transition:'width 0.1s', borderRadius:'3px' }} />
+            <div style={{ height:'6px', width:'100%', backgroundColor:'rgba(255,255,255,0.15)', borderRadius:'3px', overflow:'hidden' }}>
+              <div style={{ height:'100%', backgroundColor:'#f97316', width:`${pct}%`, transition:'width 0.1s', borderRadius:'3px' }} />
+            </div>
           </div>
           <div style={{ display:'flex', justifyContent:'space-between', fontSize:'11px', color:'white', marginTop:'5px' }}>
             <span style={{ opacity:0.9 }}>{fmtMin(effTotal)} total</span>
