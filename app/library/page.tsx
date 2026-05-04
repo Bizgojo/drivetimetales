@@ -354,6 +354,7 @@ export default function LibraryPage() {
     () => availableGenres.filter((genre) => !genreSlots.some((slot) => slot.toLowerCase() === genre.toLowerCase())),
     [availableGenres, genreSlots]
   )
+  const moreMenuGenres = moreGenres.length > 0 ? moreGenres : availableGenres
 
   function selectMoreGenre(genre: string) {
     setGenreSlots((prev) => {
@@ -569,11 +570,11 @@ export default function LibraryPage() {
                 {GENRE_LABELS[g] || g}
               </button>
             ))}
-            {moreGenres.length > 0 && (
+            {availableGenres.length > 0 && (
               <button
                 onClick={() => setShowMoreGenres((show) => !show)}
                 style={{
-                  backgroundColor: moreGenres.includes(activeGenre) ? '#f97316' : '#2563eb',
+                  backgroundColor: moreGenres.includes(activeGenre) || showMoreGenres ? '#f97316' : '#2563eb',
                   color: 'white',
                   padding: '0 8px',
                   borderRadius: '6px',
@@ -587,10 +588,10 @@ export default function LibraryPage() {
                   whiteSpace: 'nowrap',
                 }}
               >
-                More ▼
+                More
               </button>
             )}
-            {showMoreGenres && moreGenres.length > 0 && (
+            {showMoreGenres && moreMenuGenres.length > 0 && (
               <div
                 style={{
                   position: 'absolute',
@@ -605,7 +606,7 @@ export default function LibraryPage() {
                   boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
                 }}
               >
-                {moreGenres.map((g) => (
+                {moreMenuGenres.map((g) => (
                   <button
                     key={g}
                     onClick={() => {
@@ -855,7 +856,7 @@ function StoryCard({
                 fontWeight: 500,
               }}
             >
-              {isSeries ? `Series · ${item.episodeCount} eps` : 'Single'}
+              {isSeries ? `Series · ${item.episodeCount} eps` : 'Story'}
             </span>
             {item.flag && (
               <span
@@ -909,9 +910,9 @@ function StoryCard({
                   border: 'none',
                   padding: '2px 6px',
                   borderRadius: '6px',
-                  fontSize: '10px',
+                  fontSize: '11px',
                   lineHeight: 1,
-                  minHeight: '20px',
+                  minHeight: '32px',
                   fontWeight: 500,
                   cursor: 'pointer',
                   display: 'flex',
@@ -934,9 +935,9 @@ function StoryCard({
                   border: '0.5px solid #3b82f6',
                   padding: '2px 6px',
                   borderRadius: '6px',
-                  fontSize: '10px',
+                  fontSize: '11px',
                   lineHeight: 1,
-                  minHeight: '20px',
+                  minHeight: '32px',
                   fontWeight: 500,
                   cursor: 'pointer',
                 }}
@@ -954,14 +955,14 @@ function StoryCard({
                     border: 'none',
                     padding: '2px 6px',
                     borderRadius: '6px',
-                    fontSize: '10px',
+                    fontSize: '11px',
                     lineHeight: 1,
-                    minHeight: '20px',
+                    minHeight: '32px',
                     fontWeight: 500,
                     cursor: 'pointer',
                   }}
                 >
-                  {showPlayAgain ? '▶ Play Again' : inProgress ? '▶ Continue' : '▶ Play now'}
+                  {showPlayAgain ? '▶ Play Again' : inProgress ? '▶ Continue' : isSeries ? '▶ Play series' : '▶ Play now'}
                 </button>
                 <button
                   onClick={onTogglePlaylist}
@@ -972,14 +973,14 @@ function StoryCard({
                     border: 'none',
                     padding: '2px 6px',
                     borderRadius: '6px',
-                    fontSize: '10px',
+                    fontSize: '11px',
                     lineHeight: 1,
-                    minHeight: '20px',
+                    minHeight: '32px',
                     fontWeight: 500,
                     cursor: 'pointer',
                   }}
                 >
-                  + Playlist
+                  + Queue
                 </button>
               </>
             )}
