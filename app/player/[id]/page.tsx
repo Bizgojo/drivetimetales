@@ -67,6 +67,7 @@ function PlayerContent() {
   const welcomeIndexRef = useRef(0)
   const inWelcomeRef    = useRef(false)
   const [cumTime, setCumTime]   = useState(0)
+  const [audioErrorMessage, setAudioErrorMessage] = useState('')
 
   // ── Pills state ────────────────────────────────────────────────────────────
   const [activeModal, setActiveModal] = useState<'author' | 'narrator' | 'prose' | null>(null)
@@ -169,6 +170,7 @@ function PlayerContent() {
       let redirected = false
       let stage = 'start'
       try {
+        setAudioErrorMessage('')
         stage = 'story-row'
         const { data, error } = await supabase
           .from('stories')
@@ -631,7 +633,7 @@ function PlayerContent() {
   const effCur   = isASC3 ? cumTime : currentTime
   const pct      = effTotal > 0 ? Math.min(100, (effCur / effTotal) * 100) : 0
 
-  if (loading) return <div style={{ height:'100dvh', backgroundColor:'#020617', display:'flex', alignItems:'center', justifyContent:'center' }}><div style={{ width:'40px', height:'40px', border:'4px solid #f97316', borderTopColor:'transparent', borderRadius:'50%', animation:'spin 1s linear infinite' }} /><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>
+  if (loading) return <div style={{ height:'100dvh', backgroundColor:'#020617', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'14px' }}><div style={{ width:'40px', height:'40px', border:'4px solid #f97316', borderTopColor:'transparent', borderRadius:'50%', animation:'spin 1s linear infinite' }} /><p style={{ color:'rgba(255,255,255,0.72)', fontSize:'14px', fontWeight:600, margin:0 }}>Loading story...</p><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>
   if (!story)   return <div style={{ height:'100dvh', backgroundColor:'#020617', color:'white', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'24px', textAlign:'center' }}><p style={{ marginBottom:'16px' }}>This story isn’t available yet.</p><button onClick={() => router.push('/library')} style={{ color:'#f97316', background:'none', border:'1px solid rgba(249,115,22,0.35)', borderRadius:'10px', padding:'10px 16px', cursor:'pointer', fontWeight:700 }}>Back to Library</button></div>
 
   const isSeriesReadIt = Boolean((story as any).series_id && seriesProseChapters.length > 0)
@@ -754,6 +756,7 @@ function PlayerContent() {
                 message: audio.error?.message,
               })
               setIsPlaying(false)
+              setAudioErrorMessage('Couldn’t load audio. Try again.')
             }
             return
           }
@@ -854,6 +857,15 @@ function PlayerContent() {
             </div>
           )}
         </div>
+        {audioErrorMessage && (
+          <div style={{ border:'1px solid rgba(249,115,22,0.28)', background:'rgba(249,115,22,0.08)', borderRadius:'14px', padding:'12px', textAlign:'center' }}>
+            <p style={{ color:'white', fontSize:'13px', fontWeight:700, margin:'0 0 10px' }}>{audioErrorMessage}</p>
+            <div style={{ display:'flex', gap:'8px' }}>
+              <button onClick={() => window.location.reload()} style={{ flex:1, padding:'10px 12px', borderRadius:'10px', border:'none', background:'#f97316', color:'white', fontSize:'13px', fontWeight:800, cursor:'pointer' }}>Try again</button>
+              <button onClick={() => router.push('/library')} style={{ flex:1, padding:'10px 12px', borderRadius:'10px', border:'1px solid rgba(255,255,255,0.16)', background:'rgba(255,255,255,0.06)', color:'white', fontSize:'13px', fontWeight:700, cursor:'pointer' }}>Back to Library</button>
+            </div>
+          </div>
+        )}
         <div>
           <div
             ref={progressBarRef}
