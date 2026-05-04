@@ -71,6 +71,12 @@ export default function LeaderboardPage() {
     return name
   }
 
+  function getRewardSummary(entry: LeaderboardEntry) {
+    if (entry.total_days_earned > 0) return entry.total_days_earned + ' days earned'
+    if (entry.successful_referrals > 0) return entry.successful_referrals + ' rewards earned'
+    return 'No rewards yet'
+  }
+
   if (loading) return (<div style={{ minHeight: '100vh', backgroundColor: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ width: '40px', height: '40px', border: '4px solid #f97316', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} /><style dangerouslySetInnerHTML={{ __html: '@keyframes spin { to { transform: rotate(360deg); } }' }} /></div>)
 
   return (
@@ -102,9 +108,9 @@ export default function LeaderboardPage() {
               </div>
               <div style={{ textAlign: 'right' }}>
                 <div style={{ color: '#22c55e', fontSize: '20px', fontWeight: 'bold' }}>
-                  {userStats.total_days_earned > 0 ? userStats.total_days_earned + 'd' : userStats.total_credits_earned + 'cr'}
+                  {userStats.total_days_earned > 0 ? userStats.total_days_earned + 'd' : userStats.successful_referrals}
                 </div>
-                <div style={{ color: '#94a3b8', fontSize: '11px' }}>earned</div>
+                <div style={{ color: '#94a3b8', fontSize: '11px' }}>{userStats.total_days_earned > 0 ? 'earned' : 'rewards'}</div>
               </div>
             </div>
           </div>
@@ -168,7 +174,7 @@ export default function LeaderboardPage() {
                         {getName(entry)} {isCurrentUser && <span style={{ color: '#22c55e', fontSize: '11px' }}>(you)</span>}
                       </div>
                       <div style={{ color: '#94a3b8', fontSize: '11px' }}>
-                        {entry.total_days_earned > 0 ? entry.total_days_earned + ' days earned' : entry.total_credits_earned > 0 ? entry.total_credits_earned + ' credits earned' : 'No rewards yet'}
+                        {getRewardSummary(entry)}
                       </div>
                     </div>
                   </div>

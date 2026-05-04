@@ -96,6 +96,9 @@ export default function ReferralDashboardPage() {
   const totalEarned = currentOffer 
     ? stats.rewarded * currentOffer.referrer_reward 
     : stats.rewarded * 14
+  const earnedDisplay = currentOffer?.offer_type === 'free_days'
+    ? `${totalEarned} days`
+    : `${stats.rewarded} rewards`
 
   if (loading) {
     return (
@@ -161,7 +164,7 @@ export default function ReferralDashboardPage() {
           <div style={{ backgroundColor: '#0f172a', borderRadius: '8px', padding: '1rem', textAlign: 'center' }}>
             <div style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '0.25rem' }}>Total Earned</div>
             <div style={{ color: '#22c55e', fontSize: '32px', fontWeight: 'bold' }}>
-              {currentOffer?.offer_type === 'free_days' ? `${totalEarned} days` : `${totalEarned} credits`}
+              {earnedDisplay}
             </div>
             {currentOffer?.offer_type === 'free_days' && (
               <div style={{ color: '#94a3b8', fontSize: '12px', marginTop: '0.25rem' }}>

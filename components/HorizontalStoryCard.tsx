@@ -9,14 +9,13 @@ const FLAG_CONFIG: Record<string, { bg: string; text: string; priority: number }
   'owned':          { bg: '#f97316', text: 'white',  priority: 3 },
   'trending':       { bg: '#14b8a6', text: 'white',  priority: 5 },
   'new':            { bg: '#3b82f6', text: 'white',  priority: 6 },
-  'free':           { bg: '#9333ea', text: 'white',  priority: 7 },
   'editors-pick':   { bg: '#9333ea', text: 'white',  priority: 8 },
   'listeners-pick': { bg: '#9333ea', text: 'white',  priority: 9 },
 }
 
 const FLAG_LABELS: Record<string, string> = {
   'continue': 'Continue', 'reserved': 'Reserved',
-  'trending': 'Trending', 'new': 'NEW', 'free': 'FREE',
+  'trending': 'Trending', 'new': 'NEW',
   'editors-pick': "Editor's Pick", 'listeners-pick': "Listener's Pick",
   'not-for-me': '👎 Not For Me',
 }
@@ -79,12 +78,12 @@ export default function HorizontalStoryCard({ id, title, genre, author, duration
 
   let finalFlags = flags
   if ((!flags || flags.length === 0) && flag) {
-    const flagMap: Record<string, string> = { 'free': 'free', 'editors-pick': 'editors-pick', 'readers-choice': 'listeners-pick', 'trending': 'trending' }
+    const flagMap: Record<string, string> = { 'editors-pick': 'editors-pick', 'readers-choice': 'listeners-pick', 'trending': 'trending' }
     const mappedFlag = flagMap[flag]
     if (mappedFlag) finalFlags = [mappedFlag]
   }
   if (not_for_me) finalFlags = ['not-for-me']
-  finalFlags = finalFlags.filter(f => f !== 'continue' && f !== 'owned')
+  finalFlags = finalFlags.filter(f => f !== 'continue' && f !== 'owned' && f !== 'free')
 
   const displayFlags = getDisplayFlags(finalFlags)
   const durationLabel = duration_mins ? `${duration_mins} min` : null
