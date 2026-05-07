@@ -3,10 +3,12 @@
 
 **Owner:** Marc Postlewaite
 **Last Updated:** May 7, 2026
-**Version:** 1.2
+**Version:** 1.3
 **Audience:** Codex (Claude Code) — building the integrations and automation layer
 
-**Changes from v1.1 (May 7, 2026):** Three formula bug fixes and one new automation discovered during end-to-end schema validation testing. See Section 5.5 (Validated Formula Reference) for canonical formula text and Section 9.5 (Complete-Status Guard) for the new automation. The stress test script in Section 9 already includes auto-freeze behavior — clarifying note added.
+**Changes from v1.2 (May 7, 2026, afternoon):** Priority 3 architecture revised. The original design used Airtable's "Run a script" automation action, but that action requires Airtable Business plan ($54/seat/month). To avoid a $648/year cost increase for a single feature, the stress test now runs as a Vercel webhook endpoint (`/api/cron/stress-test`) triggered by an Airtable "Send a webhook" action. The logic is unchanged — same 90-day projection, same $5K floor, same auto-freeze. Only the runtime moves from Airtable to Vercel. See Section 9 for the new architecture and Section 9.5 for the updated complete-status guard.
+
+**Changes from v1.1 (May 7, 2026, morning):** Three formula bug fixes and one new automation discovered during end-to-end schema validation testing. See Section 5.5 (Validated Formula Reference) for canonical formula text and Section 9.5 (Complete-Status Guard) for the new automation.
 
 **Changes from v1.0:** All eight open questions answered. Funnel expanded for free-story + 14-day trial flow. Annual price corrected to $59.99. Stress floor floored at $5,000. Daily fresh recommendations from Hal with anti-anchoring rule. Hal Marketing Capabilities Buildout added as Appendix A.
 
@@ -99,7 +101,7 @@ A scheduled job that pulls the current Mercury Bank balance once per day and wri
 The script that runs after the Mercury pull, computes total committed campaign spend and total recurring expenses, and populates the rest of the snapshot row.
 
 ### Priority 3: Cash floor stress test (approval guard)
-An Airtable automation that runs when a campaign's status changes to Approved. Computes the 90-day cash floor with the new campaign included. If it breaches the stress threshold, reverts the status to Recommended and writes the reason. Includes auto-freeze of baseline forecast values on success — see Section 9 for why this is critical.
+A Vercel webhook endpoint at `/api/cron/stress-test` triggered by an Airtable "Send a webhook" automation when a campaign's status changes to Approved. The endpoint computes the 90-day cash floor with the new campaign included. If it breaches the stress threshold, reverts the status to Recommended and writes the reason. Includes auto-freeze of baseline forecast values on success. **Architecture changed in v1.3** — moved from Airtable script to Vercel webhook because Airtable's "Run a script" action requires Business plan ($54/seat/month). See Section 9.
 
 ### Priority 3.5: Complete-status guard (added in v1.2)
 An Airtable automation that runs when a campaign's status changes to Complete. If Actual End Date is empty, sends Marc an email alert. Does not block the status change — see Section 9.5 for rationale.
@@ -515,28 +517,75 @@ Write to today's Cash Snapshots row:
 
 ### What it does
 
-When a Campaigns record's Status changes to Approved, run the stress test. If passes, copy Forecast values to Frozen Forecast values. If fails, revert status to Recommended and write rejection reason.
+When a Campaigns record's Status changes to Approved, the Airtable Automation sends a webhook to a Vercel endpoint. The endpoint runs the 90-day cash floor projection. If the campaign passes the stress test, the endpoint writes the Frozen baseline values back to the campaign record. If it fails, the endpoint reverts Status to Recommended and writes a Rejection Reason.
 
-### Why this automation is critical (added in v1.2)
+### Architecture change in v1.3 — why a webhook instead of an Airtable script
+
+The original v1.1 design used Airtable's "Run a script" automation action. That action requires Airtable Business plan ($54/seat/month = $648/year). Marc's Endless Tales monthly burn is $405. Adding $54/month for one feature is a 13% increase in operating costs and not justified.
+
+Instead, the stress test runs as a Vercel webhook endpoint. Airtable's "Send a webhook" automation action is available on the free plan, so this design works without any Airtable plan upgrade. The logic is identical to the v1.1 script — same 90-day projection, same MAX($5,000, 90 × daily_burn) floor, same auto-freeze behavior on pass, same Status revert + Rejection Reason on fail. Only the runtime moves from Airtable to Vercel.
+
+Side benefits of this architecture:
+- Logic lives in version-controlled code, not stranded in an Airtable script editor
+- Easier to debug (Vercel logs, local testing, unit tests possible)
+- Reusable from other contexts (e.g., a "preview stress test" button before approval)
+- Faster iteration when constants change
+
+### Why the auto-freeze is critical (preserved from v1.2)
 
 Schema validation testing on 5/7/2026 confirmed that **without this automation, Marc must manually populate four fields every time a campaign is approved** (Frozen Forecast Spend, Frozen Forecast CAC, Frozen Forecast Paid Subs, Approved Date). This is error-prone — during testing, Marc forgot to populate these fields and the variance tracking didn't work until they were filled in retroactively.
 
-The stress test script below already includes the auto-freeze behavior in its success branch (see lines copying Frozen Forecast values when stress test passes). Codex must implement this exactly as written — the auto-freeze is not optional.
+The Vercel endpoint MUST include the auto-freeze behavior in its success branch. It is not optional.
 
 ### Stress floor calculation
 
 ```
-monthly_burn = sum of Active recurring expenses' Monthly Equivalent
+monthly_burn = sum of Active recurring expenses' Monthly Equivalent (read from Airtable)
 calculated_floor = 90 * monthly_burn / 30
 STRESS_FLOOR = MAX(5000, calculated_floor)
 ```
 
 The $5,000 minimum protects against the case where monthly burn is artificially low (early stage with few subscriptions). It cannot be lowered without explicit approval from Marc.
 
-### The script
+### Architecture diagram
 
-```javascript
-// Airtable automation — triggered when Status changes to "Approved"
+```
+[User flips Status to "Approved" in Airtable]
+              ↓
+[Airtable Automation: When Status is Approved → Send a webhook]
+              ↓
+[POST https://app.endless-tales.com/api/cron/stress-test]
+   Body: { recordId, secret }
+              ↓
+[Vercel endpoint validates secret]
+              ↓
+[Vercel reads from Airtable:
+   - Latest Cash Snapshot (Mercury Balance, Current MRR, Active Annual Subs)
+   - Recurring Expenses (Active rows, Monthly Equivalent)
+   - Other Approved/Active campaigns (for existing commitments)
+   - The proposed campaign's forecast values]
+              ↓
+[Vercel walks 90 days forward, computes min projected balance]
+              ↓
+        ┌─────────┴─────────┐
+        │                   │
+   PASS branch         FAIL branch
+        │                   │
+[Update Airtable:    [Update Airtable:
+ Frozen Forecast      Status = Recommended,
+ Spend, CAC,          Rejection Reason =
+ Paid Subs,           "STRESS TEST FAILED..."]
+ Approved Date]
+```
+
+### The Vercel endpoint
+
+Build at `/api/cron/stress-test` in the drivetimetales repo (App Router: `app/api/cron/stress-test/route.ts`).
+
+```typescript
+// app/api/cron/stress-test/route.ts
+
+import { NextRequest, NextResponse } from 'next/server';
 
 const STRESS_FLOOR_MIN = 5000;
 const REVENUE_DISCOUNT = 0.5;
@@ -548,151 +597,134 @@ const SUBSCRIPTION_MONTHLY = 7.99;
 const SUBSCRIPTION_ANNUAL = 59.99;
 const ANNUAL_MONTHLY_EQUIVALENT = 4.99;
 
-let inputConfig = input.config();
-let recordId = inputConfig.recordId;
+const AIRTABLE_API = 'https://api.airtable.com/v0';
+const BASE_ID = process.env.AIRTABLE_BASE_ID!;
+const API_KEY = process.env.AIRTABLE_API_KEY!;
+const WEBHOOK_SECRET = process.env.STRESS_TEST_WEBHOOK_SECRET!;
 
-let campaignsTable = base.getTable("Campaigns");
-let expensesTable = base.getTable("Recurring Expenses");
-let snapshotsTable = base.getTable("Cash Snapshots");
-
-let campaign = await campaignsTable.selectRecordAsync(recordId);
-let proposedSpend = campaign.getCellValue("Forecast Spend") || 0;
-let proposedStart = new Date(campaign.getCellValue("Forecast Start Date"));
-let proposedEnd = new Date(campaign.getCellValue("Forecast End Date"));
-let proposedSubs = campaign.getCellValue("Forecast Paid Subs") || 0;
-let proposedAnnualMix = (campaign.getCellValue("Forecast Annual Mix %") || 0) / 100;
-let proposedDuration = Math.max(1, Math.round((proposedEnd - proposedStart) / 86400000));
-
-// Get latest cash snapshot
-let snapshots = await snapshotsTable.selectRecordsAsync({
-  fields: ["Snapshot Date", "Mercury Balance", "Current MRR", "Active Annual Subs"],
-  sorts: [{field: "Snapshot Date", direction: "desc"}]
-});
-let currentCash = snapshots.records[0]?.getCellValue("Mercury Balance") || 0;
-let currentMRR = snapshots.records[0]?.getCellValue("Current MRR") || 0;
-
-// Get monthly burn and compute stress floor
-let expenses = await expensesTable.selectRecordsAsync({
-  fields: ["Active", "Monthly Equivalent"]
-});
-let monthlyBurn = 0;
-for (let r of expenses.records) {
-  if (r.getCellValue("Active")) {
-    monthlyBurn += r.getCellValue("Monthly Equivalent") || 0;
-  }
-}
-let dailyBurn = monthlyBurn / 30;
-let calculatedFloor = 90 * dailyBurn;
-let stressFloor = Math.max(STRESS_FLOOR_MIN, calculatedFloor);
-
-// Get existing committed campaigns (excluding this one)
-let allCampaigns = await campaignsTable.selectRecordsAsync({
-  fields: ["Status", "Frozen Forecast Spend", "Forecast Spend",
-           "Forecast Start Date", "Forecast End Date", "Actual Spend",
-           "Forecast Paid Subs", "Forecast Annual Mix %"]
-});
-
-let commitments = [];
-for (let r of allCampaigns.records) {
-  if (r.id === recordId) continue;
-  let status = r.getCellValue("Status")?.name;
-  if (status === "Approved" || status === "Active") {
-    let spend = r.getCellValue("Frozen Forecast Spend") || r.getCellValue("Forecast Spend") || 0;
-    let actualSpent = r.getCellValue("Actual Spend") || 0;
-    let remaining = Math.max(0, spend - actualSpent);
-    let start = new Date(r.getCellValue("Forecast Start Date"));
-    let end = new Date(r.getCellValue("Forecast End Date"));
-    let days = Math.max(1, Math.round((end - start) / 86400000));
-    let subs = r.getCellValue("Forecast Paid Subs") || 0;
-    let annualMix = (r.getCellValue("Forecast Annual Mix %") || 0) / 100;
-    commitments.push({remaining, start, end, days, subs, annualMix, dailyBurn: remaining / days});
-  }
-}
-
-// Project 90 days
-let balance = currentCash;
-let mrr = currentMRR;
-let minBalance = currentCash;
-let minDay = 0;
-let today = new Date();
-today.setHours(0,0,0,0);
-
-for (let d = 0; d < DAYS_TO_PROJECT; d++) {
-  let day = new Date(today);
-  day.setDate(day.getDate() + d);
+export async function POST(req: NextRequest) {
+  // Validate webhook secret
+  const body = await req.json();
+  const { recordId, secret } = body;
   
-  balance -= dailyBurn;
-  
-  for (let c of commitments) {
-    if (day >= c.start && day <= c.end) {
-      balance -= c.dailyBurn;
-    }
+  if (secret !== WEBHOOK_SECRET) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   
-  if (day >= proposedStart && day <= proposedEnd) {
-    balance -= proposedSpend / proposedDuration;
+  if (!recordId) {
+    return NextResponse.json({ error: 'recordId required' }, { status: 400 });
   }
   
-  // Apply daily churn
-  mrr *= (1 - ASSUMED_MONTHLY_CHURN / 30);
-  
-  // Daily MRR contribution
-  balance += (mrr * (1 - STRIPE_FEE_RATE)) / 30;
-  
-  // Existing campaigns' revenue
-  for (let c of commitments) {
-    let revenueStart = new Date(c.start);
-    revenueStart.setDate(revenueStart.getDate() + REVENUE_LAG_DAYS);
-    if (day.getTime() === revenueStart.getTime()) {
-      let monthlySubs = c.subs * (1 - c.annualMix);
-      let annualSubs = c.subs * c.annualMix;
-      let annualLump = annualSubs * SUBSCRIPTION_ANNUAL * REVENUE_DISCOUNT;
-      let monthlyRevenue = monthlySubs * SUBSCRIPTION_MONTHLY * REVENUE_DISCOUNT;
-      let annualMonthlyEq = annualSubs * ANNUAL_MONTHLY_EQUIVALENT * REVENUE_DISCOUNT;
-      balance += annualLump * (1 - STRIPE_FEE_RATE);
-      mrr += monthlyRevenue + annualMonthlyEq;
-    }
+  try {
+    // ... fetch campaign, snapshots, expenses, other campaigns
+    // ... walk 90 days
+    // ... write back to Airtable based on pass/fail
+    // (full implementation follows the same algorithm as v1.1's
+    //  Airtable script, just using fetch() against Airtable's REST API
+    //  instead of Airtable's scripting block API)
+    
+    const result = await runStressTest(recordId);
+    return NextResponse.json({ success: true, result });
+  } catch (error) {
+    console.error('Stress test failed:', error);
+    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
   }
-  
-  // Proposed campaign revenue
-  let proposedRevenueStart = new Date(proposedStart);
-  proposedRevenueStart.setDate(proposedRevenueStart.getDate() + REVENUE_LAG_DAYS);
-  if (day.getTime() === proposedRevenueStart.getTime()) {
-    let monthlySubs = proposedSubs * (1 - proposedAnnualMix);
-    let annualSubs = proposedSubs * proposedAnnualMix;
-    let annualLump = annualSubs * SUBSCRIPTION_ANNUAL * REVENUE_DISCOUNT;
-    let monthlyRevenue = monthlySubs * SUBSCRIPTION_MONTHLY * REVENUE_DISCOUNT;
-    let annualMonthlyEq = annualSubs * ANNUAL_MONTHLY_EQUIVALENT * REVENUE_DISCOUNT;
-    balance += annualLump * (1 - STRIPE_FEE_RATE);
-    mrr += monthlyRevenue + annualMonthlyEq;
-  }
-  
-  if (balance < minBalance) {
-    minBalance = balance;
-    minDay = d;
-  }
-}
-
-let minDate = new Date(today);
-minDate.setDate(minDate.getDate() + minDay);
-
-if (minBalance < stressFloor) {
-  await campaignsTable.updateRecordAsync(recordId, {
-    "Status": {name: "Recommended"},
-    "Rejection Reason": `STRESS TEST FAILED. With this campaign, projected cash floor is $${Math.round(minBalance).toLocaleString()} on ${minDate.toISOString().split('T')[0]} (day ${minDay}), below threshold of $${Math.round(stressFloor).toLocaleString()}. Stress floor is MAX($5,000 minimum, 90 × daily burn = $${Math.round(calculatedFloor).toLocaleString()}). To pass: reduce spend, delay start, or wait for revenue to accumulate.`
-  });
-  output.set("result", "BLOCKED");
-} else {
-  let cac = proposedSubs > 0 ? proposedSpend / proposedSubs : 0;
-  await campaignsTable.updateRecordAsync(recordId, {
-    "Frozen Forecast Spend": proposedSpend,
-    "Frozen Forecast CAC": cac,
-    "Frozen Forecast Paid Subs": proposedSubs,
-    "Approved Date": today.toISOString().split('T')[0]
-  });
-  output.set("result", "APPROVED");
 }
 ```
+
+The full algorithm — fetching data, walking 90 days, applying revenue lag, churn, fees, etc. — is identical to the v1.1 Airtable script in this section's prior version. Codex should translate the algorithm faithfully, just using Airtable's REST API (`https://api.airtable.com/v0/{baseId}/{tableId}`) for reads and writes instead of Airtable's scripting block API.
+
+Key Airtable REST endpoints needed:
+- `GET /Campaigns/{recordId}` — fetch the campaign being tested
+- `GET /Cash%20Snapshots?sort[0][field]=Snapshot+Date&sort[0][direction]=desc&maxRecords=1` — latest snapshot
+- `GET /Recurring%20Expenses?filterByFormula={Active}` — active recurring costs
+- `GET /Campaigns?filterByFormula=OR({Status}="Approved",{Status}="Active")` — existing commitments
+- `PATCH /Campaigns/{recordId}` — write Frozen values OR Status revert + Rejection Reason
+
+### Pass branch — write to Airtable
+
+```typescript
+// On stress test PASS:
+await fetch(`${AIRTABLE_API}/${BASE_ID}/Campaigns/${recordId}`, {
+  method: 'PATCH',
+  headers: {
+    'Authorization': `Bearer ${API_KEY}`,
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    fields: {
+      'Frozen Forecast Spend': proposedSpend,
+      'Frozen Forecast CAC': proposedSubs > 0 ? proposedSpend / proposedSubs : 0,
+      'Frozen Forecast Paid Subs': proposedSubs,
+      'Approved Date': today.toISOString().split('T')[0]
+    }
+  })
+});
+```
+
+### Fail branch — revert Status, write Rejection Reason
+
+```typescript
+// On stress test FAIL:
+const rejectionMessage = 
+  `STRESS TEST FAILED. With this campaign, projected cash floor is ` +
+  `$${Math.round(minBalance).toLocaleString()} on ${minDate.toISOString().split('T')[0]} ` +
+  `(day ${minDay}), below threshold of $${Math.round(stressFloor).toLocaleString()}. ` +
+  `Stress floor is MAX($5,000 minimum, 90 × daily burn = ` +
+  `$${Math.round(calculatedFloor).toLocaleString()}). ` +
+  `To pass: reduce spend, delay start, or wait for revenue to accumulate.`;
+
+await fetch(`${AIRTABLE_API}/${BASE_ID}/Campaigns/${recordId}`, {
+  method: 'PATCH',
+  headers: {
+    'Authorization': `Bearer ${API_KEY}`,
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    fields: {
+      'Status': 'Recommended',
+      'Rejection Reason': rejectionMessage
+    }
+  })
+});
+```
+
+### The Airtable Automation (manual setup by Marc)
+
+Marc creates this in the Airtable UI:
+
+1. Open Endless Tales - Campaigns base → Automations
+2. Create new automation, name: `Cash Floor Stress Test on Campaign Approval`
+3. Trigger: When record matches conditions
+   - Table: Campaigns
+   - Conditions: Status is Approved
+4. Action: **Send a webhook** (NOT "Run a script" — that requires Business plan)
+   - URL: `https://app.endless-tales.com/api/cron/stress-test`
+   - Method: POST
+   - Headers: `Content-Type: application/json`
+   - Body (JSON):
+     ```json
+     {
+       "recordId": "{Airtable Record ID from trigger}",
+       "secret": "{STRESS_TEST_WEBHOOK_SECRET value from env vars}"
+     }
+     ```
+5. Test the webhook (Airtable will fire a test POST to verify the endpoint is reachable)
+6. Turn the automation ON
+
+### New environment variable
+
+Add to both `.env.local` and Vercel Production:
+
+```
+STRESS_TEST_WEBHOOK_SECRET=<generate with: openssl rand -hex 32>
+```
+
+This secret protects the endpoint so external parties can't trigger stress tests by guessing the URL.
+
+### Idempotency consideration
+
+If Airtable retries the webhook (rare but possible), the endpoint should be idempotent. Reading the campaign's current state and re-running the calculation is safe — the result is deterministic given the same inputs. The PATCH back to Airtable is also idempotent in effect (writing the same Frozen values twice is harmless).
 
 ---
 
@@ -1131,6 +1163,7 @@ Email to Marc daily at 7 AM ET. Empty alert list = no email (don't train Marc to
 - `STRIPE_SECRET_KEY` — Stripe access (already exists)
 - `ANTHROPIC_API_KEY` — Claude API access
 - `CRON_SECRET` — authenticate cron requests
+- `STRESS_TEST_WEBHOOK_SECRET` — authenticate Airtable's webhook to /api/cron/stress-test (added in v1.3)
 
 Store in Vercel environment variables. Never commit to git.
 
@@ -1234,5 +1267,5 @@ Capabilities 6-7 are later because they're either lower-volume (landing pages ar
 
 ---
 
-*Endless Tales · Campaign Management System · v1.2 · May 7, 2026*
-*This document supersedes v1.1, v1.0, and any prior verbal or written specifications.*
+*Endless Tales · Campaign Management System · v1.3 · May 7, 2026*
+*This document supersedes v1.2, v1.1, v1.0, and any prior verbal or written specifications.*
