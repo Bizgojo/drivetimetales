@@ -32,6 +32,10 @@
     {
       "path": "/api/cron/mercury-snapshot",
       "schedule": "0 10 * * *"
+    },
+    {
+      "path": "/api/cron/snapshot-calculate",
+      "schedule": "10 10 * * *"
     }
   ]
 }

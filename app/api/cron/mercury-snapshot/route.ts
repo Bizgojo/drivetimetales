@@ -16,6 +16,8 @@ type SnapshotResult = {
   snapshotDate?: string
   recordId?: string
   mercuryBalance?: number
+  calculation?: unknown
+  calculationError?: string
   error?: string
 }
 
@@ -203,7 +205,34 @@ async function retryAirtableWrite(recordId: string | null, snapshotDate: string,
   throw lastError instanceof Error ? lastError : new Error(String(lastError))
 }
 
-async function runMercurySnapshot() {
+async function triggerSnapshotCalculate(origin: string) {
+  const cronSecret = process.env.CRON_SECRET
+  if (!cronSecret) throw new Error('Missing CRON_SECRET')
+
+  const response = await fetch(`${origin}/api/cron/snapshot-calculate`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${cronSecret}`,
+    },
+    cache: 'no-store',
+  })
+
+  const text = await response.text()
+  let payload: unknown = text
+  try {
+    payload = JSON.parse(text)
+  } catch {
+    // Keep raw text for diagnostics.
+  }
+
+  if (!response.ok) {
+    throw new Error(`snapshot-calculate failed ${response.status}: ${text.slice(0, 500)}`)
+  }
+
+  return payload
+}
+
+async function runMercurySnapshot(request: NextRequest) {
   let mercuryBalance: number
 
   try {
@@ -229,12 +258,24 @@ async function runMercurySnapshot() {
       mercuryBalance,
     })
 
+    let calculation: unknown
+    let calculationError: string | undefined
+    try {
+      calculation = await triggerSnapshotCalculate(new URL(request.url).origin)
+    } catch (error) {
+      calculationError = error instanceof Error ? error.message : String(error)
+      console.error('[mercury-snapshot] Snapshot calculation chain failed:', calculationError)
+      await sendMarcAlert('Mercury snapshot succeeded but calculation failed', `Mercury snapshot wrote successfully, but /api/cron/snapshot-calculate failed.\n\nSnapshot Date: ${snapshotDate}\nRecord ID: ${record.id}\nMercury Balance: ${mercuryBalance}\n\n${calculationError}`)
+    }
+
     return json({
       success: true,
       action,
       snapshotDate,
       recordId: record.id,
       mercuryBalance,
+      calculation,
+      calculationError,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -249,7 +290,7 @@ export async function GET(request: NextRequest) {
     return json({ success: false, error: 'Unauthorized' }, 401)
   }
 
-  return runMercurySnapshot()
+  return runMercurySnapshot(request)
 }
 
 export async function POST(request: NextRequest) {
@@ -257,5 +298,5 @@ export async function POST(request: NextRequest) {
     return json({ success: false, error: 'Unauthorized' }, 401)
   }
 
-  return runMercurySnapshot()
+  return runMercurySnapshot(request)
 }
