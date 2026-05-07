@@ -3,12 +3,14 @@
 
 **Owner:** Marc Postlewaite
 **Last Updated:** May 7, 2026
-**Version:** 1.3
+**Version:** 1.4
 **Audience:** Codex (Claude Code) — building the integrations and automation layer
 
-**Changes from v1.2 (May 7, 2026, afternoon):** Priority 3 architecture revised. The original design used Airtable's "Run a script" automation action, but that action requires Airtable Business plan ($54/seat/month). To avoid a $648/year cost increase for a single feature, the stress test now runs as a Vercel webhook endpoint (`/api/cron/stress-test`) triggered by an Airtable "Send a webhook" action. The logic is unchanged — same 90-day projection, same $5K floor, same auto-freeze. Only the runtime moves from Airtable to Vercel. See Section 9 for the new architecture and Section 9.5 for the updated complete-status guard.
+**Changes from v1.3 (May 7, 2026, afternoon):** Priority 3 architecture revised AGAIN due to plan-gating. The "Send a webhook" Airtable action turned out to be unavailable on Marc's Team plan trial (only Slack, Gmail, Twilio, etc. integrations are exposed; pure HTTP webhooks require Business plan). Rather than upgrade Airtable for one feature, the architecture is now POLLING: a Vercel cron polls Airtable every 5 minutes for newly-Approved campaigns whose Frozen Forecast Spend is empty, calls the existing /api/cron/stress-test endpoint for each. Same logic, different trigger. Priority 4 follows the same polling pattern. See Sections 9, 9.7, 10 for details. Priorities 1-4 are SHIPPED and verified in production as of this revision.
 
-**Changes from v1.1 (May 7, 2026, morning):** Three formula bug fixes and one new automation discovered during end-to-end schema validation testing. See Section 5.5 (Validated Formula Reference) for canonical formula text and Section 9.5 (Complete-Status Guard) for the new automation.
+**Changes from v1.2 (May 7, 2026, afternoon, first revision):** Priority 3 architecture revised — moved from Airtable script to Vercel webhook called by Airtable. (Superseded by v1.4 polling architecture above. Kept in changelog for traceability.)
+
+**Changes from v1.1 (May 7, 2026, morning):** Three formula bug fixes and one new automation discovered during end-to-end schema validation testing. See Section 5.5 (Validated Formula Reference) for canonical formula text and Section 9.5 (Complete-Status Guard) for the email alert.
 
 **Changes from v1.0:** All eight open questions answered. Funnel expanded for free-story + 14-day trial flow. Annual price corrected to $59.99. Stress floor floored at $5,000. Daily fresh recommendations from Hal with anti-anchoring rule. Hal Marketing Capabilities Buildout added as Appendix A.
 
@@ -100,14 +102,14 @@ A scheduled job that pulls the current Mercury Bank balance once per day and wri
 ### Priority 2: Cash Snapshots calculation script
 The script that runs after the Mercury pull, computes total committed campaign spend and total recurring expenses, and populates the rest of the snapshot row.
 
-### Priority 3: Cash floor stress test (approval guard)
-A Vercel webhook endpoint at `/api/cron/stress-test` triggered by an Airtable "Send a webhook" automation when a campaign's status changes to Approved. The endpoint computes the 90-day cash floor with the new campaign included. If it breaches the stress threshold, reverts the status to Recommended and writes the reason. Includes auto-freeze of baseline forecast values on success. **Architecture changed in v1.3** — moved from Airtable script to Vercel webhook because Airtable's "Run a script" action requires Business plan ($54/seat/month). See Section 9.
+### Priority 3: Cash floor stress test (approval guard) — SHIPPED v1.4 (polling)
+A Vercel cron endpoint at `/api/cron/stress-test-poller` polls Airtable every 5 minutes for newly-Approved campaigns whose stress test hasn't run yet (filter: `Status="Approved" AND Frozen Forecast Spend=BLANK()`). For each match, it calls the underlying `/api/cron/stress-test` endpoint which computes the 90-day cash floor with the new campaign included. If the floor breaches the stress threshold, the endpoint reverts the status to Recommended and writes a Rejection Reason. If it passes, the endpoint freezes the baseline forecast values. **Architecture history:** v1.1 used Airtable scripts ($54/mo plan-gated), v1.3 used Airtable "Send a webhook" action ($54/mo plan-gated), v1.4 uses Vercel polling (works on Airtable free plan). See Section 9.
 
-### Priority 3.5: Complete-status guard (added in v1.2)
-An Airtable automation that runs when a campaign's status changes to Complete. If Actual End Date is empty, sends Marc an email alert. Does not block the status change — see Section 9.5 for rationale.
+### Priority 3.5: Complete-status guard (Airtable email alert) — SPEC ONLY, NOT YET BUILT
+An Airtable Automation that sends Marc an email when a campaign's Status changes to Complete but Actual End Date is empty. Available on Airtable free plan (uses "Send email" action, not webhook or script). See Section 9.5.
 
-### Priority 4: Task template auto-population
-An Airtable automation that runs when a campaign's status changes to Approved. Reads the matching template from Task Templates and creates Tasks records for the campaign.
+### Priority 4: Task template auto-population — SHIPPED v1.4 (polling)
+A Vercel cron endpoint at `/api/cron/task-template-applier` polls Airtable every 5 minutes (offset 1 minute from stress-test-poller via `1-56/5 * * * *`) for campaigns that passed stress test but haven't had tasks generated yet (filter: `Status="Approved" AND Frozen Forecast Spend!=BLANK() AND Tasks=BLANK()`). For each match, reads the matching channel's Task Templates and creates Tasks records with computed forecast dates relative to the campaign's start/end. Skips gracefully when channel has no template (Google, Other). See Section 10.
 
 ### Priority 5: Stripe subscriber attribution
 Capture UTM parameters at signup. Store them on the user record. Roll up subscriber counts by campaign for use in Actual Paid Subs (with 30-day net lookback).
@@ -513,29 +515,39 @@ Write to today's Cash Snapshots row:
 
 ---
 
-## 9. INTEGRATION 3: CASH FLOOR STRESS TEST (APPROVAL GUARD)
+## 9. INTEGRATION 3: CASH FLOOR STRESS TEST (APPROVAL GUARD) — SHIPPED v1.4
+
+### Status
+
+✅ **SHIPPED 5/7/2026.** Both endpoints live in production, end-to-end test verified with TEST-Stress-Pass (passed) and TEST-Stress-Fail (blocked correctly).
+
+- Stress test endpoint: `app/api/cron/stress-test/route.ts` (commit 63e2bd3)
+- Poller endpoint: `app/api/cron/stress-test-poller/route.ts` (commit ebf5178)
 
 ### What it does
 
-When a Campaigns record's Status changes to Approved, the Airtable Automation sends a webhook to a Vercel endpoint. The endpoint runs the 90-day cash floor projection. If the campaign passes the stress test, the endpoint writes the Frozen baseline values back to the campaign record. If it fails, the endpoint reverts Status to Recommended and writes a Rejection Reason.
+When Marc flips a campaign's Status to Approved in Airtable:
+1. Within 5 minutes, the polling cron at `/api/cron/stress-test-poller` notices the campaign (filter: Status=Approved AND Frozen Forecast Spend is empty)
+2. The poller calls `/api/cron/stress-test` with the campaign's record ID
+3. The stress test endpoint reads cash position, recurring expenses, existing commitments, and the proposed campaign's forecast values
+4. It walks 90 days forward, simulating burn, revenue lag, churn, and Stripe fees
+5. Computes the minimum projected cash balance over those 90 days
+6. If minimum balance < MAX($5,000, 90 × daily_burn): reverts Status to Recommended, writes Rejection Reason with breach details
+7. If minimum balance >= stress floor: freezes the baseline forecast values (Frozen Forecast Spend, Frozen Forecast CAC, Frozen Forecast Paid Subs, Approved Date) — this is the auto-freeze behavior
 
-### Architecture change in v1.3 — why a webhook instead of an Airtable script
+### Architecture history
 
-The original v1.1 design used Airtable's "Run a script" automation action. That action requires Airtable Business plan ($54/seat/month = $648/year). Marc's Endless Tales monthly burn is $405. Adding $54/month for one feature is a 13% increase in operating costs and not justified.
+**v1.1 (designed but not shipped):** Airtable "Run a script" automation. Discovered to require Business plan ($54/mo).
 
-Instead, the stress test runs as a Vercel webhook endpoint. Airtable's "Send a webhook" automation action is available on the free plan, so this design works without any Airtable plan upgrade. The logic is identical to the v1.1 script — same 90-day projection, same MAX($5,000, 90 × daily_burn) floor, same auto-freeze behavior on pass, same Status revert + Rejection Reason on fail. Only the runtime moves from Airtable to Vercel.
+**v1.3 (designed but not shipped):** Airtable "Send a webhook" automation calling Vercel endpoint. Discovered that on Marc's Team plan trial, "Send a webhook" is also gated — only Slack/Gmail/Twilio integration actions are exposed in the action picker. Pure HTTP webhooks require Business plan.
 
-Side benefits of this architecture:
-- Logic lives in version-controlled code, not stranded in an Airtable script editor
-- Easier to debug (Vercel logs, local testing, unit tests possible)
-- Reusable from other contexts (e.g., a "preview stress test" button before approval)
-- Faster iteration when constants change
+**v1.4 (SHIPPED):** Inverted the integration. Vercel polls Airtable instead of Airtable pushing to Vercel. Works on Airtable free plan. Slight latency (up to 5 min between approval and stress test) but acceptable for Marc's solo-founder usage pattern (~3 approvals/week).
 
-### Why the auto-freeze is critical (preserved from v1.2)
+### Why the auto-freeze is critical
 
-Schema validation testing on 5/7/2026 confirmed that **without this automation, Marc must manually populate four fields every time a campaign is approved** (Frozen Forecast Spend, Frozen Forecast CAC, Frozen Forecast Paid Subs, Approved Date). This is error-prone — during testing, Marc forgot to populate these fields and the variance tracking didn't work until they were filled in retroactively.
+Schema validation testing on 5/7/2026 confirmed that **without auto-freeze, Marc must manually populate four fields every time a campaign is approved** (Frozen Forecast Spend, Frozen Forecast CAC, Frozen Forecast Paid Subs, Approved Date). During testing, Marc forgot to populate these fields and variance tracking silently produced wrong numbers until they were filled in retroactively.
 
-The Vercel endpoint MUST include the auto-freeze behavior in its success branch. It is not optional.
+The stress test endpoint's success branch handles the auto-freeze. It is not optional.
 
 ### Stress floor calculation
 
@@ -552,20 +564,23 @@ The $5,000 minimum protects against the case where monthly burn is artificially 
 ```
 [User flips Status to "Approved" in Airtable]
               ↓
-[Airtable Automation: When Status is Approved → Send a webhook]
+[Wait up to 5 minutes for next poller run]
               ↓
-[POST https://app.endless-tales.com/api/cron/stress-test]
-   Body: { recordId, secret }
+[Vercel cron: /api/cron/stress-test-poller, schedule */5 * * * *]
               ↓
-[Vercel endpoint validates secret]
+[Poller queries Airtable Campaigns with filterByFormula:
+  AND({Status}="Approved", {Frozen Forecast Spend}=BLANK())]
               ↓
-[Vercel reads from Airtable:
+[For each match, poller POSTs to /api/cron/stress-test
+  Body: { recordId, secret: STRESS_TEST_WEBHOOK_SECRET }]
+              ↓
+[Stress test endpoint reads from Airtable:
    - Latest Cash Snapshot (Mercury Balance, Current MRR, Active Annual Subs)
    - Recurring Expenses (Active rows, Monthly Equivalent)
-   - Other Approved/Active campaigns (for existing commitments)
+   - Other Approved/Active campaigns (existing commitments)
    - The proposed campaign's forecast values]
               ↓
-[Vercel walks 90 days forward, computes min projected balance]
+[Walks 90 days forward, computes min projected balance]
               ↓
         ┌─────────┴─────────┐
         │                   │
@@ -575,17 +590,60 @@ The $5,000 minimum protects against the case where monthly burn is artificially 
  Frozen Forecast      Status = Recommended,
  Spend, CAC,          Rejection Reason =
  Paid Subs,           "STRESS TEST FAILED..."]
- Approved Date]
+ Approved Date]              │
+        │                    │
+        └────── On next poller run, this campaign drops out
+                of the filter (Frozen populated OR Status reverted),
+                so it won't be re-tested unless it's re-approved.
 ```
 
-### The Vercel endpoint
+### The poller endpoint
 
-Build at `/api/cron/stress-test` in the drivetimetales repo (App Router: `app/api/cron/stress-test/route.ts`).
+Live in production at `/api/cron/stress-test-poller`. Cron schedule: `*/5 * * * *` UTC.
+
+```typescript
+// app/api/cron/stress-test-poller/route.ts (simplified)
+
+export async function POST(req: NextRequest) {
+  // Bearer auth via CRON_SECRET
+  const auth = req.headers.get('authorization');
+  if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  // Find newly-Approved campaigns that haven't been stress-tested
+  const filter = `AND({Status}="Approved",{Frozen Forecast Spend}=BLANK())`;
+  const campaigns = await airtableQuery('Campaigns', filter);
+
+  const results = [];
+  for (const campaign of campaigns) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/cron/stress-test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recordId: campaign.id,
+          secret: process.env.STRESS_TEST_WEBHOOK_SECRET
+        })
+      });
+      const result = await res.json();
+      results.push({ recordId: campaign.id, campaignName: campaign.name, ok: res.ok, status: res.status, result });
+    } catch (err) {
+      // Continue batch on individual failures
+      results.push({ recordId: campaign.id, ok: false, error: String(err) });
+    }
+  }
+
+  return NextResponse.json({ success: true, processed: campaigns.length, results });
+}
+```
+
+### The stress test endpoint
+
+Live in production at `/api/cron/stress-test`. Implements the 90-day projection algorithm.
 
 ```typescript
 // app/api/cron/stress-test/route.ts
-
-import { NextRequest, NextResponse } from 'next/server';
 
 const STRESS_FLOOR_MIN = 5000;
 const REVENUE_DISCOUNT = 0.5;
@@ -597,138 +655,55 @@ const SUBSCRIPTION_MONTHLY = 7.99;
 const SUBSCRIPTION_ANNUAL = 59.99;
 const ANNUAL_MONTHLY_EQUIVALENT = 4.99;
 
-const AIRTABLE_API = 'https://api.airtable.com/v0';
-const BASE_ID = process.env.AIRTABLE_BASE_ID!;
-const API_KEY = process.env.AIRTABLE_API_KEY!;
-const WEBHOOK_SECRET = process.env.STRESS_TEST_WEBHOOK_SECRET!;
-
 export async function POST(req: NextRequest) {
-  // Validate webhook secret
   const body = await req.json();
   const { recordId, secret } = body;
   
-  if (secret !== WEBHOOK_SECRET) {
+  if (secret !== process.env.STRESS_TEST_WEBHOOK_SECRET) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   
-  if (!recordId) {
-    return NextResponse.json({ error: 'recordId required' }, { status: 400 });
-  }
+  // Fetch campaign, snapshots, expenses, other campaigns
+  // Walk 90 days forward
+  // Compute min projected balance
+  // Branch: pass (auto-freeze) or fail (revert + reject)
+  // (Full algorithm in the production code; see commit 63e2bd3)
   
-  try {
-    // ... fetch campaign, snapshots, expenses, other campaigns
-    // ... walk 90 days
-    // ... write back to Airtable based on pass/fail
-    // (full implementation follows the same algorithm as v1.1's
-    //  Airtable script, just using fetch() against Airtable's REST API
-    //  instead of Airtable's scripting block API)
-    
-    const result = await runStressTest(recordId);
-    return NextResponse.json({ success: true, result });
-  } catch (error) {
-    console.error('Stress test failed:', error);
-    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
-  }
+  return NextResponse.json({ success: true, result: {...} });
 }
 ```
 
-The full algorithm — fetching data, walking 90 days, applying revenue lag, churn, fees, etc. — is identical to the v1.1 Airtable script in this section's prior version. Codex should translate the algorithm faithfully, just using Airtable's REST API (`https://api.airtable.com/v0/{baseId}/{tableId}`) for reads and writes instead of Airtable's scripting block API.
+The full algorithm is in `app/api/cron/stress-test/route.ts`. Key behaviors:
+- Daily burn applied each day
+- Existing campaign commitments subtracted during their date windows
+- Proposed campaign spend subtracted during its date window
+- Daily MRR with churn decay applied
+- Revenue from each campaign's projected subs added at start_date + REVENUE_LAG_DAYS, with REVENUE_DISCOUNT applied
+- Annual subs handled correctly (lump cash at signup + monthly equivalent for ongoing MRR)
+- Stripe fees subtracted from all revenue
 
-Key Airtable REST endpoints needed:
-- `GET /Campaigns/{recordId}` — fetch the campaign being tested
-- `GET /Cash%20Snapshots?sort[0][field]=Snapshot+Date&sort[0][direction]=desc&maxRecords=1` — latest snapshot
-- `GET /Recurring%20Expenses?filterByFormula={Active}` — active recurring costs
-- `GET /Campaigns?filterByFormula=OR({Status}="Approved",{Status}="Active")` — existing commitments
-- `PATCH /Campaigns/{recordId}` — write Frozen values OR Status revert + Rejection Reason
+### Verified test results (5/7/2026)
 
-### Pass branch — write to Airtable
+**Pass case (TEST-Stress-Pass):** $100 spend over 30 days against $10,057 cash. Min projected balance: $8,974.26 on day 89 (Aug 4, 2026). Above $5,000 floor → APPROVED. Frozen values populated correctly.
 
-```typescript
-// On stress test PASS:
-await fetch(`${AIRTABLE_API}/${BASE_ID}/Campaigns/${recordId}`, {
-  method: 'PATCH',
-  headers: {
-    'Authorization': `Bearer ${API_KEY}`,
-    'Content-Type': 'application/json'
-  },
-  body: JSON.stringify({
-    fields: {
-      'Frozen Forecast Spend': proposedSpend,
-      'Frozen Forecast CAC': proposedSubs > 0 ? proposedSpend / proposedSubs : 0,
-      'Frozen Forecast Paid Subs': proposedSubs,
-      'Approved Date': today.toISOString().split('T')[0]
-    }
-  })
-});
-```
+**Fail case (TEST-Stress-Fail):** $50,000 spend over 30 days. Min projected balance: -$37,189 on day 35 (June 11, 2026). Below $5,000 floor → BLOCKED. Status reverted to Recommended. Rejection Reason populated with breach details.
 
-### Fail branch — revert Status, write Rejection Reason
+### Idempotency
 
-```typescript
-// On stress test FAIL:
-const rejectionMessage = 
-  `STRESS TEST FAILED. With this campaign, projected cash floor is ` +
-  `$${Math.round(minBalance).toLocaleString()} on ${minDate.toISOString().split('T')[0]} ` +
-  `(day ${minDay}), below threshold of $${Math.round(stressFloor).toLocaleString()}. ` +
-  `Stress floor is MAX($5,000 minimum, 90 × daily burn = ` +
-  `$${Math.round(calculatedFloor).toLocaleString()}). ` +
-  `To pass: reduce spend, delay start, or wait for revenue to accumulate.`;
+The polling architecture is naturally idempotent due to the self-cleaning filter. After a successful stress test, Frozen Forecast Spend is populated, so the campaign drops out of the filter. After a failed stress test, Status is Recommended, so the campaign drops out. Re-running the poller on a campaign that was already processed produces no double-write because the filter excludes it.
 
-await fetch(`${AIRTABLE_API}/${BASE_ID}/Campaigns/${recordId}`, {
-  method: 'PATCH',
-  headers: {
-    'Authorization': `Bearer ${API_KEY}`,
-    'Content-Type': 'application/json'
-  },
-  body: JSON.stringify({
-    fields: {
-      'Status': 'Recommended',
-      'Rejection Reason': rejectionMessage
-    }
-  })
-});
-```
+If the poller picks up the same record twice within a single 5-minute window (race condition), the stress test endpoint itself is idempotent — re-running it on the same campaign produces the same Frozen values, and PATCHing identical values is harmless.
 
-### The Airtable Automation (manual setup by Marc)
+### Environment variables
 
-Marc creates this in the Airtable UI:
+- `CRON_SECRET` — Bearer auth for the poller endpoint
+- `STRESS_TEST_WEBHOOK_SECRET` — Body-secret auth for the stress-test endpoint (called by poller)
+- `AIRTABLE_API_KEY` — Read/write to Airtable
+- `AIRTABLE_BASE_ID` — `appPYSnJkNbWCc9Lj`
 
-1. Open Endless Tales - Campaigns base → Automations
-2. Create new automation, name: `Cash Floor Stress Test on Campaign Approval`
-3. Trigger: When record matches conditions
-   - Table: Campaigns
-   - Conditions: Status is Approved
-4. Action: **Send a webhook** (NOT "Run a script" — that requires Business plan)
-   - URL: `https://app.endless-tales.com/api/cron/stress-test`
-   - Method: POST
-   - Headers: `Content-Type: application/json`
-   - Body (JSON):
-     ```json
-     {
-       "recordId": "{Airtable Record ID from trigger}",
-       "secret": "{STRESS_TEST_WEBHOOK_SECRET value from env vars}"
-     }
-     ```
-5. Test the webhook (Airtable will fire a test POST to verify the endpoint is reachable)
-6. Turn the automation ON
 
-### New environment variable
 
-Add to both `.env.local` and Vercel Production:
-
-```
-STRESS_TEST_WEBHOOK_SECRET=<generate with: openssl rand -hex 32>
-```
-
-This secret protects the endpoint so external parties can't trigger stress tests by guessing the URL.
-
-### Idempotency consideration
-
-If Airtable retries the webhook (rare but possible), the endpoint should be idempotent. Reading the campaign's current state and re-running the calculation is safe — the result is deterministic given the same inputs. The PATCH back to Airtable is also idempotent in effect (writing the same Frozen values twice is harmless).
-
----
-
-## 9.5 INTEGRATION 3.5: COMPLETE-STATUS GUARD (added in v1.2)
+## 9.5 INTEGRATION 3.5: COMPLETE-STATUS GUARD — SPEC ONLY, NOT YET BUILT
 
 ### What it does
 
@@ -768,25 +743,88 @@ A campaign legitimately enters Complete state before all administrative fields a
 
 ---
 
-## 10. INTEGRATION 4: TASK TEMPLATE AUTO-POPULATION
+## 10. INTEGRATION 4: TASK TEMPLATE AUTO-POPULATION — SHIPPED v1.4
+
+### Status
+
+✅ **SHIPPED 5/7/2026.** Endpoint live in production. End-to-end test verified with TEST-Tasks-TikTok (14 tasks created with correct dates and owners) and TEST-Tasks-Google (correctly skipped due to no template).
+
+- Endpoint: `app/api/cron/task-template-applier/route.ts` (commit dddca62)
 
 ### What it does
 
-When a campaign's Status changes to Approved AND the stress test passes (Frozen Forecast Spend is populated), automatically create Tasks records based on the matching Task Template.
+Polls Airtable every 5 minutes (offset 1 minute from stress-test-poller) for campaigns that:
+- Have Status = "Approved"
+- Have Frozen Forecast Spend populated (means stress test passed)
+- Have empty Tasks linked field (means tasks haven't been generated yet)
 
-### Implementation
+For each match:
+1. Reads the campaign's Channel
+2. If Channel has no templates (Google, Other): skip campaign, log warning, continue batch
+3. If Channel has templates: query Task Templates filtered by `AND({Channel}=channel, {Active}=TRUE())`
+4. For each active template, create a Tasks record with computed forecast date based on Anchor + Days from Start
 
-Chained Airtable automation that runs after the stress test. See v1.0 of this document for the full script — no changes in v1.1.
+The filter `{Tasks}=BLANK()` is self-cleaning. Once tasks are created and linked, the campaign drops out of future polls.
+
+### Date computation logic
+
+For each template, the task's Forecast Start Date is computed as:
+
+```
+If Anchor = "start": campaign.Forecast Start Date + Days from Start
+If Anchor = "end":   campaign.Forecast End Date + Days from Start
+If Anchor = "midpoint": midpoint(start, end) + Days from Start
+```
+
+`Days from Start` can be negative (pre-launch prep work) or positive (post-launch work).
+
+Example for TikTok campaign with Forecast Start Date = 2026-05-15:
+- Template "Identify story clips" with Anchor=start, Days=-14 → Task date = 2026-05-01 (14 days before launch)
+- Template "Launch" with Anchor=start, Days=0 → Task date = 2026-05-15 (launch day)
+- Template "Pattern extraction" with Anchor=end, Days=+14 → Task date = end + 14 (cleanup phase)
+
+### Cron configuration
+
+Schedule: `1-56/5 * * * *` UTC (minutes 1, 6, 11, 16... of every hour). This is offset 1 minute from the stress-test-poller (which runs at minutes 0, 5, 10...). The stagger ensures the stress test has time to populate Frozen Forecast Spend before the task applier polls.
+
+### Edge cases handled
+
+- **No matches:** Returns 200 OK with `processed: 0`
+- **Channel without template (Google, Other):** Logs warning, status: "skipped", continues batch
+- **Individual template error:** Logs, continues with other templates for that campaign
+- **Missing campaign Forecast Start/End Date:** Skips the campaign with warning (can't compute task dates)
+- **Cron retry race:** Filter `{Tasks}=BLANK()` excludes campaigns that already have linked tasks, preventing double-creation
+
+### Verified test results (5/7/2026)
+
+**TikTok success:** 14 tasks created with correct anchor logic, dates correctly computed relative to campaign window, owners properly assigned across Marc/Hal/Claude/Codex per template.
+
+**Google skip:** No tasks created. Status: "skipped" with clear error message: `"Campaign skipped: no active Task Templates found for channel \"Google\"."`
 
 ### Note on Hal as task owner
 
-The task templates assign "Hal" as owner of execution tasks. Hal does not yet have marketing-execution capabilities (see Appendix A). Until Hal's capabilities are built:
+The task templates assign "Hal" as owner of execution tasks. Hal does not yet have full marketing-execution capabilities (see Appendix A). Until Hal's capabilities are built:
 
 - Tasks assigned to Hal effectively fall to Marc to execute manually
 - Marc updates Task Status manually as work completes
 - Marc updates Actual fields on the Campaign manually (until Stripe attribution and ad platform integrations are live)
 
 When Hal's marketing capabilities ship, ownership transitions automatically — the templates don't need updating.
+
+### Channel template coverage (verified 5/7/2026)
+
+| Channel | Template Count | Status |
+|---|---|---|
+| Meta | 14 | ✅ Covered |
+| TikTok | 14 | ✅ Covered |
+| Reddit | 13 | ✅ Covered |
+| Email | 13 | ✅ Covered |
+| Influencer | 13 | ✅ Covered |
+| Content | 13 | ✅ Covered |
+| Google | 0 | ⚠️ Will skip with email alert (when implemented) |
+| Other | 0 | ⚠️ Will skip with email alert (when implemented) |
+
+Total: 83 active task templates. If Marc ever approves a Google or Other channel campaign, the applier skips gracefully.
 
 ---
 
@@ -970,13 +1008,19 @@ async function handler(req, res) {
 
 ### Run order
 
-Sequence (staggered cron times):
-1. 6:00 AM ET: Mercury pull
-2. 6:05 AM ET: Stripe MRR rollup
-3. 6:10 AM ET: Snapshot calculation (90-day floor, etc.)
-4. 6:15 AM ET: Subscriber attribution (30-day lookback)
-5. 6:30 AM ET: Hal's morning briefing — runs daily recommendations
-6. 7:00 AM ET: Daily alerts email
+**Daily crons (staggered):**
+1. 6:00 AM ET: Mercury pull (`mercury-snapshot`) — chains to snapshot-calculate on success
+2. 6:05 AM ET: Stripe MRR rollup (`stripe-mrr` — Priority 6, NOT YET BUILT)
+3. 6:10 AM ET: Snapshot calculation (`snapshot-calculate`) — 90-day floor projection
+4. 6:15 AM ET: Subscriber attribution (`attribute-subscribers` — Priority 5, NOT YET BUILT)
+5. 6:30 AM ET: Hal's morning briefing — runs daily recommendations (Priority 8, NOT YET BUILT)
+6. 7:00 AM ET: Daily alerts email (Priority 9, NOT YET BUILT)
+
+**Continuous crons (every 5 minutes):**
+- `*/5 * * * *` UTC: `stress-test-poller` — catches newly-Approved campaigns, runs stress test
+- `1-56/5 * * * *` UTC: `task-template-applier` — generates tasks for stress-test-passed campaigns (offset 1 minute from stress-test-poller)
+
+The 1-minute offset between the two continuous pollers ensures the stress test has time to populate Frozen Forecast Spend before the task applier polls. Without this offset, there'd be a race condition where the task applier might miss campaigns that were just approved.
 
 ---
 
@@ -1267,5 +1311,6 @@ Capabilities 6-7 are later because they're either lower-volume (landing pages ar
 
 ---
 
-*Endless Tales · Campaign Management System · v1.3 · May 7, 2026*
-*This document supersedes v1.2, v1.1, v1.0, and any prior verbal or written specifications.*
+*Endless Tales · Campaign Management System · v1.4 · May 7, 2026*
+*This document supersedes v1.3, v1.2, v1.1, v1.0, and any prior verbal or written specifications.*
+*Priorities 1, 2, 3, and 4 are SHIPPED and verified in production as of this revision. Priorities 3.5 and 5-10 remain spec only.*
