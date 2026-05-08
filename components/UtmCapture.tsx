@@ -1,25 +1,26 @@
 'use client'
 
 // components/UtmCapture.tsx
-// Mounts once at the root of the app. On every URL change, calls
+// Mounts once at the root of the app. On every pathname change, calls
 // captureUtmFromUrl() which reads ?utm_source=...&utm_medium=...&utm_campaign=...
-// from the current URL and stashes to localStorage if present.
+// from window.location.search and stashes to localStorage if present.
 // This component renders nothing.
+//
+// Note: we use usePathname() (no Suspense required) and read the query string
+// directly from window.location inside the effect. We intentionally avoid
+// useSearchParams() because that would force every page in the app to be
+// wrapped in <Suspense>, breaking static prerendering.
 
 import { useEffect } from 'react'
-import { usePathname, useSearchParams } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import { captureUtmFromUrl } from '@/lib/utm'
 
 export default function UtmCapture() {
   const pathname = usePathname()
-  const searchParams = useSearchParams()
 
   useEffect(() => {
     captureUtmFromUrl()
-    // Re-run on every navigation that changes pathname or query so that
-    // a UTM that arrives mid-session (e.g. user clicks an ad after
-    // already browsing) is captured.
-  }, [pathname, searchParams])
+  }, [pathname])
 
   return null
 }
