@@ -12,6 +12,17 @@ const supabase = createClient(
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!
 
+function getBillingCycle(subscription: Stripe.Subscription): 'annual' | 'monthly' | null {
+  try {
+    const interval = subscription.items?.data?.[0]?.price?.recurring?.interval
+    if (interval === 'year') return 'annual'
+    if (interval === 'month') return 'monthly'
+    return null
+  } catch {
+    return null
+  }
+}
+
 function getPlanName(isFoundingMember: boolean): string {
   return isFoundingMember ? 'founding_member' : 'standard'
 }
@@ -54,6 +65,7 @@ export async function POST(request: NextRequest) {
 
         console.log(`[webhook] checkout completed — user ${userId}, plan: ${planName}`)
 
+        const billingCycle = getBillingCycle(subscription)
         const { error } = await supabase.from('users').update({
           plan: planName,
           subscription_type: 'active',
@@ -61,6 +73,7 @@ export async function POST(request: NextRequest) {
           stripe_subscription_id: session.subscription as string,
           subscription_start: new Date().toISOString(),
           subscription_ends_at: periodEnd,
+          billing_cycle: billingCycle,
         }).eq('id', userId)
 
         if (error) console.error('Error updating user after checkout:', error)
@@ -105,13 +118,35 @@ export async function POST(request: NextRequest) {
 
       console.log(`[webhook] invoice paid — user ${userId}, plan: ${planName}, renews until ${periodEnd}`)
 
+      const billingCycleIp = getBillingCycle(subscription)
       const { error } = await supabase.from('users').update({
         plan: planName,
         subscription_type: 'active',
         subscription_ends_at: periodEnd,
+        billing_cycle: billingCycleIp,
       }).eq('id', userId)
 
       if (error) console.error('Error updating subscription on invoice paid:', error)
+
+      // Priority 5: set first_paid_date on the very first paid invoice (trial conversion)
+      try {
+        const { data: existing } = await supabase
+          .from('users')
+          .select('first_paid_date')
+          .eq('id', userId)
+          .single()
+        if (existing && !existing.first_paid_date) {
+          const { error: fpdErr } = await supabase
+            .from('users')
+            .update({ first_paid_date: new Date().toISOString() })
+            .eq('id', userId)
+          if (fpdErr) console.error('[webhook] first_paid_date write failed (non-fatal):', fpdErr)
+          else console.log(`[webhook] first_paid_date set for user ${userId}`)
+        }
+      } catch (fpdCatch) {
+        console.error('[webhook] first_paid_date block threw (non-fatal):', fpdCatch)
+      }
+
       break
     }
 
@@ -128,6 +163,7 @@ export async function POST(request: NextRequest) {
         subscription_type: null,
         stripe_subscription_id: null,
         subscription_ends_at: null,
+        cancelled_at: new Date().toISOString(),
       }).eq('id', userId)
 
       if (error) console.error('Error cancelling subscription:', error)
@@ -148,10 +184,12 @@ export async function POST(request: NextRequest) {
 
       console.log(`[webhook] subscription updated — user ${userId}, status: ${status}, plan: ${planName}`)
 
+      const billingCycleSu = getBillingCycle(subscription)
       const { error } = await supabase.from('users').update({
         plan: isActive ? planName : 'free',
         subscription_type: isActive ? 'active' : null,
         subscription_ends_at: isActive ? periodEnd : null,
+        billing_cycle: isActive ? billingCycleSu : null,
       }).eq('id', userId)
 
       if (error) console.error('Error updating subscription:', error)

@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
+import { readStoredUtm } from '@/lib/utm'
 
 interface Offer { id: string; name: string; offer_type: 'free_days' | 'credits'; referrer_reward: number; referred_reward: number }
 
@@ -97,6 +98,22 @@ function SignUpContent() {
     if (!user) { setError('Failed to create account'); setLoading(false); return }
 
     // Save trial variant to users table for A/B tracking
+
+    // Capture UTM attribution (Priority 5)
+    try {
+      const utm = readStoredUtm()
+      if (utm.source || utm.medium || utm.campaign) {
+        const { error: utmError } = await supabase.from('users').update({
+          utm_source: utm.source,
+          utm_medium: utm.medium,
+          utm_campaign: utm.campaign,
+          utm_captured_at: utm.captured_at ? new Date(utm.captured_at).toISOString() : null,
+        }).eq('id', user.id)
+        if (utmError) console.error('[signup] UTM write failed (non-fatal):', utmError)
+      }
+    } catch (utmErr) {
+      console.error('[signup] UTM block threw (non-fatal):', utmErr)
+    }
 
     // Handle referral tracking
     if (referralId && referrerId) {
