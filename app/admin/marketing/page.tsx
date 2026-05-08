@@ -124,6 +124,16 @@ export default function AdminMarketingPage() {
         </a>
       </div>
 
+      <div style={{ backgroundColor: '#0f172a', borderRadius: '12px', padding: '1rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+        <div>
+          <div style={{ color: 'white', fontSize: '17px', fontWeight: 800 }}>Campaign Planning Dashboard</div>
+          <div style={{ color: '#cbd5e1', fontSize: '13px', marginTop: '0.25rem' }}>View Airtable campaign queues, approval pipeline, active campaigns, variance watch, PERT timing, forecasts, and task owners.</div>
+        </div>
+        <button onClick={() => router.push('/admin/marketing/campaign-plan')} style={{ backgroundColor: '#f97316', color: 'white', padding: '0.75rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 800, whiteSpace: 'nowrap' }}>
+          Open Campaign Plan
+        </button>
+      </div>
+
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
         {/* Left: Story Selector & Generator */}
         <div>
