@@ -15,3 +15,29 @@ Audio Dramas/
 .env*.local
 .env.production
 PASSWORDS.md
+
+# === Cleanup safety net (added 2026-05-09) ===
+# Prevent debugging clutter from accumulating
+
+# Old Next.js build caches
+.next.backup-*
+.next.broken-*
+.next.build-*
+.next.stale-*
+
+# Code backups
+*.bak
+*.bak.*
+backups/
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Local data snapshots
+.admin-data/
+.snapshots/
+
+# Common system junk
+.DS_Store
+Thumbs.db
