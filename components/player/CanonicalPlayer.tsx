@@ -48,6 +48,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
   const finalMixRetryCountRef = useRef(0)
   const finalMixRetryResumeRef = useRef<number | null>(null)
   const finalMixRetryAutoplayRef = useRef(false)
+  const seriesContinueAutoplayAttemptedRef = useRef(false)
 
   const [story, setStory]       = useState<any | null>(null)
   const [loading, setLoading]   = useState(true)
@@ -75,6 +76,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
   const inWelcomeRef    = useRef(false)
   const [cumTime, setCumTime]   = useState(0)
   const [audioErrorMessage, setAudioErrorMessage] = useState('')
+  const [autoplayBlocked, setAutoplayBlocked] = useState(false)
   const isAdvancingRef = useRef(false)
   const mountedRef = useRef(false)
   const autoAdvanceEnabledRef = useRef(true)
@@ -293,7 +295,8 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
     autoAdvanceTimerRef.current = setTimeout(() => {
       if (!mountedRef.current || !autoAdvanceEnabledRef.current) return
       unrequestedAutoStartsRef.current += 1
-      router.push(`/player/${candidate.story.id}`)
+      const isSeriesContinuation = candidate.reason === 'next_series_episode'
+      router.push(`/player/${candidate.story.id}${isSeriesContinuation ? '?autoplay=1&seriesContinue=1' : ''}`)
     }, 2500)
   }
 
@@ -409,10 +412,12 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
 
   useEffect(() => {
     isAdvancingRef.current = false
+    seriesContinueAutoplayAttemptedRef.current = false
     setAutoAdvanceCandidate(null)
     setCatalogExhausted(false)
     setStillListeningPrompt(false)
     setAutoAdvanceDisabledReason(null)
+    setAutoplayBlocked(false)
     if (autoAdvanceTimerRef.current) {
       clearTimeout(autoAdvanceTimerRef.current)
       autoAdvanceTimerRef.current = null
@@ -679,6 +684,36 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
       audioRef.current.load()
     }
   }, [isASC3, queue, loading, audioSrc])
+
+  useEffect(() => {
+    if (loading || !audioRef.current || seriesContinueAutoplayAttemptedRef.current) return
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('autoplay') !== '1' || params.get('seriesContinue') !== '1') return
+    if (isASC3 && !queue.length) return
+    if (!isASC3 && !audioSrc) return
+
+    seriesContinueAutoplayAttemptedRef.current = true
+    const audio = audioRef.current
+    const attemptPlay = () => {
+      audio.play()
+        .then(() => {
+          setIsPlaying(true)
+          setAutoplayBlocked(false)
+        })
+        .catch((error) => {
+          console.warn('[player] series continuation autoplay blocked:', error)
+          setAutoplayBlocked(true)
+          setIsPlaying(false)
+        })
+    }
+
+    if (audio.readyState >= 2) {
+      attemptPlay()
+    } else {
+      audio.addEventListener('canplay', attemptPlay, { once: true })
+      return () => audio.removeEventListener('canplay', attemptPlay)
+    }
+  }, [loading, isASC3, queue, audioSrc, storyId])
 
   useEffect(() => {
     if (activeModal !== 'prose') return
@@ -1178,7 +1213,8 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
                 onClick={() => {
                   if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current)
                   unrequestedAutoStartsRef.current += 1
-                  router.push(`/player/${autoAdvanceCandidate.story.id}`)
+                  const isSeriesContinuation = autoAdvanceCandidate.reason === 'next_series_episode'
+                  router.push(`/player/${autoAdvanceCandidate.story.id}${isSeriesContinuation ? '?autoplay=1&seriesContinue=1' : ''}`)
                 }}
                 style={{ flex:1, padding:'10px 12px', borderRadius:'10px', border:'none', background:'#22c55e', color:'white', fontSize:'13px', fontWeight:800, cursor:'pointer' }}
               >Play now</button>
@@ -1228,6 +1264,20 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
               <button onClick={() => { disableAutoAdvanceForSession('navigation'); window.location.reload() }} style={{ flex:1, padding:'10px 12px', borderRadius:'10px', border:'none', background:'#f97316', color:'white', fontSize:'13px', fontWeight:800, cursor:'pointer' }}>Try again</button>
               <button onClick={() => { disableAutoAdvanceForSession('navigation'); router.push('/library') }} style={{ flex:1, padding:'10px 12px', borderRadius:'10px', border:'1px solid rgba(255,255,255,0.16)', background:'rgba(255,255,255,0.06)', color:'white', fontSize:'13px', fontWeight:700, cursor:'pointer' }}>Back to Library</button>
             </div>
+          </div>
+        )}
+        {autoplayBlocked && (
+          <div style={{ border:'1px solid rgba(34,197,94,0.28)', background:'rgba(34,197,94,0.08)', borderRadius:'14px', padding:'12px', textAlign:'center' }}>
+            <p style={{ color:'white', fontSize:'13px', fontWeight:800, margin:'0 0 4px' }}>Ready to continue</p>
+            <p style={{ color:'rgba(255,255,255,0.72)', fontSize:'12px', margin:'0 0 10px' }}>Tap to start the next episode.</p>
+            <button
+              onClick={() => {
+                audioRef.current?.play()
+                  .then(() => { setIsPlaying(true); setAutoplayBlocked(false) })
+                  .catch(() => setAutoplayBlocked(true))
+              }}
+              style={{ width:'100%', padding:'10px 12px', borderRadius:'10px', border:'none', background:'#22c55e', color:'white', fontSize:'13px', fontWeight:800, cursor:'pointer' }}
+            >Tap to continue</button>
           </div>
         )}
         <div>
