@@ -993,6 +993,72 @@ export default function StoryProductionV2Page() {
     return data
   }
 
+  function isSimpleHalAutoRepairableValidatorFailure(validatorReport: string) {
+    const reportText = validatorReport.trim()
+    if (!reportText) return false
+
+    return [
+      /DESCRIPTION[\s\S]{0,180}(70|character|characters|fewer|too long|shorten|length)/i,
+      /TAGLINE[\s\S]{0,180}(character|characters|too long|shorten|trim|length)/i,
+      /SUBTITLE[\s\S]{0,180}(character|characters|too long|shorten|trim|length)/i,
+      /(excess|extra|remove|trim)[\s\S]{0,120}punctuation/i,
+      /simple formatting/i,
+    ].some((pattern) => pattern.test(reportText))
+  }
+
+  async function runStandaloneValidation(storyIdToValidate: string) {
+    const validateRes = await fetch('/api/v2/validate-script', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ storyId: storyIdToValidate }),
+    })
+    const validateData = await validateRes.json()
+    if (!validateRes.ok || !validateData.success) throw new Error(validateData.error || 'Failed to validate script')
+    return validateData
+  }
+
+  async function applySimpleHalValidatorRepair({
+    storyIdToRepair,
+    scriptToRepair,
+    validatorReport,
+  }: {
+    storyIdToRepair: string
+    scriptToRepair: string
+    validatorReport: string
+  }) {
+    if (!scriptToRepair.trim()) throw new Error('Cannot auto-repair validator failure because the generated script is empty.')
+
+    const reviseRes = await fetch('/api/v2/apply-top-fixes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        script: scriptToRepair,
+        selectedFixes: [
+          `VALIDATOR ERROR FIX ONLY:\n${validatorReport}\n\nApply one bounded metadata/formatting repair only. Allowed repairs: shorten DESCRIPTION to 70 characters or fewer, trim TAGLINE, remove excess punctuation, shorten SUBTITLE, or correct simple formatting. Do not rewrite the story body, plot, tone, characters, dialogue, or ending.`,
+        ],
+      }),
+    })
+    const reviseData = await reviseRes.json()
+    if (!reviseRes.ok || !reviseData.success) {
+      throw new Error(reviseData.error || 'Hal auto-repair revision failed')
+    }
+
+    const saveRes = await fetch('/api/v2/save-revised-script', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        storyId: storyIdToRepair,
+        script: reviseData.revisedScript,
+      }),
+    })
+    const saveData = await saveRes.json()
+    if (!saveRes.ok || !saveData.success) {
+      throw new Error(saveData.error || 'Failed to save Hal auto-repair')
+    }
+
+    return saveData.story?.script || reviseData.revisedScript || scriptToRepair
+  }
+
   async function runHalCanonicalIntake() {
     if (loading || hasActiveAction) return
     const genre = halIntake.genre.trim()
@@ -1101,15 +1167,32 @@ export default function StoryProductionV2Page() {
 
         setActiveStep('validate')
         setWorkingMessage('Validating script...')
-        const validateRes = await fetch('/api/v2/validate-script', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ storyId: nextStoryId }),
-        })
-        const validateData = await validateRes.json()
-        if (!validateRes.ok || !validateData.success) throw new Error(validateData.error || 'Failed to validate script')
+        let autoRepairApplied = false
+        let currentScript = scriptData.story.script || ''
+        let validateData = await runStandaloneValidation(nextStoryId)
         setStatus(validateData.story.status)
         setReport(validateData.story.validator_report || '')
+
+        if (
+          validateData.story.status !== 'validator_passed'
+          && isSimpleHalAutoRepairableValidatorFailure(validateData.story.validator_report || '')
+        ) {
+          autoRepairApplied = true
+          setWorkingMessage('Hal is auto-repairing a simple validator issue...')
+          currentScript = await applySimpleHalValidatorRepair({
+            storyIdToRepair: nextStoryId,
+            scriptToRepair: currentScript,
+            validatorReport: validateData.story.validator_report || '',
+          })
+          setScript(currentScript)
+          setStatus('script_revised')
+
+          setWorkingMessage('Revalidating repaired script...')
+          validateData = await runStandaloneValidation(nextStoryId)
+          setStatus(validateData.story.status)
+          setReport(validateData.story.validator_report || '')
+        }
+
         if (validateData.story.status !== 'validator_passed') throw new Error(`Script validation did not pass.\n\n${validateData.story.validator_report || ''}`)
 
         setWorkingMessage('Running generate-voices preflight...')
@@ -1120,6 +1203,7 @@ export default function StoryProductionV2Page() {
           `Story ID: ${nextStoryId}`,
           `Author: ${author.name}`,
           `Type: standalone`,
+          autoRepairApplied ? 'Auto-repair: applied one simple validator fix and revalidated' : 'Auto-repair: not needed',
           `Generate-voices preflight: passed`,
           `Estimated segments: ${preflight.estimatedSegmentCount?.total ?? '—'}`,
           'Next: Produce Audio from the existing ASC handoff workflow. Do not publish automatically.',
