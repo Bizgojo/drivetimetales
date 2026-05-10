@@ -88,10 +88,12 @@ function isPublicPlayable(story: Story) {
   return !!(
     story.status === 'published' &&
     story.is_hidden === false &&
-    hasRequiredStoryFields(story) &&
-    story.audio_url &&
     story.cover_url
   )
+}
+
+function isPublicCatalogCandidate(story: Partial<Story>) {
+  return story.status === 'published' && story.is_hidden === false
 }
 
 function hasRequiredStoryFields(story: Partial<Story>) {
@@ -774,11 +776,23 @@ export default function AdminStoriesPage() {
       return
     }
 
-    const eligibleRows = canonicalizeEligibleStories(
-      ((readinessRows || []) as Partial<Story>[]).filter((story) => isPublicPlayable(story as Story) || isReviewReady(story as Story))
+    const storyRows = (readinessRows || []) as Partial<Story>[]
+    const publicCandidateIds = new Set(
+      storyRows
+        .filter(isPublicCatalogCandidate)
+        .map((story) => story.id)
+        .filter(Boolean) as string[]
     )
-    const eligibleIds = eligibleRows.map((story) => story.id).filter(Boolean) as string[]
-    const readinessById = new Map(eligibleRows.map((story) => [story.id, story]))
+    const reviewReadyRows = storyRows.filter((story) => isReviewReady(story as Story))
+    const eligibleIds = Array.from(new Set([
+      ...Array.from(publicCandidateIds),
+      ...reviewReadyRows.map((story) => story.id).filter(Boolean) as string[],
+    ]))
+    const readinessById = new Map(
+      storyRows
+        .filter((story) => story.id && eligibleIds.includes(story.id))
+        .map((story) => [story.id, story])
+    )
 
     if (eligibleIds.length === 0) {
       setStories([])
@@ -793,7 +807,15 @@ export default function AdminStoriesPage() {
       .order('created_at', { ascending: false })
 
     if (data) {
-      setStories(data.map((story) => ({ ...story, ...readinessById.get(story.id) })) as Story[])
+      const analyticsPublicIds = new Set(
+        data
+          .filter((story) => publicCandidateIds.has(story.id) && story.is_hidden === false && story.cover_url)
+          .map((story) => story.id)
+      )
+      const loadedStories = data
+        .map((story) => ({ ...story, ...readinessById.get(story.id) }) as Story)
+        .filter((story) => analyticsPublicIds.has(story.id) || isReviewReady(story))
+      setStories(loadedStories)
     }
     if (error) console.error('Error fetching story analytics:', error)
     setLoading(false)
