@@ -1006,6 +1006,66 @@ export default function StoryProductionV2Page() {
     ].some((pattern) => pattern.test(reportText))
   }
 
+  function getValidatorIssueLines(validatorReport: string) {
+    return validatorReport
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith('- '))
+      .map((line) => line.replace(/^-\s*/, '').trim())
+      .filter(Boolean)
+  }
+
+  function isDescriptionLengthOnlyValidatorFailure(validatorReport: string) {
+    const issues = getValidatorIssueLines(validatorReport)
+    if (issues.length === 0) return false
+
+    return issues.every((issue) =>
+      /DESCRIPTION/i.test(issue)
+      && /(70|character|characters|fewer|too long|length)/i.test(issue)
+      && !/past-tense|forbidden|required|missing/i.test(issue)
+    )
+  }
+
+  function extractScriptHeader(scriptText: string, key: string) {
+    const match = scriptText.match(new RegExp(`^${key}:\\s*(.+)$`, 'm'))
+    return match?.[1]?.trim() || ''
+  }
+
+  function replaceScriptHeader(scriptText: string, key: string, value: string) {
+    const headerPattern = new RegExp(`^${key}:\\s*(.+)$`, 'm')
+    if (!headerPattern.test(scriptText)) return scriptText
+    return scriptText.replace(headerPattern, `${key}: ${value}`)
+  }
+
+  function shortenDescriptionHeader(scriptText: string) {
+    const currentDescription = extractScriptHeader(scriptText, 'DESCRIPTION')
+      .replace(/\s+/g, ' ')
+      .replace(/^["']|["']$/g, '')
+      .trim()
+
+    if (!currentDescription || currentDescription.length <= 65) return scriptText
+
+    const trailingWeakWords = /\b(and|or|but|with|to|of|for|from|by|into|before|after|while|when)$/i
+    const words = currentDescription.split(' ')
+    let nextDescription = ''
+
+    for (const word of words) {
+      const candidate = nextDescription ? `${nextDescription} ${word}` : word
+      if (candidate.length > 65) break
+      nextDescription = candidate
+    }
+
+    nextDescription = (nextDescription || currentDescription.slice(0, 65))
+      .replace(/[,\-:;.!?]+$/g, '')
+      .trim()
+
+    while (trailingWeakWords.test(nextDescription) && nextDescription.includes(' ')) {
+      nextDescription = nextDescription.split(' ').slice(0, -1).join(' ').trim()
+    }
+
+    return replaceScriptHeader(scriptText, 'DESCRIPTION', nextDescription)
+  }
+
   async function runStandaloneValidation(storyIdToValidate: string) {
     const validateRes = await fetch('/api/v2/validate-script', {
       method: 'POST',
@@ -1028,19 +1088,25 @@ export default function StoryProductionV2Page() {
   }) {
     if (!scriptToRepair.trim()) throw new Error('Cannot auto-repair validator failure because the generated script is empty.')
 
-    const reviseRes = await fetch('/api/v2/apply-top-fixes', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        script: scriptToRepair,
-        selectedFixes: [
-          `VALIDATOR ERROR FIX ONLY:\n${validatorReport}\n\nApply one bounded metadata/formatting repair only. Allowed repairs: shorten DESCRIPTION to 70 characters or fewer, trim TAGLINE, remove excess punctuation, shorten SUBTITLE, or correct simple formatting. Do not rewrite the story body, plot, tone, characters, dialogue, or ending.`,
-        ],
-      }),
-    })
-    const reviseData = await reviseRes.json()
-    if (!reviseRes.ok || !reviseData.success) {
-      throw new Error(reviseData.error || 'Hal auto-repair revision failed')
+    let revisedScript = ''
+    if (isDescriptionLengthOnlyValidatorFailure(validatorReport)) {
+      revisedScript = shortenDescriptionHeader(scriptToRepair)
+    } else {
+      const reviseRes = await fetch('/api/v2/apply-top-fixes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          script: scriptToRepair,
+          selectedFixes: [
+            `VALIDATOR ERROR FIX ONLY:\n${validatorReport}\n\nApply one bounded metadata/formatting repair only. Allowed repairs: shorten DESCRIPTION to 70 characters or fewer, trim TAGLINE, remove excess punctuation, shorten SUBTITLE, or correct simple formatting. Do not rewrite the story body, plot, tone, characters, dialogue, or ending.`,
+          ],
+        }),
+      })
+      const reviseData = await reviseRes.json()
+      if (!reviseRes.ok || !reviseData.success) {
+        throw new Error(reviseData.error || 'Hal auto-repair revision failed')
+      }
+      revisedScript = reviseData.revisedScript
     }
 
     const saveRes = await fetch('/api/v2/save-revised-script', {
@@ -1048,7 +1114,7 @@ export default function StoryProductionV2Page() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         storyId: storyIdToRepair,
-        script: reviseData.revisedScript,
+        script: revisedScript,
       }),
     })
     const saveData = await saveRes.json()
@@ -1056,7 +1122,48 @@ export default function StoryProductionV2Page() {
       throw new Error(saveData.error || 'Failed to save Hal auto-repair')
     }
 
-    return saveData.story?.script || reviseData.revisedScript || scriptToRepair
+    return saveData.story?.script || revisedScript || scriptToRepair
+  }
+
+  async function validateStandaloneWithOneAutoRepair({
+    storyIdToValidate,
+    initialScript,
+  }: {
+    storyIdToValidate: string
+    initialScript: string
+  }) {
+    let currentScript = initialScript
+    let autoRepairApplied = false
+    let validateData = await runStandaloneValidation(storyIdToValidate)
+
+    setStatus(validateData.story.status)
+    setReport(validateData.story.validator_report || '')
+
+    if (validateData.story.status === 'validator_passed') {
+      return { validateData, currentScript, autoRepairApplied }
+    }
+
+    const validatorReport = validateData.story.validator_report || ''
+    if (!isSimpleHalAutoRepairableValidatorFailure(validatorReport)) {
+      return { validateData, currentScript, autoRepairApplied }
+    }
+
+    autoRepairApplied = true
+    setWorkingMessage('Hal is auto-repairing a simple validator issue...')
+    currentScript = await applySimpleHalValidatorRepair({
+      storyIdToRepair: storyIdToValidate,
+      scriptToRepair: currentScript,
+      validatorReport,
+    })
+    setScript(currentScript)
+    setStatus('script_revised')
+
+    setWorkingMessage('Revalidating repaired script...')
+    validateData = await runStandaloneValidation(storyIdToValidate)
+    setStatus(validateData.story.status)
+    setReport(validateData.story.validator_report || '')
+
+    return { validateData, currentScript, autoRepairApplied }
   }
 
   async function runHalCanonicalIntake() {
@@ -1167,31 +1274,10 @@ export default function StoryProductionV2Page() {
 
         setActiveStep('validate')
         setWorkingMessage('Validating script...')
-        let autoRepairApplied = false
-        let currentScript = scriptData.story.script || ''
-        let validateData = await runStandaloneValidation(nextStoryId)
-        setStatus(validateData.story.status)
-        setReport(validateData.story.validator_report || '')
-
-        if (
-          validateData.story.status !== 'validator_passed'
-          && isSimpleHalAutoRepairableValidatorFailure(validateData.story.validator_report || '')
-        ) {
-          autoRepairApplied = true
-          setWorkingMessage('Hal is auto-repairing a simple validator issue...')
-          currentScript = await applySimpleHalValidatorRepair({
-            storyIdToRepair: nextStoryId,
-            scriptToRepair: currentScript,
-            validatorReport: validateData.story.validator_report || '',
-          })
-          setScript(currentScript)
-          setStatus('script_revised')
-
-          setWorkingMessage('Revalidating repaired script...')
-          validateData = await runStandaloneValidation(nextStoryId)
-          setStatus(validateData.story.status)
-          setReport(validateData.story.validator_report || '')
-        }
+        const { validateData, autoRepairApplied } = await validateStandaloneWithOneAutoRepair({
+          storyIdToValidate: nextStoryId,
+          initialScript: scriptData.story.script || '',
+        })
 
         if (validateData.story.status !== 'validator_passed') throw new Error(`Script validation did not pass.\n\n${validateData.story.validator_report || ''}`)
 
