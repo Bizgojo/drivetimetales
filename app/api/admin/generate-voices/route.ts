@@ -618,7 +618,7 @@ function parseScript(script: string): ScriptLine[] {
   return lines
 }
 
-async function generateVoiceLine(rawText: string, voiceId: string, storyId: string, lineIndex: number, prefix: string, forceRegenerate = false, speaker = ''): Promise<string> {
+async function generateVoiceLine(rawText: string, voiceId: string, storyId: string, lineIndex: number, prefix: string, forceRegenerate = false, speaker = '', shortSegmentMaxCandidates = SHORT_SEGMENT_MAX_CANDIDATES): Promise<string> {
   // Clean markdown and special characters before sending to ElevenLabs
   const text = rawText
     .replace(/\*+/g, '')        // remove asterisks (bold/italic markdown)
@@ -653,7 +653,7 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
     const segmentQcTarget = isShortSegment ? SHORT_SEGMENT_QC_TARGET_LUFS : SEGMENT_QC_TARGET_LUFS
     const segmentQcWarn = isShortSegment ? SHORT_SEGMENT_QC_WARN_LUFS : SEGMENT_QC_WARN_LUFS
     const segmentQcRetry = isShortSegment ? SHORT_SEGMENT_QC_RETRY_LUFS : SEGMENT_QC_RETRY_LUFS
-    const candidateCount = isShortSegment ? SHORT_SEGMENT_MAX_CANDIDATES : 1
+    const candidateCount = isShortSegment ? shortSegmentMaxCandidates : 1
     let accepted: { buf: Buffer; metrics: LoudnessMetrics; action: string; duration: number; candidate: number } | null = null
     let best: { metrics: LoudnessMetrics; action: string; candidate: number } | null = null
 
@@ -773,7 +773,7 @@ async function generateSFX(description: string, storyId: string, lineIndex: numb
 
 export async function POST(req: NextRequest) {
   try {
-    const { storyId, script: scriptParam, narratorVoiceId, narratorVoiceName, characterVoices, preflightOnly } = await req.json()
+    const { storyId, script: scriptParam, narratorVoiceId, narratorVoiceName, characterVoices, preflightOnly, retryMissingOnly, segmentNumber } = await req.json()
     if (!storyId) return NextResponse.json({ success: false, error: 'storyId required' }, { status: 400 })
     let script = scriptParam
     const { data: storyRow, error: storyRowError } = await supabase
@@ -1029,11 +1029,95 @@ export async function POST(req: NextRequest) {
       }
     }
     warnings.forEach(w => console.warn(`  ⚠️ ${w}`))
+    const segmentFilePattern = /^segment_\d{4}\.mp3$/
+    const storyAudioFolder = `asc3/${storyId}`
+
+    if (retryMissingOnly === true) {
+      const requestedSegmentNumber = Number(segmentNumber)
+      if (!Number.isInteger(requestedSegmentNumber) || requestedSegmentNumber < 0) {
+        return NextResponse.json({ success: false, error: 'retryMissingOnly requires a valid segmentNumber' }, { status: 400 })
+      }
+
+      const targetLine = storyLines.find(line => line.index === requestedSegmentNumber)
+      if (!targetLine) {
+        return NextResponse.json({ success: false, error: `No parsed script line found for segment_${requestedSegmentNumber.toString().padStart(4, '0')}.mp3` }, { status: 404 })
+      }
+
+      const { data: existingAudioFiles, error: listAudioError } = await supabase.storage.from('audio').list(storyAudioFolder, { limit: 500 })
+      if (listAudioError) {
+        console.error('  ❌ Failed to list existing story segments:', listAudioError)
+        return NextResponse.json({ success: false, error: `Failed to list existing story segments: ${listAudioError.message}` }, { status: 500 })
+      }
+
+      const existingSegmentNames = new Set((existingAudioFiles || []).filter(file => segmentFilePattern.test(file.name)).map(file => file.name))
+      const targetFileName = `segment_${requestedSegmentNumber.toString().padStart(4, '0')}.mp3`
+      if (existingSegmentNames.has(targetFileName)) {
+        const missingSegments = storyLines
+          .filter(line => line.type === 'narrator' || line.type === 'character' || line.type === 'beat' || line.type === 'pause')
+          .map(line => `segment_${line.index.toString().padStart(4, '0')}.mp3`)
+          .filter(name => !existingSegmentNames.has(name))
+        return NextResponse.json({
+          success: true,
+          retryMissingOnly: true,
+          generatedSegments: [],
+          failures: [],
+          presentCount: existingSegmentNames.size,
+          missingSegments,
+          message: `${targetFileName} already exists; no generation needed.`,
+        })
+      }
+
+      const generatedSegments: any[] = []
+      const failures: any[] = []
+
+      try {
+        if (targetLine.type === 'beat' || targetLine.type === 'pause') {
+          const duration = targetLine.type === 'beat' ? 0.75 : (parseFloat(targetLine.text) || 1.0)
+          const silPath = `${storyAudioFolder}/${targetFileName}`
+          const silBuffer = await generateSilenceBuffer(duration)
+          const { error: uploadError } = await supabase.storage.from('audio').upload(silPath, silBuffer, { contentType: 'audio/mpeg', upsert: true })
+          if (uploadError) throw new Error(`Upload error: ${uploadError.message}`)
+          generatedSegments.push({ index: targetLine.index, speaker: targetLine.speaker, type: targetLine.type, duration: String(duration), url: `${BASE_STORAGE}/${silPath}` })
+        } else if (targetLine.type === 'narrator' || targetLine.type === 'character') {
+          let voiceId = resolvedNarratorVoiceId
+          if (targetLine.type === 'character') {
+            const characterVoiceId = voiceMap[targetLine.speaker.toUpperCase()]
+            if (!characterVoiceId) throw new Error(`Missing character voice assignment for ${targetLine.speaker}`)
+            voiceId = characterVoiceId
+          }
+          const url = await generateVoiceLine(targetLine.text, voiceId, storyId, targetLine.index, 'segment', true, targetLine.speaker, 8)
+          generatedSegments.push({ index: targetLine.index, speaker: targetLine.speaker, type: targetLine.type, url })
+        } else {
+          throw new Error(`Targeted retry does not support ${targetLine.type} lines`)
+        }
+      } catch (e) {
+        failures.push({ index: targetLine.index, speaker: targetLine.speaker, type: targetLine.type, error: String(e) })
+      }
+
+      const { data: updatedAudioFiles, error: updatedListError } = await supabase.storage.from('audio').list(storyAudioFolder, { limit: 500 })
+      if (updatedListError) {
+        console.error('  ❌ Failed to list updated story segments:', updatedListError)
+        return NextResponse.json({ success: false, error: `Failed to list updated story segments: ${updatedListError.message}` }, { status: 500 })
+      }
+      const updatedSegmentNames = new Set((updatedAudioFiles || []).filter(file => segmentFilePattern.test(file.name)).map(file => file.name))
+      const missingSegments = storyLines
+        .filter(line => line.type === 'narrator' || line.type === 'character' || line.type === 'beat' || line.type === 'pause')
+        .map(line => `segment_${line.index.toString().padStart(4, '0')}.mp3`)
+        .filter(name => !updatedSegmentNames.has(name))
+
+      return NextResponse.json({
+        success: failures.length === 0 && missingSegments.length === 0,
+        retryMissingOnly: true,
+        generatedSegments,
+        failures,
+        presentCount: updatedSegmentNames.size,
+        missingSegments,
+      }, { status: failures.length === 0 ? 200 : 500 })
+    }
+
     const results: { intro?: string; outro?: string; segments: any[] } = { segments: [] }
     let succeeded = 0; let failed = 0
 
-    const segmentFilePattern = /^segment_\d{4}\.mp3$/
-    const storyAudioFolder = `asc3/${storyId}`
     const { data: existingAudioFiles, error: listAudioError } = await supabase.storage.from('audio').list(storyAudioFolder, { limit: 500 })
     if (listAudioError) {
       console.error('  ❌ Failed to list existing story segments:', listAudioError)
