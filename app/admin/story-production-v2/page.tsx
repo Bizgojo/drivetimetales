@@ -118,6 +118,7 @@ type StepState = 'locked' | 'waiting' | 'running' | 'complete' | 'failed'
 type QueueStatus = 'queued' | 'in_v2' | 'ready_for_asc' | 'published'
 type ActiveAction =
   | 'saveBrief'
+  | 'halIntake'
   | 'generateScript'
   | 'generateSeriesScripts'
   | 'scoreScript'
@@ -233,6 +234,7 @@ const GENRE_ALIASES: Record<string, string[]> = {
 }
 
 const SERIES_EPISODE_COUNTS = [3, 5, 7, 13]
+const HAL_EPISODE_COUNTS = [1, ...SERIES_EPISODE_COUNTS]
 
 const EMPTY_FORM = {
   title: '',
@@ -314,6 +316,12 @@ export default function StoryProductionV2Page() {
   const [episodeDetailModal, setEpisodeDetailModal] = useState<EpisodeDetailModal>(null)
   const [applyingTopFixKey, setApplyingTopFixKey] = useState('')
   const [applyingValidatorFix, setApplyingValidatorFix] = useState(false)
+  const [halIntake, setHalIntake] = useState({
+    genre: '',
+    runtime_minutes: '15',
+    episode_count: '1',
+    optional_premise: '',
+  })
 
   const scriptRef = useRef<HTMLTextAreaElement | null>(null)
   const reviewRef = useRef<HTMLPreElement | null>(null)
@@ -964,6 +972,256 @@ export default function StoryProductionV2Page() {
     }))
   }
 
+  function chooseCanonicalAuthor(genre: string) {
+    const genreTargets = [genre, ...(GENRE_ALIASES[genre] || [])].map((value) => value.toLowerCase())
+    return authors.find((author) =>
+      [author.primary_genre, author.secondary_genre].filter(Boolean).some((value) => genreTargets.includes(String(value).toLowerCase()))
+    ) || null
+  }
+
+  async function runGenerateVoicesPreflight(story: { id: string; title?: string | null }) {
+    const res = await fetch('/api/admin/generate-voices', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ storyId: story.id, preflightOnly: true }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok || !data.success) {
+      const reasons = Array.isArray(data.blockingReasons) ? data.blockingReasons.join('; ') : data.error || 'preflight failed'
+      throw new Error(`${story.title || story.id}: generate-voices preflight failed. ${reasons}`)
+    }
+    return data
+  }
+
+  async function runHalCanonicalIntake() {
+    if (loading || hasActiveAction) return
+    const genre = halIntake.genre.trim()
+    const runtimeMinutes = Math.max(1, Number(halIntake.runtime_minutes || 15))
+    const episodeCount = Number(halIntake.episode_count || 1)
+    const storyType = episodeCount === 1 ? 'standalone' : 'series'
+    const author = chooseCanonicalAuthor(genre)
+
+    if (!genre) {
+      setReport('Genre is required.')
+      setStepMessage('Hal intake blocked')
+      return
+    }
+    if (!HAL_EPISODE_COUNTS.includes(episodeCount)) {
+      setReport('Episode count must be 1, 3, 5, 7, or 13 for the current canonical V2 workflow.')
+      setStepMessage('Hal intake blocked')
+      return
+    }
+    if (!author) {
+      setReport(`No approved ET author is configured for ${genre}. Add or retag an author before running canonical intake.`)
+      setStepMessage('Hal intake blocked')
+      return
+    }
+    if (!author.style_reference) {
+      setReport(`${author.name} is missing author style metadata. Canonical intake requires approved author style data.`)
+      setStepMessage('Hal intake blocked')
+      return
+    }
+
+    setActiveAction('halIntake')
+    setLoading(true)
+    setActiveStep('brief')
+    setWorkingMessage('Hal is building the canonical production workflow...')
+    setStepMessage('Hal intake running')
+    setReport('')
+    setReviewText('')
+    setReviewTotal(null)
+    clearLoadedProductionState()
+
+    const premise = halIntake.optional_premise.trim() || `Claude may generate an original ${genre} premise consistent with a ${runtimeMinutes}-minute ${storyType === 'series' ? `${episodeCount}-episode series` : 'standalone story'}.`
+    const setting = `Claude may choose a story-specific setting consistent with ${genre}, ${runtimeMinutes} minutes, and Endless Tales audio production.`
+    const runtime = `${runtimeMinutes} min`
+    const canonicalRequirements = [
+      'Canonical Hal intake.',
+      'Use approved Endless Tales author and narrator systems only.',
+      'Do not create duplicate rows.',
+      'Run script validation and generate-voices preflight before audio production.',
+      'No automatic publish.',
+      'Final review target after audio production is status=audio_ready, is_hidden=true, published_on=null.',
+      storyType === 'series'
+        ? 'Create ordered episodes with deterministic numbering, narrator continuity, and character voice continuity across episodes.'
+        : 'Create one standalone story.',
+    ].join(' ')
+
+    try {
+      if (storyType === 'standalone') {
+        const briefBody = {
+          type: 'standalone',
+          title: '',
+          author: author.name,
+          author_style: author.style_reference,
+          genre,
+          narrative_voice: author.narrative_voice || '',
+          premise,
+          requirements: canonicalRequirements,
+          setting,
+          runtime,
+        }
+        setForm(prev => ({ ...prev, ...briefBody }))
+
+        const briefRes = await fetch('/api/v2/story-brief', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(briefBody),
+        })
+        const briefData = await briefRes.json()
+        if (!briefRes.ok || !briefData.success) throw new Error(briefData.error || 'Failed to save canonical brief')
+        const nextStoryId = briefData.story.id
+        setStoryId(nextStoryId)
+        setStatus(briefData.story.status)
+
+        setActiveStep('script')
+        setWorkingMessage('Generating canonical script...')
+        const scriptRes = await fetch('/api/v2/generate-script', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ storyId: nextStoryId }),
+        })
+        const scriptData = await scriptRes.json()
+        if (!scriptRes.ok || !scriptData.success) throw new Error(scriptData.error || 'Failed to generate script')
+        setTitle(scriptData.story.title || '')
+        setScript(scriptData.story.script || '')
+        setStatus(scriptData.story.status)
+
+        setActiveStep('score')
+        setWorkingMessage('Scoring script...')
+        const scoreRes = await fetch('/api/v2/score-script', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ storyId: nextStoryId }),
+        })
+        const scoreData = await scoreRes.json()
+        if (!scoreRes.ok || !scoreData.success) throw new Error(scoreData.error || 'Failed to score script')
+        setReviewText(scoreData.reviewText || '')
+        setReviewTotal(typeof scoreData.total === 'number' ? scoreData.total : null)
+
+        setActiveStep('validate')
+        setWorkingMessage('Validating script...')
+        const validateRes = await fetch('/api/v2/validate-script', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ storyId: nextStoryId }),
+        })
+        const validateData = await validateRes.json()
+        if (!validateRes.ok || !validateData.success) throw new Error(validateData.error || 'Failed to validate script')
+        setStatus(validateData.story.status)
+        setReport(validateData.story.validator_report || '')
+        if (validateData.story.status !== 'validator_passed') throw new Error(`Script validation did not pass.\n\n${validateData.story.validator_report || ''}`)
+
+        setWorkingMessage('Running generate-voices preflight...')
+        const preflight = await runGenerateVoicesPreflight({ id: nextStoryId, title: validateData.story.title || scriptData.story.title })
+        setStepMessage('Hal intake complete: standalone validated and voice preflight passed')
+        setReport([
+          '✓ Canonical Hal intake complete.',
+          `Story ID: ${nextStoryId}`,
+          `Author: ${author.name}`,
+          `Type: standalone`,
+          `Generate-voices preflight: passed`,
+          `Estimated segments: ${preflight.estimatedSegmentCount?.total ?? '—'}`,
+          'Next: Produce Audio from the existing ASC handoff workflow. Do not publish automatically.',
+        ].join('\n'))
+        return
+      }
+
+      const seriesBody = {
+        type: 'series',
+        title: '',
+        series_name: '',
+        series_total_episodes: episodeCount,
+        series_episode_number: 1,
+        series_is_finale: false,
+        author: author.name,
+        author_style: author.style_reference,
+        genre,
+        narrative_voice: author.narrative_voice || '',
+        premise,
+        requirements: canonicalRequirements,
+        setting,
+        runtime,
+      }
+      setForm(prev => ({
+        ...prev,
+        ...seriesBody,
+        series_total_episodes: String(episodeCount),
+        series_episode_number: '1',
+        series_is_finale: 'false',
+      }))
+
+      setWorkingMessage('Planning canonical series package...')
+      const packageRes = await fetch('/api/v2/series-package', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(seriesBody),
+      })
+      const packageData = await packageRes.json()
+      if (!packageRes.ok || !packageData.success) throw new Error(packageData.error || 'Failed to create series package')
+      let pkg = packageData.package as SeriesPackage
+      setSeriesPackage(pkg)
+      setStoryId(pkg.episodes?.[0]?.id || '')
+      setTitle(pkg.series?.title || '')
+      setStatus((pkg.episodes?.[0]?.status || 'brief_complete') as V2Status)
+
+      setActiveStep('script')
+      setWorkingMessage('Generating all episode scripts...')
+      const scriptsRes = await fetch('/api/v2/series-package/generate-scripts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ seriesId: pkg.series.id }),
+      })
+      const scriptsData = await scriptsRes.json()
+      if (!scriptsRes.ok || !scriptsData.success) throw new Error(scriptsData.error || 'Failed to generate series scripts')
+      pkg = scriptsData.package as SeriesPackage
+      setSeriesPackage(pkg)
+
+      setActiveStep('validate')
+      setWorkingMessage('Scoring and validating all episodes...')
+      const validatePackageRes = await fetch('/api/v2/series-package/score-validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ seriesId: pkg.series.id }),
+      })
+      const validatePackageData = await validatePackageRes.json()
+      if (!validatePackageRes.ok || !validatePackageData.success) throw new Error(validatePackageData.error || 'Failed to score/validate series package')
+      pkg = validatePackageData.package as SeriesPackage
+      setSeriesPackage(pkg)
+
+      const failedEpisode = pkg.episodes.find((episode) => {
+        const validation = episode.validator_result ?? episode.script_json?.series_score_validate?.validator_result
+        return !(episode.status === 'validator_passed' || validation === 'PASS')
+      })
+      if (failedEpisode) throw new Error(`Episode ${failedEpisode.episode_number || failedEpisode.series_episode_number} did not pass validation.`)
+
+      setWorkingMessage('Running generate-voices preflight for all episodes...')
+      const preflights = []
+      for (const episode of pkg.episodes) {
+        preflights.push(await runGenerateVoicesPreflight({ id: episode.id, title: episode.title }))
+      }
+
+      setStepMessage('Hal intake complete: series validated and voice preflight passed')
+      setReport([
+        '✓ Canonical Hal intake complete.',
+        `Series ID: ${pkg.series.id}`,
+        `Series: ${pkg.series.title}`,
+        `Author: ${author.name}`,
+        `Episodes: ${pkg.episodes.length}`,
+        `Generate-voices preflight: passed for ${preflights.length} episodes`,
+        'Next: Produce Audio from the existing ordered ASC package workflow. Do not publish automatically.',
+      ].join('\n'))
+    } catch (e) {
+      setReport(e instanceof Error ? e.message : 'Unknown error')
+      setStepMessage('Hal intake stopped')
+    } finally {
+      setLoading(false)
+      setWorkingMessage('')
+      setActiveStep('')
+      setActiveAction('')
+    }
+  }
+
   function getStepState(step: 'brief' | 'script' | 'score' | 'validate'): StepState {
     if (activeStep === step && loading) return 'running'
     if (step === 'brief') {
@@ -1609,6 +1867,83 @@ export default function StoryProductionV2Page() {
             <StepPill label="7. Publish" state="locked" />
           </div>
           {stepMessage ? <div className="mt-3 text-sm font-medium text-green-700">{stepMessage}</div> : null}
+        </div>
+
+        <div className="bg-white border border-black rounded-lg p-4 space-y-4">
+          <div>
+            <div className="text-lg font-bold">Hal Story Intake</div>
+            <p className="mt-1 text-sm text-gray-700">
+              Answer four fields. Hal fills the canonical V2 template, uses approved ET authors, runs script validation, and runs generate-voices preflight before audio production.
+            </p>
+          </div>
+          <div className="grid gap-3 md:grid-cols-4">
+            <label className="space-y-1">
+              <span className="text-sm font-semibold text-gray-700">1. Genre</span>
+              <select
+                className="w-full border rounded p-2"
+                value={halIntake.genre}
+                onChange={e => setHalIntake(prev => ({ ...prev, genre: e.target.value }))}
+                disabled={loading || hasActiveAction}
+              >
+                <option value="">Choose genre</option>
+                {genreOptions.map((genre) => <option key={genre} value={genre}>{genre}</option>)}
+              </select>
+            </label>
+            <label className="space-y-1">
+              <span className="text-sm font-semibold text-gray-700">2. Runtime</span>
+              <select
+                className="w-full border rounded p-2"
+                value={halIntake.runtime_minutes}
+                onChange={e => setHalIntake(prev => ({ ...prev, runtime_minutes: e.target.value }))}
+                disabled={loading || hasActiveAction}
+              >
+                {['10', '15', '20', '30'].map(minutes => <option key={minutes} value={minutes}>{minutes} min</option>)}
+              </select>
+            </label>
+            <label className="space-y-1">
+              <span className="text-sm font-semibold text-gray-700">3. Episodes</span>
+              <select
+                className="w-full border rounded p-2"
+                value={halIntake.episode_count}
+                onChange={e => setHalIntake(prev => ({ ...prev, episode_count: e.target.value }))}
+                disabled={loading || hasActiveAction}
+              >
+                {HAL_EPISODE_COUNTS.map(count => (
+                  <option key={count} value={String(count)}>{count === 1 ? '1 episode (standalone)' : `${count} episodes (series)`}</option>
+                ))}
+              </select>
+            </label>
+            <div className="rounded border border-gray-200 bg-gray-50 p-2 text-sm text-gray-700">
+              <div><strong>Derived type:</strong> {Number(halIntake.episode_count || 1) === 1 ? 'Standalone' : 'Series'}</div>
+              <div><strong>Author:</strong> {halIntake.genre ? (chooseCanonicalAuthor(halIntake.genre)?.name || 'No approved match') : 'Choose genre'}</div>
+            </div>
+          </div>
+          <label className="block space-y-1">
+            <span className="text-sm font-semibold text-gray-700">4. Optional premise/story seed</span>
+            <textarea
+              className="w-full border rounded p-2"
+              rows={3}
+              placeholder="Optional. Leave blank and Claude will generate a premise consistent with the genre/runtime."
+              value={halIntake.optional_premise}
+              onChange={e => setHalIntake(prev => ({ ...prev, optional_premise: e.target.value }))}
+              disabled={loading || hasActiveAction}
+            />
+          </label>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={runHalCanonicalIntake}
+              disabled={loading || hasActiveAction || authorsLoading}
+              className="rounded bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              <ButtonLabel loading={activeAction === 'halIntake'}>
+                {activeAction === 'halIntake' ? 'Hal Intake Running...' : 'Create Story Prompt'}
+              </ButtonLabel>
+            </button>
+            <div className="text-xs text-gray-600">
+              Stops on validation/preflight failure. Does not publish. Audio production still uses the existing ASC handoff controls after preflight passes.
+            </div>
+          </div>
         </div>
 
         <div className="bg-white border border-black rounded-lg p-4 space-y-4">

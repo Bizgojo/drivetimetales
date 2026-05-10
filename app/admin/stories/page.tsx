@@ -175,7 +175,7 @@ function StoryEditorPanel({
   story: Story
   genres: Genre[]
   onClose: () => void
-  onSaved: () => void
+  onSaved: (story: Story) => void
   onDelete: (id: string) => void
 }) {
   const [title, setTitle] = useState(story.title)
@@ -191,6 +191,7 @@ function StoryEditorPanel({
   const [uploadingCover, setUploadingCover] = useState(false)
   const [generatingCover, setGeneratingCover] = useState(false)
   const [coverUrl, setCoverUrl] = useState(story.cover_url || '')
+  const [coverPreviewVersion, setCoverPreviewVersion] = useState(0)
   const [candidateCoverUrl, setCandidateCoverUrl] = useState('')
   const [candidatePromptPreview, setCandidatePromptPreview] = useState('')
   const [isHidden, setIsHidden] = useState(story.is_hidden || false)
@@ -217,6 +218,9 @@ function StoryEditorPanel({
 
   const wordCount = description.trim() === '' ? 0 : description.trim().split(/\s+/).length
   const overLimit = wordCount > 24
+  const coverPreviewSrc = coverUrl
+    ? `${coverUrl}${coverUrl.includes('?') ? '&' : '?'}adminCoverPreview=${coverPreviewVersion}`
+    : '/images/default-cover.png'
 
   async function handleCoverUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -231,6 +235,7 @@ function StoryEditorPanel({
       if (uploadError) throw uploadError
       const { data } = supabase.storage.from('audio-stories').getPublicUrl(path)
       setCoverUrl(data.publicUrl)
+      setCoverPreviewVersion(v => v + 1)
     } catch (err) {
       alert('Cover upload failed: ' + String(err))
     }
@@ -261,6 +266,7 @@ function StoryEditorPanel({
   function acceptCoverCandidate() {
     if (!candidateCoverUrl) return
     setCoverUrl(candidateCoverUrl)
+    setCoverPreviewVersion(v => v + 1)
     setCandidateCoverUrl('')
     setCandidatePromptPreview('')
   }
@@ -302,8 +308,11 @@ function StoryEditorPanel({
     if (error) {
       alert('Save failed: ' + error.message)
     } else {
+      const savedStory = (data?.[0] ? { ...story, ...data[0] } : { ...story, cover_url: coverUrl || null }) as Story
+      setCoverUrl(savedStory.cover_url || '')
+      setCoverPreviewVersion(v => v + 1)
       setSaved(true)
-      onSaved()
+      onSaved(savedStory)
       setTimeout(() => setSaved(false), 3000)
     }
     setSaving(false)
@@ -342,7 +351,7 @@ function StoryEditorPanel({
             <label style={{ fontSize: '12px', fontWeight: 600, color: textSecondary, display: 'block', marginBottom: '8px' }}>COVER IMAGE</label>
             <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
               <div style={{ width: '100px', height: '100px', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#e5e5e5', flexShrink: 0, border: `1px solid ${border}` }}>
-                <img src={coverUrl || '/images/default-cover.png'} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <img src={coverPreviewSrc} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <button
@@ -624,7 +633,7 @@ function StoryEditorPanel({
               {/* Cover */}
               <div style={{ flexShrink: 0, border: '10px solid #1e293b', borderRight: 'none', display: 'flex', alignItems: 'center' }}>
                 <div style={{ width: '110px', height: '110px', borderRadius: '6px', overflow: 'hidden', boxShadow: '0 0 15px rgba(255,255,255,0.4)', position: 'relative', flexShrink: 0 }}>
-                  <img src={coverUrl || '/images/default-cover.png'} alt={title} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                  <img src={coverPreviewSrc} alt={title} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                   {/* Play pill */}
                   <div style={{ position: 'absolute', bottom: '6px', right: '6px', background: 'rgba(249,115,22,0.88)', borderRadius: '20px', padding: '3px 8px 3px 6px', display: 'flex', alignItems: 'center', gap: '3px' }}>
                     <svg width="6" height="8" viewBox="0 0 12 14" fill="white"><path d="M1 1l10 6-10 6V1z"/></svg>
@@ -1114,8 +1123,10 @@ export default function AdminStoriesPage() {
             setDeleteConfirm(null)
             fetchStories()
           }}
-          onSaved={() => {
-            // Refresh stories in background without resetting panel state
+          onSaved={(savedStory) => {
+            editingStoryRef.current = savedStory
+            setEditingStory(savedStory)
+            setStories(prev => prev.map(story => story.id === savedStory.id ? { ...story, ...savedStory } : story))
             fetchStories()
           }}
         />
