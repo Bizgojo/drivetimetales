@@ -727,7 +727,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
 
   // ── Queue advance ──────────────────────────────────────────────────────────
 
-  const advanceQueue = () => {
+  const advanceQueue = (source: 'natural_ended' | 'error_skip' = 'natural_ended') => {
     completedRef.current += segDursRef.current[queueIndex] || duration
     const ni = queueIndex + 1
     if (ni < queue.length) {
@@ -746,9 +746,11 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
           setTimeout(() => duck(), 120)
         }
       }
+    } else if (source === 'natural_ended') {
+      raise(0); setIsPlaying(false); saveProgress(duration, true)
+      maybeAutoAdvanceFromNaturalEnd('natural_ended')
     } else {
       raise(0); setIsPlaying(false); saveProgress(duration, true)
-      setTimeout(() => router.push('/library'), 3000)
     }
   }
 
@@ -1079,13 +1081,13 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
               audioRef.current.dataset.retried = '1'
               audioRef.current.src = failedUrl
               audioRef.current.load()
-              audioRef.current.play().catch(() => advanceQueue())
+              audioRef.current.play().catch(() => advanceQueue('error_skip'))
             } else {
               if (audioRef.current) delete audioRef.current.dataset.retried
               const ni = queueIndex + 1
               if (ni < queue.length) {
                 console.warn('[player] Skipping failed segment to next:', failedUrl)
-                advanceQueue()
+                advanceQueue('error_skip')
               }
             }
           }
