@@ -41,6 +41,18 @@ function cleanConceptPart(value: unknown, max = 450): string {
     .slice(0, max)
 }
 
+function excerptText(value: unknown, max = 900): string {
+  if (typeof value !== 'string') return ''
+  return cleanConceptPart(
+    value
+      .replace(/\[[^\]]+\]/g, ' ')
+      .replace(/^[A-Z][A-Z0-9 '\-]+:\s*/gm, ' ')
+      .replace(/\s+/g, ' ')
+      .trim(),
+    max
+  )
+}
+
 function visualAnchorsForTitle(title: string): string {
   const normalized = title.toLowerCase()
 
@@ -65,7 +77,7 @@ function visualAnchorsForTitle(title: string): string {
   return ''
 }
 
-function buildStoryVisualConcept(story: any): string | undefined {
+function buildStoryVisualConcept(story: any, candidateOnly = false): string | undefined {
   const brief = story?.brief_json && typeof story.brief_json === 'object' ? story.brief_json : {}
   const parts = [
     cleanConceptPart(story?.description, 260),
@@ -73,6 +85,18 @@ function buildStoryVisualConcept(story: any): string | undefined {
     cleanConceptPart(brief?.setting, 320),
     cleanConceptPart(brief?.cliffhanger_or_resolution, 320),
   ].filter(Boolean)
+
+  if (candidateOnly) {
+    const storyContent = excerptText(story?.prose_text, 950) || excerptText(story?.script, 950)
+    if (storyContent) parts.push(`Episode-specific content: ${storyContent}.`)
+    if (story?.series_name || story?.episode_number || story?.episode_title) {
+      parts.push(cleanConceptPart([
+        story?.series_name ? `Series: ${story.series_name}` : '',
+        story?.episode_number ? `Episode ${story.episode_number}` : '',
+        story?.episode_title ? `Episode title: ${story.episode_title}` : '',
+      ].filter(Boolean).join('. '), 260))
+    }
+  }
 
   const anchors = visualAnchorsForTitle(story?.title || '')
   if (anchors) parts.push(`Required concrete visual anchors: ${anchors}.`)
@@ -129,7 +153,7 @@ async function generateWithDallE(prompt: string): Promise<Buffer> {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { storyId, genre } = body
+    const { storyId, genre, candidateOnly } = body
 
     if (!storyId) {
       return NextResponse.json({ success: false, error: 'storyId is required' }, { status: 400 })
@@ -138,13 +162,13 @@ export async function POST(req: NextRequest) {
     // Fetch story details — use concept/tone for visual prompt, NOT raw script
     const { data: story, error: storyErr } = await supabase
       .from('stories')
-      .select('title, author, genre, primary_genre, description, intro_text, brief_json')
+      .select('title, author, genre, primary_genre, description, intro_text, brief_json, prose_text, script, episode_title, series_name, episode_number')
       .eq('id', storyId)
       .single()
 
     if (storyErr) console.error('Story fetch error:', storyErr.message)
 
-    const visualConcept = buildStoryVisualConcept(story)
+    const visualConcept = buildStoryVisualConcept(story, candidateOnly === true)
 
     const dallePrompt = buildCoverPrompt({
       title: story?.title || 'Untitled',
@@ -167,7 +191,9 @@ export async function POST(req: NextRequest) {
     console.log('  ✅ Text overlay applied')
 
     const timestamp = Date.now()
-    const storagePath = `asc3/${storyId}/cover_${timestamp}.jpg`
+    const storagePath = candidateOnly === true
+      ? `asc3/${storyId}/cover-candidates/cover_${timestamp}.jpg`
+      : `asc3/${storyId}/cover_${timestamp}.jpg`
 
     const { error: uploadErr } = await supabase.storage
       .from('audio')
@@ -176,6 +202,16 @@ export async function POST(req: NextRequest) {
     if (uploadErr) throw new Error(`Cover upload error: ${uploadErr.message}`)
 
     const { data: { publicUrl } } = supabase.storage.from('audio').getPublicUrl(storagePath)
+
+    if (candidateOnly === true) {
+      console.log(`✅ Cover candidate generated: ${publicUrl}`)
+      return NextResponse.json({
+        success: true,
+        candidateOnly: true,
+        candidateCoverUrl: publicUrl,
+        promptPreview: dallePrompt.slice(0, 900),
+      })
+    }
 
     await supabase.from('stories').update({ cover_url: publicUrl }).eq('id', storyId)
 
