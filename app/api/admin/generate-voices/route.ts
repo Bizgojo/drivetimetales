@@ -773,16 +773,33 @@ async function generateSFX(description: string, storyId: string, lineIndex: numb
 
 export async function POST(req: NextRequest) {
   try {
-    const { storyId, script: scriptParam, narratorVoiceId, narratorVoiceName, characterVoices } = await req.json()
+    const { storyId, script: scriptParam, narratorVoiceId, narratorVoiceName, characterVoices, preflightOnly } = await req.json()
     if (!storyId) return NextResponse.json({ success: false, error: 'storyId required' }, { status: 400 })
     let script = scriptParam
+    const { data: storyRow, error: storyRowError } = await supabase
+      .from('stories')
+      .select('id,title,author,genre,description,duration_mins,created_at,script,narrator_voice_id,narrator_voice_name')
+      .eq('id', storyId)
+      .single()
     if (!script) {
-      const { data: row } = await supabase.from('stories').select('script').eq('id', storyId).single()
-      script = row?.script
+      script = storyRow?.script
       if (!script) return NextResponse.json({ success: false, error: 'Script not found in database' }, { status: 400 })
     }
     const unlabeledBodyLines = findUnlabeledStoryBodyLines(script)
     if (unlabeledBodyLines.length > 0) {
+      if (preflightOnly === true) {
+        return NextResponse.json({
+          success: false,
+          preflightOnly: true,
+          cueCount: 0,
+          cues: [],
+          narratorGenderCheck: { passed: false, reason: 'Skipped because unlabeled story body lines were found' },
+          estimatedSegmentCount: { spoken: 0, silence: 0, total: 0 },
+          blockingReasons: ['Unlabeled story body lines found'],
+          unlabeledLineCount: unlabeledBodyLines.length,
+          examples: unlabeledBodyLines.slice(0, 5),
+        }, { status: 422 })
+      }
       return NextResponse.json({
         success: false,
         error: 'Unlabeled story body lines found',
@@ -800,7 +817,7 @@ export async function POST(req: NextRequest) {
     const inlineCueProblems = findInlineProductionCues(storyLines)
     if (inlineCueProblems.length > 0) {
       console.error(`  ❌ Inline production cues found in spoken story lines: ${inlineCueProblems.length}`)
-      return NextResponse.json({
+      if (preflightOnly !== true) return NextResponse.json({
         success: false,
         error: 'Inline production cues found in spoken story lines',
         instruction: 'Move timing cues to full-line [BEAT] or [PAUSE:n] entries, or rewrite performance directions as natural dialogue/narration before generating audio.',
@@ -808,7 +825,6 @@ export async function POST(req: NextRequest) {
         cues: inlineCueProblems,
       }, { status: 422 })
     }
-    console.log(`\n🎙 generate-voices: ${storyId}`)
     const { data: allVoices } = await supabase.from('narrator_voices').select('name,elevenlabs_voice_id,gender')
     const voiceByName: Record<string, string> = {}
     const narratorVoiceById: Record<string, NarratorVoiceRecord> = {}
@@ -820,23 +836,105 @@ export async function POST(req: NextRequest) {
     let resolvedNarratorVoiceName = narratorVoiceName
     if (!resolvedNarratorVoiceId && narratorVoiceName) resolvedNarratorVoiceId = voiceByName[narratorVoiceName]
     if (!resolvedNarratorVoiceId) {
-      const { data: row } = await supabase.from('stories').select('narrator_voice_id,narrator_voice_name').eq('id', storyId).single()
-      if (row?.narrator_voice_id) {
-        resolvedNarratorVoiceId = row.narrator_voice_id
-        resolvedNarratorVoiceName = row.narrator_voice_name || resolvedNarratorVoiceName
-      } else if (row?.narrator_voice_name) {
-        resolvedNarratorVoiceName = row.narrator_voice_name
-        resolvedNarratorVoiceId = voiceByName[row.narrator_voice_name]
+      if (storyRow?.narrator_voice_id) {
+        resolvedNarratorVoiceId = storyRow.narrator_voice_id
+        resolvedNarratorVoiceName = storyRow.narrator_voice_name || resolvedNarratorVoiceName
+      } else if (storyRow?.narrator_voice_name) {
+        resolvedNarratorVoiceName = storyRow.narrator_voice_name
+        resolvedNarratorVoiceId = voiceByName[storyRow.narrator_voice_name]
       }
     }
     if (!resolvedNarratorVoiceId) resolvedNarratorVoiceId = voiceByName['Cole Hargrove']
-    if (!resolvedNarratorVoiceId) return NextResponse.json({ success: false, error: 'No narrator voice found' }, { status: 400 })
+    if (!resolvedNarratorVoiceId && preflightOnly !== true) return NextResponse.json({ success: false, error: 'No narrator voice found' }, { status: 400 })
     if (!resolvedNarratorVoiceName) resolvedNarratorVoiceName = narratorVoiceById[resolvedNarratorVoiceId]?.name
     const characterGuide = parseCharacterGuide(script)
     // Check if narrator IS the protagonist (first person stories)
     const narratorIsCharacter = /NARRATOR_IS_CHARACTER:\s*true/i.test(script)
     const narrativeVoice = script.match(/NARRATIVE_VOICE:\s*(\S+)/i)?.[1]?.toLowerCase() || ''
     const isFirstPerson = narrativeVoice === 'first_person' || narratorIsCharacter
+    const protagonist = isFirstPerson ? getNarratorCharacter(characterGuide) : null
+    const protagonistGender = protagonist ? normalizeVoiceGender(protagonist.gender) : 'unknown'
+    const narratorVoice = resolvedNarratorVoiceId ? narratorVoiceById[resolvedNarratorVoiceId] : null
+    const narratorGender = normalizeVoiceGender(narratorVoice?.gender)
+    const narratorGenderCheck = {
+      required: isFirstPerson,
+      passed: true,
+      narrativeVoice,
+      narratorIsCharacter,
+      protagonistName: protagonist?.name || null,
+      protagonistGender,
+      narratorVoiceId: resolvedNarratorVoiceId || null,
+      narratorVoiceName: resolvedNarratorVoiceName || narratorVoice?.name || null,
+      narratorGender,
+      reason: '',
+    }
+    if (!resolvedNarratorVoiceId) {
+      narratorGenderCheck.passed = false
+      narratorGenderCheck.reason = 'No narrator voice found'
+    } else if (resolvedNarratorVoiceId === BELLE_B_ID) {
+      narratorGenderCheck.passed = false
+      narratorGenderCheck.reason = 'Belle B cannot be used as the story narrator or narrator-character voice.'
+    } else if (isFirstPerson && !protagonist) {
+      narratorGenderCheck.passed = false
+      narratorGenderCheck.reason = 'First-person/narrator-character stories require a CHARACTER GUIDE protagonist with known gender.'
+    } else if (isFirstPerson && protagonistGender === 'unknown') {
+      narratorGenderCheck.passed = false
+      narratorGenderCheck.reason = `First-person protagonist ${protagonist?.name} must have a known gender in the CHARACTER GUIDE.`
+    } else if (isFirstPerson && narratorGender === 'unknown') {
+      narratorGenderCheck.passed = false
+      narratorGenderCheck.reason = `Narrator voice gender unknown for ${resolvedNarratorVoiceName || resolvedNarratorVoiceId}; first-person/narrator-character stories require a known narrator voice gender.`
+    } else if (isFirstPerson && narratorGender !== protagonistGender) {
+      narratorGenderCheck.passed = false
+      narratorGenderCheck.reason = `Narrator voice gender ${narratorGender} does not match first-person protagonist ${protagonist?.name} gender ${protagonistGender}`
+    }
+    const missingMetadata: string[] = []
+    if (storyRowError || !storyRow) missingMetadata.push('story row')
+    if (!storyRow?.title) missingMetadata.push('title')
+    if (!storyRow?.author) missingMetadata.push('author')
+    if (!storyRow?.genre) missingMetadata.push('genre')
+    if (!storyRow?.description) missingMetadata.push('description')
+    if (storyRow?.duration_mins === null || storyRow?.duration_mins === undefined) missingMetadata.push('duration_mins')
+    if (!storyRow?.created_at) missingMetadata.push('created_at')
+    if (!script) missingMetadata.push('script')
+    if (!resolvedNarratorVoiceId) missingMetadata.push('narrator_voice_id')
+    if (!resolvedNarratorVoiceName && !narratorVoice?.name) missingMetadata.push('narrator_voice_name')
+    const estimatedSegmentCount = {
+      spoken: storyLines.filter(l => l.type === 'narrator' || l.type === 'character').length,
+      silence: storyLines.filter(l => l.type === 'beat' || l.type === 'pause').length,
+      sfx: storyLines.filter(l => l.type === 'sfx').length,
+      total: storyLines.filter(l => l.type === 'narrator' || l.type === 'character' || l.type === 'beat' || l.type === 'pause').length,
+    }
+    if (preflightOnly === true) {
+      const blockingReasons = [
+        ...(inlineCueProblems.length > 0 ? ['Inline production cues found in spoken story lines'] : []),
+        ...missingMetadata.map(field => `Missing required metadata: ${field}`),
+        ...(narratorGenderCheck.passed ? [] : [narratorGenderCheck.reason]),
+      ]
+      return NextResponse.json({
+        success: blockingReasons.length === 0,
+        preflightOnly: true,
+        cueCount: inlineCueProblems.length,
+        cues: inlineCueProblems,
+        narratorGenderCheck,
+        estimatedSegmentCount,
+        blockingReasons,
+        metadata: {
+          missingFields: missingMetadata,
+          present: {
+            title: !!storyRow?.title,
+            author: !!storyRow?.author,
+            genre: !!storyRow?.genre,
+            description: !!storyRow?.description,
+            duration_mins: storyRow?.duration_mins !== null && storyRow?.duration_mins !== undefined,
+            created_at: !!storyRow?.created_at,
+            script: !!script,
+            narrator_voice_id: !!resolvedNarratorVoiceId,
+            narrator_voice_name: !!(resolvedNarratorVoiceName || narratorVoice?.name),
+          },
+        },
+      }, { status: blockingReasons.length === 0 ? 200 : 422 })
+    }
+    console.log(`\n🎙 generate-voices: ${storyId}`)
     console.log(`  Narrative: ${narrativeVoice}, narratorIsCharacter: ${isFirstPerson}`)
     if (resolvedNarratorVoiceId === BELLE_B_ID) {
       return NextResponse.json({
@@ -845,16 +943,12 @@ export async function POST(req: NextRequest) {
       }, { status: 422 })
     }
     if (isFirstPerson) {
-      const protagonist = getNarratorCharacter(characterGuide)
       if (!protagonist) {
         return NextResponse.json({
           success: false,
           error: 'First-person/narrator-character stories require a CHARACTER GUIDE protagonist with known gender.',
         }, { status: 422 })
       }
-      const protagonistGender = normalizeVoiceGender(protagonist.gender)
-      const narratorVoice = narratorVoiceById[resolvedNarratorVoiceId]
-      const narratorGender = normalizeVoiceGender(narratorVoice?.gender)
       if (protagonistGender === 'unknown') {
         return NextResponse.json({
           success: false,
