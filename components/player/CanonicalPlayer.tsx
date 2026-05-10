@@ -297,6 +297,33 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
     }, 2500)
   }
 
+  const getSeriesPlaylistAutoAdvanceCandidate = (): AutoAdvanceCandidate | null => {
+    const playlist = playlistRef.current || []
+    if (!playlist.length) return null
+
+    const currentIndex = playlist.findIndex((episode) => episode.id === storyId)
+    if (currentIndex < 0 || currentIndex >= playlist.length - 1) return null
+
+    const nextEpisode = playlist[currentIndex + 1]
+    if (!nextEpisode?.id) return null
+
+    playlistIndexRef.current = currentIndex
+    return {
+      story: {
+        id: nextEpisode.id,
+        title: nextEpisode.episode_number ? `Episode ${nextEpisode.episode_number}` : 'Next episode',
+        episode_number: nextEpisode.episode_number,
+        series_id: (story as any)?.series_id || null,
+        series_name: (story as any)?.series_name || null,
+        status: 'published',
+        is_hidden: false,
+      },
+      reason: 'next_series_episode',
+      reasonLabel: 'Next episode',
+      score: 0,
+    }
+  }
+
   const maybeAutoAdvanceFromNaturalEnd = async (source: 'natural_ended') => {
     if (source !== 'natural_ended') return
     if (!mountedRef.current) return
@@ -307,6 +334,12 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
     }
 
     isAdvancingRef.current = true
+    const seriesPlaylistCandidate = getSeriesPlaylistAutoAdvanceCandidate()
+    if (seriesPlaylistCandidate) {
+      startAutoAdvanceTo(seriesPlaylistCandidate)
+      return
+    }
+
     const candidate = await fetchAutoAdvanceCandidate()
     if (!mountedRef.current || !autoAdvanceEnabledRef.current) return
     if (!candidate) {
