@@ -412,6 +412,7 @@ interface ScriptLine {
   index: number; speaker: string; text: string
   type: 'announcer' | 'narrator' | 'character' | 'sfx' | 'beat' | 'pause'
   isIntro: boolean; isOutro: boolean
+  rawLineNumber?: number; sourceLine?: string
 }
 
 interface CharacterInfo {
@@ -419,6 +420,12 @@ interface CharacterInfo {
   gender: 'male' | 'female' | 'unknown'
   description: string
   isProtagonist: boolean
+}
+
+interface NarratorVoiceRecord {
+  name: string
+  elevenlabs_voice_id: string
+  gender?: string | null
 }
 
 function parseCharacterGuide(script: string): CharacterInfo[] {
@@ -480,6 +487,16 @@ function assignCharacterVoice(voiceMap: Record<string, string>, characterName: s
   })
 }
 
+function getNarratorCharacter(characterGuide: CharacterInfo[]): CharacterInfo | null {
+  return characterGuide.find(char => char.isProtagonist) || characterGuide[0] || null
+}
+
+function normalizeVoiceGender(gender: string | null | undefined): CharacterInfo['gender'] {
+  const normalized = (gender || '').trim().toLowerCase()
+  if (normalized === 'male' || normalized === 'female') return normalized
+  return 'unknown'
+}
+
 function findUnlabeledStoryBodyLines(script: string) {
   const rawLines = script.split('\n')
   const startIdx = rawLines.findIndex(line => line.includes('[START AUDIO DRAMA SCRIPT]'))
@@ -504,6 +521,30 @@ function findUnlabeledStoryBodyLines(script: string) {
       if (bracketCueRe.test(text)) return false
       if (speakerLabelRe.test(text)) return false
       return true
+    })
+}
+
+function findInlineProductionCues(lines: ScriptLine[]) {
+  const bracketCueRe = /\[[^\]]+\]/g
+  const parentheticalDirectionRe = /\(([^)]*(?:pause|beat|quiet|quietly|softly|slowly|fast|under (?:his|her|their) breath|whisper|whispers|whispered|sigh|sighs|sighed|laugh|laughs|laughed|nervous|angry|opens?|closes?|door|turns?|walks?|appearing|appears)[^)]*)\)/gi
+
+  return lines
+    .filter(line => line.type === 'narrator' || line.type === 'character')
+    .flatMap(line => {
+      const cues = [
+        ...Array.from(line.text.matchAll(bracketCueRe)).map(match => match[0]),
+        ...Array.from(line.text.matchAll(parentheticalDirectionRe)).map(match => match[0]),
+      ]
+
+      return cues.map(cue => ({
+        segment: `segment_${line.index.toString().padStart(4, '0')}.mp3`,
+        index: line.index,
+        speaker: line.speaker,
+        cue,
+        lineText: line.text,
+        sourceLine: line.sourceLine || `${line.speaker}: ${line.text}`,
+        lineNumber: line.rawLineNumber,
+      }))
     })
 }
 
@@ -542,10 +583,10 @@ function parseScript(script: string): ScriptLine[] {
     if (rawIdx < headerEndIdx && rawIdx !== firstAnnouncerIdx && rawIdx !== lastAnnouncerIdx) {
       if (trimmed.startsWith('NARRATOR:') || trimmed.startsWith('ANNOUNCER:')) return
     }
-    if (trimmed === '[BEAT]') { lines.push({ index: lineIndex++, speaker: 'BEAT', text: '0.75', type: 'beat', isIntro: false, isOutro: false }); return }
+    if (trimmed === '[BEAT]') { lines.push({ index: lineIndex++, speaker: 'BEAT', text: '0.75', type: 'beat', isIntro: false, isOutro: false, rawLineNumber: rawIdx + 1, sourceLine: line }); return }
     const pauseMatch = trimmed.match(/^\[PAUSE:(\d+)\]$/)
-    if (pauseMatch) { lines.push({ index: lineIndex++, speaker: 'PAUSE', text: pauseMatch[1], type: 'pause', isIntro: false, isOutro: false }); return }
-    if (trimmed.startsWith('[SFX:')) { const sfxText = trimmed.replace(/^\[SFX:\s*/, '').replace(/\]$/, '').trim(); lines.push({ index: lineIndex++, speaker: 'SFX', text: sfxText, type: 'sfx', isIntro: false, isOutro: false }); return }
+    if (pauseMatch) { lines.push({ index: lineIndex++, speaker: 'PAUSE', text: pauseMatch[1], type: 'pause', isIntro: false, isOutro: false, rawLineNumber: rawIdx + 1, sourceLine: line }); return }
+    if (trimmed.startsWith('[SFX:')) { const sfxText = trimmed.replace(/^\[SFX:\s*/, '').replace(/\]$/, '').trim(); lines.push({ index: lineIndex++, speaker: 'SFX', text: sfxText, type: 'sfx', isIntro: false, isOutro: false, rawLineNumber: rawIdx + 1, sourceLine: line }); return }
     // Support bracketed dialogue like [NARRATOR]: text or [COLE DRISCOLL]: text
     const bracketDm = trimmed.match(/^\[([A-Z][A-ZÀ-Ú\s'.()]+?)\]:\s*(.+)$/)
     if (bracketDm) {
@@ -556,7 +597,7 @@ function parseScript(script: string): ScriptLine[] {
       let type: ScriptLine['type'] = 'character'
       if (isAnnouncer) type = 'announcer'
       else if (speaker === 'NARRATOR') type = 'narrator'
-      lines.push({ index: lineIndex++, speaker, text, type, isIntro, isOutro })
+      lines.push({ index: lineIndex++, speaker, text, type, isIntro, isOutro, rawLineNumber: rawIdx + 1, sourceLine: line })
       return
     }
     if (trimmed.startsWith('[')) return
@@ -571,7 +612,7 @@ function parseScript(script: string): ScriptLine[] {
       let type: ScriptLine['type'] = 'character'
       if (isAnnouncer) type = 'announcer'
       else if (speaker === 'NARRATOR') type = 'narrator'
-      lines.push({ index: lineIndex++, speaker, text, type, isIntro, isOutro })
+      lines.push({ index: lineIndex++, speaker, text, type, isIntro, isOutro, rawLineNumber: rawIdx + 1, sourceLine: line })
     }
   })
   return lines
@@ -750,25 +791,89 @@ export async function POST(req: NextRequest) {
         instruction: 'Every narration/dialogue paragraph after [START AUDIO DRAMA SCRIPT] must begin with a speaker label such as NARRATOR: or CHARACTER:',
       }, { status: 422 })
     }
+    const lines = parseScript(script)
+    const announcerLines = lines.filter(l => l.type === 'announcer')
+    const introLine = announcerLines[0]
+    const outroLine = announcerLines[announcerLines.length - 1]
+    const storyLines = lines.filter(l => !l.isIntro && !l.isOutro)
+    const nonDialogueSpeakers = new Set(['TITLE', 'AUTHOR', 'GENRE', 'DESCRIPTION', 'SERIES', 'EPISODE', 'EPISODE_TITLE', 'SUNO PROMPT', 'ANNOUNCER', 'BELLE B', 'SANDY'])
+    const inlineCueProblems = findInlineProductionCues(storyLines)
+    if (inlineCueProblems.length > 0) {
+      console.error(`  ❌ Inline production cues found in spoken story lines: ${inlineCueProblems.length}`)
+      return NextResponse.json({
+        success: false,
+        error: 'Inline production cues found in spoken story lines',
+        instruction: 'Move timing cues to full-line [BEAT] or [PAUSE:n] entries, or rewrite performance directions as natural dialogue/narration before generating audio.',
+        cueCount: inlineCueProblems.length,
+        cues: inlineCueProblems,
+      }, { status: 422 })
+    }
     console.log(`\n🎙 generate-voices: ${storyId}`)
-    const { data: allVoices } = await supabase.from('narrator_voices').select('name,elevenlabs_voice_id')
+    const { data: allVoices } = await supabase.from('narrator_voices').select('name,elevenlabs_voice_id,gender')
     const voiceByName: Record<string, string> = {}
-    if (allVoices) allVoices.forEach((v: any) => { voiceByName[v.name] = v.elevenlabs_voice_id })
+    const narratorVoiceById: Record<string, NarratorVoiceRecord> = {}
+    if (allVoices) allVoices.forEach((v: NarratorVoiceRecord) => {
+      voiceByName[v.name] = v.elevenlabs_voice_id
+      narratorVoiceById[v.elevenlabs_voice_id] = v
+    })
     let resolvedNarratorVoiceId = narratorVoiceId
+    let resolvedNarratorVoiceName = narratorVoiceName
     if (!resolvedNarratorVoiceId && narratorVoiceName) resolvedNarratorVoiceId = voiceByName[narratorVoiceName]
     if (!resolvedNarratorVoiceId) {
       const { data: row } = await supabase.from('stories').select('narrator_voice_id,narrator_voice_name').eq('id', storyId).single()
-      if (row?.narrator_voice_id) resolvedNarratorVoiceId = row.narrator_voice_id
-      else if (row?.narrator_voice_name) resolvedNarratorVoiceId = voiceByName[row.narrator_voice_name]
+      if (row?.narrator_voice_id) {
+        resolvedNarratorVoiceId = row.narrator_voice_id
+        resolvedNarratorVoiceName = row.narrator_voice_name || resolvedNarratorVoiceName
+      } else if (row?.narrator_voice_name) {
+        resolvedNarratorVoiceName = row.narrator_voice_name
+        resolvedNarratorVoiceId = voiceByName[row.narrator_voice_name]
+      }
     }
     if (!resolvedNarratorVoiceId) resolvedNarratorVoiceId = voiceByName['Cole Hargrove']
     if (!resolvedNarratorVoiceId) return NextResponse.json({ success: false, error: 'No narrator voice found' }, { status: 400 })
+    if (!resolvedNarratorVoiceName) resolvedNarratorVoiceName = narratorVoiceById[resolvedNarratorVoiceId]?.name
     const characterGuide = parseCharacterGuide(script)
     // Check if narrator IS the protagonist (first person stories)
     const narratorIsCharacter = /NARRATOR_IS_CHARACTER:\s*true/i.test(script)
     const narrativeVoice = script.match(/NARRATIVE_VOICE:\s*(\S+)/i)?.[1]?.toLowerCase() || ''
     const isFirstPerson = narrativeVoice === 'first_person' || narratorIsCharacter
     console.log(`  Narrative: ${narrativeVoice}, narratorIsCharacter: ${isFirstPerson}`)
+    if (resolvedNarratorVoiceId === BELLE_B_ID) {
+      return NextResponse.json({
+        success: false,
+        error: 'Belle B cannot be used as the story narrator or narrator-character voice.',
+      }, { status: 422 })
+    }
+    if (isFirstPerson) {
+      const protagonist = getNarratorCharacter(characterGuide)
+      if (!protagonist) {
+        return NextResponse.json({
+          success: false,
+          error: 'First-person/narrator-character stories require a CHARACTER GUIDE protagonist with known gender.',
+        }, { status: 422 })
+      }
+      const protagonistGender = normalizeVoiceGender(protagonist.gender)
+      const narratorVoice = narratorVoiceById[resolvedNarratorVoiceId]
+      const narratorGender = normalizeVoiceGender(narratorVoice?.gender)
+      if (protagonistGender === 'unknown') {
+        return NextResponse.json({
+          success: false,
+          error: `First-person protagonist ${protagonist.name} must have a known gender in the CHARACTER GUIDE.`,
+        }, { status: 422 })
+      }
+      if (narratorGender === 'unknown') {
+        return NextResponse.json({
+          success: false,
+          error: `Narrator voice gender unknown for ${resolvedNarratorVoiceName || resolvedNarratorVoiceId}; first-person/narrator-character stories require a known narrator voice gender.`,
+        }, { status: 422 })
+      }
+      if (narratorGender !== protagonistGender) {
+        return NextResponse.json({
+          success: false,
+          error: `Narrator voice gender ${narratorGender} does not match first-person protagonist ${protagonist.name} gender ${protagonistGender}`,
+        }, { status: 422 })
+      }
+    }
     // Load My Voices pool once — used for all character assignments
     const myVoices = await loadMyVoices()
     console.log(`  My Voices pool: ${myVoices.length} voices`)
@@ -807,12 +912,6 @@ export async function POST(req: NextRequest) {
     if (characterVoices) Object.entries(characterVoices).forEach(([name, id]) => { assignCharacterVoice(voiceMap, name, id as string) })
     console.log(`  Parsed character guide names:`, characterGuide.map(c => c.name).join(', ') || 'none')
     console.log(`  Characters:`, characterGuide.map(c => `${c.name}(${c.gender})`).join(', '))
-    const lines = parseScript(script)
-    const announcerLines = lines.filter(l => l.type === 'announcer')
-    const introLine = announcerLines[0]
-    const outroLine = announcerLines[announcerLines.length - 1]
-    const storyLines = lines.filter(l => !l.isIntro && !l.isOutro)
-    const nonDialogueSpeakers = new Set(['TITLE', 'AUTHOR', 'GENRE', 'DESCRIPTION', 'SERIES', 'EPISODE', 'EPISODE_TITLE', 'SUNO PROMPT', 'ANNOUNCER', 'BELLE B', 'SANDY'])
     const characterSpeakers = Array.from(new Set(storyLines
       .filter(l => l.type === 'character' && !nonDialogueSpeakers.has(l.speaker.toUpperCase()))
       .map(l => l.speaker.toUpperCase())))
