@@ -189,7 +189,10 @@ function StoryEditorPanel({
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [uploadingCover, setUploadingCover] = useState(false)
+  const [generatingCover, setGeneratingCover] = useState(false)
   const [coverUrl, setCoverUrl] = useState(story.cover_url || '')
+  const [candidateCoverUrl, setCandidateCoverUrl] = useState('')
+  const [candidatePromptPreview, setCandidatePromptPreview] = useState('')
   const [isHidden, setIsHidden] = useState(story.is_hidden || false)
   const [groupName, setGroupName] = useState(story.group_name || '')
   const [groups, setGroups] = useState<Group[]>([])
@@ -232,6 +235,40 @@ function StoryEditorPanel({
       alert('Cover upload failed: ' + String(err))
     }
     setUploadingCover(false)
+  }
+
+  async function generateCoverCandidate() {
+    if (generatingCover) return
+    setGeneratingCover(true)
+    try {
+      const res = await fetch('/api/asc3/regenerate-cover', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storyId: story.id, candidateOnly: true }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data?.success || !data?.candidateCoverUrl) {
+        throw new Error(data?.error || 'Cover candidate generation failed')
+      }
+      setCandidateCoverUrl(data.candidateCoverUrl)
+      setCandidatePromptPreview(data.promptPreview || '')
+    } catch (err) {
+      alert('Cover generation failed: ' + (err instanceof Error ? err.message : String(err)))
+    }
+    setGeneratingCover(false)
+  }
+
+  function acceptCoverCandidate() {
+    if (!candidateCoverUrl) return
+    setCoverUrl(candidateCoverUrl)
+    setCandidateCoverUrl('')
+    setCandidatePromptPreview('')
+  }
+
+  function rejectAndGenerateAnotherCover() {
+    setCandidateCoverUrl('')
+    setCandidatePromptPreview('')
+    generateCoverCandidate()
   }
 
   async function handleSave() {
@@ -315,10 +352,45 @@ function StoryEditorPanel({
                 >
                   {uploadingCover ? 'Uploading...' : '📁 Upload New Cover'}
                 </button>
+                <button
+                  onClick={generateCoverCandidate}
+                  disabled={generatingCover}
+                  style={{ padding: '8px 14px', backgroundColor: '#111827', color: '#ffffff', border: 'none', borderRadius: '6px', cursor: generatingCover ? 'default' : 'pointer', fontSize: '12px', fontWeight: 600 }}
+                >
+                  {generatingCover ? 'Generating...' : '✨ Generate New Cover'}
+                </button>
                 <div style={{ fontSize: '10px', color: textSecondary }}>JPG or PNG recommended<br />Square or portrait ratio</div>
                 <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleCoverUpload} />
               </div>
             </div>
+            {candidateCoverUrl && (
+              <div style={{ marginTop: '12px', border: `1px solid ${border}`, borderRadius: '8px', padding: '10px', backgroundColor: '#f8fafc' }}>
+                <div style={{ fontSize: '12px', fontWeight: 700, color: textPrimary, marginBottom: '8px' }}>AI Cover Candidate</div>
+                <img src={candidateCoverUrl} alt="Generated cover candidate" style={{ width: '160px', height: '160px', objectFit: 'cover', borderRadius: '8px', border: `1px solid ${border}`, display: 'block', marginBottom: '10px' }} />
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: candidatePromptPreview ? '8px' : 0 }}>
+                  <button
+                    onClick={acceptCoverCandidate}
+                    style={{ padding: '7px 12px', backgroundColor: '#16a34a', color: '#ffffff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 700 }}
+                  >
+                    Accept Cover
+                  </button>
+                  <button
+                    onClick={rejectAndGenerateAnotherCover}
+                    disabled={generatingCover}
+                    style={{ padding: '7px 12px', backgroundColor: '#e5e7eb', color: '#111827', border: 'none', borderRadius: '6px', cursor: generatingCover ? 'default' : 'pointer', fontSize: '12px', fontWeight: 700 }}
+                  >
+                    {generatingCover ? 'Generating...' : 'Reject / Generate Another'}
+                  </button>
+                </div>
+                {candidatePromptPreview && (
+                  <details>
+                    <summary style={{ fontSize: '11px', color: textSecondary, cursor: 'pointer' }}>Prompt preview</summary>
+                    <div style={{ marginTop: '6px', fontSize: '11px', color: textSecondary, lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>{candidatePromptPreview}</div>
+                  </details>
+                )}
+                <div style={{ marginTop: '8px', fontSize: '10px', color: textSecondary }}>Accept updates this editor preview only. Click Save to persist.</div>
+              </div>
+            )}
           </div>
 
           {/* Audio Player */}
