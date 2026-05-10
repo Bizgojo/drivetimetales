@@ -324,6 +324,33 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
     }
   }
 
+  const fetchDirectSeriesAutoAdvanceCandidate = async (): Promise<AutoAdvanceCandidate | null> => {
+    if (!(story as any)?.series_id || !Number.isFinite((story as any)?.episode_number)) return null
+
+    const { data, error } = await supabase
+      .from('stories')
+      .select(AUTO_ADVANCE_STORY_SELECT)
+      .eq('series_id', (story as any).series_id)
+      .gt('episode_number', Number((story as any).episode_number))
+      .order('episode_number', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+
+    if (error) {
+      console.error('[player] direct series next lookup failed:', { storyId, error })
+      return null
+    }
+
+    if (!data || !canLoadStory(data)) return null
+
+    return {
+      story: data as PlayerStory,
+      reason: 'next_series_episode',
+      reasonLabel: 'Next episode',
+      score: 0,
+    }
+  }
+
   const maybeAutoAdvanceFromNaturalEnd = async (source: 'natural_ended') => {
     if (source !== 'natural_ended') return
     if (!mountedRef.current) return
@@ -337,6 +364,13 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
     const seriesPlaylistCandidate = getSeriesPlaylistAutoAdvanceCandidate()
     if (seriesPlaylistCandidate) {
       startAutoAdvanceTo(seriesPlaylistCandidate)
+      return
+    }
+
+    const directSeriesCandidate = await fetchDirectSeriesAutoAdvanceCandidate()
+    if (!mountedRef.current || !autoAdvanceEnabledRef.current) return
+    if (directSeriesCandidate) {
+      startAutoAdvanceTo(directSeriesCandidate)
       return
     }
 
