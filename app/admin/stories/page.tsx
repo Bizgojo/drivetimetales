@@ -37,6 +37,11 @@ interface Story {
   pct_finished: number
   pct_skipped: number
   created_at?: string
+  status?: string | null
+  audio_url?: string | null
+  story_audio_url?: string | null
+  series_id?: string | null
+  episode_number?: number | null
 }
 
 interface Genre {
@@ -49,12 +54,6 @@ interface Group {
   id: string
   name: string
   display_order: number
-}
-
-interface SeriesGroup {
-  name: string
-  episodes: Story[]
-  cover_url: string | null
 }
 
 type VisibilityFilter = 'review' | 'visible' | 'hidden' | 'all'
@@ -78,11 +77,59 @@ const border = '#e0e0e0'
 function isReviewReady(story: Story) {
   return !!(
     story.is_hidden &&
+    story.status === 'audio_ready' &&
+    hasRequiredStoryFields(story) &&
     story.audio_url &&
-    story.cover_url &&
-    story.description &&
-    story.duration_mins
+    story.cover_url
   )
+}
+
+function isPublicPlayable(story: Story) {
+  return !!(
+    story.status === 'published' &&
+    story.is_hidden === false &&
+    hasRequiredStoryFields(story) &&
+    story.audio_url &&
+    story.cover_url
+  )
+}
+
+function hasRequiredStoryFields(story: Partial<Story>) {
+  return !!(
+    story.title &&
+    story.author &&
+    story.genre &&
+    story.description &&
+    story.duration_mins &&
+    story.created_at
+  )
+}
+
+function canonicalStoryKey(story: Partial<Story>) {
+  if (hasRealSeriesRelationship(story)) return `series:${String(story.series_id || '').trim()}:${story.episode_number}`
+  return `standalone:${String(story.title || '').trim().toLowerCase()}::${String(story.author || '').trim().toLowerCase()}`
+}
+
+function hasRealSeriesRelationship(story: Partial<Story>) {
+  const seriesId = String(story.series_id || '').trim()
+  const episodeNumber = story.episode_number
+  return !!seriesId && episodeNumber != null && String(episodeNumber).trim() !== ''
+}
+
+function newestStory(a: Partial<Story>, b: Partial<Story>) {
+  const aTime = a.created_at ? new Date(a.created_at).getTime() : 0
+  const bTime = b.created_at ? new Date(b.created_at).getTime() : 0
+  return bTime > aTime ? b : a
+}
+
+function canonicalizeEligibleStories(rows: Partial<Story>[]) {
+  const byKey = new Map<string, Partial<Story>>()
+  rows.forEach((story) => {
+    const key = canonicalStoryKey(story)
+    const existing = byKey.get(key)
+    byKey.set(key, existing ? newestStory(existing, story) : story)
+  })
+  return Array.from(byKey.values())
 }
 
 function StoryVisibilityBadges({ story }: { story: Story }) {
@@ -586,17 +633,17 @@ function StoryRow({
   onEditClick,
   onDelete,
   onApprove,
-  deleteConfirm,
-  setDeleteConfirm,
 }: {
   story: Story
   index: number
   onEditClick: (s: Story) => void
   onDelete: (id: string) => void
   onApprove: (story: Story) => void
-  deleteConfirm: string | null
-  setDeleteConfirm: (id: string | null) => void
 }) {
+  const isSeriesEpisode = hasRealSeriesRelationship(story)
+  const rawSeriesName = String(story.series_name || '').trim()
+  const seriesTitle = rawSeriesName && rawSeriesName.toLowerCase() !== 'none' ? rawSeriesName : ''
+
   function handleDeleteClick(e: React.MouseEvent<HTMLButtonElement>) {
     e.stopPropagation()
     if (!window.confirm(`Delete "${story.title}"?\n\nThis will permanently delete this published story and its related progress/review records.`)) return
@@ -636,6 +683,17 @@ function StoryRow({
         </div>
         {story.episode_title && <div style={{ color: textSecondary, fontSize: '11px', fontStyle: 'italic' }}>{story.episode_title}</div>}
         <div style={{ color: textSecondary, fontSize: '11px' }}>by {story.author}</div>
+      </td>
+      {/* Type */}
+      <td style={{ padding: '0.5rem' }}>
+        <div style={{ color: isSeriesEpisode ? '#1d4ed8' : textPrimary, fontSize: '11px', fontWeight: 700, whiteSpace: 'nowrap' }}>
+          {isSeriesEpisode ? 'Series Episode' : 'Standalone'}
+        </div>
+        {isSeriesEpisode && (
+          <div style={{ color: textSecondary, fontSize: '10px', lineHeight: 1.25 }}>
+            {seriesTitle || 'Series'}{story.episode_number != null ? ` · Ep ${story.episode_number}` : ''}
+          </div>
+        )}
       </td>
       {/* Play */}
       <td style={{ padding: '0.5rem', textAlign: 'center' }}>
@@ -681,162 +739,6 @@ function StoryRow({
   )
 }
 
-// ── Series Group Row ──────────────────────────────────────────────────────────
-
-function SeriesGroupRow({
-  group,
-  index,
-  onEditClick,
-  onDelete,
-  onApprove,
-  deleteConfirm,
-  setDeleteConfirm,
-}: {
-  group: SeriesGroup
-  index: number
-  onEditClick: (s: Story) => void
-  onDelete: (id: string) => void
-  onApprove: (story: Story) => void
-  deleteConfirm: string | null
-  setDeleteConfirm: (id: string | null) => void
-}) {
-  const [expanded, setExpanded] = useState(false)
-  const totalDuration = group.episodes.reduce((sum, e) => sum + e.duration_mins, 0)
-  const totalDownloads = group.episodes.reduce((sum, e) => sum + (e.downloads_total || 0), 0)
-  const avgFinished = group.episodes.length > 0
-    ? Math.round(group.episodes.reduce((sum, e) => sum + (e.pct_finished || 0), 0) / group.episodes.length)
-    : 0
-
-  async function handleDeleteSeriesClick(e: React.MouseEvent<HTMLButtonElement>) {
-    e.stopPropagation()
-    if (!window.confirm(`Delete the entire series "${group.name}"?\n\nThis will permanently delete all ${group.episodes.length} child episode stories and their related progress/review records.`)) return
-    for (const episode of group.episodes) {
-      await onDelete(episode.id)
-    }
-  }
-
-  return (
-    <>
-      {/* Series header row */}
-      <tr style={{ borderBottom: `1px solid ${border}`, backgroundColor: index % 2 === 0 ? '#f0f7ff' : '#e8f0fc' }}>
-        {/* Series cover — click to expand/collapse */}
-        <td style={{ padding: '0.5rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <button
-              type="button"
-              onClick={handleDeleteSeriesClick}
-              title="Delete entire series"
-              style={{ width: '24px', height: '24px', borderRadius: '5px', border: '1px solid #fecaca', backgroundColor: '#fee2e2', color: '#dc2626', cursor: 'pointer', fontSize: '13px', lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-            >
-              🗑
-            </button>
-            <div
-              onClick={() => setExpanded(!expanded)}
-              title={expanded ? 'Collapse episodes' : 'Expand episodes'}
-              style={{ position: 'relative', width: '44px', height: '44px', borderRadius: '6px', overflow: 'hidden', backgroundColor: '#e5e5e5', cursor: 'pointer', border: '2px solid #2563eb', flexShrink: 0 }}
-            >
-              <img src={group.cover_url || '/images/default-cover.png'} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              <div style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}>
-                {expanded ? '▲' : '▼'}
-              </div>
-            </div>
-          </div>
-        </td>
-
-        {/* Series name & episode count */}
-        <td style={{ padding: '0.5rem' }}>
-          <div style={{ color: '#1d4ed8', fontWeight: 700, fontSize: '13px' }}>{group.name}</div>
-          <div style={{ color: textSecondary, fontSize: '11px' }}>{group.episodes.length} episodes · {totalDuration}m total</div>
-        </td>
-
-        {/* Series parent is not directly playable */}
-        <td style={{ padding: '0.5rem', textAlign: 'center', color: textSecondary, fontSize: '11px' }}>—</td>
-
-        {/* Genres from first episode */}
-        <td style={{ padding: '0.5rem' }}>
-          <div style={{ color: textPrimary, fontSize: '12px' }}>{group.episodes[0]?.genre || '—'}</div>
-          {group.episodes[0]?.genre_secondary && <div style={{ color: textSecondary, fontSize: '10px' }}>{group.episodes[0].genre_secondary}</div>}
-        </td>
-
-        {/* Duration total */}
-        <td style={{ padding: '0.5rem', textAlign: 'center', color: textPrimary, fontSize: '12px' }}>{totalDuration}m</td>
-
-        {/* Downloads — aggregated */}
-        <td colSpan={3} style={{ padding: '0.5rem', textAlign: 'center', color: textSecondary, fontSize: '11px' }}>—</td>
-        <td style={{ padding: '0.5rem', textAlign: 'center', color: '#2563eb', fontWeight: 600 }}>{totalDownloads}</td>
-        <td style={{ padding: '0.5rem', textAlign: 'center', color: avgFinished > 50 ? '#16a34a' : avgFinished < 20 ? '#dc2626' : textPrimary, fontWeight: 600 }}>{avgFinished}%</td>
-        <td style={{ padding: '0.5rem', textAlign: 'center', color: textSecondary, fontSize: '11px' }}>—</td>
-        <td style={{ padding: '0.5rem', textAlign: 'center', color: textSecondary, fontSize: '11px' }}>—</td>
-        <td style={{ padding: '0.5rem', textAlign: 'center', color: textSecondary, fontSize: '11px' }}>—</td>
-      </tr>
-
-      {/* Episode rows when expanded */}
-      {expanded && group.episodes
-        .sort((a, b) => (a.series_number || 0) - (b.series_number || 0))
-        .map((ep, epIdx) => (
-          <tr key={ep.id} style={{ borderBottom: `1px solid ${border}`, backgroundColor: epIdx % 2 === 0 ? '#f8faff' : '#f0f4ff' }}>
-            {/* Episode cover — clickable to edit */}
-            <td style={{ padding: '0.5rem 0.5rem 0.5rem 0.25rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ color: '#2563eb', fontSize: '10px', fontWeight: 700, width: '16px', textAlign: 'right', flexShrink: 0 }}>#{ep.series_number}</span>
-                <div
-                  onClick={() => onEditClick(ep)}
-                  title="Click to edit"
-                  style={{ width: '36px', height: '36px', borderRadius: '4px', overflow: 'hidden', backgroundColor: '#e5e5e5', cursor: 'pointer', border: '2px solid transparent', transition: 'border-color 0.15s', flexShrink: 0 }}
-                  onMouseEnter={e => (e.currentTarget.style.borderColor = '#f97316')}
-                  onMouseLeave={e => (e.currentTarget.style.borderColor = 'transparent')}
-                >
-                  <img src={ep.cover_url || '/images/default-cover.png'} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                </div>
-              </div>
-            </td>
-
-            {/* Episode title */}
-            <td style={{ padding: '0.5rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
-                <div style={{ color: textPrimary, fontWeight: 500, fontSize: '12px' }}>{ep.episode_title || ep.title}</div>
-                <StoryVisibilityBadges story={ep} />
-                {isReviewReady(ep) && <button onClick={() => onApprove(ep)} style={{ backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '3px', padding: '1px 6px', fontSize: '9px', fontWeight: 700, cursor: 'pointer', marginLeft: '2px' }}>✅ PUBLISH LIVE</button>}
-              </div>
-              <div style={{ color: textSecondary, fontSize: '10px' }}>by {ep.author}</div>
-            </td>
-
-            {/* Play */}
-            <td style={{ padding: '0.5rem', textAlign: 'center' }}>
-              <PlayStoryButton storyId={ep.id} title={ep.episode_title || ep.title} />
-            </td>
-
-            {/* Genres */}
-            <td style={{ padding: '0.5rem' }}>
-              <div style={{ color: textPrimary, fontSize: '11px' }}>{ep.genre || '—'}</div>
-            </td>
-
-            <td style={{ padding: '0.5rem', textAlign: 'center', color: textPrimary, fontSize: '12px' }}>{ep.duration_mins}m</td>
-            <td style={{ padding: '0.5rem', textAlign: 'center', color: textPrimary, fontSize: '12px' }}>{ep.downloads_day || 0}</td>
-            <td style={{ padding: '0.5rem', textAlign: 'center', color: textPrimary, fontSize: '12px' }}>{ep.downloads_week || 0}</td>
-            <td style={{ padding: '0.5rem', textAlign: 'center', color: textPrimary, fontSize: '12px' }}>{ep.downloads_month || 0}</td>
-            <td style={{ padding: '0.5rem', textAlign: 'center', color: '#2563eb', fontWeight: 600, fontSize: '12px' }}>{ep.downloads_total || 0}</td>
-            <td style={{ padding: '0.5rem', textAlign: 'center', color: ep.pct_finished > 50 ? '#16a34a' : ep.pct_finished < 20 ? '#dc2626' : textPrimary, fontWeight: 600, fontSize: '12px' }}>{ep.pct_finished || 0}%</td>
-            <td style={{ padding: '0.5rem', textAlign: 'center', fontSize: '12px' }}>
-              <span style={{ color: '#eab308' }}>★</span>
-              <span style={{ color: textPrimary, fontWeight: 600 }}>{ep.rating || '-'}</span>
-            </td>
-            <td style={{ padding: '0.5rem' }}>
-              {ep.flag ? (
-                <span style={{ backgroundColor: FLAG_OPTIONS.find(f => f.value === ep.flag)?.color || '#e5e5e5', color: '#000000', borderRadius: '4px', padding: '2px 6px', fontSize: '9px', fontWeight: 600 }}>
-                  {FLAG_OPTIONS.find(f => f.value === ep.flag)?.label}
-                </span>
-              ) : <span style={{ color: textSecondary, fontSize: '10px' }}>—</span>}
-            </td>
-            <td style={{ padding: '0.5rem', textAlign: 'center', color: textSecondary, fontSize: '11px', whiteSpace: 'nowrap' }}>
-              {ep.created_at ? new Date(ep.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : '—'}
-            </td>
-          </tr>
-        ))}
-    </>
-  )
-}
-
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function AdminStoriesPage() {
@@ -860,12 +762,39 @@ export default function AdminStoriesPage() {
 
   async function fetchStories() {
     setLoading(true)
+    const { data: readinessRows, error: readinessError } = await supabase
+      .from('stories')
+      .select('id,title,author,genre,description,duration_mins,cover_url,audio_url,story_audio_url,status,is_hidden,created_at,series_id,episode_number,series_name')
+      .order('created_at', { ascending: false })
+
+    if (readinessError) {
+      console.error('Error fetching story readiness rows:', readinessError)
+      setStories([])
+      setLoading(false)
+      return
+    }
+
+    const eligibleRows = canonicalizeEligibleStories(
+      ((readinessRows || []) as Partial<Story>[]).filter((story) => isPublicPlayable(story as Story) || isReviewReady(story as Story))
+    )
+    const eligibleIds = eligibleRows.map((story) => story.id).filter(Boolean) as string[]
+    const readinessById = new Map(eligibleRows.map((story) => [story.id, story]))
+
+    if (eligibleIds.length === 0) {
+      setStories([])
+      setLoading(false)
+      return
+    }
+
     const { data, error } = await supabase
       .from('story_analytics')
       .select('*')
+      .in('id', eligibleIds)
       .order('created_at', { ascending: false })
 
-    if (data) setStories(data)
+    if (data) {
+      setStories(data.map((story) => ({ ...story, ...readinessById.get(story.id) })) as Story[])
+    }
     if (error) console.error('Error fetching story analytics:', error)
     setLoading(false)
   }
@@ -930,40 +859,17 @@ export default function AdminStoriesPage() {
         s.genre_secondary === genreFilter ||
         s.genre_third === genreFilter
       const matchesView = viewMode === 'all' ||
-        (viewMode === 'series' && !!s.series_name) ||
-        (viewMode === 'standalone' && !s.series_name)
+        (viewMode === 'series' && hasRealSeriesRelationship(s)) ||
+        (viewMode === 'standalone' && !hasRealSeriesRelationship(s))
       const matchesVisibility = visibilityFilter === 'all' ||
         (visibilityFilter === 'review' && isReviewReady(s)) ||
-        (visibilityFilter === 'visible' && !s.is_hidden) ||
+        (visibilityFilter === 'visible' && isPublicPlayable(s)) ||
         (visibilityFilter === 'hidden' && s.is_hidden)
       return matchesSearch && matchesGenre && matchesView && matchesVisibility
     })
+  const visibleStories = canonicalizeEligibleStories(filteredStories) as Story[]
 
-  // Split into series groups and standalone stories
-  const seriesMap = new Map<string, Story[]>()
-  const standaloneStories: Story[] = []
-
-  filteredStories.forEach(s => {
-    if (s.series_name) {
-      if (!seriesMap.has(s.series_name)) seriesMap.set(s.series_name, [])
-      seriesMap.get(s.series_name)!.push(s)
-    } else {
-      standaloneStories.push(s)
-    }
-  })
-
-  const seriesGroups: SeriesGroup[] = Array.from(seriesMap.entries())
-    .map(([name, episodes]) => {
-      const sorted = [...episodes].sort((a, b) => (a.series_number || 0) - (b.series_number || 0))
-      return {
-        name,
-        episodes: sorted,
-        cover_url: sorted[0]?.cover_url || null,
-      }
-    })
-    .sort((a, b) => a.name.localeCompare(b.name))
-
-  const sortedStandalones = standaloneStories.sort((a, b) => {
+  const sortedStories = [...visibleStories].sort((a, b) => {
     let aVal = a[sortBy] as string | number | null
     let bVal = b[sortBy] as string | number | null
     if (aVal === null) aVal = ''
@@ -973,11 +879,13 @@ export default function AdminStoriesPage() {
     if (sortDir === 'asc') return aVal > bVal ? 1 : -1
     return aVal < bVal ? 1 : -1
   })
+  const seriesEpisodeCount = visibleStories.filter(s => hasRealSeriesRelationship(s)).length
+  const standaloneCount = visibleStories.length - seriesEpisodeCount
 
-  const totalStories = stories.length
-  const totalDownloads = stories.reduce((sum, s) => sum + (s.downloads_total || 0), 0)
-  const avgCompletion = stories.length > 0
-    ? Math.round(stories.reduce((sum, s) => sum + (s.pct_finished || 0), 0) / stories.length)
+  const totalStories = visibleStories.length
+  const totalDownloads = visibleStories.reduce((sum, s) => sum + (s.downloads_total || 0), 0)
+  const avgCompletion = visibleStories.length > 0
+    ? Math.round(visibleStories.reduce((sum, s) => sum + (s.pct_finished || 0), 0) / visibleStories.length)
     : 0
 
   function handleSort(col: typeof sortBy) {
@@ -997,19 +905,6 @@ export default function AdminStoriesPage() {
     )
   }
 
-  function fmtDate(iso?: string) {
-    if (!iso) return '—'
-    const d = new Date(iso)
-    const now = new Date()
-    const diffMs = now.getTime() - d.getTime()
-    const diffDays = Math.floor(diffMs / 86400000)
-    if (diffDays === 0) return 'Today'
-    if (diffDays === 1) return 'Yesterday'
-    if (diffDays < 7) return `${diffDays}d ago`
-    if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: d.getFullYear() !== now.getFullYear() ? 'numeric' : undefined })
-  }
-
   if (loading) return (
     <div style={{ minHeight: '100vh', backgroundColor: bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ width: '40px', height: '40px', border: '4px solid #f97316', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
@@ -1026,7 +921,7 @@ export default function AdminStoriesPage() {
             📚 Published Stories ({totalStories})
           </h1>
           <p style={{ color: textSecondary, fontSize: '13px', margin: '4px 0 0 0' }}>
-            {seriesGroups.length} series · {standaloneStories.length} standalone · {totalDownloads} total downloads · {avgCompletion}% avg completion
+            {seriesEpisodeCount} series episodes · {standaloneCount} standalone · {totalDownloads} total downloads · {avgCompletion}% avg completion
           </p>
         </div>
       </div>
@@ -1063,7 +958,7 @@ export default function AdminStoriesPage() {
           </button>
         ))}
         <div style={{ marginLeft: 'auto', padding: '0.4rem 0.75rem', fontSize: '12px', color: textSecondary }}>
-          {filteredStories.length} stories · Click headers to sort
+          {visibleStories.length} stories · Click headers to sort
         </div>
       </div>
 
@@ -1075,6 +970,7 @@ export default function AdminStoriesPage() {
               <tr style={{ backgroundColor: '#f5f5f5', borderBottom: `2px solid ${border}` }}>
                 <th style={{ padding: '0.75rem 0.5rem', width: '84px' }}></th>
                 <SortTh col="title" label="Title" minW="160px" />
+                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'left', color: textSecondary, fontWeight: 600, minWidth: '120px' }}>Type</th>
                 <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600, minWidth: '64px' }}>Play</th>
                 <SortTh col="genre" label="Genres" minW="110px" />
                 <SortTh col="duration_mins" label="Dur" right />
@@ -1089,31 +985,7 @@ export default function AdminStoriesPage() {
               </tr>
             </thead>
             <tbody>
-              {/* Series groups first */}
-              {seriesGroups.map((group, i) => (
-                <SeriesGroupRow
-                  key={group.name}
-                  group={group}
-                  index={i}
-                  onEditClick={s => { editingStoryRef.current = s; setEditingStory(s) }}
-                  onDelete={deleteStory}
-                  onApprove={approveStory}
-                  deleteConfirm={deleteConfirm}
-                  setDeleteConfirm={setDeleteConfirm}
-                />
-              ))}
-
-              {/* Divider if both series and standalones exist */}
-              {seriesGroups.length > 0 && sortedStandalones.length > 0 && (
-                <tr>
-                  <td colSpan={13} style={{ padding: '0.5rem 1rem', backgroundColor: '#f0f0f0', borderBottom: `1px solid ${border}`, fontSize: '11px', fontWeight: 700, color: textSecondary, letterSpacing: '0.05em' }}>
-                    STANDALONE STORIES
-                  </td>
-                </tr>
-              )}
-
-              {/* Standalone stories */}
-              {sortedStandalones.map((story, i) => (
+              {sortedStories.map((story, i) => (
                 <StoryRow
                   key={story.id}
                   story={story}
@@ -1121,14 +993,12 @@ export default function AdminStoriesPage() {
                   onEditClick={s => { editingStoryRef.current = s; setEditingStory(s) }}
                   onDelete={deleteStory}
                   onApprove={approveStory}
-                  deleteConfirm={deleteConfirm}
-                  setDeleteConfirm={setDeleteConfirm}
                 />
               ))}
             </tbody>
           </table>
         </div>
-        {filteredStories.length === 0 && (
+        {visibleStories.length === 0 && (
           <div style={{ padding: '3rem', textAlign: 'center', color: textSecondary }}>
             No stories found matching your filters.
           </div>
