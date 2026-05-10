@@ -19,6 +19,7 @@ const DUCK_TARGET     = 0.015  // music while voice is active (1.5%)
 const DUCK_MS         = 250    // ms to duck
 const RAISE_MS        = 600    // ms to raise after voice ends
 const AUTO_ADVANCE_STORY_SELECT = 'id,title,author,genre,audio_url,cover_url,duration_mins,episode_number,series_id,series_name,is_free,prose_text,author_id,narrator_voice_id,narrator_voice_name,status,is_hidden,published_on'
+const ADMIN_REVIEW_EMAILS = new Set(['marc@endless-tales.com', 'm.postlewaite@gmail.com'])
 
 interface CanonicalPlayerProps {
   storyId: string
@@ -28,7 +29,8 @@ interface CanonicalPlayerProps {
 
 export default function CanonicalPlayer({ storyId, resumeParam = null }: CanonicalPlayerProps) {
   const router  = useRouter()
-  const { user } = useAuth()
+  const { user, loading: authLoading } = useAuth()
+  const userEmail = String(user?.email || '').trim().toLowerCase()
 
   const audioRef = useRef<HTMLAudioElement>(null)  // voice
   const musicRef = useRef<HTMLAudioElement>(null)  // single music track
@@ -135,6 +137,15 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
   const bustAudioUrl = (url: string) => {
     const sep = url.includes('?') ? '&' : '?'
     return `${url}${sep}et_retry=${Date.now()}`
+  }
+
+  const canPreviewReviewStory = () => {
+    return ADMIN_REVIEW_EMAILS.has(userEmail)
+  }
+
+  const canLoadStory = (candidate: any) => {
+    if (candidate?.status === 'published' && candidate?.is_hidden === false) return true
+    return candidate?.status === 'audio_ready' && candidate?.is_hidden === true && canPreviewReviewStory()
   }
 
   const disableAutoAdvanceForSession = (reason: AutoAdvanceDisabledReason) => {
@@ -391,16 +402,16 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
     let cancelled = false
     async function load() {
       let redirected = false
+      let waitingForAuth = false
       let stage = 'start'
       try {
+        setLoading(true)
         setAudioErrorMessage('')
         stage = 'story-row'
         const { data, error } = await supabase
           .from('stories')
           .select('id,title,author,genre,audio_url,cover_url,duration_mins,intro_audio_url,outro_audio_url,background_music_url,episode_number,series_id,series_name,is_free,prose_text,author_id,narrator_voice_id,narrator_voice_name,status,is_hidden,published_on')
           .eq('id', storyId)
-          .eq('status', 'published')
-          .eq('is_hidden', false)
           .maybeSingle()
 
         if (error) {
@@ -409,7 +420,12 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
 
         if (cancelled) return
 
-        if (!data || (data as any).status !== 'published' || (data as any).is_hidden !== false) {
+        if (data && (data as any).status === 'audio_ready' && (data as any).is_hidden === true && authLoading) {
+          waitingForAuth = true
+          return
+        }
+
+        if (!data || !canLoadStory(data)) {
           setStory(null)
           return
         }
@@ -566,7 +582,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
       } catch (error) {
         console.error('[player] load failed:', { storyId, stage, error })
       } finally {
-        if (!cancelled && !redirected) {
+        if (!cancelled && !redirected && !waitingForAuth) {
           setLoading(false)
         }
       }
@@ -575,7 +591,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
     return () => {
       cancelled = true
     }
-  }, [storyId, user, resumeParam])
+  }, [storyId, user, userEmail, authLoading, resumeParam])
 
   // Init audio once loaded
   useEffect(() => {
