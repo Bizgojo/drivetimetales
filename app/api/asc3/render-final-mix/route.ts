@@ -331,7 +331,8 @@ export async function POST(req: NextRequest) {
     // Update story — story_audio_url for queue mode, audio_url for fallback
     await supabase.from('stories').update({
       story_audio_url: storyBodyUrl,
-      audio_url: versionedFinalAudioUrl
+      audio_url: versionedFinalAudioUrl,
+      duration_mins: Math.ceil(durationSecs / 60)
     }).eq('id', storyId)
 
     return NextResponse.json({ success: true, finalAudioUrl: versionedFinalAudioUrl, storyBodyUrl, durationSecs })
