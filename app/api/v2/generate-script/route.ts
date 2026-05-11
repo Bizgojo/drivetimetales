@@ -24,6 +24,85 @@ function extractTitle(script: string): string | null {
   return m?.[1]?.trim() || null
 }
 
+function extractHeader(script: string, key: string): string {
+  const m = script.match(new RegExp(`^${key}:\\s*(.*)$`, 'm'))
+  return m?.[1]?.trim() || ''
+}
+
+function replaceOrInsertHeader(script: string, key: string, value: string): string {
+  const headerPattern = new RegExp(`^${key}:\\s*.*$`, 'm')
+  if (headerPattern.test(script)) {
+    return script.replace(headerPattern, `${key}: ${value}`)
+  }
+
+  if (/^GENRE:\s*.*$/m.test(script)) {
+    return script.replace(/^GENRE:\s*.*$/m, (line) => `${line}\n${key}: ${value}`)
+  }
+
+  if (/^AUTHOR:\s*.*$/m.test(script)) {
+    return script.replace(/^AUTHOR:\s*.*$/m, (line) => `${line}\n${key}: ${value}`)
+  }
+
+  return `${key}: ${value}\n${script}`
+}
+
+function deterministicDescriptionForGenre(genre: string): string {
+  const normalizedGenre = genre.toLowerCase()
+
+  if (normalizedGenre.includes('mystery') || normalizedGenre.includes('thriller')) {
+    return 'A driver finds a secret someone is willing to kill for.'
+  }
+  if (normalizedGenre.includes('horror')) {
+    return 'A quiet place hides something that should not be awake.'
+  }
+  if (normalizedGenre.includes('comedy')) {
+    return 'One bad decision turns an ordinary trip sideways.'
+  }
+
+  return 'One discovery changes everything before the road ends.'
+}
+
+function isInvalidDescription(description: string): boolean {
+  const clean = description
+    .replace(/\s+/g, ' ')
+    .replace(/^["']|["']$/g, '')
+    .trim()
+
+  if (!clean) return true
+  if (clean.length > 65) return true
+  if (/[.]{2,}|…/.test(clean)) return true
+  if (!/[.!?]$/.test(clean)) return true
+
+  const withoutPunctuation = clean.replace(/[.!?]+$/g, '').trim()
+  const weakEnding = /\b(and|or|but|with|to|of|for|from|by|into|before|after|while|when|where|under|beneath|inside|outside|near|below|above|through|around|across|behind|beyond|against|among|within|between|onto|upon|over|in|on|at|the|a|an|ancient|old|forgotten|abandoned)$/i
+  if (weakEnding.test(withoutPunctuation)) return true
+
+  const weakGeneric = /^(a|an|the)?\s*(story|tale|journey|adventure)\s+(about|of)\b/i
+  if (weakGeneric.test(withoutPunctuation)) return true
+
+  const cutoffPatterns = [
+    /\b(beneath|under|inside|outside|near|behind|beyond|within|between)\s+(the|a|an)\s+\w+$/i,
+    /\b(secret|truth|clue|killer|stranger|place|thing|road|town|house)\s+(that|who|where|when)$/i,
+  ]
+  return cutoffPatterns.some((pattern) => pattern.test(withoutPunctuation))
+}
+
+function normalizeDescription(script: string, genre: string) {
+  const currentDescription = extractHeader(script, 'DESCRIPTION')
+    .replace(/\s+/g, ' ')
+    .replace(/^["']|["']$/g, '')
+    .trim()
+
+  const description = isInvalidDescription(currentDescription)
+    ? deterministicDescriptionForGenre(genre)
+    : currentDescription
+
+  return {
+    script: replaceOrInsertHeader(script, 'DESCRIPTION', description),
+    description,
+  }
+}
+
 function runtimeTarget(runtime: string) {
   const minutes = parseInt(String(runtime || '').match(/\d+/)?.[0] || '15', 10)
   const targets: Record<number, { range: string; max: number }> = {
@@ -140,10 +219,11 @@ ${JSON.stringify(brief, null, 2)}
       messages: [{ role: 'user', content: prompt }],
     })
 
-    const script = response.content
+    const generatedScript = response.content
       .map((c: any) => ('text' in c ? c.text : ''))
       .join('')
       .trim()
+    const { script, description } = normalizeDescription(generatedScript, story.genre || brief.genre || '')
 
     const generatedTitle = extractTitle(script) || story.title || ''
     const wordCount = countWords(generatedTitle)
@@ -157,20 +237,22 @@ ${JSON.stringify(brief, null, 2)}
       generated_title: generatedTitle,
       model,
       generated_at: new Date().toISOString(),
-      raw_script: script,
+      raw_script: generatedScript,
+      normalized_description: description,
     }
 
     const { data: updated, error: updateError } = await supabase
       .from('stories')
       .update({
         title: generatedTitle,
+        description,
         script,
         script_json,
         status: 'script_drafted',
         script_version: (story.script_version || 1) + 1,
       })
       .eq('id', storyId)
-      .select('id,title,status,script,script_json')
+      .select('id,title,status,description,script,script_json')
       .single()
 
     if (updateError) return bad(updateError.message, 500)
