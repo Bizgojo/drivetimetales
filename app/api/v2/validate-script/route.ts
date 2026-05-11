@@ -28,6 +28,10 @@ function extractHeader(script: string, key: string): string {
   return m?.[1]?.trim() || ''
 }
 
+function normalizeHeaderValue(value: string): string {
+  return value.trim().replace(/\s+/g, ' ')
+}
+
 function validateCardCopy(script: string) {
   const title = extractHeader(script, 'TITLE')
   const description = extractHeader(script, 'DESCRIPTION')
@@ -121,7 +125,12 @@ ${cardCopyIssues.map((issue) => `- ${issue}`).join('\n')}`
 
       if (updateError) return bad(updateError.message, 500)
 
-      return NextResponse.json({ success: true, passed: false, story: updated })
+      return NextResponse.json({
+        success: true,
+        passed: false,
+        descriptionSynced: false,
+        story: updated,
+      })
     }
 
     const response = await anthropic.messages.create({
@@ -140,6 +149,7 @@ ${cardCopyIssues.map((issue) => `- ${issue}`).join('\n')}`
       .trim()
 
     const passed = /VALIDATOR RESULT:\s*PASS/i.test(report)
+    const validatedDescription = passed ? normalizeHeaderValue(extractHeader(story.script, 'DESCRIPTION')) : ''
 
     const { data: updated, error: updateError } = await supabase
       .from('stories')
@@ -148,9 +158,10 @@ ${cardCopyIssues.map((issue) => `- ${issue}`).join('\n')}`
         validator_report: report,
         validator_passed_at: passed ? new Date().toISOString() : null,
         status: passed ? 'validator_passed' : 'validator_failed',
+        ...(passed && validatedDescription ? { description: validatedDescription } : {}),
       })
       .eq('id', storyId)
-      .select('id,title,status,validator_result,validator_report')
+      .select('id,title,status,description,validator_result,validator_report')
       .single()
 
     if (updateError) return bad(updateError.message, 500)
@@ -166,7 +177,15 @@ ${cardCopyIssues.map((issue) => `- ${issue}`).join('\n')}`
       metadata: { is_v2: true },
     }).catch(() => {})
 
-    return NextResponse.json({ success: true, passed, story: updated })
+    return NextResponse.json({
+      success: true,
+      passed,
+      descriptionSynced: passed && Boolean(validatedDescription),
+      metadata: {
+        description: validatedDescription || null,
+      },
+      story: updated,
+    })
   } catch (err) {
     return bad(err instanceof Error ? err.message : 'Unknown error', 500)
   }
