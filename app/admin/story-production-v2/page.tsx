@@ -1211,6 +1211,30 @@ export default function StoryProductionV2Page() {
     return { validateData, currentScript, autoRepairApplied }
   }
 
+  function syncStandaloneReadyState({
+    nextStoryId,
+    nextTitle,
+    nextScript,
+    nextReviewText,
+    nextReviewTotal,
+  }: {
+    nextStoryId: string
+    nextTitle: string
+    nextScript: string
+    nextReviewText: string
+    nextReviewTotal: number | null
+  }) {
+    setSeriesPackage(null)
+    setStoryId(nextStoryId)
+    setTitle(nextTitle)
+    setScript(nextScript)
+    setReviewText(nextReviewText)
+    setReviewTotal(nextReviewTotal)
+    setStatus('validator_passed')
+    setHalPreflightPassedStoryId(nextStoryId)
+    setScriptDirty(false)
+  }
+
   async function runHalCanonicalIntake() {
     if (loading || hasActiveAction) return
     const genre = halIntake.genre.trim()
@@ -1319,7 +1343,7 @@ export default function StoryProductionV2Page() {
 
         setActiveStep('validate')
         setWorkingMessage('Validating script...')
-        const { validateData, autoRepairApplied } = await validateStandaloneWithOneAutoRepair({
+        const { validateData, currentScript, autoRepairApplied } = await validateStandaloneWithOneAutoRepair({
           storyIdToValidate: nextStoryId,
           initialScript: scriptData.story.script || '',
         })
@@ -1328,7 +1352,13 @@ export default function StoryProductionV2Page() {
 
         setWorkingMessage('Running generate-voices preflight...')
         const preflight = await runGenerateVoicesPreflight({ id: nextStoryId, title: validateData.story.title || scriptData.story.title })
-        setHalPreflightPassedStoryId(nextStoryId)
+        syncStandaloneReadyState({
+          nextStoryId,
+          nextTitle: validateData.story.title || scriptData.story.title || '',
+          nextScript: currentScript || scriptData.story.script || '',
+          nextReviewText: scoreData.reviewText || '',
+          nextReviewTotal: typeof scoreData.total === 'number' ? scoreData.total : null,
+        })
         setStepMessage('Hal intake complete: standalone validated and voice preflight passed')
         setReport([
           '✓ Canonical Hal intake complete.',
@@ -1743,7 +1773,13 @@ export default function StoryProductionV2Page() {
       if (validateData.story.status === 'validator_passed') {
         setWorkingMessage('Running generate-voices preflight...')
         const preflight = await runGenerateVoicesPreflight({ id: storyId, title: validateData.story.title || title })
-        setHalPreflightPassedStoryId(storyId)
+        syncStandaloneReadyState({
+          nextStoryId: storyId,
+          nextTitle: validateData.story.title || title,
+          nextScript: revisedScript,
+          nextReviewText: scoreData.reviewText || '',
+          nextReviewTotal: typeof scoreData.total === 'number' ? scoreData.total : null,
+        })
         setStepMessage('Top fixes applied, revised script validated, and voice preflight passed')
         setReport([
           validateData.story.validator_report || '✓ Validator passed.',
@@ -2581,6 +2617,7 @@ export default function StoryProductionV2Page() {
                       .join('\n')
                     setReport(`Series package ASC handoff prepared.\n\n${episodeLines}`)
                     setStepMessage('Series package ready for ordered ASC production')
+                    window.location.href = '/admin/asc'
                     return
                   }
 
@@ -2615,6 +2652,7 @@ export default function StoryProductionV2Page() {
                     }
                     if (typeof window !== 'undefined') {
                       localStorage.setItem('et_asc_handoff_v1', JSON.stringify(handoff))
+                      localStorage.removeItem('et_asc_package_handoff_v1')
                     }
                   } catch (err) {
                     console.error('Failed to prepare admin ASC handoff', err)
