@@ -126,6 +126,7 @@ type ActiveAction =
   | 'scoreValidatePackage'
   | 'produceAudio'
   | 'validatorFix'
+  | 'standaloneTopFix'
   | 'episodeTopFix'
   | 'reloadSavedStory'
   | ''
@@ -939,6 +940,16 @@ export default function StoryProductionV2Page() {
   const standaloneScoreComplete = !!reviewText
   const standaloneValidationComplete = status === 'validator_passed' || status === 'validator_failed'
   const standaloneProduced = ['audio_pending', 'ready_for_production', 'audio_produced', 'ready_to_publish', 'published'].includes(status)
+  const standaloneTopFixes = parseTopFixes(reviewText)
+  const canFixStandaloneTopFixes = !seriesPackage
+    && !!storyId
+    && !!script
+    && !!reviewText
+    && typeof reviewTotal === 'number'
+    && reviewTotal < 25
+    && standaloneTopFixes.length > 0
+    && !loading
+    && !hasActiveAction
   const generateActionClass = seriesPackage
     ? packageAllScriptsPresent
       ? completedActionClass
@@ -1646,6 +1657,112 @@ export default function StoryProductionV2Page() {
       setStepMessage('Validator fix failed')
     } finally {
       setApplyingValidatorFix(false)
+      setActiveAction('')
+    }
+  }
+
+  async function applyStandaloneTopFixes() {
+    if (!storyId || !script || !reviewText) {
+      setReport('A scored script and top fixes are required before applying fixes.')
+      return
+    }
+
+    const fixes = parseTopFixes(reviewText)
+    if (fixes.length === 0) {
+      setReport('No top fixes were found in the script review.')
+      return
+    }
+
+    setActiveAction('standaloneTopFix')
+    setLoading(true)
+    setActiveStep('score')
+    setWorkingMessage('Applying top fixes...')
+    setStepMessage('')
+    setReport('')
+    setHalPreflightPassedStoryId('')
+
+    try {
+      const reviseRes = await fetch('/api/v2/apply-top-fixes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          script,
+          selectedFixes: fixes,
+        }),
+      })
+      const reviseData = await reviseRes.json()
+      if (!reviseRes.ok || !reviseData.success) {
+        throw new Error(reviseData.error || 'Top fixes revision failed')
+      }
+
+      const saveRes = await fetch('/api/v2/save-revised-script', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storyId,
+          script: reviseData.revisedScript,
+        }),
+      })
+      const saveData = await saveRes.json()
+      if (!saveRes.ok || !saveData.success) {
+        throw new Error(saveData.error || 'Failed to save revised script')
+      }
+
+      const revisedScript = saveData.story?.script || reviseData.revisedScript
+      setScript(revisedScript)
+      setStatus((saveData.story?.status || 'script_revised') as V2Status)
+      setScriptDirty(false)
+
+      setWorkingMessage('Rescoring revised script...')
+      const scoreRes = await fetch('/api/v2/score-script', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storyId }),
+      })
+      const scoreData = await scoreRes.json()
+      if (!scoreRes.ok || !scoreData.success) {
+        throw new Error(scoreData.error || 'Failed to rescore revised script')
+      }
+      setReviewText(scoreData.reviewText || '')
+      setReviewTotal(typeof scoreData.total === 'number' ? scoreData.total : null)
+
+      setActiveStep('validate')
+      setWorkingMessage('Validating revised script...')
+      const validateRes = await fetch('/api/v2/validate-script', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storyId }),
+      })
+      const validateData = await validateRes.json()
+      if (!validateRes.ok || !validateData.success) {
+        throw new Error(validateData.error || 'Failed to validate revised script')
+      }
+      setStatus(validateData.story.status)
+      setReport(validateData.story.validator_report || '')
+
+      if (validateData.story.status === 'validator_passed') {
+        setWorkingMessage('Running generate-voices preflight...')
+        const preflight = await runGenerateVoicesPreflight({ id: storyId, title: validateData.story.title || title })
+        setHalPreflightPassedStoryId(storyId)
+        setStepMessage('Top fixes applied, revised script validated, and voice preflight passed')
+        setReport([
+          validateData.story.validator_report || '✓ Validator passed.',
+          '',
+          `Generate-voices preflight: passed`,
+          `Estimated segments: ${preflight.estimatedSegmentCount?.total ?? '—'}`,
+        ].join('\n'))
+      } else {
+        setStepMessage('Top fixes applied. Validation still needs review.')
+      }
+
+      setTimeout(() => reviewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100)
+    } catch (e) {
+      setReport(e instanceof Error ? e.message : 'Unknown error')
+      setStepMessage('Top fixes failed')
+    } finally {
+      setLoading(false)
+      setWorkingMessage('')
+      setActiveStep('')
       setActiveAction('')
     }
   }
@@ -2626,7 +2743,21 @@ export default function StoryProductionV2Page() {
             <div className="bg-white border border-black rounded-lg p-4 space-y-2">
               <div className="font-semibold">Script Review</div>
               {!!reviewText ? (
-                <pre ref={reviewRef} className="border rounded p-3 bg-gray-50 whitespace-pre-wrap text-sm">{reviewText}</pre>
+                <>
+                  {canFixStandaloneTopFixes ? (
+                    <button
+                      type="button"
+                      disabled={!canFixStandaloneTopFixes}
+                      onClick={applyStandaloneTopFixes}
+                      className="rounded bg-orange-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                    >
+                      <ButtonLabel loading={activeAction === 'standaloneTopFix'}>
+                        {activeAction === 'standaloneTopFix' ? 'Fixing Top Fixes...' : 'Fix Top Fixes'}
+                      </ButtonLabel>
+                    </button>
+                  ) : null}
+                  <pre ref={reviewRef} className="border rounded p-3 bg-gray-50 whitespace-pre-wrap text-sm">{reviewText}</pre>
+                </>
               ) : (
                 <div className="text-sm text-gray-500">No script review yet.</div>
               )}
