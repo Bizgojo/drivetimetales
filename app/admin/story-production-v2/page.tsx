@@ -306,6 +306,7 @@ export default function StoryProductionV2Page() {
   const [title, setTitle] = useState('')
   const [reviewText, setReviewText] = useState('')
   const [reviewTotal, setReviewTotal] = useState<number | null>(null)
+  const [halPreflightPassedStoryId, setHalPreflightPassedStoryId] = useState('')
   const [activeStep, setActiveStep] = useState<'brief' | 'script' | 'score' | 'validate' | 'produce' | ''>('')
   const [stepMessage, setStepMessage] = useState('')
   const [authors, setAuthors] = useState<AuthorOption[]>([])
@@ -341,6 +342,7 @@ export default function StoryProductionV2Page() {
     setEpisodeDetailModal(null)
     setSelectedTopFixes([])
     setScriptDirty(false)
+    setHalPreflightPassedStoryId('')
 
     if (typeof window !== 'undefined') {
       localStorage.removeItem('et_last_series_id_v2')
@@ -890,12 +892,19 @@ export default function StoryProductionV2Page() {
   const canValidate = seriesPackage ? packageScriptsReady && !loading : !!storyId && !!script && !loading
   const canProduce = seriesPackage ? packageReadyForAsc && !loading : !!storyId && !!script && status === 'validator_passed'
   const halNoActionRunning = !loading && !activeAction
+  const canProceedToAudioProduction = seriesPackage
+    ? canProduce
+    : !!storyId
+      && !!script
+      && status === 'validator_passed'
+      && halPreflightPassedStoryId === storyId
+      && halNoActionRunning
   const standaloneReadyForHal = !seriesPackage
     && halNoActionRunning
     && !!storyId
     && !!script
     && status === 'validator_passed'
-    && canProduce
+    && halPreflightPassedStoryId === storyId
   const packageReadyForHal = !!seriesPackage
     && halNoActionRunning
     && packageExists
@@ -958,7 +967,7 @@ export default function StoryProductionV2Page() {
       ? runningActionClass
       : standaloneProduced
         ? completedActionClass
-        : canProduce
+        : canProceedToAudioProduction
           ? primaryActionClass
           : blockedActionClass
 
@@ -1283,6 +1292,7 @@ export default function StoryProductionV2Page() {
 
         setWorkingMessage('Running generate-voices preflight...')
         const preflight = await runGenerateVoicesPreflight({ id: nextStoryId, title: validateData.story.title || scriptData.story.title })
+        setHalPreflightPassedStoryId(nextStoryId)
         setStepMessage('Hal intake complete: standalone validated and voice preflight passed')
         setReport([
           '✓ Canonical Hal intake complete.',
@@ -2387,7 +2397,7 @@ export default function StoryProductionV2Page() {
               </button>
             ) : null}
             <button
-              disabled={!canProduce || loading || hasActiveAction}
+              disabled={!canProceedToAudioProduction}
               className={produceActionClass}
               onClick={async () => {
                 try {
@@ -2499,7 +2509,7 @@ export default function StoryProductionV2Page() {
               }}
             >
               <ButtonLabel loading={activeAction === 'produceAudio'}>
-                {activeAction === 'produceAudio' ? 'Producing Audio...' : 'Produce Audio (Phase 2)'}
+                {activeAction === 'produceAudio' ? 'Preparing Audio Handoff...' : 'Proceed to Audio Production'}
               </ButtonLabel>
             </button>
           </div>
@@ -2524,6 +2534,7 @@ export default function StoryProductionV2Page() {
                   <div>Story saved: {storyId ? 'yes' : 'no'}</div>
                   <div>Script generated: {script ? 'yes' : 'no'}</div>
                   <div>Validation passed: {status === 'validator_passed' ? 'yes' : 'no'}</div>
+                  <div>Generate-voices preflight passed: {storyId && halPreflightPassedStoryId === storyId ? 'yes' : 'no'}</div>
                   <div>No action running: {halNoActionRunning ? 'yes' : 'no'}</div>
                 </>
               )}
