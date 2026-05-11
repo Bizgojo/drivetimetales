@@ -327,10 +327,12 @@ export default function StoryProductionV2Page() {
   const scriptRef = useRef<HTMLTextAreaElement | null>(null)
   const reviewRef = useRef<HTMLPreElement | null>(null)
   const validateRef = useRef<HTMLPreElement | null>(null)
+  const stateLoadGenerationRef = useRef(0)
 
   const [form, setForm] = useState(EMPTY_FORM)
 
   function clearLoadedProductionState() {
+    stateLoadGenerationRef.current += 1
     setStoryId('')
     setStatus('')
     setScript('')
@@ -463,6 +465,7 @@ export default function StoryProductionV2Page() {
     if (!effectiveQueueId) return
 
     let ignore = false
+    const loadGeneration = stateLoadGenerationRef.current
 
     async function loadQueueItemIntoBrief() {
       try {
@@ -476,7 +479,7 @@ export default function StoryProductionV2Page() {
         if (!res.ok || !queued) {
           throw new Error(data?.error || 'Failed to load queue item')
         }
-        if (ignore) return
+        if (ignore || loadGeneration !== stateLoadGenerationRef.current) return
 
         let loadedSavedStory = false
 
@@ -486,7 +489,7 @@ export default function StoryProductionV2Page() {
             const savedData = await savedRes.json()
 
             if (savedRes.ok && savedData?.success && savedData?.story) {
-              if (ignore) return
+              if (ignore || loadGeneration !== stateLoadGenerationRef.current) return
 
               setStoryId(savedData.story.id || '')
               setTitle(savedData.story.title || queued.title || '')
@@ -514,7 +517,7 @@ export default function StoryProductionV2Page() {
               try {
                 const briefRes = await fetch(`/api/v2/story-brief?storyId=${encodeURIComponent(savedData.story.id)}`)
                 const briefData = await briefRes.json()
-                if (!ignore && briefRes.ok && briefData?.success && briefData?.story) {
+                if (!ignore && loadGeneration === stateLoadGenerationRef.current && briefRes.ok && briefData?.success && briefData?.story) {
                   setForm(prev => ({
                     ...prev,
                     series_arc_plan: briefData.story.series_arc_plan || prev.series_arc_plan,
@@ -555,7 +558,7 @@ export default function StoryProductionV2Page() {
           body: JSON.stringify({ id: effectiveQueueId, status: 'in_v2' }),
         })
       } catch (e) {
-        if (!ignore) {
+          if (!ignore && loadGeneration === stateLoadGenerationRef.current) {
           console.error('Failed to preload queue item into V2', e)
           setStepMessage('Queue preload failed')
         }
@@ -581,6 +584,7 @@ export default function StoryProductionV2Page() {
     if (!requestedStoryId) return
 
     let ignore = false
+    const loadGeneration = stateLoadGenerationRef.current
 
     async function loadSavedStory() {
       try {
@@ -592,7 +596,7 @@ export default function StoryProductionV2Page() {
         const data = await res.json()
 
         if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load saved story')
-        if (ignore) return
+        if (ignore || loadGeneration !== stateLoadGenerationRef.current) return
 
         if (data.story?.series_id) {
           const packageRes = await fetch(`/api/v2/series-package/score-validate?seriesId=${encodeURIComponent(data.story.series_id)}`)
@@ -601,7 +605,7 @@ export default function StoryProductionV2Page() {
           if (!packageRes.ok || !packageData.success) {
             throw new Error(packageData.error || 'Failed to load series package')
           }
-          if (ignore) return
+          if (ignore || loadGeneration !== stateLoadGenerationRef.current) return
 
           const pkg = packageData.package as SeriesPackage
           const firstEpisode = pkg.episodes?.[0]
@@ -664,7 +668,7 @@ export default function StoryProductionV2Page() {
         try {
           const briefRes = await fetch(`/api/v2/story-brief?storyId=${encodeURIComponent(data.story.id)}`)
           const briefData = await briefRes.json()
-          if (!ignore && briefRes.ok && briefData?.success && briefData?.story) {
+          if (!ignore && loadGeneration === stateLoadGenerationRef.current && briefRes.ok && briefData?.success && briefData?.story) {
             setForm(prev => ({
               ...prev,
               series_arc_plan: briefData.story.series_arc_plan || prev.series_arc_plan,
@@ -685,12 +689,12 @@ export default function StoryProductionV2Page() {
 
         setStepMessage('Loaded saved story')
       } catch (e) {
-        if (!ignore) {
+        if (!ignore && loadGeneration === stateLoadGenerationRef.current) {
           setReport(e instanceof Error ? e.message : 'Unknown error')
           setStepMessage('Load saved story failed')
         }
       } finally {
-        if (!ignore) {
+        if (!ignore && loadGeneration === stateLoadGenerationRef.current) {
           setLoading(false)
           setWorkingMessage('')
         }
@@ -723,6 +727,7 @@ export default function StoryProductionV2Page() {
     if (!requestedSeriesId) return
 
     let ignore = false
+    const loadGeneration = stateLoadGenerationRef.current
 
     async function loadSeriesPackage() {
       try {
@@ -734,7 +739,7 @@ export default function StoryProductionV2Page() {
         const data = await res.json()
 
         if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load series package')
-        if (ignore) return
+        if (ignore || loadGeneration !== stateLoadGenerationRef.current) return
 
         const pkg = data.package as SeriesPackage
         const firstEpisode = pkg.episodes?.[0]
@@ -771,12 +776,12 @@ export default function StoryProductionV2Page() {
 
         setStepMessage('Loaded series package')
       } catch (e) {
-        if (!ignore) {
+        if (!ignore && loadGeneration === stateLoadGenerationRef.current) {
           setReport(e instanceof Error ? e.message : 'Unknown error')
           setStepMessage('Load series package failed')
         }
       } finally {
-        if (!ignore) {
+        if (!ignore && loadGeneration === stateLoadGenerationRef.current) {
           setLoading(false)
           setWorkingMessage('')
         }
