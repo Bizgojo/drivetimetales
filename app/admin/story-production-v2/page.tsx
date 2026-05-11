@@ -369,10 +369,20 @@ export default function StoryProductionV2Page() {
   function clearAllForNewStory() {
     clearLoadedProductionState()
     setForm(EMPTY_FORM)
+    setHalIntake({
+      genre: '',
+      runtime_minutes: '15',
+      episode_count: '1',
+      optional_premise: '',
+    })
     setSelectedAuthorMeta(null)
     setWorkingMessage('')
     setActiveStep('')
-    setStepMessage('Cleared all V2 fields. Ready for a new story.')
+    setActiveAction('')
+    setLoading(false)
+    setApplyingTopFixKey('')
+    setApplyingValidatorFix(false)
+    setStepMessage('')
   }
 
   async function reloadSavedStory(savedStoryId: string) {
@@ -1013,6 +1023,7 @@ export default function StoryProductionV2Page() {
 
     return [
       /DESCRIPTION[\s\S]{0,180}(70|character|characters|fewer|too long|shorten|length)/i,
+      /DESCRIPTION[\s\S]{0,180}(incomplete|truncated|cut off|dangling|mid-thought|sentence)/i,
       /TAGLINE[\s\S]{0,180}(character|characters|too long|shorten|trim|length)/i,
       /SUBTITLE[\s\S]{0,180}(character|characters|too long|shorten|trim|length)/i,
       /(excess|extra|remove|trim)[\s\S]{0,120}punctuation/i,
@@ -1029,13 +1040,13 @@ export default function StoryProductionV2Page() {
       .filter(Boolean)
   }
 
-  function isDescriptionLengthOnlyValidatorFailure(validatorReport: string) {
+  function isDescriptionOnlyValidatorFailure(validatorReport: string) {
     const issues = getValidatorIssueLines(validatorReport)
     if (issues.length === 0) return false
 
     return issues.every((issue) =>
       /DESCRIPTION/i.test(issue)
-      && /(70|character|characters|fewer|too long|length)/i.test(issue)
+      && /(70|character|characters|fewer|too long|length|incomplete|truncated|cut off|dangling|mid-thought|sentence)/i.test(issue)
       && !/past-tense|forbidden|required|missing/i.test(issue)
     )
   }
@@ -1057,16 +1068,21 @@ export default function StoryProductionV2Page() {
       .replace(/^["']|["']$/g, '')
       .trim()
 
-    if (!currentDescription || currentDescription.length <= 65) return scriptText
+    if (!currentDescription) return scriptText
 
-    const trailingWeakWords = /\b(and|or|but|with|to|of|for|from|by|into|before|after|while|when)$/i
+    const safeMaxChars = 65
+    const trailingWeakWords = /\b(and|or|but|with|to|of|for|from|by|into|before|after|while|when|where|under|beneath|inside|outside|near|below|above|through|around|across|behind|beyond|against|among|within|between|onto|upon|over|in|on|at|the|a|an|ancient|old|forgotten|abandoned)$/i
     const words = currentDescription.split(' ')
-    let nextDescription = ''
+    let nextDescription = currentDescription.length <= safeMaxChars
+      ? currentDescription
+      : ''
 
-    for (const word of words) {
-      const candidate = nextDescription ? `${nextDescription} ${word}` : word
-      if (candidate.length > 65) break
-      nextDescription = candidate
+    if (!nextDescription) {
+      for (const word of words) {
+        const candidate = nextDescription ? `${nextDescription} ${word}` : word
+        if (candidate.length > safeMaxChars) break
+        nextDescription = candidate
+      }
     }
 
     nextDescription = (nextDescription || currentDescription.slice(0, 65))
@@ -1075,6 +1091,10 @@ export default function StoryProductionV2Page() {
 
     while (trailingWeakWords.test(nextDescription) && nextDescription.includes(' ')) {
       nextDescription = nextDescription.split(' ').slice(0, -1).join(' ').trim()
+    }
+
+    if (!/[.!?]$/.test(nextDescription)) {
+      nextDescription = `${nextDescription}.`
     }
 
     return replaceScriptHeader(scriptText, 'DESCRIPTION', nextDescription)
@@ -1103,7 +1123,7 @@ export default function StoryProductionV2Page() {
     if (!scriptToRepair.trim()) throw new Error('Cannot auto-repair validator failure because the generated script is empty.')
 
     let revisedScript = ''
-    if (isDescriptionLengthOnlyValidatorFailure(validatorReport)) {
+    if (isDescriptionOnlyValidatorFailure(validatorReport)) {
       revisedScript = shortenDescriptionHeader(scriptToRepair)
     } else {
       const reviseRes = await fetch('/api/v2/apply-top-fixes', {
@@ -2034,9 +2054,10 @@ export default function StoryProductionV2Page() {
             <button
               type="button"
               onClick={clearAllForNewStory}
+              disabled={loading || hasActiveAction}
               className="rounded bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
             >
-              Clear All
+              New Story Intake
             </button>
           </div>
         </div>
