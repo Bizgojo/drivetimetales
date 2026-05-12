@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabase'
 
 type AscHandoff = {
   type?: 'single_story' | 'series_package'
@@ -68,6 +69,16 @@ type ProductionJob = {
   publishedStory?: any
   currentEpisode?: number
   currentJobId?: string
+}
+
+type PackageStoryOutput = {
+  id: string
+  audio_url?: string | null
+  story_audio_url?: string | null
+  cover_url?: string | null
+  status?: string | null
+  is_hidden?: boolean | null
+  published_on?: string | null
 }
 
 const STORAGE_KEY = 'et_asc_handoff_v1'
@@ -279,6 +290,7 @@ export default function AscAdminPage() {
   const [job, setJob] = useState<ProductionJob | null>(null)
   const [packageJob, setPackageJob] = useState<ProductionJob | null>(null)
   const [packageJobs, setPackageJobs] = useState<ProductionJob[]>([])
+  const [packageStoryOutputs, setPackageStoryOutputs] = useState<Record<string, PackageStoryOutput>>({})
   const [failureInspectionJob, setFailureInspectionJob] = useState<ProductionJob | null>(null)
   const [creditsApproved, setCreditsApproved] = useState(false)
   const [statusNow, setStatusNow] = useState(() => Date.now())
@@ -354,6 +366,7 @@ export default function AscAdminPage() {
       setHandoff(parsed)
       setPackageJob(parsed.packageJob || (parsedPackageJobId ? { packageJobId: parsedPackageJobId, status: parsed.status, phase: parsed.phase } : null))
       setPackageJobs(parsedPackageJobs)
+      refreshPackageStoryOutputs(parsed.episodes || [])
       setForm({
         audio_url: parsed.audio_url || '',
         cover_url: parsed.cover_url || '',
@@ -383,6 +396,7 @@ export default function AscAdminPage() {
     setHandoff(null)
     setPackageJobs([])
     setPackageJob(null)
+    setPackageStoryOutputs({})
     setJob(null)
     setForm({
       audio_url: '',
@@ -391,6 +405,26 @@ export default function AscAdminPage() {
       duration_mins: '15',
       is_free: false,
     })
+  }
+
+  async function refreshPackageStoryOutputs(episodes: AscHandoff['episodes'] = []) {
+    const storyIds = Array.from(new Set((episodes || []).map((episode) => episode.storyId).filter(Boolean))) as string[]
+    if (!storyIds.length) {
+      setPackageStoryOutputs({})
+      return
+    }
+
+    const { data, error } = await supabase
+      .from('stories')
+      .select('id,audio_url,story_audio_url,cover_url,status,is_hidden,published_on')
+      .in('id', storyIds)
+
+    if (error) {
+      console.warn('[ASC] Failed to load package story outputs:', error.message)
+      return
+    }
+
+    setPackageStoryOutputs(Object.fromEntries((data || []).map((story) => [story.id, story])))
   }
 
   function recordParseError(err: any, fallback: string) {
@@ -678,8 +712,8 @@ export default function AscAdminPage() {
           if (
             !packageJob.storyId ||
             !(packageJob.title || row?.episode.title) ||
-            !(packageJob.audioUrl || row?.episode.audioUrl) ||
-            !(packageJob.finalMix || row?.episode.finalMix)
+            !(packageJob.audioUrl || row?.episode.audioUrl || row?.dbAudioUrl) ||
+            !(packageJob.finalMix || row?.episode.finalMix || row?.dbAudioUrl)
           ) {
             throw new Error(`Episode ${packageJob.episodeNumber || '?'} is not ready to import`)
           }
@@ -707,8 +741,8 @@ export default function AscAdminPage() {
               title: packageJob.title || row?.episode.title || '',
               author: completedStory.author || '',
               genre: completedStory.genre || '',
-              audio_url: packageJob.audioUrl || row?.episode.audioUrl || '',
-              cover_url: completedStory.cover_url || row?.episode.coverUrl || '',
+              audio_url: packageJob.audioUrl || row?.episode.audioUrl || row?.dbAudioUrl || '',
+              cover_url: completedStory.cover_url || row?.episode.coverUrl || row?.dbCoverUrl || '',
               description: completedStory.description || '',
               duration_mins: completedStory.duration_mins || '',
               is_free: false,
@@ -722,9 +756,9 @@ export default function AscAdminPage() {
 
           importedJobs.push({
             ...packageJob,
-            audioUrl: packageJob.audioUrl || row?.episode.audioUrl,
-            finalMix: packageJob.finalMix || row?.episode.finalMix,
-            coverUrl: publishData.story?.cover_url || completedStory.cover_url || packageJob.coverUrl || row?.episode.coverUrl || '',
+            audioUrl: packageJob.audioUrl || row?.episode.audioUrl || row?.dbAudioUrl,
+            finalMix: packageJob.finalMix || row?.episode.finalMix || row?.dbAudioUrl,
+            coverUrl: publishData.story?.cover_url || completedStory.cover_url || packageJob.coverUrl || row?.episode.coverUrl || row?.dbCoverUrl || '',
             imported: true,
             importedAt: new Date().toISOString(),
             publishedStory: publishData.story,
@@ -973,13 +1007,17 @@ export default function AscAdminPage() {
     && !!form.duration_mins
   const packageCompletionRows = packageEpisodes.map((episode) => {
     const episodeJob = packageJobs.find((packageJob) => packageJob.storyId === episode.storyId)
+    const storyOutput = episode.storyId ? packageStoryOutputs[episode.storyId] : null
     return {
       episode,
       job: episodeJob,
       imported: Boolean(episode.imported || episodeJob?.imported),
-      publishedComplete: episodeJob?.status === 'complete' && episodeJob?.phase === 'published',
-      hasAudioUrl: Boolean(episode.audioUrl || episodeJob?.audioUrl),
-      hasFinalMix: Boolean(episode.finalMix || episodeJob?.finalMix),
+      publishedComplete: Boolean((episodeJob?.status === 'complete' && episodeJob?.phase === 'published') || (storyOutput?.status === 'published' && storyOutput?.is_hidden === false)),
+      hasAudioUrl: Boolean(episode.audioUrl || episodeJob?.audioUrl || storyOutput?.audio_url),
+      hasFinalMix: Boolean(episode.finalMix || episodeJob?.finalMix || storyOutput?.audio_url),
+      dbAudioUrl: storyOutput?.audio_url || '',
+      dbStoryAudioUrl: storyOutput?.story_audio_url || '',
+      dbCoverUrl: storyOutput?.cover_url || '',
     }
   })
   const packageAllImported = packageCompletionRows.length > 0 && packageCompletionRows.every((row) => row.imported)
@@ -1312,6 +1350,8 @@ export default function AscAdminPage() {
                     <div>Published/complete: {row.publishedComplete ? 'yes' : 'no'}</div>
                     <div>Audio URL present: {row.hasAudioUrl ? 'yes' : 'no'}</div>
                     <div>Final mix present: {row.hasFinalMix ? 'yes' : 'no'}</div>
+                    <div>DB audio URL present: {row.dbAudioUrl ? 'yes' : 'no'}</div>
+                    <div>DB cover present: {row.dbCoverUrl ? 'yes' : 'no'}</div>
                   </div>
                 </div>
               )) : (
