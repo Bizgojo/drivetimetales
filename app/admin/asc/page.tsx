@@ -40,16 +40,20 @@ type AscHandoff = {
     finalMix?: string
     coverUrl?: string
   }>
+  packageJobId?: string
+  packageJob?: ProductionJob
   packageJobs?: ProductionJob[]
 }
 
 type ProductionJob = {
+  packageJobId?: string
   jobId?: string
   status?: string
   phase?: string
   message?: string
   error?: string
   details?: any
+  createdAt?: string
   updatedAt?: string
   storyId?: string
   title?: string
@@ -60,6 +64,8 @@ type ProductionJob = {
   coverUrl?: string
   imported?: boolean
   importedAt?: string
+  currentEpisode?: number
+  currentJobId?: string
 }
 
 const STORAGE_KEY = 'et_asc_handoff_v1'
@@ -69,6 +75,139 @@ const V2_RESTORE_KEYS = [
   'et_last_story_id_v2',
   'et_last_queue_id_v2',
 ]
+
+const ASC_PROGRESS_POLL_MS = 5000
+
+const ASC_PHASE_STEPS = [
+  { key: 'preparing', label: 'preparing', percent: 5 },
+  { key: 'splitting', label: 'splitting script', percent: 15 },
+  { key: 'narrator', label: 'generating narrator voices', percent: 30 },
+  { key: 'characters', label: 'generating character voices', percent: 45 },
+  { key: 'belle', label: 'generating Belle B intro/outro', percent: 55 },
+  { key: 'music', label: 'generating music', percent: 65 },
+  { key: 'mixing', label: 'mixing', percent: 78 },
+  { key: 'exporting', label: 'exporting', percent: 85 },
+  { key: 'importing', label: 'importing ASC output', percent: 92 },
+  { key: 'complete', label: 'complete', percent: 100 },
+]
+
+function formatElapsed(ms: number) {
+  const safeMs = Math.max(0, ms)
+  const totalSeconds = Math.floor(safeMs / 1000)
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+
+  if (hours > 0) {
+    return `${hours}h ${String(minutes).padStart(2, '0')}m ${String(seconds).padStart(2, '0')}s`
+  }
+
+  return `${minutes}m ${String(seconds).padStart(2, '0')}s`
+}
+
+function formatTimestamp(value?: string) {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })
+}
+
+function getPhaseStep(job?: ProductionJob | null) {
+  const status = (job?.status || '').toLowerCase()
+  const phase = (job?.phase || '').toLowerCase()
+  const message = (job?.message || job?.error || '').toLowerCase()
+
+  if (status === 'complete' || phase === 'complete' || phase === 'published' || phase === 'ready_for_review') {
+    return ASC_PHASE_STEPS[ASC_PHASE_STEPS.length - 1]
+  }
+
+  if (status === 'failed' || phase === 'exception') {
+    return { key: 'failed', label: 'failed', percent: 100 }
+  }
+
+  if (phase === 'importing') return ASC_PHASE_STEPS[8]
+  if (phase === 'mix') return ASC_PHASE_STEPS[6]
+  if (phase === 'voices') {
+    if (message.includes('belle')) return ASC_PHASE_STEPS[4]
+    if (message.includes('character')) return ASC_PHASE_STEPS[3]
+    if (message.includes('narrator')) return ASC_PHASE_STEPS[2]
+    return ASC_PHASE_STEPS[3]
+  }
+  if (phase === 'packaging' || phase === 'validation') return ASC_PHASE_STEPS[1]
+  if (phase === 'queued' || phase === 'starting' || status === 'queued' || status === 'running') return ASC_PHASE_STEPS[0]
+
+  return ASC_PHASE_STEPS[0]
+}
+
+function inferPackageJobId(jobs: ProductionJob[]) {
+  const firstJobId = jobs.find((packageJob) => packageJob.jobId)?.jobId || ''
+  const match = firstJobId.match(/^(ascpkg_\d+)_\d+$/)
+  return match?.[1] || ''
+}
+
+function getPackageProgress(packageJob: ProductionJob | null, childJobs: ProductionJob[], episodeCount: number) {
+  if (episodeCount <= 0) return 0
+
+  const parentStatus = (packageJob?.status || '').toLowerCase()
+  const parentPhase = (packageJob?.phase || '').toLowerCase()
+  if (parentStatus === 'complete' || parentPhase === 'complete' || parentPhase === 'published') return 100
+  if (parentStatus === 'failed' || parentPhase === 'exception') return 100
+
+  const completedCount = childJobs.filter((childJob) => {
+    const status = (childJob.status || '').toLowerCase()
+    const phase = (childJob.phase || '').toLowerCase()
+    return status === 'complete' || phase === 'published' || phase === 'complete'
+  }).length
+  const currentEpisode = Number(packageJob?.currentEpisode || childJobs.find((childJob) => {
+    const status = (childJob.status || '').toLowerCase()
+    return status === 'running' || status === 'queued'
+  })?.episodeNumber || completedCount + 1)
+  const currentJob = childJobs.find((childJob) => childJob.jobId === packageJob?.currentJobId)
+    || childJobs.find((childJob) => Number(childJob.episodeNumber) === currentEpisode)
+  const currentPercent = currentJob ? getPhaseStep(currentJob).percent : 0
+  const progress = ((Math.max(0, currentEpisode - 1) + currentPercent / 100) / episodeCount) * 100
+
+  return Math.max(0, Math.min(100, Math.round(progress)))
+}
+
+function estimateRemaining(elapsedMs: number, percent: number) {
+  if (percent <= 0 || percent >= 100 || elapsedMs <= 0) return '—'
+  const totalEstimateMs = elapsedMs / (percent / 100)
+  return formatElapsed(totalEstimateMs - elapsedMs)
+}
+
+async function readJsonResponse(res: Response, source: string) {
+  const contentType = res.headers.get('content-type') || ''
+  const raw = await res.text()
+  const trimmed = raw.trim()
+  const rawPreview = raw.slice(0, 200)
+
+  if (!trimmed) {
+    throw Object.assign(new Error(`Empty response from ${source}`), {
+      source,
+      contentType,
+      rawPreview,
+    })
+  }
+
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+    throw Object.assign(new Error(`Non-JSON response from ${source}`), {
+      source,
+      contentType,
+      rawPreview,
+    })
+  }
+
+  try {
+    return JSON.parse(trimmed)
+  } catch (err: any) {
+    throw Object.assign(new Error(`Invalid JSON response from ${source}: ${err?.message || 'parse failed'}`), {
+      source,
+      contentType,
+      rawPreview,
+    })
+  }
+}
 
 function classifyFailure(job: ProductionJob) {
   const phase = (job.phase || '').toLowerCase()
@@ -136,9 +275,17 @@ export default function AscAdminPage() {
   const [working, setWorking] = useState(false)
   const [isLocalRuntime, setIsLocalRuntime] = useState(false)
   const [job, setJob] = useState<ProductionJob | null>(null)
+  const [packageJob, setPackageJob] = useState<ProductionJob | null>(null)
   const [packageJobs, setPackageJobs] = useState<ProductionJob[]>([])
   const [failureInspectionJob, setFailureInspectionJob] = useState<ProductionJob | null>(null)
   const [creditsApproved, setCreditsApproved] = useState(false)
+  const [statusNow, setStatusNow] = useState(() => Date.now())
+  const [ascParseError, setAscParseError] = useState<{
+    source?: string
+    contentType?: string
+    rawPreview?: string
+    message?: string
+  } | null>(null)
 
   const [form, setForm] = useState({
     audio_url: '',
@@ -165,17 +312,30 @@ export default function AscAdminPage() {
   const hasActivePackageJobs = packageJobs.some((packageJob) => {
     const status = (packageJob.status || '').toLowerCase()
     return status === 'queued' || status === 'running'
-  })
+  }) || (() => {
+    const status = (packageJob?.status || '').toLowerCase()
+    return status === 'queued' || status === 'running'
+  })()
 
   useEffect(() => {
     if ((!hasActivePackageJobs && !hasActiveSingleJob) || working) return
 
     const timer = window.setInterval(() => {
       refreshProductionStatus({ silent: true })
-    }, 15000)
+    }, ASC_PROGRESS_POLL_MS)
 
     return () => window.clearInterval(timer)
   }, [hasActivePackageJobs, hasActiveSingleJob, working])
+
+  useEffect(() => {
+    if (!hasActivePackageJobs && !hasActiveSingleJob) return
+
+    const timer = window.setInterval(() => {
+      setStatusNow(Date.now())
+    }, 1000)
+
+    return () => window.clearInterval(timer)
+  }, [hasActivePackageJobs, hasActiveSingleJob])
 
   function refreshHandoff() {
     try {
@@ -187,8 +347,11 @@ export default function AscAdminPage() {
         return
       }
       const parsed = JSON.parse(raw)
+      const parsedPackageJobs = parsed.packageJobs || []
+      const parsedPackageJobId = parsed.packageJobId || parsed.packageJob?.packageJobId || inferPackageJobId(parsedPackageJobs)
       setHandoff(parsed)
-      setPackageJobs(parsed.packageJobs || [])
+      setPackageJob(parsed.packageJob || (parsedPackageJobId ? { packageJobId: parsedPackageJobId, status: parsed.status, phase: parsed.phase } : null))
+      setPackageJobs(parsedPackageJobs)
       setForm({
         audio_url: parsed.audio_url || '',
         cover_url: parsed.cover_url || '',
@@ -217,6 +380,7 @@ export default function AscAdminPage() {
     V2_RESTORE_KEYS.forEach((key) => localStorage.removeItem(key))
     setHandoff(null)
     setPackageJobs([])
+    setPackageJob(null)
     setJob(null)
     setForm({
       audio_url: '',
@@ -225,6 +389,17 @@ export default function AscAdminPage() {
       duration_mins: '15',
       is_free: false,
     })
+  }
+
+  function recordParseError(err: any, fallback: string) {
+    if (err?.rawPreview !== undefined || err?.source) {
+      setAscParseError({
+        source: err?.source || 'unknown endpoint',
+        contentType: err?.contentType || '',
+        rawPreview: err?.rawPreview || '',
+        message: err?.message || fallback,
+      })
+    }
   }
 
   async function runAscProduction() {
@@ -257,22 +432,35 @@ export default function AscAdminPage() {
           }),
         })
 
-        const data = await res.json()
+        const data = await readJsonResponse(res, '/api/admin/run-asc-package-production')
+        setAscParseError(null)
         if (!res.ok || !data.success) {
           throw new Error(data.error || 'Failed to start package ASC production')
         }
 
         const jobs = data.jobs || []
+        const nextPackageJob = {
+          packageJobId: data.packageJobId,
+          status: data.status,
+          phase: data.phase,
+          message: data.message,
+          title: data.title,
+          updatedAt: new Date().toISOString(),
+        }
         const updated = {
           ...handoff,
+          packageJobId: data.packageJobId,
+          packageJob: nextPackageJob,
           packageJobs: jobs,
           updatedAt: new Date().toISOString(),
         }
         localStorage.setItem(PACKAGE_STORAGE_KEY, JSON.stringify(updated))
         setHandoff(updated)
+        setPackageJob(nextPackageJob)
         setPackageJobs(jobs)
         setMessage(`Queued ${jobs.length} package ASC production jobs.`)
       } catch (err: any) {
+        recordParseError(err, 'Failed to start package ASC production')
         setMessage(err?.message || 'Failed to start package ASC production')
       } finally {
         setWorking(false)
@@ -300,7 +488,8 @@ export default function AscAdminPage() {
         }),
       })
 
-      const data = await res.json()
+      const data = await readJsonResponse(res, '/api/admin/run-asc-production')
+      setAscParseError(null)
       if (!res.ok || !data.success) {
         throw new Error(data.error || 'Failed to start ASC production')
       }
@@ -319,6 +508,7 @@ export default function AscAdminPage() {
       })
       setMessage('Headless ASC production started.')
     } catch (err: any) {
+      recordParseError(err, 'Failed to start ASC production')
       setMessage(err?.message || 'Failed to start ASC production')
     } finally {
       setWorking(false)
@@ -329,6 +519,42 @@ export default function AscAdminPage() {
     if ((handoff?.type === 'series_package' || handoff?.episodes?.length) && packageJobs.length) {
       try {
         setWorking(true)
+        let refreshedPackageJob: ProductionJob | null = packageJob
+        const parentPackageJobId = packageJob?.packageJobId || handoff?.packageJobId || inferPackageJobId(packageJobs)
+        if (parentPackageJobId) {
+          const source = `/api/admin/asc-production-status?jobId=${parentPackageJobId}`
+          const res = await fetch(`/api/admin/asc-production-status?jobId=${encodeURIComponent(parentPackageJobId)}`)
+          try {
+            const data = await readJsonResponse(res, source)
+            setAscParseError(null)
+            if (res.ok && data.success) {
+              refreshedPackageJob = data.job || null
+            } else {
+              refreshedPackageJob = {
+                ...refreshedPackageJob,
+                packageJobId: parentPackageJobId,
+                status: refreshedPackageJob?.status || 'unknown',
+                phase: refreshedPackageJob?.phase || 'unknown',
+                error: data.error || 'Failed to load package production status',
+                updatedAt: new Date().toISOString(),
+              }
+            }
+          } catch (err: any) {
+            setAscParseError({
+              source: err?.source || source,
+              contentType: err?.contentType || '',
+              rawPreview: err?.rawPreview || '',
+              message: err?.message || 'Failed to parse package production status',
+            })
+            refreshedPackageJob = {
+              ...refreshedPackageJob,
+              packageJobId: parentPackageJobId,
+              error: err?.message || refreshedPackageJob?.error || 'Failed to parse package production status',
+              updatedAt: new Date().toISOString(),
+            }
+          }
+        }
+
         const refreshedJobs = []
 
         for (const packageJob of packageJobs) {
@@ -337,8 +563,26 @@ export default function AscAdminPage() {
             continue
           }
 
+          const source = `/api/admin/asc-production-status?jobId=${packageJob.jobId}`
           const res = await fetch(`/api/admin/asc-production-status?jobId=${encodeURIComponent(packageJob.jobId)}`)
-          const data = await res.json()
+          let data
+          try {
+            data = await readJsonResponse(res, source)
+            setAscParseError(null)
+          } catch (err: any) {
+            setAscParseError({
+              source: err?.source || source,
+              contentType: err?.contentType || '',
+              rawPreview: err?.rawPreview || '',
+              message: err?.message || 'Failed to parse ASC production status',
+            })
+            refreshedJobs.push({
+              ...packageJob,
+              error: err?.message || packageJob.error || 'Failed to parse ASC production status',
+              updatedAt: new Date().toISOString(),
+            })
+            continue
+          }
           if (!res.ok || !data.success) {
             refreshedJobs.push({
               ...packageJob,
@@ -358,16 +602,20 @@ export default function AscAdminPage() {
 
         const updated = {
           ...handoff,
+          packageJobId: refreshedPackageJob?.packageJobId || parentPackageJobId || handoff?.packageJobId,
+          packageJob: refreshedPackageJob,
           packageJobs: refreshedJobs,
           updatedAt: new Date().toISOString(),
         }
         localStorage.setItem(PACKAGE_STORAGE_KEY, JSON.stringify(updated))
         setHandoff(updated)
+        setPackageJob(refreshedPackageJob)
         setPackageJobs(refreshedJobs)
         if (!options.silent) {
           setMessage(`Refreshed ${refreshedJobs.length} package production jobs.`)
         }
       } catch (err: any) {
+        recordParseError(err, 'Failed to load package production status')
         setMessage(err?.message || 'Failed to load package production status')
       } finally {
         setWorking(false)
@@ -382,8 +630,10 @@ export default function AscAdminPage() {
 
     try {
       setWorking(true)
+      const source = `/api/admin/asc-production-status?jobId=${handoff.productionJobId}`
       const res = await fetch(`/api/admin/asc-production-status?jobId=${encodeURIComponent(handoff.productionJobId)}`)
-      const data = await res.json()
+      const data = await readJsonResponse(res, source)
+      setAscParseError(null)
       if (!res.ok || !data.success) {
         throw new Error(data.error || 'Failed to load production status')
       }
@@ -392,6 +642,7 @@ export default function AscAdminPage() {
         setMessage(`Production status: ${data.job?.status || 'unknown'}`)
       }
     } catch (err: any) {
+      recordParseError(err, 'Failed to load production status')
       setMessage(err?.message || 'Failed to load production status')
     } finally {
       setWorking(false)
@@ -471,7 +722,8 @@ export default function AscAdminPage() {
         body: JSON.stringify({ title: handoff.title }),
       })
 
-      const data = await res.json()
+      const data = await readJsonResponse(res, '/api/admin/import-asc-output')
+      setAscParseError(null)
       if (!res.ok || !data.success) {
         throw new Error(data.error || 'Import failed')
       }
@@ -492,6 +744,7 @@ export default function AscAdminPage() {
       setHandoff(updated)
       setMessage('ASC output imported.')
     } catch (err: any) {
+      recordParseError(err, 'Import failed')
       setMessage(err?.message || 'Import failed')
     } finally {
       setWorking(false)
@@ -514,7 +767,8 @@ export default function AscAdminPage() {
         body: JSON.stringify({ storyId: handoff.storyId }),
       })
 
-      const data = await res.json()
+      const data = await readJsonResponse(res, '/api/admin/complete-story-package')
+      setAscParseError(null)
       const steps = Array.isArray(data.steps) ? data.steps : []
       const failedStep = steps.find((step: any) => step?.status === 'failed')
 
@@ -556,6 +810,7 @@ export default function AscAdminPage() {
       const summary = steps.map((step: any) => `${step.step} ${step.status}`).join(', ')
       setMessage(`Package complete: ${summary}.`)
     } catch (err: any) {
+      recordParseError(err, 'Package completion failed')
       setMessage(err?.message || 'Package completion failed')
     } finally {
       setWorking(false)
@@ -607,7 +862,8 @@ export default function AscAdminPage() {
         body: JSON.stringify(payload),
       })
 
-      const data = await res.json()
+      const data = await readJsonResponse(res, '/api/admin/publish-story')
+      setAscParseError(null)
       if (!res.ok || !data.success) {
         throw new Error(data.error || 'Publish failed')
       }
@@ -622,6 +878,7 @@ export default function AscAdminPage() {
       clearProductionWorkspace()
       setMessage(`Published: ${data.story?.title || handoff.title || 'Story'}. Production workspace cleared for the next story.`)
     } catch (err: any) {
+      recordParseError(err, 'Publish failed')
       setMessage(err?.message || 'Publish failed')
     } finally {
       setWorking(false)
@@ -677,6 +934,33 @@ export default function AscAdminPage() {
   const packageAllPublished = packageCompletionRows.length > 0 && packageCompletionRows.every((row) => row.publishedComplete)
   const packageAllAudioReady = packageCompletionRows.length > 0 && packageCompletionRows.every((row) => row.hasAudioUrl && row.hasFinalMix)
   const inspectedFailure = failureInspectionJob ? classifyFailure(failureInspectionJob) : null
+  const activePackageJob = packageJobs.find((packageJob) => {
+    const status = (packageJob.status || '').toLowerCase()
+    return status === 'running' || status === 'queued'
+  }) || packageJobs.find((packageJob) => {
+    const status = (packageJob.status || '').toLowerCase()
+    return status !== 'complete' && status !== 'failed'
+  }) || packageJobs[packageJobs.length - 1]
+  const packageEpisodeCount = packageEpisodes.length || packageJobs.length || Number(handoff?.episodeCount || 0)
+  const packageOverallProgress = isPackageHandoff ? getPackageProgress(packageJob, packageJobs, packageEpisodeCount) : 0
+  const currentPackageChildJob = packageJob?.currentJobId
+    ? packageJobs.find((candidate) => candidate.jobId === packageJob.currentJobId)
+    : activePackageJob
+  const statusJob = isPackageHandoff ? (packageJob || activePackageJob) : job
+  const statusPhase = getPhaseStep(statusJob)
+  const statusStartTime = statusJob?.createdAt || handoff?.updatedAt || statusJob?.updatedAt
+  const statusStartMs = statusStartTime ? new Date(statusStartTime).getTime() : 0
+  const elapsedMs = statusStartMs && !Number.isNaN(statusStartMs) ? statusNow - statusStartMs : 0
+  const statusPercent = isPackageHandoff ? packageOverallProgress : statusPhase.percent
+  const isStatusRunning = hasActivePackageJobs || hasActiveSingleJob
+  const statusStepMessage = isPackageHandoff
+    ? currentPackageChildJob?.message || packageJob?.message || packageJob?.error || (isStatusRunning ? 'Waiting for package ASC worker update...' : 'No active package production job.')
+    : statusJob?.message || statusJob?.error || (isStatusRunning ? 'Waiting for ASC worker update...' : 'No active production job.')
+  const progressBarClass = statusJob?.status === 'failed' || statusJob?.phase === 'exception'
+    ? 'bg-red-600'
+    : statusPercent >= 100
+      ? 'bg-green-600'
+      : 'bg-blue-600'
 
   return (
     <div className="p-6 space-y-6">
@@ -688,6 +972,22 @@ export default function AscAdminPage() {
         {message ? (
           <div className="mt-3 inline-block rounded bg-amber-100 px-3 py-2 text-sm font-semibold text-amber-800">
             {message}
+          </div>
+        ) : null}
+        {ascParseError ? (
+          <div className="mt-3 rounded border border-red-300 bg-red-50 p-3 text-sm text-red-900">
+            <div className="font-semibold">ASC status response could not be parsed.</div>
+            <div className="mt-1">
+              Production polling will keep trying without interrupting the running worker.
+            </div>
+            <div className="mt-2 grid gap-1 text-xs">
+              <div><strong>Endpoint:</strong> {ascParseError.source || '—'}</div>
+              <div><strong>Content-Type:</strong> {ascParseError.contentType || '—'}</div>
+              <div><strong>Error:</strong> {ascParseError.message || '—'}</div>
+            </div>
+            <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap rounded bg-white p-2 text-xs text-red-950">
+              {ascParseError.rawPreview || '(empty response)'}
+            </pre>
           </div>
         ) : null}
       </div>
@@ -742,6 +1042,33 @@ export default function AscAdminPage() {
             </div>
           ) : null}
 
+          {isPackageHandoff && (packageJob || handoff?.packageJobId || packageJobs.length) ? (
+            <div className="rounded border border-blue-300 bg-blue-50 p-3 text-sm text-blue-950 space-y-2">
+              <div className="font-semibold">Package ASC Progress</div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div><strong>Package job:</strong> {packageJob?.packageJobId || handoff?.packageJobId || inferPackageJobId(packageJobs) || '—'}</div>
+                <div><strong>Status:</strong> {packageJob?.status || '—'}</div>
+                <div><strong>Phase:</strong> {packageJob?.phase || '—'}</div>
+                <div><strong>Current episode:</strong> {packageJob?.currentEpisode || currentPackageChildJob?.episodeNumber || '—'} of {packageEpisodeCount || '—'}</div>
+                <div><strong>Current child job:</strong> {packageJob?.currentJobId || currentPackageChildJob?.jobId || '—'}</div>
+                <div><strong>Updated:</strong> {formatTimestamp(packageJob?.updatedAt || handoff?.updatedAt)}</div>
+              </div>
+              <div><strong>Current message:</strong> {currentPackageChildJob?.message || packageJob?.message || packageJob?.error || 'Waiting for package worker update...'}</div>
+              <div>
+                <div className="mb-1 flex items-center justify-between text-xs font-semibold text-blue-800">
+                  <span>Overall package progress</span>
+                  <span>{packageOverallProgress}%</span>
+                </div>
+                <div className="h-3 overflow-hidden rounded-full bg-white">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${packageJob?.status === 'failed' || packageJob?.phase === 'exception' ? 'bg-red-600' : packageOverallProgress >= 100 ? 'bg-green-600' : 'bg-blue-600'}`}
+                    style={{ width: `${packageOverallProgress}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          ) : null}
+
           {packageJobs.length ? (
             <div className="rounded border border-dashed border-gray-400 p-3 text-sm space-y-2">
               <div className="font-semibold">Package Production Jobs</div>
@@ -752,6 +1079,7 @@ export default function AscAdminPage() {
                     <div><strong>Episode {packageJob.episodeNumber || '—'}:</strong> {packageJob.title || '—'}</div>
                     <div><strong>Job:</strong> {packageJob.jobId || '—'}</div>
                     <div><strong>Status:</strong> {packageJob.status || '—'} / {packageJob.phase || '—'}</div>
+                    <div><strong>Message:</strong> {packageJob.message || packageJob.error || '—'}</div>
                     <div><strong>Imported:</strong> {packageJob.imported ? 'yes' : 'no'}</div>
                     {packageJob.audioUrl ? <div className="text-gray-600 break-all">Audio: {packageJob.audioUrl}</div> : null}
                     {packageJob.finalMix ? <div className="text-gray-600 break-all">Final mix: {packageJob.finalMix}</div> : null}
@@ -769,6 +1097,64 @@ export default function AscAdminPage() {
               })}
             </div>
           ) : null}
+
+          <div className="rounded border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="font-semibold text-base">ASC Production Status</div>
+                <div className="mt-1 text-xs text-blue-800">
+                  Polling every {ASC_PROGRESS_POLL_MS / 1000}s while production is active.
+                </div>
+              </div>
+              {isStatusRunning ? (
+                <div className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-blue-200 border-t-blue-700" aria-label="Production running" />
+              ) : (
+                <div className="rounded-full bg-white px-2 py-1 text-xs font-semibold text-blue-800">
+                  idle
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-blue-700">Current phase</div>
+                <div className="mt-1 font-semibold">{statusPhase.label}</div>
+              </div>
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-blue-700">Current step</div>
+                <div className="mt-1">{statusStepMessage}</div>
+              </div>
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-blue-700">Elapsed</div>
+                <div className="mt-1 font-mono">{isStatusRunning || statusStartTime ? formatElapsed(elapsedMs) : '—'}</div>
+              </div>
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-blue-700">Estimated remaining</div>
+                <div className="mt-1 font-mono">{isStatusRunning ? estimateRemaining(elapsedMs, statusPercent) : '—'}</div>
+              </div>
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-blue-700">Last update</div>
+                <div className="mt-1">{formatTimestamp(statusJob?.updatedAt || handoff?.updatedAt)}</div>
+              </div>
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-blue-700">Job</div>
+                <div className="mt-1 break-all font-mono text-xs">{statusJob?.jobId || statusJob?.packageJobId || handoff?.productionJobId || handoff?.packageJobId || '—'}</div>
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <div className="mb-1 flex items-center justify-between text-xs font-semibold text-blue-800">
+                <span>Estimated progress</span>
+                <span>{statusPercent}%</span>
+              </div>
+              <div className="h-3 overflow-hidden rounded-full bg-white">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${progressBarClass}`}
+                  style={{ width: `${statusPercent}%` }}
+                />
+              </div>
+            </div>
+          </div>
 
           {!isLocalRuntime ? (
             <div className="rounded border border-amber-400 bg-amber-50 p-3 text-sm font-semibold text-amber-900">
