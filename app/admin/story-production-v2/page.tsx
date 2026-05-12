@@ -68,6 +68,8 @@ function extractSuccessfulHalStoryId(report: string) {
 }
 
 const ACTIVE_V2_SESSION_KEY = 'et_v2_active_story_session_v1'
+const LAST_AUTHOR_BY_GENRE_KEY = 'et_v2_last_author_by_genre_v1'
+const MAX_TOP_FIX_ATTEMPTS_PER_SCRIPT = 2
 
 function readSavedSeriesId(): string {
   if (typeof window === 'undefined') return ''
@@ -82,6 +84,66 @@ function readSavedSeriesId(): string {
   } catch {
     return ''
   }
+}
+
+async function readJsonOrDiagnostic(response: Response, endpointLabel: string) {
+  console.log('[SERIES SAFE JSON]', endpointLabel)
+  const contentType = response.headers.get('content-type') || ''
+  const body = await response.text()
+  const preview = body.slice(0, 500)
+  const trimmed = body.trim()
+
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+    throw new Error([
+      `Non-JSON response from ${endpointLabel}`,
+      `Status: ${response.status}${response.statusText ? ` ${response.statusText}` : ''}`,
+      `Content-Type: ${contentType || 'unknown'}`,
+      `Body preview: ${preview || '(empty)'}`,
+    ].join('\n'))
+  }
+
+  try {
+    return JSON.parse(trimmed)
+  } catch (err) {
+    throw new Error([
+      `Invalid JSON response from ${endpointLabel}`,
+      `Status: ${response.status}${response.statusText ? ` ${response.statusText}` : ''}`,
+      `Content-Type: ${contentType || 'unknown'}`,
+      `Body preview: ${preview || '(empty)'}`,
+      `Parse error: ${err instanceof Error ? err.message : String(err)}`,
+    ].join('\n'))
+  }
+}
+
+function formatDiagnosticReport(value: unknown): string {
+  if (!value) return ''
+  if (typeof value === 'string') return value
+  if (value instanceof Error) return value.message
+
+  if (typeof value === 'object') {
+    const record = value as Record<string, any>
+    const endpoint = record.endpoint || record.endpointLabel || record.url || record.failingUrl
+    const status = record.status || record.httpStatus
+    const contentType = record.contentType || record['content-type'] || record.responseContentType
+    const preview = record.responsePreview || record.bodyPreview || record.preview || record.body || record.message
+
+    if (endpoint || status || contentType || preview) {
+      return [
+        endpoint ? `Endpoint: ${endpoint}` : '',
+        status ? `Status: ${status}` : '',
+        contentType ? `Content-Type: ${contentType}` : '',
+        preview ? `Response preview: ${typeof preview === 'string' ? preview.slice(0, 500) : JSON.stringify(preview, null, 2).slice(0, 500)}` : '',
+      ].filter(Boolean).join('\n')
+    }
+
+    try {
+      return JSON.stringify(value, null, 2)
+    } catch {
+      return String(value)
+    }
+  }
+
+  return String(value)
 }
 
 
@@ -135,6 +197,7 @@ type ActiveAction =
   | 'validatorFix'
   | 'standaloneTopFix'
   | 'episodeTopFix'
+  | 'packageIssueFix'
   | 'reloadSavedStory'
   | ''
 
@@ -282,6 +345,7 @@ type ActiveV2Session = {
   form?: typeof EMPTY_FORM
   halIntake?: typeof DEFAULT_HAL_INTAKE
   queueIntakeNotice?: string
+  queueAuthorTarget?: string
   activeStep?: 'brief' | 'script' | 'score' | 'validate' | 'produce' | ''
   stepMessage?: string
   updatedAt?: string
@@ -305,6 +369,64 @@ function readActiveV2Session(): ActiveV2Session | null {
 
 function storedActiveV2SessionStoryId(): string {
   return readActiveV2Session()?.storyId || ''
+}
+
+function scriptAttemptKey(storyId: string, script: string) {
+  let hash = 0
+  for (let i = 0; i < script.length; i += 1) {
+    hash = ((hash << 5) - hash + script.charCodeAt(i)) | 0
+  }
+  return `${storyId}:${script.length}:${Math.abs(hash)}`
+}
+
+function readTopFixAttemptMap(): Record<string, number> {
+  if (typeof window === 'undefined') return {}
+
+  try {
+    return JSON.parse(localStorage.getItem('et_v2_top_fix_attempts_v1') || '{}')
+  } catch {
+    return {}
+  }
+}
+
+function writeTopFixAttemptMap(attempts: Record<string, number>) {
+  if (typeof window === 'undefined') return
+
+  localStorage.setItem('et_v2_top_fix_attempts_v1', JSON.stringify(attempts))
+}
+
+function readNoFurtherRepairMap(): Record<string, boolean> {
+  if (typeof window === 'undefined') return {}
+
+  try {
+    return JSON.parse(localStorage.getItem('et_v2_no_further_top_fix_v1') || '{}')
+  } catch {
+    return {}
+  }
+}
+
+function writeNoFurtherRepairMap(flags: Record<string, boolean>) {
+  if (typeof window === 'undefined') return
+
+  localStorage.setItem('et_v2_no_further_top_fix_v1', JSON.stringify(flags))
+}
+
+function readLastAuthorByGenre(): Record<string, string> {
+  if (typeof window === 'undefined') return {}
+
+  try {
+    return JSON.parse(localStorage.getItem(LAST_AUTHOR_BY_GENRE_KEY) || '{}')
+  } catch {
+    return {}
+  }
+}
+
+function writeLastAuthorForGenre(genre: string, authorName: string) {
+  if (typeof window === 'undefined' || !genre || !authorName) return
+
+  const lastByGenre = readLastAuthorByGenre()
+  lastByGenre[genre.toLowerCase()] = authorName
+  localStorage.setItem(LAST_AUTHOR_BY_GENRE_KEY, JSON.stringify(lastByGenre))
 }
 
 function runtimeMinutesFromQueue(duration: string): string {
@@ -433,6 +555,7 @@ export default function StoryProductionV2Page() {
   const [applyingValidatorFix, setApplyingValidatorFix] = useState(false)
   const [halIntake, setHalIntake] = useState(DEFAULT_HAL_INTAKE)
   const [queueIntakeNotice, setQueueIntakeNotice] = useState('')
+  const [queueAuthorTarget, setQueueAuthorTarget] = useState('')
 
   const scriptRef = useRef<HTMLTextAreaElement | null>(null)
   const reviewRef = useRef<HTMLPreElement | null>(null)
@@ -458,6 +581,7 @@ export default function StoryProductionV2Page() {
     setScriptDirty(false)
     setHalPreflightPassedStoryId('')
     setQueueIntakeNotice('')
+    setQueueAuthorTarget('')
 
     if (typeof window !== 'undefined') {
       localStorage.removeItem('et_last_series_id_v2')
@@ -485,6 +609,7 @@ export default function StoryProductionV2Page() {
     setForm(EMPTY_FORM)
     setHalIntake(DEFAULT_HAL_INTAKE)
     setQueueIntakeNotice('')
+    setQueueAuthorTarget('')
     setSelectedAuthorMeta(null)
     setWorkingMessage('')
     setActiveStep('')
@@ -511,7 +636,7 @@ export default function StoryProductionV2Page() {
 
     try {
       const res = await fetch(`/api/v2/load-story?storyId=${encodeURIComponent(cleanStoryId)}`, { cache: 'no-store' })
-      const data = await res.json()
+      const data = await readJsonOrDiagnostic(res, 'GET /api/v2/load-story')
 
       if (!res.ok || !data.success || !data.story) {
         throw new Error(data.error || 'Failed to reload saved story')
@@ -545,7 +670,7 @@ export default function StoryProductionV2Page() {
 
       try {
         const briefRes = await fetch(`/api/v2/story-brief?storyId=${encodeURIComponent(data.story.id)}`, { cache: 'no-store' })
-        const briefData = await briefRes.json()
+        const briefData = await readJsonOrDiagnostic(briefRes, 'GET /api/v2/story-brief')
         if (briefRes.ok && briefData?.success && briefData?.story) {
           setForm(prev => ({
             ...prev,
@@ -603,6 +728,7 @@ export default function StoryProductionV2Page() {
     setForm({ ...EMPTY_FORM, ...(session.form || {}) })
     setHalIntake({ ...DEFAULT_HAL_INTAKE, ...(session.halIntake || {}) })
     setQueueIntakeNotice(session.queueIntakeNotice || '')
+    setQueueAuthorTarget(session.queueAuthorTarget || '')
     setActiveStep(session.activeStep || '')
     setStepMessage(session.stepMessage || '')
     setSelectedTopFixes([])
@@ -650,6 +776,7 @@ export default function StoryProductionV2Page() {
       form,
       halIntake,
       queueIntakeNotice,
+      queueAuthorTarget,
       activeStep,
       stepMessage,
       updatedAt: new Date().toISOString(),
@@ -663,6 +790,7 @@ export default function StoryProductionV2Page() {
     halIntake,
     halPreflightPassedStoryId,
     queueIntakeNotice,
+    queueAuthorTarget,
     report,
     reviewText,
     reviewTotal,
@@ -692,20 +820,21 @@ export default function StoryProductionV2Page() {
         setStepMessage('')
 
         const res = await fetch(`/api/admin/story-queue?id=${encodeURIComponent(effectiveQueueId)}`, { cache: 'no-store' })
-        const data = await res.json()
+        const data = await readJsonOrDiagnostic(res, 'GET /api/admin/story-queue')
         const queued = data?.item
 
         if (!res.ok || !queued) {
           throw new Error(data?.error || 'Failed to load queue item')
         }
         if (ignore || loadGeneration !== stateLoadGenerationRef.current) return
+        setQueueAuthorTarget(queued.authorTarget || '')
 
         let loadedSavedStory = false
 
         if (queued.storyId) {
           try {
             const savedRes = await fetch(`/api/v2/load-story?storyId=${encodeURIComponent(queued.storyId)}`)
-            const savedData = await savedRes.json()
+            const savedData = await readJsonOrDiagnostic(savedRes, 'GET /api/v2/load-story')
 
             if (savedRes.ok && savedData?.success && savedData?.story) {
               if (ignore || loadGeneration !== stateLoadGenerationRef.current) return
@@ -743,7 +872,7 @@ export default function StoryProductionV2Page() {
               }))
               try {
                 const briefRes = await fetch(`/api/v2/story-brief?storyId=${encodeURIComponent(savedData.story.id)}`)
-                const briefData = await briefRes.json()
+                const briefData = await readJsonOrDiagnostic(briefRes, 'GET /api/v2/story-brief')
                 if (!ignore && loadGeneration === stateLoadGenerationRef.current && briefRes.ok && briefData?.success && briefData?.story) {
                   setForm(prev => ({
                     ...prev,
@@ -784,7 +913,7 @@ export default function StoryProductionV2Page() {
             requirements: queued.notes || prev.requirements,
             setting: queued.setting || prev.setting,
             runtime: `${queueIntake.runtime_minutes} min`,
-            author: queued.authorTarget || prev.author,
+            author: queued.authorTarget || '',
             series_total_episodes: queueIntake.episode_count === '1' ? '' : queueIntake.episode_count,
             series_episode_number: queueIntake.episode_count === '1' ? '' : '1',
             series_is_finale: 'false',
@@ -835,17 +964,17 @@ export default function StoryProductionV2Page() {
         setStepMessage('')
 
         const res = await fetch(`/api/v2/load-story?storyId=${encodeURIComponent(requestedStoryId)}`)
-        const data = await res.json()
+        const data = await readJsonOrDiagnostic(res, 'GET /api/v2/load-story')
 
         if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load saved story')
         if (ignore || loadGeneration !== stateLoadGenerationRef.current) return
 
         if (data.story?.series_id) {
           const packageRes = await fetch(`/api/v2/series-package/score-validate?seriesId=${encodeURIComponent(data.story.series_id)}`)
-          const packageData = await packageRes.json()
+          const packageData = await readJsonOrDiagnostic(packageRes, 'GET /api/v2/series-package/score-validate')
 
           if (!packageRes.ok || !packageData.success) {
-            throw new Error(packageData.error || 'Failed to load series package')
+            throw new Error(formatDiagnosticReport(packageData.error) || 'Failed to load series package')
           }
           if (ignore || loadGeneration !== stateLoadGenerationRef.current) return
 
@@ -909,7 +1038,7 @@ export default function StoryProductionV2Page() {
 
         try {
           const briefRes = await fetch(`/api/v2/story-brief?storyId=${encodeURIComponent(data.story.id)}`)
-          const briefData = await briefRes.json()
+          const briefData = await readJsonOrDiagnostic(briefRes, 'GET /api/v2/story-brief')
           if (!ignore && loadGeneration === stateLoadGenerationRef.current && briefRes.ok && briefData?.success && briefData?.story) {
             setForm(prev => ({
               ...prev,
@@ -979,9 +1108,9 @@ export default function StoryProductionV2Page() {
         setStepMessage('')
 
         const res = await fetch(`/api/v2/series-package/score-validate?seriesId=${encodeURIComponent(requestedSeriesId)}`)
-        const data = await res.json()
+        const data = await readJsonOrDiagnostic(res, 'GET /api/v2/series-package/score-validate')
 
-        if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load series package')
+        if (!res.ok || !data.success) throw new Error(formatDiagnosticReport(data.error) || 'Failed to load series package')
         if (ignore || loadGeneration !== stateLoadGenerationRef.current) return
 
         const pkg = data.package as SeriesPackage
@@ -1066,7 +1195,7 @@ export default function StoryProductionV2Page() {
     async function loadAdminGenres() {
       try {
         const res = await fetch('/api/admin/genres?active=true', { cache: 'no-store' })
-        const data = await res.json()
+        const data = await readJsonOrDiagnostic(res, 'GET /api/admin/genres')
         const genreNames = Array.isArray(data?.genres)
           ? data.genres.map((genre: any) => String(genre?.name || '').trim()).filter(Boolean)
           : []
@@ -1091,7 +1220,7 @@ export default function StoryProductionV2Page() {
       try {
         setAuthorsLoading(true)
         const res = await fetch('/api/v2/author-options')
-        const data = await res.json()
+        const data = await readJsonOrDiagnostic(res, 'GET /api/v2/author-options')
         if (!ignore && res.ok && data.success) setAuthors(data.authors || [])
       } finally {
         if (!ignore) setAuthorsLoading(false)
@@ -1126,6 +1255,7 @@ export default function StoryProductionV2Page() {
     setSelectedAuthorMeta(authors.find((a) => a.name === form.author) || null)
   }, [authors, form.author])
 
+  const hasActiveAction = !!activeAction
   const canGenerate = !!storyId && status === 'brief_complete'
   const packageScriptsReady = !!seriesPackage && seriesPackage.episodes.length > 0 && seriesPackage.episodes.every((episode) => !!episode.script)
   const isPackageMode = !!seriesPackage?.series?.id
@@ -1138,13 +1268,21 @@ export default function StoryProductionV2Page() {
     const validation = episode.validator_result ?? episode.script_json?.series_score_validate?.validator_result
     return episode.status === 'validator_passed' || validation === 'PASS'
   })
+  const packageFailedEpisodes = seriesPackage?.episodes.filter((episode) => {
+    const validation = episode.validator_result ?? episode.script_json?.series_score_validate?.validator_result
+    return episode.status === 'validator_failed' || validation === 'FAIL'
+  }) || []
+  const canFixPackageIssues = !!seriesPackage?.series?.id
+    && packageFailedEpisodes.length > 0
+    && packageFailedEpisodes.every((episode) => !!episode.script && !!episode.validator_report)
+    && !loading
+    && !hasActiveAction
   const packageReadyForAsc = !!seriesPackage
     && seriesPackage.episodes.length > 0
     && seriesPackage.episodes.every((episode) => {
       const validation = episode.validator_result ?? episode.script_json?.series_score_validate?.validator_result
       return !!episode.script && (episode.status === 'validator_passed' || validation === 'PASS')
     })
-  const hasActiveAction = !!activeAction
   const canGeneratePackageScripts = !!seriesPackage
     && packageEpisodeCount > 0
     && !packageAllScriptsPresent
@@ -1187,6 +1325,9 @@ export default function StoryProductionV2Page() {
   const standaloneValidationComplete = status === 'validator_passed' || status === 'validator_failed'
   const standaloneProduced = ['audio_pending', 'ready_for_production', 'audio_produced', 'ready_to_publish', 'published'].includes(status)
   const standaloneTopFixes = parseTopFixes(reviewText)
+  const topFixAttemptKey = storyId ? `story:${storyId}` : ''
+  const topFixAttempts = topFixAttemptKey ? readTopFixAttemptMap()[topFixAttemptKey] || 0 : 0
+  const noFurtherTopFixRecommended = topFixAttemptKey ? !!readNoFurtherRepairMap()[topFixAttemptKey] : false
   const renderedHalGenre = halIntake.genre || form.genre
   const renderedHalRuntime = halIntake.runtime_minutes || runtimeMinutesFromQueue(form.runtime)
   const renderedHalEpisodes = halIntake.episode_count || (form.type === 'series' && form.series_total_episodes ? form.series_total_episodes : '1')
@@ -1197,6 +1338,18 @@ export default function StoryProductionV2Page() {
     episode_count: renderedHalEpisodes,
     optional_premise: renderedHalSeed,
   }
+  const halEligibleAuthors = renderedHalGenre ? approvedAuthorsForGenre(renderedHalGenre) : []
+  const lastAuthorForGenre = renderedHalGenre ? readLastAuthorByGenre()[renderedHalGenre.toLowerCase()] || '' : ''
+  const lastAuthorIndex = lastAuthorForGenre ? halEligibleAuthors.findIndex((author) => author.name === lastAuthorForGenre) : -1
+  const nextAuthorIndex = halEligibleAuthors.length ? (lastAuthorIndex + 1) % halEligibleAuthors.length : -1
+  const selectedHalAuthor = renderedHalGenre ? chooseCanonicalAuthor(renderedHalGenre, queueAuthorTarget, true) : null
+  const authorSelectionReason = queueAuthorTarget
+    ? 'queue target'
+    : lastAuthorForGenre
+      ? 'rotation'
+      : renderedHalGenre
+        ? 'fallback first author'
+        : 'choose genre'
   const queueLoadedIntoHalIntake = !!queueIntakeNotice && !!renderedHalGenre && !!renderedHalSeed
   const canFixStandaloneTopFixes = !seriesPackage
     && !!storyId
@@ -1205,6 +1358,8 @@ export default function StoryProductionV2Page() {
     && typeof reviewTotal === 'number'
     && reviewTotal < 25
     && standaloneTopFixes.length > 0
+    && topFixAttempts < MAX_TOP_FIX_ATTEMPTS_PER_SCRIPT
+    && !noFurtherTopFixRecommended
     && !loading
     && !hasActiveAction
   const generateActionClass = seriesPackage
@@ -1273,17 +1428,27 @@ export default function StoryProductionV2Page() {
     }))
   }
 
-  function chooseCanonicalAuthor(genre: string, requestedAuthor = '') {
+  function approvedAuthorsForGenre(genre: string) {
+    const genreTargets = [genre, ...(GENRE_ALIASES[genre] || [])].map((value) => value.toLowerCase())
+    return authors.filter((author) =>
+      [author.primary_genre, author.secondary_genre].filter(Boolean).some((value) => genreTargets.includes(String(value).toLowerCase()))
+    )
+  }
+
+  function chooseCanonicalAuthor(genre: string, requestedAuthor = '', rotate = false) {
     const requested = requestedAuthor.trim().toLowerCase()
     if (requested) {
       const authorMatch = authors.find((author) => author.name.toLowerCase() === requested)
       if (authorMatch) return authorMatch
     }
 
-    const genreTargets = [genre, ...(GENRE_ALIASES[genre] || [])].map((value) => value.toLowerCase())
-    return authors.find((author) =>
-      [author.primary_genre, author.secondary_genre].filter(Boolean).some((value) => genreTargets.includes(String(value).toLowerCase()))
-    ) || null
+    const eligibleAuthors = approvedAuthorsForGenre(genre)
+    if (!eligibleAuthors.length) return null
+    if (!rotate) return eligibleAuthors[0]
+
+    const lastAuthorName = readLastAuthorByGenre()[genre.toLowerCase()] || ''
+    const lastIndex = eligibleAuthors.findIndex((author) => author.name === lastAuthorName)
+    return eligibleAuthors[(lastIndex + 1) % eligibleAuthors.length]
   }
 
   async function runGenerateVoicesPreflight(story: { id: string; title?: string | null }) {
@@ -1292,7 +1457,7 @@ export default function StoryProductionV2Page() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ storyId: story.id, preflightOnly: true }),
     })
-    const data = await res.json().catch(() => ({}))
+    const data = await readJsonOrDiagnostic(res, 'POST /api/admin/generate-voices')
     if (!res.ok || !data.success) {
       const reasons = Array.isArray(data.blockingReasons) ? data.blockingReasons.join('; ') : data.error || 'preflight failed'
       throw new Error(`${story.title || story.id}: generate-voices preflight failed. ${reasons}`)
@@ -1389,7 +1554,7 @@ export default function StoryProductionV2Page() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ storyId: storyIdToValidate }),
     })
-    const validateData = await validateRes.json()
+    const validateData = await readJsonOrDiagnostic(validateRes, 'POST /api/v2/validate-script')
     if (!validateRes.ok || !validateData.success) throw new Error(validateData.error || 'Failed to validate script')
     return validateData
   }
@@ -1419,7 +1584,7 @@ export default function StoryProductionV2Page() {
           ],
         }),
       })
-      const reviseData = await reviseRes.json()
+      const reviseData = await readJsonOrDiagnostic(reviseRes, 'POST /api/v2/apply-top-fixes')
       if (!reviseRes.ok || !reviseData.success) {
         throw new Error(reviseData.error || 'Hal auto-repair revision failed')
       }
@@ -1434,7 +1599,7 @@ export default function StoryProductionV2Page() {
         script: revisedScript,
       }),
     })
-    const saveData = await saveRes.json()
+    const saveData = await readJsonOrDiagnostic(saveRes, 'POST /api/v2/save-revised-script')
     if (!saveRes.ok || !saveData.success) {
       throw new Error(saveData.error || 'Failed to save Hal auto-repair')
     }
@@ -1514,7 +1679,7 @@ export default function StoryProductionV2Page() {
     const runtimeMinutes = Math.max(1, Number(effectiveHalIntake.runtime_minutes || 15))
     const episodeCount = Number(effectiveHalIntake.episode_count || 1)
     const storyType = episodeCount === 1 ? 'standalone' : 'series'
-    const author = chooseCanonicalAuthor(genre, form.author)
+    const author = chooseCanonicalAuthor(genre, queueAuthorTarget, true)
 
     if (!genre) {
       setReport('Genre is required.')
@@ -1536,6 +1701,7 @@ export default function StoryProductionV2Page() {
       setStepMessage('Hal intake blocked')
       return
     }
+    writeLastAuthorForGenre(genre, author.name)
 
     setActiveAction('halIntake')
     setLoading(true)
@@ -1583,7 +1749,7 @@ export default function StoryProductionV2Page() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(briefBody),
         })
-        const briefData = await briefRes.json()
+        const briefData = await readJsonOrDiagnostic(briefRes, 'GET /api/v2/story-brief')
         if (!briefRes.ok || !briefData.success) throw new Error(briefData.error || 'Failed to save canonical brief')
         const nextStoryId = briefData.story.id
         setStoryId(nextStoryId)
@@ -1596,7 +1762,7 @@ export default function StoryProductionV2Page() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ storyId: nextStoryId }),
         })
-        const scriptData = await scriptRes.json()
+        const scriptData = await readJsonOrDiagnostic(scriptRes, 'POST /api/v2/generate-script')
         if (!scriptRes.ok || !scriptData.success) throw new Error(scriptData.error || 'Failed to generate script')
         setTitle(scriptData.story.title || '')
         setScript(scriptData.story.script || '')
@@ -1609,7 +1775,7 @@ export default function StoryProductionV2Page() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ storyId: nextStoryId }),
         })
-        const scoreData = await scoreRes.json()
+        const scoreData = await readJsonOrDiagnostic(scoreRes, 'POST /api/v2/score-script')
         if (!scoreRes.ok || !scoreData.success) throw new Error(scoreData.error || 'Failed to score script')
         setReviewText(scoreData.reviewText || '')
         setReviewTotal(typeof scoreData.total === 'number' ? scoreData.total : null)
@@ -1676,8 +1842,8 @@ export default function StoryProductionV2Page() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(seriesBody),
       })
-      const packageData = await packageRes.json()
-      if (!packageRes.ok || !packageData.success) throw new Error(packageData.error || 'Failed to create series package')
+      const packageData = await readJsonOrDiagnostic(packageRes, 'POST /api/v2/series-package')
+      if (!packageRes.ok || !packageData.success) throw new Error(formatDiagnosticReport(packageData.error) || 'Failed to create series package')
       let pkg = packageData.package as SeriesPackage
       setSeriesPackage(pkg)
       setStoryId(pkg.episodes?.[0]?.id || '')
@@ -1691,8 +1857,8 @@ export default function StoryProductionV2Page() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ seriesId: pkg.series.id }),
       })
-      const scriptsData = await scriptsRes.json()
-      if (!scriptsRes.ok || !scriptsData.success) throw new Error(scriptsData.error || 'Failed to generate series scripts')
+      const scriptsData = await readJsonOrDiagnostic(scriptsRes, 'POST /api/v2/series-package/generate-scripts')
+      if (!scriptsRes.ok || !scriptsData.success) throw new Error(formatDiagnosticReport(scriptsData.error) || 'Failed to generate series scripts')
       pkg = scriptsData.package as SeriesPackage
       setSeriesPackage(pkg)
 
@@ -1703,8 +1869,8 @@ export default function StoryProductionV2Page() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ seriesId: pkg.series.id }),
       })
-      const validatePackageData = await validatePackageRes.json()
-      if (!validatePackageRes.ok || !validatePackageData.success) throw new Error(validatePackageData.error || 'Failed to score/validate series package')
+      const validatePackageData = await readJsonOrDiagnostic(validatePackageRes, 'POST /api/v2/series-package/score-validate')
+      if (!validatePackageRes.ok || !validatePackageData.success) throw new Error(formatDiagnosticReport(validatePackageData.error) || 'Failed to score/validate series package')
       pkg = validatePackageData.package as SeriesPackage
       setSeriesPackage(pkg)
 
@@ -1731,7 +1897,7 @@ export default function StoryProductionV2Page() {
         'Next: Produce Audio from the existing ordered ASC package workflow. Do not publish automatically.',
       ].join('\n'))
     } catch (e) {
-      setReport(e instanceof Error ? e.message : 'Unknown error')
+      setReport(formatDiagnosticReport(e) || 'Unknown error')
       setStepMessage('Hal intake stopped')
     } finally {
       setLoading(false)
@@ -1795,7 +1961,7 @@ export default function StoryProductionV2Page() {
           selectedFixes: [`${fix.area}: ${fix.text}`],
         }),
       })
-      const reviseData = await reviseRes.json()
+      const reviseData = await readJsonOrDiagnostic(reviseRes, 'POST /api/v2/apply-top-fixes')
       if (!reviseRes.ok || !reviseData.success) {
         throw new Error(reviseData.error || 'Claude revision failed')
       }
@@ -1808,7 +1974,7 @@ export default function StoryProductionV2Page() {
           script: reviseData.revisedScript,
         }),
       })
-      const saveData = await saveRes.json()
+      const saveData = await readJsonOrDiagnostic(saveRes, 'POST /api/v2/save-revised-script')
       if (!saveRes.ok || !saveData.success) {
         throw new Error(saveData.error || 'Failed to save revised script')
       }
@@ -1863,7 +2029,7 @@ export default function StoryProductionV2Page() {
           ],
         }),
       })
-      const reviseData = await reviseRes.json()
+      const reviseData = await readJsonOrDiagnostic(reviseRes, 'POST /api/v2/apply-top-fixes')
       if (!reviseRes.ok || !reviseData.success) {
         throw new Error(reviseData.error || 'Validator revision failed')
       }
@@ -1877,7 +2043,7 @@ export default function StoryProductionV2Page() {
           script: revisedScript,
         }),
       })
-      const saveData = await saveRes.json()
+      const saveData = await readJsonOrDiagnostic(saveRes, 'POST /api/v2/save-revised-script')
       if (!saveRes.ok || !saveData.success) {
         throw new Error(saveData.error || 'Failed to save validator fix')
       }
@@ -1910,6 +2076,174 @@ export default function StoryProductionV2Page() {
     }
   }
 
+  async function applyPackageIssueFixes() {
+    if (!seriesPackage?.series?.id || packageFailedEpisodes.length === 0) {
+      setReport('No failed package episodes are available to repair.')
+      return
+    }
+
+    const failedEpisodes = packageFailedEpisodes
+    const previousById = new Map(failedEpisodes.map((episode) => [episode.id, episode]))
+    const savedRevisions: SeriesEpisodePlan[] = []
+
+    setActiveAction('packageIssueFix')
+    setLoading(true)
+    setActiveStep('validate')
+    setWorkingMessage('Repairing failed episode…')
+    setStepMessage('')
+    setReport('')
+
+    try {
+      for (const episode of failedEpisodes) {
+        const episodeNo = episode.episode_number || episode.series_episode_number || '?'
+        if (!episode.script || !episode.validator_report) {
+          throw new Error(`Episode ${episodeNo} needs a script and validator report before package repair.`)
+        }
+
+        setWorkingMessage(`Repairing failed episode ${episodeNo}…`)
+
+        const brief = episode.brief_json || {}
+        const reviseRes = await fetch('/api/v2/apply-top-fixes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            script: episode.script,
+            selectedFixes: [
+              [
+                'SERIES PACKAGE VALIDATOR REPAIR ONLY.',
+                `Series: ${seriesPackage.series.title || ''}`,
+                `Series ID: ${seriesPackage.series.id}`,
+                `Episode: ${episodeNo}`,
+                `Episode title: ${episode.title || brief.episode_title || ''}`,
+                '',
+                'SERIES BIBLE / CONTINUITY:',
+                seriesPackage.series.description || brief.series_bible || 'No series bible available.',
+                '',
+                'EPISODE CONTINUITY NOTES:',
+                brief.continuity_notes || 'No episode continuity notes available.',
+                '',
+                'VALIDATOR FAILURE:',
+                episode.validator_report,
+                '',
+                'Repair only this failed episode script. Preserve series identity, episode order, title, author, narrator, continuity, and ending intent. If a speaking character appears in the script but is missing from CHARACTER GUIDE, add that character to CHARACTER GUIDE with age, gender, accent, and personality note. Do not rewrite passed episodes.',
+              ].join('\n'),
+            ],
+          }),
+        })
+        const reviseData = await readJsonOrDiagnostic(reviseRes, 'POST /api/v2/apply-top-fixes')
+        if (!reviseRes.ok || !reviseData.success) {
+          throw new Error(reviseData.error || `Episode ${episodeNo} package repair failed`)
+        }
+
+        const saveRes = await fetch('/api/v2/save-revised-script', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            storyId: episode.id,
+            script: reviseData.revisedScript,
+          }),
+        })
+        const saveData = await readJsonOrDiagnostic(saveRes, 'POST /api/v2/save-revised-script')
+        if (!saveRes.ok || !saveData.success) {
+          throw new Error(saveData.error || `Episode ${episodeNo} repaired script save failed`)
+        }
+
+        const updatedEpisode: SeriesEpisodePlan = {
+          ...episode,
+          script: saveData.story?.script || reviseData.revisedScript,
+          status: 'script_revised',
+          validator_result: null,
+          validator_report: null,
+          validator_passed_at: null,
+        }
+        savedRevisions.push(updatedEpisode)
+
+        setSeriesPackage((pkg) => {
+          if (!pkg) return pkg
+          return {
+            ...pkg,
+            episodes: pkg.episodes.map((candidate) => candidate.id === episode.id ? updatedEpisode : candidate),
+          }
+        })
+      }
+
+      setWorkingMessage('Re-validating package…')
+      const res = await fetch('/api/v2/series-package/score-validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ seriesId: seriesPackage.series.id }),
+      })
+      const data = await readJsonOrDiagnostic(res, 'POST /api/v2/series-package/score-validate')
+
+      if (data?.package) {
+        const pkg = data.package as SeriesPackage
+        const firstEpisode = pkg.episodes?.[0]
+        setSeriesPackage(pkg)
+        setStoryId(firstEpisode?.id || '')
+        setStatus((firstEpisode?.status || 'script_revised') as V2Status)
+        setTitle(pkg.series?.title || '')
+        setScript('')
+      }
+
+      if (!res.ok || !data.success) {
+        const episodeNote = data?.failedEpisode ? ` Episode ${data.failedEpisode}.` : ''
+        const phaseNote = data?.failurePhase ? ` Phase: ${data.failurePhase}.` : ''
+        const failureReport = data?.failureReport ? `\n\n${data.failureReport}` : ''
+        setReport(`${formatDiagnosticReport(data.error) || 'Package repair saved, but validation still failed.'}${episodeNote}${phaseNote}${failureReport}`)
+        setStepMessage('Package repair saved; validation still needs review')
+        return
+      }
+
+      const pkg = data.package as SeriesPackage
+      const totals = pkg.episodes
+        .map((episode) => episode.script_json?.pre_audio_review?.total)
+        .filter((total): total is number => typeof total === 'number')
+      const firstTotal = totals.length ? totals[0] : null
+      setReviewTotal(firstTotal)
+      setReviewText(`Series package score/validate complete.\n\n${pkg.episodes.map((episode) => {
+        const n = episode.episode_number || episode.series_episode_number || '?'
+        const total = episode.script_json?.pre_audio_review?.total
+        return `Episode ${n}: ${typeof total === 'number' ? `${total}/25` : 'score recorded'}, ${episode.validator_result || episode.status}`
+      }).join('\n')}`)
+      setReport(`✓ Fixed package issues for ${failedEpisodes.length} episode${failedEpisodes.length === 1 ? '' : 's'} and revalidated all episodes.`)
+      setStepMessage('Series package ready for ASC handoff')
+      setTimeout(() => reviewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100)
+    } catch (e) {
+      for (const revised of savedRevisions) {
+        const previous = previousById.get(revised.id)
+        if (!previous?.script) continue
+
+        try {
+          await fetch('/api/v2/save-revised-script', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              storyId: previous.id,
+              script: previous.script,
+            }),
+          })
+        } catch (restoreErr) {
+          console.error('Failed to restore previous episode script after package repair failure', restoreErr)
+        }
+      }
+
+      setSeriesPackage((pkg) => {
+        if (!pkg) return pkg
+        return {
+          ...pkg,
+          episodes: pkg.episodes.map((episode) => previousById.get(episode.id) || episode),
+        }
+      })
+      setReport(`Repair failed. Previous episode script restored.\n\n${formatDiagnosticReport(e) || 'Unknown error'}`)
+      setStepMessage('Package issue repair failed')
+    } finally {
+      setLoading(false)
+      setWorkingMessage('')
+      setActiveStep('')
+      setActiveAction('')
+    }
+  }
+
   async function applyValidatorFix() {
     if (!storyId || !script || !report) {
       setReport('A script and validator report are required before applying validator fixes.')
@@ -1931,7 +2265,7 @@ export default function StoryProductionV2Page() {
           ],
         }),
       })
-      const reviseData = await reviseRes.json()
+      const reviseData = await readJsonOrDiagnostic(reviseRes, 'POST /api/v2/apply-top-fixes')
       if (!reviseRes.ok || !reviseData.success) {
         throw new Error(reviseData.error || 'Validator revision failed')
       }
@@ -1944,7 +2278,7 @@ export default function StoryProductionV2Page() {
           script: reviseData.revisedScript,
         }),
       })
-      const saveData = await saveRes.json()
+      const saveData = await readJsonOrDiagnostic(saveRes, 'POST /api/v2/save-revised-script')
       if (!saveRes.ok || !saveData.success) {
         throw new Error(saveData.error || 'Failed to save validator fix')
       }
@@ -1975,25 +2309,60 @@ export default function StoryProductionV2Page() {
       setReport('No top fixes were found in the script review.')
       return
     }
+    const attemptKey = `story:${storyId}`
+    const attempts = readTopFixAttemptMap()
+    const currentAttempts = attempts[attemptKey] || 0
+    if (currentAttempts >= MAX_TOP_FIX_ATTEMPTS_PER_SCRIPT) {
+      setReport('No further automatic improvement recommended. Story is ready for audio review.')
+      setStepMessage('Fix Top Fixes disabled after two automatic attempts for this story.')
+      const noFurther = readNoFurtherRepairMap()
+      noFurther[attemptKey] = true
+      writeNoFurtherRepairMap(noFurther)
+      return
+    }
+
+    const previousScript = script
+    const previousStatus = status
+    const previousReport = report
+    const previousReviewText = reviewText
+    const previousReviewTotal = reviewTotal
+    const previousPreflightStoryId = halPreflightPassedStoryId
+    let revisedScriptSaved = false
 
     setActiveAction('standaloneTopFix')
     setLoading(true)
     setActiveStep('score')
-    setWorkingMessage('Applying top fixes...')
+    setWorkingMessage('Fixing script…')
     setStepMessage('')
     setReport('')
     setHalPreflightPassedStoryId('')
+    attempts[attemptKey] = currentAttempts + 1
+    writeTopFixAttemptMap(attempts)
 
     try {
+      const topFixesSection = fixes.map((fix, index) => `${index + 1}. ${fix}`).join('\n')
       const reviseRes = await fetch('/api/v2/apply-top-fixes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           script,
-          selectedFixes: fixes,
+          selectedFixes: [
+            [
+              'TOP FIXES TO APPLY:',
+              topFixesSection,
+              '',
+              'FULL SCRIPT REVIEW CONTEXT:',
+              reviewText,
+              '',
+              'CURRENT VALIDATION REPORT:',
+              report || 'No validation report available.',
+              '',
+              'Apply only the Top Fixes above. Preserve the story identity, author, genre, title, ending, and validator-safe script format unless a listed fix explicitly requires a local script change.',
+            ].join('\n'),
+          ],
         }),
       })
-      const reviseData = await reviseRes.json()
+      const reviseData = await readJsonOrDiagnostic(reviseRes, 'POST /api/v2/apply-top-fixes')
       if (!reviseRes.ok || !reviseData.success) {
         throw new Error(reviseData.error || 'Top fixes revision failed')
       }
@@ -2006,37 +2375,43 @@ export default function StoryProductionV2Page() {
           script: reviseData.revisedScript,
         }),
       })
-      const saveData = await saveRes.json()
+      const saveData = await readJsonOrDiagnostic(saveRes, 'POST /api/v2/save-revised-script')
       if (!saveRes.ok || !saveData.success) {
         throw new Error(saveData.error || 'Failed to save revised script')
       }
+      revisedScriptSaved = true
 
       const revisedScript = saveData.story?.script || reviseData.revisedScript
       setScript(revisedScript)
       setStatus((saveData.story?.status || 'script_revised') as V2Status)
       setScriptDirty(false)
 
-      setWorkingMessage('Rescoring revised script...')
+      setWorkingMessage('Re-scoring…')
       const scoreRes = await fetch('/api/v2/score-script', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ storyId }),
       })
-      const scoreData = await scoreRes.json()
+      const scoreData = await readJsonOrDiagnostic(scoreRes, 'POST /api/v2/score-script')
       if (!scoreRes.ok || !scoreData.success) {
         throw new Error(scoreData.error || 'Failed to rescore revised script')
       }
       setReviewText(scoreData.reviewText || '')
       setReviewTotal(typeof scoreData.total === 'number' ? scoreData.total : null)
 
+      const nextReviewTotal = typeof scoreData.total === 'number' ? scoreData.total : null
+      if (typeof previousReviewTotal === 'number' && typeof nextReviewTotal === 'number' && nextReviewTotal < previousReviewTotal) {
+        throw new Error(`Repair lowered script score from ${previousReviewTotal}/25 to ${nextReviewTotal}/25.`)
+      }
+
       setActiveStep('validate')
-      setWorkingMessage('Validating revised script...')
+      setWorkingMessage('Re-validating…')
       const validateRes = await fetch('/api/v2/validate-script', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ storyId }),
       })
-      const validateData = await validateRes.json()
+      const validateData = await readJsonOrDiagnostic(validateRes, 'POST /api/v2/validate-script')
       if (!validateRes.ok || !validateData.success) {
         throw new Error(validateData.error || 'Failed to validate revised script')
       }
@@ -2044,7 +2419,7 @@ export default function StoryProductionV2Page() {
       setReport(validateData.story.validator_report || '')
 
       if (validateData.story.status === 'validator_passed') {
-        setWorkingMessage('Running generate-voices preflight...')
+        setWorkingMessage('Re-running preflight…')
         const preflight = await runGenerateVoicesPreflight({ id: storyId, title: validateData.story.title || title })
         syncStandaloneReadyState({
           nextStoryId: storyId,
@@ -2054,20 +2429,59 @@ export default function StoryProductionV2Page() {
           nextReviewTotal: typeof scoreData.total === 'number' ? scoreData.total : null,
         })
         setStepMessage('Top fixes applied, revised script validated, and voice preflight passed')
+        if (typeof previousReviewTotal === 'number' && typeof nextReviewTotal === 'number' && nextReviewTotal <= previousReviewTotal) {
+          const noFurther = readNoFurtherRepairMap()
+          noFurther[attemptKey] = true
+          writeNoFurtherRepairMap(noFurther)
+          setStepMessage('No further automatic improvement recommended. Story is ready for audio review.')
+        }
         setReport([
           validateData.story.validator_report || '✓ Validator passed.',
           '',
           `Generate-voices preflight: passed`,
           `Estimated segments: ${preflight.estimatedSegmentCount?.total ?? '—'}`,
-        ].join('\n'))
+          typeof previousReviewTotal === 'number' && typeof nextReviewTotal === 'number' && nextReviewTotal <= previousReviewTotal
+            ? 'No further automatic improvement recommended. Story is ready for audio review.'
+            : '',
+        ].filter(Boolean).join('\n'))
       } else {
-        setStepMessage('Top fixes applied. Validation still needs review.')
+        throw new Error(validateData.story.validator_report || 'Repaired script failed validation.')
       }
 
       setTimeout(() => reviewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100)
     } catch (e) {
-      setReport(e instanceof Error ? e.message : 'Unknown error')
-      setStepMessage('Top fixes failed')
+      if (revisedScriptSaved) {
+        try {
+          await fetch('/api/v2/save-revised-script', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              storyId,
+              script: previousScript,
+            }),
+          })
+          await fetch('/api/v2/score-script', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ storyId }),
+          })
+          await fetch('/api/v2/validate-script', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ storyId }),
+          })
+        } catch (restoreErr) {
+          console.error('Failed to restore previous script after top-fix repair failure', restoreErr)
+        }
+      }
+
+      setScript(previousScript)
+      setStatus(previousStatus)
+      setReport(`Repair failed. Previous validated script restored.\n\n${e instanceof Error ? e.message : 'Unknown error'}`)
+      setReviewText(previousReviewText)
+      setReviewTotal(previousReviewTotal)
+      setHalPreflightPassedStoryId(previousPreflightStoryId)
+      setStepMessage('Repair failed. Previous validated script restored.')
     } finally {
       setLoading(false)
       setWorkingMessage('')
@@ -2105,7 +2519,7 @@ export default function StoryProductionV2Page() {
           series_is_finale: form.type === 'series' ? form.series_is_finale === 'true' : null,
         }),
       })
-      const data = await res.json()
+      const data = await readJsonOrDiagnostic(res, 'POST /api/v2/story-brief')
       if (!res.ok || !data.success) throw new Error(data.error || 'Failed to save brief')
       setStoryId(data.story.id)
       setStatus(data.story.status)
@@ -2216,8 +2630,8 @@ export default function StoryProductionV2Page() {
           series_total_episodes: Number(form.series_total_episodes),
         }),
       })
-      const data = await res.json()
-      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to create series package')
+      const data = await readJsonOrDiagnostic(res, 'POST /api/v2/series-package')
+      if (!res.ok || !data.success) throw new Error(formatDiagnosticReport(data.error) || 'Failed to create series package')
 
       const pkg = data.package as SeriesPackage
       const firstEpisode = pkg.episodes?.[0]
@@ -2242,7 +2656,7 @@ export default function StoryProductionV2Page() {
         window.history.replaceState({}, '', url.toString())
       }
     } catch (e) {
-      setReport(e instanceof Error ? e.message : 'Unknown error')
+      setReport(formatDiagnosticReport(e) || 'Unknown error')
       setStepMessage('Series package planning failed')
     } finally {
       setLoading(false)
@@ -2272,7 +2686,7 @@ export default function StoryProductionV2Page() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ storyId }),
       })
-      const data = await res.json()
+      const data = await readJsonOrDiagnostic(res, 'POST /api/v2/generate-script')
       if (!res.ok || !data.success) throw new Error(data.error || 'Failed to generate script')
       setStatus(data.story.status)
       setTitle(data.story.title || '')
@@ -2308,10 +2722,10 @@ export default function StoryProductionV2Page() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ seriesId: seriesPackage.series.id }),
       })
-      const data = await res.json()
+      const data = await readJsonOrDiagnostic(res, 'POST /api/v2/series-package/generate-scripts')
       if (!res.ok || !data.success) {
         const episodeNote = data?.failedEpisode ? ` Episode ${data.failedEpisode}.` : ''
-        throw new Error(`${data.error || 'Failed to generate series scripts'}${episodeNote}`)
+        throw new Error(`${formatDiagnosticReport(data.error) || 'Failed to generate series scripts'}${episodeNote}`)
       }
 
       const pkg = data.package as SeriesPackage
@@ -2325,7 +2739,7 @@ export default function StoryProductionV2Page() {
       setStepMessage('Series scripts drafted. Ready for package score/validate phase.')
       setTimeout(() => scriptRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100)
     } catch (e) {
-      setReport(e instanceof Error ? e.message : 'Unknown error')
+      setReport(formatDiagnosticReport(e) || 'Unknown error')
       setStepMessage('Series script generation failed')
     } finally {
       setLoading(false)
@@ -2353,7 +2767,7 @@ export default function StoryProductionV2Page() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ storyId }),
       })
-      const data = await res.json()
+      const data = await readJsonOrDiagnostic(res, 'POST /api/v2/score-script')
       if (!res.ok || !data.success) throw new Error(data.error || 'Failed to score script')
       setReviewText(data.reviewText || '')
       setReviewTotal(typeof data.total === 'number' ? data.total : null)
@@ -2389,7 +2803,7 @@ export default function StoryProductionV2Page() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ storyId }),
       })
-      const data = await res.json()
+      const data = await readJsonOrDiagnostic(res, 'POST /api/v2/validate-script')
       if (!res.ok || !data.success) throw new Error(data.error || 'Failed to validate script')
       setStatus(data.story.status)
       setReport(data.story.validator_report || '')
@@ -2423,7 +2837,7 @@ export default function StoryProductionV2Page() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ seriesId: seriesPackage.series.id }),
       })
-      const data = await res.json()
+      const data = await readJsonOrDiagnostic(res, 'POST /api/v2/series-package/score-validate')
 
       if (data?.package) {
         const pkg = data.package as SeriesPackage
@@ -2439,7 +2853,7 @@ export default function StoryProductionV2Page() {
         const episodeNote = data?.failedEpisode ? ` Episode ${data.failedEpisode}.` : ''
         const phaseNote = data?.failurePhase ? ` Phase: ${data.failurePhase}.` : ''
         const failureReport = data?.failureReport ? `\n\n${data.failureReport}` : ''
-        throw new Error(`${data.error || 'Series package score/validate failed'}${episodeNote}${phaseNote}${failureReport}`)
+        throw new Error(`${formatDiagnosticReport(data.error) || 'Series package score/validate failed'}${episodeNote}${phaseNote}${failureReport}`)
       }
 
       const pkg = data.package as SeriesPackage
@@ -2457,7 +2871,7 @@ export default function StoryProductionV2Page() {
       setStepMessage('Series package ready for ASC handoff')
       setTimeout(() => reviewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100)
     } catch (e) {
-      setReport(e instanceof Error ? e.message : 'Unknown error')
+      setReport(formatDiagnosticReport(e) || 'Unknown error')
       setStepMessage('Series package score/validate failed')
       setTimeout(() => validateRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100)
     } finally {
@@ -2584,7 +2998,16 @@ export default function StoryProductionV2Page() {
             </label>
             <div className="rounded border border-gray-200 bg-gray-50 p-2 text-sm text-gray-700">
               <div><strong>Derived type:</strong> {Number(renderedHalEpisodes || 1) === 1 ? 'Standalone' : 'Series'}</div>
-              <div><strong>Author:</strong> {renderedHalGenre ? (chooseCanonicalAuthor(renderedHalGenre, form.author)?.name || 'No approved match') : 'Choose genre'}</div>
+              <div><strong>Author:</strong> {renderedHalGenre ? (selectedHalAuthor?.name || 'No approved match') : 'Choose genre'}</div>
+              {selectedHalAuthor ? (
+                <div className="mt-1 space-y-0.5 text-xs text-gray-600">
+                  <div>selected author: {selectedHalAuthor.name}</div>
+                  <div>selection reason: {authorSelectionReason}</div>
+                  <div>last author for genre: {lastAuthorForGenre || 'none'}</div>
+                  <div>next author index: {nextAuthorIndex >= 0 ? nextAuthorIndex : 'none'}</div>
+                  {queueAuthorTarget ? <div>queue target: {queueAuthorTarget}</div> : null}
+                </div>
+              ) : null}
             </div>
           </div>
           <label className="block space-y-1">
@@ -2904,9 +3327,9 @@ export default function StoryProductionV2Page() {
                       body: JSON.stringify({ seriesId: seriesPackage.series.id }),
                     })
 
-                    const data = await res.json()
+                    const data = await readJsonOrDiagnostic(res, 'POST /api/v2/series-package/produce-audio')
                     if (!res.ok || !data.success) {
-                      throw new Error(data.error || 'Failed to prepare series package ASC handoff')
+                      throw new Error(formatDiagnosticReport(data.error) || 'Failed to prepare series package ASC handoff')
                     }
 
                     if (data?.package) {
@@ -2942,7 +3365,7 @@ export default function StoryProductionV2Page() {
                     }),
                   })
 
-                  const data = await res.json()
+                  const data = await readJsonOrDiagnostic(res, 'POST /api/v2/produce-audio')
                   if (!res.ok || !data.success) {
                     throw new Error(data.error || 'Failed to prepare ASC handoff')
                   }
@@ -3062,7 +3485,7 @@ export default function StoryProductionV2Page() {
               <div>form.genre: {form.genre || '—'}</div>
             </div>
             {report ? (
-              <pre className="border rounded p-3 bg-gray-50 whitespace-pre-wrap text-sm">{report}</pre>
+              <pre className="border rounded p-3 bg-gray-50 whitespace-pre-wrap text-sm">{formatDiagnosticReport(report)}</pre>
             ) : null}
             {!workingMessage && !stepMessage && !report ? (
               <div className="text-sm text-gray-500">No action report yet.</div>
@@ -3079,7 +3502,19 @@ export default function StoryProductionV2Page() {
               <pre ref={reviewRef} className="border rounded p-3 bg-gray-50 whitespace-pre-wrap text-sm">{reviewText}</pre>
             ) : null}
             {report ? (
-              <pre ref={validateRef} className="border rounded p-3 bg-gray-50 whitespace-pre-wrap text-sm">{report}</pre>
+              <pre ref={validateRef} className="border rounded p-3 bg-gray-50 whitespace-pre-wrap text-sm">{formatDiagnosticReport(report)}</pre>
+            ) : null}
+            {packageFailedEpisodes.length > 0 ? (
+              <button
+                type="button"
+                disabled={!canFixPackageIssues}
+                onClick={applyPackageIssueFixes}
+                className="rounded bg-orange-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                <ButtonLabel loading={activeAction === 'packageIssueFix'}>
+                  {activeAction === 'packageIssueFix' ? (workingMessage || 'Repairing failed episode…') : 'Fix Package Issues'}
+                </ButtonLabel>
+              </button>
             ) : null}
             {!workingMessage && !stepMessage && !reviewText && !report ? (
               <div className="text-sm text-gray-500">No package report yet.</div>
@@ -3110,9 +3545,15 @@ export default function StoryProductionV2Page() {
                       className="rounded bg-orange-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
                     >
                       <ButtonLabel loading={activeAction === 'standaloneTopFix'}>
-                        {activeAction === 'standaloneTopFix' ? 'Fixing Top Fixes...' : 'Fix Top Fixes'}
+                        {activeAction === 'standaloneTopFix' ? (workingMessage || 'Fixing script…') : 'Fix Top Fixes'}
                       </ButtonLabel>
                     </button>
+                  ) : null}
+                  {storyId && script && reviewTotal !== 25 ? (
+                    <div className="text-xs text-gray-600">
+                      Fix attempts for this script: {topFixAttempts}/{MAX_TOP_FIX_ATTEMPTS_PER_SCRIPT}
+                      {noFurtherTopFixRecommended ? ' · No further automatic improvement recommended.' : ''}
+                    </div>
                   ) : null}
                   <pre ref={reviewRef} className="border rounded p-3 bg-gray-50 whitespace-pre-wrap text-sm">{reviewText}</pre>
                 </>
