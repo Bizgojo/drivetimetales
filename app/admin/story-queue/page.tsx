@@ -20,14 +20,15 @@ type QueueItem = {
   storyType?: 'standalone' | 'series'
   letClaudeCreateTitles?: boolean
   seriesTitle?: string
-  episodeNumber?: string
   totalEpisodes?: string
-  episodeTitle?: string
-  isFinale?: boolean
   status: QueueStatus
   createdAt: string
   updatedAt: string
 }
+
+type QueueGroup =
+  | { type: 'standalone'; item: QueueItem }
+  | { type: 'series'; key: string; seriesTitle: string; items: QueueItem[] }
 
 const GENRES = [
   'Thriller',
@@ -74,11 +75,30 @@ function normalizeQueueItem(item: QueueItem): QueueItem {
     storyType: 'series',
     letClaudeCreateTitles,
     seriesTitle: item.seriesTitle || readSeriesPlanValue(notes, 'Series title'),
-    episodeNumber: item.episodeNumber || readSeriesPlanValue(notes, 'Episode number'),
     totalEpisodes: item.totalEpisodes || readSeriesPlanValue(notes, 'Total episodes'),
-    episodeTitle: item.episodeTitle || readSeriesPlanValue(notes, 'Episode title'),
-    isFinale: item.isFinale ?? readSeriesPlanValue(notes, 'Is finale').toLowerCase() === 'true',
   }
+}
+
+function durationMinutes(duration: string) {
+  const match = String(duration || '').match(/(\d+)/)
+  return match ? Number(match[1]) : 0
+}
+
+function formatAverageRuntime(items: QueueItem[]) {
+  const values = items.map((item) => durationMinutes(item.duration)).filter((value) => value > 0)
+  if (!values.length) return '—'
+  const average = values.reduce((sum, value) => sum + value, 0) / values.length
+  return `${Math.round(average)} min`
+}
+
+function statusSummary(items: QueueItem[]) {
+  const counts = items.reduce<Record<string, number>>((acc, item) => {
+    const label = STATUS_LABELS[item.status] || item.status
+    acc[label] = (acc[label] || 0) + 1
+    return acc
+  }, {})
+
+  return Object.entries(counts).map(([label, count]) => `${count} ${label}`).join(' · ')
 }
 
 export default function StoryQueuePage() {
@@ -95,11 +115,7 @@ export default function StoryQueuePage() {
     storyType: 'standalone' as 'standalone' | 'series',
     storyTitle: '',
     letClaudeCreateTitles: true,
-    seriesTitle: '',
-    episodeNumber: '1',
     totalEpisodes: '1',
-    episodeTitle: '',
-    isFinale: false,
     primaryGenre: 'Thriller',
     secondaryGenre: '',
     tertiaryGenre: '',
@@ -162,6 +178,38 @@ export default function StoryQueuePage() {
   }, [message, messageType])
 
   const selected = useMemo(() => items.find((item) => item.id === selectedId) || null, [items, selectedId])
+  const queueGroups = useMemo<QueueGroup[]>(() => {
+    const groups: QueueGroup[] = []
+    const seriesGroups = new Map<string, QueueItem[]>()
+
+    for (const item of items) {
+      const itemEpisodeCount = Math.max(1, Number(item.totalEpisodes || 1))
+      const isSeries = item.storyType === 'series' || itemEpisodeCount > 1
+      if (!isSeries) {
+        groups.push({ type: 'standalone', item })
+        continue
+      }
+
+      const seriesTitle = String(item.seriesTitle || '').trim()
+      const title = item.letClaudeCreateTitles === false ? String(item.title || '').trim() : ''
+      const keySource = seriesTitle || title || item.id
+      const key = keySource.toLowerCase()
+      const current = seriesGroups.get(key) || []
+      current.push(item)
+      seriesGroups.set(key, current)
+    }
+
+    for (const [key, groupItems] of seriesGroups) {
+      groups.push({
+        type: 'series',
+        key,
+        seriesTitle: groupItems[0]?.seriesTitle || groupItems[0]?.title || 'Claude will create title',
+        items: groupItems,
+      })
+    }
+
+    return groups
+  }, [items])
   const genreOptions = useMemo(() => {
     const options = [...adminGenres]
     if (form.primaryGenre && !options.some((genre) => genre.toLowerCase() === form.primaryGenre.toLowerCase())) {
@@ -183,11 +231,8 @@ export default function StoryQueuePage() {
       `Type: ${plannedStoryType}`,
       `Let Claude create titles: ${form.letClaudeCreateTitles ? 'true' : 'false'}`,
       `Story title: ${form.letClaudeCreateTitles ? '' : form.storyTitle.trim()}`,
-      `Series title: ${plannedStoryType === 'series' ? form.seriesTitle.trim() : ''}`,
-      `Episode number: ${plannedStoryType === 'series' ? form.episodeNumber : ''}`,
+      `Series title: ${plannedStoryType === 'series' && !form.letClaudeCreateTitles ? form.storyTitle.trim() : ''}`,
       `Total episodes: ${form.totalEpisodes}`,
-      `Episode title: ${plannedStoryType === 'series' && !form.letClaudeCreateTitles ? form.episodeTitle.trim() : ''}`,
-      `Is finale: ${plannedStoryType === 'series' && form.isFinale ? 'true' : 'false'}`,
     ].join('\n')
 
     return [form.notes.trim(), plan].filter(Boolean).join('\n\n')
@@ -216,13 +261,6 @@ export default function StoryQueuePage() {
       return
     }
 
-    if (plannedStoryType === 'series') {
-      if (!form.seriesTitle.trim() || !form.episodeNumber || !form.totalEpisodes || (!form.letClaudeCreateTitles && !form.episodeTitle.trim())) {
-        showMessage('Series title, episode number, total episodes, and episode title are required for manually titled series queue items.', 'error')
-        return
-      }
-    }
-
     setIsGenerating(true)
     showMessage('', '')
     try {
@@ -233,7 +271,6 @@ export default function StoryQueuePage() {
           ...form,
           storyType: plannedStoryType,
           title: form.letClaudeCreateTitles ? '' : form.storyTitle.trim(),
-          episodeTitle: form.letClaudeCreateTitles ? '' : form.episodeTitle.trim(),
           letClaudeCreateTitles: form.letClaudeCreateTitles,
         }),
       })
@@ -259,11 +296,8 @@ export default function StoryQueuePage() {
           notes: notesWithEpisodePlan(),
           storyType: plannedStoryType,
           letClaudeCreateTitles: form.letClaudeCreateTitles,
-          seriesTitle: plannedStoryType === 'series' ? form.seriesTitle.trim() : '',
-          episodeNumber: plannedStoryType === 'series' ? form.episodeNumber : '',
+          seriesTitle: plannedStoryType === 'series' && !form.letClaudeCreateTitles ? form.storyTitle.trim() : '',
           totalEpisodes: plannedStoryType === 'series' ? form.totalEpisodes : '1',
-          episodeTitle: plannedStoryType === 'series' && !form.letClaudeCreateTitles ? form.episodeTitle.trim() : '',
-          isFinale: plannedStoryType === 'series' ? form.isFinale : false,
           status: 'queued',
         }),
       })
@@ -298,7 +332,19 @@ export default function StoryQueuePage() {
     }
   }
 
-  async function sendToProduction(item: QueueItem) {
+  function productionUrlFor(item: QueueItem) {
+    const params = new URLSearchParams({ queueId: item.id })
+    params.set('letClaudeCreateTitles', item.letClaudeCreateTitles === false ? 'false' : 'true')
+    if (item.letClaudeCreateTitles === false && item.title) params.set('title', item.title)
+    if (item.storyType === 'series') {
+      params.set('storyType', 'series')
+      if (item.seriesTitle) params.set('seriesTitle', item.seriesTitle)
+      if (item.totalEpisodes) params.set('totalEpisodes', item.totalEpisodes)
+    }
+    return `/admin/story-production-v2?${params.toString()}`
+  }
+
+  async function markInV2(item: QueueItem) {
     await fetch('/api/admin/story-queue', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -309,26 +355,30 @@ export default function StoryQueuePage() {
         letClaudeCreateTitles: item.letClaudeCreateTitles ?? true,
         title: item.letClaudeCreateTitles === false ? item.title : '',
         seriesTitle: item.seriesTitle || '',
-        episodeNumber: item.episodeNumber || '',
         totalEpisodes: item.totalEpisodes || '',
-        episodeTitle: item.letClaudeCreateTitles === false ? item.episodeTitle || '' : '',
-        isFinale: Boolean(item.isFinale),
       }),
     })
-    await loadItems()
+  }
 
-    const params = new URLSearchParams({ queueId: item.id })
-    params.set('letClaudeCreateTitles', item.letClaudeCreateTitles === false ? 'false' : 'true')
-    if (item.letClaudeCreateTitles === false && item.title) params.set('title', item.title)
-    if (item.storyType === 'series') {
-      params.set('storyType', 'series')
-      if (item.seriesTitle) params.set('seriesTitle', item.seriesTitle)
-      if (item.episodeNumber) params.set('episodeNumber', item.episodeNumber)
-      if (item.totalEpisodes) params.set('totalEpisodes', item.totalEpisodes)
-      if (item.letClaudeCreateTitles === false && item.episodeTitle) params.set('episodeTitle', item.episodeTitle)
-      if (item.isFinale) params.set('isFinale', 'true')
+  async function sendToProduction(item: QueueItem) {
+    await markInV2(item)
+    await loadItems()
+    router.push(productionUrlFor(item))
+  }
+
+  async function sendSeriesToProduction(series: Extract<QueueGroup, { type: 'series' }>) {
+    const firstEpisode = series.items[0]
+    if (!firstEpisode) return
+
+    try {
+      for (const item of series.items) {
+        await markInV2(item)
+      }
+      await loadItems()
+      router.push(productionUrlFor(firstEpisode))
+    } catch (err: any) {
+      showMessage(`Series handoff failed: ${err?.message || err}`, 'error')
     }
-    router.push(`/admin/story-production-v2?${params.toString()}`)
   }
 
   async function removeItem(id: string) {
@@ -359,14 +409,34 @@ export default function StoryQueuePage() {
       storyType: item.storyType || 'standalone',
       storyTitle: item.letClaudeCreateTitles === false ? item.title || '' : '',
       letClaudeCreateTitles: item.letClaudeCreateTitles ?? true,
-      seriesTitle: item.seriesTitle || '',
-      episodeNumber: item.episodeNumber || '1',
       totalEpisodes: item.storyType === 'series' ? item.totalEpisodes || '3' : '1',
-      episodeTitle: item.letClaudeCreateTitles === false ? item.episodeTitle || '' : '',
-      isFinale: Boolean(item.isFinale),
     }))
     window.scrollTo({ top: 0, behavior: 'smooth' })
     showMessage('Loaded story settings into generator.')
+  }
+
+  function regenerateSeriesSetup(series: Extract<QueueGroup, { type: 'series' }>) {
+    const firstEpisode = series.items[0]
+    if (!firstEpisode) return
+    regenerate(firstEpisode)
+  }
+
+  async function removeSeries(series: Extract<QueueGroup, { type: 'series' }>) {
+    if (!confirm(`Delete all ${series.items.length} queued episodes for ${series.seriesTitle}?`)) return
+
+    try {
+      for (const item of series.items) {
+        const res = await fetch(`/api/admin/story-queue?id=${encodeURIComponent(item.id)}`, {
+          method: 'DELETE',
+        })
+        if (!res.ok) throw new Error(await res.text())
+      }
+      if (series.items.some((item) => item.id === selectedId)) setSelectedId(null)
+      await loadItems()
+      showMessage('Deleted series queue.')
+    } catch (err: any) {
+      showMessage(`Delete failed: ${err?.message || err}`, 'error')
+    }
   }
 
   return (
@@ -425,48 +495,6 @@ export default function StoryQueuePage() {
             </div>
           )}
 
-          {plannedStoryType === 'series' ? (
-            <div className="rounded border border-blue-200 bg-blue-50 p-3 space-y-3">
-              <div className="text-sm font-semibold text-blue-950">Episode Planning</div>
-              <input
-                className="border rounded p-2 w-full"
-                placeholder="Series title"
-                value={form.seriesTitle}
-                onChange={(e) => setForm({ ...form, seriesTitle: e.target.value })}
-              />
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <input
-                  className="border rounded p-2 w-full"
-                  placeholder="Episode number"
-                  type="number"
-                  min="1"
-                  value={form.episodeNumber}
-                  onChange={(e) => setForm({ ...form, episodeNumber: e.target.value })}
-                />
-                <label className="flex items-center gap-2 rounded border bg-white px-3 py-2 text-sm font-semibold">
-                  <input
-                    type="checkbox"
-                    checked={form.isFinale}
-                    onChange={(e) => setForm({ ...form, isFinale: e.target.checked })}
-                  />
-                  Finale
-                </label>
-              </div>
-              {!form.letClaudeCreateTitles ? (
-                <input
-                  className="border rounded p-2 w-full"
-                  placeholder="Episode title"
-                  value={form.episodeTitle}
-                  onChange={(e) => setForm({ ...form, episodeTitle: e.target.value })}
-                />
-              ) : (
-                <div className="rounded border border-dashed border-blue-200 bg-white p-2 text-sm font-semibold text-blue-900">
-                  Episode title: Claude will create title
-                </div>
-              )}
-            </div>
-          ) : null}
-
           <select className="border rounded p-2 w-full" value={form.primaryGenre} onChange={(e) => setForm({ ...form, primaryGenre: e.target.value })}>
             {genreOptions.map((g) => <option key={g} value={g}>{g}</option>)}
           </select>
@@ -489,7 +517,7 @@ export default function StoryQueuePage() {
         </section>
 
         <section className="bg-white border border-black rounded-lg p-4 space-y-4">
-          <div className="font-semibold text-lg">Queued Ideas ({items.length})</div>
+          <div className="font-semibold text-lg">Queued Ideas ({queueGroups.length})</div>
 
           {isLoading ? (
             <div className="text-sm text-gray-500">Loading queue…</div>
@@ -497,55 +525,99 @@ export default function StoryQueuePage() {
             <div className="text-sm text-gray-500">No story ideas queued yet.</div>
           ) : (
             <div className="space-y-3">
-              {items.map((item) => (
-                <div
-                  key={item.id}
-                  onClick={() => setSelectedId(item.id)}
-                  className={`border rounded p-3 cursor-pointer ${selectedId === item.id ? 'border-black bg-gray-50' : 'border-gray-300 bg-white'}`}
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0 flex-1">
-                      <div className="font-semibold">
-                        {item.letClaudeCreateTitles === false ? item.title : 'Claude will create title'}
-                      </div>
-                      <div className="text-sm text-gray-700 mt-1">{item.premise}</div>
-                      <div className="text-xs text-gray-500 mt-2">{item.setting || 'No setting'}</div>
-                      {item.storyType === 'series' ? (
-                        <div className="mt-2 rounded bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-900">
-                          Series: {item.seriesTitle || 'Untitled series'} · Ep {item.episodeNumber || '—'} of {item.totalEpisodes || '—'} · {item.letClaudeCreateTitles === false ? item.episodeTitle || item.title : 'Claude will create title'}
-                          {item.isFinale ? ' · Finale' : ''}
-                        </div>
-                      ) : (
-                        <div className="mt-2 inline-block rounded bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-700">
-                          Standalone
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex flex-col items-end gap-2 shrink-0">
-                      <div className="text-xs font-semibold text-gray-700">
-                        {[item.primaryGenre, item.duration].filter(Boolean).join(' · ')}
-                      </div>
-                      <div className="text-xs font-semibold bg-gray-100 px-2 py-1 rounded">
-                        {STATUS_LABELS[item.status]}
-                      </div>
-                    </div>
-                  </div>
+              {queueGroups.map((group) => {
+                if (group.type === 'series') {
+                  const firstEpisode = group.items[0]
+                  const totalEpisodes = firstEpisode?.totalEpisodes || String(group.items.length)
+                  const genres = Array.from(new Set(group.items.map((item) => item.primaryGenre).filter(Boolean))).join(' · ') || '—'
+                  const selectedInSeries = group.items.some((item) => item.id === selectedId)
+                  const title = firstEpisode?.letClaudeCreateTitles === false ? group.seriesTitle : 'Claude will create title'
 
-                  {selectedId === item.id ? (
-                    <div className="flex flex-wrap gap-2 mt-3">
-                      <button onClick={(e) => { e.stopPropagation(); regenerate(item) }} className="px-3 py-1 rounded border">
-                        Regenerate Setup
-                      </button>
-                      <button onClick={(e) => { e.stopPropagation(); sendToProduction(item) }} className="px-3 py-1 rounded border bg-black text-white">
-                        Send to Production
-                      </button>
-                      <button onClick={(e) => { e.stopPropagation(); removeItem(item.id) }} className="px-3 py-1 rounded border text-red-700">
-                        Delete
-                      </button>
+                  return (
+                    <div
+                      key={`series-${group.key}`}
+                      className={`border rounded p-3 ${selectedInSeries ? 'border-black bg-blue-50' : 'border-blue-200 bg-white'}`}
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <button
+                          type="button"
+                          onClick={() => firstEpisode ? setSelectedId(firstEpisode.id) : null}
+                          className="min-w-0 flex-1 text-left"
+                        >
+                          <div className="text-xs font-semibold uppercase tracking-wide text-blue-700">Series</div>
+                          <div className="font-semibold text-lg">{title}</div>
+                          <div className="mt-1 grid grid-cols-1 gap-1 text-xs text-gray-700 sm:grid-cols-2">
+                            <div><strong>Genre:</strong> {genres}</div>
+                            <div><strong>Number of episodes:</strong> {totalEpisodes}</div>
+                            <div><strong>Duration:</strong> {formatAverageRuntime(group.items)}</div>
+                            <div><strong>Status:</strong> {statusSummary(group.items)}</div>
+                          </div>
+                        </button>
+                        <div className="shrink-0 text-xs font-semibold text-gray-600">
+                          Generate this entire series sequentially
+                        </div>
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button onClick={() => regenerateSeriesSetup(group)} className="px-3 py-1 rounded border">
+                          Regenerate Series Setup
+                        </button>
+                        <button onClick={() => sendSeriesToProduction(group)} className="px-3 py-1 rounded border bg-black text-white">
+                          Send Series to Production
+                        </button>
+                        <button onClick={() => removeSeries(group)} className="px-3 py-1 rounded border text-red-700">
+                          Delete Series
+                        </button>
+                      </div>
                     </div>
-                  ) : null}
-                </div>
-              ))}
+                  )
+                }
+
+                const item = group.item
+
+                return (
+                  <div
+                    key={item.id}
+                    onClick={() => setSelectedId(item.id)}
+                    className={`border rounded p-3 cursor-pointer ${selectedId === item.id ? 'border-black bg-gray-50' : 'border-gray-300 bg-white'}`}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0 flex-1">
+                        <div className="font-semibold">
+                          {item.letClaudeCreateTitles === false ? item.title : 'Claude will create title'}
+                        </div>
+                        <div className="text-sm text-gray-700 mt-1">{item.premise}</div>
+                        <div className="text-xs text-gray-500 mt-2">{item.setting || 'No setting'}</div>
+                        <div className="mt-2 inline-block rounded bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-700">
+                          Standalone · 1 episode
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end gap-2 shrink-0">
+                        <div className="text-xs font-semibold text-gray-700">
+                          {[item.primaryGenre, item.duration].filter(Boolean).join(' · ')}
+                        </div>
+                        <div className="text-xs font-semibold bg-gray-100 px-2 py-1 rounded">
+                          {STATUS_LABELS[item.status]}
+                        </div>
+                      </div>
+                    </div>
+
+                    {selectedId === item.id ? (
+                      <div className="flex flex-wrap gap-2 mt-3">
+                        <button onClick={(e) => { e.stopPropagation(); regenerate(item) }} className="px-3 py-1 rounded border">
+                          Regenerate Setup
+                        </button>
+                        <button onClick={(e) => { e.stopPropagation(); sendToProduction(item) }} className="px-3 py-1 rounded border bg-black text-white">
+                          Send to Production
+                        </button>
+                        <button onClick={(e) => { e.stopPropagation(); removeItem(item.id) }} className="px-3 py-1 rounded border text-red-700">
+                          Delete
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                )
+              })}
             </div>
           )}
 
@@ -556,10 +628,7 @@ export default function StoryQueuePage() {
               <div><strong>Type:</strong> {selected.storyType === 'series' ? 'Series' : 'Standalone'}</div>
               {selected.storyType === 'series' ? (
                 <>
-                  <div><strong>Series:</strong> {selected.seriesTitle || '—'}</div>
-                  <div><strong>Episode:</strong> {selected.episodeNumber || '—'} of {selected.totalEpisodes || '—'}</div>
-                  <div><strong>Episode Title:</strong> {selected.letClaudeCreateTitles === false ? selected.episodeTitle || '—' : 'Claude will create title'}</div>
-                  <div><strong>Finale:</strong> {selected.isFinale ? 'yes' : 'no'}</div>
+                  <div><strong>Number of Episodes:</strong> {selected.totalEpisodes || '—'}</div>
                 </>
               ) : null}
               <div><strong>Premise:</strong> {selected.premise}</div>
