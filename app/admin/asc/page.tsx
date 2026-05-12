@@ -57,6 +57,7 @@ type ProductionJob = {
   updatedAt?: string
   storyId?: string
   title?: string
+  queueId?: string
   episodeNumber?: number
   projectDir?: string
   finalMix?: string
@@ -64,6 +65,7 @@ type ProductionJob = {
   coverUrl?: string
   imported?: boolean
   importedAt?: string
+  publishedStory?: any
   currentEpisode?: number
   currentJobId?: string
 }
@@ -660,24 +662,74 @@ export default function AscAdminPage() {
         setWorking(true)
         setMessage('Importing package ASC outputs...')
 
-        const importedJobs = packageJobs.map((packageJob) => {
+        const missingOutput = packageCompletionRows.find((row) => (
+          !row.episode.storyId ||
+          !(row.episode.title || row.job?.title) ||
+          !row.hasAudioUrl ||
+          !row.hasFinalMix
+        ))
+        if (missingOutput) {
+          throw new Error(`Episode ${missingOutput.episode.episodeNumber || missingOutput.job?.episodeNumber || '?'} is missing ASC output`)
+        }
+
+        const importedJobs = []
+        for (const packageJob of packageJobs) {
+          const row = packageCompletionRows.find((candidate) => candidate.job?.jobId === packageJob.jobId || candidate.episode.storyId === packageJob.storyId)
           if (
             !packageJob.storyId ||
-            !packageJob.title ||
-            !packageJob.audioUrl ||
-            !packageJob.finalMix ||
-            packageJob.status !== 'complete' ||
-            packageJob.phase !== 'published'
+            !(packageJob.title || row?.episode.title) ||
+            !(packageJob.audioUrl || row?.episode.audioUrl) ||
+            !(packageJob.finalMix || row?.episode.finalMix)
           ) {
             throw new Error(`Episode ${packageJob.episodeNumber || '?'} is not ready to import`)
           }
 
-          return {
+          setMessage(`Completing package for Episode ${packageJob.episodeNumber || '?'}...`)
+          const completeRes = await fetch('/api/admin/complete-story-package', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ storyId: packageJob.storyId }),
+          })
+          const completeData = await readJsonResponse(completeRes, '/api/admin/complete-story-package')
+          setAscParseError(null)
+          if (!completeRes.ok || !completeData.success) {
+            throw new Error(completeData.error || `Episode ${packageJob.episodeNumber || '?'} package completion failed`)
+          }
+
+          const completedStory = completeData.story || {}
+          setMessage(`Publishing Episode ${packageJob.episodeNumber || '?'}...`)
+          const publishRes = await fetch('/api/admin/publish-story', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              storyId: packageJob.storyId,
+              queueId: packageJob.queueId || '',
+              title: packageJob.title || row?.episode.title || '',
+              author: completedStory.author || '',
+              genre: completedStory.genre || '',
+              audio_url: packageJob.audioUrl || row?.episode.audioUrl || '',
+              cover_url: completedStory.cover_url || row?.episode.coverUrl || '',
+              description: completedStory.description || '',
+              duration_mins: completedStory.duration_mins || '',
+              is_free: false,
+            }),
+          })
+          const publishData = await readJsonResponse(publishRes, '/api/admin/publish-story')
+          setAscParseError(null)
+          if (!publishRes.ok || !publishData.success) {
+            throw new Error(publishData.error || `Episode ${packageJob.episodeNumber || '?'} publish failed`)
+          }
+
+          importedJobs.push({
             ...packageJob,
+            audioUrl: packageJob.audioUrl || row?.episode.audioUrl,
+            finalMix: packageJob.finalMix || row?.episode.finalMix,
+            coverUrl: publishData.story?.cover_url || completedStory.cover_url || packageJob.coverUrl || row?.episode.coverUrl || '',
             imported: true,
             importedAt: new Date().toISOString(),
-          }
-        })
+            publishedStory: publishData.story,
+          })
+        }
 
         const updatedEpisodes = (handoff.episodes || []).map((episode) => {
           const importedJob = importedJobs.find((packageJob) => packageJob.storyId === episode.storyId)
@@ -933,6 +985,8 @@ export default function AscAdminPage() {
   const packageAllImported = packageCompletionRows.length > 0 && packageCompletionRows.every((row) => row.imported)
   const packageAllPublished = packageCompletionRows.length > 0 && packageCompletionRows.every((row) => row.publishedComplete)
   const packageAllAudioReady = packageCompletionRows.length > 0 && packageCompletionRows.every((row) => row.hasAudioUrl && row.hasFinalMix)
+  const packageMissingOutputCount = packageCompletionRows.filter((row) => !row.hasAudioUrl || !row.hasFinalMix).length
+  const canImportPackageOutput = isPackageHandoff && packageAllAudioReady && !packageAllImported && !working
   const inspectedFailure = failureInspectionJob ? classifyFailure(failureInspectionJob) : null
   const activePackageJob = packageJobs.find((packageJob) => {
     const status = (packageJob.status || '').toLowerCase()
@@ -1268,7 +1322,7 @@ export default function AscAdminPage() {
             <div className="flex flex-wrap gap-3 pt-2">
               <button
                 onClick={importAscOutput}
-                disabled={!canImportSingleOutput}
+                disabled={!canImportPackageOutput}
                 className="bg-black text-white px-4 py-2 rounded disabled:opacity-50"
               >
                 {working ? 'Working...' : 'Import ASC Output'}
@@ -1279,6 +1333,12 @@ export default function AscAdminPage() {
               >
                 Series package episodes already published
               </button>
+            </div>
+            <div className="rounded border border-dashed border-gray-400 p-3 text-xs text-gray-700">
+              <div>Import debug</div>
+              <div>outputsReady: {packageAllAudioReady ? 'yes' : 'no'}</div>
+              <div>imported: {packageAllImported ? 'yes' : 'no'}</div>
+              <div>missingEpisodes count: {packageMissingOutputCount}</div>
             </div>
 
             <div className="rounded border border-dashed border-gray-400 p-4 text-sm text-gray-600">
