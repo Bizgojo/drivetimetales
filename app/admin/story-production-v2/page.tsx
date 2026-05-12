@@ -62,6 +62,13 @@ function parseTopFixes(reviewText: string): string[] {
   return parseTopFixDetails(reviewText).map((fix) => fix.text)
 }
 
+function extractSuccessfulHalStoryId(report: string) {
+  if (!/Hal intake complete/i.test(report) || !/Generate-voices preflight:\s*passed/i.test(report)) return ''
+  return report.match(/Story ID:\s*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i)?.[1] || ''
+}
+
+const ACTIVE_V2_SESSION_KEY = 'et_v2_active_story_session_v1'
+
 function readSavedSeriesId(): string {
   if (typeof window === 'undefined') return ''
 
@@ -255,6 +262,112 @@ const EMPTY_FORM = {
   series_arc_plan: '',
 }
 
+const DEFAULT_HAL_INTAKE = {
+  genre: '',
+  runtime_minutes: '15',
+  episode_count: '1',
+  optional_premise: '',
+}
+
+type ActiveV2Session = {
+  storyId?: string
+  title?: string
+  status?: V2Status | ''
+  script?: string
+  actionReport?: string
+  validationReport?: string
+  reviewText?: string
+  reviewTotal?: number | null
+  halPreflightPassedStoryId?: string
+  form?: typeof EMPTY_FORM
+  halIntake?: typeof DEFAULT_HAL_INTAKE
+  queueIntakeNotice?: string
+  activeStep?: 'brief' | 'script' | 'score' | 'validate' | 'produce' | ''
+  stepMessage?: string
+  updatedAt?: string
+}
+
+function readActiveV2Session(): ActiveV2Session | null {
+  if (typeof window === 'undefined') return null
+
+  try {
+    const raw = localStorage.getItem(ACTIVE_V2_SESSION_KEY)
+    if (!raw) return null
+    const session = JSON.parse(raw) as ActiveV2Session
+    if (!session || typeof session !== 'object') return null
+    if (!session.storyId && !session.script && !session.actionReport && !session.validationReport) return null
+    return session
+  } catch (err) {
+    console.error('Failed to read active V2 story session', err)
+    return null
+  }
+}
+
+function storedActiveV2SessionStoryId(): string {
+  return readActiveV2Session()?.storyId || ''
+}
+
+function runtimeMinutesFromQueue(duration: string): string {
+  const minutes = Number(String(duration || '').match(/\d+/)?.[0] || 15)
+  if (minutes <= 10) return '10'
+  if (minutes <= 15) return '15'
+  if (minutes <= 20) return '20'
+  return '30'
+}
+
+function episodeCountFromQueue(queueItem: Partial<QueueItem>): string {
+  const source = [
+    queueItem.title,
+    queueItem.premise,
+    queueItem.notes,
+  ].filter(Boolean).join(' ')
+
+  if (!/\b(series|episode|episodes|part|parts)\b/i.test(source)) return '1'
+
+  const explicitCount = Number(source.match(/\b(3|5|7|13)\s*[- ]?(episode|episodes|part|parts)\b/i)?.[1] || 0)
+  return explicitCount && HAL_EPISODE_COUNTS.includes(explicitCount) ? String(explicitCount) : '3'
+}
+
+function queuePremiseSeed(queueItem: Partial<QueueItem>): string {
+  const parts = [
+    queueItem.premise ? `Premise: ${queueItem.premise}` : '',
+    queueItem.setting ? `Setting seed: ${queueItem.setting}` : '',
+    queueItem.notes ? `Instructions: ${queueItem.notes}` : '',
+  ].filter(Boolean)
+
+  return parts.join('\n')
+}
+
+function queueHalIntakeValues(queueItem: Partial<QueueItem>, story: any = null) {
+  const genre = story?.genre || queueItem.primaryGenre || queueItem.secondaryGenre || queueItem.tertiaryGenre || ''
+  const runtime = runtimeMinutesFromQueue(story?.runtime || queueItem.duration || '')
+  const seriesTotal = story?.series_total_episodes ? Number(story.series_total_episodes) : 0
+  const episodes = seriesTotal && HAL_EPISODE_COUNTS.includes(seriesTotal)
+    ? String(seriesTotal)
+    : episodeCountFromQueue(queueItem)
+  const seed = queuePremiseSeed({
+    ...queueItem,
+    premise: story?.premise || queueItem.premise,
+    setting: story?.setting || queueItem.setting,
+    notes: story?.requirements || queueItem.notes,
+  })
+
+  return {
+    genre,
+    runtime_minutes: runtime,
+    episode_count: episodes,
+    optional_premise: seed,
+  }
+}
+
+function queueSeedFromForm(formState: typeof EMPTY_FORM): string {
+  return [
+    formState.premise ? `Premise: ${formState.premise}` : '',
+    formState.setting ? `Setting seed: ${formState.setting}` : '',
+    formState.requirements ? `Instructions: ${formState.requirements}` : '',
+  ].filter(Boolean).join('\n')
+}
+
 function Spinner({ label }: { label: string }) {
   return (
     <div className="flex items-center gap-2 text-sm text-gray-700">
@@ -318,17 +431,15 @@ export default function StoryProductionV2Page() {
   const [episodeDetailModal, setEpisodeDetailModal] = useState<EpisodeDetailModal>(null)
   const [applyingTopFixKey, setApplyingTopFixKey] = useState('')
   const [applyingValidatorFix, setApplyingValidatorFix] = useState(false)
-  const [halIntake, setHalIntake] = useState({
-    genre: '',
-    runtime_minutes: '15',
-    episode_count: '1',
-    optional_premise: '',
-  })
+  const [halIntake, setHalIntake] = useState(DEFAULT_HAL_INTAKE)
+  const [queueIntakeNotice, setQueueIntakeNotice] = useState('')
 
   const scriptRef = useRef<HTMLTextAreaElement | null>(null)
   const reviewRef = useRef<HTMLPreElement | null>(null)
   const validateRef = useRef<HTMLPreElement | null>(null)
   const stateLoadGenerationRef = useRef(0)
+  const activeSessionRestoreCheckedRef = useRef(false)
+  const skipNextActiveSessionSaveRef = useRef(false)
 
   const [form, setForm] = useState(EMPTY_FORM)
 
@@ -346,6 +457,7 @@ export default function StoryProductionV2Page() {
     setSelectedTopFixes([])
     setScriptDirty(false)
     setHalPreflightPassedStoryId('')
+    setQueueIntakeNotice('')
 
     if (typeof window !== 'undefined') {
       localStorage.removeItem('et_last_series_id_v2')
@@ -353,6 +465,7 @@ export default function StoryProductionV2Page() {
       localStorage.removeItem('et_last_queue_id_v2')
       localStorage.removeItem('et_asc_package_handoff_v1')
       localStorage.removeItem('et_asc_handoff_v1')
+      localStorage.removeItem(ACTIVE_V2_SESSION_KEY)
 
       const url = new URL(window.location.href)
       url.searchParams.delete('seriesId')
@@ -370,12 +483,8 @@ export default function StoryProductionV2Page() {
   function clearAllForNewStory() {
     clearLoadedProductionState()
     setForm(EMPTY_FORM)
-    setHalIntake({
-      genre: '',
-      runtime_minutes: '15',
-      episode_count: '1',
-      optional_premise: '',
-    })
+    setHalIntake(DEFAULT_HAL_INTAKE)
+    setQueueIntakeNotice('')
     setSelectedAuthorMeta(null)
     setWorkingMessage('')
     setActiveStep('')
@@ -468,6 +577,105 @@ export default function StoryProductionV2Page() {
   }
 
   useEffect(() => {
+    if (activeSessionRestoreCheckedRef.current) return
+    activeSessionRestoreCheckedRef.current = true
+
+    const requestedStoryId = searchParams.get('storyId')
+    const requestedSeriesId = searchParams.get('seriesId')
+    const session = readActiveV2Session()
+
+    if (!session) return
+    if (requestedSeriesId) return
+    if (queueId) return
+    if (requestedStoryId && session.storyId && requestedStoryId !== session.storyId) return
+
+    stateLoadGenerationRef.current += 1
+    skipNextActiveSessionSaveRef.current = true
+    setSeriesPackage(null)
+    setStoryId(session.storyId || '')
+    setTitle(session.title || '')
+    setStatus((session.status || '') as V2Status | '')
+    setScript(session.script || '')
+    setReport(session.actionReport || session.validationReport || '')
+    setReviewText(session.reviewText || '')
+    setReviewTotal(session.reviewTotal ?? null)
+    setHalPreflightPassedStoryId(session.halPreflightPassedStoryId || '')
+    setForm({ ...EMPTY_FORM, ...(session.form || {}) })
+    setHalIntake({ ...DEFAULT_HAL_INTAKE, ...(session.halIntake || {}) })
+    setQueueIntakeNotice(session.queueIntakeNotice || '')
+    setActiveStep(session.activeStep || '')
+    setStepMessage(session.stepMessage || '')
+    setSelectedTopFixes([])
+    setScriptDirty(false)
+    setLoading(false)
+    setWorkingMessage('')
+    setActiveAction('')
+
+    if (session.storyId && typeof window !== 'undefined') {
+      const url = new URL(window.location.href)
+      if (!url.searchParams.get('seriesId')) {
+        url.searchParams.set('storyId', session.storyId)
+        window.history.replaceState({}, '', url.toString())
+      }
+    }
+
+    console.log('[V2] session restored', { storyId: session.storyId || '', title: session.title || '' })
+  }, [queueId, searchParams])
+
+  useEffect(() => {
+    if (!activeSessionRestoreCheckedRef.current) return
+    if (typeof window === 'undefined') return
+
+    if (skipNextActiveSessionSaveRef.current) {
+      skipNextActiveSessionSaveRef.current = false
+      return
+    }
+
+    const hasActiveSessionContent = !!(storyId || script || report || reviewText || title)
+    if (!hasActiveSessionContent) {
+      localStorage.removeItem(ACTIVE_V2_SESSION_KEY)
+      return
+    }
+
+    const session: ActiveV2Session = {
+      storyId,
+      title,
+      status,
+      script,
+      actionReport: report,
+      validationReport: report,
+      reviewText,
+      reviewTotal,
+      halPreflightPassedStoryId,
+      form,
+      halIntake,
+      queueIntakeNotice,
+      activeStep,
+      stepMessage,
+      updatedAt: new Date().toISOString(),
+    }
+
+    localStorage.setItem(ACTIVE_V2_SESSION_KEY, JSON.stringify(session))
+    console.log('[V2] session saved', { storyId, title })
+  }, [
+    activeStep,
+    form,
+    halIntake,
+    halPreflightPassedStoryId,
+    queueIntakeNotice,
+    report,
+    reviewText,
+    reviewTotal,
+    script,
+    status,
+    stepMessage,
+    storyId,
+    title,
+  ])
+
+  useEffect(() => {
+    if (!queueId && storedActiveV2SessionStoryId()) return
+
     const savedSeriesId = readSavedSeriesId()
     const effectiveQueueId =
       queueId ||
@@ -502,26 +710,34 @@ export default function StoryProductionV2Page() {
             if (savedRes.ok && savedData?.success && savedData?.story) {
               if (ignore || loadGeneration !== stateLoadGenerationRef.current) return
 
+              const queueIntake = queueHalIntakeValues(queued, savedData.story)
+              console.log("[QUEUE→HAL]", {
+                genre: queueIntake.genre,
+                runtime: queueIntake.runtime_minutes,
+                seedLength: queueIntake.optional_premise.length,
+                episodes: queueIntake.episode_count,
+              })
               setStoryId(savedData.story.id || '')
               setTitle(savedData.story.title || queued.title || '')
               setStatus(savedData.story.status || '')
               setScript(savedData.story.script || '')
               setReport(savedData.story.validator_report || '')
+              setHalIntake(queueIntake)
               setForm(prev => ({
                 ...prev,
                 title: savedData.story.title || queued.title || prev.title,
-                type: savedData.story.type || prev.type,
+                type: queueIntake.episode_count === '1' ? 'standalone' : 'series',
                 author: savedData.story.author || queued.authorTarget || prev.author,
                 author_style: savedData.story.author_style || prev.author_style,
-                genre: savedData.story.genre || queued.primaryGenre || prev.genre,
+                genre: queueIntake.genre || prev.genre,
                 narrative_voice: savedData.story.narrative_voice || prev.narrative_voice,
                 premise: savedData.story.premise || queued.premise || prev.premise,
                 requirements: savedData.story.requirements || queued.notes || prev.requirements,
                 setting: savedData.story.setting || queued.setting || prev.setting,
-                runtime: savedData.story.runtime || queued.duration || prev.runtime,
+                runtime: `${queueIntake.runtime_minutes} min`,
                 series_name: savedData.story.series_name || prev.series_name,
-                series_episode_number: savedData.story.series_episode_number != null ? String(savedData.story.series_episode_number) : prev.series_episode_number,
-                series_total_episodes: savedData.story.series_total_episodes != null ? String(savedData.story.series_total_episodes) : prev.series_total_episodes,
+                series_episode_number: queueIntake.episode_count === '1' ? '' : savedData.story.series_episode_number != null ? String(savedData.story.series_episode_number) : '1',
+                series_total_episodes: queueIntake.episode_count === '1' ? '' : queueIntake.episode_count,
                 series_is_finale: savedData.story.series_is_finale != null ? String(savedData.story.series_is_finale) : prev.series_is_finale,
                 series_arc_plan: savedData.story.series_arc_plan || prev.series_arc_plan,
               }))
@@ -539,6 +755,7 @@ export default function StoryProductionV2Page() {
                 console.error('series brief detail load failed', err)
               }
               setStepMessage('Reloaded saved story from queue')
+              setQueueIntakeNotice('Loaded from Story Queue. This will use the standard Hal Intake production path.')
               loadedSavedStory = true
             }
           } catch (err) {
@@ -548,19 +765,32 @@ export default function StoryProductionV2Page() {
 
         if (!loadedSavedStory) {
           if (!queued.storyId) clearLoadedProductionState()
+          const queueIntake = queueHalIntakeValues(queued)
+          console.log("[QUEUE→HAL]", {
+            genre: queueIntake.genre,
+            runtime: queueIntake.runtime_minutes,
+            seedLength: queueIntake.optional_premise.length,
+            episodes: queueIntake.episode_count,
+          })
           setStoryId(queued.storyId || '')
           setTitle(queued.title || '')
+          setHalIntake(queueIntake)
           setForm(prev => ({
             ...prev,
             title: queued.title || prev.title,
-            genre: queued.primaryGenre || prev.genre,
+            type: queueIntake.episode_count === '1' ? 'standalone' : 'series',
+            genre: queueIntake.genre || prev.genre,
             premise: queued.premise || prev.premise,
             requirements: queued.notes || prev.requirements,
             setting: queued.setting || prev.setting,
-            runtime: queued.duration || prev.runtime,
+            runtime: `${queueIntake.runtime_minutes} min`,
             author: queued.authorTarget || prev.author,
+            series_total_episodes: queueIntake.episode_count === '1' ? '' : queueIntake.episode_count,
+            series_episode_number: queueIntake.episode_count === '1' ? '' : '1',
+            series_is_finale: 'false',
           }))
-          setStepMessage(queued.storyId ? 'Loaded queued story draft' : 'Loaded queued story idea')
+          setQueueIntakeNotice('Loaded from Story Queue. This will use the standard Hal Intake production path.')
+          setStepMessage(queued.storyId ? 'Loaded queued story draft' : 'Loaded queued story idea for Hal Intake')
         }
 
         await fetch('/api/admin/story-queue', {
@@ -593,6 +823,7 @@ export default function StoryProductionV2Page() {
 
     if (requestedSeriesId) return
     if (!requestedStoryId) return
+    if (storedActiveV2SessionStoryId() === requestedStoryId) return
 
     let ignore = false
     const loadGeneration = stateLoadGenerationRef.current
@@ -724,6 +955,7 @@ export default function StoryProductionV2Page() {
 
     if (requestedStoryId || requestedSeriesId || queueId) return
     if (typeof window === 'undefined') return
+    if (storedActiveV2SessionStoryId()) return
 
     const savedSeriesId = readSavedSeriesId()
 
@@ -807,16 +1039,27 @@ export default function StoryProductionV2Page() {
 
   useEffect(() => {
     if (!storyId || typeof window === 'undefined') return
-    const savedSeriesId = readSavedSeriesId()
     const url = new URL(window.location.href)
     if (url.searchParams.get('seriesId')) return
-    if (seriesPackage?.series?.id || savedSeriesId) {
-      router.replace(`/admin/story-production-v2?seriesId=${encodeURIComponent(seriesPackage?.series?.id || savedSeriesId)}`, { scroll: false })
+    if (seriesPackage?.series?.id) {
+      router.replace(`/admin/story-production-v2?seriesId=${encodeURIComponent(seriesPackage.series.id)}`, { scroll: false })
       return
     }
     url.searchParams.set('storyId', storyId)
     window.history.replaceState({}, '', url.toString())
   }, [router, storyId, seriesPackage?.series?.id])
+
+  useEffect(() => {
+    const reportStoryId = extractSuccessfulHalStoryId(report)
+    if (seriesPackage?.series?.id || !reportStoryId || !script || status !== 'validator_passed') return
+
+    if (!storyId) {
+      setStoryId(reportStoryId)
+    }
+    if (halPreflightPassedStoryId !== reportStoryId) {
+      setHalPreflightPassedStoryId(reportStoryId)
+    }
+  }, [halPreflightPassedStoryId, report, script, seriesPackage?.series?.id, status, storyId])
 
   useEffect(() => {
     let ignore = false
@@ -873,8 +1116,11 @@ export default function StoryProductionV2Page() {
     if (form.genre && !options.some((genre) => genre.toLowerCase() === form.genre.toLowerCase())) {
       options.unshift(form.genre)
     }
+    if (halIntake.genre && !options.some((genre) => genre.toLowerCase() === halIntake.genre.toLowerCase())) {
+      options.unshift(halIntake.genre)
+    }
     return options
-  }, [adminGenres, form.genre])
+  }, [adminGenres, form.genre, halIntake.genre])
 
   useEffect(() => {
     setSelectedAuthorMeta(authors.find((a) => a.name === form.author) || null)
@@ -941,6 +1187,17 @@ export default function StoryProductionV2Page() {
   const standaloneValidationComplete = status === 'validator_passed' || status === 'validator_failed'
   const standaloneProduced = ['audio_pending', 'ready_for_production', 'audio_produced', 'ready_to_publish', 'published'].includes(status)
   const standaloneTopFixes = parseTopFixes(reviewText)
+  const renderedHalGenre = halIntake.genre || form.genre
+  const renderedHalRuntime = halIntake.runtime_minutes || runtimeMinutesFromQueue(form.runtime)
+  const renderedHalEpisodes = halIntake.episode_count || (form.type === 'series' && form.series_total_episodes ? form.series_total_episodes : '1')
+  const renderedHalSeed = halIntake.optional_premise || queueSeedFromForm(form)
+  const effectiveHalIntake = {
+    genre: renderedHalGenre,
+    runtime_minutes: renderedHalRuntime,
+    episode_count: renderedHalEpisodes,
+    optional_premise: renderedHalSeed,
+  }
+  const queueLoadedIntoHalIntake = !!queueIntakeNotice && !!renderedHalGenre && !!renderedHalSeed
   const canFixStandaloneTopFixes = !seriesPackage
     && !!storyId
     && !!script
@@ -987,8 +1244,8 @@ export default function StoryProductionV2Page() {
             : blockedActionClass
   const produceActionClass = seriesPackage
     ? packageReadyForAsc
-      ? primaryActionClass
-      : blockedActionClass
+        ? primaryActionClass
+        : blockedActionClass
     : activeStep === 'produce' && loading
       ? runningActionClass
       : standaloneProduced
@@ -996,6 +1253,15 @@ export default function StoryProductionV2Page() {
         : canProceedToAudioProduction
           ? primaryActionClass
           : blockedActionClass
+
+  useEffect(() => {
+    console.log("[HAL RENDER]", {
+      renderedGenre: renderedHalGenre,
+      renderedRuntime: renderedHalRuntime,
+      renderedEpisodes: renderedHalEpisodes,
+      renderedSeedLength: renderedHalSeed.length,
+    })
+  }, [renderedHalEpisodes, renderedHalGenre, renderedHalRuntime, renderedHalSeed])
 
   function pickAuthor(author: AuthorOption) {
     clearLoadedProductionStateForNewInput()
@@ -1007,7 +1273,13 @@ export default function StoryProductionV2Page() {
     }))
   }
 
-  function chooseCanonicalAuthor(genre: string) {
+  function chooseCanonicalAuthor(genre: string, requestedAuthor = '') {
+    const requested = requestedAuthor.trim().toLowerCase()
+    if (requested) {
+      const authorMatch = authors.find((author) => author.name.toLowerCase() === requested)
+      if (authorMatch) return authorMatch
+    }
+
     const genreTargets = [genre, ...(GENRE_ALIASES[genre] || [])].map((value) => value.toLowerCase())
     return authors.find((author) =>
       [author.primary_genre, author.secondary_genre].filter(Boolean).some((value) => genreTargets.includes(String(value).toLowerCase()))
@@ -1237,11 +1509,12 @@ export default function StoryProductionV2Page() {
 
   async function runHalCanonicalIntake() {
     if (loading || hasActiveAction) return
-    const genre = halIntake.genre.trim()
-    const runtimeMinutes = Math.max(1, Number(halIntake.runtime_minutes || 15))
-    const episodeCount = Number(halIntake.episode_count || 1)
+    console.log("[CREATE STORY PROMPT]", effectiveHalIntake)
+    const genre = effectiveHalIntake.genre.trim()
+    const runtimeMinutes = Math.max(1, Number(effectiveHalIntake.runtime_minutes || 15))
+    const episodeCount = Number(effectiveHalIntake.episode_count || 1)
     const storyType = episodeCount === 1 ? 'standalone' : 'series'
-    const author = chooseCanonicalAuthor(genre)
+    const author = chooseCanonicalAuthor(genre, form.author)
 
     if (!genre) {
       setReport('Genre is required.')
@@ -1274,7 +1547,7 @@ export default function StoryProductionV2Page() {
     setReviewTotal(null)
     clearLoadedProductionState()
 
-    const premise = halIntake.optional_premise.trim() || `Claude may generate an original ${genre} premise consistent with a ${runtimeMinutes}-minute ${storyType === 'series' ? `${episodeCount}-episode series` : 'standalone story'}.`
+    const premise = effectiveHalIntake.optional_premise.trim() || `Claude may generate an original ${genre} premise consistent with a ${runtimeMinutes}-minute ${storyType === 'series' ? `${episodeCount}-episode series` : 'standalone story'}.`
     const setting = `Claude may choose a story-specific setting consistent with ${genre}, ${runtimeMinutes} minutes, and Endless Tales audio production.`
     const runtime = `${runtimeMinutes} min`
     const canonicalRequirements = [
@@ -2231,17 +2504,41 @@ export default function StoryProductionV2Page() {
         <div className="bg-white border border-black rounded-lg p-4 space-y-4">
           <div>
             <div className="text-lg font-bold">Hal Story Intake</div>
+            <div className="mt-2 rounded border-2 border-red-500 bg-red-50 p-2 text-sm font-bold text-red-800">
+              LIVE HAL BLOCK v2
+              <div className="mt-1 text-xs font-semibold text-red-700">rendered genre: {renderedHalGenre || '—'}</div>
+              <div className="text-xs font-semibold text-red-700">rendered runtime: {renderedHalRuntime || '—'}</div>
+              <div className="text-xs font-semibold text-red-700">rendered episodes: {renderedHalEpisodes || '—'}</div>
+              <div className="text-xs font-semibold text-red-700">rendered seed length: {renderedHalSeed.length}</div>
+            </div>
             <p className="mt-1 text-sm text-gray-700">
               Answer four fields. Hal fills the canonical V2 template, uses approved ET authors, runs script validation, and runs generate-voices preflight before audio production.
             </p>
+            {queueIntakeNotice ? (
+              <div className="mt-3 rounded border border-blue-200 bg-blue-50 p-2 text-sm font-medium text-blue-900">
+                {queueIntakeNotice}
+              </div>
+            ) : null}
+            <div className="mt-3 rounded border border-gray-200 bg-gray-50 p-2 text-xs text-gray-700">
+              <div>renderedHalGenre: {renderedHalGenre || '—'}</div>
+              <div>renderedHalRuntime: {renderedHalRuntime || '—'}</div>
+              <div>renderedHalEpisodes: {renderedHalEpisodes || '—'}</div>
+              <div>renderedHalSeedLength: {renderedHalSeed.length}</div>
+              <div>halIntake.genre: {halIntake.genre || '—'}</div>
+              <div>form.genre: {form.genre || '—'}</div>
+            </div>
           </div>
           <div className="grid gap-3 md:grid-cols-4">
             <label className="space-y-1">
               <span className="text-sm font-semibold text-gray-700">1. Genre</span>
               <select
                 className="w-full border rounded p-2"
-                value={halIntake.genre}
-                onChange={e => setHalIntake(prev => ({ ...prev, genre: e.target.value }))}
+                value={renderedHalGenre}
+                onChange={e => {
+                  const nextGenre = e.target.value
+                  setHalIntake(prev => ({ ...prev, genre: nextGenre }))
+                  setForm(prev => ({ ...prev, genre: nextGenre }))
+                }}
                 disabled={loading || hasActiveAction}
               >
                 <option value="">Choose genre</option>
@@ -2252,8 +2549,12 @@ export default function StoryProductionV2Page() {
               <span className="text-sm font-semibold text-gray-700">2. Runtime</span>
               <select
                 className="w-full border rounded p-2"
-                value={halIntake.runtime_minutes}
-                onChange={e => setHalIntake(prev => ({ ...prev, runtime_minutes: e.target.value }))}
+                value={renderedHalRuntime}
+                onChange={e => {
+                  const nextRuntime = e.target.value
+                  setHalIntake(prev => ({ ...prev, runtime_minutes: nextRuntime }))
+                  setForm(prev => ({ ...prev, runtime: `${nextRuntime} min` }))
+                }}
                 disabled={loading || hasActiveAction}
               >
                 {['10', '15', '20', '30'].map(minutes => <option key={minutes} value={minutes}>{minutes} min</option>)}
@@ -2263,8 +2564,17 @@ export default function StoryProductionV2Page() {
               <span className="text-sm font-semibold text-gray-700">3. Episodes</span>
               <select
                 className="w-full border rounded p-2"
-                value={halIntake.episode_count}
-                onChange={e => setHalIntake(prev => ({ ...prev, episode_count: e.target.value }))}
+                value={renderedHalEpisodes}
+                onChange={e => {
+                  const nextEpisodes = e.target.value
+                  setHalIntake(prev => ({ ...prev, episode_count: nextEpisodes }))
+                  setForm(prev => ({
+                    ...prev,
+                    type: nextEpisodes === '1' ? 'standalone' : 'series',
+                    series_total_episodes: nextEpisodes === '1' ? '' : nextEpisodes,
+                    series_episode_number: nextEpisodes === '1' ? '' : '1',
+                  }))
+                }}
                 disabled={loading || hasActiveAction}
               >
                 {HAL_EPISODE_COUNTS.map(count => (
@@ -2273,8 +2583,8 @@ export default function StoryProductionV2Page() {
               </select>
             </label>
             <div className="rounded border border-gray-200 bg-gray-50 p-2 text-sm text-gray-700">
-              <div><strong>Derived type:</strong> {Number(halIntake.episode_count || 1) === 1 ? 'Standalone' : 'Series'}</div>
-              <div><strong>Author:</strong> {halIntake.genre ? (chooseCanonicalAuthor(halIntake.genre)?.name || 'No approved match') : 'Choose genre'}</div>
+              <div><strong>Derived type:</strong> {Number(renderedHalEpisodes || 1) === 1 ? 'Standalone' : 'Series'}</div>
+              <div><strong>Author:</strong> {renderedHalGenre ? (chooseCanonicalAuthor(renderedHalGenre, form.author)?.name || 'No approved match') : 'Choose genre'}</div>
             </div>
           </div>
           <label className="block space-y-1">
@@ -2283,7 +2593,7 @@ export default function StoryProductionV2Page() {
               className="w-full border rounded p-2"
               rows={3}
               placeholder="Optional. Leave blank and Claude will generate a premise consistent with the genre/runtime."
-              value={halIntake.optional_premise}
+              value={renderedHalSeed}
               onChange={e => setHalIntake(prev => ({ ...prev, optional_premise: e.target.value }))}
               disabled={loading || hasActiveAction}
             />
@@ -2579,6 +2889,7 @@ export default function StoryProductionV2Page() {
               disabled={!canProceedToAudioProduction}
               className={produceActionClass}
               onClick={async () => {
+                console.log("[V2→ASC] proceed clicked", { storyId, title, status, hasScript: !!script, halPreflightPassedStoryId });
                 try {
                   setActiveAction('produceAudio')
                   setLoading(true)
@@ -2741,6 +3052,15 @@ export default function StoryProductionV2Page() {
             </div>
             {loading && workingMessage ? <Spinner label={workingMessage} /> : null}
             {stepMessage ? <div className="text-sm font-medium text-green-700">{stepMessage}</div> : null}
+            <div className="rounded border border-gray-200 bg-gray-50 p-2 text-xs text-gray-700">
+              <div>Queue loaded into Hal Intake: {queueLoadedIntoHalIntake ? 'yes' : 'no'}</div>
+              <div>renderedHalGenre: {renderedHalGenre || '—'}</div>
+              <div>renderedHalRuntime: {renderedHalRuntime || '—'}</div>
+              <div>renderedHalEpisodes: {renderedHalEpisodes || '—'}</div>
+              <div>renderedHalSeedLength: {renderedHalSeed.length}</div>
+              <div>halIntake.genre: {halIntake.genre || '—'}</div>
+              <div>form.genre: {form.genre || '—'}</div>
+            </div>
             {report ? (
               <pre className="border rounded p-3 bg-gray-50 whitespace-pre-wrap text-sm">{report}</pre>
             ) : null}
