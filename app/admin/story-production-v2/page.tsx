@@ -556,6 +556,7 @@ export default function StoryProductionV2Page() {
   const [halIntake, setHalIntake] = useState(DEFAULT_HAL_INTAKE)
   const [queueIntakeNotice, setQueueIntakeNotice] = useState('')
   const [queueAuthorTarget, setQueueAuthorTarget] = useState('')
+  const [episodeRepairStatus, setEpisodeRepairStatus] = useState<Record<string, string>>({})
 
   const scriptRef = useRef<HTMLTextAreaElement | null>(null)
   const reviewRef = useRef<HTMLPreElement | null>(null)
@@ -1948,9 +1949,18 @@ export default function StoryProductionV2Page() {
     }
 
     const applyKey = `${episode.id}:${index}`
+    const beforeScore = typeof episode.script_json?.pre_audio_review?.total === 'number'
+      ? episode.script_json.pre_audio_review.total
+      : typeof episode.script_json?.series_score_validate?.score_total === 'number'
+        ? episode.script_json.series_score_validate.score_total
+        : null
     setApplyingTopFixKey(applyKey)
     setActiveAction('episodeTopFix')
     setStepMessage(`Applying ${fix.area.toLowerCase()} fix to Episode ${episode.episode_number || episode.series_episode_number || '?'}`)
+    setEpisodeRepairStatus(prev => ({
+      ...prev,
+      [episode.id]: `Repairing episode fix... Last started: ${new Date().toLocaleTimeString()}`,
+    }))
 
     try {
       const reviseRes = await fetch('/api/v2/apply-top-fixes', {
@@ -1979,6 +1989,26 @@ export default function StoryProductionV2Page() {
         throw new Error(saveData.error || 'Failed to save revised script')
       }
 
+      let refreshedEpisode: SeriesEpisodePlan | null = null
+      let afterScore: number | null = null
+      try {
+        const rescoreRes = await fetch('/api/v2/series-package/score-validate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ seriesId: seriesPackage?.series?.id }),
+        })
+        const rescoreData = await readJsonOrDiagnostic(rescoreRes, 'POST /api/v2/series-package/score-validate')
+        if (rescoreData?.package) {
+          const pkg = rescoreData.package as SeriesPackage
+          setSeriesPackage(pkg)
+          refreshedEpisode = pkg.episodes.find((candidate) => candidate.id === episode.id) || null
+          const refreshedScore = refreshedEpisode?.script_json?.pre_audio_review?.total ?? refreshedEpisode?.script_json?.series_score_validate?.score_total
+          afterScore = typeof refreshedScore === 'number' ? refreshedScore : null
+        }
+      } catch (refreshErr) {
+        console.error('Episode score refresh after fix failed', refreshErr)
+      }
+
       const updatedEpisode: SeriesEpisodePlan = {
         ...episode,
         script: saveData.story?.script || reviseData.revisedScript,
@@ -1987,19 +2017,37 @@ export default function StoryProductionV2Page() {
         validator_report: null,
         validator_passed_at: null,
       }
+      const displayEpisode = refreshedEpisode || updatedEpisode
 
-      setSeriesPackage((pkg) => {
-        if (!pkg) return pkg
-        return {
-          ...pkg,
-          episodes: pkg.episodes.map((candidate) => candidate.id === episode.id ? updatedEpisode : candidate),
-        }
-      })
-      setEpisodeDetailModal({ kind: 'score', episode: updatedEpisode })
-      setReport(`Applied ${fix.area} top fix to Episode ${episode.episode_number || episode.series_episode_number || '?'}: ${episode.title}`)
-      setStepMessage('Script revised. Re-run Score + Validate Package before producing audio.')
+      if (!refreshedEpisode) {
+        setSeriesPackage((pkg) => {
+          if (!pkg) return pkg
+          return {
+            ...pkg,
+            episodes: pkg.episodes.map((candidate) => candidate.id === episode.id ? updatedEpisode : candidate),
+          }
+        })
+      }
+      setEpisodeDetailModal({ kind: 'score', episode: displayEpisode })
+      const resultMessage = typeof beforeScore === 'number' && typeof afterScore === 'number' && afterScore > beforeScore
+        ? `Score improved ${beforeScore} → ${afterScore}`
+        : typeof beforeScore === 'number' && typeof afterScore === 'number' && afterScore <= beforeScore
+          ? 'No meaningful improvement detected'
+          : 'Fix applied successfully'
+      const timestamp = new Date().toLocaleTimeString()
+      setEpisodeRepairStatus(prev => ({
+        ...prev,
+        [episode.id]: `${resultMessage}. Last repaired: ${timestamp}`,
+      }))
+      setReport(`${resultMessage} for Episode ${episode.episode_number || episode.series_episode_number || '?'}: ${episode.title}`)
+      setStepMessage('Episode score card refreshed after repair.')
     } catch (e) {
-      setReport(e instanceof Error ? e.message : 'Unknown error')
+      const timestamp = new Date().toLocaleTimeString()
+      setEpisodeRepairStatus(prev => ({
+        ...prev,
+        [episode.id]: `Claude repair failed. Last repaired: ${timestamp}`,
+      }))
+      setReport(`Claude repair failed.\n\n${formatDiagnosticReport(e) || 'Unknown error'}`)
       setStepMessage('Top fix revision failed')
     } finally {
       setApplyingTopFixKey('')
@@ -2014,9 +2062,14 @@ export default function StoryProductionV2Page() {
     }
 
     const applyKey = `${episode.id}:validator`
+    const previousScript = episode.script
     setApplyingTopFixKey(applyKey)
     setActiveAction('episodeTopFix')
     setStepMessage(`Fixing validator errors for Episode ${episode.episode_number || episode.series_episode_number || '?'}`)
+    setEpisodeRepairStatus(prev => ({
+      ...prev,
+      [episode.id]: `Repairing validator issue... Last started: ${new Date().toLocaleTimeString()}`,
+    }))
 
     try {
       const reviseRes = await fetch('/api/v2/apply-top-fixes', {
@@ -2048,6 +2101,23 @@ export default function StoryProductionV2Page() {
         throw new Error(saveData.error || 'Failed to save validator fix')
       }
 
+      let refreshedEpisode: SeriesEpisodePlan | null = null
+      try {
+        const rescoreRes = await fetch('/api/v2/series-package/score-validate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ seriesId: seriesPackage?.series?.id }),
+        })
+        const rescoreData = await readJsonOrDiagnostic(rescoreRes, 'POST /api/v2/series-package/score-validate')
+        if (rescoreData?.package) {
+          const pkg = rescoreData.package as SeriesPackage
+          setSeriesPackage(pkg)
+          refreshedEpisode = pkg.episodes.find((candidate) => candidate.id === episode.id) || null
+        }
+      } catch (refreshErr) {
+        console.error('Episode validation refresh after fix failed', refreshErr)
+      }
+
       const updatedEpisode: SeriesEpisodePlan = {
         ...episode,
         script: saveData.story?.script || revisedScript,
@@ -2056,19 +2126,48 @@ export default function StoryProductionV2Page() {
         validator_report: null,
         validator_passed_at: null,
       }
+      const displayEpisode = refreshedEpisode || updatedEpisode
 
-      setSeriesPackage((pkg) => {
-        if (!pkg) return pkg
-        return {
-          ...pkg,
-          episodes: pkg.episodes.map((candidate) => candidate.id === episode.id ? updatedEpisode : candidate),
-        }
-      })
-      setEpisodeDetailModal({ kind: 'validation', episode: updatedEpisode })
-      setReport(`Fixed validator errors for Episode ${episode.episode_number || episode.series_episode_number || '?'}: ${episode.title}`)
-      setStepMessage('Episode validator fix saved. Re-run Score + Validate All Episodes.')
+      if (!refreshedEpisode) {
+        setSeriesPackage((pkg) => {
+          if (!pkg) return pkg
+          return {
+            ...pkg,
+            episodes: pkg.episodes.map((candidate) => candidate.id === episode.id ? updatedEpisode : candidate),
+          }
+        })
+      }
+      setEpisodeDetailModal({ kind: 'validation', episode: displayEpisode })
+      const validationResult = displayEpisode.validator_result || displayEpisode.script_json?.series_score_validate?.validator_result
+      const resultMessage = displayEpisode.status === 'validator_passed' || validationResult === 'PASS'
+        ? 'Fix applied successfully'
+        : 'Validation failed, previous script restored'
+      const timestamp = new Date().toLocaleTimeString()
+
+      if (resultMessage.startsWith('Validation failed')) {
+        await fetch('/api/v2/save-revised-script', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            storyId: episode.id,
+            script: previousScript,
+          }),
+        })
+      }
+
+      setEpisodeRepairStatus(prev => ({
+        ...prev,
+        [episode.id]: `${resultMessage}. Last repaired: ${timestamp}`,
+      }))
+      setReport(`${resultMessage} for Episode ${episode.episode_number || episode.series_episode_number || '?'}: ${episode.title}`)
+      setStepMessage(resultMessage)
     } catch (e) {
-      setReport(e instanceof Error ? e.message : 'Unknown error')
+      const timestamp = new Date().toLocaleTimeString()
+      setEpisodeRepairStatus(prev => ({
+        ...prev,
+        [episode.id]: `Claude repair failed. Last repaired: ${timestamp}`,
+      }))
+      setReport(`Claude repair failed.\n\n${formatDiagnosticReport(e) || 'Unknown error'}`)
       setStepMessage('Episode validator fix failed')
     } finally {
       setApplyingTopFixKey('')
@@ -3595,10 +3694,15 @@ export default function StoryProductionV2Page() {
                   <div className="text-lg font-bold">
                     {episodeDetailModal.kind === 'score' ? 'Score Details' : 'Validation Details'}
                   </div>
-                  <div className="text-sm text-gray-700">
-                    Episode {episodeDetailModal.episode.episode_number || episodeDetailModal.episode.series_episode_number}: {episodeDetailModal.episode.title}
-                  </div>
-                </div>
+	                  <div className="text-sm text-gray-700">
+	                    Episode {episodeDetailModal.episode.episode_number || episodeDetailModal.episode.series_episode_number}: {episodeDetailModal.episode.title}
+	                  </div>
+	                  {episodeRepairStatus[episodeDetailModal.episode.id] ? (
+	                    <div className="mt-2 rounded border border-blue-200 bg-blue-50 p-2 text-xs font-medium text-blue-900">
+	                      {episodeRepairStatus[episodeDetailModal.episode.id]}
+	                    </div>
+	                  ) : null}
+	                </div>
                 <button
                   type="button"
                   onClick={() => setEpisodeDetailModal(null)}
