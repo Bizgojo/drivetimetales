@@ -706,9 +706,27 @@ export default function AscAdminPage() {
           throw new Error(`Episode ${missingOutput.episode.episodeNumber || missingOutput.job?.episodeNumber || '?'} is missing ASC output`)
         }
 
+        const candidateSource = packageJobs.length > 0 ? 'packageJobs' : 'packageEpisodes'
+        const importCandidates = packageJobs.length > 0
+          ? packageJobs.map((packageJob) => ({
+              packageJob,
+              row: packageCompletionRows.find((candidate) => candidate.job?.jobId === packageJob.jobId || candidate.episode.storyId === packageJob.storyId),
+            }))
+          : packageCompletionRows.map((row) => ({
+              packageJob: {
+                storyId: row.episode.storyId,
+                title: row.episode.title,
+                queueId: '',
+                episodeNumber: row.episode.episodeNumber,
+                audioUrl: row.episode.audioUrl || row.dbAudioUrl,
+                finalMix: row.episode.finalMix || row.dbAudioUrl,
+                coverUrl: row.episode.coverUrl || row.dbCoverUrl,
+              } as ProductionJob,
+              row,
+            }))
+
         const importedJobs = []
-        for (const packageJob of packageJobs) {
-          const row = packageCompletionRows.find((candidate) => candidate.job?.jobId === packageJob.jobId || candidate.episode.storyId === packageJob.storyId)
+        for (const { packageJob, row } of importCandidates) {
           if (
             !packageJob.storyId ||
             !(packageJob.title || row?.episode.title) ||
@@ -789,7 +807,7 @@ export default function AscAdminPage() {
         }
         localStorage.setItem(PACKAGE_STORAGE_KEY, JSON.stringify(updated))
         clearProductionWorkspace()
-        setMessage(`Imported ${importedJobs.length} package episode outputs. Production workspace cleared for the next story.`)
+        setMessage(`Imported ${importedJobs.length} package episode outputs from ${candidateSource}. Production workspace cleared for the next story.`)
       } catch (err: any) {
         setMessage(err?.message || 'Package import failed')
       } finally {
@@ -1024,6 +1042,8 @@ export default function AscAdminPage() {
   const packageAllPublished = packageCompletionRows.length > 0 && packageCompletionRows.every((row) => row.publishedComplete)
   const packageAllAudioReady = packageCompletionRows.length > 0 && packageCompletionRows.every((row) => row.hasAudioUrl && row.hasFinalMix)
   const packageMissingOutputCount = packageCompletionRows.filter((row) => !row.hasAudioUrl || !row.hasFinalMix).length
+  const packageImportCandidateSource = packageJobs.length > 0 ? 'packageJobs' : 'packageEpisodes'
+  const packageImportCandidateCount = packageJobs.length > 0 ? packageJobs.length : packageCompletionRows.length
   const canImportPackageOutput = isPackageHandoff && packageAllAudioReady && !packageAllImported && !working
   const inspectedFailure = failureInspectionJob ? classifyFailure(failureInspectionJob) : null
   const activePackageJob = packageJobs.find((packageJob) => {
@@ -1379,6 +1399,8 @@ export default function AscAdminPage() {
               <div>outputsReady: {packageAllAudioReady ? 'yes' : 'no'}</div>
               <div>imported: {packageAllImported ? 'yes' : 'no'}</div>
               <div>missingEpisodes count: {packageMissingOutputCount}</div>
+              <div>candidateSource: {packageImportCandidateSource}</div>
+              <div>candidateCount: {packageImportCandidateCount}</div>
             </div>
 
             <div className="rounded border border-dashed border-gray-400 p-4 text-sm text-gray-600">
