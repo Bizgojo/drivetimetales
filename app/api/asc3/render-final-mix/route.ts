@@ -34,9 +34,34 @@ let FFMPEG_PATH = 'ffmpeg'
 try { FFMPEG_PATH = eval('require')('@ffmpeg-installer/ffmpeg').path } catch { /* system ffmpeg */ }
 
 async function download(url: string, dest: string): Promise<void> {
-  const res = await fetch(url)
-  if (!res.ok) throw new Error(`Download failed ${res.status}: ${url}`)
-  await fs.writeFile(dest, Buffer.from(await res.arrayBuffer()))
+  const retryDelaysMs = [300, 800]
+  let lastError: unknown = null
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const res = await fetch(url)
+      if (!res.ok) {
+        const isTransient = res.status === 502 || res.status === 503 || res.status === 504
+        if (!isTransient || attempt === 3) {
+          throw new Error(`Download failed ${res.status}: ${url}`)
+        }
+
+        console.warn(`  Download transient ${res.status}; retrying attempt ${attempt + 1}/3: ${url}`)
+      } else {
+        await fs.writeFile(dest, Buffer.from(await res.arrayBuffer()))
+        return
+      }
+    } catch (err) {
+      lastError = err
+      if (attempt === 3) break
+      console.warn(`  Download fetch error; retrying attempt ${attempt + 1}/3: ${url}`, err)
+    }
+
+    await new Promise(resolve => setTimeout(resolve, retryDelaysMs[attempt - 1] || 800))
+  }
+
+  if (lastError instanceof Error) throw lastError
+  throw new Error(`Download failed after retries: ${url}`)
 }
 
 async function getAudioDuration(filePath: string): Promise<number> {

@@ -43,8 +43,18 @@ def post_json(url: str, payload: dict, timeout: int = 300):
         method="POST",
         headers={"Content-Type": "application/json"},
     )
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        content_type = exc.headers.get("Content-Type", "") if exc.headers else ""
+        raise RuntimeError(json.dumps({
+            "url": url,
+            "httpStatus": exc.code,
+            "contentType": content_type,
+            "responsePreview": body[:1000],
+        }, ensure_ascii=False)) from exc
 
 def env_value(key: str) -> str:
     value = os.environ.get(key, "").strip()
