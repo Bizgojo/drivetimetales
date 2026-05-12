@@ -13,7 +13,7 @@ const supabase = createClient(
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
-const EPISODE_SELECT = 'id,title,status,brief_json,script,script_json,validator_result,validator_report,validator_passed_at,series_id,series_name,episode_number,series_episode_number,series_total_episodes,series_is_finale,story_type'
+const EPISODE_SELECT = 'id,title,description,status,brief_json,script,script_json,validator_result,validator_report,validator_passed_at,series_id,series_name,episode_number,series_episode_number,series_total_episodes,series_is_finale,story_type'
 const TITLE_MAX_CHARS = 28
 const DESCRIPTION_MAX_CHARS = 70
 const DESCRIPTION_PAST_TENSE_RE = /\b(vanished|was|were|had|found|discovered|left|moved|sealed|signed|forged|buried|hidden)\b/i
@@ -29,6 +29,100 @@ function countWords(s: string) {
 function extractHeader(script: string, key: string): string {
   const m = script.match(new RegExp(`^${key}:\\s*(.+)$`, 'm'))
   return m?.[1]?.trim() || ''
+}
+
+function replaceOrInsertHeader(script: string, key: string, value: string): string {
+  const headerPattern = new RegExp(`^${key}:\\s*.*$`, 'm')
+  if (headerPattern.test(script)) return script.replace(headerPattern, `${key}: ${value}`)
+  if (/^GENRE:\s*.*$/m.test(script)) return script.replace(/^GENRE:\s*.*$/m, (line) => `${line}\n${key}: ${value}`)
+  if (/^AUTHOR:\s*.*$/m.test(script)) return script.replace(/^AUTHOR:\s*.*$/m, (line) => `${line}\n${key}: ${value}`)
+  return `${key}: ${value}\n${script}`
+}
+
+function sanitizeDescription(description: string): string {
+  const original = String(description || '')
+  const clean = original
+    .replace(/\s+/g, ' ')
+    .replace(/^["']|["']$/g, '')
+    .replace(/[.]{2,}|…/g, '')
+    .trim()
+
+  const fallback = 'A dangerous secret pulls every choice toward the truth.'
+  const source = clean || fallback
+  const weakEnding = /\b(and|or|but|with|to|of|for|from|by|into|before|after|while|when|where|under|beneath|inside|outside|near|below|above|through|around|across|behind|beyond|against|among|within|between|onto|upon|over|in|on|at|the|a|an)$/i
+  let next = source
+
+  if (next.length > DESCRIPTION_MAX_CHARS) {
+    next = ''
+    for (const word of source.split(' ')) {
+      const candidate = next ? `${next} ${word}` : word
+      const punctuated = /[.!?]$/.test(candidate) ? candidate : `${candidate}.`
+      if (punctuated.length > DESCRIPTION_MAX_CHARS) break
+      next = candidate
+    }
+  }
+
+  next = (next || source.slice(0, DESCRIPTION_MAX_CHARS))
+    .replace(/[,\-:;.!?]+$/g, '')
+    .trim()
+
+  while (weakEnding.test(next) && next.includes(' ')) {
+    next = next.split(' ').slice(0, -1).join(' ').trim()
+  }
+
+  if (!next) next = fallback.replace(/[.!?]+$/g, '')
+  if (!/[.!?]$/.test(next)) next = `${next}.`
+  if (next.length > DESCRIPTION_MAX_CHARS) next = fallback
+
+  return next
+}
+
+async function normalizeEpisodeDescriptionBeforeValidation(episode: any, episodeNo: number) {
+  const brief = episode.brief_json && typeof episode.brief_json === 'object' ? episode.brief_json : {}
+  const description = sanitizeDescription(extractHeader(episode.script, 'DESCRIPTION') || brief.description || episode.description || '')
+  const script = replaceOrInsertHeader(episode.script, 'DESCRIPTION', description)
+  const existingJson = episode.script_json && typeof episode.script_json === 'object'
+    ? episode.script_json
+    : {}
+  const script_json = {
+    ...existingJson,
+    raw_script: script,
+    series_generation: {
+      ...(existingJson as any).series_generation,
+      summary: {
+        ...((existingJson as any).series_generation?.summary || {}),
+        description,
+      },
+    },
+  }
+  const brief_json = { ...brief, description }
+
+  if (script === episode.script && episode.description === description && brief.description === description) {
+    return episode
+  }
+
+  console.log('[DESCRIPTION NORMALIZED BEFORE VALIDATION]', {
+    episodeNumber: episodeNo,
+    storyId: episode.id,
+    originalLength: String(extractHeader(episode.script, 'DESCRIPTION') || brief.description || episode.description || '').length,
+    finalLength: description.length,
+  })
+
+  const { data: updated, error } = await supabase
+    .from('stories')
+    .update({
+      description,
+      script,
+      script_json,
+      brief_json,
+    })
+    .eq('id', episode.id)
+    .select(EPISODE_SELECT)
+    .single()
+
+  if (error || !updated) throw new Error(error?.message || `Episode ${episodeNo} description normalization failed`)
+
+  return updated
 }
 
 function validateCardCopy(script: string) {
@@ -375,7 +469,7 @@ export async function POST(req: NextRequest) {
     if (!episodes.length) return bad('No child episodes found for series package', 404)
 
     for (let index = 0; index < episodes.length; index += 1) {
-      const episode = episodes[index]
+      let episode = episodes[index]
       const episodeNo = episodeNumber(episode, index + 1)
 
       if (!episode.script) {
@@ -384,6 +478,17 @@ export async function POST(req: NextRequest) {
           failedStoryId: episode.id,
           failurePhase: 'score',
           failureReport: 'script missing',
+        })
+      }
+
+      try {
+        episode = await normalizeEpisodeDescriptionBeforeValidation(episode, episodeNo)
+      } catch (err) {
+        return bad(err instanceof Error ? err.message : `Episode ${episodeNo} description normalization failed`, 500, {
+          failedEpisode: episodeNo,
+          failedStoryId: episode.id,
+          failurePhase: 'description_normalization',
+          failureReport: err instanceof Error ? err.message : 'Unknown description normalization failure',
         })
       }
 

@@ -30,6 +30,66 @@ function extractTitle(script: string): string | null {
   return extractHeader(script, 'TITLE') || null
 }
 
+function replaceOrInsertHeader(script: string, key: string, value: string): string {
+  const headerPattern = new RegExp(`^${key}:\\s*.*$`, 'm')
+  if (headerPattern.test(script)) return script.replace(headerPattern, `${key}: ${value}`)
+  if (/^GENRE:\s*.*$/m.test(script)) return script.replace(/^GENRE:\s*.*$/m, (line) => `${line}\n${key}: ${value}`)
+  if (/^AUTHOR:\s*.*$/m.test(script)) return script.replace(/^AUTHOR:\s*.*$/m, (line) => `${line}\n${key}: ${value}`)
+  return `${key}: ${value}\n${script}`
+}
+
+function sanitizeDescription(description: string): string {
+  const original = String(description || '')
+  const clean = original
+    .replace(/\s+/g, ' ')
+    .replace(/^["']|["']$/g, '')
+    .replace(/[.]{2,}|…/g, '')
+    .trim()
+
+  const fallback = 'A dangerous secret pulls every choice toward the truth.'
+  const source = clean || fallback
+  const maxChars = 70
+  const weakEnding = /\b(and|or|but|with|to|of|for|from|by|into|before|after|while|when|where|under|beneath|inside|outside|near|below|above|through|around|across|behind|beyond|against|among|within|between|onto|upon|over|in|on|at|the|a|an)$/i
+
+  let next = source
+  if (next.length > maxChars) {
+    next = ''
+    for (const word of source.split(' ')) {
+      const candidate = next ? `${next} ${word}` : word
+      const punctuated = /[.!?]$/.test(candidate) ? candidate : `${candidate}.`
+      if (punctuated.length > maxChars) break
+      next = candidate
+    }
+  }
+
+  next = (next || source.slice(0, maxChars))
+    .replace(/[,\-:;.!?]+$/g, '')
+    .trim()
+
+  while (weakEnding.test(next) && next.includes(' ')) {
+    next = next.split(' ').slice(0, -1).join(' ').trim()
+  }
+
+  if (!next) next = fallback.replace(/[.!?]+$/g, '')
+  if (!/[.!?]$/.test(next)) next = `${next}.`
+  if (next.length > maxChars) next = fallback
+
+  console.log('[DESCRIPTION SANITIZED]', {
+    originalLength: original.length,
+    finalLength: next.length,
+  })
+
+  return next
+}
+
+function normalizeScriptDescription(script: string, fallbackDescription = '') {
+  const description = sanitizeDescription(extractHeader(script, 'DESCRIPTION') || fallbackDescription)
+  return {
+    script: replaceOrInsertHeader(script, 'DESCRIPTION', description),
+    description,
+  }
+}
+
 function scriptTail(script: string, maxChars = 1400) {
   const clean = script.replace(/\s+/g, ' ').trim()
   return clean.length <= maxChars ? clean : clean.slice(-maxChars)
@@ -233,7 +293,7 @@ export async function POST(req: NextRequest) {
 
     const { data: episodes, error: episodesError } = await supabase
       .from('stories')
-      .select('id,title,author,author_style,genre,narrative_voice,brief_json,status,script,script_json,script_version,series_id,series_name,episode_number,series_episode_number,series_total_episodes,series_is_finale,story_type')
+      .select('id,title,author,author_style,genre,narrative_voice,description,brief_json,status,script,script_json,script_version,series_id,series_name,episode_number,series_episode_number,series_total_episodes,series_is_finale,story_type')
       .eq('series_id', cleanSeriesId)
       .order('episode_number', { ascending: true })
 
@@ -243,7 +303,7 @@ export async function POST(req: NextRequest) {
     const priorGenerated: Array<{ episode: any; script: string; scriptJson: any }> = []
     const generatedEpisodes = []
 
-    for (const episode of episodes) {
+    for (let episode of episodes) {
       const episodeNumber = Number(episode.episode_number || episode.series_episode_number || generatedEpisodes.length + 1)
       const brief = episode.brief_json as any
 
@@ -253,10 +313,57 @@ export async function POST(req: NextRequest) {
 
       if (episode.script) {
         console.log(`[series-package/generate-scripts] Skipping episode ${episodeNumber} because script exists`)
+        const normalized = normalizeScriptDescription(episode.script, brief.description || '')
+        const existingJson = episode.script_json && typeof episode.script_json === 'object'
+          ? episode.script_json
+          : {}
+        const nextBrief = { ...brief, description: normalized.description }
+        const nextScriptJson = {
+          ...existingJson,
+          series_generation: {
+            ...(existingJson.series_generation || {}),
+            summary: {
+              ...(existingJson.series_generation?.summary || {}),
+              description: normalized.description,
+            },
+          },
+          raw_script: normalized.script,
+        }
+
+        if (normalized.script !== episode.script || episode.description !== normalized.description || brief.description !== normalized.description) {
+          console.log('[DESCRIPTION NORMALIZED EXISTING]', {
+            episodeNumber,
+            storyId: episode.id,
+            finalLength: normalized.description.length,
+          })
+
+          const { data: updatedExisting, error: existingUpdateError } = await supabase
+            .from('stories')
+            .update({
+              script: normalized.script,
+              description: normalized.description,
+              brief_json: nextBrief,
+              script_json: nextScriptJson,
+            })
+            .eq('id', episode.id)
+            .select('id,title,status,brief_json,script,script_json,series_id,episode_number,series_episode_number')
+            .single()
+
+          if (existingUpdateError || !updatedExisting) {
+            return bad(
+              existingUpdateError?.message || `Episode ${episodeNumber} description normalization failed`,
+              500,
+              { failedEpisode: episodeNumber, failedStoryId: episode.id }
+            )
+          }
+
+          episode = updatedExisting
+        }
+
         priorGenerated.push({
           episode,
-          script: episode.script,
-          scriptJson: episode.script_json && typeof episode.script_json === 'object' ? episode.script_json : {},
+          script: normalized.script,
+          scriptJson: nextScriptJson,
         })
         continue
       }
@@ -282,10 +389,13 @@ export async function POST(req: NextRequest) {
         )
       }
 
-      const script = response.content
+      const rawScript = response.content
         .map((c: any) => ('text' in c ? c.text : ''))
         .join('')
         .trim()
+      const normalized = normalizeScriptDescription(rawScript, brief.description || '')
+      const script = normalized.script
+      const description = normalized.description
 
       const generatedTitle = extractTitle(script) || episode.title || ''
       const wordCount = countWords(generatedTitle)
@@ -304,6 +414,7 @@ export async function POST(req: NextRequest) {
       const existingJson = episode.script_json && typeof episode.script_json === 'object'
         ? episode.script_json
         : {}
+      const nextBrief = { ...brief, description }
 
       const script_json = {
         ...existingJson,
@@ -316,7 +427,7 @@ export async function POST(req: NextRequest) {
           continuity_bundle_used: continuityBundle,
           summary: {
             title: generatedTitle,
-            description: extractHeader(script, 'DESCRIPTION'),
+            description,
             planned_continuity_notes: brief.continuity_notes || '',
             planned_cliffhanger_or_resolution: brief.cliffhanger_or_resolution || '',
             script_tail: scriptTail(script),
@@ -329,8 +440,10 @@ export async function POST(req: NextRequest) {
         .from('stories')
         .update({
           title: generatedTitle,
+          description,
           script,
           script_json,
+          brief_json: nextBrief,
           status: 'script_drafted',
           script_version: (episode.script_version || 1) + 1,
         })
@@ -361,9 +474,72 @@ export async function POST(req: NextRequest) {
       }).catch(() => {})
     }
 
+    const { data: episodesToNormalize, error: normalizeLoadError } = await supabase
+      .from('stories')
+      .select('id,description,brief_json,script,script_json,series_id,episode_number,series_episode_number')
+      .eq('series_id', cleanSeriesId)
+      .order('episode_number', { ascending: true })
+
+    if (normalizeLoadError) return bad(normalizeLoadError.message, 500)
+
+    for (const episode of episodesToNormalize || []) {
+      if (!episode.script) continue
+
+      const episodeNumber = Number(episode.episode_number || episode.series_episode_number || 0)
+      const brief = episode.brief_json && typeof episode.brief_json === 'object' ? episode.brief_json as any : {}
+      const normalized = normalizeScriptDescription(episode.script, brief.description || episode.description || '')
+      const existingJson = episode.script_json && typeof episode.script_json === 'object'
+        ? episode.script_json as any
+        : {}
+      const nextBrief = { ...brief, description: normalized.description }
+      const nextScriptJson = {
+        ...existingJson,
+        series_generation: {
+          ...(existingJson.series_generation || {}),
+          summary: {
+            ...(existingJson.series_generation?.summary || {}),
+            description: normalized.description,
+          },
+        },
+        raw_script: normalized.script,
+      }
+
+      if (
+        normalized.script === episode.script
+        && episode.description === normalized.description
+        && brief.description === normalized.description
+      ) {
+        continue
+      }
+
+      console.log('[DESCRIPTION NORMALIZED EXISTING]', {
+        episodeNumber,
+        storyId: episode.id,
+        finalLength: normalized.description.length,
+      })
+
+      const { error: normalizeUpdateError } = await supabase
+        .from('stories')
+        .update({
+          description: normalized.description,
+          script: normalized.script,
+          brief_json: nextBrief,
+          script_json: nextScriptJson,
+        })
+        .eq('id', episode.id)
+
+      if (normalizeUpdateError) {
+        return bad(
+          normalizeUpdateError.message || `Episode ${episodeNumber} description normalization failed`,
+          500,
+          { failedEpisode: episodeNumber, failedStoryId: episode.id }
+        )
+      }
+    }
+
     const { data: refreshedEpisodes, error: refreshError } = await supabase
       .from('stories')
-      .select('id,title,status,brief_json,script,script_json,series_id,series_name,episode_number,series_episode_number,series_total_episodes,series_is_finale,story_type')
+      .select('id,title,status,description,brief_json,script,script_json,series_id,series_name,episode_number,series_episode_number,series_total_episodes,series_is_finale,story_type')
       .eq('series_id', cleanSeriesId)
       .order('episode_number', { ascending: true })
 
