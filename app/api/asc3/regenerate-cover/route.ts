@@ -18,6 +18,7 @@ const supabase = createClient(
 )
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY!
+const IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1'
 
 function escapeXml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -115,38 +116,67 @@ async function overlayText(imageBuffer: Buffer, title: string, author: string): 
 }
 
 async function generateWithDallE(prompt: string): Promise<Buffer> {
+  const imageRequest: Record<string, unknown> = {
+    model: IMAGE_MODEL,
+    prompt: prompt.slice(0, 4000),
+    n: 1,
+    size: '1024x1024',
+  }
+
+  if (IMAGE_MODEL.startsWith('gpt-image')) {
+    imageRequest.quality = 'high'
+  } else {
+    imageRequest.quality = 'hd'
+    imageRequest.response_format = 'url'
+  }
+
+  console.log('[regenerate-cover] image model used:', IMAGE_MODEL)
+
   const res = await fetch('https://api.openai.com/v1/images/generations', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${OPENAI_API_KEY}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      model: 'dall-e-3',
-      prompt: prompt.slice(0, 4000), // DALL-E 3 max prompt length
-      n: 1,
-      size: '1024x1024',
-      quality: 'hd',
-      response_format: 'url',
-    }),
+    body: JSON.stringify(imageRequest),
   })
 
   if (!res.ok) {
     const errText = await res.text()
-    throw new Error(`DALL-E 3 error: ${res.status} - ${errText}`)
+    console.error('[regenerate-cover] image response failure:', {
+      model: IMAGE_MODEL,
+      status: res.status,
+      bodyPreview: errText.slice(0, 500),
+    })
+    throw new Error(`${IMAGE_MODEL} image generation error: ${res.status} - ${errText}`)
   }
 
   const json = await res.json() as any
+  console.log('[regenerate-cover] image response success:', {
+    model: IMAGE_MODEL,
+    hasUrl: Boolean(json.data?.[0]?.url),
+    hasBase64: Boolean(json.data?.[0]?.b64_json),
+  })
+
+  const b64Json = json.data?.[0]?.b64_json
+  if (b64Json) {
+    try {
+      const { logDalleCall } = await import('@/app/lib/openai-logger')
+      logDalleCall({ route: '/api/asc3/regenerate-cover', purpose: 'cover-art-regen', model: IMAGE_MODEL, size: '1024x1024', quality: 'high', n: 1 }).catch(() => {})
+    } catch { /* never break */ }
+    return Buffer.from(b64Json, 'base64')
+  }
+
   const imageUrl = json.data?.[0]?.url
-  if (!imageUrl) throw new Error('DALL-E 3 returned no image URL')
+  if (!imageUrl) throw new Error(`${IMAGE_MODEL} returned no image data`)
   try {
     const { logDalleCall } = await import('@/app/lib/openai-logger')
-    logDalleCall({ route: '/api/asc3/regenerate-cover', purpose: 'cover-art-regen', model: 'dall-e-3', size: '1024x1024', quality: 'hd', n: 1 }).catch(() => {})
+    logDalleCall({ route: '/api/asc3/regenerate-cover', purpose: 'cover-art-regen', model: IMAGE_MODEL, size: '1024x1024', quality: 'hd', n: 1 }).catch(() => {})
   } catch { /* never break */ }
 
   // Download the image
   const imgRes = await fetch(imageUrl)
-  if (!imgRes.ok) throw new Error(`Failed to download DALL-E image: ${imgRes.status}`)
+  if (!imgRes.ok) throw new Error(`Failed to download generated image: ${imgRes.status}`)
   return Buffer.from(await imgRes.arrayBuffer())
 }
 
