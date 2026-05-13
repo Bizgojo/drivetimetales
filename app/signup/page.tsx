@@ -167,9 +167,9 @@ function SignUpContent() {
       <div style={{ width: '100%', maxWidth: '400px', padding: '24px 16px 16px', boxSizing: 'border-box' }}>
 
         {/* Trial badge */}
-        <div style={{ background: 'linear-gradient(135deg, rgba(249,115,22,0.2), rgba(249,115,22,0.05))', border: '1px solid rgba(249,115,22,0.4)', borderRadius: '12px', padding: '12px 16px', marginBottom: '1.5rem', textAlign: 'center' }}>
-          <div style={{ color: '#f97316', fontSize: '16px', fontWeight: 800, marginBottom: '2px' }}>🎉 {trialDays}-Day Free Trial</div>
-          <div style={{ color: '#94a3b8', fontSize: '13px' }}>Full access to hundreds of stories. Credit card required — cancel before trial ends and you won't be charged.</div>
+        <div style={{ background: 'linear-gradient(135deg, rgba(255,237,213,0.16), rgba(249,115,22,0.08))', border: '1px solid rgba(253,186,116,0.35)', borderRadius: '12px', padding: '12px 16px', marginBottom: '1.5rem', textAlign: 'center', boxShadow: '0 10px 26px rgba(15,23,42,0.22)' }}>
+          <div style={{ color: '#fed7aa', fontSize: '16px', fontWeight: 800, marginBottom: '2px' }}>🎉 {trialDays}-Day Free Trial</div>
+          <div style={{ color: '#dbeafe', fontSize: '13px', lineHeight: 1.5 }}>Full access to hundreds of stories. Credit card required — cancel before trial ends and you won't be charged.</div>
         </div>
 
 
@@ -181,7 +181,7 @@ function SignUpContent() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} style={{ backgroundColor: '#1e293b', borderRadius: '16px', padding: '1.5rem' }}>
+        <form onSubmit={handleSubmit} style={{ background: 'linear-gradient(180deg, #27364d 0%, #1f2d43 100%)', border: '1px solid rgba(148,163,184,0.22)', borderRadius: '16px', padding: '1.5rem', boxShadow: '0 18px 45px rgba(0,0,0,0.28)' }}>
           <h2 style={{ color: 'white', fontSize: '20px', fontWeight: 'bold', marginBottom: '1.5rem', textAlign: 'center' }}>Start Your 14-Day Free Trial</h2>
 
           {error && <div style={{ backgroundColor: '#dc2626', color: 'white', padding: '0.75rem', borderRadius: '8px', marginBottom: '1rem', fontSize: '14px', textAlign: 'center' }}>{error}</div>}
@@ -192,18 +192,18 @@ function SignUpContent() {
           )}
 
           <div style={{ marginBottom: '1rem' }}>
-            <label style={{ color: '#94a3b8', fontSize: '14px', display: 'block', marginBottom: '0.5rem' }}>What do your friends call you?</label>
+            <label style={{ color: '#e2e8f0', fontSize: '14px', display: 'block', marginBottom: '0.5rem', fontWeight: 700 }}>What do your friends call you?</label>
             <input type="text" value={firstName} onChange={e => setFirstName(e.target.value)} required style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white', fontSize: '16px', outline: 'none', boxSizing: 'border-box' }} placeholder="Enter the name you go by" />
-            <div style={{ color: '#64748b', fontSize: '12px', lineHeight: 1.5, marginTop: '0.4rem' }}>Belle will use this name when she talks with you between stories.</div>
+            <div style={{ color: '#cbd5e1', fontSize: '12.5px', lineHeight: 1.55, marginTop: '0.45rem' }}>Belle will use this name when she talks with you between stories.</div>
           </div>
 
           <div style={{ marginBottom: '1rem' }}>
-            <label style={{ color: '#94a3b8', fontSize: '14px', display: 'block', marginBottom: '0.5rem' }}>Email</label>
+            <label style={{ color: '#e2e8f0', fontSize: '14px', display: 'block', marginBottom: '0.5rem', fontWeight: 700 }}>Email</label>
             <input type="email" value={email} onChange={e => setEmail(e.target.value)} required style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white', fontSize: '16px', outline: 'none', boxSizing: 'border-box' }} placeholder="Enter your email" />
           </div>
 
           <div style={{ marginBottom: '1.5rem' }}>
-            <label style={{ color: '#94a3b8', fontSize: '14px', display: 'block', marginBottom: '0.5rem' }}>Password</label>
+            <label style={{ color: '#e2e8f0', fontSize: '14px', display: 'block', marginBottom: '0.5rem', fontWeight: 700 }}>Password</label>
             <div style={{ position: 'relative' }}>
               <input type={showPassword ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} required minLength={6} style={{ width: '100%', padding: '0.75rem', paddingRight: '3rem', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white', fontSize: '16px', outline: 'none', boxSizing: 'border-box' }} placeholder="Create a password (6+ characters)" />
               <button type="button" onClick={() => setShowPassword(!showPassword)} style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', backgroundColor: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '14px' }}>{showPassword ? 'Hide' : 'Show'}</button>
