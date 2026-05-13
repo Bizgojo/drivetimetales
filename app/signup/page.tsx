@@ -153,25 +153,17 @@ function SignUpContent() {
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#020617', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       <header style={{ position: 'sticky', top: 0, zIndex: 60, width: '100%', background: 'rgba(2,6,23,0.96)', borderBottom: '1px solid rgba(148,163,184,0.16)', backdropFilter: 'blur(12px)', padding: 'calc(12px + env(safe-area-inset-top)) 16px 12px', boxSizing: 'border-box' }}>
-        <div style={{ maxWidth: '420px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-          <a href="/" style={{ display: 'flex', alignItems: 'center', gap: '8px', textDecoration: 'none' }}>
-            <img src="/images/et-logo.png" alt="Endless Tales" style={{ width: '32px', height: '32px', objectFit: 'contain' }} />
-            <span style={{ color:'#ffffff', fontSize:'19px', fontWeight:800, letterSpacing:'-0.3px', whiteSpace: 'nowrap' }}>
+        <div style={{ maxWidth: '420px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
+          <a href="/" style={{ display: 'flex', alignItems: 'center', gap: '10px', textDecoration: 'none' }}>
+            <img src="/images/et-logo.png" alt="Endless Tales" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
+            <span style={{ color:'#ffffff', fontSize:'23px', fontWeight:800, letterSpacing:'-0.3px', whiteSpace: 'nowrap' }}>
               Endless <span style={{ color:'#f97316' }}>Tales</span>
             </span>
           </a>
-          <a href="/signin" style={{ color: '#f97316', fontSize: '14px', fontWeight: 700, textDecoration: 'none', whiteSpace: 'nowrap' }}>Sign in</a>
         </div>
       </header>
 
-      <div style={{ width: '100%', maxWidth: '400px', padding: '24px 16px 16px', boxSizing: 'border-box' }}>
-
-        {/* Trial badge */}
-        <div style={{ background: 'linear-gradient(135deg, rgba(255,237,213,0.16), rgba(249,115,22,0.08))', border: '1px solid rgba(253,186,116,0.35)', borderRadius: '12px', padding: '12px 16px', marginBottom: '1.5rem', textAlign: 'center', boxShadow: '0 10px 26px rgba(15,23,42,0.22)' }}>
-          <div style={{ color: '#fed7aa', fontSize: '16px', fontWeight: 800, marginBottom: '2px' }}>🎉 {trialDays}-Day Free Trial</div>
-          <div style={{ color: '#dbeafe', fontSize: '13px', lineHeight: 1.5 }}>Full access to hundreds of stories. Credit card required — cancel before trial ends and you won't be charged.</div>
-        </div>
-
+      <div style={{ width: '100%', maxWidth: '400px', padding: '30px 16px 16px', boxSizing: 'border-box' }}>
 
         {/* Referral banner */}
         {referralCode && referrerName && (
@@ -239,11 +231,11 @@ function SignUpContent() {
           </button>
 
           {/* What you get */}
-          <div style={{ marginTop: '1rem', padding: '12px', background: 'rgba(255,255,255,0.04)', borderRadius: '8px' }}>
-            <div style={{ color: '#94a3b8', fontSize: '12px', lineHeight: 1.8 }}>
-              ✅ Unlimited access to all stories<br/>
-              ✅ New stories added every week<br/>
-              ✅ Cancel anytime — no commitment
+          <div style={{ marginTop: '1rem', padding: '13px 14px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(148,163,184,0.16)', borderRadius: '8px' }}>
+            <div style={{ color: '#e2e8f0', fontSize: '13px', lineHeight: 1.9, fontWeight: 650 }}>
+              <span style={{ color: '#86efac' }}>✅</span> Unlimited access to all stories<br/>
+              <span style={{ color: '#86efac' }}>✅</span> New stories added every week<br/>
+              <span style={{ color: '#86efac' }}>✅</span> Cancel anytime — no commitment
             </div>
           </div>
 
