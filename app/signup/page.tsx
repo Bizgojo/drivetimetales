@@ -192,8 +192,9 @@ function SignUpContent() {
           )}
 
           <div style={{ marginBottom: '1rem' }}>
-            <label style={{ color: '#94a3b8', fontSize: '14px', display: 'block', marginBottom: '0.5rem' }}>First Name</label>
-            <input type="text" value={firstName} onChange={e => setFirstName(e.target.value)} required style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white', fontSize: '16px', outline: 'none', boxSizing: 'border-box' }} placeholder="Enter your first name" />
+            <label style={{ color: '#94a3b8', fontSize: '14px', display: 'block', marginBottom: '0.5rem' }}>What do your friends call you?</label>
+            <input type="text" value={firstName} onChange={e => setFirstName(e.target.value)} required style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: 'white', fontSize: '16px', outline: 'none', boxSizing: 'border-box' }} placeholder="Enter the name you go by" />
+            <div style={{ color: '#64748b', fontSize: '12px', lineHeight: 1.5, marginTop: '0.4rem' }}>Belle will use this name when she talks with you between stories.</div>
           </div>
 
           <div style={{ marginBottom: '1rem' }}>
