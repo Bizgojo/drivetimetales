@@ -81,6 +81,23 @@ type PackageStoryOutput = {
   published_on?: string | null
 }
 
+type PackageImportReport = {
+  storyId: string
+  episodeNumber?: number
+  title: string
+  completeStatus: 'pending' | 'success' | 'failed'
+  publishStatus: 'pending' | 'success' | 'failed' | 'skipped'
+  verified: boolean
+  route?: string
+  error?: string
+  dbState?: {
+    status?: string | null
+    is_hidden?: boolean | null
+    published_on?: string | null
+    cover_url?: string | null
+  }
+}
+
 const STORAGE_KEY = 'et_asc_handoff_v1'
 const PACKAGE_STORAGE_KEY = 'et_asc_package_handoff_v1'
 const V2_RESTORE_KEYS = [
@@ -291,6 +308,7 @@ export default function AscAdminPage() {
   const [packageJob, setPackageJob] = useState<ProductionJob | null>(null)
   const [packageJobs, setPackageJobs] = useState<ProductionJob[]>([])
   const [packageStoryOutputs, setPackageStoryOutputs] = useState<Record<string, PackageStoryOutput>>({})
+  const [packageImportReport, setPackageImportReport] = useState<PackageImportReport[]>([])
   const [failureInspectionJob, setFailureInspectionJob] = useState<ProductionJob | null>(null)
   const [creditsApproved, setCreditsApproved] = useState(false)
   const [statusNow, setStatusNow] = useState(() => Date.now())
@@ -726,37 +744,69 @@ export default function AscAdminPage() {
             }))
 
         const importedJobs = []
+        const nextReport: PackageImportReport[] = importCandidates.map(({ packageJob, row }) => ({
+          storyId: packageJob.storyId || row?.episode.storyId || '',
+          episodeNumber: packageJob.episodeNumber || row?.episode.episodeNumber,
+          title: packageJob.title || row?.episode.title || `Episode ${packageJob.episodeNumber || row?.episode.episodeNumber || '?'}`,
+          completeStatus: 'pending',
+          publishStatus: 'pending',
+          verified: false,
+        }))
+        setPackageImportReport(nextReport)
+
+        const updateImportReport = (storyId: string, updates: Partial<PackageImportReport>) => {
+          const next = nextReport.map((entry) => (
+            entry.storyId === storyId ? { ...entry, ...updates } : entry
+          ))
+          nextReport.splice(0, nextReport.length, ...next)
+          setPackageImportReport([...nextReport])
+        }
+
         for (const { packageJob, row } of importCandidates) {
+          const storyId = packageJob.storyId || row?.episode.storyId || ''
+          const episodeNumber = packageJob.episodeNumber || row?.episode.episodeNumber
+          const episodeTitle = packageJob.title || row?.episode.title || `Episode ${episodeNumber || '?'}`
+
           if (
-            !packageJob.storyId ||
-            !(packageJob.title || row?.episode.title) ||
+            !storyId ||
+            !episodeTitle ||
             !(packageJob.audioUrl || row?.episode.audioUrl || row?.dbAudioUrl) ||
             !(packageJob.finalMix || row?.episode.finalMix || row?.dbAudioUrl)
           ) {
-            throw new Error(`Episode ${packageJob.episodeNumber || '?'} is not ready to import`)
+            const error = `Episode ${episodeNumber || '?'} "${episodeTitle}" is not ready to import`
+            updateImportReport(storyId, { completeStatus: 'failed', publishStatus: 'skipped', route: 'preflight', error })
+            throw new Error(error)
           }
 
-          setMessage(`Completing package for Episode ${packageJob.episodeNumber || '?'}...`)
+          setMessage(`Completing package for Episode ${episodeNumber || '?'}: ${episodeTitle}...`)
           const completeRes = await fetch('/api/admin/complete-story-package', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ storyId: packageJob.storyId }),
+            body: JSON.stringify({ storyId }),
           })
           const completeData = await readJsonResponse(completeRes, '/api/admin/complete-story-package')
           setAscParseError(null)
           if (!completeRes.ok || !completeData.success) {
-            throw new Error(completeData.error || `Episode ${packageJob.episodeNumber || '?'} package completion failed`)
+            const error = completeData.blockingReason || completeData.error || `Package completion failed`
+            updateImportReport(storyId, {
+              completeStatus: 'failed',
+              publishStatus: 'skipped',
+              route: '/api/admin/complete-story-package',
+              error,
+            })
+            throw new Error(`Episode ${episodeNumber || '?'} "${episodeTitle}" complete-story-package failed: ${error}`)
           }
+          updateImportReport(storyId, { completeStatus: 'success' })
 
           const completedStory = completeData.story || {}
-          setMessage(`Publishing Episode ${packageJob.episodeNumber || '?'}...`)
+          setMessage(`Publishing Episode ${episodeNumber || '?'}: ${episodeTitle}...`)
           const publishRes = await fetch('/api/admin/publish-story', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              storyId: packageJob.storyId,
+              storyId,
               queueId: packageJob.queueId || '',
-              title: packageJob.title || row?.episode.title || '',
+              title: episodeTitle,
               author: completedStory.author || '',
               genre: completedStory.genre || '',
               audio_url: packageJob.audioUrl || row?.episode.audioUrl || row?.dbAudioUrl || '',
@@ -769,7 +819,53 @@ export default function AscAdminPage() {
           const publishData = await readJsonResponse(publishRes, '/api/admin/publish-story')
           setAscParseError(null)
           if (!publishRes.ok || !publishData.success) {
-            throw new Error(publishData.error || `Episode ${packageJob.episodeNumber || '?'} publish failed`)
+            const error = publishData.error || `Publish failed`
+            updateImportReport(storyId, {
+              publishStatus: 'failed',
+              route: '/api/admin/publish-story',
+              error,
+            })
+            throw new Error(`Episode ${episodeNumber || '?'} "${episodeTitle}" publish-story failed: ${error}`)
+          }
+          updateImportReport(storyId, { publishStatus: 'success' })
+
+          const { data: verifiedStory, error: verifyError } = await supabase
+            .from('stories')
+            .select('id,status,is_hidden,published_on,cover_url')
+            .eq('id', storyId)
+            .single()
+
+          if (verifyError || !verifiedStory) {
+            const error = verifyError?.message || 'Story row not found after publish'
+            updateImportReport(storyId, {
+              verified: false,
+              route: 'stories verification',
+              error,
+            })
+            throw new Error(`Episode ${episodeNumber || '?'} "${episodeTitle}" publish verification failed: ${error}`)
+          }
+
+          const dbState = {
+            status: verifiedStory.status,
+            is_hidden: verifiedStory.is_hidden,
+            published_on: verifiedStory.published_on,
+            cover_url: verifiedStory.cover_url,
+          }
+          const verified = verifiedStory.status === 'published'
+            && verifiedStory.is_hidden === false
+            && Boolean(verifiedStory.published_on)
+            && Boolean(verifiedStory.cover_url)
+
+          updateImportReport(storyId, { verified, dbState })
+
+          if (!verified) {
+            throw new Error(
+              `Episode ${episodeNumber || '?'} "${episodeTitle}" publish verification failed: ` +
+              `status=${verifiedStory.status || 'empty'}, ` +
+              `is_hidden=${String(verifiedStory.is_hidden)}, ` +
+              `published_on=${verifiedStory.published_on ? 'yes' : 'no'}, ` +
+              `cover_url=${verifiedStory.cover_url ? 'yes' : 'no'}`
+            )
           }
 
           importedJobs.push({
@@ -1403,8 +1499,41 @@ export default function AscAdminPage() {
               <div>candidateCount: {packageImportCandidateCount}</div>
             </div>
 
+            {packageImportReport.length > 0 && (
+              <div className="rounded border border-black bg-gray-50 p-3 text-sm space-y-3">
+                <div className="font-semibold">Package Import Report</div>
+                {packageImportReport.map((entry) => (
+                  <div key={entry.storyId || `${entry.episodeNumber}-${entry.title}`} className="rounded border border-gray-300 bg-white p-3">
+                    <div className="font-semibold">
+                      Episode {entry.episodeNumber || '—'}: {entry.title}
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 mt-2 text-xs text-gray-700">
+                      <div>complete-story-package: {entry.completeStatus}</div>
+                      <div>publish-story: {entry.publishStatus}</div>
+                      <div>DB verified: {entry.verified ? 'yes' : 'no'}</div>
+                      <div>storyId: {entry.storyId || '—'}</div>
+                    </div>
+                    {entry.dbState && (
+                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 mt-2 text-xs text-gray-700">
+                        <div>status: {entry.dbState.status || '—'}</div>
+                        <div>is_hidden: {String(entry.dbState.is_hidden)}</div>
+                        <div>published_on: {entry.dbState.published_on ? 'yes' : 'no'}</div>
+                        <div>cover_url: {entry.dbState.cover_url ? 'yes' : 'no'}</div>
+                      </div>
+                    )}
+                    {entry.error && (
+                      <div className="mt-2 rounded border border-red-300 bg-red-50 p-2 text-xs text-red-800">
+                        <div className="font-semibold">{entry.route || 'error'}</div>
+                        <div>{entry.error}</div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
             <div className="rounded border border-dashed border-gray-400 p-4 text-sm text-gray-600">
-              Package mode does not call the single-story publish route. Use the episode/job states above as the current package completion record.
+              Package import completes and publishes each episode one at a time, then verifies the final database row before marking the package complete.
             </div>
           </div>
         ) : singleJobPublished ? (
