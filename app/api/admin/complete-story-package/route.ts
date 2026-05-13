@@ -97,6 +97,10 @@ async function updateStory(storyId: string, updates: Record<string, unknown>) {
 function storySummary(story: any) {
   return {
     title: story?.title || '',
+    author: story?.author || '',
+    genre: story?.genre || '',
+    duration_mins: story?.duration_mins || null,
+    created_at: story?.created_at || null,
     author_id: story?.author_id || null,
     narrator_voice_id: story?.narrator_voice_id || null,
     narrator_voice_name: story?.narrator_voice_name || null,
@@ -108,6 +112,31 @@ function storySummary(story: any) {
     status: story?.status || '',
     is_hidden: Boolean(story?.is_hidden),
   }
+}
+
+function missingReviewReadyFields(story: any) {
+  const missing: string[] = []
+  if (!String(story?.title || '').trim()) missing.push('title')
+  if (!String(story?.author || '').trim()) missing.push('author')
+  if (!String(story?.genre || '').trim()) missing.push('genre')
+  if (!String(story?.description || '').trim()) missing.push('description')
+  if (!Number(story?.duration_mins || 0)) missing.push('duration_mins')
+  if (!String(story?.created_at || '').trim()) missing.push('created_at')
+  if (!String(story?.audio_url || '').trim()) missing.push('audio_url')
+  if (!String(story?.story_audio_url || '').trim()) missing.push('story_audio_url')
+  if (!String(story?.cover_url || '').trim()) missing.push('cover_url')
+  if (!String(story?.prose_text || '').trim()) missing.push('prose_text')
+  if (!String(story?.author_id || '').trim()) missing.push('author_id')
+  if (!String(story?.narrator_voice_id || '').trim()) missing.push('narrator_voice_id')
+  if (!String(story?.narrator_voice_name || '').trim()) missing.push('narrator_voice_name')
+  return missing
+}
+
+function blockingReason(failedSteps: PackageStep[], missingFields: string[]) {
+  const reasons: string[] = []
+  failedSteps.forEach(step => reasons.push(`${step.step}: ${step.message}`))
+  if (missingFields.length > 0) reasons.push(`missing review-ready field(s): ${missingFields.join(', ')}`)
+  return reasons.join('; ')
 }
 
 export async function POST(req: NextRequest) {
@@ -240,7 +269,31 @@ export async function POST(req: NextRequest) {
         if (!coverRes.ok || !coverData?.success || !coverData?.coverImageUrl) {
           throw new Error(coverData?.error || 'Cover generation failed')
         }
-        story.cover_url = coverData.coverImageUrl
+        const coverUrl = String(coverData.coverImageUrl || '').trim()
+        const { error: coverUpdateError } = await supabase
+          .from('stories')
+          .update({ cover_url: coverUrl })
+          .eq('id', storyId)
+
+        if (coverUpdateError) {
+          throw new Error(`Cover URL persistence failed: ${coverUpdateError.message}`)
+        }
+
+        const { data: coverCheck, error: coverCheckError } = await supabase
+          .from('stories')
+          .select('cover_url')
+          .eq('id', storyId)
+          .single()
+
+        if (coverCheckError) {
+          throw new Error(`Cover URL verification failed: ${coverCheckError.message}`)
+        }
+
+        if (!String(coverCheck?.cover_url || '').trim()) {
+          throw new Error('cover generation returned URL but cover_url was not persisted')
+        }
+
+        story.cover_url = coverCheck.cover_url
         steps.push({ step: 'cover', status: 'updated', message: 'Generated unique cover' })
       } catch (err) {
         steps.push({ step: 'cover', status: 'failed', message: err instanceof Error ? err.message : String(err) })
@@ -280,7 +333,7 @@ export async function POST(req: NextRequest) {
 
     const { data: refreshed, error: refreshError } = await supabase
       .from('stories')
-      .select('title,author_id,narrator_voice_id,narrator_voice_name,cover_url,description,prose_text,audio_url,story_audio_url,status,is_hidden')
+      .select('title,author,genre,duration_mins,created_at,author_id,narrator_voice_id,narrator_voice_name,cover_url,description,prose_text,audio_url,story_audio_url,status,is_hidden')
       .eq('id', storyId)
       .single()
 
@@ -288,11 +341,41 @@ export async function POST(req: NextRequest) {
       return json({ success: false, error: refreshError?.message || 'Failed to reload story after package completion', storyId, steps }, 500)
     }
 
+    const failedSteps = steps.filter((step) => step.status === 'failed')
+    const skippedSteps = steps.filter((step) => step.status === 'skipped')
+    const missingFields = missingReviewReadyFields(refreshed)
+    if (failedSteps.length > 0 || missingFields.length > 0) {
+      const reason = blockingReason(failedSteps, missingFields)
+      return json({
+        success: false,
+        error: `Package incomplete. ${reason}`,
+        blockingReason: reason,
+        storyId,
+        steps,
+        failedSteps,
+        skippedSteps,
+        missingFields,
+        story: storySummary(refreshed),
+      }, 422)
+    }
+
+    await updateStory(storyId, {
+      status: 'audio_ready',
+      is_hidden: true,
+      published_on: null,
+    })
+
+    const reviewReadyStory = {
+      ...refreshed,
+      status: 'audio_ready',
+      is_hidden: true,
+    }
+
     return json({
-      success: !steps.some((step) => step.status === 'failed'),
+      success: true,
       storyId,
       steps,
-      story: storySummary(refreshed),
+      story: storySummary(reviewReadyStory),
     })
   } catch (err) {
     return json({
