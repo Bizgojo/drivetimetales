@@ -15,6 +15,7 @@ type PackageStep = {
   step: 'author' | 'narrator' | 'cover' | 'description' | 'prose'
   status: StepStatus
   message: string
+  details?: Record<string, unknown>
 }
 
 function json(payload: Record<string, unknown>, status = 200) {
@@ -259,24 +260,38 @@ export async function POST(req: NextRequest) {
     if (story.cover_url && !forceCover) {
       steps.push({ step: 'cover', status: 'skipped', message: 'Already exists' })
     } else {
+      const coverDiagnostics: Record<string, unknown> = { storyId }
       try {
-        const coverRes = await fetch(`${getOrigin(req)}/api/asc3/regenerate-cover`, {
+        const coverEndpoint = `${getOrigin(req)}/api/asc3/regenerate-cover`
+        coverDiagnostics.regenerateCoverEndpoint = coverEndpoint
+        console.log('[complete-story-package] cover generation start', coverDiagnostics)
+
+        const coverRes = await fetch(coverEndpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ storyId, genre: story.genre || story.primary_genre || '' }),
         })
         const coverData = await coverRes.json().catch(() => ({}))
+        coverDiagnostics.regenerateCoverStatus = coverRes.status
+        coverDiagnostics.regenerateCoverOk = coverRes.ok
+        coverDiagnostics.regenerateCoverSuccess = Boolean(coverData?.success)
+        coverDiagnostics.returnedCoverImageUrl = coverData?.coverImageUrl || null
+        coverDiagnostics.regenerateCoverError = coverData?.error || null
+        console.log('[complete-story-package] cover generation response', coverDiagnostics)
+
         if (!coverRes.ok || !coverData?.success || !coverData?.coverImageUrl) {
-          throw new Error(coverData?.error || 'Cover generation failed')
+          throw Object.assign(new Error(coverData?.error || 'Cover generation failed'), { details: coverDiagnostics })
         }
         const coverUrl = String(coverData.coverImageUrl || '').trim()
         const { error: coverUpdateError } = await supabase
           .from('stories')
           .update({ cover_url: coverUrl })
           .eq('id', storyId)
+        coverDiagnostics.supabaseUpdateError = coverUpdateError?.message || null
+        console.log('[complete-story-package] cover_url update result', coverDiagnostics)
 
         if (coverUpdateError) {
-          throw new Error(`Cover URL persistence failed: ${coverUpdateError.message}`)
+          throw Object.assign(new Error(`Cover URL persistence failed: ${coverUpdateError.message}`), { details: coverDiagnostics })
         }
 
         const { data: coverCheck, error: coverCheckError } = await supabase
@@ -284,19 +299,31 @@ export async function POST(req: NextRequest) {
           .select('cover_url')
           .eq('id', storyId)
           .single()
+        coverDiagnostics.rereadError = coverCheckError?.message || null
+        coverDiagnostics.rereadCoverUrl = coverCheck?.cover_url || null
+        console.log('[complete-story-package] cover_url reread result', coverDiagnostics)
 
         if (coverCheckError) {
-          throw new Error(`Cover URL verification failed: ${coverCheckError.message}`)
+          throw Object.assign(new Error(`Cover URL verification failed: ${coverCheckError.message}`), { details: coverDiagnostics })
         }
 
         if (!String(coverCheck?.cover_url || '').trim()) {
-          throw new Error('cover generation returned URL but cover_url was not persisted')
+          throw Object.assign(new Error('cover generation returned URL but cover_url was not persisted'), { details: coverDiagnostics })
         }
 
         story.cover_url = coverCheck.cover_url
         steps.push({ step: 'cover', status: 'updated', message: 'Generated unique cover' })
       } catch (err) {
-        steps.push({ step: 'cover', status: 'failed', message: err instanceof Error ? err.message : String(err) })
+        const details = (err && typeof err === 'object' && 'details' in err)
+          ? (err as { details?: Record<string, unknown> }).details
+          : coverDiagnostics
+        console.error('[complete-story-package] cover step failed', details)
+        steps.push({
+          step: 'cover',
+          status: 'failed',
+          message: err instanceof Error ? err.message : String(err),
+          details,
+        })
       }
     }
 
