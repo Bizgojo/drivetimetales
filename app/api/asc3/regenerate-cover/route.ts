@@ -20,6 +20,45 @@ const supabase = createClient(
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY!
 const IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1'
 
+type CoverFailureDetails = {
+  substep: string
+  status?: number
+  contentType?: string
+  responsePreview?: string
+  error?: string
+}
+
+function coverFailure(message: string, details: CoverFailureDetails) {
+  return Object.assign(new Error(message), { details })
+}
+
+async function readJsonOrCoverFailure(res: Response, substep: string) {
+  const contentType = res.headers.get('content-type') || ''
+  const raw = await res.text()
+  const trimmed = raw.trim()
+
+  if (!contentType.includes('application/json') || (!trimmed.startsWith('{') && !trimmed.startsWith('['))) {
+    throw coverFailure(`${substep} returned non-JSON response`, {
+      substep,
+      status: res.status,
+      contentType,
+      responsePreview: raw.slice(0, 300),
+    })
+  }
+
+  try {
+    return JSON.parse(trimmed)
+  } catch (err) {
+    throw coverFailure(`${substep} returned invalid JSON`, {
+      substep,
+      status: res.status,
+      contentType,
+      responsePreview: raw.slice(0, 300),
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+}
+
 function escapeXml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
@@ -141,17 +180,24 @@ async function generateWithDallE(prompt: string): Promise<Buffer> {
     body: JSON.stringify(imageRequest),
   })
 
+  const imageContentType = res.headers.get('content-type') || ''
   if (!res.ok) {
     const errText = await res.text()
     console.error('[regenerate-cover] image response failure:', {
       model: IMAGE_MODEL,
       status: res.status,
+      contentType: imageContentType,
       bodyPreview: errText.slice(0, 500),
     })
-    throw new Error(`${IMAGE_MODEL} image generation error: ${res.status} - ${errText}`)
+    throw coverFailure(`${IMAGE_MODEL} image generation error`, {
+      substep: 'image generation',
+      status: res.status,
+      contentType: imageContentType,
+      responsePreview: errText.slice(0, 300),
+    })
   }
 
-  const json = await res.json() as any
+  const json = await readJsonOrCoverFailure(res, 'image generation') as any
   console.log('[regenerate-cover] image response success:', {
     model: IMAGE_MODEL,
     hasUrl: Boolean(json.data?.[0]?.url),
@@ -176,7 +222,25 @@ async function generateWithDallE(prompt: string): Promise<Buffer> {
 
   // Download the image
   const imgRes = await fetch(imageUrl)
-  if (!imgRes.ok) throw new Error(`Failed to download generated image: ${imgRes.status}`)
+  const imgContentType = imgRes.headers.get('content-type') || ''
+  if (!imgRes.ok) {
+    const imgText = await imgRes.text().catch(() => '')
+    throw coverFailure(`Failed to download generated image: ${imgRes.status}`, {
+      substep: 'generated image download',
+      status: imgRes.status,
+      contentType: imgContentType,
+      responsePreview: imgText.slice(0, 300),
+    })
+  }
+  if (!imgContentType.startsWith('image/')) {
+    const imgText = await imgRes.text().catch(() => '')
+    throw coverFailure('Generated image download returned non-image response', {
+      substep: 'generated image download',
+      status: imgRes.status,
+      contentType: imgContentType,
+      responsePreview: imgText.slice(0, 300),
+    })
+  }
   return Buffer.from(await imgRes.arrayBuffer())
 }
 
@@ -229,7 +293,12 @@ export async function POST(req: NextRequest) {
       .from('audio')
       .upload(storagePath, imgBuffer, { contentType: 'image/jpeg', upsert: true })
 
-    if (uploadErr) throw new Error(`Cover upload error: ${uploadErr.message}`)
+    if (uploadErr) {
+      throw coverFailure(`Cover upload error: ${uploadErr.message}`, {
+        substep: 'supabase storage upload',
+        error: uploadErr.message,
+      })
+    }
 
     const { data: { publicUrl } } = supabase.storage.from('audio').getPublicUrl(storagePath)
 
@@ -243,13 +312,22 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    await supabase.from('stories').update({ cover_url: publicUrl }).eq('id', storyId)
+    const { error: coverUpdateError } = await supabase.from('stories').update({ cover_url: publicUrl }).eq('id', storyId)
+    if (coverUpdateError) {
+      throw coverFailure(`Cover URL update error: ${coverUpdateError.message}`, {
+        substep: 'stories.cover_url update',
+        error: coverUpdateError.message,
+      })
+    }
 
     console.log(`✅ Cover regenerated: ${publicUrl}`)
     return NextResponse.json({ success: true, coverImageUrl: publicUrl })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    console.error('❌ Cover regeneration failed:', msg)
-    return NextResponse.json({ success: false, error: msg }, { status: 500 })
+    const details = err && typeof err === 'object' && 'details' in err
+      ? (err as { details?: CoverFailureDetails }).details
+      : undefined
+    console.error('❌ Cover regeneration failed:', { error: msg, details })
+    return NextResponse.json({ success: false, error: msg, details }, { status: 500 })
   }
 }
