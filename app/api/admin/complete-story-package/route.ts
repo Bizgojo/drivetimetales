@@ -392,6 +392,31 @@ export async function POST(req: NextRequest) {
       published_on: null,
     })
 
+    let belleVariants: Record<string, unknown> = { success: false, skipped: true }
+    try {
+      const belleRes = await fetch(`${getOrigin(req)}/api/admin/generate-belle-variants`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storyId }),
+      })
+      const belleData = await belleRes.json().catch(() => ({}))
+      belleVariants = {
+        success: belleRes.ok && Boolean(belleData?.success),
+        status: belleRes.status,
+        count: belleData?.count || 0,
+        error: belleData?.error || null,
+      }
+      if (!belleRes.ok || !belleData?.success) {
+        console.warn('[complete-story-package] Belle variant generation failed', belleVariants)
+      }
+    } catch (err) {
+      belleVariants = {
+        success: false,
+        error: err instanceof Error ? err.message : String(err),
+      }
+      console.warn('[complete-story-package] Belle variant generation threw', belleVariants)
+    }
+
     const reviewReadyStory = {
       ...refreshed,
       status: 'audio_ready',
@@ -402,6 +427,7 @@ export async function POST(req: NextRequest) {
       success: true,
       storyId,
       steps,
+      belleVariants,
       story: storySummary(reviewReadyStory),
     })
   } catch (err) {
