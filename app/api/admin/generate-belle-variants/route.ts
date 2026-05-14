@@ -88,8 +88,11 @@ function validateVariant(variant: BelleVariant, story: any) {
   if (CANNED_PATTERNS.some((pattern) => pattern.test(text))) errors.push('generic/canned wording detected')
   if (variant.kind === 'intro' && /\bbegins now\b/i.test(text)) errors.push('generic/canned wording detected')
   if (variant.kind === 'intro' && text.split(/\s+/).filter(Boolean).length > 35) errors.push('intro must be short and conversational')
+  if (variant.kind === 'outro' && text.split(/\s+/).filter(Boolean).length < 12) errors.push('outro must leave emotional warmth, not a hard stop')
   if (variant.kind === 'outro' && text.split(/\s+/).filter(Boolean).length > 42) errors.push('outro must be short and leave a feeling, not resolve the whole plot')
   if (variant.kind === 'outro' && (text.match(/[.!?]+/g) || []).length > 2) errors.push('outro must be one or two short sentences')
+  if (variant.kind === 'outro' && /^\s*that was\b/i.test(text)) errors.push('outro must not use a flat "That was..." structure')
+  if (variant.kind === 'outro' && /\b(was written by|written by|endless tales original)\b/i.test(text)) errors.push('outro must not sound like credits')
   if (/\b(summary|summarize|plot|synopsis)\b/i.test(text)) errors.push('must not mechanically summarize the plot')
   if (variant.kind === 'intro' && /\bendless tales original\b/i.test(text)) errors.push('intro must not include platform credits')
   if (variant.kind === 'intro' && story?.author && lower.includes(` by ${String(story.author).trim().toLowerCase()}`)) errors.push('intro must not include author credits')
@@ -99,7 +102,19 @@ function validateVariant(variant: BelleVariant, story: any) {
   }
   if (variant.uses_name && !text.includes('[LISTENER_NAME]')) errors.push('uses_name variants must include [LISTENER_NAME]')
   if (!variant.uses_name && text.includes('[LISTENER_NAME]')) errors.push('only uses_name variants may include [LISTENER_NAME]')
+  if (text.includes('[LISTENER_NAME]') && hasAwkwardNamePlacement(text)) errors.push('[LISTENER_NAME] placement breaks natural grammar')
   return { valid: errors.length === 0, errors, text }
+}
+
+function hasAwkwardNamePlacement(text: string): boolean {
+  const compact = cleanText(text)
+  if (!compact.includes('[LISTENER_NAME]')) return false
+  const withoutName = cleanText(compact.replace(/\s*,?\s*\[LISTENER_NAME\]\s*,?\s*/g, ' '))
+  if (/^(and|but|or|so|because|that|which|where|when)\b/i.test(withoutName)) return true
+  if (/\b(find|finds|found|hear|hears|heard|see|sees|saw|open|opens|opened|answer|answers|answered|pull|pulls|pulled|hold|holds|held|meet|meets|met|watch|watches|watched)\s+\[LISTENER_NAME\]\s+(that|which|who|where|when|what|inside|beneath|under|behind|in|on|at|from|with)\b/i.test(compact)) return true
+  if (/\b(something|someone|anything|anyone|nothing|voice|sound|room|door|phone|letter|pages|secret|truth)\s+\[LISTENER_NAME\]\s+(that|which|who|where|when|inside|beneath|under|behind|in|on|at|from|with)\b/i.test(compact)) return true
+  if (/\b(the|a|an|this|that|his|her|their|our|your)\s+\[LISTENER_NAME\]\s+\w+/i.test(compact)) return true
+  return false
 }
 
 function validateBatch(variants: BelleVariant[]) {
@@ -182,12 +197,26 @@ Canonical rules:
 - Write for this exact story/episode. No generic canned templates.
 - Use one concrete sensory image from the story and one emotional pressure point.
 - Do not explain the premise or summarize the plot.
+- Intros should lightly orient the listener into the story world before the hook.
+- Establish the real-world frame first: the place, object, job, system, route, case, or situation involved.
+- Then add the strange, emotional, or mysterious element.
+- The listener should understand the situation immediately while driving.
+- Avoid abstract teaser imagery with no grounding.
 - Intros must be 1–2 short sentences, usually under 28 words, hard max 35.
 - Title is optional. If used, it must sound natural, not like an announcement.
 - Use [LISTENER_NAME] in exactly two intro variants, naturally and casually.
 - Never start with "Welcome, [LISTENER_NAME]".
 - If using the listener name, make it feel incidental and warm.
-- Outros should create emotional continuation, not promotion.
+- [LISTENER_NAME] must appear naturally in a complete sentence.
+- Place [LISTENER_NAME] near the beginning or after a natural pause, like "[LISTENER_NAME], ..." or "... , [LISTENER_NAME], ..."
+- Never insert [LISTENER_NAME] between verb/object phrases or inside clauses where it breaks grammar.
+- If [LISTENER_NAME] is removed, the sentence should still read naturally.
+- Outros should feel reflective, human, companion-like, and emotionally lingering.
+- Belle should sound like someone still sitting beside the listener after the story ended.
+- Outros may be slightly longer than intros, but still concise.
+- Outros should quietly encourage continued listening through feeling, not promotion.
+- Standalone outros should feel complete but not emotionally closed-off.
+- Series outros should create a natural emotional pull toward the next episode.
 - No time-of-day references.
 - No speaker labels.
 - Do not write: "Welcome", "begins now", "only on Endless Tales", "This is [title]", "You're listening to", "come with me", "come back", "come down", "you should", "get ready", "sit back", "relax and enjoy".
@@ -212,9 +241,12 @@ Outro rules:
 - Do not write period-separated fragments. Avoid patterns like "That handprint. That bell. Some calls..."
 - Land on the feeling left by the story, not a recap.
 - Leave an emotional echo. Do not resolve the whole plot beat-by-beat.
+- Leave the listener with warmth, ache, curiosity, or quiet momentum.
+- Avoid hard-stop endings that simply close the file.
+- Avoid "That was..." as the dominant structure.
+- Do not include credits or "written by" language in these variants.
 - For standalone stories, close with a resonant image or consequence.
 - For series non-finales, name one specific unresolved consequence.
-- Credits may be included only in outro.
 - The variant_key values are fixed API keys. Return exactly these seven keys and do not rename them, even for finales: session_first, session_continue, returning_listener, simple, simple, reflective, series_continue.
 
 Story:
