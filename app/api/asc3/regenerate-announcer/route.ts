@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 export const runtime = 'nodejs'
 import { createClient } from '@supabase/supabase-js'
 import { elevenLabsTTS } from '@/app/lib/el-logger'
+import { CANONICAL_BELLE_B_VOICE_ID } from '@/lib/voiceConstants'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const BELLE_B_VOICE_ID = 'EXAVITQu4vr4xnSDxMaL'
+const BELLE_B_VOICE_ID = CANONICAL_BELLE_B_VOICE_ID
 
 // POST body: { storyId, type: 'intro' | 'outro', text, storyTitle? }
 export async function POST(req: NextRequest) {

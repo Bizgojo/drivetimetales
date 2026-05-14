@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
 import { logAnthropicCall } from '@/app/lib/anthropic-logger'
+import { buildNamePalettePromptBlock } from '@/lib/story/namePalette'
 
 export const runtime = 'nodejs'
 
@@ -129,7 +130,7 @@ function buildContinuityBundle(prior: Array<{ episode: any; script: string; scri
   })
 }
 
-function buildPrompt(series: any, episode: any, allEpisodes: any[], continuityBundle: any[]) {
+function buildPrompt(series: any, episode: any, allEpisodes: any[], continuityBundle: any[], namePaletteBlock: string) {
   const brief = episode.brief_json || {}
   const target = runtimeTarget(brief.runtime || '')
   const episodeNumber = Number(episode.episode_number || brief.series_episode_number || 1)
@@ -158,6 +159,8 @@ CURRENT published rules:
 - No SFX in the published story body.
 - Final title must be 1 to 5 words and 28 characters or fewer so it fits one line on story cards.
 - Output ONLY the script. No commentary.
+
+${namePaletteBlock}
 
 Required script structure:
 TITLE: [${brief.episode_title || episode.title}; 1 to 5 words, 28 characters or fewer]
@@ -241,6 +244,24 @@ PRIOR EPISODE CONTINUITY BUNDLE:
 	`
 }
 
+async function loadRecentStoryTexts(seriesId: string) {
+  const { data, error } = await supabase
+    .from('stories')
+    .select('title,script,script_json,series_id')
+    .not('script', 'is', null)
+    .or(`series_id.is.null,series_id.neq.${seriesId}`)
+    .order('created_at', { ascending: false })
+    .limit(50)
+
+  if (error || !data) return []
+
+  return data.map((story: any) => [
+    story.title || '',
+    story.script || '',
+    story.script_json?.raw_script || '',
+  ].join('\n'))
+}
+
 export async function GET(req: NextRequest) {
   try {
     const seriesId = req.nextUrl.searchParams.get('seriesId')?.trim()
@@ -302,6 +323,7 @@ export async function POST(req: NextRequest) {
 
     const priorGenerated: Array<{ episode: any; script: string; scriptJson: any }> = []
     const generatedEpisodes = []
+    const recentStoryTexts = await loadRecentStoryTexts(cleanSeriesId)
 
     for (let episode of episodes) {
       const episodeNumber = Number(episode.episode_number || episode.series_episode_number || generatedEpisodes.length + 1)
@@ -346,7 +368,7 @@ export async function POST(req: NextRequest) {
               script_json: nextScriptJson,
             })
             .eq('id', episode.id)
-            .select('id,title,status,brief_json,script,script_json,series_id,episode_number,series_episode_number')
+            .select('id,title,author,author_style,genre,narrative_voice,description,brief_json,status,script,script_json,script_version,series_id,series_name,episode_number,series_episode_number,series_total_episodes,series_is_finale,story_type')
             .single()
 
           if (existingUpdateError || !updatedExisting) {
@@ -371,7 +393,14 @@ export async function POST(req: NextRequest) {
       console.log(`[series-package/generate-scripts] Generating missing episode ${episodeNumber}`)
 
       const continuityBundle = buildContinuityBundle(priorGenerated)
-      const prompt = buildPrompt(series, episode, episodes, continuityBundle)
+      const namePaletteBlock = buildNamePalettePromptBlock({
+        genre: episode.genre || brief.genre || '',
+        setting: [brief.setting, brief.location, brief.region, series.setting].filter(Boolean).join(' '),
+        era: brief.era || brief.period || '',
+        seriesContinuityText: continuityBundle.map((item) => JSON.stringify(item)).join('\n'),
+        recentStoryTexts,
+      })
+      const prompt = buildPrompt(series, episode, episodes, continuityBundle, namePaletteBlock)
 
       let response
       try {

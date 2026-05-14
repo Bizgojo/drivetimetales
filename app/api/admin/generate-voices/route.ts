@@ -5,6 +5,7 @@ import { promisify } from 'util'
 import { promises as fs } from 'fs'
 import path from 'path'
 import os from 'os'
+import { CANONICAL_BELLE_B_VOICE_ID, RESERVED_BELLE_B_VOICE_IDS, isBelleBVoiceId } from '@/lib/voiceConstants'
 
 export const runtime = 'nodejs'
 export const maxDuration = 800
@@ -31,7 +32,6 @@ const supabase = createClient(
 )
 
 const EL_API_KEY = process.env.ELEVENLABS_API_KEY!
-const BELLE_B_VOICE_ID = 'KWDD3Wyq30ZF5NEL01EJ'
 const BASE_STORAGE = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio`
 const EL_SETTINGS = { stability: 0.5, similarity_boost: 0.75, style: 0.0, use_speaker_boost: true }
 const SPOKEN_REFERENCE_LUFS = -16
@@ -265,8 +265,8 @@ function logShortCandidateQc(fileName: string, speaker: string, candidate: numbe
 
 // Permanent narrator voices — excluded from character pool
 const NARRATOR_VOICE_NAMES = ['Cole Hargrove','Elliott Crane','Finn Calloway','James Alcott','Marcus Hale','Ray Dolan','Iris Calloway','June Harlow','Morgan Veil','Nora Ashby','Quinn Merritt','Sage Wilder']
-// BELLE B — EXCLUSIVE ANNOUNCER VOICE. NEVER use as character or narrator.
-const BELLE_B_ID = 'KWDD3Wyq30ZF5NEL01EJ' // Belle B – Expressive Narrator & Storyteller. Locked permanently.
+// BELLE B — EXCLUSIVE ANNOUNCER VOICE. NEVER use as character, narrator, or fallback.
+const BELLE_B_ID = CANONICAL_BELLE_B_VOICE_ID
 
 // Load all My Voices from ElevenLabs — used as the character voice pool
 async function loadMyVoices(): Promise<any[]> {
@@ -276,7 +276,7 @@ async function loadMyVoices(): Promise<any[]> {
     const data = await res.json()
     // Filter to only usable character voices — exclude narrators, Belle B, ET voices, generated voices
     return (data.voices || []).filter((v: any) => {
-      if (v.voice_id === BELLE_B_ID) return false
+      if (isBelleBVoiceId(v.voice_id)) return false
       if (v.labels?.language && v.labels.language !== 'en') return false
       if (v.category === 'generated') return false
       if (NARRATOR_VOICE_NAMES.includes(v.name)) return false
@@ -383,7 +383,7 @@ function findVoiceForCharacter(
 ): string {
   // Score all candidates
   const scored = myVoices
-    .filter(v => !usedVoiceIds.has(v.voice_id) && v.voice_id !== narratorVoiceId && v.voice_id !== BELLE_B_ID)
+    .filter(v => !usedVoiceIds.has(v.voice_id) && v.voice_id !== narratorVoiceId && !isBelleBVoiceId(v.voice_id))
     .map(v => ({ voice: v, score: scoreVoice(v, meta) }))
     .filter(x => x.score > -999) // Remove wrong gender
     .sort((a, b) => b.score - a.score)
@@ -393,6 +393,7 @@ function findVoiceForCharacter(
     const genderFallback = myVoices.find(v =>
       !usedVoiceIds.has(v.voice_id) &&
       v.voice_id !== narratorVoiceId &&
+      !isBelleBVoiceId(v.voice_id) &&
       (v.labels?.gender?.toLowerCase() === meta.gender.toLowerCase())
     )
     if (genderFallback) {
@@ -871,7 +872,7 @@ export async function POST(req: NextRequest) {
     if (!resolvedNarratorVoiceId) {
       narratorGenderCheck.passed = false
       narratorGenderCheck.reason = 'No narrator voice found'
-    } else if (resolvedNarratorVoiceId === BELLE_B_ID) {
+    } else if (isBelleBVoiceId(resolvedNarratorVoiceId)) {
       narratorGenderCheck.passed = false
       narratorGenderCheck.reason = 'Belle B cannot be used as the story narrator or narrator-character voice.'
     } else if (isFirstPerson && !protagonist) {
@@ -936,7 +937,7 @@ export async function POST(req: NextRequest) {
     }
     console.log(`\n🎙 generate-voices: ${storyId}`)
     console.log(`  Narrative: ${narrativeVoice}, narratorIsCharacter: ${isFirstPerson}`)
-    if (resolvedNarratorVoiceId === BELLE_B_ID) {
+    if (isBelleBVoiceId(resolvedNarratorVoiceId)) {
       return NextResponse.json({
         success: false,
         error: 'Belle B cannot be used as the story narrator or narrator-character voice.',
@@ -971,14 +972,21 @@ export async function POST(req: NextRequest) {
     // Load My Voices pool once — used for all character assignments
     const myVoices = await loadMyVoices()
     console.log(`  My Voices pool: ${myVoices.length} voices`)
-    const usedVoiceIds = new Set<string>([resolvedNarratorVoiceId, BELLE_B_ID])
+    const usedVoiceIds = new Set<string>([resolvedNarratorVoiceId, ...RESERVED_BELLE_B_VOICE_IDS])
     // Build voice map using local My Voices scoring
     const voiceMap: Record<string, string> = {}
     for (const char of characterGuide) {
       const key = char.name.toUpperCase()
       // Check if manually overridden
       if (characterVoices?.[char.name] || characterVoices?.[key]) {
-        voiceMap[key] = (characterVoices[char.name] || characterVoices[key]) as string
+        const manualVoiceId = (characterVoices[char.name] || characterVoices[key]) as string
+        if (isBelleBVoiceId(manualVoiceId)) {
+          return NextResponse.json({
+            success: false,
+            error: `Belle B cannot be used as a character voice for ${char.name}.`,
+          }, { status: 422 })
+        }
+        voiceMap[key] = manualVoiceId
         assignCharacterVoice(voiceMap, char.name, voiceMap[key])
         usedVoiceIds.add(voiceMap[key])
         continue
@@ -1003,7 +1011,17 @@ export async function POST(req: NextRequest) {
       }
     }
     // Apply any remaining manual overrides
-    if (characterVoices) Object.entries(characterVoices).forEach(([name, id]) => { assignCharacterVoice(voiceMap, name, id as string) })
+    if (characterVoices) {
+      for (const [name, id] of Object.entries(characterVoices)) {
+        if (isBelleBVoiceId(id as string)) {
+          return NextResponse.json({
+            success: false,
+            error: `Belle B cannot be used as a character voice for ${name}.`,
+          }, { status: 422 })
+        }
+        assignCharacterVoice(voiceMap, name, id as string)
+      }
+    }
     console.log(`  Parsed character guide names:`, characterGuide.map(c => c.name).join(', ') || 'none')
     console.log(`  Characters:`, characterGuide.map(c => `${c.name}(${c.gender})`).join(', '))
     const characterSpeakers = Array.from(new Set(storyLines
@@ -1150,20 +1168,20 @@ export async function POST(req: NextRequest) {
           const beforeText = parts[0].trim()
           const afterText = parts[1].trim()
           const [beforeUrl, afterUrl] = await Promise.all([
-            generateVoiceLine(beforeText, BELLE_B_VOICE_ID, storyId, introLine.index, 'intro_before'),
-            generateVoiceLine(afterText, BELLE_B_VOICE_ID, storyId, introLine.index + 0.1, 'intro_after'),
+            generateVoiceLine(beforeText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'intro_before'),
+            generateVoiceLine(afterText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index + 0.1, 'intro_after'),
           ])
           results.intro = beforeUrl
           await supabase.from('stories').update({ intro_before_url: beforeUrl, intro_after_url: afterUrl }).eq('id', storyId)
           console.log('  ✅ Belle B intro split (before/after name)')
         } else {
-          results.intro = await generateVoiceLine(introText, BELLE_B_VOICE_ID, storyId, introLine.index, 'intro')
+          results.intro = await generateVoiceLine(introText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'intro')
           await supabase.from('stories').update({ intro_before_url: results.intro, intro_after_url: null }).eq('id', storyId)
           console.log('  ✅ Belle B intro (no name split)')
         }
       } catch (e) { console.error('  ❌ Intro failed:', e) }
     }
-    if (outroLine && outroLine.index !== introLine?.index) { try { results.outro = await generateVoiceLine(outroLine.text, BELLE_B_VOICE_ID, storyId, outroLine.index, 'outro'); console.log('  ✅ Belle B outro') } catch (e) { console.error('  ❌ Outro failed:', e) } }
+    if (outroLine && outroLine.index !== introLine?.index) { try { results.outro = await generateVoiceLine(outroLine.text, CANONICAL_BELLE_B_VOICE_ID, storyId, outroLine.index, 'outro'); console.log('  ✅ Belle B outro') } catch (e) { console.error('  ❌ Outro failed:', e) } }
     for (const line of storyLines) {
       if (nonDialogueSpeakers.has(line.speaker.toUpperCase())) continue
       if (line.type === 'beat' || line.type === 'pause') {

@@ -1,0 +1,7333 @@
+{
+  "version": 1,
+  "firstNames": {
+    "male": [
+      {
+        "name": "Caleb",
+        "regions": [
+          "us"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "mystery"
+        ]
+      },
+      {
+        "name": "Denny",
+        "regions": [
+          "new_england"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "thriller"
+        ]
+      },
+      {
+        "name": "Elias",
+        "regions": [
+          "us_south"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "horror"
+        ]
+      },
+      {
+        "name": "Hector",
+        "regions": [
+          "appalachian"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "historical"
+        ]
+      },
+      {
+        "name": "Malcolm",
+        "regions": [
+          "midwest"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "comedy"
+        ]
+      },
+      {
+        "name": "Silas",
+        "regions": [
+          "coastal"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "crime"
+        ]
+      },
+      {
+        "name": "Jonah",
+        "regions": [
+          "urban"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "gothic"
+        ]
+      },
+      {
+        "name": "Arlo",
+        "regions": [
+          "uk"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "rural"
+        ]
+      },
+      {
+        "name": "Gideon",
+        "regions": [
+          "irish"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "literary"
+        ]
+      },
+      {
+        "name": "Marcus",
+        "regions": [
+          "european"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "adventure"
+        ]
+      },
+      {
+        "name": "Victor",
+        "regions": [
+          "latin"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "working_class"
+        ]
+      },
+      {
+        "name": "Theo",
+        "regions": [
+          "us_west"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "folk"
+        ]
+      },
+      {
+        "name": "Russell",
+        "regions": [
+          "us"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "mystery"
+        ]
+      },
+      {
+        "name": "Edmund",
+        "regions": [
+          "new_england"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "thriller"
+        ]
+      },
+      {
+        "name": "Samuel",
+        "regions": [
+          "us_south"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "horror"
+        ]
+      },
+      {
+        "name": "Bram",
+        "regions": [
+          "appalachian"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "historical"
+        ]
+      },
+      {
+        "name": "Nolan",
+        "regions": [
+          "midwest"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "comedy"
+        ]
+      },
+      {
+        "name": "Wesley",
+        "regions": [
+          "coastal"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "crime"
+        ]
+      },
+      {
+        "name": "Julian",
+        "regions": [
+          "urban"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "gothic"
+        ]
+      },
+      {
+        "name": "Otis",
+        "regions": [
+          "uk"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "rural"
+        ]
+      },
+      {
+        "name": "Franklin",
+        "regions": [
+          "irish"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "literary"
+        ]
+      },
+      {
+        "name": "Milo",
+        "regions": [
+          "european"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "adventure"
+        ]
+      },
+      {
+        "name": "Abram",
+        "regions": [
+          "latin"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "working_class"
+        ]
+      },
+      {
+        "name": "Levi",
+        "regions": [
+          "us_west"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "folk"
+        ]
+      },
+      {
+        "name": "Aaron",
+        "regions": [
+          "us"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "mystery"
+        ]
+      },
+      {
+        "name": "Adam",
+        "regions": [
+          "new_england"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "thriller"
+        ]
+      },
+      {
+        "name": "Adrian",
+        "regions": [
+          "us_south"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "horror"
+        ]
+      },
+      {
+        "name": "Alan",
+        "regions": [
+          "appalachian"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "historical"
+        ]
+      },
+      {
+        "name": "Alaric",
+        "regions": [
+          "midwest"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "comedy"
+        ]
+      },
+      {
+        "name": "Albert",
+        "regions": [
+          "coastal"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "crime"
+        ]
+      },
+      {
+        "name": "Alden",
+        "regions": [
+          "urban"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "gothic"
+        ]
+      },
+      {
+        "name": "Alec",
+        "regions": [
+          "uk"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "rural"
+        ]
+      },
+      {
+        "name": "Alex",
+        "regions": [
+          "irish"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "literary"
+        ]
+      },
+      {
+        "name": "Alfred",
+        "regions": [
+          "european"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "adventure"
+        ]
+      },
+      {
+        "name": "Alistair",
+        "regions": [
+          "latin"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "working_class"
+        ]
+      },
+      {
+        "name": "Amos",
+        "regions": [
+          "us_west"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "folk"
+        ]
+      },
+      {
+        "name": "Andrew",
+        "regions": [
+          "us"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "mystery"
+        ]
+      },
+      {
+        "name": "Anthony",
+        "regions": [
+          "new_england"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "thriller"
+        ]
+      },
+      {
+        "name": "Archer",
+        "regions": [
+          "us_south"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "horror"
+        ]
+      },
+      {
+        "name": "Arthur",
+        "regions": [
+          "appalachian"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "historical"
+        ]
+      },
+      {
+        "name": "Asa",
+        "regions": [
+          "midwest"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "comedy"
+        ]
+      },
+      {
+        "name": "August",
+        "regions": [
+          "coastal"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "crime"
+        ]
+      },
+      {
+        "name": "Barrett",
+        "regions": [
+          "urban"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "gothic"
+        ]
+      },
+      {
+        "name": "Basil",
+        "regions": [
+          "uk"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "rural"
+        ]
+      },
+      {
+        "name": "Beau",
+        "regions": [
+          "irish"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "literary"
+        ]
+      },
+      {
+        "name": "Benjamin",
+        "regions": [
+          "european"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "adventure"
+        ]
+      },
+      {
+        "name": "Bennett",
+        "regions": [
+          "latin"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "working_class"
+        ]
+      },
+      {
+        "name": "Brendan",
+        "regions": [
+          "us_west"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "folk"
+        ]
+      },
+      {
+        "name": "Brooks",
+        "regions": [
+          "us"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "mystery"
+        ]
+      },
+      {
+        "name": "Bruce",
+        "regions": [
+          "new_england"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "thriller"
+        ]
+      },
+      {
+        "name": "Byron",
+        "regions": [
+          "us_south"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "horror"
+        ]
+      },
+      {
+        "name": "Callum",
+        "regions": [
+          "appalachian"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "historical"
+        ]
+      },
+      {
+        "name": "Calvin",
+        "regions": [
+          "midwest"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "comedy"
+        ]
+      },
+      {
+        "name": "Carter",
+        "regions": [
+          "coastal"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "crime"
+        ]
+      },
+      {
+        "name": "Cedric",
+        "regions": [
+          "urban"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "gothic"
+        ]
+      },
+      {
+        "name": "Charles",
+        "regions": [
+          "uk"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "rural"
+        ]
+      },
+      {
+        "name": "Clark",
+        "regions": [
+          "irish"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "literary"
+        ]
+      },
+      {
+        "name": "Clay",
+        "regions": [
+          "european"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "adventure"
+        ]
+      },
+      {
+        "name": "Clifford",
+        "regions": [
+          "latin"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "working_class"
+        ]
+      },
+      {
+        "name": "Colin",
+        "regions": [
+          "us_west"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "folk"
+        ]
+      },
+      {
+        "name": "Conrad",
+        "regions": [
+          "us"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "mystery"
+        ]
+      },
+      {
+        "name": "Cooper",
+        "regions": [
+          "new_england"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "thriller"
+        ]
+      },
+      {
+        "name": "Cormac",
+        "regions": [
+          "us_south"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "horror"
+        ]
+      },
+      {
+        "name": "Daniel",
+        "regions": [
+          "appalachian"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "historical"
+        ]
+      },
+      {
+        "name": "Darius",
+        "regions": [
+          "midwest"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "comedy"
+        ]
+      },
+      {
+        "name": "David",
+        "regions": [
+          "coastal"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "crime"
+        ]
+      },
+      {
+        "name": "Declan",
+        "regions": [
+          "urban"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "gothic"
+        ]
+      },
+      {
+        "name": "Dennis",
+        "regions": [
+          "uk"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "rural"
+        ]
+      },
+      {
+        "name": "Dominic",
+        "regions": [
+          "irish"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "literary"
+        ]
+      },
+      {
+        "name": "Douglas",
+        "regions": [
+          "european"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "adventure"
+        ]
+      },
+      {
+        "name": "Duncan",
+        "regions": [
+          "latin"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "working_class"
+        ]
+      },
+      {
+        "name": "Dylan",
+        "regions": [
+          "us_west"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "folk"
+        ]
+      },
+      {
+        "name": "Earl",
+        "regions": [
+          "us"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "mystery"
+        ]
+      },
+      {
+        "name": "Edward",
+        "regions": [
+          "new_england"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "thriller"
+        ]
+      },
+      {
+        "name": "Elliot",
+        "regions": [
+          "us_south"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "horror"
+        ]
+      },
+      {
+        "name": "Emmett",
+        "regions": [
+          "appalachian"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "historical"
+        ]
+      },
+      {
+        "name": "Eric",
+        "regions": [
+          "midwest"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "comedy"
+        ]
+      },
+      {
+        "name": "Ernest",
+        "regions": [
+          "coastal"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "crime"
+        ]
+      },
+      {
+        "name": "Ethan",
+        "regions": [
+          "urban"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "gothic"
+        ]
+      },
+      {
+        "name": "Everett",
+        "regions": [
+          "uk"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "rural"
+        ]
+      },
+      {
+        "name": "Felix",
+        "regions": [
+          "irish"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "literary"
+        ]
+      },
+      {
+        "name": "Finn",
+        "regions": [
+          "european"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "adventure"
+        ]
+      },
+      {
+        "name": "Fletcher",
+        "regions": [
+          "latin"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "working_class"
+        ]
+      },
+      {
+        "name": "Frank",
+        "regions": [
+          "us_west"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "folk"
+        ]
+      },
+      {
+        "name": "Frederick",
+        "regions": [
+          "us"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "mystery"
+        ]
+      },
+      {
+        "name": "Gabriel",
+        "regions": [
+          "new_england"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "thriller"
+        ]
+      },
+      {
+        "name": "Garrett",
+        "regions": [
+          "us_south"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "horror"
+        ]
+      },
+      {
+        "name": "Gavin",
+        "regions": [
+          "appalachian"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "historical"
+        ]
+      },
+      {
+        "name": "George",
+        "regions": [
+          "midwest"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "comedy"
+        ]
+      },
+      {
+        "name": "Graham",
+        "regions": [
+          "coastal"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "crime"
+        ]
+      },
+      {
+        "name": "Grant",
+        "regions": [
+          "urban"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "gothic"
+        ]
+      },
+      {
+        "name": "Griffin",
+        "regions": [
+          "uk"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "rural"
+        ]
+      },
+      {
+        "name": "Harold",
+        "regions": [
+          "irish"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "literary"
+        ]
+      },
+      {
+        "name": "Harrison",
+        "regions": [
+          "european"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "adventure"
+        ]
+      },
+      {
+        "name": "Harvey",
+        "regions": [
+          "latin"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "working_class"
+        ]
+      },
+      {
+        "name": "Henry",
+        "regions": [
+          "us_west"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "folk"
+        ]
+      },
+      {
+        "name": "Holden",
+        "regions": [
+          "us"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "mystery"
+        ]
+      },
+      {
+        "name": "Hugh",
+        "regions": [
+          "new_england"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "thriller"
+        ]
+      },
+      {
+        "name": "Ian",
+        "regions": [
+          "us_south"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "horror"
+        ]
+      },
+      {
+        "name": "Isaac",
+        "regions": [
+          "appalachian"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "historical"
+        ]
+      },
+      {
+        "name": "Ivan",
+        "regions": [
+          "midwest"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "comedy"
+        ]
+      },
+      {
+        "name": "Jack",
+        "regions": [
+          "coastal"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "crime"
+        ]
+      },
+      {
+        "name": "Jacob",
+        "regions": [
+          "urban"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "gothic"
+        ]
+      },
+      {
+        "name": "Jasper",
+        "regions": [
+          "uk"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "rural"
+        ]
+      },
+      {
+        "name": "Kenneth",
+        "regions": [
+          "irish"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "literary"
+        ]
+      },
+      {
+        "name": "Landon",
+        "regions": [
+          "european"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "adventure"
+        ]
+      },
+      {
+        "name": "Lawrence",
+        "regions": [
+          "latin"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "working_class"
+        ]
+      },
+      {
+        "name": "Leo",
+        "regions": [
+          "us_west"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "folk"
+        ]
+      },
+      {
+        "name": "Leon",
+        "regions": [
+          "us"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "mystery"
+        ]
+      },
+      {
+        "name": "Lewis",
+        "regions": [
+          "new_england"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "thriller"
+        ]
+      },
+      {
+        "name": "Logan",
+        "regions": [
+          "us_south"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "horror"
+        ]
+      },
+      {
+        "name": "Louis",
+        "regions": [
+          "appalachian"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "historical"
+        ]
+      },
+      {
+        "name": "Lucas",
+        "regions": [
+          "midwest"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "comedy"
+        ]
+      },
+      {
+        "name": "Martin",
+        "regions": [
+          "coastal"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "crime"
+        ]
+      },
+      {
+        "name": "Mason",
+        "regions": [
+          "urban"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "gothic"
+        ]
+      },
+      {
+        "name": "Matthias",
+        "regions": [
+          "uk"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "rural"
+        ]
+      },
+      {
+        "name": "Maxwell",
+        "regions": [
+          "irish"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "literary"
+        ]
+      },
+      {
+        "name": "Miles",
+        "regions": [
+          "european"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "adventure"
+        ]
+      },
+      {
+        "name": "Nathan",
+        "regions": [
+          "latin"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "working_class"
+        ]
+      },
+      {
+        "name": "Neil",
+        "regions": [
+          "us_west"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "folk"
+        ]
+      },
+      {
+        "name": "Oliver",
+        "regions": [
+          "us"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "mystery"
+        ]
+      },
+      {
+        "name": "Oscar",
+        "regions": [
+          "new_england"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "thriller"
+        ]
+      },
+      {
+        "name": "Owen",
+        "regions": [
+          "us_south"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "horror"
+        ]
+      },
+      {
+        "name": "Patrick",
+        "regions": [
+          "appalachian"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "historical"
+        ]
+      },
+      {
+        "name": "Paul",
+        "regions": [
+          "midwest"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "comedy"
+        ]
+      },
+      {
+        "name": "Peter",
+        "regions": [
+          "coastal"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "crime"
+        ]
+      },
+      {
+        "name": "Philip",
+        "regions": [
+          "urban"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "gothic"
+        ]
+      },
+      {
+        "name": "Quentin",
+        "regions": [
+          "uk"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "rural"
+        ]
+      },
+      {
+        "name": "Raymond",
+        "regions": [
+          "irish"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "literary"
+        ]
+      },
+      {
+        "name": "Reuben",
+        "regions": [
+          "european"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "adventure"
+        ]
+      },
+      {
+        "name": "Rhys",
+        "regions": [
+          "latin"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "working_class"
+        ]
+      },
+      {
+        "name": "Richard",
+        "regions": [
+          "us_west"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "folk"
+        ]
+      },
+      {
+        "name": "Robert",
+        "regions": [
+          "us"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "mystery"
+        ]
+      },
+      {
+        "name": "Roman",
+        "regions": [
+          "new_england"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "thriller"
+        ]
+      },
+      {
+        "name": "Sebastian",
+        "regions": [
+          "us_south"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "horror"
+        ]
+      },
+      {
+        "name": "Simon",
+        "regions": [
+          "appalachian"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "historical"
+        ]
+      },
+      {
+        "name": "Solomon",
+        "regions": [
+          "midwest"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "comedy"
+        ]
+      },
+      {
+        "name": "Spencer",
+        "regions": [
+          "coastal"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "crime"
+        ]
+      },
+      {
+        "name": "Stephen",
+        "regions": [
+          "urban"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "gothic"
+        ]
+      },
+      {
+        "name": "Thomas",
+        "regions": [
+          "uk"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "rural"
+        ]
+      },
+      {
+        "name": "Tobias",
+        "regions": [
+          "irish"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "literary"
+        ]
+      },
+      {
+        "name": "Tristan",
+        "regions": [
+          "european"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "adventure"
+        ]
+      },
+      {
+        "name": "Vincent",
+        "regions": [
+          "latin"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "working_class"
+        ]
+      },
+      {
+        "name": "Walter",
+        "regions": [
+          "us_west"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "folk"
+        ]
+      },
+      {
+        "name": "Warren",
+        "regions": [
+          "us"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "mystery"
+        ]
+      },
+      {
+        "name": "William",
+        "regions": [
+          "new_england"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "thriller"
+        ]
+      },
+      {
+        "name": "Wyatt",
+        "regions": [
+          "us_south"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "horror"
+        ]
+      },
+      {
+        "name": "Xavier",
+        "regions": [
+          "appalachian"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "historical"
+        ]
+      },
+      {
+        "name": "Zachary",
+        "regions": [
+          "midwest"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "comedy"
+        ]
+      },
+      {
+        "name": "Zeke",
+        "regions": [
+          "coastal"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "crime"
+        ]
+      }
+    ],
+    "female": [
+      {
+        "name": "Mara",
+        "regions": [
+          "appalachian"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "historical"
+        ]
+      },
+      {
+        "name": "Ruth",
+        "regions": [
+          "midwest"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "comedy"
+        ]
+      },
+      {
+        "name": "Celia",
+        "regions": [
+          "coastal"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "crime"
+        ]
+      },
+      {
+        "name": "Lenora",
+        "regions": [
+          "urban"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "gothic"
+        ]
+      },
+      {
+        "name": "June",
+        "regions": [
+          "uk"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "rural"
+        ]
+      },
+      {
+        "name": "Ada",
+        "regions": [
+          "irish"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "literary"
+        ]
+      },
+      {
+        "name": "Tessa",
+        "regions": [
+          "european"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "adventure"
+        ]
+      },
+      {
+        "name": "Nora",
+        "regions": [
+          "latin"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "working_class"
+        ]
+      },
+      {
+        "name": "Iris",
+        "regions": [
+          "us_west"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "folk"
+        ]
+      },
+      {
+        "name": "Maeve",
+        "regions": [
+          "us"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "mystery"
+        ]
+      },
+      {
+        "name": "Eliza",
+        "regions": [
+          "new_england"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "thriller"
+        ]
+      },
+      {
+        "name": "Vivian",
+        "regions": [
+          "us_south"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "horror"
+        ]
+      },
+      {
+        "name": "Clara",
+        "regions": [
+          "appalachian"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "historical"
+        ]
+      },
+      {
+        "name": "Beatrice",
+        "regions": [
+          "midwest"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "comedy"
+        ]
+      },
+      {
+        "name": "Lucia",
+        "regions": [
+          "coastal"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "crime"
+        ]
+      },
+      {
+        "name": "Maribel",
+        "regions": [
+          "urban"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "gothic"
+        ]
+      },
+      {
+        "name": "Greta",
+        "regions": [
+          "uk"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "rural"
+        ]
+      },
+      {
+        "name": "Evelyn",
+        "regions": [
+          "irish"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "literary"
+        ]
+      },
+      {
+        "name": "Pearl",
+        "regions": [
+          "european"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "adventure"
+        ]
+      },
+      {
+        "name": "Nadia",
+        "regions": [
+          "latin"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "working_class"
+        ]
+      },
+      {
+        "name": "Rosalind",
+        "regions": [
+          "us_west"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "folk"
+        ]
+      },
+      {
+        "name": "Lydia",
+        "regions": [
+          "us"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "mystery"
+        ]
+      },
+      {
+        "name": "Anika",
+        "regions": [
+          "new_england"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "thriller"
+        ]
+      },
+      {
+        "name": "Flora",
+        "regions": [
+          "us_south"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "horror"
+        ]
+      },
+      {
+        "name": "Abigail",
+        "regions": [
+          "appalachian"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "historical"
+        ]
+      },
+      {
+        "name": "Adelaide",
+        "regions": [
+          "midwest"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "comedy"
+        ]
+      },
+      {
+        "name": "Agnes",
+        "regions": [
+          "coastal"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "crime"
+        ]
+      },
+      {
+        "name": "Alice",
+        "regions": [
+          "urban"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "gothic"
+        ]
+      },
+      {
+        "name": "Alma",
+        "regions": [
+          "uk"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "rural"
+        ]
+      },
+      {
+        "name": "Amara",
+        "regions": [
+          "irish"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "literary"
+        ]
+      },
+      {
+        "name": "Anna",
+        "regions": [
+          "european"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "adventure"
+        ]
+      },
+      {
+        "name": "Audrey",
+        "regions": [
+          "latin"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "working_class"
+        ]
+      },
+      {
+        "name": "Beth",
+        "regions": [
+          "us_west"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "folk"
+        ]
+      },
+      {
+        "name": "Blythe",
+        "regions": [
+          "us"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "mystery"
+        ]
+      },
+      {
+        "name": "Camille",
+        "regions": [
+          "new_england"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "thriller"
+        ]
+      },
+      {
+        "name": "Caroline",
+        "regions": [
+          "us_south"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "horror"
+        ]
+      },
+      {
+        "name": "Charlotte",
+        "regions": [
+          "appalachian"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "historical"
+        ]
+      },
+      {
+        "name": "Cora",
+        "regions": [
+          "midwest"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "comedy"
+        ]
+      },
+      {
+        "name": "Daphne",
+        "regions": [
+          "coastal"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "crime"
+        ]
+      },
+      {
+        "name": "Delia",
+        "regions": [
+          "urban"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "gothic"
+        ]
+      },
+      {
+        "name": "Diana",
+        "regions": [
+          "uk"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "rural"
+        ]
+      },
+      {
+        "name": "Dinah",
+        "regions": [
+          "irish"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "literary"
+        ]
+      },
+      {
+        "name": "Dorothy",
+        "regions": [
+          "european"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "adventure"
+        ]
+      },
+      {
+        "name": "Edith",
+        "regions": [
+          "latin"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "working_class"
+        ]
+      },
+      {
+        "name": "Eleanor",
+        "regions": [
+          "us_west"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "folk"
+        ]
+      },
+      {
+        "name": "Elena",
+        "regions": [
+          "us"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "mystery"
+        ]
+      },
+      {
+        "name": "Elizabeth",
+        "regions": [
+          "new_england"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "thriller"
+        ]
+      },
+      {
+        "name": "Elsie",
+        "regions": [
+          "us_south"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "horror"
+        ]
+      },
+      {
+        "name": "Emilia",
+        "regions": [
+          "appalachian"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "historical"
+        ]
+      },
+      {
+        "name": "Esther",
+        "regions": [
+          "midwest"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "comedy"
+        ]
+      },
+      {
+        "name": "Etta",
+        "regions": [
+          "coastal"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "crime"
+        ]
+      },
+      {
+        "name": "Faye",
+        "regions": [
+          "urban"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "gothic"
+        ]
+      },
+      {
+        "name": "Fiona",
+        "regions": [
+          "uk"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "rural"
+        ]
+      },
+      {
+        "name": "Frances",
+        "regions": [
+          "irish"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "literary"
+        ]
+      },
+      {
+        "name": "Freya",
+        "regions": [
+          "european"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "adventure"
+        ]
+      },
+      {
+        "name": "Georgia",
+        "regions": [
+          "latin"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "working_class"
+        ]
+      },
+      {
+        "name": "Grace",
+        "regions": [
+          "us_west"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "folk"
+        ]
+      },
+      {
+        "name": "Gwendolyn",
+        "regions": [
+          "us"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "mystery"
+        ]
+      },
+      {
+        "name": "Hannah",
+        "regions": [
+          "new_england"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "thriller"
+        ]
+      },
+      {
+        "name": "Harriet",
+        "regions": [
+          "us_south"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "horror"
+        ]
+      },
+      {
+        "name": "Hazel",
+        "regions": [
+          "appalachian"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "historical"
+        ]
+      },
+      {
+        "name": "Helena",
+        "regions": [
+          "midwest"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "comedy"
+        ]
+      },
+      {
+        "name": "Irene",
+        "regions": [
+          "coastal"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "crime"
+        ]
+      },
+      {
+        "name": "Isabel",
+        "regions": [
+          "urban"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "gothic"
+        ]
+      },
+      {
+        "name": "Isadora",
+        "regions": [
+          "uk"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "rural"
+        ]
+      },
+      {
+        "name": "Jane",
+        "regions": [
+          "irish"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "literary"
+        ]
+      },
+      {
+        "name": "Josephine",
+        "regions": [
+          "european"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "adventure"
+        ]
+      },
+      {
+        "name": "Joy",
+        "regions": [
+          "latin"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "working_class"
+        ]
+      },
+      {
+        "name": "Julia",
+        "regions": [
+          "us_west"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "folk"
+        ]
+      },
+      {
+        "name": "Katherine",
+        "regions": [
+          "us"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "mystery"
+        ]
+      },
+      {
+        "name": "Lena",
+        "regions": [
+          "new_england"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "thriller"
+        ]
+      },
+      {
+        "name": "Lila",
+        "regions": [
+          "us_south"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "horror"
+        ]
+      },
+      {
+        "name": "Lillian",
+        "regions": [
+          "appalachian"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "historical"
+        ]
+      },
+      {
+        "name": "Lucy",
+        "regions": [
+          "midwest"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "comedy"
+        ]
+      },
+      {
+        "name": "Mae",
+        "regions": [
+          "coastal"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "crime"
+        ]
+      },
+      {
+        "name": "Margaret",
+        "regions": [
+          "urban"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "gothic"
+        ]
+      },
+      {
+        "name": "Marina",
+        "regions": [
+          "uk"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "rural"
+        ]
+      },
+      {
+        "name": "Martha",
+        "regions": [
+          "irish"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "literary"
+        ]
+      },
+      {
+        "name": "Matilda",
+        "regions": [
+          "european"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "adventure"
+        ]
+      },
+      {
+        "name": "Miriam",
+        "regions": [
+          "latin"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "working_class"
+        ]
+      },
+      {
+        "name": "Naomi",
+        "regions": [
+          "us_west"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "folk"
+        ]
+      },
+      {
+        "name": "Nell",
+        "regions": [
+          "us"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "mystery"
+        ]
+      },
+      {
+        "name": "Opal",
+        "regions": [
+          "new_england"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "thriller"
+        ]
+      },
+      {
+        "name": "Phoebe",
+        "regions": [
+          "us_south"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "horror"
+        ]
+      },
+      {
+        "name": "Priscilla",
+        "regions": [
+          "appalachian"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "historical"
+        ]
+      },
+      {
+        "name": "Rachel",
+        "regions": [
+          "midwest"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "comedy"
+        ]
+      },
+      {
+        "name": "Ramona",
+        "regions": [
+          "coastal"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "crime"
+        ]
+      },
+      {
+        "name": "Rebecca",
+        "regions": [
+          "urban"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "gothic"
+        ]
+      },
+      {
+        "name": "Rosa",
+        "regions": [
+          "uk"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "rural"
+        ]
+      },
+      {
+        "name": "Rose",
+        "regions": [
+          "irish"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "literary"
+        ]
+      },
+      {
+        "name": "Sabine",
+        "regions": [
+          "european"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "adventure"
+        ]
+      },
+      {
+        "name": "Sadie",
+        "regions": [
+          "latin"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "working_class"
+        ]
+      },
+      {
+        "name": "Selma",
+        "regions": [
+          "us_west"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "folk"
+        ]
+      },
+      {
+        "name": "Serena",
+        "regions": [
+          "us"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "mystery"
+        ]
+      },
+      {
+        "name": "Simone",
+        "regions": [
+          "new_england"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "thriller"
+        ]
+      },
+      {
+        "name": "Sonia",
+        "regions": [
+          "us_south"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "horror"
+        ]
+      },
+      {
+        "name": "Stella",
+        "regions": [
+          "appalachian"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "historical"
+        ]
+      },
+      {
+        "name": "Sylvia",
+        "regions": [
+          "midwest"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "comedy"
+        ]
+      },
+      {
+        "name": "Tabitha",
+        "regions": [
+          "coastal"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "crime"
+        ]
+      },
+      {
+        "name": "Tamara",
+        "regions": [
+          "urban"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "gothic"
+        ]
+      },
+      {
+        "name": "Thea",
+        "regions": [
+          "uk"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "rural"
+        ]
+      },
+      {
+        "name": "Theresa",
+        "regions": [
+          "irish"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "literary"
+        ]
+      },
+      {
+        "name": "Una",
+        "regions": [
+          "european"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "adventure"
+        ]
+      },
+      {
+        "name": "Valerie",
+        "regions": [
+          "latin"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "working_class"
+        ]
+      },
+      {
+        "name": "Vera",
+        "regions": [
+          "us_west"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "folk"
+        ]
+      },
+      {
+        "name": "Victoria",
+        "regions": [
+          "us"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "mystery"
+        ]
+      },
+      {
+        "name": "Viola",
+        "regions": [
+          "new_england"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "thriller"
+        ]
+      },
+      {
+        "name": "Willa",
+        "regions": [
+          "us_south"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "horror"
+        ]
+      },
+      {
+        "name": "Winifred",
+        "regions": [
+          "appalachian"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "historical"
+        ]
+      },
+      {
+        "name": "Yvonne",
+        "regions": [
+          "midwest"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "comedy"
+        ]
+      },
+      {
+        "name": "Zara",
+        "regions": [
+          "coastal"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "crime"
+        ]
+      },
+      {
+        "name": "Adele",
+        "regions": [
+          "urban"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "gothic"
+        ]
+      },
+      {
+        "name": "Bianca",
+        "regions": [
+          "uk"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "rural"
+        ]
+      },
+      {
+        "name": "Celeste",
+        "regions": [
+          "irish"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "literary"
+        ]
+      },
+      {
+        "name": "Dahlia",
+        "regions": [
+          "european"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "adventure"
+        ]
+      },
+      {
+        "name": "Elaine",
+        "regions": [
+          "latin"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "working_class"
+        ]
+      },
+      {
+        "name": "Frida",
+        "regions": [
+          "us_west"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "folk"
+        ]
+      },
+      {
+        "name": "Genevieve",
+        "regions": [
+          "us"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "mystery"
+        ]
+      },
+      {
+        "name": "Hester",
+        "regions": [
+          "new_england"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "thriller"
+        ]
+      },
+      {
+        "name": "Imogen",
+        "regions": [
+          "us_south"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "horror"
+        ]
+      },
+      {
+        "name": "Jacqueline",
+        "regions": [
+          "appalachian"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "historical"
+        ]
+      },
+      {
+        "name": "Leona",
+        "regions": [
+          "midwest"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "comedy"
+        ]
+      },
+      {
+        "name": "Madeleine",
+        "regions": [
+          "coastal"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "crime"
+        ]
+      },
+      {
+        "name": "Nina",
+        "regions": [
+          "urban"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "gothic"
+        ]
+      },
+      {
+        "name": "Odette",
+        "regions": [
+          "uk"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "rural"
+        ]
+      },
+      {
+        "name": "Paloma",
+        "regions": [
+          "irish"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "literary"
+        ]
+      },
+      {
+        "name": "Renata",
+        "regions": [
+          "european"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "adventure"
+        ]
+      },
+      {
+        "name": "Susanna",
+        "regions": [
+          "latin"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "working_class"
+        ]
+      },
+      {
+        "name": "Tatiana",
+        "regions": [
+          "us_west"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "folk"
+        ]
+      },
+      {
+        "name": "Ursula",
+        "regions": [
+          "us"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "mystery"
+        ]
+      },
+      {
+        "name": "Verity",
+        "regions": [
+          "new_england"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "thriller"
+        ]
+      },
+      {
+        "name": "Wilhelmina",
+        "regions": [
+          "us_south"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "horror"
+        ]
+      },
+      {
+        "name": "Yara",
+        "regions": [
+          "appalachian"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "historical"
+        ]
+      },
+      {
+        "name": "Zelda",
+        "regions": [
+          "midwest"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "comedy"
+        ]
+      },
+      {
+        "name": "Corinne",
+        "regions": [
+          "coastal"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "crime"
+        ]
+      },
+      {
+        "name": "Daisy",
+        "regions": [
+          "urban"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "gothic"
+        ]
+      },
+      {
+        "name": "Eloise",
+        "regions": [
+          "uk"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "rural"
+        ]
+      },
+      {
+        "name": "Florence",
+        "regions": [
+          "irish"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "literary"
+        ]
+      },
+      {
+        "name": "Giselle",
+        "regions": [
+          "european"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "adventure"
+        ]
+      },
+      {
+        "name": "Honora",
+        "regions": [
+          "latin"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "working_class"
+        ]
+      },
+      {
+        "name": "Juliet",
+        "regions": [
+          "us_west"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "folk"
+        ]
+      },
+      {
+        "name": "Louisa",
+        "regions": [
+          "us"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "mystery"
+        ]
+      },
+      {
+        "name": "Mabel",
+        "regions": [
+          "new_england"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "thriller"
+        ]
+      },
+      {
+        "name": "Nicolette",
+        "regions": [
+          "us_south"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "horror"
+        ]
+      },
+      {
+        "name": "Orla",
+        "regions": [
+          "appalachian"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "historical"
+        ]
+      },
+      {
+        "name": "Petra",
+        "regions": [
+          "midwest"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "comedy"
+        ]
+      },
+      {
+        "name": "Rowena",
+        "regions": [
+          "coastal"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "crime"
+        ]
+      },
+      {
+        "name": "Amelia",
+        "regions": [
+          "urban"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "gothic"
+        ]
+      },
+      {
+        "name": "Cecily",
+        "regions": [
+          "uk"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "rural"
+        ]
+      },
+      {
+        "name": "Evangeline",
+        "regions": [
+          "irish"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "literary"
+        ]
+      }
+    ],
+    "neutral": [
+      {
+        "name": "Riley",
+        "regions": [
+          "urban"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "gothic"
+        ]
+      },
+      {
+        "name": "Morgan",
+        "regions": [
+          "uk"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "rural"
+        ]
+      },
+      {
+        "name": "Avery",
+        "regions": [
+          "irish"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "literary"
+        ]
+      },
+      {
+        "name": "Quinn",
+        "regions": [
+          "european"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "adventure"
+        ]
+      },
+      {
+        "name": "Rowan",
+        "regions": [
+          "latin"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "working_class"
+        ]
+      },
+      {
+        "name": "Casey",
+        "regions": [
+          "us_west"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "folk"
+        ]
+      },
+      {
+        "name": "Jordan",
+        "regions": [
+          "us"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "mystery"
+        ]
+      },
+      {
+        "name": "Ellis",
+        "regions": [
+          "new_england"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "thriller"
+        ]
+      },
+      {
+        "name": "Sage",
+        "regions": [
+          "us_south"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "horror"
+        ]
+      },
+      {
+        "name": "Reese",
+        "regions": [
+          "appalachian"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "historical"
+        ]
+      },
+      {
+        "name": "Harper",
+        "regions": [
+          "midwest"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "comedy"
+        ]
+      },
+      {
+        "name": "Drew",
+        "regions": [
+          "coastal"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "crime"
+        ]
+      },
+      {
+        "name": "Bailey",
+        "regions": [
+          "urban"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "gothic"
+        ]
+      },
+      {
+        "name": "Blair",
+        "regions": [
+          "uk"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "rural"
+        ]
+      },
+      {
+        "name": "Charlie",
+        "regions": [
+          "irish"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "literary"
+        ]
+      },
+      {
+        "name": "Dakota",
+        "regions": [
+          "european"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "adventure"
+        ]
+      },
+      {
+        "name": "Eden",
+        "regions": [
+          "latin"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "working_class"
+        ]
+      },
+      {
+        "name": "Emerson",
+        "regions": [
+          "us_west"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "folk"
+        ]
+      },
+      {
+        "name": "Finley",
+        "regions": [
+          "us"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "mystery"
+        ]
+      },
+      {
+        "name": "Hayden",
+        "regions": [
+          "new_england"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "thriller"
+        ]
+      },
+      {
+        "name": "Jamie",
+        "regions": [
+          "us_south"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "horror"
+        ]
+      },
+      {
+        "name": "Kai",
+        "regions": [
+          "appalachian"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "historical"
+        ]
+      },
+      {
+        "name": "Kendall",
+        "regions": [
+          "midwest"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "comedy"
+        ]
+      },
+      {
+        "name": "Lane",
+        "regions": [
+          "coastal"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "crime"
+        ]
+      },
+      {
+        "name": "Logan",
+        "regions": [
+          "urban"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "gothic"
+        ]
+      },
+      {
+        "name": "Parker",
+        "regions": [
+          "uk"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "rural"
+        ]
+      },
+      {
+        "name": "River",
+        "regions": [
+          "irish"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "literary"
+        ]
+      },
+      {
+        "name": "Robin",
+        "regions": [
+          "european"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "adventure"
+        ]
+      },
+      {
+        "name": "Sawyer",
+        "regions": [
+          "latin"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "working_class"
+        ]
+      },
+      {
+        "name": "Skyler",
+        "regions": [
+          "us_west"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "folk"
+        ]
+      },
+      {
+        "name": "Taylor",
+        "regions": [
+          "us"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "mystery"
+        ]
+      },
+      {
+        "name": "Terry",
+        "regions": [
+          "new_england"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "thriller"
+        ]
+      },
+      {
+        "name": "Arden",
+        "regions": [
+          "us_south"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "horror"
+        ]
+      },
+      {
+        "name": "Ash",
+        "regions": [
+          "appalachian"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "historical"
+        ]
+      },
+      {
+        "name": "Aubrey",
+        "regions": [
+          "midwest"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "comedy"
+        ]
+      },
+      {
+        "name": "Briar",
+        "regions": [
+          "coastal"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "crime"
+        ]
+      },
+      {
+        "name": "Cameron",
+        "regions": [
+          "urban"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "gothic"
+        ]
+      },
+      {
+        "name": "Carey",
+        "regions": [
+          "uk"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "rural"
+        ]
+      },
+      {
+        "name": "Devon",
+        "regions": [
+          "irish"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "literary"
+        ]
+      },
+      {
+        "name": "Elliot",
+        "regions": [
+          "european"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "adventure"
+        ]
+      },
+      {
+        "name": "Emery",
+        "regions": [
+          "latin"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "working_class"
+        ]
+      },
+      {
+        "name": "Gray",
+        "regions": [
+          "us_west"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "folk"
+        ]
+      },
+      {
+        "name": "Hollis",
+        "regions": [
+          "us"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "mystery"
+        ]
+      },
+      {
+        "name": "Jules",
+        "regions": [
+          "new_england"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "thriller"
+        ]
+      },
+      {
+        "name": "Kit",
+        "regions": [
+          "us_south"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "horror"
+        ]
+      },
+      {
+        "name": "Lake",
+        "regions": [
+          "appalachian"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "historical"
+        ]
+      },
+      {
+        "name": "Lennox",
+        "regions": [
+          "midwest"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "comedy"
+        ]
+      },
+      {
+        "name": "Marlowe",
+        "regions": [
+          "coastal"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "crime"
+        ]
+      },
+      {
+        "name": "Monroe",
+        "regions": [
+          "urban"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "gothic"
+        ]
+      },
+      {
+        "name": "Noel",
+        "regions": [
+          "uk"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "rural"
+        ]
+      },
+      {
+        "name": "Peyton",
+        "regions": [
+          "irish"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "literary"
+        ]
+      },
+      {
+        "name": "Remy",
+        "regions": [
+          "european"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "adventure"
+        ]
+      },
+      {
+        "name": "Rory",
+        "regions": [
+          "latin"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "working_class"
+        ]
+      },
+      {
+        "name": "Shannon",
+        "regions": [
+          "us_west"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "folk"
+        ]
+      },
+      {
+        "name": "Sidney",
+        "regions": [
+          "us"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "mystery"
+        ]
+      },
+      {
+        "name": "Sloane",
+        "regions": [
+          "new_england"
+        ],
+        "eras": [
+          "late_20th"
+        ],
+        "styles": [
+          "thriller"
+        ]
+      },
+      {
+        "name": "Spencer",
+        "regions": [
+          "us_south"
+        ],
+        "eras": [
+          "early_20th"
+        ],
+        "styles": [
+          "horror"
+        ]
+      },
+      {
+        "name": "Tatum",
+        "regions": [
+          "appalachian"
+        ],
+        "eras": [
+          "19th"
+        ],
+        "styles": [
+          "historical"
+        ]
+      },
+      {
+        "name": "Wynn",
+        "regions": [
+          "midwest"
+        ],
+        "eras": [
+          "18th"
+        ],
+        "styles": [
+          "comedy"
+        ]
+      },
+      {
+        "name": "Zephyr",
+        "regions": [
+          "coastal"
+        ],
+        "eras": [
+          "modern"
+        ],
+        "styles": [
+          "crime"
+        ]
+      }
+    ]
+  },
+  "lastNames": [
+    {
+      "name": "Mercer",
+      "regions": [
+        "european"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "adventure"
+      ]
+    },
+    {
+      "name": "Hollis",
+      "regions": [
+        "latin"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "working_class"
+      ]
+    },
+    {
+      "name": "Larkin",
+      "regions": [
+        "us_west"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "folk"
+      ]
+    },
+    {
+      "name": "Vale",
+      "regions": [
+        "us"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "mystery"
+      ]
+    },
+    {
+      "name": "Cribb",
+      "regions": [
+        "new_england"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "thriller"
+      ]
+    },
+    {
+      "name": "Boone",
+      "regions": [
+        "us_south"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "horror"
+      ]
+    },
+    {
+      "name": "Rourke",
+      "regions": [
+        "appalachian"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "historical"
+      ]
+    },
+    {
+      "name": "Farr",
+      "regions": [
+        "midwest"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "comedy"
+      ]
+    },
+    {
+      "name": "Bellamy",
+      "regions": [
+        "coastal"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "crime"
+      ]
+    },
+    {
+      "name": "Keene",
+      "regions": [
+        "urban"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "gothic"
+      ]
+    },
+    {
+      "name": "Caldwell",
+      "regions": [
+        "uk"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "rural"
+      ]
+    },
+    {
+      "name": "Darrow",
+      "regions": [
+        "irish"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "literary"
+      ]
+    },
+    {
+      "name": "Voss",
+      "regions": [
+        "european"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "adventure"
+      ]
+    },
+    {
+      "name": "Calloway",
+      "regions": [
+        "latin"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "working_class"
+      ]
+    },
+    {
+      "name": "Whitlock",
+      "regions": [
+        "us_west"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "folk"
+      ]
+    },
+    {
+      "name": "Morrow",
+      "regions": [
+        "us"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "mystery"
+      ]
+    },
+    {
+      "name": "Sutter",
+      "regions": [
+        "new_england"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "thriller"
+      ]
+    },
+    {
+      "name": "Locke",
+      "regions": [
+        "us_south"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "horror"
+      ]
+    },
+    {
+      "name": "Pryce",
+      "regions": [
+        "appalachian"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "historical"
+      ]
+    },
+    {
+      "name": "Tolliver",
+      "regions": [
+        "midwest"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "comedy"
+      ]
+    },
+    {
+      "name": "Graves",
+      "regions": [
+        "coastal"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "crime"
+      ]
+    },
+    {
+      "name": "Maddox",
+      "regions": [
+        "urban"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "gothic"
+      ]
+    },
+    {
+      "name": "Ashford",
+      "regions": [
+        "uk"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "rural"
+      ]
+    },
+    {
+      "name": "Delaney",
+      "regions": [
+        "irish"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "literary"
+      ]
+    },
+    {
+      "name": "Crowe",
+      "regions": [
+        "european"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "adventure"
+      ]
+    },
+    {
+      "name": "Hale",
+      "regions": [
+        "latin"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "working_class"
+      ]
+    },
+    {
+      "name": "Briggs",
+      "regions": [
+        "us_west"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "folk"
+      ]
+    },
+    {
+      "name": "Fenwick",
+      "regions": [
+        "us"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "mystery"
+      ]
+    },
+    {
+      "name": "Marsh",
+      "regions": [
+        "new_england"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "thriller"
+      ]
+    },
+    {
+      "name": "Raines",
+      "regions": [
+        "us_south"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "horror"
+      ]
+    },
+    {
+      "name": "Blackwell",
+      "regions": [
+        "appalachian"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "historical"
+      ]
+    },
+    {
+      "name": "Navarro",
+      "regions": [
+        "midwest"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "comedy"
+      ]
+    },
+    {
+      "name": "Abbott",
+      "regions": [
+        "coastal"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "crime"
+      ]
+    },
+    {
+      "name": "Abernathy",
+      "regions": [
+        "urban"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "gothic"
+      ]
+    },
+    {
+      "name": "Ainsworth",
+      "regions": [
+        "uk"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "rural"
+      ]
+    },
+    {
+      "name": "Alden",
+      "regions": [
+        "irish"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "literary"
+      ]
+    },
+    {
+      "name": "Atwood",
+      "regions": [
+        "european"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "adventure"
+      ]
+    },
+    {
+      "name": "Baines",
+      "regions": [
+        "latin"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "working_class"
+      ]
+    },
+    {
+      "name": "Baker",
+      "regions": [
+        "us_west"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "folk"
+      ]
+    },
+    {
+      "name": "Baldwin",
+      "regions": [
+        "us"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "mystery"
+      ]
+    },
+    {
+      "name": "Banks",
+      "regions": [
+        "new_england"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "thriller"
+      ]
+    },
+    {
+      "name": "Barlow",
+      "regions": [
+        "us_south"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "horror"
+      ]
+    },
+    {
+      "name": "Barnes",
+      "regions": [
+        "appalachian"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "historical"
+      ]
+    },
+    {
+      "name": "Barrett",
+      "regions": [
+        "midwest"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "comedy"
+      ]
+    },
+    {
+      "name": "Barton",
+      "regions": [
+        "coastal"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "crime"
+      ]
+    },
+    {
+      "name": "Beaumont",
+      "regions": [
+        "urban"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "gothic"
+      ]
+    },
+    {
+      "name": "Bennett",
+      "regions": [
+        "uk"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "rural"
+      ]
+    },
+    {
+      "name": "Blake",
+      "regions": [
+        "irish"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "literary"
+      ]
+    },
+    {
+      "name": "Bradford",
+      "regions": [
+        "european"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "adventure"
+      ]
+    },
+    {
+      "name": "Brooks",
+      "regions": [
+        "latin"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "working_class"
+      ]
+    },
+    {
+      "name": "Browne",
+      "regions": [
+        "us_west"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "folk"
+      ]
+    },
+    {
+      "name": "Burke",
+      "regions": [
+        "us"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "mystery"
+      ]
+    },
+    {
+      "name": "Callahan",
+      "regions": [
+        "new_england"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "thriller"
+      ]
+    },
+    {
+      "name": "Carver",
+      "regions": [
+        "us_south"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "horror"
+      ]
+    },
+    {
+      "name": "Chandler",
+      "regions": [
+        "appalachian"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "historical"
+      ]
+    },
+    {
+      "name": "Chase",
+      "regions": [
+        "midwest"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "comedy"
+      ]
+    },
+    {
+      "name": "Clarke",
+      "regions": [
+        "coastal"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "crime"
+      ]
+    },
+    {
+      "name": "Clayton",
+      "regions": [
+        "urban"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "gothic"
+      ]
+    },
+    {
+      "name": "Cobb",
+      "regions": [
+        "uk"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "rural"
+      ]
+    },
+    {
+      "name": "Cole",
+      "regions": [
+        "irish"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "literary"
+      ]
+    },
+    {
+      "name": "Coleman",
+      "regions": [
+        "european"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "adventure"
+      ]
+    },
+    {
+      "name": "Connelly",
+      "regions": [
+        "latin"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "working_class"
+      ]
+    },
+    {
+      "name": "Conrad",
+      "regions": [
+        "us_west"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "folk"
+      ]
+    },
+    {
+      "name": "Cooper",
+      "regions": [
+        "us"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "mystery"
+      ]
+    },
+    {
+      "name": "Corbin",
+      "regions": [
+        "new_england"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "thriller"
+      ]
+    },
+    {
+      "name": "Cullen",
+      "regions": [
+        "us_south"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "horror"
+      ]
+    },
+    {
+      "name": "Dalton",
+      "regions": [
+        "appalachian"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "historical"
+      ]
+    },
+    {
+      "name": "Denton",
+      "regions": [
+        "midwest"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "comedy"
+      ]
+    },
+    {
+      "name": "Drake",
+      "regions": [
+        "coastal"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "crime"
+      ]
+    },
+    {
+      "name": "Dunham",
+      "regions": [
+        "urban"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "gothic"
+      ]
+    },
+    {
+      "name": "Dyer",
+      "regions": [
+        "uk"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "rural"
+      ]
+    },
+    {
+      "name": "Easton",
+      "regions": [
+        "irish"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "literary"
+      ]
+    },
+    {
+      "name": "Ellery",
+      "regions": [
+        "european"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "adventure"
+      ]
+    },
+    {
+      "name": "Ellis",
+      "regions": [
+        "latin"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "working_class"
+      ]
+    },
+    {
+      "name": "Emerson",
+      "regions": [
+        "us_west"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "folk"
+      ]
+    },
+    {
+      "name": "Everly",
+      "regions": [
+        "us"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "mystery"
+      ]
+    },
+    {
+      "name": "Fairchild",
+      "regions": [
+        "new_england"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "thriller"
+      ]
+    },
+    {
+      "name": "Falkner",
+      "regions": [
+        "us_south"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "horror"
+      ]
+    },
+    {
+      "name": "Fletcher",
+      "regions": [
+        "appalachian"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "historical"
+      ]
+    },
+    {
+      "name": "Ford",
+      "regions": [
+        "midwest"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "comedy"
+      ]
+    },
+    {
+      "name": "Foster",
+      "regions": [
+        "coastal"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "crime"
+      ]
+    },
+    {
+      "name": "Fox",
+      "regions": [
+        "urban"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "gothic"
+      ]
+    },
+    {
+      "name": "Gaines",
+      "regions": [
+        "uk"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "rural"
+      ]
+    },
+    {
+      "name": "Garland",
+      "regions": [
+        "irish"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "literary"
+      ]
+    },
+    {
+      "name": "Gentry",
+      "regions": [
+        "european"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "adventure"
+      ]
+    },
+    {
+      "name": "Glass",
+      "regions": [
+        "latin"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "working_class"
+      ]
+    },
+    {
+      "name": "Goodwin",
+      "regions": [
+        "us_west"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "folk"
+      ]
+    },
+    {
+      "name": "Gray",
+      "regions": [
+        "us"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "mystery"
+      ]
+    },
+    {
+      "name": "Greer",
+      "regions": [
+        "new_england"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "thriller"
+      ]
+    },
+    {
+      "name": "Griffin",
+      "regions": [
+        "us_south"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "horror"
+      ]
+    },
+    {
+      "name": "Harding",
+      "regions": [
+        "appalachian"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "historical"
+      ]
+    },
+    {
+      "name": "Harlow",
+      "regions": [
+        "midwest"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "comedy"
+      ]
+    },
+    {
+      "name": "Harper",
+      "regions": [
+        "coastal"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "crime"
+      ]
+    },
+    {
+      "name": "Harrington",
+      "regions": [
+        "urban"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "gothic"
+      ]
+    },
+    {
+      "name": "Hart",
+      "regions": [
+        "uk"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "rural"
+      ]
+    },
+    {
+      "name": "Hawthorne",
+      "regions": [
+        "irish"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "literary"
+      ]
+    },
+    {
+      "name": "Hayes",
+      "regions": [
+        "european"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "adventure"
+      ]
+    },
+    {
+      "name": "Hendrix",
+      "regions": [
+        "latin"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "working_class"
+      ]
+    },
+    {
+      "name": "Holloway",
+      "regions": [
+        "us_west"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "folk"
+      ]
+    },
+    {
+      "name": "Holmes",
+      "regions": [
+        "us"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "mystery"
+      ]
+    },
+    {
+      "name": "Ingram",
+      "regions": [
+        "new_england"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "thriller"
+      ]
+    },
+    {
+      "name": "Irving",
+      "regions": [
+        "us_south"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "horror"
+      ]
+    },
+    {
+      "name": "Jameson",
+      "regions": [
+        "appalachian"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "historical"
+      ]
+    },
+    {
+      "name": "Keller",
+      "regions": [
+        "midwest"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "comedy"
+      ]
+    },
+    {
+      "name": "Kendrick",
+      "regions": [
+        "coastal"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "crime"
+      ]
+    },
+    {
+      "name": "Kerr",
+      "regions": [
+        "urban"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "gothic"
+      ]
+    },
+    {
+      "name": "King",
+      "regions": [
+        "uk"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "rural"
+      ]
+    },
+    {
+      "name": "Lawson",
+      "regions": [
+        "irish"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "literary"
+      ]
+    },
+    {
+      "name": "Lowell",
+      "regions": [
+        "european"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "adventure"
+      ]
+    },
+    {
+      "name": "Mallory",
+      "regions": [
+        "latin"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "working_class"
+      ]
+    },
+    {
+      "name": "Merritt",
+      "regions": [
+        "us_west"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "folk"
+      ]
+    },
+    {
+      "name": "Miller",
+      "regions": [
+        "us"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "mystery"
+      ]
+    },
+    {
+      "name": "Monroe",
+      "regions": [
+        "new_england"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "thriller"
+      ]
+    },
+    {
+      "name": "Nash",
+      "regions": [
+        "us_south"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "horror"
+      ]
+    },
+    {
+      "name": "Noble",
+      "regions": [
+        "appalachian"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "historical"
+      ]
+    },
+    {
+      "name": "Norwood",
+      "regions": [
+        "midwest"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "comedy"
+      ]
+    },
+    {
+      "name": "Oakley",
+      "regions": [
+        "coastal"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "crime"
+      ]
+    },
+    {
+      "name": "Page",
+      "regions": [
+        "urban"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "gothic"
+      ]
+    },
+    {
+      "name": "Palmer",
+      "regions": [
+        "uk"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "rural"
+      ]
+    },
+    {
+      "name": "Parrish",
+      "regions": [
+        "irish"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "literary"
+      ]
+    },
+    {
+      "name": "Pierce",
+      "regions": [
+        "european"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "adventure"
+      ]
+    },
+    {
+      "name": "Pike",
+      "regions": [
+        "latin"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "working_class"
+      ]
+    },
+    {
+      "name": "Porter",
+      "regions": [
+        "us_west"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "folk"
+      ]
+    },
+    {
+      "name": "Prescott",
+      "regions": [
+        "us"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "mystery"
+      ]
+    },
+    {
+      "name": "Quill",
+      "regions": [
+        "new_england"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "thriller"
+      ]
+    },
+    {
+      "name": "Reed",
+      "regions": [
+        "us_south"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "horror"
+      ]
+    },
+    {
+      "name": "Reeves",
+      "regions": [
+        "appalachian"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "historical"
+      ]
+    },
+    {
+      "name": "Rhodes",
+      "regions": [
+        "midwest"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "comedy"
+      ]
+    },
+    {
+      "name": "Rivers",
+      "regions": [
+        "coastal"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "crime"
+      ]
+    },
+    {
+      "name": "Rowe",
+      "regions": [
+        "urban"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "gothic"
+      ]
+    },
+    {
+      "name": "Sable",
+      "regions": [
+        "uk"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "rural"
+      ]
+    },
+    {
+      "name": "Sawyer",
+      "regions": [
+        "irish"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "literary"
+      ]
+    },
+    {
+      "name": "Shaw",
+      "regions": [
+        "european"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "adventure"
+      ]
+    },
+    {
+      "name": "Sinclair",
+      "regions": [
+        "latin"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "working_class"
+      ]
+    },
+    {
+      "name": "Slade",
+      "regions": [
+        "us_west"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "folk"
+      ]
+    },
+    {
+      "name": "Sloane",
+      "regions": [
+        "us"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "mystery"
+      ]
+    },
+    {
+      "name": "Tate",
+      "regions": [
+        "new_england"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "thriller"
+      ]
+    },
+    {
+      "name": "Thorne",
+      "regions": [
+        "us_south"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "horror"
+      ]
+    },
+    {
+      "name": "Vaughn",
+      "regions": [
+        "appalachian"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "historical"
+      ]
+    },
+    {
+      "name": "Walker",
+      "regions": [
+        "midwest"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "comedy"
+      ]
+    },
+    {
+      "name": "Ward",
+      "regions": [
+        "coastal"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "crime"
+      ]
+    },
+    {
+      "name": "Warren",
+      "regions": [
+        "urban"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "gothic"
+      ]
+    },
+    {
+      "name": "Weaver",
+      "regions": [
+        "uk"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "rural"
+      ]
+    },
+    {
+      "name": "West",
+      "regions": [
+        "irish"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "literary"
+      ]
+    },
+    {
+      "name": "Whitaker",
+      "regions": [
+        "european"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "adventure"
+      ]
+    },
+    {
+      "name": "Wilder",
+      "regions": [
+        "latin"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "working_class"
+      ]
+    },
+    {
+      "name": "Winters",
+      "regions": [
+        "us_west"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "folk"
+      ]
+    },
+    {
+      "name": "Wren",
+      "regions": [
+        "us"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "mystery"
+      ]
+    },
+    {
+      "name": "York",
+      "regions": [
+        "new_england"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "thriller"
+      ]
+    },
+    {
+      "name": "Young",
+      "regions": [
+        "us_south"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "horror"
+      ]
+    },
+    {
+      "name": "Abbey",
+      "regions": [
+        "appalachian"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "historical"
+      ]
+    },
+    {
+      "name": "Adler",
+      "regions": [
+        "midwest"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "comedy"
+      ]
+    },
+    {
+      "name": "Archer",
+      "regions": [
+        "coastal"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "crime"
+      ]
+    },
+    {
+      "name": "Ashby",
+      "regions": [
+        "urban"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "gothic"
+      ]
+    },
+    {
+      "name": "Bancroft",
+      "regions": [
+        "uk"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "rural"
+      ]
+    },
+    {
+      "name": "Beckett",
+      "regions": [
+        "irish"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "literary"
+      ]
+    },
+    {
+      "name": "Bishop",
+      "regions": [
+        "european"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "adventure"
+      ]
+    },
+    {
+      "name": "Blythe",
+      "regions": [
+        "latin"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "working_class"
+      ]
+    },
+    {
+      "name": "Borden",
+      "regions": [
+        "us_west"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "folk"
+      ]
+    },
+    {
+      "name": "Braddock",
+      "regions": [
+        "us"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "mystery"
+      ]
+    },
+    {
+      "name": "Brannigan",
+      "regions": [
+        "new_england"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "thriller"
+      ]
+    },
+    {
+      "name": "Briar",
+      "regions": [
+        "us_south"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "horror"
+      ]
+    },
+    {
+      "name": "Brinkley",
+      "regions": [
+        "appalachian"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "historical"
+      ]
+    },
+    {
+      "name": "Brock",
+      "regions": [
+        "midwest"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "comedy"
+      ]
+    },
+    {
+      "name": "Burrows",
+      "regions": [
+        "coastal"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "crime"
+      ]
+    },
+    {
+      "name": "Cadwell",
+      "regions": [
+        "urban"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "gothic"
+      ]
+    },
+    {
+      "name": "Cairn",
+      "regions": [
+        "uk"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "rural"
+      ]
+    },
+    {
+      "name": "Carrington",
+      "regions": [
+        "irish"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "literary"
+      ]
+    },
+    {
+      "name": "Clifton",
+      "regions": [
+        "european"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "adventure"
+      ]
+    },
+    {
+      "name": "Cochran",
+      "regions": [
+        "latin"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "working_class"
+      ]
+    },
+    {
+      "name": "Colby",
+      "regions": [
+        "us_west"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "folk"
+      ]
+    },
+    {
+      "name": "Collier",
+      "regions": [
+        "us"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "mystery"
+      ]
+    },
+    {
+      "name": "Crawford",
+      "regions": [
+        "new_england"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "thriller"
+      ]
+    },
+    {
+      "name": "Creed",
+      "regions": [
+        "us_south"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "horror"
+      ]
+    },
+    {
+      "name": "Cromwell",
+      "regions": [
+        "appalachian"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "historical"
+      ]
+    },
+    {
+      "name": "Cross",
+      "regions": [
+        "midwest"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "comedy"
+      ]
+    },
+    {
+      "name": "Davenport",
+      "regions": [
+        "coastal"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "crime"
+      ]
+    },
+    {
+      "name": "Devereaux",
+      "regions": [
+        "urban"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "gothic"
+      ]
+    },
+    {
+      "name": "Donnelly",
+      "regions": [
+        "uk"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "rural"
+      ]
+    },
+    {
+      "name": "Doyle",
+      "regions": [
+        "irish"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "literary"
+      ]
+    },
+    {
+      "name": "Durant",
+      "regions": [
+        "european"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "adventure"
+      ]
+    },
+    {
+      "name": "Evers",
+      "regions": [
+        "latin"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "working_class"
+      ]
+    },
+    {
+      "name": "Fairfax",
+      "regions": [
+        "us_west"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "folk"
+      ]
+    },
+    {
+      "name": "Faraday",
+      "regions": [
+        "us"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "mystery"
+      ]
+    },
+    {
+      "name": "Fenton",
+      "regions": [
+        "new_england"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "thriller"
+      ]
+    },
+    {
+      "name": "Finch",
+      "regions": [
+        "us_south"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "horror"
+      ]
+    },
+    {
+      "name": "Fitzroy",
+      "regions": [
+        "appalachian"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "historical"
+      ]
+    },
+    {
+      "name": "Flint",
+      "regions": [
+        "midwest"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "comedy"
+      ]
+    },
+    {
+      "name": "Galloway",
+      "regions": [
+        "coastal"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "crime"
+      ]
+    },
+    {
+      "name": "Garrison",
+      "regions": [
+        "urban"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "gothic"
+      ]
+    },
+    {
+      "name": "Gilmore",
+      "regions": [
+        "uk"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "rural"
+      ]
+    },
+    {
+      "name": "Grafton",
+      "regions": [
+        "irish"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "literary"
+      ]
+    },
+    {
+      "name": "Halstead",
+      "regions": [
+        "european"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "adventure"
+      ]
+    },
+    {
+      "name": "Hampton",
+      "regions": [
+        "latin"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "working_class"
+      ]
+    },
+    {
+      "name": "Hargrove",
+      "regions": [
+        "us_west"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "folk"
+      ]
+    },
+    {
+      "name": "Harker",
+      "regions": [
+        "us"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "mystery"
+      ]
+    },
+    {
+      "name": "Hastings",
+      "regions": [
+        "new_england"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "thriller"
+      ]
+    },
+    {
+      "name": "Haven",
+      "regions": [
+        "us_south"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "horror"
+      ]
+    },
+    {
+      "name": "Hawkins",
+      "regions": [
+        "appalachian"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "historical"
+      ]
+    },
+    {
+      "name": "Hobbs",
+      "regions": [
+        "midwest"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "comedy"
+      ]
+    },
+    {
+      "name": "Huxley",
+      "regions": [
+        "coastal"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "crime"
+      ]
+    },
+    {
+      "name": "Kincaid",
+      "regions": [
+        "urban"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "gothic"
+      ]
+    },
+    {
+      "name": "Kingsley",
+      "regions": [
+        "uk"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "rural"
+      ]
+    },
+    {
+      "name": "Lansbury",
+      "regions": [
+        "irish"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "literary"
+      ]
+    },
+    {
+      "name": "Langley",
+      "regions": [
+        "european"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "adventure"
+      ]
+    },
+    {
+      "name": "Latham",
+      "regions": [
+        "latin"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "working_class"
+      ]
+    },
+    {
+      "name": "Ledger",
+      "regions": [
+        "us_west"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "folk"
+      ]
+    },
+    {
+      "name": "Leland",
+      "regions": [
+        "us"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "mystery"
+      ]
+    },
+    {
+      "name": "Lennox",
+      "regions": [
+        "new_england"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "thriller"
+      ]
+    },
+    {
+      "name": "Lockhart",
+      "regions": [
+        "us_south"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "horror"
+      ]
+    },
+    {
+      "name": "Loomis",
+      "regions": [
+        "appalachian"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "historical"
+      ]
+    },
+    {
+      "name": "Lovelace",
+      "regions": [
+        "midwest"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "comedy"
+      ]
+    },
+    {
+      "name": "Lyndon",
+      "regions": [
+        "coastal"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "crime"
+      ]
+    },
+    {
+      "name": "Marlow",
+      "regions": [
+        "urban"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "gothic"
+      ]
+    },
+    {
+      "name": "Marston",
+      "regions": [
+        "uk"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "rural"
+      ]
+    },
+    {
+      "name": "McCabe",
+      "regions": [
+        "irish"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "literary"
+      ]
+    },
+    {
+      "name": "McKenna",
+      "regions": [
+        "european"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "adventure"
+      ]
+    },
+    {
+      "name": "Merrick",
+      "regions": [
+        "latin"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "working_class"
+      ]
+    },
+    {
+      "name": "Montrose",
+      "regions": [
+        "us_west"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "folk"
+      ]
+    },
+    {
+      "name": "Moreland",
+      "regions": [
+        "us"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "mystery"
+      ]
+    },
+    {
+      "name": "Nightingale",
+      "regions": [
+        "new_england"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "thriller"
+      ]
+    },
+    {
+      "name": "North",
+      "regions": [
+        "us_south"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "horror"
+      ]
+    },
+    {
+      "name": "Osborne",
+      "regions": [
+        "appalachian"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "historical"
+      ]
+    },
+    {
+      "name": "Pemberton",
+      "regions": [
+        "midwest"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "comedy"
+      ]
+    },
+    {
+      "name": "Poe",
+      "regions": [
+        "coastal"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "crime"
+      ]
+    },
+    {
+      "name": "Quincy",
+      "regions": [
+        "urban"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "gothic"
+      ]
+    },
+    {
+      "name": "Radcliffe",
+      "regions": [
+        "uk"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "rural"
+      ]
+    },
+    {
+      "name": "Ransom",
+      "regions": [
+        "irish"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "literary"
+      ]
+    },
+    {
+      "name": "Redford",
+      "regions": [
+        "european"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "adventure"
+      ]
+    },
+    {
+      "name": "Roscoe",
+      "regions": [
+        "latin"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "working_class"
+      ]
+    },
+    {
+      "name": "Rutherford",
+      "regions": [
+        "us_west"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "folk"
+      ]
+    },
+    {
+      "name": "Seaton",
+      "regions": [
+        "us"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "mystery"
+      ]
+    },
+    {
+      "name": "Shelby",
+      "regions": [
+        "new_england"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "thriller"
+      ]
+    },
+    {
+      "name": "Sheridan",
+      "regions": [
+        "us_south"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "horror"
+      ]
+    },
+    {
+      "name": "Sterling",
+      "regions": [
+        "appalachian"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "historical"
+      ]
+    },
+    {
+      "name": "Stroud",
+      "regions": [
+        "midwest"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "comedy"
+      ]
+    },
+    {
+      "name": "Talbot",
+      "regions": [
+        "coastal"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "crime"
+      ]
+    },
+    {
+      "name": "Temple",
+      "regions": [
+        "urban"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "gothic"
+      ]
+    },
+    {
+      "name": "Tremaine",
+      "regions": [
+        "uk"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "rural"
+      ]
+    },
+    {
+      "name": "Underwood",
+      "regions": [
+        "irish"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "literary"
+      ]
+    },
+    {
+      "name": "Vernon",
+      "regions": [
+        "european"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "adventure"
+      ]
+    },
+    {
+      "name": "Wakefield",
+      "regions": [
+        "latin"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "working_class"
+      ]
+    },
+    {
+      "name": "Walden",
+      "regions": [
+        "us_west"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "folk"
+      ]
+    },
+    {
+      "name": "Waverly",
+      "regions": [
+        "us"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "mystery"
+      ]
+    },
+    {
+      "name": "Whitley",
+      "regions": [
+        "new_england"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "thriller"
+      ]
+    },
+    {
+      "name": "Winslow",
+      "regions": [
+        "us_south"
+      ],
+      "eras": [
+        "18th"
+      ],
+      "styles": [
+        "horror"
+      ]
+    },
+    {
+      "name": "Woodward",
+      "regions": [
+        "appalachian"
+      ],
+      "eras": [
+        "modern"
+      ],
+      "styles": [
+        "historical"
+      ]
+    },
+    {
+      "name": "Wycliffe",
+      "regions": [
+        "midwest"
+      ],
+      "eras": [
+        "late_20th"
+      ],
+      "styles": [
+        "comedy"
+      ]
+    },
+    {
+      "name": "Yardley",
+      "regions": [
+        "coastal"
+      ],
+      "eras": [
+        "early_20th"
+      ],
+      "styles": [
+        "crime"
+      ]
+    },
+    {
+      "name": "Beck",
+      "regions": [
+        "urban"
+      ],
+      "eras": [
+        "19th"
+      ],
+      "styles": [
+        "gothic"
+      ]
+    }
+  ]
+}

@@ -214,6 +214,7 @@ export async function GET(req: NextRequest) {
   const queue: { url: string; type: 'intro' | 'story' | 'outro'; label: string }[] = []
   const belleIntro = await resolveBelleAudio(story, 'intro', firstName, lastBelleVariantKey, belleSessionCount)
   const belleOutro = await resolveBelleAudio(story, 'outro', firstName, null, belleSessionCount)
+  const usesBelleVariantAudio = Boolean(belleIntro?.audioUrl || belleOutro?.audioUrl)
 
   queue.push({ url: STING_URL, type: 'intro', label: 'Sting' })
 
@@ -255,8 +256,8 @@ export async function GET(req: NextRequest) {
     return jsonWithBelleSession({
       queue,
       useFinalMix: false,
-      introOutroMusicUrl: INTRO_OUTRO_MUSIC,
-      backgroundMusicUrl: (story as any).background_music_url || null,
+      introOutroMusicUrl: usesBelleVariantAudio ? null : INTRO_OUTRO_MUSIC,
+      backgroundMusicUrl: usesBelleVariantAudio ? null : ((story as any).background_music_url || null),
       totalSegments: queue.length,
       belle: { intro: belleDebug(belleIntro), outro: belleDebug(belleOutro) },
       belleSessionCount,
@@ -273,8 +274,8 @@ export async function GET(req: NextRequest) {
     return jsonWithBelleSession({
       queue,
       useFinalMix: false,
-      introOutroMusicUrl: INTRO_OUTRO_MUSIC,
-      backgroundMusicUrl: (story as any).background_music_url || null,
+      introOutroMusicUrl: null,
+      backgroundMusicUrl: null,
       totalSegments: queue.length,
       belle: { intro: belleDebug(belleIntro), outro: belleDebug(belleOutro) },
       belleSessionCount,
@@ -304,8 +305,8 @@ export async function GET(req: NextRequest) {
     }
     return jsonWithBelleSession({
       queue,
-      introOutroMusicUrl: INTRO_OUTRO_MUSIC,
-      backgroundMusicUrl: (story as any).background_music_url || null,
+      introOutroMusicUrl: usesBelleVariantAudio ? null : INTRO_OUTRO_MUSIC,
+      backgroundMusicUrl: usesBelleVariantAudio ? null : ((story as any).background_music_url || null),
       totalSegments: queue.length,
       belle: { intro: belleDebug(belleIntro), outro: belleDebug(belleOutro) },
       belleSessionCount,
@@ -321,8 +322,8 @@ export async function GET(req: NextRequest) {
     if (belleOutro?.audioUrl || story.outro_audio_url) queue.push({ url: belleOutro?.audioUrl || story.outro_audio_url, type: 'outro', label: belleOutro ? 'Belle' : 'Outro' })
     return jsonWithBelleSession({
       queue,
-      introOutroMusicUrl: INTRO_OUTRO_MUSIC,
-      backgroundMusicUrl: (story as any).background_music_url || null,
+      introOutroMusicUrl: usesBelleVariantAudio ? null : INTRO_OUTRO_MUSIC,
+      backgroundMusicUrl: usesBelleVariantAudio ? null : ((story as any).background_music_url || null),
       totalSegments: queue.length,
       belle: { intro: belleDebug(belleIntro), outro: belleDebug(belleOutro) },
       belleSessionCount,
@@ -352,8 +353,8 @@ export async function GET(req: NextRequest) {
 
     return jsonWithBelleSession({
       queue,
-      introOutroMusicUrl: INTRO_OUTRO_MUSIC,
-      backgroundMusicUrl,
+      introOutroMusicUrl: usesBelleVariantAudio ? null : INTRO_OUTRO_MUSIC,
+      backgroundMusicUrl: usesBelleVariantAudio ? null : backgroundMusicUrl,
       totalSegments: queue.length,
       belle: { intro: belleDebug(belleIntro), outro: belleDebug(belleOutro) },
       belleSessionCount,
@@ -364,7 +365,7 @@ export async function GET(req: NextRequest) {
 
   return jsonWithBelleSession({
     queue,
-    introOutroMusicUrl: INTRO_OUTRO_MUSIC,
+    introOutroMusicUrl: usesBelleVariantAudio ? null : INTRO_OUTRO_MUSIC,
     backgroundMusicUrl: null,
     totalSegments: queue.length,
     belle: { intro: belleDebug(belleIntro), outro: belleDebug(belleOutro) },

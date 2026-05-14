@@ -105,9 +105,24 @@ def download_file(url: str, dest: Path):
     with urllib.request.urlopen(req, timeout=300) as r:
         dest.write_bytes(r.read())
 
+def url_exists(url: str) -> bool:
+    req = urllib.request.Request(url, method="HEAD")
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            return 200 <= r.status < 300
+    except Exception:
+        return False
+
 def parse_header(script: str, key: str) -> str:
     m = re.search(rf"^{re.escape(key)}:[ \t]*([^\r\n]*)", script, re.MULTILINE)
     return m.group(1).strip() if m else ""
+
+def music_prompt_for(script: str, title: str, genre: str) -> str:
+    prompt = parse_header(script, "SUNO_PROMPT") or parse_header(script, "SUNO PROMPT")
+    if prompt:
+        return prompt
+    genre_part = genre or "cinematic audio drama"
+    return f"Cinematic {genre_part} instrumental score for {title}. Atmospheric, emotionally specific, no vocals."
 
 def duration_mins_for(path: Path) -> int:
     out = subprocess.check_output([
@@ -241,6 +256,40 @@ def main():
         return
 
     final_mix = out_dir / f"{slug}_final.mp3"
+
+    write_status(job_id, {
+        **job,
+        "status": "running",
+        "phase": "music",
+        "message": f"Generating story-specific background music ({story_kind})",
+        "projectDir": str(project_dir),
+        "storyKind": story_kind,
+        "seriesName": series_name,
+        "episodeNumber": episode_number,
+        "updatedAt": now_iso(),
+    })
+
+    music_prompt = music_prompt_for(script, title, genre)
+    music_result = post_json(f"{BASE_URL}/api/asc3/generate-music", {
+        "storyId": story_id,
+        "prompt": music_prompt,
+    }, timeout=900)
+
+    music_url = music_result.get("url") or music_result.get("musicUrl") or ""
+    expected_music_url = f"{env_value('NEXT_PUBLIC_SUPABASE_URL').rstrip('/')}/storage/v1/object/public/audio/asc3/{story_id}/background_music.mp3"
+    if not music_result.get("success") or not (url_exists(music_url) or url_exists(expected_music_url)):
+        write_status(job_id, {
+            **job,
+            "status": "failed",
+            "phase": "music",
+            "error": "Missing story-specific background music. Music generation failed before render.",
+            "details": music_result,
+            "musicPrompt": music_prompt,
+            "expectedMusicUrl": expected_music_url,
+            "projectDir": str(project_dir),
+            "updatedAt": now_iso(),
+        })
+        return
 
     write_status(job_id, {
         **job,

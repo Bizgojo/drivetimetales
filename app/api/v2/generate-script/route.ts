@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
 import { logAnthropicCall } from '@/app/lib/anthropic-logger'
+import { buildNamePalettePromptBlock } from '@/lib/story/namePalette'
 
 export const runtime = 'nodejs'
 
@@ -120,6 +121,23 @@ function runtimeTarget(runtime: string) {
   }
 }
 
+async function loadRecentStoryTexts() {
+  const { data, error } = await supabase
+    .from('stories')
+    .select('title,script,script_json')
+    .not('script', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(50)
+
+  if (error || !data) return []
+
+  return data.map((story: any) => [
+    story.title || '',
+    story.script || '',
+    story.script_json?.raw_script || '',
+  ].join('\n'))
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { storyId, model = 'claude-opus-4-6' } = await req.json()
@@ -136,6 +154,13 @@ export async function POST(req: NextRequest) {
 
     const brief = story.brief_json as any
     const target = runtimeTarget(brief.runtime || '')
+    const recentStoryTexts = await loadRecentStoryTexts()
+    const namePaletteBlock = buildNamePalettePromptBlock({
+      genre: story.genre || brief.genre || '',
+      setting: [brief.setting, brief.location, brief.region].filter(Boolean).join(' '),
+      era: brief.era || brief.period || '',
+      recentStoryTexts,
+    })
 
     const prompt = `You are the Endless Tales Stage 2 script writer.
 
@@ -149,6 +174,8 @@ Use the CURRENT published rules:
 - The title may be blank in the brief; if blank, choose the best title from the story.
 - Final title must be 1 to 5 words and 28 characters or fewer so it fits one line on story cards.
 - Output ONLY the script. No commentary.
+
+${namePaletteBlock}
 
 Required script structure:
 TITLE: [1 to 5 words, 28 characters or fewer]

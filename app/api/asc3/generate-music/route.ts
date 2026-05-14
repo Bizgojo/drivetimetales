@@ -86,6 +86,15 @@ export async function POST(req: NextRequest) {
     const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio/${storagePath}`
     console.log(`  ✅ Uploaded: ${publicUrl}`)
 
+    const { error: updateErr } = await supabase
+      .from('stories')
+      .update({ background_music_url: publicUrl })
+      .eq('id', storyId)
+
+    if (updateErr) {
+      throw new Error(`Music uploaded but failed to update story background_music_url: ${updateErr.message}`)
+    }
+
     return NextResponse.json({ success: true, url: publicUrl })
   } catch (err) {
     console.error('generate-music error:', err)
