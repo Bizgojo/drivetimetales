@@ -47,6 +47,9 @@ const SHORT_SEGMENT_QC_WARN_LUFS = -17.5
 const SHORT_SEGMENT_QC_RETRY_LUFS = -18.0
 const SHORT_SEGMENT_QC_TARGET_LUFS = -16.5
 const SHORT_SEGMENT_MAX_CANDIDATES = 3
+const SEGMENT_TRANSCRIPT_MODEL = 'whisper-1'
+const SEGMENT_TRANSCRIPT_MIN_COVERAGE = 0.62
+const SEGMENT_TRANSCRIPT_TAIL_WORDS = 4
 
 function getSceneLoudnessOffset(text: string, prefix: string): number {
   if (prefix === 'intro' || prefix === 'intro_before' || prefix === 'intro_after' || prefix === 'outro') return 0
@@ -97,6 +100,84 @@ function hasUsableLoudness(metrics: LoudnessMetrics): boolean {
 }
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+function transcriptTokens(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[’']/g, "'")
+    .replace(/\b([a-z]+)'s\b/g, '$1')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+}
+
+function containsOrderedTokens(haystack: string[], needle: string[]): boolean {
+  if (needle.length === 0) return true
+  let cursor = 0
+  for (const token of haystack) {
+    if (token === needle[cursor]) cursor++
+    if (cursor >= needle.length) return true
+  }
+  return false
+}
+
+function transcriptCoverage(expected: string[], detected: string[]): number {
+  if (expected.length === 0) return 1
+  let cursor = 0
+  let matched = 0
+  for (const token of detected) {
+    if (token === expected[cursor]) {
+      matched++
+      cursor++
+    }
+    if (cursor >= expected.length) break
+  }
+  return matched / expected.length
+}
+
+async function transcribeSegmentBuffer(buf: Buffer, fileName: string): Promise<string> {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY missing; cannot run segment transcript QC')
+  }
+
+  const form = new FormData()
+  form.append('model', SEGMENT_TRANSCRIPT_MODEL)
+  form.append('language', 'en')
+  form.append('response_format', 'json')
+  form.append('file', new Blob([buf], { type: 'audio/mpeg' }), fileName)
+
+  const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+    body: form,
+  })
+  const body = await res.text()
+  if (!res.ok) {
+    throw new Error(`Transcript QC failed for ${fileName}: OpenAI ${res.status} ${body.slice(0, 240)}`)
+  }
+  const parsed = JSON.parse(body)
+  return String(parsed.text || '').trim()
+}
+
+async function validateSegmentTranscript(buf: Buffer, expectedText: string, fileName: string) {
+  const detectedText = await transcribeSegmentBuffer(buf, fileName)
+  const expected = transcriptTokens(expectedText)
+  const detected = transcriptTokens(detectedText)
+  const tail = expected.slice(Math.max(0, expected.length - SEGMENT_TRANSCRIPT_TAIL_WORDS))
+  const tailMatches = containsOrderedTokens(detected, tail)
+  const coverage = transcriptCoverage(expected, detected)
+  const shortLineMatches = expected.length <= 8 ? containsOrderedTokens(detected, expected) : true
+  const passed = tailMatches && shortLineMatches && coverage >= SEGMENT_TRANSCRIPT_MIN_COVERAGE
+
+  return {
+    passed,
+    expectedText,
+    detectedText,
+    coverage,
+    tailMatches,
+    shortLineMatches,
+  }
+}
 
 function getUploadErrorDetails(error: any): { name: string; message: string; status?: number | string; statusCode?: number | string } {
   const original = error?.originalError
@@ -654,9 +735,10 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
     const segmentQcTarget = isShortSegment ? SHORT_SEGMENT_QC_TARGET_LUFS : SEGMENT_QC_TARGET_LUFS
     const segmentQcWarn = isShortSegment ? SHORT_SEGMENT_QC_WARN_LUFS : SEGMENT_QC_WARN_LUFS
     const segmentQcRetry = isShortSegment ? SHORT_SEGMENT_QC_RETRY_LUFS : SEGMENT_QC_RETRY_LUFS
-    const candidateCount = isShortSegment ? shortSegmentMaxCandidates : 1
+    const candidateCount = isShortSegment ? shortSegmentMaxCandidates : 2
     let accepted: { buf: Buffer; metrics: LoudnessMetrics; action: string; duration: number; candidate: number } | null = null
     let best: { metrics: LoudnessMetrics; action: string; candidate: number } | null = null
+    let transcriptFailure: Awaited<ReturnType<typeof validateSegmentTranscript>> | null = null
 
     const actionForMetrics = (metrics: LoudnessMetrics): string => {
       if (!hasUsableLoudness(metrics)) return 'fail_invalid_loudness'
@@ -728,12 +810,21 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
         logShortCandidateQc(fileName, speaker, candidate, metrics, action)
       }
       if (isPassingAction(action)) {
+        const transcriptCheck = await validateSegmentTranscript(candidateBuf, text, fileName)
+        console.log(`  Segment transcript QC ${fileName} speaker="${speaker}" candidate=${candidate} coverage=${transcriptCheck.coverage.toFixed(2)} tail=${transcriptCheck.tailMatches ? 'pass' : 'fail'} result=${transcriptCheck.passed ? 'accept' : 'retry'} expected="${text.slice(0, 120)}" detected="${transcriptCheck.detectedText.slice(0, 120)}"`)
+        if (!transcriptCheck.passed) {
+          transcriptFailure = transcriptCheck
+          continue
+        }
         accepted = { buf: candidateBuf, metrics, action, duration: candidateDuration, candidate }
         break
       }
     }
 
     if (!accepted) {
+      if (transcriptFailure) {
+        throw new Error(`Segment transcript QC failed for ${fileName}: expected "${transcriptFailure.expectedText}", detected "${transcriptFailure.detectedText}"`)
+      }
       if (best?.metrics.input_tp && best.metrics.input_tp > SPOKEN_TRUE_PEAK) {
         throw new Error(`Segment loudness QC failed for ${fileName}: best candidate ${best.candidate} true peak ${best.metrics.input_tp.toFixed(2)} dBTP exceeds ${SPOKEN_TRUE_PEAK} dBTP`)
       }
