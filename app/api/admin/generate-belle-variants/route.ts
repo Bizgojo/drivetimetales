@@ -209,6 +209,7 @@ Cadence rules:
 
 Outro rules:
 - One or two short sentences, usually under 30 words, hard max 42 words.
+- Do not write period-separated fragments. Avoid patterns like "That handprint. That bell. Some calls..."
 - Land on the feeling left by the story, not a recap.
 - Leave an emotional echo. Do not resolve the whole plot beat-by-beat.
 - For standalone stories, close with a resonant image or consequence.
