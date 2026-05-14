@@ -66,6 +66,9 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
   const [audioSrc, setAudioSrc] = useState('')  // resolved single-file URL (state so init effect re-runs)
   const segDursRef    = useRef<number[]>([])
   const completedRef  = useRef(0)
+  const activeQueueIndexRef = useRef(0)
+  const pendingQueueSeekRef = useRef<number | null>(null)
+  const pendingQueueSeekPlayRef = useRef(false)
   const sessionStartRef = useRef<number | null>(null)
   const playlistRef      = useRef<{id:string,episode_number:number}[]>([])
   const playlistIndexRef = useRef<number>(-1)
@@ -192,6 +195,81 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
       candidateStories: stories as PlayerStory[],
       userLibrary: mapLibraryRows(libraryRows),
     })
+  }
+
+  const getQueueCompletedSeconds = (targetIndex: number) => {
+    return segDursRef.current
+      .slice(0, Math.max(0, targetIndex))
+      .reduce((sum, value) => sum + (Number.isFinite(value) && value > 0 ? value : 0), 0)
+  }
+
+  const hasAllQueueDurations = () => {
+    return queue.length > 0 && queue.every((_, index) => Number.isFinite(segDursRef.current[index]) && segDursRef.current[index] > 0)
+  }
+
+  const getQueueTotalSeconds = () => {
+    const measuredTotal = segDursRef.current.reduce((sum, value) => sum + (Number.isFinite(value) && value > 0 ? value : 0), 0)
+    return hasAllQueueDurations() && measuredTotal > 0 ? measuredTotal : totalDur
+  }
+
+  const getProgressSeconds = () => {
+    return isASC3 ? cumTime : currentTime
+  }
+
+  const getProgressTotalSeconds = () => {
+    return isASC3 ? getQueueTotalSeconds() : (duration || (story as any)?.duration_mins * 60 || 0)
+  }
+
+  const findQueuePositionForTime = (globalTime: number) => {
+    const safeTime = Math.max(0, globalTime)
+    let elapsed = 0
+    for (let index = 0; index < queue.length; index += 1) {
+      const segmentDuration = segDursRef.current[index] || 0
+      if (segmentDuration > 0 && safeTime <= elapsed + segmentDuration) {
+        return { index, offset: Math.max(0, safeTime - elapsed), completed: elapsed }
+      }
+      elapsed += segmentDuration
+    }
+    const lastIndex = Math.max(0, queue.length - 1)
+    const lastDuration = segDursRef.current[lastIndex] || 0
+    return {
+      index: lastIndex,
+      offset: Math.max(0, lastDuration - 0.25),
+      completed: getQueueCompletedSeconds(lastIndex),
+    }
+  }
+
+  const seekASC3ToGlobalTime = (globalTime: number, shouldPlay = isPlaying) => {
+    const audio = audioRef.current
+    if (!audio || !queue.length) return
+
+    const total = getQueueTotalSeconds()
+    if (total <= 0) return
+    const targetTime = total > 0 ? Math.min(Math.max(0, globalTime), total) : Math.max(0, globalTime)
+    const target = findQueuePositionForTime(targetTime)
+    const targetSegment = queue[target.index]
+    if (!targetSegment) return
+
+    completedRef.current = target.completed
+    activeQueueIndexRef.current = target.index
+    setQueueIndex(target.index)
+    setSectionLabel(targetSegment.label)
+    typeRef.current = targetSegment.type
+    setCumTime(target.completed + target.offset)
+    setCurrentTime(target.offset)
+
+    const currentSrc = audio.currentSrc || audio.src || ''
+    const sameSegment = currentSrc === targetSegment.url || currentSrc.includes(targetSegment.url.split('/').pop() || '')
+    if (sameSegment && audio.readyState >= 1) {
+      audio.currentTime = target.offset
+      if (shouldPlay) audio.play().catch(() => {})
+      return
+    }
+
+    pendingQueueSeekRef.current = target.offset
+    pendingQueueSeekPlayRef.current = shouldPlay
+    audio.src = targetSegment.url
+    audio.load()
   }
 
   const fetchAutoAdvanceCandidate = async () => {
@@ -413,6 +491,14 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
   useEffect(() => {
     isAdvancingRef.current = false
     seriesContinueAutoplayAttemptedRef.current = false
+    activeQueueIndexRef.current = 0
+    completedRef.current = 0
+    pendingQueueSeekRef.current = null
+    pendingQueueSeekPlayRef.current = false
+    segDursRef.current = []
+    setTotalDur(0)
+    setCumTime(0)
+    setCurrentTime(0)
     setAutoAdvanceCandidate(null)
     setCatalogExhausted(false)
     setStillListeningPrompt(false)
@@ -674,6 +760,8 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
       audioRef.current.load()
     } else if (isASC3 && queue.length) {
       // ASC3 mode — load first segment
+      activeQueueIndexRef.current = 0
+      completedRef.current = 0
       audioRef.current.src = queue[0].url; audioRef.current.load()
       setSectionLabel(queue[0].label); typeRef.current = 'intro'
       // Music src set on Play tap only -- prevents audio leaking on page load
@@ -684,6 +772,44 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
       audioRef.current.load()
     }
   }, [isASC3, queue, loading, audioSrc])
+
+  useEffect(() => {
+    if (!isASC3 || !queue.length) {
+      setTotalDur(0)
+      return
+    }
+
+    let cancelled = false
+    setTotalDur(0)
+    Promise.all(queue.map((segment, index) => new Promise<{ index: number; duration: number }>((resolve) => {
+      const probe = new Audio()
+      probe.preload = 'metadata'
+      probe.onloadedmetadata = () => {
+        const segmentDuration = Number.isFinite(probe.duration) && probe.duration > 0 ? probe.duration : 0
+        resolve({ index, duration: segmentDuration })
+      }
+      probe.onerror = () => resolve({ index, duration: 0 })
+      probe.src = segment.url
+      probe.load()
+    }))).then((durations) => {
+      if (cancelled) return
+      durations.forEach(({ index, duration: segmentDuration }) => {
+        if (segmentDuration > 0) segDursRef.current[index] = segmentDuration
+      })
+      const total = segDursRef.current.reduce((sum, value) => sum + (Number.isFinite(value) && value > 0 ? value : 0), 0)
+      if (total > 0) setTotalDur(total)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [isASC3, queue])
+
+  useEffect(() => {
+    if (!isASC3 || !queue.length || loading || resumeRef.current <= 0 || totalDur <= 0) return
+    seekASC3ToGlobalTime(resumeRef.current, false)
+    resumeRef.current = 0
+  }, [isASC3, queue, loading, totalDur])
 
   useEffect(() => {
     if (loading || !audioRef.current || seriesContinueAutoplayAttemptedRef.current) return
@@ -766,6 +892,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
     completedRef.current += segDursRef.current[queueIndex] || duration
     const ni = queueIndex + 1
     if (ni < queue.length) {
+      activeQueueIndexRef.current = ni
       setQueueIndex(ni)
       const next = queue[ni]; setSectionLabel(next.label); typeRef.current = next.type
       if (audioRef.current) {
@@ -782,10 +909,14 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
         }
       }
     } else if (source === 'natural_ended') {
-      raise(0); setIsPlaying(false); saveProgress(duration, true)
+      const completedSeconds = getQueueTotalSeconds() || completedRef.current || duration
+      setCumTime(completedSeconds)
+      raise(0); setIsPlaying(false); saveProgress(completedSeconds, true)
       maybeAutoAdvanceFromNaturalEnd('natural_ended')
     } else {
-      raise(0); setIsPlaying(false); saveProgress(duration, true)
+      const completedSeconds = getQueueTotalSeconds() || completedRef.current || duration
+      setCumTime(completedSeconds)
+      raise(0); setIsPlaying(false); saveProgress(completedSeconds, true)
     }
   }
 
@@ -796,7 +927,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
     if (isPlaying) {
       disableAutoAdvanceForSession('manual_pause')
       audioRef.current.pause(); musicRef.current?.pause()
-      saveProgress(currentTime); setIsPlaying(false)
+      saveProgress(getProgressSeconds()); setIsPlaying(false)
     } else {
       // src is pre-loaded in useEffect — play directly to preserve user gesture
       audioRef.current.play().then(() => {
@@ -834,7 +965,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
         userId: user?.id,
         storyId,
         currentTime: t,
-        totalDuration: duration || (story as any)?.duration_mins * 60 || 0,
+        totalDuration: getProgressTotalSeconds(),
         stopReason: 'completed',
       }).catch(() => {})
       analyticsTrackedRef.current = false
@@ -850,11 +981,11 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
   const seekToClientX = (clientX: number) => {
     const audio = audioRef.current
     const bar = progressBarRef.current
-    if (!audio || !bar || isASC3) return
+    if (!audio || !bar) return
 
-    const actualDuration = Number.isFinite(audio.duration) && audio.duration > 0
-      ? audio.duration
-      : duration
+    const actualDuration = isASC3
+      ? getQueueTotalSeconds()
+      : (Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : duration)
     if (!actualDuration || !Number.isFinite(actualDuration)) return
 
     const rect = bar.getBoundingClientRect()
@@ -862,22 +993,20 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
 
     const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
     const nextTime = ratio * actualDuration
+    if (isASC3) {
+      seekASC3ToGlobalTime(nextTime)
+      return
+    }
     audio.currentTime = nextTime
     setCurrentTime(nextTime)
   }
 
   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!audioRef.current || !duration) return
-    if (!isASC3) {
-      seekToClientX(e.clientX)
-      return
-    }
-    const rect = e.currentTarget.getBoundingClientRect()
-    audioRef.current.currentTime = ((e.clientX - rect.left) / rect.width) * duration
+    if (!audioRef.current) return
+    seekToClientX(e.clientX)
   }
 
   const handleSeekPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (isASC3) return
     e.preventDefault()
     scrubbingRef.current = true
     e.currentTarget.setPointerCapture(e.pointerId)
@@ -885,13 +1014,13 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
   }
 
   const handleSeekPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!scrubbingRef.current || isASC3) return
+    if (!scrubbingRef.current) return
     e.preventDefault()
     seekToClientX(e.clientX)
   }
 
   const handleSeekPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!scrubbingRef.current || isASC3) return
+    if (!scrubbingRef.current) return
     e.preventDefault()
     seekToClientX(e.clientX)
     scrubbingRef.current = false
@@ -908,8 +1037,8 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
       trackPlayEnd({
         userId: user?.id,
         storyId,
-        currentTime: currentTime,
-        totalDuration: duration || (story as any)?.duration_mins * 60 || 0,
+        currentTime: getProgressSeconds(),
+        totalDuration: getProgressTotalSeconds(),
         stopReason: 'not_for_me',
       }).catch(() => {})
       analyticsTrackedRef.current = false
@@ -917,7 +1046,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
     if (user?.id) {
       // Mark this episode as not_for_me
       const { error } = await supabase.from('user_library').upsert(
-        { user_id: user.id, story_id: storyId, not_for_me: true, progress: Math.floor(currentTime), last_played: new Date().toISOString() },
+        { user_id: user.id, story_id: storyId, not_for_me: true, progress: Math.floor(getProgressSeconds()), last_played: new Date().toISOString() },
         { onConflict: 'user_id,story_id' }
       )
       if (error) console.error('[NotForMe] upsert error:', error)
@@ -945,14 +1074,14 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
   }
   const handleBack = () => {
     disableAutoAdvanceForSession('navigation')
-    audioRef.current?.pause(); musicRef.current?.pause(); saveProgress(currentTime)
+    audioRef.current?.pause(); musicRef.current?.pause(); saveProgress(getProgressSeconds())
     // Analytics: track navigated_away
     if (analyticsTrackedRef.current) {
       trackPlayEnd({
         userId: user?.id,
         storyId,
-        currentTime: currentTime,
-        totalDuration: duration || (story as any)?.duration_mins * 60 || 0,
+        currentTime: getProgressSeconds(),
+        totalDuration: getProgressTotalSeconds(),
         stopReason: 'navigated_away',
       }).catch(() => {})
       analyticsTrackedRef.current = false
@@ -996,15 +1125,27 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
       <audio ref={audioRef}
         onLoadedMetadata={(e) => {
           const d = e.currentTarget.duration; setDuration(d)
-          segDursRef.current[queueIndex] = d
-          const tot = segDursRef.current.reduce((a,b) => a+(b||0), 0); if (tot>0) setTotalDur(tot)
+          const activeIndex = isASC3 ? activeQueueIndexRef.current : queueIndex
+          segDursRef.current[activeIndex] = d
+          const tot = segDursRef.current.reduce((a,b) => a+(b||0), 0); if (tot>0 && (!isASC3 || hasAllQueueDurations())) setTotalDur(tot)
+          if (isASC3 && pendingQueueSeekRef.current !== null) {
+            const seekOffset = Math.min(Math.max(0, pendingQueueSeekRef.current), Number.isFinite(d) && d > 0 ? d : pendingQueueSeekRef.current)
+            e.currentTarget.currentTime = seekOffset
+            setCurrentTime(seekOffset)
+            setCumTime(completedRef.current + seekOffset)
+            pendingQueueSeekRef.current = null
+            if (pendingQueueSeekPlayRef.current) {
+              pendingQueueSeekPlayRef.current = false
+              e.currentTarget.play().catch(() => {})
+            }
+          }
           // 3s before intro ends → swap to background story music (only if playing)
           if (isPlaying && typeRef.current === 'intro' && bgMusicRef.current) schedSwap(bgMusicRef.current, VOL_STORY_MUSIC, 3)
         }}
         onTimeUpdate={(e) => {
           const t = e.currentTarget.currentTime; setCurrentTime(t); setCumTime(completedRef.current + t)
           if (saveTimer.current) clearTimeout(saveTimer.current)
-          saveTimer.current = setTimeout(() => saveProgress(t), 5000)
+          saveTimer.current = setTimeout(() => saveProgress(isASC3 ? completedRef.current + t : t), 5000)
           const rem = e.currentTarget.duration - t
           if (rem < 6 && rem > 0 && isASC3) {
             const ni = queueIndex + 1
@@ -1036,9 +1177,11 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
               }
               // Start the actual story
               if (audioRef.current) {
-                if (isASC3 && queue.length) {
-                  audioRef.current.src = queue[0].url; audioRef.current.load()
-                  setSectionLabel(queue[0].label); typeRef.current = 'intro'
+	                if (isASC3 && queue.length) {
+	                  activeQueueIndexRef.current = 0
+	                  completedRef.current = 0
+	                  audioRef.current.src = queue[0].url; audioRef.current.load()
+	                  setSectionLabel(queue[0].label); typeRef.current = 'intro'
                 } else if (audioSrc) {
                   audioRef.current.src = audioSrc; audioRef.current.load()
                 }
@@ -1062,6 +1205,11 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
           } else advanceQueue()
         }}
         onCanPlay={() => {
+          if (isASC3 && resumeRef.current > 0 && getQueueTotalSeconds() > 0) {
+            seekASC3ToGlobalTime(resumeRef.current, false)
+            resumeRef.current = 0
+            return
+          }
           if (!isASC3 && audioRef.current) {
             if (finalMixRetryResumeRef.current !== null) {
               audioRef.current.currentTime = finalMixRetryResumeRef.current
@@ -1313,7 +1461,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
                   if (a) { a.currentTime = 0; a.play().catch(() => {}) }
                   setCurrentTime(0); setCumTime(0); setIsPlaying(true)
                 } else {
-                  completedRef.current=0; segDursRef.current=[]; setQueueIndex(0); setSectionLabel(queue[0]?.label||''); typeRef.current='intro'
+                  completedRef.current=0; activeQueueIndexRef.current=0; setQueueIndex(0); setSectionLabel(queue[0]?.label||''); typeRef.current='intro'
                   const m=musicRef.current; if(m){m.src=introMusicRef.current;m.loop=true;m.volume=0}
                   if(audioRef.current){audioRef.current.src=queue[0]?.url||'';audioRef.current.load()}
                   setTimeout(()=>{audioRef.current?.play().catch(()=>{});const mu=musicRef.current;if(mu){mu.play().catch(()=>{});animVol(mu,0,VOL_INTRO_MUSIC,2000)};setIsPlaying(true)},100)
