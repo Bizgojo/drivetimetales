@@ -29,7 +29,6 @@ const CANNED_PATTERNS = [
   /\bsit back\b/i,
   /\brelax and enjoy\b/i,
   /\btonight'?s story\b/i,
-  /\bbegins now\b/i,
   /\bonly on endless tales\b/i,
   /\bthis is ["“][^"”]+["”]\b/i,
   /\bin this story\b/i,
@@ -37,6 +36,13 @@ const CANNED_PATTERNS = [
   /\bthis episode is about\b/i,
   /\bfollows the journey\b/i,
   /\bjoin us as\b/i,
+  /\byou'?re about to\b/i,
+  /\bcome with me\b/i,
+  /\bcome back\b/i,
+  /\bcome down\b/i,
+  /\bget ready\b/i,
+  /\byou should\b/i,
+  /\byou'?re listening to\b/i,
 ]
 
 function json(payload: Record<string, unknown>, status = 200) {
@@ -80,17 +86,49 @@ function validateVariant(variant: BelleVariant, story: any) {
   if (lower.includes('belle b')) errors.push('must say Belle, not Belle B')
   if (/^(narrator|character|announcer|sandy|belle b)\s*:/i.test(text)) errors.push('must not include speaker labels')
   if (CANNED_PATTERNS.some((pattern) => pattern.test(text))) errors.push('generic/canned wording detected')
-  if (variant.kind === 'intro' && text.split(/\s+/).filter(Boolean).length > 38) errors.push('intro must be short and conversational')
+  if (variant.kind === 'intro' && /\bbegins now\b/i.test(text)) errors.push('generic/canned wording detected')
+  if (variant.kind === 'intro' && text.split(/\s+/).filter(Boolean).length > 35) errors.push('intro must be short and conversational')
+  if (variant.kind === 'outro' && text.split(/\s+/).filter(Boolean).length > 42) errors.push('outro must be short and leave a feeling, not resolve the whole plot')
+  if (variant.kind === 'outro' && (text.match(/[.!?]+/g) || []).length > 2) errors.push('outro must be one or two short sentences')
   if (/\b(summary|summarize|plot|synopsis)\b/i.test(text)) errors.push('must not mechanically summarize the plot')
   if (variant.kind === 'intro' && /\bendless tales original\b/i.test(text)) errors.push('intro must not include platform credits')
   if (variant.kind === 'intro' && story?.author && lower.includes(` by ${String(story.author).trim().toLowerCase()}`)) errors.push('intro must not include author credits')
   const terms = storySpecificTerms(story)
-  if (terms.length > 0 && !terms.some((term) => lower.includes(term))) {
+  if (variant.kind === 'intro' && variant.variant_key !== 'session_continue' && terms.length > 0 && !terms.some((term) => lower.includes(term))) {
     errors.push('must include a concrete story-specific detail')
   }
   if (variant.uses_name && !text.includes('[LISTENER_NAME]')) errors.push('uses_name variants must include [LISTENER_NAME]')
   if (!variant.uses_name && text.includes('[LISTENER_NAME]')) errors.push('only uses_name variants may include [LISTENER_NAME]')
   return { valid: errors.length === 0, errors, text }
+}
+
+function validateBatch(variants: BelleVariant[]) {
+  const errors: Array<{ variant_key: string; errors: string[]; text: string }> = []
+  const intros = variants.filter((variant) => variant.kind === 'intro')
+  const introTexts = intros.map((variant) => cleanText(variant.text))
+  const startsWithTheres = introTexts.filter((text) => /^there'?s\b/i.test(text)).length
+  const rhetoricalQuestions = introTexts.filter((text) => /\?\s*$/.test(text) || /\?/.test(text)).length
+  const firstWords = new Map<string, number>()
+
+  introTexts.forEach((text) => {
+    const first = text.toLowerCase().match(/^[a-z'\[]+/)?.[0] || ''
+    if (first) firstWords.set(first, (firstWords.get(first) || 0) + 1)
+  })
+
+  if (startsWithTheres > 1) {
+    errors.push({ variant_key: 'batch', errors: ['only one intro may start with "There\'s"'], text: '' })
+  }
+  if (rhetoricalQuestions > 1) {
+    errors.push({ variant_key: 'batch', errors: ['only one intro may use a rhetorical question'], text: '' })
+  }
+
+  Array.from(firstWords.entries()).forEach(([word, count]) => {
+    if (count > 2) {
+      errors.push({ variant_key: 'batch', errors: [`intro cadence repeats too often: ${word}`], text: '' })
+    }
+  })
+
+  return errors
 }
 
 function normalizeVariant(input: any): BelleVariant {
@@ -134,22 +172,49 @@ export async function POST(req: NextRequest) {
     const scriptExcerpt = cleanText(story.script).slice(0, 2200)
     const position = seriesPosition(story)
     const title = story.episode_title || story.title || 'Untitled'
-    const prompt = `Generate story-specific host copy for Belle, a trusted friend quietly recommending an Endless Tales story.
+    const prompt = `Generate story-specific intro/outro copy for Belle.
 
 Canonical rules:
 - Belle is the name. Never write "Belle B".
 - Belle only speaks intros/outros, never narrator or character dialogue.
+- Belle is not a host, announcer, DJ, trailer voice, or promo voice.
+- She sounds like a close, perceptive friend who just heard the story and knows why it matters.
 - Write for this exact story/episode. No generic canned templates.
-- Belle may reference the title, but should not sound like a show announcer.
-- Avoid trailer-style plot summaries. Do not explain the whole premise.
-- Intros should be 1–2 sentences, usually under 35 words.
-- Intros should usually reference one sensory image or emotional hook.
-- Use [LISTENER_NAME] in exactly two intro variants, naturally and casually. Never write "Welcome, [LISTENER_NAME]".
+- Use one concrete sensory image from the story and one emotional pressure point.
+- Do not explain the premise or summarize the plot.
+- Intros must be 1–2 short sentences, usually under 28 words, hard max 35.
+- Title is optional. If used, it must sound natural, not like an announcement.
+- Use [LISTENER_NAME] in exactly two intro variants, naturally and casually.
+- Never start with "Welcome, [LISTENER_NAME]".
+- If using the listener name, make it feel incidental and warm.
 - Outros should create emotional continuation, not promotion.
 - No time-of-day references.
 - No speaker labels.
-- Do not write: "Welcome", "begins now", "only on Endless Tales", "This is [title]", "You're listening to", "sit back", "relax and enjoy".
+- Do not write: "Welcome", "begins now", "only on Endless Tales", "This is [title]", "You're listening to", "come with me", "come back", "come down", "you should", "get ready", "sit back", "relax and enjoy".
+- Avoid rhetorical questions unless the line sounds like real speech.
 - Series outros must not say "only on Endless Tales".
+
+Intro variation shapes:
+- session_first: sensory image
+- session_continue: emotional warning
+- returning_listener: character-focused and may use [LISTENER_NAME]
+- simple: quiet direct recommendation
+- returning_listener must not use "you're about to" or "you are about to".
+
+Cadence rules:
+- Do not make every variant ominous.
+- Do not repeat the same opening rhythm.
+- No more than one intro may start with "There is" or "There's".
+- No more than one intro may use a question.
+
+Outro rules:
+- One or two short sentences, usually under 30 words, hard max 42 words.
+- Land on the feeling left by the story, not a recap.
+- Leave an emotional echo. Do not resolve the whole plot beat-by-beat.
+- For standalone stories, close with a resonant image or consequence.
+- For series non-finales, name one specific unresolved consequence.
+- Credits may be included only in outro.
+- The variant_key values are fixed API keys. Return exactly these seven keys and do not rename them, even for finales: session_first, session_continue, returning_listener, simple, simple, reflective, series_continue.
 
 Story:
 Title: ${title}
@@ -198,9 +263,11 @@ Return strict JSON only:
     const missingExpected = Array.from(expectedKeys).filter((key) => !seenKeys.has(key))
 
     const validations = variants.map((variant) => ({ variant, ...validateVariant(variant, story) }))
+    const batchValidationErrors = validateBatch(variants)
     const validationErrors = validations
       .filter((entry) => !entry.valid)
       .map((entry) => ({ kind: entry.variant.kind, variant_key: entry.variant.variant_key, errors: entry.errors, text: entry.text }))
+      .concat(batchValidationErrors.map((entry) => ({ kind: 'intro' as const, variant_key: entry.variant_key, errors: entry.errors, text: entry.text })))
 
     if (variants.length !== 7 || missingExpected.length > 0 || validationErrors.length > 0) {
       return json({
