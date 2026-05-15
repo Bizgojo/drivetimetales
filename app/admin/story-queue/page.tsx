@@ -3,8 +3,18 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
-type QueueStatus = 'queued' | 'in_v2' | 'ready_for_asc' | 'published'
+type QueueStatus =
+  | 'queued'
+  | 'dispatched'
+  | 'producing'
+  | 'in_v2'
+  | 'ready_for_asc'
+  | 'failed'
+  | 'complete'
+  | 'published'
+  | 'archived'
 type MessageType = '' | 'success' | 'error'
+type QueueTab = 'active' | 'production' | 'failed' | 'completed' | 'archived'
 
 type QueueItem = {
   id: string
@@ -49,10 +59,23 @@ const DURATIONS = ['10 min', '15 min', '20 min', '25 min', '30 min', '45 min', '
 
 const STATUS_LABELS: Record<QueueStatus, string> = {
   queued: 'Queued',
+  dispatched: 'Dispatched',
+  producing: 'Producing',
   in_v2: 'In V2',
   ready_for_asc: 'Ready for ASC',
+  failed: 'Failed',
+  complete: 'Complete',
   published: 'Published',
+  archived: 'Archived',
 }
+
+const QUEUE_TABS: Array<{ id: QueueTab; label: string; statuses: QueueStatus[] }> = [
+  { id: 'active', label: 'Active Queue', statuses: ['queued'] },
+  { id: 'production', label: 'In Production', statuses: ['dispatched', 'producing', 'in_v2', 'ready_for_asc'] },
+  { id: 'failed', label: 'Failed', statuses: ['failed'] },
+  { id: 'completed', label: 'Completed', statuses: ['complete', 'published'] },
+  { id: 'archived', label: 'Archived', statuses: ['archived'] },
+]
 
 function readSeriesPlanValue(notes: string, label: string) {
   const match = notes.match(new RegExp(`^${label}:\\s*(.+)$`, 'im'))
@@ -110,6 +133,7 @@ export default function StoryQueuePage() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [adminGenres, setAdminGenres] = useState<string[]>(GENRES)
+  const [activeTab, setActiveTab] = useState<QueueTab>('active')
 
   const [form, setForm] = useState({
     storyType: 'standalone' as 'standalone' | 'series',
@@ -178,11 +202,23 @@ export default function StoryQueuePage() {
   }, [message, messageType])
 
   const selected = useMemo(() => items.find((item) => item.id === selectedId) || null, [items, selectedId])
+  const activeTabConfig = QUEUE_TABS.find((tab) => tab.id === activeTab) || QUEUE_TABS[0]
+  const tabCounts = useMemo(() => {
+    const counts = Object.fromEntries(QUEUE_TABS.map((tab) => [tab.id, 0])) as Record<QueueTab, number>
+    for (const item of items) {
+      const tab = QUEUE_TABS.find((candidate) => candidate.statuses.includes(item.status))
+      if (tab) counts[tab.id] += 1
+    }
+    return counts
+  }, [items])
+  const filteredItems = useMemo(() => {
+    return items.filter((item) => activeTabConfig.statuses.includes(item.status))
+  }, [items, activeTabConfig])
   const queueGroups = useMemo<QueueGroup[]>(() => {
     const groups: QueueGroup[] = []
     const seriesGroups = new Map<string, QueueItem[]>()
 
-    for (const item of items) {
+    for (const item of filteredItems) {
       const itemEpisodeCount = Math.max(1, Number(item.totalEpisodes || 1))
       const isSeries = item.storyType === 'series' || itemEpisodeCount > 1
       if (!isSeries) {
@@ -209,7 +245,7 @@ export default function StoryQueuePage() {
     }
 
     return groups
-  }, [items])
+  }, [filteredItems])
   const genreOptions = useMemo(() => {
     const options = [...adminGenres]
     if (form.primaryGenre && !options.some((genre) => genre.toLowerCase() === form.primaryGenre.toLowerCase())) {
@@ -361,6 +397,10 @@ export default function StoryQueuePage() {
   }
 
   async function sendToProduction(item: QueueItem) {
+    if (item.status !== 'queued') {
+      showMessage('Only queued items can be sent to production.', 'error')
+      return
+    }
     await markInV2(item)
     await loadItems()
     router.push(productionUrlFor(item))
@@ -369,6 +409,10 @@ export default function StoryQueuePage() {
   async function sendSeriesToProduction(series: Extract<QueueGroup, { type: 'series' }>) {
     const firstEpisode = series.items[0]
     if (!firstEpisode) return
+    if (series.items.some((item) => item.status !== 'queued')) {
+      showMessage('Only queued series can be sent to production.', 'error')
+      return
+    }
 
     try {
       for (const item of series.items) {
@@ -517,12 +561,34 @@ export default function StoryQueuePage() {
         </section>
 
         <section className="bg-white border border-black rounded-lg p-4 space-y-4">
-          <div className="font-semibold text-lg">Queued Ideas ({queueGroups.length})</div>
+          <div>
+            <div className="font-semibold text-lg">Story Queue</div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {QUEUE_TABS.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`rounded border px-3 py-1 text-sm font-semibold ${
+                    activeTab === tab.id
+                      ? 'border-black bg-black text-white'
+                      : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  {tab.label} ({tabCounts[tab.id]})
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="text-sm font-semibold text-gray-700">
+            {activeTabConfig.label}: {queueGroups.length} {queueGroups.length === 1 ? 'item' : 'items'}
+          </div>
 
           {isLoading ? (
             <div className="text-sm text-gray-500">Loading queue…</div>
-          ) : !items.length ? (
-            <div className="text-sm text-gray-500">No story ideas queued yet.</div>
+          ) : !queueGroups.length ? (
+            <div className="text-sm text-gray-500">No items in {activeTabConfig.label}.</div>
           ) : (
             <div className="space-y-3">
               {queueGroups.map((group) => {
@@ -532,6 +598,7 @@ export default function StoryQueuePage() {
                   const genres = Array.from(new Set(group.items.map((item) => item.primaryGenre).filter(Boolean))).join(' · ') || '—'
                   const selectedInSeries = group.items.some((item) => item.id === selectedId)
                   const title = firstEpisode?.letClaudeCreateTitles === false ? group.seriesTitle : 'Claude will create title'
+                  const canSendSeries = group.items.every((item) => item.status === 'queued')
 
                   return (
                     <div
@@ -562,7 +629,11 @@ export default function StoryQueuePage() {
                         <button onClick={() => regenerateSeriesSetup(group)} className="px-3 py-1 rounded border">
                           Regenerate Series Setup
                         </button>
-                        <button onClick={() => sendSeriesToProduction(group)} className="px-3 py-1 rounded border bg-black text-white">
+                        <button
+                          onClick={() => sendSeriesToProduction(group)}
+                          disabled={!canSendSeries}
+                          className="px-3 py-1 rounded border bg-black text-white disabled:cursor-not-allowed disabled:opacity-40"
+                        >
                           Send Series to Production
                         </button>
                         <button onClick={() => removeSeries(group)} className="px-3 py-1 rounded border text-red-700">
@@ -574,6 +645,7 @@ export default function StoryQueuePage() {
                 }
 
                 const item = group.item
+                const canSend = item.status === 'queued'
 
                 return (
                   <div
@@ -607,7 +679,11 @@ export default function StoryQueuePage() {
                         <button onClick={(e) => { e.stopPropagation(); regenerate(item) }} className="px-3 py-1 rounded border">
                           Regenerate Setup
                         </button>
-                        <button onClick={(e) => { e.stopPropagation(); sendToProduction(item) }} className="px-3 py-1 rounded border bg-black text-white">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); sendToProduction(item) }}
+                          disabled={!canSend}
+                          className="px-3 py-1 rounded border bg-black text-white disabled:cursor-not-allowed disabled:opacity-40"
+                        >
                           Send to Production
                         </button>
                         <button onClick={(e) => { e.stopPropagation(); removeItem(item.id) }} className="px-3 py-1 rounded border text-red-700">
