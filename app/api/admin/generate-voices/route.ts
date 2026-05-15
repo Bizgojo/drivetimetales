@@ -101,14 +101,107 @@ function hasUsableLoudness(metrics: LoudnessMetrics): boolean {
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
+const NUMBER_WORDS: Record<string, string> = {
+  zero: '0',
+  oh: '0',
+  o: '0',
+  one: '1',
+  two: '2',
+  three: '3',
+  four: '4',
+  five: '5',
+  six: '6',
+  seven: '7',
+  eight: '8',
+  nine: '9',
+  ten: '10',
+  eleven: '11',
+  twelve: '12',
+  thirteen: '13',
+  fourteen: '14',
+  fifteen: '15',
+  sixteen: '16',
+  seventeen: '17',
+  eighteen: '18',
+  nineteen: '19',
+  twenty: '20',
+  thirty: '30',
+  forty: '40',
+  fifty: '50',
+}
+
+function normalizeNumberWords(text: string): string {
+  return text.replace(/\b(zero|oh|o|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty)(?:[\s-]+(one|two|three|four|five|six|seven|eight|nine))?\b/gi, (match, first, second) => {
+    const firstValue = NUMBER_WORDS[String(first).toLowerCase()]
+    const secondValue = second ? NUMBER_WORDS[String(second).toLowerCase()] : ''
+    if (!firstValue) return match
+    if (!secondValue) return firstValue
+    const tens = Number(firstValue)
+    const ones = Number(secondValue)
+    if (Number.isFinite(tens) && Number.isFinite(ones) && tens >= 20) return String(tens + ones)
+    return `${firstValue} ${secondValue}`
+  })
+}
+
 function transcriptTokens(text: string): string[] {
-  return text
+  const normalized = normalizeNumberWords(text)
     .toLowerCase()
     .replace(/[’']/g, "'")
     .replace(/\b([a-z]+)'s\b/g, '$1')
+    .replace(/\b(\d{1,2})\s*[\.:]\s*(\d{2})\s*(?:p\s*\.?\s*m\.?|pm)\b/g, '$1 $2 pm')
+    .replace(/\b(\d{1,2})\s*[\.:]\s*(\d{2})\s*(?:a\s*\.?\s*m\.?|am)\b/g, '$1 $2 am')
+    .replace(/\bp\s*\.?\s*m\.?\b/g, 'pm')
+    .replace(/\ba\s*\.?\s*m\.?\b/g, 'am')
     .replace(/[^a-z0-9\s]/g, ' ')
     .split(/\s+/)
     .filter(Boolean)
+  return normalized
+}
+
+function compactTranscriptTokens(tokens: string[]): string[] {
+  return tokens.map(token => token.replace(/[^a-z0-9]/gi, '')).filter(Boolean)
+}
+
+function transcriptTokenVariants(tokens: string[]): string[][] {
+  const compacted = compactTranscriptTokens(tokens)
+  const joinedAll = compacted.join('')
+  const withoutMeridiem = compacted.filter(token => token !== 'am' && token !== 'pm')
+  const variants = [compacted]
+  if (joinedAll && joinedAll !== compacted.join(' ')) variants.push([joinedAll])
+  if (withoutMeridiem.length !== compacted.length) variants.push(withoutMeridiem)
+  return variants
+}
+
+function levenshteinDistance(a: string, b: string): number {
+  if (a === b) return 0
+  if (!a.length) return b.length
+  if (!b.length) return a.length
+  const prev = Array.from({ length: b.length + 1 }, (_, i) => i)
+  const curr = Array.from({ length: b.length + 1 }, () => 0)
+  for (let i = 1; i <= a.length; i++) {
+    curr[0] = i
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      curr[j] = Math.min(curr[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost)
+    }
+    for (let j = 0; j <= b.length; j++) prev[j] = curr[j]
+  }
+  return prev[b.length]
+}
+
+function transcriptSimilarity(expected: string[], detected: string[]): number {
+  const expectedCompact = compactTranscriptTokens(expected).join('')
+  const detectedCompact = compactTranscriptTokens(detected).join('')
+  if (!expectedCompact && !detectedCompact) return 1
+  if (!expectedCompact || !detectedCompact) return 0
+  const maxLen = Math.max(expectedCompact.length, detectedCompact.length)
+  return 1 - (levenshteinDistance(expectedCompact, detectedCompact) / maxLen)
+}
+
+function containsOrderedTokenVariant(haystack: string[], needle: string[]): boolean {
+  return transcriptTokenVariants(haystack).some(haystackVariant =>
+    transcriptTokenVariants(needle).some(needleVariant => containsOrderedTokens(haystackVariant, needleVariant))
+  )
 }
 
 function containsOrderedTokens(haystack: string[], needle: string[]): boolean {
@@ -133,6 +226,16 @@ function transcriptCoverage(expected: string[], detected: string[]): number {
     if (cursor >= expected.length) break
   }
   return matched / expected.length
+}
+
+function transcriptVariantCoverage(expected: string[], detected: string[]): number {
+  let best = transcriptCoverage(expected, detected)
+  for (const expectedVariant of transcriptTokenVariants(expected)) {
+    for (const detectedVariant of transcriptTokenVariants(detected)) {
+      best = Math.max(best, transcriptCoverage(expectedVariant, detectedVariant))
+    }
+  }
+  return best
 }
 
 async function transcribeSegmentBuffer(buf: Buffer, fileName: string): Promise<string> {
@@ -164,9 +267,12 @@ async function validateSegmentTranscript(buf: Buffer, expectedText: string, file
   const expected = transcriptTokens(expectedText)
   const detected = transcriptTokens(detectedText)
   const tail = expected.slice(Math.max(0, expected.length - SEGMENT_TRANSCRIPT_TAIL_WORDS))
-  const tailMatches = containsOrderedTokens(detected, tail)
-  const coverage = transcriptCoverage(expected, detected)
-  const shortLineMatches = expected.length <= 8 ? containsOrderedTokens(detected, expected) : true
+  const tailMatches = containsOrderedTokenVariant(detected, tail)
+  const coverage = transcriptVariantCoverage(expected, detected)
+  const similarity = transcriptSimilarity(expected, detected)
+  const shortLineMatches = expected.length <= 8
+    ? containsOrderedTokenVariant(detected, expected) || similarity >= 0.88
+    : true
   const passed = tailMatches && shortLineMatches && coverage >= SEGMENT_TRANSCRIPT_MIN_COVERAGE
 
   return {
@@ -174,6 +280,7 @@ async function validateSegmentTranscript(buf: Buffer, expectedText: string, file
     expectedText,
     detectedText,
     coverage,
+    similarity,
     tailMatches,
     shortLineMatches,
   }
