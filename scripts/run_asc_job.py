@@ -345,45 +345,30 @@ def main():
     write_status(job_id, {
         **job,
         "status": "running",
-        "phase": "importing",
-        "message": "Importing final audio into Supabase storage",
+        "phase": "complete_package",
+        "message": "Completing canonical review package",
         "projectDir": str(project_dir),
         "finalMix": str(final_mix),
         "updatedAt": now_iso(),
     })
 
-    imported = post_json(f"{BASE_URL}/api/admin/import-asc-output", {
-        "title": title
-    })
+    package_result = post_json(f"{BASE_URL}/api/admin/complete-story-package", {
+        "storyId": story_id,
+    }, timeout=900)
 
-    audio_url = imported.get("audio_url", "")
-    cover_url = imported.get("cover_url", "") or ""
-
-    if not audio_url:
+    if not package_result.get("success"):
         write_status(job_id, {
             **job,
             "status": "failed",
-            "phase": "importing",
-            "error": "Import completed without audio_url",
-            "details": imported,
+            "phase": "complete_package",
+            "error": package_result.get("error", "complete-story-package failed"),
+            "details": package_result,
             "projectDir": str(project_dir),
             "updatedAt": now_iso(),
         })
         return
 
     mins = duration_mins_for(final_mix)
-
-    write_status(job_id, {
-        **job,
-        "status": "running",
-        "phase": "ready_for_review",
-        "message": "Marking audio ready for Marc review",
-        "projectDir": str(project_dir),
-        "audioUrl": audio_url,
-        "updatedAt": now_iso(),
-    })
-
-    review_update = patch_story_review_ready(story_id)
 
     write_pipeline_state(pipeline_state_path, {
         "jobId": job_id,
@@ -394,9 +379,11 @@ def main():
         "script_path": str(script_dir / "script_validated.txt"),
         "final_mix": str(final_mix),
         "cover_file": "",
-        "audio_url": audio_url,
-        "cover_url": cover_url,
+        "audio_url": mix_result["finalAudioUrl"],
+        "story_body_url": mix_result.get("storyBodyUrl", ""),
+        "cover_url": package_result.get("story", {}).get("cover_url", ""),
         "status": "ready_for_review",
+        "complete_story_package": package_result,
         "updatedAt": now_iso(),
     })
 
@@ -409,9 +396,10 @@ def main():
         "pipelineStatePath": str(pipeline_state_path),
         "finalMix": str(final_mix),
         "coverFile": "",
-        "audioUrl": audio_url,
+        "audioUrl": mix_result["finalAudioUrl"],
+        "storyBodyUrl": mix_result.get("storyBodyUrl", ""),
         "durationMins": mins,
-        "reviewReadyUpdate": review_update,
+        "completeStoryPackage": package_result,
         "updatedAt": now_iso(),
     })
 
