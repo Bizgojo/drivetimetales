@@ -11,11 +11,13 @@ const supabase = createClient(
 const WORKER_ID = `run-next:${process.pid}`
 const LOCK_STALE_MS = 10 * 60 * 1000
 const NEXT_STEP_AFTER_CREATE = 'generate_script'
+const NEXT_STEP_AFTER_SERIES_CREATE = 'generate_episode_script'
 
 type ProductionJob = {
   id: string
   queue_item_id: string | null
   story_id: string | null
+  series_id: string | null
   job_type: string
   status: string
   current_step: string
@@ -70,6 +72,12 @@ function queueValue(queueItem: any, camelKey: string, snakeKey: string = camelKe
   return queueItem?.[camelKey] ?? queueItem?.[snakeKey] ?? ''
 }
 
+function queuePlanValue(queueItem: any, label: string) {
+  const notes = String(queueValue(queueItem, 'notes') || '')
+  const match = notes.match(new RegExp(`^${label}:[ \\t]*([^\\r\\n]*)`, 'im'))
+  return match?.[1]?.trim() || ''
+}
+
 function runtimeToMinutes(runtime: string) {
   const match = String(runtime || '').match(/\d+/)
   const minutes = match ? Number(match[0]) : 15
@@ -87,9 +95,15 @@ function storyTypeFor(job: ProductionJob, queueItem: any): 'standalone' | 'serie
   if (fromJob === 'series') return 'series'
   if (fromJob === 'single') return 'standalone'
   const notes = String(queueValue(queueItem, 'notes')).toLowerCase()
-  const totalEpisodes = Number(queueValue(queueItem, 'totalEpisodes', 'total_episodes') || 1)
+  const totalEpisodes = totalEpisodesFor(queueItem)
   if (notes.includes('type: series') || totalEpisodes > 1) return 'series'
   return 'standalone'
+}
+
+function totalEpisodesFor(queueItem: any) {
+  const explicit = queueValue(queueItem, 'totalEpisodes', 'total_episodes') || queuePlanValue(queueItem, 'Total episodes')
+  const total = Number(explicit || 1)
+  return Number.isFinite(total) && total > 0 ? Math.floor(total) : 1
 }
 
 async function pickAuthor(genre: string, requestedAuthor: string) {
@@ -116,6 +130,45 @@ async function pickAuthor(genre: string, requestedAuthor: string) {
   )
 
   return byGenre || authors[0] || null
+}
+
+async function saveSeriesParent(payload: Record<string, any>, seriesId?: string) {
+  const categoryPayload: Record<string, any> = { ...payload, category: payload.genre }
+  delete categoryPayload.genre
+
+  const genrePayload = { ...payload }
+
+  if (seriesId) {
+    const first = await supabase
+      .from('series')
+      .update(categoryPayload)
+      .eq('id', seriesId)
+      .select('*')
+      .single()
+
+    if (!first.error) return first
+
+    return supabase
+      .from('series')
+      .update(genrePayload)
+      .eq('id', seriesId)
+      .select('*')
+      .single()
+  }
+
+  const first = await supabase
+    .from('series')
+    .insert(categoryPayload)
+    .select('*')
+    .single()
+
+  if (!first.error) return first
+
+  return supabase
+    .from('series')
+    .insert(genrePayload)
+    .select('*')
+    .single()
 }
 
 async function selectCandidate(jobId: string) {
@@ -299,6 +352,191 @@ async function createStoryRow(job: ProductionJob) {
   }
 }
 
+async function loadSeriesEpisodes(seriesId: string) {
+  const { data, error } = await supabase
+    .from('stories')
+    .select('id,title,status,series_id,series_name,episode_number,series_episode_number,series_total_episodes,series_is_finale,story_type')
+    .eq('series_id', seriesId)
+    .order('episode_number', { ascending: true })
+
+  if (error) throw new Error(`Failed to load series episodes: ${error.message}`)
+  return data || []
+}
+
+async function createSeriesPackage(job: ProductionJob) {
+  const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
+  const input = job.input_json && typeof job.input_json === 'object' ? job.input_json : {}
+  const queueItem = input.queueItem || {}
+  const existingSeriesId = job.series_id || state.seriesId || queueValue(queueItem, 'seriesId', 'series_id')
+
+  if (existingSeriesId) {
+    const episodes = await loadSeriesEpisodes(String(existingSeriesId))
+    if (episodes.length > 0) {
+      return {
+        seriesId: String(existingSeriesId),
+        episodes,
+        state: {
+          ...state,
+          seriesId: String(existingSeriesId),
+          episodes: episodes.map((episode: any) => ({
+            storyId: episode.id,
+            title: episode.title,
+            status: episode.status,
+            episodeNumber: episode.episode_number || episode.series_episode_number,
+          })),
+          createSeriesPackageSkipped: true,
+        },
+        created: false,
+      }
+    }
+  }
+
+  const genre = String(queueValue(queueItem, 'primaryGenre', 'primary_genre') || 'Mystery').trim()
+  const premise = String(queueValue(queueItem, 'premise')).trim()
+  const setting = String(queueValue(queueItem, 'setting')).trim()
+  const runtime = String(queueValue(queueItem, 'duration') || '15 min').trim()
+  const authorTarget = String(queueValue(queueItem, 'authorTarget', 'author_target')).trim()
+  const totalEpisodes = totalEpisodesFor(queueItem)
+
+  if (totalEpisodes < 2) throw new Error('Series jobs require at least 2 episodes')
+  if (!premise) throw new Error('Queue item premise is required to create series package')
+  if (!setting) throw new Error('Queue item setting is required to create series package')
+  if (!runtime) throw new Error('Queue item duration is required to create series package')
+
+  const author = await pickAuthor(genre, authorTarget)
+  if (!author) throw new Error(`No approved author found for genre ${genre}`)
+
+  const title = titleFromQueue(queueItem) || queuePlanValue(queueItem, 'Series title') || 'Untitled Series Package'
+  const requirements = [
+    'Server production job queue.',
+    'Use canonical V2 script generation and ASC3 audio pipeline only.',
+    'Do not publish automatically.',
+    'Generate this entire series sequentially.',
+    'Final review target after audio production is status=audio_ready, is_hidden=true, published_on=null.',
+    String(queueValue(queueItem, 'notes')).trim(),
+  ].filter(Boolean).join(' ')
+
+  const parentResult = await saveSeriesParent({
+    title,
+    description: [
+      `Series production package for ${title}.`,
+      `Premise: ${premise}`,
+      `Setting: ${setting}`,
+      `Runtime: ${runtime} per episode.`,
+      requirements,
+    ].filter(Boolean).join('\n'),
+    author: author.name,
+    genre,
+    total_episodes: totalEpisodes,
+    is_complete: false,
+  })
+
+  if (parentResult.error || !parentResult.data) {
+    throw new Error(parentResult.error?.message || 'Failed to save series package')
+  }
+
+  const series = parentResult.data
+  const seriesId = series.id as string
+  const existingEpisodes = await loadSeriesEpisodes(seriesId)
+  const existingByEpisode = new Map(
+    existingEpisodes.map((episode: any) => [Number(episode.episode_number || episode.series_episode_number || 0), episode])
+  )
+  const savedEpisodes = []
+
+  for (let episodeNumber = 1; episodeNumber <= totalEpisodes; episodeNumber += 1) {
+    const existing = existingByEpisode.get(episodeNumber)
+    if (existing) {
+      savedEpisodes.push(existing)
+      continue
+    }
+
+    const isFinale = episodeNumber === totalEpisodes
+    const episodeTitle = `Episode ${episodeNumber}`
+    const briefJson = {
+      type: 'series',
+      package_phase: 'production_job_series_package',
+      series_id: seriesId,
+      series_name: title,
+      series_title: title,
+      series_bible: series.description || '',
+      full_episode_plan: null,
+      title: episodeTitle,
+      episode_title: episodeTitle,
+      series_episode_number: episodeNumber,
+      series_total_episodes: totalEpisodes,
+      series_is_finale: isFinale,
+      author: author.name,
+      author_style: author.style_reference || author.style_description || author.name,
+      genre,
+      narrative_voice: author.narrative_voice || null,
+      premise,
+      requirements,
+      setting,
+      runtime,
+      description: null,
+      continuity_notes: null,
+      cliffhanger_or_resolution: null,
+    }
+
+    const { data: story, error } = await supabase
+      .from('stories')
+      .insert({
+        title: episodeTitle,
+        author: author.name,
+        author_style: briefJson.author_style,
+        genre,
+        narrative_voice: briefJson.narrative_voice,
+        description: null,
+        brief_json: briefJson,
+        is_v2: true,
+        status: 'brief_complete',
+        script_version: 1,
+        story_type: 'series_episode',
+        series_id: seriesId,
+        series_name: title,
+        episode_number: episodeNumber,
+        series_episode_number: episodeNumber,
+        series_total_episodes: totalEpisodes,
+        series_is_finale: isFinale,
+        duration_label: runtime,
+        duration_mins: runtimeToMinutes(runtime),
+        is_hidden: true,
+      })
+      .select('id,title,status,series_id,series_name,episode_number,series_episode_number,series_total_episodes,series_is_finale,story_type')
+      .single()
+
+    if (error || !story) {
+      throw new Error(error?.message || `Failed to save series episode ${episodeNumber}`)
+    }
+
+    savedEpisodes.push(story)
+  }
+
+  const episodes = await loadSeriesEpisodes(seriesId)
+
+  return {
+    seriesId,
+    episodes,
+    state: {
+      ...state,
+      seriesId,
+      seriesTitle: title,
+      author: author.name,
+      genre,
+      runtime,
+      totalEpisodes,
+      episodes: episodes.map((episode: any) => ({
+        storyId: episode.id,
+        title: episode.title,
+        status: episode.status,
+        episodeNumber: episode.episode_number || episode.series_episode_number,
+      })),
+      createSeriesPackageSkipped: false,
+    },
+    created: savedEpisodes.length > existingEpisodes.length,
+  }
+}
+
 export async function POST(req: NextRequest) {
   let lockedJob: ProductionJob | null = null
 
@@ -321,6 +559,62 @@ export async function POST(req: NextRequest) {
       return bad('Only create_story_row is implemented in this run-next slice', 422, {
         jobId: lockedJob.id,
         currentStep: lockedJob.current_step,
+      })
+    }
+
+    const input = lockedJob.input_json && typeof lockedJob.input_json === 'object' ? lockedJob.input_json : {}
+    const queueItem = input.queueItem || {}
+    const type = storyTypeFor(lockedJob, queueItem)
+
+    if (type === 'series') {
+      const result = await createSeriesPackage(lockedJob)
+      const logs = appendLog(lockedJob, result.created ? 'Created V2 series package' : 'Reused existing V2 series package', {
+        seriesId: result.seriesId,
+        episodeCount: result.episodes.length,
+      })
+
+      const { data: updatedJob, error: updateError } = await supabase
+        .from('production_jobs')
+        .update({
+          series_id: result.seriesId,
+          status: 'running',
+          current_step: NEXT_STEP_AFTER_SERIES_CREATE,
+          step_index: 1,
+          total_steps: 9,
+          state_json: result.state,
+          error_json: null,
+          logs,
+          locked_at: null,
+          locked_by: null,
+        })
+        .eq('id', lockedJob.id)
+        .select('*')
+        .single()
+
+      if (updateError) throw new Error(`Failed to advance series production job: ${updateError.message}`)
+
+      if (lockedJob.queue_item_id) {
+        await supabase
+          .from('story_queue_items')
+          .update({
+            status: 'in_v2',
+          })
+          .eq('id', lockedJob.queue_item_id)
+      }
+
+      return NextResponse.json({
+        success: true,
+        jobId: updatedJob.id,
+        currentStep: step,
+        nextStep: updatedJob.current_step,
+        seriesId: result.seriesId,
+        episodes: result.episodes.map((episode: any) => ({
+          storyId: episode.id,
+          title: episode.title,
+          status: episode.status,
+          episodeNumber: episode.episode_number || episode.series_episode_number,
+        })),
+        logs,
       })
     }
 
