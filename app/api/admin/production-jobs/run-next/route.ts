@@ -15,6 +15,7 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
 const WORKER_ID = `run-next:${process.pid}`
 const LOCK_STALE_MS = 10 * 60 * 1000
 const NEXT_STEP_AFTER_CREATE = 'generate_script'
+const NEXT_STEP_AFTER_STANDALONE_SCRIPT = 'validate_script'
 const NEXT_STEP_AFTER_SERIES_CREATE = 'generate_episode_script'
 const NEXT_STEP_AFTER_SERIES_SCRIPTS = 'score_validate_package'
 
@@ -161,6 +162,63 @@ function sanitizeDescription(description: string): string {
 
 function normalizeScriptDescription(script: string, fallbackDescription = '') {
   const description = sanitizeDescription(extractHeader(script, 'DESCRIPTION') || fallbackDescription)
+  return {
+    script: replaceOrInsertHeader(script, 'DESCRIPTION', description),
+    description,
+  }
+}
+
+function deterministicDescriptionForGenre(genre: string): string {
+  const normalizedGenre = genre.toLowerCase()
+
+  if (normalizedGenre.includes('mystery') || normalizedGenre.includes('thriller')) {
+    return 'A driver finds a secret someone is willing to kill for.'
+  }
+  if (normalizedGenre.includes('horror')) {
+    return 'A quiet place hides something that should not be awake.'
+  }
+  if (normalizedGenre.includes('comedy')) {
+    return 'One bad decision turns an ordinary trip sideways.'
+  }
+
+  return 'One discovery changes everything before the road ends.'
+}
+
+function isInvalidStandaloneDescription(description: string): boolean {
+  const clean = description
+    .replace(/\s+/g, ' ')
+    .replace(/^["']|["']$/g, '')
+    .trim()
+
+  if (!clean) return true
+  if (clean.length > 65) return true
+  if (/[.]{2,}|…/.test(clean)) return true
+  if (!/[.!?]$/.test(clean)) return true
+
+  const withoutPunctuation = clean.replace(/[.!?]+$/g, '').trim()
+  const weakEnding = /\b(and|or|but|with|to|of|for|from|by|into|before|after|while|when|where|under|beneath|inside|outside|near|below|above|through|around|across|behind|beyond|against|among|within|between|onto|upon|over|in|on|at|the|a|an|ancient|old|forgotten|abandoned)$/i
+  if (weakEnding.test(withoutPunctuation)) return true
+
+  const weakGeneric = /^(a|an|the)?\s*(story|tale|journey|adventure)\s+(about|of)\b/i
+  if (weakGeneric.test(withoutPunctuation)) return true
+
+  const cutoffPatterns = [
+    /\b(beneath|under|inside|outside|near|behind|beyond|within|between)\s+(the|a|an)\s+\w+$/i,
+    /\b(secret|truth|clue|killer|stranger|place|thing|road|town|house)\s+(that|who|where|when)$/i,
+  ]
+  return cutoffPatterns.some((pattern) => pattern.test(withoutPunctuation))
+}
+
+function normalizeStandaloneDescription(script: string, genre: string) {
+  const currentDescription = extractHeader(script, 'DESCRIPTION')
+    .replace(/\s+/g, ' ')
+    .replace(/^["']|["']$/g, '')
+    .trim()
+
+  const description = isInvalidStandaloneDescription(currentDescription)
+    ? deterministicDescriptionForGenre(genre)
+    : currentDescription
+
   return {
     script: replaceOrInsertHeader(script, 'DESCRIPTION', description),
     description,
@@ -463,21 +521,237 @@ function buildContinuityBundle(prior: any[]) {
   })
 }
 
-async function loadRecentStoryTexts(seriesId: string) {
-  const { data, error } = await supabase
+async function loadRecentStoryTexts(seriesId?: string) {
+  let query = supabase
     .from('stories')
     .select('title,script,script_json,series_id')
     .not('script', 'is', null)
-    .or(`series_id.is.null,series_id.neq.${seriesId}`)
     .order('created_at', { ascending: false })
     .limit(50)
 
+  if (seriesId) query = query.or(`series_id.is.null,series_id.neq.${seriesId}`)
+
+  const { data, error } = await query
   if (error || !data) return []
   return data.map((story: any) => [
     story.title || '',
     story.script || '',
     story.script_json?.raw_script || '',
   ].join('\n'))
+}
+
+function buildStandaloneScriptPrompt(story: any, brief: any, namePaletteBlock: string) {
+  const target = runtimeTarget(brief.runtime || '')
+
+  return `You are the Endless Tales Stage 2 script writer.
+
+Use the CURRENT published rules:
+- Belle B is the only announcer voice.
+- Belle B is never labeled ANNOUNCER or SANDY.
+- Belle B intro must include exactly one [LISTENER_NAME] placeholder. Do not include the listener's actual name.
+- Belle B intro/outro must never use "Tonight" or any time-of-day reference.
+- Belle B intro must never mention the author, narrator, or "an Endless Tales original"; those credits belong only in the Belle B outro.
+- No SFX in the published story body.
+- The title may be blank in the brief; if blank, choose the best title from the story.
+- Final title must be 1 to 5 words and 28 characters or fewer so it fits one line on story cards.
+- Output ONLY the script. No commentary.
+
+${namePaletteBlock}
+
+Required script structure:
+TITLE: [1 to 5 words, 28 characters or fewer]
+SERIES:
+EPISODE:
+EPISODE_TITLE:
+SERIES_TOTAL_EPISODES:
+SERIES_IS_FINALE:
+AUTHOR:
+GENRE:
+DESCRIPTION: [70 characters or fewer, present tense only]
+NARRATOR: [assigned narrator name, not a story character unless NARRATOR_IS_CHARACTER is true]
+ANNOUNCER: Belle B
+NARRATIVE_VOICE:
+NARRATOR_IS_CHARACTER: [true/false, must match NARRATOR]
+SUNO PROMPT:
+
+CHARACTER GUIDE
+---
+[List each speaking character with age, gender, accent, and personality note]
+
+BELLE B INTRO
+---
+BELLE B: [one or two short sentences, warm, specific, sensory, includes exactly one [LISTENER_NAME] placeholder placed naturally and not always at the start, reads gracefully if the name is omitted, includes the story title in quotes, references something specific from the story, no time-of-day reference, no author/narrator credit, no "Endless Tales original"]
+
+[START AUDIO DRAMA SCRIPT]
+NARRATOR: ...
+CHARACTER NAME: ...
+
+BELLE B OUTRO
+---
+BELLE B: [one or two short sentences, reflective, no time-of-day reference, credits the author and says "an Endless Tales original"]
+
+Production-format hard rules:
+- Speaker labels are for spoken words only.
+- Character-labeled lines must contain only words that character says aloud.
+- Never put action, facial reactions, movement, blocking, inner thought, or narration under a character label.
+- Put all action/reaction lines under NARRATOR.
+- Wrong: DEPUTY PIKE: Pike's jaw tightened.
+- Right: NARRATOR: Pike's jaw tightened.
+
+Additional rules:
+- DESCRIPTION must be 70 characters or fewer and present tense only so it fits two lines on story cards. If the brief-provided description is longer than 70 characters or uses past-tense constructions, rewrite it to comply. Reject past-tense story-card phrasing such as "vanished", "was", "were", "had", "found", "discovered", "left", "moved", "sealed", "signed", "forged", "buried", or "hidden".
+- If NARRATOR_IS_CHARACTER is false, NARRATOR must not be a story character name and must not include "(character)".
+- If the narrator is a story character, NARRATOR_IS_CHARACTER must be true and the script must use consistent first-person narration.
+- Standalone stories must end conclusively.
+- Series non-finales must end on a specific cliffhanger.
+- Keep narrator voice consistent.
+- Do not include markdown fences.
+
+USER NOTES / CONSTRAINTS:
+${String(brief.requirements || '').trim() || 'None'}
+
+RUNTIME TARGET:
+Requested runtime: ${target.runtime}
+Target script length: ${target.range} words total.
+Hard maximum: ${target.max.toLocaleString()} words total.
+If needed, simplify plot, reduce scene count, and tighten dialogue before exceeding the hard maximum.
+
+STORY BRIEF JSON:
+${JSON.stringify(brief, null, 2)}
+
+CURRENT STORY ROW:
+${JSON.stringify({
+    id: story.id,
+    title: story.title,
+    author: story.author,
+    author_style: story.author_style,
+    genre: story.genre,
+    narrative_voice: story.narrative_voice,
+  }, null, 2)}
+`
+}
+
+async function generateStandaloneScript(job: ProductionJob, model: string) {
+  const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
+  const storyId = job.story_id || state.storyId
+  if (!storyId) throw new Error('Standalone job is missing story_id')
+
+  const { data: story, error } = await supabase
+    .from('stories')
+    .select('id,title,author,author_style,genre,narrative_voice,description,brief_json,status,script,script_json,script_version')
+    .eq('id', storyId)
+    .single()
+
+  if (error || !story) throw new Error(error?.message || 'Story not found')
+  if (!story.brief_json) throw new Error('brief_json missing')
+
+  const brief = story.brief_json as any
+
+  if (story.script) {
+    return {
+      generated: false,
+      storyId: String(story.id),
+      story: {
+        id: story.id,
+        title: story.title,
+        status: story.status,
+        description: story.description,
+      },
+      state: {
+        ...state,
+        storyId: String(story.id),
+        storyTitle: story.title,
+        storyStatus: story.status,
+        description: story.description,
+        hasScript: true,
+        generateScriptSkipped: true,
+      },
+    }
+  }
+
+  const recentStoryTexts = await loadRecentStoryTexts()
+  const namePaletteBlock = buildNamePalettePromptBlock({
+    genre: story.genre || brief.genre || '',
+    setting: [brief.setting, brief.location, brief.region].filter(Boolean).join(' '),
+    era: brief.era || brief.period || '',
+    recentStoryTexts,
+  })
+  const prompt = buildStandaloneScriptPrompt(story, brief, namePaletteBlock)
+
+  const response = await anthropic.messages.create({
+    model,
+    max_tokens: 12000,
+    temperature: 0.7,
+    messages: [{ role: 'user', content: prompt }],
+  })
+
+  const generatedScript = response.content
+    .map((c: any) => ('text' in c ? c.text : ''))
+    .join('')
+    .trim()
+  const normalized = normalizeStandaloneDescription(generatedScript, story.genre || brief.genre || '')
+  const script = normalized.script
+  const description = normalized.description
+  const generatedTitle = extractTitle(script) || story.title || ''
+  const wordCount = countWords(generatedTitle)
+
+  if (!script) throw new Error('Claude returned an empty script')
+  if (!generatedTitle || wordCount < 1 || wordCount > 5) {
+    throw new Error(`Generated title must be 1 to 5 words. Got: "${generatedTitle}"`)
+  }
+
+  const scriptJson = {
+    generated_title: generatedTitle,
+    model,
+    generated_at: nowIso(),
+    raw_script: generatedScript,
+    normalized_description: description,
+    production_job_id: job.id,
+  }
+
+  const { data: updated, error: updateError } = await supabase
+    .from('stories')
+    .update({
+      title: generatedTitle,
+      description,
+      script,
+      script_json: scriptJson,
+      status: 'script_drafted',
+      script_version: (story.script_version || 1) + 1,
+    })
+    .eq('id', storyId)
+    .select('id,title,status,description,script,script_json')
+    .single()
+
+  if (updateError || !updated) {
+    throw new Error(updateError?.message || 'Failed to save standalone script')
+  }
+
+  logAnthropicCall({
+    route: '/api/admin/production-jobs/run-next',
+    purpose: 'story-script',
+    model,
+    inputTokens: response.usage?.input_tokens ?? 0,
+    outputTokens: response.usage?.output_tokens ?? 0,
+    storyId: String(storyId),
+    storyTitle: generatedTitle,
+    metadata: { is_v2: true, production_job_id: job.id },
+  }).catch(() => {})
+
+  return {
+    generated: true,
+    storyId: String(updated.id),
+    story: updated,
+    state: {
+      ...state,
+      storyId: String(updated.id),
+      storyTitle: updated.title,
+      storyStatus: updated.status,
+      description,
+      hasScript: true,
+      generateScriptSkipped: false,
+    },
+  }
 }
 
 function buildSeriesEpisodePrompt(series: any, episode: any, allEpisodes: any[], continuityBundle: any[], namePaletteBlock: string) {
@@ -988,8 +1262,63 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    if (step === NEXT_STEP_AFTER_CREATE) {
+      const input = lockedJob.input_json && typeof lockedJob.input_json === 'object' ? lockedJob.input_json : {}
+      const queueItem = input.queueItem || {}
+      const type = storyTypeFor(lockedJob, queueItem)
+
+      if (type !== 'standalone') {
+        return bad('Series jobs must use generate_episode_script, not generate_script', 422, {
+          jobId: lockedJob.id,
+          currentStep: lockedJob.current_step,
+        })
+      }
+
+      const result = await generateStandaloneScript(lockedJob, model)
+      const logs = appendLog(lockedJob, result.generated ? 'Generated standalone script' : 'Reused existing standalone script', {
+        storyId: result.storyId,
+        storyTitle: result.story.title,
+        nextStep: NEXT_STEP_AFTER_STANDALONE_SCRIPT,
+      })
+
+      const { data: updatedJob, error: updateError } = await supabase
+        .from('production_jobs')
+        .update({
+          story_id: result.storyId,
+          status: 'running',
+          current_step: NEXT_STEP_AFTER_STANDALONE_SCRIPT,
+          step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
+          state_json: result.state,
+          error_json: null,
+          logs,
+          locked_at: null,
+          locked_by: null,
+        })
+        .eq('id', lockedJob.id)
+        .select('*')
+        .single()
+
+      if (updateError) throw new Error(`Failed to advance standalone script job: ${updateError.message}`)
+
+      return NextResponse.json({
+        success: true,
+        jobId: updatedJob.id,
+        currentStep: step,
+        nextStep: updatedJob.current_step,
+        storyId: result.storyId,
+        story: {
+          id: result.story.id,
+          title: result.story.title,
+          status: result.story.status,
+          description: result.story.description,
+        },
+        generatedScript: result.generated,
+        logs,
+      })
+    }
+
     if (step !== 'create_story_row') {
-      return bad('Only create_story_row is implemented in this run-next slice', 422, {
+      return bad('Only create_story_row, generate_script, and generate_episode_script are implemented in this run-next slice', 422, {
         jobId: lockedJob.id,
         currentStep: lockedJob.current_step,
       })
