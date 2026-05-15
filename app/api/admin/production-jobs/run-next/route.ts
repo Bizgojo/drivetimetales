@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import Anthropic from '@anthropic-ai/sdk'
+import { logAnthropicCall } from '@/app/lib/anthropic-logger'
+import { buildNamePalettePromptBlock } from '@/lib/story/namePalette'
 
 export const runtime = 'nodejs'
 
@@ -7,11 +10,13 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
 
 const WORKER_ID = `run-next:${process.pid}`
 const LOCK_STALE_MS = 10 * 60 * 1000
 const NEXT_STEP_AFTER_CREATE = 'generate_script'
 const NEXT_STEP_AFTER_SERIES_CREATE = 'generate_episode_script'
+const NEXT_STEP_AFTER_SERIES_SCRIPTS = 'score_validate_package'
 
 type ProductionJob = {
   id: string
@@ -104,6 +109,80 @@ function totalEpisodesFor(queueItem: any) {
   const explicit = queueValue(queueItem, 'totalEpisodes', 'total_episodes') || queuePlanValue(queueItem, 'Total episodes')
   const total = Number(explicit || 1)
   return Number.isFinite(total) && total > 0 ? Math.floor(total) : 1
+}
+
+function countWords(s: string) {
+  return s.trim().split(/\s+/).filter(Boolean).length
+}
+
+function extractHeader(script: string, key: string): string {
+  const m = script.match(new RegExp(`^${key}:\\s*(.+)$`, 'm'))
+  return m?.[1]?.trim() || ''
+}
+
+function extractTitle(script: string): string | null {
+  return extractHeader(script, 'TITLE') || null
+}
+
+function replaceOrInsertHeader(script: string, key: string, value: string): string {
+  const headerPattern = new RegExp(`^${key}:\\s*.*$`, 'm')
+  if (headerPattern.test(script)) return script.replace(headerPattern, `${key}: ${value}`)
+  if (/^GENRE:\s*.*$/m.test(script)) return script.replace(/^GENRE:\s*.*$/m, (line) => `${line}\n${key}: ${value}`)
+  if (/^AUTHOR:\s*.*$/m.test(script)) return script.replace(/^AUTHOR:\s*.*$/m, (line) => `${line}\n${key}: ${value}`)
+  return `${key}: ${value}\n${script}`
+}
+
+function sanitizeDescription(description: string): string {
+  const clean = String(description || '')
+    .replace(/\s+/g, ' ')
+    .replace(/^["']|["']$/g, '')
+    .replace(/[.]{2,}|…/g, '')
+    .trim()
+  const fallback = 'A dangerous secret pulls every choice toward the truth.'
+  const source = clean || fallback
+  const maxChars = 70
+  const weakEnding = /\b(and|or|but|with|to|of|for|from|by|into|before|after|while|when|where|under|beneath|inside|outside|near|below|above|through|around|across|behind|beyond|against|among|within|between|onto|upon|over|in|on|at|the|a|an)$/i
+  let next = source
+  if (next.length > maxChars) {
+    next = ''
+    for (const word of source.split(' ')) {
+      const candidate = next ? `${next} ${word}` : word
+      const punctuated = /[.!?]$/.test(candidate) ? candidate : `${candidate}.`
+      if (punctuated.length > maxChars) break
+      next = candidate
+    }
+  }
+  next = (next || source.slice(0, maxChars)).replace(/[,\-:;.!?]+$/g, '').trim()
+  while (weakEnding.test(next) && next.includes(' ')) next = next.split(' ').slice(0, -1).join(' ').trim()
+  if (!next) next = fallback.replace(/[.!?]+$/g, '')
+  if (!/[.!?]$/.test(next)) next = `${next}.`
+  return next.length > maxChars ? fallback : next
+}
+
+function normalizeScriptDescription(script: string, fallbackDescription = '') {
+  const description = sanitizeDescription(extractHeader(script, 'DESCRIPTION') || fallbackDescription)
+  return {
+    script: replaceOrInsertHeader(script, 'DESCRIPTION', description),
+    description,
+  }
+}
+
+function scriptTail(script: string, maxChars = 1400) {
+  const clean = script.replace(/\s+/g, ' ').trim()
+  return clean.length <= maxChars ? clean : clean.slice(-maxChars)
+}
+
+function runtimeTarget(runtime: string) {
+  const minutes = parseInt(String(runtime || '').match(/\d+/)?.[0] || '15', 10)
+  const targets: Record<number, { range: string; max: number }> = {
+    10: { range: '1,200 to 1,450', max: 1550 },
+    15: { range: '1,800 to 2,100', max: 2250 },
+    20: { range: '2,400 to 2,850', max: 3000 },
+    25: { range: '3,000 to 3,550', max: 3750 },
+    30: { range: '3,600 to 4,250', max: 4500 },
+  }
+  const target = targets[minutes] || targets[15]
+  return { runtime: targets[minutes] ? runtime || '15 min' : '15 min', ...target }
 }
 
 async function pickAuthor(genre: string, requestedAuthor: string) {
@@ -355,12 +434,160 @@ async function createStoryRow(job: ProductionJob) {
 async function loadSeriesEpisodes(seriesId: string) {
   const { data, error } = await supabase
     .from('stories')
-    .select('id,title,status,series_id,series_name,episode_number,series_episode_number,series_total_episodes,series_is_finale,story_type')
+    .select('id,title,author,author_style,genre,narrative_voice,description,brief_json,status,script,script_json,script_version,series_id,series_name,episode_number,series_episode_number,series_total_episodes,series_is_finale,story_type')
     .eq('series_id', seriesId)
     .order('episode_number', { ascending: true })
 
   if (error) throw new Error(`Failed to load series episodes: ${error.message}`)
   return data || []
+}
+
+function episodeNumber(episode: any, fallback: number) {
+  return Number(episode.episode_number || episode.series_episode_number || fallback)
+}
+
+function buildContinuityBundle(prior: any[]) {
+  return prior.map((episode: any, index: number) => {
+    const brief = episode.brief_json || {}
+    const generated = episode.script_json?.series_generation || {}
+    const summary = generated?.summary || {}
+    return {
+      episode_number: episodeNumber(episode, index + 1),
+      title: episode.title,
+      generated_title: generated.generated_title || extractTitle(episode.script || '') || episode.title,
+      description: extractHeader(episode.script || '', 'DESCRIPTION') || summary.description || brief.description || '',
+      planned_continuity_notes: brief.continuity_notes || summary.planned_continuity_notes || '',
+      planned_cliffhanger_or_resolution: brief.cliffhanger_or_resolution || summary.planned_cliffhanger_or_resolution || '',
+      script_tail: summary.script_tail || scriptTail(episode.script || ''),
+    }
+  })
+}
+
+async function loadRecentStoryTexts(seriesId: string) {
+  const { data, error } = await supabase
+    .from('stories')
+    .select('title,script,script_json,series_id')
+    .not('script', 'is', null)
+    .or(`series_id.is.null,series_id.neq.${seriesId}`)
+    .order('created_at', { ascending: false })
+    .limit(50)
+
+  if (error || !data) return []
+  return data.map((story: any) => [
+    story.title || '',
+    story.script || '',
+    story.script_json?.raw_script || '',
+  ].join('\n'))
+}
+
+function buildSeriesEpisodePrompt(series: any, episode: any, allEpisodes: any[], continuityBundle: any[], namePaletteBlock: string) {
+  const brief = episode.brief_json || {}
+  const target = runtimeTarget(brief.runtime || '')
+  const currentEpisodeNumber = episodeNumber(episode, 1)
+  const totalEpisodes = Number(episode.series_total_episodes || brief.series_total_episodes || allEpisodes.length)
+  const isFinale = Boolean(episode.series_is_finale ?? brief.series_is_finale ?? currentEpisodeNumber === totalEpisodes)
+  const belleOutroRule = isFinale
+    ? 'Belle B outro must resolve/close the series, must not encourage the next episode, and may include the author/narrator credit and "an Endless Tales original".'
+    : 'Belle B outro must restate the episode cliffhanger, invite the listener to continue to the next episode, must not say "an Endless Tales original", and must not sound like a full-series ending.'
+  const belleOutroTemplate = isFinale
+    ? '[one or two short sentences, reflective series closure, no time-of-day reference, no next-episode invitation, may credit the author/narrator and say "an Endless Tales original"]'
+    : '[one or two short sentences, reflective cliffhanger tease, no time-of-day reference, invites the next episode, no author/narrator credit, no "Endless Tales original", not a full-series ending]'
+
+  return `You are the Endless Tales Stage 2 series script writer.
+
+Write exactly one production-ready audio drama script for Episode ${currentEpisodeNumber} of ${totalEpisodes}.
+Use the saved series package as the source of truth. Do not invent a new series premise.
+Output ONLY the script. No commentary.
+
+CURRENT published rules:
+- Belle B is the only announcer voice.
+- Belle B is never labeled ANNOUNCER or SANDY.
+- Belle B intro must include exactly one [LISTENER_NAME] placeholder. Do not include the listener's actual name.
+- Belle B intro/outro must never use "Tonight" or any time-of-day reference.
+- Belle B intro must never mention the author, narrator, or "an Endless Tales original"; those credits belong only in the Belle B outro.
+- ${belleOutroRule}
+- No SFX in the published story body.
+- Final title must be 1 to 5 words and 28 characters or fewer so it fits one line on story cards.
+
+${namePaletteBlock}
+
+Required script structure:
+TITLE: [${brief.episode_title || episode.title}; 1 to 5 words, 28 characters or fewer]
+SERIES: ${series.title || brief.series_name || ''}
+EPISODE: ${currentEpisodeNumber}
+EPISODE_TITLE: ${brief.episode_title || episode.title}
+SERIES_TOTAL_EPISODES: ${totalEpisodes}
+SERIES_IS_FINALE: ${isFinale ? 'true' : 'false'}
+AUTHOR: ${episode.author || brief.author || ''}
+GENRE: ${episode.genre || brief.genre || ''}
+DESCRIPTION: [70 characters or fewer, present tense only]
+NARRATOR: [assigned narrator name, not a story character unless NARRATOR_IS_CHARACTER is true]
+ANNOUNCER: Belle B
+NARRATIVE_VOICE: ${episode.narrative_voice || brief.narrative_voice || ''}
+NARRATOR_IS_CHARACTER: [true/false, must match NARRATOR]
+SUNO PROMPT:
+
+CHARACTER GUIDE
+---
+[List each speaking character with age, gender, accent, and personality note]
+
+BELLE B INTRO
+---
+BELLE B: [one or two short sentences, warm, specific, sensory, includes exactly one [LISTENER_NAME] placeholder placed naturally, includes the episode title in quotes, references something specific from the episode, no time-of-day reference, no author/narrator credit, no "Endless Tales original"]
+
+[START AUDIO DRAMA SCRIPT]
+NARRATOR: ...
+CHARACTER NAME: ...
+
+BELLE B OUTRO
+---
+BELLE B: ${belleOutroTemplate}
+
+Production-format hard rules:
+- Speaker labels are for spoken words only.
+- Character-labeled lines must contain only words that character says aloud.
+- Never put action, facial reactions, movement, blocking, inner thought, or narration under a character label.
+- Put all action/reaction lines under NARRATOR.
+- Every narration/dialogue paragraph after [START AUDIO DRAMA SCRIPT] must begin with a speaker label.
+- Do not write unlabeled continuation paragraphs.
+- If narration continues, start a new NARRATOR: line.
+- Every spoken line sent to audio must begin with NARRATOR: or CHARACTER NAME:.
+
+Series rules:
+- Episode ${currentEpisodeNumber} must match the current episode brief.
+- Carry forward consequences from prior episodes.
+- Do not repeat prior episode scenes except as brief context.
+- ${isFinale ? 'This is the finale. Resolve the season arc completely.' : 'This is not the finale. End on a specific cliffhanger with forward momentum. Do not use "to be continued" phrasing.'}
+
+Additional rules:
+- DESCRIPTION must be 70 characters or fewer and present tense only.
+- If NARRATOR_IS_CHARACTER is false, NARRATOR must not be a story character name and must not include "(character)".
+- If the narrator is a story character, NARRATOR_IS_CHARACTER must be true and the script must use consistent first-person narration.
+- Keep narrator voice consistent.
+- Do not include markdown fences.
+
+RUNTIME TARGET:
+Requested runtime: ${target.runtime}
+Target script length: ${target.range} words total.
+Hard maximum: ${target.max.toLocaleString()} words total.
+
+USER NOTES / CONSTRAINTS:
+${String(brief.requirements || '').trim() || 'None'}
+
+SERIES PACKAGE:
+${JSON.stringify({
+    series_id: series.id,
+    series_title: series.title,
+    series_bible: series.description || brief.series_bible || '',
+    full_episode_plan: brief.full_episode_plan || allEpisodes.map((ep: any) => ep.brief_json).filter(Boolean),
+  }, null, 2)}
+
+CURRENT EPISODE BRIEF:
+${JSON.stringify(brief, null, 2)}
+
+PRIOR EPISODE CONTINUITY BUNDLE:
+${JSON.stringify(continuityBundle, null, 2)}
+`
 }
 
 async function createSeriesPackage(job: ProductionJob) {
@@ -537,12 +764,173 @@ async function createSeriesPackage(job: ProductionJob) {
   }
 }
 
+async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string) {
+  const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
+  const seriesId = job.series_id || state.seriesId
+  if (!seriesId) throw new Error('Series job is missing series_id')
+
+  const { data: series, error: seriesError } = await supabase
+    .from('series')
+    .select('*')
+    .eq('id', seriesId)
+    .single()
+
+  if (seriesError || !series) throw new Error(seriesError?.message || 'Series package not found')
+
+  const episodes = await loadSeriesEpisodes(String(seriesId))
+  if (!episodes.length) throw new Error('No child episodes found for series package')
+
+  const targetEpisode = episodes.find((episode: any) => !episode.script)
+  if (!targetEpisode) {
+    return {
+      generated: false,
+      seriesId: String(seriesId),
+      episode: null,
+      episodes,
+      nextStep: NEXT_STEP_AFTER_SERIES_SCRIPTS,
+      state: {
+        ...state,
+        seriesId: String(seriesId),
+        episodes: episodes.map((episode: any) => ({
+          storyId: episode.id,
+          title: episode.title,
+          status: episode.status,
+          episodeNumber: episodeNumber(episode, 0),
+          hasScript: Boolean(episode.script),
+        })),
+      },
+    }
+  }
+
+  const targetEpisodeNumber = episodeNumber(targetEpisode, episodes.indexOf(targetEpisode) + 1)
+  const priorEpisodes = episodes
+    .filter((episode: any) => episodeNumber(episode, 0) < targetEpisodeNumber && episode.script)
+  const continuityBundle = buildContinuityBundle(priorEpisodes)
+  const brief = targetEpisode.brief_json || {}
+  const recentStoryTexts = await loadRecentStoryTexts(String(seriesId))
+  const namePaletteBlock = buildNamePalettePromptBlock({
+    genre: targetEpisode.genre || brief.genre || '',
+    setting: [brief.setting, brief.location, brief.region, series.setting].filter(Boolean).join(' '),
+    era: brief.era || brief.period || '',
+    seriesContinuityText: continuityBundle.map((item: any) => JSON.stringify(item)).join('\n'),
+    recentStoryTexts,
+  })
+  const prompt = buildSeriesEpisodePrompt(series, targetEpisode, episodes, continuityBundle, namePaletteBlock)
+
+  const response = await anthropic.messages.create({
+    model,
+    max_tokens: 12000,
+    temperature: 0.65,
+    messages: [{ role: 'user', content: prompt }],
+  })
+
+  const rawScript = response.content
+    .map((c: any) => ('text' in c ? c.text : ''))
+    .join('')
+    .trim()
+  const normalized = normalizeScriptDescription(rawScript, brief.description || targetEpisode.description || '')
+  const script = normalized.script
+  const description = normalized.description
+  const generatedTitle = extractTitle(script) || targetEpisode.title || ''
+  const wordCount = countWords(generatedTitle)
+
+  if (!script) throw new Error(`Episode ${targetEpisodeNumber} returned an empty script`)
+  if (!generatedTitle || wordCount < 1 || wordCount > 5) {
+    throw new Error(`Episode ${targetEpisodeNumber} generated title must be 1 to 5 words. Got: "${generatedTitle}"`)
+  }
+
+  const existingJson = targetEpisode.script_json && typeof targetEpisode.script_json === 'object'
+    ? targetEpisode.script_json
+    : {}
+  const nextBrief = { ...brief, description }
+  const scriptJson = {
+    ...existingJson,
+    series_generation: {
+      generated_title: generatedTitle,
+      generated_at: nowIso(),
+      model,
+      episode_number: targetEpisodeNumber,
+      series_id: String(seriesId),
+      continuity_bundle_used: continuityBundle,
+      summary: {
+        title: generatedTitle,
+        description,
+        planned_continuity_notes: brief.continuity_notes || '',
+        planned_cliffhanger_or_resolution: brief.cliffhanger_or_resolution || '',
+        script_tail: scriptTail(script),
+      },
+    },
+    raw_script: script,
+  }
+
+  const { data: updated, error: updateError } = await supabase
+    .from('stories')
+    .update({
+      title: generatedTitle,
+      description,
+      script,
+      script_json: scriptJson,
+      brief_json: nextBrief,
+      status: 'script_drafted',
+      script_version: (targetEpisode.script_version || 1) + 1,
+    })
+    .eq('id', targetEpisode.id)
+    .select('id,title,status,script,series_id,episode_number,series_episode_number')
+    .single()
+
+  if (updateError || !updated) {
+    throw new Error(updateError?.message || `Episode ${targetEpisodeNumber} update failed`)
+  }
+
+  logAnthropicCall({
+    route: '/api/admin/production-jobs/run-next',
+    purpose: 'series-episode-script',
+    model,
+    inputTokens: response.usage?.input_tokens ?? 0,
+    outputTokens: response.usage?.output_tokens ?? 0,
+    storyId: targetEpisode.id,
+    storyTitle: generatedTitle,
+    metadata: { is_v2: true, series_id: String(seriesId), episode_number: targetEpisodeNumber },
+  }).catch(() => {})
+
+  const refreshedEpisodes = await loadSeriesEpisodes(String(seriesId))
+  const allScriptsGenerated = refreshedEpisodes.every((episode: any) => Boolean(episode.script))
+  const nextStep = allScriptsGenerated ? NEXT_STEP_AFTER_SERIES_SCRIPTS : NEXT_STEP_AFTER_SERIES_CREATE
+
+  return {
+    generated: true,
+    seriesId: String(seriesId),
+    episode: {
+      storyId: updated.id,
+      title: updated.title,
+      status: updated.status,
+      episodeNumber: targetEpisodeNumber,
+    },
+    episodes: refreshedEpisodes,
+    nextStep,
+    state: {
+      ...state,
+      seriesId: String(seriesId),
+      episodes: refreshedEpisodes.map((episode: any) => ({
+        storyId: episode.id,
+        title: episode.title,
+        status: episode.status,
+        episodeNumber: episodeNumber(episode, 0),
+        hasScript: Boolean(episode.script),
+      })),
+      lastGeneratedEpisodeNumber: targetEpisodeNumber,
+      lastGeneratedEpisodeStoryId: updated.id,
+    },
+  }
+}
+
 export async function POST(req: NextRequest) {
   let lockedJob: ProductionJob | null = null
 
   try {
     const body = await req.json().catch(() => ({}))
     const requestedJobId = String(body.jobId || '').trim()
+    const model = String(body.model || 'claude-opus-4-6')
 
     const candidate = await selectCandidate(requestedJobId)
     if (!candidate) {
@@ -555,6 +943,51 @@ export async function POST(req: NextRequest) {
     }
 
     const step = normalizeStep(lockedJob.current_step)
+    if (step === NEXT_STEP_AFTER_SERIES_CREATE) {
+      const result = await generateOneSeriesEpisodeScript(lockedJob, model)
+      const logs = appendLog(lockedJob, result.generated ? 'Generated one series episode script' : 'All series episode scripts already exist', {
+        seriesId: result.seriesId,
+        episode: result.episode,
+        nextStep: result.nextStep,
+      })
+
+      const { data: updatedJob, error: updateError } = await supabase
+        .from('production_jobs')
+        .update({
+          series_id: result.seriesId,
+          status: 'running',
+          current_step: result.nextStep,
+          step_index: Math.max(Number(lockedJob.step_index || 0), 0) + (result.generated ? 1 : 0),
+          state_json: result.state,
+          error_json: null,
+          logs,
+          locked_at: null,
+          locked_by: null,
+        })
+        .eq('id', lockedJob.id)
+        .select('*')
+        .single()
+
+      if (updateError) throw new Error(`Failed to advance series episode script job: ${updateError.message}`)
+
+      return NextResponse.json({
+        success: true,
+        jobId: updatedJob.id,
+        currentStep: step,
+        nextStep: updatedJob.current_step,
+        seriesId: result.seriesId,
+        generatedEpisode: result.episode,
+        episodes: result.episodes.map((episode: any) => ({
+          storyId: episode.id,
+          title: episode.title,
+          status: episode.status,
+          episodeNumber: episodeNumber(episode, 0),
+          hasScript: Boolean(episode.script),
+        })),
+        logs,
+      })
+    }
+
     if (step !== 'create_story_row') {
       return bad('Only create_story_row is implemented in this run-next slice', 422, {
         jobId: lockedJob.id,
