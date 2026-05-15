@@ -122,7 +122,7 @@ export default function W3NewReleases({ credits }: W3NewReleasesProps) {
   const handleStoryClick = (story: Story) => {
     const storyCost = getCredits(story.duration_mins)
     if (credits >= storyCost) {
-      router.push(`/player/${story.id}`)
+      router.push(`/player/${story.id}?autoplay=1&playNow=1`)
     } else {
       setShowPopup(true)
     }

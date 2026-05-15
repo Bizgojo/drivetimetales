@@ -116,7 +116,7 @@ export default function NewReleases({ excludeIds = [], onIdsLoaded }: { excludeI
       <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>NEW RELEASES</h2>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem' }}>
         {stories.map(s => (
-          <Link key={s.id} href={'/player/' + s.id} className="bg-slate-800 rounded-xl hover:bg-slate-700 transition" style={{ display: 'block', padding: '0.5rem', textDecoration: 'none' }}>
+          <Link key={s.id} href={'/player/' + s.id + '?autoplay=1&playNow=1'} className="bg-slate-800 rounded-xl hover:bg-slate-700 transition" style={{ display: 'block', padding: '0.5rem', textDecoration: 'none' }}>
             <div className="rounded-lg overflow-hidden cover-glow" style={{ position: 'relative' }}>
               <img src={s.cover_url || '/images/default-cover.png'} alt={s.title} style={{ width: '100%', aspectRatio: '1/1', objectFit: 'cover' }} />
               {s.series_name && s.series_number && (

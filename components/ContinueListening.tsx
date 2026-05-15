@@ -48,7 +48,7 @@ export default function ContinueListening({ onIdsLoaded }: { onIdsLoaded?: (ids:
       .eq('user_id', user!.id)
       .eq('completed', false)
       .eq('hide_from_home', false)
-      .gt('progress', 0)
+      .gt('progress', 60)
       .order('last_played', { ascending: false })
       .limit(1)
       .single()
@@ -72,12 +72,12 @@ export default function ContinueListening({ onIdsLoaded }: { onIdsLoaded?: (ids:
   if (loading || !card) return null
   const displayTitle = card.series_name || card.title
   const subtitle = card.series_name ? ('Ep. ' + (card.episode_number || 1) + ': ' + card.title) : (card.author + ' - ' + card.genre)
-  const resumeAt = Math.max(0, card.progress - 5)
+  const resumeAt = Math.max(0, card.progress - 15)
 
   return (
     <section style={{ padding: '1.5rem 1rem 0' }}>
       <h2 style={{ color: 'white', fontSize: 18, fontWeight: 800, margin: '0 0 8px' }}>Continue Listening</h2>
-      <div onClick={() => router.push('/player/' + card.story_id + '?resume=' + resumeAt)} style={{ background: '#1e293b', borderRadius: '13px', border: '1px solid rgba(148,163,184,0.06)', display: 'flex', overflow: 'hidden', position: 'relative', cursor: 'pointer' }}>
+      <div onClick={() => router.push('/player/' + card.story_id + '?autoplay=1&playNow=1&resume=' + resumeAt)} style={{ background: '#1e293b', borderRadius: '13px', border: '1px solid rgba(148,163,184,0.06)', display: 'flex', overflow: 'hidden', position: 'relative', cursor: 'pointer' }}>
         <div style={{ width: 76, height: 76, flexShrink: 0, margin: '9px 0 9px 9px', borderRadius: 7, overflow: 'hidden', boxShadow: '0 0 10px rgba(255,255,255,0.18)' }}>
           <img src={card.cover_url || '/images/default-cover.png'} alt={displayTitle} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         </div>

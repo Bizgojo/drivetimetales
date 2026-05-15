@@ -113,7 +113,7 @@ export default function YourPlaylist() {
     <section style={{ padding: '1.5rem 1rem 0' }}>
       <h2 style={{ color: 'white', fontSize: 18, fontWeight: 800, margin: '0 0 8px' }}>Your Playlist</h2>
       <div
-        onClick={() => router.push('/player/playlist')}
+        onClick={() => router.push('/player/playlist?autoplay=1&playlist=1')}
         style={{
           background: '#1e293b',
           borderRadius: '13px',

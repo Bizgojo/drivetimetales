@@ -94,7 +94,7 @@ export default function HorizontalStoryCard({ id, title, genre, author, duration
   else if (progress_percent !== undefined && progress_percent > 0) playLabel = 'Continue'
 
   return (
-    <Link href={`/player/${id}`} style={{ display: 'flex', background: '#1e293b', borderRadius: '14px', position: 'relative', overflow: 'hidden', border: '1px solid rgba(148,163,184,0.06)', textDecoration: 'none', alignItems: 'stretch', padding: 0, minHeight: '150px' }}>
+    <Link href={`/player/${id}?autoplay=1&playNow=1`} style={{ display: 'flex', background: '#1e293b', borderRadius: '14px', position: 'relative', overflow: 'hidden', border: '1px solid rgba(148,163,184,0.06)', textDecoration: 'none', alignItems: 'stretch', padding: 0, minHeight: '150px' }}>
       <div style={{ flexShrink: 0, border: '10px solid #1e293b', borderRight: 'none', display: 'flex', alignItems: 'center' }}>
         <div style={{ width: '130px', height: '130px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0, boxShadow: '0 0 15px rgba(255,255,255,0.4)', position: 'relative' }}>
           <img src={cover_url || '/images/default-cover.png'} alt={title} style={{ width: '130px', height: '130px', objectFit: 'cover', display: 'block' }} />

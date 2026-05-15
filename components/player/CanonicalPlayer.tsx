@@ -374,7 +374,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
       if (!mountedRef.current || !autoAdvanceEnabledRef.current) return
       unrequestedAutoStartsRef.current += 1
       const isSeriesContinuation = candidate.reason === 'next_series_episode'
-      router.push(`/player/${candidate.story.id}${isSeriesContinuation ? '?autoplay=1&seriesContinue=1' : ''}`)
+      router.push(`/player/${candidate.story.id}?autoplay=1&${isSeriesContinuation ? 'seriesContinue=1' : 'autoAdvance=1'}`)
     }, 2500)
   }
 
@@ -814,7 +814,12 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
   useEffect(() => {
     if (loading || !audioRef.current || seriesContinueAutoplayAttemptedRef.current) return
     const params = new URLSearchParams(window.location.search)
-    if (params.get('autoplay') !== '1' || params.get('seriesContinue') !== '1') return
+    const hasInternalAutoplayIntent =
+      params.get('seriesContinue') === '1' ||
+      params.get('autoAdvance') === '1' ||
+      params.get('playNow') === '1' ||
+      params.get('playlist') === '1'
+    if (params.get('autoplay') !== '1' || !hasInternalAutoplayIntent) return
     if (isASC3 && !queue.length) return
     if (!isASC3 && !audioSrc) return
 
@@ -883,7 +888,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
     const epNum = next.episode_number ? `Episode ${next.episode_number}` : 'Next Episode'
     setNowPlayingLabel(epNum)
     setTimeout(() => setNowPlayingLabel(null), 3000)
-    setTimeout(() => router.push(`/player/${next.id}`), 2500)
+    setTimeout(() => router.push(`/player/${next.id}?autoplay=1&seriesContinue=1`), 2500)
   }
 
   // ── Queue advance ──────────────────────────────────────────────────────────
@@ -1362,7 +1367,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
                   if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current)
                   unrequestedAutoStartsRef.current += 1
                   const isSeriesContinuation = autoAdvanceCandidate.reason === 'next_series_episode'
-                  router.push(`/player/${autoAdvanceCandidate.story.id}${isSeriesContinuation ? '?autoplay=1&seriesContinue=1' : ''}`)
+                  router.push(`/player/${autoAdvanceCandidate.story.id}?autoplay=1&${isSeriesContinuation ? 'seriesContinue=1' : 'autoAdvance=1'}`)
                 }}
                 style={{ flex:1, padding:'10px 12px', borderRadius:'10px', border:'none', background:'#22c55e', color:'white', fontSize:'13px', fontWeight:800, cursor:'pointer' }}
               >Play now</button>

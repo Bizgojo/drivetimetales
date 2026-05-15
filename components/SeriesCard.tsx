@@ -80,7 +80,9 @@ export default function SeriesCard({
       })
     } catch {}
 
-    router.push(`/player/${playEpisodeId}${resume_seconds && resume_seconds > 0 ? `?resume=${resume_seconds}` : ''}`)
+    const params = new URLSearchParams({ autoplay: '1', playNow: '1' })
+    if (resume_seconds && resume_seconds > 0) params.set('resume', String(resume_seconds))
+    router.push(`/player/${playEpisodeId}?${params.toString()}`)
   }
 
   const handleSeriesClick = (e: React.MouseEvent) => {

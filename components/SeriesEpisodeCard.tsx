@@ -30,7 +30,7 @@ export default function SeriesEpisodeCard({
 
   return (
     <Link 
-      href={`/player/${id}`}
+      href={`/player/${id}?autoplay=1&playNow=1`}
       className="bg-slate-800 rounded-xl overflow-hidden hover:bg-slate-700 transition"
       style={{ display: 'flex' }}
     >

@@ -40,7 +40,7 @@ export default function NewStoryCard({
   const [rateState, setRateState] = useState<'prompt'|'stars'|'done'|'skip'>('prompt')
 
   const isSeries = !!is_series_container
-  const storyHref = isSeries ? `/series/${id}` : `/player/${id}`
+  const storyHref = isSeries ? `/series/${id}` : `/player/${id}?autoplay=1&playNow=1`
   const isInProgress = !is_completed && progress_percent !== undefined && progress_percent > 0
   const showRatePrompt = is_completed && !has_reviewed && !not_for_me && rateState === 'prompt'
   const showStarTap   = is_completed && !has_reviewed && !not_for_me && rateState === 'stars'

@@ -68,7 +68,7 @@ export default function GuestPage() {
     const newCount = guestStories + 1
     localStorage.setItem('et_guest_stories', String(newCount))
     setGuestStories(newCount)
-    router.push(`/player/${story.id}`)
+    router.push(`/player/${story.id}?autoplay=1&playNow=1`)
   }
 
   if (authLoading || loading) return (

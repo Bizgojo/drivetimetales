@@ -413,7 +413,7 @@ export default function LibraryPage() {
   }
 
   function playSingle(storyId: string) {
-    router.push(`/player/${storyId}`)
+    router.push(`/player/${storyId}?autoplay=1&playNow=1`)
   }
 
   function playSeries(item: CardItem) {
@@ -426,7 +426,9 @@ export default function LibraryPage() {
         playlist: item.episodePlaylist || [],
       })
     } catch {}
-    router.push(`/player/${item.playEpisodeId}${item.resumeSeconds && item.resumeSeconds > 0 ? `?resume=${item.resumeSeconds}` : ''}`)
+    const params = new URLSearchParams({ autoplay: '1', playNow: '1' })
+    if (item.resumeSeconds && item.resumeSeconds > 0) params.set('resume', String(item.resumeSeconds))
+    router.push(`/player/${item.playEpisodeId}?${params.toString()}`)
   }
 
   function openSeries(seriesId: string) {
@@ -438,7 +440,7 @@ export default function LibraryPage() {
     const first = cardItems.find((i) => i.key === validPlaylist[0])
     if (!first) return
     const id = first.type === 'single' ? first.story?.id : first.firstEpisodeId
-    if (id) router.push(`/player/${id}?playlist=1`)
+    if (id) router.push(`/player/${id}?playlist=1&autoplay=1`)
   }
 
   function savePlaylistToHome() {

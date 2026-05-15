@@ -246,7 +246,7 @@ function HomeSearchResults({ query }: { query: string }) {
           }
 
           return (
-            <div key={item.story.id} onClick={() => router.push(`/player/${item.story.id}`)} style={{ cursor: 'pointer' }}>
+            <div key={item.story.id} onClick={() => router.push(`/player/${item.story.id}?autoplay=1&playNow=1`)} style={{ cursor: 'pointer' }}>
               <HorizontalStoryCard
                 id={item.story.id}
                 title={item.story.title}

@@ -202,7 +202,7 @@ export default function RecommendedForYou({ excludeIds = [] }: { excludeIds?: st
             return <SeriesCard key={'series-' + item.group.id} id={item.group.id} series_name={item.group.series_name} genre={item.group.genre} author={item.group.author} episode_count={item.group.episode_count} total_duration_mins={item.group.total_duration_mins} cover_url={item.group.cover_url} description={item.group.description} episodes={item.group.episodes} play_episode_id={item.group.play_episode_id} resume_seconds={item.group.resume_seconds} is_in_progress={item.group.is_in_progress} />
           }
           return (
-            <div key={item.story.id} onClick={() => router.push('/player/' + item.story.id)} style={{ cursor: 'pointer' }}>
+            <div key={item.story.id} onClick={() => router.push('/player/' + item.story.id + '?autoplay=1&playNow=1')} style={{ cursor: 'pointer' }}>
               <HorizontalStoryCard id={item.story.id} title={item.story.title} genre={item.story.genre} author={item.story.author || 'Endless Tales'} duration_mins={item.story.duration_mins} cover_url={item.story.cover_url} avg_rating={item.story.avg_rating} review_count={item.story.review_count} />
             </div>
           )

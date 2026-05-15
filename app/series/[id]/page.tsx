@@ -77,7 +77,7 @@ export default function SeriesDetailPage() {
 
       if (episodesData) {
         if (episodesData.length === 0) { setUnavailable(true); return }
-        if (episodesData.length === 1) { router.replace(`/player/${episodesData[0].id}`); return }
+        if (episodesData.length === 1) { router.replace(`/player/${episodesData[0].id}?autoplay=1&playNow=1`); return }
         setEpisodes(episodesData)
         const firstEp = episodesData[0]
         const { data: seriesRow } = await supabase.from('series').select('cover_image, title').eq('id', seriesId).single()
@@ -145,7 +145,9 @@ export default function SeriesDetailPage() {
     const progress = userProgress[ep.id]
     const resumeAt = (progress && !progress.completed && progress.progress_seconds > 15)
       ? Math.max(0, progress.progress_seconds - 15) : 0
-    router.push(`/player/${ep.id}${resumeAt > 0 ? `?resume=${resumeAt}` : ''}`)
+    const params = new URLSearchParams({ autoplay: '1', playNow: '1' })
+    if (resumeAt > 0) params.set('resume', String(resumeAt))
+    router.push(`/player/${ep.id}?${params.toString()}`)
   }
 
   const handlePlayAll = () => {
@@ -176,7 +178,9 @@ export default function SeriesDetailPage() {
       if (p.progress_seconds < 120) return 0
       return Math.max(0, p.progress_seconds - 15)
     })()
-    router.push(`/player/${startEp.id}${resumeAt > 0 ? `?resume=${resumeAt}` : ''}`)
+    const params = new URLSearchParams({ autoplay: '1', playNow: '1' })
+    if (resumeAt > 0) params.set('resume', String(resumeAt))
+    router.push(`/player/${startEp.id}?${params.toString()}`)
   }
 
   const totalMins = episodes.reduce((sum, ep) => sum + ep.duration_mins, 0)

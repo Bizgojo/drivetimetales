@@ -152,7 +152,7 @@ export default function HistoryPage() {
                   {/* Actions */}
                   <div className="flex flex-col gap-2">
                     <Link 
-                      href={`/player/${item.storyId}`}
+                      href={`/player/${item.storyId}?autoplay=1&playNow=1`}
                       className="px-3 py-1 bg-green-600 text-white text-xs font-bold rounded-lg text-center"
                     >
                       {item.completed ? '↻' : '▶'}

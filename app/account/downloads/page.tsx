@@ -121,7 +121,7 @@ export default function DownloadsPage() {
                     <p className="text-white text-xs">{story.duration_mins} min • {story.size_mb.toFixed(1)} MB</p>
                   </div>
                   <div className="flex flex-col gap-2">
-                    <Link href={`/player/${story.id}`} className="px-3 py-2 bg-green-600 text-white text-xs rounded-lg text-center">▶ Play</Link>
+                    <Link href={`/player/${story.id}?autoplay=1&playNow=1`} className="px-3 py-2 bg-green-600 text-white text-xs rounded-lg text-center">▶ Play</Link>
                     <button onClick={() => removeDownload(story.id)} className="px-3 py-2 bg-gray-800 text-white text-xs rounded-lg">Remove</button>
                   </div>
                 </div>

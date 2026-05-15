@@ -334,7 +334,7 @@ function LibraryPlaylistContent() {
 
   const playNow = () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(persist(playlist)))
-    router.push('/player/playlist')
+    router.push('/player/playlist?autoplay=1&playlist=1')
   }
 
   const sortedCards = [...cards].sort((a, b) => {
