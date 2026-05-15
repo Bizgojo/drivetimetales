@@ -572,6 +572,25 @@ function scoreVoice(voice: any, meta: { gender: string; age: string; accent: str
   return score
 }
 
+type CharacterVoiceSelection = {
+  voiceId: string
+  reusedVoice: boolean
+  voiceName?: string
+  score?: number
+}
+
+function scoreCharacterVoiceCandidates(
+  meta: { gender: string; age: string; accent: string; tones: string[] },
+  myVoices: any[],
+  blockedVoiceIds: Set<string>
+) {
+  return myVoices
+    .filter(v => !blockedVoiceIds.has(v.voice_id) && !isBelleBVoiceId(v.voice_id))
+    .map(v => ({ voice: v, score: scoreVoice(v, meta) }))
+    .filter(x => x.score > -999)
+    .sort((a, b) => b.score - a.score)
+}
+
 // Find best matching voice from My Voices pool
 function findVoiceForCharacter(
   characterName: string,
@@ -579,13 +598,10 @@ function findVoiceForCharacter(
   myVoices: any[],
   usedVoiceIds: Set<string>,
   narratorVoiceId: string
-): string {
+): CharacterVoiceSelection {
+  const blockedVoiceIds = new Set<string>([...usedVoiceIds, narratorVoiceId, ...RESERVED_BELLE_B_VOICE_IDS])
   // Score all candidates
-  const scored = myVoices
-    .filter(v => !usedVoiceIds.has(v.voice_id) && v.voice_id !== narratorVoiceId && !isBelleBVoiceId(v.voice_id))
-    .map(v => ({ voice: v, score: scoreVoice(v, meta) }))
-    .filter(x => x.score > -999) // Remove wrong gender
-    .sort((a, b) => b.score - a.score)
+  const scored = scoreCharacterVoiceCandidates(meta, myVoices, blockedVoiceIds)
 
   if (scored.length === 0) {
     // Gender mismatch fallback — try any voice of right gender
@@ -597,15 +613,35 @@ function findVoiceForCharacter(
     )
     if (genderFallback) {
       console.log(`  ${characterName}: gender fallback → ${genderFallback.name}`)
-      return genderFallback.voice_id
+      return { voiceId: genderFallback.voice_id, reusedVoice: false, voiceName: genderFallback.name }
     }
+
+    // Controlled reuse fallback: reuse a safe existing character voice, never narrator or Belle.
+    const reuseBlockedVoiceIds = new Set<string>([narratorVoiceId, ...RESERVED_BELLE_B_VOICE_IDS])
+    const reusableScored = scoreCharacterVoiceCandidates(meta, myVoices, reuseBlockedVoiceIds)
+    if (reusableScored.length > 0) {
+      const reusePick = reusableScored[0]
+      console.log(`  ${characterName}: ${reusePick.voice.name} (score:${reusePick.score}, reusedVoice:true)`)
+      return {
+        voiceId: reusePick.voice.voice_id,
+        reusedVoice: true,
+        voiceName: reusePick.voice.name,
+        score: reusePick.score,
+      }
+    }
+
     console.log(`  ${characterName}: absolute fallback`)
-    return narratorVoiceId
+    throw new Error(`No safe character voice available for ${characterName}; narrator and Belle voices cannot be reused.`)
   }
 
   const pick = scored[0].voice
   console.log(`  ${characterName}: ${pick.name} (score:${scored[0].score}, ${pick.labels?.gender}, ${pick.labels?.age}, ${pick.labels?.accent}, ${pick.labels?.descriptive})`)
-  return pick.voice_id
+  return {
+    voiceId: pick.voice_id,
+    reusedVoice: false,
+    voiceName: pick.name,
+    score: scored[0].score,
+  }
 }
 
 interface ScriptLine {
@@ -1251,9 +1287,14 @@ export async function POST(req: NextRequest) {
         assignCharacterVoice(voiceMap, char.name, voiceMap[key])
       } else {
         // Find best matching voice from pool
-        voiceMap[key] = findVoiceForCharacter(char.name, meta, myVoices, usedVoiceIds, resolvedNarratorVoiceId)
+        const selection = findVoiceForCharacter(char.name, meta, myVoices, usedVoiceIds, resolvedNarratorVoiceId)
+        voiceMap[key] = selection.voiceId
+        if (selection.reusedVoice) {
+          warnings.push(`Reused character voice for ${char.name}: ${selection.voiceName || selection.voiceId}`)
+          console.warn(`  ⚠️ ${char.name}: reusedVoice: true voice=${selection.voiceName || selection.voiceId}`)
+        }
         assignCharacterVoice(voiceMap, char.name, voiceMap[key])
-        usedVoiceIds.add(voiceMap[key])
+        if (!selection.reusedVoice) usedVoiceIds.add(voiceMap[key])
       }
     }
     // Apply any remaining manual overrides
