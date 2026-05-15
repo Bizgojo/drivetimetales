@@ -530,8 +530,9 @@ function parseCharacterGuide(script: string): CharacterInfo[] {
 }
 
 function characterVoiceKeys(name: string): string[] {
+  const titleMatch = name.match(/^\s*(Dr|Doctor|Mr|Mrs|Ms|Miss|Director|Deputy|Officer|Agent|Colonel|Captain|Lieutenant|Sergeant|Sheriff)\.?\s+(.+)$/i)
   const cleaned = name
-    .replace(/\b(Dr|Mr|Mrs|Ms|Miss|Director|Deputy|Officer|Agent|Colonel|Captain|Lieutenant|Sergeant)\.?\b/gi, '')
+    .replace(/\b(Dr|Doctor|Mr|Mrs|Ms|Miss|Director|Deputy|Officer|Agent|Colonel|Captain|Lieutenant|Sergeant|Sheriff)\.?\b/gi, '')
     .trim()
   const withoutParentheticals = cleaned
     .replace(/\s*\([^)]*\)\s*/g, ' ')
@@ -556,6 +557,19 @@ function characterVoiceKeys(name: string): string[] {
 
   addKeysForName(withoutParentheticals || descriptorExpanded)
   addKeysForName(descriptorExpanded)
+  if (titleMatch) {
+    const title = titleMatch[1].replace(/^Dr$/i, 'Doctor')
+    const titleRest = titleMatch[2]
+      .replace(/\s*\([^)]*\)\s*/g, ' ')
+      .replace(/[()]/g, ' ')
+      .trim()
+    const titleParts = titleRest
+      .split(/\s+/)
+      .map(part => part.replace(/[^A-Za-zÀ-ÖØ-öø-ÿ'.-]/g, '').trim())
+      .filter(part => part.length > 1)
+    const lastName = titleParts[titleParts.length - 1]
+    if (lastName) addKeysForName(`${title} ${lastName}`)
+  }
   cleaned.split('/').forEach(alias => {
     addKeysForName(alias.replace(/\s*\([^)]*\)\s*/g, ' '))
     addKeysForName(alias.replace(/[()]/g, ' '))
