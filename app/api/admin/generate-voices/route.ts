@@ -321,6 +321,17 @@ async function uploadedObjectExists(cachePath: string): Promise<boolean> {
   }
 }
 
+async function downloadCachedAudioBuffer(cacheUrl: string): Promise<Buffer | null> {
+  try {
+    const res = await fetch(cacheUrl, { cache: 'no-store' })
+    if (!res.ok) return null
+    return Buffer.from(await res.arrayBuffer())
+  } catch (e) {
+    console.warn(`  ⚠️ Cached segment download failed for loudness QC: ${cacheUrl}`, e)
+    return null
+  }
+}
+
 async function uploadAudioBufferWithRetry(cachePath: string, buf: Buffer, context: string): Promise<void> {
   const maxAttempts = 3
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -834,9 +845,6 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
   const cacheUrl = `${BASE_STORAGE}/${cachePath}`
   // Skip cache for announcer lines (intro/outro) OR when force=true — these must always be fresh
   const isAnnouncer = prefix === 'intro' || prefix === 'intro_before' || prefix === 'intro_after' || prefix === 'outro'
-  if (!forceRegenerate && !isAnnouncer) {
-    try { const r = await fetch(cacheUrl, { method: 'HEAD' }); if (r.ok) return cacheUrl } catch {}
-  }
   const generateAttempt = async (): Promise<Buffer> => {
     const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
       method: 'POST',
@@ -848,9 +856,36 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
     return normalizeSpokenBuffer(rawBuf, rawText, prefix)
   }
 
-  let buf = await generateAttempt()
   if (prefix === 'segment') {
     const wordCount = text.split(/\s+/).filter(Boolean).length
+    if (!forceRegenerate) {
+      const cachedBuf = await downloadCachedAudioBuffer(cacheUrl)
+      if (cachedBuf) {
+        const cachedDuration = await getAudioDurationBuffer(cachedBuf)
+        const isCachedShortSegment = wordCount <= SHORT_SEGMENT_MAX_WORDS || (cachedDuration > 0 && cachedDuration < SHORT_SEGMENT_MAX_SECONDS)
+        const cachedRetryThreshold = isCachedShortSegment ? SHORT_SEGMENT_QC_RETRY_LUFS : SEGMENT_QC_RETRY_LUFS
+        let cachedMetrics: LoudnessMetrics = { input_i: NaN, input_tp: NaN, input_lra: NaN, input_thresh: NaN }
+        try {
+          cachedMetrics = await analyzeLoudnessBuffer(cachedBuf)
+        } catch (e) {
+          console.warn(`  ⚠️ Cached segment loudness analysis failed for ${fileName}; regenerating`, e)
+        }
+        const cachedAction = !hasUsableLoudness(cachedMetrics)
+          ? 'regenerate_cached_invalid_loudness'
+          : cachedMetrics.input_tp > SPOKEN_TRUE_PEAK
+            ? 'regenerate_cached_true_peak'
+            : cachedMetrics.input_i < cachedRetryThreshold
+              ? 'regenerate_cached_low_loudness'
+              : 'accept_cached_loudness_qc'
+        logSegmentQc(fileName, speaker, text, cachedMetrics, cachedAction)
+        if (cachedAction === 'accept_cached_loudness_qc') {
+          return cacheUrl
+        }
+        console.warn(`  ⚠️ Regenerating cached segment ${fileName} speaker="${speaker}" cached_lufs=${Number.isFinite(cachedMetrics.input_i) ? cachedMetrics.input_i.toFixed(2) : 'invalid'} threshold=${cachedRetryThreshold.toFixed(1)}`)
+      }
+    }
+
+    let buf = await generateAttempt()
     const segmentDuration = await getAudioDurationBuffer(buf)
     const isShortSegment = wordCount <= SHORT_SEGMENT_MAX_WORDS || (segmentDuration > 0 && segmentDuration < SHORT_SEGMENT_MAX_SECONDS)
     const segmentQcTarget = isShortSegment ? SHORT_SEGMENT_QC_TARGET_LUFS : SEGMENT_QC_TARGET_LUFS
@@ -956,10 +991,9 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
     }
 
     buf = accepted.buf
-  }
-  if (prefix === 'segment') {
     await uploadAudioBufferWithRetry(cachePath, buf, `${speaker || 'UNKNOWN'} ${fileName}`)
   } else {
+    let buf = await generateAttempt()
     const { error: ue } = await supabase.storage.from('audio').upload(cachePath, buf, { contentType: 'audio/mpeg', upsert: true })
     if (ue) throw new Error(`Upload error: ${ue.message}`)
   }
