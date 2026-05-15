@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 interface Story {
@@ -42,6 +41,9 @@ interface Story {
   story_audio_url?: string | null
   series_id?: string | null
   episode_number?: number | null
+  review_status?: 'pending' | 'approved' | 'not_approved' | null
+  reviewed_at?: string | null
+  review_notes?: string | null
 }
 
 interface Genre {
@@ -56,7 +58,10 @@ interface Group {
   display_order: number
 }
 
-type VisibilityFilter = 'review' | 'visible' | 'hidden' | 'all'
+type ReviewTab = 'review' | 'approved' | 'not_approved' | 'published'
+type StoryGroup =
+  | { type: 'standalone'; key: string; story: Story }
+  | { type: 'series'; key: string; title: string; stories: Story[] }
 
 const FLAG_OPTIONS = [
   { value: null, label: 'No Flag', color: '#6b7280' },
@@ -78,10 +83,26 @@ function isReviewReady(story: Story) {
   return !!(
     story.is_hidden &&
     story.status === 'audio_ready' &&
+    (story.review_status || 'pending') === 'pending' &&
     hasRequiredStoryFields(story) &&
     story.audio_url &&
     story.cover_url
   )
+}
+
+function isApprovedReady(story: Story) {
+  return !!(
+    story.is_hidden &&
+    story.status === 'audio_ready' &&
+    story.review_status === 'approved' &&
+    hasRequiredStoryFields(story) &&
+    story.audio_url &&
+    story.cover_url
+  )
+}
+
+function isNotApproved(story: Story) {
+  return story.review_status === 'not_approved'
 }
 
 function isPublicPlayable(story: Story) {
@@ -94,6 +115,10 @@ function isPublicPlayable(story: Story) {
 
 function isPublicCatalogCandidate(story: Partial<Story>) {
   return story.status === 'published' && story.is_hidden === false
+}
+
+function isPublishedToApp(story: Story) {
+  return isPublicPlayable(story) && Boolean(story.cover_url)
 }
 
 function hasRequiredStoryFields(story: Partial<Story>) {
@@ -134,11 +159,58 @@ function canonicalizeEligibleStories(rows: Partial<Story>[]) {
   return Array.from(byKey.values())
 }
 
+function storyMatchesTab(story: Story, tab: ReviewTab) {
+  if (tab === 'review') return isReviewReady(story)
+  if (tab === 'approved') return isApprovedReady(story)
+  if (tab === 'not_approved') return isNotApproved(story)
+  return isPublishedToApp(story)
+}
+
+function displaySeriesTitle(stories: Story[]) {
+  const story = stories[0]
+  const name = String(story?.series_name || '').trim()
+  if (name && name.toLowerCase() !== 'none') return name
+  return story?.title || 'Untitled Series'
+}
+
+function groupStoriesForReview(stories: Story[]) {
+  const groups: StoryGroup[] = []
+  const series = new Map<string, Story[]>()
+
+  stories.forEach((story) => {
+    if (hasRealSeriesRelationship(story)) {
+      const key = String(story.series_id)
+      const list = series.get(key) || []
+      list.push(story)
+      series.set(key, list)
+    } else {
+      groups.push({ type: 'standalone', key: `story:${story.id}`, story })
+    }
+  })
+
+  series.forEach((items, seriesId) => {
+    const sorted = [...items].sort((a, b) => Number(a.episode_number || 0) - Number(b.episode_number || 0))
+    groups.push({ type: 'series', key: `series:${seriesId}`, title: displaySeriesTitle(sorted), stories: sorted })
+  })
+
+  return groups.sort((a, b) => {
+    const aDate = a.type === 'series' ? a.stories[0]?.created_at : a.story.created_at
+    const bDate = b.type === 'series' ? b.stories[0]?.created_at : b.story.created_at
+    return new Date(bDate || 0).getTime() - new Date(aDate || 0).getTime()
+  })
+}
+
 function StoryVisibilityBadges({ story }: { story: Story }) {
   const reviewReady = isReviewReady(story)
+  const approvedReady = isApprovedReady(story)
+  const notApproved = isNotApproved(story)
+  const published = isPublishedToApp(story)
   return (
     <>
       {reviewReady && <span style={{ backgroundColor: '#f59e0b', color: '#000000', borderRadius: '3px', padding: '1px 5px', fontSize: '9px', fontWeight: 700 }}>READY FOR REVIEW</span>}
+      {approvedReady && <span style={{ backgroundColor: '#16a34a', color: '#ffffff', borderRadius: '3px', padding: '1px 5px', fontSize: '9px', fontWeight: 700 }}>APPROVED</span>}
+      {notApproved && <span style={{ backgroundColor: '#991b1b', color: '#ffffff', borderRadius: '3px', padding: '1px 5px', fontSize: '9px', fontWeight: 700 }}>NOT APPROVED</span>}
+      {published && <span style={{ backgroundColor: '#2563eb', color: '#ffffff', borderRadius: '3px', padding: '1px 5px', fontSize: '9px', fontWeight: 700 }}>PUBLISHED</span>}
       {story.is_hidden && <span style={{ backgroundColor: '#dc2626', color: '#ffffff', borderRadius: '3px', padding: '1px 5px', fontSize: '9px', fontWeight: 700 }}>HIDDEN</span>}
       {story.is_hidden && <span style={{ backgroundColor: '#111827', color: '#ffffff', borderRadius: '3px', padding: '1px 5px', fontSize: '9px', fontWeight: 700 }}>NOT PUBLIC</span>}
     </>
@@ -708,20 +780,46 @@ function StoryEditorPanel({
   )
 }
 
-// ── Story Row ─────────────────────────────────────────────────────────────────
+// ── Review Cards ──────────────────────────────────────────────────────────────
 
-function StoryRow({
+function actionButtonStyle(kind: 'primary' | 'success' | 'danger' | 'muted' = 'muted') {
+  const colors = {
+    primary: ['#2563eb', '#ffffff'],
+    success: ['#16a34a', '#ffffff'],
+    danger: ['#dc2626', '#ffffff'],
+    muted: ['#f3f4f6', '#111827'],
+  }[kind]
+  return {
+    padding: '7px 10px',
+    borderRadius: '6px',
+    border: 'none',
+    backgroundColor: colors[0],
+    color: colors[1],
+    fontSize: '12px',
+    fontWeight: 700,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap' as const,
+  }
+}
+
+function StoryReviewCard({
   story,
-  index,
   onEditClick,
   onDelete,
-  onApprove,
+  onApproveForLater,
+  onReject,
+  onMoveToReview,
+  onPublish,
+  onUnpublish,
 }: {
   story: Story
-  index: number
   onEditClick: (s: Story) => void
   onDelete: (id: string) => void
-  onApprove: (story: Story) => void
+  onApproveForLater: (story: Story) => void
+  onReject: (story: Story) => void
+  onMoveToReview: (story: Story) => void
+  onPublish: (story: Story) => void
+  onUnpublish: (story: Story) => void
 }) {
   const isSeriesEpisode = hasRealSeriesRelationship(story)
   const rawSeriesName = String(story.series_name || '').trim()
@@ -734,91 +832,157 @@ function StoryRow({
   }
 
   return (
-    <tr style={{ borderBottom: `1px solid ${border}`, backgroundColor: index % 2 === 0 ? 'transparent' : '#fafafa' }}>
-      {/* Cover — clickable to edit */}
-      <td style={{ padding: '0.5rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <button
-            type="button"
-            onClick={handleDeleteClick}
-            title="Delete story"
-            style={{ width: '24px', height: '24px', borderRadius: '5px', border: '1px solid #fecaca', backgroundColor: '#fee2e2', color: '#dc2626', cursor: 'pointer', fontSize: '13px', lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-          >
-            🗑
-          </button>
-          <div
-            onClick={() => onEditClick(story)}
-            title="Click to edit"
-            style={{ width: '44px', height: '44px', borderRadius: '6px', overflow: 'hidden', backgroundColor: '#e5e5e5', cursor: 'pointer', border: '2px solid transparent', transition: 'border-color 0.15s', flexShrink: 0 }}
-            onMouseEnter={e => (e.currentTarget.style.borderColor = '#f97316')}
-            onMouseLeave={e => (e.currentTarget.style.borderColor = 'transparent')}
-          >
-            <img src={story.cover_url || '/images/default-cover.png'} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-          </div>
+    <div style={{ display: 'grid', gridTemplateColumns: '72px minmax(0, 1fr) auto', gap: '12px', alignItems: 'center', padding: '12px', border: `1px solid ${border}`, borderRadius: '8px', backgroundColor: '#ffffff' }}>
+      <div
+        onClick={() => onEditClick(story)}
+        title="Click to edit"
+        style={{ width: '72px', height: '72px', borderRadius: '7px', overflow: 'hidden', backgroundColor: '#e5e5e5', cursor: 'pointer', border: `1px solid ${border}` }}
+      >
+        <img src={story.cover_url || '/images/default-cover.png'} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+          <div style={{ color: textPrimary, fontWeight: 800, fontSize: '15px', lineHeight: 1.2 }}>{story.title}</div>
         </div>
-      </td>
-      {/* Title */}
-      <td style={{ padding: '0.5rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <div style={{ color: textPrimary, fontWeight: 600, fontSize: '13px', lineHeight: 1.2 }}>{story.title}</div>
-          <StoryVisibilityBadges story={story} />
-          {isReviewReady(story) && <button onClick={() => onApprove(story)} style={{ backgroundColor: '#16a34a', color: '#fff', border: 'none', borderRadius: '3px', padding: '1px 6px', fontSize: '9px', fontWeight: 700, cursor: 'pointer', marginLeft: '2px' }}>✅ PUBLISH LIVE</button>}
+        {story.episode_title && <div style={{ color: textSecondary, fontSize: '12px', fontStyle: 'italic', marginTop: '2px' }}>{story.episode_title}</div>}
+        <div style={{ color: textSecondary, fontSize: '12px', marginTop: '3px' }}>
+          {isSeriesEpisode ? `${seriesTitle || 'Series'} · Episode ${story.episode_number}` : 'Standalone'} · by {story.author || 'Unknown'} · {story.genre || 'No genre'} · {story.duration_mins || 0}m
         </div>
-        {story.episode_title && <div style={{ color: textSecondary, fontSize: '11px', fontStyle: 'italic' }}>{story.episode_title}</div>}
-        <div style={{ color: textSecondary, fontSize: '11px' }}>by {story.author}</div>
-      </td>
-      {/* Type */}
-      <td style={{ padding: '0.5rem' }}>
-        <div style={{ color: isSeriesEpisode ? '#1d4ed8' : textPrimary, fontSize: '11px', fontWeight: 700, whiteSpace: 'nowrap' }}>
-          {isSeriesEpisode ? 'Series Episode' : 'Standalone'}
+        {story.description && <div style={{ color: textSecondary, fontSize: '12px', marginTop: '6px', lineHeight: 1.35 }}>{story.description}</div>}
+        <div style={{ color: textSecondary, fontSize: '11px', marginTop: '6px' }}>
+          Created {story.created_at ? new Date(story.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'unknown'} · Plays {story.downloads_total || 0} · Finish {story.pct_finished || 0}%
         </div>
-        {isSeriesEpisode && (
-          <div style={{ color: textSecondary, fontSize: '10px', lineHeight: 1.25 }}>
-            {seriesTitle || 'Series'}{story.episode_number != null ? ` · Ep ${story.episode_number}` : ''}
-          </div>
-        )}
-      </td>
-      {/* Play */}
-      <td style={{ padding: '0.5rem', textAlign: 'center' }}>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'stretch' }}>
         <PlayStoryButton storyId={story.id} title={story.title} />
-      </td>
-      {/* Genres */}
-      <td style={{ padding: '0.5rem' }}>
-        <div style={{ color: textPrimary, fontSize: '12px', fontWeight: 500 }}>{story.genre || <span style={{ color: '#f97316', fontSize: '10px' }}>Not set</span>}</div>
-        {(story.genre_secondary || story.genre_third) && (
-          <div style={{ color: textSecondary, fontSize: '10px' }}>{[story.genre_secondary, story.genre_third].filter(Boolean).join(', ')}</div>
-        )}
-      </td>
-      {/* Duration */}
-      <td style={{ padding: '0.5rem', textAlign: 'center', color: textPrimary }}>{story.duration_mins}m</td>
-      {/* Downloads */}
-      <td style={{ padding: '0.5rem', textAlign: 'center', color: textPrimary }}>{story.downloads_day || 0}</td>
-      <td style={{ padding: '0.5rem', textAlign: 'center', color: textPrimary }}>{story.downloads_week || 0}</td>
-      <td style={{ padding: '0.5rem', textAlign: 'center', color: textPrimary }}>{story.downloads_month || 0}</td>
-      <td style={{ padding: '0.5rem', textAlign: 'center', color: '#2563eb', fontWeight: 600 }}>{story.downloads_total || 0}</td>
-      {/* Fin% */}
-      <td style={{ padding: '0.5rem', textAlign: 'center', color: story.pct_finished > 50 ? '#16a34a' : story.pct_finished < 20 ? '#dc2626' : textPrimary, fontWeight: 600 }}>{story.pct_finished || 0}%</td>
-      {/* Rating */}
-      <td style={{ padding: '0.5rem', textAlign: 'center' }}>
-        <span style={{ color: '#eab308' }}>★</span>
-        <span style={{ color: textPrimary, fontWeight: 600 }}>{story.rating || '-'}</span>
-        <span style={{ color: textSecondary, fontSize: '10px' }}> ({story.review_count || 0})</span>
-      </td>
-      {/* Flag */}
-      <td style={{ padding: '0.5rem' }}>
-        {story.flag ? (
-          <span style={{ backgroundColor: FLAG_OPTIONS.find(f => f.value === story.flag)?.color || '#e5e5e5', color: '#000000', borderRadius: '4px', padding: '3px 7px', fontSize: '10px', fontWeight: 600 }}>
-            {FLAG_OPTIONS.find(f => f.value === story.flag)?.label}
-          </span>
-        ) : (
-          <span style={{ color: textSecondary, fontSize: '10px' }}>—</span>
-        )}
-      </td>
-      {/* Created */}
-      <td style={{ padding: '0.5rem', textAlign: 'center', color: textSecondary, fontSize: '11px', whiteSpace: 'nowrap' }}>
-        {story.created_at ? new Date(story.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : '—'}
-      </td>
-    </tr>
+        <button onClick={() => onEditClick(story)} style={actionButtonStyle('muted')}>Edit</button>
+        {isReviewReady(story) && <button onClick={() => onApproveForLater(story)} style={actionButtonStyle('success')}>Approve for Later</button>}
+        {isReviewReady(story) && <button onClick={() => onPublish(story)} style={actionButtonStyle('primary')}>Publish Now</button>}
+        {(isReviewReady(story) || isApprovedReady(story)) && <button onClick={() => onReject(story)} style={actionButtonStyle('danger')}>Not Approved</button>}
+        {(isApprovedReady(story) || isNotApproved(story)) && <button onClick={() => onMoveToReview(story)} style={actionButtonStyle('muted')}>Move to Review</button>}
+        {isApprovedReady(story) && <button onClick={() => onPublish(story)} style={actionButtonStyle('primary')}>Publish to App</button>}
+        {isPublishedToApp(story) && <button onClick={() => onUnpublish(story)} style={actionButtonStyle('danger')}>Unpublish</button>}
+        <button onClick={handleDeleteClick} style={{ ...actionButtonStyle('muted'), color: '#dc2626' }}>Delete</button>
+      </div>
+    </div>
+  )
+}
+
+function EpisodeReviewRow({
+  story,
+  onEditClick,
+  onApproveForLater,
+  onReject,
+  onMoveToReview,
+  onPublish,
+  onUnpublish,
+}: {
+  story: Story
+  onEditClick: (s: Story) => void
+  onApproveForLater: (story: Story) => void
+  onReject: (story: Story) => void
+  onMoveToReview: (story: Story) => void
+  onPublish: (story: Story) => void
+  onUnpublish: (story: Story) => void
+}) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '56px minmax(0, 1fr) auto', gap: '10px', alignItems: 'center', padding: '10px', border: `1px solid ${border}`, borderRadius: '8px', backgroundColor: '#ffffff' }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ color: '#1d4ed8', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Episode</div>
+        <div style={{ color: textPrimary, fontSize: '20px', fontWeight: 900 }}>{story.episode_number || '-'}</div>
+      </div>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+          <div style={{ color: textPrimary, fontWeight: 800, fontSize: '14px', lineHeight: 1.2 }}>{story.episode_title || story.title}</div>
+        </div>
+        <div style={{ color: textSecondary, fontSize: '12px', marginTop: '4px' }}>
+          {story.duration_mins || 0}m · {story.genre || 'No genre'} · {story.author || 'Unknown'}
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+        <PlayStoryButton storyId={story.id} title={story.title} />
+        <button onClick={() => onEditClick(story)} style={actionButtonStyle('muted')}>Edit</button>
+        {isReviewReady(story) && <button onClick={() => onApproveForLater(story)} style={actionButtonStyle('success')}>Approve</button>}
+        {isReviewReady(story) && <button onClick={() => onPublish(story)} style={actionButtonStyle('primary')}>Publish Now</button>}
+        {(isReviewReady(story) || isApprovedReady(story)) && <button onClick={() => onReject(story)} style={actionButtonStyle('danger')}>Not Approved</button>}
+        {(isApprovedReady(story) || isNotApproved(story)) && <button onClick={() => onMoveToReview(story)} style={actionButtonStyle('muted')}>Move to Review</button>}
+        {isApprovedReady(story) && <button onClick={() => onPublish(story)} style={actionButtonStyle('primary')}>Publish</button>}
+        {isPublishedToApp(story) && <button onClick={() => onUnpublish(story)} style={actionButtonStyle('danger')}>Unpublish</button>}
+      </div>
+    </div>
+  )
+}
+
+function SeriesReviewGroup({
+  group,
+  expanded,
+  onToggle,
+  onArchiveSeries,
+  onEditClick,
+  onDelete,
+  onApproveForLater,
+  onReject,
+  onMoveToReview,
+  onPublish,
+  onUnpublish,
+}: {
+  group: Extract<StoryGroup, { type: 'series' }>
+  expanded: boolean
+  onToggle: () => void
+  onArchiveSeries: (group: Extract<StoryGroup, { type: 'series' }>) => void
+  onEditClick: (s: Story) => void
+  onDelete: (id: string) => void
+  onApproveForLater: (story: Story) => void
+  onReject: (story: Story) => void
+  onMoveToReview: (story: Story) => void
+  onPublish: (story: Story) => void
+  onUnpublish: (story: Story) => void
+}) {
+  const first = group.stories[0]
+  const approvedCount = group.stories.filter(isApprovedReady).length
+  const publishedCount = group.stories.filter(isPublishedToApp).length
+  const reviewCount = group.stories.filter(isReviewReady).length
+
+  return (
+    <div style={{ border: `1px solid ${border}`, borderRadius: '10px', backgroundColor: '#ffffff', overflow: 'hidden' }}>
+      <div style={{ width: '100%', display: 'grid', gridTemplateColumns: '84px minmax(0, 1fr) auto', gap: '14px', alignItems: 'center', padding: '14px', backgroundColor: '#ffffff' }}>
+        <div style={{ width: '84px', height: '84px', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#e5e5e5', border: `1px solid ${border}` }}>
+          <img src={first?.cover_url || '/images/default-cover.png'} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        </div>
+        <button type="button" onClick={onToggle} style={{ minWidth: 0, background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left' }}>
+          <div style={{ color: '#1d4ed8', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Series</div>
+          <div style={{ color: textPrimary, fontWeight: 900, fontSize: '18px', lineHeight: 1.15 }}>{group.title}</div>
+          <div style={{ color: textSecondary, fontSize: '12px', marginTop: '5px' }}>
+            {group.stories.length} episodes · {first?.genre || 'No genre'} · by {first?.author || 'Unknown'}
+          </div>
+          <div style={{ color: textSecondary, fontSize: '12px', marginTop: '6px' }}>
+            {reviewCount} ready · {approvedCount} approved · {publishedCount} published
+          </div>
+        </button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '7px', alignItems: 'stretch' }}>
+          <button type="button" onClick={onToggle} style={actionButtonStyle('muted')}>{expanded ? 'Collapse' : 'Expand'}</button>
+          <button type="button" onClick={() => onArchiveSeries(group)} style={actionButtonStyle('danger')}>
+            {publishedCount > 0 ? 'Unpublish / Archive Series' : 'Archive Series'}
+          </button>
+        </div>
+      </div>
+      {expanded && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '0 14px 14px 14px', backgroundColor: '#f8fafc' }}>
+          {group.stories.map((story) => (
+            <EpisodeReviewRow
+              key={story.id}
+              story={story}
+              onEditClick={onEditClick}
+              onApproveForLater={onApproveForLater}
+              onReject={onReject}
+              onMoveToReview={onMoveToReview}
+              onPublish={onPublish}
+              onUnpublish={onUnpublish}
+            />
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -831,10 +995,8 @@ export default function AdminStoriesPage() {
   const [search, setSearch] = useState('')
   const [genreFilter, setGenreFilter] = useState('All')
   const [viewMode, setViewMode] = useState<'all' | 'series' | 'standalone'>('all')
-  const [visibilityFilter, setVisibilityFilter] = useState<VisibilityFilter>('review')
-  const [sortBy, setSortBy] = useState<'title' | 'genre' | 'duration_mins' | 'series_name' | 'downloads_total' | 'pct_finished' | 'rating' | 'created_at'>('created_at')
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<ReviewTab>('review')
+  const [expandedSeries, setExpandedSeries] = useState<Record<string, boolean>>({})
   const [editingStory, setEditingStory] = useState<Story | null>(null)
   const editingStoryRef = useRef<Story | null>(null)
 
@@ -847,7 +1009,7 @@ export default function AdminStoriesPage() {
     setLoading(true)
     const { data: readinessRows, error: readinessError } = await supabase
       .from('stories')
-      .select('id,title,author,genre,description,duration_mins,cover_url,audio_url,story_audio_url,status,is_hidden,created_at,series_id,episode_number,series_name')
+      .select('id,title,author,genre,primary_genre,genre_secondary,genre_third,description,duration_mins,cover_url,audio_url,story_audio_url,status,is_hidden,created_at,series_id,episode_number,series_name,series_total,episode_title,flag,is_free,group_name,review_status,reviewed_at,review_notes,production_cost')
       .order('created_at', { ascending: false })
 
     if (readinessError) {
@@ -864,10 +1026,14 @@ export default function AdminStoriesPage() {
         .map((story) => story.id)
         .filter(Boolean) as string[]
     )
-    const reviewReadyRows = storyRows.filter((story) => isReviewReady(story as Story))
+    const reviewWorkflowRows = storyRows.filter((story) =>
+      story.status === 'audio_ready' ||
+      story.status === 'published' ||
+      story.review_status === 'approved' ||
+      story.review_status === 'not_approved'
+    )
     const eligibleIds = Array.from(new Set([
-      ...Array.from(publicCandidateIds),
-      ...reviewReadyRows.map((story) => story.id).filter(Boolean) as string[],
+      ...reviewWorkflowRows.map((story) => story.id).filter(Boolean) as string[],
     ]))
     const readinessById = new Map(
       storyRows
@@ -887,17 +1053,19 @@ export default function AdminStoriesPage() {
       .in('id', eligibleIds)
       .order('created_at', { ascending: false })
 
-    if (data) {
-      const analyticsPublicIds = new Set(
-        data
-          .filter((story) => publicCandidateIds.has(story.id) && story.is_hidden === false && story.cover_url)
-          .map((story) => story.id)
-      )
-      const loadedStories = data
-        .map((story) => ({ ...story, ...readinessById.get(story.id) }) as Story)
-        .filter((story) => analyticsPublicIds.has(story.id) || isReviewReady(story))
-      setStories(loadedStories)
-    }
+    const analyticsById = new Map((data || []).map((story: any) => [story.id, story]))
+    const analyticsPublicIds = new Set(
+      (data || [])
+        .filter((story: any) => publicCandidateIds.has(story.id) && story.is_hidden === false && story.cover_url)
+        .map((story: any) => story.id)
+    )
+    const loadedStories = eligibleIds
+      .map((id) => ({ ...(analyticsById.get(id) || {}), ...(readinessById.get(id) || {}) }) as Story)
+      .filter((story) => {
+        if (isPublishedToApp(story)) return analyticsPublicIds.has(story.id)
+        return isReviewReady(story) || isApprovedReady(story) || isNotApproved(story)
+      })
+    setStories(loadedStories)
     if (error) console.error('Error fetching story analytics:', error)
     setLoading(false)
   }
@@ -911,8 +1079,43 @@ export default function AdminStoriesPage() {
     if (data) setGenres(data)
   }
 
-  const approveStory = async (story: Story) => {
-    if (!window.confirm('Publish this story live?')) return
+  async function setReviewStatus(story: Story, reviewStatus: 'approved' | 'not_approved') {
+    const notes = reviewStatus === 'not_approved'
+      ? window.prompt(`Optional review note for "${story.title}"`, story.review_notes || '') || ''
+      : story.review_notes || ''
+    const { error } = await supabase
+      .from('stories')
+      .update({
+        review_status: reviewStatus,
+        reviewed_at: new Date().toISOString(),
+        review_notes: notes || null,
+      })
+      .eq('id', story.id)
+    if (error) {
+      alert(`Review update failed: ${error.message}`)
+      return
+    }
+    await fetchStories()
+  }
+
+  async function moveToReview(story: Story) {
+    const { error } = await supabase
+      .from('stories')
+      .update({
+        review_status: 'pending',
+        reviewed_at: null,
+        review_notes: null,
+      })
+      .eq('id', story.id)
+    if (error) {
+      alert(`Move to Review failed: ${error.message}`)
+      return
+    }
+    await fetchStories()
+  }
+
+  const publishStory = async (story: Story) => {
+    if (!window.confirm(`Publish "${story.title}" to the app?`)) return
     try {
       const res = await fetch('/api/admin/publish-story', {
         method: 'POST',
@@ -933,6 +1136,85 @@ export default function AdminStoriesPage() {
     }
   }
 
+  async function unpublishStory(story: Story) {
+    if (!window.confirm(`Unpublish "${story.title}" and return it to Approved and Ready?`)) return
+    const { error } = await supabase
+      .from('stories')
+      .update({
+        status: 'audio_ready',
+        is_hidden: true,
+        published_on: null,
+        review_status: 'approved',
+        reviewed_at: new Date().toISOString(),
+      })
+      .eq('id', story.id)
+    if (error) {
+      alert(`Unpublish failed: ${error.message}`)
+      return
+    }
+    await fetchStories()
+  }
+
+  async function archiveSeries(group: Extract<StoryGroup, { type: 'series' }>) {
+    const seriesId = String(group.stories[0]?.series_id || '').trim()
+    if (!seriesId) return
+
+    const hasPublishedEpisode = group.stories.some(isPublishedToApp)
+    const warning = hasPublishedEpisode
+      ? `Unpublish and archive the entire series "${group.title}"?\n\nThis will remove all published episodes from the public app and move every episode to Not Approved. No files or story rows will be deleted.`
+      : `Archive the entire series "${group.title}" from the review workflow?\n\nThis will move every episode to Not Approved. No files or story rows will be deleted.`
+
+    if (!window.confirm(warning)) return
+
+    const updates: Record<string, unknown> = hasPublishedEpisode
+      ? {
+          status: 'audio_ready',
+          is_hidden: true,
+          published_on: null,
+          review_status: 'not_approved',
+          reviewed_at: new Date().toISOString(),
+          review_notes: 'Unpublished and archived from admin review workflow',
+        }
+      : {
+          review_status: 'not_approved',
+          reviewed_at: new Date().toISOString(),
+          review_notes: 'Archived from admin review workflow',
+        }
+
+    const { error } = await supabase
+      .from('stories')
+      .update(updates)
+      .eq('series_id', seriesId)
+
+    if (error) {
+      alert(`Series archive failed: ${error.message}`)
+      return
+    }
+
+    setExpandedSeries(prev => ({ ...prev, [group.key]: false }))
+    await fetchStories()
+  }
+
+  async function publishAllApproved() {
+    const approved = stories.filter(isApprovedReady)
+    if (approved.length === 0) return
+    if (!window.confirm(`Publish ${approved.length} approved item(s) to the app?`)) return
+    for (const story of approved) {
+      const res = await fetch('/api/admin/publish-story', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storyId: story.id, is_free: story.is_free }),
+      })
+      const result = await res.json().catch(() => ({}))
+      if (!res.ok || !result.success) {
+        alert(`Publish stopped at "${story.title}": ${result.error || `HTTP ${res.status}`}`)
+        await fetchStories()
+        return
+      }
+    }
+    await fetchStories()
+  }
+
   async function deleteStory(storyId: string) {
     try {
       const res = await fetch('/api/admin/delete-story', {
@@ -945,11 +1227,16 @@ export default function AdminStoriesPage() {
     } catch (err) {
       alert('Delete failed: ' + String(err))
     }
-    setDeleteConfirm(null)
     fetchStories()
   }
 
   const genreNames = ['All', ...genres.map(g => g.name)]
+  const tabOptions: Array<{ id: ReviewTab; label: string; description: string }> = [
+    { id: 'review', label: 'Ready For Review', description: 'Hidden from the app and waiting for Marc.' },
+    { id: 'approved', label: 'Approved and Ready to Publish', description: 'Approved by Marc, still hidden.' },
+    { id: 'not_approved', label: 'Not Approved', description: 'Rejected or held for revision history.' },
+    { id: 'published', label: 'Published to App', description: 'Mirrors the public library eligibility.' },
+  ]
 
   const filteredStories = stories
     .filter(s => {
@@ -964,24 +1251,10 @@ export default function AdminStoriesPage() {
       const matchesView = viewMode === 'all' ||
         (viewMode === 'series' && hasRealSeriesRelationship(s)) ||
         (viewMode === 'standalone' && !hasRealSeriesRelationship(s))
-      const matchesVisibility = visibilityFilter === 'all' ||
-        (visibilityFilter === 'review' && isReviewReady(s)) ||
-        (visibilityFilter === 'visible' && isPublicPlayable(s)) ||
-        (visibilityFilter === 'hidden' && s.is_hidden)
-      return matchesSearch && matchesGenre && matchesView && matchesVisibility
+      return matchesSearch && matchesGenre && matchesView && storyMatchesTab(s, activeTab)
     })
   const visibleStories = canonicalizeEligibleStories(filteredStories) as Story[]
-
-  const sortedStories = [...visibleStories].sort((a, b) => {
-    let aVal = a[sortBy] as string | number | null
-    let bVal = b[sortBy] as string | number | null
-    if (aVal === null) aVal = ''
-    if (bVal === null) bVal = ''
-    if (typeof aVal === 'string') aVal = aVal.toLowerCase()
-    if (typeof bVal === 'string') bVal = bVal.toLowerCase()
-    if (sortDir === 'asc') return aVal > bVal ? 1 : -1
-    return aVal < bVal ? 1 : -1
-  })
+  const groupedStories = groupStoriesForReview(visibleStories)
   const seriesEpisodeCount = visibleStories.filter(s => hasRealSeriesRelationship(s)).length
   const standaloneCount = visibleStories.length - seriesEpisodeCount
 
@@ -990,23 +1263,10 @@ export default function AdminStoriesPage() {
   const avgCompletion = visibleStories.length > 0
     ? Math.round(visibleStories.reduce((sum, s) => sum + (s.pct_finished || 0), 0) / visibleStories.length)
     : 0
-
-  function handleSort(col: typeof sortBy) {
-    if (sortBy === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
-    else { setSortBy(col); setSortDir(col === 'created_at' ? 'desc' : 'asc') }
-  }
-
-  function SortTh({ col, label, right, minW }: { col: typeof sortBy; label: string; right?: boolean; minW?: string }) {
-    const active = sortBy === col
-    return (
-      <th
-        onClick={() => handleSort(col)}
-        style={{ padding: '0.75rem 0.5rem', textAlign: right ? 'center' : 'left', color: active ? '#f97316' : textSecondary, fontWeight: 600, cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap', minWidth: minW, background: active ? '#fff8f3' : undefined }}
-      >
-        {label} {active ? (sortDir === 'asc' ? '↑' : '↓') : <span style={{ opacity: 0.3 }}>↕</span>}
-      </th>
-    )
-  }
+  const tabCounts = tabOptions.reduce((counts, tab) => {
+    counts[tab.id] = stories.filter((story) => storyMatchesTab(story, tab.id)).length
+    return counts
+  }, {} as Record<ReviewTab, number>)
 
   if (loading) return (
     <div style={{ minHeight: '100vh', backgroundColor: bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1021,12 +1281,40 @@ export default function AdminStoriesPage() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
         <div>
           <h1 style={{ fontSize: '22px', fontWeight: 'bold', color: textPrimary, margin: 0 }}>
-            📚 Published Stories ({totalStories})
+            Content Approval ({totalStories})
           </h1>
           <p style={{ color: textSecondary, fontSize: '13px', margin: '4px 0 0 0' }}>
             {seriesEpisodeCount} series episodes · {standaloneCount} standalone · {totalDownloads} total downloads · {avgCompletion}% avg completion
           </p>
         </div>
+        {activeTab === 'approved' && (
+          <button onClick={publishAllApproved} disabled={tabCounts.approved === 0} style={{ ...actionButtonStyle('primary'), opacity: tabCounts.approved === 0 ? 0.45 : 1 }}>
+            Publish All Approved
+          </button>
+        )}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '0.75rem', marginBottom: '1rem' }}>
+        {tabOptions.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            style={{
+              padding: '0.9rem',
+              borderRadius: '8px',
+              border: `1px solid ${activeTab === tab.id ? '#f97316' : border}`,
+              backgroundColor: activeTab === tab.id ? '#fff7ed' : '#ffffff',
+              cursor: 'pointer',
+              textAlign: 'left',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'center' }}>
+              <span style={{ color: textPrimary, fontSize: '13px', fontWeight: 800 }}>{tab.label}</span>
+              <span style={{ color: activeTab === tab.id ? '#f97316' : textSecondary, fontSize: '18px', fontWeight: 900 }}>{tabCounts[tab.id] || 0}</span>
+            </div>
+            <div style={{ color: textSecondary, fontSize: '11px', lineHeight: 1.35, marginTop: '5px' }}>{tab.description}</div>
+          </button>
+        ))}
       </div>
 
       {/* Filters */}
@@ -1042,68 +1330,56 @@ export default function AdminStoriesPage() {
           {genreNames.map(g => <option key={g} value={g}>{g}</option>)}
         </select>
       </div>
-      {/* View toggle + Pending filter */}
+      {/* View toggle */}
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
         {(['all', 'series', 'standalone'] as const).map(mode => (
           <button key={mode} onClick={() => setViewMode(mode)} style={{ padding: '0.4rem 0.9rem', borderRadius: '6px', border: `1px solid ${border}`, backgroundColor: viewMode === mode ? '#1a1a1a' : '#ffffff', color: viewMode === mode ? '#ffffff' : '#000000', fontSize: '13px', fontWeight: viewMode === mode ? 700 : 400, cursor: 'pointer', textTransform: 'capitalize' }}>
             {mode === 'all' ? '📋 All' : mode === 'series' ? '📺 Series' : '🎯 Standalone'}
           </button>
         ))}
-        <div style={{ width: '1px', height: '24px', backgroundColor: border }} />
-        {([
-          ['review', 'Ready for Review'],
-          ['visible', 'Published / Visible'],
-          ['hidden', 'Hidden'],
-          ['all', 'All Visibility'],
-        ] as const).map(([mode, label]) => (
-          <button key={mode} onClick={() => setVisibilityFilter(mode)} style={{ padding: '0.4rem 0.9rem', borderRadius: '6px', border: `1px solid ${border}`, backgroundColor: visibilityFilter === mode ? '#f97316' : '#ffffff', color: visibilityFilter === mode ? '#ffffff' : '#000000', fontSize: '13px', fontWeight: visibilityFilter === mode ? 700 : 400, cursor: 'pointer' }}>
-            {label}
-          </button>
-        ))}
         <div style={{ marginLeft: 'auto', padding: '0.4rem 0.75rem', fontSize: '12px', color: textSecondary }}>
-          {visibleStories.length} stories · Click headers to sort
+          {visibleStories.length} episodes/stories · {groupedStories.length} top-level cards
         </div>
       </div>
 
-      {/* Table */}
-      <div style={{ backgroundColor: cardBg, borderRadius: '12px', border: `1px solid ${border}`, overflow: 'hidden' }}>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-            <thead>
-              <tr style={{ backgroundColor: '#f5f5f5', borderBottom: `2px solid ${border}` }}>
-                <th style={{ padding: '0.75rem 0.5rem', width: '84px' }}></th>
-                <SortTh col="title" label="Title" minW="160px" />
-                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'left', color: textSecondary, fontWeight: 600, minWidth: '120px' }}>Type</th>
-                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600, minWidth: '64px' }}>Play</th>
-                <SortTh col="genre" label="Genres" minW="110px" />
-                <SortTh col="duration_mins" label="Dur" right />
-                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600 }}>Day</th>
-                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600 }}>Week</th>
-                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600 }}>Month</th>
-                <SortTh col="downloads_total" label="Total" right />
-                <SortTh col="pct_finished" label="Fin%" right />
-                <SortTh col="rating" label="Rating" right />
-                <th style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: textSecondary, fontWeight: 600, minWidth: '80px' }}>Flag</th>
-                <SortTh col="created_at" label="Created" right minW="80px" />
-              </tr>
-            </thead>
-            <tbody>
-              {sortedStories.map((story, i) => (
-                <StoryRow
-                  key={story.id}
-                  story={story}
-                  index={i}
-                  onEditClick={s => { editingStoryRef.current = s; setEditingStory(s) }}
-                  onDelete={deleteStory}
-                  onApprove={approveStory}
-                />
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {visibleStories.length === 0 && (
+      {/* Review cards */}
+      <div style={{ backgroundColor: cardBg, borderRadius: '12px', border: `1px solid ${border}`, padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        {groupedStories.map((group) => {
+          if (group.type === 'standalone') {
+            return (
+              <StoryReviewCard
+                key={group.key}
+                story={group.story}
+                onEditClick={s => { editingStoryRef.current = s; setEditingStory(s) }}
+                onDelete={deleteStory}
+                onApproveForLater={(story) => setReviewStatus(story, 'approved')}
+                onReject={(story) => setReviewStatus(story, 'not_approved')}
+                onMoveToReview={moveToReview}
+                onPublish={publishStory}
+                onUnpublish={unpublishStory}
+              />
+            )
+          }
+          return (
+            <SeriesReviewGroup
+              key={group.key}
+              group={group}
+              expanded={Boolean(expandedSeries[group.key])}
+              onToggle={() => setExpandedSeries(prev => ({ ...prev, [group.key]: !prev[group.key] }))}
+              onArchiveSeries={archiveSeries}
+              onEditClick={s => { editingStoryRef.current = s; setEditingStory(s) }}
+              onDelete={deleteStory}
+              onApproveForLater={(story) => setReviewStatus(story, 'approved')}
+              onReject={(story) => setReviewStatus(story, 'not_approved')}
+              onMoveToReview={moveToReview}
+              onPublish={publishStory}
+              onUnpublish={unpublishStory}
+            />
+          )
+        })}
+        {groupedStories.length === 0 && (
           <div style={{ padding: '3rem', textAlign: 'center', color: textSecondary }}>
-            No stories found matching your filters.
+            No stories found matching this review section.
           </div>
         )}
       </div>
@@ -1120,7 +1396,6 @@ export default function AdminStoriesPage() {
               const result = await res.json()
               if (!result.success) alert('Delete failed: ' + (result.error || 'Unknown error'))
             } catch (err) { alert('Delete failed: ' + String(err)) }
-            setDeleteConfirm(null)
             fetchStories()
           }}
           onSaved={(savedStory) => {
