@@ -579,6 +579,21 @@ type CharacterVoiceSelection = {
   score?: number
 }
 
+type VoiceInventoryFailure = {
+  segment: string
+  index: number
+  speaker: string
+  type: string
+  error: string
+}
+
+type ReusedVoiceInventory = {
+  character: string
+  voiceId: string
+  voiceName?: string
+  score?: number
+}
+
 function scoreCharacterVoiceCandidates(
   meta: { gender: string; age: string; accent: string; tones: string[] },
   myVoices: any[],
@@ -1257,6 +1272,8 @@ export async function POST(req: NextRequest) {
     const usedVoiceIds = new Set<string>([resolvedNarratorVoiceId, ...RESERVED_BELLE_B_VOICE_IDS])
     // Build voice map using local My Voices scoring
     const voiceMap: Record<string, string> = {}
+    const warnings: string[] = []
+    const reusedVoices: ReusedVoiceInventory[] = []
     for (const char of characterGuide) {
       const key = char.name.toUpperCase()
       // Check if manually overridden
@@ -1291,6 +1308,12 @@ export async function POST(req: NextRequest) {
         voiceMap[key] = selection.voiceId
         if (selection.reusedVoice) {
           warnings.push(`Reused character voice for ${char.name}: ${selection.voiceName || selection.voiceId}`)
+          reusedVoices.push({
+            character: char.name,
+            voiceId: selection.voiceId,
+            voiceName: selection.voiceName,
+            score: selection.score,
+          })
           console.warn(`  ⚠️ ${char.name}: reusedVoice: true voice=${selection.voiceName || selection.voiceId}`)
         }
         assignCharacterVoice(voiceMap, char.name, voiceMap[key])
@@ -1314,7 +1337,6 @@ export async function POST(req: NextRequest) {
     const characterSpeakers = Array.from(new Set(storyLines
       .filter(l => l.type === 'character' && !nonDialogueSpeakers.has(l.speaker.toUpperCase()))
       .map(l => l.speaker.toUpperCase())))
-    const warnings: string[] = []
     if (characterSpeakers.length > 0 && characterGuide.length === 0) {
       console.error(`  ❌ Missing character voice assignments: ${characterSpeakers.join(', ')}; no CHARACTER GUIDE entries parsed`)
       return NextResponse.json({
@@ -1336,6 +1358,18 @@ export async function POST(req: NextRequest) {
     warnings.forEach(w => console.warn(`  ⚠️ ${w}`))
     const segmentFilePattern = /^segment_\d{4}\.mp3$/
     const storyAudioFolder = `asc3/${storyId}`
+    const expectedSegmentNames = storyLines
+      .filter(line => line.type === 'narrator' || line.type === 'character' || line.type === 'beat' || line.type === 'pause')
+      .map(line => `segment_${line.index.toString().padStart(4, '0')}.mp3`)
+    const buildInventoryReport = (presentSegmentNames: Set<string>, failures: VoiceInventoryFailure[] = []) => {
+      const missingSegments = expectedSegmentNames.filter(name => !presentSegmentNames.has(name))
+      return {
+        missingSegments,
+        lowLoudnessSegments: failures.filter(f => /loudness QC|true peak|low_loudness|LUFS/i.test(f.error)),
+        transcriptFailedSegments: failures.filter(f => /transcript QC/i.test(f.error)),
+        reusedVoices,
+      }
+    }
 
     if (retryMissingOnly === true) {
       const requestedSegmentNumber = Number(segmentNumber)
@@ -1357,23 +1391,21 @@ export async function POST(req: NextRequest) {
       const existingSegmentNames = new Set((existingAudioFiles || []).filter(file => segmentFilePattern.test(file.name)).map(file => file.name))
       const targetFileName = `segment_${requestedSegmentNumber.toString().padStart(4, '0')}.mp3`
       if (existingSegmentNames.has(targetFileName)) {
-        const missingSegments = storyLines
-          .filter(line => line.type === 'narrator' || line.type === 'character' || line.type === 'beat' || line.type === 'pause')
-          .map(line => `segment_${line.index.toString().padStart(4, '0')}.mp3`)
-          .filter(name => !existingSegmentNames.has(name))
+        const inventory = buildInventoryReport(existingSegmentNames)
         return NextResponse.json({
           success: true,
           retryMissingOnly: true,
           generatedSegments: [],
           failures: [],
           presentCount: existingSegmentNames.size,
-          missingSegments,
+          missingSegments: inventory.missingSegments,
+          inventory,
           message: `${targetFileName} already exists; no generation needed.`,
         })
       }
 
       const generatedSegments: any[] = []
-      const failures: any[] = []
+      const failures: VoiceInventoryFailure[] = []
 
       try {
         if (targetLine.type === 'beat' || targetLine.type === 'pause') {
@@ -1396,7 +1428,13 @@ export async function POST(req: NextRequest) {
           throw new Error(`Targeted retry does not support ${targetLine.type} lines`)
         }
       } catch (e) {
-        failures.push({ index: targetLine.index, speaker: targetLine.speaker, type: targetLine.type, error: String(e) })
+        failures.push({
+          segment: targetFileName,
+          index: targetLine.index,
+          speaker: targetLine.speaker,
+          type: targetLine.type,
+          error: String(e),
+        })
       }
 
       const { data: updatedAudioFiles, error: updatedListError } = await supabase.storage.from('audio').list(storyAudioFolder, { limit: 500 })
@@ -1405,18 +1443,16 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, error: `Failed to list updated story segments: ${updatedListError.message}` }, { status: 500 })
       }
       const updatedSegmentNames = new Set((updatedAudioFiles || []).filter(file => segmentFilePattern.test(file.name)).map(file => file.name))
-      const missingSegments = storyLines
-        .filter(line => line.type === 'narrator' || line.type === 'character' || line.type === 'beat' || line.type === 'pause')
-        .map(line => `segment_${line.index.toString().padStart(4, '0')}.mp3`)
-        .filter(name => !updatedSegmentNames.has(name))
+      const inventory = buildInventoryReport(updatedSegmentNames, failures)
 
       return NextResponse.json({
-        success: failures.length === 0 && missingSegments.length === 0,
+        success: failures.length === 0 && inventory.missingSegments.length === 0,
         retryMissingOnly: true,
         generatedSegments,
         failures,
         presentCount: updatedSegmentNames.size,
-        missingSegments,
+        missingSegments: inventory.missingSegments,
+        inventory,
       }, { status: failures.length === 0 ? 200 : 500 })
     }
 
@@ -1442,6 +1478,7 @@ export async function POST(req: NextRequest) {
     }
     console.log(`  Deleted stale story segments: ${staleSegmentPaths.length > 0 ? staleSegmentPaths.map(file => file.split('/').pop()).join(', ') : 'none'}`)
 
+    const failures: VoiceInventoryFailure[] = []
     if (introLine) {
       try {
         const introText = introLine.text
@@ -1489,7 +1526,14 @@ export async function POST(req: NextRequest) {
         voiceId = characterVoiceId
       }
       try { const url = await generateVoiceLine(line.text, voiceId, storyId, line.index, 'segment', false, line.speaker); results.segments.push({ index: line.index, speaker: line.speaker, type: line.type, url }); succeeded++ }
-      catch (e) { console.error(`  ❌ Line ${line.index} (${line.speaker}):`, e); results.segments.push({ index: line.index, speaker: line.speaker, type: line.type }); failed++ }
+      catch (e) {
+        const segment = `segment_${line.index.toString().padStart(4, '0')}.mp3`
+        const error = String(e)
+        console.error(`  ❌ Line ${line.index} (${line.speaker}):`, e)
+        results.segments.push({ index: line.index, speaker: line.speaker, type: line.type, error })
+        failures.push({ segment, index: line.index, speaker: line.speaker, type: line.type, error })
+        failed++
+      }
     }
     const updates: Record<string, string> = {}
     if (results.intro) updates.intro_audio_url = results.intro
@@ -1501,7 +1545,23 @@ export async function POST(req: NextRequest) {
       (l.type === 'narrator' || l.type === 'character')
     ).length
     console.log(`  ✅ Done: ${succeeded}/${voiceTotal} lines, ${failed} failed`)
-    return NextResponse.json({ success: failed === 0, intro: results.intro, outro: results.outro, segments: results.segments, stats: { total: lines.length, voice: voiceTotal, succeeded, failed }, warnings })
+    const { data: finalAudioFiles, error: finalListError } = await supabase.storage.from('audio').list(storyAudioFolder, { limit: 500 })
+    if (finalListError) {
+      console.error('  ❌ Failed to list final story segment inventory:', finalListError)
+      return NextResponse.json({ success: false, error: `Failed to list final story segment inventory: ${finalListError.message}` }, { status: 500 })
+    }
+    const finalSegmentNames = new Set((finalAudioFiles || []).filter(file => segmentFilePattern.test(file.name)).map(file => file.name))
+    const inventory = buildInventoryReport(finalSegmentNames, failures)
+    console.log(`  Inventory: missing=${inventory.missingSegments.length}, lowLoudness=${inventory.lowLoudnessSegments.length}, transcriptFailed=${inventory.transcriptFailedSegments.length}, reusedVoices=${inventory.reusedVoices.length}`)
+    return NextResponse.json({
+      success: failed === 0 && inventory.missingSegments.length === 0,
+      intro: results.intro,
+      outro: results.outro,
+      segments: results.segments,
+      stats: { total: lines.length, voice: voiceTotal, succeeded, failed },
+      warnings,
+      inventory,
+    })
   } catch (err) {
     console.error('generate-voices error:', err)
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 })
