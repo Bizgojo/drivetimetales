@@ -16,8 +16,12 @@ const WORKER_ID = `run-next:${process.pid}`
 const LOCK_STALE_MS = 10 * 60 * 1000
 const NEXT_STEP_AFTER_CREATE = 'generate_script'
 const NEXT_STEP_AFTER_STANDALONE_SCRIPT = 'validate_script'
+const NEXT_STEP_AFTER_STANDALONE_VALIDATION = 'voice_preflight'
 const NEXT_STEP_AFTER_SERIES_CREATE = 'generate_episode_script'
 const NEXT_STEP_AFTER_SERIES_SCRIPTS = 'score_validate_package'
+const TITLE_MAX_CHARS = 28
+const DESCRIPTION_MAX_CHARS = 70
+const DESCRIPTION_PAST_TENSE_RE = /\b(vanished|was|were|had|found|discovered|left|moved|sealed|signed|forged|buried|hidden)\b/i
 
 type ProductionJob = {
   id: string
@@ -114,6 +118,10 @@ function totalEpisodesFor(queueItem: any) {
 
 function countWords(s: string) {
   return s.trim().split(/\s+/).filter(Boolean).length
+}
+
+function normalizeHeaderValue(value: string): string {
+  return value.trim().replace(/\s+/g, ' ')
 }
 
 function extractHeader(script: string, key: string): string {
@@ -224,6 +232,65 @@ function normalizeStandaloneDescription(script: string, genre: string) {
     description,
   }
 }
+
+function validateCardCopy(script: string) {
+  const title = extractHeader(script, 'TITLE')
+  const description = extractHeader(script, 'DESCRIPTION')
+  const issues: string[] = []
+  const titleWords = countWords(title)
+
+  if (!title) {
+    issues.push('TITLE is required.')
+  } else {
+    if (titleWords < 1 || titleWords > 5) {
+      issues.push(`TITLE must be 1 to 5 words. Current: ${titleWords} words.`)
+    }
+    if (title.length > TITLE_MAX_CHARS) {
+      issues.push(`TITLE must be ${TITLE_MAX_CHARS} characters or fewer so it fits one line on story cards. Current: ${title.length} characters.`)
+    }
+  }
+
+  if (!description) {
+    issues.push('DESCRIPTION is required.')
+  } else {
+    if (description.length > DESCRIPTION_MAX_CHARS) {
+      issues.push(`DESCRIPTION must be ${DESCRIPTION_MAX_CHARS} characters or fewer so it fits two lines on story cards. Current: ${description.length} characters.`)
+    }
+    if (DESCRIPTION_PAST_TENSE_RE.test(description)) {
+      issues.push('DESCRIPTION contains forbidden past-tense story-card phrasing.')
+    }
+  }
+
+  return issues
+}
+
+const VALIDATOR_PROMPT = `You are validating an Endless Tales production script.
+
+Use the CURRENT rules:
+- Belle B is the announcer.
+- Belle B is never narrator or character.
+- No SFX in the published story body.
+- The title must be 1 to 5 words and 28 characters or fewer.
+- DESCRIPTION must be 70 characters or fewer and present tense only.
+- DESCRIPTION fails if it uses past-tense constructions or past-tense story-card phrasing such as "vanished", "was", "were", "had", "found", "discovered", "left", "moved", "sealed", "signed", "forged", "buried", or "hidden".
+- The script must include the required header fields.
+- The script must include a CHARACTER GUIDE.
+- The script must include BELLE B INTRO and BELLE B OUTRO blocks.
+- Standalone stories must end conclusively.
+- Series non-finales must end on a specific cliffhanger.
+
+Return exactly one of these:
+✅ VALIDATOR RESULT: PASS
+Script is cleared for production.
+
+or
+
+❌ VALIDATOR RESULT: FAIL
+Do not send to production. Fix the following before resubmitting:
+- [specific issue]
+
+Be specific.
+`
 
 function scriptTail(script: string, maxChars = 1400) {
   const clean = script.replace(/\s+/g, ' ').trim()
@@ -750,6 +817,157 @@ async function generateStandaloneScript(job: ProductionJob, model: string) {
       description,
       hasScript: true,
       generateScriptSkipped: false,
+    },
+  }
+}
+
+async function validateStandaloneScript(job: ProductionJob, model: string) {
+  const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
+  const storyId = job.story_id || state.storyId
+  if (!storyId) throw new Error('Standalone job is missing story_id')
+
+  const { data: story, error } = await supabase
+    .from('stories')
+    .select('id,title,script,status,description,validator_result,validator_report,validator_passed_at')
+    .eq('id', storyId)
+    .single()
+
+  if (error || !story) throw new Error(error?.message || 'Story not found')
+  if (!story.script) throw new Error('script missing')
+
+  if (story.status === 'validator_passed' || story.validator_result === 'PASS') {
+    return {
+      passed: true,
+      skipped: true,
+      storyId: String(story.id),
+      report: story.validator_report || '✓ Validator already passed.',
+      story: {
+        id: story.id,
+        title: story.title,
+        status: story.status,
+        description: story.description,
+        validator_result: story.validator_result || 'PASS',
+        validator_report: story.validator_report || '',
+        validator_passed_at: story.validator_passed_at || null,
+      },
+      state: {
+        ...state,
+        storyId: String(story.id),
+        storyTitle: story.title,
+        storyStatus: story.status,
+        validatorResult: story.validator_result || 'PASS',
+        validatorReport: story.validator_report || '',
+        validatorPassedAt: story.validator_passed_at || null,
+        validateScriptSkipped: true,
+      },
+    }
+  }
+
+  const cardCopyIssues = validateCardCopy(story.script)
+  if (cardCopyIssues.length > 0) {
+    const report = `❌ VALIDATOR RESULT: FAIL
+Do not send to production. Fix the following before resubmitting:
+${cardCopyIssues.map((issue) => `- ${issue}`).join('\n')}`
+
+    const { data: updated, error: updateError } = await supabase
+      .from('stories')
+      .update({
+        validator_result: 'FAIL',
+        validator_report: report,
+        validator_passed_at: null,
+        status: 'validator_failed',
+      })
+      .eq('id', storyId)
+      .select('id,title,status,description,validator_result,validator_report,validator_passed_at')
+      .single()
+
+    if (updateError || !updated) {
+      throw new Error(updateError?.message || 'Failed to save validator failure')
+    }
+
+    return {
+      passed: false,
+      skipped: false,
+      storyId: String(storyId),
+      report,
+      story: updated,
+      state: {
+        ...state,
+        storyId: String(storyId),
+        storyTitle: updated.title,
+        storyStatus: updated.status,
+        validatorResult: 'FAIL',
+        validatorReport: report,
+        validatorPassedAt: null,
+        validateScriptSkipped: false,
+      },
+    }
+  }
+
+  const response = await anthropic.messages.create({
+    model,
+    max_tokens: 4000,
+    temperature: 0,
+    messages: [{
+      role: 'user',
+      content: `${VALIDATOR_PROMPT}\n\nSCRIPT:\n${story.script}`,
+    }],
+  })
+
+  const report = response.content
+    .map((c: any) => ('text' in c ? c.text : ''))
+    .join('')
+    .trim()
+  if (!report) throw new Error('Validator returned an empty report')
+
+  const passed = /VALIDATOR RESULT:\s*PASS/i.test(report)
+  const validatedDescription = passed ? normalizeHeaderValue(extractHeader(story.script, 'DESCRIPTION')) : ''
+  const passedAt = passed ? nowIso() : null
+
+  const { data: updated, error: updateError } = await supabase
+    .from('stories')
+    .update({
+      validator_result: passed ? 'PASS' : 'FAIL',
+      validator_report: report,
+      validator_passed_at: passedAt,
+      status: passed ? 'validator_passed' : 'validator_failed',
+      ...(passed && validatedDescription ? { description: validatedDescription } : {}),
+    })
+    .eq('id', storyId)
+    .select('id,title,status,description,validator_result,validator_report,validator_passed_at')
+    .single()
+
+  if (updateError || !updated) {
+    throw new Error(updateError?.message || 'Failed to save validator result')
+  }
+
+  logAnthropicCall({
+    route: '/api/admin/production-jobs/run-next',
+    purpose: 'script-validator',
+    model,
+    inputTokens: response.usage?.input_tokens ?? 0,
+    outputTokens: response.usage?.output_tokens ?? 0,
+    storyId: String(storyId),
+    storyTitle: story.title,
+    metadata: { is_v2: true, production_job_id: job.id },
+  }).catch(() => {})
+
+  return {
+    passed,
+    skipped: false,
+    storyId: String(storyId),
+    report,
+    story: updated,
+    state: {
+      ...state,
+      storyId: String(storyId),
+      storyTitle: updated.title,
+      storyStatus: updated.status,
+      description: updated.description,
+      validatorResult: passed ? 'PASS' : 'FAIL',
+      validatorReport: report,
+      validatorPassedAt: passedAt,
+      validateScriptSkipped: false,
     },
   }
 }
@@ -1317,8 +1535,99 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    if (step === NEXT_STEP_AFTER_STANDALONE_SCRIPT) {
+      const input = lockedJob.input_json && typeof lockedJob.input_json === 'object' ? lockedJob.input_json : {}
+      const queueItem = input.queueItem || {}
+      const type = storyTypeFor(lockedJob, queueItem)
+
+      if (type !== 'standalone') {
+        return bad('Series validation is not implemented in this run-next slice', 422, {
+          jobId: lockedJob.id,
+          currentStep: lockedJob.current_step,
+        })
+      }
+
+      const result = await validateStandaloneScript(lockedJob, model)
+      const logs = appendLog(lockedJob, result.passed
+        ? (result.skipped ? 'Reused existing standalone validation pass' : 'Validated standalone script')
+        : 'Standalone script validation failed', {
+        storyId: result.storyId,
+        storyTitle: result.story.title,
+        validatorResult: result.passed ? 'PASS' : 'FAIL',
+        nextStep: result.passed ? NEXT_STEP_AFTER_STANDALONE_VALIDATION : null,
+      })
+
+      if (!result.passed) {
+        const { data: failedJob, error: updateError } = await supabase
+          .from('production_jobs')
+          .update({
+            story_id: result.storyId,
+            status: 'failed',
+            current_step: NEXT_STEP_AFTER_STANDALONE_SCRIPT,
+            state_json: result.state,
+            error_json: {
+              step,
+              storyId: result.storyId,
+              validatorResult: 'FAIL',
+              validatorReport: result.report,
+              at: nowIso(),
+            },
+            logs,
+            locked_at: null,
+            locked_by: null,
+          })
+          .eq('id', lockedJob.id)
+          .select('*')
+          .single()
+
+        if (updateError) throw new Error(`Failed to save standalone validation failure: ${updateError.message}`)
+
+        return NextResponse.json({
+          success: false,
+          jobId: failedJob.id,
+          currentStep: step,
+          status: failedJob.status,
+          storyId: result.storyId,
+          validatorResult: 'FAIL',
+          validatorReport: result.report,
+          logs,
+        }, { status: 422 })
+      }
+
+      const { data: updatedJob, error: updateError } = await supabase
+        .from('production_jobs')
+        .update({
+          story_id: result.storyId,
+          status: 'running',
+          current_step: NEXT_STEP_AFTER_STANDALONE_VALIDATION,
+          step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
+          state_json: result.state,
+          error_json: null,
+          logs,
+          locked_at: null,
+          locked_by: null,
+        })
+        .eq('id', lockedJob.id)
+        .select('*')
+        .single()
+
+      if (updateError) throw new Error(`Failed to advance standalone validation job: ${updateError.message}`)
+
+      return NextResponse.json({
+        success: true,
+        jobId: updatedJob.id,
+        currentStep: step,
+        nextStep: updatedJob.current_step,
+        storyId: result.storyId,
+        validatorResult: 'PASS',
+        validatorReport: result.report,
+        validationSkipped: result.skipped,
+        logs,
+      })
+    }
+
     if (step !== 'create_story_row') {
-      return bad('Only create_story_row, generate_script, and generate_episode_script are implemented in this run-next slice', 422, {
+      return bad('Only create_story_row, generate_script, validate_script, and generate_episode_script are implemented in this run-next slice', 422, {
         jobId: lockedJob.id,
         currentStep: lockedJob.current_step,
       })
