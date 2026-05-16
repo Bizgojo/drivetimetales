@@ -19,6 +19,7 @@ const NEXT_STEP_AFTER_STANDALONE_SCRIPT = 'validate_script'
 const NEXT_STEP_AFTER_STANDALONE_VALIDATION = 'voice_preflight'
 const NEXT_STEP_AFTER_STANDALONE_PREFLIGHT = 'generate_voices'
 const NEXT_STEP_AFTER_STANDALONE_VOICES = 'generate_music'
+const NEXT_STEP_AFTER_STANDALONE_MUSIC = 'render_final_mix'
 const NEXT_STEP_AFTER_SERIES_CREATE = 'generate_episode_script'
 const NEXT_STEP_AFTER_SERIES_SCRIPTS = 'score_validate_package'
 const TITLE_MAX_CHARS = 28
@@ -139,6 +140,13 @@ function firstMissingSegmentNumber(missingSegments: unknown, fallback: number): 
     .filter((value): value is number => Number.isInteger(value))
     .sort((a, b) => a - b)
   return numbers[0] ?? fallback
+}
+
+function musicPromptFor(script: string, title: string, genre: string) {
+  const prompt = extractHeader(script, 'SUNO PROMPT') || extractHeader(script, 'SUNO_PROMPT')
+  if (prompt) return prompt
+  const genrePart = genre || 'cinematic audio drama'
+  return `Cinematic ${genrePart} instrumental score for ${title || 'this story'}. Atmospheric, emotionally specific, no vocals.`
 }
 
 function storyTypeFor(job: ProductionJob, queueItem: any): 'standalone' | 'series' {
@@ -1180,6 +1188,85 @@ async function runStandaloneVoiceSegment(job: ProductionJob, origin: string): Pr
   }
 }
 
+async function runStandaloneMusicGeneration(job: ProductionJob, origin: string) {
+  const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
+  const storyId = job.story_id || state.storyId
+  if (!storyId) throw new Error('Standalone job is missing story_id')
+
+  const missingSegments = state.voiceGeneration?.missingSegments
+  if (!Array.isArray(missingSegments) || missingSegments.length > 0) {
+    throw new Error('Voice generation must be complete before generate_music')
+  }
+
+  const { data: story, error } = await supabase
+    .from('stories')
+    .select('id,title,genre,script,background_music_url')
+    .eq('id', storyId)
+    .single()
+
+  if (error || !story) throw new Error(error?.message || 'Story not found')
+  if (!story.script) throw new Error('script missing')
+
+  const prompt = musicPromptFor(story.script, story.title || '', story.genre || '')
+  const existingUrl = String(story.background_music_url || '').trim()
+  if (existingUrl && !existingUrl.startsWith('pending:')) {
+    return {
+      success: true,
+      skippedExisting: true,
+      storyId: String(storyId),
+      backgroundMusicUrl: existingUrl,
+      prompt,
+      report: {
+        success: true,
+        skippedExisting: true,
+        url: existingUrl,
+      },
+      state: {
+        ...state,
+        storyId: String(storyId),
+        musicGeneration: {
+          prompt,
+          status: 'complete',
+          backgroundMusicUrl: existingUrl,
+          routeResponse: { success: true, skippedExisting: true, url: existingUrl },
+          skippedExisting: true,
+          generatedAt: nowIso(),
+        },
+      },
+    }
+  }
+
+  const response = await fetch(`${origin}/api/asc3/generate-music`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ storyId, prompt }),
+  })
+  const report = await readJsonOrDiagnostic(response, '/api/asc3/generate-music')
+  const backgroundMusicUrl = String(report?.url || report?.musicUrl || '').trim()
+  const success = response.ok && report?.success === true && Boolean(backgroundMusicUrl)
+
+  return {
+    success,
+    skippedExisting: false,
+    storyId: String(storyId),
+    backgroundMusicUrl,
+    prompt,
+    report,
+    state: {
+      ...state,
+      storyId: String(storyId),
+      musicGeneration: {
+        prompt,
+        status: success ? 'complete' : 'failed',
+        backgroundMusicUrl: backgroundMusicUrl || null,
+        routeResponse: report,
+        skippedExisting: false,
+        [success ? 'generatedAt' : 'failedAt']: nowIso(),
+      },
+    },
+  }
+}
+
 function buildSeriesEpisodePrompt(series: any, episode: any, allEpisodes: any[], continuityBundle: any[], namePaletteBlock: string) {
   const brief = episode.brief_json || {}
   const target = runtimeTarget(brief.runtime || '')
@@ -2029,8 +2116,101 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    if (step === NEXT_STEP_AFTER_STANDALONE_VOICES) {
+      const input = lockedJob.input_json && typeof lockedJob.input_json === 'object' ? lockedJob.input_json : {}
+      const queueItem = input.queueItem || {}
+      const type = storyTypeFor(lockedJob, queueItem)
+
+      if (type !== 'standalone') {
+        return bad('Series music generation is not implemented in this run-next slice', 422, {
+          jobId: lockedJob.id,
+          currentStep: lockedJob.current_step,
+        })
+      }
+
+      const origin = new URL(req.url).origin
+      const result = await runStandaloneMusicGeneration(lockedJob, origin)
+      const logs = appendLog(lockedJob, result.success
+        ? (result.skippedExisting ? 'Reused existing story-specific music' : 'Generated story-specific music')
+        : 'Story-specific music generation failed', {
+        storyId: result.storyId,
+        nextStep: result.success ? NEXT_STEP_AFTER_STANDALONE_MUSIC : null,
+        backgroundMusicUrl: result.backgroundMusicUrl || null,
+        skippedExisting: result.skippedExisting,
+      })
+
+      if (!result.success) {
+        const { data: failedJob, error: updateError } = await supabase
+          .from('production_jobs')
+          .update({
+            story_id: result.storyId,
+            status: 'failed',
+            current_step: NEXT_STEP_AFTER_STANDALONE_VOICES,
+            state_json: result.state,
+            error_json: {
+              step,
+              storyId: result.storyId,
+              musicPrompt: result.prompt,
+              musicGenerationReport: result.report,
+              at: nowIso(),
+            },
+            logs,
+            locked_at: null,
+            locked_by: null,
+          })
+          .eq('id', lockedJob.id)
+          .select('*')
+          .single()
+
+        if (updateError) throw new Error(`Failed to save standalone music generation failure: ${updateError.message}`)
+
+        return NextResponse.json({
+          success: false,
+          jobId: failedJob.id,
+          currentStep: step,
+          status: failedJob.status,
+          storyId: result.storyId,
+          musicPrompt: result.prompt,
+          musicGenerationReport: result.report,
+          logs,
+        }, { status: 422 })
+      }
+
+      const { data: updatedJob, error: updateError } = await supabase
+        .from('production_jobs')
+        .update({
+          story_id: result.storyId,
+          status: 'running',
+          current_step: NEXT_STEP_AFTER_STANDALONE_MUSIC,
+          step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
+          state_json: result.state,
+          error_json: null,
+          logs,
+          locked_at: null,
+          locked_by: null,
+        })
+        .eq('id', lockedJob.id)
+        .select('*')
+        .single()
+
+      if (updateError) throw new Error(`Failed to advance standalone music generation job: ${updateError.message}`)
+
+      return NextResponse.json({
+        success: true,
+        jobId: updatedJob.id,
+        currentStep: step,
+        nextStep: updatedJob.current_step,
+        storyId: result.storyId,
+        backgroundMusicUrl: result.backgroundMusicUrl,
+        skippedExisting: result.skippedExisting,
+        musicPrompt: result.prompt,
+        musicGenerationReport: result.report,
+        logs,
+      })
+    }
+
     if (step !== 'create_story_row') {
-      return bad('Only create_story_row, generate_script, validate_script, voice_preflight, generate_voices, and generate_episode_script are implemented in this run-next slice', 422, {
+      return bad('Only create_story_row, generate_script, validate_script, voice_preflight, generate_voices, generate_music, and generate_episode_script are implemented in this run-next slice', 422, {
         jobId: lockedJob.id,
         currentStep: lockedJob.current_step,
       })
