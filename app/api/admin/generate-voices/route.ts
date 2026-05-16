@@ -1173,7 +1173,7 @@ async function generateSFX(description: string, storyId: string, lineIndex: numb
 
 export async function POST(req: NextRequest) {
   try {
-    const { storyId, script: scriptParam, narratorVoiceId, narratorVoiceName, characterVoices, preflightOnly, retryMissingOnly, segmentNumber } = await req.json()
+    const { storyId, script: scriptParam, narratorVoiceId, narratorVoiceName, characterVoices, preflightOnly, retryMissingOnly, segmentNumber, generateBelleOnly } = await req.json()
     if (!storyId) return NextResponse.json({ success: false, error: 'storyId required' }, { status: 400 })
     let script = scriptParam
     const { data: storyRow, error: storyRowError } = await supabase
@@ -1224,6 +1224,92 @@ export async function POST(req: NextRequest) {
         cueCount: inlineCueProblems.length,
         cues: inlineCueProblems,
       }, { status: 422 })
+    }
+    if (generateBelleOnly === true) {
+      const storyAudioFolder = `asc3/${storyId}`
+      const { data: existingAudioFiles, error: listAudioError } = await supabase.storage.from('audio').list(storyAudioFolder, { limit: 500 })
+      if (listAudioError) {
+        console.error('  ❌ Failed to list existing Belle assets:', listAudioError)
+        return NextResponse.json({ success: false, error: `Failed to list existing Belle assets: ${listAudioError.message}` }, { status: 500 })
+      }
+
+      const existingIntroFile = [...(existingAudioFiles || [])]
+        .filter(file => file.name === 'intro.mp3' || file.name.startsWith('intro_'))
+        .sort((a, b) => {
+          const priority = (name: string) => name === 'intro.mp3' ? 0 : name.startsWith('intro_before') ? 1 : 2
+          return priority(a.name) - priority(b.name) || a.name.localeCompare(b.name)
+        })[0]
+      const existingOutroFile = [...(existingAudioFiles || [])]
+        .filter(file => file.name === 'outro.mp3' || file.name.startsWith('outro_'))
+        .sort((a, b) => {
+          const priority = (name: string) => name === 'outro.mp3' ? 0 : 1
+          return priority(a.name) - priority(b.name) || a.name.localeCompare(b.name)
+        })[0]
+      const introUrlFromFile = existingIntroFile ? `${BASE_STORAGE}/${storyAudioFolder}/${existingIntroFile.name}` : null
+      const outroUrlFromFile = existingOutroFile ? `${BASE_STORAGE}/${storyAudioFolder}/${existingOutroFile.name}` : null
+      const result: {
+        success: boolean
+        generateBelleOnly: true
+        introUrl: string | null
+        outroUrl: string | null
+        introStatus: 'generated' | 'skipped_existing' | 'missing_script_line' | 'failed'
+        outroStatus: 'generated' | 'skipped_existing' | 'missing_script_line' | 'failed'
+        errors: string[]
+      } = {
+        success: false,
+        generateBelleOnly: true,
+        introUrl: introUrlFromFile,
+        outroUrl: outroUrlFromFile,
+        introStatus: existingIntroFile ? 'skipped_existing' : (introLine ? 'generated' : 'missing_script_line'),
+        outroStatus: existingOutroFile ? 'skipped_existing' : (outroLine && outroLine.index !== introLine?.index ? 'generated' : 'missing_script_line'),
+        errors: [],
+      }
+
+      if (!existingIntroFile && introLine) {
+        try {
+          const introText = introLine.text
+          const listenerNameCount = (introText.match(/\[LISTENER_NAME\]/g) || []).length
+          if (listenerNameCount > 1) throw new Error('Belle B intro must contain exactly one [LISTENER_NAME] placeholder.')
+          if (listenerNameCount === 1) {
+            const parts = introText.split('[LISTENER_NAME]')
+            const beforeText = parts[0].trim()
+            const afterText = parts[1].trim()
+            const [beforeUrl, afterUrl] = await Promise.all([
+              generateVoiceLine(beforeText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'intro_before'),
+              generateVoiceLine(afterText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index + 0.1, 'intro_after'),
+            ])
+            result.introUrl = beforeUrl
+            await supabase.from('stories').update({ intro_audio_url: beforeUrl, intro_before_url: beforeUrl, intro_after_url: afterUrl }).eq('id', storyId)
+          } else {
+            const introUrl = await generateVoiceLine(introText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'intro')
+            result.introUrl = introUrl
+            await supabase.from('stories').update({ intro_audio_url: introUrl, intro_before_url: introUrl, intro_after_url: null }).eq('id', storyId)
+          }
+          result.introStatus = 'generated'
+          console.log('  ✅ Belle-only intro generated')
+        } catch (e) {
+          result.introStatus = 'failed'
+          result.errors.push(`Intro failed: ${String(e)}`)
+          console.error('  ❌ Belle-only intro failed:', e)
+        }
+      }
+
+      if (!existingOutroFile && outroLine && outroLine.index !== introLine?.index) {
+        try {
+          const outroUrl = await generateVoiceLine(outroLine.text, CANONICAL_BELLE_B_VOICE_ID, storyId, outroLine.index, 'outro')
+          result.outroUrl = outroUrl
+          await supabase.from('stories').update({ outro_audio_url: outroUrl }).eq('id', storyId)
+          result.outroStatus = 'generated'
+          console.log('  ✅ Belle-only outro generated')
+        } catch (e) {
+          result.outroStatus = 'failed'
+          result.errors.push(`Outro failed: ${String(e)}`)
+          console.error('  ❌ Belle-only outro failed:', e)
+        }
+      }
+
+      result.success = Boolean(result.introUrl && result.outroUrl && result.errors.length === 0)
+      return NextResponse.json(result, { status: result.success ? 200 : 422 })
     }
     const { data: allVoices } = await supabase.from('narrator_voices').select('name,elevenlabs_voice_id,gender')
     const voiceByName: Record<string, string> = {}
