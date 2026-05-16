@@ -18,8 +18,24 @@ function normalizeNumberWords(text) {
   })
 }
 
+function normalizeCurrencyForms(text) {
+  return text
+    .replace(/\$\s*(\d[\d,]*)\b/g, (_, amount) => `${String(amount).replace(/,/g, '')} dollars`)
+    .replace(/\b(zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty)\s+(hundred|thousand)\s+dollars\b/gi, (match, numberWord, scale) => {
+      const value = NUMBER_WORDS[String(numberWord).toLowerCase()]
+      const multiplier = String(scale).toLowerCase() === 'thousand' ? 1000 : 100
+      const amount = Number(value)
+      if (!Number.isFinite(amount)) return match
+      return `${amount * multiplier} dollars`
+    })
+    .replace(/\b(zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty)\s+dollars\b/gi, (match, numberWord) => {
+      const value = NUMBER_WORDS[String(numberWord).toLowerCase()]
+      return value ? `${value} dollars` : match
+    })
+}
+
 function transcriptTokens(text) {
-  return normalizeNumberWords(text)
+  return normalizeNumberWords(normalizeCurrencyForms(text))
     .toLowerCase()
     .replace(/[’']/g, "'")
     .replace(/\b([a-z]+)'s\b/g, '$1')
@@ -125,10 +141,11 @@ function phoneticTokenKey(token) {
 
 function transcriptTokenMatches(expected, detected) {
   if (expected === detected) return true
-  if (expected.length < 5 || detected.length < 5) return false
+  if (expected.length < 7 || detected.length < 7) return false
   if (expected[0] !== detected[0]) return false
 
   const maxLen = Math.max(expected.length, detected.length)
+  if (maxLen > 16) return false
   const similarity = 1 - (levenshteinDistance(expected, detected) / maxLen)
   if (similarity >= 0.82) return true
 
@@ -158,6 +175,10 @@ const examples = [
   { expected: 'Bart Wallboard stood in the street with his hat in his hand. Not out of reverence. The heat still radiating from the rubble made wearing it unbearable. Ash drifted through the morning air and settled on his coat, on his shoulders, on the badge he kept in his breast pocket rather than pinned where anyone could see it.', detected: 'Bart Walbord stood in the street with his hat in his hand. Not out of reverence, the heat still radiating from the rubble made wearing it unbearable. Ash drifted through the morning air and settled on his coat, on his shoulders, on the badge he kept in his breast pocket rather than pinned where anyone could see it.', passed: true },
   { expected: 'Bellamy waited under the broken clock.', detected: 'Bellamie waited under the broken clock.', passed: true },
   { expected: 'I think Ridgeway is next.', detected: 'I think Ridgway is next.', passed: true },
+  { expected: 'Our bank has about eight thousand dollars in it. The railroad payroll comes through on Friday.', detected: 'Our bank has about $8,000 in it. The railroad payroll comes through on Friday.', passed: true },
+  { expected: 'The envelope held five hundred dollars.', detected: 'The envelope held $500.', passed: true },
+  { expected: 'He owed ten dollars.', detected: 'He owed $10.', passed: true },
+  { expected: 'The railroad crews come through on Friday.', detected: 'The railroad cruise come through on Friday.', passed: false },
   { expected: 'Tell me what happened. Start with when they rode in.', detected: 'Tell me what happened. Start with when they wrote in.', passed: false },
 ]
 

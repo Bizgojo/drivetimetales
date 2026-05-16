@@ -143,8 +143,24 @@ function normalizeNumberWords(text: string): string {
   })
 }
 
+function normalizeCurrencyForms(text: string): string {
+  return text
+    .replace(/\$\s*(\d[\d,]*)\b/g, (_, amount) => `${String(amount).replace(/,/g, '')} dollars`)
+    .replace(/\b(zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty)\s+(hundred|thousand)\s+dollars\b/gi, (match, numberWord, scale) => {
+      const value = NUMBER_WORDS[String(numberWord).toLowerCase()]
+      const multiplier = String(scale).toLowerCase() === 'thousand' ? 1000 : 100
+      const amount = Number(value)
+      if (!Number.isFinite(amount)) return match
+      return `${amount * multiplier} dollars`
+    })
+    .replace(/\b(zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty)\s+dollars\b/gi, (match, numberWord) => {
+      const value = NUMBER_WORDS[String(numberWord).toLowerCase()]
+      return value ? `${value} dollars` : match
+    })
+}
+
 function transcriptTokens(text: string): string[] {
-  const normalized = normalizeNumberWords(text)
+  const normalized = normalizeNumberWords(normalizeCurrencyForms(text))
     .toLowerCase()
     .replace(/[’']/g, "'")
     .replace(/\b([a-z]+)'s\b/g, '$1')
@@ -211,10 +227,11 @@ function phoneticTokenKey(token: string): string {
 
 function transcriptTokenMatches(expected: string, detected: string): boolean {
   if (expected === detected) return true
-  if (expected.length < 5 || detected.length < 5) return false
+  if (expected.length < 7 || detected.length < 7) return false
   if (expected[0] !== detected[0]) return false
 
   const maxLen = Math.max(expected.length, detected.length)
+  if (maxLen > 16) return false
   const similarity = 1 - (levenshteinDistance(expected, detected) / maxLen)
   if (similarity >= 0.82) return true
 
