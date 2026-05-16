@@ -233,7 +233,7 @@ function containsOrderedTokens(haystack: string[], needle: string[]): boolean {
   if (needle.length === 0) return true
   let cursor = 0
   for (const token of haystack) {
-    if (token === needle[cursor]) cursor++
+    if (transcriptTokenMatches(needle[cursor], token)) cursor++
     if (cursor >= needle.length) return true
   }
   return false

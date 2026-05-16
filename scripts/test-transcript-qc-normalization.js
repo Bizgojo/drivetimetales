@@ -50,7 +50,7 @@ function containsOrderedTokens(haystack, needle) {
   if (needle.length === 0) return true
   let cursor = 0
   for (const token of haystack) {
-    if (token === needle[cursor]) cursor++
+    if (transcriptTokenMatches(needle[cursor], token)) cursor++
     if (cursor >= needle.length) return true
   }
   return false
@@ -151,19 +151,21 @@ function validate(expectedText, detectedText) {
 }
 
 const examples = [
-  ['Prairieview station was already dark.', 'Prairie View station was already dark.'],
-  ['It was nine-fourteen p.m.', 'It was 9.14pm.'],
-  ['Meet me at five.', 'Meet me at 5.'],
-  ['Prairie View closed at nine-fourteen p.m.', 'Prairieview closed at 9:14 p m.'],
-  ['Bart Wallboard stood in the street with his hat in his hand. Not out of reverence. The heat still radiating from the rubble made wearing it unbearable. Ash drifted through the morning air and settled on his coat, on his shoulders, on the badge he kept in his breast pocket rather than pinned where anyone could see it.', 'Bart Walbord stood in the street with his hat in his hand. Not out of reverence, the heat still radiating from the rubble made wearing it unbearable. Ash drifted through the morning air and settled on his coat, on his shoulders, on the badge he kept in his breast pocket rather than pinned where anyone could see it.'],
-  ['Bellamy waited under the broken clock.', 'Bellamie waited under the broken clock.'],
+  { expected: 'Prairieview station was already dark.', detected: 'Prairie View station was already dark.', passed: true },
+  { expected: 'It was nine-fourteen p.m.', detected: 'It was 9.14pm.', passed: true },
+  { expected: 'Meet me at five.', detected: 'Meet me at 5.', passed: true },
+  { expected: 'Prairie View closed at nine-fourteen p.m.', detected: 'Prairieview closed at 9:14 p m.', passed: true },
+  { expected: 'Bart Wallboard stood in the street with his hat in his hand. Not out of reverence. The heat still radiating from the rubble made wearing it unbearable. Ash drifted through the morning air and settled on his coat, on his shoulders, on the badge he kept in his breast pocket rather than pinned where anyone could see it.', detected: 'Bart Walbord stood in the street with his hat in his hand. Not out of reverence, the heat still radiating from the rubble made wearing it unbearable. Ash drifted through the morning air and settled on his coat, on his shoulders, on the badge he kept in his breast pocket rather than pinned where anyone could see it.', passed: true },
+  { expected: 'Bellamy waited under the broken clock.', detected: 'Bellamie waited under the broken clock.', passed: true },
+  { expected: 'I think Ridgeway is next.', detected: 'I think Ridgway is next.', passed: true },
+  { expected: 'Tell me what happened. Start with when they rode in.', detected: 'Tell me what happened. Start with when they wrote in.', passed: false },
 ]
 
 let failed = 0
-for (const [expected, detected] of examples) {
+for (const { expected, detected, passed } of examples) {
   const result = validate(expected, detected)
-  console.log(JSON.stringify({ expected, detected, result }, null, 2))
-  if (!result.passed) failed++
+  console.log(JSON.stringify({ expected, detected, expectedPass: passed, result }, null, 2))
+  if (result.passed !== passed) failed++
 }
 
 if (failed) {
