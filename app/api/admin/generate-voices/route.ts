@@ -198,6 +198,31 @@ function transcriptSimilarity(expected: string[], detected: string[]): number {
   return 1 - (levenshteinDistance(expectedCompact, detectedCompact) / maxLen)
 }
 
+function phoneticTokenKey(token: string): string {
+  const normalized = token
+    .toLowerCase()
+    .replace(/ie$/, 'y')
+    .replace(/([a-z])\1+/g, '$1')
+    .replace(/ph/g, 'f')
+    .replace(/ck/g, 'k')
+  if (!normalized) return ''
+  return normalized[0] + normalized.slice(1).replace(/[aeiou]/g, '')
+}
+
+function transcriptTokenMatches(expected: string, detected: string): boolean {
+  if (expected === detected) return true
+  if (expected.length < 5 || detected.length < 5) return false
+  if (expected[0] !== detected[0]) return false
+
+  const maxLen = Math.max(expected.length, detected.length)
+  const similarity = 1 - (levenshteinDistance(expected, detected) / maxLen)
+  if (similarity >= 0.82) return true
+
+  const expectedKey = phoneticTokenKey(expected)
+  const detectedKey = phoneticTokenKey(detected)
+  return expectedKey.length >= 4 && expectedKey === detectedKey
+}
+
 function containsOrderedTokenVariant(haystack: string[], needle: string[]): boolean {
   return transcriptTokenVariants(haystack).some(haystackVariant =>
     transcriptTokenVariants(needle).some(needleVariant => containsOrderedTokens(haystackVariant, needleVariant))
@@ -219,7 +244,7 @@ function transcriptCoverage(expected: string[], detected: string[]): number {
   let cursor = 0
   let matched = 0
   for (const token of detected) {
-    if (token === expected[cursor]) {
+    if (transcriptTokenMatches(expected[cursor], token)) {
       matched++
       cursor++
     }

@@ -67,7 +67,7 @@ function transcriptCoverage(expected, detected) {
   let cursor = 0
   let matched = 0
   for (const token of detected) {
-    if (token === expected[cursor]) {
+    if (transcriptTokenMatches(expected[cursor], token)) {
       matched++
       cursor++
     }
@@ -112,6 +112,31 @@ function transcriptSimilarity(expected, detected) {
   return 1 - (levenshteinDistance(expectedCompact, detectedCompact) / maxLen)
 }
 
+function phoneticTokenKey(token) {
+  const normalized = token
+    .toLowerCase()
+    .replace(/ie$/, 'y')
+    .replace(/([a-z])\1+/g, '$1')
+    .replace(/ph/g, 'f')
+    .replace(/ck/g, 'k')
+  if (!normalized) return ''
+  return normalized[0] + normalized.slice(1).replace(/[aeiou]/g, '')
+}
+
+function transcriptTokenMatches(expected, detected) {
+  if (expected === detected) return true
+  if (expected.length < 5 || detected.length < 5) return false
+  if (expected[0] !== detected[0]) return false
+
+  const maxLen = Math.max(expected.length, detected.length)
+  const similarity = 1 - (levenshteinDistance(expected, detected) / maxLen)
+  if (similarity >= 0.82) return true
+
+  const expectedKey = phoneticTokenKey(expected)
+  const detectedKey = phoneticTokenKey(detected)
+  return expectedKey.length >= 4 && expectedKey === detectedKey
+}
+
 function validate(expectedText, detectedText) {
   const expected = transcriptTokens(expectedText)
   const detected = transcriptTokens(detectedText)
@@ -130,6 +155,8 @@ const examples = [
   ['It was nine-fourteen p.m.', 'It was 9.14pm.'],
   ['Meet me at five.', 'Meet me at 5.'],
   ['Prairie View closed at nine-fourteen p.m.', 'Prairieview closed at 9:14 p m.'],
+  ['Bart Wallboard stood in the street with his hat in his hand. Not out of reverence. The heat still radiating from the rubble made wearing it unbearable. Ash drifted through the morning air and settled on his coat, on his shoulders, on the badge he kept in his breast pocket rather than pinned where anyone could see it.', 'Bart Walbord stood in the street with his hat in his hand. Not out of reverence, the heat still radiating from the rubble made wearing it unbearable. Ash drifted through the morning air and settled on his coat, on his shoulders, on the badge he kept in his breast pocket rather than pinned where anyone could see it.'],
+  ['Bellamy waited under the broken clock.', 'Bellamie waited under the broken clock.'],
 ]
 
 let failed = 0
