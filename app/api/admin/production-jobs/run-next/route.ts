@@ -18,6 +18,7 @@ const NEXT_STEP_AFTER_CREATE = 'generate_script'
 const NEXT_STEP_AFTER_STANDALONE_SCRIPT = 'validate_script'
 const NEXT_STEP_AFTER_STANDALONE_VALIDATION = 'voice_preflight'
 const NEXT_STEP_AFTER_STANDALONE_PREFLIGHT = 'generate_voices'
+const NEXT_STEP_AFTER_STANDALONE_VOICES = 'generate_music'
 const NEXT_STEP_AFTER_SERIES_CREATE = 'generate_episode_script'
 const NEXT_STEP_AFTER_SERIES_SCRIPTS = 'score_validate_package'
 const TITLE_MAX_CHARS = 28
@@ -67,6 +68,16 @@ type VoicePreflightResult = {
   [key: string]: any
 }
 
+type VoiceGenerationResult = {
+  complete: boolean
+  hardFailure: boolean
+  skippedNonSegment: boolean
+  storyId: string
+  segmentNumber: number
+  report: any
+  state: any
+}
+
 function bad(message: string, status = 400, extra: Record<string, unknown> = {}) {
   return NextResponse.json({ success: false, error: message, ...extra }, { status })
 }
@@ -112,6 +123,22 @@ function titleFromQueue(queueItem: any) {
   const title = String(queueValue(queueItem, 'title')).trim()
   if (!title || /^untitled story idea$/i.test(title)) return ''
   return title
+}
+
+function segmentNumberFromName(name: string): number | null {
+  const match = String(name || '').match(/^segment_(\d{4})\.mp3$/)
+  if (!match) return null
+  const value = Number(match[1])
+  return Number.isInteger(value) ? value : null
+}
+
+function firstMissingSegmentNumber(missingSegments: unknown, fallback: number): number {
+  if (!Array.isArray(missingSegments)) return fallback
+  const numbers = missingSegments
+    .map(segmentNumberFromName)
+    .filter((value): value is number => Number.isInteger(value))
+    .sort((a, b) => a - b)
+  return numbers[0] ?? fallback
 }
 
 function storyTypeFor(job: ProductionJob, queueItem: any): 'standalone' | 'series' {
@@ -1074,6 +1101,85 @@ async function runStandaloneVoicePreflight(job: ProductionJob, origin: string) {
   }
 }
 
+async function runStandaloneVoiceSegment(job: ProductionJob, origin: string): Promise<VoiceGenerationResult> {
+  const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
+  const storyId = job.story_id || state.storyId
+  if (!storyId) throw new Error('Standalone job is missing story_id')
+  if (state.voicePreflightPassed !== true || state.voicePreflightStoryId !== String(storyId)) {
+    throw new Error('Voice preflight must pass before generate_voices')
+  }
+
+  const previous = state.voiceGeneration && typeof state.voiceGeneration === 'object'
+    ? state.voiceGeneration
+    : {}
+  const expectedSegmentCount = Number(
+    previous.expectedSegmentCount
+    ?? state.voicePreflight?.estimatedSegmentCount?.total
+    ?? 0
+  )
+  const fallbackSegmentNumber = Number.isInteger(previous.nextSegmentNumber)
+    ? Number(previous.nextSegmentNumber)
+    : firstMissingSegmentNumber(previous.missingSegments, 0)
+  const segmentNumber = Math.max(0, fallbackSegmentNumber)
+  const endpoint = `${origin}/api/admin/generate-voices`
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      storyId,
+      retryMissingOnly: true,
+      segmentNumber,
+    }),
+  })
+  const report = await readJsonOrDiagnostic(response, '/api/admin/generate-voices')
+  const errorText = String(report?.error || '')
+  const skippedNonSegment = response.status === 404 && /No parsed script line found/i.test(errorText)
+  const failures = Array.isArray(report?.failures) ? report.failures : []
+  const missingSegments = Array.isArray(report?.missingSegments)
+    ? report.missingSegments
+    : Array.isArray(report?.inventory?.missingSegments)
+      ? report.inventory.missingSegments
+      : previous.missingSegments || []
+  const generatedSegments = [
+    ...(Array.isArray(previous.generatedSegments) ? previous.generatedSegments : []),
+    ...(Array.isArray(report?.generatedSegments) ? report.generatedSegments : []),
+  ]
+  const nextSegmentNumber = skippedNonSegment
+    ? segmentNumber + 1
+    : missingSegments.length > 0
+      ? firstMissingSegmentNumber(missingSegments, segmentNumber + 1)
+      : segmentNumber + 1
+  const complete = !skippedNonSegment && response.ok && failures.length === 0 && missingSegments.length === 0
+  const hardFailure = !skippedNonSegment && (!response.ok || failures.length > 0)
+  const nextVoiceGeneration = {
+    expectedSegmentCount,
+    nextSegmentNumber,
+    presentCount: Number(report?.presentCount ?? previous.presentCount ?? 0),
+    missingSegments,
+    generatedSegments,
+    failures,
+    lastSegmentNumber: segmentNumber,
+    lastUpdatedAt: nowIso(),
+    lastReport: report,
+    skippedNonSegmentCount: Number(previous.skippedNonSegmentCount || 0) + (skippedNonSegment ? 1 : 0),
+  }
+
+  return {
+    complete,
+    hardFailure,
+    skippedNonSegment,
+    storyId: String(storyId),
+    segmentNumber,
+    report,
+    state: {
+      ...state,
+      storyId: String(storyId),
+      voiceGeneration: nextVoiceGeneration,
+    },
+  }
+}
+
 function buildSeriesEpisodePrompt(series: any, episode: any, allEpisodes: any[], continuityBundle: any[], namePaletteBlock: string) {
   const brief = episode.brief_json || {}
   const target = runtimeTarget(brief.runtime || '')
@@ -1824,8 +1930,107 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    if (step === NEXT_STEP_AFTER_STANDALONE_PREFLIGHT) {
+      const input = lockedJob.input_json && typeof lockedJob.input_json === 'object' ? lockedJob.input_json : {}
+      const queueItem = input.queueItem || {}
+      const type = storyTypeFor(lockedJob, queueItem)
+
+      if (type !== 'standalone') {
+        return bad('Series voice generation is not implemented in this run-next slice', 422, {
+          jobId: lockedJob.id,
+          currentStep: lockedJob.current_step,
+        })
+      }
+
+      const origin = new URL(req.url).origin
+      const result = await runStandaloneVoiceSegment(lockedJob, origin)
+      const voiceGeneration = result.state.voiceGeneration || {}
+      const logs = appendLog(lockedJob, result.complete
+        ? 'All standalone voice segments are present'
+        : result.skippedNonSegment
+          ? 'Skipped non-story segment index'
+          : 'Processed one standalone voice segment', {
+        storyId: result.storyId,
+        segmentNumber: result.segmentNumber,
+        nextStep: result.complete ? NEXT_STEP_AFTER_STANDALONE_VOICES : NEXT_STEP_AFTER_STANDALONE_PREFLIGHT,
+        nextSegmentNumber: voiceGeneration.nextSegmentNumber,
+        presentCount: voiceGeneration.presentCount,
+        missingCount: Array.isArray(voiceGeneration.missingSegments) ? voiceGeneration.missingSegments.length : null,
+      })
+
+      if (result.hardFailure) {
+        const { data: failedJob, error: updateError } = await supabase
+          .from('production_jobs')
+          .update({
+            story_id: result.storyId,
+            status: 'failed',
+            current_step: NEXT_STEP_AFTER_STANDALONE_PREFLIGHT,
+            state_json: result.state,
+            error_json: {
+              step,
+              storyId: result.storyId,
+              segmentNumber: result.segmentNumber,
+              voiceGenerationReport: result.report,
+              at: nowIso(),
+            },
+            logs,
+            locked_at: null,
+            locked_by: null,
+          })
+          .eq('id', lockedJob.id)
+          .select('*')
+          .single()
+
+        if (updateError) throw new Error(`Failed to save standalone voice generation failure: ${updateError.message}`)
+
+        return NextResponse.json({
+          success: false,
+          jobId: failedJob.id,
+          currentStep: step,
+          status: failedJob.status,
+          storyId: result.storyId,
+          segmentNumber: result.segmentNumber,
+          voiceGenerationReport: result.report,
+          logs,
+        }, { status: 422 })
+      }
+
+      const { data: updatedJob, error: updateError } = await supabase
+        .from('production_jobs')
+        .update({
+          story_id: result.storyId,
+          status: 'running',
+          current_step: result.complete ? NEXT_STEP_AFTER_STANDALONE_VOICES : NEXT_STEP_AFTER_STANDALONE_PREFLIGHT,
+          step_index: Math.max(Number(lockedJob.step_index || 0), 0) + (result.complete ? 1 : 0),
+          state_json: result.state,
+          error_json: null,
+          logs,
+          locked_at: null,
+          locked_by: null,
+        })
+        .eq('id', lockedJob.id)
+        .select('*')
+        .single()
+
+      if (updateError) throw new Error(`Failed to save standalone voice generation progress: ${updateError.message}`)
+
+      return NextResponse.json({
+        success: true,
+        jobId: updatedJob.id,
+        currentStep: step,
+        nextStep: updatedJob.current_step,
+        storyId: result.storyId,
+        complete: result.complete,
+        skippedNonSegment: result.skippedNonSegment,
+        segmentNumber: result.segmentNumber,
+        voiceGeneration,
+        voiceGenerationReport: result.report,
+        logs,
+      })
+    }
+
     if (step !== 'create_story_row') {
-      return bad('Only create_story_row, generate_script, validate_script, voice_preflight, and generate_episode_script are implemented in this run-next slice', 422, {
+      return bad('Only create_story_row, generate_script, validate_script, voice_preflight, generate_voices, and generate_episode_script are implemented in this run-next slice', 422, {
         jobId: lockedJob.id,
         currentStep: lockedJob.current_step,
       })
