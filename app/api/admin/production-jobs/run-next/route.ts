@@ -20,6 +20,7 @@ const NEXT_STEP_AFTER_STANDALONE_VALIDATION = 'voice_preflight'
 const NEXT_STEP_AFTER_STANDALONE_PREFLIGHT = 'generate_voices'
 const NEXT_STEP_AFTER_STANDALONE_VOICES = 'generate_music'
 const NEXT_STEP_AFTER_STANDALONE_MUSIC = 'render_final_mix'
+const NEXT_STEP_AFTER_STANDALONE_RENDER = 'complete_story_package'
 const NEXT_STEP_AFTER_SERIES_CREATE = 'generate_episode_script'
 const NEXT_STEP_AFTER_SERIES_SCRIPTS = 'score_validate_package'
 const TITLE_MAX_CHARS = 28
@@ -1267,6 +1268,107 @@ async function runStandaloneMusicGeneration(job: ProductionJob, origin: string) 
   }
 }
 
+async function runStandaloneRenderFinalMix(job: ProductionJob, origin: string) {
+  const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
+  const storyId = job.story_id || state.storyId
+  if (!storyId) throw new Error('Standalone job is missing story_id')
+
+  const missingSegments = state.voiceGeneration?.missingSegments
+  if (!Array.isArray(missingSegments) || missingSegments.length > 0) {
+    throw new Error('Voice generation must be complete before render_final_mix')
+  }
+
+  const { data: story, error } = await supabase
+    .from('stories')
+    .select('id,audio_url,story_audio_url,background_music_url')
+    .eq('id', storyId)
+    .single()
+
+  if (error || !story) throw new Error(error?.message || 'Story not found')
+
+  const backgroundMusicUrl = String(story.background_music_url || '').trim()
+  const musicStatus = String(state.musicGeneration?.status || '').trim()
+  if ((!backgroundMusicUrl || backgroundMusicUrl.startsWith('pending:')) && musicStatus !== 'complete') {
+    throw new Error('Story-specific music must be complete before render_final_mix')
+  }
+
+  const existingFinalAudioUrl = String(story.audio_url || '').trim()
+  const existingStoryBodyUrl = String(story.story_audio_url || '').trim()
+  if (
+    existingFinalAudioUrl &&
+    existingStoryBodyUrl &&
+    !existingFinalAudioUrl.startsWith('pending:') &&
+    !existingStoryBodyUrl.startsWith('pending:')
+  ) {
+    return {
+      success: true,
+      skippedExisting: true,
+      storyId: String(storyId),
+      finalAudioUrl: existingFinalAudioUrl,
+      storyBodyUrl: existingStoryBodyUrl,
+      durationSecs: null,
+      report: {
+        success: true,
+        skippedExisting: true,
+        finalAudioUrl: existingFinalAudioUrl,
+        storyBodyUrl: existingStoryBodyUrl,
+      },
+      state: {
+        ...state,
+        storyId: String(storyId),
+        renderFinalMix: {
+          status: 'complete',
+          skippedExisting: true,
+          finalAudioUrl: existingFinalAudioUrl,
+          storyBodyUrl: existingStoryBodyUrl,
+          durationSecs: null,
+          routeResponse: {
+            success: true,
+            skippedExisting: true,
+            finalAudioUrl: existingFinalAudioUrl,
+            storyBodyUrl: existingStoryBodyUrl,
+          },
+          renderedAt: nowIso(),
+        },
+      },
+    }
+  }
+
+  const response = await fetch(`${origin}/api/asc3/render-final-mix`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ storyId }),
+  })
+  const report = await readJsonOrDiagnostic(response, '/api/asc3/render-final-mix')
+  const finalAudioUrl = String(report?.finalAudioUrl || '').trim()
+  const storyBodyUrl = String(report?.storyBodyUrl || '').trim()
+  const durationSecs = Number(report?.durationSecs || 0)
+  const success = response.ok && report?.success === true && Boolean(finalAudioUrl) && Boolean(storyBodyUrl)
+
+  return {
+    success,
+    skippedExisting: false,
+    storyId: String(storyId),
+    finalAudioUrl,
+    storyBodyUrl,
+    durationSecs: Number.isFinite(durationSecs) && durationSecs > 0 ? durationSecs : null,
+    report,
+    state: {
+      ...state,
+      storyId: String(storyId),
+      renderFinalMix: {
+        status: success ? 'complete' : 'failed',
+        skippedExisting: false,
+        finalAudioUrl: finalAudioUrl || null,
+        storyBodyUrl: storyBodyUrl || null,
+        durationSecs: Number.isFinite(durationSecs) && durationSecs > 0 ? durationSecs : null,
+        routeResponse: report,
+        [success ? 'renderedAt' : 'failedAt']: nowIso(),
+      },
+    },
+  }
+}
+
 function buildSeriesEpisodePrompt(series: any, episode: any, allEpisodes: any[], continuityBundle: any[], namePaletteBlock: string) {
   const brief = episode.brief_json || {}
   const target = runtimeTarget(brief.runtime || '')
@@ -2209,8 +2311,102 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    if (step === NEXT_STEP_AFTER_STANDALONE_MUSIC) {
+      const input = lockedJob.input_json && typeof lockedJob.input_json === 'object' ? lockedJob.input_json : {}
+      const queueItem = input.queueItem || {}
+      const type = storyTypeFor(lockedJob, queueItem)
+
+      if (type !== 'standalone') {
+        return bad('Series final mix rendering is not implemented in this run-next slice', 422, {
+          jobId: lockedJob.id,
+          currentStep: lockedJob.current_step,
+        })
+      }
+
+      const origin = new URL(req.url).origin
+      const result = await runStandaloneRenderFinalMix(lockedJob, origin)
+      const logs = appendLog(lockedJob, result.success
+        ? (result.skippedExisting ? 'Reused existing final mix outputs' : 'Rendered final mix')
+        : 'Final mix render failed', {
+        storyId: result.storyId,
+        nextStep: result.success ? NEXT_STEP_AFTER_STANDALONE_RENDER : null,
+        finalAudioUrl: result.finalAudioUrl || null,
+        storyBodyUrl: result.storyBodyUrl || null,
+        durationSecs: result.durationSecs,
+        skippedExisting: result.skippedExisting,
+      })
+
+      if (!result.success) {
+        const { data: failedJob, error: updateError } = await supabase
+          .from('production_jobs')
+          .update({
+            story_id: result.storyId,
+            status: 'failed',
+            current_step: NEXT_STEP_AFTER_STANDALONE_MUSIC,
+            state_json: result.state,
+            error_json: {
+              step,
+              storyId: result.storyId,
+              renderFinalMixReport: result.report,
+              at: nowIso(),
+            },
+            logs,
+            locked_at: null,
+            locked_by: null,
+          })
+          .eq('id', lockedJob.id)
+          .select('*')
+          .single()
+
+        if (updateError) throw new Error(`Failed to save standalone render failure: ${updateError.message}`)
+
+        return NextResponse.json({
+          success: false,
+          jobId: failedJob.id,
+          currentStep: step,
+          status: failedJob.status,
+          storyId: result.storyId,
+          renderFinalMixReport: result.report,
+          logs,
+        }, { status: 422 })
+      }
+
+      const { data: updatedJob, error: updateError } = await supabase
+        .from('production_jobs')
+        .update({
+          story_id: result.storyId,
+          status: 'running',
+          current_step: NEXT_STEP_AFTER_STANDALONE_RENDER,
+          step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
+          state_json: result.state,
+          error_json: null,
+          logs,
+          locked_at: null,
+          locked_by: null,
+        })
+        .eq('id', lockedJob.id)
+        .select('*')
+        .single()
+
+      if (updateError) throw new Error(`Failed to advance standalone render job: ${updateError.message}`)
+
+      return NextResponse.json({
+        success: true,
+        jobId: updatedJob.id,
+        currentStep: step,
+        nextStep: updatedJob.current_step,
+        storyId: result.storyId,
+        finalAudioUrl: result.finalAudioUrl,
+        storyBodyUrl: result.storyBodyUrl,
+        durationSecs: result.durationSecs,
+        skippedExisting: result.skippedExisting,
+        renderFinalMixReport: result.report,
+        logs,
+      })
+    }
+
     if (step !== 'create_story_row') {
-      return bad('Only create_story_row, generate_script, validate_script, voice_preflight, generate_voices, generate_music, and generate_episode_script are implemented in this run-next slice', 422, {
+      return bad('Only create_story_row, generate_script, validate_script, voice_preflight, generate_voices, generate_music, render_final_mix, and generate_episode_script are implemented in this run-next slice', 422, {
         jobId: lockedJob.id,
         currentStep: lockedJob.current_step,
       })
