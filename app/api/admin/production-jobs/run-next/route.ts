@@ -17,6 +17,7 @@ const LOCK_STALE_MS = 10 * 60 * 1000
 const NEXT_STEP_AFTER_CREATE = 'generate_script'
 const NEXT_STEP_AFTER_STANDALONE_SCRIPT = 'validate_script'
 const NEXT_STEP_AFTER_STANDALONE_VALIDATION = 'voice_preflight'
+const NEXT_STEP_AFTER_STANDALONE_PREFLIGHT = 'generate_voices'
 const NEXT_STEP_AFTER_SERIES_CREATE = 'generate_episode_script'
 const NEXT_STEP_AFTER_SERIES_SCRIPTS = 'score_validate_package'
 const TITLE_MAX_CHARS = 28
@@ -51,6 +52,19 @@ type AuthorRow = {
   narrator_voice_id?: string | null
   sort_order?: number | null
   is_active?: boolean | null
+}
+
+type VoicePreflightResult = {
+  success?: boolean
+  preflightOnly?: boolean
+  cueCount?: number
+  cues?: any[]
+  narratorGenderCheck?: any
+  estimatedSegmentCount?: any
+  blockingReasons?: string[]
+  metadata?: any
+  error?: string
+  [key: string]: any
 }
 
 function bad(message: string, status = 400, extra: Record<string, unknown> = {}) {
@@ -422,6 +436,47 @@ async function clearLock(jobId: string) {
     .update({ locked_at: null, locked_by: null })
     .eq('id', jobId)
     .eq('locked_by', WORKER_ID)
+}
+
+async function readJsonOrDiagnostic(response: Response, endpoint: string) {
+  const contentType = response.headers.get('content-type') || ''
+  const body = await response.text()
+  const trimmed = body.trim()
+
+  if (!trimmed) {
+    return {
+      success: false,
+      error: `Empty response from ${endpoint}`,
+      endpoint,
+      status: response.status,
+      contentType,
+      responsePreview: '',
+    }
+  }
+
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+    return {
+      success: false,
+      error: `Non-JSON response from ${endpoint}`,
+      endpoint,
+      status: response.status,
+      contentType,
+      responsePreview: trimmed.slice(0, 500),
+    }
+  }
+
+  try {
+    return JSON.parse(trimmed)
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : `Invalid JSON from ${endpoint}`,
+      endpoint,
+      status: response.status,
+      contentType,
+      responsePreview: trimmed.slice(0, 500),
+    }
+  }
 }
 
 async function failJob(job: ProductionJob, error: unknown) {
@@ -968,6 +1023,53 @@ ${cardCopyIssues.map((issue) => `- ${issue}`).join('\n')}`
       validatorReport: report,
       validatorPassedAt: passedAt,
       validateScriptSkipped: false,
+    },
+  }
+}
+
+async function runStandaloneVoicePreflight(job: ProductionJob, origin: string) {
+  const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
+  const storyId = job.story_id || state.storyId
+  if (!storyId) throw new Error('Standalone job is missing story_id')
+
+  if (state.voicePreflightPassed === true && state.voicePreflightStoryId === String(storyId)) {
+    return {
+      passed: true,
+      skipped: true,
+      storyId: String(storyId),
+      report: state.voicePreflight || {
+        success: true,
+        preflightOnly: true,
+        skipped: true,
+      },
+      state,
+    }
+  }
+
+  const endpoint = `${origin}/api/admin/generate-voices`
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      storyId,
+      preflightOnly: true,
+    }),
+  })
+  const report = await readJsonOrDiagnostic(response, '/api/admin/generate-voices') as VoicePreflightResult
+  const passed = response.ok && report.success === true
+
+  return {
+    passed,
+    skipped: false,
+    storyId: String(storyId),
+    report,
+    state: {
+      ...state,
+      storyId: String(storyId),
+      voicePreflightPassed: passed,
+      voicePreflightStoryId: String(storyId),
+      voicePreflight: report,
+      voicePreflightAt: nowIso(),
     },
   }
 }
@@ -1626,8 +1728,104 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    if (step === NEXT_STEP_AFTER_STANDALONE_VALIDATION) {
+      const input = lockedJob.input_json && typeof lockedJob.input_json === 'object' ? lockedJob.input_json : {}
+      const queueItem = input.queueItem || {}
+      const type = storyTypeFor(lockedJob, queueItem)
+
+      if (type !== 'standalone') {
+        return bad('Series voice preflight is not implemented in this run-next slice', 422, {
+          jobId: lockedJob.id,
+          currentStep: lockedJob.current_step,
+        })
+      }
+
+      const origin = new URL(req.url).origin
+      const result = await runStandaloneVoicePreflight(lockedJob, origin)
+      const blockingReasons = Array.isArray(result.report?.blockingReasons)
+        ? result.report.blockingReasons
+        : result.report?.error
+          ? [String(result.report.error)]
+          : []
+      const logs = appendLog(lockedJob, result.passed
+        ? (result.skipped ? 'Reused existing voice preflight pass' : 'Voice preflight passed')
+        : 'Voice preflight failed', {
+        storyId: result.storyId,
+        nextStep: result.passed ? NEXT_STEP_AFTER_STANDALONE_PREFLIGHT : null,
+        blockingReasons,
+        estimatedSegmentCount: result.report?.estimatedSegmentCount || null,
+      })
+
+      if (!result.passed) {
+        const { data: failedJob, error: updateError } = await supabase
+          .from('production_jobs')
+          .update({
+            story_id: result.storyId,
+            status: 'failed',
+            current_step: NEXT_STEP_AFTER_STANDALONE_VALIDATION,
+            state_json: result.state,
+            error_json: {
+              step,
+              storyId: result.storyId,
+              preflightReport: result.report,
+              blockingReasons,
+              at: nowIso(),
+            },
+            logs,
+            locked_at: null,
+            locked_by: null,
+          })
+          .eq('id', lockedJob.id)
+          .select('*')
+          .single()
+
+        if (updateError) throw new Error(`Failed to save standalone voice preflight failure: ${updateError.message}`)
+
+        return NextResponse.json({
+          success: false,
+          jobId: failedJob.id,
+          currentStep: step,
+          status: failedJob.status,
+          storyId: result.storyId,
+          preflightReport: result.report,
+          blockingReasons,
+          logs,
+        }, { status: 422 })
+      }
+
+      const { data: updatedJob, error: updateError } = await supabase
+        .from('production_jobs')
+        .update({
+          story_id: result.storyId,
+          status: 'running',
+          current_step: NEXT_STEP_AFTER_STANDALONE_PREFLIGHT,
+          step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
+          state_json: result.state,
+          error_json: null,
+          logs,
+          locked_at: null,
+          locked_by: null,
+        })
+        .eq('id', lockedJob.id)
+        .select('*')
+        .single()
+
+      if (updateError) throw new Error(`Failed to advance standalone voice preflight job: ${updateError.message}`)
+
+      return NextResponse.json({
+        success: true,
+        jobId: updatedJob.id,
+        currentStep: step,
+        nextStep: updatedJob.current_step,
+        storyId: result.storyId,
+        preflightSkipped: result.skipped,
+        preflightReport: result.report,
+        logs,
+      })
+    }
+
     if (step !== 'create_story_row') {
-      return bad('Only create_story_row, generate_script, validate_script, and generate_episode_script are implemented in this run-next slice', 422, {
+      return bad('Only create_story_row, generate_script, validate_script, voice_preflight, and generate_episode_script are implemented in this run-next slice', 422, {
         jobId: lockedJob.id,
         currentStep: lockedJob.current_step,
       })
