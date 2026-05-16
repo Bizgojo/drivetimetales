@@ -196,6 +196,18 @@ function transcriptTokenVariants(tokens: string[]): string[][] {
   return variants
 }
 
+function isLeadingArticle(token: string): boolean {
+  return token === 'the' || token === 'a' || token === 'an'
+}
+
+function expectedLineVariants(tokens: string[]): string[][] {
+  const compacted = compactTranscriptTokens(tokens)
+  if (compacted.length > 1 && isLeadingArticle(compacted[0])) {
+    return [compacted, compacted.slice(1)]
+  }
+  return [compacted]
+}
+
 function levenshteinDistance(a: string, b: string): number {
   if (a === b) return 0
   if (!a.length) return b.length
@@ -317,11 +329,15 @@ async function validateSegmentTranscript(buf: Buffer, expectedText: string, file
   const expected = transcriptTokens(expectedText)
   const detected = transcriptTokens(detectedText)
   const tail = expected.slice(Math.max(0, expected.length - SEGMENT_TRANSCRIPT_TAIL_WORDS))
-  const tailMatches = containsOrderedTokenVariant(detected, tail)
-  const coverage = transcriptVariantCoverage(expected, detected)
-  const similarity = transcriptSimilarity(expected, detected)
+  const tailCandidates = expected.length <= SEGMENT_TRANSCRIPT_TAIL_WORDS && tail.length > 1 && isLeadingArticle(tail[0])
+    ? [tail, tail.slice(1)]
+    : [tail]
+  const tailMatches = tailCandidates.some(candidate => containsOrderedTokenVariant(detected, candidate))
+  const expectedVariants = expectedLineVariants(expected)
+  const coverage = Math.max(...expectedVariants.map(variant => transcriptVariantCoverage(variant, detected)))
+  const similarity = Math.max(...expectedVariants.map(variant => transcriptSimilarity(variant, detected)))
   const shortLineMatches = expected.length <= 8
-    ? containsOrderedTokenVariant(detected, expected) || similarity >= 0.88
+    ? expectedVariants.some(variant => containsOrderedTokenVariant(detected, variant)) || similarity >= 0.88
     : true
   const passed = tailMatches && shortLineMatches && coverage >= SEGMENT_TRANSCRIPT_MIN_COVERAGE
 

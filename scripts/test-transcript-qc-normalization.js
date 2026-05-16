@@ -70,6 +70,18 @@ function transcriptTokenVariants(tokens) {
   return variants
 }
 
+function isLeadingArticle(token) {
+  return token === 'the' || token === 'a' || token === 'an'
+}
+
+function expectedLineVariants(tokens) {
+  const compacted = compactTranscriptTokens(tokens)
+  if (compacted.length > 1 && isLeadingArticle(compacted[0])) {
+    return [compacted, compacted.slice(1)]
+  }
+  return [compacted]
+}
+
 function containsOrderedTokens(haystack, needle) {
   if (needle.length === 0) return true
   let cursor = 0
@@ -166,11 +178,15 @@ function validate(expectedText, detectedText) {
   const expected = transcriptTokens(expectedText)
   const detected = transcriptTokens(detectedText)
   const tail = expected.slice(Math.max(0, expected.length - 4))
-  const tailMatches = containsOrderedTokenVariant(detected, tail)
-  const coverage = transcriptVariantCoverage(expected, detected)
-  const similarity = transcriptSimilarity(expected, detected)
+  const tailCandidates = expected.length <= 4 && tail.length > 1 && isLeadingArticle(tail[0])
+    ? [tail, tail.slice(1)]
+    : [tail]
+  const tailMatches = tailCandidates.some(candidate => containsOrderedTokenVariant(detected, candidate))
+  const expectedVariants = expectedLineVariants(expected)
+  const coverage = Math.max(...expectedVariants.map(variant => transcriptVariantCoverage(variant, detected)))
+  const similarity = Math.max(...expectedVariants.map(variant => transcriptSimilarity(variant, detected)))
   const shortLineMatches = expected.length <= 8
-    ? containsOrderedTokenVariant(detected, expected) || similarity >= 0.88
+    ? expectedVariants.some(variant => containsOrderedTokenVariant(detected, variant)) || similarity >= 0.88
     : true
   return { passed: tailMatches && shortLineMatches && coverage >= 0.62, coverage, similarity, tailMatches, shortLineMatches, expected, detected }
 }
@@ -190,8 +206,12 @@ const examples = [
   { expected: 'One hundred riders waited outside.', detected: '100 riders waited outside.', passed: true },
   { expected: 'Twenty five lamps burned in the hall.', detected: '25 lamps burned in the hall.', passed: true },
   { expected: 'Eight thousand ties lined the railroad.', detected: '8000 ties lined the railroad.', passed: true },
+  { expected: 'The preacher cleared her throat.', detected: 'Preacher cleared her throat.', passed: true },
+  { expected: 'A rider crossed the bridge.', detected: 'Rider crossed the bridge.', passed: true },
+  { expected: 'An engine waited near the depot.', detected: 'Engine waited near the depot.', passed: true },
   { expected: 'The railroad crews come through on Friday.', detected: 'The railroad cruise come through on Friday.', passed: false },
   { expected: 'Tell me what happened. Start with when they rode in.', detected: 'Tell me what happened. Start with when they wrote in.', passed: false },
+  { expected: 'Could be hours. Could be tomorrow.', detected: 'Could be ours.', passed: false },
 ]
 
 let failed = 0
