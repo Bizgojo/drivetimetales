@@ -131,16 +131,24 @@ const NUMBER_WORDS: Record<string, string> = {
 }
 
 function normalizeNumberWords(text: string): string {
-  return text.replace(/\b(zero|oh|o|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty)(?:[\s-]+(one|two|three|four|five|six|seven|eight|nine))?\b/gi, (match, first, second) => {
-    const firstValue = NUMBER_WORDS[String(first).toLowerCase()]
-    const secondValue = second ? NUMBER_WORDS[String(second).toLowerCase()] : ''
-    if (!firstValue) return match
-    if (!secondValue) return firstValue
-    const tens = Number(firstValue)
-    const ones = Number(secondValue)
-    if (Number.isFinite(tens) && Number.isFinite(ones) && tens >= 20) return String(tens + ones)
-    return `${firstValue} ${secondValue}`
-  })
+  return text
+    .replace(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty)\s+(hundred|thousand)\b/gi, (match, numberWord, scale) => {
+      const value = NUMBER_WORDS[String(numberWord).toLowerCase()]
+      const multiplier = String(scale).toLowerCase() === 'thousand' ? 1000 : 100
+      const amount = Number(value)
+      if (!Number.isFinite(amount)) return match
+      return String(amount * multiplier)
+    })
+    .replace(/\b(zero|oh|o|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty)(?:[\s-]+(one|two|three|four|five|six|seven|eight|nine))?\b/gi, (match, first, second) => {
+      const firstValue = NUMBER_WORDS[String(first).toLowerCase()]
+      const secondValue = second ? NUMBER_WORDS[String(second).toLowerCase()] : ''
+      if (!firstValue) return match
+      if (!secondValue) return firstValue
+      const tens = Number(firstValue)
+      const ones = Number(secondValue)
+      if (Number.isFinite(tens) && Number.isFinite(ones) && tens >= 20) return String(tens + ones)
+      return `${firstValue} ${secondValue}`
+    })
 }
 
 function normalizeCurrencyForms(text: string): string {

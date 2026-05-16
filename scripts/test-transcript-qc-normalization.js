@@ -6,16 +6,24 @@ const NUMBER_WORDS = {
 }
 
 function normalizeNumberWords(text) {
-  return text.replace(/\b(zero|oh|o|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty)(?:[\s-]+(one|two|three|four|five|six|seven|eight|nine))?\b/gi, (match, first, second) => {
-    const firstValue = NUMBER_WORDS[String(first).toLowerCase()]
-    const secondValue = second ? NUMBER_WORDS[String(second).toLowerCase()] : ''
-    if (!firstValue) return match
-    if (!secondValue) return firstValue
-    const tens = Number(firstValue)
-    const ones = Number(secondValue)
-    if (Number.isFinite(tens) && Number.isFinite(ones) && tens >= 20) return String(tens + ones)
-    return `${firstValue} ${secondValue}`
-  })
+  return text
+    .replace(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty)\s+(hundred|thousand)\b/gi, (match, numberWord, scale) => {
+      const value = NUMBER_WORDS[String(numberWord).toLowerCase()]
+      const multiplier = String(scale).toLowerCase() === 'thousand' ? 1000 : 100
+      const amount = Number(value)
+      if (!Number.isFinite(amount)) return match
+      return String(amount * multiplier)
+    })
+    .replace(/\b(zero|oh|o|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty)(?:[\s-]+(one|two|three|four|five|six|seven|eight|nine))?\b/gi, (match, first, second) => {
+      const firstValue = NUMBER_WORDS[String(first).toLowerCase()]
+      const secondValue = second ? NUMBER_WORDS[String(second).toLowerCase()] : ''
+      if (!firstValue) return match
+      if (!secondValue) return firstValue
+      const tens = Number(firstValue)
+      const ones = Number(secondValue)
+      if (Number.isFinite(tens) && Number.isFinite(ones) && tens >= 20) return String(tens + ones)
+      return `${firstValue} ${secondValue}`
+    })
 }
 
 function normalizeCurrencyForms(text) {
@@ -178,6 +186,10 @@ const examples = [
   { expected: 'Our bank has about eight thousand dollars in it. The railroad payroll comes through on Friday.', detected: 'Our bank has about $8,000 in it. The railroad payroll comes through on Friday.', passed: true },
   { expected: 'The envelope held five hundred dollars.', detected: 'The envelope held $500.', passed: true },
   { expected: 'He owed ten dollars.', detected: 'He owed $10.', passed: true },
+  { expected: 'Ridgeway was a town of perhaps four hundred souls.', detected: 'Ridgeway was a town of perhaps 400 souls.', passed: true },
+  { expected: 'One hundred riders waited outside.', detected: '100 riders waited outside.', passed: true },
+  { expected: 'Twenty five lamps burned in the hall.', detected: '25 lamps burned in the hall.', passed: true },
+  { expected: 'Eight thousand ties lined the railroad.', detected: '8000 ties lined the railroad.', passed: true },
   { expected: 'The railroad crews come through on Friday.', detected: 'The railroad cruise come through on Friday.', passed: false },
   { expected: 'Tell me what happened. Start with when they rode in.', detected: 'Tell me what happened. Start with when they wrote in.', passed: false },
 ]
