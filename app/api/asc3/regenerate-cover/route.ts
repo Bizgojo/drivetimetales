@@ -81,6 +81,14 @@ function cleanConceptPart(value: unknown, max = 450): string {
     .slice(0, max)
 }
 
+function cleanCoverFeedback(value: unknown): string {
+  if (typeof value !== 'string') return ''
+  return value
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 500)
+}
+
 function excerptText(value: unknown, max = 900): string {
   if (typeof value !== 'string') return ''
   return cleanConceptPart(
@@ -248,6 +256,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     const { storyId, genre, candidateOnly } = body
+    const coverFeedback = cleanCoverFeedback(body?.coverFeedback)
 
     if (!storyId) {
       return NextResponse.json({ success: false, error: 'storyId is required' }, { status: 400 })
@@ -269,6 +278,7 @@ export async function POST(req: NextRequest) {
       author: story?.author || 'Unknown Author',
       genre: story?.genre || story?.primary_genre || genre || 'fiction',
       concept: visualConcept,
+      coverFeedback,
     })
 
     console.log('🎨 Generating cover via DALL-E 3...')

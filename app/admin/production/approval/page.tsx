@@ -266,6 +266,7 @@ function StoryEditorPanel({
   const [coverPreviewVersion, setCoverPreviewVersion] = useState(0)
   const [candidateCoverUrl, setCandidateCoverUrl] = useState('')
   const [candidatePromptPreview, setCandidatePromptPreview] = useState('')
+  const [coverFeedback, setCoverFeedback] = useState('')
   const [isHidden, setIsHidden] = useState(story.is_hidden || false)
   const [groupName, setGroupName] = useState(story.group_name || '')
   const [groups, setGroups] = useState<Group[]>([])
@@ -321,7 +322,11 @@ function StoryEditorPanel({
       const res = await fetch('/api/asc3/regenerate-cover', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storyId: story.id, candidateOnly: true }),
+        body: JSON.stringify({
+          storyId: story.id,
+          candidateOnly: true,
+          coverFeedback: coverFeedback.trim() || undefined,
+        }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok || !data?.success || !data?.candidateCoverUrl) {
@@ -472,6 +477,29 @@ function StoryEditorPanel({
                 <div style={{ marginTop: '8px', fontSize: '10px', color: textSecondary }}>Accept updates this editor preview only. Click Save to persist.</div>
               </div>
             )}
+            <div style={{ marginTop: '12px' }}>
+              <label style={{ fontSize: '11px', fontWeight: 700, color: textSecondary, display: 'block', marginBottom: '6px' }}>Cover Feedback / Fix Instructions</label>
+              <textarea
+                value={coverFeedback}
+                onChange={(e) => setCoverFeedback(e.target.value)}
+                placeholder={'too dark\nbrighter lighting\nclearer silhouette\nface larger\nmore western\nless horror\nstronger thumbnail readability'}
+                rows={4}
+                style={{
+                  width: '100%',
+                  padding: '9px 10px',
+                  border: `1px solid ${border}`,
+                  borderRadius: '6px',
+                  fontSize: '12px',
+                  color: textPrimary,
+                  backgroundColor: '#ffffff',
+                  resize: 'vertical',
+                  lineHeight: 1.4,
+                }}
+              />
+              <div style={{ fontSize: '10px', color: textSecondary, marginTop: '5px', lineHeight: 1.35 }}>
+                Optional guidance for the next generated cover candidate.
+              </div>
+            </div>
           </div>
 
           {/* Audio Player */}

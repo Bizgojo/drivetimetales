@@ -5,8 +5,9 @@ export function buildCoverPrompt(params: {
   concept?: string
   tone?: string
   script?: string
+  coverFeedback?: string
 }): string {
-  const { title, author, genre, concept, tone, script } = params
+  const { title, author, genre, concept, tone, script, coverFeedback } = params
 
   const genreStyle: Record<string, string> = {
     thriller: 'dark shadows, high contrast noir, intense close-ups, cinematic dread — like a Stieg Larsson or Gillian Flynn novel',
@@ -55,6 +56,9 @@ export function buildCoverPrompt(params: {
   const sceneInstruction = concept
     ? `The scene must visually reflect this story: "${concept.slice(0, 300)}". Depict the specific setting, mood, and atmosphere described — not a generic landscape. `
     : ''
+  const feedbackInstruction = coverFeedback?.trim()
+    ? `Apply these cover fix instructions from the editor: "${coverFeedback.trim().slice(0, 500)}". `
+    : ''
 
   // No text in the prompt — title/author added programmatically via sharp overlay
   return (
@@ -62,8 +66,11 @@ export function buildCoverPrompt(params: {
     `Genre: ${genre}${toneDesc}. ` +
     `Visual style: ${styleRef}. ` +
     sceneInstruction +
+    feedbackInstruction +
     `Square format, fills entire canvas. ` +
-    `Cinematic lighting, professional composition. ` +
+    `Cinematic key lighting, professional composition, strong contrast, readable thumbnail design. ` +
+    `Use a clear foreground subject with a recognizable silhouette and visible face or key object when appropriate. ` +
+    `Maintain genre atmosphere without losing visibility; avoid muddy blacks, near-black grading, underexposed shadows, or details disappearing into darkness. ` +
     `The main subject and focal point must be centered or in the upper half of the image. ` +
     `Bottom-right corner must be naturally dark or shadowy — no important subjects there. ` +
     `IMPORTANT: absolutely no text, no words, no letters, no numbers anywhere in the image. ` +
