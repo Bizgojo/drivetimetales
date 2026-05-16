@@ -21,6 +21,7 @@ const NEXT_STEP_AFTER_STANDALONE_PREFLIGHT = 'generate_voices'
 const NEXT_STEP_AFTER_STANDALONE_VOICES = 'generate_music'
 const NEXT_STEP_AFTER_STANDALONE_MUSIC = 'render_final_mix'
 const NEXT_STEP_AFTER_STANDALONE_RENDER = 'complete_story_package'
+const NEXT_STEP_AFTER_STANDALONE_PACKAGE = 'ready_for_review'
 const NEXT_STEP_AFTER_SERIES_CREATE = 'generate_episode_script'
 const NEXT_STEP_AFTER_SERIES_SCRIPTS = 'score_validate_package'
 const TITLE_MAX_CHARS = 28
@@ -1369,6 +1370,98 @@ async function runStandaloneRenderFinalMix(job: ProductionJob, origin: string) {
   }
 }
 
+async function runStandalonePackageCompletion(job: ProductionJob, origin: string) {
+  const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
+  const storyId = job.story_id || state.storyId
+  if (!storyId) throw new Error('Standalone job is missing story_id')
+
+  const { data: story, error } = await supabase
+    .from('stories')
+    .select('id,audio_url,story_audio_url')
+    .eq('id', storyId)
+    .single()
+
+  if (error || !story) throw new Error(error?.message || 'Story not found')
+
+  const audioUrl = String(story.audio_url || '').trim()
+  const storyAudioUrl = String(story.story_audio_url || '').trim()
+  const renderComplete = String(state.renderFinalMix?.status || '').trim() === 'complete'
+  if (
+    !renderComplete &&
+    (!audioUrl || audioUrl.startsWith('pending:') || !storyAudioUrl || storyAudioUrl.startsWith('pending:'))
+  ) {
+    throw new Error('Final mix outputs must exist before complete_story_package')
+  }
+
+  const response = await fetch(`${origin}/api/admin/complete-story-package`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ storyId }),
+  })
+  const report = await readJsonOrDiagnostic(response, '/api/admin/complete-story-package')
+  const success = response.ok && report?.success === true
+
+  return {
+    success,
+    storyId: String(storyId),
+    report,
+    state: {
+      ...state,
+      storyId: String(storyId),
+      packageCompletion: {
+        status: success ? 'complete' : 'failed',
+        routeResponse: report,
+        [success ? 'completedAt' : 'failedAt']: nowIso(),
+      },
+    },
+  }
+}
+
+function missingReadyForReviewFields(story: any) {
+  const missing: string[] = []
+  if (story?.status !== 'audio_ready') missing.push('status=audio_ready')
+  if (story?.is_hidden !== true) missing.push('is_hidden=true')
+  if (story?.published_on !== null) missing.push('published_on=null')
+  if (!String(story?.audio_url || '').trim()) missing.push('audio_url')
+  if (!String(story?.story_audio_url || '').trim()) missing.push('story_audio_url')
+  if (!String(story?.cover_url || '').trim()) missing.push('cover_url')
+  if (!String(story?.prose_text || '').trim()) missing.push('prose_text')
+  return missing
+}
+
+async function verifyStandaloneReadyForReview(job: ProductionJob) {
+  const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
+  const storyId = job.story_id || state.storyId
+  if (!storyId) throw new Error('Standalone job is missing story_id')
+
+  const { data: story, error } = await supabase
+    .from('stories')
+    .select('id,status,is_hidden,published_on,audio_url,story_audio_url,cover_url,prose_text')
+    .eq('id', storyId)
+    .single()
+
+  if (error || !story) throw new Error(error?.message || 'Story not found')
+
+  const missingFields = missingReadyForReviewFields(story)
+  const success = missingFields.length === 0
+
+  return {
+    success,
+    storyId: String(storyId),
+    missingFields,
+    story,
+    state: {
+      ...state,
+      storyId: String(storyId),
+      readyForReview: {
+        status: success ? 'complete' : 'failed',
+        missingFields,
+        verifiedAt: nowIso(),
+      },
+    },
+  }
+}
+
 function buildSeriesEpisodePrompt(series: any, episode: any, allEpisodes: any[], continuityBundle: any[], namePaletteBlock: string) {
   const brief = episode.brief_json || {}
   const target = runtimeTarget(brief.runtime || '')
@@ -2405,8 +2498,199 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    if (step === NEXT_STEP_AFTER_STANDALONE_RENDER) {
+      const input = lockedJob.input_json && typeof lockedJob.input_json === 'object' ? lockedJob.input_json : {}
+      const queueItem = input.queueItem || {}
+      const type = storyTypeFor(lockedJob, queueItem)
+
+      if (type !== 'standalone') {
+        return bad('Series package completion is not implemented in this run-next slice', 422, {
+          jobId: lockedJob.id,
+          currentStep: lockedJob.current_step,
+        })
+      }
+
+      const origin = new URL(req.url).origin
+      const result = await runStandalonePackageCompletion(lockedJob, origin)
+      const logs = appendLog(lockedJob, result.success ? 'Completed story package' : 'Story package completion failed', {
+        storyId: result.storyId,
+        nextStep: result.success ? NEXT_STEP_AFTER_STANDALONE_PACKAGE : null,
+      })
+
+      if (!result.success) {
+        const { data: failedJob, error: updateError } = await supabase
+          .from('production_jobs')
+          .update({
+            story_id: result.storyId,
+            status: 'failed',
+            current_step: NEXT_STEP_AFTER_STANDALONE_RENDER,
+            state_json: result.state,
+            error_json: {
+              step,
+              storyId: result.storyId,
+              packageCompletionReport: result.report,
+              at: nowIso(),
+            },
+            logs,
+            locked_at: null,
+            locked_by: null,
+          })
+          .eq('id', lockedJob.id)
+          .select('*')
+          .single()
+
+        if (updateError) throw new Error(`Failed to save standalone package completion failure: ${updateError.message}`)
+
+        if (lockedJob.queue_item_id) {
+          await supabase
+            .from('story_queue_items')
+            .update({ status: 'failed' })
+            .eq('id', lockedJob.queue_item_id)
+        }
+
+        return NextResponse.json({
+          success: false,
+          jobId: failedJob.id,
+          currentStep: step,
+          status: failedJob.status,
+          storyId: result.storyId,
+          packageCompletionReport: result.report,
+          logs,
+        }, { status: 422 })
+      }
+
+      const { data: updatedJob, error: updateError } = await supabase
+        .from('production_jobs')
+        .update({
+          story_id: result.storyId,
+          status: 'running',
+          current_step: NEXT_STEP_AFTER_STANDALONE_PACKAGE,
+          step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
+          state_json: result.state,
+          error_json: null,
+          logs,
+          locked_at: null,
+          locked_by: null,
+        })
+        .eq('id', lockedJob.id)
+        .select('*')
+        .single()
+
+      if (updateError) throw new Error(`Failed to advance standalone package completion job: ${updateError.message}`)
+
+      return NextResponse.json({
+        success: true,
+        jobId: updatedJob.id,
+        currentStep: step,
+        nextStep: updatedJob.current_step,
+        storyId: result.storyId,
+        packageCompletionReport: result.report,
+        logs,
+      })
+    }
+
+    if (step === NEXT_STEP_AFTER_STANDALONE_PACKAGE) {
+      const input = lockedJob.input_json && typeof lockedJob.input_json === 'object' ? lockedJob.input_json : {}
+      const queueItem = input.queueItem || {}
+      const type = storyTypeFor(lockedJob, queueItem)
+
+      if (type !== 'standalone') {
+        return bad('Series ready-for-review finalization is not implemented in this run-next slice', 422, {
+          jobId: lockedJob.id,
+          currentStep: lockedJob.current_step,
+        })
+      }
+
+      const result = await verifyStandaloneReadyForReview(lockedJob)
+      const logs = appendLog(lockedJob, result.success ? 'Story is ready for review' : 'Ready-for-review verification failed', {
+        storyId: result.storyId,
+        missingFields: result.missingFields,
+      })
+
+      if (!result.success) {
+        const { data: failedJob, error: updateError } = await supabase
+          .from('production_jobs')
+          .update({
+            story_id: result.storyId,
+            status: 'failed',
+            current_step: NEXT_STEP_AFTER_STANDALONE_PACKAGE,
+            state_json: result.state,
+            error_json: {
+              step,
+              storyId: result.storyId,
+              missingFields: result.missingFields,
+              at: nowIso(),
+            },
+            logs,
+            locked_at: null,
+            locked_by: null,
+          })
+          .eq('id', lockedJob.id)
+          .select('*')
+          .single()
+
+        if (updateError) throw new Error(`Failed to save ready-for-review verification failure: ${updateError.message}`)
+
+        if (lockedJob.queue_item_id) {
+          await supabase
+            .from('story_queue_items')
+            .update({ status: 'failed' })
+            .eq('id', lockedJob.queue_item_id)
+        }
+
+        return NextResponse.json({
+          success: false,
+          jobId: failedJob.id,
+          currentStep: step,
+          status: failedJob.status,
+          storyId: result.storyId,
+          missingFields: result.missingFields,
+          logs,
+        }, { status: 422 })
+      }
+
+      const completedAt = nowIso()
+      const { data: updatedJob, error: updateError } = await supabase
+        .from('production_jobs')
+        .update({
+          story_id: result.storyId,
+          status: 'complete',
+          current_step: NEXT_STEP_AFTER_STANDALONE_PACKAGE,
+          state_json: result.state,
+          error_json: null,
+          logs,
+          completed_at: completedAt,
+          locked_at: null,
+          locked_by: null,
+        })
+        .eq('id', lockedJob.id)
+          .select('*')
+          .single()
+
+      if (updateError) throw new Error(`Failed to complete production job: ${updateError.message}`)
+
+      if (lockedJob.queue_item_id) {
+        await supabase
+          .from('story_queue_items')
+          .update({ status: 'complete' })
+          .eq('id', lockedJob.queue_item_id)
+      }
+
+      return NextResponse.json({
+        success: true,
+        jobId: updatedJob.id,
+        currentStep: step,
+        nextStep: updatedJob.current_step,
+        status: updatedJob.status,
+        storyId: result.storyId,
+        completedAt,
+        readyForReview: result.state.readyForReview,
+        logs,
+      })
+    }
+
     if (step !== 'create_story_row') {
-      return bad('Only create_story_row, generate_script, validate_script, voice_preflight, generate_voices, generate_music, render_final_mix, and generate_episode_script are implemented in this run-next slice', 422, {
+      return bad('Only create_story_row, generate_script, validate_script, voice_preflight, generate_voices, generate_music, render_final_mix, complete_story_package, ready_for_review, and generate_episode_script are implemented in this run-next slice', 422, {
         jobId: lockedJob.id,
         currentStep: lockedJob.current_step,
       })
