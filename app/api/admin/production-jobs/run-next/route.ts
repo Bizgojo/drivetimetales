@@ -18,7 +18,8 @@ const NEXT_STEP_AFTER_CREATE = 'generate_script'
 const NEXT_STEP_AFTER_STANDALONE_SCRIPT = 'validate_script'
 const NEXT_STEP_AFTER_STANDALONE_VALIDATION = 'voice_preflight'
 const NEXT_STEP_AFTER_STANDALONE_PREFLIGHT = 'generate_voices'
-const NEXT_STEP_AFTER_STANDALONE_VOICES = 'generate_music'
+const NEXT_STEP_AFTER_STANDALONE_VOICES = 'generate_belle_assets'
+const NEXT_STEP_AFTER_STANDALONE_BELLE = 'generate_music'
 const NEXT_STEP_AFTER_STANDALONE_MUSIC = 'render_final_mix'
 const NEXT_STEP_AFTER_STANDALONE_RENDER = 'complete_story_package'
 const NEXT_STEP_AFTER_STANDALONE_PACKAGE = 'ready_for_review'
@@ -1190,6 +1191,46 @@ async function runStandaloneVoiceSegment(job: ProductionJob, origin: string): Pr
   }
 }
 
+async function runStandaloneBelleAssets(job: ProductionJob, origin: string) {
+  const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
+  const storyId = job.story_id || state.storyId
+  if (!storyId) throw new Error('Standalone job is missing story_id')
+
+  const missingSegments = state.voiceGeneration?.missingSegments
+  if (!Array.isArray(missingSegments) || missingSegments.length > 0) {
+    throw new Error('Voice generation must be complete before generate_belle_assets')
+  }
+
+  const response = await fetch(`${origin}/api/admin/generate-voices`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ storyId, generateBelleOnly: true }),
+  })
+  const report = await readJsonOrDiagnostic(response, '/api/admin/generate-voices')
+  const success = response.ok && report?.success === true && Boolean(report?.introUrl) && Boolean(report?.outroUrl)
+
+  return {
+    success,
+    storyId: String(storyId),
+    introUrl: String(report?.introUrl || ''),
+    outroUrl: String(report?.outroUrl || ''),
+    report,
+    state: {
+      ...state,
+      storyId: String(storyId),
+      belleAssets: {
+        status: success ? 'complete' : 'failed',
+        introUrl: report?.introUrl || null,
+        outroUrl: report?.outroUrl || null,
+        introStatus: report?.introStatus || null,
+        outroStatus: report?.outroStatus || null,
+        routeResponse: report,
+        [success ? 'generatedAt' : 'failedAt']: nowIso(),
+      },
+    },
+  }
+}
+
 async function runStandaloneMusicGeneration(job: ProductionJob, origin: string) {
   const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
   const storyId = job.story_id || state.storyId
@@ -2317,6 +2358,96 @@ export async function POST(req: NextRequest) {
       const type = storyTypeFor(lockedJob, queueItem)
 
       if (type !== 'standalone') {
+        return bad('Series Belle asset generation is not implemented in this run-next slice', 422, {
+          jobId: lockedJob.id,
+          currentStep: lockedJob.current_step,
+        })
+      }
+
+      const origin = new URL(req.url).origin
+      const result = await runStandaloneBelleAssets(lockedJob, origin)
+      const logs = appendLog(lockedJob, result.success
+        ? 'Generated standalone Belle intro/outro assets'
+        : 'Standalone Belle asset generation failed', {
+        storyId: result.storyId,
+        nextStep: result.success ? NEXT_STEP_AFTER_STANDALONE_BELLE : null,
+        introUrl: result.introUrl || null,
+        outroUrl: result.outroUrl || null,
+      })
+
+      if (!result.success) {
+        const { data: failedJob, error: updateError } = await supabase
+          .from('production_jobs')
+          .update({
+            story_id: result.storyId,
+            status: 'failed',
+            current_step: NEXT_STEP_AFTER_STANDALONE_BELLE,
+            state_json: result.state,
+            error_json: {
+              step,
+              storyId: result.storyId,
+              belleAssetsReport: result.report,
+              at: nowIso(),
+            },
+            logs,
+            locked_at: null,
+            locked_by: null,
+          })
+          .eq('id', lockedJob.id)
+          .select('*')
+          .single()
+
+        if (updateError) throw new Error(`Failed to save standalone Belle asset generation failure: ${updateError.message}`)
+
+        return NextResponse.json({
+          success: false,
+          jobId: failedJob.id,
+          currentStep: step,
+          status: failedJob.status,
+          storyId: result.storyId,
+          belleAssetsReport: result.report,
+          logs,
+        }, { status: 422 })
+      }
+
+      const { data: updatedJob, error: updateError } = await supabase
+        .from('production_jobs')
+        .update({
+          story_id: result.storyId,
+          status: 'running',
+          current_step: NEXT_STEP_AFTER_STANDALONE_BELLE,
+          step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
+          state_json: result.state,
+          error_json: null,
+          logs,
+          locked_at: null,
+          locked_by: null,
+        })
+        .eq('id', lockedJob.id)
+        .select('*')
+        .single()
+
+      if (updateError) throw new Error(`Failed to advance standalone Belle asset job: ${updateError.message}`)
+
+      return NextResponse.json({
+        success: true,
+        jobId: updatedJob.id,
+        currentStep: step,
+        nextStep: updatedJob.current_step,
+        storyId: result.storyId,
+        introUrl: result.introUrl,
+        outroUrl: result.outroUrl,
+        belleAssetsReport: result.report,
+        logs,
+      })
+    }
+
+    if (step === NEXT_STEP_AFTER_STANDALONE_BELLE) {
+      const input = lockedJob.input_json && typeof lockedJob.input_json === 'object' ? lockedJob.input_json : {}
+      const queueItem = input.queueItem || {}
+      const type = storyTypeFor(lockedJob, queueItem)
+
+      if (type !== 'standalone') {
         return bad('Series music generation is not implemented in this run-next slice', 422, {
           jobId: lockedJob.id,
           currentStep: lockedJob.current_step,
@@ -2690,7 +2821,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (step !== 'create_story_row') {
-      return bad('Only create_story_row, generate_script, validate_script, voice_preflight, generate_voices, generate_music, render_final_mix, complete_story_package, ready_for_review, and generate_episode_script are implemented in this run-next slice', 422, {
+      return bad('Only create_story_row, generate_script, validate_script, voice_preflight, generate_voices, generate_belle_assets, generate_music, render_final_mix, complete_story_package, ready_for_review, and generate_episode_script are implemented in this run-next slice', 422, {
         jobId: lockedJob.id,
         currentStep: lockedJob.current_step,
       })
