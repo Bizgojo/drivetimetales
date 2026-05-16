@@ -1033,6 +1033,8 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
       let candidateBuf = buf
       let candidateDuration = candidate === 1 ? segmentDuration : await getAudioDurationBuffer(candidateBuf)
       let metrics = await analyzeLoudnessBuffer(candidateBuf)
+      let hitAdaptiveGainCap = false
+      let extremelyQuietBeforeGain = false
 
       if (!isShortSegment && metrics.input_i < segmentQcRetry) {
         logSegmentQc(fileName, speaker, text, metrics, 'retry_tts')
@@ -1069,13 +1071,47 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
           logSegmentQc(fileName, speaker, text, metrics, 'trim_silence_unusable_using_untrimmed')
         }
         const gainDb = Math.max(0, Math.min(18, segmentQcTarget - metrics.input_i))
+        hitAdaptiveGainCap = gainDb >= 17.99
+        extremelyQuietBeforeGain = metrics.input_i <= -30
         logSegmentQc(fileName, speaker, text, metrics, `apply_adaptive_gain_limiter_${gainDb.toFixed(2)}dB`)
         candidateBuf = await applySegmentGainLimit(candidateBuf, gainDb)
         metrics = await analyzeLoudnessBuffer(candidateBuf)
         logSegmentQc(fileName, speaker, text, metrics, 'after_adaptive_gain')
       }
 
-      const action = actionForMetrics(metrics)
+      let action = actionForMetrics(metrics)
+      if (isShortSegment && action === 'fail_after_qc' && hitAdaptiveGainCap && extremelyQuietBeforeGain) {
+        const transcriptCheck = await validateSegmentTranscript(candidateBuf, text, fileName)
+        console.log(`  Segment transcript QC ${fileName} speaker="${speaker}" candidate=${candidate} coverage=${transcriptCheck.coverage.toFixed(2)} tail=${transcriptCheck.tailMatches ? 'pass' : 'fail'} result=${transcriptCheck.passed ? 'extended_gain_rescue' : 'retry'} expected="${text.slice(0, 120)}" detected="${transcriptCheck.detectedText.slice(0, 120)}"`)
+        if (!transcriptCheck.passed) {
+          transcriptFailure = transcriptCheck
+          continue
+        }
+
+        const targetGain = Math.max(0, segmentQcTarget - metrics.input_i)
+        const truePeakHeadroom = Math.max(0, SPOKEN_TRUE_PEAK - metrics.input_tp)
+        const rescueGainDb = Math.min(targetGain, truePeakHeadroom)
+        if (rescueGainDb > 0.25) {
+          console.warn(`  ⚠️ Extended short-segment gain rescue ${fileName} speaker="${speaker}" gain=${rescueGainDb.toFixed(2)}dB lufs=${metrics.input_i.toFixed(2)} tp=${metrics.input_tp.toFixed(2)}`)
+          candidateBuf = await applySegmentGainLimit(candidateBuf, rescueGainDb)
+          metrics = await analyzeLoudnessBuffer(candidateBuf)
+          logSegmentQc(fileName, speaker, text, metrics, `after_extended_gain_rescue_${rescueGainDb.toFixed(2)}dB`)
+          action = actionForMetrics(metrics)
+        }
+
+        logSegmentQc(fileName, speaker, text, metrics, action)
+        updateBest(candidate, metrics, action)
+        if (isShortSegment) {
+          logShortSegmentQc(fileName, speaker, wordCount, candidateDuration, segmentQcTarget, metrics)
+          logShortCandidateQc(fileName, speaker, candidate, metrics, action)
+        }
+        if (isPassingAction(action)) {
+          accepted = { buf: candidateBuf, metrics, action, duration: candidateDuration, candidate }
+          break
+        }
+        continue
+      }
+
       logSegmentQc(fileName, speaker, text, metrics, action)
       updateBest(candidate, metrics, action)
       if (isShortSegment) {
