@@ -19,7 +19,8 @@ const NEXT_STEP_AFTER_STANDALONE_SCRIPT = 'validate_script'
 const NEXT_STEP_AFTER_STANDALONE_VALIDATION = 'voice_preflight'
 const NEXT_STEP_AFTER_STANDALONE_PREFLIGHT = 'generate_voices'
 const NEXT_STEP_AFTER_STANDALONE_VOICES = 'generate_belle_assets'
-const NEXT_STEP_AFTER_STANDALONE_BELLE = 'generate_music'
+const NEXT_STEP_AFTER_STANDALONE_BELLE = 'validate_belle_assets'
+const NEXT_STEP_AFTER_STANDALONE_BELLE_VALIDATION = 'generate_music'
 const NEXT_STEP_AFTER_STANDALONE_MUSIC = 'render_final_mix'
 const NEXT_STEP_AFTER_STANDALONE_RENDER = 'complete_story_package'
 const NEXT_STEP_AFTER_STANDALONE_PACKAGE = 'ready_for_review'
@@ -310,6 +311,44 @@ function validateCardCopy(script: string) {
     }
     if (DESCRIPTION_PAST_TENSE_RE.test(description)) {
       issues.push('DESCRIPTION contains forbidden past-tense story-card phrasing.')
+    }
+  }
+
+  return issues
+}
+
+function extractBelleSection(script: string, kind: 'intro' | 'outro') {
+  const marker = kind === 'intro' ? 'BELLE B INTRO' : 'BELLE B OUTRO'
+  const markerIndex = script.search(new RegExp(`^${marker}\\s*$`, 'im'))
+  if (markerIndex < 0) return ''
+  const afterMarker = script.slice(markerIndex)
+  const match = afterMarker.match(/^BELLE B:\s*(.+)$/im)
+  return normalizeHeaderValue(match?.[1] || '')
+}
+
+function validateBelleText(kind: 'intro' | 'outro', text: string, options: { standalone: boolean }) {
+  const issues: string[] = []
+  const lower = text.toLowerCase()
+  const wordCount = countWords(text)
+  const sentenceCount = (text.match(/[.!?]+/g) || []).length
+  const withoutPunctuation = text.replace(/[.!?]+$/g, '').trim()
+
+  if (!text) issues.push(`${kind} text is required.`)
+  if (text && wordCount < 4) issues.push(`${kind} text is too short.`)
+  if (text && !/[.!?]$/.test(text)) issues.push(`${kind} text appears incomplete; it must end with punctuation.`)
+  if (/\b(welcome|begins now|only on endless tales|sponsored by|stay tuned)\b/i.test(text)) {
+    issues.push(`${kind} uses forbidden host or promotional language.`)
+  }
+  if (/\bbelle b\b/i.test(text)) issues.push(`${kind} must say Belle, not Belle B.`)
+  if (kind === 'outro') {
+    if (wordCount > 42) issues.push('outro must be 42 words or fewer.')
+    if (sentenceCount > 2) issues.push('outro must be one or two short sentences.')
+    if (/^\s*that was\b/i.test(text)) issues.push('outro must not use a flat "That was..." structure.')
+    if (/\b(and|or|but|with|to|of|for|from|by|into|before|after|while|when|where|under|beneath|inside|outside|near|below|above|through|around|across|behind|beyond|against|among|within|between|onto|upon|over|in|on|at|the|a|an)$/i.test(withoutPunctuation)) {
+      issues.push('outro appears cut off or incomplete.')
+    }
+    if (options.standalone && /\b(next episode|next time|continue|keep listening|what happens next|find out|to be continued|cliffhanger)\b/i.test(lower)) {
+      issues.push('standalone outro must not tease a next episode.')
     }
   }
 
@@ -1226,6 +1265,62 @@ async function runStandaloneBelleAssets(job: ProductionJob, origin: string) {
         outroStatus: report?.outroStatus || null,
         routeResponse: report,
         [success ? 'generatedAt' : 'failedAt']: nowIso(),
+      },
+    },
+  }
+}
+
+async function validateStandaloneBelleAssets(job: ProductionJob) {
+  const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
+  const storyId = job.story_id || state.storyId
+  if (!storyId) throw new Error('Standalone job is missing story_id')
+
+  const { data: story, error } = await supabase
+    .from('stories')
+    .select('id,script,story_type,series_id,series_total_episodes')
+    .eq('id', storyId)
+    .single()
+
+  if (error || !story) throw new Error(error?.message || 'Story not found')
+  if (!story.script) throw new Error('script missing')
+
+  const { data: files, error: listError } = await supabase.storage.from('audio').list(`asc3/${storyId}`, { limit: 500 })
+  if (listError) throw new Error(`Failed to list Belle assets: ${listError.message}`)
+
+  const names = (files || []).map(file => file.name)
+  const introAssets = names.filter(name => name === 'intro.mp3' || name.startsWith('intro_'))
+  const outroAssets = names.filter(name => name === 'outro.mp3' || name.startsWith('outro_'))
+  const introText = extractBelleSection(story.script, 'intro')
+  const outroText = extractBelleSection(story.script, 'outro')
+  const standalone = !story.series_id && Number(story.series_total_episodes || 1) <= 1 && String(story.story_type || '').toLowerCase() !== 'series'
+  const issues = [
+    ...(introAssets.length > 0 ? [] : ['intro asset is missing.']),
+    ...(outroAssets.length > 0 ? [] : ['outro asset is missing.']),
+    ...validateBelleText('intro', introText, { standalone }),
+    ...validateBelleText('outro', outroText, { standalone }),
+  ]
+  const success = issues.length === 0
+  const report = {
+    success,
+    introAssets,
+    outroAssets,
+    introText,
+    outroText,
+    standalone,
+    issues,
+  }
+
+  return {
+    success,
+    storyId: String(storyId),
+    report,
+    state: {
+      ...state,
+      storyId: String(storyId),
+      belleAssetValidation: {
+        status: success ? 'passed' : 'failed',
+        ...report,
+        [success ? 'validatedAt' : 'failedAt']: nowIso(),
       },
     },
   }
@@ -2448,6 +2543,92 @@ export async function POST(req: NextRequest) {
       const type = storyTypeFor(lockedJob, queueItem)
 
       if (type !== 'standalone') {
+        return bad('Series Belle asset validation is not implemented in this run-next slice', 422, {
+          jobId: lockedJob.id,
+          currentStep: lockedJob.current_step,
+        })
+      }
+
+      const result = await validateStandaloneBelleAssets(lockedJob)
+      const logs = appendLog(lockedJob, result.success
+        ? 'Validated standalone Belle intro/outro assets'
+        : 'Standalone Belle asset validation failed', {
+        storyId: result.storyId,
+        nextStep: result.success ? NEXT_STEP_AFTER_STANDALONE_BELLE_VALIDATION : null,
+        issueCount: result.report.issues.length,
+      })
+
+      if (!result.success) {
+        const { data: failedJob, error: updateError } = await supabase
+          .from('production_jobs')
+          .update({
+            story_id: result.storyId,
+            status: 'failed',
+            current_step: NEXT_STEP_AFTER_STANDALONE_BELLE,
+            state_json: result.state,
+            error_json: {
+              step,
+              storyId: result.storyId,
+              belleAssetValidationReport: result.report,
+              at: nowIso(),
+            },
+            logs,
+            locked_at: null,
+            locked_by: null,
+          })
+          .eq('id', lockedJob.id)
+          .select('*')
+          .single()
+
+        if (updateError) throw new Error(`Failed to save standalone Belle asset validation failure: ${updateError.message}`)
+
+        return NextResponse.json({
+          success: false,
+          jobId: failedJob.id,
+          currentStep: step,
+          status: failedJob.status,
+          storyId: result.storyId,
+          belleAssetValidationReport: result.report,
+          logs,
+        }, { status: 422 })
+      }
+
+      const { data: updatedJob, error: updateError } = await supabase
+        .from('production_jobs')
+        .update({
+          story_id: result.storyId,
+          status: 'running',
+          current_step: NEXT_STEP_AFTER_STANDALONE_BELLE_VALIDATION,
+          step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
+          state_json: result.state,
+          error_json: null,
+          logs,
+          locked_at: null,
+          locked_by: null,
+        })
+        .eq('id', lockedJob.id)
+        .select('*')
+        .single()
+
+      if (updateError) throw new Error(`Failed to advance standalone Belle validation job: ${updateError.message}`)
+
+      return NextResponse.json({
+        success: true,
+        jobId: updatedJob.id,
+        currentStep: step,
+        nextStep: updatedJob.current_step,
+        storyId: result.storyId,
+        belleAssetValidationReport: result.report,
+        logs,
+      })
+    }
+
+    if (step === NEXT_STEP_AFTER_STANDALONE_BELLE_VALIDATION) {
+      const input = lockedJob.input_json && typeof lockedJob.input_json === 'object' ? lockedJob.input_json : {}
+      const queueItem = input.queueItem || {}
+      const type = storyTypeFor(lockedJob, queueItem)
+
+      if (type !== 'standalone') {
         return bad('Series music generation is not implemented in this run-next slice', 422, {
           jobId: lockedJob.id,
           currentStep: lockedJob.current_step,
@@ -2471,7 +2652,7 @@ export async function POST(req: NextRequest) {
           .update({
             story_id: result.storyId,
             status: 'failed',
-            current_step: NEXT_STEP_AFTER_STANDALONE_VOICES,
+            current_step: NEXT_STEP_AFTER_STANDALONE_BELLE_VALIDATION,
             state_json: result.state,
             error_json: {
               step,
@@ -2821,7 +3002,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (step !== 'create_story_row') {
-      return bad('Only create_story_row, generate_script, validate_script, voice_preflight, generate_voices, generate_belle_assets, generate_music, render_final_mix, complete_story_package, ready_for_review, and generate_episode_script are implemented in this run-next slice', 422, {
+      return bad('Only create_story_row, generate_script, validate_script, voice_preflight, generate_voices, generate_belle_assets, validate_belle_assets, generate_music, render_final_mix, complete_story_package, ready_for_review, and generate_episode_script are implemented in this run-next slice', 422, {
         jobId: lockedJob.id,
         currentStep: lockedJob.current_step,
       })
