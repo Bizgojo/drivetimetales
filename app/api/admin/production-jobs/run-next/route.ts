@@ -22,6 +22,7 @@ const NEXT_STEP_AFTER_STANDALONE_PREFLIGHT = 'generate_voices'
 const NEXT_STEP_AFTER_STANDALONE_VOICES = 'generate_belle_assets'
 const NEXT_STEP_AFTER_STANDALONE_BELLE = 'validate_belle_assets'
 const NEXT_STEP_AFTER_STANDALONE_BELLE_VALIDATION = 'validate_belle_quality'
+const NEXT_STEP_AFTER_STANDALONE_BELLE_REPAIR = 'repair_belle_quality'
 const NEXT_STEP_AFTER_STANDALONE_BELLE_QUALITY = 'generate_music'
 const NEXT_STEP_AFTER_STANDALONE_MUSIC = 'render_final_mix'
 const NEXT_STEP_AFTER_STANDALONE_RENDER = 'complete_story_package'
@@ -328,6 +329,13 @@ function extractBelleSection(script: string, kind: 'intro' | 'outro') {
   return normalizeHeaderValue(match?.[1] || '')
 }
 
+function replaceBelleSection(script: string, kind: 'intro' | 'outro', text: string) {
+  const marker = kind === 'intro' ? 'BELLE B INTRO' : 'BELLE B OUTRO'
+  const pattern = new RegExp(`(^${marker}\\s*\\n)(BELLE B:\\s*).*$`, 'im')
+  if (!pattern.test(script)) throw new Error(`${marker} block is missing or malformed`)
+  return script.replace(pattern, `$1$2${normalizeHeaderValue(text)}`)
+}
+
 function validateBelleText(kind: 'intro' | 'outro', text: string, options: { standalone: boolean }) {
   const issues: string[] = []
   const lower = text.toLowerCase()
@@ -448,6 +456,32 @@ Outro requirements:
 
 Fail closed for Belle copy that is generic, promotional, too abrupt, structurally wrong for the story type, emotionally wrong for the ending, or likely to feel awkward in audio.
 Only include issues that should block production.
+`
+
+const BELLE_QUALITY_REPAIR_PROMPT = `You are repairing only Belle intro/outro copy for an Endless Tales production script.
+
+Return JSON only. Do not include markdown.
+
+Required JSON shape:
+{
+  "introText": "replacement intro if requested",
+  "outroText": "replacement outro if requested"
+}
+
+Rules:
+- Repair only the requested Belle line(s).
+- Do not rewrite the story body, title, description, author, narrator, character dialogue, or any non-Belle text.
+- Belle is the name. Do not write "Belle B" inside the spoken line.
+- Keep BELLE B script block labels unchanged; return spoken text only.
+- Belle sounds like a trusted friend, not a host, announcer, DJ, trailer, ad, or promo voice.
+- No "Welcome", "begins now", "only on Endless Tales", "tonight", "stay tuned", "next time", or "what happens next" for standalone stories.
+- Intro should lightly ground the listener in the story world, then add a specific emotional or sensory hook.
+- Intro may include [LISTENER_NAME] only if the current intro uses it; if used, it must sit naturally in a complete sentence.
+- Outro should emotionally land and feel companion-like.
+- Standalone outro must feel complete and must not tease a next episode or deferred resolution.
+- Outro may include brief credits only if the emotional landing remains the main point.
+- Keep each line one or two sentences.
+- Keep outro under 42 words.
 `
 
 function parseJsonObject(text: string): any {
@@ -1634,6 +1668,186 @@ ${scriptTail(story.script, 2200)}`,
         storyId: String(storyId),
         ...report,
         [success ? 'validatedAt' : 'failedAt']: nowIso(),
+      },
+    },
+  }
+}
+
+async function repairStandaloneBelleQuality(job: ProductionJob, model: string) {
+  const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
+  const storyId = job.story_id || state.storyId
+  if (!storyId) throw new Error('Standalone job is missing story_id')
+
+  const previousRepair = state.belleQualityRepair && typeof state.belleQualityRepair === 'object'
+    ? state.belleQualityRepair
+    : {}
+  const attempts = Number(previousRepair.attempts || 0)
+  if (attempts >= 1) throw new Error('Belle quality repair attempt limit reached')
+
+  const failedReport = state.belleQualityValidation?.status === 'failed'
+    ? state.belleQualityValidation
+    : state.belleQualityFailedReport
+  if (!failedReport) throw new Error('Belle quality repair requires a failed validation report')
+
+  const { data: story, error } = await supabase
+    .from('stories')
+    .select('id,title,genre,script,story_type,series_id,series_name,episode_number,series_total_episodes,series_is_finale')
+    .eq('id', storyId)
+    .single()
+
+  if (error || !story) throw new Error(error?.message || 'Story not found')
+  if (!story.script) throw new Error('script missing')
+
+  const currentIntro = extractBelleSection(story.script, 'intro')
+  const currentOutro = extractBelleSection(story.script, 'outro')
+  if (!currentIntro || !currentOutro) throw new Error('Belle intro/outro text missing')
+
+  const issueText = Array.isArray(failedReport.issues) ? failedReport.issues.join('\n') : ''
+  const repairIntro = Number(failedReport.introScore || 0) < 7 || /\bintro\b/i.test(issueText)
+  const repairOutro = Number(failedReport.outroScore || 0) < 7 || /\boutro\b/i.test(issueText)
+  const shouldRepairIntro = repairIntro || (!repairIntro && !repairOutro)
+  const shouldRepairOutro = repairOutro || (!repairIntro && !repairOutro)
+  const usesName = currentIntro.includes('[LISTENER_NAME]')
+  const declaredStoryType = [
+    story.story_type ? `story_type=${story.story_type}` : '',
+    story.series_id ? `series_id=${story.series_id}` : '',
+    story.series_name ? `series_name=${story.series_name}` : '',
+    story.episode_number ? `episode_number=${story.episode_number}` : '',
+    story.series_total_episodes ? `series_total_episodes=${story.series_total_episodes}` : '',
+    story.series_is_finale ? `series_is_finale=${story.series_is_finale}` : '',
+  ].filter(Boolean).join(', ') || 'standalone inferred from production job'
+
+  const response = await anthropic.messages.create({
+    model,
+    max_tokens: 900,
+    temperature: 0.2,
+    messages: [{
+      role: 'user',
+      content: `${BELLE_QUALITY_REPAIR_PROMPT}
+
+REPAIR REQUEST:
+Repair intro: ${shouldRepairIntro ? 'yes' : 'no'}
+Repair outro: ${shouldRepairOutro ? 'yes' : 'no'}
+Intro currently uses [LISTENER_NAME]: ${usesName ? 'yes' : 'no'}
+
+DECLARED METADATA:
+${declaredStoryType}
+
+TITLE:
+${story.title || 'Untitled'}
+
+GENRE:
+${story.genre || 'Unknown'}
+
+CURRENT BELLE INTRO:
+${currentIntro}
+
+CURRENT BELLE OUTRO:
+${currentOutro}
+
+FAILED QUALITY REPORT:
+${JSON.stringify({
+  introScore: failedReport.introScore,
+  outroScore: failedReport.outroScore,
+  issues: failedReport.issues || [],
+  suggestedFixes: failedReport.suggestedFixes || [],
+}, null, 2)}
+
+SCRIPT ENDING CONTEXT:
+${scriptTail(story.script, 2200)}`,
+    }],
+  })
+
+  const rawRepair = response.content
+    .map((c: any) => ('text' in c ? c.text : ''))
+    .join('')
+    .trim()
+  if (!rawRepair) throw new Error('Belle quality repair returned an empty response')
+
+  const parsed = parseJsonObject(rawRepair)
+  const repairedIntro = shouldRepairIntro ? normalizeHeaderValue(String(parsed.introText || '')) : currentIntro
+  const repairedOutro = shouldRepairOutro ? normalizeHeaderValue(String(parsed.outroText || '')) : currentOutro
+  if (shouldRepairIntro && !repairedIntro) throw new Error('Belle quality repair did not return introText')
+  if (shouldRepairOutro && !repairedOutro) throw new Error('Belle quality repair did not return outroText')
+
+  const deterministicIssues = [
+    ...(shouldRepairIntro ? validateBelleText('intro', repairedIntro, { standalone: true }) : []),
+    ...(shouldRepairOutro ? validateBelleText('outro', repairedOutro, { standalone: true }) : []),
+  ]
+  if (deterministicIssues.length > 0) {
+    throw new Error(`Repaired Belle text failed deterministic checks: ${deterministicIssues.join('; ')}`)
+  }
+
+  let nextScript = story.script
+  if (shouldRepairIntro) nextScript = replaceBelleSection(nextScript, 'intro', repairedIntro)
+  if (shouldRepairOutro) nextScript = replaceBelleSection(nextScript, 'outro', repairedOutro)
+
+  const { error: updateError } = await supabase
+    .from('stories')
+    .update({
+      script: nextScript,
+      ...(shouldRepairIntro ? { intro_audio_url: null, intro_before_url: null, intro_after_url: null } : {}),
+      ...(shouldRepairOutro ? { outro_audio_url: null } : {}),
+    })
+    .eq('id', storyId)
+
+  if (updateError) throw new Error(`Failed to save repaired Belle text: ${updateError.message}`)
+
+  const { data: files, error: listError } = await supabase.storage.from('audio').list(`asc3/${storyId}`, { limit: 500 })
+  if (listError) throw new Error(`Failed to list Belle audio assets for repair: ${listError.message}`)
+
+  const removedAssets = (files || [])
+    .map(file => file.name)
+    .filter(name => (shouldRepairIntro && (name === 'intro.mp3' || name.startsWith('intro_'))) || (shouldRepairOutro && (name === 'outro.mp3' || name.startsWith('outro_'))))
+  if (removedAssets.length > 0) {
+    const { error: removeError } = await supabase.storage
+      .from('audio')
+      .remove(removedAssets.map(name => `asc3/${storyId}/${name}`))
+    if (removeError) throw new Error(`Failed to delete stale Belle audio assets: ${removeError.message}`)
+  }
+
+  logAnthropicCall({
+    route: '/api/admin/production-jobs/run-next',
+    purpose: 'belle-quality-repair',
+    model,
+    inputTokens: response.usage?.input_tokens ?? 0,
+    outputTokens: response.usage?.output_tokens ?? 0,
+    storyId: String(storyId),
+    storyTitle: story.title,
+    metadata: { is_v2: true, production_job_id: job.id },
+  }).catch(() => {})
+
+  const repairReport = {
+    success: true,
+    storyId: String(storyId),
+    repairedIntro: shouldRepairIntro,
+    repairedOutro: shouldRepairOutro,
+    previousIntro: currentIntro,
+    previousOutro: currentOutro,
+    introText: repairedIntro,
+    outroText: repairedOutro,
+    removedAssets,
+    rawRepair,
+  }
+
+  const nextState = { ...state }
+  delete nextState.belleAssets
+  delete nextState.belleAssetValidation
+  delete nextState.belleQualityValidation
+
+  return {
+    success: true,
+    storyId: String(storyId),
+    report: repairReport,
+    state: {
+      ...nextState,
+      storyId: String(storyId),
+      belleQualityFailedReport: failedReport,
+      belleQualityRepair: {
+        ...previousRepair,
+        attempts: attempts + 1,
+        lastReport: repairReport,
+        repairedAt: nowIso(),
       },
     },
   }
@@ -3049,6 +3263,49 @@ export async function POST(req: NextRequest) {
       })
 
       if (!result.success) {
+        const repairAttempts = Number(result.state?.belleQualityRepair?.attempts || 0)
+        if (repairAttempts < 1) {
+          const repairState = {
+            ...result.state,
+            belleQualityFailedReport: result.report,
+          }
+          const repairLogs = appendLog({ ...lockedJob, logs, current_step: step }, 'Queued automatic Belle quality repair', {
+            storyId: result.storyId,
+            nextStep: NEXT_STEP_AFTER_STANDALONE_BELLE_REPAIR,
+            introScore: result.report.introScore,
+            outroScore: result.report.outroScore,
+            issueCount: Array.isArray(result.report.issues) ? result.report.issues.length : 0,
+          })
+          const { data: repairJob, error: repairUpdateError } = await supabase
+            .from('production_jobs')
+            .update({
+              story_id: result.storyId,
+              status: 'running',
+              current_step: NEXT_STEP_AFTER_STANDALONE_BELLE_REPAIR,
+              state_json: repairState,
+              error_json: null,
+              logs: repairLogs,
+              locked_at: null,
+              locked_by: null,
+            })
+            .eq('id', lockedJob.id)
+            .select('*')
+            .single()
+
+          if (repairUpdateError) throw new Error(`Failed to queue standalone Belle quality repair: ${repairUpdateError.message}`)
+
+          return NextResponse.json({
+            success: true,
+            jobId: repairJob.id,
+            currentStep: step,
+            nextStep: repairJob.current_step,
+            storyId: result.storyId,
+            belleQualityValidationReport: result.report,
+            repairQueued: true,
+            logs: repairLogs,
+          })
+        }
+
         const { data: failedJob, error: updateError } = await supabase
           .from('production_jobs')
           .update({
@@ -3112,6 +3369,98 @@ export async function POST(req: NextRequest) {
         qualitySkipped: result.skipped,
         logs,
       })
+    }
+
+    if (step === NEXT_STEP_AFTER_STANDALONE_BELLE_REPAIR) {
+      const input = lockedJob.input_json && typeof lockedJob.input_json === 'object' ? lockedJob.input_json : {}
+      const queueItem = input.queueItem || {}
+      const type = storyTypeFor(lockedJob, queueItem)
+
+      if (type !== 'standalone') {
+        return bad('Series Belle quality repair is not implemented in this run-next slice', 422, {
+          jobId: lockedJob.id,
+          currentStep: lockedJob.current_step,
+        })
+      }
+
+      try {
+        const result = await repairStandaloneBelleQuality(lockedJob, model)
+        const logs = appendLog(lockedJob, 'Repaired standalone Belle quality text', {
+          storyId: result.storyId,
+          nextStep: NEXT_STEP_AFTER_STANDALONE_VOICES,
+          repairedIntro: result.report.repairedIntro,
+          repairedOutro: result.report.repairedOutro,
+          removedAssetCount: result.report.removedAssets.length,
+        })
+
+        const { data: updatedJob, error: updateError } = await supabase
+          .from('production_jobs')
+          .update({
+            story_id: result.storyId,
+            status: 'running',
+            current_step: NEXT_STEP_AFTER_STANDALONE_VOICES,
+            step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
+            state_json: result.state,
+            error_json: null,
+            logs,
+            locked_at: null,
+            locked_by: null,
+          })
+          .eq('id', lockedJob.id)
+          .select('*')
+          .single()
+
+        if (updateError) throw new Error(`Failed to advance standalone Belle repair job: ${updateError.message}`)
+
+        return NextResponse.json({
+          success: true,
+          jobId: updatedJob.id,
+          currentStep: step,
+          nextStep: updatedJob.current_step,
+          storyId: result.storyId,
+          belleQualityRepairReport: result.report,
+          logs,
+        })
+      } catch (err) {
+        const state = lockedJob.state_json && typeof lockedJob.state_json === 'object' ? lockedJob.state_json : {}
+        const storyId = lockedJob.story_id || state.storyId
+        const logs = appendLog(lockedJob, 'Standalone Belle quality repair failed', {
+          storyId: storyId ? String(storyId) : null,
+          nextStep: null,
+          error: err instanceof Error ? err.message : String(err),
+        })
+        const { data: failedJob, error: updateError } = await supabase
+          .from('production_jobs')
+          .update({
+            status: 'failed',
+            current_step: NEXT_STEP_AFTER_STANDALONE_BELLE_REPAIR,
+            error_json: {
+              step,
+              storyId: storyId ? String(storyId) : null,
+              error: err instanceof Error ? err.message : String(err),
+              belleQualityFailedReport: state.belleQualityFailedReport || state.belleQualityValidation || null,
+              at: nowIso(),
+            },
+            logs,
+            locked_at: null,
+            locked_by: null,
+          })
+          .eq('id', lockedJob.id)
+          .select('*')
+          .single()
+
+        if (updateError) throw new Error(`Failed to save standalone Belle repair failure: ${updateError.message}`)
+
+        return NextResponse.json({
+          success: false,
+          jobId: failedJob.id,
+          currentStep: step,
+          status: failedJob.status,
+          storyId: storyId ? String(storyId) : null,
+          error: err instanceof Error ? err.message : String(err),
+          logs,
+        }, { status: 422 })
+      }
     }
 
     if (step === NEXT_STEP_AFTER_STANDALONE_BELLE_QUALITY) {
@@ -3493,7 +3842,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (step !== 'create_story_row') {
-      return bad('Only create_story_row, generate_script, validate_script, validate_story_resolution, voice_preflight, generate_voices, generate_belle_assets, validate_belle_assets, validate_belle_quality, generate_music, render_final_mix, complete_story_package, ready_for_review, and generate_episode_script are implemented in this run-next slice', 422, {
+      return bad('Only create_story_row, generate_script, validate_script, validate_story_resolution, voice_preflight, generate_voices, generate_belle_assets, validate_belle_assets, validate_belle_quality, repair_belle_quality, generate_music, render_final_mix, complete_story_package, ready_for_review, and generate_episode_script are implemented in this run-next slice', 422, {
         jobId: lockedJob.id,
         currentStep: lockedJob.current_step,
       })
