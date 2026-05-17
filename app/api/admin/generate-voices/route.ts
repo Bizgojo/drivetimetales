@@ -170,6 +170,7 @@ function normalizeCurrencyForms(text: string): string {
 function transcriptTokens(text: string): string[] {
   const normalized = normalizeNumberWords(normalizeCurrencyForms(text))
     .replace(/[’']/g, "'")
+    .replace(/\b([A-Z][a-z]{4,})s'(?=\s|$)/g, '$1poss')
     .replace(/\b([A-Z][a-z]{4,})'s\b/g, '$1poss')
     .toLowerCase()
     .replace(/\b([a-z]+)'s\b/g, '$1')

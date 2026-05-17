@@ -45,6 +45,7 @@ function normalizeCurrencyForms(text) {
 function transcriptTokens(text) {
   return normalizeNumberWords(normalizeCurrencyForms(text))
     .replace(/[’']/g, "'")
+    .replace(/\b([A-Z][a-z]{4,})s'(?=\s|$)/g, '$1poss')
     .replace(/\b([A-Z][a-z]{4,})'s\b/g, '$1poss')
     .toLowerCase()
     .replace(/\b([a-z]+)'s\b/g, '$1')
@@ -202,6 +203,8 @@ const examples = [
   { expected: "The handwriting was Emmett's.", detected: "The handwriting was Emmet's.", passed: true },
   { expected: "Bellamy's coat was still wet.", detected: "Bellamie's coat was still wet.", passed: true },
   { expected: "Barlow stared at the manifest. The handwriting was Emmett's — the same careful block letters, the same slight leftward lean. But the names were impossible.", detected: "Barlow stared at the manifest, the handwriting was Emmet's, the same careful block letters, the same slight leftward lean. But the names were impossible.", passed: true },
+  { expected: "I was the Kellermans' bookkeeper for thirty-one years.", detected: "I was the Kellerman's bookkeeper for 31 years.", passed: true },
+  { expected: "The Martins' carriage waited outside.", detected: "The Martin's carriage waited outside.", passed: true },
   { expected: 'I think Ridgeway is next.', detected: 'I think Ridgway is next.', passed: true },
   { expected: 'Our bank has about eight thousand dollars in it. The railroad payroll comes through on Friday.', detected: 'Our bank has about $8,000 in it. The railroad payroll comes through on Friday.', passed: true },
   { expected: 'The envelope held five hundred dollars.', detected: 'The envelope held $500.', passed: true },
