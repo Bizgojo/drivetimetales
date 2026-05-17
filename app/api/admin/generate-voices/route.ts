@@ -169,8 +169,9 @@ function normalizeCurrencyForms(text: string): string {
 
 function transcriptTokens(text: string): string[] {
   const normalized = normalizeNumberWords(normalizeCurrencyForms(text))
-    .toLowerCase()
     .replace(/[’']/g, "'")
+    .replace(/\b([A-Z][a-z]{4,})'s\b/g, '$1poss')
+    .toLowerCase()
     .replace(/\b([a-z]+)'s\b/g, '$1')
     .replace(/\b(\d{1,2})\s*[\.:]\s*(\d{2})\s*(?:p\s*\.?\s*m\.?|pm)\b/g, '$1 $2 pm')
     .replace(/\b(\d{1,2})\s*[\.:]\s*(\d{2})\s*(?:a\s*\.?\s*m\.?|am)\b/g, '$1 $2 am')
