@@ -21,7 +21,8 @@ const NEXT_STEP_AFTER_STANDALONE_RESOLUTION = 'voice_preflight'
 const NEXT_STEP_AFTER_STANDALONE_PREFLIGHT = 'generate_voices'
 const NEXT_STEP_AFTER_STANDALONE_VOICES = 'generate_belle_assets'
 const NEXT_STEP_AFTER_STANDALONE_BELLE = 'validate_belle_assets'
-const NEXT_STEP_AFTER_STANDALONE_BELLE_VALIDATION = 'generate_music'
+const NEXT_STEP_AFTER_STANDALONE_BELLE_VALIDATION = 'validate_belle_quality'
+const NEXT_STEP_AFTER_STANDALONE_BELLE_QUALITY = 'generate_music'
 const NEXT_STEP_AFTER_STANDALONE_MUSIC = 'render_final_mix'
 const NEXT_STEP_AFTER_STANDALONE_RENDER = 'complete_story_package'
 const NEXT_STEP_AFTER_STANDALONE_PACKAGE = 'ready_for_review'
@@ -407,6 +408,46 @@ Rules:
 - Series non-finales may leave a specific unresolved hook if continuation is clear and intentional.
 - Series finales must resolve the series-level conflict.
 - Be strict about standalone resolution. Do not pass a standalone just because it is atmospheric.
+`
+
+const BELLE_QUALITY_VALIDATOR_PROMPT = `You are an Endless Tales senior story editor validating Belle intro/outro copy before audio production continues.
+
+Return JSON only. Do not include markdown.
+
+Required JSON shape:
+{
+  "pass": true | false,
+  "introScore": 0,
+  "outroScore": 0,
+  "issues": ["specific blocking issue"],
+  "confidence": 0.0,
+  "suggestedFixes": ["specific fix"]
+}
+
+Scoring:
+- 9-10: excellent, story-specific, emotionally natural, production-ready.
+- 7-8: acceptable and production-ready.
+- 0-6: weak, generic, structurally wrong, or emotionally off; fail.
+
+Intro requirements:
+- Sounds like a trusted human recommendation, not a host, announcer, trailer, DJ, or ad.
+- Gives light audio-first grounding so a driver understands the story world quickly.
+- Is story-specific and hooks the listener with one clear sensory, emotional, or conceptual detail.
+- Names the title only when it feels natural; if it names the title, it must be correct.
+- Must not use generic host language such as "Welcome", "begins now", "only on Endless Tales", "tonight", or promotional copy.
+- Any [LISTENER_NAME] placeholder must sit naturally in a complete sentence; removing it must not break grammar.
+
+Outro requirements:
+- Emotionally lands and feels companion-like, as if Belle is still beside the listener after the story.
+- Matches the declared story type.
+- Standalone outros must not tease a fake episode 2, "next time", "what happens next", or unresolved continuation.
+- Series non-finale outros may create intentional next-episode desire.
+- Finale outros should feel complete.
+- Credits language is only acceptable if brief and not the emotional center.
+- Must not use flat "That was..." credits-style structure as the dominant move.
+
+Fail closed for Belle copy that is generic, promotional, too abrupt, structurally wrong for the story type, emotionally wrong for the ending, or likely to feel awkward in audio.
+Only include issues that should block production.
 `
 
 function parseJsonObject(text: string): any {
@@ -1468,6 +1509,129 @@ async function validateStandaloneBelleAssets(job: ProductionJob) {
       storyId: String(storyId),
       belleAssetValidation: {
         status: success ? 'passed' : 'failed',
+        ...report,
+        [success ? 'validatedAt' : 'failedAt']: nowIso(),
+      },
+    },
+  }
+}
+
+async function validateStandaloneBelleQuality(job: ProductionJob, model: string) {
+  const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
+  const storyId = job.story_id || state.storyId
+  if (!storyId) throw new Error('Standalone job is missing story_id')
+
+  if (state.belleQualityValidation?.status === 'passed' && state.belleQualityValidation?.storyId === String(storyId)) {
+    return {
+      success: true,
+      skipped: true,
+      storyId: String(storyId),
+      report: state.belleQualityValidation,
+      state,
+    }
+  }
+
+  if (state.belleAssetValidation?.status !== 'passed') {
+    throw new Error('Belle assets must pass deterministic validation before validate_belle_quality')
+  }
+
+  const { data: story, error } = await supabase
+    .from('stories')
+    .select('id,title,genre,script,story_type,series_id,series_name,episode_number,series_total_episodes,series_is_finale')
+    .eq('id', storyId)
+    .single()
+
+  if (error || !story) throw new Error(error?.message || 'Story not found')
+  if (!story.script) throw new Error('script missing')
+
+  const introText = extractBelleSection(story.script, 'intro')
+  const outroText = extractBelleSection(story.script, 'outro')
+  if (!introText || !outroText) throw new Error('Belle intro/outro text missing')
+
+  const declaredStoryType = [
+    story.story_type ? `story_type=${story.story_type}` : '',
+    story.series_id ? `series_id=${story.series_id}` : '',
+    story.series_name ? `series_name=${story.series_name}` : '',
+    story.episode_number ? `episode_number=${story.episode_number}` : '',
+    story.series_total_episodes ? `series_total_episodes=${story.series_total_episodes}` : '',
+    story.series_is_finale ? `series_is_finale=${story.series_is_finale}` : '',
+  ].filter(Boolean).join(', ') || 'standalone inferred from production job'
+
+  const response = await anthropic.messages.create({
+    model,
+    max_tokens: 1000,
+    temperature: 0,
+    messages: [{
+      role: 'user',
+      content: `${BELLE_QUALITY_VALIDATOR_PROMPT}
+
+DECLARED METADATA:
+${declaredStoryType}
+
+TITLE:
+${story.title || 'Untitled'}
+
+GENRE:
+${story.genre || 'Unknown'}
+
+BELLE INTRO:
+${introText}
+
+BELLE OUTRO:
+${outroText}
+
+SCRIPT ENDING CONTEXT:
+${scriptTail(story.script, 2200)}`,
+    }],
+  })
+
+  const rawReport = response.content
+    .map((c: any) => ('text' in c ? c.text : ''))
+    .join('')
+    .trim()
+  if (!rawReport) throw new Error('Belle quality validator returned an empty report')
+
+  const parsed = parseJsonObject(rawReport)
+  const introScore = typeof parsed.introScore === 'number' ? parsed.introScore : Number(parsed.introScore || 0)
+  const outroScore = typeof parsed.outroScore === 'number' ? parsed.outroScore : Number(parsed.outroScore || 0)
+  const issues = Array.isArray(parsed.issues) ? parsed.issues.map(String).filter(Boolean) : []
+  const suggestedFixes = Array.isArray(parsed.suggestedFixes) ? parsed.suggestedFixes.map(String).filter(Boolean) : []
+  const success = parsed.pass === true && introScore >= 7 && outroScore >= 7 && issues.length === 0
+  const report = {
+    success,
+    pass: success,
+    introScore,
+    outroScore,
+    issues,
+    confidence: typeof parsed.confidence === 'number' ? parsed.confidence : Number(parsed.confidence || 0),
+    suggestedFixes,
+    rawReport,
+    introText,
+    outroText,
+  }
+
+  logAnthropicCall({
+    route: '/api/admin/production-jobs/run-next',
+    purpose: 'belle-quality-validator',
+    model,
+    inputTokens: response.usage?.input_tokens ?? 0,
+    outputTokens: response.usage?.output_tokens ?? 0,
+    storyId: String(storyId),
+    storyTitle: story.title,
+    metadata: { is_v2: true, production_job_id: job.id },
+  }).catch(() => {})
+
+  return {
+    success,
+    skipped: false,
+    storyId: String(storyId),
+    report,
+    state: {
+      ...state,
+      storyId: String(storyId),
+      belleQualityValidation: {
+        status: success ? 'passed' : 'failed',
+        storyId: String(storyId),
         ...report,
         [success ? 'validatedAt' : 'failedAt']: nowIso(),
       },
@@ -2867,6 +3031,95 @@ export async function POST(req: NextRequest) {
       const type = storyTypeFor(lockedJob, queueItem)
 
       if (type !== 'standalone') {
+        return bad('Series Belle quality validation is not implemented in this run-next slice', 422, {
+          jobId: lockedJob.id,
+          currentStep: lockedJob.current_step,
+        })
+      }
+
+      const result = await validateStandaloneBelleQuality(lockedJob, model)
+      const logs = appendLog(lockedJob, result.success
+        ? (result.skipped ? 'Reused existing standalone Belle quality pass' : 'Validated standalone Belle intro/outro quality')
+        : 'Standalone Belle quality validation failed', {
+        storyId: result.storyId,
+        nextStep: result.success ? NEXT_STEP_AFTER_STANDALONE_BELLE_QUALITY : null,
+        introScore: result.report.introScore,
+        outroScore: result.report.outroScore,
+        issueCount: Array.isArray(result.report.issues) ? result.report.issues.length : 0,
+      })
+
+      if (!result.success) {
+        const { data: failedJob, error: updateError } = await supabase
+          .from('production_jobs')
+          .update({
+            story_id: result.storyId,
+            status: 'failed',
+            current_step: NEXT_STEP_AFTER_STANDALONE_BELLE_VALIDATION,
+            state_json: result.state,
+            error_json: {
+              step,
+              storyId: result.storyId,
+              belleQualityValidationReport: result.report,
+              at: nowIso(),
+            },
+            logs,
+            locked_at: null,
+            locked_by: null,
+          })
+          .eq('id', lockedJob.id)
+          .select('*')
+          .single()
+
+        if (updateError) throw new Error(`Failed to save standalone Belle quality validation failure: ${updateError.message}`)
+
+        return NextResponse.json({
+          success: false,
+          jobId: failedJob.id,
+          currentStep: step,
+          status: failedJob.status,
+          storyId: result.storyId,
+          belleQualityValidationReport: result.report,
+          logs,
+        }, { status: 422 })
+      }
+
+      const { data: updatedJob, error: updateError } = await supabase
+        .from('production_jobs')
+        .update({
+          story_id: result.storyId,
+          status: 'running',
+          current_step: NEXT_STEP_AFTER_STANDALONE_BELLE_QUALITY,
+          step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
+          state_json: result.state,
+          error_json: null,
+          logs,
+          locked_at: null,
+          locked_by: null,
+        })
+        .eq('id', lockedJob.id)
+        .select('*')
+        .single()
+
+      if (updateError) throw new Error(`Failed to advance standalone Belle quality job: ${updateError.message}`)
+
+      return NextResponse.json({
+        success: true,
+        jobId: updatedJob.id,
+        currentStep: step,
+        nextStep: updatedJob.current_step,
+        storyId: result.storyId,
+        belleQualityValidationReport: result.report,
+        qualitySkipped: result.skipped,
+        logs,
+      })
+    }
+
+    if (step === NEXT_STEP_AFTER_STANDALONE_BELLE_QUALITY) {
+      const input = lockedJob.input_json && typeof lockedJob.input_json === 'object' ? lockedJob.input_json : {}
+      const queueItem = input.queueItem || {}
+      const type = storyTypeFor(lockedJob, queueItem)
+
+      if (type !== 'standalone') {
         return bad('Series music generation is not implemented in this run-next slice', 422, {
           jobId: lockedJob.id,
           currentStep: lockedJob.current_step,
@@ -2890,7 +3143,7 @@ export async function POST(req: NextRequest) {
           .update({
             story_id: result.storyId,
             status: 'failed',
-            current_step: NEXT_STEP_AFTER_STANDALONE_BELLE_VALIDATION,
+            current_step: NEXT_STEP_AFTER_STANDALONE_BELLE_QUALITY,
             state_json: result.state,
             error_json: {
               step,
@@ -3240,7 +3493,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (step !== 'create_story_row') {
-      return bad('Only create_story_row, generate_script, validate_script, validate_story_resolution, voice_preflight, generate_voices, generate_belle_assets, validate_belle_assets, generate_music, render_final_mix, complete_story_package, ready_for_review, and generate_episode_script are implemented in this run-next slice', 422, {
+      return bad('Only create_story_row, generate_script, validate_script, validate_story_resolution, voice_preflight, generate_voices, generate_belle_assets, validate_belle_assets, validate_belle_quality, generate_music, render_final_mix, complete_story_package, ready_for_review, and generate_episode_script are implemented in this run-next slice', 422, {
         jobId: lockedJob.id,
         currentStep: lockedJob.current_step,
       })
