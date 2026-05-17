@@ -16,7 +16,8 @@ const WORKER_ID = `run-next:${process.pid}`
 const LOCK_STALE_MS = 10 * 60 * 1000
 const NEXT_STEP_AFTER_CREATE = 'generate_script'
 const NEXT_STEP_AFTER_STANDALONE_SCRIPT = 'validate_script'
-const NEXT_STEP_AFTER_STANDALONE_VALIDATION = 'voice_preflight'
+const NEXT_STEP_AFTER_STANDALONE_VALIDATION = 'validate_story_resolution'
+const NEXT_STEP_AFTER_STANDALONE_RESOLUTION = 'voice_preflight'
 const NEXT_STEP_AFTER_STANDALONE_PREFLIGHT = 'generate_voices'
 const NEXT_STEP_AFTER_STANDALONE_VOICES = 'generate_belle_assets'
 const NEXT_STEP_AFTER_STANDALONE_BELLE = 'validate_belle_assets'
@@ -382,6 +383,42 @@ Do not send to production. Fix the following before resubmitting:
 
 Be specific.
 `
+
+const STORY_RESOLUTION_VALIDATOR_PROMPT = `You are an Endless Tales senior story editor validating whether a production script's ending matches its declared format.
+
+Return JSON only. Do not include markdown.
+
+Required JSON shape:
+{
+  "pass": true | false,
+  "storyTypeDetected": "standalone" | "series_episode" | "series_finale" | "unclear",
+  "endingTypeDetected": "resolved" | "intentional_cliffhanger" | "fake_cliffhanger" | "unresolved" | "unclear",
+  "issues": ["specific issue"],
+  "confidence": 0.0,
+  "suggestedFixes": ["specific fix"]
+}
+
+Rules:
+- Detect whether the script behaves like a standalone, non-finale series episode, or series finale.
+- Standalone stories must resolve the central conflict meaningfully.
+- A standalone ending may leave emotional ambiguity, but it must not make the listener feel they are obviously waiting for episode 2.
+- Standalone stories fail if they end with a fake "episode one" cliffhanger, unresolved villain/central danger, missing reveal/payoff, or a direct continuation hook.
+- Standalone stories pass if the immediate plot question resolves and the ending emotionally lands, even if the final image is haunting or bittersweet.
+- Series non-finales may leave a specific unresolved hook if continuation is clear and intentional.
+- Series finales must resolve the series-level conflict.
+- Be strict about standalone resolution. Do not pass a standalone just because it is atmospheric.
+`
+
+function parseJsonObject(text: string): any {
+  const raw = String(text || '').trim()
+  try {
+    return JSON.parse(raw)
+  } catch {
+    const match = raw.match(/\{[\s\S]*\}/)
+    if (!match) throw new Error('No JSON object found in model response')
+    return JSON.parse(match[0])
+  }
+}
 
 function scriptTail(script: string, maxChars = 1400) {
   const clean = script.replace(/\s+/g, ' ').trim()
@@ -1100,6 +1137,118 @@ ${cardCopyIssues.map((issue) => `- ${issue}`).join('\n')}`
       validatorReport: report,
       validatorPassedAt: passedAt,
       validateScriptSkipped: false,
+    },
+  }
+}
+
+async function validateStandaloneStoryResolution(job: ProductionJob, model: string) {
+  const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
+  const storyId = job.story_id || state.storyId
+  if (!storyId) throw new Error('Standalone job is missing story_id')
+
+  if (state.storyResolutionPassed === true && state.storyResolutionStoryId === String(storyId)) {
+    return {
+      passed: true,
+      skipped: true,
+      storyId: String(storyId),
+      report: state.storyResolutionReport || {
+        pass: true,
+        storyTypeDetected: 'standalone',
+        endingTypeDetected: 'resolved',
+        issues: [],
+        confidence: 1,
+        suggestedFixes: [],
+      },
+      state,
+    }
+  }
+
+  const { data: story, error } = await supabase
+    .from('stories')
+    .select('id,title,script,status,story_type,series_id,series_name,episode_number,series_total_episodes,series_is_finale,validator_result')
+    .eq('id', storyId)
+    .single()
+
+  if (error || !story) throw new Error(error?.message || 'Story not found')
+  if (!story.script) throw new Error('script missing')
+  if (story.validator_result !== 'PASS' && story.status !== 'validator_passed') {
+    throw new Error('Script must pass validate_script before story resolution validation')
+  }
+
+  const declaredStoryType = [
+    story.story_type ? `story_type=${story.story_type}` : '',
+    story.series_id ? `series_id=${story.series_id}` : '',
+    story.series_name ? `series_name=${story.series_name}` : '',
+    story.episode_number ? `episode_number=${story.episode_number}` : '',
+    story.series_total_episodes ? `series_total_episodes=${story.series_total_episodes}` : '',
+    story.series_is_finale ? `series_is_finale=${story.series_is_finale}` : '',
+  ].filter(Boolean).join(', ') || 'standalone inferred from production job'
+
+  const response = await anthropic.messages.create({
+    model,
+    max_tokens: 1200,
+    temperature: 0,
+    messages: [{
+      role: 'user',
+      content: `${STORY_RESOLUTION_VALIDATOR_PROMPT}
+
+DECLARED METADATA:
+${declaredStoryType}
+
+TITLE:
+${story.title || 'Untitled'}
+
+SCRIPT:
+${story.script}`,
+    }],
+  })
+
+  const rawReport = response.content
+    .map((c: any) => ('text' in c ? c.text : ''))
+    .join('')
+    .trim()
+  if (!rawReport) throw new Error('Story resolution validator returned an empty report')
+
+  const parsed = parseJsonObject(rawReport)
+  const issues = Array.isArray(parsed.issues) ? parsed.issues.map(String).filter(Boolean) : []
+  const suggestedFixes = Array.isArray(parsed.suggestedFixes) ? parsed.suggestedFixes.map(String).filter(Boolean) : []
+  const report = {
+    pass: parsed.pass === true,
+    storyTypeDetected: String(parsed.storyTypeDetected || 'unclear'),
+    endingTypeDetected: String(parsed.endingTypeDetected || 'unclear'),
+    issues,
+    confidence: typeof parsed.confidence === 'number' ? parsed.confidence : Number(parsed.confidence || 0),
+    suggestedFixes,
+    rawReport,
+  }
+
+  const passed = report.pass === true
+
+  logAnthropicCall({
+    route: '/api/admin/production-jobs/run-next',
+    purpose: 'story-resolution-validator',
+    model,
+    inputTokens: response.usage?.input_tokens ?? 0,
+    outputTokens: response.usage?.output_tokens ?? 0,
+    storyId: String(storyId),
+    storyTitle: story.title,
+    metadata: { is_v2: true, production_job_id: job.id },
+  }).catch(() => {})
+
+  return {
+    passed,
+    skipped: false,
+    storyId: String(storyId),
+    report,
+    state: {
+      ...state,
+      storyId: String(storyId),
+      storyTitle: story.title,
+      storyStatus: story.status,
+      storyResolutionPassed: passed,
+      storyResolutionStoryId: String(storyId),
+      storyResolutionReport: report,
+      storyResolutionValidatedAt: nowIso(),
     },
   }
 }
@@ -2258,6 +2407,95 @@ export async function POST(req: NextRequest) {
       const type = storyTypeFor(lockedJob, queueItem)
 
       if (type !== 'standalone') {
+        return bad('Series story resolution validation is not implemented in this run-next slice', 422, {
+          jobId: lockedJob.id,
+          currentStep: lockedJob.current_step,
+        })
+      }
+
+      const result = await validateStandaloneStoryResolution(lockedJob, model)
+      const logs = appendLog(lockedJob, result.passed
+        ? (result.skipped ? 'Reused existing standalone story resolution pass' : 'Validated standalone story resolution')
+        : 'Standalone story resolution validation failed', {
+        storyId: result.storyId,
+        nextStep: result.passed ? NEXT_STEP_AFTER_STANDALONE_RESOLUTION : null,
+        endingTypeDetected: result.report.endingTypeDetected,
+        storyTypeDetected: result.report.storyTypeDetected,
+        issueCount: Array.isArray(result.report.issues) ? result.report.issues.length : 0,
+      })
+
+      if (!result.passed) {
+        const { data: failedJob, error: updateError } = await supabase
+          .from('production_jobs')
+          .update({
+            story_id: result.storyId,
+            status: 'failed',
+            current_step: NEXT_STEP_AFTER_STANDALONE_VALIDATION,
+            state_json: result.state,
+            error_json: {
+              step,
+              storyId: result.storyId,
+              storyResolutionReport: result.report,
+              at: nowIso(),
+            },
+            logs,
+            locked_at: null,
+            locked_by: null,
+          })
+          .eq('id', lockedJob.id)
+          .select('*')
+          .single()
+
+        if (updateError) throw new Error(`Failed to save standalone story resolution failure: ${updateError.message}`)
+
+        return NextResponse.json({
+          success: false,
+          jobId: failedJob.id,
+          currentStep: step,
+          status: failedJob.status,
+          storyId: result.storyId,
+          storyResolutionReport: result.report,
+          logs,
+        }, { status: 422 })
+      }
+
+      const { data: updatedJob, error: updateError } = await supabase
+        .from('production_jobs')
+        .update({
+          story_id: result.storyId,
+          status: 'running',
+          current_step: NEXT_STEP_AFTER_STANDALONE_RESOLUTION,
+          step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
+          state_json: result.state,
+          error_json: null,
+          logs,
+          locked_at: null,
+          locked_by: null,
+        })
+        .eq('id', lockedJob.id)
+        .select('*')
+        .single()
+
+      if (updateError) throw new Error(`Failed to advance standalone story resolution job: ${updateError.message}`)
+
+      return NextResponse.json({
+        success: true,
+        jobId: updatedJob.id,
+        currentStep: step,
+        nextStep: updatedJob.current_step,
+        storyId: result.storyId,
+        storyResolutionReport: result.report,
+        resolutionSkipped: result.skipped,
+        logs,
+      })
+    }
+
+    if (step === NEXT_STEP_AFTER_STANDALONE_RESOLUTION) {
+      const input = lockedJob.input_json && typeof lockedJob.input_json === 'object' ? lockedJob.input_json : {}
+      const queueItem = input.queueItem || {}
+      const type = storyTypeFor(lockedJob, queueItem)
+
+      if (type !== 'standalone') {
         return bad('Series voice preflight is not implemented in this run-next slice', 422, {
           jobId: lockedJob.id,
           currentStep: lockedJob.current_step,
@@ -2286,7 +2524,7 @@ export async function POST(req: NextRequest) {
           .update({
             story_id: result.storyId,
             status: 'failed',
-            current_step: NEXT_STEP_AFTER_STANDALONE_VALIDATION,
+            current_step: NEXT_STEP_AFTER_STANDALONE_RESOLUTION,
             state_json: result.state,
             error_json: {
               step,
@@ -3002,7 +3240,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (step !== 'create_story_row') {
-      return bad('Only create_story_row, generate_script, validate_script, voice_preflight, generate_voices, generate_belle_assets, validate_belle_assets, generate_music, render_final_mix, complete_story_package, ready_for_review, and generate_episode_script are implemented in this run-next slice', 422, {
+      return bad('Only create_story_row, generate_script, validate_script, validate_story_resolution, voice_preflight, generate_voices, generate_belle_assets, validate_belle_assets, generate_music, render_final_mix, complete_story_package, ready_for_review, and generate_episode_script are implemented in this run-next slice', 422, {
         jobId: lockedJob.id,
         currentStep: lockedJob.current_step,
       })
