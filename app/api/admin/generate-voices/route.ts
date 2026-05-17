@@ -210,6 +210,11 @@ function expectedLineVariants(tokens: string[]): string[][] {
   return [compacted]
 }
 
+function singleCapitalizedAlphaWord(text: string): string {
+  const match = text.trim().match(/^([A-Z][A-Za-z]{4,})[.!?]?$/)
+  return match?.[1] || ''
+}
+
 function levenshteinDistance(a: string, b: string): number {
   if (a === b) return 0
   if (!a.length) return b.length
@@ -260,6 +265,26 @@ function transcriptTokenMatches(expected: string, detected: string): boolean {
   const expectedKey = phoneticTokenKey(expected)
   const detectedKey = phoneticTokenKey(detected)
   return expectedKey.length >= 4 && expectedKey === detectedKey
+}
+
+function oneWordProperNameVariantMatches(expectedText: string, detectedText: string): boolean {
+  const expected = singleCapitalizedAlphaWord(expectedText)
+  const detected = singleCapitalizedAlphaWord(detectedText)
+  if (!expected || !detected || expected[0] !== detected[0]) return false
+
+  const expectedLower = expected.toLowerCase()
+  const detectedLower = detected.toLowerCase()
+  const commonWordBlocklist = new Set(['ferry', 'fairy', 'rode', 'wrote', 'crews', 'cruise', 'hours', 'ours'])
+  if (commonWordBlocklist.has(expectedLower) || commonWordBlocklist.has(detectedLower)) return false
+
+  const maxLen = Math.max(expectedLower.length, detectedLower.length)
+  if (maxLen > 16) return false
+  const similarity = 1 - (levenshteinDistance(expectedLower, detectedLower) / maxLen)
+  if (similarity >= 0.82) return true
+
+  const expectedKey = phoneticTokenKey(expectedLower)
+  const detectedKey = phoneticTokenKey(detectedLower)
+  return expectedKey.length >= 3 && expectedKey === detectedKey
 }
 
 function containsOrderedTokenVariant(haystack: string[], needle: string[]): boolean {
@@ -341,7 +366,8 @@ async function validateSegmentTranscript(buf: Buffer, expectedText: string, file
   const shortLineMatches = expected.length <= 8
     ? expectedVariants.some(variant => containsOrderedTokenVariant(detected, variant)) || similarity >= 0.88
     : true
-  const passed = tailMatches && shortLineMatches && coverage >= SEGMENT_TRANSCRIPT_MIN_COVERAGE
+  const oneWordProperNameMatch = oneWordProperNameVariantMatches(expectedText, detectedText)
+  const passed = oneWordProperNameMatch || (tailMatches && shortLineMatches && coverage >= SEGMENT_TRANSCRIPT_MIN_COVERAGE)
 
   return {
     passed,
@@ -351,6 +377,7 @@ async function validateSegmentTranscript(buf: Buffer, expectedText: string, file
     similarity,
     tailMatches,
     shortLineMatches,
+    oneWordProperNameMatch,
   }
 }
 
