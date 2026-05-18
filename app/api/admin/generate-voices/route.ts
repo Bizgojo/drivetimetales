@@ -205,8 +205,18 @@ function normalizeCurrencyForms(text: string): string {
     })
 }
 
+function normalizePossessivePlaceNames(text: string): string {
+  return text
+    .replace(/\bManns\s+Harbor\b/gi, 'Mann Harbor')
+    .replace(/\bMan's\s+Harbor\b/gi, 'Mann Harbor')
+    .replace(/\bPikes\s+Peak\b/gi, 'Pike Peak')
+    .replace(/\bPike's\s+Peak\b/gi, 'Pike Peak')
+    .replace(/\bHarpers\s+Ferry\b/gi, 'Harper Ferry')
+    .replace(/\bHarper's\s+Ferry\b/gi, 'Harper Ferry')
+}
+
 function transcriptTokens(text: string): string[] {
-  const normalized = normalizeNumberWords(normalizeOrdinalDateForms(normalizeCurrencyForms(text)))
+  const normalized = normalizeNumberWords(normalizeOrdinalDateForms(normalizeCurrencyForms(normalizePossessivePlaceNames(text))))
     .replace(/[’']/g, "'")
     .replace(/\b([A-Z][a-z]{4,})s'(?=\s|$)/g, '$1poss')
     .replace(/\b([A-Z][a-z]{4,})'s\b/g, '$1poss')

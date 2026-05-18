@@ -64,8 +64,18 @@ function normalizeCurrencyForms(text) {
     })
 }
 
+function normalizePossessivePlaceNames(text) {
+  return text
+    .replace(/\bManns\s+Harbor\b/gi, 'Mann Harbor')
+    .replace(/\bMan's\s+Harbor\b/gi, 'Mann Harbor')
+    .replace(/\bPikes\s+Peak\b/gi, 'Pike Peak')
+    .replace(/\bPike's\s+Peak\b/gi, 'Pike Peak')
+    .replace(/\bHarpers\s+Ferry\b/gi, 'Harper Ferry')
+    .replace(/\bHarper's\s+Ferry\b/gi, 'Harper Ferry')
+}
+
 function transcriptTokens(text) {
-  return normalizeNumberWords(normalizeOrdinalDateForms(normalizeCurrencyForms(text)))
+  return normalizeNumberWords(normalizeOrdinalDateForms(normalizeCurrencyForms(normalizePossessivePlaceNames(text))))
     .replace(/[’']/g, "'")
     .replace(/\b([A-Z][a-z]{4,})s'(?=\s|$)/g, '$1poss')
     .replace(/\b([A-Z][a-z]{4,})'s\b/g, '$1poss')
@@ -279,6 +289,9 @@ const examples = [
   { expected: 'Kathryn waited near the toll booth.', detected: 'Catherine waited near the toll booth.', passed: true },
   { expected: 'Sara left the message on the desk.', detected: 'Sarah left the message on the desk.', passed: true },
   { expected: 'Jon called from the bridge.', detected: 'John called from the bridge.', passed: true },
+  { expected: "All right. I'm on patrol near Manns Harbor. I can be there in twenty minutes. Don't let anyone touch that envelope.", detected: "All right, I'm on patrol near Man's Harbor. I can be there in 20 minutes. Don't let anyone touch that envelope.", passed: true },
+  { expected: 'The road curved below Pikes Peak.', detected: "The road curved below Pike's Peak.", passed: true },
+  { expected: 'The packet arrived from Harpers Ferry.', detected: "The packet arrived from Harper's Ferry.", passed: true },
   { expected: 'The preacher cleared her throat.', detected: 'Preacher cleared her throat.', passed: true },
   { expected: 'A rider crossed the bridge.', detected: 'Rider crossed the bridge.', passed: true },
   { expected: 'An engine waited near the depot.', detected: 'Engine waited near the depot.', passed: true },
