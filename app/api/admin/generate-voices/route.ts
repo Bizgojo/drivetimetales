@@ -130,6 +130,44 @@ const NUMBER_WORDS: Record<string, string> = {
   fifty: '50',
 }
 
+const ORDINAL_WORDS: Record<string, string> = {
+  first: '1',
+  second: '2',
+  third: '3',
+  fourth: '4',
+  fifth: '5',
+  sixth: '6',
+  seventh: '7',
+  eighth: '8',
+  ninth: '9',
+  tenth: '10',
+  eleventh: '11',
+  twelfth: '12',
+  thirteenth: '13',
+  fourteenth: '14',
+  fifteenth: '15',
+  sixteenth: '16',
+  seventeenth: '17',
+  eighteenth: '18',
+  nineteenth: '19',
+  twentieth: '20',
+  thirtieth: '30',
+}
+
+function normalizeOrdinalDateForms(text: string): string {
+  return text
+    .replace(/\b(twenty|thirty)[\s-]+(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth)\b/gi, (match, tensWord, ordinalWord) => {
+      const tens = NUMBER_WORDS[String(tensWord).toLowerCase()]
+      const ones = ORDINAL_WORDS[String(ordinalWord).toLowerCase()]
+      const value = Number(tens) + Number(ones)
+      return Number.isFinite(value) ? String(value) : match
+    })
+    .replace(/\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth|thirtieth)\b/gi, (match, ordinalWord) => {
+      return ORDINAL_WORDS[String(ordinalWord).toLowerCase()] || match
+    })
+    .replace(/\b(\d{1,2})(?:st|nd|rd|th)\b/gi, '$1')
+}
+
 function normalizeNumberWords(text: string): string {
   return text
     .replace(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty)\s+(hundred|thousand)\b/gi, (match, numberWord, scale) => {
@@ -168,7 +206,7 @@ function normalizeCurrencyForms(text: string): string {
 }
 
 function transcriptTokens(text: string): string[] {
-  const normalized = normalizeNumberWords(normalizeCurrencyForms(text))
+  const normalized = normalizeNumberWords(normalizeOrdinalDateForms(normalizeCurrencyForms(text)))
     .replace(/[’']/g, "'")
     .replace(/\b([A-Z][a-z]{4,})s'(?=\s|$)/g, '$1poss')
     .replace(/\b([A-Z][a-z]{4,})'s\b/g, '$1poss')

@@ -5,6 +5,28 @@ const NUMBER_WORDS = {
   eighteen: '18', nineteen: '19', twenty: '20', thirty: '30', forty: '40', fifty: '50',
 }
 
+const ORDINAL_WORDS = {
+  first: '1', second: '2', third: '3', fourth: '4', fifth: '5', sixth: '6',
+  seventh: '7', eighth: '8', ninth: '9', tenth: '10', eleventh: '11',
+  twelfth: '12', thirteenth: '13', fourteenth: '14', fifteenth: '15',
+  sixteenth: '16', seventeenth: '17', eighteenth: '18', nineteenth: '19',
+  twentieth: '20', thirtieth: '30',
+}
+
+function normalizeOrdinalDateForms(text) {
+  return text
+    .replace(/\b(twenty|thirty)[\s-]+(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth)\b/gi, (match, tensWord, ordinalWord) => {
+      const tens = NUMBER_WORDS[String(tensWord).toLowerCase()]
+      const ones = ORDINAL_WORDS[String(ordinalWord).toLowerCase()]
+      const value = Number(tens) + Number(ones)
+      return Number.isFinite(value) ? String(value) : match
+    })
+    .replace(/\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth|thirtieth)\b/gi, (match, ordinalWord) => {
+      return ORDINAL_WORDS[String(ordinalWord).toLowerCase()] || match
+    })
+    .replace(/\b(\d{1,2})(?:st|nd|rd|th)\b/gi, '$1')
+}
+
 function normalizeNumberWords(text) {
   return text
     .replace(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty)\s+(hundred|thousand)\b/gi, (match, numberWord, scale) => {
@@ -43,7 +65,7 @@ function normalizeCurrencyForms(text) {
 }
 
 function transcriptTokens(text) {
-  return normalizeNumberWords(normalizeCurrencyForms(text))
+  return normalizeNumberWords(normalizeOrdinalDateForms(normalizeCurrencyForms(text)))
     .replace(/[’']/g, "'")
     .replace(/\b([A-Z][a-z]{4,})s'(?=\s|$)/g, '$1poss')
     .replace(/\b([A-Z][a-z]{4,})'s\b/g, '$1poss')
@@ -241,6 +263,8 @@ const examples = [
   { expected: 'One hundred riders waited outside.', detected: '100 riders waited outside.', passed: true },
   { expected: 'Twenty five lamps burned in the hall.', detected: '25 lamps burned in the hall.', passed: true },
   { expected: 'Eight thousand ties lined the railroad.', detected: '8000 ties lined the railroad.', passed: true },
+  { expected: 'September nineteenth. He glanced at the calendar. September eighteenth. He was holding a report.', detected: 'September 19th, he glanced at the calendar. September 18th, he was holding a report.', passed: true },
+  { expected: 'The hearing was on October twenty-first.', detected: 'The hearing was on October 21st.', passed: true },
   { expected: 'The preacher cleared her throat.', detected: 'Preacher cleared her throat.', passed: true },
   { expected: 'A rider crossed the bridge.', detected: 'Rider crossed the bridge.', passed: true },
   { expected: 'An engine waited near the depot.', detected: 'Engine waited near the depot.', passed: true },
