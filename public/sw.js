@@ -1,7 +1,7 @@
-// Endless Tales Service Worker v4
+// Endless Tales Service Worker v5
 // Full offline support: app shell + audio caching
 
-const SHELL_CACHE  = 'et-shell-v4'
+const SHELL_CACHE  = 'et-shell-v5'
 const AUDIO_CACHE  = 'et-audio-v1'
 
 // App shell pages to cache on install
@@ -44,6 +44,11 @@ function isAdminRoute(url) {
 function isAdminChunk(url) {
   const u = new URL(url)
   return u.pathname.startsWith('/_next/static/chunks/app/admin/')
+}
+
+function isNextScriptChunk(url) {
+  const u = new URL(url)
+  return u.pathname.startsWith('/_next/static/chunks/') && u.pathname.endsWith('.js')
 }
 
 // ── Install: cache app shell pages ───────────────────────────────────────────
@@ -113,8 +118,9 @@ self.addEventListener('fetch', e => {
     return
   }
 
-  // Admin chunks must also stay live so admin shells cannot hydrate from stale code.
-  if (isAdminChunk(url)) return
+  // Next script chunks must stay live. Stale webpack/runtime chunks can hydrate
+  // fresh pages with old module factories and crash the local/admin preview.
+  if (isAdminChunk(url) || isNextScriptChunk(url)) return
 
   // Next.js static assets (_next/static): cache-first
   if (url.includes('/_next/static/')) {
