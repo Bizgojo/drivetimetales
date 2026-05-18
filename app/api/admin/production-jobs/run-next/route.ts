@@ -29,6 +29,7 @@ const NEXT_STEP_AFTER_STANDALONE_RENDER = 'complete_story_package'
 const NEXT_STEP_AFTER_STANDALONE_PACKAGE = 'ready_for_review'
 const NEXT_STEP_AFTER_SERIES_CREATE = 'generate_episode_script'
 const NEXT_STEP_AFTER_SERIES_SCRIPTS = 'score_validate_package'
+const NEXT_STEP_AFTER_SERIES_VALIDATION = 'series_voice_preflight'
 const TITLE_MAX_CHARS = 28
 const DESCRIPTION_MAX_CHARS = 70
 const DESCRIPTION_PAST_TENSE_RE = /\b(vanished|was|were|had|found|discovered|left|moved|sealed|signed|forged|buried|hidden)\b/i
@@ -803,7 +804,7 @@ async function createStoryRow(job: ProductionJob) {
 async function loadSeriesEpisodes(seriesId: string) {
   const { data, error } = await supabase
     .from('stories')
-    .select('id,title,author,author_style,genre,narrative_voice,description,brief_json,status,script,script_json,script_version,series_id,series_name,episode_number,series_episode_number,series_total_episodes,series_is_finale,story_type')
+    .select('id,title,author,author_style,genre,narrative_voice,description,brief_json,status,script,script_json,script_version,series_id,series_name,episode_number,series_episode_number,series_total_episodes,series_is_finale,story_type,validator_result,validator_report,validator_passed_at')
     .eq('series_id', seriesId)
     .order('episode_number', { ascending: true })
 
@@ -2373,6 +2374,7 @@ async function createSeriesPackage(job: ProductionJob) {
         duration_label: runtime,
         duration_mins: runtimeToMinutes(runtime),
         is_hidden: true,
+        published_on: null,
       })
       .select('id,title,status,series_id,series_name,episode_number,series_episode_number,series_total_episodes,series_is_finale,story_type')
       .single()
@@ -2569,6 +2571,379 @@ async function generateOneSeriesEpisodeScript(job: ProductionJob, model: string)
   }
 }
 
+function validateSeriesMetadata(episodes: any[], seriesId: string) {
+  const issues: string[] = []
+  const total = episodes.length
+  const seen = new Set<number>()
+
+  if (total < 2) issues.push('Series package must contain at least two episodes.')
+
+  episodes.forEach((episode: any, index: number) => {
+    const expectedEpisodeNumber = index + 1
+    const number = episodeNumber(episode, expectedEpisodeNumber)
+    seen.add(number)
+
+    if (String(episode.series_id || '') !== String(seriesId)) {
+      issues.push(`Episode ${expectedEpisodeNumber} has mismatched series_id.`)
+    }
+    if (String(episode.story_type || '') !== 'series_episode') {
+      issues.push(`Episode ${expectedEpisodeNumber} is not marked story_type=series_episode.`)
+    }
+    if (number !== expectedEpisodeNumber) {
+      issues.push(`Episode ${expectedEpisodeNumber} has episode number ${number}.`)
+    }
+    if (Number(episode.series_total_episodes || 0) !== total) {
+      issues.push(`Episode ${expectedEpisodeNumber} has series_total_episodes=${episode.series_total_episodes}, expected ${total}.`)
+    }
+    const shouldBeFinale = expectedEpisodeNumber === total
+    if (Boolean(episode.series_is_finale) !== shouldBeFinale) {
+      issues.push(`Episode ${expectedEpisodeNumber} has series_is_finale=${Boolean(episode.series_is_finale)}, expected ${shouldBeFinale}.`)
+    }
+    if (!episode.script) {
+      issues.push(`Episode ${expectedEpisodeNumber} is missing script.`)
+    }
+  })
+
+  for (let expected = 1; expected <= total; expected += 1) {
+    if (!seen.has(expected)) issues.push(`Series is missing episode number ${expected}.`)
+  }
+
+  return issues
+}
+
+async function validateSeriesEpisodeScript(episode: any, model: string, job: ProductionJob) {
+  const storyId = String(episode.id)
+  const number = episodeNumber(episode, 0)
+  const script = String(episode.script || '')
+  if (!script) {
+    return {
+      passed: false,
+      skipped: false,
+      storyId,
+      episodeNumber: number,
+      report: `❌ VALIDATOR RESULT: FAIL
+Do not send to production. Fix the following before resubmitting:
+- Episode ${number} script is missing.`,
+      story: episode,
+    }
+  }
+
+  if (episode.status === 'validator_passed' || episode.validator_result === 'PASS') {
+    return {
+      passed: true,
+      skipped: true,
+      storyId,
+      episodeNumber: number,
+      report: episode.validator_report || '✓ Validator already passed.',
+      story: episode,
+    }
+  }
+
+  const cardCopyIssues = validateCardCopy(script)
+  if (cardCopyIssues.length > 0) {
+    const report = `❌ VALIDATOR RESULT: FAIL
+Do not send to production. Fix the following before resubmitting:
+${cardCopyIssues.map((issue) => `- ${issue}`).join('\n')}`
+
+    const { data: updated, error: updateError } = await supabase
+      .from('stories')
+      .update({
+        validator_result: 'FAIL',
+        validator_report: report,
+        validator_passed_at: null,
+        status: 'validator_failed',
+      })
+      .eq('id', storyId)
+      .select('id,title,status,description,validator_result,validator_report,validator_passed_at')
+      .single()
+
+    if (updateError || !updated) {
+      throw new Error(updateError?.message || `Failed to save episode ${number} validator failure`)
+    }
+
+    return {
+      passed: false,
+      skipped: false,
+      storyId,
+      episodeNumber: number,
+      report,
+      story: updated,
+    }
+  }
+
+  const response = await anthropic.messages.create({
+    model,
+    max_tokens: 4000,
+    temperature: 0,
+    messages: [{
+      role: 'user',
+      content: `${VALIDATOR_PROMPT}
+
+Series-specific validation:
+- This is Episode ${number} of ${episode.series_total_episodes}.
+- Non-final series episodes must end on a specific continuation hook.
+- Final series episodes must close the series arc and must not tease a next episode.
+
+SCRIPT:
+${script}`,
+    }],
+  })
+
+  const report = response.content
+    .map((c: any) => ('text' in c ? c.text : ''))
+    .join('')
+    .trim()
+  if (!report) throw new Error(`Episode ${number} validator returned an empty report`)
+
+  const passed = /VALIDATOR RESULT:\s*PASS/i.test(report)
+  const validatedDescription = passed ? normalizeHeaderValue(extractHeader(script, 'DESCRIPTION')) : ''
+  const passedAt = passed ? nowIso() : null
+
+  const { data: updated, error: updateError } = await supabase
+    .from('stories')
+    .update({
+      validator_result: passed ? 'PASS' : 'FAIL',
+      validator_report: report,
+      validator_passed_at: passedAt,
+      status: passed ? 'validator_passed' : 'validator_failed',
+      ...(passed && validatedDescription ? { description: validatedDescription } : {}),
+    })
+    .eq('id', storyId)
+    .select('id,title,status,description,validator_result,validator_report,validator_passed_at')
+    .single()
+
+  if (updateError || !updated) {
+    throw new Error(updateError?.message || `Failed to save episode ${number} validator result`)
+  }
+
+  logAnthropicCall({
+    route: '/api/admin/production-jobs/run-next',
+    purpose: 'series-episode-script-validator',
+    model,
+    inputTokens: response.usage?.input_tokens ?? 0,
+    outputTokens: response.usage?.output_tokens ?? 0,
+    storyId,
+    storyTitle: episode.title,
+    metadata: { is_v2: true, production_job_id: job.id, series_id: episode.series_id, episode_number: number },
+  }).catch(() => {})
+
+  return {
+    passed,
+    skipped: false,
+    storyId,
+    episodeNumber: number,
+    report,
+    story: updated,
+  }
+}
+
+async function validateSeriesPackageWithAi(episodes: any[], metadataIssues: string[], model: string, job: ProductionJob) {
+  if (metadataIssues.length > 0) {
+    return {
+      pass: false,
+      issues: metadataIssues,
+      confidence: 1,
+      summary: 'Series metadata failed deterministic validation.',
+      rawReport: null,
+    }
+  }
+
+  const packageBrief = episodes.map((episode: any, index: number) => {
+    const script = String(episode.script || '')
+    return {
+      episodeNumber: episodeNumber(episode, index + 1),
+      title: episode.title,
+      seriesIsFinale: Boolean(episode.series_is_finale),
+      description: extractHeader(script, 'DESCRIPTION') || episode.description || '',
+      belleIntro: extractBelleSection(script, 'intro'),
+      belleOutro: extractBelleSection(script, 'outro'),
+      scriptTail: scriptTail(script, 1800),
+    }
+  })
+
+  const response = await anthropic.messages.create({
+    model,
+    max_tokens: 1600,
+    temperature: 0,
+    messages: [{
+      role: 'user',
+      content: `You are validating an Endless Tales 3-episode series package before audio production.
+
+Return JSON only. Do not include markdown.
+
+Required JSON shape:
+{
+  "pass": true | false,
+  "issues": ["specific issue"],
+  "confidence": 0.0,
+  "summary": "brief package assessment"
+}
+
+Validation rules:
+- All episodes must clearly belong to one continuous series arc.
+- Episode 1 and Episode 2 must end with intentional continuation hooks, not standalone closure.
+- Episode 3 must close the series arc and must not tease Episode 4.
+- No episode should be treated as a standalone story.
+- Metadata must be consistent with episode order and finale status.
+- Fail if the finale leaves the main series question unresolved.
+
+SERIES PACKAGE:
+${JSON.stringify(packageBrief, null, 2)}`,
+    }],
+  })
+
+  const rawReport = response.content
+    .map((c: any) => ('text' in c ? c.text : ''))
+    .join('')
+    .trim()
+  if (!rawReport) throw new Error('Series package validator returned an empty report')
+
+  const parsed = parseJsonObject(rawReport)
+  const issues = Array.isArray(parsed.issues) ? parsed.issues.map(String).filter(Boolean) : []
+  const report = {
+    pass: parsed.pass === true,
+    issues,
+    confidence: typeof parsed.confidence === 'number' ? parsed.confidence : Number(parsed.confidence || 0),
+    summary: String(parsed.summary || ''),
+    rawReport,
+  }
+
+  logAnthropicCall({
+    route: '/api/admin/production-jobs/run-next',
+    purpose: 'series-package-validator',
+    model,
+    inputTokens: response.usage?.input_tokens ?? 0,
+    outputTokens: response.usage?.output_tokens ?? 0,
+    storyId: episodes[0]?.id || undefined,
+    storyTitle: episodes[0]?.series_name || episodes[0]?.title || 'Series package',
+    metadata: { is_v2: true, production_job_id: job.id, series_id: episodes[0]?.series_id },
+  }).catch(() => {})
+
+  return report
+}
+
+async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
+  const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
+  const seriesId = job.series_id || state.seriesId
+  if (!seriesId) throw new Error('Series job is missing series_id')
+
+  const episodes = await loadSeriesEpisodes(String(seriesId))
+  if (!episodes.length) throw new Error('No child episodes found for series package')
+
+  const metadataIssues = validateSeriesMetadata(episodes, String(seriesId))
+  const existingValidation = state.seriesValidation && typeof state.seriesValidation === 'object'
+    ? state.seriesValidation
+    : {}
+  const validatedEpisodes = Array.isArray(existingValidation.validatedEpisodes)
+    ? [...existingValidation.validatedEpisodes]
+    : []
+  const failedEpisodes = Array.isArray(existingValidation.failedEpisodes)
+    ? [...existingValidation.failedEpisodes]
+    : []
+
+  const nextEpisode = episodes.find((episode: any) =>
+    !(episode.status === 'validator_passed' || episode.validator_result === 'PASS')
+      && !failedEpisodes.some((failed: any) => String(failed.storyId) === String(episode.id))
+  )
+
+  if (nextEpisode) {
+    const result = await validateSeriesEpisodeScript(nextEpisode, model, job)
+    const episodeSummary = {
+      storyId: result.storyId,
+      title: result.story.title,
+      episodeNumber: result.episodeNumber,
+      validatorResult: result.passed ? 'PASS' : 'FAIL',
+      skipped: result.skipped,
+      report: result.report,
+      validatedAt: nowIso(),
+    }
+
+    const nextValidatedEpisodes = result.passed
+      ? [
+          ...validatedEpisodes.filter((episode: any) => String(episode.storyId) !== result.storyId),
+          episodeSummary,
+        ]
+      : validatedEpisodes
+    const nextFailedEpisodes = result.passed
+      ? failedEpisodes
+      : [
+          ...failedEpisodes.filter((episode: any) => String(episode.storyId) !== result.storyId),
+          episodeSummary,
+        ]
+
+    const nextUnvalidated = episodes.find((episode: any) =>
+      String(episode.id) !== result.storyId
+        && !(episode.status === 'validator_passed' || episode.validator_result === 'PASS')
+        && !nextValidatedEpisodes.some((validated: any) => String(validated.storyId) === String(episode.id))
+    )
+
+    return {
+      passed: false,
+      failed: !result.passed,
+      complete: false,
+      episodeResult: episodeSummary,
+      seriesId: String(seriesId),
+      episodes,
+      nextStep: NEXT_STEP_AFTER_SERIES_SCRIPTS,
+      state: {
+        ...state,
+        seriesId: String(seriesId),
+        seriesValidation: {
+          episodeCount: episodes.length,
+          validatedEpisodes: nextValidatedEpisodes,
+          failedEpisodes: nextFailedEpisodes,
+          nextEpisodeNumber: nextUnvalidated ? episodeNumber(nextUnvalidated, 0) : null,
+          metadataIssues,
+          packageReport: existingValidation.packageReport || null,
+        },
+      },
+    }
+  }
+
+  const refreshedEpisodes = await loadSeriesEpisodes(String(seriesId))
+  const allEpisodesPassed = refreshedEpisodes.every((episode: any) =>
+    episode.status === 'validator_passed' || episode.validator_result === 'PASS'
+  )
+  if (!allEpisodesPassed) {
+    throw new Error('Series validation state is inconsistent: no next episode found, but not all episodes passed')
+  }
+
+  const packageReport = existingValidation.packageReport?.pass === true
+    ? existingValidation.packageReport
+    : await validateSeriesPackageWithAi(refreshedEpisodes, metadataIssues, model, job)
+
+  const failed = packageReport.pass !== true
+  return {
+    passed: !failed,
+    failed,
+    complete: !failed,
+    episodeResult: null,
+    seriesId: String(seriesId),
+    episodes: refreshedEpisodes,
+    nextStep: failed ? NEXT_STEP_AFTER_SERIES_SCRIPTS : NEXT_STEP_AFTER_SERIES_VALIDATION,
+    packageReport,
+    state: {
+      ...state,
+      seriesId: String(seriesId),
+      seriesValidation: {
+        episodeCount: refreshedEpisodes.length,
+        validatedEpisodes: refreshedEpisodes.map((episode: any) => ({
+          storyId: episode.id,
+          title: episode.title,
+          episodeNumber: episodeNumber(episode, 0),
+          validatorResult: 'PASS',
+          skipped: true,
+          report: episode.validator_report || '',
+        })),
+        failedEpisodes,
+        nextEpisodeNumber: null,
+        metadataIssues,
+        packageReport,
+      },
+    },
+  }
+}
+
 export async function POST(req: NextRequest) {
   let lockedJob: ProductionJob | null = null
 
@@ -2629,6 +3004,92 @@ export async function POST(req: NextRequest) {
           episodeNumber: episodeNumber(episode, 0),
           hasScript: Boolean(episode.script),
         })),
+        logs,
+      })
+    }
+
+    if (step === NEXT_STEP_AFTER_SERIES_SCRIPTS) {
+      const result = await scoreValidateSeriesPackage(lockedJob, model)
+      const logs = appendLog(lockedJob, result.failed
+        ? 'Series package validation failed'
+        : result.complete
+          ? 'Series package validation passed'
+          : 'Validated one series episode script', {
+        seriesId: result.seriesId,
+        nextStep: result.nextStep,
+        episodeResult: result.episodeResult,
+        packageReport: result.packageReport || null,
+        metadataIssues: result.state.seriesValidation?.metadataIssues || [],
+      })
+
+      if (result.failed) {
+        const { data: failedJob, error: updateError } = await supabase
+          .from('production_jobs')
+          .update({
+            status: 'failed',
+            current_step: NEXT_STEP_AFTER_SERIES_SCRIPTS,
+            state_json: result.state,
+            error_json: {
+              step,
+              seriesId: result.seriesId,
+              episodeResult: result.episodeResult,
+              failedEpisodes: result.state.seriesValidation?.failedEpisodes || [],
+              metadataIssues: result.state.seriesValidation?.metadataIssues || [],
+              packageReport: result.packageReport || null,
+              at: nowIso(),
+            },
+            logs,
+            locked_at: null,
+            locked_by: null,
+          })
+          .eq('id', lockedJob.id)
+          .select('*')
+          .single()
+
+        if (updateError) throw new Error(`Failed to save series validation failure: ${updateError.message}`)
+
+        return NextResponse.json({
+          success: false,
+          jobId: failedJob.id,
+          currentStep: step,
+          status: failedJob.status,
+          seriesId: result.seriesId,
+          episodeResult: result.episodeResult,
+          failedEpisodes: result.state.seriesValidation?.failedEpisodes || [],
+          metadataIssues: result.state.seriesValidation?.metadataIssues || [],
+          packageReport: result.packageReport || null,
+          logs,
+        }, { status: 422 })
+      }
+
+      const { data: updatedJob, error: updateError } = await supabase
+        .from('production_jobs')
+        .update({
+          series_id: result.seriesId,
+          status: 'running',
+          current_step: result.nextStep,
+          step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
+          state_json: result.state,
+          error_json: null,
+          logs,
+          locked_at: null,
+          locked_by: null,
+        })
+        .eq('id', lockedJob.id)
+        .select('*')
+        .single()
+
+      if (updateError) throw new Error(`Failed to advance series validation job: ${updateError.message}`)
+
+      return NextResponse.json({
+        success: true,
+        jobId: updatedJob.id,
+        currentStep: step,
+        nextStep: updatedJob.current_step,
+        seriesId: result.seriesId,
+        episodeResult: result.episodeResult,
+        packageReport: result.packageReport || null,
+        seriesValidation: result.state.seriesValidation,
         logs,
       })
     }
@@ -3842,7 +4303,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (step !== 'create_story_row') {
-      return bad('Only create_story_row, generate_script, validate_script, validate_story_resolution, voice_preflight, generate_voices, generate_belle_assets, validate_belle_assets, validate_belle_quality, repair_belle_quality, generate_music, render_final_mix, complete_story_package, ready_for_review, and generate_episode_script are implemented in this run-next slice', 422, {
+      return bad('Only create_story_row, generate_script, validate_script, validate_story_resolution, voice_preflight, generate_voices, generate_belle_assets, validate_belle_assets, validate_belle_quality, repair_belle_quality, generate_music, render_final_mix, complete_story_package, ready_for_review, generate_episode_script, and score_validate_package are implemented in this run-next slice', 422, {
         jobId: lockedJob.id,
         currentStep: lockedJob.current_step,
       })
