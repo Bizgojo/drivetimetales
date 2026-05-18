@@ -188,8 +188,18 @@ function phoneticTokenKey(token) {
   return normalized[0] + normalized.slice(1).replace(/[aeiou]/g, '')
 }
 
+function commonFirstNameVariantMatches(expected, detected) {
+  const groups = [
+    ['katherine', 'catherine', 'kathryn'],
+    ['sara', 'sarah'],
+    ['jon', 'john'],
+  ]
+  return groups.some(group => group.includes(expected) && group.includes(detected))
+}
+
 function transcriptTokenMatches(expected, detected) {
   if (expected === detected) return true
+  if (commonFirstNameVariantMatches(expected, detected)) return true
   if (expected.length < 7 || detected.length < 7) return false
   if (expected[0] !== detected[0]) return false
 
@@ -265,6 +275,10 @@ const examples = [
   { expected: 'Eight thousand ties lined the railroad.', detected: '8000 ties lined the railroad.', passed: true },
   { expected: 'September nineteenth. He glanced at the calendar. September eighteenth. He was holding a report.', detected: 'September 19th, he glanced at the calendar. September 18th, he was holding a report.', passed: true },
   { expected: 'The hearing was on October twenty-first.', detected: 'The hearing was on October 21st.', passed: true },
+  { expected: "Katherine, it's Ernest. Ernest Ward, out at the causeway toll.", detected: "Catherine, it's Ernest, Ernest Ward, out at the Causeway Toll.", passed: true },
+  { expected: 'Kathryn waited near the toll booth.', detected: 'Catherine waited near the toll booth.', passed: true },
+  { expected: 'Sara left the message on the desk.', detected: 'Sarah left the message on the desk.', passed: true },
+  { expected: 'Jon called from the bridge.', detected: 'John called from the bridge.', passed: true },
   { expected: 'The preacher cleared her throat.', detected: 'Preacher cleared her throat.', passed: true },
   { expected: 'A rider crossed the bridge.', detected: 'Rider crossed the bridge.', passed: true },
   { expected: 'An engine waited near the depot.', detected: 'Engine waited near the depot.', passed: true },
