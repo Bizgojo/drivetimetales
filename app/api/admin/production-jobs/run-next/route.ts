@@ -30,6 +30,7 @@ const NEXT_STEP_AFTER_STANDALONE_PACKAGE = 'ready_for_review'
 const NEXT_STEP_AFTER_SERIES_CREATE = 'generate_episode_script'
 const NEXT_STEP_AFTER_SERIES_SCRIPTS = 'score_validate_package'
 const NEXT_STEP_AFTER_SERIES_VALIDATION = 'series_voice_preflight'
+const NEXT_STEP_AFTER_SERIES_PREFLIGHT = 'series_generate_voices'
 const TITLE_MAX_CHARS = 28
 const DESCRIPTION_MAX_CHARS = 70
 const DESCRIPTION_PAST_TENSE_RE = /\b(vanished|was|were|had|found|discovered|left|moved|sealed|signed|forged|buried|hidden)\b/i
@@ -2944,6 +2945,126 @@ async function scoreValidateSeriesPackage(job: ProductionJob, model: string) {
   }
 }
 
+async function runSeriesVoicePreflight(job: ProductionJob, origin: string) {
+  const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
+  const seriesId = job.series_id || state.seriesId
+  if (!seriesId) throw new Error('Series job is missing series_id')
+  if (state.seriesValidation?.packageReport?.pass !== true) {
+    throw new Error('Series package validation must pass before series_voice_preflight')
+  }
+
+  const episodes = await loadSeriesEpisodes(String(seriesId))
+  if (!episodes.length) throw new Error('No child episodes found for series package')
+
+  const previous = state.seriesVoicePreflight && typeof state.seriesVoicePreflight === 'object'
+    ? state.seriesVoicePreflight
+    : {}
+  const checkedEpisodes = Array.isArray(previous.checkedEpisodes)
+    ? [...previous.checkedEpisodes]
+    : []
+  const failedEpisodes = Array.isArray(previous.failedEpisodes)
+    ? [...previous.failedEpisodes]
+    : []
+  const reportsByEpisode = previous.reportsByEpisode && typeof previous.reportsByEpisode === 'object'
+    ? { ...previous.reportsByEpisode }
+    : {}
+
+  const nextEpisode = episodes.find((episode: any) =>
+    !checkedEpisodes.some((checked: any) => String(checked.storyId) === String(episode.id))
+      && !failedEpisodes.some((failed: any) => String(failed.storyId) === String(episode.id))
+  )
+
+  if (!nextEpisode) {
+    return {
+      passed: true,
+      failed: false,
+      complete: true,
+      seriesId: String(seriesId),
+      episodeResult: null,
+      report: null,
+      nextStep: NEXT_STEP_AFTER_SERIES_PREFLIGHT,
+      state: {
+        ...state,
+        seriesId: String(seriesId),
+        seriesVoicePreflight: {
+          episodeCount: episodes.length,
+          checkedEpisodes,
+          failedEpisodes,
+          nextEpisodeNumber: null,
+          reportsByEpisode,
+        },
+      },
+    }
+  }
+
+  const storyId = String(nextEpisode.id)
+  const number = episodeNumber(nextEpisode, 0)
+  const endpoint = `${origin}/api/admin/generate-voices`
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      storyId,
+      preflightOnly: true,
+    }),
+  })
+  const report = await readJsonOrDiagnostic(response, '/api/admin/generate-voices') as VoicePreflightResult
+  const passed = response.ok && report.success === true
+  const episodeSummary = {
+    storyId,
+    title: nextEpisode.title,
+    episodeNumber: number,
+    passed,
+    checkedAt: nowIso(),
+  }
+  const nextReportsByEpisode = {
+    ...reportsByEpisode,
+    [number || storyId]: report,
+  }
+  const nextCheckedEpisodes = passed
+    ? [
+        ...checkedEpisodes.filter((episode: any) => String(episode.storyId) !== storyId),
+        episodeSummary,
+      ]
+    : checkedEpisodes
+  const nextFailedEpisodes = passed
+    ? failedEpisodes
+    : [
+        ...failedEpisodes.filter((episode: any) => String(episode.storyId) !== storyId),
+        {
+          ...episodeSummary,
+          report,
+        },
+      ]
+  const nextUnchecked = episodes.find((episode: any) =>
+    String(episode.id) !== storyId
+      && !nextCheckedEpisodes.some((checked: any) => String(checked.storyId) === String(episode.id))
+      && !nextFailedEpisodes.some((failed: any) => String(failed.storyId) === String(episode.id))
+  )
+  const complete = passed && nextCheckedEpisodes.length >= episodes.length
+
+  return {
+    passed,
+    failed: !passed,
+    complete,
+    seriesId: String(seriesId),
+    episodeResult: episodeSummary,
+    report,
+    nextStep: complete ? NEXT_STEP_AFTER_SERIES_PREFLIGHT : NEXT_STEP_AFTER_SERIES_VALIDATION,
+    state: {
+      ...state,
+      seriesId: String(seriesId),
+      seriesVoicePreflight: {
+        episodeCount: episodes.length,
+        checkedEpisodes: nextCheckedEpisodes,
+        failedEpisodes: nextFailedEpisodes,
+        nextEpisodeNumber: nextUnchecked ? episodeNumber(nextUnchecked, 0) : null,
+        reportsByEpisode: nextReportsByEpisode,
+      },
+    },
+  }
+}
+
 export async function POST(req: NextRequest) {
   let lockedJob: ProductionJob | null = null
 
@@ -3090,6 +3211,88 @@ export async function POST(req: NextRequest) {
         episodeResult: result.episodeResult,
         packageReport: result.packageReport || null,
         seriesValidation: result.state.seriesValidation,
+        logs,
+      })
+    }
+
+    if (step === NEXT_STEP_AFTER_SERIES_VALIDATION) {
+      const origin = new URL(req.url).origin
+      const result = await runSeriesVoicePreflight(lockedJob, origin)
+      const logs = appendLog(lockedJob, result.failed
+        ? 'Series voice preflight failed'
+        : result.complete
+          ? 'Series voice preflight complete'
+          : 'Checked one series episode voice preflight', {
+        seriesId: result.seriesId,
+        nextStep: result.nextStep,
+        episodeResult: result.episodeResult,
+      })
+
+      if (result.failed) {
+        const { data: failedJob, error: updateError } = await supabase
+          .from('production_jobs')
+          .update({
+            status: 'failed',
+            current_step: NEXT_STEP_AFTER_SERIES_VALIDATION,
+            state_json: result.state,
+            error_json: {
+              step,
+              seriesId: result.seriesId,
+              episodeResult: result.episodeResult,
+              preflightReport: result.report,
+              failedEpisodes: result.state.seriesVoicePreflight?.failedEpisodes || [],
+              at: nowIso(),
+            },
+            logs,
+            locked_at: null,
+            locked_by: null,
+          })
+          .eq('id', lockedJob.id)
+          .select('*')
+          .single()
+
+        if (updateError) throw new Error(`Failed to save series voice preflight failure: ${updateError.message}`)
+
+        return NextResponse.json({
+          success: false,
+          jobId: failedJob.id,
+          currentStep: step,
+          status: failedJob.status,
+          seriesId: result.seriesId,
+          episodeResult: result.episodeResult,
+          preflightReport: result.report,
+          failedEpisodes: result.state.seriesVoicePreflight?.failedEpisodes || [],
+          logs,
+        }, { status: 422 })
+      }
+
+      const { data: updatedJob, error: updateError } = await supabase
+        .from('production_jobs')
+        .update({
+          series_id: result.seriesId,
+          status: 'running',
+          current_step: result.nextStep,
+          step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
+          state_json: result.state,
+          error_json: null,
+          logs,
+          locked_at: null,
+          locked_by: null,
+        })
+        .eq('id', lockedJob.id)
+        .select('*')
+        .single()
+
+      if (updateError) throw new Error(`Failed to advance series voice preflight job: ${updateError.message}`)
+
+      return NextResponse.json({
+        success: true,
+        jobId: updatedJob.id,
+        currentStep: step,
+        nextStep: updatedJob.current_step,
+        seriesId: result.seriesId,
+        episodeResult: result.episodeResult,
+        seriesVoicePreflight: result.state.seriesVoicePreflight,
         logs,
       })
     }
@@ -4303,7 +4506,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (step !== 'create_story_row') {
-      return bad('Only create_story_row, generate_script, validate_script, validate_story_resolution, voice_preflight, generate_voices, generate_belle_assets, validate_belle_assets, validate_belle_quality, repair_belle_quality, generate_music, render_final_mix, complete_story_package, ready_for_review, generate_episode_script, and score_validate_package are implemented in this run-next slice', 422, {
+      return bad('Only create_story_row, generate_script, validate_script, validate_story_resolution, voice_preflight, generate_voices, generate_belle_assets, validate_belle_assets, validate_belle_quality, repair_belle_quality, generate_music, render_final_mix, complete_story_package, ready_for_review, generate_episode_script, score_validate_package, and series_voice_preflight are implemented in this run-next slice', 422, {
         jobId: lockedJob.id,
         currentStep: lockedJob.current_step,
       })
