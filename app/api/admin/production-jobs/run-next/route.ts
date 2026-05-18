@@ -341,11 +341,11 @@ function validateBelleText(kind: 'intro' | 'outro', text: string, options: { sta
   const lower = text.toLowerCase()
   const wordCount = countWords(text)
   const sentenceCount = (text.match(/[.!?]+/g) || []).length
-  const withoutPunctuation = text.replace(/[.!?]+$/g, '').trim()
+  const withoutPunctuation = text.replace(/[.!?]["'”’)]*$/g, '').trim()
 
   if (!text) issues.push(`${kind} text is required.`)
   if (text && wordCount < 4) issues.push(`${kind} text is too short.`)
-  if (text && !/[.!?]$/.test(text)) issues.push(`${kind} text appears incomplete; it must end with punctuation.`)
+  if (text && !/[.!?]["'”’)]*$/.test(text)) issues.push(`${kind} text appears incomplete; it must end with punctuation.`)
   if (/\b(welcome|begins now|only on endless tales|sponsored by|stay tuned)\b/i.test(text)) {
     issues.push(`${kind} uses forbidden host or promotional language.`)
   }
