@@ -320,9 +320,19 @@ function commonFirstNameVariantMatches(expected: string, detected: string): bool
   return groups.some(group => group.includes(expected) && group.includes(detected))
 }
 
+function commonSurnameVariantMatches(expected: string, detected: string): boolean {
+  const groups = [
+    ['clarke', 'clark'],
+    ['greene', 'green'],
+    ['smythe', 'smith'],
+  ]
+  return groups.some(group => group.includes(expected) && group.includes(detected))
+}
+
 function transcriptTokenMatches(expected: string, detected: string): boolean {
   if (expected === detected) return true
   if (commonFirstNameVariantMatches(expected, detected)) return true
+  if (commonSurnameVariantMatches(expected, detected)) return true
   if (expected.length < 7 || detected.length < 7) return false
   if (expected[0] !== detected[0]) return false
 

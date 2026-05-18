@@ -218,9 +218,19 @@ function commonFirstNameVariantMatches(expected, detected) {
   return groups.some(group => group.includes(expected) && group.includes(detected))
 }
 
+function commonSurnameVariantMatches(expected, detected) {
+  const groups = [
+    ['clarke', 'clark'],
+    ['greene', 'green'],
+    ['smythe', 'smith'],
+  ]
+  return groups.some(group => group.includes(expected) && group.includes(detected))
+}
+
 function transcriptTokenMatches(expected, detected) {
   if (expected === detected) return true
   if (commonFirstNameVariantMatches(expected, detected)) return true
+  if (commonSurnameVariantMatches(expected, detected)) return true
   if (expected.length < 7 || detected.length < 7) return false
   if (expected[0] !== detected[0]) return false
 
@@ -300,6 +310,9 @@ const examples = [
   { expected: 'Kathryn waited near the toll booth.', detected: 'Catherine waited near the toll booth.', passed: true },
   { expected: 'Sara left the message on the desk.', detected: 'Sarah left the message on the desk.', passed: true },
   { expected: 'Jon called from the bridge.', detected: 'John called from the bridge.', passed: true },
+  { expected: "It was Amos Clarke, the man Ernest had replaced in this very booth six months ago.", detected: "It was Amos Clark, the man Ernest had replaced in this very booth six months ago.", passed: true },
+  { expected: 'Mrs. Greene waited at the crossing.', detected: 'Mrs. Green waited at the crossing.', passed: true },
+  { expected: 'Smythe signed the dispatch book.', detected: 'Smith signed the dispatch book.', passed: true },
   { expected: "All right. I'm on patrol near Manns Harbor. I can be there in twenty minutes. Don't let anyone touch that envelope.", detected: "All right, I'm on patrol near Man's Harbor. I can be there in 20 minutes. Don't let anyone touch that envelope.", passed: true },
   { expected: "All right. I'm on patrol near Manns Harbor.", detected: "Alright, I'm on patrol near Man's Harbor.", passed: true },
   { expected: 'Okay, move onto the bridge.', detected: 'OK, move on to the bridge.', passed: true },
