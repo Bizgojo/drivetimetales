@@ -31,6 +31,7 @@ const NEXT_STEP_AFTER_SERIES_CREATE = 'generate_episode_script'
 const NEXT_STEP_AFTER_SERIES_SCRIPTS = 'score_validate_package'
 const NEXT_STEP_AFTER_SERIES_VALIDATION = 'series_voice_preflight'
 const NEXT_STEP_AFTER_SERIES_PREFLIGHT = 'series_generate_voices'
+const NEXT_STEP_AFTER_SERIES_VOICES = 'series_generate_belle_assets'
 const TITLE_MAX_CHARS = 28
 const DESCRIPTION_MAX_CHARS = 70
 const DESCRIPTION_PAST_TENSE_RE = /\b(vanished|was|were|had|found|discovered|left|moved|sealed|signed|forged|buried|hidden)\b/i
@@ -86,6 +87,13 @@ type VoiceGenerationResult = {
   segmentNumber: number
   report: any
   state: any
+}
+
+type SeriesVoiceGenerationResult = VoiceGenerationResult & {
+  seriesId: string
+  episodeNumber: number
+  episodeComplete: boolean
+  allComplete: boolean
 }
 
 function bad(message: string, status = 400, extra: Record<string, unknown> = {}) {
@@ -3065,6 +3073,188 @@ async function runSeriesVoicePreflight(job: ProductionJob, origin: string) {
   }
 }
 
+async function runSeriesVoiceSegment(job: ProductionJob, origin: string): Promise<SeriesVoiceGenerationResult> {
+  const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
+  const seriesId = job.series_id || state.seriesId
+  if (!seriesId) throw new Error('Series job is missing series_id')
+  if (state.seriesVoicePreflight?.failedEpisodes?.length > 0) {
+    throw new Error('Series voice preflight has failed episodes')
+  }
+
+  const episodes = await loadSeriesEpisodes(String(seriesId))
+  if (!episodes.length) throw new Error('No child episodes found for series voice generation')
+
+  const preflight = state.seriesVoicePreflight && typeof state.seriesVoicePreflight === 'object'
+    ? state.seriesVoicePreflight
+    : {}
+  const checkedEpisodes = Array.isArray(preflight.checkedEpisodes) ? preflight.checkedEpisodes : []
+  if (checkedEpisodes.length < episodes.length) {
+    throw new Error('Series voice preflight must pass for every episode before series_generate_voices')
+  }
+
+  const previous = state.seriesVoiceGeneration && typeof state.seriesVoiceGeneration === 'object'
+    ? state.seriesVoiceGeneration
+    : {}
+  const progressByEpisode = previous.progressByEpisode && typeof previous.progressByEpisode === 'object'
+    ? { ...previous.progressByEpisode }
+    : {}
+
+  const currentNumber = Number(previous.currentEpisodeNumber || 0)
+  const currentEpisode = episodes.find((episode: any) => {
+    const number = episodeNumber(episode, 0)
+    const progress = progressByEpisode[number]
+    return number === currentNumber && progress?.complete !== true
+  }) || episodes.find((episode: any) => {
+    const number = episodeNumber(episode, 0)
+    const progress = progressByEpisode[number]
+    return progress?.complete !== true
+  })
+
+  if (!currentEpisode) {
+    return {
+      complete: true,
+      hardFailure: false,
+      skippedNonSegment: false,
+      storyId: '',
+      seriesId: String(seriesId),
+      episodeNumber: 0,
+      segmentNumber: 0,
+      episodeComplete: true,
+      allComplete: true,
+      report: previous.lastReport || { success: true, skipped: true },
+      state: {
+        ...state,
+        seriesId: String(seriesId),
+        seriesVoiceGeneration: {
+          ...previous,
+          episodeCount: episodes.length,
+          currentEpisodeNumber: null,
+          progressByEpisode,
+          lastUpdatedAt: nowIso(),
+        },
+      },
+    }
+  }
+
+  const storyId = String(currentEpisode.id)
+  const number = episodeNumber(currentEpisode, 0)
+  const episodeKey = String(number)
+  const episodeProgress = progressByEpisode[episodeKey] && typeof progressByEpisode[episodeKey] === 'object'
+    ? progressByEpisode[episodeKey]
+    : {}
+  const preflightReport = preflight.reportsByEpisode && typeof preflight.reportsByEpisode === 'object'
+    ? preflight.reportsByEpisode[number] || preflight.reportsByEpisode[episodeKey] || null
+    : null
+  const expectedSegmentCount = Number(
+    episodeProgress.expectedSegmentCount
+    ?? preflightReport?.estimatedSegmentCount?.total
+    ?? 0
+  )
+  const fallbackSegmentNumber = Number.isInteger(episodeProgress.nextSegmentNumber)
+    ? Number(episodeProgress.nextSegmentNumber)
+    : firstMissingSegmentNumber(episodeProgress.missingSegments, 0)
+  const segmentNumber = Math.max(0, fallbackSegmentNumber)
+
+  const response = await fetch(`${origin}/api/admin/generate-voices`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      storyId,
+      retryMissingOnly: true,
+      segmentNumber,
+    }),
+  })
+  const report = await readJsonOrDiagnostic(response, '/api/admin/generate-voices')
+  const errorText = String(report?.error || '')
+  const skippedNonSegment = response.status === 404 && /No parsed script line found/i.test(errorText)
+  const failures = Array.isArray(report?.failures) ? report.failures : []
+  const missingSegments = Array.isArray(report?.missingSegments)
+    ? report.missingSegments
+    : Array.isArray(report?.inventory?.missingSegments)
+      ? report.inventory.missingSegments
+      : episodeProgress.missingSegments || []
+  const generatedSegments = [
+    ...(Array.isArray(episodeProgress.generatedSegments) ? episodeProgress.generatedSegments : []),
+    ...(Array.isArray(report?.generatedSegments) ? report.generatedSegments : []),
+  ]
+  const nextSegmentNumber = skippedNonSegment
+    ? segmentNumber + 1
+    : missingSegments.length > 0
+      ? firstMissingSegmentNumber(missingSegments, segmentNumber + 1)
+      : segmentNumber + 1
+  const episodeComplete = !skippedNonSegment && response.ok && failures.length === 0 && missingSegments.length === 0
+  const hardFailure = !skippedNonSegment && (!response.ok || failures.length > 0)
+  const nextEpisodeProgress = {
+    storyId,
+    title: currentEpisode.title || null,
+    episodeNumber: number,
+    expectedSegmentCount,
+    nextSegmentNumber,
+    presentCount: Number(report?.presentCount ?? episodeProgress.presentCount ?? 0),
+    missingSegments,
+    generatedSegments,
+    failures,
+    lastSegmentNumber: segmentNumber,
+    lastUpdatedAt: nowIso(),
+    lastReport: report,
+    skippedNonSegmentCount: Number(episodeProgress.skippedNonSegmentCount || 0) + (skippedNonSegment ? 1 : 0),
+    complete: episodeComplete || episodeProgress.complete === true,
+  }
+  const nextProgressByEpisode = {
+    ...progressByEpisode,
+    [episodeKey]: nextEpisodeProgress,
+  }
+  const nextEpisode = episodeComplete
+    ? episodes.find((episode: any) => {
+        const nextNumber = episodeNumber(episode, 0)
+        const progress = nextProgressByEpisode[String(nextNumber)]
+        return nextNumber !== number && progress?.complete !== true
+      })
+    : currentEpisode
+  const allComplete = episodes.every((episode: any) => {
+    const nextNumber = episodeNumber(episode, 0)
+    return nextProgressByEpisode[String(nextNumber)]?.complete === true
+  })
+  const aggregatePresentCount = Object.values(nextProgressByEpisode)
+    .reduce((total: number, progress: any) => total + Number(progress?.presentCount || 0), 0)
+  const aggregateExpectedSegmentCount = Object.values(nextProgressByEpisode)
+    .reduce((total: number, progress: any) => total + Number(progress?.expectedSegmentCount || 0), 0)
+  const aggregateFailures = Object.values(nextProgressByEpisode)
+    .flatMap((progress: any) => Array.isArray(progress?.failures) ? progress.failures : [])
+
+  return {
+    complete: allComplete,
+    hardFailure,
+    skippedNonSegment,
+    storyId,
+    seriesId: String(seriesId),
+    episodeNumber: number,
+    segmentNumber,
+    episodeComplete,
+    allComplete,
+    report,
+    state: {
+      ...state,
+      seriesId: String(seriesId),
+      seriesVoiceGeneration: {
+        episodeCount: episodes.length,
+        currentEpisodeNumber: allComplete ? null : episodeNumber(nextEpisode, number),
+        progressByEpisode: nextProgressByEpisode,
+        expectedSegmentCount: aggregateExpectedSegmentCount || expectedSegmentCount,
+        presentCount: aggregatePresentCount,
+        missingSegments,
+        nextSegmentNumber,
+        failures: aggregateFailures,
+        lastEpisodeNumber: number,
+        lastStoryId: storyId,
+        lastSegmentNumber: segmentNumber,
+        lastUpdatedAt: nowIso(),
+        lastReport: report,
+      },
+    },
+  }
+}
+
 export async function POST(req: NextRequest) {
   let lockedJob: ProductionJob | null = null
 
@@ -3719,6 +3909,106 @@ export async function POST(req: NextRequest) {
         nextStep: updatedJob.current_step,
         storyId: result.storyId,
         complete: result.complete,
+        skippedNonSegment: result.skippedNonSegment,
+        segmentNumber: result.segmentNumber,
+        voiceGeneration,
+        voiceGenerationReport: result.report,
+        logs,
+      })
+    }
+
+    if (step === NEXT_STEP_AFTER_SERIES_PREFLIGHT) {
+      const origin = new URL(req.url).origin
+      const result = await runSeriesVoiceSegment(lockedJob, origin)
+      const voiceGeneration = result.state.seriesVoiceGeneration || {}
+      const logs = appendLog(lockedJob, result.complete
+        ? 'All series voice segments are present'
+        : result.episodeComplete
+          ? 'Completed voice generation for one series episode'
+          : result.skippedNonSegment
+            ? 'Skipped non-story series segment index'
+            : 'Processed one series voice segment', {
+        seriesId: result.seriesId,
+        storyId: result.storyId || null,
+        episodeNumber: result.episodeNumber || null,
+        segmentNumber: result.segmentNumber,
+        nextStep: result.complete ? NEXT_STEP_AFTER_SERIES_VOICES : NEXT_STEP_AFTER_SERIES_PREFLIGHT,
+        currentEpisodeNumber: voiceGeneration.currentEpisodeNumber,
+        nextSegmentNumber: voiceGeneration.nextSegmentNumber,
+        presentCount: voiceGeneration.presentCount,
+        missingCount: Array.isArray(voiceGeneration.missingSegments) ? voiceGeneration.missingSegments.length : null,
+      })
+
+      if (result.hardFailure) {
+        const { data: failedJob, error: updateError } = await supabase
+          .from('production_jobs')
+          .update({
+            series_id: result.seriesId,
+            status: 'failed',
+            current_step: NEXT_STEP_AFTER_SERIES_PREFLIGHT,
+            state_json: result.state,
+            error_json: {
+              step,
+              seriesId: result.seriesId,
+              episodeNumber: result.episodeNumber,
+              storyId: result.storyId,
+              segmentNumber: result.segmentNumber,
+              voiceGenerationReport: result.report,
+              at: nowIso(),
+            },
+            logs,
+            locked_at: null,
+            locked_by: null,
+          })
+          .eq('id', lockedJob.id)
+          .select('*')
+          .single()
+
+        if (updateError) throw new Error(`Failed to save series voice generation failure: ${updateError.message}`)
+
+        return NextResponse.json({
+          success: false,
+          jobId: failedJob.id,
+          currentStep: step,
+          status: failedJob.status,
+          seriesId: result.seriesId,
+          episodeNumber: result.episodeNumber,
+          storyId: result.storyId,
+          segmentNumber: result.segmentNumber,
+          voiceGenerationReport: result.report,
+          logs,
+        }, { status: 422 })
+      }
+
+      const { data: updatedJob, error: updateError } = await supabase
+        .from('production_jobs')
+        .update({
+          series_id: result.seriesId,
+          status: 'running',
+          current_step: result.complete ? NEXT_STEP_AFTER_SERIES_VOICES : NEXT_STEP_AFTER_SERIES_PREFLIGHT,
+          step_index: Math.max(Number(lockedJob.step_index || 0), 0) + (result.complete ? 1 : 0),
+          state_json: result.state,
+          error_json: null,
+          logs,
+          locked_at: null,
+          locked_by: null,
+        })
+        .eq('id', lockedJob.id)
+        .select('*')
+        .single()
+
+      if (updateError) throw new Error(`Failed to save series voice generation progress: ${updateError.message}`)
+
+      return NextResponse.json({
+        success: true,
+        jobId: updatedJob.id,
+        currentStep: step,
+        nextStep: updatedJob.current_step,
+        seriesId: result.seriesId,
+        episodeNumber: result.episodeNumber,
+        storyId: result.storyId,
+        complete: result.complete,
+        episodeComplete: result.episodeComplete,
         skippedNonSegment: result.skippedNonSegment,
         segmentNumber: result.segmentNumber,
         voiceGeneration,
@@ -4506,7 +4796,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (step !== 'create_story_row') {
-      return bad('Only create_story_row, generate_script, validate_script, validate_story_resolution, voice_preflight, generate_voices, generate_belle_assets, validate_belle_assets, validate_belle_quality, repair_belle_quality, generate_music, render_final_mix, complete_story_package, ready_for_review, generate_episode_script, score_validate_package, and series_voice_preflight are implemented in this run-next slice', 422, {
+      return bad('Only create_story_row, generate_script, validate_script, validate_story_resolution, voice_preflight, generate_voices, generate_belle_assets, validate_belle_assets, validate_belle_quality, repair_belle_quality, generate_music, render_final_mix, complete_story_package, ready_for_review, generate_episode_script, score_validate_package, series_voice_preflight, and series_generate_voices are implemented in this run-next slice', 422, {
         jobId: lockedJob.id,
         currentStep: lockedJob.current_step,
       })
