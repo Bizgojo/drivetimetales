@@ -81,8 +81,12 @@ function normalizeStylisticCompoundWords(text) {
     .replace(/\bon\s+to\b/gi, 'onto')
 }
 
+function normalizePossessiveVehicleModelNames(text) {
+  return text.replace(/\b(Civic|Accord|Mustang)(?:'s|s)\s+(taillights|headlights|engine|tires|windshield)\b/gi, '$1 $2')
+}
+
 function transcriptTokens(text) {
-  return normalizeNumberWords(normalizeOrdinalDateForms(normalizeCurrencyForms(normalizePossessivePlaceNames(normalizeStylisticCompoundWords(text)))))
+  return normalizeNumberWords(normalizeOrdinalDateForms(normalizeCurrencyForms(normalizePossessivePlaceNames(normalizePossessiveVehicleModelNames(normalizeStylisticCompoundWords(text))))))
     .replace(/[’']/g, "'")
     .replace(/\b([A-Z][a-z]{4,})s'(?=\s|$)/g, '$1poss')
     .replace(/\b([A-Z][a-z]{4,})'s\b/g, '$1poss')
@@ -299,6 +303,9 @@ const examples = [
   { expected: "All right. I'm on patrol near Manns Harbor. I can be there in twenty minutes. Don't let anyone touch that envelope.", detected: "All right, I'm on patrol near Man's Harbor. I can be there in 20 minutes. Don't let anyone touch that envelope.", passed: true },
   { expected: "All right. I'm on patrol near Manns Harbor.", detected: "Alright, I'm on patrol near Man's Harbor.", passed: true },
   { expected: 'Okay, move onto the bridge.', detected: 'OK, move on to the bridge.', passed: true },
+  { expected: "The Civic's taillights shrank into the rain.", detected: 'The civics taillights shrank into the rain.', passed: true },
+  { expected: "The Accord's engine went quiet.", detected: 'The accords engine went quiet.', passed: true },
+  { expected: "The Mustang's windshield was cracked.", detected: 'The mustangs windshield was cracked.', passed: true },
   { expected: 'The road curved below Pikes Peak.', detected: "The road curved below Pike's Peak.", passed: true },
   { expected: 'The packet arrived from Harpers Ferry.', detected: "The packet arrived from Harper's Ferry.", passed: true },
   { expected: 'The preacher cleared her throat.', detected: 'Preacher cleared her throat.', passed: true },

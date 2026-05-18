@@ -222,8 +222,12 @@ function normalizeStylisticCompoundWords(text: string): string {
     .replace(/\bon\s+to\b/gi, 'onto')
 }
 
+function normalizePossessiveVehicleModelNames(text: string): string {
+  return text.replace(/\b(Civic|Accord|Mustang)(?:'s|s)\s+(taillights|headlights|engine|tires|windshield)\b/gi, '$1 $2')
+}
+
 function transcriptTokens(text: string): string[] {
-  const normalized = normalizeNumberWords(normalizeOrdinalDateForms(normalizeCurrencyForms(normalizePossessivePlaceNames(normalizeStylisticCompoundWords(text)))))
+  const normalized = normalizeNumberWords(normalizeOrdinalDateForms(normalizeCurrencyForms(normalizePossessivePlaceNames(normalizePossessiveVehicleModelNames(normalizeStylisticCompoundWords(text))))))
     .replace(/[’']/g, "'")
     .replace(/\b([A-Z][a-z]{4,})s'(?=\s|$)/g, '$1poss')
     .replace(/\b([A-Z][a-z]{4,})'s\b/g, '$1poss')
