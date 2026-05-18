@@ -42,7 +42,7 @@ const SEGMENT_QC_RETRY_LUFS = -18.5
 const SEGMENT_QC_HARD_FAIL_LUFS = -20.0
 const SEGMENT_QC_TARGET_LUFS = -17.0
 const SHORT_SEGMENT_MAX_SECONDS = 1.5
-const SHORT_SEGMENT_MAX_WORDS = 6
+const SHORT_SEGMENT_MAX_WORDS = 8
 const SHORT_SEGMENT_QC_WARN_LUFS = -17.5
 const SHORT_SEGMENT_QC_RETRY_LUFS = -18.0
 const SHORT_SEGMENT_QC_TARGET_LUFS = -16.5
@@ -1198,7 +1198,11 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
       }
 
       let action = actionForMetrics(metrics)
-      if (isShortSegment && action === 'fail_after_qc' && hitAdaptiveGainCap && extremelyQuietBeforeGain) {
+      const canAttemptExtendedShortRescue = isShortSegment
+        && (action === 'fail_after_qc' || action === 'hard_fail')
+        && hitAdaptiveGainCap
+        && extremelyQuietBeforeGain
+      if (canAttemptExtendedShortRescue) {
         const transcriptCheck = await validateSegmentTranscript(candidateBuf, text, fileName)
         console.log(`  Segment transcript QC ${fileName} speaker="${speaker}" candidate=${candidate} coverage=${transcriptCheck.coverage.toFixed(2)} tail=${transcriptCheck.tailMatches ? 'pass' : 'fail'} result=${transcriptCheck.passed ? 'extended_gain_rescue' : 'retry'} expected="${text.slice(0, 120)}" detected="${transcriptCheck.detectedText.slice(0, 120)}"`)
         if (!transcriptCheck.passed) {
