@@ -85,8 +85,18 @@ function normalizePossessiveVehicleModelNames(text) {
   return text.replace(/\b(Civic|Accord|Mustang)(?:'s|s)\s+(taillights|headlights|engine|tires|windshield)\b/gi, '$1 $2')
 }
 
+function normalizeContractionExpansions(text) {
+  return text
+    .replace(/\bshould(?:'|’)ve\b/gi, 'should have')
+    .replace(/\bwould(?:'|’)ve\b/gi, 'would have')
+    .replace(/\bcould(?:'|’)ve\b/gi, 'could have')
+    .replace(/\bshouldn(?:'|’)t\b/gi, 'should not')
+    .replace(/\bwouldn(?:'|’)t\b/gi, 'would not')
+    .replace(/\bcouldn(?:'|’)t\b/gi, 'could not')
+}
+
 function transcriptTokens(text) {
-  return normalizeNumberWords(normalizeOrdinalDateForms(normalizeCurrencyForms(normalizePossessivePlaceNames(normalizePossessiveVehicleModelNames(normalizeStylisticCompoundWords(text))))))
+  return normalizeNumberWords(normalizeOrdinalDateForms(normalizeCurrencyForms(normalizePossessivePlaceNames(normalizePossessiveVehicleModelNames(normalizeStylisticCompoundWords(normalizeContractionExpansions(text)))))))
     .replace(/[’']/g, "'")
     .replace(/\b([A-Z][a-z]{4,})s'(?=\s|$)/g, '$1poss')
     .replace(/\b([A-Z][a-z]{4,})'s\b/g, '$1poss')
@@ -313,6 +323,12 @@ const examples = [
   { expected: "It was Amos Clarke, the man Ernest had replaced in this very booth six months ago.", detected: "It was Amos Clark, the man Ernest had replaced in this very booth six months ago.", passed: true },
   { expected: 'Mrs. Greene waited at the crossing.', detected: 'Mrs. Green waited at the crossing.', passed: true },
   { expected: 'Smythe signed the dispatch book.', detected: 'Smith signed the dispatch book.', passed: true },
+  { expected: "I left something on the island. Something I should've taken care of a long time ago.", detected: 'I left something on the island, something I should have taken care of a long time ago.', passed: true },
+  { expected: "He would've crossed before dark.", detected: 'He would have crossed before dark.', passed: true },
+  { expected: "She could've warned them sooner.", detected: 'She could have warned them sooner.', passed: true },
+  { expected: "He shouldn't open the envelope.", detected: 'He should not open the envelope.', passed: true },
+  { expected: "She wouldn't cross alone.", detected: 'She would not cross alone.', passed: true },
+  { expected: "They couldn't see the far lane.", detected: 'They could not see the far lane.', passed: true },
   { expected: "All right. I'm on patrol near Manns Harbor. I can be there in twenty minutes. Don't let anyone touch that envelope.", detected: "All right, I'm on patrol near Man's Harbor. I can be there in 20 minutes. Don't let anyone touch that envelope.", passed: true },
   { expected: "All right. I'm on patrol near Manns Harbor.", detected: "Alright, I'm on patrol near Man's Harbor.", passed: true },
   { expected: 'Okay, move onto the bridge.', detected: 'OK, move on to the bridge.', passed: true },
