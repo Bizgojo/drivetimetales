@@ -215,8 +215,15 @@ function normalizePossessivePlaceNames(text: string): string {
     .replace(/\bHarper's\s+Ferry\b/gi, 'Harper Ferry')
 }
 
+function normalizeStylisticCompoundWords(text: string): string {
+  return text
+    .replace(/\ball\s+right\b/gi, 'alright')
+    .replace(/\bokay\b/gi, 'ok')
+    .replace(/\bon\s+to\b/gi, 'onto')
+}
+
 function transcriptTokens(text: string): string[] {
-  const normalized = normalizeNumberWords(normalizeOrdinalDateForms(normalizeCurrencyForms(normalizePossessivePlaceNames(text))))
+  const normalized = normalizeNumberWords(normalizeOrdinalDateForms(normalizeCurrencyForms(normalizePossessivePlaceNames(normalizeStylisticCompoundWords(text)))))
     .replace(/[’']/g, "'")
     .replace(/\b([A-Z][a-z]{4,})s'(?=\s|$)/g, '$1poss')
     .replace(/\b([A-Z][a-z]{4,})'s\b/g, '$1poss')

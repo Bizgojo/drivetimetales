@@ -74,8 +74,15 @@ function normalizePossessivePlaceNames(text) {
     .replace(/\bHarper's\s+Ferry\b/gi, 'Harper Ferry')
 }
 
+function normalizeStylisticCompoundWords(text) {
+  return text
+    .replace(/\ball\s+right\b/gi, 'alright')
+    .replace(/\bokay\b/gi, 'ok')
+    .replace(/\bon\s+to\b/gi, 'onto')
+}
+
 function transcriptTokens(text) {
-  return normalizeNumberWords(normalizeOrdinalDateForms(normalizeCurrencyForms(normalizePossessivePlaceNames(text))))
+  return normalizeNumberWords(normalizeOrdinalDateForms(normalizeCurrencyForms(normalizePossessivePlaceNames(normalizeStylisticCompoundWords(text)))))
     .replace(/[’']/g, "'")
     .replace(/\b([A-Z][a-z]{4,})s'(?=\s|$)/g, '$1poss')
     .replace(/\b([A-Z][a-z]{4,})'s\b/g, '$1poss')
@@ -290,6 +297,8 @@ const examples = [
   { expected: 'Sara left the message on the desk.', detected: 'Sarah left the message on the desk.', passed: true },
   { expected: 'Jon called from the bridge.', detected: 'John called from the bridge.', passed: true },
   { expected: "All right. I'm on patrol near Manns Harbor. I can be there in twenty minutes. Don't let anyone touch that envelope.", detected: "All right, I'm on patrol near Man's Harbor. I can be there in 20 minutes. Don't let anyone touch that envelope.", passed: true },
+  { expected: "All right. I'm on patrol near Manns Harbor.", detected: "Alright, I'm on patrol near Man's Harbor.", passed: true },
+  { expected: 'Okay, move onto the bridge.', detected: 'OK, move on to the bridge.', passed: true },
   { expected: 'The road curved below Pikes Peak.', detected: "The road curved below Pike's Peak.", passed: true },
   { expected: 'The packet arrived from Harpers Ferry.', detected: "The packet arrived from Harper's Ferry.", passed: true },
   { expected: 'The preacher cleared her throat.', detected: 'Preacher cleared her throat.', passed: true },
