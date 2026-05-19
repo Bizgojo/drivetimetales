@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export const runtime = 'nodejs'
 import { createClient } from '@supabase/supabase-js'
-import { buildCoverPrompt } from '@/lib/coverPrompt'
+import { buildCoverDirectionBrief, buildCoverPrompt } from '@/lib/coverPrompt'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let sharp: any
 try {
@@ -134,16 +134,15 @@ function buildStoryVisualConcept(story: any, candidateOnly = false): string | un
     cleanConceptPart(brief?.cliffhanger_or_resolution, 320),
   ].filter(Boolean)
 
-  if (candidateOnly) {
-    const storyContent = excerptText(story?.prose_text, 950) || excerptText(story?.script, 950)
-    if (storyContent) parts.push(`Episode-specific content: ${storyContent}.`)
-    if (story?.series_name || story?.episode_number || story?.episode_title) {
-      parts.push(cleanConceptPart([
-        story?.series_name ? `Series: ${story.series_name}` : '',
-        story?.episode_number ? `Episode ${story.episode_number}` : '',
-        story?.episode_title ? `Episode title: ${story.episode_title}` : '',
-      ].filter(Boolean).join('. '), 260))
-    }
+  const storyContent = excerptText(story?.prose_text, candidateOnly ? 950 : 650) || excerptText(story?.script, candidateOnly ? 950 : 650)
+  if (storyContent) parts.push(`Episode-specific content: ${storyContent}.`)
+
+  if (story?.series_name || story?.episode_number || story?.episode_title) {
+    parts.push(cleanConceptPart([
+      story?.series_name ? `Series: ${story.series_name}` : '',
+      story?.episode_number ? `Episode ${story.episode_number}` : '',
+      story?.episode_title ? `Episode title: ${story.episode_title}` : '',
+    ].filter(Boolean).join('. '), 260))
   }
 
   const anchors = visualAnchorsForTitle(story?.title || '')
@@ -262,7 +261,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'storyId is required' }, { status: 400 })
     }
 
-    // Fetch story details — use concept/tone for visual prompt, NOT raw script
+    // Fetch story details for the cover director. Use excerpts only, with metadata as fallback.
     const { data: story, error: storyErr } = await supabase
       .from('stories')
       .select('title, author, genre, primary_genre, description, intro_text, brief_json, prose_text, script, episode_title, series_name, episode_number')
@@ -272,16 +271,20 @@ export async function POST(req: NextRequest) {
     if (storyErr) console.error('Story fetch error:', storyErr.message)
 
     const visualConcept = buildStoryVisualConcept(story, candidateOnly === true)
-
-    const dallePrompt = buildCoverPrompt({
+    const promptParams = {
       title: story?.title || 'Untitled',
       author: story?.author || 'Unknown Author',
       genre: story?.genre || story?.primary_genre || genre || 'fiction',
       concept: visualConcept,
+      script: excerptText(story?.prose_text, 900) || excerptText(story?.script, 900),
       coverFeedback,
-    })
+    }
+    const coverDirectionBrief = buildCoverDirectionBrief(promptParams)
 
-    console.log('🎨 Generating cover via DALL-E 3...')
+    const dallePrompt = buildCoverPrompt(promptParams)
+
+    console.log('🎨 Generating cover via image model...')
+    console.log('[regenerate-cover] cover direction brief:', JSON.stringify(coverDirectionBrief, null, 2))
     console.log('  Prompt preview:', dallePrompt.substring(0, 200))
 
     const rawBuffer = await generateWithDallE(dallePrompt)
@@ -318,6 +321,7 @@ export async function POST(req: NextRequest) {
         success: true,
         candidateOnly: true,
         candidateCoverUrl: publicUrl,
+        coverDirectionBrief,
         promptPreview: dallePrompt.slice(0, 900),
       })
     }
