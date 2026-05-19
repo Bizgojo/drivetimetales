@@ -54,7 +54,29 @@ function feedbackLightingOverride(coverFeedback: string): string {
 
   if (!asksForBrighter) return ''
 
-  return 'Editor feedback says the cover is too dark: make the subject brighter, use a clearer key light, lift the midtones, and create stronger separation from the background.'
+  return 'Editor feedback says the cover is too dark or unclear: aggressively brighten the image, make the subject brighter, use a clearer key light, lift the midtones, add stronger edge/rim lighting, and create stronger separation from the background.'
+}
+
+function feedbackCompositionOverride(coverFeedback: string): string {
+  if (!coverFeedback) return ''
+
+  const asksForLargerSubject = containsAny(coverFeedback, [
+    'face larger',
+    'larger face',
+    'make the face',
+    'clearer',
+    'easier to read',
+    'thumbnail',
+    'bigger',
+    'larger',
+    'close up',
+    'close-up',
+    'show ',
+  ])
+
+  if (!asksForLargerSubject) return ''
+
+  return 'Editor feedback asks for stronger thumbnail readability: make the face and/or key object substantially larger in frame, closer to camera, cleanly lit, high contrast, and immediately readable at 120px height.'
 }
 
 function inferPrimaryVisualSubject(params: CoverPromptParams): string {
@@ -152,20 +174,24 @@ export function buildCoverDirectionBrief(params: CoverPromptParams): CoverDirect
   const { genre, tone, concept, coverFeedback } = params
   const feedback = cleanInput(coverFeedback, 500)
   const lightingOverride = feedbackLightingOverride(feedback)
+  const compositionOverride = feedbackCompositionOverride(feedback)
 
   return {
     primaryVisualSubject: inferPrimaryVisualSubject(params),
     emotionalPromise: inferEmotionalPromise(genre, tone, concept),
     keyObjectSymbol: inferKeyObjectSymbol(concept || params.script, params.title),
     settingBackground: inferSettingBackground(genre, concept || params.script),
-    lightingDirection: lightingOverride || 'brighter cinematic key lighting with lifted midtones, clean highlight separation, and high contrast without muddy black shadows',
-    compositionCameraDistance: 'clear foreground subject in medium shot or close medium shot; visible face or key object when appropriate; focal point centered or in the upper half of the square frame',
-    thumbnailReadabilityInstruction: 'must read instantly as a small audiobook thumbnail: simple shape language, one dominant focal point, strong subject-background separation, no tiny critical details',
+    lightingDirection: lightingOverride || 'brighter cinematic key lighting with lifted midtones, strong edge/rim lighting, clean highlight separation, and high contrast without muddy black shadows or large dark empty areas',
+    compositionCameraDistance: compositionOverride || 'clear foreground subject in close medium shot or close-up; the main face, key object, or both must occupy meaningful visual area; avoid tiny distant silhouettes; focal point centered or in the upper half of the square frame',
+    thumbnailReadabilityInstruction: 'optimized for small streaming-app thumbnail readability and must remain readable at about 120px height: simple shape language, one dominant focal point, strong subject-background separation, no tiny critical details',
     whatToAvoid: [
       'generic noir fog unless the story specifically requires it',
-      'dark teal/orange soup',
+      'dark teal/orange fog soup',
       'vague silhouettes with no story meaning',
-      'muddy blacks, near-black grading, or underexposed faces',
+      'low-contrast blue-black scenes',
+      'tiny faces or tiny distant figures',
+      'large dark empty areas',
+      'muddy blacks, near-black grading, shadow-heavy compositions, or underexposed faces',
       'generic landscapes, generic portraits, or unrelated scenery',
       feedback ? `anything that ignores this editor feedback: ${feedback}` : '',
     ].filter(Boolean),
@@ -181,7 +207,7 @@ export function buildCoverPrompt(params: CoverPromptParams): string {
     horror: 'gothic atmosphere, eerie glows, unsettling imagery, visible focal subject, and lifted midtones — like Stephen King hardcovers',
     romance: 'warm intimate lighting, emotional depth, soft bokeh — like a Nora Roberts novel',
     'sci-fi': 'vast cosmic scale, luminous practical light, futuristic atmosphere with clear readable forms — like The Martian or Dune',
-    western: 'golden dust, wide open landscapes, lone silhouette — like Cormac McCarthy covers',
+    western: 'golden dust, open landscape context, strong foreground figure or key object, readable face or prop detail — like a premium western cover',
     adventure: 'epic sweeping vistas, bold colors, heroic composition',
     drama: 'cinematic realism, emotionally charged portrait, naturalistic lighting',
     historical: 'period-accurate textures, aged paper tones, dramatic historical atmosphere',
@@ -229,7 +255,8 @@ export function buildCoverPrompt(params: CoverPromptParams): string {
 
   // No text in the prompt — title/author added programmatically via sharp overlay
   return (
-    `A dramatic, story-specific background image for an audiobook cover. ` +
+    `A thumbnail-first, story-specific background image for an audiobook cover, optimized for small streaming-app thumbnail readability. ` +
+    `Hard priority: the cover must remain instantly readable at about 120px height while someone is scrolling. ` +
     `Genre: ${genre}${toneDesc}. ` +
     `Title reference: "${title}" by ${author}. Do not render this text. ` +
     `Visual style: ${styleRef}. ` +
@@ -245,9 +272,11 @@ export function buildCoverPrompt(params: CoverPromptParams): string {
     `Thumbnail readability: ${directionBrief.thumbnailReadabilityInstruction}. ` +
     `Avoid: ${directionBrief.whatToAvoid.join('; ')}. ` +
     `Square format, fills entire canvas. ` +
-    `Bright cinematic key lighting, professional composition, strong contrast, readable thumbnail design. ` +
-    `Use a clear foreground subject with a recognizable silhouette and visible face or key object when appropriate. ` +
-    `Maintain genre atmosphere without losing visibility; avoid muddy blacks, near-black grading, underexposed shadows, or details disappearing into darkness. ` +
+    `Visual hierarchy must be obvious in one glance: who or what matters, the emotional focus, and the key object or symbol. ` +
+    `Bright cinematic key lighting, lifted midtones, strong edge/rim lighting, professional composition, strong contrast, readable thumbnail design. ` +
+    `Use a large clear foreground subject with a recognizable face, a clearly lit key object, or both. ` +
+    `The main subject must occupy meaningful visual area and should not be a tiny distant silhouette. ` +
+    `Maintain genre atmosphere without losing visibility; avoid muddy blacks, near-black grading, low-contrast blue-black scenes, large dark empty areas, underexposed shadows, or details disappearing into darkness. ` +
     `The main subject and focal point must be centered or in the upper half of the image. ` +
     `Bottom-right corner must be naturally dark or shadowy — no important subjects there. ` +
     `IMPORTANT: absolutely no text, no words, no letters, no numbers anywhere in the image. ` +
