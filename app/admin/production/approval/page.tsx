@@ -860,28 +860,28 @@ function StoryReviewCard({
   }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '72px minmax(0, 1fr) auto', gap: '12px', alignItems: 'center', padding: '12px', border: `1px solid ${border}`, borderRadius: '8px', backgroundColor: '#ffffff' }}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'center', padding: '14px 16px', border: `1px solid ${border}`, borderRadius: '8px', backgroundColor: '#ffffff' }}>
       <div
         onClick={() => onEditClick(story)}
         title="Click to edit"
-        style={{ width: '72px', height: '72px', borderRadius: '7px', overflow: 'hidden', backgroundColor: '#e5e5e5', cursor: 'pointer', border: `1px solid ${border}` }}
+        style={{ width: 'clamp(180px, 16vw, 220px)', height: 'clamp(180px, 16vw, 220px)', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#e5e5e5', cursor: 'pointer', border: `1px solid ${border}`, flexShrink: 0, boxShadow: '0 10px 24px rgba(15,23,42,0.12)' }}
       >
         <img src={story.cover_url || '/images/default-cover.png'} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
       </div>
-      <div style={{ minWidth: 0 }}>
+      <div style={{ minWidth: '260px', flex: '1 1 420px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-          <div style={{ color: textPrimary, fontWeight: 800, fontSize: '15px', lineHeight: 1.2 }}>{story.title}</div>
+          <div style={{ color: textPrimary, fontWeight: 900, fontSize: '28px', lineHeight: 1.08 }}>{story.title}</div>
         </div>
-        {story.episode_title && <div style={{ color: textSecondary, fontSize: '12px', fontStyle: 'italic', marginTop: '2px' }}>{story.episode_title}</div>}
-        <div style={{ color: textSecondary, fontSize: '12px', marginTop: '3px' }}>
+        {story.episode_title && <div style={{ color: textSecondary, fontSize: '16px', fontStyle: 'italic', marginTop: '5px' }}>{story.episode_title}</div>}
+        <div style={{ color: textSecondary, fontSize: '15px', marginTop: '8px', lineHeight: 1.35, fontWeight: 600 }}>
           {isSeriesEpisode ? `${seriesTitle || 'Series'} · Episode ${story.episode_number}` : 'Standalone'} · by {story.author || 'Unknown'} · {story.genre || 'No genre'} · {story.duration_mins || 0}m
         </div>
-        {story.description && <div style={{ color: textSecondary, fontSize: '12px', marginTop: '6px', lineHeight: 1.35 }}>{story.description}</div>}
-        <div style={{ color: textSecondary, fontSize: '11px', marginTop: '6px' }}>
+        {story.description && <div style={{ color: '#374151', fontSize: '14px', marginTop: '8px', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' } as React.CSSProperties}>{story.description}</div>}
+        <div style={{ color: textSecondary, fontSize: '13px', marginTop: '8px', lineHeight: 1.35 }}>
           Created {story.created_at ? new Date(story.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'unknown'} · Plays {story.downloads_total || 0} · Finish {story.pct_finished || 0}%
         </div>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'stretch' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'stretch', marginLeft: 'auto', minWidth: '132px' }}>
         <PlayStoryButton storyId={story.id} title={story.title} />
         <button onClick={() => onEditClick(story)} style={actionButtonStyle('muted')}>Edit</button>
         {isReviewReady(story) && <button onClick={() => onApproveForLater(story)} style={actionButtonStyle('success')}>Approve for Later</button>}
@@ -973,21 +973,21 @@ function SeriesReviewGroup({
 
   return (
     <div style={{ border: `1px solid ${border}`, borderRadius: '10px', backgroundColor: '#ffffff', overflow: 'hidden' }}>
-      <div style={{ width: '100%', display: 'grid', gridTemplateColumns: '84px minmax(0, 1fr) auto', gap: '14px', alignItems: 'center', padding: '14px', backgroundColor: '#ffffff' }}>
-        <div style={{ width: '84px', height: '84px', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#e5e5e5', border: `1px solid ${border}` }}>
+      <div style={{ width: '100%', display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'center', padding: '14px 16px', backgroundColor: '#ffffff' }}>
+        <div style={{ width: 'clamp(180px, 16vw, 220px)', height: 'clamp(180px, 16vw, 220px)', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#e5e5e5', border: `1px solid ${border}`, flexShrink: 0, boxShadow: '0 10px 24px rgba(15,23,42,0.12)' }}>
           <img src={first?.cover_url || '/images/default-cover.png'} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         </div>
-        <button type="button" onClick={onToggle} style={{ minWidth: 0, background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left' }}>
+        <button type="button" onClick={onToggle} style={{ minWidth: '260px', flex: '1 1 420px', background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left' }}>
           <div style={{ color: '#1d4ed8', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Series</div>
-          <div style={{ color: textPrimary, fontWeight: 900, fontSize: '18px', lineHeight: 1.15 }}>{group.title}</div>
-          <div style={{ color: textSecondary, fontSize: '12px', marginTop: '5px' }}>
+          <div style={{ color: textPrimary, fontWeight: 900, fontSize: '28px', lineHeight: 1.08 }}>{group.title}</div>
+          <div style={{ color: textSecondary, fontSize: '15px', marginTop: '8px', lineHeight: 1.35, fontWeight: 600 }}>
             {group.stories.length} episodes · {first?.genre || 'No genre'} · by {first?.author || 'Unknown'}
           </div>
-          <div style={{ color: textSecondary, fontSize: '12px', marginTop: '6px' }}>
+          <div style={{ color: textSecondary, fontSize: '13px', marginTop: '8px', lineHeight: 1.35 }}>
             {reviewCount} ready · {approvedCount} approved · {publishedCount} published
           </div>
         </button>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '7px', alignItems: 'stretch' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '7px', alignItems: 'stretch', marginLeft: 'auto', minWidth: '160px' }}>
           <button type="button" onClick={onToggle} style={actionButtonStyle('muted')}>{expanded ? 'Collapse' : 'Expand'}</button>
           <button type="button" onClick={() => onArchiveSeries(group)} style={actionButtonStyle('danger')}>
             {publishedCount > 0 ? 'Unpublish / Archive Series' : 'Archive Series'}

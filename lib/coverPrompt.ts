@@ -50,11 +50,14 @@ function feedbackLightingOverride(coverFeedback: string): string {
     'hard to see',
     'underexposed',
     'shadowy',
+    'face clearly visible',
+    'glows brighter',
+    'glow brighter',
   ])
 
   if (!asksForBrighter) return ''
 
-  return 'Editor feedback says the cover is too dark or unclear: aggressively brighten the image, make the subject brighter, use a clearer key light, lift the midtones, add stronger edge/rim lighting, and create stronger separation from the background.'
+  return 'Editor feedback says the cover is too dark or unclear: aggressively brighten the image while preserving cinematic realism, enforce a minimum brightness floor, make the subject well-exposed, use a clearer key light, lift the midtones strongly, brighten skin tones, make the key object glow brighter when appropriate, add stronger edge/rim lighting, reduce deep-black coverage, and create stronger separation from the background.'
 }
 
 function feedbackCompositionOverride(coverFeedback: string): string {
@@ -76,7 +79,7 @@ function feedbackCompositionOverride(coverFeedback: string): string {
 
   if (!asksForLargerSubject) return ''
 
-  return 'Editor feedback asks for stronger thumbnail readability: make the face and/or key object substantially larger in frame, closer to camera, cleanly lit, high contrast, and immediately readable at 120px height.'
+  return 'Editor feedback asks for stronger thumbnail readability: make the face and/or key object substantially larger in frame, closer to camera, cleanly lit, high contrast, clearly visible without zooming, and immediately readable on a phone-sized streaming thumbnail at 120px height.'
 }
 
 function inferPrimaryVisualSubject(params: CoverPromptParams): string {
@@ -181,16 +184,20 @@ export function buildCoverDirectionBrief(params: CoverPromptParams): CoverDirect
     emotionalPromise: inferEmotionalPromise(genre, tone, concept),
     keyObjectSymbol: inferKeyObjectSymbol(concept || params.script, params.title),
     settingBackground: inferSettingBackground(genre, concept || params.script),
-    lightingDirection: lightingOverride || 'brighter cinematic key lighting with lifted midtones, strong edge/rim lighting, clean highlight separation, and high contrast without muddy black shadows or large dark empty areas',
-    compositionCameraDistance: compositionOverride || 'clear foreground subject in close medium shot or close-up; the main face, key object, or both must occupy meaningful visual area; avoid tiny distant silhouettes; focal point centered or in the upper half of the square frame',
-    thumbnailReadabilityInstruction: 'optimized for small streaming-app thumbnail readability and must remain readable at about 120px height: simple shape language, one dominant focal point, strong subject-background separation, no tiny critical details',
+    lightingDirection: lightingOverride || 'well-exposed cinematic image with a minimum brightness floor, brighter cinematic key lighting, lifted midtones, strong edge/rim lighting, clean highlight separation, brighter skin tones, visible key object glow when appropriate, and high contrast without muddy black shadows or large dark empty areas',
+    compositionCameraDistance: compositionOverride || 'clear foreground subject in close medium shot or close-up; the main face must be clearly visible without zooming when a person is present, and the key object must be readable; both must occupy meaningful visual area; avoid tiny distant silhouettes; focal point centered or in the upper half of the square frame',
+    thumbnailReadabilityInstruction: 'optimized for small streaming-app thumbnail readability and must remain readable on a phone-sized streaming thumbnail at about 120px height: simple shape language, one dominant focal point, strong subject-background separation, no tiny critical details',
     whatToAvoid: [
       'generic noir fog unless the story specifically requires it',
+      'underexposed noir darkness',
       'dark teal/orange fog soup',
       'vague silhouettes with no story meaning',
+      'full-frame darkness',
       'low-contrast blue-black scenes',
-      'tiny faces or tiny distant figures',
+      'blue-black shadow soup',
+      'tiny dark faces or tiny distant figures',
       'large dark empty areas',
+      'deep-black coverage across too much of the frame',
       'muddy blacks, near-black grading, shadow-heavy compositions, or underexposed faces',
       'generic landscapes, generic portraits, or unrelated scenery',
       feedback ? `anything that ignores this editor feedback: ${feedback}` : '',
@@ -202,8 +209,8 @@ export function buildCoverPrompt(params: CoverPromptParams): string {
   const { title, author, genre, concept, tone, coverFeedback } = params
 
   const genreStyle: Record<string, string> = {
-    thriller: 'controlled shadows, bright key light, intense close-ups, cinematic dread with clear subject visibility — like a premium suspense novel',
-    mystery: 'moody but readable atmospheric lighting, hidden symbols, clear clue-forward composition — like Da Vinci Code or Angels & Demons',
+    thriller: 'controlled shadows, bright key light, well-exposed close-ups, cinematic dread with clear subject visibility — like a premium suspense novel',
+    mystery: 'moody but well-exposed atmospheric lighting, hidden symbols, clear clue-forward composition — like Da Vinci Code or Angels & Demons',
     horror: 'gothic atmosphere, eerie glows, unsettling imagery, visible focal subject, and lifted midtones — like Stephen King hardcovers',
     romance: 'warm intimate lighting, emotional depth, soft bokeh — like a Nora Roberts novel',
     'sci-fi': 'vast cosmic scale, luminous practical light, futuristic atmosphere with clear readable forms — like The Martian or Dune',
@@ -273,10 +280,11 @@ export function buildCoverPrompt(params: CoverPromptParams): string {
     `Avoid: ${directionBrief.whatToAvoid.join('; ')}. ` +
     `Square format, fills entire canvas. ` +
     `Visual hierarchy must be obvious in one glance: who or what matters, the emotional focus, and the key object or symbol. ` +
-    `Bright cinematic key lighting, lifted midtones, strong edge/rim lighting, professional composition, strong contrast, readable thumbnail design. ` +
-    `Use a large clear foreground subject with a recognizable face, a clearly lit key object, or both. ` +
+    `Hard rendering floor: the image must be well-exposed with a minimum brightness floor; reduce deep-black coverage and avoid full-frame darkness. ` +
+    `Bright cinematic key lighting, stronger midtone lift, strong edge/rim lighting, brighter skin tones, brighter key object glow when appropriate, professional composition, strong contrast, readable thumbnail design. ` +
+    `Use a large clear foreground subject with a recognizable face, a clearly lit key object, or both; faces must be clearly visible without zooming. ` +
     `The main subject must occupy meaningful visual area and should not be a tiny distant silhouette. ` +
-    `Maintain genre atmosphere without losing visibility; avoid muddy blacks, near-black grading, low-contrast blue-black scenes, large dark empty areas, underexposed shadows, or details disappearing into darkness. ` +
+    `Maintain cinematic realism and dramatic lighting without losing visibility; avoid muddy blacks, near-black grading, underexposed noir darkness, blue-black shadow soup, tiny dark faces, low-contrast blue-black scenes, large dark empty areas, underexposed shadows, or details disappearing into darkness. ` +
     `The main subject and focal point must be centered or in the upper half of the image. ` +
     `Bottom-right corner must be naturally dark or shadowy — no important subjects there. ` +
     `IMPORTANT: absolutely no text, no words, no letters, no numbers anywhere in the image. ` +
