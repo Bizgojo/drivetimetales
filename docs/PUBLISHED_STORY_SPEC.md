@@ -1,6 +1,7 @@
 # ENDLESS TALES - PUBLISHED STORY SPEC
 ### What a finished story sounds like. No exceptions.
-**Version 1.2 - April 14, 2026 - Marc Postlewaite**
+**Version 1.3 - May 20, 2026 - Marc Postlewaite**
+*Added: Story Resolution Map Rule (mandatory pre-writing requirement)*
 
 ---
 
@@ -17,7 +18,7 @@ A subscriber presses Play. Here is exactly what they hear, in order:
 - Belle B speaks ONE line, maximum two short sentences
 - She is a warm friend recommending a story - not an announcer, not a host, not a DJ
 - She speaks to ONE person, not an audience
-- Voice ID: wewocdDkjSLm9ZwjO7TD - this is the ONLY voice used for Belle B, always
+- Voice ID: GMhgX8fCR9GUtd3kmlKC - this is the ONLY voice used for Belle B, always
 - Script label: BELLE B: - never ANNOUNCER:, never SANDY:, never anything else
 
 Belle B intro rules:
@@ -75,6 +76,80 @@ For series finales: Same as standalone - resolution and satisfaction.
 
 GOOD: "That blanket. Forty-six strangers on a train and he gave it to the one person who needed it most. That was 'Snow Line to Somewhere' by Edmund Worth - an Endless Tales original."
 BAD: "Thanks for listening to this exciting story. Tune in next time for more great tales from Endless Tales."
+
+---
+
+## STORY RESOLUTION MAP RULE (MANDATORY)
+
+**Before Claude writes any Endless Tales story, Claude MUST first create a Story Resolution Map.**
+
+The map ensures every story has a clear hook, a difficult solution, and an earned ending. Claude outputs the map as a comment block at the top of the script (it is removed before audio production).
+
+### The Six Required Sections
+
+1. **MAIN HOOK / PROBLEM**
+   - What urgent question, danger, mystery, desire, emotional wound, or conflict pulls the listener in?
+   - Must be clear and time-sensitive
+
+2. **WHY THE SOLUTION SEEMS DIFFICULT**
+   - Why does the solution appear almost impossible, dangerous, risky, costly, hidden, morally difficult, emotionally painful, or unlikely?
+   - The listener must feel the problem at the start
+
+3. **MINOR PROBLEMS / MIDDLE MOVEMENT**
+   - List the smaller problems, discoveries, reversals, clues, choices, or emotional shifts the middle sorts through
+   - These should make the solution possible without revealing it too early
+
+4. **FINAL SOLUTION**
+   - State the concrete ending solution BEFORE drafting the script
+   - Must be specific and non-vague
+   - Resolve, answer, reverse, or transform the main problem
+
+5. **WHY THE ENDING IS EARNED**
+   - Explain how the middle of the story prepares the listener for the final solution
+   - Show the explicit connection between what happens in the middle and why the ending works
+   - The listener should feel the solution was possible all along, but not obvious
+
+6. **VARIETY GUARDRAIL**
+   - How does this story differ from recent stories in structure, tone, pacing, setting, mood, plot shape, and solution type?
+   - Do NOT repeat the same pattern
+   - Vary the solution type and story rhythm
+
+### Allowed Solution Types
+
+- Clever discovery
+- Emotional confession
+- Moral choice
+- Sacrifice
+- Escape
+- Rescue
+- Revelation
+- Reversal
+- Justice
+- Forgiveness
+- Survival
+- Transformation
+- Bittersweet acceptance
+- Series cliffhanger with episode-level resolution
+
+### Hard Rules
+
+- **The solution must feel difficult at the beginning.**
+- **The middle must make the solution possible.**
+- **The ending must make the listener feel the story has paid off its promise.**
+- **Standalone stories must resolve the main hook completely.**
+- **Non-final series episodes must resolve the episode problem while strengthening the larger series hook.**
+- **Final series episodes must resolve the series problem completely.**
+- **Do NOT force this story into the same plot pattern as prior stories.** Vary structure, tone, pacing, and solution type.
+
+### Review Bot Flags
+
+The review bot will FAIL or FLAG any story where:
+- The main hook is unclear or weak
+- The final solution is vague or missing
+- The ending does not resolve the story promise
+- A standalone story leaves major problems unresolved
+- A final series episode leaves the series problem unresolved
+- The story feels formulaic because it repeats the same structure as prior stories
 
 ---
 
@@ -185,7 +260,7 @@ BELLE B: [outro line]
 NEVER use /api/asc3/generate-story-complete - it had wrong voice ID hardcoded.
 
 ### Belle B voice settings:
-- Voice ID: wewocdDkjSLm9ZwjO7TD
+- Voice ID: GMhgX8fCR9GUtd3kmlKC
 - Stability: 0.49, Similarity: 0.51, Style: 0.0, Speaker Boost: true, Speed: 1.0
 - Model: eleven_multilingual_v2
 - Volume in mix: 1.5x

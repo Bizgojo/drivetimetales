@@ -1,7 +1,8 @@
 # STORY GRADING RUBRIC — Endless Tales
-**Version:** 1.0  
+**Version:** 1.1  
 **Owner:** Marc Postlewaite / Endless Tales  
-**Last Updated:** April 2026
+**Last Updated:** May 20, 2026
+*Added: Story Resolution Map failure flags (v1.1)*
 
 ---
 
@@ -207,6 +208,30 @@ Rule update made: [yes/no — note which document was updated]
 
 ---
 
-*STORY_GRADING_RUBRIC.md — Endless Tales · Version 1.0 · April 2026*  
+## STORY RESOLUTION MAP FAILURE FLAGS
+
+These are hard failures evaluated BEFORE listening. The review bot checks for these automatically. A story with any of the following violations should not proceed to audio production until fixed.
+
+**Flag immediately if:**
+
+| Flag | What to look for |
+|---|---|
+| ❌ HOOK UNCLEAR | The main hook/problem is not stated or is too vague to pull a listener in |
+| ❌ SOLUTION VAGUE | The final solution is undefined, ambiguous, or "life goes on" |
+| ❌ PROMISE UNRESOLVED | The ending does not answer or transform the main hook/problem |
+| ❌ STANDALONE INCOMPLETE | A standalone story leaves major problems unresolved at the end |
+| ❌ FINALE INCOMPLETE | A final series episode leaves the series problem unresolved |
+| ❌ FORMULAIC | Story repeats the same structure, reveal pattern, or ending style as prior stories |
+
+**Also check:**
+- Did Claude produce the Story Resolution Map comment block at the top of the script?
+- Does the map have all six sections: Main Hook, Why Difficult, Middle Movement, Final Solution, Why Earned, Variety Guardrail?
+- Is the Final Solution field concrete and specific — not vague?
+
+If the Story Resolution Map is missing or incomplete, send the script back to Claude before scoring.
+
+---
+
+*STORY_GRADING_RUBRIC.md — Endless Tales · Version 1.1 · May 2026*  
 *Changes require Marc's approval and version increment.*  
 *Commit to GitHub at ~/Projects/ASC/ after any update.*

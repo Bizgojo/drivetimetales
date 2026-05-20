@@ -210,6 +210,18 @@ function packageStatus(episodes: any[]) {
 
 const REVIEW_PROMPT = `You are reviewing an Endless Tales script BEFORE audio production.
 
+⭐ MANDATORY FIRST CHECK: STORY RESOLUTION MAP
+
+Check the top of the script for the Story Resolution Map comment block. It MUST include all six sections:
+1. Main Hook / Problem — is it clear and urgent?
+2. Why the Solution Seems Difficult — is it explained?
+3. Minor Problems / Middle Movement — are they listed?
+4. Final Solution — is it concrete and non-vague?
+5. Why the Ending Is Earned — is the connection to the middle explicit?
+6. Variety Guardrail — does it show how this story differs from prior stories?
+
+If the map is missing or any section is vague, flag it in RESOLUTION FLAGS below.
+
 Score the script in five dimensions from 1 to 5:
 1. Hook
 2. Clarity
@@ -225,6 +237,14 @@ Rules:
 - If something in the header is mislabeled or weak, say so.
 - If narrator naming, narrative voice, or Belle B usage looks wrong, call it out.
 
+CRITICAL RESOLUTION CHECKS — flag any violation:
+- Main hook unclear or missing
+- Final solution vague or unresolved
+- Ending does not resolve the story promise
+- Standalone story leaves major problems unresolved
+- Final series episode leaves series problem unresolved
+- Story feels formulaic or too similar to prior stories
+
 Return in exactly this format:
 
 HOOK: X/5
@@ -233,6 +253,8 @@ PACING: X/5
 CHARACTER: X/5
 LANDING: X/5
 TOTAL: X/25
+
+RESOLUTION FLAGS: [List any violations. If none, write "NONE"]
 
 TOP FIXES:
 1. ...

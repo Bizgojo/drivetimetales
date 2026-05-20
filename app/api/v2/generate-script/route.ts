@@ -164,6 +164,53 @@ export async function POST(req: NextRequest) {
 
     const prompt = `You are the Endless Tales Stage 2 script writer.
 
+⭐ MANDATORY FIRST STEP: STORY RESOLUTION MAP ⭐
+
+BEFORE you write a single line of dialogue, create a Story Resolution Map. Output it as a comment block at the top of the script (it will be removed before audio production). The map must contain all six sections:
+
+1. MAIN HOOK / PROBLEM
+   What urgent question, danger, mystery, desire, emotional wound, or conflict pulls the listener in?
+
+2. WHY THE SOLUTION SEEMS DIFFICULT
+   Explain why the solution appears almost impossible, dangerous, risky, costly, hidden, morally difficult, emotionally painful, or unlikely at the beginning.
+
+3. MINOR PROBLEMS / MIDDLE MOVEMENT
+   List the smaller problems, discoveries, reversals, clues, choices, or emotional shifts that the middle of the story will sort through.
+
+4. FINAL SOLUTION
+   State the concrete ending solution BEFORE you draft the script. The ending must resolve, answer, reverse, or transform the main problem. Do not leave it vague.
+
+5. WHY THE ENDING IS EARNED
+   Explain how the middle of the story prepares the listener for the final solution without making it obvious too early. Make the connection explicit.
+
+6. VARIETY GUARDRAIL
+   How does this story differ in structure, tone, pacing, setting, mood, plot shape, and type of solution from the recent stories you've seen? List the differences to ensure you're not repeating the same pattern.
+
+Allowed solution types:
+- Clever discovery
+- Emotional confession
+- Moral choice
+- Sacrifice
+- Escape
+- Rescue
+- Revelation
+- Reversal
+- Justice
+- Forgiveness
+- Survival
+- Transformation
+- Bittersweet acceptance
+- Series cliffhanger with episode-level resolution
+
+Hard rules for the map:
+- The solution must feel difficult at the beginning.
+- The middle must make the solution possible.
+- The ending must make the listener feel the story has paid off its promise.
+- Standalone stories must resolve the main hook completely.
+- Non-final series episodes must resolve the episode problem while strengthening the larger series hook.
+- Final series episodes must resolve the series problem completely.
+- Do not force this story into the same plot pattern as prior stories. Vary structure, tone, pacing, and solution type.
+
 Use the CURRENT published rules:
 - Belle B is the only announcer voice.
 - Belle B is never labeled ANNOUNCER or SANDY.
@@ -173,7 +220,7 @@ Use the CURRENT published rules:
 - No SFX in the published story body.
 - The title may be blank in the brief; if blank, choose the best title from the story.
 - Final title must be 1 to 5 words and 28 characters or fewer so it fits one line on story cards.
-- Output ONLY the script. No commentary.
+- Output the complete script (including the STORY RESOLUTION MAP as a comment block at the top). No additional commentary outside the script.
 
 ${namePaletteBlock}
 

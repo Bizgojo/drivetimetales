@@ -149,6 +149,35 @@ Write exactly one production-ready audio drama script for Episode ${episodeNumbe
 
 Use the saved series package as the source of truth. Do not invent a new series premise.
 
+⭐ MANDATORY FIRST STEP: STORY RESOLUTION MAP ⭐
+
+BEFORE you write a single line of dialogue, output a Story Resolution Map as a comment block at the top of the script. All six sections are required:
+
+1. MAIN HOOK / PROBLEM
+   What urgent question, danger, mystery, desire, or conflict pulls the listener in this episode?
+
+2. WHY THE SOLUTION SEEMS DIFFICULT
+   Why does the solution appear impossible, dangerous, hidden, or costly at the start of this episode?
+
+3. MINOR PROBLEMS / MIDDLE MOVEMENT
+   List the smaller problems, discoveries, reversals, or choices that the middle of this episode sorts through.
+
+4. FINAL SOLUTION
+   State the concrete episode-level ending BEFORE drafting. Must resolve the episode problem.
+   ${isFinale ? '⚠️ SERIES FINALE: The solution must also resolve the full series problem.' : 'Non-finale: resolve the episode problem while deepening the series hook.'}
+
+5. WHY THE ENDING IS EARNED
+   How does the middle of the episode make the solution feel possible but not obvious?
+
+6. VARIETY GUARDRAIL
+   How does this episode differ in structure, tone, pacing, and solution type from other episodes in this series?
+
+Hard rules:
+- The solution must feel difficult at the beginning of this episode.
+- The middle must make the solution possible.
+- ${isFinale ? 'This is the SERIES FINALE. The series problem MUST be fully resolved.' : 'This is a non-finale. Resolve the episode problem. Strengthen the series hook.'}
+- Do not repeat the same plot pattern as other episodes in this series.
+
 CURRENT published rules:
 - Belle B is the only announcer voice.
 - Belle B is never labeled ANNOUNCER or SANDY.
@@ -158,7 +187,7 @@ CURRENT published rules:
 - ${belleOutroRule}
 - No SFX in the published story body.
 - Final title must be 1 to 5 words and 28 characters or fewer so it fits one line on story cards.
-- Output ONLY the script. No commentary.
+- Output the complete script (including the STORY RESOLUTION MAP as a comment block at the top). No additional commentary.
 
 ${namePaletteBlock}
 
