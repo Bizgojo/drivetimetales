@@ -32,6 +32,9 @@ const NEXT_STEP_AFTER_SERIES_SCRIPTS = 'score_validate_package'
 const NEXT_STEP_AFTER_SERIES_VALIDATION = 'series_voice_preflight'
 const NEXT_STEP_AFTER_SERIES_PREFLIGHT = 'series_generate_voices'
 const NEXT_STEP_AFTER_SERIES_VOICES = 'series_generate_belle_assets'
+const NEXT_STEP_AFTER_SERIES_BELLE  = 'series_generate_music'
+const NEXT_STEP_AFTER_SERIES_MUSIC  = 'series_render_final_mix'
+const NEXT_STEP_AFTER_SERIES_RENDER = 'complete_story_package'
 const TITLE_MAX_CHARS = 28
 const DESCRIPTION_MAX_CHARS = 70
 const DESCRIPTION_PAST_TENSE_RE = /\b(vanished|was|were|had|found|discovered|left|moved|sealed|signed|forged|buried|hidden)\b/i
@@ -341,17 +344,46 @@ function extractBelleSection(script: string, kind: 'intro' | 'outro') {
 
 function replaceBelleSection(script: string, kind: 'intro' | 'outro', text: string) {
   const marker = kind === 'intro' ? 'BELLE B INTRO' : 'BELLE B OUTRO'
-  const pattern = new RegExp(`(^${marker}\\s*\\n)(BELLE B:\\s*).*$`, 'im')
+  const pattern = new RegExp(`(^${marker}\\s*\\n(?:---\\s*\\n)?)(BELLE B:\\s*).*$`, 'im')
   if (!pattern.test(script)) throw new Error(`${marker} block is missing or malformed`)
   return script.replace(pattern, `$1$2${normalizeHeaderValue(text)}`)
 }
 
-function validateBelleText(kind: 'intro' | 'outro', text: string, options: { standalone: boolean }) {
+function normalizeBelleRequiredText(text: string) {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+function belleTextIncludes(text: string, required: string) {
+  const haystack = normalizeBelleRequiredText(text)
+  const needle = normalizeBelleRequiredText(required)
+  return Boolean(needle) && haystack.includes(needle)
+}
+
+function hasConcreteNarrativeHook(text: string) {
+  return /\b(secret|danger|dangerous|conflict|mystery|mysterious|missing|vanish|vanished|disappear|disappeared|threat|threatened|betrayal|betrayed|lie|lied|hidden|buried|locked|stolen|murder|death|dead|killer|blood|blackmail|sabotage|trap|trapped|choice|warning|evidence|clue|case|crime|manifest|list|letter|message|record|signal|code|map|key|witness|suspect|truth|reveal|reckoning|ferry|ferryman|boat|captain|passenger|passengers|crossing|crossings|names?)\b/i.test(text)
+}
+
+function hasConcreteStoryMechanism(text: string) {
+  return /\b(manifest|list|ledger|logbook|record|names?|passenger|passengers|ferry|ferryman|boat|captain|crossing|crossings|dock|cargo|ticket|schedule|route|wheelhouse|missing person|impossible name|impossible names)\b/i.test(text)
+}
+
+function hasWeakAtmosphericHook(text: string) {
+  return /\b(something waiting|in the fog|on that river|your name written down|twenty years ago|secrets? in the fog|waiting in the fog)\b/i.test(text)
+}
+
+function validateBelleText(kind: 'intro' | 'outro', text: string, options: { standalone: boolean; title?: string | null; author?: string | null }) {
   const issues: string[] = []
   const lower = text.toLowerCase()
   const wordCount = countWords(text)
   const sentenceCount = (text.match(/[.!?]+/g) || []).length
   const withoutPunctuation = text.replace(/[.!?]["'”’)]*$/g, '').trim()
+  const title = String(options.title || '').trim()
+  const author = String(options.author || '').trim()
 
   if (!text) issues.push(`${kind} text is required.`)
   if (text && wordCount < 4) issues.push(`${kind} text is too short.`)
@@ -360,6 +392,15 @@ function validateBelleText(kind: 'intro' | 'outro', text: string, options: { sta
     issues.push(`${kind} uses forbidden host or promotional language.`)
   }
   if (/\bbelle b\b/i.test(text)) issues.push(`${kind} must say Belle, not Belle B.`)
+  if (options.standalone && title && !belleTextIncludes(text, title)) {
+    issues.push(`standalone ${kind} must include the story title.`)
+  }
+  if (options.standalone && kind === 'intro' && text && !hasConcreteNarrativeHook(text)) {
+    issues.push('standalone intro must include a concrete narrative hook such as an event, secret, danger, conflict, or mystery mechanism.')
+  }
+  if (options.standalone && kind === 'intro' && text && hasWeakAtmosphericHook(text) && !hasConcreteStoryMechanism(text)) {
+    issues.push('standalone intro is too atmospheric; it must name the concrete story mechanism, object, event, or conflict.')
+  }
   if (kind === 'outro') {
     if (wordCount > 42) issues.push('outro must be 42 words or fewer.')
     if (sentenceCount > 2) issues.push('outro must be one or two short sentences.')
@@ -369,6 +410,12 @@ function validateBelleText(kind: 'intro' | 'outro', text: string, options: { sta
     }
     if (options.standalone && /\b(next episode|next time|continue|keep listening|what happens next|find out|to be continued|cliffhanger)\b/i.test(lower)) {
       issues.push('standalone outro must not tease a next episode.')
+    }
+    if (options.standalone && author && !belleTextIncludes(text, author)) {
+      issues.push('standalone outro must include the author name.')
+    }
+    if (options.standalone && !/\bendless tales original\b/i.test(text)) {
+      issues.push('standalone outro must include the phrase "Endless Tales original".')
     }
   }
 
@@ -451,13 +498,23 @@ Intro requirements:
 - Sounds like a trusted human recommendation, not a host, announcer, trailer, DJ, or ad.
 - Gives light audio-first grounding so a driver understands the story world quickly.
 - Is story-specific and hooks the listener with one clear sensory, emotional, or conceptual detail.
-- Names the title only when it feels natural; if it names the title, it must be correct.
+- For standalone stories, must include the story title naturally.
+- For standalone stories, must contain a concrete narrative hook: an event, secret, danger, conflict, mystery mechanism, or specific story problem.
+- Reject standalone intros that are only mood, weather, imagery, or atmosphere without narrative intrigue.
+- If you could attach this intro to many similar foggy mysteries, fail it.
+- Standalone intros must name or imply the actual mechanism that drives the story, such as who is in trouble, what strange event happens, what object/list/record drives the plot, or why the listener should care.
+- Vague phrases like "something waiting", "in the fog", "on that river", "your name written down", "secrets", "ink", or "twenty years ago" do not count unless paired with the concrete story mechanism.
 - Must not use generic host language such as "Welcome", "begins now", "only on Endless Tales", "tonight", or promotional copy.
 - Any [LISTENER_NAME] placeholder must sit naturally in a complete sentence; removing it must not break grammar.
 
 Outro requirements:
 - Emotionally lands and feels companion-like, as if Belle is still beside the listener after the story.
 - Matches the declared story type.
+- Standalone outros must include the story title.
+- Standalone outros must include the author name.
+- Standalone outros must include the exact phrase "Endless Tales original".
+- Standalone outros must leave emotional residue or reflection; do not pass outros that are only title/author credits or plot summary.
+- Standalone outros must tie the emotional closure to the actual resolution, choice, reveal, or final consequence of the story.
 - Standalone outros must not tease a fake episode 2, "next time", "what happens next", or unresolved continuation.
 - Series non-finale outros may create intentional next-episode desire.
 - Finale outros should feel complete.
@@ -478,7 +535,16 @@ Required JSON shape:
   "outroText": "replacement outro if requested"
 }
 
-Rules:
+Hard format rules:
+- Return valid JSON only. Do not include markdown, comments, explanation, or extra keys.
+- Before returning, self-check that each requested line has no more than two sentences.
+- Each requested value must be one line of spoken text.
+- Intro: one line, maximum two short sentences.
+- Outro: one line, maximum two short sentences.
+- Do not use semicolons.
+- Do not use stacked clauses that read like three or more thoughts joined together.
+
+Content rules:
 - Repair only the requested Belle line(s).
 - Do not rewrite the story body, title, description, author, narrator, character dialogue, or any non-Belle text.
 - Belle is the name. Do not write "Belle B" inside the spoken line.
@@ -486,11 +552,13 @@ Rules:
 - Belle sounds like a trusted friend, not a host, announcer, DJ, trailer, ad, or promo voice.
 - No "Welcome", "begins now", "only on Endless Tales", "tonight", "stay tuned", "next time", or "what happens next" for standalone stories.
 - Intro should lightly ground the listener in the story world, then add a specific emotional or sensory hook.
+- Standalone intro must include the story title and a concrete narrative hook: event, secret, danger, conflict, or mystery mechanism.
 - Intro may include [LISTENER_NAME] only if the current intro uses it; if used, it must sit naturally in a complete sentence.
 - Outro should emotionally land and feel companion-like.
 - Standalone outro must feel complete and must not tease a next episode or deferred resolution.
+- Standalone outro must include the story title, author name, and the exact phrase "Endless Tales original".
+- Standalone outro must emotionally close around the actual resolution, choice, reveal, or final consequence of the story.
 - Outro may include brief credits only if the emotional landing remains the main point.
-- Keep each line one or two sentences.
 - Keep outro under 42 words.
 `
 
@@ -1511,7 +1579,7 @@ async function validateStandaloneBelleAssets(job: ProductionJob) {
 
   const { data: story, error } = await supabase
     .from('stories')
-    .select('id,script,story_type,series_id,series_total_episodes')
+    .select('id,title,author,script,story_type,series_id,series_total_episodes')
     .eq('id', storyId)
     .single()
 
@@ -1530,8 +1598,8 @@ async function validateStandaloneBelleAssets(job: ProductionJob) {
   const issues = [
     ...(introAssets.length > 0 ? [] : ['intro asset is missing.']),
     ...(outroAssets.length > 0 ? [] : ['outro asset is missing.']),
-    ...validateBelleText('intro', introText, { standalone }),
-    ...validateBelleText('outro', outroText, { standalone }),
+    ...validateBelleText('intro', introText, { standalone, title: story.title, author: story.author }),
+    ...validateBelleText('outro', outroText, { standalone, title: story.title, author: story.author }),
   ]
   const success = issues.length === 0
   const report = {
@@ -1581,7 +1649,7 @@ async function validateStandaloneBelleQuality(job: ProductionJob, model: string)
 
   const { data: story, error } = await supabase
     .from('stories')
-    .select('id,title,genre,script,story_type,series_id,series_name,episode_number,series_total_episodes,series_is_finale')
+    .select('id,title,author,genre,script,story_type,series_id,series_name,episode_number,series_total_episodes,series_is_finale')
     .eq('id', storyId)
     .single()
 
@@ -1638,7 +1706,13 @@ ${scriptTail(story.script, 2200)}`,
   const parsed = parseJsonObject(rawReport)
   const introScore = typeof parsed.introScore === 'number' ? parsed.introScore : Number(parsed.introScore || 0)
   const outroScore = typeof parsed.outroScore === 'number' ? parsed.outroScore : Number(parsed.outroScore || 0)
-  const issues = Array.isArray(parsed.issues) ? parsed.issues.map(String).filter(Boolean) : []
+  const modelIssues = Array.isArray(parsed.issues) ? parsed.issues.map(String).filter(Boolean) : []
+  const standalone = !story.series_id && Number(story.series_total_episodes || 1) <= 1 && String(story.story_type || '').toLowerCase() !== 'series'
+  const deterministicIssues = [
+    ...validateBelleText('intro', introText, { standalone, title: story.title, author: story.author }),
+    ...validateBelleText('outro', outroText, { standalone, title: story.title, author: story.author }),
+  ]
+  const issues = Array.from(new Set([...deterministicIssues, ...modelIssues]))
   const suggestedFixes = Array.isArray(parsed.suggestedFixes) ? parsed.suggestedFixes.map(String).filter(Boolean) : []
   const success = parsed.pass === true && introScore >= 7 && outroScore >= 7 && issues.length === 0
   const report = {
@@ -1647,6 +1721,8 @@ ${scriptTail(story.script, 2200)}`,
     introScore,
     outroScore,
     issues,
+    deterministicIssues,
+    modelIssues,
     confidence: typeof parsed.confidence === 'number' ? parsed.confidence : Number(parsed.confidence || 0),
     suggestedFixes,
     rawReport,
@@ -1701,7 +1777,7 @@ async function repairStandaloneBelleQuality(job: ProductionJob, model: string) {
 
   const { data: story, error } = await supabase
     .from('stories')
-    .select('id,title,genre,script,story_type,series_id,series_name,episode_number,series_total_episodes,series_is_finale')
+    .select('id,title,author,genre,script,story_type,series_id,series_name,episode_number,series_total_episodes,series_is_finale')
     .eq('id', storyId)
     .single()
 
@@ -1781,8 +1857,8 @@ ${scriptTail(story.script, 2200)}`,
   if (shouldRepairOutro && !repairedOutro) throw new Error('Belle quality repair did not return outroText')
 
   const deterministicIssues = [
-    ...(shouldRepairIntro ? validateBelleText('intro', repairedIntro, { standalone: true }) : []),
-    ...(shouldRepairOutro ? validateBelleText('outro', repairedOutro, { standalone: true }) : []),
+    ...(shouldRepairIntro ? validateBelleText('intro', repairedIntro, { standalone: true, title: story.title, author: story.author }) : []),
+    ...(shouldRepairOutro ? validateBelleText('outro', repairedOutro, { standalone: true, title: story.title, author: story.author }) : []),
   ]
   if (deterministicIssues.length > 0) {
     throw new Error(`Repaired Belle text failed deterministic checks: ${deterministicIssues.join('; ')}`)
@@ -3252,6 +3328,160 @@ async function runSeriesVoiceSegment(job: ProductionJob, origin: string): Promis
         lastReport: report,
       },
     },
+  }
+}
+
+// ── Series post-voice pipeline helpers ─────────────────────────────────────
+// Handles: Belle generation → Music → Render for each series episode.
+// Each function iterates episodes, skips already-complete ones, and advances
+// the state so run-next can be called repeatedly until all episodes are done.
+
+async function runSeriesBelleAssets(job: ProductionJob, origin: string) {
+  const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
+  const seriesId = job.series_id || state.seriesId
+  if (!seriesId) throw new Error('Series job missing series_id')
+
+  const episodes = await loadSeriesEpisodes(String(seriesId))
+  const prev = state.seriesBelleGeneration && typeof state.seriesBelleGeneration === 'object'
+    ? state.seriesBelleGeneration : {}
+  const doneByEp: Record<string, boolean> = prev.doneByEp || {}
+
+  let processedEp: number | null = null
+  let introUrl: string | null = null
+  let outroUrl: string | null = null
+  let lastError: string | null = null
+
+  for (const ep of episodes) {
+    const num = episodeNumber(ep, 0)
+    const key = String(num)
+    if (doneByEp[key]) continue
+
+    const storyId = String(ep.id)
+    const r = await fetch(`${origin}/api/admin/generate-voices`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ storyId, generateBelleOnly: true }),
+    })
+    const report = await readJsonOrDiagnostic(r, '/api/admin/generate-voices (Belle)')
+    const ok = r.ok && report?.success === true
+    doneByEp[key] = ok
+    processedEp = num
+    introUrl = report?.introUrl || null
+    outroUrl = report?.outroUrl || null
+    if (!ok) lastError = String(report?.error || `HTTP ${r.status}`)
+    break // one episode per call
+  }
+
+  const allDone = episodes.every(ep => doneByEp[String(episodeNumber(ep, 0))])
+  return {
+    allDone,
+    processedEp,
+    introUrl,
+    outroUrl,
+    lastError,
+    state: { ...state, seriesId: String(seriesId), seriesBelleGeneration: { doneByEp, allDone, lastUpdatedAt: nowIso() } },
+  }
+}
+
+async function runSeriesMusicGeneration(job: ProductionJob, origin: string) {
+  const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
+  const seriesId = job.series_id || state.seriesId
+  if (!seriesId) throw new Error('Series job missing series_id')
+
+  const episodes = await loadSeriesEpisodes(String(seriesId))
+  const prev = state.seriesMusicGeneration && typeof state.seriesMusicGeneration === 'object'
+    ? state.seriesMusicGeneration : {}
+  const doneByEp: Record<string, boolean> = prev.doneByEp || {}
+
+  let processedEp: number | null = null
+  let musicUrl: string | null = null
+  let lastError: string | null = null
+
+  for (const ep of episodes) {
+    const num = episodeNumber(ep, 0)
+    const key = String(num)
+    if (doneByEp[key]) continue
+
+    const storyId = String(ep.id)
+    // Fetch story to build music prompt
+    const { data: story } = await supabase.from('stories').select('id,title,genre,script,background_music_url').eq('id', storyId).single()
+    // Skip if music already generated
+    const existingUrl = String(story?.background_music_url || '').trim()
+    if (existingUrl && !existingUrl.startsWith('pending:')) {
+      doneByEp[key] = true
+      processedEp = num
+      musicUrl = existingUrl
+      break
+    }
+    const prompt = story?.script ? musicPromptFor(story.script, story.title || '', story.genre || '') : ''
+    const r = await fetch(`${origin}/api/asc3/generate-music`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ storyId, prompt }),
+    })
+    const report = await readJsonOrDiagnostic(r, '/api/asc3/generate-music')
+    const ok = r.ok && report?.success === true
+    doneByEp[key] = ok
+    processedEp = num
+    musicUrl = report?.url || report?.musicUrl || null
+    if (!ok) lastError = String(report?.error || `HTTP ${r.status}`)
+    break // one episode per call
+  }
+
+  const allDone = episodes.every(ep => doneByEp[String(episodeNumber(ep, 0))])
+  return {
+    allDone,
+    processedEp,
+    musicUrl,
+    lastError,
+    state: { ...state, seriesId: String(seriesId), seriesMusicGeneration: { doneByEp, allDone, lastUpdatedAt: nowIso() } },
+  }
+}
+
+async function runSeriesRenderFinalMix(job: ProductionJob, origin: string) {
+  const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
+  const seriesId = job.series_id || state.seriesId
+  if (!seriesId) throw new Error('Series job missing series_id')
+
+  const episodes = await loadSeriesEpisodes(String(seriesId))
+  const prev = state.seriesRenderFinalMix && typeof state.seriesRenderFinalMix === 'object'
+    ? state.seriesRenderFinalMix : {}
+  const doneByEp: Record<string, boolean> = prev.doneByEp || {}
+
+  let processedEp: number | null = null
+  let finalMixUrl: string | null = null
+  let duration: number | null = null
+  let lastError: string | null = null
+
+  for (const ep of episodes) {
+    const num = episodeNumber(ep, 0)
+    const key = String(num)
+    if (doneByEp[key]) continue
+
+    const storyId = String(ep.id)
+    const r = await fetch(`${origin}/api/asc3/render-final-mix`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ storyId }),
+    })
+    const report = await readJsonOrDiagnostic(r, '/api/asc3/render-final-mix')
+    const ok = r.ok && report?.success === true
+    doneByEp[key] = ok
+    processedEp = num
+    finalMixUrl = report?.finalMixUrl || report?.audioUrl || null
+    duration = report?.durationMins || null
+    if (!ok) lastError = String(report?.error || `HTTP ${r.status}`)
+    break // one episode per call
+  }
+
+  const allDone = episodes.every(ep => doneByEp[String(episodeNumber(ep, 0))])
+  return {
+    allDone,
+    processedEp,
+    finalMixUrl,
+    duration,
+    lastError,
+    state: { ...state, seriesId: String(seriesId), seriesRenderFinalMix: { doneByEp, allDone, lastUpdatedAt: nowIso() } },
   }
 }
 
@@ -4795,8 +5025,51 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    // ── Series Belle → Music → Render steps ────────────────────────────────
+    if (step === NEXT_STEP_AFTER_SERIES_VOICES) {
+      const origin = new URL(req.url).origin
+      const result = await runSeriesBelleAssets(lockedJob, origin)
+      const nextStep = result.allDone ? NEXT_STEP_AFTER_SERIES_BELLE : NEXT_STEP_AFTER_SERIES_VOICES
+      const logs = appendLog(lockedJob,
+        result.allDone ? 'Series Belle assets complete for all episodes' : `Belle generated for Ep${result.processedEp}`,
+        { processedEp: result.processedEp, introUrl: result.introUrl, outroUrl: result.outroUrl, allDone: result.allDone, error: result.lastError || undefined })
+      const { data: updatedJob, error: updateError } = await supabase.from('production_jobs')
+        .update({ status: 'running', current_step: nextStep, state_json: result.state, error_json: null, logs, locked_at: null, locked_by: null })
+        .eq('id', lockedJob.id).select('*').single()
+      if (updateError) throw new Error(`Failed to save series Belle state: ${updateError.message}`)
+      return NextResponse.json({ success: !result.lastError, jobId: updatedJob.id, currentStep: step, nextStep: updatedJob.current_step, processedEp: result.processedEp, allDone: result.allDone, introUrl: result.introUrl, outroUrl: result.outroUrl, error: result.lastError || undefined, logs })
+    }
+
+    if (step === NEXT_STEP_AFTER_SERIES_BELLE) {
+      const origin = new URL(req.url).origin
+      const result = await runSeriesMusicGeneration(lockedJob, origin)
+      const nextStep = result.allDone ? NEXT_STEP_AFTER_SERIES_MUSIC : NEXT_STEP_AFTER_SERIES_BELLE
+      const logs = appendLog(lockedJob,
+        result.allDone ? 'Series music complete for all episodes' : `Music generated for Ep${result.processedEp}`,
+        { processedEp: result.processedEp, musicUrl: result.musicUrl, allDone: result.allDone, error: result.lastError || undefined })
+      const { data: updatedJob, error: updateError } = await supabase.from('production_jobs')
+        .update({ status: 'running', current_step: nextStep, state_json: result.state, error_json: null, logs, locked_at: null, locked_by: null })
+        .eq('id', lockedJob.id).select('*').single()
+      if (updateError) throw new Error(`Failed to save series music state: ${updateError.message}`)
+      return NextResponse.json({ success: !result.lastError, jobId: updatedJob.id, currentStep: step, nextStep: updatedJob.current_step, processedEp: result.processedEp, allDone: result.allDone, musicUrl: result.musicUrl, error: result.lastError || undefined, logs })
+    }
+
+    if (step === NEXT_STEP_AFTER_SERIES_MUSIC) {
+      const origin = new URL(req.url).origin
+      const result = await runSeriesRenderFinalMix(lockedJob, origin)
+      const nextStep = result.allDone ? NEXT_STEP_AFTER_SERIES_RENDER : NEXT_STEP_AFTER_SERIES_MUSIC
+      const logs = appendLog(lockedJob,
+        result.allDone ? 'Series final render complete for all episodes' : `Final render done for Ep${result.processedEp}`,
+        { processedEp: result.processedEp, finalMixUrl: result.finalMixUrl, durationMins: result.duration, allDone: result.allDone, error: result.lastError || undefined })
+      const { data: updatedJob, error: updateError } = await supabase.from('production_jobs')
+        .update({ status: result.allDone ? 'running' : 'running', current_step: nextStep, state_json: result.state, error_json: null, logs, locked_at: null, locked_by: null })
+        .eq('id', lockedJob.id).select('*').single()
+      if (updateError) throw new Error(`Failed to save series render state: ${updateError.message}`)
+      return NextResponse.json({ success: !result.lastError, jobId: updatedJob.id, currentStep: step, nextStep: updatedJob.current_step, processedEp: result.processedEp, allDone: result.allDone, finalMixUrl: result.finalMixUrl, durationMins: result.duration, error: result.lastError || undefined, logs })
+    }
+
     if (step !== 'create_story_row') {
-      return bad('Only create_story_row, generate_script, validate_script, validate_story_resolution, voice_preflight, generate_voices, generate_belle_assets, validate_belle_assets, validate_belle_quality, repair_belle_quality, generate_music, render_final_mix, complete_story_package, ready_for_review, generate_episode_script, score_validate_package, series_voice_preflight, and series_generate_voices are implemented in this run-next slice', 422, {
+      return bad('Only create_story_row, generate_script, validate_script, validate_story_resolution, voice_preflight, generate_voices, generate_belle_assets, validate_belle_assets, validate_belle_quality, repair_belle_quality, generate_music, render_final_mix, complete_story_package, ready_for_review, generate_episode_script, score_validate_package, series_voice_preflight, series_generate_voices, series_generate_belle_assets, series_generate_music, and series_render_final_mix are implemented in this run-next slice', 422, {
         jobId: lockedJob.id,
         currentStep: lockedJob.current_step,
       })
