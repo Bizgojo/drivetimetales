@@ -395,9 +395,9 @@ export async function POST(req: NextRequest) {
     await logLoudnessDiagnostics('normalized segment concat', normalizedConcatPath)
 
     const sil075Path = path.join(tmpDir, 'sil075.mp3')
-    const sil100Path = path.join(tmpDir, 'sil100.mp3')
+    const sil035Path = path.join(tmpDir, 'sil035.mp3')  // tight gap before outro
     await generateSilence(sil075Path, 0.75)
-    await generateSilence(sil100Path, 1.0)
+    await generateSilence(sil035Path, 0.35)  // was 1.0s — reduced to avoid dead air before outro
 
     // Architecture: produce story_body.mp3 (segments+music only) for queue mode
     // The player handles: sting → personalized Belle intro → story_body → outro
@@ -409,7 +409,7 @@ export async function POST(req: NextRequest) {
     const musicOffset = await findStrongMusicOffset(musicPath)
     const shapedMusicPath = path.join(tmpDir, 'music_shaped.mp3')
     const preRollSeconds = 2.5
-    const postStoryTailSeconds = 3
+    const postStoryTailSeconds = 1.5  // was 3s — reduced so music tail doesn't add dead air before outro
     const preRollVolume = 0.65
     const narrationBedVolume = 0.075
     const postStoryVolume = 0.45
@@ -448,9 +448,10 @@ export async function POST(req: NextRequest) {
     console.log(`  story_body.mp3 duration: ${storyBodyDur.toFixed(1)}s`)
     await logLoudnessDiagnostics('story_body.mp3', storyBodyPath)
 
-    // Build sting+intro crossfade: Belle B starts at 1.2s into sting, sting fades under her
+    // Build sting+intro crossfade: Belle B starts at 0.5s into sting — enters quickly, sting fades under
+    // was 1.2s — reduced so Belle doesn't feel delayed after the sting fires
     const stingDur = await getAudioDuration(stingPath)
-    const crossfadeStart = 1.2
+    const crossfadeStart = 0.5
     const stingIntroPath = path.join(tmpDir, 'sting_intro.mp3')
     const delayMs = Math.round(crossfadeStart * 1000)
     await execFileAsync(FFMPEG_PATH, [
@@ -463,9 +464,10 @@ export async function POST(req: NextRequest) {
       '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', stingIntroPath
     ])
 
-    // Build final_mix: crossfaded sting+intro + clean silence + story_body + silence + outro
+    // Build final_mix: crossfaded sting+intro + clean silence + story_body + tight silence + outro
+    // Timing: sting→Belle 0.5s | intro→story 0.75s | story→outro 0.35s (no long dead air gaps)
     const finalConcatFile = path.join(tmpDir, 'final.txt')
-    const finalParts = [stingIntroPath, sil075Path, storyBodyPath, sil100Path, normalizedOutroPath]
+    const finalParts = [stingIntroPath, sil075Path, storyBodyPath, sil035Path, normalizedOutroPath]
     await fs.writeFile(finalConcatFile, finalParts.map(p => `file '${p}'`).join('\n'))
     await execFileAsync(FFMPEG_PATH, [
       '-f', 'concat', '-safe', '0', '-i', finalConcatFile,
