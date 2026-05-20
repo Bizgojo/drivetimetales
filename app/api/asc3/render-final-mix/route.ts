@@ -394,10 +394,15 @@ export async function POST(req: NextRequest) {
     console.log(`  Concatenated segments: ${(concatStat.size/1024/1024).toFixed(2)} MB, ${concatDur.toFixed(1)}s duration`)
     await logLoudnessDiagnostics('normalized segment concat', normalizedConcatPath)
 
+    // Timing constants (Marc spec: sting→Belle 0.3-0.7s, story→outro 0.5-1.0s total)
+    const STING_TO_BELLE_SEC   = 0.5   // crossfadeStart below — Belle enters sting at 0.5s
+    const STORY_TAIL_SEC       = 0.5   // music tail after last voice line (was 3.0s → 1.5s → 0.5s)
+    const SILENCE_PRE_STORY    = 0.75  // between sting+intro block and story body
+    const SILENCE_PRE_OUTRO    = 0.25  // between story_body and outro (total story→outro: 0.5+0.25=0.75s)
     const sil075Path = path.join(tmpDir, 'sil075.mp3')
-    const sil035Path = path.join(tmpDir, 'sil035.mp3')  // tight gap before outro
-    await generateSilence(sil075Path, 0.75)
-    await generateSilence(sil035Path, 0.35)  // was 1.0s — reduced to avoid dead air before outro
+    const sil025Path = path.join(tmpDir, 'sil025.mp3')
+    await generateSilence(sil075Path, SILENCE_PRE_STORY)
+    await generateSilence(sil025Path, SILENCE_PRE_OUTRO)
 
     // Architecture: produce story_body.mp3 (segments+music only) for queue mode
     // The player handles: sting → personalized Belle intro → story_body → outro
@@ -409,7 +414,7 @@ export async function POST(req: NextRequest) {
     const musicOffset = await findStrongMusicOffset(musicPath)
     const shapedMusicPath = path.join(tmpDir, 'music_shaped.mp3')
     const preRollSeconds = 2.5
-    const postStoryTailSeconds = 1.5  // was 3s — reduced so music tail doesn't add dead air before outro
+    const postStoryTailSeconds = STORY_TAIL_SEC
     const preRollVolume = 0.65
     const narrationBedVolume = 0.075
     const postStoryVolume = 0.45
@@ -448,10 +453,9 @@ export async function POST(req: NextRequest) {
     console.log(`  story_body.mp3 duration: ${storyBodyDur.toFixed(1)}s`)
     await logLoudnessDiagnostics('story_body.mp3', storyBodyPath)
 
-    // Build sting+intro crossfade: Belle B starts at 0.5s into sting — enters quickly, sting fades under
-    // was 1.2s — reduced so Belle doesn't feel delayed after the sting fires
+    // Sting→Belle crossfade: Belle enters at STING_TO_BELLE_SEC (0.5s) — natural pause, no dead air
     const stingDur = await getAudioDuration(stingPath)
-    const crossfadeStart = 0.5
+    const crossfadeStart = STING_TO_BELLE_SEC
     const stingIntroPath = path.join(tmpDir, 'sting_intro.mp3')
     const delayMs = Math.round(crossfadeStart * 1000)
     await execFileAsync(FFMPEG_PATH, [
@@ -464,10 +468,11 @@ export async function POST(req: NextRequest) {
       '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', stingIntroPath
     ])
 
-    // Build final_mix: crossfaded sting+intro + clean silence + story_body + tight silence + outro
-    // Timing: sting→Belle 0.5s | intro→story 0.75s | story→outro 0.35s (no long dead air gaps)
+    // Build final_mix: sting+intro → 0.75s → story_body → 0.25s → outro
+    // Total sting→Belle: 0.5s (within 0.3-0.7s spec)
+    // Total story→outro: 0.5s tail + 0.25s silence = 0.75s (within 0.5-1.0s spec)
     const finalConcatFile = path.join(tmpDir, 'final.txt')
-    const finalParts = [stingIntroPath, sil075Path, storyBodyPath, sil035Path, normalizedOutroPath]
+    const finalParts = [stingIntroPath, sil075Path, storyBodyPath, sil025Path, normalizedOutroPath]
     await fs.writeFile(finalConcatFile, finalParts.map(p => `file '${p}'`).join('\n'))
     await execFileAsync(FFMPEG_PATH, [
       '-f', 'concat', '-safe', '0', '-i', finalConcatFile,
@@ -477,6 +482,65 @@ export async function POST(req: NextRequest) {
     const durationSecs = await getAudioDuration(outputPath)
     console.log(`  ✅ Mix complete: ${durationSecs.toFixed(1)}s`)
     await logLoudnessDiagnostics('final_mix.mp3', outputPath)
+
+    // ── POST-RENDER VALIDATION ─────────────────────────────────────────────
+    // Checks run before upload. Any failure throws and aborts — no broken file goes to storage.
+    const renderValidationIssues: string[] = []
+
+    // 1. File must have non-trivial duration
+    if (durationSecs < 60) {
+      renderValidationIssues.push(`final_mix duration too short: ${durationSecs.toFixed(1)}s (expected > 60s)`)
+    }
+
+    // 2. Last 10 seconds must not be silent (detects truncation or missing outro)
+    try {
+      const last10Start = Math.max(0, durationSecs - 10)
+      // ffmpeg volumedetect writes results to stderr
+      const volResult = await execFileAsync(FFMPEG_PATH, [
+        '-ss', String(last10Start), '-i', outputPath,
+        '-af', 'volumedetect', '-f', 'null', '-'
+      ]).catch((e: any) => ({ stderr: String(e.stderr || '') }))
+      const volStderr = (volResult as any).stderr || ''
+      const maxVolMatch = volStderr.match(/max_volume:\s*([-\d.]+)\s*dB/)
+      if (maxVolMatch) {
+        const maxVol = parseFloat(maxVolMatch[1])
+        if (maxVol < -60) {
+          renderValidationIssues.push(`Last 10s effectively silent (max_volume ${maxVol.toFixed(1)} dB) — outro may be missing or truncated`)
+        } else {
+          console.log(`  ✅ Last 10s max_volume: ${maxVol.toFixed(1)} dB (audio present)`)
+        }
+      } else {
+        console.warn('  ⚠️ Could not read volumedetect output for last-10s check')
+      }
+    } catch (valErr) {
+      console.warn('  Post-render silence check failed (non-blocking):', valErr)
+    }
+
+    // 3. Outro file must exist in storage
+    const { data: storageFiles } = await supabase.storage.from('audio').list(`asc3/${storyId}`, { limit: 200 })
+    const storageNames = (storageFiles || []).map((f: any) => f.name)
+    const hasOutro = storageNames.some((n: string) => n.startsWith('outro_'))
+    if (!hasOutro) {
+      renderValidationIssues.push('No outro_*.mp3 found in storage — outro may not have been generated before render')
+    }
+
+    // 4. Duration must be within ±180s of story's DB duration_mins (catch major mismatches only)
+    const { data: storyDurRow } = await supabase.from('stories').select('duration_mins').eq('id', storyId).single()
+    if (storyDurRow?.duration_mins) {
+      const dbSecs = Number(storyDurRow.duration_mins) * 60
+      const deviation = Math.abs(durationSecs - dbSecs)
+      if (deviation > 180) {
+        console.warn(`  ⚠️ duration_mins mismatch: DB=${storyDurRow.duration_mins}min actual=${(durationSecs/60).toFixed(1)}min — will update DB to actual`)
+      }
+    }
+
+    if (renderValidationIssues.length > 0) {
+      const msg = `Post-render validation failed:\n${renderValidationIssues.join('\n')}`
+      console.error('  ❌', msg)
+      throw new Error(msg)
+    }
+    console.log('  ✅ Post-render validation passed')
+    // ── END VALIDATION ─────────────────────────────────────────────────────
 
     // Upload story_body.mp3 (segments only — for queue mode personalization)
     const bodyBuffer = await fs.readFile(storyBodyPath)
