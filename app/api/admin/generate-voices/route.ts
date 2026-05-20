@@ -228,17 +228,21 @@ function normalizePossessiveVehicleModelNames(text: string): string {
 
 function normalizeContractionExpansions(text: string): string {
   return text
-    .replace(/\bshould(?:'|’)ve\b/gi, 'should have')
-    .replace(/\bwould(?:'|’)ve\b/gi, 'would have')
-    .replace(/\bcould(?:'|’)ve\b/gi, 'could have')
-    .replace(/\bshouldn(?:'|’)t\b/gi, 'should not')
-    .replace(/\bwouldn(?:'|’)t\b/gi, 'would not')
-    .replace(/\bcouldn(?:'|’)t\b/gi, 'could not')
+    .replace(/\bshould(?:'|')ve\b/gi, 'should have')
+    .replace(/\bwould(?:'|')ve\b/gi, 'would have')
+    .replace(/\bcould(?:'|')ve\b/gi, 'could have')
+    .replace(/\bshouldn(?:'|')t\b/gi, 'should not')
+    .replace(/\bwouldn(?:'|')t\b/gi, 'would not')
+    .replace(/\bcouldn(?:'|')t\b/gi, 'could not')
 }
 
 function transcriptTokens(text: string): string[] {
   const normalized = normalizeNumberWords(normalizeOrdinalDateForms(normalizeCurrencyForms(normalizePossessivePlaceNames(normalizePossessiveVehicleModelNames(normalizeStylisticCompoundWords(normalizeContractionExpansions(text)))))))
-    .replace(/[’']/g, "'")
+    .replace(/['']/g, "'")
+    // Normalize possessives to plain plural so Whisper output matches script:
+    // "Gate's" → "Gates", "Gates'" → "Gates" (both normalize to same token)
+    .replace(/\b([a-z]+)'s\b/gi, '$1s')
+    .replace(/\b([a-z]+s)'\b/gi, '$1')
     .replace(/\b([A-Z][a-z]{4,})s'(?=\s|$)/g, '$1poss')
     .replace(/\b([A-Z][a-z]{4,})'s\b/g, '$1poss')
     .toLowerCase()
@@ -646,18 +650,126 @@ function logShortCandidateQc(fileName: string, speaker: string, candidate: numbe
   )
 }
 
-// Permanent narrator voices — excluded from character pool
+// ── Segment Escalation Rule ──────────────────────────────────────────────────
+// No segment may be retried more than MAX_SEGMENT_ATTEMPTS times without
+// producing an escalation report. After MAX_SEGMENT_ATTEMPTS failures the
+// segment is skipped and the report is appended to the response + logged.
+
+const MAX_SEGMENT_ATTEMPTS = 5
+
+type SegmentFailureKind = 'mechanical_qc' | 'voice_generation' | 'script_issue' | 'system_issue'
+
+interface SegmentEscalation {
+  segment: string
+  index: number
+  speaker: string
+  scriptText: string
+  lastDetectedTranscript: string | null
+  failureKind: SegmentFailureKind
+  failureReason: string
+  attemptCount: number
+  recommendedFix: string
+  manualOverrideSafe: boolean
+  seriesTitle: string | null
+  episodeNumber: number | null
+  episodeTitle: string | null
+}
+
+function classifySegmentFailure(error: string, scriptText: string): SegmentFailureKind {
+  const e = error.toLowerCase()
+  if (e.includes('transcript qc') || e.includes('coverage') || e.includes('expected') && e.includes('detected')) {
+    return 'mechanical_qc'
+  }
+  if (e.includes('elevenlabs error') || e.includes('fetch failed') || e.includes('timeout') ||
+      /elevenlabs.*\d{3}/.test(e) || e.includes('network') || e.includes('econnrefused')) {
+    return 'voice_generation'
+  }
+  if (e.includes('upload') || e.includes('database') || e.includes('supabase') ||
+      e.includes('render') || e.includes('segment id') || e.includes('pipeline') ||
+      e.includes('storage')) {
+    return 'system_issue'
+  }
+  // Script heuristics: repeated phrases, broken sentence, unusual double-punct
+  const hasDoublePunct = /[.!?]{2,}|[,;]{2,}/.test(scriptText)
+  const words = scriptText.split(/\s+/)
+  const hasCapsChunk = words.filter(w => w === w.toUpperCase() && w.length > 2).length > 3
+  if (hasDoublePunct || hasCapsChunk) return 'script_issue'
+  return 'mechanical_qc' // default — most common non-infra failure
+}
+
+function extractTranscriptFromError(error: string): string | null {
+  const m = error.match(/detected "([^"]+)"/)
+  return m ? m[1] : null
+}
+
+function buildEscalationReport(
+  seg: { segment: string; index: number; speaker: string; text: string },
+  attempts: number,
+  lastError: string,
+  seriesTitle: string | null,
+  episodeNumber: number | null,
+  episodeTitle: string | null
+): SegmentEscalation {
+  const failureKind = classifySegmentFailure(lastError, seg.text)
+  const wordCount = seg.text.split(/\s+/).filter(Boolean).length
+  const manualOverrideSafe = failureKind === 'mechanical_qc' && (
+    lastError.toLowerCase().includes('transcript qc') || wordCount <= 8
+  )
+  const recommendedFix =
+    failureKind === 'mechanical_qc'
+      ? `Manual QC override safe — audio likely correct, transcript normalization mismatch on: "${seg.text}"`
+      : failureKind === 'voice_generation'
+        ? `Retry voice generation — ElevenLabs or network issue, not a content problem`
+        : failureKind === 'script_issue'
+          ? `Review script text — possible awkward wording or broken sentence: "${seg.text.slice(0, 80)}"`
+          : `Check pipeline — upload, DB, or render error: ${lastError.slice(0, 80)}`
+
+  return {
+    segment: seg.segment,
+    index: seg.index,
+    speaker: seg.speaker,
+    scriptText: seg.text,
+    lastDetectedTranscript: extractTranscriptFromError(lastError),
+    failureKind,
+    failureReason: lastError.slice(0, 300),
+    attemptCount: attempts,
+    recommendedFix,
+    manualOverrideSafe,
+    seriesTitle,
+    episodeNumber,
+    episodeTitle,
+  }
+}
+
+function logEscalation(report: SegmentEscalation): void {
+  console.warn(`\n🚨 ESCALATION REPORT`)
+  console.warn(`  Series:   ${report.seriesTitle || 'unknown'} Ep${report.episodeNumber || '?'} — ${report.episodeTitle || ''}`)
+  console.warn(`  Segment:  ${report.segment} (index ${report.index})`)
+  console.warn(`  Speaker:  ${report.speaker}`)
+  console.warn(`  Script:   "${report.scriptText}"`)
+  if (report.lastDetectedTranscript) {
+    console.warn(`  Detected: "${report.lastDetectedTranscript}"`)
+  }
+  console.warn(`  Kind:     ${report.failureKind}`)
+  console.warn(`  Reason:   ${report.failureReason}`)
+  console.warn(`  Attempts: ${report.attemptCount}/${MAX_SEGMENT_ATTEMPTS}`)
+  console.warn(`  Fix:      ${report.recommendedFix}`)
+  console.warn(`  ManualOK: ${report.manualOverrideSafe}`)
+  console.warn(``)
+}
+
+// Permanent narrator voices - excluded from character pool
 const NARRATOR_VOICE_NAMES = ['Cole Hargrove','Elliott Crane','Finn Calloway','James Alcott','Marcus Hale','Ray Dolan','Iris Calloway','June Harlow','Morgan Veil','Nora Ashby','Quinn Merritt','Sage Wilder']
-// BELLE B — EXCLUSIVE ANNOUNCER VOICE. NEVER use as character, narrator, or fallback.
+// BELLE B - EXCLUSIVE ANNOUNCER VOICE. NEVER use as character, narrator, or fallback.
 const BELLE_B_ID = CANONICAL_BELLE_B_VOICE_ID
 
-// Load all My Voices from ElevenLabs — used as the character voice pool
+// Load all My Voices from ElevenLabs - used as the character voice pool
 async function loadMyVoices(): Promise<any[]> {
   try {
     const res = await fetch('https://api.elevenlabs.io/v1/voices', { headers: { 'xi-api-key': EL_API_KEY } })
     if (!res.ok) return []
     const data = await res.json()
-    // Filter to only usable character voices — exclude narrators, Belle B, ET voices, generated voices
+    // Filter to only usable character voices - exclude narrators, Belle B, ET voices, generated voices
     return (data.voices || []).filter((v: any) => {
       if (isBelleBVoiceId(v.voice_id)) return false
       if (v.labels?.language && v.labels.language !== 'en') return false
@@ -680,7 +792,7 @@ function parseCharacterMeta(description: string): { gender: string; age: string;
   // Age
   const ageNum = d.match(/(\d+)/)?.[1] ? parseInt(d.match(/(\d+)/)![1]) : 35
   const age = ageNum < 25 ? 'young' : ageNum < 55 ? 'middle_aged' : 'old'
-  // Accent — map to EL accent labels
+  // Accent - map to EL accent labels
   const accent = d.includes('british') || d.includes('english') || d.includes('london') ? 'british'
     : d.includes('irish') ? 'irish'
     : d.includes('scottish') ? 'scottish'
@@ -691,7 +803,7 @@ function parseCharacterMeta(description: string): { gender: string; age: string;
     : d.includes('west coast') || d.includes('california') ? 'american'
     : d.includes('canadian') ? 'canadian'
     : 'american'
-  // Tone descriptives — map character traits to EL descriptive labels
+  // Tone descriptives - map character traits to EL descriptive labels
   const toneMap: Record<string,string> = {
     'calm': 'calm', 'quiet': 'calm', 'measured': 'calm', 'soft': 'calm', 'gentle': 'gentle',
     'intense': 'intense', 'fierce': 'intense', 'aggressive': 'intense', 'passionate': 'intense',
@@ -722,10 +834,10 @@ function parseCharacterMeta(description: string): { gender: string; age: string;
 function scoreVoice(voice: any, meta: { gender: string; age: string; accent: string; tones: string[] }): number {
   const labels = voice.labels || {}
   let score = 0
-  // Gender — hard requirement, massive penalty for mismatch
+  // Gender - hard requirement, massive penalty for mismatch
   if (meta.gender && labels.gender) {
     if (labels.gender.toLowerCase() === meta.gender.toLowerCase()) score += 100
-    else return -999 // Wrong gender — never use
+    else return -999 // Wrong gender - never use
   }
   // Age match
   if (labels.age === meta.age) score += 20
@@ -803,7 +915,7 @@ function findVoiceForCharacter(
   const scored = scoreCharacterVoiceCandidates(meta, myVoices, blockedVoiceIds)
 
   if (scored.length === 0) {
-    // Gender mismatch fallback — try any voice of right gender
+    // Gender mismatch fallback - try any voice of right gender
     const genderFallback = myVoices.find(v =>
       !usedVoiceIds.has(v.voice_id) &&
       v.voice_id !== narratorVoiceId &&
@@ -1073,12 +1185,12 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
     .replace(/\*+/g, '')        // remove asterisks (bold/italic markdown)
     .replace(/\_/g, '')         // remove underscores
     .replace(/#{1,6}\s/g, '')   // remove markdown headers
-    .replace(/\[LISTENER_NAME\]/g, 'friend')  // fallback — split handled by generateIntroWithName
+    .replace(/\[LISTENER_NAME\]/g, 'friend')  // fallback - split handled by generateIntroWithName
     .trim()
   const fileName = `${prefix}_${lineIndex.toString().padStart(4, '0')}.mp3`
   const cachePath = `asc3/${storyId}/${fileName}`
   const cacheUrl = `${BASE_STORAGE}/${cachePath}`
-  // Skip cache for announcer lines (intro/outro) OR when force=true — these must always be fresh
+  // Skip cache for announcer lines (intro/outro) OR when force=true - these must always be fresh
   const isAnnouncer = prefix === 'intro' || prefix === 'intro_before' || prefix === 'intro_after' || prefix === 'outro'
   const generateAttempt = async (): Promise<Buffer> => {
     const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
@@ -1456,6 +1568,10 @@ export async function POST(req: NextRequest) {
     if (!resolvedNarratorVoiceId && preflightOnly !== true) return NextResponse.json({ success: false, error: 'No narrator voice found' }, { status: 400 })
     if (!resolvedNarratorVoiceName) resolvedNarratorVoiceName = narratorVoiceById[resolvedNarratorVoiceId]?.name
     const characterGuide = parseCharacterGuide(script)
+    // Extract series metadata for escalation reports
+    const seriesTitle: string | null = (storyRow as any)?.series_name || script.match(/^SERIES:\s*(.+)/m)?.[1]?.trim() || null
+    const episodeNumber: number | null = parseInt((storyRow as any)?.episode_number || script.match(/^EPISODE:\s*(\d+)/m)?.[1] || '') || null
+    const episodeTitle: string | null = script.match(/^EPISODE_TITLE:\s*(.+)/m)?.[1]?.trim() || null
     // Check if narrator IS the protagonist (first person stories)
     const narratorIsCharacter = /NARRATOR_IS_CHARACTER:\s*true/i.test(script)
     const narrativeVoice = script.match(/NARRATIVE_VOICE:\s*(\S+)/i)?.[1]?.toLowerCase() || ''
@@ -1576,7 +1692,7 @@ export async function POST(req: NextRequest) {
         }, { status: 422 })
       }
     }
-    // Load My Voices pool once — used for all character assignments
+    // Load My Voices pool once - used for all character assignments
     const myVoices = await loadMyVoices()
     console.log(`  My Voices pool: ${myVoices.length} voices`)
     const usedVoiceIds = new Set<string>([resolvedNarratorVoiceId, ...RESERVED_BELLE_B_VOICE_IDS])
@@ -1606,7 +1722,7 @@ export async function POST(req: NextRequest) {
       const ageNum = char.description?.match(/(\d+)/)?.[1] ? parseInt(char.description.match(/(\d+)/)![1]) : 30
       if (ageNum < 12) meta.gender = 'female'
       else if (!meta.gender) meta.gender = char.gender === 'male' ? 'male' : char.gender === 'female' ? 'female' : ''
-      // First person: protagonist IS the narrator — use narrator voice
+      // First person: protagonist IS the narrator - use narrator voice
       const isProtagonist = isFirstPerson && (char.isProtagonist || characterGuide.indexOf(char) === 0)
       if (isProtagonist) {
         console.log(`  ${char.name}: protagonist = narrator voice (first person)`)
@@ -1789,6 +1905,7 @@ export async function POST(req: NextRequest) {
     console.log(`  Deleted stale story segments: ${staleSegmentPaths.length > 0 ? staleSegmentPaths.map(file => file.split('/').pop()).join(', ') : 'none'}`)
 
     const failures: VoiceInventoryFailure[] = []
+    const escalations: SegmentEscalation[] = []
     if (introLine) {
       try {
         const introText = introLine.text
@@ -1835,14 +1952,43 @@ export async function POST(req: NextRequest) {
         if (!characterVoiceId) throw new Error(`Missing character voice assignment for ${line.speaker}`)
         voiceId = characterVoiceId
       }
-      try { const url = await generateVoiceLine(line.text, voiceId, storyId, line.index, 'segment', false, line.speaker); results.segments.push({ index: line.index, speaker: line.speaker, type: line.type, url }); succeeded++ }
-      catch (e) {
+      // ── Escalation-aware retry loop (MAX_SEGMENT_ATTEMPTS = 5) ──────────────
+      {
         const segment = `segment_${line.index.toString().padStart(4, '0')}.mp3`
-        const error = String(e)
-        console.error(`  ❌ Line ${line.index} (${line.speaker}):`, e)
-        results.segments.push({ index: line.index, speaker: line.speaker, type: line.type, error })
-        failures.push({ segment, index: line.index, speaker: line.speaker, type: line.type, error })
-        failed++
+        let lastError = ''
+        let segSucceeded = false
+        for (let attempt = 1; attempt <= MAX_SEGMENT_ATTEMPTS; attempt++) {
+          // Attempt 4+: bump candidate count for mechanical_qc; brief delay for voice_generation
+          const forceRegen = attempt >= 4
+          const candidateCount = attempt >= 4 ? 8 : (attempt >= 5 ? 10 : SHORT_SEGMENT_MAX_CANDIDATES)
+          if (attempt > 1) {
+            const kind = classifySegmentFailure(lastError, line.text)
+            console.warn(`  ⚠️ Segment retry ${segment} attempt=${attempt}/${MAX_SEGMENT_ATTEMPTS} kind=${kind}`)
+            if (kind === 'voice_generation' && attempt <= 4) await new Promise(r => setTimeout(r, 2000))
+            if (kind === 'script_issue') break // nothing code can do — stop immediately
+          }
+          try {
+            const url = await generateVoiceLine(line.text, voiceId, storyId, line.index, 'segment', forceRegen, line.speaker, candidateCount)
+            results.segments.push({ index: line.index, speaker: line.speaker, type: line.type, url })
+            succeeded++
+            segSucceeded = true
+            break
+          } catch (e) {
+            lastError = String(e)
+            console.error(`  ❌ Line ${line.index} (${line.speaker}) attempt ${attempt}:`, lastError.slice(0, 200))
+          }
+        }
+        if (!segSucceeded) {
+          const report = buildEscalationReport(
+            { segment, index: line.index, speaker: line.speaker, text: line.text },
+            MAX_SEGMENT_ATTEMPTS, lastError, seriesTitle, episodeNumber, episodeTitle
+          )
+          logEscalation(report)
+          escalations.push(report)
+          results.segments.push({ index: line.index, speaker: line.speaker, type: line.type, error: lastError, escalated: true })
+          failures.push({ segment, index: line.index, speaker: line.speaker, type: line.type, error: lastError })
+          failed++
+        }
       }
     }
     const updates: Record<string, string> = {}
@@ -1862,15 +2008,20 @@ export async function POST(req: NextRequest) {
     }
     const finalSegmentNames = new Set((finalAudioFiles || []).filter(file => segmentFilePattern.test(file.name)).map(file => file.name))
     const inventory = buildInventoryReport(finalSegmentNames, failures)
-    console.log(`  Inventory: missing=${inventory.missingSegments.length}, lowLoudness=${inventory.lowLoudnessSegments.length}, transcriptFailed=${inventory.transcriptFailedSegments.length}, reusedVoices=${inventory.reusedVoices.length}`)
+    console.log(`  Inventory: missing=${inventory.missingSegments.length}, lowLoudness=${inventory.lowLoudnessSegments.length}, transcriptFailed=${inventory.transcriptFailedSegments.length}, reusedVoices=${inventory.reusedVoices.length}, escalated=${escalations.length}`)
+    if (escalations.length > 0) {
+      console.warn(`\n🚨 ${escalations.length} segment(s) escalated — copy to Marc/ChatGPT for review:`)
+      escalations.forEach(r => console.warn(`  ${r.segment} | ${r.failureKind} | manualOK=${r.manualOverrideSafe} | "${r.scriptText.slice(0,60)}" | fix: ${r.recommendedFix.slice(0,80)}`))
+    }
     return NextResponse.json({
-      success: failed === 0 && inventory.missingSegments.length === 0,
+      success: failed === 0 && inventory.missingSegments.length === 0 && escalations.length === 0,
       intro: results.intro,
       outro: results.outro,
       segments: results.segments,
-      stats: { total: lines.length, voice: voiceTotal, succeeded, failed },
+      stats: { total: lines.length, voice: voiceTotal, succeeded, failed, escalated: escalations.length },
       warnings,
       inventory,
+      escalations,
     })
   } catch (err) {
     console.error('generate-voices error:', err)
