@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { CANONICAL_BELLE_B_VOICE_ID } from '@/lib/voiceConstants'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -9,7 +10,7 @@ const supabase = createClient(
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const rawName = searchParams.get('name')?.trim()
-  const voiceId = searchParams.get('voice_id') || 'KWDD3Wyq30ZF5NEL01EJ'
+  const voiceId = CANONICAL_BELLE_B_VOICE_ID
   if (!rawName) return NextResponse.json({ error: 'Missing name' }, { status: 400 })
   const name = rawName.charAt(0).toUpperCase() + rawName.slice(1).toLowerCase()
   const { data: cached } = await supabase.from('name_audio').select('audio_url').eq('first_name', name).eq('voice_id', voiceId).single()

@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { isBelleBVoiceId } from '@/lib/voiceConstants'
 
 type Author = {
   id: string
@@ -39,8 +40,6 @@ type ElevenLabsVoice = {
   preview_url?: string | null
   category?: string | null
 }
-
-const BELLE_B_VOICE_ID = 'wewocdDkjSLm9ZwjO7TD'
 
 export default function AuthorsNarratorsV2Page() {
   const [grouped, setGrouped] = useState<Record<string, Author[]>>({})
@@ -208,7 +207,7 @@ export default function AuthorsNarratorsV2Page() {
 
   function renderNarratorVoiceControls(narrator: Narrator, compact = false) {
     const currentVoice = narrator.elevenlabs_voice_id ? voiceById[narrator.elevenlabs_voice_id] : null
-    const isBelleB = narrator.elevenlabs_voice_id === BELLE_B_VOICE_ID
+    const isBelleB = isBelleBVoiceId(narrator.elevenlabs_voice_id)
     const previewMissing = !currentVoice?.preview_url
 
     if (isBelleB) {
@@ -261,7 +260,7 @@ export default function AuthorsNarratorsV2Page() {
           }}
         >
           <option value="">Choose voice…</option>
-          {voices.filter((voice) => voice.voice_id !== BELLE_B_VOICE_ID).map((voice) => {
+          {voices.filter((voice) => !isBelleBVoiceId(voice.voice_id)).map((voice) => {
             const gender = voice.labels?.gender || ''
             const accent = voice.labels?.accent || ''
             const detail = [gender, accent].filter(Boolean).join(', ')

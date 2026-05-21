@@ -5,6 +5,7 @@ import { promisify } from 'util'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
+import { CANONICAL_BELLE_B_VOICE_ID } from '@/lib/voiceConstants'
 
 const execAsync = promisify(exec)
 const supabase = createClient(
@@ -12,7 +13,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 const BASE = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio`
-const BELLE_B_ID = 'wewocdDkjSLm9ZwjO7TD'
+const BELLE_B_ID = CANONICAL_BELLE_B_VOICE_ID
 
 export const runtime = 'nodejs'
 export const maxDuration = 30

@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { CANONICAL_BELLE_B_VOICE_ID } from '@/lib/voiceConstants'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const BELLE_B_VOICE_ID = 'wewocdDkjSLm9ZwjO7TD'
+const BELLE_B_VOICE_ID = CANONICAL_BELLE_B_VOICE_ID
 const EL_SETTINGS = { stability: 0.55, similarity_boost: 0.8, style: 0.2, use_speaker_boost: true }
 
 // Welcome script split at [LISTENER_NAME] insertion point

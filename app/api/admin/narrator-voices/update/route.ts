@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { isBelleBVoiceId } from '@/lib/voiceConstants'
 
 export const runtime = 'nodejs'
-
-const BELLE_B_VOICE_ID = 'wewocdDkjSLm9ZwjO7TD'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -18,7 +17,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'narrator_id and elevenlabs_voice_id are required' }, { status: 400 })
     }
 
-    if (elevenlabs_voice_id === BELLE_B_VOICE_ID) {
+    if (isBelleBVoiceId(elevenlabs_voice_id)) {
       return NextResponse.json({ success: false, error: 'Belle B is reserved for announcer use only' }, { status: 400 })
     }
 
@@ -32,7 +31,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: existingError?.message || 'Narrator not found' }, { status: 404 })
     }
 
-    if (existing.elevenlabs_voice_id === BELLE_B_VOICE_ID) {
+    if (isBelleBVoiceId(existing.elevenlabs_voice_id)) {
       return NextResponse.json({ success: false, error: 'Belle B narrator row is locked' }, { status: 400 })
     }
 

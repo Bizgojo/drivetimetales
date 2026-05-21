@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { isBelleBVoiceId } from '@/lib/voiceConstants'
 
 export const runtime = 'nodejs'
 
@@ -34,7 +35,7 @@ export async function POST(req: NextRequest) {
       const isAmerican = accent === 'american' || accent === 'american english'
       const genderMatch = gender === 'neutral' || vGender === gender
       const notUsed = !usedIds.has(v.voice_id)
-      const notBelleB = v.voice_id !== 'wewocdDkjSLm9ZwjO7TD'
+      const notBelleB = !isBelleBVoiceId(v.voice_id)
       return isAmerican && genderMatch && notUsed && notBelleB
     })
     const sameAge = candidates.filter((v) => (v.labels?.age || '') === currentAge)

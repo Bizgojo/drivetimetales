@@ -5,6 +5,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { CANONICAL_BELLE_B_VOICE_ID } from '@/lib/voiceConstants'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -12,7 +13,7 @@ const supabase = createClient(
 )
 
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY!
-const BELLE_B_VOICE_ID = 'EXAVITQu4vr4xnSDxMaL'
+const BELLE_B_VOICE_ID = CANONICAL_BELLE_B_VOICE_ID
 
 async function generateAudio(text: string): Promise<Buffer> {
   const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${BELLE_B_VOICE_ID}`, {
