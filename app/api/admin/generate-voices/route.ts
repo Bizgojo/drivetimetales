@@ -197,6 +197,24 @@ function normalizeOrdinalDateForms(text: string): string {
 
 function normalizeNumberWords(text: string): string {
   return text
+    // ── Hyphenated spoken time formats ────────────────────────────────────
+    // "eleven-nineteen" → "1119"  |  "four-fifteen" → "415"  |  "eight-thirty" → "830"
+    // Script writers use HOUR-MINUTE hyphenation for clock times.
+    // After this rule, the 4/3-digit result is further split by the
+    // transcriptTokens time-split step, so both sides produce ["11","19"] etc.
+    // Restricted to hyphenated forms ([\-]) only to avoid splitting ordinary
+    // space-separated number words in dialogue.
+    .replace(
+      /\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)-(oh|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty)(?:-(one|two|three|four|five|six|seven|eight|nine))?\b/gi,
+      (match, hour, minuteTens, minuteOnes) => {
+        const h = Number(NUMBER_WORDS[hour.toLowerCase()])
+        const mt = Number(NUMBER_WORDS[minuteTens.toLowerCase()] ?? (minuteTens.toLowerCase() === 'oh' || minuteTens.toLowerCase() === 'zero' ? '0' : undefined))
+        const mo = minuteOnes ? Number(NUMBER_WORDS[minuteOnes.toLowerCase()]) : 0
+        if (!Number.isFinite(h) || !Number.isFinite(mt)) return match
+        const minutes = mt >= 20 ? mt + mo : mt
+        return String(h * 100 + minutes)
+      }
+    )
     // ── Compound year/number forms (hyphens or spaces) ────────────────────
     // Handles "two-thousand-eleven" or "two thousand eleven" → "2011"
     // and "nineteen-hundred-sixty-five" → "1965".
@@ -296,6 +314,15 @@ function transcriptTokens(text: string): string[] {
     .replace(/\b(\d{1,2})\s*[\.:]\s*(\d{2})\s*(?:a\s*\.?\s*m\.?|am)\b/g, '$1 $2 am')
     .replace(/\bp\s*\.?\s*m\.?\b/g, 'pm')
     .replace(/\ba\s*\.?\s*m\.?\b/g, 'am')
+    // Split concatenated time numbers so both sides produce the same tokens:
+    // "1119" → "11 19"  |  "415" → "4 15"  |  "830" → "8 30"
+    // Whisper concatenates spoken clock times ("eleven nineteen" → "1119").
+    // normalizeNumberWords converts hyphenated script times the same way
+    // ("eleven-nineteen" → "1119"), so after this split both produce ["11","19"].
+    // Only splits 3/4-digit numbers that look like valid 12-hour clock times
+    // (hour 1-12, minutes 00-59).  Does not split years like 2011/1965
+    // (hour part 20/19 > 12) or arbitrary addresses.
+    .replace(/\b(1[0-2]|[1-9])([0-5]\d)\b/g, '$1 $2')
     .replace(/[^a-z0-9\s]/g, ' ')
     .split(/\s+/)
     .filter(Boolean)
