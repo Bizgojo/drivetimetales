@@ -197,6 +197,24 @@ function normalizeOrdinalDateForms(text: string): string {
 
 function normalizeNumberWords(text: string): string {
   return text
+    // ── Compound year/number forms (hyphens or spaces) ────────────────────
+    // Handles "two-thousand-eleven" or "two thousand eleven" → "2011"
+    // and "nineteen-hundred-sixty-five" → "1965".
+    // Must run BEFORE the simple "X thousand" rule so the full compound
+    // is consumed as one unit rather than being split across two passes.
+    .replace(
+      /\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen)[-\s]+(hundred|thousand)[-\s]+(zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)(?:[-\s]+(one|two|three|four|five|six|seven|eight|nine))?\b/gi,
+      (match, big, scale, mid, small) => {
+        const bigV = Number(NUMBER_WORDS[big.toLowerCase()])
+        const midV = Number(NUMBER_WORDS[mid.toLowerCase()])
+        const smallV = small ? Number(NUMBER_WORDS[small.toLowerCase()]) : 0
+        if (!Number.isFinite(bigV) || !Number.isFinite(midV)) return match
+        const multiplier = scale.toLowerCase() === 'thousand' ? 1000 : 100
+        // midV is the tens/ones portion; smallV adds ones when mid is a tens word (≥20)
+        const remainder = midV >= 20 ? midV + smallV : midV
+        return String(bigV * multiplier + remainder)
+      }
+    )
     .replace(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)\s+(hundred|thousand)\b/gi, (match, numberWord, scale) => {
       const value = NUMBER_WORDS[String(numberWord).toLowerCase()]
       const multiplier = String(scale).toLowerCase() === 'thousand' ? 1000 : 100
@@ -1740,12 +1758,18 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
     if (!accepted) {
       if (transcriptFailure) {
         // Repeated-identical-truncation guardrail (Marc 2026-05-21):
-        // If every retry candidate produced the same partial detected text,
-        // Whisper's VAD is consistently stopping at an inter-sentence pause.
-        // Further retries will not help.  The segment must be split.
+        // If every retry candidate produced the same partial detected text AND
+        // coverage is genuinely low (< 0.50), Whisper's VAD stopped at an
+        // inter-sentence pause.  Further retries will not help; split the segment.
+        //
+        // The coverage guard is critical: without it, normalization differences
+        // (e.g. "two-thousand-eleven" → "2011") also produce identical detected
+        // text across retries but at high coverage — that is a QC normalisation
+        // issue, not a truncation, and should not trigger auto-split.
         const allSameDetected = transcriptDetectedTexts.length >= 2
           && transcriptDetectedTexts.every(t => t === transcriptDetectedTexts[0])
-        if (allSameDetected) {
+        const isLikelyTruncation = (transcriptFailure.coverage ?? 1) < 0.50
+        if (allSameDetected && isLikelyTruncation) {
           const truncatedAt = transcriptDetectedTexts[0].slice(0, 80)
           console.error(
             `  ⚠️ REPEATED_IDENTICAL_TRUNCATION ${fileName} speaker="${speaker}" ` +
