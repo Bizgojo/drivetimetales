@@ -400,6 +400,10 @@ const HOMOPHONE_PAIRS: ReadonlyArray<readonly [string, string]> = [
   // Colour spelling variants — Whisper uses British 'grey' for American 'gray'
   ['gray', 'grey'],
   ['grays', 'greys'],
+  // Proper noun — Whisper maps the American name 'Basil' /beɪzəl/ to the
+  // Swiss city 'Basel' /bɑːzəl/; phonetically near-identical, single char diff.
+  // Both tokens are 5 chars and blocked by the length-guard without this pair.
+  ['basil', 'basel'],
 ] as const
 
 function knownHomophoneMatches(expected: string, detected: string): boolean {
