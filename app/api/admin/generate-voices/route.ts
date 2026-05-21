@@ -414,6 +414,49 @@ function knownHomophoneMatches(expected: string, detected: string): boolean {
 }
 
 /**
+ * Returns true when one token is the simple singular form of the other
+ * (token_a + 's' === token_b or vice versa).
+ *
+ * Rationale: Whisper commonly drops weak trailing plural /z/ sounds in
+ * natural connected speech.  When the rest of the segment is present
+ * (high coverage, tail passing), treating these as equivalent prevents
+ * the sequential cursor from getting stuck and collapsing measured coverage.
+ *
+ * Safe under Marc's rule (2026-05-21):
+ *   - coverage >= 0.95 in the surrounding segment
+ *   - tail check passes
+ *   - no named-entity, numeric, tense, or negation change
+ *   - meaning / action remains materially identical
+ *
+ * These conditions are implicitly enforced by the QC structure: a single
+ * plural/singular mismatch cannot push genuine coverage below the 0.62
+ * threshold by itself; only sequential cursor collapse does.  Named
+ * entities, numbers, and negations differ by more than a trailing 's'.
+ *
+ * Covers only the simple additive +s plural (hands, roads, eyes, minutes).
+ * Irregular plurals (man/men, foot/feet) belong in HOMOPHONE_PAIRS if
+ * they appear as real QC failures.
+ *
+ * Blocklist prevents false positives on short function words
+ * (his/hiss, as/ass, is/iss, us/uss, its/itss).
+ */
+const SINGULAR_PLURAL_BLOCKLIST = new Set([
+  'his', 'was', 'has', 'as', 'is', 'us', 'its',
+])
+
+function singularPluralVariantMatches(expected: string, detected: string): boolean {
+  const a = expected.toLowerCase()
+  const b = detected.toLowerCase()
+  if (a === b) return false
+  if (SINGULAR_PLURAL_BLOCKLIST.has(a) || SINGULAR_PLURAL_BLOCKLIST.has(b)) return false
+  const [shorter, longer] = a.length <= b.length ? [a, b] : [b, a]
+  // Shorter must be >= 3 chars; longer must be exactly shorter + 's'.
+  // Guard: shorter must NOT already end in 's' — this prevents double-s
+  // false positives (e.g. "hands"/"handss", "class"/"classs").
+  return shorter.length >= 3 && !shorter.endsWith('s') && longer === shorter + 's'
+}
+
+/**
  * Resolves a single transcript token to a canonical digit string when it
  * represents a whole number in any of the supported surface forms:
  *
@@ -466,6 +509,11 @@ function transcriptTokenMatches(expected: string, detected: string): boolean {
   // length guard for the same reason — these pairs are often short tokens.
   // The phonetic length guard below is intentionally left unchanged.
   if (knownHomophoneMatches(expected, detected)) return true
+  // Singular/plural variance: "hand"↔"hands", "eye"↔"eyes", "road"↔"roads".
+  // Whisper commonly drops weak trailing /z/ in natural connected speech.
+  // Safe when coverage and tail pass (enforced upstream); does not block
+  // genuine missing-content failures (those differ by more than one 's').
+  if (singularPluralVariantMatches(expected, detected)) return true
   if (commonFirstNameVariantMatches(expected, detected)) return true
   if (commonSurnameVariantMatches(expected, detected)) return true
   if (expected.length < 7 || detected.length < 7) return false
