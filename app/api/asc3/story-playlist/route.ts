@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { createServerClient } from '@supabase/ssr'
 import { createHash } from 'crypto'
 import { CANONICAL_BELLE_B_VOICE_ID } from '@/lib/voiceConstants'
+import { anthropicCall } from '@/app/lib/anthropic-logger'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -13,6 +15,7 @@ const INTRO_OUTRO_MUSIC = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/ob
 const BELLE_B_NAME_VOICE_IDS = [CANONICAL_BELLE_B_VOICE_ID]
 const EL_SETTINGS = { stability: 0.49, similarity_boost: 0.51, style: 0.0, use_speaker_boost: true, speed: 1.0 }
 const BELLE_AUDIO_CACHE_VERSION = 'v1'
+const BELLE_PERSONALIZED_CACHE_VERSION = 'v1'
 
 type BelleVariant = {
   id: string
@@ -26,6 +29,10 @@ type BelleVariant = {
 
 function safeName(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'friend'
+}
+
+function safePathPart(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'item'
 }
 
 function normalizeFirstName(value?: string | null) {
@@ -91,6 +98,214 @@ function hashBelleText(text: string) {
   return createHash('sha256').update(text).digest('hex').slice(0, 16)
 }
 
+async function resolveRequestUser(req: NextRequest) {
+  try {
+    const authClient = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll: () => req.cookies.getAll(),
+          setAll: () => {},
+        },
+      }
+    )
+    const { data: { user } } = await authClient.auth.getUser()
+    return user || null
+  } catch (err) {
+    console.warn('[story-playlist] auth user resolution failed:', err instanceof Error ? err.message : String(err))
+    return null
+  }
+}
+
+async function resolvePreferredName(userId: string, queryFirstName: string) {
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('first_name,display_name')
+      .eq('id', userId)
+      .maybeSingle()
+    if (error) throw error
+    return normalizeFirstName(data?.first_name || data?.display_name || queryFirstName)
+  } catch (err) {
+    console.warn('[story-playlist] preferred name lookup failed:', {
+      userId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return normalizeFirstName(queryFirstName)
+  }
+}
+
+function getPersonalizedVariantContext(story: any, variant: BelleVariant) {
+  const position = getSeriesPosition(story) || 'standalone'
+  const sourceHash = hashBelleText(renderBelleText(variant, ''))
+  return `intro:${position}:${variant.variant_key}:${variant.id}:${sourceHash}`
+}
+
+function extractClaudeText(message: any) {
+  return String(message?.content?.find((part: any) => part?.type === 'text')?.text || '').trim()
+}
+
+function cleanBelleLine(text: string) {
+  return text
+    .replace(/^["'“”]+|["'“”]+$/g, '')
+    .replace(/^Belle:\s*/i, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function validatePersonalizedIntro(text: string, preferredName: string) {
+  const cleaned = cleanBelleLine(text)
+  if (!cleaned) return 'empty personalized intro'
+  if (cleaned.includes('[LISTENER_NAME]')) return 'personalized intro still contains [LISTENER_NAME]'
+  if (/Belle\s+B/i.test(cleaned)) return 'personalized intro says Belle B'
+  if (/^(welcome|this is|tonight's story|only on endless tales)\b/i.test(cleaned)) return 'personalized intro is announcer-like'
+  const words = cleaned.split(/\s+/).filter(Boolean)
+  if (words.length > 38) return `personalized intro too long: ${words.length} words`
+  const escapedName = preferredName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  if (!new RegExp(`\\b${escapedName}\\b`, 'i').test(cleaned)) return 'personalized intro did not include preferred name naturally'
+  const withoutName = cleaned.replace(new RegExp(`\\b${escapedName}\\b,?\\s*`, 'ig'), '').replace(/\s+/g, ' ').trim()
+  if (!/[.!?]$/.test(withoutName)) return 'removing preferred name leaves broken punctuation'
+  return null
+}
+
+async function generatePersonalizedIntroText(story: any, variant: BelleVariant, preferredName: string) {
+  const baseText = renderBelleText(variant, '')
+  const prompt = `Rewrite this Belle intro as one natural full line for a listener named ${preferredName}.
+
+Story title: ${story.title || 'Untitled'}
+Series: ${story.series_name || 'Standalone'}
+Episode number: ${story.episode_number || story.series_number || ''}
+Base intro: ${baseText}
+
+Rules:
+- Return only the spoken Belle line. No JSON. No label.
+- Use ${preferredName} naturally in a complete sentence.
+- Do not stitch the name into the middle of a clause.
+- Keep the line grounded for audio-first listening.
+- Belle sounds like a trusted friend quietly recommending the story.
+- 1-2 short sentences, ideally under 35 words.
+- No announcer phrases: no "Welcome", no "begins now", no "only on Endless Tales".
+- Do not say Belle B.
+- Do not summarize the whole plot.`
+
+  const response = await anthropicCall({
+    model: 'claude-haiku-4-5',
+    max_tokens: 180,
+    temperature: 0.55,
+    messages: [{ role: 'user', content: prompt }],
+  }, {
+    route: '/api/asc3/story-playlist',
+    purpose: 'belle_intro_personalization',
+    storyId: story.id,
+    storyTitle: story.title,
+    metadata: { variantId: variant.id, variantKey: variant.variant_key },
+  })
+
+  const text = cleanBelleLine(extractClaudeText(response))
+  const validationError = validatePersonalizedIntro(text, preferredName)
+  if (validationError) throw new Error(validationError)
+  return text
+}
+
+async function generateBelleAudioFromText(storyId: string, text: string, cachePath: string, cacheKey: string) {
+  const cached = await getCachedAudioUrl(cachePath)
+  if (cached) {
+    return {
+      audioUrl: cached,
+      cached: true,
+      cachePath,
+      cacheKey,
+      finalText: text,
+      selectedBelleVoiceId: CANONICAL_BELLE_B_VOICE_ID,
+    }
+  }
+
+  const elKey = process.env.ELEVENLABS_API_KEY
+  if (!elKey) throw new Error('ELEVENLABS_API_KEY is not configured')
+  const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${CANONICAL_BELLE_B_VOICE_ID}`, {
+    method: 'POST',
+    headers: { 'xi-api-key': elKey, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
+    body: JSON.stringify({ text, model_id: 'eleven_multilingual_v2', voice_settings: EL_SETTINGS }),
+  })
+  if (!res.ok) throw new Error(`Belle audio generation failed: ${res.status} ${await res.text()}`)
+  const audioBuffer = Buffer.from(await res.arrayBuffer())
+  const { error } = await supabase.storage.from('audio').upload(cachePath, audioBuffer, { contentType: 'audio/mpeg', upsert: true })
+  if (error) throw new Error(`Belle audio upload failed: ${error.message}`)
+  return {
+    audioUrl: `${BASE_URL}/${cachePath}`,
+    cached: false,
+    cachePath,
+    cacheKey,
+    finalText: text,
+    selectedBelleVoiceId: CANONICAL_BELLE_B_VOICE_ID,
+  }
+}
+
+async function resolvePersonalizedIntro(story: any, variant: BelleVariant, userId: string, preferredName: string) {
+  const variantContext = getPersonalizedVariantContext(story, variant)
+  const baseQuery = supabase
+    .from('story_belle_personalized_cache')
+    .select('id,text,audio_url,text_hash,created_at')
+    .eq('user_id', userId)
+    .eq('story_id', story.id)
+    .eq('kind', 'intro')
+    .eq('variant_context', variantContext)
+    .eq('source_variant_id', variant.id)
+    .eq('belle_voice_id', CANONICAL_BELLE_B_VOICE_ID)
+    .eq('preferred_name', preferredName)
+    .not('audio_url', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(1)
+
+  const { data: cachedRows, error: cacheError } = await baseQuery
+  if (cacheError) throw new Error(`Belle personalized cache lookup failed: ${cacheError.message}`)
+  const cached = cachedRows?.[0]
+  if (cached?.audio_url) {
+    return {
+      variant,
+      audioUrl: cached.audio_url,
+      cached: true,
+      personalizedUsed: true,
+      personalizedCacheHit: true,
+      personalizedText: cached.text,
+      finalText: cached.text,
+      cacheKey: `personalized:${cached.id}`,
+      selectedBelleVoiceId: CANONICAL_BELLE_B_VOICE_ID,
+    }
+  }
+
+  const text = await generatePersonalizedIntroText(story, variant, preferredName)
+  const textHash = hashBelleText(text)
+  const cacheKey = `${BELLE_PERSONALIZED_CACHE_VERSION}/${story.id}/${userId}/${CANONICAL_BELLE_B_VOICE_ID}/${safePathPart(variantContext)}/${textHash}`
+  const cachePath = `belle/personalized/${cacheKey}.mp3`
+  const audio = await generateBelleAudioFromText(story.id, text, cachePath, cacheKey)
+  const { error: insertError } = await supabase
+    .from('story_belle_personalized_cache')
+    .upsert({
+      user_id: userId,
+      story_id: story.id,
+      kind: 'intro',
+      variant_context: variantContext,
+      source_variant_id: variant.id,
+      belle_voice_id: CANONICAL_BELLE_B_VOICE_ID,
+      preferred_name: preferredName,
+      text,
+      text_hash: textHash,
+      audio_url: audio.audioUrl,
+    }, { onConflict: 'user_id,story_id,kind,variant_context,belle_voice_id,text_hash' })
+  if (insertError) throw new Error(`Belle personalized cache insert failed: ${insertError.message}`)
+
+  return {
+    variant,
+    ...audio,
+    personalizedUsed: true,
+    personalizedCacheHit: Boolean(audio.cached),
+    personalizedText: text,
+    finalText: text,
+  }
+}
+
 async function generateBelleAudio(storyId: string, variant: BelleVariant, firstName: string) {
   const personalized = variant.uses_name && Boolean(firstName)
   const namePart = personalized ? `name_${safeName(firstName)}` : 'generic'
@@ -131,7 +346,14 @@ async function generateBelleAudio(storyId: string, variant: BelleVariant, firstN
   }
 }
 
-async function resolveBelleAudio(story: any, kind: 'intro' | 'outro', firstName: string, lastVariantKey: string | null, sessionCount: number) {
+async function resolveBelleAudio(
+  story: any,
+  kind: 'intro' | 'outro',
+  firstName: string,
+  lastVariantKey: string | null,
+  sessionCount: number,
+  personalization?: { userId: string | null; preferredName: string }
+) {
   const { data: variants, error } = await supabase
     .from('story_belle_variants')
     .select('id,kind,variant_key,text,uses_name,tone,series_position')
@@ -142,9 +364,28 @@ async function resolveBelleAudio(story: any, kind: 'intro' | 'outro', firstName:
   const selected = pickBelleVariant(variants as BelleVariant[], kind, story, firstName, lastVariantKey, sessionCount)
   if (!selected) return null
 
+  if (kind === 'intro' && personalization?.userId && personalization.preferredName) {
+    try {
+      return await resolvePersonalizedIntro(story, selected, personalization.userId, personalization.preferredName)
+    } catch (err) {
+      console.warn('[story-playlist] personalized Belle intro failed; falling back to generic:', {
+        storyId: story.id,
+        variant_key: selected.variant_key,
+        error: err instanceof Error ? err.message : String(err),
+      })
+      ;(selected as any).personalizationFallbackReason = err instanceof Error ? err.message : String(err)
+    }
+  }
+
   try {
     const audio = await generateBelleAudio(story.id, selected, firstName)
-    return { variant: selected, ...audio }
+    return {
+      variant: selected,
+      ...audio,
+      personalizedUsed: false,
+      personalizedCacheHit: false,
+      personalizationFallbackReason: (selected as any).personalizationFallbackReason || null,
+    }
   } catch (err) {
     console.warn('[story-playlist] selected Belle audio failed; trying generic fallback:', {
       storyId: story.id,
@@ -158,7 +399,13 @@ async function resolveBelleAudio(story: any, kind: 'intro' | 'outro', firstName:
   if (!fallback) return null
   try {
     const audio = await generateBelleAudio(story.id, fallback, '')
-    return { variant: fallback, ...audio }
+    return {
+      variant: fallback,
+      ...audio,
+      personalizedUsed: false,
+      personalizedCacheHit: false,
+      personalizationFallbackReason: (selected as any).personalizationFallbackReason || null,
+    }
   } catch (err) {
     console.warn('[story-playlist] fallback Belle audio failed:', {
       storyId: story.id,
@@ -176,9 +423,22 @@ function belleDebug(audio: any) {
     variant: audio.variant || null,
     selectedBelleVoiceId: audio.selectedBelleVoiceId || null,
     usedCachedAudio: Boolean(audio.cached),
+    personalizedUsed: Boolean(audio.personalizedUsed),
+    personalizedCacheHit: Boolean(audio.personalizedCacheHit),
+    personalizedText: audio.personalizedText || null,
+    personalizationFallbackReason: audio.personalizationFallbackReason || null,
     cacheKey: audio.cacheKey || null,
     finalBelleText: audio.finalText || null,
+    selectedText: audio.finalText || null,
     audioUrl: audio.audioUrl || null,
+  }
+}
+
+function bellePayload(intro: any, outro: any, personalizationDebug: Record<string, unknown>) {
+  return {
+    intro: belleDebug(intro),
+    outro: belleDebug(outro),
+    personalizationDebug,
   }
 }
 
@@ -198,6 +458,16 @@ export async function GET(req: NextRequest) {
   const lastBelleVariantKey = req.cookies.get('et_last_belle_variant_key')?.value || null
   const belleSessionCount = Number(req.cookies.get('et_belle_session_count')?.value || 0)
   if (!storyId) return NextResponse.json({ error: 'storyId required' }, { status: 400 })
+  const authUser = await resolveRequestUser(req)
+  const preferredName = authUser?.id ? await resolvePreferredName(authUser.id, firstName) : ''
+  const personalizationDebug = {
+    resolvedUserId: authUser?.id || null,
+    resolvedPreferredName: preferredName || null,
+    personalizationEligible: Boolean(authUser?.id && preferredName),
+    personalizationSkippedReason: authUser?.id
+      ? (preferredName ? null : 'missing preferredName')
+      : 'missing authenticated user_id',
+  }
 
   const { data: story, error } = await supabase
     .from('stories')
@@ -209,10 +479,32 @@ export async function GET(req: NextRequest) {
 
   const refUrl = story.audio_url || ''
   const has3Files = !!(story.intro_audio_url)
-  const hasSplitIntro = !!(story.intro_before_url && story.intro_after_url && (story as any).story_audio_url)
   const STING_URL = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio/sting/ET_Signature_Sting_v7.mp3.mp3`
+
+  // AUTHORITATIVE PLAYBACK RULE:
+  // If a rendered final_mix exists (audio_url contains 'final_mix'), always use it as the single
+  // authoritative source. Queue mode (hasSplitIntro) is only for intentional live personalization.
+  // This prevents stale queue-mode DB fields from routing away from the corrected rendered file.
+  const hasRenderedFinalMix = refUrl.includes('/asc3/') && refUrl.includes('final_mix')
+  if (hasRenderedFinalMix) {
+    const belleI = await resolveBelleAudio(story, 'intro', preferredName || firstName, lastBelleVariantKey, belleSessionCount, { userId: authUser?.id || null, preferredName })
+    const belleO = await resolveBelleAudio(story, 'outro', firstName, null, belleSessionCount)
+    return NextResponse.json({
+      queue: [],
+      useFinalMix: true,
+      finalMixUrl: refUrl,
+      totalSegments: 1,
+      belle: bellePayload(belleI, belleO, personalizationDebug),
+      belleSessionCount,
+    })
+  }
+
+  const hasSplitIntro = !!(story.intro_before_url && story.intro_after_url && (story as any).story_audio_url)
   const queue: { url: string; type: 'intro' | 'story' | 'outro'; label: string }[] = []
-  const belleIntro = await resolveBelleAudio(story, 'intro', firstName, lastBelleVariantKey, belleSessionCount)
+  const belleIntro = await resolveBelleAudio(story, 'intro', preferredName || firstName, lastBelleVariantKey, belleSessionCount, {
+    userId: authUser?.id || null,
+    preferredName,
+  })
   const belleOutro = await resolveBelleAudio(story, 'outro', firstName, null, belleSessionCount)
   const usesBelleVariantAudio = Boolean(belleIntro?.audioUrl || belleOutro?.audioUrl)
 
@@ -259,7 +551,7 @@ export async function GET(req: NextRequest) {
       introOutroMusicUrl: usesBelleVariantAudio ? null : INTRO_OUTRO_MUSIC,
       backgroundMusicUrl: usesBelleVariantAudio ? null : ((story as any).background_music_url || null),
       totalSegments: queue.length,
-      belle: { intro: belleDebug(belleIntro), outro: belleDebug(belleOutro) },
+      belle: bellePayload(belleIntro, belleOutro, personalizationDebug),
       belleSessionCount,
     }, belleIntro?.variant?.variant_key)
   }
@@ -277,7 +569,7 @@ export async function GET(req: NextRequest) {
       introOutroMusicUrl: null,
       backgroundMusicUrl: null,
       totalSegments: queue.length,
-      belle: { intro: belleDebug(belleIntro), outro: belleDebug(belleOutro) },
+      belle: bellePayload(belleIntro, belleOutro, personalizationDebug),
       belleSessionCount,
     }, belleIntro?.variant?.variant_key)
   }
@@ -308,7 +600,7 @@ export async function GET(req: NextRequest) {
       introOutroMusicUrl: usesBelleVariantAudio ? null : INTRO_OUTRO_MUSIC,
       backgroundMusicUrl: usesBelleVariantAudio ? null : ((story as any).background_music_url || null),
       totalSegments: queue.length,
-      belle: { intro: belleDebug(belleIntro), outro: belleDebug(belleOutro) },
+      belle: bellePayload(belleIntro, belleOutro, personalizationDebug),
       belleSessionCount,
     }, belleIntro?.variant?.variant_key)
   }
@@ -325,7 +617,7 @@ export async function GET(req: NextRequest) {
       introOutroMusicUrl: usesBelleVariantAudio ? null : INTRO_OUTRO_MUSIC,
       backgroundMusicUrl: usesBelleVariantAudio ? null : ((story as any).background_music_url || null),
       totalSegments: queue.length,
-      belle: { intro: belleDebug(belleIntro), outro: belleDebug(belleOutro) },
+      belle: bellePayload(belleIntro, belleOutro, personalizationDebug),
       belleSessionCount,
     }, belleIntro?.variant?.variant_key)
   }
@@ -356,7 +648,7 @@ export async function GET(req: NextRequest) {
       introOutroMusicUrl: usesBelleVariantAudio ? null : INTRO_OUTRO_MUSIC,
       backgroundMusicUrl: usesBelleVariantAudio ? null : backgroundMusicUrl,
       totalSegments: queue.length,
-      belle: { intro: belleDebug(belleIntro), outro: belleDebug(belleOutro) },
+      belle: bellePayload(belleIntro, belleOutro, personalizationDebug),
       belleSessionCount,
     })
   }
@@ -368,7 +660,7 @@ export async function GET(req: NextRequest) {
     introOutroMusicUrl: usesBelleVariantAudio ? null : INTRO_OUTRO_MUSIC,
     backgroundMusicUrl: null,
     totalSegments: queue.length,
-    belle: { intro: belleDebug(belleIntro), outro: belleDebug(belleOutro) },
-    belleSessionCount,
-  }, belleIntro?.variant?.variant_key)
-}
+      belle: bellePayload(belleIntro, belleOutro, personalizationDebug),
+      belleSessionCount,
+    }, belleIntro?.variant?.variant_key)
+  }
