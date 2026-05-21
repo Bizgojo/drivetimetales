@@ -159,23 +159,27 @@ BEFORE you write a single line of dialogue, output a Story Resolution Map as a c
 2. WHY THE SOLUTION SEEMS DIFFICULT
    Why does the solution appear impossible, dangerous, hidden, or costly at the start of this episode?
 
-3. MINOR PROBLEMS / MIDDLE MOVEMENT
-   List the smaller problems, discoveries, reversals, or choices that the middle of this episode sorts through.
+3. WHAT CHANGES IN THE MIDDLE
+   List the smaller problems, discoveries, reversals, choices, leverage, escalating consequences, or emotional shifts that gradually make the episode solution possible.
 
-4. FINAL SOLUTION
-   State the concrete episode-level ending BEFORE drafting. Must resolve the episode problem.
+4. FINAL DECISIVE ACTION
+   State the concrete onstage action the protagonist takes BEFORE drafting. Must resolve the episode problem.
    ${isFinale ? '⚠️ SERIES FINALE: The solution must also resolve the full series problem.' : 'Non-finale: resolve the episode problem while deepening the series hook.'}
 
-5. WHY THE ENDING IS EARNED
-   How does the middle of the episode make the solution feel possible but not obvious?
+5. EMOTIONAL PAYOFF / WHY THE ENDING IS EARNED
+   How does the middle make the decisive action feel possible but not obvious, and what does the ending cost, heal, reveal, or change?
 
 6. VARIETY GUARDRAIL
    How does this episode differ in structure, tone, pacing, and solution type from other episodes in this series?
 
 Hard rules:
 - The solution must feel difficult at the beginning of this episode.
-- The middle must make the solution possible.
-- ${isFinale ? 'This is the SERIES FINALE. The series problem MUST be fully resolved.' : 'This is a non-finale. Resolve the episode problem. Strengthen the series hook.'}
+- The middle must progressively increase understanding, reveal leverage, and escalate consequences.
+- The climax must happen onstage.
+- The protagonist must affect the outcome through decisive action.
+- The ending must resolve through dramatic action and consequence, not explanation alone.
+- Avoid offscreen solutions, coincidence/deus-ex-machina fixes, passive symbolic endings, abrupt explanation dumps, "villain already dead" anticlimax, and endings where the protagonist only watches or learns what happened.
+- ${isFinale ? 'This is the SERIES FINALE. The core series problem MUST be fully resolved with emotional closure.' : 'This is a non-finale. Resolve the episode problem while advancing series tension and strengthening the series hook.'}
 - Do not repeat the same plot pattern as other episodes in this series.
 
 CURRENT published rules:

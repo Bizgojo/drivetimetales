@@ -35,9 +35,9 @@ const REVIEW_PROMPT = `You are reviewing an Endless Tales script BEFORE audio pr
 Check the top of the script for the Story Resolution Map comment block. It MUST include all six sections:
 1. Main Hook / Problem — is it clear and urgent?
 2. Why the Solution Seems Difficult — is it explained?
-3. Minor Problems / Middle Movement — are they listed?
-4. Final Solution — is it concrete and non-vague?
-5. Why the Ending Is Earned — is the connection to the middle made explicit?
+3. What Changes in the Middle — does it reveal leverage, escalation, and consequences?
+4. Final Decisive Action — is the protagonist's concrete onstage action clear?
+5. Emotional Payoff / Why the Ending Is Earned — is the connection to the middle made explicit?
 6. Variety Guardrail — does it show how this story differs from prior stories?
 
 If the map is missing, incomplete, or any section is vague/unclear, flag it immediately in RESOLUTION FLAGS below.
@@ -47,7 +47,7 @@ Score the script in five dimensions from 1 to 5:
 2. Clarity
 3. Pacing
 4. Character / Voice Fit
-5. Ending / Landing
+5. Ending / Landing / Satisfaction
 
 Rules:
 - Use the CURRENT Endless Tales published story expectations.
@@ -56,12 +56,18 @@ Rules:
 - Recommend concrete fixes that Claude can apply before audio production.
 - If something in the header is mislabeled or weak, say so.
 - If narrator naming, narrative voice, or Belle B usage looks wrong, call it out.
+- Score ending satisfaction under LANDING: the ending must feel earned, emotionally complete for its episode state, and caused by the middle rather than coincidence.
 
 CRITICAL RESOLUTION CHECKS:
 - Is the main hook clear and urgent?
-- Is the final solution concrete and non-vague?
+- Does the main problem initially feel genuinely difficult or almost impossible?
+- Does the middle progressively make the solution possible through leverage, understanding, and escalating consequences?
+- Is the final decisive action concrete, onstage, and performed or meaningfully driven by the protagonist?
 - Does the ending actually resolve the story promise?
+- Does the ending avoid offscreen solution, coincidence/deus-ex-machina resolution, exposition-only resolution, passive symbolic closure, and "villain already dead" anticlimax?
+- Is the emotional arc paid off?
 - If standalone: are all major problems resolved?
+- If non-final series episode: is episode-level tension resolved while series-level tension advances?
 - If final series episode: is the series problem resolved?
 - Is the story formulaic or repeating the structure of recent stories?
 

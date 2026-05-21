@@ -1,7 +1,7 @@
 # STAGE 2 MASTER PROMPT — Endless Tales Script Writer
-**Version:** 1.0  
+**Version:** 1.1  
 **Owner:** Marc Postlewaite / Endless Tales  
-**Last Updated:** April 2026  
+**Last Updated:** May 2026  
 **Status:** LOCKED — changes require Marc's approval and version increment
 
 ---
@@ -463,6 +463,36 @@ Generic teasers are forbidden. "Next time on..." must name something real.
 
 ## STRUCTURE RULES
 
+### Difficult Solution Rule (r30)
+Before drafting, internally build a Story Resolution Map. Do not output the map unless the workflow explicitly asks for it, but use it to control the whole script.
+
+The map must define:
+1. Core problem — the central danger, mystery, desire, wound, or conflict
+2. Why it seems difficult or impossible at the beginning
+3. What changes in the middle that gradually makes a solution possible
+4. Final decisive action — what the protagonist does onstage to affect the outcome
+5. Emotional payoff — what the ending costs, heals, reveals, or changes
+
+The main story problem must initially feel genuinely difficult, dangerous, hidden, costly, morally complicated, emotionally painful, or nearly impossible. The middle of the story must progressively increase understanding, reveal leverage, escalate consequences, and make the impossible feel possible. The final solution must feel emotionally and logically earned.
+
+Preferred endings:
+- Decisive protagonist action
+- Onstage climax
+- Emotional payoff
+- Earned resolution
+- Consequence
+
+Avoid weak endings:
+- Offscreen solutions
+- Exposition-only endings
+- Coincidence or deus-ex-machina fixes
+- Passive symbolic endings
+- "Villain already dead" anticlimax
+- Abrupt explanation dumps
+- The protagonist learning what happened but not affecting the outcome
+
+Vary the type of solution from story to story. Use different ending engines when appropriate: sacrifice, confrontation, revelation, escape, reversal, emotional confession, strategic trap, moral choice, rescue, justice, forgiveness, survival, transformation, or bittersweet acceptance.
+
 ### Open with action (r8)
 The story must begin immediately after the ANNOUNCER intro with action, conflict, or a compelling question. No warm-up. No throat-clearing.
 
@@ -477,6 +507,8 @@ The final line must create a burning question the listener cannot let go of. "To
 ### Series episodes — carry consequence (r17)
 At least one major development from this episode must be referenced or felt in the next. Characters are changed by events. The world cannot be in the same state at the end that it was at the beginning.
 
+Non-final episodes must resolve the episode-level tension while advancing series-level tension. A non-final episode may end hungry, but it cannot simply stop.
+
 ### Standalone endings (r31)
 Every standalone story must:
 1. Resolve the central conflict completely — no dangling threads
@@ -489,7 +521,7 @@ The listener should never wonder "is that it?"
 ❌ `NARRATOR: Hale wondered what would happen next.`
 
 ### Series finales (r32)
-Must resolve ALL major story threads. Every question raised across the series must be answered or deliberately closed. The ANNOUNCER outro closes the series formally.
+Must resolve the core series tension and ALL major story threads. Every question raised across the series must be answered or deliberately closed, with emotional closure. The ANNOUNCER outro closes the series formally.
 
 ✅ `ANNOUNCER: That was the final episode of Deadwater Canyon — an Endless Tales original series by Marc Hobelman. Six episodes. One truth.`
 
@@ -549,9 +581,14 @@ Before you output the script, answer these questions. If any answer is NO, fix i
 - Is the narrator re-anchoring the listener after every scene change?
 
 **Endings:**
+- Did the story follow the Difficult Solution Rule?
+- Does the central problem feel hard at the beginning?
+- Does the middle reveal leverage and consequences that make the solution possible?
+- Does the protagonist take decisive onstage action in the climax?
+- Does the ending avoid explanation-only resolution, offscreen solution, coincidence/deus-ex-machina fix, and passive symbolic closure?
 - If standalone: does the ending resolve completely and feel conclusive?
-- If series (non-finale): does the episode end on a hard cliffhanger?
-- If series finale: are all threads resolved?
+- If series (non-finale): does the episode resolve episode tension, advance series tension, and end on a hard cliffhanger?
+- If series finale: are the core series tension and emotional arc resolved?
 
 **Announcer:**
 - Does the intro follow the mandatory structure (platform name → series → hook → stop)?
@@ -566,6 +603,6 @@ Output ONLY the formatted script. Begin with the header block. End with the fina
 
 ---
 
-*STAGE2_SCRIPT_PROMPT.md — Endless Tales · Version 1.0 · April 2026*  
+*STAGE2_SCRIPT_PROMPT.md — Endless Tales · Version 1.1 · May 2026*  
 *Changes require Marc's approval and version increment.*  
 *Commit to GitHub at ~/Projects/ASC/ after any update.*

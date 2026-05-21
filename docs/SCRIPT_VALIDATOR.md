@@ -1,7 +1,7 @@
 # SCRIPT VALIDATOR — Endless Tales
-**Version:** 1.0  
+**Version:** 1.1  
 **Owner:** Marc Postlewaite / Endless Tales  
-**Last Updated:** April 2026
+**Last Updated:** May 2026
 
 ---
 
@@ -282,6 +282,24 @@ If the opening fails the hook test — FAIL. Quote the first line and explain wh
 
 **Determine story type** from the header (standalone vs. series, finale vs. non-finale).
 
+### Difficult Solution Rule
+
+**Check:** Does the main story problem feel genuinely difficult or nearly impossible at the beginning? If the problem is solved by an obvious step, a convenient coincidence, or information the protagonist already had, note as WARNING or FAIL depending on severity.
+
+**Check:** Does the middle of the story progressively make the solution possible by increasing understanding, revealing leverage, escalating consequences, or forcing a meaningful choice? If the middle does not prepare the ending and the solution arrives suddenly — FAIL.
+
+**Check:** Does the ending avoid coincidence or deus-ex-machina rescue? If a new clue, new rule, convenient helper, random confession, or sudden rescue appears only to solve the ending — FAIL.
+
+**Check:** Does the climax happen onstage? If the decisive event occurs offscreen and is only explained afterward — FAIL.
+
+**Check:** Does the protagonist affect the outcome through a decisive action, confrontation, sacrifice, confession, escape, reversal, strategic trap, moral choice, or equivalent story-specific move? If the protagonist mainly watches, waits, discovers, or receives an explanation while someone/something else resolves the conflict — FAIL.
+
+**Check:** Does the ending resolve through dramatic action and consequence, not exposition alone? If the ending is mostly an explanation dump after the real conflict has already ended — FAIL.
+
+**Check:** Does the emotional arc resolve or intentionally land? If the plot is technically explained but the protagonist's emotional stakes are abandoned — FAIL.
+
+**Check:** Is this ending type meaningfully distinct from the repeated default of "find clue, receive explanation, final symbolic image"? If it feels formulaic, note as WARNING and suggest a stronger ending engine such as sacrifice, confrontation, revelation, escape, reversal, emotional confession, strategic trap, or moral choice.
+
 ### Standalone Ending
 
 **Check:** Does the final NARRATOR line feel conclusive — not like a pause, not open-ended, not ambiguous about outcome? 
@@ -302,6 +320,8 @@ If the ending feels unresolved or ambiguous — FAIL. Quote the final narrator l
 
 **Check:** Does the episode end on a hard cliffhanger — revelation, mortal/emotional danger, or betrayal? If the episode ends with resolution or a gentle close — FAIL.
 
+**Check:** Does the episode resolve its episode-level tension while advancing the series-level tension? If it only interrupts the episode without changing the larger series problem — FAIL.
+
 **Check:** Is the final line of the story body a burning question or a shocking statement that the listener cannot let go of? If the final line is soft or ambiguous — FAIL. Quote it.
 
 **Check:** Does the ANNOUNCER outro tease a specific named character, threat, or event from the next episode — something concrete and real? Generic teasers — FAIL. Quote the outro line.
@@ -310,7 +330,7 @@ If the ending feels unresolved or ambiguous — FAIL. Quote the final narrator l
 
 ### Series Finale Ending
 
-**Check:** Are all major story threads resolved? List the major threads you can identify from the script and note whether each one is resolved.
+**Check:** Is the core series problem resolved with emotional closure? List the major threads you can identify from the script and note whether each one is resolved.
 
 **Check:** Is the ANNOUNCER outro a formal series close with no tease or continuation implied? If it teases a sequel or leaves questions open — FAIL.
 
@@ -369,7 +389,7 @@ SECTION 5 — NARRATIVE VOICE CONSISTENCY: [PASS / FAIL]
 SECTION 6 — AUTHOR VOICE: [PASS / WARNING / FAIL]
 SECTION 7 — NARRATOR USAGE: [PASS / WARNING / FAIL]
 SECTION 8 — OPENING HOOK: [PASS / FAIL]
-SECTION 9 — ENDING: [PASS / FAIL]
+SECTION 9 — ENDING / DIFFICULT SOLUTION: [PASS / FAIL]
 SECTION 10 — ANNOUNCER OUTRO: [PASS / FAIL]
 SECTION 11 — SCRIPT LENGTH: [PASS / WARNING]
 
@@ -395,6 +415,6 @@ WARNINGS TO REVIEW:
 
 ---
 
-*SCRIPT_VALIDATOR.md — Endless Tales · Version 1.0 · April 2026*  
+*SCRIPT_VALIDATOR.md — Endless Tales · Version 1.1 · May 2026*  
 *Changes require Marc's approval and version increment.*  
 *Commit to GitHub at ~/Projects/ASC/ after any update.*

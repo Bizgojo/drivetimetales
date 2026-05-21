@@ -77,6 +77,8 @@ Use the CURRENT rules:
 - The script must include BELLE B INTRO and BELLE B OUTRO blocks.
 - Standalone stories must end conclusively.
 - Series non-finales must end on a specific cliffhanger.
+- Difficult Solution Rule: the main problem must feel genuinely difficult at the beginning, the middle must reveal leverage and escalating consequences that make the solution possible, and the ending must feel emotionally and logically earned.
+- Fail endings where the climax happens offscreen, the protagonist does not affect the outcome, the ending resolves through exposition instead of dramatic action, the emotional arc is unresolved, series episode state is not satisfied, or the final solution is passive, too easy, coincidence/deus-ex-machina, or a "villain already dead" anticlimax.
 
 Return exactly one of these:
 ✅ VALIDATOR RESULT: PASS

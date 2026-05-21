@@ -174,14 +174,14 @@ BEFORE you write a single line of dialogue, create a Story Resolution Map. Outpu
 2. WHY THE SOLUTION SEEMS DIFFICULT
    Explain why the solution appears almost impossible, dangerous, risky, costly, hidden, morally difficult, emotionally painful, or unlikely at the beginning.
 
-3. MINOR PROBLEMS / MIDDLE MOVEMENT
-   List the smaller problems, discoveries, reversals, clues, choices, or emotional shifts that the middle of the story will sort through.
+3. WHAT CHANGES IN THE MIDDLE
+   List the smaller problems, discoveries, reversals, clues, choices, leverage, escalating consequences, or emotional shifts that gradually make the solution possible.
 
-4. FINAL SOLUTION
-   State the concrete ending solution BEFORE you draft the script. The ending must resolve, answer, reverse, or transform the main problem. Do not leave it vague.
+4. FINAL DECISIVE ACTION
+   State the concrete onstage action the protagonist takes BEFORE you draft the script. The action must resolve, answer, reverse, or transform the main problem. Do not leave it vague.
 
-5. WHY THE ENDING IS EARNED
-   Explain how the middle of the story prepares the listener for the final solution without making it obvious too early. Make the connection explicit.
+5. EMOTIONAL PAYOFF / WHY THE ENDING IS EARNED
+   Explain how the middle prepares the listener for the final action without making it obvious too early, and what the ending costs, heals, reveals, or changes.
 
 6. VARIETY GUARDRAIL
    How does this story differ in structure, tone, pacing, setting, mood, plot shape, and type of solution from the recent stories you've seen? List the differences to ensure you're not repeating the same pattern.
@@ -204,8 +204,12 @@ Allowed solution types:
 
 Hard rules for the map:
 - The solution must feel difficult at the beginning.
-- The middle must make the solution possible.
+- The middle must progressively increase understanding, reveal leverage, and escalate consequences.
 - The ending must make the listener feel the story has paid off its promise.
+- The climax must happen onstage.
+- The protagonist must affect the outcome through decisive action.
+- The ending must resolve through dramatic action and consequence, not explanation alone.
+- Avoid offscreen solutions, coincidence/deus-ex-machina fixes, passive symbolic endings, abrupt explanation dumps, "villain already dead" anticlimax, and endings where the protagonist only watches or learns what happened.
 - Standalone stories must resolve the main hook completely.
 - Non-final series episodes must resolve the episode problem while strengthening the larger series hook.
 - Final series episodes must resolve the series problem completely.
