@@ -371,6 +371,41 @@ function commonSurnameVariantMatches(expected: string, detected: string): boolea
 }
 
 /**
+ * Explicit bidirectional homophone table for transcript QC.
+ *
+ * Purpose: Whisper reliably transcribes certain correct spoken words as
+ * phonetically identical alternatives (e.g. "Brake" → "Break").  When the
+ * full passage is otherwise present, penalising for a homophone substitution
+ * produces a false QC failure.
+ *
+ * Rules:
+ *  - Both tokens are lowercased before lookup (normalisation happens upstream,
+ *    but the guard is here too for safety).
+ *  - Matching is explicit and bidirectional — no fuzzy logic.
+ *  - This helper fires BEFORE the short-token length guard so that pairs
+ *    shorter than 7 characters are not prematurely excluded.
+ *  - Keep this table small.  Only add a pair when an actual QC failure
+ *    confirms Whisper produces the wrong homophone for that word.
+ *
+ * Current pairs (add new entries as real failures are observed):
+ *   brake  ↔  break     (car brake vs. to break)
+ *   brakes ↔  breaks    (plural / third-person)
+ *   braking ↔ breaking  (gerund)
+ */
+const HOMOPHONE_PAIRS: ReadonlyArray<readonly [string, string]> = [
+  ['brake', 'break'],
+  ['brakes', 'breaks'],
+  ['braking', 'breaking'],
+] as const
+
+function knownHomophoneMatches(expected: string, detected: string): boolean {
+  const a = expected.toLowerCase()
+  const b = detected.toLowerCase()
+  if (a === b) return false // already handled by exact-match check above
+  return HOMOPHONE_PAIRS.some(([x, y]) => (a === x && b === y) || (a === y && b === x))
+}
+
+/**
  * Resolves a single transcript token to a canonical digit string when it
  * represents a whole number in any of the supported surface forms:
  *
@@ -418,6 +453,11 @@ function transcriptTokenMatches(expected: string, detected: string): boolean {
   // Numeric-variant check: "fifteen" ↔ "15", "sixty" ↔ "60", "3rd" ↔ "third", etc.
   // Runs before the length guard so short digit/word tokens are not excluded.
   if (numericVariantMatches(expected, detected)) return true
+  // Homophone check: explicit pairs where Whisper reliably substitutes a
+  // phonetically identical word (e.g. "brake" → "break").  Runs before the
+  // length guard for the same reason — these pairs are often short tokens.
+  // The phonetic length guard below is intentionally left unchanged.
+  if (knownHomophoneMatches(expected, detected)) return true
   if (commonFirstNameVariantMatches(expected, detected)) return true
   if (commonSurnameVariantMatches(expected, detected)) return true
   if (expected.length < 7 || detected.length < 7) return false
