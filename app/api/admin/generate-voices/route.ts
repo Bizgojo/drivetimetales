@@ -1607,6 +1607,12 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
     let accepted: { buf: Buffer; metrics: LoudnessMetrics; action: string; duration: number; candidate: number } | null = null
     let best: { metrics: LoudnessMetrics; action: string; candidate: number } | null = null
     let transcriptFailure: Awaited<ReturnType<typeof validateSegmentTranscript>> | null = null
+    // Repeated-identical-truncation guardrail (Marc 2026-05-21):
+    // Tracks detected texts across all retry candidates.  If every attempt
+    // produces the exact same partial transcription, Whisper's VAD is hitting
+    // a long inter-sentence pause and retrying won't help.  The segment should
+    // be split into shorter sub-segments instead.
+    const transcriptDetectedTexts: string[] = []
 
     const actionForMetrics = (metrics: LoudnessMetrics): string => {
       if (!hasUsableLoudness(metrics)) return 'fail_invalid_loudness'
@@ -1684,6 +1690,7 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
         console.log(`  Segment transcript QC ${fileName} speaker="${speaker}" candidate=${candidate} coverage=${transcriptCheck.coverage.toFixed(2)} tail=${transcriptCheck.tailMatches ? 'pass' : 'fail'} result=${transcriptCheck.passed ? 'extended_gain_rescue' : 'retry'} expected="${text.slice(0, 120)}" detected="${transcriptCheck.detectedText.slice(0, 120)}"`)
         if (!transcriptCheck.passed) {
           transcriptFailure = transcriptCheck
+          transcriptDetectedTexts.push(transcriptCheck.detectedText)
           continue
         }
 
@@ -1722,6 +1729,7 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
         console.log(`  Segment transcript QC ${fileName} speaker="${speaker}" candidate=${candidate} coverage=${transcriptCheck.coverage.toFixed(2)} tail=${transcriptCheck.tailMatches ? 'pass' : 'fail'} result=${transcriptCheck.passed ? 'accept' : 'retry'} expected="${text.slice(0, 120)}" detected="${transcriptCheck.detectedText.slice(0, 120)}"`)
         if (!transcriptCheck.passed) {
           transcriptFailure = transcriptCheck
+          transcriptDetectedTexts.push(transcriptCheck.detectedText)
           continue
         }
         accepted = { buf: candidateBuf, metrics, action, duration: candidateDuration, candidate }
@@ -1731,6 +1739,27 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
 
     if (!accepted) {
       if (transcriptFailure) {
+        // Repeated-identical-truncation guardrail (Marc 2026-05-21):
+        // If every retry candidate produced the same partial detected text,
+        // Whisper's VAD is consistently stopping at an inter-sentence pause.
+        // Further retries will not help.  The segment must be split.
+        const allSameDetected = transcriptDetectedTexts.length >= 2
+          && transcriptDetectedTexts.every(t => t === transcriptDetectedTexts[0])
+        if (allSameDetected) {
+          const truncatedAt = transcriptDetectedTexts[0].slice(0, 80)
+          console.error(
+            `  ⚠️ REPEATED_IDENTICAL_TRUNCATION ${fileName} speaker="${speaker}" ` +
+            `candidates=${transcriptDetectedTexts.length} all-detected="${truncatedAt}" ` +
+            `— Whisper VAD is stopping at an inter-sentence pause on every retry. ` +
+            `Split this segment into shorter sub-segments and re-run.`
+          )
+          throw new Error(
+            `Segment transcript QC failed for ${fileName} [REPEATED_IDENTICAL_TRUNCATION]: ` +
+            `Whisper returned the same partial output "${truncatedAt}" across all ${transcriptDetectedTexts.length} retry candidates. ` +
+            `Retrying will not help. Split this segment into shorter sub-segments. ` +
+            `expected "${transcriptFailure.expectedText}"`
+          )
+        }
         throw new Error(`Segment transcript QC failed for ${fileName}: expected "${transcriptFailure.expectedText}", detected "${transcriptFailure.detectedText}"`)
       }
       if (best?.metrics.input_tp && best.metrics.input_tp > SPOKEN_TRUE_PEAK) {
