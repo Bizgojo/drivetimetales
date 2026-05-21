@@ -305,11 +305,12 @@ const GENRE_ALIASES: Record<string, string[]> = {
 }
 
 const SERIES_EPISODE_COUNTS = [3, 5, 7, 13]
-const HAL_EPISODE_COUNTS = [1, ...SERIES_EPISODE_COUNTS]
+const HAL_EPISODE_COUNTS = SERIES_EPISODE_COUNTS
+const STANDALONE_EXCEPTION_EPISODE_COUNT = 1
 
 const EMPTY_FORM = {
   title: '',
-  type: 'standalone',
+  type: 'series',
   author: '',
   author_style: '',
   genre: '',
@@ -319,8 +320,8 @@ const EMPTY_FORM = {
   setting: '',
   runtime: '15 min',
   series_name: '',
-  series_episode_number: '',
-  series_total_episodes: '',
+  series_episode_number: '1',
+  series_total_episodes: '3',
   series_is_finale: 'false',
   series_arc_plan: '',
 }
@@ -328,7 +329,7 @@ const EMPTY_FORM = {
 const DEFAULT_HAL_INTAKE = {
   genre: '',
   runtime_minutes: '15',
-  episode_count: '1',
+  episode_count: '3',
   optional_premise: '',
 }
 
@@ -346,6 +347,7 @@ type ActiveV2Session = {
   halIntake?: typeof DEFAULT_HAL_INTAKE
   queueIntakeNotice?: string
   queueAuthorTarget?: string
+  standaloneExceptionEnabled?: boolean
   activeStep?: 'brief' | 'script' | 'score' | 'validate' | 'produce' | ''
   stepMessage?: string
   updatedAt?: string
@@ -444,10 +446,14 @@ function episodeCountFromQueue(queueItem: Partial<QueueItem>): string {
     queueItem.notes,
   ].filter(Boolean).join(' ')
 
-  if (!/\b(series|episode|episodes|part|parts)\b/i.test(source)) return '1'
+  if (!/\b(series|episode|episodes|part|parts)\b/i.test(source)) return '3'
 
   const explicitCount = Number(source.match(/\b(3|5|7|13)\s*[- ]?(episode|episodes|part|parts)\b/i)?.[1] || 0)
   return explicitCount && HAL_EPISODE_COUNTS.includes(explicitCount) ? String(explicitCount) : '3'
+}
+
+function isStandaloneStoryType(type: unknown): boolean {
+  return ['standalone', 'single_story'].includes(String(type || '').toLowerCase())
 }
 
 function queuePremiseSeed(queueItem: Partial<QueueItem>): string {
@@ -464,9 +470,11 @@ function queueHalIntakeValues(queueItem: Partial<QueueItem>, story: any = null) 
   const genre = story?.genre || queueItem.primaryGenre || queueItem.secondaryGenre || queueItem.tertiaryGenre || ''
   const runtime = runtimeMinutesFromQueue(story?.runtime || queueItem.duration || '')
   const seriesTotal = story?.series_total_episodes ? Number(story.series_total_episodes) : 0
-  const episodes = seriesTotal && HAL_EPISODE_COUNTS.includes(seriesTotal)
-    ? String(seriesTotal)
-    : episodeCountFromQueue(queueItem)
+  const episodes = story && isStandaloneStoryType(story.type) && !story.series_id
+    ? String(STANDALONE_EXCEPTION_EPISODE_COUNT)
+    : (seriesTotal && HAL_EPISODE_COUNTS.includes(seriesTotal)
+      ? String(seriesTotal)
+      : episodeCountFromQueue(queueItem))
   const seed = queuePremiseSeed({
     ...queueItem,
     premise: story?.premise || queueItem.premise,
@@ -556,6 +564,7 @@ export default function StoryProductionV2Page() {
   const [halIntake, setHalIntake] = useState(DEFAULT_HAL_INTAKE)
   const [queueIntakeNotice, setQueueIntakeNotice] = useState('')
   const [queueAuthorTarget, setQueueAuthorTarget] = useState('')
+  const [standaloneExceptionEnabled, setStandaloneExceptionEnabled] = useState(false)
   const [episodeRepairStatus, setEpisodeRepairStatus] = useState<Record<string, string>>({})
 
   const scriptRef = useRef<HTMLTextAreaElement | null>(null)
@@ -611,6 +620,7 @@ export default function StoryProductionV2Page() {
     setHalIntake(DEFAULT_HAL_INTAKE)
     setQueueIntakeNotice('')
     setQueueAuthorTarget('')
+    setStandaloneExceptionEnabled(false)
     setSelectedAuthorMeta(null)
     setWorkingMessage('')
     setActiveStep('')
@@ -651,6 +661,7 @@ export default function StoryProductionV2Page() {
       setReport(data.story.validator_report || '')
       setReviewText(data.story.grade_notes || '')
       setReviewTotal(data.story.grade_total != null ? Number(data.story.grade_total) : null)
+      setStandaloneExceptionEnabled(isStandaloneStoryType(data.story.type) && !data.story.series_id)
       setForm(prev => ({
         ...prev,
         title: data.story.title || prev.title,
@@ -730,6 +741,7 @@ export default function StoryProductionV2Page() {
     setHalIntake({ ...DEFAULT_HAL_INTAKE, ...(session.halIntake || {}) })
     setQueueIntakeNotice(session.queueIntakeNotice || '')
     setQueueAuthorTarget(session.queueAuthorTarget || '')
+    setStandaloneExceptionEnabled(!!session.standaloneExceptionEnabled || isStandaloneStoryType(session.form?.type) || session.halIntake?.episode_count === '1')
     setActiveStep(session.activeStep || '')
     setStepMessage(session.stepMessage || '')
     setSelectedTopFixes([])
@@ -778,6 +790,7 @@ export default function StoryProductionV2Page() {
       halIntake,
       queueIntakeNotice,
       queueAuthorTarget,
+      standaloneExceptionEnabled,
       activeStep,
       stepMessage,
       updatedAt: new Date().toISOString(),
@@ -796,6 +809,7 @@ export default function StoryProductionV2Page() {
     reviewText,
     reviewTotal,
     script,
+    standaloneExceptionEnabled,
     status,
     stepMessage,
     storyId,
@@ -853,6 +867,7 @@ export default function StoryProductionV2Page() {
               setScript(savedData.story.script || '')
               setReport(savedData.story.validator_report || '')
               setHalIntake(queueIntake)
+              setStandaloneExceptionEnabled(isStandaloneStoryType(savedData.story.type) && !savedData.story.series_id)
               setForm(prev => ({
                 ...prev,
                 title: savedData.story.title || queued.title || prev.title,
@@ -905,6 +920,7 @@ export default function StoryProductionV2Page() {
           setStoryId(queued.storyId || '')
           setTitle(queued.title || '')
           setHalIntake(queueIntake)
+          setStandaloneExceptionEnabled(false)
           setForm(prev => ({
             ...prev,
             title: queued.title || prev.title,
@@ -984,6 +1000,7 @@ export default function StoryProductionV2Page() {
           const firstBrief = firstEpisode?.brief_json || {}
 
           setSeriesPackage(pkg)
+          setStandaloneExceptionEnabled(false)
           setStoryId(firstEpisode?.id || '')
           setTitle(pkg.series?.title || '')
           setStatus((firstEpisode?.status || 'brief_complete') as V2Status)
@@ -1012,6 +1029,7 @@ export default function StoryProductionV2Page() {
         }
 
         setSeriesPackage(null)
+        setStandaloneExceptionEnabled(isStandaloneStoryType(data.story.type) && !data.story.series_id)
         setStoryId(data.story.id || '')
         setTitle(data.story.title || '')
         setStatus(data.story.status || '')
@@ -1119,6 +1137,7 @@ export default function StoryProductionV2Page() {
         const firstBrief = firstEpisode?.brief_json || {}
 
         setSeriesPackage(pkg)
+        setStandaloneExceptionEnabled(false)
         try {
           if (typeof window !== 'undefined' && pkg.series?.id) {
             localStorage.setItem('et_last_series_id_v2', pkg.series.id)
@@ -1331,7 +1350,7 @@ export default function StoryProductionV2Page() {
   const noFurtherTopFixRecommended = topFixAttemptKey ? !!readNoFurtherRepairMap()[topFixAttemptKey] : false
   const renderedHalGenre = halIntake.genre || form.genre
   const renderedHalRuntime = halIntake.runtime_minutes || runtimeMinutesFromQueue(form.runtime)
-  const renderedHalEpisodes = halIntake.episode_count || (form.type === 'series' && form.series_total_episodes ? form.series_total_episodes : '1')
+  const renderedHalEpisodes = halIntake.episode_count || (form.type === 'series' && form.series_total_episodes ? form.series_total_episodes : standaloneExceptionEnabled ? '1' : '3')
   const renderedHalSeed = halIntake.optional_premise || queueSeedFromForm(form)
   const effectiveHalIntake = {
     genre: renderedHalGenre,
@@ -1680,6 +1699,7 @@ export default function StoryProductionV2Page() {
     const runtimeMinutes = Math.max(1, Number(effectiveHalIntake.runtime_minutes || 15))
     const episodeCount = Number(effectiveHalIntake.episode_count || 1)
     const storyType = episodeCount === 1 ? 'standalone' : 'series'
+    const standaloneExceptionRequested = episodeCount === STANDALONE_EXCEPTION_EPISODE_COUNT
     const author = chooseCanonicalAuthor(genre, queueAuthorTarget, true)
 
     if (!genre) {
@@ -1687,8 +1707,13 @@ export default function StoryProductionV2Page() {
       setStepMessage('Hal intake blocked')
       return
     }
-    if (!HAL_EPISODE_COUNTS.includes(episodeCount)) {
-      setReport('Episode count must be 1, 3, 5, 7, or 13 for the current canonical V2 workflow.')
+    if (standaloneExceptionRequested && !standaloneExceptionEnabled) {
+      setReport('Standalone generation is reserved for repairs, legacy stories, and manual exception cases. Enable the Standalone Exception path to continue.')
+      setStepMessage('Hal intake blocked')
+      return
+    }
+    if (!HAL_EPISODE_COUNTS.includes(episodeCount) && !(standaloneExceptionEnabled && standaloneExceptionRequested)) {
+      setReport('Episode count must be 3, 5, 7, or 13 for normal series-first V2 production. Standalone requires the explicit exception path.')
       setStepMessage('Hal intake blocked')
       return
     }
@@ -1714,7 +1739,7 @@ export default function StoryProductionV2Page() {
     setReviewTotal(null)
     clearLoadedProductionState()
 
-    const premise = effectiveHalIntake.optional_premise.trim() || `Claude may generate an original ${genre} premise consistent with a ${runtimeMinutes}-minute ${storyType === 'series' ? `${episodeCount}-episode series` : 'standalone story'}.`
+    const premise = effectiveHalIntake.optional_premise.trim() || `Claude may generate an original ${genre} premise consistent with a ${runtimeMinutes}-minute ${storyType === 'series' ? `${episodeCount}-episode series` : 'manual standalone exception story'}.`
     const setting = `Claude may choose a story-specific setting consistent with ${genre}, ${runtimeMinutes} minutes, and Endless Tales audio production.`
     const runtime = `${runtimeMinutes} min`
     const canonicalRequirements = [
@@ -1726,7 +1751,7 @@ export default function StoryProductionV2Page() {
       'Final review target after audio production is status=audio_ready, is_hidden=true, published_on=null.',
       storyType === 'series'
         ? 'Create ordered episodes with deterministic numbering, narrator continuity, and character voice continuity across episodes.'
-        : 'Create one standalone story.',
+        : 'Create one standalone exception story for repair, legacy, or manually approved use.',
     ].join(' ')
 
     try {
@@ -2600,6 +2625,11 @@ export default function StoryProductionV2Page() {
       await saveSeriesPackage()
       return
     }
+    if (!standaloneExceptionEnabled) {
+      setReport('Standalone brief creation is reserved for repairs, legacy stories, and manual exception cases. Enable the Standalone Exception path to continue.')
+      setStepMessage('Brief blocked')
+      return
+    }
     setActiveAction('saveBrief')
     setLoading(true)
     setActiveStep('brief')
@@ -3027,6 +3057,36 @@ export default function StoryProductionV2Page() {
             <p className="mt-1 text-sm text-gray-700">
               Answer four fields. Hal fills the canonical V2 template, uses approved ET authors, runs script validation, and runs generate-voices preflight before audio production.
             </p>
+            <label className="mt-3 flex items-start gap-2 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={standaloneExceptionEnabled}
+                onChange={e => {
+                  clearLoadedProductionStateForNewInput()
+                  const enabled = e.target.checked
+                  setStandaloneExceptionEnabled(enabled)
+                  setHalIntake(prev => ({
+                    ...prev,
+                    episode_count: enabled ? String(STANDALONE_EXCEPTION_EPISODE_COUNT) : '3',
+                  }))
+                  setForm(prev => ({
+                    ...prev,
+                    type: enabled ? 'standalone' : 'series',
+                    series_total_episodes: enabled ? '' : '3',
+                    series_episode_number: enabled ? '' : '1',
+                    series_is_finale: enabled ? 'false' : prev.series_is_finale,
+                  }))
+                }}
+                disabled={loading || hasActiveAction}
+              />
+              <span>
+                <span className="font-semibold">Standalone Exception</span>
+                <span className="block text-xs">
+                  Use only for repairs, legacy stories, or manually approved standalone cases. Normal production stays series-first.
+                </span>
+              </span>
+            </label>
             {queueIntakeNotice ? (
               <div className="mt-3 rounded border border-blue-200 bg-blue-50 p-2 text-sm font-medium text-blue-900">
                 {queueIntakeNotice}
@@ -3090,13 +3150,16 @@ export default function StoryProductionV2Page() {
                 }}
                 disabled={loading || hasActiveAction}
               >
+                {standaloneExceptionEnabled ? (
+                  <option value={String(STANDALONE_EXCEPTION_EPISODE_COUNT)}>1 episode (standalone exception)</option>
+                ) : null}
                 {HAL_EPISODE_COUNTS.map(count => (
-                  <option key={count} value={String(count)}>{count === 1 ? '1 episode (standalone)' : `${count} episodes (series)`}</option>
+                  <option key={count} value={String(count)}>{`${count} episodes (series)`}</option>
                 ))}
               </select>
             </label>
             <div className="rounded border border-gray-200 bg-gray-50 p-2 text-sm text-gray-700">
-              <div><strong>Derived type:</strong> {Number(renderedHalEpisodes || 1) === 1 ? 'Standalone' : 'Series'}</div>
+              <div><strong>Derived type:</strong> {Number(renderedHalEpisodes || 3) === 1 ? 'Standalone exception' : 'Series'}</div>
               <div><strong>Author:</strong> {renderedHalGenre ? (selectedHalAuthor?.name || 'No approved match') : 'Choose genre'}</div>
               {selectedHalAuthor ? (
                 <div className="mt-1 space-y-0.5 text-xs text-gray-600">
@@ -3153,12 +3216,13 @@ export default function StoryProductionV2Page() {
                   ...form,
                   type: nextType,
                   series_episode_number: nextType === 'series' ? (form.series_episode_number || '1') : '',
+                  series_total_episodes: nextType === 'series' ? (form.series_total_episodes || '3') : '',
                   series_is_finale: nextType === 'series' ? form.series_is_finale : 'false',
                 })
               }}
             >
-              <option value="standalone">Standalone</option>
               <option value="series">Series</option>
+              {standaloneExceptionEnabled ? <option value="standalone">Standalone Exception</option> : null}
             </select>
           </div>
 
