@@ -30,7 +30,6 @@ const CANNED_PATTERNS = [
   /\brelax and enjoy\b/i,
   /\btonight'?s story\b/i,
   /\bonly on endless tales\b/i,
-  /\bthis is ["“][^"”]+["”]\b/i,
   /\bin this story\b/i,
   /\bthis story is about\b/i,
   /\bthis episode is about\b/i,
@@ -42,7 +41,14 @@ const CANNED_PATTERNS = [
   /\bcome down\b/i,
   /\bget ready\b/i,
   /\byou should\b/i,
-  /\byou'?re listening to\b/i,
+]
+const CREEPY_TIME_PATTERNS = [
+  /\b\d{1,2}:\d{2}\s*(?:a\.?m\.?|p\.?m\.?)?\b/i,
+  /\bit'?s\s+\d{1,2}\b/i,
+  /\bwhere you are right now\b/i,
+  /\byour exact location\b/i,
+  /\byou'?re driving near\b/i,
+  /\bi know where you\b/i,
 ]
 
 function json(payload: Record<string, unknown>, status = 200) {
@@ -80,22 +86,27 @@ function validateVariant(variant: BelleVariant, story: any) {
   const errors: string[] = []
   const text = cleanText(variant.text)
   const lower = text.toLowerCase()
+  const position = seriesPosition(story)
   if (!text) errors.push('text is empty')
   if (!['intro', 'outro'].includes(variant.kind)) errors.push('kind must be intro or outro')
   if (!variant.variant_key) errors.push('variant_key is required')
   if (lower.includes('belle b')) errors.push('must say Belle, not Belle B')
   if (/^(narrator|character|announcer|sandy|belle b)\s*:/i.test(text)) errors.push('must not include speaker labels')
   if (CANNED_PATTERNS.some((pattern) => pattern.test(text))) errors.push('generic/canned wording detected')
+  if (CREEPY_TIME_PATTERNS.some((pattern) => pattern.test(text))) errors.push('exact or creepy listener context detected')
   if (variant.kind === 'intro' && /\bbegins now\b/i.test(text)) errors.push('generic/canned wording detected')
   if (variant.kind === 'intro' && text.split(/\s+/).filter(Boolean).length > 35) errors.push('intro must be short and conversational')
   if (variant.kind === 'outro' && text.split(/\s+/).filter(Boolean).length < 12) errors.push('outro must leave emotional warmth, not a hard stop')
-  if (variant.kind === 'outro' && text.split(/\s+/).filter(Boolean).length > 42) errors.push('outro must be short and leave a feeling, not resolve the whole plot')
-  if (variant.kind === 'outro' && (text.match(/[.!?]+/g) || []).length > 2) errors.push('outro must be one or two short sentences')
+  if (variant.kind === 'outro' && text.split(/\s+/).filter(Boolean).length > 55) errors.push('outro must be short and leave a feeling, not resolve the whole plot')
+  if (variant.kind === 'outro' && (text.match(/[.!?]+/g) || []).length > 3) errors.push('outro must be concise')
   if (variant.kind === 'outro' && /^\s*that was\b/i.test(text)) errors.push('outro must not use a flat "That was..." structure')
-  if (variant.kind === 'outro' && /\b(was written by|written by|endless tales original)\b/i.test(text)) errors.push('outro must not sound like credits')
   if (/\b(summary|summarize|plot|synopsis)\b/i.test(text)) errors.push('must not mechanically summarize the plot')
-  if (variant.kind === 'intro' && /\bendless tales original\b/i.test(text)) errors.push('intro must not include platform credits')
-  if (variant.kind === 'intro' && story?.author && lower.includes(` by ${String(story.author).trim().toLowerCase()}`)) errors.push('intro must not include author credits')
+  if (variant.kind === 'outro' && position && position !== 'finale' && variant.variant_key === 'series_continue' && !/\b(next time|next episode|in the next episode|continues|will have to|will need to)\b/i.test(text)) {
+    errors.push('non-final series outro must pull toward the next episode')
+  }
+  if (variant.kind === 'outro' && position === 'finale' && /\b(next time|next episode|continues|to be continued)\b/i.test(text)) {
+    errors.push('finale outro must not tease another episode')
+  }
   const terms = storySpecificTerms(story)
   if (variant.kind === 'intro' && variant.variant_key !== 'session_continue' && terms.length > 0 && !terms.some((term) => lower.includes(term))) {
     errors.push('must include a concrete story-specific detail')
@@ -192,8 +203,8 @@ export async function POST(req: NextRequest) {
 Canonical rules:
 - Belle is the name. Never write "Belle B".
 - Belle only speaks intros/outros, never narrator or character dialogue.
-- Belle is not a host, announcer, DJ, trailer voice, or promo voice.
-- She sounds like a close, perceptive friend who just heard the story and knows why it matters.
+- Belle is the Endless Tales host, curator, and continuity bridge, not a DJ, trailer voice, or promo voice.
+- She sounds warm, composed, perceptive, and specific.
 - Write for this exact story/episode. No generic canned templates.
 - Use one concrete sensory image from the story and one emotional pressure point.
 - Do not explain the premise or summarize the plot.
@@ -203,7 +214,7 @@ Canonical rules:
 - The listener should understand the situation immediately while driving.
 - Avoid abstract teaser imagery with no grounding.
 - Intros must be 1–2 short sentences, usually under 28 words, hard max 35.
-- Title is optional. If used, it must sound natural, not like an announcement.
+- Title is allowed when it sounds natural and helps orient the listener.
 - Use [LISTENER_NAME] in exactly two intro variants, naturally and casually.
 - Never start with "Welcome, [LISTENER_NAME]".
 - If using the listener name, make it feel incidental and warm.
@@ -211,15 +222,16 @@ Canonical rules:
 - Place [LISTENER_NAME] near the beginning or after a natural pause, like "[LISTENER_NAME], ..." or "... , [LISTENER_NAME], ..."
 - Never insert [LISTENER_NAME] between verb/object phrases or inside clauses where it breaks grammar.
 - If [LISTENER_NAME] is removed, the sentence should still read naturally.
-- Outros should feel reflective, human, companion-like, and emotionally lingering.
-- Belle should sound like someone still sitting beside the listener after the story ended.
+- Outros should feel reflective, human, host-like, and emotionally lingering.
+- Belle should bridge the listener from the story ending into either the next episode or closure.
 - Outros may be slightly longer than intros, but still concise.
-- Outros should quietly encourage continued listening through feeling, not promotion.
+- Non-final series outros must briefly recap the current stakes and strongly pull the listener toward the next episode.
+- Finale outros must give emotional closure and may say the title, author, and "an Endless Tales Original."
 - Standalone outros should feel complete but not emotionally closed-off.
 - Series outros should create a natural emotional pull toward the next episode.
-- No time-of-day references.
+- Subtle time-of-day atmosphere is allowed, but never exact time, location, or creepy listener surveillance.
 - No speaker labels.
-- Do not write: "Welcome", "begins now", "only on Endless Tales", "This is [title]", "You're listening to", "come with me", "come back", "come down", "you should", "get ready", "sit back", "relax and enjoy".
+- Do not write: "Welcome", "begins now", "only on Endless Tales", "come with me", "come back", "come down", "you should", "get ready", "sit back", "relax and enjoy".
 - Avoid rhetorical questions unless the line sounds like real speech.
 - Series outros must not say "only on Endless Tales".
 
@@ -237,16 +249,17 @@ Cadence rules:
 - No more than one intro may use a question.
 
 Outro rules:
-- One or two short sentences, usually under 30 words, hard max 42 words.
+- One to three short sentences, usually under 38 words, hard max 55 words.
 - Do not write period-separated fragments. Avoid patterns like "That handprint. That bell. Some calls..."
 - Land on the feeling left by the story, not a recap.
 - Leave an emotional echo. Do not resolve the whole plot beat-by-beat.
 - Leave the listener with warmth, ache, curiosity, or quiet momentum.
 - Avoid hard-stop endings that simply close the file.
 - Avoid "That was..." as the dominant structure.
-- Do not include credits or "written by" language in these variants.
+- Finale outros may include title, author, and "an Endless Tales Original." Non-final outros should not sound like final credits.
 - For standalone stories, close with a resonant image or consequence.
-- For series non-finales, name one specific unresolved consequence.
+- For series non-finales, name one specific unresolved consequence and create a next-episode pull.
+- For finales, do not tease another episode.
 - The variant_key values are fixed API keys. Return exactly these seven keys and do not rename them, even for finales: session_first, session_continue, returning_listener, simple, simple, reflective, series_continue.
 
 Story:

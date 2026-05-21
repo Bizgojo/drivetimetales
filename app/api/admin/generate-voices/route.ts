@@ -50,6 +50,23 @@ const SHORT_SEGMENT_MAX_CANDIDATES = 3
 const SEGMENT_TRANSCRIPT_MODEL = 'whisper-1'
 const SEGMENT_TRANSCRIPT_MIN_COVERAGE = 0.62
 const SEGMENT_TRANSCRIPT_TAIL_WORDS = 4
+const BELLE_GENERIC_PATTERNS = [
+  /\bfor your listening pleasure\b/i,
+  /\bi am pleased to present\b/i,
+  /\bare you ready\b/i,
+  /\bsit back\b/i,
+  /\brelax and enjoy\b/i,
+  /\btonight'?s (story|episode)\b/i,
+  /\btoday'?s (story|episode)\b/i,
+]
+const BELLE_EXACT_OR_CREEPY_TIME_PATTERNS = [
+  /\b\d{1,2}:\d{2}\s*(?:a\.?m\.?|p\.?m\.?)?\b/i,
+  /\bit'?s\s+\d{1,2}\b/i,
+  /\bwhere you are right now\b/i,
+  /\byour exact location\b/i,
+  /\byou'?re driving near\b/i,
+  /\bi know where you\b/i,
+]
 
 function getSceneLoudnessOffset(text: string, prefix: string): number {
   if (prefix === 'intro' || prefix === 'intro_before' || prefix === 'intro_after' || prefix === 'outro') return 0
@@ -975,6 +992,145 @@ interface NarratorVoiceRecord {
   gender?: string | null
 }
 
+type BelleEpisodeState = 'standalone' | 'series_first' | 'series_non_final' | 'series_finale'
+
+type BelleValidationContext = {
+  storyId: string
+  title: string
+  author: string
+  seriesName: string
+  episodeNumber: number | null
+  seriesTotal: number | null
+  isFinale: boolean
+  episodeState: BelleEpisodeState
+}
+
+function cleanBelleText(value: string): string {
+  return String(value || '')
+    .replace(/^["'“”]+|["'“”]+$/g, '')
+    .replace(/^(ANNOUNCER|BELLE B|SANDY|Belle B|Belle)\s*:\s*/i, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function wordCount(value: string): number {
+  return cleanBelleText(value).split(/\s+/).filter(Boolean).length
+}
+
+function parseHeaderValue(script: string, key: string): string {
+  const match = script.match(new RegExp(`^${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:\\s*([^\\r\\n]*)`, 'im'))
+  return match?.[1]?.trim() || ''
+}
+
+function belleEpisodeState(ctx: {
+  seriesName?: string | null
+  episodeNumber?: number | null
+  seriesTotal?: number | null
+  isFinale?: boolean | null
+}): BelleEpisodeState {
+  if (!ctx.seriesName) return 'standalone'
+  if (ctx.isFinale || (ctx.seriesTotal && ctx.episodeNumber && ctx.episodeNumber >= ctx.seriesTotal)) return 'series_finale'
+  if (!ctx.episodeNumber || ctx.episodeNumber <= 1) return 'series_first'
+  return 'series_non_final'
+}
+
+function buildBelleValidationContext(storyRow: any, script: string, storyId: string): BelleValidationContext {
+  const title = String(storyRow?.title || parseHeaderValue(script, 'EPISODE_TITLE') || parseHeaderValue(script, 'TITLE') || 'this story').trim()
+  const author = String(storyRow?.author || parseHeaderValue(script, 'AUTHOR') || '').trim()
+  const scriptSeries = parseHeaderValue(script, 'SERIES')
+  const seriesName = String(storyRow?.series_name || scriptSeries || '').trim()
+  const episodeNumber = Number(storyRow?.episode_number || storyRow?.series_episode_number || parseHeaderValue(script, 'EPISODE') || 0) || null
+  const seriesTotal = Number(storyRow?.series_total || storyRow?.series_total_episodes || parseHeaderValue(script, 'SERIES_TOTAL_EPISODES') || 0) || null
+  const scriptFinale = parseHeaderValue(script, 'SERIES_IS_FINALE').toLowerCase()
+  const isFinale = storyRow?.series_is_finale === true || scriptFinale === 'true' || Boolean(seriesTotal && episodeNumber && episodeNumber >= seriesTotal)
+  return {
+    storyId,
+    title,
+    author,
+    seriesName,
+    episodeNumber,
+    seriesTotal,
+    isFinale,
+    episodeState: belleEpisodeState({ seriesName, episodeNumber, seriesTotal, isFinale }),
+  }
+}
+
+function validateBelleLine(kind: 'intro' | 'outro', text: string, ctx: BelleValidationContext): string[] {
+  const cleaned = cleanBelleText(text)
+  const lower = cleaned.toLowerCase()
+  const errors: string[] = []
+  const words = wordCount(cleaned)
+
+  if (!cleaned) errors.push(`${kind} is empty`)
+  if (/^(narrator|character|announcer|sandy|belle b)\s*:/i.test(text)) errors.push(`${kind} includes a speaker label`)
+  if (BELLE_GENERIC_PATTERNS.some(pattern => pattern.test(cleaned))) errors.push(`${kind} uses generic or repetitive Belle wording`)
+  if (BELLE_EXACT_OR_CREEPY_TIME_PATTERNS.some(pattern => pattern.test(cleaned))) errors.push(`${kind} uses exact or creepy listener context`)
+  if (/\b(spoiler|reveals?|revealed|killer is|turns out|will die|dies in the next)\b/i.test(cleaned)) errors.push(`${kind} risks spoiler language`)
+  if (kind === 'intro' && words > 38) errors.push('intro is too long for a clean handoff')
+  if (kind === 'outro' && words > 55) errors.push('outro is too long for Belle')
+  if (kind === 'intro' && (cleaned.match(/\[LISTENER_NAME\]/g) || []).length > 1) errors.push('intro has more than one [LISTENER_NAME] placeholder')
+
+  if (kind === 'outro' && ctx.episodeState === 'series_non_final') {
+    if (!/\b(next time|next episode|in the next episode|when episode|episode \d+|continues|will have to|will need to|pulls? us)\b/i.test(cleaned)) {
+      errors.push('non-final series outro must pull the listener toward the next episode')
+    }
+    if (/\b(end|ended|final|concludes|conclusion|complete)\b/i.test(cleaned)) {
+      errors.push('non-final series outro sounds final')
+    }
+  }
+
+  if (kind === 'outro' && ctx.episodeState === 'series_finale') {
+    if (/\b(next time|next episode|continues|to be continued)\b/i.test(cleaned)) {
+      errors.push('finale outro must not tease another episode')
+    }
+    if (ctx.title && lower.includes('untitled')) errors.push('finale outro has missing title')
+  }
+
+  return errors
+}
+
+function repairedBelleLine(kind: 'intro' | 'outro', ctx: BelleValidationContext): string {
+  const title = ctx.seriesName || ctx.title || 'this story'
+  const author = ctx.author || 'Endless Tales'
+
+  if (kind === 'intro') {
+    if (ctx.episodeState === 'series_non_final' || ctx.episodeState === 'series_finale') {
+      return `You're back inside "${title}." The road is open, the stakes are still moving, and the next turn belongs to the story.`
+    }
+    return `This is "${title}," an Endless Tales Original. Settle in for a story built to carry you cleanly into its first turn.`
+  }
+
+  if (ctx.episodeState === 'series_non_final') {
+    return `The danger is still moving, and the choice at the end of this episode changes what comes next. Next time on "${title}," the consequences get closer.`
+  }
+
+  if (ctx.episodeState === 'series_finale') {
+    return `The last page closes, but the echo of "${title}" stays on the road a little longer. You've been listening to "${title}" by ${author}, an Endless Tales Original.`
+  }
+
+  return `The story closes, but its echo stays with the road a little longer. You've been listening to "${title}" by ${author}, an Endless Tales Original.`
+}
+
+function validateOrRepairBelleLine(kind: 'intro' | 'outro', line: ScriptLine | undefined, ctx: BelleValidationContext) {
+  if (!line) return { line, repaired: false, originalText: '', errors: [`missing Belle ${kind} line`] }
+  const originalText = line.text
+  const errors = validateBelleLine(kind, originalText, ctx)
+  if (errors.length === 0) {
+    line.text = cleanBelleText(originalText)
+    return { line, repaired: false, originalText, errors: [] }
+  }
+
+  const fallback = repairedBelleLine(kind, ctx)
+  const fallbackErrors = validateBelleLine(kind, fallback, ctx)
+  if (fallbackErrors.length === 0) {
+    line.text = fallback
+    console.warn(`  ⚠️ Belle ${kind} repaired before audio generation: ${errors.join('; ')}`)
+    return { line, repaired: true, originalText, errors }
+  }
+
+  return { line, repaired: false, originalText, errors: [...errors, ...fallbackErrors] }
+}
+
 function parseCharacterGuide(script: string): CharacterInfo[] {
   const chars: CharacterInfo[] = []
   const guideMatch = script.match(/CHARACTER GUIDE\s*\n---\s*\n([\s\S]*?)(?:\n---|\[START AUDIO DRAMA SCRIPT\])/i)
@@ -1412,7 +1568,7 @@ export async function POST(req: NextRequest) {
     let script = scriptParam
     const { data: storyRow, error: storyRowError } = await supabase
       .from('stories')
-      .select('id,title,author,genre,description,duration_mins,created_at,script,narrator_voice_id,narrator_voice_name')
+      .select('id,title,author,genre,description,duration_mins,created_at,script,narrator_voice_id,narrator_voice_name,series_name,series_id,episode_number,series_episode_number,series_total,series_total_episodes,series_is_finale')
       .eq('id', storyId)
       .single()
     if (!script) {
@@ -1447,6 +1603,27 @@ export async function POST(req: NextRequest) {
     const introLine = announcerLines[0]
     const outroLine = announcerLines[announcerLines.length - 1]
     const storyLines = lines.filter(l => !l.isIntro && !l.isOutro)
+    const belleContext = buildBelleValidationContext(storyRow, script, storyId)
+    const introValidation = validateOrRepairBelleLine('intro', introLine, belleContext)
+    const outroValidation = validateOrRepairBelleLine('outro', outroLine && outroLine.index !== introLine?.index ? outroLine : undefined, belleContext)
+    const belleBlockingErrors = [
+      ...(!introValidation.line ? introValidation.errors : []),
+      ...(!outroValidation.line ? outroValidation.errors : []),
+    ]
+    if (belleBlockingErrors.length > 0) {
+      return NextResponse.json({
+        success: false,
+        error: 'Belle intro/outro validation failed',
+        belleContext,
+        belleBlockingErrors,
+      }, { status: 422 })
+    }
+    const belleRepairUpdates: Record<string, string> = {}
+    if (introValidation.repaired && introValidation.line) belleRepairUpdates.intro_text = introValidation.line.text
+    if (outroValidation.repaired && outroValidation.line) belleRepairUpdates.outro_text = outroValidation.line.text
+    if (Object.keys(belleRepairUpdates).length > 0) {
+      await supabase.from('stories').update(belleRepairUpdates).eq('id', storyId)
+    }
     const nonDialogueSpeakers = new Set(['TITLE', 'AUTHOR', 'GENRE', 'DESCRIPTION', 'SERIES', 'EPISODE', 'EPISODE_TITLE', 'SUNO PROMPT', 'ANNOUNCER', 'BELLE B', 'SANDY'])
     const inlineCueProblems = findInlineProductionCues(storyLines)
     if (inlineCueProblems.length > 0) {
@@ -1467,18 +1644,20 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, error: `Failed to list existing Belle assets: ${listAudioError.message}` }, { status: 500 })
       }
 
-      const existingIntroFile = [...(existingAudioFiles || [])]
+      let existingIntroFile = [...(existingAudioFiles || [])]
         .filter(file => file.name === 'intro.mp3' || file.name.startsWith('intro_'))
         .sort((a, b) => {
           const priority = (name: string) => name === 'intro.mp3' ? 0 : name.startsWith('intro_before') ? 1 : 2
           return priority(a.name) - priority(b.name) || a.name.localeCompare(b.name)
         })[0]
-      const existingOutroFile = [...(existingAudioFiles || [])]
+      let existingOutroFile = [...(existingAudioFiles || [])]
         .filter(file => file.name === 'outro.mp3' || file.name.startsWith('outro_'))
         .sort((a, b) => {
           const priority = (name: string) => name === 'outro.mp3' ? 0 : 1
           return priority(a.name) - priority(b.name) || a.name.localeCompare(b.name)
         })[0]
+      if (introValidation.repaired) existingIntroFile = undefined
+      if (outroValidation.repaired) existingOutroFile = undefined
       const introUrlFromFile = existingIntroFile ? `${BASE_STORAGE}/${storyAudioFolder}/${existingIntroFile.name}` : null
       const outroUrlFromFile = existingOutroFile ? `${BASE_STORAGE}/${storyAudioFolder}/${existingOutroFile.name}` : null
       const result: {
