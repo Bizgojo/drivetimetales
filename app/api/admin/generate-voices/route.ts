@@ -393,9 +393,13 @@ function commonSurnameVariantMatches(expected: string, detected: string): boolea
  *   braking ↔ breaking  (gerund)
  */
 const HOMOPHONE_PAIRS: ReadonlyArray<readonly [string, string]> = [
+  // Automotive — Whisper transcribes the car-part noun as the common verb homophone
   ['brake', 'break'],
   ['brakes', 'breaks'],
   ['braking', 'breaking'],
+  // Colour spelling variants — Whisper uses British 'grey' for American 'gray'
+  ['gray', 'grey'],
+  ['grays', 'greys'],
 ] as const
 
 function knownHomophoneMatches(expected: string, detected: string): boolean {
