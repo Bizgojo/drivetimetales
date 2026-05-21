@@ -613,6 +613,50 @@ async function transcribeSegmentBuffer(buf: Buffer, fileName: string): Promise<s
   return String(parsed.text || '').trim()
 }
 
+/**
+ * Low-information function words that Whisper commonly drops at clip boundaries.
+ * Used by isSafeTerminalTailDrop — keep this set small and evidence-based.
+ */
+const SAFE_TERMINAL_FUNCTION_WORDS = new Set(['it', 'a', 'an', 'the', 'to', 'of', 'in', 'on'])
+
+/**
+ * Returns true when the ONLY QC failure is that Whisper dropped the final
+ * short function word at a clip boundary — a well-documented Whisper behaviour.
+ *
+ * All conditions must hold simultaneously (Marc's rule, 2026-05-21):
+ *   1. coverage >= 0.95
+ *   2. The failing token is ONLY the last expected token
+ *   3. That token is <= 3 chars
+ *   4. That token is in SAFE_TERMINAL_FUNCTION_WORDS
+ *   5. All other expected tokens are covered (truncatedCoverage >= 0.95)
+ *
+ * Conditions 4 and 5 together implicitly satisfy:
+ *   - no named entity change (approved set contains no proper nouns)
+ *   - no numeric change (approved set contains no digits)
+ *   - no negation change (approved set contains no 'not'/'no'/'never')
+ *   - sentence meaning materially intact
+ *
+ * Examples: "away with it" → "away with"  |  "went to the" → "went to"
+ */
+function isSafeTerminalTailDrop(
+  expected: string[],
+  detected: string[],
+  coverage: number,
+): boolean {
+  if (coverage < 0.95) return false
+  if (expected.length < 2) return false
+
+  const finalToken = expected[expected.length - 1]
+  if (finalToken.length > 3) return false
+  if (!SAFE_TERMINAL_FUNCTION_WORDS.has(finalToken)) return false
+
+  // Every token except the final one must be present in detected.
+  // Use transcriptVariantCoverage so existing token-level equivalences apply.
+  const expectedWithoutFinal = expected.slice(0, -1)
+  const truncatedCoverage = transcriptVariantCoverage(expectedWithoutFinal, detected)
+  return truncatedCoverage >= 0.95
+}
+
 async function validateSegmentTranscript(buf: Buffer, expectedText: string, fileName: string) {
   const detectedText = await transcribeSegmentBuffer(buf, fileName)
   const expected = transcriptTokens(expectedText)
@@ -629,7 +673,12 @@ async function validateSegmentTranscript(buf: Buffer, expectedText: string, file
     ? expectedVariants.some(variant => containsOrderedTokenVariant(detected, variant)) || similarity >= 0.88
     : true
   const oneWordProperNameMatch = oneWordProperNameVariantMatches(expectedText, detectedText)
-  const passed = oneWordProperNameMatch || (tailMatches && shortLineMatches && coverage >= SEGMENT_TRANSCRIPT_MIN_COVERAGE)
+  // Safe terminal tail drop: Whisper clips the final short function word at
+  // segment boundaries.  Does not regenerate — treated as equivalent.
+  const safeTerminalTailDrop = !tailMatches && isSafeTerminalTailDrop(expected, detected, coverage)
+  const passed = oneWordProperNameMatch
+    || safeTerminalTailDrop
+    || (tailMatches && shortLineMatches && coverage >= SEGMENT_TRANSCRIPT_MIN_COVERAGE)
 
   return {
     passed,
@@ -640,6 +689,7 @@ async function validateSegmentTranscript(buf: Buffer, expectedText: string, file
     tailMatches,
     shortLineMatches,
     oneWordProperNameMatch,
+    safeTerminalTailDrop,
   }
 }
 
