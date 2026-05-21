@@ -51,7 +51,7 @@ Before I give you any story work, confirm you understand and will follow these r
 
 5. **3-file architecture only.** Every story produces exactly three files: `intro.mp3`, `story_body.mp3`, `outro.mp3`. No exceptions.
 
-6. **Belle B is the announcer.** Belle B voices all ANNOUNCER lines and all Belle B Intro Variations. No other voice is used for announcer roles.
+6. **Belle is the announcer.** Belle voices all ANNOUNCER lines and all Belle Intro Variations. No other voice is used for announcer roles. Belle is the spoken/persona name. BELLE B is the internal script label and reserved voice identifier.
 
 7. **Music cues in the script are mandatory.** Every `[MUSIC: ...]` cue in the script must be applied in the mix. Do not flatten them to a single level. If a cue says `[MUSIC: cuts out entirely]` — the music cuts out entirely at that moment.
 

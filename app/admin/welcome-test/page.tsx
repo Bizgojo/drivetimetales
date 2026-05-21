@@ -34,7 +34,7 @@ export default function WelcomeTest() {
   return (
     <div style={{ fontFamily: 'Georgia, serif', background: '#FAF9F6', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ background: '#fff', borderRadius: 16, padding: 48, width: 480, boxShadow: '0 4px 24px rgba(0,0,0,0.08)' }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700, color: '#111', marginBottom: 8 }}>Belle B Welcome Test</h1>
+        <h1 style={{ fontSize: 24, fontWeight: 700, color: '#111', marginBottom: 8 }}>Belle Welcome Test</h1>
         <p style={{ color: '#666', fontSize: 14, marginBottom: 32 }}>New voice — name baked in, no stitching.</p>
         <div style={{ marginBottom: 24 }}>
           <label style={{ fontSize: 13, fontWeight: 600, color: '#444', display: 'block', marginBottom: 8 }}>Listener First Name</label>

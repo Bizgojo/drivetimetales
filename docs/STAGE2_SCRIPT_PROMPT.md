@@ -325,30 +325,32 @@ When an author is assigned in the Story Brief, write the script in that author's
 
 ## BELLE B INTRO VARIATIONS
 
-Belle B is the Endless Tales platform announcer. She is the listener's guide and companion — warm, knowledgeable, and direct. She speaks to each listener personally by name, recommends the story like a trusted friend who has already read it, and gets out of the way fast so the story can begin.
+Belle is the Endless Tales platform announcer. She is the listener's guide and companion — warm, knowledgeable, and direct. She speaks to each listener personally by name, recommends the story like a trusted friend who has already read it, and gets out of the way fast so the story can begin.
+
+Belle is the spoken/persona name. BELLE B is the internal script label and reserved voice identifier.
 
 **The intro sequence (in order):**
-ET Signature Sting → Belle B personalized intro → story begins immediately
+ET Signature Sting → Belle personalized intro → story begins immediately
 
-**What Belle B's intro must accomplish in 2–3 sentences:**
+**What Belle's intro must accomplish in 2–3 sentences:**
 1. Address the listener by name
 2. Name the story title (required) and author (when it sounds natural — not forced)
 3. Give a tone-matched personal pitch that makes the listener want to hear it — specific, not generic
 4. End cleanly so the story begins with no gap
 
-**What Belle B is NOT:**
+**What Belle is NOT:**
 - Not a radio announcer reading copy
 - Not a promo voice
 - Not formal or corporate
 - Not generic ("here's a great story for you!")
 
-Belle B sounds like a knowledgeable friend who just finished the story and can't wait to tell you about it — in their own words, matching the mood of what they just experienced.
+Belle sounds like a knowledgeable friend who just finished the story and can't wait to tell you about it — in their own words, matching the mood of what they just experienced.
 
 ---
 
-### Writing Belle B Intro Variations
+### Writing Belle Intro Variations
 
-For every story, write **4 variations** of Belle B's personalized intro. Each variation must:
+For every story, write **4 variations** of Belle's personalized intro. Each variation must:
 - Feel genuinely different in structure and wording — not just synonyms swapped
 - Use `[LISTENER_NAME]` at a natural point (usually the opening word or two)
 - Match the tone and genre of the story — see genre tone guide below
@@ -358,7 +360,7 @@ For every story, write **4 variations** of Belle B's personalized intro. Each va
 
 If the listener's name is unavailable, `[LISTENER_NAME]` is replaced with `friend` or omitted entirely depending on which sounds more natural in that variation. Write at least one variation that works gracefully without a name.
 
-**Placement in the script file:** Write the Belle B Intro Variations as a clearly labeled block at the very top of the script, before `[START AUDIO DRAMA SCRIPT]`. Format:
+**Placement in the script file:** Write the Belle Intro Variations as a clearly labeled block at the very top of the script, before `[START AUDIO DRAMA SCRIPT]`. Format:
 
 ```
 BELLE B INTRO VARIATIONS
@@ -372,11 +374,11 @@ V4: This one's been waiting for the right listener. [LISTENER_NAME], "The Cannin
 
 ---
 
-### Genre Tone Guide for Belle B
+### Genre Tone Guide for Belle
 
-Belle B's personality shifts subtly with the genre. She is always warm and direct — but her energy matches what the listener is about to experience.
+Belle's personality shifts subtly with the genre. She is always warm and direct — but her energy matches what the listener is about to experience.
 
-| Genre | Belle B's tone | Example opening energy |
+| Genre | Belle's tone | Example opening energy |
 |---|---|---|
 | Horror / Supernatural | Quietly conspiratorial, a hint of relish | "This one gets dark, [NAME]..." |
 | Thriller | Urgent, leaning in | "[NAME], this one moves fast..." |
@@ -389,7 +391,7 @@ Belle B's personality shifts subtly with the genre. She is always warm and direc
 
 ---
 
-### What Makes a Belle B Intro Sound Natural vs. Canned
+### What Makes a Belle Intro Sound Natural vs. Canned
 
 **Natural (write these):**
 - Sentence structures that vary between variations — don't start every one with `[NAME],`
@@ -406,7 +408,7 @@ Belle B's personality shifts subtly with the genre. She is always warm and direc
 
 ---
 
-### Belle B Intro Examples by Genre
+### Belle Intro Examples by Genre
 
 **Horror — "The Canning" by Silas Graves:**
 ```
@@ -436,7 +438,7 @@ V4: Every clue in this one means something, [LISTENER_NAME]. "The Third Key." Me
 
 ## ANNOUNCER OUTRO RULES
 
-The story outro is the final ANNOUNCER line after the story ends. It closes the story cleanly and signals to the listener that the experience is complete. Belle B voices this as well.
+The story outro is the final ANNOUNCER line after the story ends. It closes the story cleanly and signals to the listener that the experience is complete. Belle voices this as well.
 
 ### No Time of Day — Ever
 Neither the intro nor outro may reference any time of day under any circumstances. No "good morning," "good evening," "tonight," "this morning," "today's episode," or "join us tomorrow." Listeners play stories at any hour. Time references are immediately wrong for most listeners.
@@ -516,7 +518,7 @@ The platform NARRATOR voice and ANNOUNCER voice (Sandy) are reserved exclusively
 
 Before you output the script, answer these questions. If any answer is NO, fix it first.
 
-**Belle B Intro Variations:**
+**Belle Intro Variations:**
 - Are there exactly 4 variations in the BELLE B INTRO VARIATIONS block?
 - Does each variation include `[LISTENER_NAME]` at a natural point?
 - Does each variation include the story title?

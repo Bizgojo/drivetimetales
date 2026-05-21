@@ -191,7 +191,7 @@ export default function AdminPromoPage() {
         {/* Send Magic Link */}
         <div style={{ background: card, border: '1px solid ' + border, borderRadius: 12, padding: 20, marginBottom: 24 }}>
           <h2 style={{ fontSize: 15, fontWeight: 800, margin: '0 0 4px' }}>Send Magic Link Invite</h2>
-          <p style={{ color: muted, fontSize: 12, margin: '0 0 16px' }}>One-click invite: creates account, applies promo, stores name for Belle B. Recipient clicks one link and they are in.</p>
+          <p style={{ color: muted, fontSize: 12, margin: '0 0 16px' }}>One-click invite: creates account, applies promo, stores name for Belle. Recipient clicks one link and they are in.</p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 120px', gap: 12, marginBottom: 12 }}>
             <div>
               <label style={label}>Email *</label>

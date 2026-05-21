@@ -10,7 +10,9 @@
 
 This document defines the creative and structural role of Endless Tales intros and outros.
 
-Belle B is not a narrator, character, or generic announcer. Belle B is the Endless Tales host, curator, and continuity bridge. Her job is to welcome the listener into the experience, carry momentum between episodes, and close the listening moment without breaking story immersion.
+Belle is not a narrator, character, or generic announcer. Belle is the Endless Tales host, curator, and continuity bridge. Her job is to welcome the listener into the experience, carry momentum between episodes, and close the listening moment without breaking story immersion.
+
+Belle is the spoken/persona name. BELLE B is the internal script label and reserved voice identifier.
 
 The intro/outro system must feel alive, responsive, and human. It must never feel like a static template pasted onto every story.
 
@@ -30,9 +32,9 @@ Intro/outro behavior depends on the canonical story system:
 
 ## CORE PRINCIPLES
 
-### 1. Belle B is the host, curator, and continuity bridge
+### 1. Belle is the host, curator, and continuity bridge
 
-Belle B speaks from the platform, not from inside the fictional world. She frames the listening experience, connects episodes, and gives the audience a sense that Endless Tales is actively guiding them.
+Belle speaks from the platform, not from inside the fictional world. She frames the listening experience, connects episodes, and gives the audience a sense that Endless Tales is actively guiding them.
 
 She may:
 - Welcome the listener into a story or episode
@@ -57,7 +59,7 @@ Short pauses are allowed only when they are musical or dramatic. Silence must ne
 
 ### 3. Dynamic, non-repetitive language
 
-Belle B intros and outros must vary in phrasing, rhythm, and structure. The system must avoid repeated templates across stories, episodes, and sessions.
+Belle intros and outros must vary in phrasing, rhythm, and structure. The system must avoid repeated templates across stories, episodes, and sessions.
 
 Do not use generic stock openings such as:
 - "Tonight's story..."
@@ -169,7 +171,7 @@ The finale outro should feel complete. It may be warmer and more reflective than
 
 ## LENGTH AND TONE
 
-Belle B should be concise.
+Belle should be concise.
 
 Target length:
 - Intro: usually 1-2 sentences

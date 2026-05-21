@@ -23,7 +23,7 @@ This bible is part of the canonical Endless Tales story system:
 - `STORY_RESOLUTION_MAP_RULES.md` defines the mandatory pre-draft map.
 - `ENDING_SATISFACTION_VALIDATION.md` defines ending scoring and earned-ending checks.
 - `SERIES_EPISODE_STRUCTURE_RULES.md` defines first, non-final, and finale episode behavior.
-- `INTRO_OUTRO_BIBLE.md`, `INTRO_OUTRO_PRODUCTION_RULES.md`, and `BELLE_B_PROMPT_RULES.md` define Belle B continuity, intro/outro state, and audio transition doctrine.
+- `INTRO_OUTRO_BIBLE.md`, `INTRO_OUTRO_PRODUCTION_RULES.md`, and `BELLE_B_PROMPT_RULES.md` define Belle continuity, intro/outro state, and audio transition doctrine.
 
 ---
 

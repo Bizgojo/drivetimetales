@@ -214,7 +214,7 @@ export default function AuthorsNarratorsV2Page() {
     if (isBelleB) {
       return (
         <div style={{ color: '#9a3412', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 10, padding: compact ? '8px 10px' : '10px 12px', fontSize: compact ? 13 : 14, fontWeight: 800 }}>
-          Belle B is locked for announcer use only.
+          Belle is locked for announcer use only.
         </div>
       )
     }

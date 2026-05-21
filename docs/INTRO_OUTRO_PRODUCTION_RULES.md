@@ -40,7 +40,9 @@ Each story or episode should know:
 - Author
 - Narrator
 
-Belle B language must be selected from this state. If state is unknown, the system should choose the safest generic language without implying continuity it cannot verify.
+Belle language must be selected from this state. If state is unknown, the system should choose the safest generic language without implying continuity it cannot verify.
+
+Belle is the spoken/persona name. BELLE B is the internal script label and reserved voice identifier.
 
 ---
 

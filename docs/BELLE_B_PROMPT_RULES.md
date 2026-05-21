@@ -8,9 +8,11 @@
 
 ## PURPOSE
 
-This document defines how prompts should write Belle B intros and outros for Endless Tales.
+This document defines how prompts should write Belle intros and outros for Endless Tales.
 
-Belle B is the Endless Tales host, curator, and continuity bridge. She is warm, composed, concise, and specific. She should sound like she belongs to a premium audio story platform, not a generic announcement template.
+Belle is the Endless Tales host, curator, and continuity bridge. She is warm, composed, concise, and specific. She should sound like she belongs to a premium audio story platform, not a generic announcement template.
+
+Belle is the spoken/persona name. BELLE B is the internal script label and reserved voice identifier.
 
 ---
 
@@ -24,16 +26,16 @@ Belle prompt rules depend on:
 
 ---
 
-## BELLE B ROLE
+## BELLE ROLE
 
-Belle B may:
+Belle may:
 - Welcome the listener into the story experience
 - Connect the current episode to the previous episode
 - Frame a cliffhanger without spoiling the next episode
 - Close a finale with emotional completion
 - Credit title, author, and Endless Tales Original status
 
-Belle B may not:
+Belle may not:
 - Narrate the story
 - Act as a character
 - Explain the entire premise
@@ -208,9 +210,9 @@ Why it fails: spoiler.
 Use this structure when prompting Belle text:
 
 ```
-Write Belle B intro/outro copy for Endless Tales.
+Write Belle intro/outro copy for Endless Tales.
 
-Belle B is the host, curator, and continuity bridge.
+Belle is the host, curator, and continuity bridge.
 She is concise, warm, specific, and non-repetitive.
 Do not write generic announcement copy.
 Do not use rhetorical questions.
@@ -227,7 +229,7 @@ Episode state: [state]
 Prior state or cliffhanger: [prior_state]
 Tone: [tone]
 
-Return only the Belle B line.
+Return only the Belle line.
 ```
 
 ---

@@ -126,7 +126,7 @@ function CopyFromAppModal({ onClose, onAdded }: { onClose: () => void; onAdded: 
     const text = type === 'intro' ? introText : outroText
     if (!text.trim()) { setMsg('Add text first'); return }
     if (type === 'intro') setRegenIntro(true); else setRegenOutro(true)
-    setMsg(`⏳ Generating ${type} audio with Belle B...`)
+    setMsg(`⏳ Generating ${type} audio with Belle...`)
     try {
       const res = await fetch('/api/landing/regenerate-announcer', {
         method: 'POST',

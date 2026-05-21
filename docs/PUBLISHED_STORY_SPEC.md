@@ -12,16 +12,17 @@ A subscriber presses Play. Here is exactly what they hear, in order:
 ### 1. STING (3.5 seconds)
 - The ET Signature Sting plays at full volume
 - File: ET_Signature_Sting_v7.mp3.mp3 in Supabase storage
-- At 1.2 seconds, Belle B begins speaking and the sting fades out underneath her voice
+- At 1.2 seconds, Belle begins speaking and the sting fades out underneath her voice
 
 ### 2. BELLE B INTRO (overlaps sting tail)
-- Belle B speaks ONE line, maximum two short sentences
+- Belle speaks ONE line, maximum two short sentences
 - She is a warm friend recommending a story - not an announcer, not a host, not a DJ
 - She speaks to ONE person, not an audience
-- Voice ID: GMhgX8fCR9GUtd3kmlKC - this is the ONLY voice used for Belle B, always
+- Voice ID: GMhgX8fCR9GUtd3kmlKC - this is the ONLY voice used for Belle, always
 - Script label: BELLE B: - never ANNOUNCER:, never SANDY:, never anything else
+- Belle is the spoken/persona name. BELLE B is the internal script label and reserved voice identifier.
 
-Belle B intro rules:
+Belle intro rules:
 - Never says "Welcome to Endless Tales"
 - Never says "Tonight" or any time-of-day reference
 - Never says "presents" or "we bring you"
@@ -37,7 +38,7 @@ BAD: "Welcome to Endless Tales. Tonight we present The Courier, a thrilling tale
 BAD: "Get ready for an exciting new story by Roman Steele, narrated by Ray Dolan."
 
 ### 3. SILENCE (0.75 seconds)
-- Clean silence between Belle B intro and the story body
+- Clean silence between Belle intro and the story body
 
 ### 4. STORY BODY - VOICES + BACKGROUND MUSIC
 - The narrator tells the story. Characters speak their dialogue.
@@ -49,22 +50,22 @@ Background music behavior:
 - Music loops seamlessly if shorter than the story
 - When the narrator finishes the last line, music RISES back to full volume
 - Music plays at full volume for 3 seconds, then fades out completely
-- 1.0 second silence follows before Belle B outro
+- 1.0 second silence follows before Belle outro
 
 Voice rules:
 - Narrator voice: assigned from narrator_voices table based on the author
 - Character voices: auto-assigned from ElevenLabs My Voices library (500+ voices)
 - Default accent preference: AMERICAN unless CHARACTER GUIDE says otherwise
-- Belle B's voice is NEVER used as narrator or character - only as announcer
+- Belle's voice is NEVER used as narrator or character - only as announcer
 - Platform narrators are never cast as characters
 
 No SFX. Stories are voice-only with background music.
 
 ### 5. SILENCE (1.0 second)
-- Clean silence between story body end and Belle B outro
+- Clean silence between story body end and Belle outro
 
 ### 6. BELLE B OUTRO
-- Belle B speaks ONE line, maximum two short sentences
+- Belle speaks ONE line, maximum two short sentences
 - Same voice, same warmth as the intro
 - Reflective and warm - leaves the listener with a feeling, not a summary
 - Must be COMPLETE - never cut off mid-sentence
@@ -254,12 +255,12 @@ BELLE B: [outro line]
 ## AUDIO PIPELINE - TECHNICAL
 
 ### API Endpoints (TWO-STEP PIPELINE ONLY):
-1. POST /api/admin/generate-voices - generates all voice segments + Belle B intro/outro
+1. POST /api/admin/generate-voices - generates all voice segments + Belle intro/outro
 2. POST /api/asc3/render-final-mix - mixes everything into final audio
 
 NEVER use /api/asc3/generate-story-complete - it had wrong voice ID hardcoded.
 
-### Belle B voice settings:
+### Belle voice settings:
 - Voice ID: GMhgX8fCR9GUtd3kmlKC
 - Stability: 0.49, Similarity: 0.51, Style: 0.0, Speaker Boost: true, Speed: 1.0
 - Model: eleven_multilingual_v2
@@ -267,26 +268,26 @@ NEVER use /api/asc3/generate-story-complete - it had wrong voice ID hardcoded.
 
 ### Mix settings:
 - Voice normalization: dynaudnorm filter applied to all segments
-- Belle B: 1.5x volume
+- Belle: 1.5x volume
 - Narrator/character voices: 1.0x (normalized)
 - Background music under dialogue: 15% (ducked)
 - Background music at transitions: full volume
 - BEAT/PAUSE lines generate actual silence audio segments
 - Uses @ffmpeg-installer/ffmpeg (NOT ffmpeg-static)
 - Stories with 80+ segments: use local ffmpeg mix
-- Sting crossfade: Belle B starts at 1200ms into sting
+- Sting crossfade: Belle starts at 1200ms into sting
 
 ---
 
 ## WHAT MARC LISTENS FOR WHEN APPROVING
 
-1. Does the sting play and crossfade into Belle B?
-2. Does Belle B sound like a warm friend, not an announcer?
+1. Does the sting play and crossfade into Belle?
+2. Does Belle sound like a warm friend, not an announcer?
 3. Is the intro specific to THIS story?
 4. Are the character voices American (unless script says otherwise)?
 5. Is the background music ducking properly under dialogue and rising at transitions?
 6. Does the story have a clear, satisfying ending?
-7. Is the Belle B outro complete with author credit?
+7. Is the Belle outro complete with author credit?
 8. Does the outro reference something specific from the story?
 9. Are voices level and consistent throughout?
 10. Is the story clear and easy to follow on first listen?

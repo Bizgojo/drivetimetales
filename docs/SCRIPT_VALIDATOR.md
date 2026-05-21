@@ -110,7 +110,7 @@ Check that the header block is present and complete. Every field must be populat
 
 **Check:** Does every CHARACTER GUIDE entry include: name, age, gender, accent, and a personality note? Any entry missing one of these fields — FAIL.
 
-**Check:** Are any platform voices (Belle B, Sandy) listed as characters in the CHARACTER GUIDE? If yes — FAIL. Platform voices may not be cast as story characters.
+**Check:** Are any platform voices (Belle, Sandy) listed as characters in the CHARACTER GUIDE? If yes — FAIL. Platform voices may not be cast as story characters.
 
 ---
 
@@ -337,7 +337,7 @@ If any time-of-day reference appears — FAIL. Quote the line.
 
 ## SECTION 11 — SCRIPT LENGTH
 
-**Check:** Count the approximate words of dialogue and narration in the script body (excluding header, CHARACTER GUIDE, BELLE B block, SFX markers, and ANNOUNCER lines).
+**Check:** Count the approximate words of dialogue and narration in the script body (excluding header, CHARACTER GUIDE, BELLE B block, SFX markers, and ANNOUNCER lines). Belle is the spoken/persona name; BELLE B is the internal script label and reserved voice identifier.
 
 Compare to the target runtime from the Story Brief:
 - 10 min target: 1,400–1,600 words

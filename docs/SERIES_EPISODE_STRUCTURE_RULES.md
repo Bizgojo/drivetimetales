@@ -21,7 +21,7 @@ Use this document with:
 - `CLAUDE_STORY_ARCHITECTURE_BIBLE.md` for the full story-construction doctrine.
 - `STORY_RESOLUTION_MAP_RULES.md` for the required per-episode problem, escalation, and solution map.
 - `ENDING_SATISFACTION_VALIDATION.md` for episode-state ending scores.
-- `INTRO_OUTRO_BIBLE.md`, `INTRO_OUTRO_PRODUCTION_RULES.md`, and `BELLE_B_PROMPT_RULES.md` for Belle B continuity language tied to episode state.
+- `INTRO_OUTRO_BIBLE.md`, `INTRO_OUTRO_PRODUCTION_RULES.md`, and `BELLE_B_PROMPT_RULES.md` for Belle continuity language tied to episode state.
 
 ---
 
