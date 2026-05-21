@@ -16,6 +16,18 @@ The intro/outro system must feel alive, responsive, and human. It must never fee
 
 ---
 
+## RELATED DOCTRINE
+
+Intro/outro behavior depends on the canonical story system:
+
+- `CLAUDE_STORY_ARCHITECTURE_BIBLE.md` defines the story architecture Belle is framing.
+- `STORY_RESOLUTION_MAP_RULES.md` defines the episode problem and resolution Belle must not contradict.
+- `ENDING_SATISFACTION_VALIDATION.md` defines whether the ending is complete, partial, or finale-grade.
+- `SERIES_EPISODE_STRUCTURE_RULES.md` defines first, non-final, and finale episode state.
+- `INTRO_OUTRO_PRODUCTION_RULES.md` and `BELLE_B_PROMPT_RULES.md` define production and prompt-specific intro/outro rules.
+
+---
+
 ## CORE PRINCIPLES
 
 ### 1. Belle B is the host, curator, and continuity bridge

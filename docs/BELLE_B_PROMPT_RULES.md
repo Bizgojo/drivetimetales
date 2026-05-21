@@ -14,6 +14,16 @@ Belle B is the Endless Tales host, curator, and continuity bridge. She is warm, 
 
 ---
 
+## RELATED DOCTRINE
+
+Belle prompt rules depend on:
+
+- `INTRO_OUTRO_BIBLE.md` for Belle's role and canonical intro/outro shapes.
+- `INTRO_OUTRO_PRODUCTION_RULES.md` for timing, ducking, swell, and future ASC expectations.
+- `CLAUDE_STORY_ARCHITECTURE_BIBLE.md`, `STORY_RESOLUTION_MAP_RULES.md`, `ENDING_SATISFACTION_VALIDATION.md`, and `SERIES_EPISODE_STRUCTURE_RULES.md` for the story state Belle must honor without spoilers.
+
+---
+
 ## BELLE B ROLE
 
 Belle B may:

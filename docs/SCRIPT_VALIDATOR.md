@@ -13,6 +13,22 @@ This document is pasted into a Claude chat along with a completed Endless Tales 
 
 ---
 
+## CANONICAL STORY SYSTEM REFERENCES
+
+Before validating story architecture, episode endings, or Belle intro/outro behavior, use these source-of-truth documents:
+
+- `CLAUDE_STORY_ARCHITECTURE_BIBLE.md`
+- `STORY_RESOLUTION_MAP_RULES.md`
+- `ENDING_SATISFACTION_VALIDATION.md`
+- `SERIES_EPISODE_STRUCTURE_RULES.md`
+- `INTRO_OUTRO_BIBLE.md`
+- `INTRO_OUTRO_PRODUCTION_RULES.md`
+- `BELLE_B_PROMPT_RULES.md`
+
+These documents define the canonical story system. This validator should evolve toward enforcing them before any audio generation.
+
+---
+
 ## HOW TO USE
 
 1. Open a new Claude chat

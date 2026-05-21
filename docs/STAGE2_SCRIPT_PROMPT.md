@@ -14,6 +14,22 @@ When you are done, output ONLY the formatted script. No preamble. No commentary.
 
 ---
 
+## CANONICAL STORY SYSTEM REFERENCES
+
+Future Claude story-writing sessions and prompt updates should treat these documents as the Endless Tales story-system source of truth:
+
+- `CLAUDE_STORY_ARCHITECTURE_BIBLE.md`
+- `STORY_RESOLUTION_MAP_RULES.md`
+- `ENDING_SATISFACTION_VALIDATION.md`
+- `SERIES_EPISODE_STRUCTURE_RULES.md`
+- `INTRO_OUTRO_BIBLE.md`
+- `INTRO_OUTRO_PRODUCTION_RULES.md`
+- `BELLE_B_PROMPT_RULES.md`
+
+The Stage 2 prompt should evolve toward requiring a Story Resolution Map before drafting and validating earned endings, episode state, and Belle handoff behavior before production.
+
+---
+
 ## YOUR AUDIENCE — READ THIS FIRST, ALWAYS
 
 Endless Tales listeners are **commuters, long-haul truckers, and people doing physical work**. They are listening while driving, often on a highway, often slightly distracted. This changes everything about how you write:

@@ -14,6 +14,16 @@ It does not change production audio logic by itself. It is the permanent rule so
 
 ---
 
+## RELATED DOCTRINE
+
+Use this document with:
+
+- `INTRO_OUTRO_BIBLE.md` for the canonical creative shape of intros and outros.
+- `BELLE_B_PROMPT_RULES.md` for Belle line-generation rules.
+- `CLAUDE_STORY_ARCHITECTURE_BIBLE.md`, `STORY_RESOLUTION_MAP_RULES.md`, `ENDING_SATISFACTION_VALIDATION.md`, and `SERIES_EPISODE_STRUCTURE_RULES.md` for the story and episode state that intro/outro production must respect.
+
+---
+
 ## SYSTEM RESPONSIBILITIES
 
 The production system must treat intro/outro as part of the listening experience, not as decorative metadata.
