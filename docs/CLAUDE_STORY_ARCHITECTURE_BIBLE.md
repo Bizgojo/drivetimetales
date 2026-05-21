@@ -1,5 +1,5 @@
 # CLAUDE STORY ARCHITECTURE BIBLE - Endless Tales
-**Version:** 1.0  
+**Version:** 1.1
 **Owner:** Marc Postlewaite / Endless Tales  
 **Last Updated:** May 2026  
 **Status:** Production doctrine
@@ -24,6 +24,7 @@ This bible is part of the canonical Endless Tales story system:
 - `ENDING_SATISFACTION_VALIDATION.md` defines ending scoring and earned-ending checks.
 - `SERIES_EPISODE_STRUCTURE_RULES.md` defines first, non-final, and finale episode behavior.
 - `INTRO_OUTRO_BIBLE.md`, `INTRO_OUTRO_PRODUCTION_RULES.md`, and `BELLE_B_PROMPT_RULES.md` define Belle continuity, intro/outro state, and audio transition doctrine.
+- **Reality Anchor Doctrine** and **Escalation Ceiling Rule** are defined in this document. Validators should enforce them as described in `SCRIPT_VALIDATOR.md`.
 
 ---
 
@@ -160,6 +161,88 @@ Variety is not randomness. A different ending must still be earned by the map.
 
 ---
 
+## REALITY ANCHOR DOCTRINE
+
+Stories must remain psychologically and behaviorally believable at all times, unless the genre explicitly permits reality to bend.
+
+**Genre defaults:**
+
+- **Thriller, Mystery, True Crime, Drama, Historical:** Full reality anchor required. Characters must behave as real people would behave given their established psychology, circumstances, and available information. Events must follow from causes that exist in the story.
+- **Science Fiction, Horror, Fantasy:** Reality may bend — but character psychology and emotional logic must remain internally consistent. A character in a science fiction story may encounter a teleporter; they may not suddenly lose all fear of death because the plot needs them to walk into the teleporter.
+
+### Anti-Absurdity Rules
+
+These failures apply regardless of genre:
+
+**Cartoon escalation.** Stakes escalate beyond the scope the story established without new setup. A missing-persons thriller does not become a global bio-weapons conspiracy in episode two unless the bio-weapons were seeded in episode one.
+
+**Irrational character behavior.** A character does something a reasonable person with their established psychology, information, and goals would never do — solely to move the plot forward. Common examples: the villain explains their entire plan in detail without being forced to; the protagonist ignores an obvious escape route with no stated reason; the trained professional forgets basic procedure at the one critical moment; the cautious character acts recklessly without an emotional cause.
+
+**Impossible coincidence chains.** Two or more coincidences in sequence that each break probability and together resolve the story. One coincidence creates tension. Two is luck. Three is the story refusing to do its job.
+
+**Random genre mutation.** The story commits to a grounded thriller and then introduces a supernatural element in the third act with no prior foreshadowing. Genre rules must be established early and held consistently.
+
+### What Remains Consistent Across All Genres
+
+Even in genres with flexible reality rules, the following must always hold:
+
+- **Emotional responses.** A character who loses a child grieves. A character who betrays a friend carries guilt or its conscious suppression. These do not disappear because the plot needs the character to keep moving.
+- **Competence must be earned.** A character's sudden skill must be explained or seeded earlier.
+- **Fear, courage, and moral cost.** These follow from character, not plot convenience.
+- **Antagonist coherence.** The antagonist must have a motivation a human being could actually hold. Vague evil, circular logic, and contradictory behavior are failures.
+
+---
+
+## ESCALATION CEILING RULE
+
+Every story establishes a maximum plausible scope at the premise level. That ceiling must be respected.
+
+**Stakes may intensify. Absurdity should not.**
+
+### What Acceptable Escalation Looks Like
+
+The threat grows within the established world:
+
+- A personal secret becomes a public scandal.
+- A local crime is revealed to involve a trusted institution.
+- A family conflict turns into physical danger.
+- A professional rivalry escalates into a conspiracy that threatens the protagonist's life.
+
+Each step follows from what already exists in the story. The size of the threat grows; the type of threat stays coherent.
+
+### What Unacceptable Escalation Looks Like
+
+The threat mutates into something the story was never built for:
+
+- A domestic mystery about an unreliable narrator becomes a government mind-control program.
+- A small-town fraud case escalates to international arms trafficking in the second half.
+- A character who was established as a carpenter is revealed to be a trained assassin — without any prior seeds.
+- The protagonist stops being afraid of things that would realistically terrify them.
+
+### Escalation Ceiling Test
+
+Before writing an escalation step, ask:
+
+1. Is the new threat consistent with the genre and world established in the first scene?
+2. Does the protagonist respond to the escalation as their established psychology would predict?
+3. Does the antagonist's behavior still follow from their stated or implied motivation?
+4. Could this escalation plausibly appear in a real news story, police file, or historical record — given the genre?
+
+If any answer is no and there is no prior setup to justify it, the escalation violates the ceiling.
+
+### Genre-Specific Ceiling Reference
+
+| Genre | Acceptable Ceiling | Ceiling Violation |
+|---|---|---|
+| True Crime | Local fraud → statewide cover-up → federal investigation | Local fraud → bioweapon program → global conspiracy |
+| Mystery | Unexplained death → trusted-figure cover-up → institutional corruption | Unexplained death → ancient secret society → supernatural curse |
+| Thriller | Personal threat → threat to family → threat to community | Personal threat → threat to entire civilization → protagonist is "the chosen one" |
+| Drama | Relationship conflict → family rupture → community consequence | Relationship conflict → government surveillance program → staged death |
+| Horror | Unexplained events → defined supernatural threat → confrontation | Unexplained events → twenty separate supernatural systems → alien invasion |
+| Science Fiction | Unusual technology → systemic consequences → moral reckoning | Unusual technology → full reality suspension → protagonist has secret powers with no prior seed |
+
+---
+
 ## FUTURE ENFORCEMENT TARGETS
 
 Future validators should check that every draft includes:
@@ -170,6 +253,9 @@ Future validators should check that every draft includes:
 - Middle escalation that changes the available ending.
 - An ending that uses seeded information.
 - No coincidence or deus-ex-machina resolution.
+- A believable reality anchor for the selected genre.
+- Escalation that raises stakes without raising absurdity.
+- Character behavior that follows credible motives and pressure.
 - Episode state behavior for non-final and final episodes.
 - Library-level variety checks for repeated twists, endings, and villain reveals.
 

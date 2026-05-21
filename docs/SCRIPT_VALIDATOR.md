@@ -1,5 +1,5 @@
 # SCRIPT VALIDATOR — Endless Tales
-**Version:** 1.1  
+**Version:** 1.2
 **Owner:** Marc Postlewaite / Endless Tales  
 **Last Updated:** May 2026
 
@@ -300,6 +300,30 @@ If the opening fails the hook test — FAIL. Quote the first line and explain wh
 
 **Check:** Is this ending type meaningfully distinct from the repeated default of "find clue, receive explanation, final symbolic image"? If it feels formulaic, note as WARNING and suggest a stronger ending engine such as sacrifice, confrontation, revelation, escape, reversal, emotional confession, strategic trap, or moral choice.
 
+### Reality Anchor Doctrine
+
+**Check:** Does the story remain psychologically and behaviorally believable for its declared genre? Mystery, thriller, drama, and true-crime-adjacent stories should feel grounded and emotionally real unless the premise explicitly establishes otherwise. If the story becomes cartoonish, note as WARNING or FAIL depending on severity.
+
+**Check:** Do character choices follow understandable pressure, motive, fear, desire, loyalty, grief, greed, duty, or survival logic? If a character behaves irrationally only to move the plot forward — FAIL.
+
+**Check:** Does the escalation fit the established scale and rules of the story? If the story randomly mutates genre, introduces an impossible conspiracy scale, or adds world-breaking power without setup — FAIL.
+
+**Check:** Does the plot avoid impossible coincidence chains? If the protagonist succeeds because multiple unrelated lucky events occur in sequence rather than because of investigation, pressure, choice, or consequence — FAIL.
+
+**Escalation Ceiling Rule:** Stakes may intensify. Absurdity should not. Escalation should make the story more urgent, dangerous, personal, costly, or revealing without making it less believable.
+
+Believable escalation:
+- A compromised official blocks the protagonist's safe reporting channel.
+- A witness lies because the truth would endanger someone they love.
+- A hidden technical system has power because the script established its access and limits.
+
+Unbelievable escalation:
+- A grounded town mystery suddenly reveals an international assassin network with no setup.
+- A careful protagonist walks into an obvious trap for no emotional or practical reason.
+- The antagonist can control every camera, bank, phone, road, and witness without prior explanation.
+
+**Genre exception:** Science fiction, horror, fantasy, and magical realism may bend reality, but emotional and character logic must remain believable. The validator should still require rules, limits, costs, and coherent motives.
+
 ### Standalone Ending
 
 **Check:** Does the final NARRATOR line feel conclusive — not like a pause, not open-ended, not ambiguous about outcome? 
@@ -369,6 +393,89 @@ If the word count is more than 20% under or over the target — note as a WARNIN
 
 ---
 
+## SECTION 12 — REALITY ANCHOR AND ESCALATION CEILING
+
+Reference doctrine: `CLAUDE_STORY_ARCHITECTURE_BIBLE.md` — Reality Anchor Doctrine, Escalation Ceiling Rule.
+
+Failures in this section are hard failures. A story that violates the Reality Anchor Doctrine or Escalation Ceiling Rule is not production-ready regardless of technical format compliance.
+
+---
+
+### 12a — Character Behavior
+
+**Check:** Does every character behave in a way that follows from their established psychology, information, and goals? A character doing something solely because the plot needs it — when no story-internal logic drives the decision — is a failure.
+
+If any character behavior fails this test — FAIL. Quote the line and name the logical gap.
+
+Common failures:
+- The antagonist explains their complete plan during the confrontation when no story logic compels disclosure.
+- The protagonist ignores an obvious safe exit with no stated reason for doing so.
+- A trained professional (detective, doctor, engineer) forgets basic procedure at exactly the moment the plot requires it.
+- A character established as cautious acts recklessly without a clear emotional cause.
+- A character's grief, fear, or guilt disappears between scenes without explanation.
+
+**Check:** Does the antagonist have a motivation a human being could genuinely hold? If the motivation is vague ("they are dangerous"), circular ("they want to hurt people because they are bad"), or contradicted by their own behavior — FAIL.
+
+---
+
+### 12b — Genre Consistency
+
+**Check:** What genre does the story establish in its first scene? Does the story maintain that genre contract through to its ending?
+
+If the story commits to being a grounded thriller and introduces an unexplained supernatural element in the final act — FAIL, unless the supernatural was foreshadowed and seeded before the midpoint.
+
+State the detected genre. If a genre mutation occurs, quote the lines where it happens and explain what setup would have been required to make it acceptable.
+
+---
+
+### 12c — Escalation Ceiling
+
+**Check:** Identify the maximum scope of the threat as established by the opening scene and premise. Then trace each escalation through the story.
+
+For each major escalation, ask:
+1. Is the new threat consistent with the genre and world established at the start?
+2. Does the protagonist respond as their established psychology would predict?
+3. Does the antagonist's behavior continue to follow their stated motivation?
+4. Could this escalation plausibly appear in a real-world account given the genre?
+
+If any escalation introduces a new type of threat — not just a larger version of the existing one — without prior setup, that is a ceiling violation — FAIL.
+
+**Believable escalation (PASS):**
+> A small-town accountant discovers her employer is skimming municipal funds. The middle reveals the mayor is complicit. The finale shows the cover-up extends to the county commissioner.
+> Stakes grow. The world stays coherent. The accountant remains in her own plausible life.
+
+**Unbelievable escalation (FAIL):**
+> A small-town accountant discovers her employer is skimming municipal funds. The middle reveals the fund was created by a shadow government. The finale offers her a seat on a secret council controlling global finance.
+> The ceiling was set at small-town fraud. The story broke through it with no earned setup.
+
+**Believable escalation (PASS):**
+> A retired detective is hired to find a missing woman. He learns she witnessed a murder. The killer turns out to be her brother, whom she was protecting.
+> Character motivations follow from human psychology. Threat type stays within the detective genre.
+
+**Unbelievable escalation (FAIL):**
+> A retired detective is hired to find a missing woman. He learns she was a government sleeper agent. She is then revealed to have been dead for years and he was dreaming.
+> Two unmotivated genre mutations — spy thriller, then supernatural. Neither was seeded.
+
+**Believable (Horror — genre with latitude):**
+> A family moves into a house with a history. Supernatural events escalate. The ghost is established in act one as a specific person with a specific unresolved need. Every subsequent event follows from that one defined supernatural entity.
+> Horror permits supernatural premises, but the rules of that premise must be set early and held.
+
+**Unbelievable (Horror — ceiling violated):**
+> A ghost is introduced in act one. Act two reveals the house is also a portal to a demon dimension. Act three reveals the demons are agents of an ancient Egyptian god.
+> Each escalation introduces a new supernatural system. No single rule holds.
+
+---
+
+### 12d — Reality Anchor Summary
+
+After completing 12a–12c, state:
+
+- **Reality Anchor:** PASS / FAIL (with note if FAIL)
+- **Escalation Ceiling:** PASS / FAIL (with note if FAIL)
+- **Genre consistency:** MAINTAINED / MUTATED (note where if mutated)
+
+---
+
 ## FINAL REPORT FORMAT
 
 After completing all sections, output the full report in this format:
@@ -392,6 +499,7 @@ SECTION 8 — OPENING HOOK: [PASS / FAIL]
 SECTION 9 — ENDING / DIFFICULT SOLUTION: [PASS / FAIL]
 SECTION 10 — ANNOUNCER OUTRO: [PASS / FAIL]
 SECTION 11 — SCRIPT LENGTH: [PASS / WARNING]
+SECTION 12 — REALITY ANCHOR AND ESCALATION CEILING: [PASS / FAIL]
 
 WARNINGS: [count]
 FAILURES: [count]
@@ -415,6 +523,6 @@ WARNINGS TO REVIEW:
 
 ---
 
-*SCRIPT_VALIDATOR.md — Endless Tales · Version 1.1 · May 2026*  
+*SCRIPT_VALIDATOR.md — Endless Tales · Version 1.2 · May 2026*
 *Changes require Marc's approval and version increment.*  
 *Commit to GitHub at ~/Projects/ASC/ after any update.*
