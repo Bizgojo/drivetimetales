@@ -145,6 +145,10 @@ const NUMBER_WORDS: Record<string, string> = {
   thirty: '30',
   forty: '40',
   fifty: '50',
+  sixty: '60',
+  seventy: '70',
+  eighty: '80',
+  ninety: '90',
 }
 
 const ORDINAL_WORDS: Record<string, string> = {
@@ -169,11 +173,17 @@ const ORDINAL_WORDS: Record<string, string> = {
   nineteenth: '19',
   twentieth: '20',
   thirtieth: '30',
+  fortieth: '40',
+  fiftieth: '50',
+  sixtieth: '60',
+  seventieth: '70',
+  eightieth: '80',
+  ninetieth: '90',
 }
 
 function normalizeOrdinalDateForms(text: string): string {
   return text
-    .replace(/\b(twenty|thirty)[\s-]+(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth)\b/gi, (match, tensWord, ordinalWord) => {
+    .replace(/\b(twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)[\s-]+(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth)\b/gi, (match, tensWord, ordinalWord) => {
       const tens = NUMBER_WORDS[String(tensWord).toLowerCase()]
       const ones = ORDINAL_WORDS[String(ordinalWord).toLowerCase()]
       const value = Number(tens) + Number(ones)
@@ -187,14 +197,14 @@ function normalizeOrdinalDateForms(text: string): string {
 
 function normalizeNumberWords(text: string): string {
   return text
-    .replace(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty)\s+(hundred|thousand)\b/gi, (match, numberWord, scale) => {
+    .replace(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)\s+(hundred|thousand)\b/gi, (match, numberWord, scale) => {
       const value = NUMBER_WORDS[String(numberWord).toLowerCase()]
       const multiplier = String(scale).toLowerCase() === 'thousand' ? 1000 : 100
       const amount = Number(value)
       if (!Number.isFinite(amount)) return match
       return String(amount * multiplier)
     })
-    .replace(/\b(zero|oh|o|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty)(?:[\s-]+(one|two|three|four|five|six|seven|eight|nine))?\b/gi, (match, first, second) => {
+    .replace(/\b(zero|oh|o|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)(?:[\s-]+(one|two|three|four|five|six|seven|eight|nine))?\b/gi, (match, first, second) => {
       const firstValue = NUMBER_WORDS[String(first).toLowerCase()]
       const secondValue = second ? NUMBER_WORDS[String(second).toLowerCase()] : ''
       if (!firstValue) return match
@@ -360,8 +370,54 @@ function commonSurnameVariantMatches(expected: string, detected: string): boolea
   return groups.some(group => group.includes(expected) && group.includes(detected))
 }
 
+/**
+ * Resolves a single transcript token to a canonical digit string when it
+ * represents a whole number in any of the supported surface forms:
+ *
+ *   "15"       → "15"  (plain digit string — pass through)
+ *   "fifteen"  → "15"  (cardinal word from NUMBER_WORDS)
+ *   "fifteenth" → "15" (ordinal word from ORDINAL_WORDS)
+ *   "15th"     → "15"  (digit ordinal suffix stripped)
+ *   "sixty"    → "60"  (now covered after NUMBER_WORDS extension)
+ *
+ * Returns '' for tokens that do not represent a recognisable number so
+ * that callers can distinguish "no match possible" from "matched zero".
+ */
+function numericTokenValue(token: string): string {
+  if (/^\d+$/.test(token)) return token
+  const cardinal = NUMBER_WORDS[token]
+  if (cardinal !== undefined) return cardinal
+  const ordinal = ORDINAL_WORDS[token]
+  if (ordinal !== undefined) return ordinal
+  const ordinalDigit = token.match(/^(\d+)(?:st|nd|rd|th)$/)
+  if (ordinalDigit) return ordinalDigit[1]
+  return ''
+}
+
+/**
+ * Returns true when both tokens represent the same numeric value in any
+ * supported surface form.  Isolated strictly to numeric-variant matching —
+ * does NOT affect fuzzy word matching, phonetic matching, or name matching.
+ *
+ * Examples of matches this catches after normalization may still miss them:
+ *   "15"   ↔ "fifteen"     (digit vs cardinal word)
+ *   "21st" ↔ "twenty-first" would already be handled by normalizeOrdinalDateForms
+ *                           but this is a belt-and-suspenders check
+ *   "60"   ↔ "sixty"       (added via NUMBER_WORDS extension)
+ *   "3rd"  ↔ "third"       (digit ordinal vs ordinal word)
+ */
+function numericVariantMatches(expected: string, detected: string): boolean {
+  const expVal = numericTokenValue(expected)
+  if (!expVal) return false
+  const detVal = numericTokenValue(detected)
+  return detVal !== '' && expVal === detVal
+}
+
 function transcriptTokenMatches(expected: string, detected: string): boolean {
   if (expected === detected) return true
+  // Numeric-variant check: "fifteen" ↔ "15", "sixty" ↔ "60", "3rd" ↔ "third", etc.
+  // Runs before the length guard so short digit/word tokens are not excluded.
+  if (numericVariantMatches(expected, detected)) return true
   if (commonFirstNameVariantMatches(expected, detected)) return true
   if (commonSurnameVariantMatches(expected, detected)) return true
   if (expected.length < 7 || detected.length < 7) return false
