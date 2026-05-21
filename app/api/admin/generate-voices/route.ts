@@ -405,10 +405,12 @@ const HOMOPHONE_PAIRS: ReadonlyArray<readonly [string, string]> = [
   // Both tokens are 5 chars and blocked by the length-guard without this pair.
   ['basil', 'basel'],
   // Possessive character name — "Nora's" is normalised by transcriptTokens to
-  // "noras" (possessive-strip regex), but Whisper hears the common surname
-  // "Norris" instead.  NOR-az / NOR-iss are acoustically near-identical.
-  // Mechanical ASR false positive — not a content mismatch.
+  // "noras" (possessive-strip regex).  Whisper produces two known variants:
+  //   • "Norris"  — hears the common surname (NOR-az / NOR-iss, near-identical)
+  //   • "Norah's" → "norahs" — uses the alternate spelling of the first name
+  // Both are mechanical ASR false positives; not content mismatches.
   ['noras', 'norris'],
+  ['noras', 'norahs'],
 ] as const
 
 function knownHomophoneMatches(expected: string, detected: string): boolean {
