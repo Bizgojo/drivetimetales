@@ -301,8 +301,14 @@ function normalizeContractionExpansions(text: string): string {
 }
 
 function transcriptTokens(text: string): string[] {
-  const normalized = normalizeNumberWords(normalizeOrdinalDateForms(normalizeCurrencyForms(normalizePossessivePlaceNames(normalizePossessiveVehicleModelNames(normalizeStylisticCompoundWords(normalizeContractionExpansions(text)))))))
-    .replace(/[\u2018\u2019\u02BC]/g, "'")
+  // Pre-normalise: NFC canonical compose, strip leading/trailing whitespace,
+  // collapse internal runs of whitespace.  Catches no-break spaces, zero-width
+  // chars, and any trailing newline from script source or Whisper output.
+  const pre = text.normalize('NFC').trim().replace(/\s+/g, ' ')
+  const normalized = normalizeNumberWords(normalizeOrdinalDateForms(normalizeCurrencyForms(normalizePossessivePlaceNames(normalizePossessiveVehicleModelNames(normalizeStylisticCompoundWords(normalizeContractionExpansions(pre)))))))
+    // Widen apostrophe net: curly quotes, modifier apostrophe, grave/acute,
+    // prime — all normalised to plain ASCII apostrophe before possessive strip.
+    .replace(/[\u2018\u2019\u02BC\u0060\u00B4\u02CA\u2032\u2035]/g, "'")
     // Normalize possessives to plain plural so Whisper output matches script:
     // "Gate's" → "Gates", "Gates'" → "Gates" (both normalize to same token)
     .replace(/\b([a-z]+)'s\b/gi, '$1s')
@@ -326,7 +332,7 @@ function transcriptTokens(text: string): string[] {
     .replace(/\b(1[0-2]|[1-9])([0-5]\d)\b/g, '$1 $2')
     .replace(/[^a-z0-9\s]/g, ' ')
     .split(/\s+/)
-    .filter(Boolean)
+    .filter((tok: string) => tok.length > 0)  // explicit guard — catches any edge .filter(Boolean) misses
   return normalized
 }
 
