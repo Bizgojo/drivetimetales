@@ -211,7 +211,7 @@ function normalizeNumberWords(text: string): string {
         const mt = Number(NUMBER_WORDS[minuteTens.toLowerCase()] ?? (minuteTens.toLowerCase() === 'oh' || minuteTens.toLowerCase() === 'zero' ? '0' : undefined))
         const mo = minuteOnes ? Number(NUMBER_WORDS[minuteOnes.toLowerCase()]) : 0
         if (!Number.isFinite(h) || !Number.isFinite(mt)) return match
-        const minutes = mt >= 20 ? mt + mo : mt
+        const minutes = mt >= 20 || mt === 0 ? mt + mo : mt
         return String(h * 100 + minutes)
       }
     )
@@ -283,6 +283,7 @@ function normalizeStylisticCompoundWords(text: string): string {
     .replace(/\ball\s+right\b/gi, 'alright')
     .replace(/\bokay\b/gi, 'ok')
     .replace(/\bon\s+to\b/gi, 'onto')
+    .replace(/\btime\s+stamps\b/gi, 'timestamps')
 }
 
 function normalizePossessiveVehicleModelNames(text: string): string {
