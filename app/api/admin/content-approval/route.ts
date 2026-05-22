@@ -1,12 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
 
 export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
+
+const ADMIN_EMAILS = new Set([
+  'marc@endless-tales.com',
+  'hello.endlesstales@gmail.com',
+  'williampostlewaite@icloud.com',
+  'm.postlewaite@gmail.com',
+])
 
 type ApprovalTab = 'review' | 'approved' | 'not_approved' | 'published' | 'all'
 
@@ -62,6 +72,28 @@ type ProductionJobRow = {
 
 function json(payload: Record<string, unknown>, status = 200) {
   return NextResponse.json(payload, { status })
+}
+
+async function requireAdmin() {
+  const cookieStore = cookies()
+  const authClient = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => cookieStore.getAll(),
+        setAll: () => {},
+      },
+    }
+  )
+
+  const { data: { user } } = await authClient.auth.getUser()
+  const email = (user?.email || '').toLowerCase()
+  if (!email || !ADMIN_EMAILS.has(email)) {
+    return json({ success: false, error: 'Unauthorized' }, 401)
+  }
+
+  return null
 }
 
 function bool(value: unknown) {
@@ -384,6 +416,9 @@ function examples(items: any[]) {
 
 export async function GET(req: NextRequest) {
   try {
+    const unauthorized = await requireAdmin()
+    if (unauthorized) return unauthorized
+
     const tab = normalizeTab(req.nextUrl.searchParams.get('tab'))
     const includeBlocked = req.nextUrl.searchParams.get('includeBlocked') !== 'false'
     const storyId = clean(req.nextUrl.searchParams.get('storyId'))
