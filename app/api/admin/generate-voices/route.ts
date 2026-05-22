@@ -1942,6 +1942,17 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
         const allSameDetected = transcriptDetectedTexts.length >= 2
           && transcriptDetectedTexts.every(t => t === transcriptDetectedTexts[0])
 
+        // "Nearly identical" detected texts: normalise away capitalisation and
+        // punctuation before comparing.  Handles the case where Whisper returns
+        // "on the third evening." on one retry and "On the third evening." on
+        // another — strict equality fails but they are the same VAD clip.
+        const normaliseDetected = (t: string) =>
+          t.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim()
+        const allNearlyIdenticalDetected = transcriptDetectedTexts.length >= 2
+          && transcriptDetectedTexts.every(
+              t => normaliseDetected(t) === normaliseDetected(transcriptDetectedTexts[0])
+            )
+
         const isLowCoverageTruncation = (transcriptFailure.coverage ?? 1) < 0.50
 
         const isCleanPrefixTruncation = (() => {
@@ -1983,11 +1994,54 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
           return true
         })()
 
-        const isLikelyTruncation = isLowCoverageTruncation || (allSameDetected && isCleanPrefixTruncation)
+        // Case C — Short clean-prefix VAD truncation (Marc 2026-05-21):
+        //   Complements Case B for short segments where coverage < 0.50 (Case A
+        //   range) but allSameDetected fails due to capitalisation / punctuation
+        //   variation across retry candidates (e.g. "on the third evening." vs
+        //   "On the third evening.").  Uses the normalised near-identical check
+        //   plus the clean-prefix and pause-point guards from Case B, but does
+        //   NOT require multi-clause structure — a single comma-delimited phrase
+        //   ("On the third evening,") is sufficient.
+        const isShortCleanPrefixTruncation = (() => {
+          const cov = transcriptFailure.coverage ?? 1
+          if (cov < 0.20 || cov > 0.65) return false   // broader range covers <0.50 and 0.50–0.65
+          const expTok = transcriptTokens(transcriptFailure.expectedText)
+          const detTok = transcriptTokens(transcriptFailure.detectedText)
+          if (detTok.length === 0 || expTok.length === 0) return false
+          // 1. Clean sequential prefix — no insertions, no substitutions.
+          for (let i = 0; i < detTok.length; i++) {
+            if (i >= expTok.length || !transcriptTokenMatches(expTok[i], detTok[i])) return false
+          }
+          // 2. Missing tail must be ≥ 3 tokens.
+          if (expTok.length - detTok.length < 3) return false
+          // 3. Cutoff at a natural pause point (comma, period, semicolon, dash,
+          //    or next word is a clause-starting conjunction).
+          //    No multi-clause requirement unlike Case B — a comma-delimited
+          //    opener such as "On the third evening," qualifies.
+          const origWords = transcriptFailure.expectedText.split(/\s+/)
+          let tokensSeen = 0; let lastIdx = -1
+          for (let wi = 0; wi < origWords.length && tokensSeen < detTok.length; wi++) {
+            const wTok = transcriptTokens(origWords[wi])
+            tokensSeen += wTok.length
+            if (wTok.length > 0) lastIdx = wi
+          }
+          const lastW = origWords[lastIdx] ?? ''
+          const nextW = origWords[lastIdx + 1] ?? ''
+          const lastHasPause = /[.,;!?:\u2014\u2013]$/.test(lastW)
+          const nextIsClause  = /^(and|but|or|so|yet|nor|while|although|because|since|when|if|unless|until|after|before|though|however)\b/i.test(nextW)
+          return lastHasPause || nextIsClause
+        })()
 
-        if (allSameDetected && isLikelyTruncation) {
+        const isLikelyTruncation = isLowCoverageTruncation
+          || (allSameDetected && isCleanPrefixTruncation)            // Case B
+          || (allNearlyIdenticalDetected && isShortCleanPrefixTruncation) // Case C
+
+        const firesTruncation = (allSameDetected || allNearlyIdenticalDetected) && isLikelyTruncation
+        if (firesTruncation) {
           const truncatedAt = transcriptDetectedTexts[0].slice(0, 80)
-          const ruleCase = isLowCoverageTruncation ? 'low-coverage' : 'clean-prefix'
+          const ruleCase = isLowCoverageTruncation ? 'low-coverage'
+            : isCleanPrefixTruncation ? 'clean-prefix'
+            : 'short-clean-prefix'
           console.error(
             `  ⚠️ REPEATED_IDENTICAL_TRUNCATION [${ruleCase}] ${fileName} speaker="${speaker}" ` +
             `candidates=${transcriptDetectedTexts.length} coverage=${transcriptFailure.coverage?.toFixed(2)} ` +
