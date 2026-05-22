@@ -270,6 +270,96 @@ function approvalStatusColor(label: string) {
   return ['#374151', '#ffffff']
 }
 
+function seriesBlockedExplanation(title: string, renderedCount: number, expected: number, missingAudioCount: number, missingPackagingCount: number, statusBlockedCount: number, notApprovedCount: number) {
+  if (notApprovedCount > 0) return `${title}: ${renderedCount}/${expected} rendered • blocked from review because ${notApprovedCount} episode${notApprovedCount === 1 ? ' is' : 's are'} Not Approved.`
+  if (missingAudioCount > 0) return `${title}: ${renderedCount}/${expected} rendered • blocked from review due to missing audio.`
+  if (missingPackagingCount > 0 && statusBlockedCount > 0) return `${title}: ${renderedCount}/${expected} rendered • blocked from review due to status and missing packaging metadata.`
+  if (missingPackagingCount > 0) return `${title}: ${renderedCount}/${expected} rendered • blocked from review due to missing packaging metadata.`
+  if (statusBlockedCount > 0) return `${title}: ${renderedCount}/${expected} rendered • blocked from review due to production status.`
+  return `${title}: ${renderedCount}/${expected} rendered • blocked from review.`
+}
+
+function SeriesStatChip({ label, value, tone = 'neutral' }: { label: string; value: string | number; tone?: 'neutral' | 'ready' | 'blocked' | 'danger' }) {
+  const colors = tone === 'ready'
+    ? ['#ecfdf5', '#047857', '#a7f3d0']
+    : tone === 'blocked'
+      ? ['#fff7ed', '#9a3412', '#fed7aa']
+      : tone === 'danger'
+        ? ['#fef2f2', '#991b1b', '#fecaca']
+        : ['#f8fafc', '#334155', '#e2e8f0']
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: '5px', padding: '5px 8px', borderRadius: '6px', backgroundColor: colors[0], color: colors[1], border: `1px solid ${colors[2]}`, fontSize: '11px', fontWeight: 800, whiteSpace: 'nowrap' }}>
+      <span>{label}</span>
+      <span style={{ fontSize: '13px', fontWeight: 900 }}>{value}</span>
+    </span>
+  )
+}
+
+function SeriesReadinessSummary({
+  title,
+  expected,
+  present,
+  readyCount,
+  notApprovedCount,
+  blockedCount,
+  missing,
+  renderedCount,
+  missingPackagingCount,
+  missingAudioCount,
+  approvedCount,
+  publishedCount,
+  blockedExplanation,
+  approvalBlockingReasons,
+}: {
+  title: string
+  expected: number
+  present: number
+  readyCount: number
+  notApprovedCount: number
+  blockedCount: number
+  missing: number[]
+  renderedCount: number
+  missingPackagingCount: number
+  missingAudioCount: number
+  approvedCount: number
+  publishedCount: number
+  blockedExplanation: string
+  approvalBlockingReasons?: string[]
+}) {
+  return (
+    <div style={{ margin: '0 14px 14px 14px', padding: '12px', borderRadius: '8px', backgroundColor: '#f8fafc', border: '1px solid #dbe4ef' }}>
+      <div style={{ color: '#0f172a', fontSize: '12px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '8px' }}>
+        Approval readiness
+      </div>
+      <div style={{ color: '#334155', fontSize: '13px', lineHeight: 1.35, fontWeight: 800, marginBottom: '9px' }}>
+        {title}: {expected} total episodes • {present} present • {renderedCount}/{expected} rendered
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+        <SeriesStatChip label="Total" value={expected} />
+        <SeriesStatChip label="Ready" value={readyCount} tone="ready" />
+        <SeriesStatChip label="Not Approved" value={notApprovedCount} tone={notApprovedCount > 0 ? 'danger' : 'neutral'} />
+        <SeriesStatChip label="Blocked" value={blockedCount} tone={blockedCount > 0 ? 'blocked' : 'neutral'} />
+        <SeriesStatChip label="Missing" value={missing.length ? missing.join(', ') : 0} tone={missing.length ? 'danger' : 'neutral'} />
+        <SeriesStatChip label="Rendered" value={`${renderedCount}/${expected}`} tone={missingAudioCount > 0 ? 'danger' : 'ready'} />
+      </div>
+      <div style={{ color: '#374151', fontSize: '12px', marginTop: '8px', lineHeight: 1.35 }}>
+        Missing packaging {missingPackagingCount} • Missing audio {missingAudioCount} • Approved {approvedCount} • Published {publishedCount}
+      </div>
+      {blockedExplanation && (
+        <div style={{ marginTop: '10px', padding: '9px 10px', borderRadius: '8px', backgroundColor: missingAudioCount > 0 ? '#fef2f2' : '#fff7ed', border: `1px solid ${missingAudioCount > 0 ? '#fecaca' : '#fed7aa'}`, color: missingAudioCount > 0 ? '#991b1b' : '#9a3412', fontSize: '12px', lineHeight: 1.35, fontWeight: 800 }}>
+          {blockedExplanation}
+        </div>
+      )}
+      {Boolean(approvalBlockingReasons?.length) && (
+        <div style={{ color: '#7f1d1d', fontSize: '11px', marginTop: '7px', lineHeight: 1.35 }}>
+          Details: {approvalBlockingReasons!.slice(0, 3).join('; ')}
+          {approvalBlockingReasons!.length > 3 ? `; +${approvalBlockingReasons!.length - 3} more` : ''}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function mergeReadiness(story: Partial<Story>, episode: ApprovalEpisode, series?: Extract<ApprovalItem, { type: 'series' }>): Story {
   return {
     ...story,
@@ -1148,13 +1238,19 @@ function SeriesReviewGroup({
   const first = group.stories[0]
   const approvedCount = group.stories.filter(isApprovedReady).length
   const publishedCount = group.stories.filter(isPublishedToApp).length
-  const reviewCount = group.stories.filter(isReviewReady).length
+  const readyCount = group.stories.filter((story) => story.approval_ready).length
+  const notApprovedCount = group.stories.filter(isNotApproved).length
   const blockedCount = group.stories.filter((story) => !story.approval_ready).length
   const missingAudioCount = group.stories.filter((story) => !story.audio_ready && !story.story_audio_ready).length
   const missingPackagingCount = group.stories.filter((story) => !story.cover_ready || !story.prose_ready || !story.author_ready || !story.narrator_voice_ready).length
+  const statusBlockedCount = group.stories.filter((story) => story.approval_blocking_reasons?.some((reason) => reason.startsWith('status is'))).length
+  const renderedCount = group.stories.filter((story) => story.audio_ready || story.story_audio_ready).length
   const expected = group.expectedEpisodeCount || group.stories[0]?.expected_episode_count || group.stories.length
   const present = group.presentEpisodeCount || group.stories[0]?.present_episode_count || group.stories.length
   const missing = group.missingEpisodes || []
+  const blockedExplanation = blockedCount > 0
+    ? seriesBlockedExplanation(group.title, renderedCount, expected, missingAudioCount, missingPackagingCount, statusBlockedCount, notApprovedCount)
+    : ''
 
   return (
     <div style={{ border: `1px solid ${border}`, borderRadius: '10px', backgroundColor: '#ffffff', overflow: 'hidden' }}>
@@ -1166,21 +1262,8 @@ function SeriesReviewGroup({
           <div style={{ color: '#1d4ed8', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Series</div>
           <div style={{ color: textPrimary, fontWeight: 900, fontSize: '28px', lineHeight: 1.08 }}>{group.title}</div>
           <div style={{ color: textSecondary, fontSize: '15px', marginTop: '8px', lineHeight: 1.35, fontWeight: 600 }}>
-            {present}/{expected} episodes · {first?.genre || 'No genre'} · by {first?.author || 'Unknown'}
+            {expected} total episodes · {present} present · {first?.genre || 'No genre'} · by {first?.author || 'Unknown'}
           </div>
-          <div style={{ color: textSecondary, fontSize: '13px', marginTop: '8px', lineHeight: 1.35 }}>
-            {reviewCount} ready · {blockedCount} blocked · {approvedCount} approved · {publishedCount} published
-            {missing.length ? ` · missing episodes ${missing.join(', ')}` : ''}
-          </div>
-          <div style={{ color: '#374151', fontSize: '12px', marginTop: '8px', lineHeight: 1.35 }}>
-            Rendered audio {group.stories.filter((story) => story.audio_ready || story.story_audio_ready).length}/{present} · Missing packaging {missingPackagingCount} · Missing audio {missingAudioCount}
-          </div>
-          {Boolean(group.approvalBlockingReasons?.length) && (
-            <div style={{ color: '#7f1d1d', fontSize: '12px', marginTop: '8px', lineHeight: 1.35 }}>
-              Blocked: {group.approvalBlockingReasons!.slice(0, 3).join('; ')}
-              {group.approvalBlockingReasons!.length > 3 ? `; +${group.approvalBlockingReasons!.length - 3} more` : ''}
-            </div>
-          )}
         </button>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '7px', alignItems: 'stretch', marginLeft: 'auto', minWidth: '160px' }}>
           <button type="button" onClick={onToggle} style={actionButtonStyle('muted')}>{expanded ? 'Collapse' : 'Expand'}</button>
@@ -1189,6 +1272,22 @@ function SeriesReviewGroup({
           </button>
         </div>
       </div>
+      <SeriesReadinessSummary
+        title={group.title}
+        expected={expected}
+        present={present}
+        readyCount={readyCount}
+        notApprovedCount={notApprovedCount}
+        blockedCount={blockedCount}
+        missing={missing}
+        renderedCount={renderedCount}
+        missingPackagingCount={missingPackagingCount}
+        missingAudioCount={missingAudioCount}
+        approvedCount={approvedCount}
+        publishedCount={publishedCount}
+        blockedExplanation={blockedExplanation}
+        approvalBlockingReasons={group.approvalBlockingReasons}
+      />
       {expanded && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '0 14px 14px 14px', backgroundColor: '#f8fafc' }}>
           {group.stories.map((story) => (
