@@ -1916,24 +1916,83 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
 
     if (!accepted) {
       if (transcriptFailure) {
-        // Repeated-identical-truncation guardrail (Marc 2026-05-21):
-        // If every retry candidate produced the same partial detected text AND
-        // coverage is genuinely low (< 0.50), Whisper's VAD stopped at an
-        // inter-sentence pause.  Further retries will not help; split the segment.
+        // ── Repeated-identical-truncation guardrail (Marc 2026-05-21) ──────────
         //
-        // The coverage guard is critical: without it, normalization differences
-        // (e.g. "two-thousand-eleven" → "2011") also produce identical detected
-        // text across retries but at high coverage — that is a QC normalisation
-        // issue, not a truncation, and should not trigger auto-split.
+        // Case A — Low-coverage truncation (original rule):
+        //   Coverage < 0.50 AND all retry candidates produced the same partial
+        //   detected text.  Whisper's VAD stalled at an inter-sentence pause.
+        //   Retrying ElevenLabs will not help; the segment must be split.
+        //
+        //   Coverage guard prevents false-positives on normalization differences
+        //   (e.g. "two-thousand-eleven" → "2011", coverage ~0.67): those differ
+        //   in token form but are not VAD truncations.
+        //
+        // Case B — Clean-prefix VAD truncation (Marc 2026-05-21, surgical rule):
+        //   Coverage 0.50–0.65 AND detected is a CLEAN sequential prefix of
+        //   expected (no insertions, no substitutions, no cursor stalls) AND
+        //   all retry candidates are identical or near-identical AND the tail
+        //   starts at a natural pause point (sentence end, comma, dash, or
+        //   coordinating conjunction) AND the segment is multi-clause.
+        //   Example: "I've had three weeks with a vandalized shop and no
+        //   customers. I've had time." → Whisper stops at "shop" (comma pause).
+        //   Coverage = 8/14 = 0.57 — too high for Case A, still a VAD clip.
+        //
+        // Both cases throw [REPEATED_IDENTICAL_TRUNCATION] so the auto-split
+        // monitor can handle them identically.
         const allSameDetected = transcriptDetectedTexts.length >= 2
           && transcriptDetectedTexts.every(t => t === transcriptDetectedTexts[0])
-        const isLikelyTruncation = (transcriptFailure.coverage ?? 1) < 0.50
+
+        const isLowCoverageTruncation = (transcriptFailure.coverage ?? 1) < 0.50
+
+        const isCleanPrefixTruncation = (() => {
+          const cov = transcriptFailure.coverage ?? 1
+          if (cov < 0.50 || cov > 0.65) return false
+          const expTok = transcriptTokens(transcriptFailure.expectedText)
+          const detTok = transcriptTokens(transcriptFailure.detectedText)
+          if (detTok.length === 0 || expTok.length === 0) return false
+          // 1. Clean sequential prefix: every detected token matches
+          //    expected[i] exactly — no insertions, no cursor stalls.
+          for (let i = 0; i < detTok.length; i++) {
+            if (i >= expTok.length || !transcriptTokenMatches(expTok[i], detTok[i])) return false
+          }
+          // 2. Remaining tail must be non-trivial (≥ 3 tokens).
+          if (expTok.length - detTok.length < 3) return false
+          // 3. Multi-clause check: original expected text must contain a
+          //    sentence-ending punctuation mark in a non-terminal position.
+          const bodyText = transcriptFailure.expectedText.trim().replace(/[.!?]\s*$/, '')
+          if (!/[.!?;,\u2014\u2013]/.test(bodyText)) return false
+          // 4. Pause-point check: the word immediately after the detected
+          //    cut-off must start a new clause (coordinating/subordinating
+          //    conjunction) OR the last detected word ended with punctuation.
+          const origWords = transcriptFailure.expectedText.split(/\s+/)
+          // Find the original word index corresponding to the last matched token.
+          // Count by TOKENS (not words) because contractions expand: "I've" → ["i","ve"]
+          // (2 tokens, 1 word).  Using word-count would over-advance the index.
+          let tokensSeen = 0
+          let lastMatchedOrigIdx = -1
+          for (let wi = 0; wi < origWords.length && tokensSeen < detTok.length; wi++) {
+            const wTok = transcriptTokens(origWords[wi])
+            tokensSeen += wTok.length   // count by tokens, not by word
+            if (wTok.length > 0) lastMatchedOrigIdx = wi
+          }
+          const lastWord  = origWords[lastMatchedOrigIdx] ?? ''
+          const nextWord  = origWords[lastMatchedOrigIdx + 1] ?? ''
+          const lastHasPause  = /[.,;!?:\u2014\u2013]$/.test(lastWord)
+          const nextIsClause  = /^(and|but|or|so|yet|nor|while|although|because|since|when|if|unless|until|after|before|though|however)\b/i.test(nextWord)
+          if (!lastHasPause && !nextIsClause) return false
+          return true
+        })()
+
+        const isLikelyTruncation = isLowCoverageTruncation || (allSameDetected && isCleanPrefixTruncation)
+
         if (allSameDetected && isLikelyTruncation) {
           const truncatedAt = transcriptDetectedTexts[0].slice(0, 80)
+          const ruleCase = isLowCoverageTruncation ? 'low-coverage' : 'clean-prefix'
           console.error(
-            `  ⚠️ REPEATED_IDENTICAL_TRUNCATION ${fileName} speaker="${speaker}" ` +
-            `candidates=${transcriptDetectedTexts.length} all-detected="${truncatedAt}" ` +
-            `— Whisper VAD is stopping at an inter-sentence pause on every retry. ` +
+            `  ⚠️ REPEATED_IDENTICAL_TRUNCATION [${ruleCase}] ${fileName} speaker="${speaker}" ` +
+            `candidates=${transcriptDetectedTexts.length} coverage=${transcriptFailure.coverage?.toFixed(2)} ` +
+            `all-detected="${truncatedAt}" ` +
+            `— Whisper VAD is stopping at a natural pause on every retry. ` +
             `Split this segment into shorter sub-segments and re-run.`
           )
           throw new Error(
