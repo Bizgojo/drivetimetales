@@ -41,6 +41,18 @@ interface Story {
   story_audio_url?: string | null
   series_id?: string | null
   episode_number?: number | null
+  expected_episode_count?: number | null
+  present_episode_count?: number | null
+  approval_ready?: boolean
+  approval_blocking_reasons?: string[]
+  approval_entry_reason?: string | null
+  source_job_id?: string | null
+  audio_ready?: boolean
+  story_audio_ready?: boolean
+  cover_ready?: boolean
+  prose_ready?: boolean
+  author_ready?: boolean
+  narrator_voice_ready?: boolean
   review_status?: 'pending' | 'approved' | 'not_approved' | null
   reviewed_at?: string | null
   review_notes?: string | null
@@ -61,7 +73,58 @@ interface Group {
 type ReviewTab = 'review' | 'approved' | 'not_approved' | 'published'
 type StoryGroup =
   | { type: 'standalone'; key: string; story: Story }
-  | { type: 'series'; key: string; title: string; stories: Story[] }
+  | { type: 'series'; key: string; title: string; stories: Story[]; expectedEpisodeCount?: number; presentEpisodeCount?: number; missingEpisodes?: number[]; approvalBlockingReasons?: string[]; sourceJobId?: string | null }
+
+type ApprovalEpisode = {
+  storyId: string
+  title: string | null
+  episodeNumber: number | null
+  status: string | null
+  reviewStatus: 'pending' | 'approved' | 'not_approved' | null
+  isHidden: boolean | null
+  publishedOn: string | null
+  audioReadiness: {
+    audioUrl: boolean
+    storyAudioUrl: boolean
+    finalMix?: boolean
+  }
+  packagingReadiness: {
+    coverUrl: boolean
+    proseText: boolean
+    authorId: boolean
+    narratorVoiceId: boolean
+    narratorVoiceName?: boolean
+  }
+  approvalReady: boolean
+  approvalBlockingReasons: string[]
+  approvalEntryReason: string
+  sourceJobId: string | null
+}
+
+type ApprovalItem =
+  | {
+      type: 'series'
+      seriesId: string
+      title: string
+      expectedEpisodeCount: number
+      presentEpisodeCount: number
+      missingEpisodes: number[]
+      approvalReady: boolean
+      approvalEntryReason: string
+      approvalBlockingReasons: string[]
+      sourceJobId: string | null
+      episodes: ApprovalEpisode[]
+    }
+  | {
+      type: 'story'
+      storyId: string
+      title: string
+      approvalReady: boolean
+      approvalEntryReason: string
+      approvalBlockingReasons: string[]
+      sourceJobId: string | null
+      episode: ApprovalEpisode
+    }
 
 const FLAG_OPTIONS = [
   { value: null, label: 'No Flag', color: '#6b7280' },
@@ -166,6 +229,105 @@ function storyMatchesTab(story: Story, tab: ReviewTab) {
   return isPublishedToApp(story)
 }
 
+function storyBelongsInTab(story: Story, tab: ReviewTab) {
+  if (storyMatchesTab(story, tab)) return true
+  if (tab !== 'review') return false
+  return !!(
+    story.is_hidden &&
+    (story.review_status || 'pending') === 'pending' &&
+    (
+      story.audio_ready ||
+      story.story_audio_ready ||
+      story.audio_url ||
+      story.story_audio_url ||
+      story.status === 'audio_ready'
+    )
+  )
+}
+
+function groupMatchesTab(group: StoryGroup, tab: ReviewTab) {
+  if (group.type === 'standalone') return storyBelongsInTab(group.story, tab)
+  return group.stories.some((story) => storyBelongsInTab(story, tab))
+}
+
+function approvalStatusLabel(story: Story) {
+  if (isPublishedToApp(story)) return 'Published'
+  if (isApprovedReady(story)) return 'Approved'
+  if (isNotApproved(story)) return 'Not Approved'
+  if (!story.audio_ready && !story.story_audio_ready && !story.audio_url && !story.story_audio_url) return 'Missing Audio'
+  if (!story.cover_ready || !story.prose_ready || !story.author_ready || !story.narrator_voice_ready) return 'Missing Packaging'
+  if (isReviewReady(story) || story.approval_ready) return 'Ready for Review'
+  return 'Blocked'
+}
+
+function approvalStatusColor(label: string) {
+  if (label === 'Ready for Review') return ['#f59e0b', '#000000']
+  if (label === 'Approved') return ['#16a34a', '#ffffff']
+  if (label === 'Not Approved') return ['#991b1b', '#ffffff']
+  if (label === 'Missing Audio') return ['#7c2d12', '#ffffff']
+  if (label === 'Missing Packaging') return ['#92400e', '#ffffff']
+  if (label === 'Published') return ['#2563eb', '#ffffff']
+  return ['#374151', '#ffffff']
+}
+
+function mergeReadiness(story: Partial<Story>, episode: ApprovalEpisode, series?: Extract<ApprovalItem, { type: 'series' }>): Story {
+  return {
+    ...story,
+    id: episode.storyId,
+    title: story.title || episode.title || 'Untitled',
+    author: story.author || '',
+    genre: story.genre || '',
+    genre_secondary: story.genre_secondary || null,
+    genre_third: story.genre_third || null,
+    duration_mins: story.duration_mins || 0,
+    cover_url: story.cover_url || null,
+    series_name: story.series_name || series?.title || null,
+    series_number: story.series_number || null,
+    series_total: story.series_total || series?.expectedEpisodeCount || null,
+    episode_title: story.episode_title || null,
+    flag: story.flag || null,
+    description: story.description || null,
+    is_hidden: episode.isHidden === true,
+    group_name: story.group_name || null,
+    is_free: Boolean(story.is_free),
+    rating: story.rating || 0,
+    review_count: story.review_count || 0,
+    downloads_day: story.downloads_day || 0,
+    downloads_week: story.downloads_week || 0,
+    downloads_month: story.downloads_month || 0,
+    downloads_ytd: story.downloads_ytd || 0,
+    downloads_total: story.downloads_total || 0,
+    started_count: story.started_count || 0,
+    finished_count: story.finished_count || 0,
+    skipped_count: story.skipped_count || 0,
+    total_plays: story.total_plays || 0,
+    pct_started: story.pct_started || 0,
+    pct_finished: story.pct_finished || 0,
+    pct_skipped: story.pct_skipped || 0,
+    created_at: story.created_at,
+    status: episode.status,
+    audio_url: story.audio_url || (episode.audioReadiness.audioUrl ? 'present' : null),
+    story_audio_url: story.story_audio_url || (episode.audioReadiness.storyAudioUrl ? 'present' : null),
+    series_id: series?.seriesId || story.series_id || null,
+    episode_number: episode.episodeNumber || story.episode_number || null,
+    expected_episode_count: series?.expectedEpisodeCount || null,
+    present_episode_count: series?.presentEpisodeCount || null,
+    approval_ready: episode.approvalReady,
+    approval_blocking_reasons: episode.approvalBlockingReasons || [],
+    approval_entry_reason: episode.approvalEntryReason,
+    source_job_id: episode.sourceJobId || series?.sourceJobId || null,
+    audio_ready: episode.audioReadiness.audioUrl,
+    story_audio_ready: episode.audioReadiness.storyAudioUrl,
+    cover_ready: episode.packagingReadiness.coverUrl,
+    prose_ready: episode.packagingReadiness.proseText,
+    author_ready: episode.packagingReadiness.authorId,
+    narrator_voice_ready: episode.packagingReadiness.narratorVoiceId,
+    review_status: episode.reviewStatus || 'pending',
+    reviewed_at: story.reviewed_at || null,
+    review_notes: story.review_notes || null,
+  } as Story
+}
+
 function displaySeriesTitle(stories: Story[]) {
   const story = stories[0]
   const name = String(story?.series_name || '').trim()
@@ -201,16 +363,11 @@ function groupStoriesForReview(stories: Story[]) {
 }
 
 function StoryVisibilityBadges({ story }: { story: Story }) {
-  const reviewReady = isReviewReady(story)
-  const approvedReady = isApprovedReady(story)
-  const notApproved = isNotApproved(story)
-  const published = isPublishedToApp(story)
+  const approvalLabel = approvalStatusLabel(story)
+  const approvalColors = approvalStatusColor(approvalLabel)
   return (
     <>
-      {reviewReady && <span style={{ backgroundColor: '#f59e0b', color: '#000000', borderRadius: '3px', padding: '1px 5px', fontSize: '9px', fontWeight: 700 }}>READY FOR REVIEW</span>}
-      {approvedReady && <span style={{ backgroundColor: '#16a34a', color: '#ffffff', borderRadius: '3px', padding: '1px 5px', fontSize: '9px', fontWeight: 700 }}>APPROVED</span>}
-      {notApproved && <span style={{ backgroundColor: '#991b1b', color: '#ffffff', borderRadius: '3px', padding: '1px 5px', fontSize: '9px', fontWeight: 700 }}>NOT APPROVED</span>}
-      {published && <span style={{ backgroundColor: '#2563eb', color: '#ffffff', borderRadius: '3px', padding: '1px 5px', fontSize: '9px', fontWeight: 700 }}>PUBLISHED</span>}
+      <span style={{ backgroundColor: approvalColors[0], color: approvalColors[1], borderRadius: '3px', padding: '1px 5px', fontSize: '9px', fontWeight: 700 }}>{approvalLabel.toUpperCase()}</span>
       {story.is_hidden && <span style={{ backgroundColor: '#dc2626', color: '#ffffff', borderRadius: '3px', padding: '1px 5px', fontSize: '9px', fontWeight: 700 }}>HIDDEN</span>}
       {story.is_hidden && <span style={{ backgroundColor: '#111827', color: '#ffffff', borderRadius: '3px', padding: '1px 5px', fontSize: '9px', fontWeight: 700 }}>NOT PUBLIC</span>}
     </>
@@ -871,6 +1028,7 @@ function StoryReviewCard({
       <div style={{ minWidth: '260px', flex: '1 1 420px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
           <div style={{ color: textPrimary, fontWeight: 900, fontSize: '28px', lineHeight: 1.08 }}>{story.title}</div>
+          <StoryVisibilityBadges story={story} />
         </div>
         {story.episode_title && <div style={{ color: textSecondary, fontSize: '16px', fontStyle: 'italic', marginTop: '5px' }}>{story.episode_title}</div>}
         <div style={{ color: textSecondary, fontSize: '15px', marginTop: '8px', lineHeight: 1.35, fontWeight: 600 }}>
@@ -880,6 +1038,17 @@ function StoryReviewCard({
         <div style={{ color: textSecondary, fontSize: '13px', marginTop: '8px', lineHeight: 1.35 }}>
           Created {story.created_at ? new Date(story.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'unknown'} · Plays {story.downloads_total || 0} · Finish {story.pct_finished || 0}%
         </div>
+        {story.approval_entry_reason && (
+          <div style={{ color: '#374151', fontSize: '12px', marginTop: '8px', lineHeight: 1.35 }}>
+            {story.approval_entry_reason}
+          </div>
+        )}
+        {Boolean(story.approval_blocking_reasons?.length) && (
+          <div style={{ color: '#7f1d1d', fontSize: '12px', marginTop: '8px', lineHeight: 1.35 }}>
+            Blocked: {story.approval_blocking_reasons!.slice(0, 3).join('; ')}
+            {story.approval_blocking_reasons!.length > 3 ? `; +${story.approval_blocking_reasons!.length - 3} more` : ''}
+          </div>
+        )}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'stretch', marginLeft: 'auto', minWidth: '132px' }}>
         <PlayStoryButton storyId={story.id} title={story.title} />
@@ -922,10 +1091,20 @@ function EpisodeReviewRow({
       <div style={{ minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
           <div style={{ color: textPrimary, fontWeight: 800, fontSize: '14px', lineHeight: 1.2 }}>{story.episode_title || story.title}</div>
+          <StoryVisibilityBadges story={story} />
         </div>
         <div style={{ color: textSecondary, fontSize: '12px', marginTop: '4px' }}>
           {story.duration_mins || 0}m · {story.genre || 'No genre'} · {story.author || 'Unknown'}
         </div>
+        <div style={{ color: '#374151', fontSize: '11px', marginTop: '4px', lineHeight: 1.35 }}>
+          Audio {story.audio_ready ? 'ready' : 'missing'} · Story audio {story.story_audio_ready ? 'ready' : 'missing'} · Cover {story.cover_ready ? 'ready' : 'missing'} · Prose {story.prose_ready ? 'ready' : 'missing'}
+        </div>
+        {Boolean(story.approval_blocking_reasons?.length) && (
+          <div style={{ color: '#7f1d1d', fontSize: '11px', marginTop: '4px', lineHeight: 1.35 }}>
+            Blocked: {story.approval_blocking_reasons!.slice(0, 2).join('; ')}
+            {story.approval_blocking_reasons!.length > 2 ? `; +${story.approval_blocking_reasons!.length - 2} more` : ''}
+          </div>
+        )}
       </div>
       <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
         <PlayStoryButton storyId={story.id} title={story.title} />
@@ -970,6 +1149,12 @@ function SeriesReviewGroup({
   const approvedCount = group.stories.filter(isApprovedReady).length
   const publishedCount = group.stories.filter(isPublishedToApp).length
   const reviewCount = group.stories.filter(isReviewReady).length
+  const blockedCount = group.stories.filter((story) => !story.approval_ready).length
+  const missingAudioCount = group.stories.filter((story) => !story.audio_ready && !story.story_audio_ready).length
+  const missingPackagingCount = group.stories.filter((story) => !story.cover_ready || !story.prose_ready || !story.author_ready || !story.narrator_voice_ready).length
+  const expected = group.expectedEpisodeCount || group.stories[0]?.expected_episode_count || group.stories.length
+  const present = group.presentEpisodeCount || group.stories[0]?.present_episode_count || group.stories.length
+  const missing = group.missingEpisodes || []
 
   return (
     <div style={{ border: `1px solid ${border}`, borderRadius: '10px', backgroundColor: '#ffffff', overflow: 'hidden' }}>
@@ -981,11 +1166,21 @@ function SeriesReviewGroup({
           <div style={{ color: '#1d4ed8', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Series</div>
           <div style={{ color: textPrimary, fontWeight: 900, fontSize: '28px', lineHeight: 1.08 }}>{group.title}</div>
           <div style={{ color: textSecondary, fontSize: '15px', marginTop: '8px', lineHeight: 1.35, fontWeight: 600 }}>
-            {group.stories.length} episodes · {first?.genre || 'No genre'} · by {first?.author || 'Unknown'}
+            {present}/{expected} episodes · {first?.genre || 'No genre'} · by {first?.author || 'Unknown'}
           </div>
           <div style={{ color: textSecondary, fontSize: '13px', marginTop: '8px', lineHeight: 1.35 }}>
-            {reviewCount} ready · {approvedCount} approved · {publishedCount} published
+            {reviewCount} ready · {blockedCount} blocked · {approvedCount} approved · {publishedCount} published
+            {missing.length ? ` · missing episodes ${missing.join(', ')}` : ''}
           </div>
+          <div style={{ color: '#374151', fontSize: '12px', marginTop: '8px', lineHeight: 1.35 }}>
+            Rendered audio {group.stories.filter((story) => story.audio_ready || story.story_audio_ready).length}/{present} · Missing packaging {missingPackagingCount} · Missing audio {missingAudioCount}
+          </div>
+          {Boolean(group.approvalBlockingReasons?.length) && (
+            <div style={{ color: '#7f1d1d', fontSize: '12px', marginTop: '8px', lineHeight: 1.35 }}>
+              Blocked: {group.approvalBlockingReasons!.slice(0, 3).join('; ')}
+              {group.approvalBlockingReasons!.length > 3 ? `; +${group.approvalBlockingReasons!.length - 3} more` : ''}
+            </div>
+          )}
         </button>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '7px', alignItems: 'stretch', marginLeft: 'auto', minWidth: '160px' }}>
           <button type="button" onClick={onToggle} style={actionButtonStyle('muted')}>{expanded ? 'Collapse' : 'Expand'}</button>
@@ -1018,6 +1213,7 @@ function SeriesReviewGroup({
 
 export default function AdminStoriesPage() {
   const [stories, setStories] = useState<Story[]>([])
+  const [approvalItems, setApprovalItems] = useState<ApprovalItem[]>([])
   const [genres, setGenres] = useState<Genre[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -1035,41 +1231,47 @@ export default function AdminStoriesPage() {
 
   async function fetchStories() {
     setLoading(true)
-    const { data: readinessRows, error: readinessError } = await supabase
-      .from('stories')
-      .select('id,title,author,genre,primary_genre,genre_secondary,genre_third,description,duration_mins,cover_url,audio_url,story_audio_url,status,is_hidden,created_at,series_id,episode_number,series_name,series_total,episode_title,flag,is_free,group_name,review_status,reviewed_at,review_notes,production_cost')
-      .order('created_at', { ascending: false })
+    const readinessRes = await fetch('/api/admin/content-approval?tab=all&includeBlocked=true', { cache: 'no-store' })
+    const readinessPayload = await readinessRes.json()
+    if (!readinessRes.ok || !readinessPayload.success) {
+      console.error('Error fetching content approval readiness:', readinessPayload.error || readinessRes.status)
+      setStories([])
+      setApprovalItems([])
+      setLoading(false)
+      return
+    }
 
-    if (readinessError) {
-      console.error('Error fetching story readiness rows:', readinessError)
+    const items = (readinessPayload.items || []) as ApprovalItem[]
+    setApprovalItems(items)
+    setExpandedSeries((prev) => {
+      const next = { ...prev }
+      items.forEach((item) => {
+        if (item.type !== 'series') return
+        const key = `series:${item.seriesId}`
+        if (next[key] === undefined) next[key] = true
+      })
+      return next
+    })
+    const eligibleIds = Array.from(new Set(items.flatMap((item) =>
+      item.type === 'series'
+        ? item.episodes.map((episode) => episode.storyId)
+        : [item.episode.storyId]
+    ).filter(Boolean)))
+
+    if (eligibleIds.length === 0) {
       setStories([])
       setLoading(false)
       return
     }
 
-    const storyRows = (readinessRows || []) as Partial<Story>[]
-    const publicCandidateIds = new Set(
-      storyRows
-        .filter(isPublicCatalogCandidate)
-        .map((story) => story.id)
-        .filter(Boolean) as string[]
-    )
-    const reviewWorkflowRows = storyRows.filter((story) =>
-      story.status === 'audio_ready' ||
-      story.status === 'published' ||
-      story.review_status === 'approved' ||
-      story.review_status === 'not_approved'
-    )
-    const eligibleIds = Array.from(new Set([
-      ...reviewWorkflowRows.map((story) => story.id).filter(Boolean) as string[],
-    ]))
-    const readinessById = new Map(
-      storyRows
-        .filter((story) => story.id && eligibleIds.includes(story.id))
-        .map((story) => [story.id, story])
-    )
+    const { data: storyRows, error: storyRowsError } = await supabase
+      .from('stories')
+      .select('id,title,author,genre,primary_genre,genre_secondary,genre_third,description,duration_mins,cover_url,audio_url,story_audio_url,status,is_hidden,created_at,series_id,episode_number,series_name,series_total,episode_title,flag,is_free,group_name,review_status,reviewed_at,review_notes,production_cost')
+      .in('id', eligibleIds)
+      .order('created_at', { ascending: false })
 
-    if (eligibleIds.length === 0) {
+    if (storyRowsError) {
+      console.error('Error fetching story detail rows:', storyRowsError)
       setStories([])
       setLoading(false)
       return
@@ -1082,17 +1284,13 @@ export default function AdminStoriesPage() {
       .order('created_at', { ascending: false })
 
     const analyticsById = new Map((data || []).map((story: any) => [story.id, story]))
-    const analyticsPublicIds = new Set(
-      (data || [])
-        .filter((story: any) => publicCandidateIds.has(story.id) && story.is_hidden === false && story.cover_url)
-        .map((story: any) => story.id)
-    )
-    const loadedStories = eligibleIds
-      .map((id) => ({ ...(analyticsById.get(id) || {}), ...(readinessById.get(id) || {}) }) as Story)
-      .filter((story) => {
-        if (isPublishedToApp(story)) return analyticsPublicIds.has(story.id)
-        return isReviewReady(story) || isApprovedReady(story) || isNotApproved(story)
-      })
+    const storyById = new Map(((storyRows || []) as Partial<Story>[]).map((story) => [story.id, story]))
+    const loadedStories = items.flatMap((item) => {
+      if (item.type === 'series') {
+        return item.episodes.map((episode) => mergeReadiness({ ...((analyticsById.get(episode.storyId) || {}) as Partial<Story>), ...((storyById.get(episode.storyId) || {}) as Partial<Story>) }, episode, item))
+      }
+      return [mergeReadiness({ ...((analyticsById.get(item.episode.storyId) || {}) as Partial<Story>), ...((storyById.get(item.episode.storyId) || {}) as Partial<Story>) }, item.episode)]
+    })
     setStories(loadedStories)
     if (error) console.error('Error fetching story analytics:', error)
     setLoading(false)
@@ -1266,23 +1464,47 @@ export default function AdminStoriesPage() {
     { id: 'published', label: 'Published to App', description: 'Mirrors the public library eligibility.' },
   ]
 
-  const filteredStories = stories
-    .filter(s => {
-      const matchesSearch = search === '' ||
-        s.title.toLowerCase().includes(search.toLowerCase()) ||
-        s.author.toLowerCase().includes(search.toLowerCase()) ||
-        (s.series_name || '').toLowerCase().includes(search.toLowerCase())
-      const matchesGenre = genreFilter === 'All' ||
-        s.genre === genreFilter ||
-        s.genre_secondary === genreFilter ||
-        s.genre_third === genreFilter
-      const matchesView = viewMode === 'all' ||
-        (viewMode === 'series' && hasRealSeriesRelationship(s)) ||
-        (viewMode === 'standalone' && !hasRealSeriesRelationship(s))
-      return matchesSearch && matchesGenre && matchesView && storyMatchesTab(s, activeTab)
-    })
-  const visibleStories = canonicalizeEligibleStories(filteredStories) as Story[]
-  const groupedStories = groupStoriesForReview(visibleStories)
+  const storiesById = new Map(stories.map((story) => [story.id, story]))
+  const groupsFromReadiness = approvalItems.flatMap((item): StoryGroup[] => {
+    if (item.type === 'series') {
+      const seriesStories = item.episodes
+        .map((episode) => storiesById.get(episode.storyId))
+        .filter(Boolean) as Story[]
+      if (seriesStories.length === 0) return []
+      return [{
+        type: 'series',
+        key: `series:${item.seriesId}`,
+        title: item.title,
+        stories: seriesStories,
+        expectedEpisodeCount: item.expectedEpisodeCount,
+        presentEpisodeCount: item.presentEpisodeCount,
+        missingEpisodes: item.missingEpisodes,
+        approvalBlockingReasons: item.approvalBlockingReasons,
+        sourceJobId: item.sourceJobId,
+      }]
+    }
+    const story = storiesById.get(item.episode.storyId)
+    return story ? [{ type: 'standalone', key: `story:${story.id}`, story }] : []
+  })
+
+  const groupedStories = groupsFromReadiness.filter((group) => {
+    const groupStories = group.type === 'series' ? group.stories : [group.story]
+    const matchesSearch = search === '' || groupStories.some((s) =>
+      s.title.toLowerCase().includes(search.toLowerCase()) ||
+      s.author.toLowerCase().includes(search.toLowerCase()) ||
+      (s.series_name || '').toLowerCase().includes(search.toLowerCase())
+    ) || (group.type === 'series' && group.title.toLowerCase().includes(search.toLowerCase()))
+    const matchesGenre = genreFilter === 'All' || groupStories.some((s) =>
+      s.genre === genreFilter ||
+      s.genre_secondary === genreFilter ||
+      s.genre_third === genreFilter
+    )
+    const matchesView = viewMode === 'all' ||
+      (viewMode === 'series' && group.type === 'series') ||
+      (viewMode === 'standalone' && group.type === 'standalone')
+    return matchesSearch && matchesGenre && matchesView && groupMatchesTab(group, activeTab)
+  })
+  const visibleStories = groupedStories.flatMap((group) => group.type === 'series' ? group.stories : [group.story])
   const seriesEpisodeCount = visibleStories.filter(s => hasRealSeriesRelationship(s)).length
   const standaloneCount = visibleStories.length - seriesEpisodeCount
 
@@ -1292,7 +1514,7 @@ export default function AdminStoriesPage() {
     ? Math.round(visibleStories.reduce((sum, s) => sum + (s.pct_finished || 0), 0) / visibleStories.length)
     : 0
   const tabCounts = tabOptions.reduce((counts, tab) => {
-    counts[tab.id] = stories.filter((story) => storyMatchesTab(story, tab.id)).length
+    counts[tab.id] = groupsFromReadiness.filter((group) => groupMatchesTab(group, tab.id)).length
     return counts
   }, {} as Record<ReviewTab, number>)
 
