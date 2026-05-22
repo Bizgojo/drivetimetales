@@ -18,7 +18,8 @@ const ADMIN_EMAILS = new Set([
   'm.postlewaite@gmail.com',
 ])
 
-type ApprovalTab = 'review' | 'approved' | 'not_approved' | 'published' | 'all'
+type ApprovalTab = 'ready_for_review' | 'approved_ready' | 'repair_queue' | 'being_repaired' | 'unpublished_library' | 'cold_storage' | 'published' | 'all'
+type WorkflowState = Exclude<ApprovalTab, 'all'>
 
 type StoryRow = {
   id: string
@@ -35,6 +36,9 @@ type StoryRow = {
   review_status: string | null
   reviewed_at: string | null
   review_notes: string | null
+  workflow_state: string | null
+  repair_checklist: unknown | null
+  repair_notes: string | null
   audio_url: string | null
   story_audio_url: string | null
   intro_audio_url: string | null
@@ -111,8 +115,31 @@ function numberOrNull(value: unknown): number | null {
 
 function normalizeTab(value: unknown): ApprovalTab {
   const tab = clean(value)
-  if (tab === 'review' || tab === 'approved' || tab === 'not_approved' || tab === 'published' || tab === 'all') return tab
+  if (
+    tab === 'ready_for_review' ||
+    tab === 'approved_ready' ||
+    tab === 'repair_queue' ||
+    tab === 'being_repaired' ||
+    tab === 'unpublished_library' ||
+    tab === 'cold_storage' ||
+    tab === 'published' ||
+    tab === 'all'
+  ) return tab
   return 'all'
+}
+
+function normalizeWorkflowState(value: unknown): WorkflowState | null {
+  const state = clean(value)
+  if (
+    state === 'ready_for_review' ||
+    state === 'approved_ready' ||
+    state === 'repair_queue' ||
+    state === 'being_repaired' ||
+    state === 'unpublished_library' ||
+    state === 'cold_storage' ||
+    state === 'published'
+  ) return state
+  return null
 }
 
 function storyEpisodeNumber(story: StoryRow) {
@@ -125,6 +152,15 @@ function hasSeriesRelationship(story: StoryRow) {
 
 function displayReviewStatus(story: StoryRow) {
   return clean(story.review_status) || 'pending'
+}
+
+function effectiveWorkflowState(story: StoryRow): string {
+  if (story.workflow_state) return story.workflow_state
+  if (story.status === 'published' && story.is_hidden === false) return 'published'
+  if (story.status === 'published' && story.is_hidden === true) return 'unpublished_library'
+  if (story.review_status === 'approved') return 'approved_ready'
+  if (story.review_status === 'not_approved') return 'cold_storage'
+  return 'ready_for_review'
 }
 
 function requiredMetadataMissing(story: StoryRow) {
@@ -202,10 +238,7 @@ function isReviewReady(story: StoryRow) {
 
 function matchesTab(story: StoryRow, tab: ApprovalTab) {
   if (tab === 'all') return true
-  if (tab === 'review') return isReviewReady(story)
-  if (tab === 'approved') return isApprovedReady(story)
-  if (tab === 'not_approved') return displayReviewStatus(story) === 'not_approved'
-  return isPublished(story)
+  return effectiveWorkflowState(story) === tab
 }
 
 function storyJobIds(job: ProductionJobRow) {
@@ -255,8 +288,8 @@ function versionForStory(story: StoryRow, job: ProductionJobRow | null) {
 
 function approvalEntryReason(story: StoryRow) {
   if (isPublished(story)) return 'Published and visible in the public app.'
-  if (displayReviewStatus(story) === 'approved') return 'Approved by review and waiting to publish.'
-  if (displayReviewStatus(story) === 'not_approved') return 'Marked Not Approved for revision or archival history.'
+  if (effectiveWorkflowState(story) === 'approved_ready') return 'Approved by review and waiting to publish.'
+  if (effectiveWorkflowState(story) === 'cold_storage') return 'Moved to Cold Storage.'
   if (isReviewReady(story)) return 'Package completion made the story ready for Content Approval.'
   if (bool(story.audio_url) || bool(story.story_audio_url)) return 'Audio assets exist, but approval packaging is incomplete.'
   return 'Story row exists but has not reached audio/package readiness.'
@@ -271,6 +304,9 @@ function episodeObject(story: StoryRow, sourceJob: ProductionJobRow | null) {
     episodeNumber: storyEpisodeNumber(story),
     status: story.status,
     reviewStatus: displayReviewStatus(story),
+    workflowState: effectiveWorkflowState(story),
+    repairChecklist: story.repair_checklist || null,
+    repairNotes: story.repair_notes || null,
     isHidden: story.is_hidden,
     publishedOn: story.published_on,
     audioReadiness: audioReadiness(story),
@@ -348,7 +384,7 @@ function seriesObject(seriesId: string, stories: StoryRow[], jobs: ProductionJob
       audioReady: episodes.filter((episode) => episode.audioReadiness.audioUrl && episode.audioReadiness.storyAudioUrl).length,
       approvalReady: episodes.filter((episode) => episode.approvalReady).length,
       approved: episodes.filter((episode) => episode.reviewStatus === 'approved').length,
-      notApproved: episodes.filter((episode) => episode.reviewStatus === 'not_approved').length,
+      coldStorage: episodes.filter((episode) => episode.workflowState === 'cold_storage').length,
       published: episodes.filter((episode) => episode.status === 'published' && episode.isHidden === false).length,
     },
     episodes,
@@ -378,9 +414,15 @@ function includeItem(item: any, tab: ApprovalTab, includeBlocked: boolean) {
       status: episode.status,
       is_hidden: episode.isHidden,
       review_status: episode.reviewStatus,
+      workflow_state: episode.workflowState,
+      repair_checklist: episode.repairChecklist,
+      repair_notes: episode.repairNotes,
       audio_url: episode.audioReadiness.audioUrl ? 'present' : '',
       cover_url: episode.packagingReadiness.coverUrl ? 'present' : '',
       title: episode.title,
+      workflow_state: episode.workflowState,
+      repair_checklist: episode.repairChecklist,
+      repair_notes: episode.repairNotes,
       author: 'present',
       genre: 'present',
       description: episode.packagingReadiness.description ? 'present' : '',
@@ -393,6 +435,9 @@ function includeItem(item: any, tab: ApprovalTab, includeBlocked: boolean) {
     ...item.episode,
     is_hidden: item.episode.isHidden,
     review_status: item.episode.reviewStatus,
+    workflow_state: item.episode.workflowState,
+    repair_checklist: item.episode.repairChecklist,
+    repair_notes: item.episode.repairNotes,
     audio_url: item.episode.audioReadiness.audioUrl ? 'present' : '',
     cover_url: item.episode.packagingReadiness.coverUrl ? 'present' : '',
     author: 'present',
@@ -414,6 +459,63 @@ function examples(items: any[]) {
   }
 }
 
+function reviewStatusForWorkflowState(state: WorkflowState) {
+  if (state === 'approved_ready' || state === 'published') return 'approved'
+  if (state === 'ready_for_review') return 'pending'
+  return 'not_approved'
+}
+
+function transitionAllowed(from: string, to: WorkflowState, retire: boolean) {
+  const allowed: Record<string, WorkflowState[]> = {
+    ready_for_review: ['approved_ready', 'repair_queue', 'cold_storage'],
+    approved_ready: ['published', 'repair_queue', 'cold_storage'],
+    repair_queue: ['being_repaired', 'ready_for_review'],
+    being_repaired: ['ready_for_review'],
+    published: ['unpublished_library', 'repair_queue'],
+    unpublished_library: ['ready_for_review', 'repair_queue', 'cold_storage'],
+    cold_storage: [],
+  }
+
+  if (from === 'published' && to === 'cold_storage') return retire
+  return (allowed[from] || []).includes(to)
+}
+
+function workflowUpdateForState(state: WorkflowState, body: any = {}) {
+  const reviewedAt = new Date().toISOString()
+  const update: Record<string, unknown> = {
+    workflow_state: state,
+    review_status: reviewStatusForWorkflowState(state),
+    reviewed_at: state === 'ready_for_review' ? null : reviewedAt,
+  }
+
+  if (state === 'ready_for_review') {
+    update.review_notes = null
+  }
+
+  if (state === 'approved_ready') {
+    update.review_notes = body.reviewNotes || 'Approved for Publishing'
+  }
+
+  if (state === 'repair_queue' || state === 'being_repaired') {
+    update.repair_checklist = body.repairChecklist || null
+    update.repair_notes = body.repairNotes || null
+    update.review_notes = state === 'repair_queue' ? 'Moved to Repair Queue' : 'Sent for Repair'
+  }
+
+  if (state === 'unpublished_library') {
+    update.status = 'audio_ready'
+    update.is_hidden = true
+    update.published_on = null
+    update.review_notes = 'Unpublished to library'
+  }
+
+  if (state === 'cold_storage') {
+    update.review_notes = 'Moved to Cold Storage'
+  }
+
+  return update
+}
+
 export async function GET(req: NextRequest) {
   try {
     const unauthorized = await requireAdmin()
@@ -424,56 +526,83 @@ export async function GET(req: NextRequest) {
     const storyId = clean(req.nextUrl.searchParams.get('storyId'))
     const seriesId = clean(req.nextUrl.searchParams.get('seriesId'))
 
-    let storyQuery = supabase
-      .from('stories')
-      .select([
-        'id',
-        'title',
-        'author',
-        'genre',
-        'description',
-        'duration_mins',
-        'created_at',
-        'updated_at',
-        'status',
-        'is_hidden',
-        'published_on',
-        'review_status',
-        'reviewed_at',
-        'review_notes',
-        'audio_url',
-        'story_audio_url',
-        'intro_audio_url',
-        'intro_before_url',
-        'intro_after_url',
-        'outro_audio_url',
-        'background_music_url',
-        'cover_url',
-        'prose_text',
-        'author_id',
-        'narrator_voice_id',
-        'narrator_voice_name',
-        'series_id',
-        'series_name',
-        'episode_number',
-        'series_number',
-        'series_total',
-        'series_total_episodes',
-        'story_type',
-        'script_version',
-      ].join(','))
-      .order('created_at', { ascending: false })
-      .limit(1000)
+    const storySelectColumns = [
+      'id',
+      'title',
+      'author',
+      'genre',
+      'description',
+      'duration_mins',
+      'created_at',
+      'updated_at',
+      'status',
+      'is_hidden',
+      'published_on',
+      'review_status',
+      'reviewed_at',
+      'review_notes',
+      'workflow_state',
+      'repair_checklist',
+      'repair_notes',
+      'audio_url',
+      'story_audio_url',
+      'intro_audio_url',
+      'intro_before_url',
+      'intro_after_url',
+      'outro_audio_url',
+      'background_music_url',
+      'cover_url',
+      'prose_text',
+      'author_id',
+      'narrator_voice_id',
+      'narrator_voice_name',
+      'series_id',
+      'series_name',
+      'episode_number',
+      'series_number',
+      'series_total',
+      'series_total_episodes',
+      'story_type',
+      'script_version',
+    ]
 
-    if (storyId) storyQuery = storyQuery.eq('id', storyId)
-    if (seriesId) storyQuery = storyQuery.eq('series_id', seriesId)
+    const legacyStorySelectColumns = storySelectColumns.filter((column) =>
+      !['workflow_state', 'repair_checklist', 'repair_notes'].includes(column)
+    )
 
-    const { data: stories, error: storiesError } = await storyQuery
+    const buildStoryQuery = (columns: string[]) => {
+      let query = supabase
+        .from('stories')
+        .select(columns.join(','))
+        .order('created_at', { ascending: false })
+        .limit(1000)
+
+      if (storyId) query = query.eq('id', storyId)
+      if (seriesId) query = query.eq('series_id', seriesId)
+      return query
+    }
+
+    const firstStoryResult = await buildStoryQuery(storySelectColumns)
+    let stories = firstStoryResult.data
+    let storiesError = firstStoryResult.error
+
+    if (storiesError && /workflow_state|repair_checklist|repair_notes|schema cache|column/i.test(storiesError.message || '')) {
+      const legacyResult = await buildStoryQuery(legacyStorySelectColumns)
+      stories = (legacyResult.data || []).map((story: any) => ({
+        ...story,
+        workflow_state: null,
+        repair_checklist: null,
+        repair_notes: null,
+      }))
+      storiesError = legacyResult.error
+    }
+
     if (storiesError) {
       return json({ success: false, error: storiesError.message }, 500)
     }
 
     const storyRows = ((stories || []) as unknown) as StoryRow[]
+
     const seriesIds = Array.from(new Set(storyRows.map((story) => clean(story.series_id)).filter(Boolean)))
     const storyIds = storyRows.map((story) => story.id)
 
@@ -548,5 +677,56 @@ export async function GET(req: NextRequest) {
   } catch (err: any) {
     console.error('[content-approval] GET failed:', err)
     return json({ success: false, error: err?.message || 'Failed to load content approval readiness' }, 500)
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const unauthorized = await requireAdmin()
+    if (unauthorized) return unauthorized
+
+    const action = clean(req.nextUrl.searchParams.get('action'))
+    if (action !== 'set_workflow_state') {
+      return json({ success: false, error: 'Unsupported action' }, 400)
+    }
+
+    const body = await req.json().catch(() => ({}))
+    const storyId = clean(body.storyId)
+    const state = normalizeWorkflowState(body.state)
+    if (!storyId) return json({ success: false, error: 'Missing storyId' }, 400)
+    if (!state) return json({ success: false, error: 'Invalid workflow state' }, 400)
+
+    const { data: storyData, error: storyError } = await supabase
+      .from('stories')
+      .select('id,status,is_hidden,review_status,workflow_state')
+      .eq('id', storyId)
+      .maybeSingle()
+
+    if (storyError) return json({ success: false, error: storyError.message }, 500)
+    if (!storyData) return json({ success: false, error: 'Story not found' }, 404)
+
+    const story = storyData as StoryRow
+    const from = effectiveWorkflowState({
+      ...story,
+      repair_checklist: null,
+      repair_notes: null,
+    })
+    if (!transitionAllowed(from, state, body.retire === true)) {
+      return json({ success: false, error: `Transition ${from} → ${state} is not allowed` }, 400)
+    }
+
+    const update = workflowUpdateForState(state, body)
+    const { data, error } = await supabase
+      .from('stories')
+      .update(update)
+      .eq('id', storyId)
+      .select('id,status,is_hidden,review_status,workflow_state,repair_checklist,repair_notes')
+      .maybeSingle()
+
+    if (error) return json({ success: false, error: error.message }, 500)
+    return json({ success: true, story: data })
+  } catch (err: any) {
+    console.error('[content-approval] POST failed:', err)
+    return json({ success: false, error: err?.message || 'Failed to update workflow state' }, 500)
   }
 }
