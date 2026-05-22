@@ -302,7 +302,7 @@ function normalizeContractionExpansions(text: string): string {
 
 function transcriptTokens(text: string): string[] {
   const normalized = normalizeNumberWords(normalizeOrdinalDateForms(normalizeCurrencyForms(normalizePossessivePlaceNames(normalizePossessiveVehicleModelNames(normalizeStylisticCompoundWords(normalizeContractionExpansions(text)))))))
-    .replace(/['']/g, "'")
+    .replace(/[\u2018\u2019\u02BC]/g, "'")
     // Normalize possessives to plain plural so Whisper output matches script:
     // "Gate's" → "Gates", "Gates'" → "Gates" (both normalize to same token)
     .replace(/\b([a-z]+)'s\b/gi, '$1s')
