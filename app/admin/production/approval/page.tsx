@@ -1361,14 +1361,9 @@ function ProductionStandardBadge({ story }: { story: Story }) {
   }
   const colors = styles[standard.standard]
   return (
-    <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', gap: '3px', minWidth: 0 }}>
-      <span title={standard.note} style={{ display: 'inline-flex', borderRadius: '999px', padding: '4px 9px', border: `1px solid ${colors.border}`, backgroundColor: colors.bg, color: colors.text, fontSize: '10px', fontWeight: 900, lineHeight: 1.1 }}>
-        {standard.label}
-      </span>
-      <span style={{ color: '#9CA3AF', fontSize: '9px', fontWeight: 700, lineHeight: 1.2 }}>
-        {standard.note}
-      </span>
-    </div>
+    <span title={standard.note} style={{ display: 'inline-flex', borderRadius: '999px', padding: '4px 9px', border: `1px solid ${colors.border}`, backgroundColor: colors.bg, color: colors.text, fontSize: '10px', fontWeight: 900, lineHeight: 1.1, whiteSpace: 'nowrap' }}>
+      {standard.label}
+    </span>
   )
 }
 
@@ -1397,7 +1392,7 @@ function RemasterCopyUnavailable({ compact = false }: { compact?: boolean }) {
   )
 }
 
-function PreservationClassificationPanel({
+function StoryIntelligenceStrip({
   stories,
   deletionMarked,
   onMoveToColdStorage,
@@ -1434,39 +1429,49 @@ function PreservationClassificationPanel({
     unknown: { bg: '#F9FAFB', text: '#4B5563', border: '#D1D5DB' },
   }
   const productionColors = productionStyles[production.standard]
+  const compactActionStyle = {
+    ...actionButtonStyle('muted'),
+    minHeight: '22px',
+    padding: '3px 8px',
+    borderRadius: '999px',
+    fontSize: '10px',
+    lineHeight: 1.1,
+  } as React.CSSProperties
 
   return (
-    <div style={{ marginTop: '14px', padding: '12px', borderRadius: '10px', border: '1px solid #E5E7EB', backgroundColor: '#F9FAFB' }}>
-      <div style={{ color: '#374151', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Preservation Classification</div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: '10px', marginTop: '10px' }}>
-        <div>
-          <div style={{ color: '#6B7280', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase' }}>Production Standard</div>
-          <span title={production.note} style={{ marginTop: '5px', display: 'inline-flex', borderRadius: '999px', padding: '4px 9px', border: `1px solid ${productionColors.border}`, backgroundColor: productionColors.bg, color: productionColors.text, fontSize: '10px', fontWeight: 900 }}>{production.label}</span>
-        </div>
-        <div>
-          <div style={{ color: '#6B7280', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase' }}>AI Recommendation</div>
-          <span style={{ marginTop: '5px', display: 'inline-flex', borderRadius: '999px', padding: '4px 9px', border: `1px solid ${rec.border}`, backgroundColor: rec.bg, color: rec.text, fontSize: '10px', fontWeight: 900 }}>{recommendation}</span>
-        </div>
-        <div>
-          <div style={{ color: '#6B7280', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase' }}>Training Value</div>
-          <span style={{ marginTop: '5px', display: 'inline-flex', borderRadius: '999px', padding: '4px 9px', border: `1px solid ${training.border}`, backgroundColor: training.bg, color: training.text, fontSize: '10px', fontWeight: 900 }}>{classification.trainingValue[0].toUpperCase() + classification.trainingValue.slice(1)}</span>
-        </div>
+    <div style={{ marginTop: '8px', padding: '2px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', minWidth: 0 }}>
+        <span style={{ color: '#9CA3AF', fontSize: '9px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Story Intelligence</span>
+        <span title={`Production Standard: ${production.note}`} style={{ display: 'inline-flex', borderRadius: '999px', padding: '2px 7px', border: `1px solid ${productionColors.border}`, backgroundColor: productionColors.bg, color: productionColors.text, fontSize: '10px', fontWeight: 900 }}>{production.label}</span>
+        <span title={`AI Recommendation: ${classification.rationale}`} style={{ display: 'inline-flex', borderRadius: '999px', padding: '2px 7px', border: `1px solid ${rec.border}`, backgroundColor: rec.bg, color: rec.text, fontSize: '10px', fontWeight: 900 }}>{recommendation}</span>
+        <span title="Training Value" style={{ display: 'inline-flex', borderRadius: '999px', padding: '2px 7px', border: `1px solid ${training.border}`, backgroundColor: training.bg, color: training.text, fontSize: '10px', fontWeight: 900 }}>
+          Training: {classification.trainingValue[0].toUpperCase() + classification.trainingValue.slice(1)}
+        </span>
+        {production.standard === 'unknown' && (
+          <span title="Unknown Standard — verify before publishing." style={{ color: '#92400E', fontSize: '10px', fontWeight: 700 }}>
+            Verify before publishing
+          </span>
+        )}
+        {deletionMarked && (
+          <span style={{ color: '#6B7280', fontSize: '10px', fontWeight: 800 }}>
+            Marked for deletion review
+          </span>
+        )}
       </div>
-      <div style={{ marginTop: '9px', color: '#6B7280', fontSize: '11px', lineHeight: 1.35 }}>
-        {classification.rationale}
-        {production.standard === 'unknown' ? ' Unknown Standard — verify before publishing.' : ''}
-        {deletionMarked ? ' Marked for deletion review in this page session only.' : ''}
-      </div>
-      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '10px' }}>
-        {classification.recommendation === 'preserve' && <button type="button" onClick={onMoveToColdStorage} style={actionButtonStyle('danger')}>Move to Cold Storage</button>}
-        {classification.recommendation === 'remaster_candidate' && <RemasterCopyUnavailable compact />}
-        {classification.recommendation === 'repair_candidate' && <button type="button" onClick={onMoveToRepairShop} style={actionButtonStyle('muted')}>Move to Repair Shop</button>}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginLeft: 'auto' }}>
+        {classification.recommendation === 'preserve' && <button type="button" onClick={onMoveToColdStorage} style={{ ...compactActionStyle, color: '#B91C1C' }}>Move to Cold Storage</button>}
+        {classification.recommendation === 'remaster_candidate' && (
+          <span style={{ color: '#C2410C', fontSize: '10px', fontWeight: 800 }}>
+            Use Create Remaster Copy
+          </span>
+        )}
+        {classification.recommendation === 'repair_candidate' && <button type="button" onClick={onMoveToRepairShop} style={compactActionStyle}>Move to Repair Shop</button>}
         {classification.recommendation === 'delete_candidate' && (
-          <button type="button" onClick={onMarkForDeletion} style={{ ...actionButtonStyle('muted'), border: '1px solid #D1D5DB', backgroundColor: deletionMarked ? '#E5E7EB' : '#F9FAFB' }}>
+          <button type="button" onClick={onMarkForDeletion} style={{ ...compactActionStyle, border: '1px solid #D1D5DB', backgroundColor: deletionMarked ? '#E5E7EB' : '#F9FAFB' }}>
             {deletionMarked ? 'Marked for Deletion' : 'Mark for Deletion'}
           </button>
         )}
-        {classification.recommendation === 'needs_review' && <button type="button" disabled style={{ ...actionButtonStyle('muted'), cursor: 'not-allowed', opacity: 0.75 }}>Review Required</button>}
+        {classification.recommendation === 'needs_review' && <button type="button" disabled style={{ ...compactActionStyle, cursor: 'not-allowed', opacity: 0.65 }}>Review Required</button>}
       </div>
     </div>
   )
@@ -2634,9 +2639,6 @@ export default function AdminStoriesPage() {
                     <div style={{ color: '#1F2937', fontSize: '20px', fontWeight: 800, lineHeight: 1.15 }}>{selectedTitle}</div>
                     <div style={{ marginTop: '5px', color: '#6B7280', fontSize: '12px' }}>{selectedFirst.genre || 'No genre'} • by {selectedFirst.author || 'Unknown'}</div>
                     <div style={{ marginTop: '4px', color: '#9CA3AF', fontSize: '11px' }}>{selectedIsSeries ? `${selectedExpected} total episodes • ${selectedPresent} present` : `Standalone • ${selectedFirst.duration_mins || 0}m`}</div>
-                    <div style={{ marginTop: '8px' }}>
-                      <ProductionStandardBadge story={selectedFirst} />
-                    </div>
                   </div>
                   <div ref={seriesActionsRef} style={{ position: 'relative', flex: '0 0 auto', display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
                     {selectedCanShowRemasterCopy && <RemasterCopyUnavailable compact />}
@@ -2652,7 +2654,7 @@ export default function AdminStoriesPage() {
                   </div>
                 </div>
 
-                <PreservationClassificationPanel
+                <StoryIntelligenceStrip
                   stories={selectedStories}
                   deletionMarked={selectedMarkedForDeletion}
                   onMoveToColdStorage={moveSelectedToColdStorage}
@@ -2686,19 +2688,19 @@ export default function AdminStoriesPage() {
                 </div>
 
                 <div style={{ marginTop: '10px', overflowX: 'auto' }}>
-                  <table style={{ width: '100%', minWidth: '1040px', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+                  <table style={{ width: '100%', minWidth: '960px', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
                     <colgroup>
                       <col style={{ width: '6%' }} />
-                      <col style={{ width: '18%' }} />
+                      <col style={{ width: '20%' }} />
                       <col style={{ width: '12%' }} />
                       <col style={{ width: '7%' }} />
                       <col style={{ width: '13%' }} />
-                      <col style={{ width: '16%' }} />
-                      <col style={{ width: '28%' }} />
+                      <col style={{ width: '10%' }} />
+                      <col style={{ width: '32%' }} />
                     </colgroup>
                     <thead>
                       <tr style={{ height: '36px', backgroundColor: '#F9FAFB' }}>
-                        {['Episode', 'Title', 'Narrator', 'Duration', 'Workflow State', 'Production Standard', 'Actions'].map((head) => (
+                        {['Episode', 'Title', 'Narrator', 'Duration', 'Workflow State', 'Standard', 'Actions'].map((head) => (
                           <th key={head} style={{ padding: '0 10px', color: '#6B7280', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', textAlign: head === 'Actions' ? 'right' : 'left' }}>{head}</th>
                         ))}
                       </tr>
