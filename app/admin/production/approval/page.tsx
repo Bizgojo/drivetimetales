@@ -65,6 +65,9 @@ interface Story {
   workflow_state?: string | null
   repair_checklist?: RepairChecklistValue | null
   repair_notes?: string | null
+  production_standard?: 'current_standard' | 'remaster_candidate' | 'unknown' | null
+  production_standard_updated_at?: string | null
+  production_standard_updated_by?: string | null
   script_version?: number | null
   is_v2?: boolean | null
   script_json?: any
@@ -1203,6 +1206,7 @@ function isRemasterCandidateState(state: WorkflowTab) {
 }
 
 type ProductionStandard = 'current' | 'remaster_candidate' | 'unknown'
+type ProductionStandardValue = 'current_standard' | 'remaster_candidate' | 'unknown'
 type AIRecommendation = 'preserve' | 'remaster_candidate' | 'repair_candidate' | 'delete_candidate' | 'needs_review'
 type TrainingValue = 'high' | 'medium' | 'low' | 'none'
 
@@ -1215,6 +1219,30 @@ const AI_RECOMMENDATION_LABELS: Record<AIRecommendation, string> = {
 }
 
 function productionStandardForStory(story: Story): { standard: ProductionStandard; label: string; note: string } {
+  if (story.production_standard === 'current_standard') {
+    return {
+      standard: 'current',
+      label: 'Current Standard',
+      note: story.production_standard_updated_at ? 'Manually classified as current standard.' : 'Stored as current standard.',
+    }
+  }
+
+  if (story.production_standard === 'remaster_candidate') {
+    return {
+      standard: 'remaster_candidate',
+      label: 'Remaster Candidate',
+      note: story.production_standard_updated_at ? 'Manually classified as legacy/remaster candidate.' : 'Stored as remaster candidate.',
+    }
+  }
+
+  if (story.production_standard === 'unknown' && story.production_standard_updated_at) {
+    return {
+      standard: 'unknown',
+      label: 'Unknown Standard',
+      note: 'Manually kept as unknown standard.',
+    }
+  }
+
   const scriptJson = story.script_json || {}
   const briefJson = story.brief_json || {}
   const audioText = [
@@ -1398,16 +1426,20 @@ function RemasterCopyUnavailable({ compact = false }: { compact?: boolean }) {
 function StoryIntelligenceStrip({
   stories,
   deletionMarked,
+  onSetProductionStandard,
   onMoveToColdStorage,
   onMoveToRepairShop,
   onMarkForDeletion,
 }: {
   stories: Story[]
   deletionMarked: boolean
+  onSetProductionStandard: (standard: ProductionStandardValue) => Promise<void>
   onMoveToColdStorage: () => void
   onMoveToRepairShop: () => void
   onMarkForDeletion: () => void
 }) {
+  const [standardMenuOpen, setStandardMenuOpen] = useState(false)
+  const [standardSaving, setStandardSaving] = useState(false)
   const classification = aggregatePreservationClassification(stories)
   const recommendation = AI_RECOMMENDATION_LABELS[classification.recommendation]
   const trainingStyles: Record<TrainingValue, { bg: string; text: string; border: string }> = {
@@ -1440,6 +1472,21 @@ function StoryIntelligenceStrip({
     fontSize: '10px',
     lineHeight: 1.1,
   } as React.CSSProperties
+  const standardOptions: Array<{ label: string; value: ProductionStandardValue }> = [
+    { label: 'Mark Current Standard', value: 'current_standard' },
+    { label: 'Mark Legacy / Remaster Candidate', value: 'remaster_candidate' },
+    { label: 'Keep Unknown', value: 'unknown' },
+  ]
+
+  async function saveProductionStandard(value: ProductionStandardValue) {
+    setStandardSaving(true)
+    try {
+      await onSetProductionStandard(value)
+      setStandardMenuOpen(false)
+    } finally {
+      setStandardSaving(false)
+    }
+  }
 
   return (
     <div style={{ marginTop: '8px', padding: '2px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
@@ -1462,6 +1509,37 @@ function StoryIntelligenceStrip({
         )}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginLeft: 'auto' }}>
+        {production.standard === 'unknown' && (
+          <div style={{ position: 'relative' }}>
+            <button
+              type="button"
+              onClick={() => setStandardMenuOpen((open) => !open)}
+              disabled={standardSaving}
+              style={{ ...compactActionStyle, opacity: standardSaving ? 0.65 : 1, cursor: standardSaving ? 'default' : 'pointer' }}
+              title="Set stored production standard."
+            >
+              {standardSaving ? 'Saving...' : 'Classify Standard'}
+            </button>
+            {standardMenuOpen && (
+              <div style={{ position: 'absolute', right: 0, top: '28px', zIndex: 25, width: '210px', padding: '6px', borderRadius: '8px', border: '1px solid #E5E7EB', backgroundColor: '#FFFFFF', boxShadow: '0 10px 24px rgba(15,23,42,0.14)' }}>
+                {standardOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => saveProductionStandard(option.value)}
+                    disabled={standardSaving}
+                    style={{ width: '100%', border: 'none', borderRadius: '6px', backgroundColor: 'transparent', color: '#374151', cursor: standardSaving ? 'default' : 'pointer', padding: '7px 8px', textAlign: 'left', fontSize: '11px', fontWeight: 800 }}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+                <div style={{ padding: '5px 8px 3px', color: '#9CA3AF', fontSize: '10px', lineHeight: 1.3 }}>
+                  Saves production_standard only.
+                </div>
+              </div>
+            )}
+          </div>
+        )}
         {classification.recommendation === 'preserve' && <button type="button" onClick={onMoveToColdStorage} style={{ ...compactActionStyle, color: '#B91C1C' }}>Move to Cold Storage</button>}
         {classification.recommendation === 'remaster_candidate' && (
           <span style={{ color: '#C2410C', fontSize: '10px', fontWeight: 800 }}>
@@ -2104,7 +2182,7 @@ export default function AdminStoriesPage() {
       return
     }
 
-    const detailColumns = 'id,title,author,genre,primary_genre,genre_secondary,genre_third,description,duration_mins,cover_url,audio_url,story_audio_url,intro_audio_url,intro_before_url,intro_after_url,outro_audio_url,background_music_url,status,is_hidden,created_at,series_id,episode_number,series_name,series_total,episode_title,flag,is_free,group_name,review_status,reviewed_at,review_notes,narrator_voice_name,workflow_state,repair_checklist,repair_notes,script_version,is_v2,script_json,brief_json,script,story_type,production_cost'
+    const detailColumns = 'id,title,author,genre,primary_genre,genre_secondary,genre_third,description,duration_mins,cover_url,audio_url,story_audio_url,intro_audio_url,intro_before_url,intro_after_url,outro_audio_url,background_music_url,status,is_hidden,created_at,series_id,episode_number,series_name,series_total,episode_title,flag,is_free,group_name,review_status,reviewed_at,review_notes,narrator_voice_name,workflow_state,repair_checklist,repair_notes,production_standard,production_standard_updated_at,production_standard_updated_by,script_version,is_v2,script_json,brief_json,script,story_type,production_cost'
     const legacyDetailColumns = 'id,title,author,genre,primary_genre,genre_secondary,genre_third,description,duration_mins,cover_url,audio_url,story_audio_url,status,is_hidden,created_at,series_id,episode_number,series_name,series_total,episode_title,flag,is_free,group_name,review_status,reviewed_at,review_notes,narrator_voice_name,production_cost'
     let storyRowsResult: any = await supabase
       .from('stories')
@@ -2112,7 +2190,7 @@ export default function AdminStoriesPage() {
       .in('id', eligibleIds)
       .order('created_at', { ascending: false })
 
-    if (storyRowsResult.error && /workflow_state|repair_checklist|repair_notes|script_version|is_v2|script_json|brief_json|script|story_type|intro_audio_url|intro_before_url|intro_after_url|outro_audio_url|background_music_url|schema cache|column/i.test(storyRowsResult.error.message || '')) {
+    if (storyRowsResult.error && /workflow_state|repair_checklist|repair_notes|production_standard|script_version|is_v2|script_json|brief_json|script|story_type|intro_audio_url|intro_before_url|intro_after_url|outro_audio_url|background_music_url|schema cache|column/i.test(storyRowsResult.error.message || '')) {
       storyRowsResult = await supabase
         .from('stories')
         .select(legacyDetailColumns)
@@ -2124,6 +2202,9 @@ export default function AdminStoriesPage() {
           workflow_state: null,
           repair_checklist: null,
           repair_notes: null,
+          production_standard: null,
+          production_standard_updated_at: null,
+          production_standard_updated_by: null,
           script_version: null,
           is_v2: null,
           script_json: null,
@@ -2513,6 +2594,33 @@ export default function AdminStoriesPage() {
     openStoryRepair(selectedFirst)
   }
 
+  async function setSelectedProductionStandard(productionStandard: ProductionStandardValue) {
+    if (selectedStories.length === 0) return
+    const storyIds = selectedStories.map((story) => story.id)
+    try {
+      const updates = await Promise.all(storyIds.map(async (storyId) => {
+        const res = await fetch('/api/admin/content-approval?action=set_production_standard', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            story_id: storyId,
+            production_standard: productionStandard,
+          }),
+        })
+        const result = await res.json().catch(() => ({}))
+        if (!res.ok || !result.success) {
+          throw new Error(result.error || `HTTP ${res.status}`)
+        }
+        return result.story as Pick<Story, 'id' | 'production_standard' | 'production_standard_updated_at' | 'production_standard_updated_by'>
+      }))
+      const updatesById = new Map(updates.map((story) => [story.id, story]))
+      setStories((prev) => prev.map((story) => updatesById.has(story.id) ? { ...story, ...updatesById.get(story.id) } : story))
+    } catch (err) {
+      alert('Production standard update failed: ' + (err instanceof Error ? err.message : String(err)))
+      throw err
+    }
+  }
+
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#F3F4F6', padding: '24px 28px', color: '#1F2937' }}>
       <style dangerouslySetInnerHTML={{ __html: `
@@ -2660,6 +2768,7 @@ export default function AdminStoriesPage() {
                 <StoryIntelligenceStrip
                   stories={selectedStories}
                   deletionMarked={selectedMarkedForDeletion}
+                  onSetProductionStandard={setSelectedProductionStandard}
                   onMoveToColdStorage={moveSelectedToColdStorage}
                   onMoveToRepairShop={moveSelectedToRepairShop}
                   onMarkForDeletion={markSelectedForDeletionReview}

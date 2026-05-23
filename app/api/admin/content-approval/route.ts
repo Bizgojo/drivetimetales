@@ -20,6 +20,7 @@ const ADMIN_EMAILS = new Set([
 
 type ApprovalTab = 'ready_for_review' | 'approved_ready' | 'repair_queue' | 'being_repaired' | 'unpublished_library' | 'cold_storage' | 'published' | 'all'
 type WorkflowState = Exclude<ApprovalTab, 'all'>
+type ProductionStandardValue = 'current_standard' | 'remaster_candidate' | 'unknown'
 
 type StoryRow = {
   id: string
@@ -39,6 +40,9 @@ type StoryRow = {
   workflow_state: string | null
   repair_checklist: unknown | null
   repair_notes: string | null
+  production_standard?: ProductionStandardValue | null
+  production_standard_updated_at?: string | null
+  production_standard_updated_by?: string | null
   audio_url: string | null
   story_audio_url: string | null
   intro_audio_url: string | null
@@ -100,6 +104,24 @@ async function requireAdmin() {
   return null
 }
 
+async function currentAdminEmail() {
+  const cookieStore = cookies()
+  const authClient = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => cookieStore.getAll(),
+        setAll: () => {},
+      },
+    }
+  )
+
+  const { data: { user } } = await authClient.auth.getUser()
+  const email = (user?.email || '').toLowerCase()
+  return ADMIN_EMAILS.has(email) ? email : null
+}
+
 function bool(value: unknown) {
   return Boolean(String(value || '').trim())
 }
@@ -139,6 +161,16 @@ function normalizeWorkflowState(value: unknown): WorkflowState | null {
     state === 'cold_storage' ||
     state === 'published'
   ) return state
+  return null
+}
+
+function normalizeProductionStandard(value: unknown): ProductionStandardValue | null {
+  const standard = clean(value)
+  if (
+    standard === 'current_standard' ||
+    standard === 'remaster_candidate' ||
+    standard === 'unknown'
+  ) return standard
   return null
 }
 
@@ -305,8 +337,11 @@ function episodeObject(story: StoryRow, sourceJob: ProductionJobRow | null) {
     status: story.status,
     reviewStatus: displayReviewStatus(story),
     workflowState: effectiveWorkflowState(story),
+    workflow_state: effectiveWorkflowState(story),
     repairChecklist: story.repair_checklist || null,
+    repair_checklist: story.repair_checklist || null,
     repairNotes: story.repair_notes || null,
+    repair_notes: story.repair_notes || null,
     isHidden: story.is_hidden,
     publishedOn: story.published_on,
     audioReadiness: audioReadiness(story),
@@ -420,9 +455,6 @@ function includeItem(item: any, tab: ApprovalTab, includeBlocked: boolean) {
       audio_url: episode.audioReadiness.audioUrl ? 'present' : '',
       cover_url: episode.packagingReadiness.coverUrl ? 'present' : '',
       title: episode.title,
-      workflow_state: episode.workflowState,
-      repair_checklist: episode.repairChecklist,
-      repair_notes: episode.repairNotes,
       author: 'present',
       genre: 'present',
       description: episode.packagingReadiness.description ? 'present' : '',
@@ -473,7 +505,7 @@ function transitionAllowed(from: string, to: WorkflowState, retire: boolean) {
     being_repaired: ['ready_for_review'],
     published: ['unpublished_library', 'repair_queue'],
     unpublished_library: ['ready_for_review', 'repair_queue', 'cold_storage'],
-    cold_storage: [],
+    cold_storage: ['ready_for_review'],
   }
 
   if (from === 'published' && to === 'cold_storage') return retire
@@ -485,6 +517,7 @@ function workflowUpdateForState(state: WorkflowState, body: any = {}) {
   const update: Record<string, unknown> = {
     workflow_state: state,
     review_status: reviewStatusForWorkflowState(state),
+    is_hidden: true,
     reviewed_at: state === 'ready_for_review' ? null : reviewedAt,
   }
 
@@ -504,7 +537,6 @@ function workflowUpdateForState(state: WorkflowState, body: any = {}) {
 
   if (state === 'unpublished_library') {
     update.status = 'audio_ready'
-    update.is_hidden = true
     update.published_on = null
     update.review_notes = 'Unpublished to library'
   }
@@ -544,6 +576,9 @@ export async function GET(req: NextRequest) {
       'workflow_state',
       'repair_checklist',
       'repair_notes',
+      'production_standard',
+      'production_standard_updated_at',
+      'production_standard_updated_by',
       'audio_url',
       'story_audio_url',
       'intro_audio_url',
@@ -567,7 +602,7 @@ export async function GET(req: NextRequest) {
     ]
 
     const legacyStorySelectColumns = storySelectColumns.filter((column) =>
-      !['workflow_state', 'repair_checklist', 'repair_notes'].includes(column)
+      !['workflow_state', 'repair_checklist', 'repair_notes', 'production_standard', 'production_standard_updated_at', 'production_standard_updated_by'].includes(column)
     )
 
     const buildStoryQuery = (columns: string[]) => {
@@ -586,13 +621,16 @@ export async function GET(req: NextRequest) {
     let stories = firstStoryResult.data
     let storiesError = firstStoryResult.error
 
-    if (storiesError && /workflow_state|repair_checklist|repair_notes|schema cache|column/i.test(storiesError.message || '')) {
+    if (storiesError && /workflow_state|repair_checklist|repair_notes|production_standard|schema cache|column/i.test(storiesError.message || '')) {
       const legacyResult = await buildStoryQuery(legacyStorySelectColumns)
       stories = (legacyResult.data || []).map((story: any) => ({
         ...story,
         workflow_state: null,
         repair_checklist: null,
         repair_notes: null,
+        production_standard: 'unknown',
+        production_standard_updated_at: null,
+        production_standard_updated_by: null,
       }))
       storiesError = legacyResult.error
     }
@@ -686,12 +724,36 @@ export async function POST(req: NextRequest) {
     if (unauthorized) return unauthorized
 
     const action = clean(req.nextUrl.searchParams.get('action'))
-    if (action !== 'set_workflow_state') {
+    if (action !== 'set_workflow_state' && action !== 'set_production_standard') {
       return json({ success: false, error: 'Unsupported action' }, 400)
     }
 
     const body = await req.json().catch(() => ({}))
-    const storyId = clean(body.storyId)
+    const storyId = clean(body.storyId || body.story_id)
+    if (action === 'set_production_standard') {
+      const productionStandard = normalizeProductionStandard(body.production_standard)
+      if (!storyId) return json({ success: false, error: 'Missing story_id' }, 400)
+      if (!productionStandard) return json({ success: false, error: 'Invalid production_standard' }, 400)
+
+      const adminEmail = await currentAdminEmail()
+      const update = {
+        production_standard: productionStandard,
+        production_standard_updated_at: new Date().toISOString(),
+        production_standard_updated_by: adminEmail,
+      }
+
+      const { data, error } = await supabase
+        .from('stories')
+        .update(update)
+        .eq('id', storyId)
+        .select('id,production_standard,production_standard_updated_at,production_standard_updated_by')
+        .maybeSingle()
+
+      if (error) return json({ success: false, error: error.message }, 500)
+      if (!data) return json({ success: false, error: 'Story not found' }, 404)
+      return json({ success: true, story: data })
+    }
+
     const state = normalizeWorkflowState(body.state)
     if (!storyId) return json({ success: false, error: 'Missing storyId' }, 400)
     if (!state) return json({ success: false, error: 'Invalid workflow state' }, 400)
@@ -716,6 +778,10 @@ export async function POST(req: NextRequest) {
     }
 
     const update = workflowUpdateForState(state, body)
+    if (from === 'published' && state !== 'published') {
+      update.status = 'audio_ready'
+      update.published_on = null
+    }
     const { data, error } = await supabase
       .from('stories')
       .update(update)
