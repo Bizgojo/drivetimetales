@@ -14,6 +14,9 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
 
 const WORKER_ID = `run-next:${process.pid}`
 const LOCK_STALE_MS = 10 * 60 * 1000
+// A job is a zombie when it is status=running, has no lock, and has not been
+// touched in this long.  30 minutes is well past any legitimate inter-call gap.
+const ZOMBIE_STALE_MS = 30 * 60 * 1000
 const NEXT_STEP_AFTER_CREATE = 'generate_script'
 const NEXT_STEP_AFTER_STANDALONE_SCRIPT = 'validate_script'
 const NEXT_STEP_AFTER_STANDALONE_VALIDATION = 'validate_story_resolution'
@@ -50,6 +53,7 @@ type ProductionJob = {
   step_index: number
   input_json: any
   state_json: any
+  error_json?: any
   logs: any[]
   locked_at: string | null
 }
@@ -183,6 +187,172 @@ function totalEpisodesFor(queueItem: any) {
   const explicit = queueValue(queueItem, 'totalEpisodes', 'total_episodes') || queuePlanValue(queueItem, 'Total episodes')
   const total = Number(explicit || 1)
   return Number.isFinite(total) && total > 0 ? Math.floor(total) : 1
+}
+
+function productionEventMetadata(job: ProductionJob) {
+  const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
+  const input = job.input_json && typeof job.input_json === 'object' ? job.input_json : {}
+  const queueItem = input.queueItem || {}
+  const stateEpisodes = Array.isArray(state.episodes) ? state.episodes.length : 0
+  const episodeCount = Number(
+    state.totalEpisodes ||
+    state.seriesCompleteStoryPackage?.episodeCount ||
+    state.seriesValidation?.episodeCount ||
+    stateEpisodes ||
+    totalEpisodesFor(queueItem)
+  )
+  const seriesTitle = String(
+    state.seriesTitle ||
+    state.series?.title ||
+    state.seriesPackage?.title ||
+    queueValue(queueItem, 'title') ||
+    ''
+  ).trim()
+
+  return {
+    job_id: job.id,
+    story_id: job.story_id || null,
+    series_id: job.series_id || state.seriesId || null,
+    series_title: seriesTitle || null,
+    episode_count: Number.isFinite(episodeCount) && episodeCount > 0 ? Math.floor(episodeCount) : null,
+  }
+}
+
+function durationSeconds(startedAt: string | null | undefined, completedAt: string) {
+  if (!startedAt) return null
+  const started = new Date(startedAt).getTime()
+  const completed = new Date(completedAt).getTime()
+  if (!Number.isFinite(started) || !Number.isFinite(completed)) return null
+  return Math.max(0, Math.round((completed - started) / 1000))
+}
+
+async function recordProductionEvent(job: ProductionJob, stage: string, status: 'started' | 'completed' | 'failed', extra: Record<string, unknown> = {}) {
+  const payload = {
+    ...productionEventMetadata(job),
+    stage,
+    status,
+    ...extra,
+  }
+
+  const { error } = await supabase
+    .from('production_job_events')
+    .insert(payload)
+
+  if (error) {
+    console.warn('[run-next] production timing insert failed:', error.message)
+  }
+}
+
+async function findOpenStageEvent(jobId: string, stage: string) {
+  const { data, error } = await supabase
+    .from('production_job_events')
+    .select('id,started_at')
+    .eq('job_id', jobId)
+    .eq('stage', stage)
+    .eq('status', 'started')
+    .is('completed_at', null)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) {
+    console.warn('[run-next] production timing lookup failed:', error.message)
+    return null
+  }
+
+  return data as { id: string; started_at: string | null } | null
+}
+
+async function recordStageStarted(job: ProductionJob, stage: string) {
+  const existing = await findOpenStageEvent(job.id, stage)
+  if (existing) return
+
+  await recordProductionEvent(job, stage, 'started', {
+    started_at: nowIso(),
+    completed_at: null,
+    duration_seconds: null,
+    error_message: null,
+  })
+}
+
+async function recordStageCompleted(job: ProductionJob, stage: string) {
+  const completedAt = nowIso()
+  const existing = await findOpenStageEvent(job.id, stage)
+
+  if (!existing) {
+    await recordProductionEvent(job, stage, 'completed', {
+      started_at: null,
+      completed_at: completedAt,
+      duration_seconds: null,
+      error_message: null,
+    })
+    return
+  }
+
+  const { error } = await supabase
+    .from('production_job_events')
+    .update({
+      ...productionEventMetadata(job),
+      status: 'completed',
+      completed_at: completedAt,
+      duration_seconds: durationSeconds(existing.started_at, completedAt),
+      error_message: null,
+    })
+    .eq('id', existing.id)
+
+  if (error) {
+    console.warn('[run-next] production timing completion update failed:', error.message)
+  }
+}
+
+async function recordStageFailed(job: ProductionJob, stage: string, errorMessage: string) {
+  const completedAt = nowIso()
+  const existing = await findOpenStageEvent(job.id, stage)
+
+  if (!existing) {
+    await recordProductionEvent(job, stage, 'failed', {
+      started_at: null,
+      completed_at: completedAt,
+      duration_seconds: null,
+      error_message: errorMessage,
+    })
+    return
+  }
+
+  const { error } = await supabase
+    .from('production_job_events')
+    .update({
+      ...productionEventMetadata(job),
+      status: 'failed',
+      completed_at: completedAt,
+      duration_seconds: durationSeconds(existing.started_at, completedAt),
+      error_message: errorMessage,
+    })
+    .eq('id', existing.id)
+
+  if (error) {
+    console.warn('[run-next] production timing failure update failed:', error.message)
+  }
+}
+
+async function loadProductionJobForTiming(jobId: string) {
+  const { data, error } = await supabase
+    .from('production_jobs')
+    .select('*')
+    .eq('id', jobId)
+    .maybeSingle()
+
+  if (error) {
+    console.warn('[run-next] production timing job reload failed:', error.message)
+    return null
+  }
+
+  return data as ProductionJob | null
+}
+
+function productionErrorMessage(job: ProductionJob) {
+  const errorJson = job.error_json && typeof job.error_json === 'object' ? job.error_json : {}
+  return String(errorJson.message || errorJson.reason || errorJson.error || 'Production stage failed')
 }
 
 function countWords(s: string) {
@@ -436,6 +606,8 @@ Use the CURRENT rules:
 - The script must include BELLE B INTRO and BELLE B OUTRO blocks.
 - Standalone stories must end conclusively.
 - Series non-finales must end on a specific cliffhanger.
+- Difficult Solution Rule: the main problem must feel genuinely difficult at the beginning, the middle must reveal leverage and escalating consequences that make the solution possible, and the ending must feel emotionally and logically earned.
+- Fail endings where the climax happens offscreen, the protagonist does not affect the outcome, the ending resolves through exposition instead of dramatic action, the emotional arc is unresolved, or the final solution is passive, too easy, or a "villain already dead" anticlimax.
 
 Return exactly one of these:
 ✅ VALIDATOR RESULT: PASS
@@ -467,6 +639,8 @@ Required JSON shape:
 Rules:
 - Detect whether the script behaves like a standalone, non-finale series episode, or series finale.
 - Standalone stories must resolve the central conflict meaningfully.
+- Apply the Difficult Solution Rule: the central problem must initially feel hard or nearly impossible, the middle must progressively reveal leverage and consequences, and the final solution must be earned through onstage dramatic action.
+- Fail if the protagonist is passive at the ending, the climax happens offscreen, exposition replaces dramatic action, the emotional arc is unresolved, or the outcome arrives because the danger was already gone before the protagonist acted.
 - A standalone ending may leave emotional ambiguity, but it must not make the listener feel they are obviously waiting for episode 2.
 - Standalone stories fail if they end with a fake "episode one" cliffhanger, unresolved villain/central danger, missing reveal/payoff, or a direct continuation hook.
 - Standalone stories pass if the immediate plot question resolves and the ending emotionally lands, even if the final image is haunting or bittersweet.
@@ -654,6 +828,121 @@ async function saveSeriesParent(payload: Record<string, any>, seriesId?: string)
     .insert(genrePayload)
     .select('*')
     .single()
+}
+
+/**
+ * Zombie guard — run once per POST request before selecting a new candidate.
+ *
+ * A zombie job is one where:
+ *   - status = 'running'
+ *   - locked_at IS NULL  (no runner holds a lock on it)
+ *   - locked_by IS NULL
+ *   - current_step is beyond the initial queued/create step (i.e. a step was
+ *     started, the runner vanished, and nobody ever resumed it)
+ *   - updated_at is older than ZOMBIE_STALE_MS (30 min) — guards against the
+ *     legitimate gap between two consecutive run-next calls in autopilot
+ *
+ * Matched jobs are marked status='failed' with error_json.kind='zombie_stalled'
+ * so they surface clearly in the admin UI and autopilot reports instead of
+ * silently clogging the queue forever.
+ *
+ * Recovery: call production-autopilot.js reactivateJob() against the job ID,
+ * or POST to run-next with the job ID — the job can be safely resumed from
+ * whatever current_step it was frozen at.
+ */
+/**
+ * @param excludeJobId - Explicitly-requested job to skip (we're about to
+ *   process it; marking it stalled here would immediately block recovery).
+ */
+async function detectAndMarkZombieJobs(excludeJobId?: string): Promise<string[]> {
+  const zombieCutoff = new Date(Date.now() - ZOMBIE_STALE_MS).toISOString()
+
+  // Steps that legitimately sit in status=running without a lock (terminal or
+  // very-short-lived) should not be treated as zombies.
+  const SAFE_ZOMBIE_EXEMPT_STEPS = ['queued', 'ready_for_review', 'complete']
+
+  const { data: candidates, error } = await supabase
+    .from('production_jobs')
+    .select('id,current_step,story_id,series_id,updated_at,state_json')
+    .eq('status', 'running')
+    .is('locked_at', null)
+    .is('locked_by', null)
+    .lt('updated_at', zombieCutoff)
+
+  if (error || !candidates?.length) return []
+
+  const zombies = candidates.filter(
+    (job: any) =>
+      !SAFE_ZOMBIE_EXEMPT_STEPS.includes(String(job.current_step || '')) &&
+      // Never mark the job the caller is explicitly requesting — that's a
+      // targeted recovery attempt and should be allowed to proceed normally.
+      job.id !== excludeJobId
+  )
+  if (!zombies.length) return []
+
+  const markedIds: string[] = []
+  for (const zombie of zombies) {
+    // Extract step-specific context from state_json so the error report
+    // can tell operators exactly which episode/segment was in-flight when
+    // the runner disappeared.  This prevents monitors from reporting
+    // "episode: unknown" on series preflight/voice-generation zombies.
+    const zombieState = zombie.state_json && typeof zombie.state_json === 'object' ? zombie.state_json : {}
+    const zombieContext: Record<string, unknown> = {}
+    const step = String(zombie.current_step || '')
+    if (step === 'series_voice_preflight') {
+      const svp = zombieState.seriesVoicePreflight
+      if (svp && typeof svp === 'object') {
+        zombieContext.nextEpisodeNumber = (svp as any).nextEpisodeNumber ?? null
+        zombieContext.checkedEpisodeCount = Array.isArray((svp as any).checkedEpisodes) ? (svp as any).checkedEpisodes.length : 0
+        zombieContext.totalEpisodeCount = (svp as any).episodeCount ?? null
+      }
+    } else if (step === 'series_generate_voices') {
+      const svg = zombieState.seriesVoiceGeneration
+      if (svg && typeof svg === 'object') {
+        zombieContext.currentEpisodeNumber = (svg as any).currentEpisodeNumber ?? null
+        zombieContext.presentCount = (svg as any).presentCount ?? null
+        zombieContext.expectedSegmentCount = (svg as any).expectedSegmentCount ?? null
+        zombieContext.lastSegmentNumber = (svg as any).lastSegmentNumber ?? null
+      }
+    } else if (step === 'generate_voices') {
+      const vg = zombieState.voiceGeneration
+      if (vg && typeof vg === 'object') {
+        zombieContext.lastSegmentNumber = (vg as any).lastSegmentNumber ?? null
+        zombieContext.nextSegmentNumber = (vg as any).nextSegmentNumber ?? null
+        zombieContext.presentCount = (vg as any).presentCount ?? null
+        zombieContext.expectedSegmentCount = (vg as any).expectedSegmentCount ?? null
+      }
+    }
+
+    const { error: updateError } = await supabase
+      .from('production_jobs')
+      .update({
+        status: 'failed',
+        error_json: {
+          kind: 'zombie_stalled',
+          step: zombie.current_step,
+          storyId: zombie.story_id || null,
+          seriesId: zombie.series_id || null,
+          ...(Object.keys(zombieContext).length > 0 ? { context: zombieContext } : {}),
+          message:
+            'Job was marked running with no lock and no heartbeat for more than ' +
+            `${ZOMBIE_STALE_MS / 60000} minutes. The runner that advanced it to ` +
+            `"${zombie.current_step}" disappeared before executing that step. ` +
+            'The job state is clean and the step can be safely retried: call ' +
+            'reactivateJob() or POST /api/admin/production-jobs/run-next with this job ID.',
+          detectedAt: nowIso(),
+          lastUpdatedAt: zombie.updated_at,
+        },
+        locked_at: null,
+        locked_by: null,
+      })
+      .eq('id', zombie.id)
+      .eq('status', 'running') // only update if still running (prevents races)
+
+    if (!updateError) markedIds.push(zombie.id as string)
+  }
+
+  return markedIds
 }
 
 async function selectCandidate(jobId: string) {
@@ -934,6 +1223,32 @@ function buildStandaloneScriptPrompt(story: any, brief: any, namePaletteBlock: s
 
   return `You are the Endless Tales Stage 2 script writer.
 
+⭐ MANDATORY FIRST STEP: STORY RESOLUTION MAP ⭐
+
+Before you draft, build the story around the Difficult Solution Rule. Output a Story Resolution Map as a comment block at the top of the script. It will be removed before audio production.
+
+The map must include:
+1. CORE PROBLEM
+   The central danger, mystery, desire, wound, or conflict.
+2. WHY IT SEEMS DIFFICULT OR IMPOSSIBLE
+   Why the solution initially feels hidden, dangerous, costly, morally difficult, emotionally painful, or unlikely.
+3. WHAT CHANGES IN THE MIDDLE
+   The discoveries, reversals, leverage, escalating consequences, or emotional shifts that gradually make the solution possible.
+4. FINAL DECISIVE ACTION
+   The concrete onstage action the protagonist takes to affect the outcome.
+5. EMOTIONAL PAYOFF
+   What the ending costs, heals, reveals, changes, or makes the listener feel.
+6. VARIETY GUARDRAIL
+   The solution engine for this story, chosen to avoid repeating the same ending pattern. Consider sacrifice, confrontation, revelation, escape, reversal, emotional confession, strategic trap, moral choice, rescue, justice, forgiveness, survival, transformation, or bittersweet acceptance.
+
+Ending hard rules:
+- The main problem must feel genuinely difficult at the beginning.
+- The middle must progressively increase understanding, reveal leverage, and escalate consequences.
+- The climax must happen onstage.
+- The protagonist must affect the outcome through decisive action.
+- The ending must resolve through dramatic action and consequence, not explanation alone.
+- Avoid offscreen solutions, passive symbolic endings, abrupt explanation dumps, "villain already dead" anticlimax, and endings where the protagonist only watches or learns what happened.
+
 Use the CURRENT published rules:
 - Belle B is the only announcer voice.
 - Belle B is never labeled ANNOUNCER or SANDY.
@@ -943,7 +1258,7 @@ Use the CURRENT published rules:
 - No SFX in the published story body.
 - The title may be blank in the brief; if blank, choose the best title from the story.
 - Final title must be 1 to 5 words and 28 characters or fewer so it fits one line on story cards.
-- Output ONLY the script. No commentary.
+- Output ONLY the script, including the Story Resolution Map comment block. No commentary outside the script.
 
 ${namePaletteBlock}
 
@@ -2166,6 +2481,206 @@ async function runStandalonePackageCompletion(job: ProductionJob, origin: string
   }
 }
 
+function stateEpisodeStoryIds(state: any) {
+  const candidates = [
+    state?.episodes,
+    state?.seriesValidation?.validatedEpisodes,
+    state?.seriesVoicePreflight?.checkedEpisodes,
+    Object.values(state?.seriesVoiceGeneration?.progressByEpisode || {}),
+  ]
+
+  const seen = new Set<string>()
+  const episodes: Array<{ storyId: string; episodeNumber: number | null; title: string }> = []
+
+  for (const candidateList of candidates) {
+    if (!Array.isArray(candidateList)) continue
+    for (const item of candidateList) {
+      const storyId = String(item?.storyId || item?.story_id || item?.id || '').trim()
+      if (!storyId || seen.has(storyId)) continue
+      seen.add(storyId)
+      const episodeNum = Number(item?.episodeNumber || item?.episode_number || item?.series_episode_number || 0)
+      episodes.push({
+        storyId,
+        episodeNumber: Number.isFinite(episodeNum) && episodeNum > 0 ? episodeNum : null,
+        title: String(item?.title || '').trim(),
+      })
+    }
+  }
+
+  return episodes
+}
+
+async function resolveSeriesPackageEpisodes(job: ProductionJob) {
+  const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
+  const seriesId = String(job.series_id || state.seriesId || '').trim()
+  const fromState = stateEpisodeStoryIds(state)
+  const byId = new Map<string, { storyId: string; episodeNumber: number | null; title: string }>()
+
+  for (const episode of fromState) byId.set(episode.storyId, episode)
+
+  if (seriesId) {
+    const dbEpisodes = await loadSeriesEpisodes(seriesId)
+    for (const episode of dbEpisodes) {
+      byId.set(String(episode.id), {
+        storyId: String(episode.id),
+        episodeNumber: episodeNumber(episode, byId.size + 1),
+        title: String(episode.title || '').trim(),
+      })
+    }
+  }
+
+  const episodes = Array.from(byId.values())
+    .sort((a, b) => (a.episodeNumber || 999) - (b.episodeNumber || 999))
+
+  const expectedCount = Number(state.totalEpisodes || state.seriesValidation?.episodeCount || 0)
+  if (!episodes.length) throw new Error('Series package completion could not resolve episode story IDs')
+  if (expectedCount > 0 && episodes.length < expectedCount) {
+    throw new Error(`Series package completion resolved ${episodes.length}/${expectedCount} episode story IDs`)
+  }
+
+  return { seriesId, episodes }
+}
+
+function missingSeriesPackageReviewFields(story: any) {
+  const missing: string[] = []
+  if (story?.status !== 'audio_ready') missing.push('status=audio_ready')
+  if (!String(story?.story_audio_url || '').trim()) missing.push('story_audio_url')
+  if (!String(story?.cover_url || '').trim()) missing.push('cover_url')
+  if (story?.published_on !== null) missing.push('published_on=null')
+  if (story?.review_status !== 'pending') missing.push('review_status=pending')
+  return missing
+}
+
+async function verifySeriesPackageEpisode(storyId: string) {
+  const { data: story, error } = await supabase
+    .from('stories')
+    .select('id,title,episode_number,status,story_audio_url,cover_url,published_on,review_status')
+    .eq('id', storyId)
+    .single()
+
+  if (error || !story) throw new Error(error?.message || `Story not found after package completion: ${storyId}`)
+
+  const missingFields = missingSeriesPackageReviewFields(story)
+  return {
+    success: missingFields.length === 0,
+    missingFields,
+    story: {
+      id: story.id,
+      title: story.title,
+      episodeNumber: story.episode_number,
+      status: story.status,
+      storyAudioUrlPresent: Boolean(String(story.story_audio_url || '').trim()),
+      coverUrlPresent: Boolean(String(story.cover_url || '').trim()),
+      published_on: story.published_on,
+      review_status: story.review_status,
+    },
+  }
+}
+
+async function runSeriesPackageCompletion(job: ProductionJob, origin: string) {
+  const state = job.state_json && typeof job.state_json === 'object' ? job.state_json : {}
+  const { seriesId, episodes } = await resolveSeriesPackageEpisodes(job)
+  const prev = state.seriesCompleteStoryPackage && typeof state.seriesCompleteStoryPackage === 'object'
+    ? state.seriesCompleteStoryPackage
+    : {}
+  const doneByEp: Record<string, boolean> = prev.doneByEp || {}
+  const reportsByEp: Record<string, unknown> = prev.reportsByEp || {}
+  const verifiedByEp: Record<string, unknown> = prev.verifiedByEp || {}
+  const processedEpisodes: Array<{ episodeNumber: number | null; storyId: string; title: string }> = []
+
+  for (const episode of episodes) {
+    const key = String(episode.episodeNumber || episode.storyId)
+    if (doneByEp[key]) continue
+
+    const response = await fetch(`${origin}/api/admin/complete-story-package`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ storyId: episode.storyId }),
+    })
+    const report = await readJsonOrDiagnostic(response, '/api/admin/complete-story-package')
+    reportsByEp[key] = report
+
+    if (!response.ok || report?.success !== true) {
+      const reason = String(report?.error || report?.blockingReason || `HTTP ${response.status}`)
+      return {
+        success: false,
+        seriesId,
+        episode,
+        reason,
+        report,
+        processedEpisodes,
+        state: {
+          ...state,
+          seriesId: seriesId || state.seriesId,
+          seriesCompleteStoryPackage: {
+            episodeCount: episodes.length,
+            doneByEp,
+            reportsByEp,
+            verifiedByEp,
+            failedEpisode: episode,
+            failureReason: reason,
+            allDone: false,
+            lastUpdatedAt: nowIso(),
+          },
+        },
+      }
+    }
+
+    const verification = await verifySeriesPackageEpisode(episode.storyId)
+    verifiedByEp[key] = verification
+    if (!verification.success) {
+      const reason = `Package verification failed: missing ${verification.missingFields.join(', ')}`
+      return {
+        success: false,
+        seriesId,
+        episode,
+        reason,
+        report,
+        verification,
+        processedEpisodes,
+        state: {
+          ...state,
+          seriesId: seriesId || state.seriesId,
+          seriesCompleteStoryPackage: {
+            episodeCount: episodes.length,
+            doneByEp,
+            reportsByEp,
+            verifiedByEp,
+            failedEpisode: episode,
+            failureReason: reason,
+            allDone: false,
+            lastUpdatedAt: nowIso(),
+          },
+        },
+      }
+    }
+
+    doneByEp[key] = true
+    processedEpisodes.push(episode)
+  }
+
+  const allDone = episodes.every((episode) => doneByEp[String(episode.episodeNumber || episode.storyId)])
+  return {
+    success: allDone,
+    seriesId,
+    episodes,
+    processedEpisodes,
+    state: {
+      ...state,
+      seriesId: seriesId || state.seriesId,
+      seriesCompleteStoryPackage: {
+        episodeCount: episodes.length,
+        doneByEp,
+        reportsByEp,
+        verifiedByEp,
+        allDone,
+        completedAt: allDone ? nowIso() : null,
+        lastUpdatedAt: nowIso(),
+      },
+    },
+  }
+}
+
 function missingReadyForReviewFields(story: any) {
   const missing: string[] = []
   if (story?.status !== 'audio_ready') missing.push('status=audio_ready')
@@ -2229,6 +2744,33 @@ function buildSeriesEpisodePrompt(series: any, episode: any, allEpisodes: any[],
 Write exactly one production-ready audio drama script for Episode ${currentEpisodeNumber} of ${totalEpisodes}.
 Use the saved series package as the source of truth. Do not invent a new series premise.
 Output ONLY the script. No commentary.
+
+⭐ MANDATORY FIRST STEP: STORY RESOLUTION MAP ⭐
+
+Before drafting, build this episode around the Difficult Solution Rule. Output a Story Resolution Map as a comment block at the top of the script. It will be removed before audio production.
+
+The map must include:
+1. CORE EPISODE PROBLEM
+   The immediate episode-level danger, mystery, desire, wound, or conflict.
+2. WHY IT SEEMS DIFFICULT OR IMPOSSIBLE
+   Why the solution initially feels hidden, dangerous, costly, morally difficult, emotionally painful, or unlikely.
+3. WHAT CHANGES IN THE MIDDLE
+   The discoveries, reversals, leverage, escalating consequences, or emotional shifts that gradually make the episode solution possible.
+4. FINAL DECISIVE ACTION
+   The concrete onstage action the protagonist takes to affect the episode outcome.
+   ${isFinale ? 'Because this is the finale, this action must also resolve the series-level problem.' : 'Because this is not the finale, this action must resolve the episode problem while strengthening the larger series hook.'}
+5. EMOTIONAL PAYOFF
+   What the ending costs, heals, reveals, changes, or makes the listener feel.
+6. VARIETY GUARDRAIL
+   How this episode's solution engine differs from other episodes. Consider sacrifice, confrontation, revelation, escape, reversal, emotional confession, strategic trap, moral choice, rescue, justice, forgiveness, survival, transformation, or bittersweet acceptance.
+
+Ending hard rules:
+- The problem must feel genuinely difficult at the beginning.
+- The middle must progressively increase understanding, reveal leverage, and escalate consequences.
+- The climax must happen onstage.
+- The protagonist must affect the outcome through decisive action.
+- The ending must resolve through dramatic action and consequence, not explanation alone.
+- Avoid offscreen solutions, passive symbolic endings, abrupt explanation dumps, "villain already dead" anticlimax, and endings where the protagonist only watches or learns what happened.
 
 CURRENT published rules:
 - Belle B is the only announcer voice.
@@ -3487,15 +4029,26 @@ async function runSeriesRenderFinalMix(job: ProductionJob, origin: string) {
 
 export async function POST(req: NextRequest) {
   let lockedJob: ProductionJob | null = null
+  let activeStage: string | null = null
 
   try {
     const body = await req.json().catch(() => ({}))
     const requestedJobId = String(body.jobId || '').trim()
     const model = String(body.model || 'claude-opus-4-6')
 
+    // Scan for zombie jobs before selecting the next candidate.
+    // Zombies are jobs that are status=running, unlocked, and untouched for
+    // more than ZOMBIE_STALE_MS.  We mark them failed so they surface in the
+    // admin UI and autopilot reports instead of silently blocking the queue.
+    // Marked jobs are still resumable via reactivateJob() + run-next.
+    const markedZombies = await detectAndMarkZombieJobs(requestedJobId || undefined).catch(() => [])
+    if (markedZombies.length > 0) {
+      console.warn('[run-next] Zombie guard: marked %d job(s) as failed/zombie_stalled: %s', markedZombies.length, markedZombies.join(', '))
+    }
+
     const candidate = await selectCandidate(requestedJobId)
     if (!candidate) {
-      return NextResponse.json({ success: true, message: 'No queued or running production job found', job: null })
+      return NextResponse.json({ success: true, message: 'No queued or running production job found', job: null, markedZombies })
     }
 
     lockedJob = await lockJob(candidate)
@@ -3504,6 +4057,9 @@ export async function POST(req: NextRequest) {
     }
 
     const step = normalizeStep(lockedJob.current_step)
+    activeStage = step
+    await recordStageStarted(lockedJob, step)
+
     if (step === NEXT_STEP_AFTER_SERIES_CREATE) {
       const result = await generateOneSeriesEpisodeScript(lockedJob, model)
       const logs = appendLog(lockedJob, result.generated ? 'Generated one series episode script' : 'All series episode scripts already exist', {
@@ -4839,8 +5395,98 @@ export async function POST(req: NextRequest) {
       const queueItem = input.queueItem || {}
       const type = storyTypeFor(lockedJob, queueItem)
 
+      if (type === 'series') {
+        const origin = new URL(req.url).origin
+        const result = await runSeriesPackageCompletion(lockedJob, origin)
+        const logs = appendLog(lockedJob, result.success ? 'Completed series story packages' : 'Series story package completion failed', {
+          seriesId: result.seriesId || lockedJob.series_id,
+          processedEpisodes: result.processedEpisodes,
+          failedEpisode: result.success ? undefined : result.episode,
+          reason: result.success ? undefined : result.reason,
+          nextStep: result.success ? NEXT_STEP_AFTER_STANDALONE_PACKAGE : null,
+        })
+
+        if (!result.success) {
+          const { data: failedJob, error: updateError } = await supabase
+            .from('production_jobs')
+            .update({
+              status: 'failed',
+              current_step: NEXT_STEP_AFTER_STANDALONE_RENDER,
+              state_json: result.state,
+              error_json: {
+                step,
+                seriesId: result.seriesId || lockedJob.series_id,
+                episode: result.episode,
+                storyId: result.episode?.storyId,
+                reason: result.reason,
+                packageCompletionReport: result.report,
+                verification: result.verification,
+                at: nowIso(),
+              },
+              logs,
+              locked_at: null,
+              locked_by: null,
+            })
+            .eq('id', lockedJob.id)
+            .select('*')
+            .single()
+
+          if (updateError) throw new Error(`Failed to save series package completion failure: ${updateError.message}`)
+
+          if (lockedJob.queue_item_id) {
+            await supabase
+              .from('story_queue_items')
+              .update({ status: 'failed' })
+              .eq('id', lockedJob.queue_item_id)
+          }
+
+          return NextResponse.json({
+            success: false,
+            jobId: failedJob.id,
+            currentStep: step,
+            status: failedJob.status,
+            seriesId: result.seriesId || lockedJob.series_id,
+            episode: result.episode,
+            storyId: result.episode?.storyId,
+            reason: result.reason,
+            packageCompletionReport: result.report,
+            verification: result.verification,
+            logs,
+          }, { status: 422 })
+        }
+
+        const { data: updatedJob, error: updateError } = await supabase
+          .from('production_jobs')
+          .update({
+            status: 'running',
+            current_step: NEXT_STEP_AFTER_STANDALONE_PACKAGE,
+            step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
+            state_json: result.state,
+            error_json: null,
+            logs,
+            locked_at: null,
+            locked_by: null,
+          })
+          .eq('id', lockedJob.id)
+          .select('*')
+          .single()
+
+        if (updateError) throw new Error(`Failed to advance series package completion job: ${updateError.message}`)
+
+        return NextResponse.json({
+          success: true,
+          jobId: updatedJob.id,
+          currentStep: step,
+          nextStep: updatedJob.current_step,
+          seriesId: result.seriesId || lockedJob.series_id,
+          processedEpisodes: result.processedEpisodes,
+          seriesCompleteStoryPackage: result.state.seriesCompleteStoryPackage,
+          logs,
+        })
+      }
+
       if (type !== 'standalone') {
-        return bad('Series package completion is not implemented in this run-next slice', 422, {
+        return bad(`Unsupported story type for complete_story_package: ${type}`, 422, {
           jobId: lockedJob.id,
           currentStep: lockedJob.current_step,
         })
@@ -5187,6 +5833,15 @@ export async function POST(req: NextRequest) {
     return bad(error instanceof Error ? error.message : 'Failed to run production job step', 500)
   } finally {
     if (lockedJob) {
+      if (activeStage) {
+        const latestJob = await loadProductionJobForTiming(lockedJob.id)
+        if (latestJob?.status === 'failed') {
+          await recordStageFailed(latestJob, activeStage, productionErrorMessage(latestJob))
+        } else if (latestJob) {
+          await recordStageCompleted(latestJob, activeStage)
+        }
+      }
+
       await clearLock(lockedJob.id)
     }
   }
