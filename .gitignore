@@ -37,6 +37,7 @@ __pycache__/
 # Local data snapshots
 .admin-data/
 .snapshots/
+reports/
 
 # Common system junk
 .DS_Store
