@@ -1330,10 +1330,10 @@ function preservationClassificationForStory(story: Story): {
 
 function aggregatePreservationClassification(stories: Story[]) {
   const classifications = stories.map(preservationClassificationForStory)
-  const recommendationOrder: AIRecommendation[] = ['delete_candidate', 'repair_candidate', 'remaster_candidate', 'needs_review', 'preserve']
+  const recommendationOrder: AIRecommendation[] = ['preserve', 'remaster_candidate', 'repair_candidate', 'needs_review', 'delete_candidate']
   const trainingOrder: TrainingValue[] = ['none', 'low', 'medium', 'high']
-  const standardOrder: ProductionStandard[] = ['unknown', 'remaster_candidate', 'current']
-  const selected = classifications.sort((a, b) =>
+  const standardOrder: ProductionStandard[] = ['current', 'remaster_candidate', 'unknown']
+  const selected = [...classifications].sort((a, b) =>
     recommendationOrder.indexOf(a.recommendation) - recommendationOrder.indexOf(b.recommendation)
   )[0] || preservationClassificationForStory(stories[0])
   const weakestTraining = classifications.map((item) => item.trainingValue).sort((a, b) =>
@@ -1342,7 +1342,10 @@ function aggregatePreservationClassification(stories: Story[]) {
   const weakestStandard = classifications.map((item) => item.productionStandard.standard).sort((a, b) =>
     standardOrder.indexOf(a) - standardOrder.indexOf(b)
   )[0] || 'unknown'
-  const representativeStandard = classifications.find((item) => item.productionStandard.standard === weakestStandard)?.productionStandard || selected.productionStandard
+  const representativeStandard =
+    classifications.find((item) => item.productionStandard.standard === selected.productionStandard.standard)?.productionStandard ||
+    classifications.find((item) => item.productionStandard.standard === weakestStandard)?.productionStandard ||
+    selected.productionStandard
 
   return {
     productionStandard: representativeStandard,
