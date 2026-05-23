@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { Fragment, useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 
 interface Story {
@@ -452,16 +452,8 @@ function groupStoriesForReview(stories: Story[]) {
   })
 }
 
-function StoryVisibilityBadges({ story }: { story: Story }) {
-  const approvalLabel = approvalStatusLabel(story)
-  const approvalColors = approvalStatusColor(approvalLabel)
-  return (
-    <>
-      <span style={{ backgroundColor: approvalColors[0], color: approvalColors[1], borderRadius: '3px', padding: '1px 5px', fontSize: '9px', fontWeight: 700 }}>{approvalLabel.toUpperCase()}</span>
-      {story.is_hidden && <span style={{ backgroundColor: '#dc2626', color: '#ffffff', borderRadius: '3px', padding: '1px 5px', fontSize: '9px', fontWeight: 700 }}>HIDDEN</span>}
-      {story.is_hidden && <span style={{ backgroundColor: '#111827', color: '#ffffff', borderRadius: '3px', padding: '1px 5px', fontSize: '9px', fontWeight: 700 }}>NOT PUBLIC</span>}
-    </>
-  )
+function StoryVisibilityBadges() {
+  return null
 }
 
 function PlayStoryButton({ storyId, title }: { storyId: string; title: string }) {
@@ -1077,237 +1069,6 @@ function actionButtonStyle(kind: 'primary' | 'success' | 'danger' | 'muted' = 'm
   }
 }
 
-function StoryReviewCard({
-  story,
-  onEditClick,
-  onDelete,
-  onApproveForLater,
-  onReject,
-  onMoveToReview,
-  onPublish,
-  onUnpublish,
-}: {
-  story: Story
-  onEditClick: (s: Story) => void
-  onDelete: (id: string) => void
-  onApproveForLater: (story: Story) => void
-  onReject: (story: Story) => void
-  onMoveToReview: (story: Story) => void
-  onPublish: (story: Story) => void
-  onUnpublish: (story: Story) => void
-}) {
-  const isSeriesEpisode = hasRealSeriesRelationship(story)
-  const rawSeriesName = String(story.series_name || '').trim()
-  const seriesTitle = rawSeriesName && rawSeriesName.toLowerCase() !== 'none' ? rawSeriesName : ''
-
-  function handleDeleteClick(e: React.MouseEvent<HTMLButtonElement>) {
-    e.stopPropagation()
-    if (!window.confirm(`Delete "${story.title}"?\n\nThis will permanently delete this published story and its related progress/review records.`)) return
-    onDelete(story.id)
-  }
-
-  return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'center', padding: '14px 16px', border: `1px solid ${border}`, borderRadius: '8px', backgroundColor: '#ffffff' }}>
-      <div
-        onClick={() => onEditClick(story)}
-        title="Click to edit"
-        style={{ width: 'clamp(180px, 16vw, 220px)', height: 'clamp(180px, 16vw, 220px)', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#e5e5e5', cursor: 'pointer', border: `1px solid ${border}`, flexShrink: 0, boxShadow: '0 10px 24px rgba(15,23,42,0.12)' }}
-      >
-        <img src={story.cover_url || '/images/default-cover.png'} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-      </div>
-      <div style={{ minWidth: '260px', flex: '1 1 420px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-          <div style={{ color: textPrimary, fontWeight: 900, fontSize: '28px', lineHeight: 1.08 }}>{story.title}</div>
-          <StoryVisibilityBadges story={story} />
-        </div>
-        {story.episode_title && <div style={{ color: textSecondary, fontSize: '16px', fontStyle: 'italic', marginTop: '5px' }}>{story.episode_title}</div>}
-        <div style={{ color: textSecondary, fontSize: '15px', marginTop: '8px', lineHeight: 1.35, fontWeight: 600 }}>
-          {isSeriesEpisode ? `${seriesTitle || 'Series'} · Episode ${story.episode_number}` : 'Standalone'} · by {story.author || 'Unknown'} · {story.genre || 'No genre'} · {story.duration_mins || 0}m
-        </div>
-        {story.description && <div style={{ color: '#374151', fontSize: '14px', marginTop: '8px', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' } as React.CSSProperties}>{story.description}</div>}
-        <div style={{ color: textSecondary, fontSize: '13px', marginTop: '8px', lineHeight: 1.35 }}>
-          Created {story.created_at ? new Date(story.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'unknown'} · Plays {story.downloads_total || 0} · Finish {story.pct_finished || 0}%
-        </div>
-        {story.approval_entry_reason && (
-          <div style={{ color: '#374151', fontSize: '12px', marginTop: '8px', lineHeight: 1.35 }}>
-            {story.approval_entry_reason}
-          </div>
-        )}
-        {Boolean(story.approval_blocking_reasons?.length) && (
-          <div style={{ color: '#7f1d1d', fontSize: '12px', marginTop: '8px', lineHeight: 1.35 }}>
-            Blocked: {story.approval_blocking_reasons!.slice(0, 3).join('; ')}
-            {story.approval_blocking_reasons!.length > 3 ? `; +${story.approval_blocking_reasons!.length - 3} more` : ''}
-          </div>
-        )}
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'stretch', marginLeft: 'auto', minWidth: '132px' }}>
-        <PlayStoryButton storyId={story.id} title={story.title} />
-        <button onClick={() => onEditClick(story)} style={actionButtonStyle('muted')}>Edit</button>
-        {isReviewReady(story) && <button onClick={() => onApproveForLater(story)} style={actionButtonStyle('success')}>Approve for Later</button>}
-        {isReviewReady(story) && <button onClick={() => onPublish(story)} style={actionButtonStyle('primary')}>Publish Now</button>}
-        {(isReviewReady(story) || isApprovedReady(story)) && <button onClick={() => onReject(story)} style={actionButtonStyle('danger')}>Not Approved</button>}
-        {(isApprovedReady(story) || isNotApproved(story)) && <button onClick={() => onMoveToReview(story)} style={actionButtonStyle('muted')}>Move to Review</button>}
-        {isApprovedReady(story) && <button onClick={() => onPublish(story)} style={actionButtonStyle('primary')}>Publish to App</button>}
-        {isPublishedToApp(story) && <button onClick={() => onUnpublish(story)} style={actionButtonStyle('danger')}>Unpublish</button>}
-        <button onClick={handleDeleteClick} style={{ ...actionButtonStyle('muted'), color: '#dc2626' }}>Delete</button>
-      </div>
-    </div>
-  )
-}
-
-function EpisodeReviewRow({
-  story,
-  onEditClick,
-  onApproveForLater,
-  onReject,
-  onMoveToReview,
-  onPublish,
-  onUnpublish,
-}: {
-  story: Story
-  onEditClick: (s: Story) => void
-  onApproveForLater: (story: Story) => void
-  onReject: (story: Story) => void
-  onMoveToReview: (story: Story) => void
-  onPublish: (story: Story) => void
-  onUnpublish: (story: Story) => void
-}) {
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: '56px minmax(0, 1fr) auto', gap: '10px', alignItems: 'center', padding: '10px', border: `1px solid ${border}`, borderRadius: '8px', backgroundColor: '#ffffff' }}>
-      <div style={{ textAlign: 'center' }}>
-        <div style={{ color: '#1d4ed8', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Episode</div>
-        <div style={{ color: textPrimary, fontSize: '20px', fontWeight: 900 }}>{story.episode_number || '-'}</div>
-      </div>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-          <div style={{ color: textPrimary, fontWeight: 800, fontSize: '14px', lineHeight: 1.2 }}>{story.episode_title || story.title}</div>
-          <StoryVisibilityBadges story={story} />
-        </div>
-        <div style={{ color: textSecondary, fontSize: '12px', marginTop: '4px' }}>
-          {story.duration_mins || 0}m · {story.genre || 'No genre'} · {story.author || 'Unknown'}
-        </div>
-        <div style={{ color: '#374151', fontSize: '11px', marginTop: '4px', lineHeight: 1.35 }}>
-          Audio {story.audio_ready ? 'ready' : 'missing'} · Story audio {story.story_audio_ready ? 'ready' : 'missing'} · Cover {story.cover_ready ? 'ready' : 'missing'} · Prose {story.prose_ready ? 'ready' : 'missing'}
-        </div>
-        {Boolean(story.approval_blocking_reasons?.length) && (
-          <div style={{ color: '#7f1d1d', fontSize: '11px', marginTop: '4px', lineHeight: 1.35 }}>
-            Blocked: {story.approval_blocking_reasons!.slice(0, 2).join('; ')}
-            {story.approval_blocking_reasons!.length > 2 ? `; +${story.approval_blocking_reasons!.length - 2} more` : ''}
-          </div>
-        )}
-      </div>
-      <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-        <PlayStoryButton storyId={story.id} title={story.title} />
-        <button onClick={() => onEditClick(story)} style={actionButtonStyle('muted')}>Edit</button>
-        {isReviewReady(story) && <button onClick={() => onApproveForLater(story)} style={actionButtonStyle('success')}>Approve</button>}
-        {isReviewReady(story) && <button onClick={() => onPublish(story)} style={actionButtonStyle('primary')}>Publish Now</button>}
-        {(isReviewReady(story) || isApprovedReady(story)) && <button onClick={() => onReject(story)} style={actionButtonStyle('danger')}>Not Approved</button>}
-        {(isApprovedReady(story) || isNotApproved(story)) && <button onClick={() => onMoveToReview(story)} style={actionButtonStyle('muted')}>Move to Review</button>}
-        {isApprovedReady(story) && <button onClick={() => onPublish(story)} style={actionButtonStyle('primary')}>Publish</button>}
-        {isPublishedToApp(story) && <button onClick={() => onUnpublish(story)} style={actionButtonStyle('danger')}>Unpublish</button>}
-      </div>
-    </div>
-  )
-}
-
-function SeriesReviewGroup({
-  group,
-  expanded,
-  onToggle,
-  onArchiveSeries,
-  onEditClick,
-  onDelete,
-  onApproveForLater,
-  onReject,
-  onMoveToReview,
-  onPublish,
-  onUnpublish,
-}: {
-  group: Extract<StoryGroup, { type: 'series' }>
-  expanded: boolean
-  onToggle: () => void
-  onArchiveSeries: (group: Extract<StoryGroup, { type: 'series' }>) => void
-  onEditClick: (s: Story) => void
-  onDelete: (id: string) => void
-  onApproveForLater: (story: Story) => void
-  onReject: (story: Story) => void
-  onMoveToReview: (story: Story) => void
-  onPublish: (story: Story) => void
-  onUnpublish: (story: Story) => void
-}) {
-  const first = group.stories[0]
-  const approvedCount = group.stories.filter(isApprovedReady).length
-  const publishedCount = group.stories.filter(isPublishedToApp).length
-  const readyCount = group.stories.filter((story) => story.approval_ready).length
-  const notApprovedCount = group.stories.filter(isNotApproved).length
-  const blockedCount = group.stories.filter((story) => !story.approval_ready).length
-  const missingAudioCount = group.stories.filter((story) => !story.audio_ready && !story.story_audio_ready).length
-  const missingPackagingCount = group.stories.filter((story) => !story.cover_ready || !story.prose_ready || !story.author_ready || !story.narrator_voice_ready).length
-  const statusBlockedCount = group.stories.filter((story) => story.approval_blocking_reasons?.some((reason) => reason.startsWith('status is'))).length
-  const renderedCount = group.stories.filter((story) => story.audio_ready || story.story_audio_ready).length
-  const expected = group.expectedEpisodeCount || group.stories[0]?.expected_episode_count || group.stories.length
-  const present = group.presentEpisodeCount || group.stories[0]?.present_episode_count || group.stories.length
-  const missing = group.missingEpisodes || []
-  const blockedExplanation = blockedCount > 0
-    ? seriesBlockedExplanation(group.title, renderedCount, expected, missingAudioCount, missingPackagingCount, statusBlockedCount, notApprovedCount)
-    : ''
-
-  return (
-    <div style={{ border: `1px solid ${border}`, borderRadius: '10px', backgroundColor: '#ffffff', overflow: 'hidden' }}>
-      <div style={{ width: '100%', display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'center', padding: '14px 16px', backgroundColor: '#ffffff' }}>
-        <div style={{ width: 'clamp(180px, 16vw, 220px)', height: 'clamp(180px, 16vw, 220px)', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#e5e5e5', border: `1px solid ${border}`, flexShrink: 0, boxShadow: '0 10px 24px rgba(15,23,42,0.12)' }}>
-          <img src={first?.cover_url || '/images/default-cover.png'} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-        </div>
-        <button type="button" onClick={onToggle} style={{ minWidth: '260px', flex: '1 1 420px', background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left' }}>
-          <div style={{ color: '#1d4ed8', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Series</div>
-          <div style={{ color: textPrimary, fontWeight: 900, fontSize: '28px', lineHeight: 1.08 }}>{group.title}</div>
-          <div style={{ color: textSecondary, fontSize: '15px', marginTop: '8px', lineHeight: 1.35, fontWeight: 600 }}>
-            {expected} total episodes · {present} present · {first?.genre || 'No genre'} · by {first?.author || 'Unknown'}
-          </div>
-        </button>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '7px', alignItems: 'stretch', marginLeft: 'auto', minWidth: '160px' }}>
-          <button type="button" onClick={onToggle} style={actionButtonStyle('muted')}>{expanded ? 'Collapse' : 'Expand'}</button>
-          <button type="button" onClick={() => onArchiveSeries(group)} style={actionButtonStyle('danger')}>
-            {publishedCount > 0 ? 'Unpublish / Archive Series' : 'Archive Series'}
-          </button>
-        </div>
-      </div>
-      <SeriesReadinessSummary
-        title={group.title}
-        expected={expected}
-        present={present}
-        readyCount={readyCount}
-        notApprovedCount={notApprovedCount}
-        blockedCount={blockedCount}
-        missing={missing}
-        renderedCount={renderedCount}
-        missingPackagingCount={missingPackagingCount}
-        missingAudioCount={missingAudioCount}
-        approvedCount={approvedCount}
-        publishedCount={publishedCount}
-        blockedExplanation={blockedExplanation}
-        approvalBlockingReasons={group.approvalBlockingReasons}
-      />
-      {expanded && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '0 14px 14px 14px', backgroundColor: '#f8fafc' }}>
-          {group.stories.map((story) => (
-            <EpisodeReviewRow
-              key={story.id}
-              story={story}
-              onEditClick={onEditClick}
-              onApproveForLater={onApproveForLater}
-              onReject={onReject}
-              onMoveToReview={onMoveToReview}
-              onPublish={onPublish}
-              onUnpublish={onUnpublish}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function AdminStoriesPage() {
@@ -1319,6 +1080,7 @@ export default function AdminStoriesPage() {
   const [genreFilter, setGenreFilter] = useState('All')
   const [viewMode, setViewMode] = useState<'all' | 'series' | 'standalone'>('all')
   const [activeTab, setActiveTab] = useState<ReviewTab>('review')
+  const [selectedGroupKey, setSelectedGroupKey] = useState<string | null>(null)
   const [expandedSeries, setExpandedSeries] = useState<Record<string, boolean>>({})
   const [editingStory, setEditingStory] = useState<Story | null>(null)
   const editingStoryRef = useRef<Story | null>(null)
@@ -1480,14 +1242,14 @@ export default function AdminStoriesPage() {
     await fetchStories()
   }
 
-  async function archiveSeries(group: Extract<StoryGroup, { type: 'series' }>) {
+  async function moveSeriesToColdStorage(group: Extract<StoryGroup, { type: 'series' }>) {
     const seriesId = String(group.stories[0]?.series_id || '').trim()
     if (!seriesId) return
 
     const hasPublishedEpisode = group.stories.some(isPublishedToApp)
     const warning = hasPublishedEpisode
-      ? `Unpublish and archive the entire series "${group.title}"?\n\nThis will remove all published episodes from the public app and move every episode to Not Approved. No files or story rows will be deleted.`
-      : `Archive the entire series "${group.title}" from the review workflow?\n\nThis will move every episode to Not Approved. No files or story rows will be deleted.`
+      ? `Move the entire series "${group.title}" to Cold Storage?\n\nThis will remove published episodes from the public app and hold every episode outside review. No files or story rows will be deleted.`
+      : `Move the entire series "${group.title}" to Cold Storage?\n\nThis will hold every episode outside review. No files or story rows will be deleted.`
 
     if (!window.confirm(warning)) return
 
@@ -1498,12 +1260,12 @@ export default function AdminStoriesPage() {
           published_on: null,
           review_status: 'not_approved',
           reviewed_at: new Date().toISOString(),
-          review_notes: 'Unpublished and archived from admin review workflow',
+          review_notes: 'Moved to Cold Storage from admin review workflow',
         }
       : {
           review_status: 'not_approved',
           reviewed_at: new Date().toISOString(),
-          review_notes: 'Archived from admin review workflow',
+          review_notes: 'Moved to Cold Storage from admin review workflow',
         }
 
     const { error } = await supabase
@@ -1512,7 +1274,7 @@ export default function AdminStoriesPage() {
       .eq('series_id', seriesId)
 
     if (error) {
-      alert(`Series archive failed: ${error.message}`)
+      alert(`Move to Cold Storage failed: ${error.message}`)
       return
     }
 
@@ -1603,6 +1365,12 @@ export default function AdminStoriesPage() {
       (viewMode === 'standalone' && group.type === 'standalone')
     return matchesSearch && matchesGenre && matchesView && groupMatchesTab(group, activeTab)
   })
+  const selectedGroup = groupedStories.find((group) => group.key === selectedGroupKey) || groupedStories[0] || null
+  useEffect(() => {
+    if (selectedGroupKey && groupedStories.some((group) => group.key === selectedGroupKey)) return
+    setSelectedGroupKey(groupedStories[0]?.key || null)
+  }, [selectedGroupKey, groupedStories.map((group) => group.key).join('|')])
+
   const visibleStories = groupedStories.flatMap((group) => group.type === 'series' ? group.stories : [group.story])
   const seriesEpisodeCount = visibleStories.filter(s => hasRealSeriesRelationship(s)).length
   const standaloneCount = visibleStories.length - seriesEpisodeCount
@@ -1616,6 +1384,21 @@ export default function AdminStoriesPage() {
     counts[tab.id] = groupsFromReadiness.filter((group) => groupMatchesTab(group, tab.id)).length
     return counts
   }, {} as Record<ReviewTab, number>)
+  const workflowCards: Array<{ key: string; label: string; sub: string; count: number; color: string; soft: string; tab: ReviewTab }> = [
+    { key: 'review', label: 'Review Queue', sub: 'Ready for review', count: tabCounts.review || 0, color: '#f97316', soft: '#fff7ed', tab: 'review' },
+    { key: 'approved', label: 'Approved', sub: 'Ready to publish', count: tabCounts.approved || 0, color: '#16a34a', soft: '#ecfdf5', tab: 'approved' },
+    { key: 'repair', label: 'Repair Queue', sub: 'Needs attention', count: tabCounts.not_approved || 0, color: '#f97316', soft: '#fff7ed', tab: 'not_approved' },
+    { key: 'being_repaired', label: 'Being Repaired', sub: 'In progress', count: 0, color: '#3b82f6', soft: '#eff6ff', tab: 'not_approved' },
+    { key: 'cold_storage', label: 'Cold Storage', sub: 'Not moving forward', count: tabCounts.not_approved || 0, color: '#8b5cf6', soft: '#f5f3ff', tab: 'not_approved' },
+    { key: 'published', label: 'Published', sub: 'Live in app', count: tabCounts.published || 0, color: '#2563eb', soft: '#eff6ff', tab: 'published' },
+  ]
+  const pipelineCards = [...workflowCards, { key: 'all', label: 'All Stories', sub: 'All content', count: groupsFromReadiness.length, color: '#64748b', soft: '#f8fafc', tab: activeTab }]
+  const selectedStories = selectedGroup ? (selectedGroup.type === 'series' ? selectedGroup.stories : [selectedGroup.story]) : []
+  const selectedFirst = selectedStories[0]
+  const selectedTitle = selectedGroup?.type === 'series' ? selectedGroup.title : selectedFirst?.title || ''
+  const selectedExpected = selectedGroup?.type === 'series' ? selectedGroup.expectedEpisodeCount || selectedFirst?.expected_episode_count || selectedStories.length : selectedStories.length
+  const selectedPresent = selectedGroup?.type === 'series' ? selectedGroup.presentEpisodeCount || selectedFirst?.present_episode_count || selectedStories.length : selectedStories.length
+  const selectedTotalMinutes = selectedStories.reduce((sum, story) => sum + (story.duration_mins || 0), 0)
 
   if (loading) return (
     <div style={{ minHeight: '100vh', backgroundColor: bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1625,15 +1408,22 @@ export default function AdminStoriesPage() {
   )
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: bg, padding: '1rem' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: '#f3f4f6', padding: '24px 28px', color: '#111827' }}>
+      <style dangerouslySetInnerHTML={{ __html: `
+        @media (max-width: 980px) {
+          .approval-preview-panels { grid-template-columns: 1fr !important; }
+          .approval-preview-stats { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+          .approval-preview-pipeline { overflow-x: auto !important; }
+        }
+      ` }} />
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px' }}>
         <div>
-          <h1 style={{ fontSize: '22px', fontWeight: 'bold', color: textPrimary, margin: 0 }}>
-            Content Approval ({totalStories})
+          <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 900, letterSpacing: '-0.01em', color: '#111827' }}>
+            Content Approval & Workflow
           </h1>
-          <p style={{ color: textSecondary, fontSize: '13px', margin: '4px 0 0 0' }}>
-            {seriesEpisodeCount} series episodes · {standaloneCount} standalone · {totalDownloads} total downloads · {avgCompletion}% avg completion
+          <p style={{ margin: '5px 0 0 0', color: '#6b7280', fontSize: '13px', fontWeight: 600 }}>
+            Manage the complete content lifecycle from review to publication
           </p>
         </div>
         {activeTab === 'approved' && (
@@ -1643,94 +1433,177 @@ export default function AdminStoriesPage() {
         )}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '0.75rem', marginBottom: '1rem' }}>
-        {tabOptions.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            style={{
-              padding: '0.9rem',
-              borderRadius: '8px',
-              border: `1px solid ${activeTab === tab.id ? '#f97316' : border}`,
-              backgroundColor: activeTab === tab.id ? '#fff7ed' : '#ffffff',
-              cursor: 'pointer',
-              textAlign: 'left',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'center' }}>
-              <span style={{ color: textPrimary, fontSize: '13px', fontWeight: 800 }}>{tab.label}</span>
-              <span style={{ color: activeTab === tab.id ? '#f97316' : textSecondary, fontSize: '18px', fontWeight: 900 }}>{tabCounts[tab.id] || 0}</span>
-            </div>
-            <div style={{ color: textSecondary, fontSize: '11px', lineHeight: 1.35, marginTop: '5px' }}>{tab.description}</div>
-          </button>
-        ))}
+      <div className="approval-preview-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0, 1fr))', gap: '12px', marginTop: '20px' }}>
+        {workflowCards.map((item) => {
+          const active = activeTab === item.tab
+          return (
+            <button key={item.key} type="button" onClick={() => setActiveTab(item.tab)} style={{ minHeight: '92px', padding: '14px', borderRadius: '10px', border: `1px solid ${active ? item.color : '#e5e7eb'}`, backgroundColor: '#ffffff', boxShadow: active ? `0 8px 22px ${item.color}22` : '0 1px 3px rgba(15,23,42,0.08)', cursor: 'pointer', textAlign: 'left' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ width: '34px', height: '34px', borderRadius: '10px', backgroundColor: item.soft, color: item.color, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900 }}>{item.label[0]}</span>
+                <span style={{ color: '#111827', fontSize: '25px', fontWeight: 900, lineHeight: 1 }}>{item.count}</span>
+              </div>
+              <div style={{ marginTop: '9px', color: '#111827', fontSize: '12px', fontWeight: 900 }}>{item.label}</div>
+              <div style={{ marginTop: '2px', color: '#6b7280', fontSize: '10px', fontWeight: 600 }}>{item.sub}</div>
+            </button>
+          )
+        })}
       </div>
 
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
+      <section style={{ marginTop: '16px', borderRadius: '10px', backgroundColor: '#ffffff', border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(15,23,42,0.08)', padding: '12px 14px' }}>
+        <div style={{ color: '#374151', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '9px' }}>Workflow Pipeline</div>
+        <div className="approval-preview-pipeline" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {pipelineCards.map((item, index) => (
+            <Fragment key={item.key}>
+              <button type="button" onClick={() => item.key !== 'all' ? setActiveTab(item.tab) : undefined} style={{ minWidth: '114px', padding: '9px 10px', borderRadius: '9px', border: `1px solid ${activeTab === item.tab && item.key !== 'all' ? item.color : '#e5e7eb'}`, backgroundColor: '#ffffff', cursor: item.key === 'all' ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                <span style={{ minWidth: 0 }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#111827', fontSize: '10px', fontWeight: 900 }}>
+                    <span style={{ width: '8px', height: '8px', borderRadius: '999px', backgroundColor: item.color, flex: '0 0 auto' }} />
+                    {item.label}
+                  </span>
+                  <span style={{ display: 'block', paddingLeft: '14px', color: '#6b7280', fontSize: '8px', fontWeight: 700, marginTop: '3px' }}>{item.sub}</span>
+                </span>
+                <span style={{ width: '20px', height: '20px', borderRadius: '999px', backgroundColor: `${item.color}18`, color: item.color, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 900 }}>{item.count}</span>
+              </button>
+              {index < pipelineCards.length - 1 && <span style={{ color: '#d1d5db', fontSize: '18px' }}>›</span>}
+            </Fragment>
+          ))}
+        </div>
+      </section>
+
+      <div style={{ display: 'flex', gap: '10px', marginTop: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
         <input
           type="text"
           placeholder="Search title, author, or series..."
           value={search}
           onChange={e => setSearch(e.target.value)}
-          style={{ padding: '0.5rem 0.75rem', borderRadius: '6px', border: `1px solid ${border}`, flex: 1, minWidth: '200px', color: '#000000', backgroundColor: '#ffffff', fontSize: '14px' }}
+          style={{ height: '36px', padding: '0 12px', borderRadius: '8px', border: '1px solid #e5e7eb', flex: '1 1 280px', color: '#111827', backgroundColor: '#ffffff', fontSize: '13px' }}
         />
-        <select value={genreFilter} onChange={e => setGenreFilter(e.target.value)} style={{ padding: '0.5rem 0.75rem', borderRadius: '6px', border: `1px solid ${border}`, color: '#000000', backgroundColor: '#ffffff', fontSize: '14px' }}>
+        <select value={genreFilter} onChange={e => setGenreFilter(e.target.value)} style={{ height: '36px', padding: '0 12px', borderRadius: '8px', border: '1px solid #e5e7eb', color: '#111827', backgroundColor: '#ffffff', fontSize: '13px' }}>
           {genreNames.map(g => <option key={g} value={g}>{g}</option>)}
         </select>
-      </div>
-      {/* View toggle */}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
         {(['all', 'series', 'standalone'] as const).map(mode => (
-          <button key={mode} onClick={() => setViewMode(mode)} style={{ padding: '0.4rem 0.9rem', borderRadius: '6px', border: `1px solid ${border}`, backgroundColor: viewMode === mode ? '#1a1a1a' : '#ffffff', color: viewMode === mode ? '#ffffff' : '#000000', fontSize: '13px', fontWeight: viewMode === mode ? 700 : 400, cursor: 'pointer', textTransform: 'capitalize' }}>
-            {mode === 'all' ? '📋 All' : mode === 'series' ? '📺 Series' : '🎯 Standalone'}
+          <button key={mode} onClick={() => setViewMode(mode)} style={{ height: '36px', padding: '0 12px', borderRadius: '8px', border: '1px solid #e5e7eb', backgroundColor: viewMode === mode ? '#111827' : '#ffffff', color: viewMode === mode ? '#ffffff' : '#111827', fontSize: '12px', fontWeight: 800, cursor: 'pointer', textTransform: 'capitalize' }}>
+            {mode}
           </button>
         ))}
-        <div style={{ marginLeft: 'auto', padding: '0.4rem 0.75rem', fontSize: '12px', color: textSecondary }}>
-          {visibleStories.length} episodes/stories · {groupedStories.length} top-level cards
-        </div>
       </div>
 
-      {/* Review cards */}
-      <div style={{ backgroundColor: cardBg, borderRadius: '12px', border: `1px solid ${border}`, padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        {groupedStories.map((group) => {
-          if (group.type === 'standalone') {
-            return (
-              <StoryReviewCard
-                key={group.key}
-                story={group.story}
-                onEditClick={s => { editingStoryRef.current = s; setEditingStory(s) }}
-                onDelete={deleteStory}
-                onApproveForLater={(story) => setReviewStatus(story, 'approved')}
-                onReject={(story) => setReviewStatus(story, 'not_approved')}
-                onMoveToReview={moveToReview}
-                onPublish={publishStory}
-                onUnpublish={unpublishStory}
-              />
-            )
-          }
-          return (
-            <SeriesReviewGroup
-              key={group.key}
-              group={group}
-              expanded={Boolean(expandedSeries[group.key])}
-              onToggle={() => setExpandedSeries(prev => ({ ...prev, [group.key]: !prev[group.key] }))}
-              onArchiveSeries={archiveSeries}
-              onEditClick={s => { editingStoryRef.current = s; setEditingStory(s) }}
-              onDelete={deleteStory}
-              onApproveForLater={(story) => setReviewStatus(story, 'approved')}
-              onReject={(story) => setReviewStatus(story, 'not_approved')}
-              onMoveToReview={moveToReview}
-              onPublish={publishStory}
-              onUnpublish={unpublishStory}
-            />
-          )
-        })}
-        {groupedStories.length === 0 && (
-          <div style={{ padding: '3rem', textAlign: 'center', color: textSecondary }}>
-            No stories found matching this review section.
+      <div className="approval-preview-panels" style={{ display: 'grid', gridTemplateColumns: '340px minmax(0, 1fr)', gap: '16px', alignItems: 'start', marginTop: '16px' }}>
+        <aside style={{ borderRadius: '10px', backgroundColor: '#ffffff', border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(15,23,42,0.08)', padding: '14px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <div style={{ color: '#111827', fontSize: '12px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Series ({groupedStories.length})</div>
+            <div style={{ color: '#6b7280', fontSize: '10px', fontWeight: 700 }}>{visibleStories.length} episodes</div>
           </div>
-        )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {groupedStories.map((group) => {
+              const groupStories = group.type === 'series' ? group.stories : [group.story]
+              const firstStory = groupStories[0]
+              const groupTitle = group.type === 'series' ? group.title : group.story.title
+              const expected = group.type === 'series' ? group.expectedEpisodeCount || firstStory?.expected_episode_count || groupStories.length : groupStories.length
+              const present = group.type === 'series' ? group.presentEpisodeCount || firstStory?.present_episode_count || groupStories.length : groupStories.length
+              const selected = selectedGroup?.key === group.key
+              const currentCount = groupStories.filter((story) => storyBelongsInTab(story, activeTab)).length
+              return (
+                <button key={group.key} type="button" onClick={() => setSelectedGroupKey(group.key)} style={{ minHeight: '66px', width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '8px', borderRadius: '8px', border: `1px solid ${selected ? '#fed7aa' : '#f3f4f6'}`, borderLeft: selected ? '3px solid #f97316' : '3px solid transparent', backgroundColor: selected ? '#fff7ed' : '#ffffff', cursor: 'pointer', textAlign: 'left' }}>
+                  <div style={{ width: '48px', height: '48px', borderRadius: '7px', overflow: 'hidden', backgroundColor: '#e5e7eb', flex: '0 0 auto' }}>
+                    <img src={firstStory?.cover_url || '/images/default-cover.png'} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                  <div style={{ minWidth: 0, flex: '1 1 auto' }}>
+                    <div style={{ color: '#111827', fontSize: '13px', fontWeight: 900, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{groupTitle}</div>
+                    <div style={{ color: '#6b7280', fontSize: '10px', marginTop: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{firstStory?.genre || 'No genre'} · {firstStory?.author || 'Unknown'}</div>
+                    <div style={{ color: '#9ca3af', fontSize: '10px', marginTop: '3px' }}>{expected} episodes · {present} present</div>
+                  </div>
+                  <span style={{ width: '24px', height: '24px', borderRadius: '999px', backgroundColor: currentCount > 0 ? '#f97316' : '#f3f4f6', color: currentCount > 0 ? '#ffffff' : '#6b7280', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 900 }}>{currentCount}</span>
+                </button>
+              )
+            })}
+            {groupedStories.length === 0 && <div style={{ padding: '30px 8px', textAlign: 'center', color: '#9ca3af', fontSize: '12px' }}>No series match this filter.</div>}
+          </div>
+        </aside>
+
+        <main style={{ borderRadius: '10px', backgroundColor: '#ffffff', border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(15,23,42,0.08)', padding: '16px', minWidth: 0 }}>
+          {!selectedGroup || !selectedFirst ? (
+            <div style={{ minHeight: '360px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', fontSize: '13px' }}>Select a series to view episodes</div>
+          ) : (
+            <>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
+                <div style={{ width: '112px', height: '78px', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#e5e7eb', flex: '0 0 auto' }}>
+                  <img src={selectedFirst.cover_url || '/images/default-cover.png'} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                </div>
+                <div style={{ minWidth: 0, flex: '1 1 auto' }}>
+                  <div style={{ color: '#111827', fontSize: '21px', fontWeight: 900, lineHeight: 1.12 }}>{selectedTitle}</div>
+                  <div style={{ marginTop: '6px', color: '#6b7280', fontSize: '12px', fontWeight: 700 }}>{selectedFirst.genre || 'No genre'} · by {selectedFirst.author || 'Unknown'}</div>
+                  <div style={{ marginTop: '4px', color: '#9ca3af', fontSize: '11px' }}>{selectedExpected} total episodes · {selectedPresent} present</div>
+                </div>
+                <button type="button" onClick={() => { editingStoryRef.current = selectedFirst; setEditingStory(selectedFirst) }} style={{ height: '32px', padding: '0 12px', borderRadius: '7px', border: '1px solid #e5e7eb', backgroundColor: '#ffffff', color: '#374151', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}>
+                  Edit Packaging
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginTop: '20px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <span style={{ color: '#374151', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase' }}>Episodes in this series</span>
+                  <span style={{ color: '#047857', fontSize: '10px', borderRadius: '999px', padding: '4px 8px', backgroundColor: '#ecfdf5', fontWeight: 800 }}>Total {selectedStories.length}</span>
+                  <span style={{ color: '#374151', fontSize: '10px', borderRadius: '999px', padding: '4px 8px', backgroundColor: '#f3f4f6', fontWeight: 800 }}>{selectedTotalMinutes}m total audio</span>
+                  <span style={{ color: '#047857', fontSize: '10px', borderRadius: '999px', padding: '4px 8px', backgroundColor: '#ecfdf5', fontWeight: 800 }}>{selectedPresent} present</span>
+                </div>
+              </div>
+
+              <div style={{ marginTop: '10px', overflowX: 'auto', border: '1px solid #f3f4f6', borderRadius: '10px' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+                  <colgroup>
+                    <col style={{ width: '9%' }} />
+                    <col style={{ width: '26%' }} />
+                    <col style={{ width: '18%' }} />
+                    <col style={{ width: '11%' }} />
+                    <col style={{ width: '20%' }} />
+                    <col style={{ width: '16%' }} />
+                  </colgroup>
+                  <thead>
+                    <tr style={{ height: '38px', backgroundColor: '#f9fafb' }}>
+                      {['Episode', 'Title', 'Narrator', 'Duration', 'Workflow State', 'Actions'].map((head) => (
+                        <th key={head} style={{ padding: '0 10px', color: '#6b7280', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', textAlign: head === 'Actions' ? 'right' : 'left' }}>{head}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedStories.map((story) => {
+                      const label = approvalStatusLabel(story)
+                      const isReady = isReviewReady(story) || story.approval_ready
+                      const statusColor = isPublishedToApp(story) ? ['#dbeafe', '#1d4ed8'] : isApprovedReady(story) ? ['#dcfce7', '#166534'] : isNotApproved(story) ? ['#f5f3ff', '#6d28d9'] : isReady ? ['#fff7ed', '#c2410c'] : ['#f3f4f6', '#374151']
+                      return (
+                        <tr key={story.id} style={{ height: '62px', borderTop: '1px solid #f3f4f6' }}>
+                          <td style={{ padding: '10px', color: '#111827', fontSize: '18px', fontWeight: 900 }}>{story.episode_number || '-'}</td>
+                          <td style={{ padding: '10px', minWidth: 0 }}>
+                            <div style={{ color: '#111827', fontSize: '13px', fontWeight: 900, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{story.episode_title || story.title}</div>
+                            <div style={{ color: '#9ca3af', fontSize: '10px', marginTop: '4px' }}>Episode {story.episode_number || '-'}</div>
+                          </td>
+                          <td style={{ padding: '10px', color: '#374151', fontSize: '12px', fontWeight: 700 }}>{story.narrator_voice_ready ? 'Assigned' : 'Unassigned'}</td>
+                          <td style={{ padding: '10px', color: '#374151', fontSize: '12px', fontWeight: 700 }}>{story.duration_mins ? `${story.duration_mins}m` : '-'}</td>
+                          <td style={{ padding: '10px' }}>
+                            <span style={{ display: 'inline-flex', borderRadius: '999px', padding: '5px 9px', backgroundColor: statusColor[0], color: statusColor[1], fontSize: '10px', fontWeight: 900 }}>{label}</span>
+                            <div style={{ marginTop: '4px', color: '#9ca3af', fontSize: '9px' }}>{story.approval_ready ? 'Ready' : story.approval_blocking_reasons?.[0] || 'Needs review'}</div>
+                          </td>
+                          <td style={{ padding: '10px', textAlign: 'right' }}>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                              {story.audio_url && <PlayStoryButton storyId={story.id} title={story.title} />}
+                              {isReviewReady(story) && <button onClick={() => setReviewStatus(story, 'approved')} style={actionButtonStyle('success')}>Approve</button>}
+                              {isReviewReady(story) && <button onClick={() => publishStory(story)} style={actionButtonStyle('primary')}>Publish</button>}
+                              {(isReviewReady(story) || isApprovedReady(story)) && <button onClick={() => setReviewStatus(story, 'not_approved')} style={actionButtonStyle('danger')}>Hold</button>}
+                              {(isApprovedReady(story) || isNotApproved(story)) && <button onClick={() => moveToReview(story)} style={actionButtonStyle('muted')}>Review</button>}
+                              {isPublishedToApp(story) && <button onClick={() => unpublishStory(story)} style={actionButtonStyle('danger')}>Unpublish</button>}
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div style={{ marginTop: '12px', color: '#9ca3af', fontSize: '10px' }}>Showing 1 to {selectedStories.length} of {selectedStories.length} episodes</div>
+            </>
+          )}
+        </main>
       </div>
 
       {/* Story Editor Panel */}
