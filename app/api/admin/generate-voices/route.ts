@@ -418,6 +418,7 @@ function commonSurnameVariantMatches(expected: string, detected: string): boolea
     ['clarke', 'clark'],
     ['greene', 'green'],
     ['smythe', 'smith'],
+    ['connelly', 'connolly'],  // Fresh Gardenias — identical pronunciation, Whisper spelling variance
   ]
   return groups.some(group => group.includes(expected) && group.includes(detected))
 }
@@ -463,6 +464,10 @@ const HOMOPHONE_PAIRS: ReadonlyArray<readonly [string, string]> = [
   // Both are mechanical ASR false positives; not content mismatches.
   ['noras', 'norris'],
   ['noras', 'norahs'],
+  // Female title variants — Whisper substitutes one title form for another
+  // when referring to a woman. Both "Miss" and "Ms" are female titles;
+  // phonetically near-identical. Fresh Gardenias, Segment 21.
+  ['miss', 'ms'],
 ] as const
 
 function knownHomophoneMatches(expected: string, detected: string): boolean {
