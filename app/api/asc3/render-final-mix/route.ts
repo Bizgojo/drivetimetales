@@ -10,7 +10,25 @@ import { execFile } from 'child_process'
 import { promisify } from 'util'
 
 const _execFileAsync = promisify(execFile)
-const execFileAsync = (cmd: string, args: string[], opts?: any) => _execFileAsync(cmd, args, { maxBuffer: 1024 * 1024 * 100, ...opts })
+const execFileAsync = async (cmd: string, args: string[], opts?: any) => {
+  try {
+    return await _execFileAsync(cmd, args, { maxBuffer: 1024 * 1024 * 100, ...opts })
+  } catch (err: any) {
+    const stderr = err?.stderr ? String(err.stderr) : ''
+    const stdout = err?.stdout ? String(err.stdout) : ''
+    if (!stderr && !stdout) throw err
+
+    const enhanced = new Error([
+      err?.message || String(err),
+      stderr ? `stderr:\n${stderr}` : '',
+      stdout ? `stdout:\n${stdout}` : '',
+    ].filter(Boolean).join('\n'))
+    ;(enhanced as any).stderr = stderr
+    ;(enhanced as any).stdout = stdout
+    ;(enhanced as any).code = err?.code
+    throw enhanced
+  }
+}
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -237,7 +255,14 @@ export async function POST(req: NextRequest) {
       .eq('id', storyId)
       .single()
 
-    const introFile = files.find(f => f.name === 'intro.mp3' || f.name.startsWith('intro_'))
+    // Detect split intro (intro_before_* + intro_after_*) vs single intro file.
+    // Split intros are generated when the script contains a [LISTENER_NAME] placeholder.
+    // The before/after halves must be concatenated in order; missing either half is an error.
+    const introBeforeFile = files.find(f => f.name.startsWith('intro_before_'))
+    const introAfterFile  = files.find(f => f.name.startsWith('intro_after_'))
+    const introSingleFile = files.find(f => f.name === 'intro.mp3' || (f.name.startsWith('intro_') && !f.name.startsWith('intro_before_') && !f.name.startsWith('intro_after_')))
+    const isSplitIntro = !!(introBeforeFile && introAfterFile)
+    const introFile = isSplitIntro ? null : (introSingleFile ?? null)
     const outroFile = files.find(f => f.name === 'outro.mp3' || f.name.startsWith('outro_'))
     const segmentPattern = /^segment_(\d{4})\.mp3$/
     const parsedSegments = files
@@ -271,7 +296,8 @@ export async function POST(req: NextRequest) {
     const segmentFiles = parsedSegments.map(item => item.file)
     const musicFile = files.find(f => f.name === 'background_music.mp3')
 
-    if (!introFile) return NextResponse.json({ success: false, error: 'No intro audio found' }, { status: 400 })
+    if (!isSplitIntro && !introFile) return NextResponse.json({ success: false, error: 'No intro audio found (expected intro.mp3, intro_*.mp3, or intro_before_* + intro_after_* pair)' }, { status: 400 })
+    if (isSplitIntro && (!introBeforeFile || !introAfterFile)) return NextResponse.json({ success: false, error: 'Split intro incomplete: both intro_before_* and intro_after_* are required' }, { status: 400 })
     if (!outroFile) return NextResponse.json({ success: false, error: 'No outro audio found' }, { status: 400 })
     if (segmentFiles.length === 0) return NextResponse.json({ success: false, error: 'No story segments found' }, { status: 400 })
     if (!musicFile) {
@@ -292,7 +318,27 @@ export async function POST(req: NextRequest) {
     const outputPath = path.join(tmpDir, 'final_mix.mp3')
 
     await download(STING_URL, stingPath)
-    await download(`${BASE_STORAGE}/asc3/${storyId}/${introFile.name}`, introPath)
+    // Assemble intro: concatenate split halves (intro_before + intro_after) or use single file.
+    // No loudnorm here — ElevenLabs output is already at consistent levels; single-pass loudnorm
+    // can introduce leading silence artifacts and dynamic gain pumping on short dialogue clips.
+    if (isSplitIntro) {
+      const introBefore = path.join(tmpDir, 'intro_before.mp3')
+      const introAfter  = path.join(tmpDir, 'intro_after.mp3')
+      await download(`${BASE_STORAGE}/asc3/${storyId}/${introBeforeFile!.name}`, introBefore)
+      await download(`${BASE_STORAGE}/asc3/${storyId}/${introAfterFile!.name}`, introAfter)
+      // Reformat to uniform spec then concat — no loudnorm, no level change
+      const introBefore44 = path.join(tmpDir, 'intro_before_44.mp3')
+      const introAfter44  = path.join(tmpDir, 'intro_after_44.mp3')
+      await execFileAsync(FFMPEG_PATH, ['-i', introBefore, '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', introBefore44])
+      await execFileAsync(FFMPEG_PATH, ['-i', introAfter, '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', introAfter44])
+      const splitConcatFile = path.join(tmpDir, 'split_intro.txt')
+      await fs.writeFile(splitConcatFile, `file '${introBefore44}'\nfile '${introAfter44}'`)
+      await execFileAsync(FFMPEG_PATH, ['-f', 'concat', '-safe', '0', '-i', splitConcatFile, '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', introPath])
+      const splitIntroDur = await getAudioDuration(introPath)
+      console.log(`  Assembled split intro: ${introBeforeFile!.name} + ${introAfterFile!.name} → ${splitIntroDur.toFixed(2)}s`)
+    } else {
+      await download(`${BASE_STORAGE}/asc3/${storyId}/${introFile!.name}`, introPath)
+    }
     await download(`${BASE_STORAGE}/asc3/${storyId}/${outroFile.name}`, outroPath)
     await download(`${BASE_STORAGE}/asc3/${storyId}/${musicFile.name}`, musicPath)
 
@@ -372,12 +418,20 @@ export async function POST(req: NextRequest) {
     // Individual generated clips are normalized upstream; this pass keeps
     // cached/older clips and the final story body aligned without changing SFX.
     console.log('  Normalizing voice levels...')
+    // Belle intro/outro: resample-only, NO loudnorm.
+    // Reason: ElevenLabs-generated dialogue is already at consistent output levels.
+    // Single-pass loudnorm on short dialogue clips introduces two defects:
+    //   1. Leading silence artifact (up to ~200ms of near-silence before first word)
+    //   2. Dynamic gain pumping — if integrated loudness is pulled low by inter-sentence pauses,
+    //      the leveler overcorrects and progressively reduces gain through the second sentence,
+    //      making the final credits line inaudible in the mix.
+    // Fix: reformat to 44100 Hz / stereo / 192k only. Volume is preserved as recorded.
     const normalizedIntroPath = path.join(tmpDir, 'norm_intro.mp3')
     const normalizedOutroPath = path.join(tmpDir, 'norm_outro.mp3')
-    await normalizeAudio(introPath, normalizedIntroPath, -16)
-    await normalizeAudio(outroPath, normalizedOutroPath, -16)
-    await logLoudnessDiagnostics('normalized intro', normalizedIntroPath)
-    await logLoudnessDiagnostics('normalized outro', normalizedOutroPath)
+    await execFileAsync(FFMPEG_PATH, ['-i', introPath, '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', normalizedIntroPath])
+    await execFileAsync(FFMPEG_PATH, ['-i', outroPath, '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', normalizedOutroPath])
+    await logLoudnessDiagnostics('resampled intro', normalizedIntroPath)
+    await logLoudnessDiagnostics('resampled outro', normalizedOutroPath)
     
     // Concatenate and normalize all story segments in one pass
     const rawConcatFile = path.join(tmpDir, 'raw_concat.txt')
@@ -439,7 +493,7 @@ export async function POST(req: NextRequest) {
       '-af', 'adelay=2500|2500',
       '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', delayedStoryPath
     ])
-    const storyBodyMixFilter = '[0:a][1:a]amix=inputs=2:duration=longest:normalize=0[mixed]'
+    const storyBodyMixFilter = '[0:a][1:a]amix=inputs=2:duration=longest[mixed]'
     const storyBodyMixArgs = [
       '-i', delayedStoryPath, '-i', shapedMusicPath,
       '-filter_complex', storyBodyMixFilter,
@@ -495,7 +549,6 @@ export async function POST(req: NextRequest) {
     // 2. Last 10 seconds must not be silent (detects truncation or missing outro)
     try {
       const last10Start = Math.max(0, durationSecs - 10)
-      // ffmpeg volumedetect writes results to stderr
       const volResult = await execFileAsync(FFMPEG_PATH, [
         '-ss', String(last10Start), '-i', outputPath,
         '-af', 'volumedetect', '-f', 'null', '-'
@@ -514,6 +567,39 @@ export async function POST(req: NextRequest) {
       }
     } catch (valErr) {
       console.warn('  Post-render silence check failed (non-blocking):', valErr)
+    }
+
+    // 2b. Belle outro vocal-level verification: the outro section must remain audible
+    // through the final credits line. Checks the last (outroDur - 1s) of the final mix
+    // to confirm RMS is above -35 dB (inaudible threshold at normal listening levels).
+    // This catches single-pass loudnorm gain-pumping artifacts and premature master fades.
+    try {
+      const outroDur = await getAudioDuration(normalizedOutroPath)
+      const outroBodyStart = Math.max(0, durationSecs - outroDur + 1) // skip leading second of outro
+      const outroBodyEnd = Math.max(0, durationSecs - 1.5)            // stop 1.5s before file end (trailing silence)
+      if (outroBodyEnd > outroBodyStart) {
+        const outroCheckDur = outroBodyEnd - outroBodyStart
+        const outroVolResult = await execFileAsync(FFMPEG_PATH, [
+          '-ss', String(outroBodyStart), '-t', String(outroCheckDur), '-i', outputPath,
+          '-af', 'volumedetect', '-f', 'null', '-'
+        ]).catch((e: any) => ({ stderr: String(e.stderr || '') }))
+        const outroVolStderr = (outroVolResult as any).stderr || ''
+        const outroMaxMatch = outroVolStderr.match(/max_volume:\s*([-\d.]+)\s*dB/)
+        const outroMeanMatch = outroVolStderr.match(/mean_volume:\s*([-\d.]+)\s*dB/)
+        if (outroMaxMatch && outroMeanMatch) {
+          const outroMaxVol = parseFloat(outroMaxMatch[1])
+          const outroMeanVol = parseFloat(outroMeanMatch[1])
+          console.log(`  ✅ Outro body (t=${outroBodyStart.toFixed(1)}–${outroBodyEnd.toFixed(1)}s): max=${outroMaxVol.toFixed(1)} dB, mean=${outroMeanVol.toFixed(1)} dB`)
+          if (outroMaxVol < -35) {
+            renderValidationIssues.push(
+              `Belle outro vocal fade detected: max_volume in outro body is ${outroMaxVol.toFixed(1)} dB (threshold -35 dB). ` +
+              `Credits line may be inaudible. Check for loudnorm gain pumping or premature master fade.`
+            )
+          }
+        }
+      }
+    } catch (outroValErr) {
+      console.warn('  Post-render outro vocal check failed (non-blocking):', outroValErr)
     }
 
     // 3. Outro file must exist in storage
