@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
 import { logAnthropicCall } from '@/app/lib/anthropic-logger'
 import { buildNamePalettePromptBlock } from '@/lib/story/namePalette'
+import { recordProductionLearningEvent } from '@/lib/productionLearning'
 
 export const runtime = 'nodejs'
 
@@ -5125,6 +5126,24 @@ export async function POST(req: NextRequest) {
 
       try {
         const result = await repairStandaloneBelleQuality(lockedJob, model)
+        await recordProductionLearningEvent(supabase, {
+          job_id: lockedJob.id,
+          story_id: result.storyId,
+          series_id: lockedJob.series_id,
+          series_title: lockedJob.state_json?.seriesTitle || null,
+          episode_title: lockedJob.state_json?.episodeTitle || null,
+          stage: step,
+          failure_type: 'belle_quality',
+          root_cause: 'Belle intro/outro quality validation failed but the bounded repair path produced compliant replacement copy.',
+          fix_applied: [
+            result.report.repairedIntro ? 'Repaired Belle intro' : '',
+            result.report.repairedOutro ? 'Repaired Belle outro' : '',
+          ].filter(Boolean).join('; '),
+          fix_type: 'belle_copy_repair',
+          prevention_rule: 'review:belle_intro_outro_quality',
+          reusable: true,
+          confidence: 0.8,
+        })
         const logs = appendLog(lockedJob, 'Repaired standalone Belle quality text', {
           storyId: result.storyId,
           nextStep: NEXT_STEP_AFTER_STANDALONE_VOICES,

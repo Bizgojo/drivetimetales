@@ -6,6 +6,7 @@ import { promises as fs } from 'fs'
 import path from 'path'
 import os from 'os'
 import { CANONICAL_BELLE_B_VOICE_ID, RESERVED_BELLE_B_VOICE_IDS, isBelleBVoiceId } from '@/lib/voiceConstants'
+import { buildProductionLearningFeedback } from '@/lib/productionLearning'
 
 export const runtime = 'nodejs'
 export const maxDuration = 800
@@ -2353,11 +2354,16 @@ export async function POST(req: NextRequest) {
       sfx: storyLines.filter(l => l.type === 'sfx').length,
       total: storyLines.filter(l => l.type === 'narrator' || l.type === 'character' || l.type === 'beat' || l.type === 'pause').length,
     }
+    const productionLearning = await buildProductionLearningFeedback(supabase, script)
+    const learningBlockingReasons = productionLearning.blockers.map(
+      item => `Production learning rule ${item.id}: ${item.fixApplied || item.rootCause || item.failureType}`
+    )
     if (preflightOnly === true) {
       const blockingReasons = [
         ...(inlineCueProblems.length > 0 ? ['Inline production cues found in spoken story lines'] : []),
         ...missingMetadata.map(field => `Missing required metadata: ${field}`),
         ...(narratorGenderCheck.passed ? [] : [narratorGenderCheck.reason]),
+        ...learningBlockingReasons,
       ]
       return NextResponse.json({
         success: blockingReasons.length === 0,
@@ -2367,6 +2373,7 @@ export async function POST(req: NextRequest) {
         narratorGenderCheck,
         estimatedSegmentCount,
         blockingReasons,
+        productionLearning,
         metadata: {
           missingFields: missingMetadata,
           present: {
@@ -2382,6 +2389,14 @@ export async function POST(req: NextRequest) {
           },
         },
       }, { status: blockingReasons.length === 0 ? 200 : 422 })
+    }
+    if (learningBlockingReasons.length > 0) {
+      return NextResponse.json({
+        success: false,
+        error: 'Production learning preflight blocked voice generation',
+        blockingReasons: learningBlockingReasons,
+        productionLearning,
+      }, { status: 422 })
     }
     console.log(`\n🎙 generate-voices: ${storyId}`)
     console.log(`  Narrative: ${narrativeVoice}, narratorIsCharacter: ${isFirstPerson}`)
