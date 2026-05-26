@@ -94,6 +94,7 @@ type WorkflowLane = 'ready_for_review' | 'repair_shop' | 'approved_ready' | 'col
 type WorkflowFilter = WorkflowLane | 'all'
 type RepairGroup = 'story_script' | 'audio_asc' | 'packaging'
 type RepairChecklistValue = Record<RepairGroup, string[]>
+type RepairIssueDetails = Record<string, { comment: string; remainingTime: string }>
 type StoryGroup =
   | { type: 'standalone'; key: string; story: Story }
   | { type: 'series'; key: string; title: string; stories: Story[]; expectedEpisodeCount?: number; presentEpisodeCount?: number; missingEpisodes?: number[]; approvalReady?: boolean; approvalBlockingReasons?: string[]; sourceJobId?: string | null; completionSortDate?: string | null; completionSortSource?: string | null }
@@ -602,17 +603,27 @@ function isTrueSeriesGroup(group: StoryGroup) {
   return group.type === 'series' && (groupExpectedCount(group) > 1 || groupPresentCount(group) > 1 || group.stories.length > 1)
 }
 
-function PlayStoryButton({ storyId, title }: { storyId: string; title: string }) {
+function approvalReturnUrl(story: Pick<Story, 'id' | 'series_id'>) {
+  const params = new URLSearchParams({ storyId: story.id })
+  if (story.series_id) params.set('seriesId', story.series_id)
+  return `/admin/production/approval?${params.toString()}`
+}
+
+function PlayStoryButton({ story }: { story: Story }) {
   function handleClick(e: React.MouseEvent<HTMLButtonElement>) {
     e.stopPropagation()
-    window.open(`/player/${storyId}`, '_blank', 'noopener,noreferrer')
+    const params = new URLSearchParams({
+      approvalReview: '1',
+      returnUrl: approvalReturnUrl(story),
+    })
+    window.open(`/player/${story.id}?${params.toString()}`, '_blank', 'noopener,noreferrer')
   }
 
   return (
     <button
       type="button"
       onClick={handleClick}
-      title={`Play ${title}`}
+      title={`Play ${story.title}`}
       style={{ padding: '4px 8px', borderRadius: '999px', border: 'none', backgroundColor: '#f97316', color: '#ffffff', fontSize: '11px', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}
     >
       ▶ Play
@@ -1575,11 +1586,15 @@ function StoryIntelligenceStrip({
 }
 
 const REPAIR_ISSUE_OPTIONS: Array<{ id: string; label: string; group: RepairGroup }> = [
+  { id: 'intro_not_personalized_properly', label: 'Intro not personalized properly', group: 'story_script' },
+  { id: 'weak_hook', label: 'Weak hook', group: 'story_script' },
+  { id: 'weak_cliffhanger', label: 'Weak cliffhanger', group: 'story_script' },
   { id: 'intro_timing_problem', label: 'Intro timing problem', group: 'audio_asc' },
   { id: 'outro_timing_problem', label: 'Outro timing problem', group: 'audio_asc' },
   { id: 'outro_missing_title_original', label: 'Outro missing title / Endless Tales Original', group: 'audio_asc' },
   { id: 'outro_weak_cliffhanger', label: 'Outro weak cliffhanger', group: 'story_script' },
   { id: 'audio_cuts_off_fade_buries_voice', label: 'Audio cuts off / fade buries voice', group: 'audio_asc' },
+  { id: 'abrupt_music_ending_fade_problem', label: 'Abrupt music ending / fade problem', group: 'audio_asc' },
   { id: 'low_voice_ghost_voice', label: 'Low voice / ghost voice', group: 'audio_asc' },
   { id: 'qc_mismatch', label: 'QC mismatch', group: 'audio_asc' },
   { id: 'wrong_narrator_or_character_voice', label: 'Wrong narrator or character voice', group: 'audio_asc' },
@@ -1629,8 +1644,33 @@ function repairRoutingNote(checklist: RepairChecklistValue) {
   return ''
 }
 
+function repairIssueLabel(id: string) {
+  return REPAIR_ISSUE_OPTIONS.find((item) => item.id === id)?.label || id
+}
+
+function cleanRepairText(value: unknown) {
+  return String(value ?? '').trim()
+}
+
+function hasRepairText(value: unknown) {
+  return cleanRepairText(value).length > 0
+}
+
+function buildRepairNotes(baseNotes: string, details: RepairIssueDetails) {
+  const detailLines = Object.entries(details)
+    .filter(([, value]) => hasRepairText(value.comment) || hasRepairText(value.remainingTime))
+    .map(([id, value]) => {
+      const parts = [repairIssueLabel(id)]
+      if (hasRepairText(value.comment)) parts.push(`comment: ${cleanRepairText(value.comment)}`)
+      if (hasRepairText(value.remainingTime)) parts.push(`remaining time: ${cleanRepairText(value.remainingTime)}`)
+      return `- ${parts.join(' | ')}`
+    })
+  return [cleanRepairText(baseNotes), detailLines.length ? `Repair form notes:\n${detailLines.join('\n')}` : ''].filter(Boolean).join('\n\n')
+}
+
 function RepairChecklistPanel({
   title,
+  episodeNumber,
   initialChecklist,
   initialNotes,
   onCancel,
@@ -1643,6 +1683,7 @@ function RepairChecklistPanel({
   onRepairEntireSeriesChange,
 }: {
   title: string
+  episodeNumber?: number | null
   initialChecklist?: RepairChecklistValue | null
   initialNotes?: string | null
   onCancel: () => void
@@ -1656,8 +1697,15 @@ function RepairChecklistPanel({
 }) {
   const [checklist, setChecklist] = useState<RepairChecklistValue>(() => normalizeRepairChecklist(initialChecklist))
   const [notes, setNotes] = useState(initialNotes || '')
+  const [tester, setTester] = useState('Marc')
+  const [reviewedAt, setReviewedAt] = useState(() => new Date().toLocaleString())
+  const [details, setDetails] = useState<RepairIssueDetails>({})
   const count = repairChecklistCount(checklist)
   const routeNote = repairRoutingNote(checklist)
+  const preparedNotes = () => [
+    `Repair intake metadata: tester=${cleanRepairText(tester) || 'unknown'}; time_date=${cleanRepairText(reviewedAt) || 'unknown'}; episode_number=${episodeNumber || 'n/a'}`,
+    buildRepairNotes(notes, details),
+  ].filter(Boolean).join('\n\n')
 
   function toggle(group: RepairGroup, id: string) {
     setChecklist((prev) => {
@@ -1669,12 +1717,23 @@ function RepairChecklistPanel({
     })
   }
 
+  function updateDetail(id: string, key: 'comment' | 'remainingTime', value: string) {
+    setDetails((prev) => ({
+      ...prev,
+      [id]: {
+        comment: prev[id]?.comment || '',
+        remainingTime: prev[id]?.remainingTime || '',
+        [key]: value,
+      },
+    }))
+  }
+
   return (
-    <div style={{ marginTop: '12px', padding: '12px', borderRadius: '8px', border: '1px solid #fed7aa', backgroundColor: '#fff7ed' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'flex-start', marginBottom: '10px' }}>
+    <div style={{ marginTop: '16px', padding: '26px 28px', borderRadius: '4px', border: '1px solid #c9c2b8', backgroundColor: '#fffdfa', color: '#111827', boxShadow: '0 8px 22px rgba(15,23,42,0.08)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '18px', alignItems: 'flex-start', marginBottom: '22px', borderBottom: '2px solid #111827', paddingBottom: '12px' }}>
         <div>
-          <div style={{ color: textPrimary, fontSize: '14px', fontWeight: 900 }}>Repair intake for {title}</div>
-          <div style={{ color: '#9a3412', fontSize: '11px', marginTop: '3px', fontWeight: 700 }}>Default scope is episode-level.</div>
+          <div style={{ color: textPrimary, fontSize: '21px', fontWeight: 900, letterSpacing: 0 }}>Endless Tales Repair Intake</div>
+          <div style={{ color: '#4b5563', fontSize: '13px', marginTop: '5px', fontWeight: 700 }}>Professional QA review sheet</div>
         </div>
         {showSeriesScope && (
           <label style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', color: '#7c2d12', fontSize: '12px', fontWeight: 800 }}>
@@ -1683,37 +1742,67 @@ function RepairChecklistPanel({
           </label>
         )}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 2fr) minmax(120px, 0.7fr) minmax(160px, 1fr) minmax(190px, 1fr)', gap: '18px', marginBottom: '26px' }}>
+        <label style={{ color: '#374151', fontSize: '12px', fontWeight: 900, textTransform: 'uppercase' }}>
+          Story Name
+          <input value={title} readOnly style={{ marginTop: '7px', width: '100%', boxSizing: 'border-box', border: 'none', borderBottom: '1.5px solid #111827', backgroundColor: 'transparent', color: '#111827', padding: '7px 2px 5px', fontSize: '15px' }} />
+        </label>
+        <label style={{ color: '#374151', fontSize: '12px', fontWeight: 900, textTransform: 'uppercase' }}>
+          Episode Number
+          <input value={episodeNumber || ''} readOnly style={{ marginTop: '7px', width: '100%', boxSizing: 'border-box', border: 'none', borderBottom: '1.5px solid #111827', backgroundColor: 'transparent', color: '#111827', padding: '7px 2px 5px', fontSize: '15px' }} />
+        </label>
+        <label style={{ color: '#374151', fontSize: '12px', fontWeight: 900, textTransform: 'uppercase' }}>
+          Tester
+          <input value={tester} onChange={(event) => setTester(event.target.value)} style={{ marginTop: '7px', width: '100%', boxSizing: 'border-box', border: 'none', borderBottom: '1.5px solid #111827', backgroundColor: 'transparent', color: '#111827', padding: '7px 2px 5px', fontSize: '15px' }} />
+        </label>
+        <label style={{ color: '#374151', fontSize: '12px', fontWeight: 900, textTransform: 'uppercase' }}>
+          Time & Date
+          <input value={reviewedAt} onChange={(event) => setReviewedAt(event.target.value)} style={{ marginTop: '7px', width: '100%', boxSizing: 'border-box', border: 'none', borderBottom: '1.5px solid #111827', backgroundColor: 'transparent', color: '#111827', padding: '7px 2px 5px', fontSize: '15px' }} />
+        </label>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '24px' }}>
         {REPAIR_OPTIONS.map((section) => (
-          <div key={section.group}>
-            <div style={{ color: '#9a3412', fontSize: '11px', fontWeight: 900, letterSpacing: '0.06em', marginBottom: '7px' }}>{section.title}</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <div key={section.group} style={{ backgroundColor: 'transparent' }}>
+            <div style={{ color: '#111827', fontSize: '16px', fontWeight: 950, letterSpacing: '0.02em', paddingBottom: '8px', borderBottom: '1.5px solid #111827' }}>{section.title}</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(250px, 0.75fr) minmax(340px, 1fr) 150px', columnGap: '18px', alignItems: 'center' }}>
+              <div style={{ padding: '10px 0 6px', color: '#6b7280', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase' }}>Issue</div>
+              <div style={{ padding: '10px 0 6px', color: '#6b7280', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase' }}>Comment</div>
+              <div style={{ padding: '10px 0 6px', color: '#6b7280', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', textAlign: 'right' }}>Remaining Time</div>
               {section.items.map((item) => (
-                <label key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '7px', color: textPrimary, fontSize: '12px', fontWeight: 700 }}>
-                  <input type="checkbox" checked={checklist[section.group].includes(item.id)} onChange={() => toggle(section.group, item.id)} />
-                  {item.label}
-                </label>
+                <Fragment key={item.id}>
+                  <label style={{ minHeight: '42px', display: 'flex', alignItems: 'center', gap: '11px', color: textPrimary, fontSize: '14px', fontWeight: 800, padding: '8px 0', borderBottom: '1px solid #e5e7eb' }}>
+                    <input type="checkbox" checked={checklist[section.group].includes(item.id)} onChange={() => toggle(section.group, item.id)} style={{ width: '17px', height: '17px', flex: '0 0 auto' }} />
+                    <span>{item.label}</span>
+                  </label>
+                  <div style={{ minHeight: '42px', display: 'flex', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #e5e7eb' }}>
+                    <input value={details[item.id]?.comment || ''} onChange={(event) => updateDetail(item.id, 'comment', event.target.value)} aria-label={`${item.label} comment`} style={{ width: '100%', minWidth: 0, border: 'none', borderBottom: '1.5px solid #111827', backgroundColor: 'transparent', color: '#111827', padding: '5px 2px 4px', fontSize: '14px', outline: 'none' }} />
+                  </div>
+                  <div style={{ minHeight: '42px', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '8px 0', borderBottom: '1px solid #e5e7eb' }}>
+                    <input value={details[item.id]?.remainingTime || ''} onChange={(event) => updateDetail(item.id, 'remainingTime', event.target.value)} aria-label={`${item.label} remaining time`} style={{ width: '112px', minWidth: 0, border: 'none', borderBottom: '1.5px solid #111827', backgroundColor: 'transparent', color: '#111827', padding: '5px 2px 4px', fontSize: '14px', textAlign: 'center', outline: 'none' }} />
+                  </div>
+                </Fragment>
               ))}
             </div>
           </div>
         ))}
       </div>
       {routeNote && (
-        <div style={{ display: 'inline-flex', marginTop: '12px', padding: '5px 8px', borderRadius: '999px', backgroundColor: '#ffedd5', color: '#9a3412', fontSize: '11px', fontWeight: 900 }}>
+        <div style={{ display: 'inline-flex', marginTop: '18px', padding: '6px 10px', borderRadius: '999px', backgroundColor: '#ffedd5', color: '#9a3412', fontSize: '12px', fontWeight: 900 }}>
           {routeNote}
         </div>
       )}
+      <div style={{ marginTop: '24px', color: '#111827', fontSize: '16px', fontWeight: 950, letterSpacing: '0.02em', paddingBottom: '8px', borderBottom: '1.5px solid #111827' }}>Repair Comments</div>
       <textarea
         value={notes}
         onChange={(event) => setNotes(event.target.value)}
-        placeholder="Repair notes for this episode or story..."
+        placeholder="Additional notes only. Use the checklist lines above for specific repair items."
         rows={3}
-        style={{ width: '100%', boxSizing: 'border-box', marginTop: '12px', borderRadius: '8px', border: '1px solid #fed7aa', backgroundColor: '#ffffff', color: '#111827', padding: '9px 10px', fontSize: '12px', fontFamily: 'inherit', resize: 'vertical' }}
+        style={{ width: '100%', boxSizing: 'border-box', marginTop: '10px', borderRadius: '3px', border: '1px solid #d1d5db', backgroundColor: '#ffffff', color: '#111827', padding: '11px 12px', fontSize: '13px', fontFamily: 'inherit', resize: 'vertical', lineHeight: 1.55 }}
       />
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '12px', flexWrap: 'wrap' }}>
         <button type="button" onClick={onCancel} style={actionButtonStyle('muted')}>Cancel</button>
-        <button type="button" onClick={() => onSendToRepair(checklist, notes)} disabled={count === 0} style={{ ...actionButtonStyle('primary'), opacity: count === 0 ? 0.45 : 1, cursor: count === 0 ? 'default' : 'pointer' }}>Send to Being Repaired</button>
-        <button type="button" onClick={() => onMarkComplete(checklist, notes)} style={actionButtonStyle('success')}>Mark Repair Complete</button>
+        <button type="button" onClick={() => onSendToRepair(checklist, preparedNotes())} disabled={count === 0} style={{ ...actionButtonStyle('primary'), opacity: count === 0 ? 0.45 : 1, cursor: count === 0 ? 'default' : 'pointer' }}>Send to Being Repaired</button>
+        <button type="button" onClick={() => onMarkComplete(checklist, preparedNotes())} style={actionButtonStyle('success')}>Mark Repair Complete</button>
         <button type="button" onClick={onReturnToReview} style={actionButtonStyle('muted')}>Return to Ready for Review</button>
         <button type="button" onClick={onMoveToColdStorage} style={actionButtonStyle('danger')}>Move to Cold Storage</button>
       </div>
@@ -1823,7 +1912,7 @@ function StoryReviewCard({
           )}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'stretch', minWidth: '170px', justifyContent: 'center' }}>
-          {workflowState !== 'cold_storage' && story.audio_url && <PlayStoryButton storyId={story.id} title={story.title} />}
+          {workflowState !== 'cold_storage' && story.audio_url && <PlayStoryButton story={story} />}
           {['ready_for_review', 'approved_ready', 'unpublished_library', 'published'].includes(workflowState) && <button onClick={() => onEditClick(story)} style={actionButtonStyle('muted')}>Edit Cover</button>}
           {workflowState === 'ready_for_review' && <button onClick={() => onSetWorkflowState(story, 'approved_ready')} style={actionButtonStyle('success')}>Approve for Later</button>}
           {workflowState === 'approved_ready' && <button onClick={() => onPublish(story)} style={actionButtonStyle('primary')}>Publish Now</button>}
@@ -1854,6 +1943,7 @@ function StoryReviewCard({
       {(repairOpen || workflowState === 'repair_queue') && (
         <RepairChecklistPanel
           title={story.title}
+          episodeNumber={story.episode_number || story.series_number}
           initialChecklist={story.repair_checklist}
           initialNotes={story.repair_notes}
           onCancel={onCloseRepair}
@@ -1917,7 +2007,7 @@ function EpisodeReviewRow({
           </div>
         </div>
         <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          {workflowState !== 'cold_storage' && story.audio_url && <PlayStoryButton storyId={story.id} title={story.title} />}
+          {workflowState !== 'cold_storage' && story.audio_url && <PlayStoryButton story={story} />}
           {['ready_for_review', 'approved_ready', 'unpublished_library', 'published'].includes(workflowState) && <button onClick={() => onEditClick(story)} style={actionButtonStyle('muted')}>Edit Cover</button>}
           {workflowState === 'ready_for_review' && <button onClick={() => onSetWorkflowState(story, 'approved_ready')} style={actionButtonStyle('success')}>Approve for Later</button>}
           {workflowState === 'approved_ready' && <button onClick={() => onPublish(story)} style={actionButtonStyle('primary')}>Publish Now</button>}
@@ -1954,6 +2044,7 @@ function EpisodeReviewRow({
       {(repairOpen || workflowState === 'repair_queue') && (
         <RepairChecklistPanel
           title={story.title}
+          episodeNumber={story.episode_number || story.series_number}
           initialChecklist={story.repair_checklist}
           initialNotes={story.repair_notes}
           onCancel={onCloseRepair}
@@ -2079,6 +2170,7 @@ function SeriesReviewGroup({
         <div style={{ padding: '0 14px 14px 14px' }}>
           <RepairChecklistPanel
             title={group.title}
+            episodeNumber={null}
             initialChecklist={{ ...emptyRepairChecklist(), story_script: ['series_continuity_problem'] }}
             onCancel={onCloseSeriesRepair}
             onSendToRepair={(checklist, notes) => onSendSeriesRepair(group, checklist, notes, true)}
@@ -2123,6 +2215,7 @@ function SeriesReviewGroup({
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function AdminStoriesPage() {
+  const [returnTarget, setReturnTarget] = useState({ storyId: '', seriesId: '' })
   const [stories, setStories] = useState<Story[]>([])
   const [approvalItems, setApprovalItems] = useState<ApprovalItem[]>([])
   const [readyReviewKeys, setReadyReviewKeys] = useState<Record<string, boolean>>({})
@@ -2149,8 +2242,14 @@ export default function AdminStoriesPage() {
   const editingStoryRef = useRef<Story | null>(null)
   const pipelineRef = useRef<HTMLDivElement>(null)
   const seriesActionsRef = useRef<HTMLDivElement>(null)
+  const returnSelectionAppliedRef = useRef(false)
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    setReturnTarget({
+      storyId: params.get('storyId') || '',
+      seriesId: params.get('seriesId') || '',
+    })
     fetchStories()
     fetchGenres()
   }, [])
@@ -2468,6 +2567,32 @@ export default function AdminStoriesPage() {
     return counts
   }, {} as Record<WorkflowLane, number>)
 
+  useEffect(() => {
+    if (returnSelectionAppliedRef.current || loading || (!returnTarget.storyId && !returnTarget.seriesId)) return
+    const matchedGroup = groupsFromReadiness.find((group) => {
+      const groupStories = group.type === 'series' ? group.stories : [group.story]
+      return Boolean(
+        (returnTarget.seriesId && groupStories.some((story) => story.series_id === returnTarget.seriesId)) ||
+        (returnTarget.storyId && groupStories.some((story) => story.id === returnTarget.storyId))
+      )
+    })
+    if (!matchedGroup) return
+    const groupStories = matchedGroup.type === 'series' ? matchedGroup.stories : [matchedGroup.story]
+    const targetStory = groupStories.find((story) => story.id === returnTarget.storyId) || groupStories[0]
+    const targetLane = readyReviewKeys[groupApprovalKey(matchedGroup)] === true ? 'ready_for_review' : visualWorkflowLane(targetStory)
+    setActivePipelineTab(targetLane)
+    setSeriesFilter('all')
+    setSelectedSeriesKey(matchedGroup.key)
+    if (matchedGroup.type === 'series') setExpandedSeries((prev) => ({ ...prev, [matchedGroup.key]: true }))
+    returnSelectionAppliedRef.current = true
+  }, [
+    loading,
+    returnTarget.storyId,
+    returnTarget.seriesId,
+    Object.keys(readyReviewKeys).join('|'),
+    groupsFromReadiness.map((group) => group.key).join('|'),
+  ])
+
   function groupEpisodeCountForTab(group: StoryGroup, tab: WorkflowFilter) {
     const groupStories = group.type === 'series' ? group.stories : [group.story]
     if (tab === 'all') return group.type === 'series'
@@ -2548,7 +2673,7 @@ export default function AdminStoriesPage() {
 
     return (
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(116px, 1fr))', alignItems: 'stretch', gap: '6px', width: '100%', minWidth: 0 }}>
-        {canPlay && <PlayStoryButton storyId={story.id} title={story.title} />}
+        {canPlay && <PlayStoryButton story={story} />}
         {state === 'ready_for_review' && <button type="button" onClick={() => setWorkflowState(story, 'approved_ready')} style={actionButtonStyle('success')}>Approve for Later</button>}
         {state === 'ready_for_review' && <button type="button" onClick={() => publishStory(story)} style={actionButtonStyle('primary')}>Publish Now</button>}
         {state === 'ready_for_review' && <button type="button" onClick={openRepair} style={actionButtonStyle('muted')}>Move to Repair Shop</button>}
@@ -2846,6 +2971,7 @@ export default function AdminStoriesPage() {
                 {selectedIsSeries && selectedGroup.type === 'series' && openRepairSeriesKey === selectedGroup.key && (
                   <RepairChecklistPanel
                     title={selectedTitle}
+                    episodeNumber={selectedIsSeries ? null : selectedFirst.episode_number || selectedFirst.series_number}
                     initialChecklist={emptyRepairChecklist()}
                     onCancel={() => setOpenRepairSeriesKey(null)}
                     onSendToRepair={(checklist, notes) => sendSeriesRepair(selectedGroup, checklist, notes, repairEntireSeries)}
@@ -2944,6 +3070,7 @@ export default function AdminStoriesPage() {
                                 <td colSpan={7} style={{ padding: '0 10px 12px 10px' }}>
                                   <RepairChecklistPanel
                                     title={story.title}
+                                    episodeNumber={story.episode_number || story.series_number}
                                     initialChecklist={story.repair_checklist}
                                     initialNotes={story.repair_notes}
                                     onCancel={() => setRepairOpenForStoryId(null)}
