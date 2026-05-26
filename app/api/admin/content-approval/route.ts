@@ -213,6 +213,7 @@ function episodeBlockingReasons(story: StoryRow) {
   if (story.published_on !== null) reasons.push('published_on is set, expected null')
   if (displayReviewStatus(story) !== 'pending') reasons.push(`review_status is ${displayReviewStatus(story)}, expected pending`)
   if (!bool(story.audio_url)) reasons.push('missing audio_url')
+  if (!String(story.audio_url || '').includes('/final_mix.mp3')) reasons.push('missing final_mix audio_url')
   if (!bool(story.story_audio_url)) reasons.push('missing story_audio_url')
   if (!bool(story.cover_url)) reasons.push('missing cover_url')
   if (!bool(story.prose_text)) reasons.push('missing prose_text')
@@ -264,7 +265,13 @@ function isReviewReady(story: StoryRow) {
     && story.is_hidden === true
     && displayReviewStatus(story) === 'pending'
     && bool(story.audio_url)
+    && String(story.audio_url || '').includes('/final_mix.mp3')
+    && bool(story.story_audio_url)
     && bool(story.cover_url)
+    && bool(story.prose_text)
+    && bool(story.author_id)
+    && bool(story.narrator_voice_id)
+    && bool(story.narrator_voice_name)
     && requiredMetadataMissing(story).length === 0
 }
 
@@ -301,10 +308,31 @@ function storyJobIds(job: ProductionJobRow) {
   return ids
 }
 
-function sourceJobForStory(story: StoryRow, jobs: ProductionJobRow[]) {
-  const storyJobs = jobs
-    .filter((job) => storyJobIds(job).has(story.id) || (story.series_id && job.series_id === story.series_id))
+function jobSeriesIds(job: ProductionJobRow) {
+  const ids = new Set<string>()
+  const add = (value: unknown) => {
+    const id = clean(value)
+    if (id) ids.add(id)
+  }
+
+  add(job.series_id)
+  add(job.state_json?.seriesId)
+  add(job.state_json?.series_id)
+  add(job.error_json?.seriesId)
+  add(job.error_json?.series_id)
+  add(job.error_json?.voiceGenerationReport?.seriesId)
+  add(job.error_json?.voiceGenerationReport?.series_id)
+  return ids
+}
+
+function jobsForStory(story: StoryRow, jobs: ProductionJobRow[]) {
+  return jobs
+    .filter((job) => storyJobIds(job).has(story.id) || (story.series_id && jobSeriesIds(job).has(story.series_id)))
     .sort((a, b) => Date.parse(b.updated_at || b.created_at || '') - Date.parse(a.updated_at || a.created_at || ''))
+}
+
+function sourceJobForStory(story: StoryRow, jobs: ProductionJobRow[]) {
+  const storyJobs = jobsForStory(story, jobs)
   return storyJobs[0] || null
 }
 
@@ -318,6 +346,44 @@ function versionForStory(story: StoryRow, job: ProductionJobRow | null) {
   }
 }
 
+function dateMs(value: unknown) {
+  const parsed = Date.parse(clean(value))
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function jobLooksLikePackageCompletion(job: ProductionJobRow | null) {
+  if (!job) return false
+  const status = clean(job.status).toLowerCase()
+  const step = clean(job.current_step).toLowerCase()
+  return Boolean(job.completed_at) && (
+    status === 'complete' ||
+    step === 'ready_for_review' ||
+    step === 'complete_story_package' ||
+    step === 'series_render_final_mix' ||
+    step === 'render_final_mix'
+  )
+}
+
+function completionProofForStory(story: StoryRow, job: ProductionJobRow | null) {
+  if (!String(story.audio_url || '').includes('/final_mix.mp3')) {
+    return { date: null, source: 'missing_final_mix' }
+  }
+  if (jobLooksLikePackageCompletion(job)) {
+    return { date: job?.completed_at || null, source: `production_jobs.completed_at:${job?.current_step || 'complete'}` }
+  }
+  return { date: null, source: 'unproven_final_mix_completion_time' }
+}
+
+function activeFailedBlockingJobs(jobs: ProductionJobRow[], completionSortDate: string | null) {
+  const completionMs = dateMs(completionSortDate)
+  return jobs.filter((job) => {
+    const status = clean(job.status).toLowerCase()
+    if (status !== 'failed' && status !== 'error') return false
+    const jobMs = dateMs(job.updated_at || job.completed_at || job.created_at)
+    return completionMs === 0 || jobMs >= completionMs
+  })
+}
+
 function approvalEntryReason(story: StoryRow) {
   if (isPublished(story)) return 'Published and visible in the public app.'
   if (effectiveWorkflowState(story) === 'approved_ready') return 'Approved by review and waiting to publish.'
@@ -329,6 +395,8 @@ function approvalEntryReason(story: StoryRow) {
 
 function episodeObject(story: StoryRow, sourceJob: ProductionJobRow | null) {
   const blockingReasons = episodeBlockingReasons(story)
+  const completionProof = completionProofForStory(story, sourceJob)
+  if (!completionProof.date) blockingReasons.push(`completion timestamp not proven: ${completionProof.source}`)
   const approvalReady = blockingReasons.length === 0
   return {
     storyId: story.id,
@@ -351,21 +419,24 @@ function episodeObject(story: StoryRow, sourceJob: ProductionJobRow | null) {
     approvalEntryReason: approvalEntryReason(story),
     sourceJobId: sourceJob?.id || null,
     version: versionForStory(story, sourceJob),
+    completionSortDate: completionProof.date,
+    completionSortSource: completionProof.source,
   }
 }
 
-function expectedEpisodeCount(stories: StoryRow[], jobs: ProductionJobRow[]) {
+function expectedEpisodeCountProof(stories: StoryRow[], jobs: ProductionJobRow[]) {
   const fromStories = Math.max(
     0,
     ...stories.map((story) => numberOrNull(story.series_total_episodes) || numberOrNull(story.series_total) || 0)
   )
-  if (fromStories > 0) return fromStories
+  if (fromStories > 0) return { count: fromStories, source: 'stories.series_total' }
 
   const fromJobs = Math.max(
     0,
     ...jobs.map((job) => Number(job.state_json?.totalEpisodes || job.state_json?.seriesValidation?.episodeCount || 0) || 0)
   )
-  return fromJobs || stories.length
+  if (fromJobs > 0) return { count: fromJobs, source: 'production_jobs.state_json.totalEpisodes' }
+  return { count: 0, source: 'unproven' }
 }
 
 function missingEpisodes(stories: StoryRow[], expectedCount: number) {
@@ -384,12 +455,21 @@ function seriesTitle(stories: StoryRow[]) {
 
 function seriesObject(seriesId: string, stories: StoryRow[], jobs: ProductionJobRow[]) {
   const sortedStories = [...stories].sort((a, b) => (storyEpisodeNumber(a) || 999) - (storyEpisodeNumber(b) || 999))
-  const expected = expectedEpisodeCount(sortedStories, jobs.filter((job) => job.series_id === seriesId))
+  const seriesJobs = jobs.filter((job) => jobSeriesIds(job).has(seriesId))
+  const expectedProof = expectedEpisodeCountProof(sortedStories, seriesJobs)
+  const expected = expectedProof.count || sortedStories.length
   const missing = missingEpisodes(sortedStories, expected)
   const episodes = sortedStories.map((story) => episodeObject(story, sourceJobForStory(story, jobs)))
+  const completionSortDate = episodes
+    .map((episode) => episode.completionSortDate)
+    .filter(Boolean)
+    .sort((a, b) => dateMs(b) - dateMs(a))[0] || null
+  const blockingJobs = activeFailedBlockingJobs(seriesJobs, completionSortDate)
   const approvalBlockingReasons = [
+    ...(expectedProof.count ? [] : [`series expected episode count is not proven (${expectedProof.source})`]),
     ...(missing.length ? [`missing episode(s): ${missing.join(', ')}`] : []),
     ...episodes.flatMap((episode) => episode.approvalBlockingReasons.map((reason) => `Episode ${episode.episodeNumber || '?'}: ${reason}`)),
+    ...blockingJobs.map((job) => `Active failed production job ${job.id} at ${job.current_step || 'unknown step'}`),
   ]
   const newestJob = jobs
     .filter((job) => job.series_id === seriesId)
@@ -400,6 +480,7 @@ function seriesObject(seriesId: string, stories: StoryRow[], jobs: ProductionJob
     seriesId,
     title: seriesTitle(sortedStories),
     expectedEpisodeCount: expected,
+    expectedEpisodeCountSource: expectedProof.source,
     presentEpisodeCount: sortedStories.length,
     missingEpisodes: missing,
     approvalReady: approvalBlockingReasons.length === 0,
@@ -408,9 +489,11 @@ function seriesObject(seriesId: string, stories: StoryRow[], jobs: ProductionJob
       : 'Series readiness is aggregated from all episode rows.',
     approvalBlockingReasons,
     sourceJobId: newestJob?.id || null,
+    completionSortDate,
+    completionSortSource: completionSortDate ? 'newest_episode_final_mix_completion' : 'unproven_series_completion_time',
     version: {
       number: Math.max(1, ...sortedStories.map((story) => numberOrNull(story.script_version) || 1)),
-      date: newestJob?.completed_at || newestJob?.updated_at || sortedStories[0]?.updated_at || sortedStories[0]?.created_at || null,
+      date: completionSortDate || newestJob?.completed_at || newestJob?.updated_at || sortedStories[0]?.updated_at || sortedStories[0]?.created_at || null,
       type: 'new',
       redoReason: null,
       changeSummary: null,
@@ -427,22 +510,35 @@ function seriesObject(seriesId: string, stories: StoryRow[], jobs: ProductionJob
 }
 
 function standaloneObject(story: StoryRow, jobs: ProductionJobRow[]) {
-  const sourceJob = sourceJobForStory(story, jobs)
+  const relatedJobs = jobsForStory(story, jobs)
+  const sourceJob = relatedJobs[0] || null
   const episode = episodeObject(story, sourceJob)
+  const blockingJobs = activeFailedBlockingJobs(relatedJobs, episode.completionSortDate)
+  const approvalBlockingReasons = [
+    ...episode.approvalBlockingReasons,
+    ...blockingJobs.map((job) => `Active failed production job ${job.id} at ${job.current_step || 'unknown step'}`),
+  ]
   return {
     type: 'story',
     storyId: story.id,
     title: story.title,
-    approvalReady: episode.approvalReady,
+    approvalReady: approvalBlockingReasons.length === 0,
     approvalEntryReason: episode.approvalEntryReason,
-    approvalBlockingReasons: episode.approvalBlockingReasons,
+    approvalBlockingReasons,
     sourceJobId: episode.sourceJobId,
+    completionSortDate: episode.completionSortDate,
+    completionSortSource: episode.completionSortSource,
     version: episode.version,
-    episode,
+    episode: {
+      ...episode,
+      approvalReady: approvalBlockingReasons.length === 0,
+      approvalBlockingReasons,
+    },
   }
 }
 
 function includeItem(item: any, tab: ApprovalTab, includeBlocked: boolean) {
+  if (tab === 'ready_for_review') return item.approvalReady === true
   if (includeBlocked || tab === 'all') return true
   if (item.type === 'series') return item.episodes.some((episode: any) => {
     const synthetic = {
@@ -648,10 +744,9 @@ export async function GET(req: NextRequest) {
       .from('production_jobs')
       .select('id,story_id,series_id,status,current_step,created_at,updated_at,completed_at,state_json,error_json')
       .order('updated_at', { ascending: false })
-      .limit(500)
+      .limit(1000)
 
     if (seriesId) jobsQuery = jobsQuery.eq('series_id', seriesId)
-    else if (seriesIds.length > 0) jobsQuery = jobsQuery.in('series_id', seriesIds)
 
     const { data: seriesJobs, error: jobsError } = await jobsQuery
     if (jobsError) {
@@ -689,9 +784,7 @@ export async function GET(req: NextRequest) {
       ...Array.from(seriesGroups.entries()).map(([id, groupedStories]) => seriesObject(id, groupedStories, jobs)),
       ...standaloneStories.map((story) => standaloneObject(story, jobs)),
     ].sort((a: any, b: any) => {
-      const aDate = a.version?.date || a.episodes?.[0]?.version?.date || ''
-      const bDate = b.version?.date || b.episodes?.[0]?.version?.date || ''
-      return Date.parse(bDate) - Date.parse(aDate)
+      return dateMs(b.completionSortDate) - dateMs(a.completionSortDate)
     })
 
     const items = allItems.filter((item) => includeItem(item, tab, includeBlocked))

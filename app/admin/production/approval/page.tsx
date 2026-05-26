@@ -53,6 +53,7 @@ interface Story {
   approval_blocking_reasons?: string[]
   approval_entry_reason?: string | null
   source_job_id?: string | null
+  completion_sort_date?: string | null
   audio_ready?: boolean
   story_audio_ready?: boolean
   cover_ready?: boolean
@@ -95,7 +96,7 @@ type RepairGroup = 'story_script' | 'audio_asc' | 'packaging'
 type RepairChecklistValue = Record<RepairGroup, string[]>
 type StoryGroup =
   | { type: 'standalone'; key: string; story: Story }
-  | { type: 'series'; key: string; title: string; stories: Story[]; expectedEpisodeCount?: number; presentEpisodeCount?: number; missingEpisodes?: number[]; approvalBlockingReasons?: string[]; sourceJobId?: string | null }
+  | { type: 'series'; key: string; title: string; stories: Story[]; expectedEpisodeCount?: number; presentEpisodeCount?: number; missingEpisodes?: number[]; approvalReady?: boolean; approvalBlockingReasons?: string[]; sourceJobId?: string | null; completionSortDate?: string | null; completionSortSource?: string | null }
 
 type ApprovalEpisode = {
   storyId: string
@@ -124,6 +125,8 @@ type ApprovalEpisode = {
   approvalBlockingReasons: string[]
   approvalEntryReason: string
   sourceJobId: string | null
+  completionSortDate?: string | null
+  completionSortSource?: string | null
 }
 
 type ApprovalItem =
@@ -138,6 +141,8 @@ type ApprovalItem =
       approvalEntryReason: string
       approvalBlockingReasons: string[]
       sourceJobId: string | null
+      completionSortDate?: string | null
+      completionSortSource?: string | null
       episodes: ApprovalEpisode[]
     }
   | {
@@ -148,6 +153,8 @@ type ApprovalItem =
       approvalEntryReason: string
       approvalBlockingReasons: string[]
       sourceJobId: string | null
+      completionSortDate?: string | null
+      completionSortSource?: string | null
       episode: ApprovalEpisode
     }
 
@@ -503,6 +510,7 @@ function mergeReadiness(story: Partial<Story>, episode: ApprovalEpisode, series?
     approval_blocking_reasons: episode.approvalBlockingReasons || [],
     approval_entry_reason: episode.approvalEntryReason,
     source_job_id: episode.sourceJobId || series?.sourceJobId || null,
+    completion_sort_date: episode.completionSortDate || series?.completionSortDate || null,
     audio_ready: episode.audioReadiness.audioUrl,
     story_audio_ready: episode.audioReadiness.storyAudioUrl,
     cover_ready: episode.packagingReadiness.coverUrl,
@@ -543,6 +551,14 @@ function approvalBlockingSummary(reasons?: string[]) {
   if (text.includes('cover') || text.includes('prose') || text.includes('author') || text.includes('narrator') || text.includes('packaging')) return 'Missing Packaging'
   if (text.includes('review_status') || text.includes('status')) return 'Needs Review'
   return 'Needs Review'
+}
+
+function approvalItemKey(item: ApprovalItem) {
+  return item.type === 'series' ? `series:${item.seriesId}` : `story:${item.storyId}`
+}
+
+function groupApprovalKey(group: StoryGroup) {
+  return group.type === 'series' ? group.key : `story:${group.story.id}`
 }
 
 function groupStoriesForReview(stories: Story[]) {
@@ -2109,6 +2125,7 @@ function SeriesReviewGroup({
 export default function AdminStoriesPage() {
   const [stories, setStories] = useState<Story[]>([])
   const [approvalItems, setApprovalItems] = useState<ApprovalItem[]>([])
+  const [readyReviewKeys, setReadyReviewKeys] = useState<Record<string, boolean>>({})
   const [genres, setGenres] = useState<Genre[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -2149,17 +2166,33 @@ export default function AdminStoriesPage() {
 
   async function fetchStories() {
     setLoading(true)
-    const readinessRes = await fetch('/api/admin/content-approval?tab=all&includeBlocked=true', { cache: 'no-store' })
-    const readinessPayload = await readinessRes.json()
-    if (!readinessRes.ok || !readinessPayload.success) {
-      console.error('Error fetching content approval readiness:', readinessPayload.error || readinessRes.status)
+    const [readyRes, allRes] = await Promise.all([
+      fetch('/api/admin/content-approval?tab=ready_for_review&includeBlocked=false', { cache: 'no-store' }),
+      fetch('/api/admin/content-approval?tab=all&includeBlocked=true', { cache: 'no-store' }),
+    ])
+    const readyPayload = await readyRes.json()
+    const allPayload = await allRes.json()
+    if (!readyRes.ok || !readyPayload.success) {
+      console.error('Error fetching Ready for Review readiness:', readyPayload.error || readyRes.status)
       setStories([])
       setApprovalItems([])
+      setReadyReviewKeys({})
+      setLoading(false)
+      return
+    }
+    if (!allRes.ok || !allPayload.success) {
+      console.error('Error fetching content approval readiness:', allPayload.error || allRes.status)
+      setStories([])
+      setApprovalItems([])
+      setReadyReviewKeys({})
       setLoading(false)
       return
     }
 
-    const items = (readinessPayload.items || []) as ApprovalItem[]
+    const readyItems = (readyPayload.items || []) as ApprovalItem[]
+    setReadyReviewKeys(Object.fromEntries(readyItems.map((item) => [approvalItemKey(item), true])))
+
+    const items = (allPayload.items || []) as ApprovalItem[]
     setApprovalItems(items)
     setExpandedSeries((prev) => {
       const next = { ...prev }
@@ -2412,8 +2445,11 @@ export default function AdminStoriesPage() {
         expectedEpisodeCount: item.expectedEpisodeCount,
         presentEpisodeCount: item.presentEpisodeCount,
         missingEpisodes: item.missingEpisodes,
+        approvalReady: item.approvalReady,
         approvalBlockingReasons: item.approvalBlockingReasons,
         sourceJobId: item.sourceJobId,
+        completionSortDate: item.completionSortDate || null,
+        completionSortSource: item.completionSortSource || null,
       }]
     }
     const story = storiesById.get(item.episode.storyId)
@@ -2422,7 +2458,10 @@ export default function AdminStoriesPage() {
 
   const workflowCounts = groupsFromReadiness.reduce((counts, group) => {
     const groupStories = group.type === 'series' ? group.stories : [group.story]
-    const lanes = new Set(groupStories.map(visualWorkflowLane))
+    const lanes = new Set(groupStories.map(visualWorkflowLane).filter((lane) => {
+      if (lane !== 'ready_for_review') return true
+      return readyReviewKeys[groupApprovalKey(group)] === true
+    }))
     lanes.forEach((lane) => {
       counts[lane] = (counts[lane] || 0) + 1
     })
@@ -2443,10 +2482,18 @@ export default function AdminStoriesPage() {
       const title = group.type === 'series' ? group.title : group.story.title
       const matchesSearch = !seriesSearch.trim() || title.toLowerCase().includes(seriesSearch.trim().toLowerCase())
       const selectedWorkflow = seriesFilter === 'all' ? activePipelineTab : seriesFilter
-      const matchesWorkflow = groupStories.some((story) => storyMatchesWorkflowLane(story, selectedWorkflow))
+      const matchesWorkflow = selectedWorkflow === 'ready_for_review'
+        ? readyReviewKeys[groupApprovalKey(group)] === true
+        : groupStories.some((story) => storyMatchesWorkflowLane(story, selectedWorkflow))
       return matchesSearch && matchesWorkflow
     })
     .sort((a, b) => {
+      if (activePipelineTab === 'ready_for_review') {
+        const aDate = a.type === 'series' ? a.completionSortDate : a.story.completion_sort_date
+        const bDate = b.type === 'series' ? b.completionSortDate : b.story.completion_sort_date
+        const dateDelta = new Date(bDate || 0).getTime() - new Date(aDate || 0).getTime()
+        if (dateDelta !== 0) return dateDelta
+      }
       const aCount = groupEpisodeCountForTab(a, activePipelineTab)
       const bCount = groupEpisodeCountForTab(b, activePipelineTab)
       if (bCount !== aCount) return bCount - aCount
@@ -2556,6 +2603,24 @@ export default function AdminStoriesPage() {
   const selectedTitle = selectedIsSeries && selectedGroup?.type === 'series' ? selectedGroup.title : selectedFirst?.title || ''
   const selectedExpected = selectedGroup ? (selectedIsSeries ? groupExpectedCount(selectedGroup) : 1) : 0
   const selectedPresent = selectedGroup ? (selectedIsSeries ? groupPresentCount(selectedGroup) : 1) : 0
+  const selectedApprovalReady = selectedGroup
+    ? readyReviewKeys[groupApprovalKey(selectedGroup)] === true
+    : false
+  const selectedApprovalBlockingReasons = selectedGroup
+    ? selectedGroup.type === 'series'
+      ? selectedGroup.approvalBlockingReasons || []
+      : selectedGroup.story.approval_blocking_reasons || []
+    : []
+  const selectedCompletionSortDate = selectedGroup
+    ? selectedGroup.type === 'series'
+      ? selectedGroup.completionSortDate
+      : selectedGroup.story.completion_sort_date
+    : null
+  const selectedCompletionSortSource = selectedGroup
+    ? selectedGroup.type === 'series'
+      ? selectedGroup.completionSortSource
+      : selectedGroup.story.approval_entry_reason || null
+    : null
   const selectedTotalMinutes = selectedStories.reduce((sum, story) => sum + (story.duration_mins || 0), 0)
   const selectedMarkedForDeletion = selectedStories.some((story) => markedForDeletionIds[story.id])
   const selectedCanShowRemasterCopy = selectedStories.some((story) =>
@@ -2750,6 +2815,10 @@ export default function AdminStoriesPage() {
                     <div style={{ color: '#1F2937', fontSize: '20px', fontWeight: 800, lineHeight: 1.15 }}>{selectedTitle}</div>
                     <div style={{ marginTop: '5px', color: '#6B7280', fontSize: '12px' }}>{selectedFirst.genre || 'No genre'} • by {selectedFirst.author || 'Unknown'}</div>
                     <div style={{ marginTop: '4px', color: '#9CA3AF', fontSize: '11px' }}>{selectedIsSeries ? `${selectedExpected} total episodes • ${selectedPresent} present` : `Standalone • ${selectedFirst.duration_mins || 0}m`}</div>
+                    <div style={{ marginTop: '6px', color: selectedApprovalReady ? '#047857' : '#B45309', fontSize: '10px', lineHeight: 1.35 }}>
+                      approvalReady={String(selectedApprovalReady)} • completionSortDate={selectedCompletionSortDate || 'none'} • completionSortSource={selectedCompletionSortSource || 'see API'}
+                      {selectedApprovalBlockingReasons.length > 0 && ` • missing: ${selectedApprovalBlockingReasons.slice(0, 3).join('; ')}`}
+                    </div>
                   </div>
                   <div ref={seriesActionsRef} style={{ position: 'relative', flex: '0 0 auto', display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
                     {selectedCanShowRemasterCopy && <RemasterCopyUnavailable compact />}
