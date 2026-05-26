@@ -1485,6 +1485,44 @@ function validateBelleLine(kind: 'intro' | 'outro', text: string, ctx: BelleVali
     if (ctx.title && lower.includes('untitled')) errors.push('finale outro has missing title')
   }
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // NEW PRODUCTION-STANDARD VALIDATION (Marc 2026-05-25)
+  // ──────────────────────────────────────────────────────────────────────────
+
+  // RULE A — Title in intro (all episodes)
+  if (kind === 'intro' && (ctx.title || ctx.seriesName)) {
+    const titleSource = ctx.seriesName || ctx.title || ''
+    const stopwords = new Set(['the', 'and', 'for', 'with', 'from', 'into', 'that', 'this', 'have', 'been', 'they', 'their', 'when', 'where', 'what', 'a', 'an', 'or'])
+    const titleWords = titleSource.toLowerCase().split(/\s+/).filter(w => w.length >= 4 && !stopwords.has(w))
+    const foundTitleWord = titleWords.some(tw => cleaned.toLowerCase().includes(tw))
+    if (!foundTitleWord && titleWords.length > 0) {
+      errors.push(`intro does not reference the story or series title — expected to contain at least one of: ${titleWords.join(', ')}`)
+    }
+  }
+
+  // RULE B — Episode number in series intros
+  if (kind === 'intro' && ctx.episodeState !== 'standalone' && ctx.episodeNumber !== null && ctx.episodeNumber !== undefined) {
+    const hasEpisodeNumber = /\b(episode|ep\.?|part)\s*(one|two|three|four|five|six|seven|eight|nine|ten|\d+)\b/i.test(cleaned)
+    if (!hasEpisodeNumber) {
+      errors.push(`series intro must identify the episode number (e.g., "Episode One" or "Episode ${ctx.episodeNumber}")`)
+    }
+  }
+
+  // RULE C & D — Author and "Endless Tales" credits in standalone/finale outros
+  if (kind === 'outro' && (ctx.episodeState === 'standalone' || ctx.episodeState === 'series_finale')) {
+    if (ctx.author) {
+      const authorLastName = ctx.author.trim().split(/\s+/).pop()?.toLowerCase() || ''
+      const hasAuthorCredit = authorLastName && cleaned.toLowerCase().includes(authorLastName)
+      if (!hasAuthorCredit) {
+        errors.push(`outro must credit the author — missing author name (expected "${ctx.author}")`)
+      }
+    }
+    const hasEndlessTalesCredit = /endless\s+tales/i.test(cleaned)
+    if (!hasEndlessTalesCredit) {
+      errors.push(`outro must include "an Endless Tales original" or similar credit`)
+    }
+  }
+
   return errors
 }
 
@@ -2543,9 +2581,30 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, error: 'retryMissingOnly requires a valid segmentNumber' }, { status: 400 })
       }
 
+      const targetableStoryLines = storyLines.filter(line => line.type === 'narrator' || line.type === 'character' || line.type === 'beat' || line.type === 'pause')
       const targetLine = storyLines.find(line => line.index === requestedSegmentNumber)
       if (!targetLine) {
-        return NextResponse.json({ success: false, error: `No parsed script line found for segment_${requestedSegmentNumber.toString().padStart(4, '0')}.mp3` }, { status: 404 })
+        const parsedSegmentNumbers = targetableStoryLines.map(line => line.index).sort((a, b) => a - b)
+        const speakerNames = Array.from(new Set(storyLines
+          .filter(line => typeof line.character === 'string' && line.character.trim())
+          .map(line => String(line.character).trim())
+        )).sort((a, b) => a.localeCompare(b))
+        const characterGuideNames = characterGuide
+          .map(character => String(character.name || '').trim())
+          .filter(Boolean)
+          .sort((a, b) => a.localeCompare(b))
+        return NextResponse.json({
+          success: false,
+          error: `No parsed script line found for segment_${requestedSegmentNumber.toString().padStart(4, '0')}.mp3`,
+          requestedSegmentNumber,
+          targetableSegmentCount: targetableStoryLines.length,
+          firstTargetableSegmentNumber: parsedSegmentNumbers[0] ?? null,
+          lastTargetableSegmentNumber: parsedSegmentNumbers[parsedSegmentNumbers.length - 1] ?? null,
+          parsedSegmentNumbers,
+          speakerNames,
+          characterGuideNames,
+          containsCombinedSpeakerLabel: /\bLILA\s+AND\s+OWEN\s*:/i.test(script),
+        }, { status: 404 })
       }
 
       const { data: existingAudioFiles, error: listAudioError } = await supabase.storage.from('audio').list(storyAudioFolder, { limit: 500 })
