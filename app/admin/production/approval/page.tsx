@@ -94,7 +94,8 @@ type WorkflowLane = 'ready_for_review' | 'repair_shop' | 'approved_ready' | 'col
 type WorkflowFilter = WorkflowLane | 'all'
 type RepairGroup = 'story_script' | 'audio_asc' | 'packaging'
 type RepairChecklistValue = Record<RepairGroup, string[]>
-type RepairIssueDetails = Record<string, { comment: string; remainingTime: string }>
+type RepairIssueDetails = Record<string, { comment: string }>
+type RepairCommentRow = { comment: string; remainingTime: string }
 type StoryGroup =
   | { type: 'standalone'; key: string; story: Story }
   | { type: 'series'; key: string; title: string; stories: Story[]; expectedEpisodeCount?: number; presentEpisodeCount?: number; missingEpisodes?: number[]; approvalReady?: boolean; approvalBlockingReasons?: string[]; sourceJobId?: string | null; completionSortDate?: string | null; completionSortSource?: string | null }
@@ -1656,16 +1657,35 @@ function hasRepairText(value: unknown) {
   return cleanRepairText(value).length > 0
 }
 
-function buildRepairNotes(baseNotes: string, details: RepairIssueDetails) {
+function emptyRepairCommentRows(initialNotes = ''): RepairCommentRow[] {
+  return [
+    { comment: initialNotes, remainingTime: '' },
+    { comment: '', remainingTime: '' },
+    { comment: '', remainingTime: '' },
+  ]
+}
+
+function buildRepairNotes(details: RepairIssueDetails, comments: RepairCommentRow[]) {
   const detailLines = Object.entries(details)
-    .filter(([, value]) => hasRepairText(value.comment) || hasRepairText(value.remainingTime))
+    .filter(([, value]) => hasRepairText(value.comment))
     .map(([id, value]) => {
       const parts = [repairIssueLabel(id)]
       if (hasRepairText(value.comment)) parts.push(`comment: ${cleanRepairText(value.comment)}`)
-      if (hasRepairText(value.remainingTime)) parts.push(`remaining time: ${cleanRepairText(value.remainingTime)}`)
       return `- ${parts.join(' | ')}`
     })
-  return [cleanRepairText(baseNotes), detailLines.length ? `Repair form notes:\n${detailLines.join('\n')}` : ''].filter(Boolean).join('\n\n')
+  const commentLines = comments
+    .map((row, index) => ({ ...row, index: index + 1 }))
+    .filter((row) => hasRepairText(row.comment) || hasRepairText(row.remainingTime))
+    .map((row) => {
+      const parts = [`Comment ${row.index}`]
+      if (hasRepairText(row.comment)) parts.push(`comment: ${cleanRepairText(row.comment)}`)
+      if (hasRepairText(row.remainingTime)) parts.push(`remaining time: ${cleanRepairText(row.remainingTime)}`)
+      return `- ${parts.join(' | ')}`
+    })
+  return [
+    detailLines.length ? `Issue line notes:\n${detailLines.join('\n')}` : '',
+    commentLines.length ? `Repair comments:\n${commentLines.join('\n')}` : '',
+  ].filter(Boolean).join('\n\n')
 }
 
 function RepairChecklistPanel({
@@ -1696,7 +1716,7 @@ function RepairChecklistPanel({
   onRepairEntireSeriesChange?: (value: boolean) => void
 }) {
   const [checklist, setChecklist] = useState<RepairChecklistValue>(() => normalizeRepairChecklist(initialChecklist))
-  const [notes, setNotes] = useState(initialNotes || '')
+  const [repairComments, setRepairComments] = useState<RepairCommentRow[]>(() => emptyRepairCommentRows(initialNotes || ''))
   const [tester, setTester] = useState('Marc')
   const [reviewedAt, setReviewedAt] = useState(() => new Date().toLocaleString())
   const [details, setDetails] = useState<RepairIssueDetails>({})
@@ -1704,7 +1724,7 @@ function RepairChecklistPanel({
   const routeNote = repairRoutingNote(checklist)
   const preparedNotes = () => [
     `Repair intake metadata: tester=${cleanRepairText(tester) || 'unknown'}; time_date=${cleanRepairText(reviewedAt) || 'unknown'}; episode_number=${episodeNumber || 'n/a'}`,
-    buildRepairNotes(notes, details),
+    buildRepairNotes(details, repairComments),
   ].filter(Boolean).join('\n\n')
 
   function toggle(group: RepairGroup, id: string) {
@@ -1717,15 +1737,15 @@ function RepairChecklistPanel({
     })
   }
 
-  function updateDetail(id: string, key: 'comment' | 'remainingTime', value: string) {
+  function updateDetail(id: string, value: string) {
     setDetails((prev) => ({
       ...prev,
-      [id]: {
-        comment: prev[id]?.comment || '',
-        remainingTime: prev[id]?.remainingTime || '',
-        [key]: value,
-      },
+      [id]: { comment: value },
     }))
+  }
+
+  function updateRepairComment(index: number, key: keyof RepairCommentRow, value: string) {
+    setRepairComments((prev) => prev.map((row, rowIndex) => rowIndex === index ? { ...row, [key]: value } : row))
   }
 
   return (
@@ -1764,10 +1784,9 @@ function RepairChecklistPanel({
         {REPAIR_OPTIONS.map((section) => (
           <div key={section.group} style={{ backgroundColor: 'transparent' }}>
             <div style={{ color: '#111827', fontSize: '16px', fontWeight: 950, letterSpacing: '0.02em', paddingBottom: '8px', borderBottom: '1.5px solid #111827' }}>{section.title}</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(250px, 0.75fr) minmax(340px, 1fr) 150px', columnGap: '18px', alignItems: 'center' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(250px, 0.75fr) minmax(340px, 1fr)', columnGap: '18px', alignItems: 'center' }}>
               <div style={{ padding: '10px 0 6px', color: '#6b7280', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase' }}>Issue</div>
               <div style={{ padding: '10px 0 6px', color: '#6b7280', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase' }}>Comment</div>
-              <div style={{ padding: '10px 0 6px', color: '#6b7280', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', textAlign: 'right' }}>Remaining Time</div>
               {section.items.map((item) => (
                 <Fragment key={item.id}>
                   <label style={{ minHeight: '42px', display: 'flex', alignItems: 'center', gap: '11px', color: textPrimary, fontSize: '14px', fontWeight: 800, padding: '8px 0', borderBottom: '1px solid #e5e7eb' }}>
@@ -1775,10 +1794,7 @@ function RepairChecklistPanel({
                     <span>{item.label}</span>
                   </label>
                   <div style={{ minHeight: '42px', display: 'flex', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #e5e7eb' }}>
-                    <input value={details[item.id]?.comment || ''} onChange={(event) => updateDetail(item.id, 'comment', event.target.value)} aria-label={`${item.label} comment`} style={{ width: '100%', minWidth: 0, border: 'none', borderBottom: '1.5px solid #111827', backgroundColor: 'transparent', color: '#111827', padding: '5px 2px 4px', fontSize: '14px', outline: 'none' }} />
-                  </div>
-                  <div style={{ minHeight: '42px', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '8px 0', borderBottom: '1px solid #e5e7eb' }}>
-                    <input value={details[item.id]?.remainingTime || ''} onChange={(event) => updateDetail(item.id, 'remainingTime', event.target.value)} aria-label={`${item.label} remaining time`} style={{ width: '112px', minWidth: 0, border: 'none', borderBottom: '1.5px solid #111827', backgroundColor: 'transparent', color: '#111827', padding: '5px 2px 4px', fontSize: '14px', textAlign: 'center', outline: 'none' }} />
+                    <input value={details[item.id]?.comment || ''} onChange={(event) => updateDetail(item.id, event.target.value)} aria-label={`${item.label} comment`} style={{ width: '100%', minWidth: 0, border: 'none', borderBottom: '1.5px solid #111827', backgroundColor: 'transparent', color: '#111827', padding: '5px 2px 4px', fontSize: '14px', outline: 'none' }} />
                   </div>
                 </Fragment>
               ))}
@@ -1792,13 +1808,20 @@ function RepairChecklistPanel({
         </div>
       )}
       <div style={{ marginTop: '24px', color: '#111827', fontSize: '16px', fontWeight: 950, letterSpacing: '0.02em', paddingBottom: '8px', borderBottom: '1.5px solid #111827' }}>Repair Comments</div>
-      <textarea
-        value={notes}
-        onChange={(event) => setNotes(event.target.value)}
-        placeholder="Additional notes only. Use the checklist lines above for specific repair items."
-        rows={3}
-        style={{ width: '100%', boxSizing: 'border-box', marginTop: '10px', borderRadius: '3px', border: '1px solid #d1d5db', backgroundColor: '#ffffff', color: '#111827', padding: '11px 12px', fontSize: '13px', fontFamily: 'inherit', resize: 'vertical', lineHeight: 1.55 }}
-      />
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(340px, 1fr) 150px', columnGap: '18px', rowGap: '10px', marginTop: '12px', alignItems: 'center' }}>
+        <div style={{ color: '#6b7280', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase' }}>Comment</div>
+        <div style={{ color: '#6b7280', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', textAlign: 'right' }}>Remaining Time</div>
+        {repairComments.map((row, index) => (
+          <Fragment key={`repair-comment-${index}`}>
+            <div style={{ minHeight: '42px', display: 'flex', alignItems: 'center' }}>
+              <input value={row.comment} onChange={(event) => updateRepairComment(index, 'comment', event.target.value)} aria-label={`Repair comment ${index + 1}`} style={{ width: '100%', minWidth: 0, border: 'none', borderBottom: '1.5px solid #111827', backgroundColor: 'transparent', color: '#111827', padding: '5px 2px 4px', fontSize: '14px', outline: 'none' }} />
+            </div>
+            <div style={{ minHeight: '42px', display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+              <input value={row.remainingTime} onChange={(event) => updateRepairComment(index, 'remainingTime', event.target.value)} aria-label={`Repair comment ${index + 1} remaining time`} style={{ width: '112px', minWidth: 0, border: 'none', borderBottom: '1.5px solid #111827', backgroundColor: 'transparent', color: '#111827', padding: '5px 2px 4px', fontSize: '14px', textAlign: 'center', outline: 'none' }} />
+            </div>
+          </Fragment>
+        ))}
+      </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '12px', flexWrap: 'wrap' }}>
         <button type="button" onClick={onCancel} style={actionButtonStyle('muted')}>Cancel</button>
         <button type="button" onClick={() => onSendToRepair(checklist, preparedNotes())} disabled={count === 0} style={{ ...actionButtonStyle('primary'), opacity: count === 0 ? 0.45 : 1, cursor: count === 0 ? 'default' : 'pointer' }}>Send to Being Repaired</button>
