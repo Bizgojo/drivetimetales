@@ -3786,6 +3786,40 @@ async function runSeriesVoiceSegment(job: ProductionJob, origin: string): Promis
   const report = await readJsonOrDiagnostic(response, '/api/admin/generate-voices')
   const errorText = String(report?.error || '')
   const skippedNonSegment = response.status === 404 && /No parsed script line found/i.test(errorText)
+  const previousPresentCount = Number(episodeProgress.presentCount ?? 0)
+  const reportPresentCount = Number(report?.presentCount ?? previousPresentCount)
+  const skipMadeNoProgress = skippedNonSegment && reportPresentCount <= previousPresentCount
+  const previousSkippedNonSegmentCount = Number(episodeProgress.skippedNonSegmentCount || 0)
+  const skippedNonSegmentStreak = skipMadeNoProgress
+    ? Number(episodeProgress.skippedNonSegmentStreak || 0) + 1
+    : 0
+  const lastTargetableSegmentNumber = Number(report?.lastTargetableSegmentNumber)
+  const requestedPastParsedRange = skippedNonSegment
+    && Number.isFinite(lastTargetableSegmentNumber)
+    && segmentNumber > lastTargetableSegmentNumber
+  const staleSegmentRecognitionFailure = skippedNonSegment
+    && (
+      (skipMadeNoProgress && previousSkippedNonSegmentCount >= 3)
+      || skippedNonSegmentStreak >= 3
+      || (requestedPastParsedRange && previousPresentCount === 0)
+      || (expectedSegmentCount > 0 && segmentNumber >= expectedSegmentCount && previousPresentCount === 0)
+    )
+  const segmentRecognitionFailure = staleSegmentRecognitionFailure
+    ? [{
+        segment: `segment_${segmentNumber.toString().padStart(4, '0')}.mp3`,
+        error: 'Series voice generation made repeated no-progress non-story skips. This usually indicates stale progressByEpisode state, a wrong episode segment map, or an out-of-range episode-local segment number.',
+        requestedSegmentNumber: segmentNumber,
+        episodeNumber: number,
+        storyId,
+        expectedSegmentCount,
+        previousPresentCount,
+        reportPresentCount,
+        skippedNonSegmentStreak,
+        targetableSegmentCount: report?.targetableSegmentCount ?? null,
+        firstTargetableSegmentNumber: report?.firstTargetableSegmentNumber ?? null,
+        lastTargetableSegmentNumber: report?.lastTargetableSegmentNumber ?? null,
+      }]
+    : []
   const failures = Array.isArray(report?.failures) ? report.failures : []
   const missingSegments = Array.isArray(report?.missingSegments)
     ? report.missingSegments
@@ -3801,22 +3835,25 @@ async function runSeriesVoiceSegment(job: ProductionJob, origin: string): Promis
     : missingSegments.length > 0
       ? firstMissingSegmentNumber(missingSegments, segmentNumber + 1)
       : segmentNumber + 1
-  const episodeComplete = !skippedNonSegment && response.ok && failures.length === 0 && missingSegments.length === 0
-  const hardFailure = !skippedNonSegment && (!response.ok || failures.length > 0)
+  const effectiveFailures = [...failures, ...segmentRecognitionFailure]
+  const episodeComplete = !skippedNonSegment && response.ok && effectiveFailures.length === 0 && missingSegments.length === 0
+  const hardFailure = staleSegmentRecognitionFailure || (!skippedNonSegment && (!response.ok || failures.length > 0))
   const nextEpisodeProgress = {
     storyId,
     title: currentEpisode.title || null,
     episodeNumber: number,
     expectedSegmentCount,
     nextSegmentNumber,
-    presentCount: Number(report?.presentCount ?? episodeProgress.presentCount ?? 0),
+    presentCount: reportPresentCount,
     missingSegments,
     generatedSegments,
-    failures,
+    failures: effectiveFailures,
     lastSegmentNumber: segmentNumber,
     lastUpdatedAt: nowIso(),
     lastReport: report,
     skippedNonSegmentCount: Number(episodeProgress.skippedNonSegmentCount || 0) + (skippedNonSegment ? 1 : 0),
+    skippedNonSegmentStreak,
+    staleSegmentRecognitionFailure,
     complete: episodeComplete || episodeProgress.complete === true,
   }
   const nextProgressByEpisode = {
