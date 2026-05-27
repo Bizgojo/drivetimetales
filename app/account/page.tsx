@@ -12,9 +12,12 @@ export default function AccountPage() {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [travelInsightsEnabled, setTravelInsightsEnabled] = useState(false);
+  const [travelInsightsMode, setTravelInsightsMode] = useState<'no' | 'yes' | 'while_using'>('no');
   const [travelInsightsMessage, setTravelInsightsMessage] = useState('');
+  const [travelInsightsDetailsOpen, setTravelInsightsDetailsOpen] = useState(false);
 
   const travelInsightsKey = user?.id ? `dtt_travel_listening_insights_${user.id}` : 'dtt_travel_listening_insights';
+  const travelInsightsModeKey = user?.id ? `dtt_travel_insights_mode_${user.id}` : 'dtt_travel_insights_mode';
 
   // Wait for client-side mount
   useEffect(() => {
@@ -24,9 +27,17 @@ export default function AccountPage() {
   useEffect(() => {
     if (!mounted || !user?.id) return;
     try {
-      setTravelInsightsEnabled(localStorage.getItem(travelInsightsKey) === 'true');
+      const savedMode = localStorage.getItem(travelInsightsModeKey);
+      const legacyEnabled = localStorage.getItem(travelInsightsKey) === 'true';
+      const nextMode = savedMode === 'yes' || savedMode === 'while_using'
+        ? savedMode
+        : legacyEnabled
+          ? 'yes'
+          : 'no';
+      setTravelInsightsMode(nextMode);
+      setTravelInsightsEnabled(nextMode !== 'no');
     } catch {}
-  }, [mounted, travelInsightsKey, user?.id]);
+  }, [mounted, travelInsightsKey, travelInsightsModeKey, user?.id]);
 
   // Handle sign out
   const handleSignOut = async () => {
@@ -34,7 +45,7 @@ export default function AccountPage() {
     router.push('/');
   };
 
-  const enableTravelInsights = async () => {
+  const enableTravelInsights = async (mode: 'yes' | 'while_using') => {
     setTravelInsightsMessage('');
 
     try {
@@ -50,8 +61,10 @@ export default function AccountPage() {
 
     try {
       localStorage.setItem(travelInsightsKey, 'true');
+      localStorage.setItem(travelInsightsModeKey, mode);
       setTravelInsightsEnabled(true);
-      setTravelInsightsMessage('Enabled. We will only use coarse context, never exact routes or stored GPS history.');
+      setTravelInsightsMode(mode);
+      setTravelInsightsMessage('Enabled. We only use coarse context, never exact routes or stored GPS history.');
     } catch {
       setTravelInsightsMessage('Could not save this preference on this device. Playback will still work normally.');
     }
@@ -60,10 +73,19 @@ export default function AccountPage() {
   const disableTravelInsights = () => {
     try {
       localStorage.removeItem(travelInsightsKey);
+      localStorage.removeItem(travelInsightsModeKey);
     } catch {}
     setTravelInsightsEnabled(false);
+    setTravelInsightsMode('no');
     setTravelInsightsMessage('Disabled. Travel listening context will not be collected.');
   };
+
+  const travelChoiceClass = (active: boolean) =>
+    `px-3 py-1.5 rounded-full text-xs font-bold border transition ${
+      active
+        ? 'bg-orange-500 text-white border-orange-400'
+        : 'bg-gray-950 text-gray-300 border-gray-700'
+    }`;
 
   // Show loading state while auth is initializing or not yet mounted
   if (!mounted || loading) {
@@ -127,39 +149,43 @@ export default function AccountPage() {
           <p className="text-orange-400 text-sm mt-1">Member since {memberSince}</p>
         </div>
 
-        {/* Travel Listening Insights */}
-        <section className="mb-6 p-4 bg-gray-900 border border-gray-800 rounded-xl">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex-1">
-              <h2 className="text-white font-bold text-base">Travel Listening Insights</h2>
-              <p className="text-gray-400 text-sm mt-1">
-                Allow Endless Tales to detect whether you are listening while traveling. We do not store your exact location or route.
-              </p>
-              <p className="text-gray-500 text-xs mt-2">
-                Default off. If enabled later analytics only use coarse context: unknown, stationary, or possibly traveling.
-              </p>
-              {travelInsightsMessage && (
-                <p className="text-orange-300 text-xs mt-3">{travelInsightsMessage}</p>
-              )}
-            </div>
-            <button
-              onClick={travelInsightsEnabled ? disableTravelInsights : enableTravelInsights}
-              className="shrink-0 px-3 py-2 rounded-lg text-xs font-bold"
-              style={{
-                backgroundColor: travelInsightsEnabled ? 'rgba(220,38,38,0.14)' : '#f97316',
-                color: travelInsightsEnabled ? '#fca5a5' : 'white',
-                border: travelInsightsEnabled ? '1px solid rgba(248,113,113,0.35)' : '1px solid rgba(249,115,22,0.55)',
-              }}
-            >
-              {travelInsightsEnabled ? 'Disable Travel Listening Insights' : 'Enable Travel Listening Insights'}
-            </button>
-          </div>
-        </section>
-
-
-
         {/* Menu Items */}
         <div className="space-y-2 mb-6">
+          <section className="p-4 bg-gray-900 border border-gray-800 rounded-xl">
+            <div className="flex items-center gap-4">
+              <span className="text-2xl">🚗</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-white font-medium">Travel Insights</p>
+                <p className="text-gray-400 text-sm">Better recommendations for commuters and drivers.</p>
+              </div>
+              <button
+                onClick={() => travelInsightsEnabled ? disableTravelInsights() : enableTravelInsights('while_using')}
+                className="shrink-0 px-3 py-2 rounded-lg text-xs font-bold"
+                style={{
+                  backgroundColor: travelInsightsEnabled ? 'rgba(220,38,38,0.14)' : '#f97316',
+                  color: travelInsightsEnabled ? '#fca5a5' : 'white',
+                  border: travelInsightsEnabled ? '1px solid rgba(248,113,113,0.35)' : '1px solid rgba(249,115,22,0.55)',
+                }}
+              >
+                {travelInsightsEnabled ? 'Disable' : 'Enable Travel Insights'}
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-2 mt-3">
+              <button type="button" onClick={() => enableTravelInsights('yes')} className={travelChoiceClass(travelInsightsMode === 'yes')}>Yes</button>
+              <button type="button" onClick={() => enableTravelInsights('while_using')} className={travelChoiceClass(travelInsightsMode === 'while_using')}>Only while using this app</button>
+              <button type="button" onClick={disableTravelInsights} className={travelChoiceClass(travelInsightsMode === 'no')}>No</button>
+              <button type="button" onClick={() => setTravelInsightsDetailsOpen((open) => !open)} className="px-3 py-1.5 rounded-full text-xs font-bold text-orange-300 border border-orange-500/30 bg-orange-500/10">Learn more</button>
+            </div>
+            {travelInsightsDetailsOpen && (
+              <p className="text-gray-400 text-xs leading-relaxed mt-3">
+                Travel Insights helps Endless Tales recommend better stories for commuting, road trips, and professional drivers. If enabled, Endless Tales may detect whether your device appears to be moving while you listen. We do not track or store your location or route.
+              </p>
+            )}
+            {travelInsightsMessage && (
+              <p className="text-orange-300 text-xs mt-2">{travelInsightsMessage}</p>
+            )}
+          </section>
+
           {menuItems.map(item => (
             <Link
               key={item.href}
