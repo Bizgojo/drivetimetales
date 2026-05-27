@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { supabase } from '@/lib/supabase'
 
 type Subscriber = {
   id: string
@@ -67,14 +66,11 @@ export default function SubscriptionsPage() {
   const [actionMessage, setActionMessage] = useState('')
 
   async function adminFetch(path: string, init?: RequestInit) {
-    const { data: sessionData } = await supabase.auth.getSession()
-    const token = sessionData.session?.access_token
-    if (!token) throw new Error('Admin session not available')
     const res = await fetch(path, {
       ...init,
+      credentials: 'same-origin',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
         ...(init?.headers || {}),
       },
     })

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
 import {
   isLaunchStandardPlan,
   normalizePlan,
@@ -14,6 +16,9 @@ const ADMIN_EMAILS = new Set([
   'm.postlewaite@gmail.com',
 ])
 
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+
 function clients() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -27,11 +32,26 @@ function clients() {
 
 async function requireAdmin(req: NextRequest) {
   const token = (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '')
-  if (!token) return false
-  const { auth } = clients()
-  const { data, error } = await auth.auth.getUser(token)
-  if (error || !data.user?.email) return false
-  return ADMIN_EMAILS.has(data.user.email.toLowerCase())
+  if (token) {
+    const { auth } = clients()
+    const { data, error } = await auth.auth.getUser(token)
+    if (!error && data.user?.email && ADMIN_EMAILS.has(data.user.email.toLowerCase())) return true
+  }
+
+  const cookieStore = cookies()
+  const authClient = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => cookieStore.getAll(),
+        setAll: () => {},
+      },
+    }
+  )
+  const { data: { user } } = await authClient.auth.getUser()
+  const email = (user?.email || '').toLowerCase()
+  return Boolean(email && ADMIN_EMAILS.has(email))
 }
 
 function dateMs(value: unknown) {
