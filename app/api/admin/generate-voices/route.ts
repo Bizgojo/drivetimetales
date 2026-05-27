@@ -326,6 +326,12 @@ function transcriptTokens(text: string): string[] {
     // Occurs when Whisper reads a round-hour time like "10:00 p.m." and outputs
     // "ten hours p.m." — "hours" has no valid speech equivalent here.
     .replace(/\b(\d{1,2})\s+hours\s+(am|pm)\b/g, '$1 00 $2')
+    // Round-hour QC equivalence: "10 00 pm" ≡ "10 pm"
+    // Script text "10:00 p.m." → expected tokens "10 00 pm".
+    // TTS-preprocessed audio (or Whisper omitting the silent :00) → detected "10 pm".
+    // Normalise both to "10 pm" so QC comparison succeeds.
+    // ONLY fires on exact "00" minutes — does NOT affect "10 19 pm" or other partial hours.
+    .replace(/\b(\d{1,2})\s+00\s+(am|pm)\b/g, '$1 $2')
     // Split concatenated time numbers so both sides produce the same tokens:
     // "1119" → "11 19"  |  "415" → "4 15"  |  "830" → "8 30"
     // Whisper concatenates spoken clock times ("eleven nineteen" → "1119").
@@ -1784,6 +1790,12 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
     .replace(/#{1,6}\s/g, '')   // remove markdown headers
     .replace(/\[LISTENER_NAME\]/g, 'friend')  // fallback - split handled by generateIntroWithName
     .trim()
+    // Round-hour TTS preprocessing: EL is unstable vocalising ":00" in time expressions
+    // (produces "ten hours p.m." or "ten nineteen p.m." instead of "ten p.m.").
+    // Strip the ":00" before sending to EL — meaning is identical.
+    // Only fires when immediately followed by a meridiem marker (a.m./p.m./am/pm).
+    // Does NOT affect non-meridiem times or partial-hour times (e.g. "10:15 p.m." untouched).
+    .replace(/\b(\d{1,2}):00(\s*(?:a\.?m\.?|p\.?m\.?|am|pm)\b)/gi, '$1$2')
   const fileName = `${prefix}_${lineIndex.toString().padStart(4, '0')}.mp3`
   const cachePath = `asc3/${storyId}/${fileName}`
   const cacheUrl = `${BASE_STORAGE}/${cachePath}`
