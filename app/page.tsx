@@ -22,23 +22,42 @@ function LandingContent() {
   const searchParams = useSearchParams()
   const partner = searchParams.get('partner')
   const [partnerName, setPartnerName] = useState<string | null>(null)
+  const [authResolving, setAuthResolving] = useState(true)
 
-  // Redirect logged-in users to /home — also listens for OAuth callback session
+  // PWA launches must not paint public/login surfaces until Supabase restores.
   useEffect(() => {
+    let cancelled = false
+    const isStandaloneLaunch = () => {
+      if (typeof window === 'undefined') return false
+      const navigatorStandalone = 'standalone' in window.navigator && Boolean((window.navigator as any).standalone)
+      return navigatorStandalone || window.matchMedia('(display-mode: standalone)').matches
+    }
+
     async function checkAuth() {
       try {
         const { data: { session } } = await supabase.auth.getSession()
-        if (session) { router.push('/home'); return }
+        if (cancelled) return
+        if (session) {
+          router.replace('/home')
+          return
+        }
+        if (isStandaloneLaunch()) {
+          router.replace('/signin')
+          return
+        }
       } catch (err) {
         console.log('[DTT] Auth check skipped:', err)
       }
+      if (!cancelled) setAuthResolving(false)
     }
     checkAuth()
-    // Also listen for auth state changes — catches Google OAuth callback on iOS
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session) router.push('/home')
+      if (session) router.replace('/home')
     })
-    return () => subscription.unsubscribe()
+    return () => {
+      cancelled = true
+      subscription.unsubscribe()
+    }
   }, [router])
 
   // Load Google Fonts via link tag (avoids hydration mismatch from @import in style)
@@ -71,6 +90,8 @@ function LandingContent() {
   }, [partner])
 
   const ctaHref = partner ? `/signup?partner=${partner}` : '/signup'
+
+  if (authResolving) return <LaunchSplash />
 
   return (
     <div style={{ 
@@ -480,6 +501,16 @@ function LandingContent() {
           © 2026 Wonder Books Press. All rights reserved.
         </p>
       </footer>
+    </div>
+  )
+}
+
+function LaunchSplash() {
+  return (
+    <div style={{ minHeight: '100vh', backgroundColor: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '14px' }}>
+      <img src="/images/et-logo.png" alt="Endless Tales" style={{ width: '54px', height: '54px', objectFit: 'contain' }} />
+      <div style={{ width: '30px', height: '30px', border: '3px solid rgba(249,115,22,0.3)', borderTopColor: '#f97316', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
 }
