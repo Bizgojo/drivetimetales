@@ -6,6 +6,18 @@
 
 import { supabase } from './supabase'
 
+type StopReason = 'completed' | 'not_for_me' | 'navigated_away' | 'network_error' | 'app_closed' | 'manual_pause'
+
+type PlayEventSnapshot = {
+  userId: string | undefined
+  storyId: string
+  genre?: string
+  author?: string
+  narrator?: string
+  durationMins?: number
+  startedAt: string
+}
+
 // ── Device detection ──────────────────────────────────────────────────────────
 
 export function getDeviceInfo() {
@@ -74,12 +86,26 @@ function isOffline(): boolean {
 let currentSessionId: string | null = null
 let currentEventId: string | null = null
 let playStartTime: number | null = null
+let currentSnapshot: PlayEventSnapshot | null = null
 
 function generateUUID(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
     const r = Math.random() * 16 | 0
     return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16)
   })
+}
+
+async function postPlayEvent(payload: Record<string, unknown>, keepalive = false) {
+  if (typeof fetch === 'undefined') return null
+  const response = await fetch('/api/analytics/play-event', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    keepalive,
+    body: JSON.stringify(payload),
+  })
+  if (!response.ok) return null
+  return response.json().catch(() => null)
 }
 
 /**
@@ -97,6 +123,8 @@ export async function trackPlayStart(params: {
   try {
     currentSessionId = generateUUID()
     playStartTime = Date.now()
+    const startedAt = new Date().toISOString()
+    currentSnapshot = { ...params, startedAt }
 
     const { device_type, device_os, browser } = getDeviceInfo()
     const { origin, referrer_url } = getOrigin()
@@ -105,7 +133,7 @@ export async function trackPlayStart(params: {
       user_id: params.userId || null,
       story_id: params.storyId,
       session_id: currentSessionId,
-      started_at: new Date().toISOString(),
+      started_at: startedAt,
       device_type,
       device_os,
       browser,
@@ -119,6 +147,27 @@ export async function trackPlayStart(params: {
       stop_reason: null,
       seconds_played: 0,
       progress_pct: 0,
+    }
+
+    if (params.userId) {
+      const apiResult = await postPlayEvent({
+        action: 'start',
+        sessionId: currentSessionId,
+        storyId: params.storyId,
+        startedAt,
+        genre: params.genre || null,
+        author: params.author || null,
+        narrator: params.narrator || null,
+        durationMins: params.durationMins || null,
+        device: { device_type, device_os, browser },
+        origin,
+        referrerUrl: referrer_url || null,
+        isOffline: isOffline(),
+      })
+      if (apiResult?.id) {
+        currentEventId = apiResult.id
+        return
+      }
     }
 
     const { data, error } = await supabase.from('play_events').insert(row).select('id').single()
@@ -139,19 +188,77 @@ export async function trackPlayEnd(params: {
   storyId: string
   currentTime: number
   totalDuration: number
-  stopReason: 'completed' | 'not_for_me' | 'navigated_away' | 'network_error' | 'app_closed'
+  stopReason: StopReason
+  keepalive?: boolean
 }): Promise<void> {
   try {
     const secondsPlayed = playStartTime ? Math.floor((Date.now() - playStartTime) / 1000) : Math.floor(params.currentTime)
     const progressPct = params.totalDuration > 0 ? Math.round(params.currentTime / params.totalDuration * 100) : 0
+    const endedAt = new Date().toISOString()
+    const sessionId = currentSessionId
+    const eventId = currentEventId
+    const snapshot = currentSnapshot
 
-    if (currentEventId) {
-      await supabase.from('play_events').update({
-        ended_at: new Date().toISOString(),
+    let completed = false
+    const { device_type, device_os, browser } = getDeviceInfo()
+    const { origin, referrer_url } = getOrigin()
+
+    if (params.userId) {
+      const apiResult = await postPlayEvent({
+        action: 'end',
+        eventId,
+        sessionId,
+        storyId: params.storyId,
+        startedAt: snapshot?.startedAt || null,
+        endedAt,
+        currentTime: params.currentTime,
+        totalDuration: params.totalDuration,
+        secondsPlayed,
+        progressPct,
+        stopReason: params.stopReason,
+        genre: snapshot?.genre || null,
+        author: snapshot?.author || null,
+        narrator: snapshot?.narrator || null,
+        durationMins: snapshot?.durationMins || null,
+        device: { device_type, device_os, browser },
+        origin,
+        referrerUrl: referrer_url || null,
+        isOffline: isOffline(),
+      }, params.keepalive)
+      completed = Boolean(apiResult?.success)
+    }
+
+    if (!completed && eventId) {
+      const { error } = await supabase.from('play_events').update({
+        ended_at: endedAt,
         seconds_played: secondsPlayed,
         progress_pct: progressPct,
         stop_reason: params.stopReason,
-      }).eq('id', currentEventId)
+      }).eq('id', eventId)
+      completed = !error
+    }
+
+    if (!completed) {
+      await supabase.from('play_events').insert({
+        user_id: params.userId || snapshot?.userId || null,
+        story_id: params.storyId,
+        session_id: sessionId || generateUUID(),
+        started_at: snapshot?.startedAt || new Date(Date.now() - Math.max(0, secondsPlayed) * 1000).toISOString(),
+        ended_at: endedAt,
+        device_type,
+        device_os,
+        browser,
+        is_offline: isOffline(),
+        origin,
+        referrer_url: referrer_url || null,
+        genre: snapshot?.genre || null,
+        author: snapshot?.author || null,
+        narrator: snapshot?.narrator || null,
+        duration_mins: snapshot?.durationMins || null,
+        seconds_played: secondsPlayed,
+        progress_pct: progressPct,
+        stop_reason: params.stopReason,
+      })
     }
 
     // Update user preferences async
@@ -163,6 +270,7 @@ export async function trackPlayEnd(params: {
     currentEventId = null
     currentSessionId = null
     playStartTime = null
+    currentSnapshot = null
   } catch (e) {
     console.warn('[analytics] trackPlayEnd failed:', e)
   }

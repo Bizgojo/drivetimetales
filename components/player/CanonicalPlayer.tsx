@@ -210,6 +210,22 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     return isASC3 ? getQueueTotalSeconds() : (duration || (story as any)?.duration_mins * 60 || 0)
   }
 
+  const endAnalyticsSession = (
+    stopReason: 'completed' | 'not_for_me' | 'navigated_away' | 'network_error' | 'app_closed' | 'manual_pause',
+    keepalive = false
+  ) => {
+    if (!analyticsTrackedRef.current) return
+    trackPlayEnd({
+      userId: user?.id,
+      storyId,
+      currentTime: getProgressSeconds(),
+      totalDuration: getProgressTotalSeconds(),
+      stopReason,
+      keepalive,
+    }).catch(() => {})
+    analyticsTrackedRef.current = false
+  }
+
   const findQueuePositionForTime = (globalTime: number) => {
     const safeTime = Math.max(0, globalTime)
     let elapsed = 0
@@ -416,17 +432,24 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         sessionStartRef.current = Date.now()
       }
     }
+    const flushListeningEvent = () => {
+      if (analyticsTrackedRef.current) {
+        endAnalyticsSession('app_closed', true)
+      }
+    }
     const handleVisibility = () => {
       if (document.visibilityState === 'hidden') saveGuestMinutes()
       if (document.visibilityState === 'visible' && !user) sessionStartRef.current = Date.now()
     }
     document.addEventListener('visibilitychange', handleVisibility)
     window.addEventListener('beforeunload', saveGuestMinutes)
+    window.addEventListener('pagehide', flushListeningEvent)
     return () => {
       document.removeEventListener('visibilitychange', handleVisibility)
       window.removeEventListener('beforeunload', saveGuestMinutes)
+      window.removeEventListener('pagehide', flushListeningEvent)
     }
-  }, [user])
+  }, [user, storyId, isASC3, duration, totalDur, currentTime, cumTime])
 
   // ── Load playlist from localStorage ──────────────────────────────────────────
   useEffect(() => {
@@ -855,6 +878,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     if (isPlaying) {
       disableAutoAdvanceForSession('manual_pause')
       audioRef.current.pause(); musicRef.current?.pause()
+      endAnalyticsSession('manual_pause')
       saveProgress(getProgressSeconds()); setIsPlaying(false)
     } else {
       // src is pre-loaded in useEffect — play directly to preserve user gesture
@@ -889,14 +913,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   const saveProgress = async (t: number, done = false) => {
     // Analytics: track play end on completion
     if (done && analyticsTrackedRef.current) {
-      trackPlayEnd({
-        userId: user?.id,
-        storyId,
-        currentTime: t,
-        totalDuration: getProgressTotalSeconds(),
-        stopReason: 'completed',
-      }).catch(() => {})
-      analyticsTrackedRef.current = false
+      endAnalyticsSession('completed')
     }
     if (user?.id) await supabase.from('user_library').upsert({
       user_id: user.id, story_id: storyId, progress: Math.floor(t), completed: done,
@@ -962,14 +979,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     audioRef.current?.pause(); musicRef.current?.pause()
     // Analytics: track not_for_me
     if (analyticsTrackedRef.current) {
-      trackPlayEnd({
-        userId: user?.id,
-        storyId,
-        currentTime: getProgressSeconds(),
-        totalDuration: getProgressTotalSeconds(),
-        stopReason: 'not_for_me',
-      }).catch(() => {})
-      analyticsTrackedRef.current = false
+      endAnalyticsSession('not_for_me')
     }
     if (user?.id) {
       // Mark this episode as not_for_me
@@ -1005,14 +1015,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     audioRef.current?.pause(); musicRef.current?.pause(); saveProgress(getProgressSeconds())
     // Analytics: track navigated_away
     if (analyticsTrackedRef.current) {
-      trackPlayEnd({
-        userId: user?.id,
-        storyId,
-        currentTime: getProgressSeconds(),
-        totalDuration: getProgressTotalSeconds(),
-        stopReason: 'navigated_away',
-      }).catch(() => {})
-      analyticsTrackedRef.current = false
+      endAnalyticsSession('navigated_away')
     }
     if (!user && sessionStartRef.current) {
       const mins = (Date.now() - sessionStartRef.current) / 60000
