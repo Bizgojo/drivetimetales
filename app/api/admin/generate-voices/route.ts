@@ -277,6 +277,10 @@ function normalizePossessivePlaceNames(text: string): string {
     .replace(/\bPike's\s+Peak\b/gi, 'Pike Peak')
     .replace(/\bHarpers\s+Ferry\b/gi, 'Harper Ferry')
     .replace(/\bHarper's\s+Ferry\b/gi, 'Harper Ferry')
+    // Tonopah, NV: Whisper ASR renders phonetically as "Ta-Neh-Pah" or similar variants.
+    .replace(/\bTa[-\s]*Neh[-\s]*Pah\b/gi, 'Tonopah')
+    .replace(/\bTonapah\b/gi, 'Tonopah')
+    .replace(/\bTonopaw\b/gi, 'Tonopah')
 }
 
 function normalizeStylisticCompoundWords(text: string): string {
@@ -285,6 +289,8 @@ function normalizeStylisticCompoundWords(text: string): string {
     .replace(/\bokay\b/gi, 'ok')
     .replace(/\bon\s+to\b/gi, 'onto')
     .replace(/\btime\s+stamps\b/gi, 'timestamps')
+    // Emergency number: Whisper formats "911" as "9-1-1" — normalise to joined form.
+    .replace(/\b9-1-1\b/gi, '911')
 }
 
 function normalizePossessiveVehicleModelNames(text: string): string {
