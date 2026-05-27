@@ -9,7 +9,7 @@ import { supabaseBrowser } from '@/lib/supabase-browser'
 function SignInContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { signIn } = useAuth()
+  const { signIn, loading: authLoading, session } = useAuth()
 
   const [email, setEmail]             = useState('')
   const [password, setPassword]       = useState('')
@@ -19,13 +19,19 @@ function SignInContent() {
   const [magicLoading, setMagicLoading] = useState(false)
   const [pwLoading, setPwLoading]     = useState(false)
 
-  const returnTo = searchParams.get('returnTo') || '/home'
+  const returnToParam = searchParams.get('returnTo')
+  const returnTo = returnToParam && returnToParam.startsWith('/') && !returnToParam.startsWith('//') ? returnToParam : '/home'
 
   useEffect(() => {
+    if (session) router.replace(returnTo)
+  }, [returnTo, router, session])
+
+  useEffect(() => {
+    if (authLoading || session) return
     supabaseBrowser.auth.getSession().then(({ data: { session } }) => {
       if (session) router.replace(returnTo)
     })
-  }, [returnTo, router])
+  }, [authLoading, returnTo, router, session])
 
   const urlError = searchParams.get('error')
   const urlDesc  = searchParams.get('desc')
@@ -70,6 +76,8 @@ function SignInContent() {
       router.push(returnTo)
     }
   }
+
+  if (authLoading || session) return <AuthLaunchSplash />
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#020617', overflowY: 'auto', WebkitOverflowScrolling: 'touch' as any, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -195,14 +203,19 @@ function SignInContent() {
   )
 }
 
+function AuthLaunchSplash() {
+  return (
+    <div style={{ minHeight: '100vh', backgroundColor: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '14px' }}>
+      <img src="/images/et-logo.png" alt="Endless Tales" style={{ width: '54px', height: '54px', objectFit: 'contain' }} />
+      <div style={{ width: '30px', height: '30px', border: '3px solid rgba(249,115,22,0.3)', borderTopColor: '#f97316', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  )
+}
+
 export default function SignInPage() {
   return (
-    <Suspense fallback={
-      <div style={{ minHeight: '100vh', backgroundColor: '#020617', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ width: '32px', height: '32px', border: '4px solid #f97316', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-      </div>
-    }>
+    <Suspense fallback={<AuthLaunchSplash />}>
       <SignInContent />
     </Suspense>
   )

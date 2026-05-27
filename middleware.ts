@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 
 const PUBLIC_ROUTES = new Set([
-  '/signin', '/signup', '/welcome', '/guest', '/forgot-password',
+  '/signin', '/login', '/signup', '/welcome', '/guest', '/forgot-password',
   '/player',
   '/reset-password', '/auth/callback', '/auth/signup', '/auth/confirm', '/auth/magic-sent',
   '/subscribe',
@@ -21,6 +21,8 @@ const SUBSCRIPTION_REQUIRED_PREFIXES = [
   '/library',
   '/player/',
 ]
+
+const AUTH_ENTRY_ROUTES = new Set(['/signin', '/login'])
 
 function requiresSubscription(pathname: string): boolean {
   return SUBSCRIPTION_REQUIRED_PREFIXES.some(p =>
@@ -44,6 +46,20 @@ export async function middleware(request: NextRequest) {
 
   if (PUBLIC_PREFIXES.some(p => pathname.startsWith(p))) return NextResponse.next()
   if (ADDITIONAL_PUBLIC_PREFIXES.some(p => pathname.startsWith(p))) return NextResponse.next()
+  if (AUTH_ENTRY_ROUTES.has(pathname)) {
+    const authSupabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { cookies: { getAll: () => request.cookies.getAll(), setAll: () => {} } }
+    )
+    const { data: { user: authEntryUser } } = await authSupabase.auth.getUser()
+    if (authEntryUser) {
+      const returnTo = request.nextUrl.searchParams.get('returnTo')
+      const safeReturnTo = returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//') ? returnTo : '/home'
+      return NextResponse.redirect(new URL(safeReturnTo, request.url))
+    }
+    return NextResponse.next()
+  }
   if (PUBLIC_ROUTES.has(pathname)) return NextResponse.next()
   // If user hits the root landing page with an active session, send them home
   if (pathname === '/') {
