@@ -55,6 +55,7 @@ async function requireAdmin(req: NextRequest) {
 }
 
 function dateMs(value: unknown) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0
   const ms = Date.parse(String(value || ''))
   return Number.isFinite(ms) ? ms : 0
 }
@@ -85,6 +86,16 @@ async function safeSelect(admin: any, table: string, select: string, options: { 
     return []
   }
   return data || []
+}
+
+async function safeSelectWithOrderFallback(admin: any, table: string, select: string, orderCandidates: string[], limit = 10000) {
+  for (const orderBy of orderCandidates) {
+    let query = admin.from(table).select(select).order(orderBy, { ascending: false }).limit(limit)
+    const { data, error } = await query
+    if (!error) return data || []
+    console.warn(`[admin/subscribers] ${table} order by ${orderBy} unavailable:`, error.message)
+  }
+  return safeSelect(admin, table, select, { limit })
 }
 
 async function listAuthUsers(admin: any) {
@@ -121,6 +132,76 @@ function topEntries(map: Map<string, number>, limit = 5) {
     .map(([name, weight]) => ({ name, weight: Math.round(weight) }))
 }
 
+function valueFrom(row: any, keys: string[]) {
+  for (const key of keys) {
+    if (row?.[key] !== undefined && row?.[key] !== null && row?.[key] !== '') return row[key]
+    if (row?.properties?.[key] !== undefined && row?.properties?.[key] !== null && row?.properties?.[key] !== '') return row.properties[key]
+    if (row?.payload?.[key] !== undefined && row?.payload?.[key] !== null && row?.payload?.[key] !== '') return row.payload[key]
+    if (row?.metadata?.[key] !== undefined && row?.metadata?.[key] !== null && row?.metadata?.[key] !== '') return row.metadata[key]
+  }
+  return null
+}
+
+function numberFrom(row: any, keys: string[]) {
+  const value = valueFrom(row, keys)
+  const num = Number(value)
+  return Number.isFinite(num) ? num : 0
+}
+
+function stringFrom(row: any, keys: string[]) {
+  const value = valueFrom(row, keys)
+  return value === null || value === undefined ? '' : String(value).trim()
+}
+
+function dateFrom(row: any, keys: string[]) {
+  return dateMs(valueFrom(row, keys))
+}
+
+function normalizePlayEvent(event: any) {
+  const storyId = stringFrom(event, ['story_id', 'storyId', 'episode_id', 'episodeId', 'content_id', 'contentId'])
+  const seconds = Math.max(0, numberFrom(event, [
+    'seconds_played',
+    'listened_seconds',
+    'listen_seconds',
+    'played_seconds',
+    'elapsed_seconds',
+    'session_seconds',
+    'duration_played_seconds',
+  ]))
+  const fallbackProgressSeconds = Math.max(0, numberFrom(event, [
+    'progress_seconds',
+    'position_seconds',
+    'current_time',
+    'currentTime',
+    'playhead_seconds',
+  ]))
+  const startedMs = dateFrom(event, ['started_at', 'start_time', 'startedAt', 'created_at', 'timestamp', 'occurred_at', 'event_time'])
+  const endedMs = dateFrom(event, ['ended_at', 'end_time', 'endedAt', 'updated_at'])
+  const progressPct = Math.max(0, numberFrom(event, ['progress_pct', 'progress_percent', 'completion_pct', 'percent_complete']))
+  const stopReason = stringFrom(event, ['stop_reason', 'stopReason', 'reason'])
+  const eventType = stringFrom(event, ['event_type', 'type', 'name'])
+  return {
+    raw: event,
+    userId: stringFrom(event, ['user_id', 'userId', 'subscriber_id', 'subscriberId']),
+    storyId,
+    seconds: seconds || fallbackProgressSeconds,
+    progressSeconds: fallbackProgressSeconds,
+    progressPct,
+    startedMs,
+    endedMs,
+    updatedMs: dateFrom(event, ['updated_at', 'updatedAt']),
+    createdMs: dateFrom(event, ['created_at', 'createdAt']),
+    genre: stringFrom(event, ['genre']),
+    author: stringFrom(event, ['author']),
+    narrator: stringFrom(event, ['narrator', 'narrator_voice_name', 'narratorVoiceName']),
+    durationMins: numberFrom(event, ['duration_mins', 'durationMinutes', 'story_duration_mins']),
+    durationSeconds: numberFrom(event, ['duration_seconds', 'durationSeconds', 'total_duration', 'totalDuration']),
+    stopReason,
+    eventType,
+    sessionId: stringFrom(event, ['session_id', 'sessionId']),
+  }
+}
+
 function dayName(index: number) {
   return ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][index] || 'Unknown'
 }
@@ -135,7 +216,7 @@ function timeBucket(date: Date) {
 
 function movementContext(events: any[]) {
   const contexts = events
-    .map((event) => String(event.movement_context || event.travel_context || event.motion_context || '').trim().toLowerCase())
+    .map((event) => String(valueFrom(event, ['movement_context', 'travel_context', 'motion_context']) || '').trim().toLowerCase())
     .filter(Boolean)
   if (!contexts.length) return { value: 'Not collected', source: 'Movement/travel context is not collected by default.' }
   if (contexts.includes('possibly_driving') || contexts.includes('travel') || contexts.includes('traveling') || contexts.includes('possibly_traveling')) {
@@ -148,7 +229,9 @@ function movementContext(events: any[]) {
 function buildListeningSummary(userId: string, libraryRows: any[], playEvents: any[], storyById: Map<string, any>) {
   const normalizedUserId = String(userId || '').toLowerCase()
   const userLibrary = libraryRows.filter((row) => String(row.user_id || '').toLowerCase() === normalizedUserId)
-  const userEvents = playEvents.filter((row) => String(row.user_id || '').toLowerCase() === normalizedUserId)
+  const userEvents = playEvents
+    .map(normalizePlayEvent)
+    .filter((row) => row.userId.toLowerCase() === normalizedUserId)
   const storyIds = new Set<string>()
   const completedStoryIds = new Set<string>()
   const genreWeights = new Map<string, number>()
@@ -162,15 +245,15 @@ function buildListeningSummary(userId: string, libraryRows: any[], playEvents: a
 
   let totalSecondsFromEvents = 0
   for (const event of userEvents) {
-    const storyId = String(event.story_id || '')
+    const storyId = event.storyId
     if (storyId) {
       storyIds.add(storyId)
       eventStoryIds.add(storyId)
     }
-    const seconds = Math.max(0, Number(event.seconds_played || 0))
+    const seconds = Math.max(0, event.seconds)
     totalSecondsFromEvents += seconds
     if (seconds > 0) sessionLengths.push(seconds)
-    const startedAt = dateMs(event.started_at)
+    const startedAt = event.startedMs || event.createdMs || event.updatedMs
     if (startedAt) {
       const startedDate = new Date(startedAt)
       const bucket = timeBucket(startedDate)
@@ -180,7 +263,7 @@ function buildListeningSummary(userId: string, libraryRows: any[], playEvents: a
     }
     const story = storyId ? storyById.get(storyId) : null
     const genre = String(event.genre || story?.genre || '').trim()
-    const duration = Number(event.duration_mins || story?.duration_mins || 0)
+    const duration = Number(event.durationMins || (event.durationSeconds ? event.durationSeconds / 60 : 0) || story?.duration_mins || 0)
     const weight = seconds > 0 ? seconds / 60 : 1
     if (genre) genreWeights.set(genre, (genreWeights.get(genre) || 0) + weight)
     if (duration > 0) {
@@ -188,7 +271,12 @@ function buildListeningSummary(userId: string, libraryRows: any[], playEvents: a
       const bucket = durationBucket(duration)
       if (bucket) durationWeights.set(bucket, (durationWeights.get(bucket) || 0) + weight)
     }
-    if (event.stop_reason === 'completed' || Number(event.progress_pct || 0) >= 95) {
+    const completedEvent = event.stopReason === 'completed'
+      || event.eventType === 'completed'
+      || event.eventType === 'story_completed'
+      || event.eventType === 'playback_completed'
+      || event.progressPct >= 95
+    if (completedEvent) {
       if (storyId) {
         completedStoryIds.add(storyId)
         if (duration > 0) completedDurationByStory.set(storyId, duration)
@@ -226,7 +314,7 @@ function buildListeningSummary(userId: string, libraryRows: any[], playEvents: a
   }
 
   const recentListeningMs = [
-    ...userEvents.flatMap((event) => [event.ended_at, event.started_at, event.updated_at]),
+    ...userEvents.flatMap((event) => [event.endedMs, event.startedMs, event.updatedMs, event.createdMs]),
     ...userLibrary.flatMap((row) => [row.last_played, row.updated_at, row.created_at]),
   ].map(dateMs).filter(Boolean).sort((a, b) => b - a)[0] || 0
 
@@ -246,15 +334,15 @@ function buildListeningSummary(userId: string, libraryRows: any[], playEvents: a
     : null
   const recentSessions = userEvents
     .slice()
-    .sort((a, b) => dateMs(b.started_at || b.ended_at) - dateMs(a.started_at || a.ended_at))
+    .sort((a, b) => (b.startedMs || b.createdMs || b.endedMs || 0) - (a.startedMs || a.createdMs || a.endedMs || 0))
     .slice(0, 5)
     .map((event) => ({
-      storyId: event.story_id || null,
-      storyTitle: event.story_id ? storyById.get(event.story_id)?.title || null : null,
-      startedAt: event.started_at || null,
-      endedAt: event.ended_at || null,
-      secondsPlayed: Math.max(0, Number(event.seconds_played || 0)),
-      stopReason: event.stop_reason || null,
+      storyId: event.storyId || null,
+      storyTitle: event.storyId ? storyById.get(event.storyId)?.title || null : null,
+      startedAt: event.startedMs ? new Date(event.startedMs).toISOString() : null,
+      endedAt: event.endedMs ? new Date(event.endedMs).toISOString() : null,
+      secondsPlayed: Math.max(0, event.seconds),
+      stopReason: event.stopReason || event.eventType || null,
     }))
   const movement = movementContext(userEvents)
 
@@ -263,7 +351,7 @@ function buildListeningSummary(userId: string, libraryRows: any[], playEvents: a
     storiesCompleted: completedStoryIds.size,
     totalListenedMinutes: Math.round((totalSecondsFromEvents + fallbackProgressSeconds) / 60),
     recentListeningDate: recentListeningMs ? new Date(recentListeningMs).toISOString() : null,
-    hasReliableEvents: userEvents.some((event) => Number(event.seconds_played || 0) > 0 || event.ended_at),
+    hasReliableEvents: userEvents.some((event) => event.seconds > 0 || event.progressSeconds > 0 || event.endedMs || event.startedMs || event.createdMs),
     eventCount: userEvents.length,
     libraryActivityCount: userLibrary.filter((row) => Number(row.progress || 0) > 0 || row.completed || row.last_played).length,
     preferences: {
@@ -297,7 +385,7 @@ export async function GET(req: NextRequest) {
       admin.from('users').select('*').order('created_at', { ascending: false }),
       admin.from('subscriptions').select('*').order('created_at', { ascending: false }),
       safeSelect(admin, 'user_library', 'user_id,story_id,progress,completed,updated_at,created_at,last_played', { orderBy: 'updated_at', limit: 50000 }),
-      safeSelect(admin, 'play_events', 'id,user_id,story_id,started_at,ended_at,updated_at,created_at,seconds_played,progress_pct,stop_reason,genre,author,narrator,duration_mins', { orderBy: 'started_at', limit: 50000 }),
+      safeSelectWithOrderFallback(admin, 'play_events', '*', ['started_at', 'created_at', 'timestamp', 'occurred_at', 'updated_at'], 50000),
       safeSelect(admin, 'stories', 'id,title,genre,duration_mins'),
       safeSelect(admin, 'referrals', '*'),
       listAuthUsers(admin),

@@ -279,28 +279,21 @@ export default function SubscriptionsPage() {
               )}
             </DetailSection>
             <DetailSection title="Listening patterns">
-              {selected.listeningPatterns.hasEnoughData ? (
-                <>
-                  <Info label="Favorite time" value={selected.listeningPatterns.favoriteListeningTime || 'Not enough listening data yet'} />
-                  <Info label="Favorite days" value={selected.listeningPatterns.favoriteListeningDays.length ? selected.listeningPatterns.favoriteListeningDays.join(', ') : 'Not enough listening data yet'} />
-                  <Info label="Most active day" value={selected.listeningPatterns.mostActiveListeningDay || 'Not enough listening data yet'} />
-                  <Info label="Avg session" value={selected.listeningPatterns.averageSessionLengthMinutes ? `${selected.listeningPatterns.averageSessionLengthMinutes} min` : 'Not enough listening data yet'} />
-                  <Info label="Likely context" value={selected.listeningPatterns.likelyListeningContext || 'unknown'} />
-                  <div style={{ color: '#64748b', fontSize: 12 }}>{selected.listeningPatterns.movementContextSource}</div>
-                  {selected.listeningPatterns.recentSessions.length > 0 && (
-                    <div style={{ display: 'grid', gap: 6, marginTop: 4 }}>
-                      <div style={{ color: '#64748b', fontSize: 12, fontWeight: 800 }}>Recent listening sessions</div>
-                      {selected.listeningPatterns.recentSessions.map((session, index) => (
-                        <div key={`${session.storyId || 'session'}-${index}`} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 7, padding: 8, fontSize: 12 }}>
-                          <div style={{ color: '#111827', fontWeight: 800 }}>{session.storyTitle || 'Unknown story'}</div>
-                          <div style={{ color: '#64748b' }}>{fmtDateTime(session.startedAt)} · {Math.round((session.secondsPlayed || 0) / 60)} min{session.stopReason ? ` · ${session.stopReason}` : ''}</div>
-                        </div>
-                      ))}
+              <Info label="Favorite time" value={selected.listeningPatterns.favoriteListeningTime || 'Not enough listening data yet'} />
+              <Info label="Favorite days" value={selected.listeningPatterns.favoriteListeningDays.length ? selected.listeningPatterns.favoriteListeningDays.join(', ') : 'Not enough listening data yet'} />
+              <Info label="Average session" value={selected.listeningPatterns.averageSessionLengthMinutes ? `${selected.listeningPatterns.averageSessionLengthMinutes} min` : 'Not enough listening data yet'} />
+              <Info label="Movement / travel context" value={selected.listeningPatterns.likelyListeningContext || 'Not collected'} />
+              <div style={{ color: '#64748b', fontSize: 12 }}>{selected.listeningPatterns.movementContextSource || 'Movement/travel context is not collected by default.'}</div>
+              {selected.listeningPatterns.recentSessions.length > 0 && (
+                <div style={{ display: 'grid', gap: 6, marginTop: 4 }}>
+                  <div style={{ color: '#64748b', fontSize: 12, fontWeight: 800 }}>Recent listening sessions</div>
+                  {selected.listeningPatterns.recentSessions.map((session, index) => (
+                    <div key={`${session.storyId || 'session'}-${index}`} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 7, padding: 8, fontSize: 12 }}>
+                      <div style={{ color: '#111827', fontWeight: 800 }}>{session.storyTitle || 'Unknown story'}</div>
+                      <div style={{ color: '#64748b' }}>{fmtDateTime(session.startedAt)} · {Math.round((session.secondsPlayed || 0) / 60)} min{session.stopReason ? ` · ${session.stopReason}` : ''}</div>
                     </div>
-                  )}
-                </>
-              ) : (
-                <div style={{ color: '#64748b', fontSize: 13 }}>Not enough listening data yet</div>
+                  ))}
+                </div>
               )}
             </DetailSection>
             <DetailSection title="Playlist activity">
