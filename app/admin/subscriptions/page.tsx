@@ -18,7 +18,39 @@ type Subscriber = {
   subscriptionEndsAt: string | null
   adminNotes: string
   accessGranted: boolean
-  listening: { storiesStarted: number; storiesCompleted: number; totalProgressMinutes: number }
+  listening: {
+    storiesStarted: number
+    storiesCompleted: number
+    totalListenedMinutes: number
+    recentListeningDate: string | null
+    hasReliableEvents: boolean
+  }
+  preferences: {
+    hasEnoughData: boolean
+    preferredGenres: string[]
+    mostListenedGenre: string | null
+    avgListenedStoryDuration: number | null
+    avgCompletedStoryDuration: number | null
+    typicalDurationBucket: string | null
+  }
+  listeningPatterns: {
+    hasEnoughData: boolean
+    favoriteListeningTime: string | null
+    listeningTimeBuckets: Array<{ name: string; weight: number }>
+    favoriteListeningDays: string[]
+    mostActiveListeningDay: string | null
+    averageSessionLengthMinutes: number | null
+    recentSessions: Array<{
+      storyId: string | null
+      storyTitle: string | null
+      startedAt: string | null
+      endedAt: string | null
+      secondsPlayed: number
+      stopReason: string | null
+    }>
+    likelyListeningContext: string
+    movementContextSource: string
+  }
   playlist: { activityKnown: boolean; note: string }
   referrals: { count: number; rows: any[] }
 }
@@ -220,7 +252,47 @@ export default function SubscriptionsPage() {
             <DetailSection title="Listening history">
               <Info label="Stories started" value={String(selected.listening.storiesStarted)} />
               <Info label="Stories completed" value={String(selected.listening.storiesCompleted)} />
-              <Info label="Total progress" value={`${selected.listening.totalProgressMinutes} min`} />
+              <Info label="Total listened" value={`${selected.listening.totalListenedMinutes} min`} />
+              <Info label="Recent listening" value={fmtDateTime(selected.listening.recentListeningDate)} />
+              <Info label="Data source" value={selected.listening.hasReliableEvents ? 'Playback events' : selected.listening.storiesStarted > 0 ? 'Progress fallback' : 'No listening data'} />
+            </DetailSection>
+            <DetailSection title="Preferences">
+              {selected.preferences.hasEnoughData ? (
+                <>
+                  <Info label="Preferred genres" value={selected.preferences.preferredGenres.length ? selected.preferences.preferredGenres.join(', ') : 'Not enough listening data yet'} />
+                  <Info label="Most listened" value={selected.preferences.mostListenedGenre || 'Not enough listening data yet'} />
+                  <Info label="Avg story length" value={selected.preferences.avgListenedStoryDuration ? `${selected.preferences.avgListenedStoryDuration} min` : 'Not enough listening data yet'} />
+                  <Info label="Avg completed" value={selected.preferences.avgCompletedStoryDuration ? `${selected.preferences.avgCompletedStoryDuration} min` : 'Not enough listening data yet'} />
+                  <Info label="Duration bucket" value={selected.preferences.typicalDurationBucket || 'Not enough listening data yet'} />
+                </>
+              ) : (
+                <div style={{ color: '#64748b', fontSize: 13 }}>Not enough listening data yet</div>
+              )}
+            </DetailSection>
+            <DetailSection title="Listening patterns">
+              {selected.listeningPatterns.hasEnoughData ? (
+                <>
+                  <Info label="Favorite time" value={selected.listeningPatterns.favoriteListeningTime || 'Not enough listening data yet'} />
+                  <Info label="Favorite days" value={selected.listeningPatterns.favoriteListeningDays.length ? selected.listeningPatterns.favoriteListeningDays.join(', ') : 'Not enough listening data yet'} />
+                  <Info label="Most active day" value={selected.listeningPatterns.mostActiveListeningDay || 'Not enough listening data yet'} />
+                  <Info label="Avg session" value={selected.listeningPatterns.averageSessionLengthMinutes ? `${selected.listeningPatterns.averageSessionLengthMinutes} min` : 'Not enough listening data yet'} />
+                  <Info label="Likely context" value={selected.listeningPatterns.likelyListeningContext || 'unknown'} />
+                  <div style={{ color: '#64748b', fontSize: 12 }}>{selected.listeningPatterns.movementContextSource}</div>
+                  {selected.listeningPatterns.recentSessions.length > 0 && (
+                    <div style={{ display: 'grid', gap: 6, marginTop: 4 }}>
+                      <div style={{ color: '#64748b', fontSize: 12, fontWeight: 800 }}>Recent listening sessions</div>
+                      {selected.listeningPatterns.recentSessions.map((session, index) => (
+                        <div key={`${session.storyId || 'session'}-${index}`} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 7, padding: 8, fontSize: 12 }}>
+                          <div style={{ color: '#111827', fontWeight: 800 }}>{session.storyTitle || 'Unknown story'}</div>
+                          <div style={{ color: '#64748b' }}>{fmtDateTime(session.startedAt)} · {Math.round((session.secondsPlayed || 0) / 60)} min{session.stopReason ? ` · ${session.stopReason}` : ''}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div style={{ color: '#64748b', fontSize: 13 }}>Not enough listening data yet</div>
+              )}
             </DetailSection>
             <DetailSection title="Playlist activity">
               <Info label="Server activity" value={selected.playlist.activityKnown ? 'Known' : 'Client-side only'} />

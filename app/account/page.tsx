@@ -11,16 +11,58 @@ export default function AccountPage() {
   const isAdmin = user?.email?.toLowerCase().trim() === 'm.postlewaite@gmail.com';
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
+  const [travelInsightsEnabled, setTravelInsightsEnabled] = useState(false);
+  const [travelInsightsMessage, setTravelInsightsMessage] = useState('');
+
+  const travelInsightsKey = user?.id ? `dtt_travel_listening_insights_${user.id}` : 'dtt_travel_listening_insights';
 
   // Wait for client-side mount
   useEffect(() => {
     setMounted(true);
   }, []);
 
+  useEffect(() => {
+    if (!mounted || !user?.id) return;
+    try {
+      setTravelInsightsEnabled(localStorage.getItem(travelInsightsKey) === 'true');
+    } catch {}
+  }, [mounted, travelInsightsKey, user?.id]);
+
   // Handle sign out
   const handleSignOut = async () => {
     await signOut();
     router.push('/');
+  };
+
+  const enableTravelInsights = async () => {
+    setTravelInsightsMessage('');
+
+    try {
+      const permissionsApi = typeof navigator !== 'undefined' ? (navigator as any).permissions : null;
+      if (permissionsApi?.query) {
+        const status = await permissionsApi.query({ name: 'geolocation' as PermissionName });
+        if (status.state === 'denied') {
+          setTravelInsightsMessage('Location permission is blocked in this browser. Playback will still work normally.');
+          return;
+        }
+      }
+    } catch {}
+
+    try {
+      localStorage.setItem(travelInsightsKey, 'true');
+      setTravelInsightsEnabled(true);
+      setTravelInsightsMessage('Enabled. We will only use coarse context, never exact routes or stored GPS history.');
+    } catch {
+      setTravelInsightsMessage('Could not save this preference on this device. Playback will still work normally.');
+    }
+  };
+
+  const disableTravelInsights = () => {
+    try {
+      localStorage.removeItem(travelInsightsKey);
+    } catch {}
+    setTravelInsightsEnabled(false);
+    setTravelInsightsMessage('Disabled. Travel listening context will not be collected.');
   };
 
   // Show loading state while auth is initializing or not yet mounted
@@ -84,6 +126,35 @@ export default function AccountPage() {
           <p className="text-gray-400 text-sm">{user.email}</p>
           <p className="text-orange-400 text-sm mt-1">Member since {memberSince}</p>
         </div>
+
+        {/* Travel Listening Insights */}
+        <section className="mb-6 p-4 bg-gray-900 border border-gray-800 rounded-xl">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1">
+              <h2 className="text-white font-bold text-base">Travel Listening Insights</h2>
+              <p className="text-gray-400 text-sm mt-1">
+                Allow Endless Tales to detect whether you are listening while traveling. We do not store your exact location or route.
+              </p>
+              <p className="text-gray-500 text-xs mt-2">
+                Default off. If enabled later analytics only use coarse context: unknown, stationary, or possibly traveling.
+              </p>
+              {travelInsightsMessage && (
+                <p className="text-orange-300 text-xs mt-3">{travelInsightsMessage}</p>
+              )}
+            </div>
+            <button
+              onClick={travelInsightsEnabled ? disableTravelInsights : enableTravelInsights}
+              className="shrink-0 px-3 py-2 rounded-lg text-xs font-bold"
+              style={{
+                backgroundColor: travelInsightsEnabled ? 'rgba(220,38,38,0.14)' : '#f97316',
+                color: travelInsightsEnabled ? '#fca5a5' : 'white',
+                border: travelInsightsEnabled ? '1px solid rgba(248,113,113,0.35)' : '1px solid rgba(249,115,22,0.55)',
+              }}
+            >
+              {travelInsightsEnabled ? 'Disable Travel Listening Insights' : 'Enable Travel Listening Insights'}
+            </button>
+          </div>
+        </section>
 
 
 

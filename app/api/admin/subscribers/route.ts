@@ -75,23 +75,219 @@ function stripeUrl(customerId: string | null) {
   return customerId ? `https://dashboard.stripe.com/customers/${customerId}` : null
 }
 
+async function safeSelect(admin: any, table: string, select: string) {
+  const { data, error } = await admin.from(table).select(select).limit(10000)
+  if (error) {
+    console.warn(`[admin/subscribers] ${table} unavailable:`, error.message)
+    return []
+  }
+  return data || []
+}
+
+async function listAuthUsers(admin: any) {
+  const authUsers: any[] = []
+  try {
+    for (let page = 1; page < 50; page += 1) {
+      const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 })
+      if (error) {
+        console.warn('[admin/subscribers] auth user list unavailable:', error.message)
+        break
+      }
+      authUsers.push(...(data?.users || []))
+      if (!data?.users || data.users.length < 1000) break
+    }
+  } catch (error) {
+    console.warn('[admin/subscribers] auth user list failed:', error instanceof Error ? error.message : String(error))
+  }
+  return authUsers
+}
+
+function durationBucket(minutes: number | null | undefined) {
+  const duration = Number(minutes || 0)
+  if (!duration) return null
+  if (duration < 20) return 'short'
+  if (duration <= 40) return 'medium'
+  return 'long'
+}
+
+function topEntries(map: Map<string, number>, limit = 5) {
+  return [...map.entries()]
+    .filter(([key]) => Boolean(key))
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, limit)
+    .map(([name, weight]) => ({ name, weight: Math.round(weight) }))
+}
+
+function dayName(index: number) {
+  return ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][index] || 'Unknown'
+}
+
+function timeBucket(date: Date) {
+  const hour = date.getHours()
+  if (hour >= 5 && hour < 12) return 'morning'
+  if (hour >= 12 && hour < 17) return 'afternoon'
+  if (hour >= 17 && hour < 22) return 'evening'
+  return 'night'
+}
+
+function movementContext(events: any[]) {
+  const contexts = events
+    .map((event) => String(event.movement_context || event.travel_context || event.motion_context || '').trim().toLowerCase())
+    .filter(Boolean)
+  if (!contexts.length) return { value: 'Not collected', source: 'Movement/travel context is not collected by default.' }
+  if (contexts.includes('possibly_driving') || contexts.includes('travel') || contexts.includes('traveling') || contexts.includes('possibly_traveling')) {
+    return { value: 'travel', source: 'Coarse opt-in movement signal' }
+  }
+  if (contexts.includes('stationary')) return { value: 'stationary', source: 'Coarse opt-in movement signal' }
+  return { value: 'unknown', source: 'Coarse movement signal unavailable' }
+}
+
+function buildListeningSummary(userId: string, libraryRows: any[], playEvents: any[], storyById: Map<string, any>) {
+  const userLibrary = libraryRows.filter((row) => row.user_id === userId)
+  const userEvents = playEvents.filter((row) => row.user_id === userId)
+  const storyIds = new Set<string>()
+  const completedStoryIds = new Set<string>()
+  const genreWeights = new Map<string, number>()
+  const durationWeights = new Map<string, number>()
+  const completedDurations: number[] = []
+  const listenedDurations: number[] = []
+  const timeBuckets = new Map<string, number>()
+  const dayBuckets = new Map<string, number>()
+  const sessionLengths: number[] = []
+
+  let totalSecondsFromEvents = 0
+  for (const event of userEvents) {
+    if (event.story_id) storyIds.add(event.story_id)
+    const seconds = Math.max(0, Number(event.seconds_played || 0))
+    totalSecondsFromEvents += seconds
+    if (seconds > 0) sessionLengths.push(seconds)
+    const startedAt = dateMs(event.started_at)
+    if (startedAt) {
+      const startedDate = new Date(startedAt)
+      const bucket = timeBucket(startedDate)
+      timeBuckets.set(bucket, (timeBuckets.get(bucket) || 0) + Math.max(1, seconds / 60))
+      const day = dayName(startedDate.getDay())
+      dayBuckets.set(day, (dayBuckets.get(day) || 0) + Math.max(1, seconds / 60))
+    }
+    const story = event.story_id ? storyById.get(event.story_id) : null
+    const genre = String(event.genre || story?.genre || '').trim()
+    const duration = Number(event.duration_mins || story?.duration_mins || 0)
+    const weight = seconds > 0 ? seconds / 60 : 1
+    if (genre) genreWeights.set(genre, (genreWeights.get(genre) || 0) + weight)
+    if (duration > 0) {
+      listenedDurations.push(duration)
+      const bucket = durationBucket(duration)
+      if (bucket) durationWeights.set(bucket, (durationWeights.get(bucket) || 0) + weight)
+    }
+    if (event.stop_reason === 'completed' || Number(event.progress_pct || 0) >= 95) {
+      if (event.story_id) completedStoryIds.add(event.story_id)
+      if (duration > 0) completedDurations.push(duration)
+    }
+  }
+
+  let fallbackProgressSeconds = 0
+  for (const row of userLibrary) {
+    if (row.story_id) storyIds.add(row.story_id)
+    const story = row.story_id ? storyById.get(row.story_id) : null
+    const duration = Number(story?.duration_mins || 0)
+    const progress = Math.max(0, Number(row.progress || 0))
+    fallbackProgressSeconds += duration > 0 ? Math.min(progress, duration * 60) : progress
+    if (row.completed) {
+      if (row.story_id) completedStoryIds.add(row.story_id)
+      if (duration > 0) completedDurations.push(duration)
+    }
+    if (userEvents.length === 0) {
+      const genre = String(story?.genre || '').trim()
+      const weight = progress > 0 ? progress / 60 : 1
+      if (genre) genreWeights.set(genre, (genreWeights.get(genre) || 0) + weight)
+      if (duration > 0 && progress > 0) {
+        listenedDurations.push(duration)
+        const bucket = durationBucket(duration)
+        if (bucket) durationWeights.set(bucket, (durationWeights.get(bucket) || 0) + weight)
+      }
+    }
+  }
+
+  const recentListeningMs = [
+    ...userEvents.flatMap((event) => [event.ended_at, event.started_at, event.updated_at]),
+    ...userLibrary.flatMap((row) => [row.last_played, row.updated_at, row.created_at]),
+  ].map(dateMs).filter(Boolean).sort((a, b) => b - a)[0] || 0
+
+  const topGenres = topEntries(genreWeights)
+  const topDurationBucket = topEntries(durationWeights, 1)[0]?.name || null
+  const topTimeBuckets = topEntries(timeBuckets)
+  const topDayBuckets = topEntries(dayBuckets)
+  const avgListenedDuration = listenedDurations.length
+    ? Math.round(listenedDurations.reduce((sum, value) => sum + value, 0) / listenedDurations.length)
+    : null
+  const avgCompletedDuration = completedDurations.length
+    ? Math.round(completedDurations.reduce((sum, value) => sum + value, 0) / completedDurations.length)
+    : null
+  const averageSessionLength = sessionLengths.length
+    ? Math.round(sessionLengths.reduce((sum, value) => sum + value, 0) / sessionLengths.length / 60)
+    : null
+  const recentSessions = userEvents
+    .slice()
+    .sort((a, b) => dateMs(b.started_at || b.ended_at) - dateMs(a.started_at || a.ended_at))
+    .slice(0, 5)
+    .map((event) => ({
+      storyId: event.story_id || null,
+      storyTitle: event.story_id ? storyById.get(event.story_id)?.title || null : null,
+      startedAt: event.started_at || null,
+      endedAt: event.ended_at || null,
+      secondsPlayed: Math.max(0, Number(event.seconds_played || 0)),
+      stopReason: event.stop_reason || null,
+    }))
+  const movement = movementContext(userEvents)
+
+  return {
+    storiesStarted: storyIds.size,
+    storiesCompleted: completedStoryIds.size,
+    totalListenedMinutes: Math.round((totalSecondsFromEvents || fallbackProgressSeconds) / 60),
+    recentListeningDate: recentListeningMs ? new Date(recentListeningMs).toISOString() : null,
+    hasReliableEvents: userEvents.some((event) => Number(event.seconds_played || 0) > 0 || event.ended_at),
+    preferences: {
+      hasEnoughData: topGenres.length > 0 || listenedDurations.length > 0,
+      preferredGenres: topGenres.map((entry) => entry.name),
+      mostListenedGenre: topGenres[0]?.name || null,
+      avgListenedStoryDuration: avgListenedDuration,
+      avgCompletedStoryDuration: avgCompletedDuration,
+      typicalDurationBucket: topDurationBucket,
+    },
+    patterns: {
+      hasEnoughData: topTimeBuckets.length > 0 || topDayBuckets.length > 0 || sessionLengths.length > 0,
+      favoriteListeningTime: topTimeBuckets[0]?.name || null,
+      listeningTimeBuckets: topTimeBuckets,
+      favoriteListeningDays: topDayBuckets.slice(0, 3).map((entry) => entry.name),
+      mostActiveListeningDay: topDayBuckets[0]?.name || null,
+      averageSessionLengthMinutes: averageSessionLength,
+      recentSessions,
+      likelyListeningContext: movement.value,
+      movementContextSource: movement.source,
+    },
+  }
+}
+
 export async function GET(req: NextRequest) {
   try {
     if (!(await requireAdmin(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const { admin } = clients()
 
-    const [usersRes, subsRes, libraryRes, referralsRes] = await Promise.all([
+    const [usersRes, subsRes, libraryRows, playEvents, stories, referrals, authUsers] = await Promise.all([
       admin.from('users').select('*').order('created_at', { ascending: false }),
       admin.from('subscriptions').select('*').order('created_at', { ascending: false }),
-      admin.from('user_library').select('user_id,progress,completed,updated_at,last_played').limit(10000),
-      admin.from('referrals').select('*').limit(10000),
+      safeSelect(admin, 'user_library', 'user_id,story_id,progress,completed,updated_at,created_at,last_played'),
+      safeSelect(admin, 'play_events', 'user_id,story_id,started_at,ended_at,updated_at,seconds_played,progress_pct,stop_reason,genre,author,narrator,duration_mins'),
+      safeSelect(admin, 'stories', 'id,title,genre,duration_mins'),
+      safeSelect(admin, 'referrals', '*'),
+      listAuthUsers(admin),
     ])
 
     if (usersRes.error) throw usersRes.error
     const users = usersRes.data || []
     const subscriptions = subsRes.data || []
-    const libraryRows = libraryRes.data || []
-    const referrals = referralsRes.data || []
+    const storyById = new Map((stories || []).map((story: any) => [story.id, story]))
+    const authById = new Map((authUsers || []).map((authUser: any) => [authUser.id, authUser]))
 
     const subByUser = new Map<string, any>()
     subscriptions.forEach((sub: any) => {
@@ -99,12 +295,6 @@ export async function GET(req: NextRequest) {
       if (!userId) return
       const current = subByUser.get(userId)
       if (!current || dateMs(sub.created_at) > dateMs(current.created_at)) subByUser.set(userId, sub)
-    })
-
-    const listeningByUser = new Map<string, any[]>()
-    libraryRows.forEach((row: any) => {
-      if (!row.user_id) return
-      listeningByUser.set(row.user_id, [...(listeningByUser.get(row.user_id) || []), row])
     })
 
     const referralByUser = new Map<string, any[]>()
@@ -118,8 +308,17 @@ export async function GET(req: NextRequest) {
       const plan = pickPlan(user, sub)
       const isFoundingMember = Boolean(user.is_founding_member || sub?.is_founding_member || plan === 'founding_member')
       const status = pickStatus(user, sub)
-      const listening = listeningByUser.get(user.id) || []
-      const lastActive = [user.last_active, user.last_login, ...listening.map((row) => row.last_played || row.updated_at)]
+      const listening = buildListeningSummary(user.id, libraryRows, playEvents, storyById)
+      const authUser = authById.get(user.id)
+      const lastActive = [
+        listening.recentListeningDate,
+        user.last_active,
+        user.last_login,
+        user.updated_at,
+        authUser?.last_sign_in_at,
+        authUser?.updated_at,
+        user.created_at,
+      ]
         .map(dateMs)
         .filter(Boolean)
         .sort((a, b) => b - a)[0]
@@ -143,10 +342,14 @@ export async function GET(req: NextRequest) {
         adminNotes: user.admin_notes || '',
         accessGranted: status === 'active' || status === 'trialing',
         listening: {
-          storiesStarted: listening.length,
-          storiesCompleted: listening.filter((row) => row.completed).length,
-          totalProgressMinutes: Math.round(listening.reduce((sum, row) => sum + Number(row.progress || 0), 0) / 60),
+          storiesStarted: listening.storiesStarted,
+          storiesCompleted: listening.storiesCompleted,
+          totalListenedMinutes: listening.totalListenedMinutes,
+          recentListeningDate: listening.recentListeningDate,
+          hasReliableEvents: listening.hasReliableEvents,
         },
+        preferences: listening.preferences,
+        listeningPatterns: listening.patterns,
         playlist: {
           activityKnown: false,
           note: 'Playlist activity is stored client-side unless persisted by a future server event.',
