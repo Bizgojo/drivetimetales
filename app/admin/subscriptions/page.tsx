@@ -24,6 +24,8 @@ type Subscriber = {
     totalListenedMinutes: number
     recentListeningDate: string | null
     hasReliableEvents: boolean
+    eventCount?: number
+    libraryActivityCount?: number
   }
   preferences: {
     hasEnoughData: boolean
@@ -254,7 +256,14 @@ export default function SubscriptionsPage() {
               <Info label="Stories completed" value={String(selected.listening.storiesCompleted)} />
               <Info label="Total listened" value={`${selected.listening.totalListenedMinutes} min`} />
               <Info label="Recent listening" value={fmtDateTime(selected.listening.recentListeningDate)} />
-              <Info label="Data source" value={selected.listening.hasReliableEvents ? 'Playback events' : selected.listening.storiesStarted > 0 ? 'Progress fallback' : 'No listening data'} />
+              <Info
+                label="Data source"
+                value={selected.listening.hasReliableEvents
+                  ? `Playback events (${selected.listening.eventCount || 0})`
+                  : selected.listening.storiesStarted > 0
+                    ? `Progress fallback (${selected.listening.libraryActivityCount || 0})`
+                    : 'No listening data'}
+              />
             </DetailSection>
             <DetailSection title="Preferences">
               {selected.preferences.hasEnoughData ? (

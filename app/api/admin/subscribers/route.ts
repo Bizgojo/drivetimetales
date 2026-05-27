@@ -75,8 +75,11 @@ function stripeUrl(customerId: string | null) {
   return customerId ? `https://dashboard.stripe.com/customers/${customerId}` : null
 }
 
-async function safeSelect(admin: any, table: string, select: string) {
-  const { data, error } = await admin.from(table).select(select).limit(10000)
+async function safeSelect(admin: any, table: string, select: string, options: { orderBy?: string; ascending?: boolean; limit?: number } = {}) {
+  let query = admin.from(table).select(select)
+  if (options.orderBy) query = query.order(options.orderBy, { ascending: options.ascending ?? false })
+  query = query.limit(options.limit || 10000)
+  const { data, error } = await query
   if (error) {
     console.warn(`[admin/subscribers] ${table} unavailable:`, error.message)
     return []
@@ -143,21 +146,27 @@ function movementContext(events: any[]) {
 }
 
 function buildListeningSummary(userId: string, libraryRows: any[], playEvents: any[], storyById: Map<string, any>) {
-  const userLibrary = libraryRows.filter((row) => row.user_id === userId)
-  const userEvents = playEvents.filter((row) => row.user_id === userId)
+  const normalizedUserId = String(userId || '').toLowerCase()
+  const userLibrary = libraryRows.filter((row) => String(row.user_id || '').toLowerCase() === normalizedUserId)
+  const userEvents = playEvents.filter((row) => String(row.user_id || '').toLowerCase() === normalizedUserId)
   const storyIds = new Set<string>()
   const completedStoryIds = new Set<string>()
   const genreWeights = new Map<string, number>()
   const durationWeights = new Map<string, number>()
-  const completedDurations: number[] = []
+  const completedDurationByStory = new Map<string, number>()
   const listenedDurations: number[] = []
   const timeBuckets = new Map<string, number>()
   const dayBuckets = new Map<string, number>()
   const sessionLengths: number[] = []
+  const eventStoryIds = new Set<string>()
 
   let totalSecondsFromEvents = 0
   for (const event of userEvents) {
-    if (event.story_id) storyIds.add(event.story_id)
+    const storyId = String(event.story_id || '')
+    if (storyId) {
+      storyIds.add(storyId)
+      eventStoryIds.add(storyId)
+    }
     const seconds = Math.max(0, Number(event.seconds_played || 0))
     totalSecondsFromEvents += seconds
     if (seconds > 0) sessionLengths.push(seconds)
@@ -169,7 +178,7 @@ function buildListeningSummary(userId: string, libraryRows: any[], playEvents: a
       const day = dayName(startedDate.getDay())
       dayBuckets.set(day, (dayBuckets.get(day) || 0) + Math.max(1, seconds / 60))
     }
-    const story = event.story_id ? storyById.get(event.story_id) : null
+    const story = storyId ? storyById.get(storyId) : null
     const genre = String(event.genre || story?.genre || '').trim()
     const duration = Number(event.duration_mins || story?.duration_mins || 0)
     const weight = seconds > 0 ? seconds / 60 : 1
@@ -180,23 +189,31 @@ function buildListeningSummary(userId: string, libraryRows: any[], playEvents: a
       if (bucket) durationWeights.set(bucket, (durationWeights.get(bucket) || 0) + weight)
     }
     if (event.stop_reason === 'completed' || Number(event.progress_pct || 0) >= 95) {
-      if (event.story_id) completedStoryIds.add(event.story_id)
-      if (duration > 0) completedDurations.push(duration)
+      if (storyId) {
+        completedStoryIds.add(storyId)
+        if (duration > 0) completedDurationByStory.set(storyId, duration)
+      }
     }
   }
 
   let fallbackProgressSeconds = 0
   for (const row of userLibrary) {
-    if (row.story_id) storyIds.add(row.story_id)
-    const story = row.story_id ? storyById.get(row.story_id) : null
-    const duration = Number(story?.duration_mins || 0)
+    const storyId = String(row.story_id || '')
     const progress = Math.max(0, Number(row.progress || 0))
-    fallbackProgressSeconds += duration > 0 ? Math.min(progress, duration * 60) : progress
-    if (row.completed) {
-      if (row.story_id) completedStoryIds.add(row.story_id)
-      if (duration > 0) completedDurations.push(duration)
+    const hasLibraryActivity = progress > 0 || row.completed || row.last_played
+    if (storyId && hasLibraryActivity) storyIds.add(storyId)
+    const story = storyId ? storyById.get(storyId) : null
+    const duration = Number(story?.duration_mins || 0)
+    if (!eventStoryIds.has(storyId)) {
+      fallbackProgressSeconds += duration > 0 ? Math.min(progress, duration * 60) : progress
     }
-    if (userEvents.length === 0) {
+    if (row.completed) {
+      if (storyId) {
+        completedStoryIds.add(storyId)
+        if (duration > 0) completedDurationByStory.set(storyId, duration)
+      }
+    }
+    if (!eventStoryIds.has(storyId)) {
       const genre = String(story?.genre || '').trim()
       const weight = progress > 0 ? progress / 60 : 1
       if (genre) genreWeights.set(genre, (genreWeights.get(genre) || 0) + weight)
@@ -220,6 +237,7 @@ function buildListeningSummary(userId: string, libraryRows: any[], playEvents: a
   const avgListenedDuration = listenedDurations.length
     ? Math.round(listenedDurations.reduce((sum, value) => sum + value, 0) / listenedDurations.length)
     : null
+  const completedDurations = [...completedDurationByStory.values()]
   const avgCompletedDuration = completedDurations.length
     ? Math.round(completedDurations.reduce((sum, value) => sum + value, 0) / completedDurations.length)
     : null
@@ -243,9 +261,11 @@ function buildListeningSummary(userId: string, libraryRows: any[], playEvents: a
   return {
     storiesStarted: storyIds.size,
     storiesCompleted: completedStoryIds.size,
-    totalListenedMinutes: Math.round((totalSecondsFromEvents || fallbackProgressSeconds) / 60),
+    totalListenedMinutes: Math.round((totalSecondsFromEvents + fallbackProgressSeconds) / 60),
     recentListeningDate: recentListeningMs ? new Date(recentListeningMs).toISOString() : null,
     hasReliableEvents: userEvents.some((event) => Number(event.seconds_played || 0) > 0 || event.ended_at),
+    eventCount: userEvents.length,
+    libraryActivityCount: userLibrary.filter((row) => Number(row.progress || 0) > 0 || row.completed || row.last_played).length,
     preferences: {
       hasEnoughData: topGenres.length > 0 || listenedDurations.length > 0,
       preferredGenres: topGenres.map((entry) => entry.name),
@@ -276,8 +296,8 @@ export async function GET(req: NextRequest) {
     const [usersRes, subsRes, libraryRows, playEvents, stories, referrals, authUsers] = await Promise.all([
       admin.from('users').select('*').order('created_at', { ascending: false }),
       admin.from('subscriptions').select('*').order('created_at', { ascending: false }),
-      safeSelect(admin, 'user_library', 'user_id,story_id,progress,completed,updated_at,created_at,last_played'),
-      safeSelect(admin, 'play_events', 'user_id,story_id,started_at,ended_at,updated_at,seconds_played,progress_pct,stop_reason,genre,author,narrator,duration_mins'),
+      safeSelect(admin, 'user_library', 'user_id,story_id,progress,completed,updated_at,created_at,last_played', { orderBy: 'updated_at', limit: 50000 }),
+      safeSelect(admin, 'play_events', 'id,user_id,story_id,started_at,ended_at,updated_at,created_at,seconds_played,progress_pct,stop_reason,genre,author,narrator,duration_mins', { orderBy: 'started_at', limit: 50000 }),
       safeSelect(admin, 'stories', 'id,title,genre,duration_mins'),
       safeSelect(admin, 'referrals', '*'),
       listAuthUsers(admin),
@@ -347,6 +367,8 @@ export async function GET(req: NextRequest) {
           totalListenedMinutes: listening.totalListenedMinutes,
           recentListeningDate: listening.recentListeningDate,
           hasReliableEvents: listening.hasReliableEvents,
+          eventCount: listening.eventCount,
+          libraryActivityCount: listening.libraryActivityCount,
         },
         preferences: listening.preferences,
         listeningPatterns: listening.patterns,
