@@ -85,7 +85,7 @@ export default function YourPlaylist({ onIdsLoaded }: { onIdsLoaded?: (ids: stri
       if (sessionStorage.getItem(PLAYLIST_UPDATED_FLAG) === 'true') {
         sessionStorage.removeItem(PLAYLIST_UPDATED_FLAG)
         setShowUpdated(true)
-        window.setTimeout(() => setShowUpdated(false), 1100)
+        window.setTimeout(() => setShowUpdated(false), 2200)
       }
     } catch {}
 
@@ -153,7 +153,7 @@ export default function YourPlaylist({ onIdsLoaded }: { onIdsLoaded?: (ids: stri
               fontWeight: 800,
               lineHeight: 1,
               pointerEvents: 'none',
-              animation: 'playlistUpdated 1.05s ease-out forwards',
+              animation: 'playlistUpdated 2.1s ease-out forwards',
             }}
           >
             <span style={{ display: 'inline-block', animation: 'tinyClap 0.36s ease-out 2' }}>👏</span>
