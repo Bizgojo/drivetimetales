@@ -338,13 +338,13 @@ function transcriptTokens(text: string): string[] {
     // Normalise both to "10 pm" so QC comparison succeeds.
     // ONLY fires on exact "00" minutes — does NOT affect "10 19 pm" or other partial hours.
     .replace(/\b(\d{1,2})\s+00\s+(am|pm)\b/g, '$1 $2')
-    // Spoken digit sequences (badge/ID/phone numbers): "4 4 7 1" → "4471"
-    // normalizeNumberWords converts "four-four-seven-one" → "4 4 7 1" (individual digits).
-    // Whisper outputs them as a joined numeric string "4471".
-    // Joining 3+ consecutive single-digit tokens unifies both forms.
-    // Requires ≥3 digits so two-digit numbers (11, 42) are untouched.
-    // Does NOT affect multi-digit tokens (11, 42, 375) — only single [0-9] separated by spaces.
-    .replace(/\b([0-9])( [0-9]){2,}\b/g, match => match.replace(/ /g, ''))
+    // Spoken digit sequences (badge/ID/phone numbers): "4 4-7 1" or "4 4 7 1" → "4471"
+    // normalizeNumberWords converts "four-four-seven-one" pair-by-pair, producing
+    // "4 4-7 1" (the hyphen between pairs survives). Whisper outputs the spoken form
+    // as a joined numeric string "4471". Strip spaces AND hyphens between single digits.
+    // Requires ≥3 consecutive single-digit tokens; two-digit numbers (11, 42) unaffected
+    // because [0-9] only matches exactly one digit per slot.
+    .replace(/\b([0-9])([ -][0-9]){2,}\b/g, match => match.replace(/[ -]/g, ''))
     // Split concatenated time numbers so both sides produce the same tokens:
     // "1119" → "11 19"  |  "415" → "4 15"  |  "830" → "8 30"
     // Whisper concatenates spoken clock times ("eleven nineteen" → "1119").
