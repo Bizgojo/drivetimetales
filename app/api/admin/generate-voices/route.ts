@@ -322,6 +322,10 @@ function transcriptTokens(text: string): string[] {
     .replace(/\b(\d{1,2})\s*[\.:]\s*(\d{2})\s*(?:a\s*\.?\s*m\.?|am)\b/g, '$1 $2 am')
     .replace(/\bp\s*\.?\s*m\.?\b/g, 'pm')
     .replace(/\ba\s*\.?\s*m\.?\b/g, 'am')
+    // Whisper ":00 a.m./p.m." hallucination: "10 hours pm" → "10 00 pm"
+    // Occurs when Whisper reads a round-hour time like "10:00 p.m." and outputs
+    // "ten hours p.m." — "hours" has no valid speech equivalent here.
+    .replace(/\b(\d{1,2})\s+hours\s+(am|pm)\b/g, '$1 00 $2')
     // Split concatenated time numbers so both sides produce the same tokens:
     // "1119" → "11 19"  |  "415" → "4 15"  |  "830" → "8 30"
     // Whisper concatenates spoken clock times ("eleven nineteen" → "1119").
