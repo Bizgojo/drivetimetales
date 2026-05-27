@@ -159,15 +159,17 @@ export default function AccountPage() {
             <div className="flex items-center gap-4">
               <span className="text-2xl">🚗</span>
               <div className="flex-1 min-w-0">
-                <p className="text-white font-medium">Travel Insights</p>
-                <p className="text-white text-sm">Better recommendations for commuters and drivers.</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-white font-medium">Enable Travel Insights</p>
+                  <button type="button" onClick={() => setTravelInsightsDetailsOpen((open) => !open)} className="text-xs font-bold text-orange-300">Learn more</button>
+                </div>
+                <p className="text-gray-400 text-sm">Better Story Recommendations</p>
               </div>
             </div>
             <div className="flex flex-wrap gap-2 mt-3">
-              <button type="button" onClick={() => enableTravelInsights('yes')} className={travelChoiceClass(travelInsightsTouched && travelInsightsMode === 'yes')}>Yes</button>
-              <button type="button" onClick={() => enableTravelInsights('while_using')} className={travelChoiceClass(travelInsightsTouched && travelInsightsMode === 'while_using')}>Only while using this app</button>
-              <button type="button" onClick={disableTravelInsights} className={travelChoiceClass(travelInsightsTouched && travelInsightsMode === 'no')}>No</button>
-              <button type="button" onClick={() => setTravelInsightsDetailsOpen((open) => !open)} className="px-3 py-1.5 rounded-full text-xs font-bold text-orange-300 border border-orange-500/30 bg-orange-500/10">Learn more</button>
+              <button type="button" onClick={() => enableTravelInsights('yes')} className={travelChoiceClass(travelInsightsTouched && travelInsightsMode === 'yes')}>Always</button>
+              <button type="button" onClick={disableTravelInsights} className={travelChoiceClass(travelInsightsTouched && travelInsightsMode === 'no')}>Never</button>
+              <button type="button" onClick={() => enableTravelInsights('while_using')} className={travelChoiceClass(travelInsightsTouched && travelInsightsMode === 'while_using')}>Only While Using This App</button>
             </div>
             {travelInsightsDetailsOpen && (
               <p className="text-gray-400 text-xs leading-relaxed mt-3">
