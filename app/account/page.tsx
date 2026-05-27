@@ -13,6 +13,7 @@ export default function AccountPage() {
   const [mounted, setMounted] = useState(false);
   const [travelInsightsEnabled, setTravelInsightsEnabled] = useState(false);
   const [travelInsightsMode, setTravelInsightsMode] = useState<'no' | 'yes' | 'while_using'>('no');
+  const [travelInsightsTouched, setTravelInsightsTouched] = useState(false);
   const [travelInsightsMessage, setTravelInsightsMessage] = useState('');
   const [travelInsightsDetailsOpen, setTravelInsightsDetailsOpen] = useState(false);
 
@@ -36,6 +37,7 @@ export default function AccountPage() {
           : 'no';
       setTravelInsightsMode(nextMode);
       setTravelInsightsEnabled(nextMode !== 'no');
+      setTravelInsightsTouched(savedMode === 'yes' || savedMode === 'while_using' || savedMode === 'no');
     } catch {}
   }, [mounted, travelInsightsKey, travelInsightsModeKey, user?.id]);
 
@@ -64,6 +66,7 @@ export default function AccountPage() {
       localStorage.setItem(travelInsightsModeKey, mode);
       setTravelInsightsEnabled(true);
       setTravelInsightsMode(mode);
+      setTravelInsightsTouched(true);
       setTravelInsightsMessage('Enabled. We only use coarse context, never exact routes or stored GPS history.');
     } catch {
       setTravelInsightsMessage('Could not save this preference on this device. Playback will still work normally.');
@@ -77,6 +80,7 @@ export default function AccountPage() {
     } catch {}
     setTravelInsightsEnabled(false);
     setTravelInsightsMode('no');
+    setTravelInsightsTouched(true);
     setTravelInsightsMessage('Disabled. Travel listening context will not be collected.');
   };
 
@@ -156,24 +160,13 @@ export default function AccountPage() {
               <span className="text-2xl">🚗</span>
               <div className="flex-1 min-w-0">
                 <p className="text-white font-medium">Travel Insights</p>
-                <p className="text-gray-400 text-sm">Better recommendations for commuters and drivers.</p>
+                <p className="text-white text-sm">Better recommendations for commuters and drivers.</p>
               </div>
-              <button
-                onClick={() => travelInsightsEnabled ? disableTravelInsights() : enableTravelInsights('while_using')}
-                className="shrink-0 px-3 py-2 rounded-lg text-xs font-bold"
-                style={{
-                  backgroundColor: travelInsightsEnabled ? 'rgba(220,38,38,0.14)' : '#f97316',
-                  color: travelInsightsEnabled ? '#fca5a5' : 'white',
-                  border: travelInsightsEnabled ? '1px solid rgba(248,113,113,0.35)' : '1px solid rgba(249,115,22,0.55)',
-                }}
-              >
-                {travelInsightsEnabled ? 'Disable' : 'Enable Travel Insights'}
-              </button>
             </div>
             <div className="flex flex-wrap gap-2 mt-3">
-              <button type="button" onClick={() => enableTravelInsights('yes')} className={travelChoiceClass(travelInsightsMode === 'yes')}>Yes</button>
-              <button type="button" onClick={() => enableTravelInsights('while_using')} className={travelChoiceClass(travelInsightsMode === 'while_using')}>Only while using this app</button>
-              <button type="button" onClick={disableTravelInsights} className={travelChoiceClass(travelInsightsMode === 'no')}>No</button>
+              <button type="button" onClick={() => enableTravelInsights('yes')} className={travelChoiceClass(travelInsightsTouched && travelInsightsMode === 'yes')}>Yes</button>
+              <button type="button" onClick={() => enableTravelInsights('while_using')} className={travelChoiceClass(travelInsightsTouched && travelInsightsMode === 'while_using')}>Only while using this app</button>
+              <button type="button" onClick={disableTravelInsights} className={travelChoiceClass(travelInsightsTouched && travelInsightsMode === 'no')}>No</button>
               <button type="button" onClick={() => setTravelInsightsDetailsOpen((open) => !open)} className="px-3 py-1.5 rounded-full text-xs font-bold text-orange-300 border border-orange-500/30 bg-orange-500/10">Learn more</button>
             </div>
             {travelInsightsDetailsOpen && (
