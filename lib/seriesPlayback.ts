@@ -48,7 +48,7 @@ export function buildSeriesPlaybackTarget(
     episodeId: playEpisode?.id || null,
     resumeSeconds:
       playProgress && !playProgress.completed && (playProgress.progress || 0) > 15
-        ? Math.max(0, (playProgress.progress || 0) - 15)
+        ? Math.max(0, (playProgress.progress || 0))
         : 0,
     isInProgress: !!inProgressEpisode,
     playlist,

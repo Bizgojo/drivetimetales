@@ -270,6 +270,7 @@ function HomeContent() {
   const { loading, user } = useAuth()
   const searchParams = useSearchParams()
   const [continueIds, setContinueIds] = useState<string[]>([])
+  const [playlistIds, setPlaylistIds] = useState<string[]>([])
   const [allExcludeIds, setAllExcludeIds] = useState<string[]>([])
   const [showWelcome, setShowWelcome] = useState(false)
   const [authWaitExpired, setAuthWaitExpired] = useState(false)
@@ -343,9 +344,9 @@ function HomeContent() {
           <HomeSearchResults query={homeSearch} />
         ) : (
           <>
-            <ContinueListening onIdsLoaded={(ids) => { setContinueIds(ids); setAllExcludeIds(ids) }} />
-            <YourPlaylist />
-            <NewReleases excludeIds={continueIds} onIdsLoaded={(ids) => setAllExcludeIds(prev => [...new Set([...prev, ...ids])])} />
+            <ContinueListening onIdsLoaded={(ids) => { setContinueIds(ids); setAllExcludeIds([...new Set([...ids, ...playlistIds])]) }} />
+            <YourPlaylist onIdsLoaded={(ids) => { setPlaylistIds(ids); setAllExcludeIds(prev => [...new Set([...prev, ...ids])]) }} />
+            <NewReleases excludeIds={[...new Set([...continueIds, ...playlistIds])]} onIdsLoaded={(ids) => setAllExcludeIds(prev => [...new Set([...prev, ...ids])])} />
             <RecommendedForYou excludeIds={allExcludeIds} />
           </>
         )}

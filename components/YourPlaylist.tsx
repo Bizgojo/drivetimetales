@@ -30,7 +30,16 @@ function formatRemainingMinutes(minutes: number) {
   return mins > 0 ? `${hours}h ${mins}m remaining` : `${hours}h remaining`
 }
 
-export default function YourPlaylist() {
+function playlistStoryIds(items: PlaylistItem[]) {
+  return items.flatMap((item: any) => {
+    if (item.type === 'series' && Array.isArray(item.episodes)) {
+      return item.episodes.map((episode: any) => episode?.id).filter(Boolean)
+    }
+    return item.id ? [item.id] : []
+  })
+}
+
+export default function YourPlaylist({ onIdsLoaded }: { onIdsLoaded?: (ids: string[]) => void } = {}) {
   const router = useRouter()
   const [playlist, setPlaylist] = useState<SavedPlaylist | null>(null)
 
@@ -39,6 +48,7 @@ export default function YourPlaylist() {
       const raw = localStorage.getItem(STORAGE_KEY)
       if (!raw) {
         setPlaylist(null)
+        onIdsLoaded?.([])
         return
       }
       const parsed = JSON.parse(raw)
@@ -48,19 +58,25 @@ export default function YourPlaylist() {
         : Array.isArray(parsed)
           ? parsed.map((s: any) => ({ type: 'single', ...s }))
           : (parsed.stories || []).map((s: any) => ({ type: s.type || 'single', ...s }))
-      if (items.length === 0) {
+      const completed = Number(parsed.completed || 0)
+      if (items.length === 0 || completed >= items.length) {
+        localStorage.removeItem(STORAGE_KEY)
+        localStorage.removeItem('dtt_playlist_index')
         setPlaylist(null)
+        onIdsLoaded?.([])
         return
       }
       setPlaylist({
         id: parsed.id || 'legacy',
         items,
         remaining_mins: parsed.remaining_mins || items.reduce((s: number, x: any) => s + (x.type === 'series' ? (x.total_mins || 0) : (x.duration_mins || 0)), 0),
-        completed: parsed.completed || 0
+        completed
       })
+      onIdsLoaded?.(playlistStoryIds(items))
     } catch (err) {
       console.error('[YourPlaylist] failed to load saved playlist:', err)
       setPlaylist(null)
+      onIdsLoaded?.([])
     }
   }
 
@@ -92,6 +108,7 @@ export default function YourPlaylist() {
   function clear() {
     localStorage.removeItem(STORAGE_KEY)
     setPlaylist(null)
+    onIdsLoaded?.([])
   }
 
   if (!playlist || !playlist.items || playlist.items.length === 0) return null

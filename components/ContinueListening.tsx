@@ -72,7 +72,7 @@ export default function ContinueListening({ onIdsLoaded }: { onIdsLoaded?: (ids:
   if (loading || !card) return null
   const displayTitle = card.series_name || card.title
   const subtitle = card.series_name ? ('Ep. ' + (card.episode_number || 1) + ': ' + card.title) : (card.author + ' - ' + card.genre)
-  const resumeAt = Math.max(0, card.progress - 15)
+  const resumeAt = Math.max(0, card.progress)
 
   return (
     <section style={{ padding: '1.5rem 1rem 0' }}>

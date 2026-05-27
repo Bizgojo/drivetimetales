@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { trackPlayStart, trackPlayEnd } from '@/lib/analytics'
 import { useAuth } from '@/contexts/AuthContext'
-import { findNextAutoAdvanceStory } from '@/lib/player/autoAdvance'
 import type { AutoAdvanceCandidate, AutoAdvanceDisabledReason, PlayerMode, PlayerStory } from './playerTypes'
 
 interface QueueItem { url: string; type: 'intro' | 'story' | 'outro'; label: string }
@@ -27,10 +26,12 @@ interface CanonicalPlayerProps {
   mode?: PlayerMode
 }
 
-export default function CanonicalPlayer({ storyId, resumeParam = null }: CanonicalPlayerProps) {
+export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 'story' }: CanonicalPlayerProps) {
   const router  = useRouter()
   const { user, loading: authLoading } = useAuth()
   const userEmail = String(user?.email || '').trim().toLowerCase()
+  const [returnContext, setReturnContext] = useState({ returnUrl: '', approvalReview: false })
+  const safeReturnUrl = returnContext.returnUrl
 
   const audioRef = useRef<HTMLAudioElement>(null)  // voice
   const musicRef = useRef<HTMLAudioElement>(null)  // single music track
@@ -168,34 +169,23 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
     }
   }
 
-  const mapLibraryRows = (rows: any[] = []) => rows.map(row => ({
-    story_id: row.story_id,
-    completed: row.completed,
-    not_for_me: row.not_for_me,
-    progress: row.progress,
-    last_played: row.last_played,
-    story: { genre: row.stories?.genre || row.story?.genre || null },
-  }))
-
-  const mostPlayedGenres = (rows: any[] = []) => {
-    const currentGenre = String((story as any)?.genre || '').trim().toLowerCase()
-    const counts = new Map<string, number>()
-    for (const row of rows) {
-      if (!row.completed || row.not_for_me) continue
-      const genre = String(row.stories?.genre || row.story?.genre || '').trim().toLowerCase()
-      if (!genre || genre === currentGenre) continue
-      counts.set(genre, (counts.get(genre) || 0) + 1)
-    }
-    return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([genre]) => genre)
+  const returnToSource = (fallback = '/library') => {
+    router.push(safeReturnUrl || fallback)
   }
 
-  const rankedCandidate = (stories: any[] = [], libraryRows: any[] = []) => {
-    return findNextAutoAdvanceStory({
-      currentStory: story as PlayerStory,
-      candidateStories: stories as PlayerStory[],
-      userLibrary: mapLibraryRows(libraryRows),
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const returnUrl = params.get('returnUrl') || ''
+    setReturnContext({
+      returnUrl: returnUrl.startsWith('/') && !returnUrl.startsWith('//') ? returnUrl : '',
+      approvalReview: params.get('approvalReview') === '1',
     })
-  }
+  }, [])
+
+  useEffect(() => {
+    if (!returnContext.approvalReview) return
+    disableAutoAdvanceForSession('navigation')
+  }, [returnContext.approvalReview])
 
   const getQueueCompletedSeconds = (targetIndex: number) => {
     return segDursRef.current
@@ -272,100 +262,6 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
     audio.load()
   }
 
-  const fetchAutoAdvanceCandidate = async () => {
-    if (!story) return null
-    const libraryRows = user?.id
-      ? ((await supabase
-          .from('user_library')
-          .select('story_id,completed,not_for_me,progress,last_played,stories(genre)')
-          .eq('user_id', user.id)).data || [])
-      : []
-
-    if ((story as any).series_id && Number.isFinite((story as any).episode_number)) {
-      const { data } = await supabase
-        .from('stories')
-        .select(AUTO_ADVANCE_STORY_SELECT)
-        .eq('status', 'published')
-        .eq('is_hidden', false)
-        .eq('series_id', (story as any).series_id)
-        .gt('episode_number', Number((story as any).episode_number))
-        .order('episode_number', { ascending: true })
-        .limit(10)
-      const candidate = rankedCandidate(data || [], libraryRows)
-      if (candidate) return candidate
-    }
-
-    if ((story as any).genre && typeof (story as any).duration_mins === 'number') {
-      const minDuration = Math.max(0, Number((story as any).duration_mins) - 5)
-      const maxDuration = Number((story as any).duration_mins) + 5
-      const { data } = await supabase
-        .from('stories')
-        .select(AUTO_ADVANCE_STORY_SELECT)
-        .eq('status', 'published')
-        .eq('is_hidden', false)
-        .eq('genre', (story as any).genre)
-        .gte('duration_mins', minDuration)
-        .lte('duration_mins', maxDuration)
-        .order('published_on', { ascending: false })
-        .limit(25)
-      const candidate = rankedCandidate(data || [], libraryRows)
-      if (candidate) return candidate
-    }
-
-    if ((story as any).genre) {
-      const { data } = await supabase
-        .from('stories')
-        .select(AUTO_ADVANCE_STORY_SELECT)
-        .eq('status', 'published')
-        .eq('is_hidden', false)
-        .eq('genre', (story as any).genre)
-        .order('published_on', { ascending: false })
-        .limit(25)
-      const candidate = rankedCandidate(data || [], libraryRows)
-      if (candidate) return candidate
-    }
-
-    for (const genre of mostPlayedGenres(libraryRows)) {
-      if (typeof (story as any).duration_mins !== 'number') continue
-      const minDuration = Math.max(0, Number((story as any).duration_mins) - 5)
-      const maxDuration = Number((story as any).duration_mins) + 5
-      const { data } = await supabase
-        .from('stories')
-        .select(AUTO_ADVANCE_STORY_SELECT)
-        .eq('status', 'published')
-        .eq('is_hidden', false)
-        .ilike('genre', genre)
-        .gte('duration_mins', minDuration)
-        .lte('duration_mins', maxDuration)
-        .order('published_on', { ascending: false })
-        .limit(25)
-      const candidate = rankedCandidate(data || [], libraryRows)
-      if (candidate) return candidate
-    }
-
-    for (const genre of mostPlayedGenres(libraryRows)) {
-      const { data } = await supabase
-        .from('stories')
-        .select(AUTO_ADVANCE_STORY_SELECT)
-        .eq('status', 'published')
-        .eq('is_hidden', false)
-        .ilike('genre', genre)
-        .order('published_on', { ascending: false })
-        .limit(25)
-      const candidate = rankedCandidate(data || [], libraryRows)
-      if (candidate) return candidate
-    }
-
-    const { data } = await supabase
-      .from('stories')
-      .select(AUTO_ADVANCE_STORY_SELECT)
-      .eq('status', 'published')
-      .eq('is_hidden', false)
-      .order('published_on', { ascending: false })
-      .limit(50)
-    return rankedCandidate(data || [], libraryRows)
-  }
-
   const startAutoAdvanceTo = (candidate: AutoAdvanceCandidate) => {
     if (!mountedRef.current || !autoAdvanceEnabledRef.current) return
     setAutoAdvanceCandidate(candidate)
@@ -374,6 +270,10 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
       if (!mountedRef.current || !autoAdvanceEnabledRef.current) return
       unrequestedAutoStartsRef.current += 1
       const isSeriesContinuation = candidate.reason === 'next_series_episode'
+      if (mode === 'playlist') {
+        const nextIndex = playlistRef.current.findIndex((item) => item.id === candidate.story.id)
+        if (nextIndex >= 0) localStorage.setItem('dtt_playlist_index', String(nextIndex))
+      }
       router.push(`/player/${candidate.story.id}?autoplay=1&${isSeriesContinuation ? 'seriesContinue=1' : 'autoAdvance=1'}`)
     }, 2500)
   }
@@ -437,7 +337,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
     if (!mountedRef.current) return
     if (isAdvancingRef.current) return
     if (!autoAdvanceEnabledRef.current) {
-      setTimeout(() => router.push('/library'), 1500)
+      setTimeout(() => returnToSource('/library'), 1500)
       return
     }
 
@@ -448,6 +348,14 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
       return
     }
 
+    if (mode === 'playlist') {
+      localStorage.removeItem('dtt_active_playlist')
+      localStorage.removeItem('dtt_playlist_index')
+      isAdvancingRef.current = false
+      setCatalogExhausted(true)
+      return
+    }
+
     const directSeriesCandidate = await fetchDirectSeriesAutoAdvanceCandidate()
     if (!mountedRef.current || !autoAdvanceEnabledRef.current) return
     if (directSeriesCandidate) {
@@ -455,25 +363,8 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
       return
     }
 
-    const candidate = await fetchAutoAdvanceCandidate()
-    if (!mountedRef.current || !autoAdvanceEnabledRef.current) return
-    if (!candidate) {
-      setCatalogExhausted(true)
-      isAdvancingRef.current = false
-      return
-    }
-
-    if (unrequestedAutoStartsRef.current >= 3) {
-      setAutoAdvanceCandidate(candidate)
-      setStillListeningPrompt(true)
-      stillListeningTimerRef.current = setTimeout(() => {
-        disableAutoAdvanceForSession('timeout')
-        isAdvancingRef.current = false
-      }, 30000)
-      return
-    }
-
-    startAutoAdvanceTo(candidate)
+    setCatalogExhausted(true)
+    isAdvancingRef.current = false
   }
 
   useEffect(() => {
@@ -540,6 +431,38 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
   // ── Load playlist from localStorage ──────────────────────────────────────────
   useEffect(() => {
     try {
+      if (mode === 'playlist') {
+        const raw = localStorage.getItem('dtt_active_playlist') || localStorage.getItem('dtt_playlist')
+        const idx = localStorage.getItem('dtt_playlist_index')
+        if (!raw) return
+        const parsed = JSON.parse(raw)
+        const items = parsed.items
+          ? parsed.items
+          : Array.isArray(parsed)
+            ? parsed
+            : (parsed.stories || [])
+        const playlist = items.flatMap((item: any, itemIndex: number) => {
+          if (item.type === 'series' && Array.isArray(item.episodes)) {
+            return item.episodes
+              .map((episode: any, episodeIndex: number) => ({
+                id: episode?.id,
+                episode_number: episode?.episode_number || episodeIndex + 1,
+              }))
+              .filter((episode: any) => episode.id)
+          }
+          return item.id ? [{ id: item.id, episode_number: itemIndex + 1 }] : []
+        })
+        playlistRef.current = playlist
+        const savedIndex = idx ? parseInt(idx) : 0
+        playlistIndexRef.current = Number.isFinite(savedIndex) ? savedIndex : 0
+        const found = playlist.findIndex((item: any) => item.id === storyId)
+        if (found >= 0) {
+          playlistIndexRef.current = found
+          localStorage.setItem('dtt_playlist_index', String(found))
+        }
+        return
+      }
+
       const pl = localStorage.getItem('dtt_series_playlist')
       const idx = localStorage.getItem('dtt_series_index')
       if (pl) {
@@ -552,7 +475,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
         if (found >= 0) playlistIndexRef.current = found
       }
     } catch(_) {}
-  }, [storyId])
+  }, [mode, storyId])
 
   // ── Load story ─────────────────────────────────────────────────────────────
 
@@ -713,7 +636,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
           stage = 'user-progress'
           const { data: lib } = await supabase.from('user_library')
             .select('progress,completed,not_for_me').eq('user_id', user.id).eq('story_id', storyId).single()
-          if (lib?.progress > 0 && !lib?.not_for_me) { resumeRef.current = lib.completed ? 0 : lib.progress < 120 ? 0 : Math.max(0, lib.progress - 15); setHasProgress(true) }
+          if (lib?.progress > 0 && !lib?.not_for_me) { resumeRef.current = lib.completed ? 0 : Math.max(0, lib.progress); setHasProgress(true) }
 
           // ── Welcome experience — first play only ─────────────────────────────
           stage = 'welcome-check'
@@ -878,7 +801,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
     const ci = playlistIndexRef.current
     if (!pl || ci < 0 || ci >= pl.length - 1) {
       // No more direct-opened series episodes — return to the public library surface.
-      router.push('/library')
+      returnToSource('/library')
       return
     }
     const next = pl[ci + 1]
@@ -1075,7 +998,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
         }
       }
     }
-    router.push('/library')
+    returnToSource('/library')
   }
   const handleBack = () => {
     disableAutoAdvanceForSession('navigation')
@@ -1097,7 +1020,8 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
       localStorage.setItem('et_guest_minutes', String(prev + mins))
       sessionStartRef.current = null
     }
-    router.back()
+    if (safeReturnUrl) returnToSource('/library')
+    else router.back()
   }
 
   const fmt = (s: number) => `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, '0')}`
@@ -1117,7 +1041,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
     autoAdvanceCandidate?.reasonLabel || ''
 
   if (loading) return <div style={{ height:'100dvh', backgroundColor:'#020617', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:'14px' }}><div style={{ width:'40px', height:'40px', border:'4px solid #f97316', borderTopColor:'transparent', borderRadius:'50%', animation:'spin 1s linear infinite' }} /><p style={{ color:'rgba(255,255,255,0.72)', fontSize:'14px', fontWeight:600, margin:0 }}>Loading story...</p><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>
-  if (!story)   return <div style={{ height:'100dvh', backgroundColor:'#020617', color:'white', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'24px', textAlign:'center' }}><p style={{ marginBottom:'16px' }}>This story isn’t available yet.</p><button onClick={() => { disableAutoAdvanceForSession('navigation'); router.push('/library') }} style={{ color:'#f97316', background:'none', border:'1px solid rgba(249,115,22,0.35)', borderRadius:'10px', padding:'10px 16px', cursor:'pointer', fontWeight:700 }}>Back to Library</button></div>
+  if (!story)   return <div style={{ height:'100dvh', backgroundColor:'#020617', color:'white', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'24px', textAlign:'center' }}><p style={{ marginBottom:'16px' }}>This story isn’t available yet.</p><button onClick={() => { disableAutoAdvanceForSession('navigation'); returnToSource('/library') }} style={{ color:'#f97316', background:'none', border:'1px solid rgba(249,115,22,0.35)', borderRadius:'10px', padding:'10px 16px', cursor:'pointer', fontWeight:700 }}>{safeReturnUrl ? 'Back to Approval' : 'Back to Library'}</button></div>
 
   const isSeriesReadIt = Boolean((story as any).series_id && seriesProseChapters.length > 0)
   const proseAvailable = isSeriesReadIt || Boolean((story as any).prose_text)
@@ -1415,7 +1339,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null }: Canonic
             <p style={{ color:'white', fontSize:'13px', fontWeight:700, margin:'0 0 10px' }}>{audioErrorMessage}</p>
             <div style={{ display:'flex', gap:'8px' }}>
               <button onClick={() => { disableAutoAdvanceForSession('navigation'); window.location.reload() }} style={{ flex:1, padding:'10px 12px', borderRadius:'10px', border:'none', background:'#f97316', color:'white', fontSize:'13px', fontWeight:800, cursor:'pointer' }}>Try again</button>
-              <button onClick={() => { disableAutoAdvanceForSession('navigation'); router.push('/library') }} style={{ flex:1, padding:'10px 12px', borderRadius:'10px', border:'1px solid rgba(255,255,255,0.16)', background:'rgba(255,255,255,0.06)', color:'white', fontSize:'13px', fontWeight:700, cursor:'pointer' }}>Back to Library</button>
+              <button onClick={() => { disableAutoAdvanceForSession('navigation'); returnToSource('/library') }} style={{ flex:1, padding:'10px 12px', borderRadius:'10px', border:'1px solid rgba(255,255,255,0.16)', background:'rgba(255,255,255,0.06)', color:'white', fontSize:'13px', fontWeight:700, cursor:'pointer' }}>{safeReturnUrl ? 'Back to Approval' : 'Back to Library'}</button>
             </div>
           </div>
         )}

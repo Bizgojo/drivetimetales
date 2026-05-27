@@ -10,7 +10,8 @@ import { buildSeriesPlaybackTarget } from '@/lib/seriesPlayback'
 interface Story {
   id: string; title: string; genre: string; author: string
   duration_mins: number; cover_url: string | null
-  series_id: string | null; series_name: string | null; series_number?: number | null
+  series_id: string | null; series_name: string | null; series_number?: number | null; episode_number?: number | null
+  published_on?: string | null
   description?: string | null
   avg_rating?: number | null; review_count?: number
 }
@@ -25,6 +26,21 @@ interface SeriesGroup {
 }
 type DisplayItem = { type: 'single'; story: Story } | { type: 'series'; group: SeriesGroup }
 type LibraryRow = { story_id: string; progress: number | null; completed: boolean | null; not_for_me?: boolean | null; last_played?: string | null }
+
+function episodeNumber(story: Story) {
+  return Number(story.series_number || story.episode_number || 0)
+}
+
+function isCompleteSeriesGroup(stories: Story[]) {
+  const episodeNumbers = new Set(stories.map(episodeNumber).filter(Boolean))
+  if (episodeNumbers.size <= 1) return false
+  const highestEpisode = Math.max(...episodeNumbers)
+  return episodeNumbers.size === highestEpisode && episodeNumbers.has(1)
+}
+
+function isLaunchInventory(story: Story) {
+  return !/\b(test|sample|draft)\b/i.test(`${story.title} ${story.series_name || ''}`)
+}
 
 export default function RecommendedForYou({ excludeIds = [] }: { excludeIds?: string[] }) {
   const router = useRouter()
@@ -50,11 +66,11 @@ export default function RecommendedForYou({ excludeIds = [] }: { excludeIds?: st
     }
 
     const { data } = await supabase.from('story_analytics')
-      .select('id, title, genre, author, duration_mins, cover_url, series_id, series_name, series_number, description, avg_rating, review_count')
+      .select('id, title, genre, author, duration_mins, cover_url, series_id, series_name, series_number, published_on, description, avg_rating, review_count')
       .not('cover_url', 'is', null).eq('is_hidden', false).in('id', publicIds).limit(100)
     if (!data || !data.length) { setLoading(false); return }
 
-    const storyRows = data as Story[]
+    const storyRows = (data as Story[]).filter(isLaunchInventory)
     const seriesIds = Array.from(new Set(storyRows.map((story) => story.series_id).filter(Boolean))) as string[]
     if (seriesIds.length > 0) {
       const { data: episodeRows, error: episodeError } = await supabase
@@ -106,9 +122,11 @@ export default function RecommendedForYou({ excludeIds = [] }: { excludeIds?: st
 
     const seriesMap = new Map<string, SeriesGroup>()
     const singles: Story[] = []
+    const excludedSeriesIds = new Set(storyRows.filter(story => story.series_id && ex.has(story.id)).map(story => story.series_id as string))
 
     storyRows.forEach((story: any) => {
       if (story.series_id) {
+        if (excludedSeriesIds.has(story.series_id)) return
         if (seriesMap.has(story.series_id)) {
           const g = seriesMap.get(story.series_id)!
           g.episode_count++; g.total_duration_mins += story.duration_mins || 0
@@ -132,14 +150,14 @@ export default function RecommendedForYou({ excludeIds = [] }: { excludeIds?: st
       }
     })
 
-    const seriesList = Array.from(seriesMap.values()).filter(g => storyRows.filter((story) => story.series_id === g.id).length > 1)
+    const seriesList = Array.from(seriesMap.values()).filter(g => isCompleteSeriesGroup(storyRows.filter((story) => story.series_id === g.id)))
     seriesList.forEach((group) => {
       const fullSeriesRows = storyRows
         .filter((story) => story.series_id === group.id)
         .slice()
-        .sort((a, b) => (a.series_number || 0) - (b.series_number || 0))
+        .sort((a, b) => episodeNumber(a) - episodeNumber(b))
       const episodes = fullSeriesRows
-        .map((story, index) => ({ id: story.id, episode_number: story.series_number || index + 1 }))
+        .map((story, index) => ({ id: story.id, episode_number: episodeNumber(story) || index + 1 }))
       group.episode_count = fullSeriesRows.length
       group.total_duration_mins = fullSeriesRows.reduce((sum, story) => sum + (story.duration_mins || 0), 0)
       group.avg_episode_duration = group.episode_count > 0 ? Math.round(group.total_duration_mins / group.episode_count) : 0
@@ -161,6 +179,8 @@ export default function RecommendedForYou({ excludeIds = [] }: { excludeIds?: st
       if (gr === 0) score += 30; else if (gr === 1) score += 20; else if (gr >= 2) score += 10
       const dd = Math.abs((s.duration_mins || 0) - avgDuration)
       if (dd <= 5) score += 15; else if (dd <= 10) score += 8
+      score += Number(s.avg_rating || 0) * 4
+      score += Math.floor((Date.parse(s.published_on || '') || 0) / 86_400_000) / 100000
       return score
     }
 
