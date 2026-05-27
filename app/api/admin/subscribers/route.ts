@@ -98,6 +98,18 @@ async function safeSelectWithOrderFallback(admin: any, table: string, select: st
   return safeSelect(admin, table, select, { limit })
 }
 
+async function loadTravelInsightPreferences(admin: any) {
+  const { data, error } = await admin
+    .from('user_travel_insights_preferences')
+    .select('user_id,mode,updated_at')
+    .limit(50000)
+  if (error) {
+    console.warn('[admin/subscribers] user_travel_insights_preferences unavailable:', error.message)
+    return { rows: [], available: false }
+  }
+  return { rows: data || [], available: true }
+}
+
 async function listAuthUsers(admin: any) {
   const authUsers: any[] = []
   try {
@@ -220,10 +232,17 @@ function movementContext(events: any[]) {
     .filter(Boolean)
   if (!contexts.length) return { value: 'Not collected', source: 'Movement/travel context is not collected by default.' }
   if (contexts.includes('possibly_driving') || contexts.includes('travel') || contexts.includes('traveling') || contexts.includes('possibly_traveling')) {
-    return { value: 'travel', source: 'Coarse opt-in movement signal' }
+    return { value: 'possibly traveling', source: 'Coarse opt-in movement signal' }
   }
   if (contexts.includes('stationary')) return { value: 'stationary', source: 'Coarse opt-in movement signal' }
   return { value: 'unknown', source: 'Coarse movement signal unavailable' }
+}
+
+function travelInsightsLabel(mode: string | null | undefined) {
+  if (mode === 'always') return 'Always'
+  if (mode === 'never') return 'Never'
+  if (mode === 'while_using') return 'Only While Using This App'
+  return 'Not set'
 }
 
 function buildListeningSummary(userId: string, libraryRows: any[], playEvents: any[], storyById: Map<string, any>) {
@@ -381,7 +400,7 @@ export async function GET(req: NextRequest) {
     if (!(await requireAdmin(req))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const { admin } = clients()
 
-    const [usersRes, subsRes, libraryRows, playEvents, stories, referrals, authUsers] = await Promise.all([
+    const [usersRes, subsRes, libraryRows, playEvents, stories, referrals, authUsers, travelPreferencesResult] = await Promise.all([
       admin.from('users').select('*').order('created_at', { ascending: false }),
       admin.from('subscriptions').select('*').order('created_at', { ascending: false }),
       safeSelect(admin, 'user_library', 'user_id,story_id,progress,completed,updated_at,created_at,last_played', { orderBy: 'updated_at', limit: 50000 }),
@@ -389,6 +408,7 @@ export async function GET(req: NextRequest) {
       safeSelect(admin, 'stories', 'id,title,genre,duration_mins'),
       safeSelect(admin, 'referrals', '*'),
       listAuthUsers(admin),
+      loadTravelInsightPreferences(admin),
     ])
 
     if (usersRes.error) throw usersRes.error
@@ -396,6 +416,7 @@ export async function GET(req: NextRequest) {
     const subscriptions = subsRes.data || []
     const storyById = new Map((stories || []).map((story: any) => [story.id, story]))
     const authById = new Map((authUsers || []).map((authUser: any) => [authUser.id, authUser]))
+    const travelPreferenceByUser = new Map((travelPreferencesResult.rows || []).map((row: any) => [row.user_id, row]))
 
     const subByUser = new Map<string, any>()
     subscriptions.forEach((sub: any) => {
@@ -418,6 +439,7 @@ export async function GET(req: NextRequest) {
       const status = pickStatus(user, sub)
       const listening = buildListeningSummary(user.id, libraryRows, playEvents, storyById)
       const authUser = authById.get(user.id)
+      const travelPreference = travelPreferenceByUser.get(user.id)
       const lastActive = [
         listening.recentListeningDate,
         user.last_active,
@@ -459,7 +481,19 @@ export async function GET(req: NextRequest) {
           libraryActivityCount: listening.libraryActivityCount,
         },
         preferences: listening.preferences,
-        listeningPatterns: listening.patterns,
+        listeningPatterns: {
+          ...listening.patterns,
+          travelInsightsSetting: travelPreferencesResult.available
+            ? travelInsightsLabel(travelPreference?.mode)
+            : 'Not synced',
+          travelInsightsMode: travelPreference?.mode || null,
+          travelInsightsSource: travelPreference
+            ? 'Server synced'
+            : travelPreferencesResult.available
+              ? 'Not set server-side'
+              : 'Not synced - server preference table unavailable',
+          travelInsightsUpdatedAt: travelPreference?.updated_at || null,
+        },
         playlist: {
           activityKnown: false,
           note: 'Playlist activity is stored client-side unless persisted by a future server event.',

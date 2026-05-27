@@ -52,6 +52,9 @@ type Subscriber = {
     }>
     likelyListeningContext: string
     movementContextSource: string
+    travelInsightsSetting: string
+    travelInsightsSource: string
+    travelInsightsUpdatedAt: string | null
   }
   playlist: { activityKnown: boolean; note: string }
   referrals: { count: number; rows: any[] }
@@ -282,6 +285,8 @@ export default function SubscriptionsPage() {
               <Info label="Favorite time" value={selected.listeningPatterns.favoriteListeningTime || 'Not enough listening data yet'} />
               <Info label="Favorite days" value={selected.listeningPatterns.favoriteListeningDays.length ? selected.listeningPatterns.favoriteListeningDays.join(', ') : 'Not enough listening data yet'} />
               <Info label="Average session" value={selected.listeningPatterns.averageSessionLengthMinutes ? `${selected.listeningPatterns.averageSessionLengthMinutes} min` : 'Not enough listening data yet'} />
+              <Info label="Travel Insights setting" value={selected.listeningPatterns.travelInsightsSetting || 'Not set'} />
+              <div style={{ color: '#64748b', fontSize: 12 }}>{selected.listeningPatterns.travelInsightsSource || 'Not synced'}</div>
               <Info label="Movement / travel context" value={selected.listeningPatterns.likelyListeningContext || 'Not collected'} />
               <div style={{ color: '#64748b', fontSize: 12 }}>{selected.listeningPatterns.movementContextSource || 'Movement/travel context is not collected by default.'}</div>
               {selected.listeningPatterns.recentSessions.length > 0 && (

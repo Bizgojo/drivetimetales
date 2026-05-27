@@ -27,6 +27,7 @@ export default function AccountPage() {
 
   useEffect(() => {
     if (!mounted || !user?.id) return;
+    let cancelled = false;
     try {
       const savedMode = localStorage.getItem(travelInsightsModeKey);
       const legacyEnabled = localStorage.getItem(travelInsightsKey) === 'true';
@@ -39,6 +40,23 @@ export default function AccountPage() {
       setTravelInsightsEnabled(nextMode !== 'no');
       setTravelInsightsTouched(savedMode === 'yes' || savedMode === 'while_using' || savedMode === 'no');
     } catch {}
+
+    fetch('/api/user/travel-insights')
+      .then((response) => response.ok ? response.json() : null)
+      .then((data) => {
+        if (cancelled || !data?.mode) return;
+        const serverMode = data.mode === 'always' ? 'yes' : data.mode === 'while_using' ? 'while_using' : 'no';
+        setTravelInsightsMode(serverMode);
+        setTravelInsightsEnabled(serverMode !== 'no');
+        setTravelInsightsTouched(true);
+        try {
+          localStorage.setItem(travelInsightsModeKey, serverMode);
+          if (serverMode === 'no') localStorage.removeItem(travelInsightsKey);
+          else localStorage.setItem(travelInsightsKey, 'true');
+        } catch {}
+      })
+      .catch(() => {})
+    return () => { cancelled = true; }
   }, [mounted, travelInsightsKey, travelInsightsModeKey, user?.id]);
 
   // Handle sign out
@@ -67,21 +85,39 @@ export default function AccountPage() {
       setTravelInsightsEnabled(true);
       setTravelInsightsMode(mode);
       setTravelInsightsTouched(true);
-      setTravelInsightsMessage('Enabled. We only use coarse context, never exact routes or stored GPS history.');
+      const response = await fetch('/api/user/travel-insights', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: mode === 'yes' ? 'always' : 'while_using' }),
+      });
+      setTravelInsightsMessage(response.ok
+        ? 'Enabled. We only use coarse context, never exact routes or stored GPS history.'
+        : 'Saved on this device. Admin sync is unavailable right now.');
     } catch {
       setTravelInsightsMessage('Could not save this preference on this device. Playback will still work normally.');
     }
   };
 
-  const disableTravelInsights = () => {
+  const disableTravelInsights = async () => {
     try {
       localStorage.removeItem(travelInsightsKey);
-      localStorage.removeItem(travelInsightsModeKey);
+      localStorage.setItem(travelInsightsModeKey, 'no');
     } catch {}
     setTravelInsightsEnabled(false);
     setTravelInsightsMode('no');
     setTravelInsightsTouched(true);
-    setTravelInsightsMessage('Disabled. Travel listening context will not be collected.');
+    try {
+      const response = await fetch('/api/user/travel-insights', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'never' }),
+      });
+      setTravelInsightsMessage(response.ok
+        ? 'Disabled. Travel listening context will not be collected.'
+        : 'Disabled on this device. Admin sync is unavailable right now.');
+    } catch {
+      setTravelInsightsMessage('Disabled on this device. Admin sync is unavailable right now.');
+    }
   };
 
   const travelChoiceClass = (active: boolean) =>
