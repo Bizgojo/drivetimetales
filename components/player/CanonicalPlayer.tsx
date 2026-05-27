@@ -590,6 +590,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         stage = 'audio-playlist'
         let resolvedQueue: QueueItem[] = []
         let resolvedIsASC3 = false
+        let resolvedAudioSrc = ''
         try {
           const playlistParams = new URLSearchParams({ storyId })
           const firstName = String((user as any)?.first_name || '').trim()
@@ -600,7 +601,8 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
             if (pl.useFinalMix && pl.finalMixUrl) {
               // Plain single-file audio — store URL in ref for init useEffect
               finalMixRetryCountRef.current = 0
-              setAudioSrc(pl.finalMixUrl)
+              resolvedAudioSrc = pl.finalMixUrl
+              setAudioSrc(resolvedAudioSrc)
               noMusicRef.current = true
               introMusicRef.current = ''
               bgMusicRef.current = null
@@ -612,17 +614,29 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
               resolvedQueue  = pl.queue
               resolvedIsASC3 = true
             } else {
-              setAudioSrc(data?.audio_url || '')
+              resolvedAudioSrc = data?.audio_url || ''
+              setAudioSrc(resolvedAudioSrc)
               noMusicRef.current = true
             }
           } else {
-            setAudioSrc(data?.audio_url || '')
+            resolvedAudioSrc = data?.audio_url || ''
+            setAudioSrc(resolvedAudioSrc)
             noMusicRef.current = true
           }
         } catch (error) {
           console.error('[player] story-playlist failed; falling back to story audio_url:', { storyId, error })
-          setAudioSrc(data?.audio_url || '')
+          resolvedAudioSrc = data?.audio_url || ''
+          setAudioSrc(resolvedAudioSrc)
           noMusicRef.current = true
+        }
+        if (!resolvedIsASC3 && !resolvedAudioSrc) {
+          console.error('[player] no playable audio source resolved for story:', {
+            storyId,
+            title: data?.title,
+            status: data?.status,
+            isHidden: data?.is_hidden,
+          })
+          setAudioErrorMessage('Audio is not available for this story yet.')
         }
         setQueue(resolvedQueue)
         setIsASC3(resolvedIsASC3)

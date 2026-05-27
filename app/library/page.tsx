@@ -7,10 +7,12 @@ import { useAuth } from '@/contexts/AuthContext'
 import StickyHeaderFull from '@/components/StickyHeaderFull'
 import ReviewModal from '@/components/ReviewModal'
 import { buildSeriesPlaybackTarget, storeSeriesPlayback } from '@/lib/seriesPlayback'
-
-const PLAYLIST_KEY = 'et_current_playlist'
-const SAVED_PLAYLIST_KEY = 'et_saved_playlist'
-const ACTIVE_PLAYLIST_KEY = 'dtt_active_playlist'
+import {
+  ACTIVE_PLAYLIST_KEY,
+  LIBRARY_PLAYLIST_KEY,
+  clearActivePlaylist,
+  saveActivePlaylist,
+} from '@/lib/playlistState'
 
 type Story = {
   id: string
@@ -86,6 +88,17 @@ const GENRE_LABELS: Record<string, string> = {
   Drama: '🎭Drama',
 }
 
+function parsePlaylistKeys(raw: string | null): string[] | null {
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((key): key is string => typeof key === 'string')
+  } catch {
+    return []
+  }
+}
+
 export default function LibraryPage() {
   const router = useRouter()
   const { user, loading: authLoading } = useAuth()
@@ -100,23 +113,60 @@ export default function LibraryPage() {
   const [showMoreGenres, setShowMoreGenres] = useState(false)
   const [genreSlots, setGenreSlots] = useState<string[]>([])
   const [playlist, setPlaylist] = useState<string[]>([])
+  const [playlistHydrated, setPlaylistHydrated] = useState(false)
   const [reviewTarget, setReviewTarget] = useState<ReviewTarget | null>(null)
   const [canonicalGenres, setCanonicalGenres] = useState<CanonicalGenre[]>([])
 
   // Hydrate playlist from localStorage
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(PLAYLIST_KEY)
-      if (raw) setPlaylist(JSON.parse(raw))
-    } catch {}
+    const syncPlaylist = () => {
+      try {
+        const storedKeys = parsePlaylistKeys(localStorage.getItem(LIBRARY_PLAYLIST_KEY))
+        if (storedKeys) {
+          setPlaylist(storedKeys)
+          setPlaylistHydrated(true)
+          return
+        }
+        const activeRaw = localStorage.getItem(ACTIVE_PLAYLIST_KEY)
+        if (!activeRaw) {
+          setPlaylist([])
+          setPlaylistHydrated(true)
+          return
+        }
+        const active = JSON.parse(activeRaw)
+        const items = active.items || active.stories || []
+        setPlaylist((Array.isArray(items) ? items : [])
+          .map((item: any) => item.type === 'series'
+            ? item.series_id || item.id ? `series-${item.series_id || item.id}` : null
+            : item.id ? `single-${item.id}` : null)
+          .filter((key: string | null): key is string => Boolean(key)))
+        setPlaylistHydrated(true)
+      } catch {
+        setPlaylist([])
+        setPlaylistHydrated(true)
+      }
+    }
+    syncPlaylist()
+    window.addEventListener('focus', syncPlaylist)
+    window.addEventListener('et_playlist_saved', syncPlaylist)
+    window.addEventListener('et_playlist_cleared', syncPlaylist)
+    window.addEventListener('storage', syncPlaylist)
+    return () => {
+      window.removeEventListener('focus', syncPlaylist)
+      window.removeEventListener('et_playlist_saved', syncPlaylist)
+      window.removeEventListener('et_playlist_cleared', syncPlaylist)
+      window.removeEventListener('storage', syncPlaylist)
+    }
   }, [])
 
   // Persist playlist
   useEffect(() => {
+    if (!playlistHydrated) return
     try {
-      localStorage.setItem(PLAYLIST_KEY, JSON.stringify(playlist))
+      if (playlist.length > 0) localStorage.setItem(LIBRARY_PLAYLIST_KEY, JSON.stringify(playlist))
+      else clearActivePlaylist()
     } catch {}
-  }, [playlist])
+  }, [playlistHydrated, playlist])
 
   useEffect(() => {
     if (!authLoading) {
@@ -412,12 +462,42 @@ export default function LibraryPage() {
     setPlaylist((p) => (p.includes(key) ? p.filter((k) => k !== key) : [...p, key]))
   }
 
+  function navigateToPlayer(targetUrl: string, payload: Record<string, unknown>) {
+    console.info('[Library] Play tapped', payload)
+    router.push(targetUrl)
+
+    window.setTimeout(() => {
+      if (window.location.pathname === '/library') {
+        console.warn('[Library] router.push did not leave Library; falling back to hard navigation', {
+          targetUrl,
+          payload,
+        })
+        window.location.assign(targetUrl)
+      }
+    }, 700)
+  }
+
   function playSingle(storyId: string) {
-    router.push(`/player/${storyId}?autoplay=1&playNow=1`)
+    const story = stories.find((item) => item.id === storyId)
+    const targetUrl = `/player/${storyId}?autoplay=1&playNow=1`
+    navigateToPlayer(targetUrl, {
+      type: 'single',
+      storyId,
+      title: story?.title || null,
+      hasCover: Boolean(story?.cover_url),
+      durationMins: story?.duration_mins || null,
+    })
   }
 
   function playSeries(item: CardItem) {
-    if (!item.playEpisodeId) return
+    if (!item.playEpisodeId) {
+      console.warn('[Library] Series play tapped but no playable episode was resolved', {
+        seriesId: item.seriesId,
+        seriesName: item.seriesName,
+        episodeCount: item.episodeCount,
+      })
+      return
+    }
     try {
       storeSeriesPlayback({
         episodeId: item.playEpisodeId,
@@ -428,7 +508,16 @@ export default function LibraryPage() {
     } catch {}
     const params = new URLSearchParams({ autoplay: '1', playNow: '1' })
     if (item.resumeSeconds && item.resumeSeconds > 0) params.set('resume', String(item.resumeSeconds))
-    router.push(`/player/${item.playEpisodeId}?${params.toString()}`)
+    const targetUrl = `/player/${item.playEpisodeId}?${params.toString()}`
+    navigateToPlayer(targetUrl, {
+      type: 'series',
+      seriesId: item.seriesId,
+      seriesName: item.seriesName,
+      episodeId: item.playEpisodeId,
+      episodeCount: item.episodeCount,
+      resumeSeconds: item.resumeSeconds || 0,
+      playlistLength: item.episodePlaylist?.length || 0,
+    })
   }
 
   function openSeries(seriesId: string) {
@@ -440,7 +529,14 @@ export default function LibraryPage() {
     const first = cardItems.find((i) => i.key === validPlaylist[0])
     if (!first) return
     const id = first.type === 'single' ? first.story?.id : first.firstEpisodeId
-    if (id) router.push(`/player/${id}?playlist=1&autoplay=1`)
+    if (id) {
+      navigateToPlayer(`/player/${id}?playlist=1&autoplay=1`, {
+        type: 'playlist',
+        firstItemKey: first.key,
+        firstStoryId: id,
+        playlistLength: validPlaylist.length,
+      })
+    }
   }
 
   function savePlaylistToHome() {
@@ -485,10 +581,8 @@ export default function LibraryPage() {
         remaining_mins: playlistTotalMins,
         completed: 0,
       }
-      localStorage.setItem(ACTIVE_PLAYLIST_KEY, JSON.stringify(savedPlaylist))
-      localStorage.setItem(SAVED_PLAYLIST_KEY, JSON.stringify(validPlaylist))
-      window.dispatchEvent(new Event('et_playlist_saved'))
-      alert('Saved to home')
+      saveActivePlaylist(savedPlaylist, validPlaylist)
+      router.push('/home')
     } catch {}
   }
 
@@ -902,8 +996,28 @@ function StoryCard({
 
           {/* Row 6: buttons */}
           <div style={{ display: 'flex', gap: '5px', marginTop: '2px' }}>
+            <button
+              type="button"
+              onClick={onPlay}
+              style={{
+                flex: 1,
+                background: showPlayAgain ? '#fb923c' : inProgress ? '#16a34a' : '#f97316',
+                color: 'white',
+                border: 'none',
+                padding: '2px 6px',
+                borderRadius: '6px',
+                fontSize: '11px',
+                lineHeight: 1,
+                minHeight: '32px',
+                fontWeight: 500,
+                cursor: 'pointer',
+              }}
+            >
+              {showPlayAgain ? '▶ Play Again' : inProgress ? '▶ Continue' : isSeries ? '▶ Play series' : '▶ Play now'}
+            </button>
             {showRate ? (
               <button
+                type="button"
                 onClick={onRate}
                 style={{
                   flex: 1,
@@ -927,14 +1041,15 @@ function StoryCard({
                 <span>Rate this {isSeries ? 'series' : 'story'}</span>
                 <span style={{ fontSize: '14px' }}>☹</span>
               </button>
-            ) : state.inPlaylist ? (
+            ) : (
               <button
+                type="button"
                 onClick={onTogglePlaylist}
                 style={{
                   flex: 1,
-                  background: 'transparent',
-                  color: '#93c5fd',
-                  border: '0.5px solid #3b82f6',
+                  background: '#3b82f6',
+                  color: 'white',
+                  border: 'none',
                   padding: '2px 6px',
                   borderRadius: '6px',
                   fontSize: '11px',
@@ -944,47 +1059,8 @@ function StoryCard({
                   cursor: 'pointer',
                 }}
               >
-                ✓ In your playlist · Remove
+                {state.inPlaylist ? '✓ Remove' : '+ Queue'}
               </button>
-            ) : (
-              <>
-                <button
-                  onClick={onPlay}
-                  style={{
-                    flex: 1,
-                    background: showPlayAgain ? '#fb923c' : inProgress ? '#16a34a' : '#f97316',
-                    color: 'white',
-                    border: 'none',
-                    padding: '2px 6px',
-                    borderRadius: '6px',
-                    fontSize: '11px',
-                    lineHeight: 1,
-                    minHeight: '32px',
-                    fontWeight: 500,
-                    cursor: 'pointer',
-                  }}
-                >
-                  {showPlayAgain ? '▶ Play Again' : inProgress ? '▶ Continue' : isSeries ? '▶ Play series' : '▶ Play now'}
-                </button>
-                <button
-                  onClick={onTogglePlaylist}
-                  style={{
-                    flex: 1,
-                    background: '#3b82f6',
-                    color: 'white',
-                    border: 'none',
-                    padding: '2px 6px',
-                    borderRadius: '6px',
-                    fontSize: '11px',
-                    lineHeight: 1,
-                    minHeight: '32px',
-                    fontWeight: 500,
-                    cursor: 'pointer',
-                  }}
-                >
-                  + Queue
-                </button>
-              </>
             )}
           </div>
 
