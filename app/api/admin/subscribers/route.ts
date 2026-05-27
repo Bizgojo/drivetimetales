@@ -101,7 +101,7 @@ async function safeSelectWithOrderFallback(admin: any, table: string, select: st
 async function loadTravelInsightPreferences(admin: any) {
   const { data, error } = await admin
     .from('user_travel_insights_preferences')
-    .select('user_id,mode,updated_at')
+    .select('*')
     .limit(50000)
   if (error) {
     console.warn('[admin/subscribers] user_travel_insights_preferences unavailable:', error.message)
@@ -241,8 +241,15 @@ function movementContext(events: any[]) {
 function travelInsightsLabel(mode: string | null | undefined) {
   if (mode === 'always') return 'Always'
   if (mode === 'never') return 'Never'
-  if (mode === 'while_using') return 'Only While Using This App'
+  if (mode === 'while_using' || mode === 'while_using_app') return 'Only While Using This App'
   return 'Not set'
+}
+
+function travelInsightsMode(row: any) {
+  const value = String(row?.mode || row?.setting || '')
+  if (value === 'always' || value === 'never') return value
+  if (value === 'while_using' || value === 'while_using_app') return 'while_using'
+  return null
 }
 
 function buildListeningSummary(userId: string, libraryRows: any[], playEvents: any[], storyById: Map<string, any>) {
@@ -416,7 +423,7 @@ export async function GET(req: NextRequest) {
     const subscriptions = subsRes.data || []
     const storyById = new Map((stories || []).map((story: any) => [story.id, story]))
     const authById = new Map((authUsers || []).map((authUser: any) => [authUser.id, authUser]))
-    const travelPreferenceByUser = new Map((travelPreferencesResult.rows || []).map((row: any) => [row.user_id, row]))
+    const travelPreferenceByUser = new Map((travelPreferencesResult.rows || []).map((row: any) => [String(row.user_id || '').toLowerCase(), row]))
 
     const subByUser = new Map<string, any>()
     subscriptions.forEach((sub: any) => {
@@ -439,7 +446,8 @@ export async function GET(req: NextRequest) {
       const status = pickStatus(user, sub)
       const listening = buildListeningSummary(user.id, libraryRows, playEvents, storyById)
       const authUser = authById.get(user.id)
-      const travelPreference = travelPreferenceByUser.get(user.id)
+      const travelPreference = travelPreferenceByUser.get(String(user.id || '').toLowerCase())
+      const travelMode = travelInsightsMode(travelPreference)
       const lastActive = [
         listening.recentListeningDate,
         user.last_active,
@@ -484,9 +492,9 @@ export async function GET(req: NextRequest) {
         listeningPatterns: {
           ...listening.patterns,
           travelInsightsSetting: travelPreferencesResult.available
-            ? travelInsightsLabel(travelPreference?.mode)
+            ? travelInsightsLabel(travelMode)
             : 'Not synced',
-          travelInsightsMode: travelPreference?.mode || null,
+          travelInsightsMode: travelMode,
           travelInsightsSource: travelPreference
             ? 'Server synced'
             : travelPreferencesResult.available

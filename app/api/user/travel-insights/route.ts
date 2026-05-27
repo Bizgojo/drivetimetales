@@ -8,6 +8,17 @@ export const dynamic = 'force-dynamic'
 
 const VALID_MODES = new Set(['always', 'never', 'while_using'])
 
+function modeFromPreferenceRow(row: any): string | null {
+  const value = String(row?.mode || row?.setting || '')
+  if (value === 'always' || value === 'never') return value
+  if (value === 'while_using' || value === 'while_using_app') return 'while_using'
+  return null
+}
+
+function settingFromMode(mode: string) {
+  return mode === 'while_using' ? 'while_using_app' : mode
+}
+
 function adminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const service = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -39,7 +50,7 @@ export async function GET() {
 
     const { data, error } = await adminClient()
       .from('user_travel_insights_preferences')
-      .select('mode,updated_at')
+      .select('*')
       .eq('user_id', user.id)
       .maybeSingle()
 
@@ -48,7 +59,7 @@ export async function GET() {
       return NextResponse.json({ mode: null, source: 'unavailable' })
     }
 
-    return NextResponse.json({ mode: data?.mode || null, updatedAt: data?.updated_at || null, source: data ? 'server' : 'not_set' })
+    return NextResponse.json({ mode: modeFromPreferenceRow(data), updatedAt: data?.updated_at || null, source: data ? 'server' : 'not_set' })
   } catch (error) {
     console.error('[travel-insights] load error:', error)
     return NextResponse.json({ error: 'Failed to load travel insights setting' }, { status: 500 })
@@ -64,13 +75,25 @@ export async function POST(req: NextRequest) {
     const mode = String(body?.mode || '')
     if (!VALID_MODES.has(mode)) return NextResponse.json({ error: 'Invalid mode' }, { status: 400 })
 
-    const { error } = await adminClient()
+    const client = adminClient()
+    let { error } = await client
       .from('user_travel_insights_preferences')
       .upsert({
         user_id: user.id,
-        mode,
+        setting: settingFromMode(mode),
         updated_at: new Date().toISOString(),
       }, { onConflict: 'user_id' })
+
+    if (error?.code === 'PGRST204' && error.message.includes("'setting' column")) {
+      const fallback = await client
+        .from('user_travel_insights_preferences')
+        .upsert({
+          user_id: user.id,
+          mode,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'user_id' })
+      error = fallback.error
+    }
 
     if (error) {
       console.warn('[travel-insights] save failed:', error.message)
