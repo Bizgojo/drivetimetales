@@ -1937,7 +1937,7 @@ function StoryReviewCard({
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'stretch', minWidth: '170px', justifyContent: 'center' }}>
           {workflowState !== 'cold_storage' && story.audio_url && <PlayStoryButton story={story} />}
           {['ready_for_review', 'approved_ready', 'unpublished_library', 'published'].includes(workflowState) && <button onClick={() => onEditClick(story)} style={actionButtonStyle('muted')}>Edit Cover</button>}
-          {workflowState === 'ready_for_review' && <button onClick={() => onSetWorkflowState(story, 'approved_ready')} style={actionButtonStyle('success')}>Approve for Later</button>}
+          {workflowState === 'ready_for_review' && <button onClick={() => onSetWorkflowState(story, 'approved_ready')} style={actionButtonStyle('success')}>Approve for Publishing</button>}
           {workflowState === 'approved_ready' && <button onClick={() => onPublish(story)} style={actionButtonStyle('primary')}>Publish Now</button>}
           {['ready_for_review', 'approved_ready', 'unpublished_library', 'published'].includes(workflowState) && <button onClick={() => onOpenRepair(story)} style={actionButtonStyle('muted')}>Move to Repair Shop</button>}
           {workflowState === 'repair_queue' && <button onClick={() => onSetWorkflowState(story, 'ready_for_review')} style={actionButtonStyle('muted')}>Return to Ready for Review</button>}
@@ -2032,7 +2032,7 @@ function EpisodeReviewRow({
         <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           {workflowState !== 'cold_storage' && story.audio_url && <PlayStoryButton story={story} />}
           {['ready_for_review', 'approved_ready', 'unpublished_library', 'published'].includes(workflowState) && <button onClick={() => onEditClick(story)} style={actionButtonStyle('muted')}>Edit Cover</button>}
-          {workflowState === 'ready_for_review' && <button onClick={() => onSetWorkflowState(story, 'approved_ready')} style={actionButtonStyle('success')}>Approve for Later</button>}
+          {workflowState === 'ready_for_review' && <button onClick={() => onSetWorkflowState(story, 'approved_ready')} style={actionButtonStyle('success')}>Approve for Publishing</button>}
           {workflowState === 'approved_ready' && <button onClick={() => onPublish(story)} style={actionButtonStyle('primary')}>Publish Now</button>}
           {['ready_for_review', 'approved_ready', 'unpublished_library', 'published'].includes(workflowState) && <button onClick={() => onOpenRepair(story)} style={actionButtonStyle('muted')}>Move to Repair Shop</button>}
           {workflowState === 'repair_queue' && <button onClick={() => onSetWorkflowState(story, 'ready_for_review')} style={actionButtonStyle('muted')}>Cancel</button>}
@@ -2697,8 +2697,8 @@ export default function AdminStoriesPage() {
     return (
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(116px, 1fr))', alignItems: 'stretch', gap: '6px', width: '100%', minWidth: 0 }}>
         {canPlay && <PlayStoryButton story={story} />}
-        {state === 'ready_for_review' && <button type="button" onClick={() => setWorkflowState(story, 'approved_ready')} style={actionButtonStyle('success')}>Approve for Later</button>}
-        {state === 'ready_for_review' && <button type="button" onClick={() => publishStory(story)} style={actionButtonStyle('primary')}>Publish Now</button>}
+        {state === 'ready_for_review' && <button type="button" onClick={() => setWorkflowState(story, 'approved_ready')} style={actionButtonStyle('success')}>Approve for Publishing</button>}
+        {/* Publish Now intentionally absent from ready_for_review — must go through Approved & Ready to Publish first */}
         {state === 'ready_for_review' && <button type="button" onClick={openRepair} style={actionButtonStyle('muted')}>Move to Repair Shop</button>}
         {state === 'ready_for_review' && <button type="button" onClick={moveToColdStorage} style={actionButtonStyle('danger')}>Move to Cold Storage</button>}
 
