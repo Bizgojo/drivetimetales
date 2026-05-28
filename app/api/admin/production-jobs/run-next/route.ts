@@ -4,6 +4,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { logAnthropicCall } from '@/app/lib/anthropic-logger'
 import { buildNamePalettePromptBlock } from '@/lib/story/namePalette'
 import { recordProductionLearningEvent } from '@/lib/productionLearning'
+import { isBelleBVoiceId } from '@/lib/voiceConstants'
 
 export const runtime = 'nodejs'
 
@@ -737,6 +738,110 @@ function validateIntroOutroPositionRules(
   }
 }
 
+// ── Narrator assignment validator ─────────────────────────────────────────────
+// Hard-blocks missing, invalid, mismatched, or fallback narrator assignments
+// BEFORE generate-voices is called and before any ElevenLabs credits are spent.
+
+type NarratorValidationResult = {
+  passed: boolean
+  narratorIssues: string[]
+  resolvedVoiceId: string | null
+  resolvedVoiceName: string | null
+}
+
+/** Fetch every narrator_voices row once; re-use the array across all episodes. */
+async function fetchAllNarratorVoices(): Promise<Array<{ name: string; elevenlabs_voice_id: string }>> {
+  const { data, error } = await supabase
+    .from('narrator_voices')
+    .select('name,elevenlabs_voice_id')
+  if (error) throw new Error(`narrator_voices lookup failed: ${error.message}`)
+  return (data || []) as Array<{ name: string; elevenlabs_voice_id: string }>
+}
+
+/**
+ * Synchronous narrator/voice assignment validation.
+ * Call after fetchAllNarratorVoices() so the DB round-trip happens once per job,
+ * not once per episode.
+ *
+ * Rules:
+ *  1. NARRATOR header must be present and non-blank in the script
+ *  2. Narrator name must resolve to a row in narrator_voices
+ *  3. That row must have a non-empty elevenlabs_voice_id
+ *  4. Voice must not be a Belle B / host voice
+ *  5. story.narrator_voice_name (if set) must match the script narrator name
+ *  6. story.narrator_voice_id (if set) must match the resolved voice ID
+ *
+ * Null narrator_voice_name + null narrator_voice_id passes if the script narrator
+ * resolves cleanly — the link will be written later by complete-story-package.
+ *
+ * @param story   Must include script, narrator_voice_id, narrator_voice_name
+ * @param voices  All narrator_voices rows from fetchAllNarratorVoices()
+ * @param label   Optional episode label for prefixed error messages, e.g. 'EP2'
+ */
+function validateNarratorAssignmentSync(
+  story: {
+    script?: string | null
+    narrator_voice_id?: string | null
+    narrator_voice_name?: string | null
+  },
+  voices: Array<{ name: string; elevenlabs_voice_id: string }>,
+  label?: string
+): NarratorValidationResult {
+  const issues: string[] = []
+  const px = label ? `${label}: ` : ''
+  const script = String(story.script || '')
+
+  // Rule 1: NARRATOR header must exist and be non-blank
+  const scriptNarratorName = extractHeader(script, 'NARRATOR').trim()
+  if (!scriptNarratorName) {
+    issues.push(`${px}NARRATOR header missing from script`)
+    return { passed: false, narratorIssues: issues, resolvedVoiceId: null, resolvedVoiceName: null }
+  }
+
+  // Rule 2: Must exist in narrator_voices table (case-insensitive exact match)
+  const normalizedScript = scriptNarratorName.toLowerCase()
+  const matchedVoice = voices.find(
+    (v) => String(v.name || '').toLowerCase().trim() === normalizedScript
+  )
+  if (!matchedVoice) {
+    issues.push(`${px}NARRATOR "${scriptNarratorName}" not found in narrator_voices`)
+    return { passed: false, narratorIssues: issues, resolvedVoiceId: null, resolvedVoiceName: null }
+  }
+
+  // Rule 3: Row must have a non-empty ElevenLabs voice ID
+  const resolvedVoiceId = String(matchedVoice.elevenlabs_voice_id || '').trim()
+  if (!resolvedVoiceId) {
+    issues.push(`${px}NARRATOR "${scriptNarratorName}" has no elevenlabs_voice_id`)
+    return { passed: false, narratorIssues: issues, resolvedVoiceId: null, resolvedVoiceName: matchedVoice.name }
+  }
+
+  // Rule 4: Voice must not be Belle B / host voice
+  if (isBelleBVoiceId(resolvedVoiceId)) {
+    issues.push(`${px}Narrator voice cannot be a Belle B / host voice`)
+    return { passed: false, narratorIssues: issues, resolvedVoiceId, resolvedVoiceName: matchedVoice.name }
+  }
+
+  // Rule 5: If narrator_voice_name is already set on the story row, it must agree
+  const dbVoiceName = String(story.narrator_voice_name || '').trim()
+  if (dbVoiceName && dbVoiceName.toLowerCase() !== normalizedScript) {
+    issues.push(
+      `${px}Script says "${scriptNarratorName}" but story row has narrator_voice_name="${story.narrator_voice_name}"`
+    )
+    return { passed: false, narratorIssues: issues, resolvedVoiceId, resolvedVoiceName: matchedVoice.name }
+  }
+
+  // Rule 6: If narrator_voice_id is already set on the story row, it must agree
+  const dbVoiceId = String(story.narrator_voice_id || '').trim()
+  if (dbVoiceId && dbVoiceId !== resolvedVoiceId) {
+    issues.push(
+      `${px}story.narrator_voice_id does not match narrator_voices row for script narrator "${scriptNarratorName}"`
+    )
+    return { passed: false, narratorIssues: issues, resolvedVoiceId, resolvedVoiceName: matchedVoice.name }
+  }
+
+  return { passed: true, narratorIssues: [], resolvedVoiceId, resolvedVoiceName: matchedVoice.name }
+}
+
 function validateBelleText(kind: 'intro' | 'outro', text: string, options: { standalone: boolean; title?: string | null; author?: string | null }) {
   const issues: string[] = []
   const lower = text.toLowerCase()
@@ -1361,7 +1466,7 @@ async function createStoryRow(job: ProductionJob) {
 async function loadSeriesEpisodes(seriesId: string) {
   const { data, error } = await supabase
     .from('stories')
-    .select('id,title,author,author_style,genre,narrative_voice,description,brief_json,status,script,script_json,script_version,series_id,series_name,episode_number,series_episode_number,series_total_episodes,series_is_finale,story_type,validator_result,validator_report,validator_passed_at')
+    .select('id,title,author,author_style,genre,narrative_voice,description,brief_json,status,script,script_json,script_version,series_id,series_name,episode_number,series_episode_number,series_total_episodes,series_is_finale,story_type,validator_result,validator_report,validator_passed_at,narrator_voice_id,narrator_voice_name')
     .eq('series_id', seriesId)
     .order('episode_number', { ascending: true })
 
@@ -1921,24 +2026,61 @@ async function runStandaloneVoicePreflight(job: ProductionJob, origin: string) {
     return {
       passed: true,
       skipped: true,
+      narratorIssues: [] as string[],
       storyId: String(storyId),
-      report: state.voicePreflight || {
-        success: true,
-        preflightOnly: true,
-        skipped: true,
-      },
+      report: state.voicePreflight || { success: true, preflightOnly: true, skipped: true },
       state,
     }
   }
 
+  // ── Narrator validation — must pass before any ElevenLabs call ──────────────
+  const { data: storyForNarrator, error: narratorFetchError } = await supabase
+    .from('stories')
+    .select('id,script,narrator_voice_id,narrator_voice_name')
+    .eq('id', storyId)
+    .single()
+  if (narratorFetchError || !storyForNarrator) {
+    throw new Error(narratorFetchError?.message || `Story not found for narrator validation: ${storyId}`)
+  }
+
+  const allVoices = await fetchAllNarratorVoices()
+  const narratorResult = validateNarratorAssignmentSync(storyForNarrator, allVoices)
+
+  if (!narratorResult.passed) {
+    const failState = {
+      ...state,
+      storyId: String(storyId),
+      voicePreflightPassed: false,
+      voicePreflightStoryId: String(storyId),
+      voicePreflight: null,
+      voicePreflightAt: nowIso(),
+      narratorValidation: {
+        passed: false,
+        issues: narratorResult.narratorIssues,
+        checkedAt: nowIso(),
+      },
+    }
+    return {
+      passed: false,
+      skipped: false,
+      narratorIssues: narratorResult.narratorIssues,
+      storyId: String(storyId),
+      report: {
+        success: false,
+        preflightOnly: true,
+        blockingReasons: narratorResult.narratorIssues,
+        narratorIssues: narratorResult.narratorIssues,
+      },
+      state: failState,
+    }
+  }
+
+  // ── Generate-voices preflight (ElevenLabs metadata check) ────────────────────
   const endpoint = `${origin}/api/admin/generate-voices`
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      storyId,
-      preflightOnly: true,
-    }),
+    body: JSON.stringify({ storyId, preflightOnly: true }),
   })
   const report = await readJsonOrDiagnostic(response, '/api/admin/generate-voices') as VoicePreflightResult
   const passed = response.ok && report.success === true
@@ -1946,6 +2088,7 @@ async function runStandaloneVoicePreflight(job: ProductionJob, origin: string) {
   return {
     passed,
     skipped: false,
+    narratorIssues: [] as string[],
     storyId: String(storyId),
     report,
     state: {
@@ -1955,6 +2098,12 @@ async function runStandaloneVoicePreflight(job: ProductionJob, origin: string) {
       voicePreflightStoryId: String(storyId),
       voicePreflight: report,
       voicePreflightAt: nowIso(),
+      narratorValidation: {
+        passed: true,
+        resolvedVoiceId: narratorResult.resolvedVoiceId,
+        resolvedVoiceName: narratorResult.resolvedVoiceName,
+        checkedAt: nowIso(),
+      },
     },
   }
 }
@@ -3849,21 +3998,54 @@ async function runSeriesVoicePreflight(job: ProductionJob, origin: string) {
   const reportsByEpisode = previous.reportsByEpisode && typeof previous.reportsByEpisode === 'object'
     ? { ...previous.reportsByEpisode }
     : {}
+  const narratorsByEpisode = previous.narratorsByEpisode && typeof previous.narratorsByEpisode === 'object'
+    ? { ...previous.narratorsByEpisode }
+    : {}
 
   const nextEpisode = episodes.find((episode: any) =>
     !checkedEpisodes.some((checked: any) => String(checked.storyId) === String(episode.id))
       && !failedEpisodes.some((failed: any) => String(failed.storyId) === String(episode.id))
   )
 
+  // All episodes checked — validate cross-episode narrator consistency before returning success
   if (!nextEpisode) {
+    const narratorIssues: string[] = []
+    // Only look at numeric episode-number keys (not the "_name" sibling keys)
+    const allResolvedIds = Object.entries(narratorsByEpisode)
+      .filter(([key]) => !key.endsWith('_name'))
+      .map(([, v]) => v)
+      .filter((v: any) => typeof v === 'string' && (v as string).length > 0) as string[]
+    if (allResolvedIds.length > 0) {
+      const uniqueIds = new Set(allResolvedIds)
+      if (uniqueIds.size > 1) {
+        const issuesByEp: Record<string, string> = {}
+        for (const [epKey, voiceId] of Object.entries(narratorsByEpisode)) {
+          if (epKey.endsWith('_name')) continue   // skip companion name entries
+          const ep = episodes.find((e: any) => String(episodeNumber(e, 0)) === epKey || String(e.id) === epKey)
+          if (ep && voiceId) {
+            const voiceName = (narratorsByEpisode as any)[`${epKey}_name`] || String(voiceId).substring(0, 8)
+            issuesByEp[epKey] = voiceName
+          }
+        }
+        const epList = Object.entries(issuesByEp)
+          .map(([ep, name]) => `EP${ep}: ${name}`)
+          .join(', ')
+        narratorIssues.push(`Series episodes use different narrators: ${epList}`)
+      }
+    }
+
+    const hasFailed = narratorIssues.length > 0
     return {
-      passed: true,
-      failed: false,
+      passed: !hasFailed,
+      failed: hasFailed,
       complete: true,
       seriesId: String(seriesId),
       episodeResult: null,
-      report: null,
-      nextStep: NEXT_STEP_AFTER_SERIES_PREFLIGHT,
+      report: hasFailed
+        ? { success: false, preflightOnly: true, blockingReasons: narratorIssues, narratorIssues }
+        : null,
+      narratorIssues,
+      nextStep: hasFailed ? NEXT_STEP_AFTER_SERIES_VALIDATION : NEXT_STEP_AFTER_SERIES_PREFLIGHT,
       state: {
         ...state,
         seriesId: String(seriesId),
@@ -3873,6 +4055,8 @@ async function runSeriesVoicePreflight(job: ProductionJob, origin: string) {
           failedEpisodes,
           nextEpisodeNumber: null,
           reportsByEpisode,
+          narratorsByEpisode,
+          narratorIssues: hasFailed ? narratorIssues : [],
         },
       },
     }
@@ -3880,27 +4064,83 @@ async function runSeriesVoicePreflight(job: ProductionJob, origin: string) {
 
   const storyId = String(nextEpisode.id)
   const number = episodeNumber(nextEpisode, 0)
+  const epLabel = `EP${number}`
+
+  // ── Narrator validation — before generate-voices call ─────────────────────
+  const allVoices = await fetchAllNarratorVoices()
+  const narratorResult = validateNarratorAssignmentSync(nextEpisode, allVoices, epLabel)
+
+  if (!narratorResult.passed) {
+    const failedEpisodeEntry = {
+      storyId,
+      title: nextEpisode.title,
+      episodeNumber: number,
+      passed: false,
+      narratorIssues: narratorResult.narratorIssues,
+      checkedAt: nowIso(),
+      report: {
+        success: false,
+        preflightOnly: true,
+        blockingReasons: narratorResult.narratorIssues,
+        narratorIssues: narratorResult.narratorIssues,
+      },
+    }
+    const nextFailedEpisodes = [
+      ...failedEpisodes.filter((episode: any) => String(episode.storyId) !== storyId),
+      failedEpisodeEntry,
+    ]
+    return {
+      passed: false,
+      failed: true,
+      complete: false,
+      seriesId: String(seriesId),
+      episodeResult: failedEpisodeEntry as any,
+      report: failedEpisodeEntry.report,
+      narratorIssues: narratorResult.narratorIssues,
+      nextStep: NEXT_STEP_AFTER_SERIES_VALIDATION,
+      state: {
+        ...state,
+        seriesId: String(seriesId),
+        seriesVoicePreflight: {
+          episodeCount: episodes.length,
+          checkedEpisodes,
+          failedEpisodes: nextFailedEpisodes,
+          nextEpisodeNumber: number,
+          reportsByEpisode,
+          narratorsByEpisode,
+          narratorIssues: narratorResult.narratorIssues,
+        },
+      },
+    }
+  }
+
+  // ── Generate-voices preflight ──────────────────────────────────────────────
   const endpoint = `${origin}/api/admin/generate-voices`
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      storyId,
-      preflightOnly: true,
-    }),
+    body: JSON.stringify({ storyId, preflightOnly: true }),
   })
   const report = await readJsonOrDiagnostic(response, '/api/admin/generate-voices') as VoicePreflightResult
   const passed = response.ok && report.success === true
-  const episodeSummary = {
+
+  const episodeSummary: any = {
     storyId,
     title: nextEpisode.title,
     episodeNumber: number,
     passed,
+    narratorVoiceId: narratorResult.resolvedVoiceId,
+    narratorVoiceName: narratorResult.resolvedVoiceName,
     checkedAt: nowIso(),
   }
   const nextReportsByEpisode = {
     ...reportsByEpisode,
     [number || storyId]: report,
+  }
+  const nextNarratorsByEpisode = {
+    ...narratorsByEpisode,
+    [number]: narratorResult.resolvedVoiceId,
+    [`${number}_name`]: narratorResult.resolvedVoiceName,
   }
   const nextCheckedEpisodes = passed
     ? [
@@ -3931,6 +4171,7 @@ async function runSeriesVoicePreflight(job: ProductionJob, origin: string) {
     seriesId: String(seriesId),
     episodeResult: episodeSummary,
     report,
+    narratorIssues: [] as string[],
     nextStep: complete ? NEXT_STEP_AFTER_SERIES_PREFLIGHT : NEXT_STEP_AFTER_SERIES_VALIDATION,
     state: {
       ...state,
@@ -3941,6 +4182,8 @@ async function runSeriesVoicePreflight(job: ProductionJob, origin: string) {
         failedEpisodes: nextFailedEpisodes,
         nextEpisodeNumber: nextUnchecked ? episodeNumber(nextUnchecked, 0) : null,
         reportsByEpisode: nextReportsByEpisode,
+        narratorsByEpisode: nextNarratorsByEpisode,
+        narratorIssues: [],
       },
     },
   }
@@ -4507,6 +4750,7 @@ export async function POST(req: NextRequest) {
               step,
               seriesId: result.seriesId,
               episodeResult: result.episodeResult,
+              narratorIssues: result.narratorIssues && result.narratorIssues.length > 0 ? result.narratorIssues : undefined,
               preflightReport: result.report,
               failedEpisodes: result.state.seriesVoicePreflight?.failedEpisodes || [],
               at: nowIso(),
@@ -4528,6 +4772,7 @@ export async function POST(req: NextRequest) {
           status: failedJob.status,
           seriesId: result.seriesId,
           episodeResult: result.episodeResult,
+          narratorIssues: result.narratorIssues,
           preflightReport: result.report,
           failedEpisodes: result.state.seriesVoicePreflight?.failedEpisodes || [],
           logs,
@@ -4839,6 +5084,7 @@ export async function POST(req: NextRequest) {
             error_json: {
               step,
               storyId: result.storyId,
+              narratorIssues: result.narratorIssues && result.narratorIssues.length > 0 ? result.narratorIssues : undefined,
               preflightReport: result.report,
               blockingReasons,
               at: nowIso(),
@@ -4859,6 +5105,7 @@ export async function POST(req: NextRequest) {
           currentStep: step,
           status: failedJob.status,
           storyId: result.storyId,
+          narratorIssues: result.narratorIssues,
           preflightReport: result.report,
           blockingReasons,
           logs,
