@@ -1,13 +1,14 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 
 interface ContinueCard {
   story_id: string; title: string; author: string; genre: string
   cover_url: string | null; duration_mins: number; progress: number
-  last_played: string; series_name: string | null; episode_number: number | null
+  last_played: string; series_name: string | null; series_id: string | null; episode_number: number | null
 }
 
 function pct(d: number, p: number) { return Math.min(100, Math.round((p / (d * 60)) * 100)) }
@@ -44,7 +45,7 @@ export default function ContinueListening({ onIdsLoaded }: { onIdsLoaded?: (ids:
     setLoading(true)
     const { data } = await supabase
       .from('user_library')
-      .select('story_id, progress, last_played, completed, hide_from_home, stories(title, author, genre, cover_url, duration_mins, series_name, episode_number)')
+      .select('story_id, progress, last_played, completed, hide_from_home, stories(title, author, genre, cover_url, duration_mins, series_id, series_name, episode_number)')
       .eq('user_id', user!.id)
       .eq('completed', false)
       .eq('hide_from_home', false)
@@ -54,7 +55,7 @@ export default function ContinueListening({ onIdsLoaded }: { onIdsLoaded?: (ids:
       .single()
     if (data && data.stories) {
       const s = data.stories as any
-      setCard({ story_id: data.story_id, title: s.title, author: s.author, genre: s.genre, cover_url: s.cover_url, duration_mins: s.duration_mins, progress: data.progress, last_played: data.last_played, series_name: s.series_name || null, episode_number: s.episode_number || null })
+      setCard({ story_id: data.story_id, title: s.title, author: s.author, genre: s.genre, cover_url: s.cover_url, duration_mins: s.duration_mins, progress: data.progress, last_played: data.last_played, series_name: s.series_name || null, series_id: s.series_id || null, episode_number: s.episode_number || null })
       onIdsLoaded?.([data.story_id])
     } else {
       setCard(null)
@@ -85,6 +86,15 @@ export default function ContinueListening({ onIdsLoaded }: { onIdsLoaded?: (ids:
           <div>
             <div style={{ fontWeight: 700, fontSize: 14, color: 'white', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{displayTitle}</div>
             <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{subtitle}</div>
+            {card.series_id && card.series_name && (
+              <Link
+                href={`/series/${card.series_id}`}
+                onClick={e => e.stopPropagation()}
+                style={{ display: 'inline-block', marginTop: 4, fontSize: 10, color: '#f97316', fontWeight: 600, textDecoration: 'none', letterSpacing: '0.02em' }}
+              >
+                All episodes →
+              </Link>
+            )}
           </div>
           <div>
             <div style={{ fontSize: 11, color: '#ffffff', marginBottom: 4 }}><strong>{minsLeft(card.duration_mins, card.progress)} min</strong> Remaining</div>

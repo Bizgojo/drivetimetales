@@ -37,11 +37,27 @@ export function buildSeriesPlaybackTarget(
     }))
 
   const progressByStoryId = new Map(progressRows.map((row) => [row.story_id, row]))
+
+  // Prefer an actively in-progress episode (has real progress, not yet completed)
   const inProgressEpisode = playlist.find((episode) => {
     const progress = progressByStoryId.get(episode.id)
     return progress && !progress.completed && (progress.progress || 0) > 0
   })
-  const playEpisode = inProgressEpisode || playlist[0]
+
+  // If no in-progress episode, find the first episode that hasn't been completed yet.
+  // This correctly advances past completed episodes (EP1 done → target EP2) and
+  // handles pre-created rows (progress=0, completed=false) from auto-advance.
+  const firstUncompletedEpisode = inProgressEpisode
+    ? null
+    : playlist.find((episode) => {
+        const progress = progressByStoryId.get(episode.id)
+        // No row → never started → uncompleted.
+        // Row exists but completed=false → uncompleted (even at progress=0).
+        return !progress?.completed
+      })
+
+  // Fallback: all episodes completed → restart from EP1 (re-listen mode)
+  const playEpisode = inProgressEpisode || firstUncompletedEpisode || playlist[0]
   const playProgress = playEpisode ? progressByStoryId.get(playEpisode.id) : null
 
   return {
