@@ -121,7 +121,7 @@ export default function NewReleases({ excludeIds = [], onIdsLoaded }: { excludeI
 
   if (loading) return (
     <section style={{ padding: '1.5rem 1rem 1rem' }}>
-      <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>NEW RELEASES</h2>
+      <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>NEW ARRIVALS</h2>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem' }}>
         {[1,2].map(i => <div key={i} className="animate-pulse bg-slate-800 rounded-xl" style={{ padding: '0.5rem' }}><div className="rounded-lg bg-slate-700" style={{ aspectRatio: '1/1', marginBottom: '0.5rem' }} /></div>)}
       </div>
@@ -131,8 +131,9 @@ export default function NewReleases({ excludeIds = [], onIdsLoaded }: { excludeI
 
   return (
     <section style={{ padding: '1.5rem 1rem 1rem' }}>
-      <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>NEW RELEASES</h2>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem' }}>
+      <h2 className="text-lg font-bold text-white" style={{ marginBottom: '1rem' }}>NEW ARRIVALS</h2>
+      {/* When only 1 item qualifies, use a single full-width column so the card isn't half-width */}
+      <div style={{ display: 'grid', gridTemplateColumns: stories.length === 1 ? '1fr' : 'repeat(2, 1fr)', gap: '0.75rem' }}>
         {stories.map(s => {
           // Series-first: series cards open the series container, not EP1 directly.
           // Standalone stories keep existing direct-player behavior.

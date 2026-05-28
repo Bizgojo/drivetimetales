@@ -272,6 +272,10 @@ function HomeContent() {
   const [continueIds, setContinueIds] = useState<string[]>([])
   const [playlistIds, setPlaylistIds] = useState<string[]>([])
   const [allExcludeIds, setAllExcludeIds] = useState<string[]>([])
+  // Gate: do not render RecommendedForYou until NewReleases has reported its IDs.
+  // This prevents RecommendedForYou loading with partial/empty excludeIds and briefly
+  // showing duplicate cards that are already visible in New Arrivals.
+  const [newArrivalsReady, setNewArrivalsReady] = useState(false)
   const [showWelcome, setShowWelcome] = useState(false)
   const [authWaitExpired, setAuthWaitExpired] = useState(false)
   const [homeSearch, setHomeSearch] = useState('')
@@ -346,8 +350,14 @@ function HomeContent() {
           <>
             <ContinueListening onIdsLoaded={(ids) => { setContinueIds(ids); setAllExcludeIds([...new Set([...ids, ...playlistIds])]) }} />
             <YourPlaylist onIdsLoaded={(ids) => { setPlaylistIds(ids); setAllExcludeIds(prev => [...new Set([...prev, ...ids])]) }} />
-            <NewReleases excludeIds={[...new Set([...continueIds, ...playlistIds])]} onIdsLoaded={(ids) => setAllExcludeIds(prev => [...new Set([...prev, ...ids])])} />
-            <RecommendedForYou excludeIds={allExcludeIds} />
+            <NewReleases
+              excludeIds={[...new Set([...continueIds, ...playlistIds])]}
+              onIdsLoaded={(ids) => {
+                setAllExcludeIds(prev => [...new Set([...prev, ...ids])])
+                setNewArrivalsReady(true)
+              }}
+            />
+            {newArrivalsReady && <RecommendedForYou excludeIds={allExcludeIds} />}
           </>
         )}
       </main>
