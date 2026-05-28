@@ -340,32 +340,11 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     }, 2500)
   }
 
-  const getSeriesPlaylistAutoAdvanceCandidate = (): AutoAdvanceCandidate | null => {
-    const playlist = playlistRef.current || []
-    if (!playlist.length) return null
-
-    const currentIndex = playlist.findIndex((episode) => episode.id === storyId)
-    if (currentIndex < 0 || currentIndex >= playlist.length - 1) return null
-
-    const nextEpisode = playlist[currentIndex + 1]
-    if (!nextEpisode?.id) return null
-
-    playlistIndexRef.current = currentIndex
-    return {
-      story: {
-        id: nextEpisode.id,
-        title: nextEpisode.episode_number ? `Episode ${nextEpisode.episode_number}` : 'Next episode',
-        episode_number: nextEpisode.episode_number,
-        series_id: (story as any)?.series_id || null,
-        series_name: (story as any)?.series_name || null,
-        status: 'published',
-        is_hidden: false,
-      },
-      reason: 'next_series_episode',
-      reasonLabel: 'Next episode',
-      score: 0,
-    }
-  }
+  // P3: getSeriesPlaylistAutoAdvanceCandidate() removed.
+  // It used a localStorage-cached playlist and hard-coded status:'published' / is_hidden:false
+  // without any DB check. If the next episode was unpublished or hidden after caching,
+  // auto-advance would navigate to an unavailable story.
+  // fetchDirectSeriesAutoAdvanceCandidate() (below) always queries live and calls canLoadStory().
 
   const fetchDirectSeriesAutoAdvanceCandidate = async (): Promise<AutoAdvanceCandidate | null> => {
     if (!(story as any)?.series_id || !Number.isFinite((story as any)?.episode_number)) return null
@@ -404,12 +383,8 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     }
 
     isAdvancingRef.current = true
-    const seriesPlaylistCandidate = getSeriesPlaylistAutoAdvanceCandidate()
-    if (seriesPlaylistCandidate) {
-      startAutoAdvanceTo(seriesPlaylistCandidate)
-      return
-    }
 
+    // Playlist mode has its own advance path — not series continuation
     if (mode === 'playlist') {
       localStorage.removeItem('dtt_active_playlist')
       localStorage.removeItem('dtt_playlist_index')
@@ -418,6 +393,11 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       return
     }
 
+    // P3: Always use the live-validated DB query for series auto-advance.
+    // fetchDirectSeriesAutoAdvanceCandidate() queries the next episode by
+    // episode_number and calls canLoadStory() to confirm it is published and
+    // not hidden. If the episode is unavailable (unpublished, hidden, missing),
+    // it returns null and no navigation or user_library pre-creation fires.
     const directSeriesCandidate = await fetchDirectSeriesAutoAdvanceCandidate()
     if (!mountedRef.current || !autoAdvanceEnabledRef.current) return
     if (directSeriesCandidate) {
