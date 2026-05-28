@@ -483,6 +483,35 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         endAnalyticsSession('app_closed', true)
       }
     }
+
+    // P2 — Keepalive progress save on pagehide.
+    // The timeupdate debounce is 5 seconds, so forced-close loses the tail.
+    // This fires a small keepalive fetch to /api/user/save-progress so the
+    // latest position is persisted even when the tab/app is killed mid-listen.
+    const flushProgressEvent = () => {
+      if (!user?.id) return                       // guests have no user_library row
+      const currentProgress = isASC3 ? cumTime : currentTime
+      if (!Number.isFinite(currentProgress) || currentProgress <= 0) return
+      const currentDuration = isASC3
+        ? (totalDur > 0 ? totalDur : duration)
+        : duration
+      // Payload must stay small (keepalive limit: 64 KB)
+      const payload: Record<string, unknown> = {
+        storyId,
+        progress: Math.floor(currentProgress),
+      }
+      if (Number.isFinite(currentDuration) && currentDuration > 0) {
+        payload.durationSecs = Math.floor(currentDuration)
+      }
+      fetch('/api/user/save-progress', {
+        method:      'POST',
+        headers:     { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        keepalive:   true,
+        body:        JSON.stringify(payload),
+      }).catch(() => { /* silent — keepalive failure must never surface */ })
+    }
+
     const handleVisibility = () => {
       if (document.visibilityState === 'hidden') saveGuestMinutes()
       if (document.visibilityState === 'visible' && !user) sessionStartRef.current = Date.now()
@@ -490,10 +519,12 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     document.addEventListener('visibilitychange', handleVisibility)
     window.addEventListener('beforeunload', saveGuestMinutes)
     window.addEventListener('pagehide', flushListeningEvent)
+    window.addEventListener('pagehide', flushProgressEvent)
     return () => {
       document.removeEventListener('visibilitychange', handleVisibility)
       window.removeEventListener('beforeunload', saveGuestMinutes)
       window.removeEventListener('pagehide', flushListeningEvent)
+      window.removeEventListener('pagehide', flushProgressEvent)
     }
   }, [user, storyId, isASC3, duration, totalDur, currentTime, cumTime])
 
