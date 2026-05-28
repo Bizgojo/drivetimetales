@@ -282,10 +282,56 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     if (!mountedRef.current || !autoAdvanceEnabledRef.current) return
     setAutoAdvanceCandidate(candidate)
     setCatalogExhausted(false)
-    autoAdvanceTimerRef.current = setTimeout(() => {
+    autoAdvanceTimerRef.current = setTimeout(async () => {
       if (!mountedRef.current || !autoAdvanceEnabledRef.current) return
       unrequestedAutoStartsRef.current += 1
       const isSeriesContinuation = candidate.reason === 'next_series_episode'
+
+      // P1 — Pre-create next episode user_library row before navigation so that
+      // Continue Listening can find it even if the user closes the app before
+      // EP2's audio play() fires (which is the only other place the row is created).
+      // Rules:
+      //  - Series continuations only (standalone auto-advance excluded)
+      //  - Only when current episode had meaningful progress (> 60s played, or
+      //    natural end where saveProgress(completed=true) already fired)
+      //  - Check-then-insert: if a row already exists, leave it completely untouched
+      //    (preserves existing progress, completed, hide_from_home, not_for_me)
+      //  - Silent on failure — pre-creation never blocks navigation
+      if (isSeriesContinuation && user?.id && candidate.story.id) {
+        const currentProgressSeconds = getProgressSeconds()
+        const worthPrecreating = currentProgressSeconds > 60 || getProgressTotalSeconds() > 0
+        if (worthPrecreating) {
+          try {
+            const { data: existingRow } = await supabase
+              .from('user_library')
+              .select('story_id, progress, completed, hide_from_home')
+              .eq('user_id', user.id)
+              .eq('story_id', candidate.story.id)
+              .maybeSingle()
+
+            // Re-check mount state after async DB call
+            if (!mountedRef.current || !autoAdvanceEnabledRef.current) return
+
+            if (!existingRow) {
+              // No row exists — insert one so Continue Listening survives an immediate app close
+              await supabase.from('user_library').insert({
+                user_id:        user.id,
+                story_id:       candidate.story.id,
+                progress:       0,
+                completed:      false,
+                hide_from_home: false,
+                not_for_me:     false,
+                last_played:    new Date().toISOString(),
+              })
+            }
+            // Row already exists — leave every field exactly as-is
+            // (progress, completed, hide_from_home, not_for_me all preserved)
+          } catch (_) {
+            // Silent — pre-creation failure must never block navigation
+          }
+        }
+      }
+
       if (mode === 'playlist') {
         const nextIndex = playlistRef.current.findIndex((item) => item.id === candidate.story.id)
         if (nextIndex >= 0) localStorage.setItem('dtt_playlist_index', String(nextIndex))
