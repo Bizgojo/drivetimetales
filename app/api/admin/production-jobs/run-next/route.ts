@@ -2897,9 +2897,14 @@ async function createSeriesPackage(job: ProductionJob) {
   const setting = String(queueValue(queueItem, 'setting')).trim()
   const runtime = String(queueValue(queueItem, 'duration') || '15 min').trim()
   const authorTarget = String(queueValue(queueItem, 'authorTarget', 'author_target')).trim()
-  const totalEpisodes = totalEpisodesFor(queueItem)
+  const stateEpisodesCount = Array.isArray(state.episodes) ? state.episodes.length : 0
+  const totalEpisodes = Math.max(totalEpisodesFor(queueItem), stateEpisodesCount)
 
-  if (totalEpisodes < 2) throw new Error('Series jobs require at least 2 episodes')
+  if (totalEpisodes < 2) throw new Error(
+    `Series jobs require at least 2 episodes ` +
+    `(resolved ${totalEpisodes}: queueItem.totalEpisodes=${queueItem.totalEpisodes ?? 'missing'}, ` +
+    `total_episodes=${queueItem.total_episodes ?? 'missing'}, state.episodes.length=${stateEpisodesCount})`
+  )
   if (!premise) throw new Error('Queue item premise is required to create series package')
   if (!setting) throw new Error('Queue item setting is required to create series package')
   if (!runtime) throw new Error('Queue item duration is required to create series package')

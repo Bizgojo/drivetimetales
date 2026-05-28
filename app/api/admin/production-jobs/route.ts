@@ -33,6 +33,26 @@ function normalizeMode(value: unknown): ProductionJobMode | null {
   return null
 }
 
+/**
+ * Resolves episode count from a queue item row.
+ * Checks explicit fields first, then a labelled note, then defaults to 0.
+ */
+function resolveEpisodeCount(queueItem: Record<string, any>): number {
+  const explicit = queueItem['totalEpisodes'] ?? queueItem['total_episodes']
+  if (explicit !== undefined && explicit !== null && explicit !== '') {
+    const n = Number(explicit)
+    if (Number.isFinite(n) && n > 0) return Math.floor(n)
+  }
+  // Check notes for "Total episodes: X" format
+  const notes = String(queueItem['notes'] || '')
+  const match = notes.match(/^total\s+episodes\s*:\s*(\d+)/im)
+  if (match) {
+    const n = Number(match[1])
+    if (Number.isFinite(n) && n > 0) return Math.floor(n)
+  }
+  return 0
+}
+
 function readStoryIdFromJob(job: ProductionJobRow): string | null {
   const candidates = [
     job.story_id,
@@ -261,6 +281,28 @@ export async function POST(req: NextRequest) {
         },
         { status: 409 }
       )
+    }
+
+    // Series jobs must carry an explicit episode count ≥ 2 before entering the runner.
+    // An anonymous series job (no episode count) will always fail at create_story_row.
+    if (mode === 'series') {
+      const episodeCount = resolveEpisodeCount(queueItem)
+      if (episodeCount < 2) {
+        console.warn('[production-jobs] Blocked series job creation: episode count unresolvable', {
+          queueItemId,
+          totalEpisodes: queueItem['totalEpisodes'],
+          total_episodes: queueItem['total_episodes'],
+          resolvedCount: episodeCount,
+        })
+        return bad(
+          `Series jobs require totalEpisodes ≥ 2 in the queue item. ` +
+          `Resolved ${episodeCount} episode(s) from fields: ` +
+          `totalEpisodes=${queueItem['totalEpisodes'] ?? 'missing'}, ` +
+          `total_episodes=${queueItem['total_episodes'] ?? 'missing'}. ` +
+          `Set one of these fields on the queue item before dispatching.`,
+          400
+        )
+      }
     }
 
     const { data: job, error: insertError } = await supabase

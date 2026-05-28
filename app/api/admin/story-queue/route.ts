@@ -23,6 +23,7 @@ type QueueItem = {
   status: QueueStatus
   createdAt: string
   updatedAt: string
+  totalEpisodes?: number | null
 }
 
 type QueueRow = {
@@ -40,6 +41,7 @@ type QueueRow = {
   status: QueueStatus
   created_at: string
   updated_at: string
+  total_episodes?: number | null
 }
 
 function toItem(row: QueueRow): QueueItem {
@@ -58,6 +60,7 @@ function toItem(row: QueueRow): QueueItem {
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    totalEpisodes: row.total_episodes ?? null,
   }
 }
 
@@ -68,6 +71,10 @@ function storyIdValue(value: unknown): string | null {
 
 function createRow(body: any): QueueRow {
   const now = new Date().toISOString()
+  const rawEpisodes = body.totalEpisodes ?? body.total_episodes
+  const totalEpisodes = rawEpisodes !== undefined && rawEpisodes !== null
+    ? (Number.isFinite(Number(rawEpisodes)) ? Math.floor(Number(rawEpisodes)) : null)
+    : null
   return {
     id: body.id || `queue_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     story_id: storyIdValue(body.storyId),
@@ -83,6 +90,7 @@ function createRow(body: any): QueueRow {
     status: body.status || 'queued',
     created_at: body.createdAt || now,
     updated_at: now,
+    total_episodes: totalEpisodes,
   }
 }
 
@@ -102,6 +110,12 @@ function patchRow(body: any): Partial<QueueRow> {
   if ('authorTarget' in body) patch.author_target = body.authorTarget || ''
   if ('notes' in body) patch.notes = body.notes || ''
   if ('status' in body) patch.status = body.status || 'queued'
+  if ('totalEpisodes' in body || 'total_episodes' in body) {
+    const rawEpisodes = body.totalEpisodes ?? body.total_episodes
+    patch.total_episodes = rawEpisodes !== undefined && rawEpisodes !== null
+      ? (Number.isFinite(Number(rawEpisodes)) ? Math.floor(Number(rawEpisodes)) : null)
+      : null
+  }
 
   return patch
 }
