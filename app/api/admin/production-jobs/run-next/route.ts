@@ -547,6 +547,196 @@ function hasWeakAtmosphericHook(text: string) {
   return /\b(something waiting|in the fog|on that river|your name written down|twenty years ago|secrets? in the fog|waiting in the fog)\b/i.test(text)
 }
 
+// ── Intro/outro position validator ────────────────────────────────────────────
+// Deterministic pre-approval checks enforcing Belle B intro/outro content rules
+// and episode-position rules before a story reaches Ready for Review.
+// Subjective rules are stubbed with requireLlmJudgment:true for future LLM pass.
+
+type PositionValidationResult = {
+  passed: boolean
+  issues: string[]
+  requireLlmJudgment: boolean
+  episodeType: 'standalone' | 'series_non_finale' | 'series_finale'
+}
+
+/** True when the outro contains language that teases forward continuation. */
+function hasNextEpisodeTeaseLang(text: string): boolean {
+  return /\b(next episode|next time|continue|continues|continuing|keep listening|what happens next|find out|to be continued|coming up|pick up|picks up|what comes next|leads to|leads us|uncover|discover|tune in|join us|listen (in|on)|coming soon|coming back|wait to see|ahead for|what awaits|what['']s next)\b/i.test(text)
+}
+
+/** True when the outro contains language that signals a definitive series end. */
+function hasSeriesClosureLanguage(text: string): boolean {
+  return /\bendless tales original\b/i.test(text) ||
+    /\bseries (has |have |is )?(come to |reached its |come to its |drawn to )?(an end|a close|its conclusion|complete|over|finish)\b/i.test(text) ||
+    /\b(the final|the last) (chapter|episode|installment|story) of\b/i.test(text)
+}
+
+/**
+ * Check whether intro text names the episode number.
+ * Accepts digit form (\b3\b) and written cardinal/ordinal for episodes 1-20.
+ */
+function introNamesEpisodeNumber(text: string, n: number): boolean {
+  const lower = text.toLowerCase()
+  if (new RegExp(`\\b${n}\\b`).test(lower)) return true
+  const cardinal = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+    'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty']
+  const ordinal = ['', 'first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth',
+    'eleventh', 'twelfth', 'thirteenth', 'fourteenth', 'fifteenth', 'sixteenth', 'seventeenth', 'eighteenth', 'nineteenth', 'twentieth']
+  if (n >= 1 && n <= 20) {
+    if (cardinal[n] && lower.includes(cardinal[n])) return true
+    if (ordinal[n] && lower.includes(ordinal[n])) return true
+  }
+  return false
+}
+
+/**
+ * Pre-approval deterministic validator for Belle B intro/outro content and
+ * episode-position rules. Runs before a story transitions to Ready for Review.
+ *
+ * @param story  Story row fields: title, author, script, series_id, series_name,
+ *               episode_number, series_total_episodes, series_is_finale
+ * @param introText  Text extracted from BELLE B INTRO block
+ * @param outroText  Text extracted from BELLE B OUTRO block
+ */
+function validateIntroOutroPositionRules(
+  story: {
+    title?: string | null
+    author?: string | null
+    script?: string | null
+    series_id?: string | null
+    series_name?: string | null
+    episode_number?: number | null
+    series_total_episodes?: number | null
+    series_is_finale?: boolean | null
+  },
+  introText: string,
+  outroText: string
+): PositionValidationResult {
+  const issues: string[] = []
+  let requireLlmJudgment = false
+
+  const title   = String(story.title   || '').trim()
+  const author  = String(story.author  || '').trim()
+  const narrator = extractHeader(String(story.script || ''), 'NARRATOR').trim()
+  const isSeries = Boolean(story.series_id)
+  const isFinale = Boolean(story.series_is_finale)
+  const seriesName  = String(story.series_name || '').trim()
+  const episodeNum  = typeof story.episode_number === 'number' ? story.episode_number : null
+
+  const episodeType: 'standalone' | 'series_non_finale' | 'series_finale' =
+    !isSeries ? 'standalone' : isFinale ? 'series_finale' : 'series_non_finale'
+
+  const intro = introText || ''
+  const outro = outroText || ''
+
+  // ── Intro: shared rules (standalone + series) ─────────────────────────────
+
+  if (!intro) {
+    issues.push('intro text is missing')
+  } else {
+    // Personalization: must include [LISTENER_NAME] placeholder
+    if (!intro.includes('[LISTENER_NAME]')) {
+      issues.push('intro must include [LISTENER_NAME] placeholder')
+    }
+    // Concrete narrative hook (event, danger, secret, conflict, mystery, mechanism)
+    if (!hasConcreteNarrativeHook(intro)) {
+      issues.push('intro must include a concrete narrative hook (event, danger, secret, conflict, mystery, or story mechanism)')
+      // TODO(llm): deeper "hook is genuinely personalized" judgment beyond [LISTENER_NAME]
+      requireLlmJudgment = true
+    }
+    // Standalone: must name the story title
+    if (episodeType === 'standalone' && title && !belleTextIncludes(intro, title)) {
+      issues.push(`standalone intro must name the story title "${title}"`)
+    }
+    // Series: must name series title, episode number, and episode title
+    if (isSeries) {
+      if (seriesName && !belleTextIncludes(intro, seriesName)) {
+        issues.push(`series intro must name the series title "${seriesName}"`)
+      }
+      if (episodeNum !== null && !introNamesEpisodeNumber(intro, episodeNum)) {
+        issues.push(`series intro must name the episode number (episode ${episodeNum})`)
+      }
+      if (title && !belleTextIncludes(intro, title)) {
+        issues.push(`series intro must name the episode title "${title}"`)
+      }
+    }
+  }
+
+  // ── Outro: missing guard ──────────────────────────────────────────────────
+
+  if (!outro) {
+    issues.push('outro text is missing')
+    return { passed: false, issues, requireLlmJudgment, episodeType }
+  }
+
+  // ── Outro: standalone ────────────────────────────────────────────────────
+
+  if (episodeType === 'standalone') {
+    if (title && !belleTextIncludes(outro, title)) {
+      issues.push(`standalone outro must name the story title "${title}"`)
+    }
+    if (author && !belleTextIncludes(outro, author)) {
+      issues.push(`standalone outro must name the author "${author}"`)
+    }
+    if (narrator && !belleTextIncludes(outro, narrator)) {
+      issues.push(`standalone outro must name the narrator "${narrator}"`)
+    }
+    if (hasNextEpisodeTeaseLang(outro)) {
+      issues.push('standalone outro must not tease a next episode')
+    }
+    // TODO(llm): verify outro caps the conclusion rather than just ending atmospherically
+    requireLlmJudgment = true
+  }
+
+  // ── Outro: non-finale series episode ─────────────────────────────────────
+
+  if (episodeType === 'series_non_finale') {
+    if (author && belleTextIncludes(outro, author)) {
+      issues.push(`non-finale outro must not name the author "${author}" (credit belongs in finale only)`)
+    }
+    if (narrator && belleTextIncludes(outro, narrator)) {
+      issues.push(`non-finale outro must not name the narrator "${narrator}" (credit belongs in finale only)`)
+    }
+    if (hasSeriesClosureLanguage(outro)) {
+      issues.push('non-finale outro must not present final-series closure language')
+    }
+    if (!hasNextEpisodeTeaseLang(outro)) {
+      issues.push('non-finale outro must tease or point toward the next episode')
+      // TODO(llm): verify the tease names the specific unresolved moment rather than vague tension
+      requireLlmJudgment = true
+    }
+  }
+
+  // ── Outro: finale series episode ──────────────────────────────────────────
+
+  if (episodeType === 'series_finale') {
+    // Must name the title — accept series name or episode title
+    const namesTitle = (seriesName && belleTextIncludes(outro, seriesName)) ||
+      (title && belleTextIncludes(outro, title))
+    if (!namesTitle && (seriesName || title)) {
+      issues.push(`finale outro must name the series title "${seriesName || title}" or episode title`)
+    }
+    if (author && !belleTextIncludes(outro, author)) {
+      issues.push(`finale outro must name the author "${author}"`)
+    }
+    if (narrator && !belleTextIncludes(outro, narrator)) {
+      issues.push(`finale outro must name the narrator "${narrator}"`)
+    }
+    if (hasNextEpisodeTeaseLang(outro)) {
+      issues.push('finale outro must not tease a next episode')
+    }
+    // TODO(llm): verify finale outro caps the series conclusion and lands the emotional payoff
+    requireLlmJudgment = true
+  }
+
+  return {
+    passed: issues.length === 0,
+    issues,
+    requireLlmJudgment,
+    episodeType,
+  }
+}
+
 function validateBelleText(kind: 'intro' | 'outro', text: string, options: { standalone: boolean; title?: string | null; author?: string | null }) {
   const issues: string[] = []
   const lower = text.toLowerCase()
@@ -2656,6 +2846,50 @@ async function runSeriesPackageCompletion(job: ProductionJob, origin: string) {
       }
     }
 
+    // ── Intro/outro position validation per episode ───────────────────────
+    // Fetch script + series metadata (kept separate from verifiedByEp to avoid
+    // storing full script text in state_json).
+    const { data: epStory } = await supabase
+      .from('stories')
+      .select('id,title,author,script,series_id,series_name,episode_number,series_total_episodes,series_is_finale')
+      .eq('id', episode.storyId)
+      .maybeSingle()
+
+    if (epStory?.script) {
+      const introText = extractBelleSection(epStory.script, 'intro')
+      const outroText = extractBelleSection(epStory.script, 'outro')
+      const positionResult = validateIntroOutroPositionRules(epStory, introText, outroText)
+      if (!positionResult.passed) {
+        const epLabel = `EP${episode.episodeNumber ?? episode.storyId}`
+        const prefixedIssues = positionResult.issues.map(i => `${epLabel}: ${i}`)
+        const reason = prefixedIssues.join('; ')
+        return {
+          success: false,
+          seriesId,
+          episode,
+          reason,
+          contentIssues: prefixedIssues,
+          report,
+          processedEpisodes,
+          state: {
+            ...state,
+            seriesId: seriesId || state.seriesId,
+            seriesCompleteStoryPackage: {
+              episodeCount: episodes.length,
+              doneByEp,
+              reportsByEp,
+              verifiedByEp,
+              failedEpisode: episode,
+              failureReason: reason,
+              contentIssues: prefixedIssues,
+              allDone: false,
+              lastUpdatedAt: nowIso(),
+            },
+          },
+        }
+      }
+    }
+
     doneByEp[key] = true
     processedEpisodes.push(episode)
   }
@@ -2701,19 +2935,33 @@ async function verifyStandaloneReadyForReview(job: ProductionJob) {
 
   const { data: story, error } = await supabase
     .from('stories')
-    .select('id,status,is_hidden,published_on,audio_url,story_audio_url,cover_url,prose_text')
+    .select('id,title,author,script,status,is_hidden,published_on,audio_url,story_audio_url,cover_url,prose_text,series_id,series_name,episode_number,series_total_episodes,series_is_finale')
     .eq('id', storyId)
     .single()
 
   if (error || !story) throw new Error(error?.message || 'Story not found')
 
   const missingFields = missingReadyForReviewFields(story)
-  const success = missingFields.length === 0
+  const structuralOk = missingFields.length === 0
+
+  // ── Intro/outro position validation ───────────────────────────────────────
+  // Runs only when structural fields are present (avoids false positives on
+  // audio-not-ready stories) and script is available.
+  const contentIssues: string[] = []
+  if (structuralOk && story.script) {
+    const introText = extractBelleSection(story.script, 'intro')
+    const outroText = extractBelleSection(story.script, 'outro')
+    const positionResult = validateIntroOutroPositionRules(story, introText, outroText)
+    if (!positionResult.passed) contentIssues.push(...positionResult.issues)
+  }
+
+  const success = structuralOk && contentIssues.length === 0
 
   return {
     success,
     storyId: String(storyId),
     missingFields,
+    contentIssues: contentIssues.length > 0 ? contentIssues : undefined,
     story,
     state: {
       ...state,
@@ -2721,6 +2969,7 @@ async function verifyStandaloneReadyForReview(job: ProductionJob) {
       readyForReview: {
         status: success ? 'complete' : 'failed',
         missingFields,
+        contentIssues: contentIssues.length > 0 ? contentIssues : undefined,
         verifiedAt: nowIso(),
       },
     },
@@ -5480,6 +5729,7 @@ export async function POST(req: NextRequest) {
                 episode: result.episode,
                 storyId: result.episode?.storyId,
                 reason: result.reason,
+                contentIssues: result.contentIssues,
                 packageCompletionReport: result.report,
                 verification: result.verification,
                 at: nowIso(),
@@ -5662,6 +5912,7 @@ export async function POST(req: NextRequest) {
               step,
               storyId: result.storyId,
               missingFields: result.missingFields,
+              contentIssues: result.contentIssues,
               at: nowIso(),
             },
             logs,
