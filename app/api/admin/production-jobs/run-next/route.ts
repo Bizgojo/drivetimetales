@@ -497,8 +497,18 @@ function validateCardCopy(script: string) {
     if (description.length > DESCRIPTION_MAX_CHARS) {
       issues.push(`DESCRIPTION must be ${DESCRIPTION_MAX_CHARS} characters or fewer so it fits two lines on story cards. Current: ${description.length} characters.`)
     }
-    if (DESCRIPTION_PAST_TENSE_RE.test(description)) {
-      issues.push('DESCRIPTION contains forbidden past-tense story-card phrasing.')
+    const pastTenseMatch = DESCRIPTION_PAST_TENSE_RE.exec(description)
+    if (pastTenseMatch) {
+      // Intentionally strict: any blocked word fails BEFORE audio generation.
+      // This prevents ElevenLabs credit spend on scripts with story-card copy that
+      // will be rejected by the app content team anyway.
+      issues.push(
+        `DESCRIPTION contains forbidden past-tense/blocked word: "${pastTenseMatch[0]}". ` +
+        `Full DESCRIPTION text: "${description}". ` +
+        `Rule: DESCRIPTION_PAST_TENSE_RE. ` +
+        `Rewrite the DESCRIPTION in present tense (≤70 chars) using active-voice, present-tense verbs only. ` +
+        `Blocked words: vanished, was, were, had, found, discovered, left, moved, sealed, signed, forged, buried, hidden.`
+      )
     }
   }
 
