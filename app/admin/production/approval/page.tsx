@@ -2260,6 +2260,7 @@ export default function AdminStoriesPage() {
   const [repairOpenForStoryId, setRepairOpenForStoryId] = useState<string | null>(null)
   const [seriesActionsOpen, setSeriesActionsOpen] = useState(false)
   const [repairEntireSeries, setRepairEntireSeries] = useState(false)
+  const [seriesReadyConfirm, setSeriesReadyConfirm] = useState<{ seriesId: string; seriesName: string } | null>(null)
   const [lastUpdated, setLastUpdated] = useState<string>('')
   const [markedForDeletionIds, setMarkedForDeletionIds] = useState<Record<string, boolean>>({})
   const editingStoryRef = useRef<Story | null>(null)
@@ -2479,6 +2480,35 @@ export default function AdminStoriesPage() {
       await setWorkflowState(story, 'cold_storage', { retire: effectiveWorkflowState(story) === 'published' })
     }
     await fetchStories()
+  }
+
+  function requestMoveSeriesToReadyForReview(group: Extract<StoryGroup, { type: 'series' }>) {
+    const seriesId = String(group.stories[0]?.series_id || '').trim()
+    if (!seriesId) return
+    setSeriesActionsOpen(false)
+    setSeriesReadyConfirm({ seriesId, seriesName: group.title })
+  }
+
+  async function moveSeriesToReadyForReview() {
+    if (!seriesReadyConfirm) return
+    try {
+      const res = await fetch('/api/admin/content-approval?action=set_series_ready_for_review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ seriesId: seriesReadyConfirm.seriesId, targetState: 'ready_for_review' }),
+      })
+      const result = await res.json().catch(() => ({}))
+      if (!res.ok || !result.success) {
+        alert(`Series workflow update failed: ${result.error || `HTTP ${res.status}`}`)
+        return
+      }
+      setSeriesReadyConfirm(null)
+      setActivePipelineTab('ready_for_review')
+      setSeriesFilter('all')
+      await fetchStories()
+    } catch (err) {
+      alert('Series workflow update failed: ' + String(err))
+    }
   }
 
   async function approveAllReady(group: Extract<StoryGroup, { type: 'series' }>) {
@@ -2974,6 +3004,9 @@ export default function AdminStoriesPage() {
                     {seriesActionsOpen && (
                       <div style={{ position: 'absolute', right: 0, top: '36px', zIndex: 18, minWidth: '190px', padding: '6px', borderRadius: '8px', backgroundColor: '#ffffff', border: '1px solid #E5E7EB', boxShadow: '0 10px 24px rgba(15,23,42,0.16)' }}>
                         <button type="button" onClick={() => { if (selectedGroup.type === 'series') approveAllReady(selectedGroup); setSeriesActionsOpen(false) }} style={{ width: '100%', border: 'none', background: 'transparent', padding: '8px 10px', textAlign: 'left', color: '#374151', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>Approve All for Later</button>
+                        {selectedGroup.type === 'series' && selectedGroup.stories.some(isPublishedToApp) && (
+                          <button type="button" onClick={() => requestMoveSeriesToReadyForReview(selectedGroup)} style={{ width: '100%', border: 'none', background: 'transparent', padding: '8px 10px', textAlign: 'left', color: '#B45309', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}>Unpublish Series to Review</button>
+                        )}
                         <button type="button" onClick={() => { if (selectedGroup.type === 'series') openSeriesRepair(selectedGroup); else openStoryRepair(selectedFirst); setSeriesActionsOpen(false) }} style={{ width: '100%', border: 'none', background: 'transparent', padding: '8px 10px', textAlign: 'left', color: '#374151', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>Open Repair Shop Intake</button>
                         <button type="button" onClick={() => { console.log('view series overview', selectedGroup.key); setSeriesActionsOpen(false) }} style={{ width: '100%', border: 'none', background: 'transparent', padding: '8px 10px', textAlign: 'left', color: '#374151', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>📋 View Series Overview</button>
                         <button type="button" onClick={() => { if (selectedGroup.type === 'series') moveSeriesToColdStorage(selectedGroup); else if (window.confirm(`Move "${selectedFirst.title}" to Cold Storage?`)) setWorkflowState(selectedFirst, 'cold_storage'); setSeriesActionsOpen(false) }} style={{ width: '100%', border: 'none', background: 'transparent', padding: '8px 10px', textAlign: 'left', color: '#B91C1C', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>Move to Cold Storage</button>
@@ -3014,7 +3047,14 @@ export default function AdminStoriesPage() {
                     <span style={{ color: '#6B7280', fontSize: '10px', borderRadius: '999px', padding: '4px 8px', backgroundColor: '#F3F4F6' }}>⏱ {selectedIsSeries ? `${selectedTotalMinutes}m Total Audio` : `${selectedFirst.duration_mins || 0}m Audio`}</span>
                     {selectedIsSeries && <span style={{ color: '#6B7280', fontSize: '10px', borderRadius: '999px', padding: '4px 8px', backgroundColor: '#F3F4F6' }}>✓ {selectedPresent} Present</span>}
                   </div>
-                  <button type="button" onClick={() => console.log('view series overview', selectedGroup.key)} style={{ border: 'none', background: 'transparent', color: '#E8722A', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}>View Series Overview</button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    {activePipelineTab === 'published' && selectedGroup.type === 'series' && selectedIsSeries && selectedGroup.stories.some(isPublishedToApp) && (
+                      <button type="button" onClick={() => requestMoveSeriesToReadyForReview(selectedGroup)} style={{ border: '1px solid #F59E0B', backgroundColor: '#FEF3C7', color: '#92400E', borderRadius: '6px', padding: '7px 10px', minHeight: '30px', fontSize: '11px', lineHeight: 1.15, fontWeight: 900, cursor: 'pointer' }}>
+                        Move Series to Ready for Review
+                      </button>
+                    )}
+                    <button type="button" onClick={() => console.log('view series overview', selectedGroup.key)} style={{ border: 'none', background: 'transparent', color: '#E8722A', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}>View Series Overview</button>
+                  </div>
                 </div>
 
                 <div style={{ marginTop: '10px', overflowX: 'auto' }}>
@@ -3134,6 +3174,21 @@ export default function AdminStoriesPage() {
         <button type="button" onClick={publishAllApproved} style={{ position: 'fixed', right: '28px', bottom: '28px', padding: '9px 13px', borderRadius: '8px', border: 'none', backgroundColor: '#10B981', color: '#ffffff', fontSize: '12px', fontWeight: 800, cursor: 'pointer', boxShadow: '0 10px 24px rgba(16,185,129,0.28)' }}>
           Publish All Ready to Publish
         </button>
+      )}
+
+      {seriesReadyConfirm && (
+        <div role="dialog" aria-modal="true" aria-label="Move series to Ready for Review" style={{ position: 'fixed', inset: 0, zIndex: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', backgroundColor: 'rgba(15,23,42,0.46)' }}>
+          <div style={{ width: '100%', maxWidth: '460px', borderRadius: '10px', backgroundColor: '#ffffff', border: '1px solid #E5E7EB', boxShadow: '0 24px 80px rgba(15,23,42,0.28)', padding: '18px' }}>
+            <div style={{ color: '#111827', fontSize: '16px', fontWeight: 900 }}>Move Series to Ready for Review</div>
+            <div style={{ marginTop: '10px', color: '#374151', fontSize: '13px', lineHeight: 1.45 }}>
+              This will remove all episodes in {seriesReadyConfirm.seriesName} from the live app and move the series back to Ready for Review. Audio and covers will be preserved.
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '18px' }}>
+              <button type="button" onClick={() => setSeriesReadyConfirm(null)} style={actionButtonStyle('muted')}>Cancel</button>
+              <button type="button" onClick={moveSeriesToReadyForReview} style={{ ...actionButtonStyle('danger'), backgroundColor: '#B45309' }}>Confirm</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Story Editor Panel */}

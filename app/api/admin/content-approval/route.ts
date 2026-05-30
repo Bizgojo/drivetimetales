@@ -817,7 +817,7 @@ export async function POST(req: NextRequest) {
     if (unauthorized) return unauthorized
 
     const action = clean(req.nextUrl.searchParams.get('action'))
-    if (action !== 'set_workflow_state' && action !== 'set_production_standard') {
+    if (action !== 'set_workflow_state' && action !== 'set_series_ready_for_review' && action !== 'set_production_standard') {
       return json({ success: false, error: 'Unsupported action' }, 400)
     }
 
@@ -845,6 +845,46 @@ export async function POST(req: NextRequest) {
       if (error) return json({ success: false, error: error.message }, 500)
       if (!data) return json({ success: false, error: 'Story not found' }, 404)
       return json({ success: true, story: data })
+    }
+
+    if (action === 'set_series_ready_for_review') {
+      const seriesId = clean(body.seriesId || body.series_id)
+      const targetState = clean(body.targetState || body.target_state || 'ready_for_review')
+      if (!seriesId) return json({ success: false, error: 'Missing seriesId' }, 400)
+      if (targetState !== 'ready_for_review') return json({ success: false, error: 'Invalid targetState' }, 400)
+
+      const { data: seriesRows, error: seriesError } = await supabase
+        .from('stories')
+        .select('id,status,is_hidden,workflow_state,series_id,series_name,episode_number')
+        .eq('series_id', seriesId)
+
+      if (seriesError) return json({ success: false, error: seriesError.message }, 500)
+      if (!seriesRows || seriesRows.length === 0) return json({ success: false, error: 'Series not found' }, 404)
+
+      const update = {
+        status: 'audio_ready',
+        is_hidden: true,
+        workflow_state: 'ready_for_review',
+        review_status: 'pending',
+        reviewed_at: null,
+        published_on: null,
+        review_notes: null,
+      }
+
+      const { data, error } = await supabase
+        .from('stories')
+        .update(update)
+        .eq('series_id', seriesId)
+        .select('id,status,is_hidden,review_status,workflow_state,published_on')
+
+      if (error) return json({ success: false, error: error.message }, 500)
+      return json({
+        success: true,
+        seriesId,
+        updatedCount: data?.length || 0,
+        stories: data || [],
+        fieldsUpdated: Object.keys(update),
+      })
     }
 
     const state = normalizeWorkflowState(body.state)
