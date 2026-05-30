@@ -448,11 +448,21 @@ export async function POST(req: NextRequest) {
     console.log(`  Concatenated segments: ${(concatStat.size/1024/1024).toFixed(2)} MB, ${concatDur.toFixed(1)}s duration`)
     await logLoudnessDiagnostics('normalized segment concat', normalizedConcatPath)
 
+    // ── Production Standard v2 flag (2026-05-29) ──────────────────────────
+    // Set ENABLE_V2_MUSIC_SWELL=true in env to test the v2 swell+outro-fade behaviour.
+    // When false (default): legacy concat path — story_body + silence + dry outro.
+    // When true: story_body includes 4s swell, outro plays over fading music (no dry outro).
+    // DO NOT enable globally until test render is approved by Marc.
+    const V2_MUSIC_SWELL = process.env.ENABLE_V2_MUSIC_SWELL === 'true'
+    if (V2_MUSIC_SWELL) {
+      console.log('  ⚑  Production Standard v2 music swell ENABLED (test mode)')
+    }
+
     // Timing constants (Marc spec: sting→Belle 0.3-0.7s, story→outro 0.5-1.0s total)
     const STING_TO_BELLE_SEC   = 0.5   // crossfadeStart below — Belle enters sting at 0.5s
-    const STORY_TAIL_SEC       = 0.5   // music tail after last voice line (was 3.0s → 1.5s → 0.5s)
+    const STORY_TAIL_SEC       = V2_MUSIC_SWELL ? 4.0 : 0.5  // v2: 4s swell window; legacy: 0.5s (was 3.0→1.5→0.5)
     const SILENCE_PRE_STORY    = 0.75  // between sting+intro block and story body
-    const SILENCE_PRE_OUTRO    = 0.25  // between story_body and outro (total story→outro: 0.5+0.25=0.75s)
+    const SILENCE_PRE_OUTRO    = V2_MUSIC_SWELL ? 0.0 : 0.25  // v2: no gap — music bridges directly to outro
     const sil075Path = path.join(tmpDir, 'sil075.mp3')
     const sil025Path = path.join(tmpDir, 'sil025.mp3')
     await generateSilence(sil075Path, SILENCE_PRE_STORY)
@@ -465,18 +475,36 @@ export async function POST(req: NextRequest) {
     console.log('  Full mix with background music')
     const segsOnlyPath = normalizedConcatPath
     const segsDur = await getAudioDuration(segsOnlyPath)
+    const outroDurForShape = V2_MUSIC_SWELL ? await getAudioDuration(normalizedOutroPath) : 0
     const musicOffset = await findStrongMusicOffset(musicPath)
     const shapedMusicPath = path.join(tmpDir, 'music_shaped.mp3')
     const preRollSeconds = 2.5
     const postStoryTailSeconds = STORY_TAIL_SEC
     const preRollVolume = 0.65
     const narrationBedVolume = 0.075
-    const postStoryVolume = 0.45
-    const musicShapeFilter =
-      `[0:a]atrim=start=${musicOffset}:duration=${preRollSeconds},asetpts=PTS-STARTPTS,volume=${preRollVolume},afade=t=in:st=0:d=0.4[pre];` +
-      `[0:a]atrim=start=0:duration=${segsDur},asetpts=PTS-STARTPTS,volume=${narrationBedVolume}[bed];` +
-      `[0:a]atrim=start=${musicOffset}:duration=${postStoryTailSeconds},asetpts=PTS-STARTPTS,volume=${postStoryVolume},afade=t=out:st=${Math.max(0, postStoryTailSeconds - 2.5)}:d=2.5[tail];` +
-      `[pre][bed][tail]concat=n=3:v=0:a=1[music_out]`
+    // v2: swell reaches 0.85 (loud but not clipping); legacy: 0.45 with immediate fade
+    const postStoryVolume = V2_MUSIC_SWELL ? 0.85 : 0.45
+
+    let musicShapeFilter: string
+    if (V2_MUSIC_SWELL) {
+      // v2 shape: pre-roll → bed (under story) → swell (4s, peaks at postStoryVolume)
+      // Outro music is handled separately in the final assembly (Variant B duck + 3s tail).
+      // outrofade removed from story_body: it caused double-music when outro_with_music was appended.
+      musicShapeFilter =
+        `[0:a]atrim=start=${musicOffset}:duration=${preRollSeconds},asetpts=PTS-STARTPTS,volume=${preRollVolume},afade=t=in:st=0:d=0.4[pre];` +
+        `[0:a]atrim=start=0:duration=${segsDur},asetpts=PTS-STARTPTS,volume=${narrationBedVolume}[bed];` +
+        `[0:a]atrim=start=${musicOffset}:duration=${postStoryTailSeconds},asetpts=PTS-STARTPTS,` +
+          `volume=${postStoryVolume},afade=t=in:st=0:d=${postStoryTailSeconds}[swell];` +
+        `[pre][bed][swell]concat=n=3:v=0:a=1[music_out]`
+    } else {
+      // Legacy shape: pre-roll → bed → 0.5s tail (fades immediately — no real swell)
+      musicShapeFilter =
+        `[0:a]atrim=start=${musicOffset}:duration=${preRollSeconds},asetpts=PTS-STARTPTS,volume=${preRollVolume},afade=t=in:st=0:d=0.4[pre];` +
+        `[0:a]atrim=start=0:duration=${segsDur},asetpts=PTS-STARTPTS,volume=${narrationBedVolume}[bed];` +
+        `[0:a]atrim=start=${musicOffset}:duration=${postStoryTailSeconds},asetpts=PTS-STARTPTS,volume=${postStoryVolume},afade=t=out:st=${Math.max(0, postStoryTailSeconds - 2.5)}:d=2.5[tail];` +
+        `[pre][bed][tail]concat=n=3:v=0:a=1[music_out]`
+    }
+
     const musicShapeArgs = [
       '-stream_loop', '-1', '-i', musicPath,
       '-filter_complex', musicShapeFilter,
@@ -522,11 +550,79 @@ export async function POST(req: NextRequest) {
       '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', stingIntroPath
     ])
 
-    // Build final_mix: sting+intro → 0.75s → story_body → 0.25s → outro
-    // Total sting→Belle: 0.5s (within 0.3-0.7s spec)
-    // Total story→outro: 0.5s tail + 0.25s silence = 0.75s (within 0.5-1.0s spec)
+    // ── Final assembly ────────────────────────────────────────────────────────
+    // v2 path: sting+intro → 0.75s silence → story_body (pre+bed+swell) → outro_with_music
+    //          outro_with_music = Belle voice over Variant B duck + 1.5s post-Belle tail
+    // Legacy:  sting+intro → 0.75s silence → story_body → 0.25s silence → dry outro
     const finalConcatFile = path.join(tmpDir, 'final.txt')
-    const finalParts = [stingIntroPath, sil075Path, storyBodyPath, sil025Path, normalizedOutroPath]
+    let finalParts: string[]
+
+    if (V2_MUSIC_SWELL) {
+      // ── Outro Standard v2 — Variant B duck + 1.5s post-Belle tail (revised May 30 2026) ───
+      // story_body swell peaks at postStoryVolume (0.85). Outro music continues seamlessly:
+      //   t=0 .. DUCK_RAMP:    music ducks 0.85 → DUCK_VOL (Belle enters when duck completes)
+      //   t=DUCK_RAMP .. belleEnd:  hold DUCK_VOL — soft bed, Belle clearly dominant
+      //   t=belleEnd .. riseEnd:    rise DUCK_VOL → TAIL_VOL over RISE_DUR
+      //   t=riseEnd .. holdEnd:     hold TAIL_VOL for TAIL_HOLD (1.5s audible tail after Belle)
+      //   t=holdEnd .. fadeEnd:     fade TAIL_VOL → 0 over TAIL_FADE (clean end)
+      const V2_DUCK_VOL  = 0.04   // linear — near-silent bed under Belle
+      const V2_DUCK_RAMP = 0.5    // s — duck from swell level; Belle enters after ramp completes
+      const V2_TAIL_VOL  = 0.40   // linear — audible post-Belle level (~-8 dB from swell peak)
+      const V2_RISE_DUR  = 0.5    // s — rise from duck to tail vol after Belle ends
+      const V2_TAIL_HOLD = 1.5    // s — music tail after Belle ends (revised from 3.0s)
+      const V2_TAIL_FADE = 2.0    // s — clean fade to silence
+
+      const outroDurSecs = outroDurForShape
+      const belleEnd = V2_DUCK_RAMP + outroDurSecs
+      const riseEnd  = belleEnd + V2_RISE_DUR
+      const holdEnd  = riseEnd + V2_TAIL_HOLD
+      const outroBed = holdEnd + V2_TAIL_FADE + 0.5   // full outro music clip duration + buffer
+
+      // Variant B + tail volume expression (eval=frame for sample-accurate ramp)
+      const outroVolExpr =
+        `if(lt(t,${V2_DUCK_RAMP.toFixed(3)}),` +
+          `${postStoryVolume}+(${V2_DUCK_VOL}-${postStoryVolume})*t/${V2_DUCK_RAMP},` +
+        `if(lt(t,${belleEnd.toFixed(3)}),${V2_DUCK_VOL},` +
+        `if(lt(t,${riseEnd.toFixed(3)}),` +
+          `${V2_DUCK_VOL}+(${V2_TAIL_VOL}-${V2_DUCK_VOL})*(t-${belleEnd.toFixed(3)})/${V2_RISE_DUR},` +
+        `if(lt(t,${holdEnd.toFixed(3)}),${V2_TAIL_VOL},` +
+        `max(0,${V2_TAIL_VOL}*(1-(t-${holdEnd.toFixed(3)})/${V2_TAIL_FADE}))))))`
+
+      const outroMusicClipPath = path.join(tmpDir, 'outro_music_clip.mp3')
+      const outroBelleDelPath  = path.join(tmpDir, 'outro_belle_del.mp3')
+      const outroWithMusicPath = path.join(tmpDir, 'outro_with_music.mp3')
+
+      // Extract outro music with Variant B + tail volume shape
+      await execFileAsync(FFMPEG_PATH, [
+        '-stream_loop', '-1', '-ss', String(musicOffset), '-t', String(outroBed), '-i', musicPath,
+        '-filter_complex',
+        `[0:a]atrim=duration=${outroBed},asetpts=PTS-STARTPTS,volume='${outroVolExpr}':eval=frame[out]`,
+        '-map', '[out]', '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', outroMusicClipPath
+      ])
+
+      // Delay Belle by DUCK_RAMP so music ducks to bed level before Belle speaks
+      await execFileAsync(FFMPEG_PATH, [
+        '-i', normalizedOutroPath,
+        '-af', `adelay=${Math.round(V2_DUCK_RAMP * 1000)}|${Math.round(V2_DUCK_RAMP * 1000)}`,
+        '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', outroBelleDelPath
+      ])
+
+      // Mix delayed Belle over Variant B music (normalize=0 — preserve actual levels)
+      await execFileAsync(FFMPEG_PATH, [
+        '-i', outroBelleDelPath, '-i', outroMusicClipPath,
+        '-filter_complex', '[0:a][1:a]amix=inputs=2:normalize=0:duration=longest[out]',
+        '-map', '[out]', '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', outroWithMusicPath
+      ])
+      console.log(
+        `  v2: outro_with_music — Variant B duck (${V2_DUCK_VOL}) under ${outroDurSecs.toFixed(1)}s Belle` +
+        ` + ${V2_TAIL_HOLD}s tail + ${V2_TAIL_FADE}s fade (total ${outroBed.toFixed(1)}s music)`
+      )
+      // story_body = pre+bed+swell; outro_with_music bridges directly (music seamless at 0.85)
+      finalParts = [stingIntroPath, sil075Path, storyBodyPath, outroWithMusicPath]
+    } else {
+      finalParts = [stingIntroPath, sil075Path, storyBodyPath, sil025Path, normalizedOutroPath]
+    }
+
     await fs.writeFile(finalConcatFile, finalParts.map(p => `file '${p}'`).join('\n'))
     await execFileAsync(FFMPEG_PATH, [
       '-f', 'concat', '-safe', '0', '-i', finalConcatFile,
