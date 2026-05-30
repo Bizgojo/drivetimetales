@@ -154,6 +154,11 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     return candidate?.status === 'audio_ready' && candidate?.is_hidden === true && canPreviewReviewStory()
   }
 
+  const episodeNumberFor = (candidate: any) => {
+    const episodeNumber = Number(candidate?.episode_number)
+    return Number.isFinite(episodeNumber) && episodeNumber > 0 ? episodeNumber : null
+  }
+
   const disableAutoAdvanceForSession = (reason: AutoAdvanceDisabledReason) => {
     autoAdvanceEnabledRef.current = false
     setAutoAdvanceDisabledReason(reason)
@@ -336,7 +341,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         const nextIndex = playlistRef.current.findIndex((item) => item.id === candidate.story.id)
         if (nextIndex >= 0) localStorage.setItem('dtt_playlist_index', String(nextIndex))
       }
-      router.push(`/player/${candidate.story.id}?autoplay=1&${isSeriesContinuation ? 'seriesContinue=1' : 'autoAdvance=1'}`)
+      router.push(`/player/${candidate.story.id}?autoplay=1&playNow=1&${isSeriesContinuation ? 'seriesContinue=1' : 'autoAdvance=1'}`)
     }, 2500)
   }
 
@@ -347,13 +352,15 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
   // fetchDirectSeriesAutoAdvanceCandidate() (below) always queries live and calls canLoadStory().
 
   const fetchDirectSeriesAutoAdvanceCandidate = async (): Promise<AutoAdvanceCandidate | null> => {
-    if (!(story as any)?.series_id || !Number.isFinite((story as any)?.episode_number)) return null
+    const currentEpisodeNumber = episodeNumberFor(story)
+    if (!(story as any)?.series_id || currentEpisodeNumber === null) return null
 
     const { data, error } = await supabase
       .from('stories')
       .select(AUTO_ADVANCE_STORY_SELECT)
       .eq('series_id', (story as any).series_id)
-      .gt('episode_number', Number((story as any).episode_number))
+      .not('episode_number', 'is', null)
+      .gt('episode_number', currentEpisodeNumber)
       .order('episode_number', { ascending: true })
       .limit(1)
       .maybeSingle()
@@ -364,6 +371,8 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
     }
 
     if (!data || !canLoadStory(data)) return null
+    const nextEpisodeNumber = episodeNumberFor(data)
+    if (nextEpisodeNumber === null || nextEpisodeNumber <= currentEpisodeNumber) return null
 
     return {
       story: data as PlayerStory,
@@ -390,6 +399,11 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
       localStorage.removeItem('dtt_playlist_index')
       isAdvancingRef.current = false
       setCatalogExhausted(true)
+      return
+    }
+
+    if (!(story as any)?.series_id) {
+      isAdvancingRef.current = false
       return
     }
 
@@ -1365,7 +1379,7 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
                   if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current)
                   unrequestedAutoStartsRef.current += 1
                   const isSeriesContinuation = autoAdvanceCandidate.reason === 'next_series_episode'
-                  router.push(`/player/${autoAdvanceCandidate.story.id}?autoplay=1&${isSeriesContinuation ? 'seriesContinue=1' : 'autoAdvance=1'}`)
+                  router.push(`/player/${autoAdvanceCandidate.story.id}?autoplay=1&playNow=1&${isSeriesContinuation ? 'seriesContinue=1' : 'autoAdvance=1'}`)
                 }}
                 style={{ flex:1, padding:'10px 12px', borderRadius:'10px', border:'none', background:'#22c55e', color:'white', fontSize:'13px', fontWeight:800, cursor:'pointer' }}
               >Play now</button>
@@ -1404,8 +1418,8 @@ export default function CanonicalPlayer({ storyId, resumeParam = null, mode = 's
         )}
         {catalogExhausted && (
           <div style={{ border:'1px solid rgba(148,163,184,0.24)', background:'rgba(148,163,184,0.08)', borderRadius:'14px', padding:'12px', textAlign:'center' }}>
-            <p style={{ color:'white', fontSize:'13px', fontWeight:800, margin:'0 0 4px' }}>Catalog exhausted</p>
-            <p style={{ color:'rgba(255,255,255,0.7)', fontSize:'12px', margin:0 }}>No untouched story is ready to play next.</p>
+            <p style={{ color:'white', fontSize:'13px', fontWeight:800, margin:'0 0 4px' }}>{(story as any)?.series_id ? 'Series complete' : 'Catalog exhausted'}</p>
+            <p style={{ color:'rgba(255,255,255,0.7)', fontSize:'12px', margin:0 }}>{(story as any)?.series_id ? 'You have reached the final episode.' : 'No untouched story is ready to play next.'}</p>
           </div>
         )}
         {audioErrorMessage && (
