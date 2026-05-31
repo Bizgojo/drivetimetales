@@ -366,6 +366,9 @@ function jobLooksLikePackageCompletion(job: ProductionJobRow | null) {
 
 function completionProofForStory(story: StoryRow, job: ProductionJobRow | null) {
   if (!String(story.audio_url || '').includes('/final_mix.mp3')) {
+    if (story.workflow_state === 'ready_for_review' && bool(story.audio_url)) {
+      return { date: story.created_at || new Date().toISOString(), source: 'workflow_state_ready_for_review_legacy_audio' }
+    }
     return { date: null, source: 'missing_final_mix' }
   }
   if (jobLooksLikePackageCompletion(job)) {
