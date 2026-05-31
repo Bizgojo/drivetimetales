@@ -1647,14 +1647,14 @@ const REPAIR_OPTIONS: Array<{ group: RepairGroup; title: string; items: Array<{ 
   { group: 'packaging', title: 'PACKAGING', items: REPAIR_ISSUE_OPTIONS.filter((item) => item.group === 'packaging') },
 ]
 
-const SERIES_EPISODE_REPAIR_OPTIONS: Array<{ id: string; label: string; group: RepairGroup }> = [
-  { id: 'cover_problem', label: 'Fix Cover', group: 'packaging' },
-  { id: 'intro_not_personalized_properly', label: 'Fix Intro', group: 'story_script' },
-  { id: 'abrupt_music_ending_fade_problem', label: 'Fix Background Music', group: 'audio_asc' },
-  { id: 'weak_hook', label: 'Fix Hook', group: 'story_script' },
-  { id: 'other', label: 'Fix Story', group: 'story_script' },
-  { id: 'weak_cliffhanger', label: 'Fix Cliffhanger / Ending', group: 'story_script' },
-  { id: 'outro_timing_problem', label: 'Fix Outro', group: 'audio_asc' },
+const EPISODE_REPAIR_OPTIONS: Array<{ id: string; group: 'story_script' | 'audio_asc' | 'packaging'; label: string }> = [
+  { id: 'cover_problem', group: 'packaging', label: 'Fix Cover' },
+  { id: 'intro_not_personalized_properly', group: 'story_script', label: 'Fix Intro' },
+  { id: 'abrupt_music_ending_fade_problem', group: 'audio_asc', label: 'Fix Background Music' },
+  { id: 'weak_hook', group: 'story_script', label: 'Fix Hook' },
+  { id: 'other', group: 'story_script', label: 'Fix Story' },
+  { id: 'weak_cliffhanger', group: 'story_script', label: 'Fix Cliffhanger / Ending' },
+  { id: 'outro_timing_problem', group: 'audio_asc', label: 'Fix Outro' },
 ]
 
 function emptyRepairChecklist(): RepairChecklistValue {
@@ -2037,17 +2037,11 @@ function EpisodeReviewRow({
   onEditClick,
   onSetWorkflowState,
   onPublish,
-  onOpenRepair,
-  repairOpen,
-  onCloseRepair,
 }: {
   story: Story
   onEditClick: (s: Story) => void
   onSetWorkflowState: (story: Story, state: WorkflowTab, options?: { repairChecklist?: RepairChecklistValue; repairNotes?: string; retire?: boolean }) => void
   onPublish: (story: Story) => void
-  onOpenRepair: (story: Story, prefill?: RepairChecklistValue) => void
-  repairOpen: boolean
-  onCloseRepair: () => void
 }) {
   const workflowState = effectiveWorkflowState(story)
   const lane = visualWorkflowLane(story)
@@ -2086,7 +2080,6 @@ function EpisodeReviewRow({
           {['ready_for_review', 'approved_ready', 'unpublished_library', 'published'].includes(workflowState) && <button onClick={() => onEditClick(story)} style={actionButtonStyle('muted')}>Edit Cover</button>}
           {workflowState === 'ready_for_review' && <button onClick={() => onSetWorkflowState(story, 'approved_ready')} style={actionButtonStyle('success')}>Approve for Publishing</button>}
           {workflowState === 'approved_ready' && <button onClick={() => onPublish(story)} style={actionButtonStyle('primary')}>Publish Now</button>}
-          {['ready_for_review', 'approved_ready', 'unpublished_library', 'published'].includes(workflowState) && <button onClick={() => onOpenRepair(story)} style={actionButtonStyle('muted')}>Move to Repair Shop</button>}
           {workflowState === 'repair_queue' && <button onClick={() => onSetWorkflowState(story, 'ready_for_review')} style={actionButtonStyle('muted')}>Cancel</button>}
           {workflowState === 'unpublished_library' && <button onClick={() => onSetWorkflowState(story, 'ready_for_review')} style={actionButtonStyle('muted')}>Return to Review</button>}
           {workflowState === 'published' && <button onClick={() => {
@@ -2116,19 +2109,6 @@ function EpisodeReviewRow({
       {workflowState === 'being_repaired' && <BeingRepairedPanel story={story} onAbandon={(s) => {
         if (window.confirm(`Abandon repair for "${s.title}" and return it to review?`)) onSetWorkflowState(s, 'ready_for_review')
       }} />}
-      {(repairOpen || workflowState === 'repair_queue') && (
-        <RepairChecklistPanel
-          title={story.title}
-          episodeNumber={story.episode_number || story.series_number}
-          initialChecklist={story.repair_checklist}
-          initialNotes={story.repair_notes}
-          onCancel={onCloseRepair}
-          onSendToRepair={(repairChecklist, repairNotes) => onSetWorkflowState(story, 'being_repaired', { repairChecklist, repairNotes })}
-          onMarkComplete={(repairChecklist, repairNotes) => onSetWorkflowState(story, 'ready_for_review', { repairChecklist, repairNotes })}
-          onReturnToReview={() => onSetWorkflowState(story, 'ready_for_review')}
-          onMoveToColdStorage={() => onSetWorkflowState(story, 'cold_storage')}
-        />
-      )}
     </div>
   )
 }
@@ -2147,9 +2127,6 @@ function SeriesReviewGroup({
   onDelete,
   onSetWorkflowState,
   onPublish,
-  onOpenRepair,
-  openRepairStoryId,
-  onCloseRepair,
 }: {
   group: Extract<StoryGroup, { type: 'series' }>
   expanded: boolean
@@ -2164,9 +2141,6 @@ function SeriesReviewGroup({
   onDelete: (id: string) => void
   onSetWorkflowState: (story: Story, state: WorkflowTab, options?: { repairChecklist?: RepairChecklistValue; repairNotes?: string; retire?: boolean }) => void
   onPublish: (story: Story) => void
-  onOpenRepair: (story: Story, prefill?: RepairChecklistValue) => void
-  openRepairStoryId: string | null
-  onCloseRepair: () => void
 }) {
   const first = group.stories[0]
   const approvedCount = group.stories.filter(isApprovedReady).length
@@ -2275,9 +2249,6 @@ function SeriesReviewGroup({
               onEditClick={onEditClick}
               onSetWorkflowState={onSetWorkflowState}
               onPublish={onPublish}
-              onOpenRepair={onOpenRepair}
-              repairOpen={openRepairStoryId === story.id}
-              onCloseRepair={onCloseRepair}
             />
           ))}
           </div>
@@ -2596,7 +2567,9 @@ export default function AdminStoriesPage() {
   function setEpisodeRepairNeeded(storyId: string, needed: boolean) {
     setEpisodeRepairMarks((prev) => ({
       ...prev,
-      [storyId]: { ...episodeRepairMark(storyId), needed },
+      [storyId]: needed
+        ? { ...episodeRepairMark(storyId), needed: true }
+        : { needed: false, checklist: emptyRepairChecklist(), notes: '' },
     }))
   }
 
@@ -2625,32 +2598,46 @@ export default function AdminStoriesPage() {
     }))
   }
 
-  function buildSeriesRepairFromEpisodeMarks(storiesToRepair: Story[]) {
+  function buildSeriesRepairFromEpisodeMarks(storiesToRepair: Story[], seriesTitle = selectedTitle) {
     const checklist = emptyRepairChecklist()
-    const notes: string[] = []
+    const notes: string[] = [
+      `Series: ${seriesTitle}`,
+      'Repair requested by Marc.',
+      '',
+    ]
     storiesToRepair.forEach((story) => {
       const mark = episodeRepairMark(story.id)
       if (!mark.needed) return
-      SERIES_EPISODE_REPAIR_OPTIONS.forEach((option) => {
+      EPISODE_REPAIR_OPTIONS.forEach((option) => {
         if (mark.checklist[option.group].includes(option.id) && !checklist[option.group].includes(option.id)) {
           checklist[option.group].push(option.id)
         }
       })
-      const selectedLabels = SERIES_EPISODE_REPAIR_OPTIONS
+      const selectedLabels = EPISODE_REPAIR_OPTIONS
         .filter((option) => mark.checklist[option.group].includes(option.id))
         .map((option) => option.label)
-      notes.push(`Episode ${story.episode_number || '?'} - ${story.episode_title || story.title}: ${selectedLabels.length ? selectedLabels.join(', ') : 'Repair needed'}${mark.notes.trim() ? ` | Notes: ${mark.notes.trim()}` : ''}`)
+      notes.push(`Episode ${story.episode_number || '?'} — ${story.episode_title || story.title}`)
+      if (selectedLabels.length > 0) {
+        selectedLabels.forEach((label) => {
+          notes.push(`- [${label}]: ${mark.notes.trim() || 'No additional note provided.'}`)
+        })
+      } else {
+        notes.push(`- General repair needed: ${mark.notes.trim() || 'No additional note provided.'}`)
+      }
+      notes.push('')
     })
+    notes.push('Repair instructions:')
+    notes.push('Fix only the listed issues. Preserve approved voices, episode order, intro/outro standards, and series continuity.')
     return { checklist, notes: notes.join('\n') }
   }
 
   function moveSeriesToRepairShop(group: Extract<StoryGroup, { type: 'series' }>) {
     const markedStories = group.stories.filter((story) => episodeRepairMark(story.id).needed)
     if (markedStories.length === 0) {
-      openSeriesRepair(group)
+      alert('Mark Repair Needed = Yes on at least one episode before sending the series for repair.')
       return
     }
-    const { checklist, notes } = buildSeriesRepairFromEpisodeMarks(group.stories)
+    const { checklist, notes } = buildSeriesRepairFromEpisodeMarks(group.stories, group.title)
     if (!window.confirm(`Move the entire series "${group.title}" to Repair Shop with ${markedStories.length} marked episode(s)?`)) return
     sendSeriesRepair(group, checklist, notes, true)
   }
@@ -2840,32 +2827,17 @@ export default function AdminStoriesPage() {
     const lane = visualWorkflowLane(story)
     const canPlay = lane !== 'cold_storage' && Boolean(story.audio_url)
     const played = playedStoryIds[story.id] === true
-    const repairActive = hasRepairFlag(story) || repairOpenForStoryId === story.id
 
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px', width: '100%', minWidth: 0, flexWrap: 'wrap' }}>
-        {selectedIsSeries && (
-          <button
-            type="button"
-            onClick={() => setRepairOpenForStoryId((current) => current === story.id ? null : story.id)}
-            title={repairActive ? 'Episode is flagged for repair' : 'Flag this episode for repair'}
-            style={{
-              padding: '4px 8px',
-              minHeight: '24px',
-              borderRadius: '999px',
-              border: repairActive ? '1px solid #F97316' : '1px solid #D1D5DB',
-              backgroundColor: repairActive ? '#FFF7ED' : '#F9FAFB',
-              color: repairActive ? '#C2410C' : '#6B7280',
-              fontSize: '11px',
-              fontWeight: 800,
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {repairActive ? '⚠ Repair' : 'Repair Needed'}
-          </button>
-        )}
-        {canPlay && <PlayStoryButton story={story} played={played} onPlayed={() => setPlayedStoryIds((prev) => ({ ...prev, [story.id]: true }))} />}
+      <div style={{ display: 'grid', gap: '8px', justifyItems: 'end', width: '100%', minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px', width: '100%', minWidth: 0, flexWrap: 'wrap' }}>
+          {canPlay && <PlayStoryButton story={story} played={played} onPlayed={() => setPlayedStoryIds((prev) => ({ ...prev, [story.id]: true }))} />}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <span style={{ color: '#6B7280', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase' }}>Repair Needed</span>
+            {renderEpisodeRepairToggle(story)}
+          </div>
+        </div>
+        {renderEpisodeRepairDetails(story)}
       </div>
     )
   }
@@ -2873,27 +2845,28 @@ export default function AdminStoriesPage() {
   function renderEpisodeRepairToggle(story: Story) {
     const mark = episodeRepairMark(story.id)
     return (
-      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '3px', borderRadius: '999px', backgroundColor: '#F3F4F6' }}>
+      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
         {[
           { value: false, label: 'No' },
           { value: true, label: 'Yes' },
         ].map((option) => {
           const active = mark.needed === option.value
+          const yesActive = active && option.value
+          const noActive = active && !option.value
           return (
             <button
               key={option.label}
               type="button"
               onClick={() => setEpisodeRepairNeeded(story.id, option.value)}
               style={{
-                minWidth: '42px',
+                minWidth: '38px',
                 height: '24px',
-                border: 'none',
+                border: yesActive ? '1px solid #F97316' : '1px solid #D1D5DB',
                 borderRadius: '999px',
-                backgroundColor: active ? (option.value ? '#F97316' : '#ffffff') : 'transparent',
-                color: active ? (option.value ? '#ffffff' : '#374151') : '#6B7280',
-                boxShadow: active && !option.value ? '0 1px 2px rgba(15,23,42,0.08)' : 'none',
+                backgroundColor: yesActive ? '#FFF7ED' : noActive ? '#F9FAFB' : '#ffffff',
+                color: yesActive ? '#C2410C' : noActive ? '#6B7280' : '#9CA3AF',
                 fontSize: '11px',
-                fontWeight: 900,
+                fontWeight: active ? 800 : 700,
                 cursor: 'pointer',
               }}
             >
@@ -2909,12 +2882,12 @@ export default function AdminStoriesPage() {
     const mark = episodeRepairMark(story.id)
     if (!mark.needed) return null
     return (
-      <div style={{ border: '1px solid #FED7AA', backgroundColor: '#FFF7ED', borderRadius: '8px', padding: '10px', display: 'grid', gap: '10px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '8px' }}>
-          {SERIES_EPISODE_REPAIR_OPTIONS.map((option) => {
+      <div style={{ width: '100%', display: 'grid', gap: '8px' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 10px', justifyContent: 'flex-end' }}>
+          {EPISODE_REPAIR_OPTIONS.map((option) => {
             const checked = mark.checklist[option.group].includes(option.id)
             return (
-              <label key={option.id} style={{ display: 'flex', alignItems: 'center', gap: '7px', color: '#374151', fontSize: '12px', fontWeight: 800, lineHeight: 1.25 }}>
+              <label key={option.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: '#374151', fontSize: '12px', fontWeight: 800, lineHeight: 1.2 }}>
                 <input type="checkbox" checked={checked} onChange={() => toggleEpisodeRepairIssue(story.id, option)} />
                 {option.label}
               </label>
@@ -2924,13 +2897,10 @@ export default function AdminStoriesPage() {
         <textarea
           value={mark.notes}
           onChange={(event) => setEpisodeRepairNotes(story.id, event.target.value)}
-          placeholder="Describe what needs repair..."
+          placeholder="Describe what needs repair in this episode…"
           rows={2}
-          style={{ width: '100%', resize: 'vertical', border: '1px solid #FDBA74', borderRadius: '6px', padding: '8px', color: '#111827', backgroundColor: '#ffffff', fontSize: '12px', lineHeight: 1.4 }}
+          style={{ width: '100%', resize: 'vertical', border: '1px solid #E5E7EB', borderRadius: '6px', padding: '6px 8px', color: '#111827', backgroundColor: '#ffffff', fontSize: '11px', lineHeight: 1.4 }}
         />
-        <div style={{ color: '#9A3412', fontSize: '10px', fontWeight: 800 }}>
-          TODO: structured per-episode repair selections are local until backend storage is added; Move to Repair Shop serializes them into existing repair notes.
-        </div>
       </div>
     )
   }
@@ -2984,7 +2954,7 @@ export default function AdminStoriesPage() {
   )
   const selectedSeriesDescription = selectedIsSeries ? seriesDescriptionForReview(selectedGroup, selectedAllStories) : null
   const selectedNarrator = selectedIsSeries ? firstNarratorLabel(selectedAllStories) : selectedFirst ? narratorLabel(selectedFirst) : 'Narrator pending'
-  const selectedSeriesRepairMarked = selectedIsSeries && selectedAllStories.some((story) => hasRepairFlag(story) || repairOpenForStoryId === story.id)
+  const selectedSeriesRepairMarked = selectedIsSeries && selectedAllStories.some((story) => episodeRepairMark(story.id).needed)
 
   function markSelectedForDeletionReview() {
     if (selectedStories.length === 0) return
@@ -3263,7 +3233,6 @@ export default function AdminStoriesPage() {
             value={selectedGroup?.key || ''}
             onChange={(event) => {
               setSelectedSeriesKey(event.target.value || null)
-              setRepairOpenForStoryId(null)
               setOpenRepairSeriesKey(null)
               setSeriesActionsOpen(false)
             }}
@@ -3301,7 +3270,6 @@ export default function AdminStoriesPage() {
                 if (next !== 'all') {
                   setActivePipelineTab(next)
                   setSelectedSeriesKey(null)
-                  setRepairOpenForStoryId(null)
                   setOpenRepairSeriesKey(null)
                   setSeriesActionsOpen(false)
                 }
@@ -3381,14 +3349,22 @@ export default function AdminStoriesPage() {
                         <button
                           type="button"
                           disabled={selectedSeriesRepairMarked}
-                          title={selectedSeriesRepairMarked ? 'One or more episodes are flagged for repair' : undefined}
+                          title={selectedSeriesRepairMarked ? 'Cannot approve while one or more episodes are marked for repair.' : undefined}
                           onClick={() => approveAllReady(selectedGroup)}
-                          style={{ ...actionButtonStyle(selectedSeriesRepairMarked ? 'muted' : 'success'), opacity: selectedSeriesRepairMarked ? 0.65 : 1, cursor: selectedSeriesRepairMarked ? 'not-allowed' : 'pointer' }}
+                          style={{ ...actionButtonStyle(selectedSeriesRepairMarked ? 'muted' : 'success'), opacity: selectedSeriesRepairMarked ? 0.6 : 1, cursor: selectedSeriesRepairMarked ? 'not-allowed' : 'pointer' }}
                         >
-                          Approve for Publishing
+                          Approve Series for Publishing
                         </button>
-                        <button type="button" onClick={() => moveSeriesToRepairShop(selectedGroup)} style={{ ...actionButtonStyle('muted'), borderColor: selectedSeriesRepairMarked ? '#F97316' : '#D1D5DB', color: selectedSeriesRepairMarked ? '#C2410C' : '#374151', backgroundColor: selectedSeriesRepairMarked ? '#FFF7ED' : '#ffffff' }}>Move to Repair Shop</button>
-                        <button type="button" onClick={() => moveSeriesToColdStorage(selectedGroup)} style={actionButtonStyle('danger')}>Move to Cold Storage</button>
+                        <button
+                          type="button"
+                          onClick={() => moveSeriesToRepairShop(selectedGroup)}
+                          style={selectedSeriesRepairMarked
+                            ? { ...actionButtonStyle('muted'), border: '1.5px solid #F97316', backgroundColor: '#FFF7ED', color: '#C2410C', fontWeight: 900 }
+                            : actionButtonStyle('muted')}
+                        >
+                          Send Series for Repair
+                        </button>
+                        <button type="button" onClick={() => moveSeriesToColdStorage(selectedGroup)} style={actionButtonStyle('danger')}>Move Series to Cold Storage</button>
                         {activePipelineTab === 'published' && selectedGroup.stories.some(isPublishedToApp) && (
                           <button type="button" onClick={() => requestMoveSeriesToReadyForReview(selectedGroup)} style={{ ...actionButtonStyle('muted'), borderColor: '#F59E0B', backgroundColor: '#FEF3C7', color: '#92400E' }}>Unpublish Series to Review</button>
                         )}
@@ -3424,22 +3400,6 @@ export default function AdminStoriesPage() {
                   onMarkForDeletion={markSelectedForDeletionReview}
                 />
 
-                {selectedIsSeries && selectedGroup.type === 'series' && openRepairSeriesKey === selectedGroup.key && (
-                  <RepairChecklistPanel
-                    title={selectedTitle}
-                    episodeNumber={selectedIsSeries ? null : selectedFirst.episode_number || selectedFirst.series_number}
-                    initialChecklist={emptyRepairChecklist()}
-                    onCancel={() => setOpenRepairSeriesKey(null)}
-                    onSendToRepair={(checklist, notes) => sendSeriesRepair(selectedGroup, checklist, notes, repairEntireSeries)}
-                    onMarkComplete={() => setOpenRepairSeriesKey(null)}
-                    onReturnToReview={() => setOpenRepairSeriesKey(null)}
-                    onMoveToColdStorage={() => moveSeriesToColdStorage(selectedGroup)}
-                    showSeriesScope
-                    repairEntireSeries={repairEntireSeries}
-                    onRepairEntireSeriesChange={setRepairEntireSeries}
-                  />
-                )}
-
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginTop: '20px', flexWrap: 'wrap' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                     <span style={{ color: '#6B7280', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase' }}>{selectedIsSeries ? 'Episodes in this series' : 'Story detail'}</span>
@@ -3455,15 +3415,15 @@ export default function AdminStoriesPage() {
                 <div className="approval-desktop-episodes" style={{ marginTop: '10px', overflowX: 'auto' }}>
                   <table style={{ width: '100%', minWidth: '900px', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
                     <colgroup>
+                      <col style={{ width: '8%' }} />
+                      <col style={{ width: '42%' }} />
                       <col style={{ width: '10%' }} />
-                      <col style={{ width: '50%' }} />
-                      <col style={{ width: '10%' }} />
-                      <col style={{ width: '30%' }} />
+                      <col style={{ width: '40%' }} />
                     </colgroup>
                     <thead>
                       <tr style={{ height: '36px', backgroundColor: '#F9FAFB' }}>
-                        {['Episode #', 'Cover + Title', 'Duration', 'Episode Actions'].map((head) => (
-                          <th key={head} style={{ padding: '0 10px', color: '#6B7280', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', textAlign: head === 'Episode Actions' ? 'right' : 'left' }}>{head}</th>
+                        {['Episode #', 'Cover + Title', 'Duration', 'Actions'].map((head) => (
+                          <th key={head} style={{ padding: '0 10px', color: '#6B7280', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', textAlign: head === 'Actions' ? 'right' : 'left' }}>{head}</th>
                         ))}
                       </tr>
                     </thead>
@@ -3513,35 +3473,6 @@ export default function AdminStoriesPage() {
                                 {renderEpisodeReviewActions(story)}
                               </td>
                             </tr>
-                            {repairOpenForStoryId === story.id && (
-                              <tr key={`${story.id}:repair`} style={{ borderBottom: '1px solid #F3F4F6' }}>
-                                <td colSpan={4} style={{ padding: '0 10px 12px 10px' }}>
-                                  <RepairChecklistPanel
-                                    title={story.title}
-                                    episodeNumber={story.episode_number || story.series_number}
-                                    initialChecklist={story.repair_checklist}
-                                    initialNotes={story.repair_notes}
-                                    onCancel={() => setRepairOpenForStoryId(null)}
-                                    onSendToRepair={(repairChecklist, repairNotes) => {
-                                      setWorkflowState(story, 'being_repaired', { repairChecklist, repairNotes })
-                                      setRepairOpenForStoryId(null)
-                                    }}
-                                    onMarkComplete={(repairChecklist, repairNotes) => {
-                                      setWorkflowState(story, 'ready_for_review', { repairChecklist, repairNotes })
-                                      setRepairOpenForStoryId(null)
-                                    }}
-                                    onReturnToReview={() => {
-                                      setWorkflowState(story, 'ready_for_review')
-                                      setRepairOpenForStoryId(null)
-                                    }}
-                                    onMoveToColdStorage={() => {
-                                      setWorkflowState(story, 'cold_storage')
-                                      setRepairOpenForStoryId(null)
-                                    }}
-                                  />
-                                </td>
-                              </tr>
-                            )}
                           </Fragment>
                         )
                       })}
@@ -3608,31 +3539,6 @@ export default function AdminStoriesPage() {
                         <div className="approval-mobile-actions">
                           {renderEpisodeReviewActions(story)}
                         </div>
-                        {repairOpenForStoryId === story.id && (
-                          <RepairChecklistPanel
-                            title={story.title}
-                            episodeNumber={story.episode_number || story.series_number}
-                            initialChecklist={story.repair_checklist}
-                            initialNotes={story.repair_notes}
-                            onCancel={() => setRepairOpenForStoryId(null)}
-                            onSendToRepair={(repairChecklist, repairNotes) => {
-                              setWorkflowState(story, 'being_repaired', { repairChecklist, repairNotes })
-                              setRepairOpenForStoryId(null)
-                            }}
-                            onMarkComplete={(repairChecklist, repairNotes) => {
-                              setWorkflowState(story, 'ready_for_review', { repairChecklist, repairNotes })
-                              setRepairOpenForStoryId(null)
-                            }}
-                            onReturnToReview={() => {
-                              setWorkflowState(story, 'ready_for_review')
-                              setRepairOpenForStoryId(null)
-                            }}
-                            onMoveToColdStorage={() => {
-                              setWorkflowState(story, 'cold_storage')
-                              setRepairOpenForStoryId(null)
-                            }}
-                          />
-                        )}
                       </div>
                     )
                   })}
