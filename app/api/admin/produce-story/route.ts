@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { buildCoverPrompt } from '@/lib/coverPrompt'
+import { sanitizeSeriesTitle } from '@/lib/seriesTitle'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -141,23 +142,26 @@ export async function POST(req: NextRequest) {
         published_on: new Date().toISOString().split('T')[0]
       }
       if (isSeries && seriesName) {
-        insertData.series_name = seriesName
+        const sanitizedSeriesName = sanitizeSeriesTitle(seriesName)
+        insertData.series_name = sanitizedSeriesName
         insertData.episode_number = episodeNumber || 1
         insertData.series_total = seriesTotal || 1
         // Auto-create series row if it doesn't exist
-        const { data: existingSeries } = await supabase.from('series').select('id').eq('title', seriesName).single()
-        if (existingSeries?.id) {
-          insertData.series_id = existingSeries.id
-        } else {
-          const { data: newSeries } = await supabase.from('series').insert({
-            title: seriesName,
-            author,
-            category: genre,
-            description: '',
-            total_episodes: seriesTotal || 1,
-            is_complete: false,
-          }).select('id').single()
-          if (newSeries?.id) insertData.series_id = newSeries.id
+        if (sanitizedSeriesName) {
+          const { data: existingSeries } = await supabase.from('series').select('id').eq('title', seriesName).single()
+          if (existingSeries?.id) {
+            insertData.series_id = existingSeries.id
+          } else {
+            const { data: newSeries } = await supabase.from('series').insert({
+              title: sanitizedSeriesName,
+              author,
+              category: genre,
+              description: '',
+              total_episodes: seriesTotal || 1,
+              is_complete: false,
+            }).select('id').single()
+            if (newSeries?.id) insertData.series_id = newSeries.id
+          }
         }
       }
       const { data: inserted, error: insertErr } = await supabase.from('stories').insert(insertData).select('id').single()

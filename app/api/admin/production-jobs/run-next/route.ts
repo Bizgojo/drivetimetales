@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
 import { logAnthropicCall } from '@/app/lib/anthropic-logger'
+import { sanitizeSeriesTitle } from '@/lib/seriesTitle'
 import { buildNamePalettePromptBlock } from '@/lib/story/namePalette'
 import { recordProductionLearningEvent } from '@/lib/productionLearning'
 import { isBelleBVoiceId } from '@/lib/voiceConstants'
@@ -1098,10 +1099,12 @@ async function pickAuthor(genre: string, requestedAuthor: string) {
 }
 
 async function saveSeriesParent(payload: Record<string, any>, seriesId?: string) {
-  const categoryPayload: Record<string, any> = { ...payload, category: payload.genre }
+  const sanitizedTitle = sanitizeSeriesTitle(payload.title)
+  const sanitizedPayload: Record<string, any> = { ...payload, title: sanitizedTitle }
+  const categoryPayload: Record<string, any> = { ...sanitizedPayload, category: sanitizedPayload.genre }
   delete categoryPayload.genre
 
-  const genrePayload = { ...payload }
+  const genrePayload = { ...sanitizedPayload }
 
   if (seriesId) {
     const first = await supabase
@@ -3320,7 +3323,7 @@ async function createSeriesPackage(job: ProductionJob) {
   const author = await pickAuthor(genre, authorTarget)
   if (!author) throw new Error(`No approved author found for genre ${genre}`)
 
-  const title = titleFromQueue(queueItem) || queuePlanValue(queueItem, 'Series title') || 'Untitled Series Package'
+  const title = sanitizeSeriesTitle(titleFromQueue(queueItem) || queuePlanValue(queueItem, 'Series title') || 'Untitled Series Package') || 'Untitled Series Package'
   const requirements = [
     'Server production job queue.',
     'Use canonical V2 script generation and ASC3 audio pipeline only.',
@@ -3407,7 +3410,7 @@ async function createSeriesPackage(job: ProductionJob) {
         script_version: 1,
         story_type: 'series_episode',
         series_id: seriesId,
-        series_name: title,
+        series_name: sanitizeSeriesTitle(title),
         episode_number: episodeNumber,
         series_episode_number: episodeNumber,
         series_total_episodes: totalEpisodes,

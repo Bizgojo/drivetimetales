@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
 import { logAnthropicCall } from '@/app/lib/anthropic-logger'
+import { sanitizeSeriesTitle } from '@/lib/seriesTitle'
 
 export const runtime = 'nodejs'
 
@@ -55,10 +56,12 @@ function normalizeEpisodePlan(plan: any, count: number) {
 }
 
 async function saveSeriesParent(payload: Record<string, any>, seriesId?: string) {
-  const categoryPayload: Record<string, any> = { ...payload, category: payload.genre }
+  const sanitizedTitle = sanitizeSeriesTitle(payload.title)
+  const sanitizedPayload: Record<string, any> = { ...payload, title: sanitizedTitle }
+  const categoryPayload: Record<string, any> = { ...sanitizedPayload, category: sanitizedPayload.genre }
   delete categoryPayload.genre
 
-  const genrePayload = { ...payload }
+  const genrePayload = { ...sanitizedPayload }
 
   if (seriesId) {
     const first = await supabase
@@ -217,14 +220,15 @@ Return this exact JSON shape:
 
     const plan = parseJsonObject(raw)
     const seriesTitle = String(plan?.series_title || '').trim()
+    const sanitizedSeriesTitle = sanitizeSeriesTitle(seriesTitle)
     const seriesBible = String(plan?.series_bible || '').trim()
     const episodes = normalizeEpisodePlan(plan, episodeCount)
 
-    if (!seriesTitle) return bad('series_title missing from package plan', 422)
+    if (!sanitizedSeriesTitle) return bad('series_title missing from package plan', 422)
     if (!seriesBible) return bad('series_bible missing from package plan', 422)
 
     const parentPayload = {
-      title: seriesTitle,
+      title: sanitizedSeriesTitle,
       description: seriesBible,
       author,
       genre,
@@ -294,7 +298,7 @@ Return this exact JSON shape:
         script_version: 1,
         story_type: 'series_episode',
         series_id: finalSeriesId,
-        series_name: seriesTitle,
+        series_name: sanitizedSeriesTitle,
         episode_number: episodeNumber,
         series_episode_number: episodeNumber,
         series_total_episodes: episodeCount,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { sanitizeSeriesTitle } from '@/lib/seriesTitle'
 
 export const runtime = 'nodejs'
 
@@ -72,6 +73,7 @@ export async function POST(req: NextRequest) {
     const storyId = typeof body.storyId === 'string' ? body.storyId.trim() : ''
     const series_total_episodes = body.series_total_episodes == null ? null : Number(body.series_total_episodes)
     const series_episode_number = body.series_episode_number == null ? null : Number(body.series_episode_number)
+    const sanitizedSeriesName = sanitizeSeriesTitle(body.series_name)
 
     if (!author) return bad('author required')
     if (!author_style) return bad('author_style required')
@@ -129,7 +131,7 @@ export async function POST(req: NextRequest) {
       status: 'brief_complete',
       script_version: 1,
       story_type: type,
-      series_name: body.series_name || null,
+      series_name: sanitizedSeriesName,
       series_episode_number: type === 'series' ? series_episode_number : null,
       series_total_episodes: type === 'series' ? series_total_episodes : null,
       series_is_finale: body.series_is_finale ?? null,
