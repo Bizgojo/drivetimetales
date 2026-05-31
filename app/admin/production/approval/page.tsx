@@ -801,7 +801,7 @@ function StoryEditorPanel({
       <div onClick={onClose} style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)' }} />
 
       {/* Panel */}
-      <div style={{
+      <div className="approval-editor-panel" style={{
         position: 'relative', zIndex: 51,
         width: '420px', height: '100vh',
         backgroundColor: cardBg,
@@ -1749,8 +1749,8 @@ function RepairChecklistPanel({
   }
 
   return (
-    <div style={{ marginTop: '16px', padding: '26px 28px', borderRadius: '4px', border: '1px solid #c9c2b8', backgroundColor: '#fffdfa', color: '#111827', boxShadow: '0 8px 22px rgba(15,23,42,0.08)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '18px', alignItems: 'flex-start', marginBottom: '22px', borderBottom: '2px solid #111827', paddingBottom: '12px' }}>
+    <div className="approval-repair-panel" style={{ marginTop: '16px', padding: '26px 28px', borderRadius: '4px', border: '1px solid #c9c2b8', backgroundColor: '#fffdfa', color: '#111827', boxShadow: '0 8px 22px rgba(15,23,42,0.08)' }}>
+      <div className="approval-repair-header" style={{ display: 'flex', justifyContent: 'space-between', gap: '18px', alignItems: 'flex-start', marginBottom: '22px', borderBottom: '2px solid #111827', paddingBottom: '12px' }}>
         <div>
           <div style={{ color: textPrimary, fontSize: '21px', fontWeight: 900, letterSpacing: 0 }}>Endless Tales Repair Intake</div>
           <div style={{ color: '#4b5563', fontSize: '13px', marginTop: '5px', fontWeight: 700 }}>Professional QA review sheet</div>
@@ -1762,7 +1762,7 @@ function RepairChecklistPanel({
           </label>
         )}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 2fr) minmax(120px, 0.7fr) minmax(160px, 1fr) minmax(190px, 1fr)', gap: '18px', marginBottom: '26px' }}>
+      <div className="approval-repair-meta-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 2fr) minmax(120px, 0.7fr) minmax(160px, 1fr) minmax(190px, 1fr)', gap: '18px', marginBottom: '26px' }}>
         <label style={{ color: '#374151', fontSize: '12px', fontWeight: 900, textTransform: 'uppercase' }}>
           Story Name
           <input value={title} readOnly style={{ marginTop: '7px', width: '100%', boxSizing: 'border-box', border: 'none', borderBottom: '1.5px solid #111827', backgroundColor: 'transparent', color: '#111827', padding: '7px 2px 5px', fontSize: '15px' }} />
@@ -1784,7 +1784,7 @@ function RepairChecklistPanel({
         {REPAIR_OPTIONS.map((section) => (
           <div key={section.group} style={{ backgroundColor: 'transparent' }}>
             <div style={{ color: '#111827', fontSize: '16px', fontWeight: 950, letterSpacing: '0.02em', paddingBottom: '8px', borderBottom: '1.5px solid #111827' }}>{section.title}</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(250px, 0.75fr) minmax(340px, 1fr)', columnGap: '18px', alignItems: 'center' }}>
+            <div className="approval-repair-issue-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(250px, 0.75fr) minmax(340px, 1fr)', columnGap: '18px', alignItems: 'center' }}>
               <div style={{ padding: '10px 0 6px', color: '#6b7280', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase' }}>Issue</div>
               <div style={{ padding: '10px 0 6px', color: '#6b7280', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase' }}>Comment</div>
               {section.items.map((item) => (
@@ -1808,7 +1808,7 @@ function RepairChecklistPanel({
         </div>
       )}
       <div style={{ marginTop: '24px', color: '#111827', fontSize: '16px', fontWeight: 950, letterSpacing: '0.02em', paddingBottom: '8px', borderBottom: '1.5px solid #111827' }}>Repair Comments</div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(340px, 1fr) 150px', columnGap: '18px', rowGap: '10px', marginTop: '12px', alignItems: 'center' }}>
+      <div className="approval-repair-comments-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(340px, 1fr) 150px', columnGap: '18px', rowGap: '10px', marginTop: '12px', alignItems: 'center' }}>
         <div style={{ color: '#6b7280', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase' }}>Comment</div>
         <div style={{ color: '#6b7280', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', textAlign: 'right' }}>Remaining Time</div>
         {repairComments.map((row, index) => (
@@ -2865,27 +2865,184 @@ export default function AdminStoriesPage() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#F3F4F6', padding: '24px 28px', color: '#1F2937' }}>
+    <div className="approval-page" style={{ minHeight: '100vh', backgroundColor: '#F3F4F6', padding: '24px 28px', color: '#1F2937' }}>
       <style dangerouslySetInnerHTML={{ __html: `
+        .approval-mobile-selector,
+        .approval-mobile-episodes {
+          display: none;
+        }
         @media (max-width: 768px) {
+          .approval-page {
+            padding: 14px 12px 96px !important;
+            overflow-x: hidden !important;
+          }
+          .approval-page * {
+            max-width: 100%;
+            box-sizing: border-box;
+          }
+          .approval-header {
+            flex-direction: column !important;
+            gap: 10px !important;
+          }
+          .approval-header-actions {
+            width: 100% !important;
+            justify-content: space-between !important;
+          }
+          .approval-title {
+            font-size: 22px !important;
+            line-height: 1.15 !important;
+          }
+          .approval-subtitle {
+            font-size: 12px !important;
+            line-height: 1.35 !important;
+          }
+          .approval-pipeline-inner {
+            flex-wrap: wrap !important;
+            overflow-x: visible !important;
+            padding: 10px !important;
+            gap: 8px !important;
+          }
+          .approval-pipeline-step {
+            flex: 1 1 calc(50% - 8px) !important;
+            min-width: 0 !important;
+            min-height: 64px !important;
+            padding: 10px !important;
+          }
+          .approval-pipeline-arrow {
+            display: none !important;
+          }
           .approval-panels { flex-direction: column !important; }
-          .approval-left-panel { flex-basis: auto !important; width: 100% !important; }
-          .approval-pipeline-inner { overflow-x: auto !important; }
-          .approval-pipeline-step { flex: 1 0 220px !important; }
+          .approval-left-panel {
+            display: none !important;
+          }
+          .approval-mobile-selector {
+            display: block !important;
+            margin-top: 14px !important;
+            padding: 12px !important;
+            border-radius: 10px !important;
+            background-color: #ffffff !important;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08) !important;
+          }
+          .approval-detail-main {
+            width: 100% !important;
+            padding: 14px !important;
+          }
+          .approval-detail-header {
+            flex-direction: column !important;
+            align-items: stretch !important;
+          }
+          .approval-detail-cover {
+            width: 100% !important;
+            height: auto !important;
+            aspect-ratio: 16 / 9 !important;
+          }
+          .approval-detail-title {
+            font-size: 20px !important;
+            line-height: 1.18 !important;
+            overflow-wrap: anywhere !important;
+          }
+          .approval-series-actions {
+            width: 100% !important;
+            justify-content: stretch !important;
+          }
+          .approval-series-actions > button,
+          .approval-series-actions > div {
+            width: 100% !important;
+          }
+          .approval-desktop-episodes {
+            display: none !important;
+          }
+          .approval-mobile-episodes {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 10px !important;
+            margin-top: 12px !important;
+          }
+          .approval-mobile-episode-card {
+            border: 1px solid #E5E7EB !important;
+            border-radius: 10px !important;
+            background: #ffffff !important;
+            padding: 12px !important;
+          }
+          .approval-mobile-episode-title {
+            color: #111827 !important;
+            font-size: 15px !important;
+            font-weight: 900 !important;
+            line-height: 1.25 !important;
+            overflow-wrap: anywhere !important;
+          }
+          .approval-mobile-meta-grid {
+            display: grid !important;
+            grid-template-columns: 1fr 1fr !important;
+            gap: 8px !important;
+            margin-top: 10px !important;
+          }
+          .approval-mobile-meta-box {
+            min-width: 0 !important;
+            border-radius: 8px !important;
+            background: #F9FAFB !important;
+            padding: 8px !important;
+          }
+          .approval-mobile-actions {
+            position: sticky !important;
+            bottom: 0 !important;
+            z-index: 12 !important;
+            margin: 12px -12px -12px !important;
+            padding: 10px 12px max(10px, env(safe-area-inset-bottom)) !important;
+            border-top: 1px solid #E5E7EB !important;
+            background: rgba(255,255,255,0.98) !important;
+          }
+          .approval-mobile-actions > div {
+            grid-template-columns: 1fr !important;
+          }
+          .approval-mobile-actions button {
+            width: 100% !important;
+            min-height: 44px !important;
+            font-size: 13px !important;
+          }
+          .approval-editor-panel {
+            width: 100vw !important;
+          }
+          .approval-repair-panel {
+            padding: 16px 12px !important;
+            overflow-x: hidden !important;
+          }
+          .approval-repair-header {
+            flex-direction: column !important;
+            gap: 10px !important;
+          }
+          .approval-repair-meta-grid,
+          .approval-repair-issue-grid,
+          .approval-repair-comments-grid {
+            grid-template-columns: 1fr !important;
+          }
+          .approval-repair-issue-grid > div:nth-child(1),
+          .approval-repair-issue-grid > div:nth-child(2),
+          .approval-repair-comments-grid > div:nth-child(1),
+          .approval-repair-comments-grid > div:nth-child(2) {
+            display: none !important;
+          }
+          .approval-floating-publish {
+            right: 12px !important;
+            left: 12px !important;
+            bottom: 12px !important;
+            width: auto !important;
+            min-height: 46px !important;
+          }
         }
       ` }} />
 
       <div style={{ maxWidth: 'none', margin: 0 }}>
-        <div style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', gap: '16px', alignItems: 'flex-start' }}>
+        <div className="approval-header" style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', gap: '16px', alignItems: 'flex-start' }}>
           <div>
-            <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 700, color: '#1F2937', letterSpacing: 0 }}>
+            <h1 className="approval-title" style={{ margin: 0, fontSize: '24px', fontWeight: 700, color: '#1F2937', letterSpacing: 0 }}>
               Content Approval & Workflow
             </h1>
-            <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#6B7280' }}>
+            <p className="approval-subtitle" style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#6B7280' }}>
               Manage the complete content lifecycle from review to publication
             </p>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#9CA3AF', fontSize: '11px' }}>
+          <div className="approval-header-actions" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#9CA3AF', fontSize: '11px' }}>
             <span>Last updated: {lastUpdated || 'Never'}</span>
             <button type="button" onClick={fetchStories} title="Refresh" style={{ width: '28px', height: '28px', borderRadius: '6px', border: '1px solid #E5E7EB', backgroundColor: '#ffffff', color: '#6B7280', cursor: 'pointer', fontSize: '14px', lineHeight: 1 }}>
               ↻
@@ -2911,11 +3068,43 @@ export default function AdminStoriesPage() {
                     </span>
                     <span style={{ minWidth: '34px', height: '34px', padding: '0 8px', borderRadius: '999px', backgroundColor: `${item.color}18`, color: item.color, fontSize: '14px', fontWeight: 900, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto' }}>{count}</span>
                   </button>
-                  {index < STREAMING_PIPELINE.length - 1 && <span style={{ color: '#D1D5DB', fontSize: '18px', alignSelf: 'center', flex: '0 0 auto' }}>›</span>}
+                  {index < STREAMING_PIPELINE.length - 1 && <span className="approval-pipeline-arrow" style={{ color: '#D1D5DB', fontSize: '18px', alignSelf: 'center', flex: '0 0 auto' }}>›</span>}
                 </Fragment>
               )
             })}
           </div>
+        </div>
+
+        <div className="approval-mobile-selector">
+          <label style={{ display: 'block', color: '#374151', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', marginBottom: '7px' }}>
+            {activeWorkflow.label} ({activeWorkflowCount})
+          </label>
+          <select
+            value={selectedGroup?.key || ''}
+            onChange={(event) => {
+              setSelectedSeriesKey(event.target.value || null)
+              setRepairOpenForStoryId(null)
+              setOpenRepairSeriesKey(null)
+              setSeriesActionsOpen(false)
+            }}
+            style={{ width: '100%', minHeight: '44px', border: '1px solid #E5E7EB', borderRadius: '8px', padding: '0 10px', color: '#111827', backgroundColor: '#ffffff', fontSize: '15px', fontWeight: 800 }}
+          >
+            {seriesGroups.length === 0 && <option value="">{activeEmptyMessage}</option>}
+            {seriesGroups.map((group) => {
+              const trueSeries = isTrueSeriesGroup(group)
+              const label = group.type === 'series' ? group.title : group.story.title
+              return (
+                <option key={group.key} value={group.key}>
+                  {trueSeries ? 'Series' : 'Standalone'}: {label} ({groupEpisodeCountForTab(group, activePipelineTab)})
+                </option>
+              )
+            })}
+          </select>
+          {selectedGroup && selectedFirst && (
+            <div style={{ marginTop: '8px', color: '#6B7280', fontSize: '12px', lineHeight: 1.35 }}>
+              {selectedIsSeries ? `${selectedExpected} total episodes • ${selectedPresent} present` : `Standalone • ${selectedFirst.duration_mins || 0}m`} • {selectedFirst.genre || 'No genre'}
+            </div>
+          )}
         </div>
 
         <div className="approval-panels" style={{ marginTop: '16px', display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
@@ -2975,7 +3164,7 @@ export default function AdminStoriesPage() {
             </div>
           </aside>
 
-          <main style={{ flex: '1 1 0', minWidth: 0, backgroundColor: '#ffffff', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', padding: '16px' }}>
+          <main className="approval-detail-main" style={{ flex: '1 1 0', minWidth: 0, backgroundColor: '#ffffff', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', padding: '16px' }}>
             {!selectedGroup && (
               <div style={{ minHeight: '360px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9CA3AF', fontSize: '13px', flexDirection: 'column', gap: '8px' }}>
                 <div style={{ fontSize: '30px', color: '#D1D5DB' }}>▦</div>
@@ -2984,13 +3173,13 @@ export default function AdminStoriesPage() {
             )}
             {selectedGroup && selectedFirst && (
               <>
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
-                  <div style={{ width: '100px', height: '70px', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#E5E7EB', flex: '0 0 auto' }}>
+                <div className="approval-detail-header" style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
+                  <div className="approval-detail-cover" style={{ width: '100px', height: '70px', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#E5E7EB', flex: '0 0 auto' }}>
                     <img src={selectedFirst.cover_url || '/images/default-cover.png'} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   </div>
                   <div style={{ minWidth: 0, flex: '1 1 auto' }}>
                     <button type="button" onClick={() => { editingStoryRef.current = selectedFirst; setEditingStory(selectedFirst) }} title="Edit cover" style={{ border: 'none', background: 'transparent', color: '#9CA3AF', fontSize: '13px', cursor: 'pointer', padding: 0, marginBottom: '3px' }}>✎</button>
-                    <div style={{ color: '#1F2937', fontSize: '20px', fontWeight: 800, lineHeight: 1.15 }}>{selectedTitle}</div>
+                    <div className="approval-detail-title" style={{ color: '#1F2937', fontSize: '20px', fontWeight: 800, lineHeight: 1.15 }}>{selectedTitle}</div>
                     <div style={{ marginTop: '5px', color: '#6B7280', fontSize: '12px' }}>{selectedFirst.genre || 'No genre'} • by {selectedFirst.author || 'Unknown'}</div>
                     <div style={{ marginTop: '4px', color: '#9CA3AF', fontSize: '11px' }}>{selectedIsSeries ? `${selectedExpected} total episodes • ${selectedPresent} present` : `Standalone • ${selectedFirst.duration_mins || 0}m`}</div>
                     <div style={{ marginTop: '6px', color: selectedApprovalReady ? '#047857' : '#B45309', fontSize: '10px', lineHeight: 1.35 }}>
@@ -2998,7 +3187,7 @@ export default function AdminStoriesPage() {
                       {selectedApprovalBlockingReasons.length > 0 && ` • missing: ${selectedApprovalBlockingReasons.slice(0, 3).join('; ')}`}
                     </div>
                   </div>
-                  <div ref={seriesActionsRef} style={{ position: 'relative', flex: '0 0 auto', display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                  <div ref={seriesActionsRef} className="approval-series-actions" style={{ position: 'relative', flex: '0 0 auto', display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
                     {selectedCanShowRemasterCopy && <RemasterCopyUnavailable compact />}
                     <button type="button" onClick={() => setSeriesActionsOpen((value) => !value)} style={{ height: '30px', padding: '0 10px', border: '1px solid #FED7AA', borderRadius: '6px', backgroundColor: '#ffffff', color: '#E8722A', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}>Series Actions ▾</button>
                     {seriesActionsOpen && (
@@ -3057,7 +3246,7 @@ export default function AdminStoriesPage() {
                   </div>
                 </div>
 
-                <div style={{ marginTop: '10px', overflowX: 'auto' }}>
+                <div className="approval-desktop-episodes" style={{ marginTop: '10px', overflowX: 'auto' }}>
                   <table style={{ width: '100%', minWidth: '960px', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
                     <colgroup>
                       <col style={{ width: '6%' }} />
@@ -3163,6 +3352,98 @@ export default function AdminStoriesPage() {
                     </tbody>
                   </table>
                 </div>
+                <div className="approval-mobile-episodes">
+                  {selectedStories.map((story) => {
+                    const state = effectiveWorkflowState(story)
+                    const lane = visualWorkflowLane(story)
+                    const colors = WORKFLOW_COLORS[lane]
+                    const narratorName = narratorLabel(story)
+                    const storyType = (story as any).story_type || 'story'
+                    const audioReady = Boolean(story.audio_url || story.story_audio_url || story.audio_ready || story.story_audio_ready)
+                    const isAffectedRepairEpisode = visualWorkflowLane(story) === 'repair_shop'
+                    const lastRepairIssue = firstRepairIssueLabel(story.repair_checklist)
+                    const markedForDeletion = markedForDeletionIds[story.id]
+                    return (
+                      <div key={`mobile:${story.id}`} className="approval-mobile-episode-card" style={{
+                        boxShadow: markedForDeletion ? 'inset 3px 0 0 #6B7280' : isAffectedRepairEpisode ? 'inset 3px 0 0 #F97316' : undefined,
+                        backgroundColor: markedForDeletion ? '#F3F4F6' : '#ffffff',
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', alignItems: 'flex-start' }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ color: '#9CA3AF', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase' }}>
+                              {selectedIsSeries ? `Episode ${story.episode_number || '-'}` : 'Standalone story'}
+                            </div>
+                            <div className="approval-mobile-episode-title" style={{ marginTop: '4px' }}>{story.episode_title || story.title}</div>
+                          </div>
+                          <span style={{ flex: '0 0 auto', display: 'inline-flex', borderRadius: '999px', padding: '5px 9px', backgroundColor: colors.bg, color: colors.text, fontSize: '11px', fontWeight: 900 }}>
+                            {workflowDisplayLabel(state)}
+                          </span>
+                        </div>
+                        {effectiveWorkflowState(story) === 'ready_for_review' && lastRepairIssue && (
+                          <div style={{ display: 'inline-flex', marginTop: '8px', padding: '4px 8px', borderRadius: '999px', backgroundColor: '#ffedd5', color: '#9a3412', fontSize: '11px', fontWeight: 800 }}>
+                            Returned from Repair: {lastRepairIssue}
+                          </div>
+                        )}
+                        {markedForDeletion && (
+                          <div style={{ display: 'inline-flex', marginTop: '8px', padding: '4px 8px', borderRadius: '999px', backgroundColor: '#E5E7EB', color: '#374151', fontSize: '11px', fontWeight: 900 }}>
+                            Marked for deletion review
+                          </div>
+                        )}
+                        <div className="approval-mobile-meta-grid">
+                          <div className="approval-mobile-meta-box">
+                            <div style={{ color: '#6B7280', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase' }}>Narrator</div>
+                            <div style={{ marginTop: '4px', color: '#111827', fontSize: '13px', fontWeight: 800, overflowWrap: 'anywhere' }}>{narratorName}</div>
+                          </div>
+                          <div className="approval-mobile-meta-box">
+                            <div style={{ color: '#6B7280', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase' }}>Duration</div>
+                            <div style={{ marginTop: '4px', color: '#111827', fontSize: '13px', fontWeight: 800 }}>{story.duration_mins ? `${story.duration_mins}m` : '-'}</div>
+                          </div>
+                          <div className="approval-mobile-meta-box">
+                            <div style={{ color: '#6B7280', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase' }}>Audio</div>
+                            <div style={{ marginTop: '4px', color: audioReady ? '#047857' : '#B45309', fontSize: '13px', fontWeight: 800 }}>
+                              {audioReady ? `Ready${storyType ? ` (${storyType})` : ''}` : 'Missing'}
+                            </div>
+                          </div>
+                          <div className="approval-mobile-meta-box">
+                            <div style={{ color: '#6B7280', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase' }}>Standard</div>
+                            <div style={{ marginTop: '5px' }}><ProductionStandardBadge story={story} /></div>
+                          </div>
+                        </div>
+                        <div style={{ marginTop: '8px', color: '#9CA3AF', fontSize: '11px' }}>
+                          {isAffectedRepairEpisode ? repairSubstate(story) : workflowSubLabel(state)}
+                        </div>
+                        <div className="approval-mobile-actions">
+                          {renderEpisodeActions(story)}
+                        </div>
+                        {repairOpenForStoryId === story.id && (
+                          <RepairChecklistPanel
+                            title={story.title}
+                            episodeNumber={story.episode_number || story.series_number}
+                            initialChecklist={story.repair_checklist}
+                            initialNotes={story.repair_notes}
+                            onCancel={() => setRepairOpenForStoryId(null)}
+                            onSendToRepair={(repairChecklist, repairNotes) => {
+                              setWorkflowState(story, 'being_repaired', { repairChecklist, repairNotes })
+                              setRepairOpenForStoryId(null)
+                            }}
+                            onMarkComplete={(repairChecklist, repairNotes) => {
+                              setWorkflowState(story, 'ready_for_review', { repairChecklist, repairNotes })
+                              setRepairOpenForStoryId(null)
+                            }}
+                            onReturnToReview={() => {
+                              setWorkflowState(story, 'ready_for_review')
+                              setRepairOpenForStoryId(null)
+                            }}
+                            onMoveToColdStorage={() => {
+                              setWorkflowState(story, 'cold_storage')
+                              setRepairOpenForStoryId(null)
+                            }}
+                          />
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
                 <div style={{ marginTop: '12px', color: '#9CA3AF', fontSize: '10px' }}>Showing 1 to {selectedStories.length} of {selectedStories.length} episodes</div>
               </>
             )}
@@ -3171,7 +3452,7 @@ export default function AdminStoriesPage() {
       </div>
 
       {activePipelineTab === 'approved_ready' && (
-        <button type="button" onClick={publishAllApproved} style={{ position: 'fixed', right: '28px', bottom: '28px', padding: '9px 13px', borderRadius: '8px', border: 'none', backgroundColor: '#10B981', color: '#ffffff', fontSize: '12px', fontWeight: 800, cursor: 'pointer', boxShadow: '0 10px 24px rgba(16,185,129,0.28)' }}>
+        <button className="approval-floating-publish" type="button" onClick={publishAllApproved} style={{ position: 'fixed', right: '28px', bottom: '28px', padding: '9px 13px', borderRadius: '8px', border: 'none', backgroundColor: '#10B981', color: '#ffffff', fontSize: '12px', fontWeight: 800, cursor: 'pointer', boxShadow: '0 10px 24px rgba(16,185,129,0.28)' }}>
           Publish All Ready to Publish
         </button>
       )}
