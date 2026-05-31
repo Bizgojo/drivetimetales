@@ -104,6 +104,8 @@ type EpisodeRepairMark = {
   notes: string
   categoryComments: Record<string, string>
   activeCategoryId: string | null
+  coverNote: string
+  coverOpen: boolean
   listenState: 'unplayed' | 'in_progress' | 'listened'
   reviewState: 'unreviewed' | 'no_repair' | 'needs_repair' | 'finished'
 }
@@ -1654,7 +1656,6 @@ const REPAIR_OPTIONS: Array<{ group: RepairGroup; title: string; items: Array<{ 
 ]
 
 const EPISODE_REPAIR_OPTIONS: Array<{ id: string; group: 'story_script' | 'audio_asc' | 'packaging'; label: string }> = [
-  { id: 'cover_problem', group: 'packaging', label: 'Fix Cover' },
   { id: 'intro_not_personalized_properly', group: 'story_script', label: 'Fix Intro' },
   { id: 'abrupt_music_ending_fade_problem', group: 'audio_asc', label: 'Fix Background Music' },
   { id: 'weak_hook', group: 'story_script', label: 'Fix Hook' },
@@ -1674,6 +1675,8 @@ function episodeRepairMarkDefault(): EpisodeRepairMark {
     notes: '',
     categoryComments: {},
     activeCategoryId: null,
+    coverNote: '',
+    coverOpen: false,
     listenState: 'unplayed',
     reviewState: 'unreviewed',
   }
@@ -2307,6 +2310,7 @@ export default function AdminStoriesPage() {
   const [episodeRepairMarks, setEpisodeRepairMarks] = useState<Record<string, EpisodeRepairMark>>({})
   const [focusedReviewStoryId, setFocusedReviewStoryId] = useState<string | null>(null)
   const editingStoryRef = useRef<Story | null>(null)
+  const reviewAudioRefs = useRef<Record<string, HTMLAudioElement | null>>({})
   const pipelineRef = useRef<HTMLDivElement>(null)
   const seriesActionsRef = useRef<HTMLDivElement>(null)
   const returnSelectionAppliedRef = useRef(false)
@@ -2588,23 +2592,63 @@ export default function AdminStoriesPage() {
     }))
   }
 
+  function episodeHasRepairItems(mark: EpisodeRepairMark) {
+    return Object.values(mark.checklist).some((items) => items.length > 0)
+  }
+
+  function pauseEpisodeAudio(storyId: string) {
+    const audio = reviewAudioRefs.current[storyId]
+    if (audio) audio.pause()
+  }
+
+  function openEpisodeReview(story: Story) {
+    setFocusedReviewStoryId(story.id)
+    setEpisodeRepairMarks((prev) => {
+      const current = prev[story.id] || episodeRepairMarkDefault()
+      return {
+        ...prev,
+        [story.id]: { ...current, listenState: current.listenState === 'unplayed' ? 'in_progress' : current.listenState, reviewState: current.reviewState === 'finished' ? 'unreviewed' : current.reviewState },
+      }
+    })
+  }
+
+  function setEpisodeCoverOpen(storyId: string, open: boolean) {
+    setFocusedReviewStoryId(storyId)
+    setEpisodeRepairMarks((prev) => ({
+      ...prev,
+      [storyId]: { ...(prev[storyId] || episodeRepairMarkDefault()), coverOpen: open },
+    }))
+  }
+
+  function setEpisodeCoverNote(storyId: string, coverNote: string) {
+    setEpisodeRepairMarks((prev) => ({
+      ...prev,
+      [storyId]: { ...(prev[storyId] || episodeRepairMarkDefault()), coverNote, coverOpen: true },
+    }))
+  }
+
   function toggleEpisodeRepairIssue(storyId: string, issue: { id: string; group: RepairGroup }) {
+    pauseEpisodeAudio(storyId)
     const current = episodeRepairMark(storyId)
     const selected = current.checklist[issue.group].includes(issue.id)
+    const nextChecklist = {
+      ...current.checklist,
+      [issue.group]: selected
+        ? current.checklist[issue.group].filter((id) => id !== issue.id)
+        : [...current.checklist[issue.group], issue.id],
+    }
+    const nextHasRepair = Object.values(nextChecklist).some((items) => items.length > 0)
     setEpisodeRepairMarks((prev) => ({
       ...prev,
       [storyId]: {
         ...current,
-        needed: true,
-        checklist: {
-          ...current.checklist,
-          [issue.group]: selected
-            ? current.checklist[issue.group].filter((id) => id !== issue.id)
-            : [...current.checklist[issue.group], issue.id],
-        },
+        needed: nextHasRepair,
+        checklist: nextChecklist,
         activeCategoryId: selected && current.activeCategoryId === issue.id ? null : issue.id,
+        reviewState: nextHasRepair ? 'needs_repair' : 'unreviewed',
       },
     }))
+    setFocusedReviewStoryId(storyId)
   }
 
   function setEpisodeListenState(storyId: string, listenState: EpisodeRepairMark['listenState']) {
@@ -2632,10 +2676,31 @@ export default function AdminStoriesPage() {
   }
 
   function setEpisodeActiveCategory(storyId: string, categoryId: string | null) {
+    pauseEpisodeAudio(storyId)
     setEpisodeRepairMarks((prev) => ({
       ...prev,
       [storyId]: { ...(prev[storyId] || episodeRepairMarkDefault()), activeCategoryId: categoryId },
     }))
+  }
+
+  function finishEpisodeReview(storyId: string) {
+    pauseEpisodeAudio(storyId)
+    setEpisodeRepairMarks((prev) => {
+      const current = prev[storyId] || episodeRepairMarkDefault()
+      const hasRepair = episodeHasRepairItems(current)
+      return {
+        ...prev,
+        [storyId]: {
+          ...current,
+          needed: hasRepair,
+          listenState: 'listened',
+          reviewState: 'finished',
+          activeCategoryId: null,
+          coverOpen: false,
+        },
+      }
+    })
+    setFocusedReviewStoryId(null)
   }
 
   function buildSeriesRepairFromEpisodeMarks(storiesToRepair: Story[], seriesTitle = selectedTitle) {
@@ -2660,10 +2725,10 @@ export default function AdminStoriesPage() {
       if (selectedOptions.length > 0) {
         selectedOptions.forEach((option) => {
           const comment = (mark.categoryComments[option.id] || '').trim()
-          notes.push(`* ${option.label}: ${comment || 'No additional note provided.'}`)
+            notes.push(`- ${option.label}: ${comment || 'No additional note provided.'}`)
         })
       } else {
-        notes.push(`* General repair needed: ${mark.notes.trim() || 'No additional note provided.'}`)
+        notes.push(`- General repair needed: ${mark.notes.trim() || 'No additional note provided.'}`)
       }
       notes.push('')
     })
@@ -2675,7 +2740,7 @@ export default function AdminStoriesPage() {
   function moveSeriesToRepairShop(group: Extract<StoryGroup, { type: 'series' }>) {
     const markedStories = group.stories.filter((story) => episodeRepairMark(story.id).needed === true)
     if (markedStories.length === 0) {
-      alert('Mark Repair Needed = Yes on at least one episode before sending the series for repair.')
+      alert('Check at least one repair item before sending the series for repair.')
       return
     }
     const { checklist, notes } = buildSeriesRepairFromEpisodeMarks(group.stories, group.title)
@@ -2866,74 +2931,52 @@ export default function AdminStoriesPage() {
 
   function renderEpisodeReviewActions(story: Story) {
     const mark = episodeRepairMark(story.id)
-    const { listenState, reviewState } = mark
-    const canPlay = visualWorkflowLane(story) !== 'cold_storage' && Boolean(story.audio_url)
-    const played = playedStoryIds[story.id] === true
-
-    let playLabel: string
-    if (reviewState === 'no_repair' || reviewState === 'finished') playLabel = 'Finished'
-    else if (listenState === 'in_progress') playLabel = 'Continue'
-    else playLabel = 'Play'
+    const audioUrl = story.audio_url || story.story_audio_url
+    const active = focusedReviewStoryId === story.id
+    const reviewed = mark.reviewState === 'finished'
 
     return (
-      <div style={{ display: 'grid', gap: '8px', justifyItems: 'end', width: '100%', minWidth: 0 }}>
+      <div style={{ display: 'grid', gap: '10px', justifyItems: 'stretch', width: '100%', minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px', width: '100%', flexWrap: 'wrap' }}>
-          {canPlay && (
-            <PlayStoryButton
-              story={story}
-              played={played}
-              label={playLabel}
-              onPlayed={() => {
-                setPlayedStoryIds((prev) => ({ ...prev, [story.id]: true }))
-                if (listenState === 'unplayed') setEpisodeListenState(story.id, 'in_progress')
-              }}
-            />
-          )}
-          {listenState === 'in_progress' && reviewState === 'unreviewed' && (
-            <button
-              type="button"
-              onClick={() => setEpisodeListenState(story.id, 'listened')}
-              style={{ padding: '4px 8px', minHeight: '24px', borderRadius: '999px', border: '1px solid #6B7280', backgroundColor: '#F9FAFB', color: '#374151', fontSize: '11px', fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }}
-            >
-              Mark as Listened
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => reviewed ? openEpisodeReview(story) : openEpisodeReview(story)}
+            disabled={!audioUrl}
+            style={{ padding: '5px 10px', borderRadius: '999px', border: reviewed ? '1px solid #A7F3D0' : 'none', backgroundColor: reviewed ? '#ECFDF5' : active ? '#FED7AA' : '#f97316', color: reviewed ? '#047857' : active ? '#9A3412' : '#ffffff', fontSize: '11px', fontWeight: 900, cursor: audioUrl ? 'pointer' : 'not-allowed', whiteSpace: 'nowrap', opacity: audioUrl ? 1 : 0.5 }}
+          >
+            {reviewed ? 'Finished' : active ? 'Continue' : 'Play'}
+          </button>
         </div>
 
-        {listenState === 'listened' && reviewState !== 'no_repair' && reviewState !== 'finished' && selectedIsSeries && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end', width: '100%' }}>
-            <span style={{ color: '#6B7280', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', marginRight: '4px' }}>Repair Needed</span>
-            <button
-              type="button"
-              onClick={() => {
-                setEpisodeRepairNeeded(story.id, false)
-                setEpisodeReviewState(story.id, 'no_repair')
-              }}
-              style={{ minWidth: '38px', height: '24px', border: '1px solid #D1D5DB', borderRadius: '999px', backgroundColor: '#ffffff', color: '#6B7280', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
-            >
-              No
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setEpisodeRepairNeeded(story.id, true)
-                setEpisodeReviewState(story.id, 'needs_repair')
-              }}
-              style={{ minWidth: '38px', height: '24px', border: reviewState === 'needs_repair' ? '1px solid #F97316' : '1px solid #D1D5DB', borderRadius: '999px', backgroundColor: reviewState === 'needs_repair' ? '#FFF7ED' : '#ffffff', color: reviewState === 'needs_repair' ? '#C2410C' : '#6B7280', fontSize: '11px', fontWeight: reviewState === 'needs_repair' ? 800 : 700, cursor: 'pointer' }}
-            >
-              Yes
-            </button>
+        {active && (
+          <div style={{ display: 'grid', gap: '10px', padding: '10px', borderRadius: '8px', border: '1px solid #FED7AA', backgroundColor: '#FFF7ED' }}>
+            {audioUrl ? (
+              <audio
+                ref={(node) => { reviewAudioRefs.current[story.id] = node }}
+                src={audioUrl}
+                controls
+                style={{ width: '100%' }}
+                onPlay={() => setEpisodeListenState(story.id, 'in_progress')}
+                onEnded={() => setEpisodeListenState(story.id, 'listened')}
+              />
+            ) : (
+              <div style={{ color: '#9A3412', fontSize: '12px', fontWeight: 800 }}>Audio is missing for this episode.</div>
+            )}
+            {renderEpisodeRepairDetails(story)}
+            {renderCoverReviewDetails(story)}
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button type="button" onClick={() => finishEpisodeReview(story.id)} style={{ padding: '6px 14px', borderRadius: '6px', border: 'none', backgroundColor: '#16A34A', color: '#ffffff', fontSize: '12px', fontWeight: 900, cursor: 'pointer' }}>
+                Finished
+              </button>
+            </div>
           </div>
         )}
-
-        {reviewState === 'needs_repair' && selectedIsSeries && renderEpisodeRepairDetails(story)}
       </div>
     )
   }
 
   function renderEpisodeRepairDetails(story: Story) {
     const mark = episodeRepairMark(story.id)
-    if (!mark.needed) return null
 
     const activeOption = EPISODE_REPAIR_OPTIONS.find((option) => option.id === mark.activeCategoryId)
     const activeCategoryChecked = Boolean(activeOption && mark.checklist[activeOption.group].includes(activeOption.id))
@@ -2980,27 +3023,36 @@ export default function AdminStoriesPage() {
             />
           </div>
         )}
+      </div>
+    )
+  }
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <button
-            type="button"
-            onClick={() => {
-              const lines: string[] = []
-              EPISODE_REPAIR_OPTIONS.forEach((option) => {
-                if (mark.checklist[option.group].includes(option.id)) {
-                  const comment = (mark.categoryComments[option.id] || '').trim()
-                  lines.push(`${option.label}: ${comment || 'No note provided'}`)
-                }
-              })
-              setEpisodeRepairMarks((prev) => {
-                const current = prev[story.id] || { needed: true, checklist: emptyRepairChecklist(), notes: '', categoryComments: {}, activeCategoryId: null, listenState: 'listened', reviewState: 'needs_repair' }
-                return { ...prev, [story.id]: { ...current, notes: lines.join('\n'), reviewState: 'finished', activeCategoryId: null } }
-              })
-            }}
-            style={{ padding: '5px 14px', borderRadius: '6px', border: '1px solid #D1D5DB', backgroundColor: '#F9FAFB', color: '#374151', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}
-          >
-            Finished
-          </button>
+  function renderCoverReviewDetails(story: Story) {
+    const mark = episodeRepairMark(story.id)
+    if (!mark.coverOpen) return null
+
+    return (
+      <div style={{ display: 'grid', gap: '8px', padding: '10px', borderRadius: '8px', border: '1px solid #E5E7EB', backgroundColor: '#FFFFFF' }}>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          <div style={{ width: '96px', height: '96px', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#E5E7EB', flex: '0 0 auto' }}>
+            <img src={episodeCoverUrl(story)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          </div>
+          <div style={{ minWidth: '220px', flex: '1 1 220px', display: 'grid', gap: '7px' }}>
+            <label style={{ color: '#374151', fontSize: '11px', fontWeight: 900 }}>
+              Cover note
+              <textarea
+                value={mark.coverNote}
+                onChange={(event) => setEpisodeCoverNote(story.id, event.target.value)}
+                placeholder="Describe cover issue or desired change..."
+                rows={3}
+                style={{ marginTop: '5px', width: '100%', resize: 'vertical', border: '1px solid #E5E7EB', borderRadius: '6px', padding: '7px 8px', color: '#111827', backgroundColor: '#ffffff', fontSize: '12px', lineHeight: 1.4 }}
+              />
+            </label>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <button type="button" onClick={() => { editingStoryRef.current = story; setEditingStory(story) }} style={actionButtonStyle('muted')}>Edit Cover</button>
+              <button type="button" onClick={() => setEpisodeCoverOpen(story.id, false)} style={actionButtonStyle('muted')}>Close Cover Notes</button>
+            </div>
+          </div>
         </div>
       </div>
     )
@@ -3056,17 +3108,18 @@ export default function AdminStoriesPage() {
   const selectedSeriesDescription = selectedIsSeries ? seriesDescriptionForReview(selectedGroup, selectedAllStories) : null
   const selectedNarrator = selectedIsSeries ? firstNarratorLabel(selectedAllStories) : selectedFirst ? narratorLabel(selectedFirst) : 'Narrator pending'
   const selectedSeriesAllReviewed = selectedIsSeries && selectedAllStories.every(
-    (story) => ['no_repair', 'finished'].includes(episodeRepairMark(story.id).reviewState)
+    (story) => episodeRepairMark(story.id).reviewState === 'finished'
   )
   const selectedSeriesHasRepair = selectedIsSeries && selectedAllStories.some(
-    (story) => episodeRepairMark(story.id).needed && ['needs_repair', 'finished'].includes(episodeRepairMark(story.id).reviewState)
+    (story) => episodeHasRepairItems(episodeRepairMark(story.id))
   )
   const selectedSeriesCanApprove = selectedSeriesAllReviewed && !selectedSeriesHasRepair
   const selectedSeriesRepairMarked = selectedSeriesHasRepair
-  const anyEpisodeInYes = selectedAllStories.some((story) => episodeRepairMark(story.id).reviewState === 'needs_repair')
-  const thisEpisodeIsActive = (story: Story) => !anyEpisodeInYes || episodeRepairMark(story.id).reviewState === 'needs_repair'
+  const thisEpisodeIsActive = (story: Story) => !focusedReviewStoryId || focusedReviewStoryId === story.id
   const focusedStoryVisible = focusedReviewStoryId ? selectedStories.some((story) => story.id === focusedReviewStoryId) : false
-  const visibleSelectedStories = selectedStories
+  const visibleSelectedStories = focusedReviewStoryId && focusedStoryVisible
+    ? selectedStories.filter((story) => story.id === focusedReviewStoryId)
+    : selectedStories
 
   function markSelectedForDeletionReview() {
     if (selectedStories.length === 0) return
@@ -3531,7 +3584,7 @@ export default function AdminStoriesPage() {
                     <span style={{ color: '#6B7280', fontSize: '10px', borderRadius: '999px', padding: '4px 8px', backgroundColor: '#F3F4F6' }}>≡ Total: {selectedStories.length}</span>
                     <span style={{ color: '#6B7280', fontSize: '10px', borderRadius: '999px', padding: '4px 8px', backgroundColor: '#F3F4F6' }}>⏱ {selectedIsSeries ? `${selectedTotalMinutes}m Total Audio` : `${selectedFirst.duration_mins || 0}m Audio`}</span>
                     {selectedIsSeries && <span style={{ color: '#6B7280', fontSize: '10px', borderRadius: '999px', padding: '4px 8px', backgroundColor: '#F3F4F6' }}>✓ {selectedPresent} Present</span>}
-                    {selectedIsSeries && <span style={{ color: selectedSeriesAllReviewed ? '#047857' : '#6B7280', fontSize: '10px', borderRadius: '999px', padding: '4px 8px', backgroundColor: selectedSeriesAllReviewed ? '#ECFDF5' : '#F3F4F6' }}>Reviewed: {selectedAllStories.filter((story) => ['no_repair', 'finished'].includes(episodeRepairMark(story.id).reviewState)).length}/{selectedAllStories.length}</span>}
+                    {selectedIsSeries && <span style={{ color: selectedSeriesAllReviewed ? '#047857' : '#6B7280', fontSize: '10px', borderRadius: '999px', padding: '4px 8px', backgroundColor: selectedSeriesAllReviewed ? '#ECFDF5' : '#F3F4F6' }}>Finished: {selectedAllStories.filter((story) => episodeRepairMark(story.id).reviewState === 'finished').length}/{selectedAllStories.length}</span>}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                     {focusedReviewStoryId && focusedStoryVisible && (
@@ -3545,14 +3598,15 @@ export default function AdminStoriesPage() {
                   <table style={{ width: '100%', minWidth: '900px', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
                     <colgroup>
                       <col style={{ width: '8%' }} />
-                      <col style={{ width: '42%' }} />
                       <col style={{ width: '10%' }} />
-                      <col style={{ width: '40%' }} />
+                      <col style={{ width: '38%' }} />
+                      <col style={{ width: '14%' }} />
+                      <col style={{ width: '30%' }} />
                     </colgroup>
                     <thead>
                       <tr style={{ height: '36px', backgroundColor: '#F9FAFB' }}>
-                        {['Episode #', 'Cover + Title', 'Duration', 'Repair Needed'].map((head) => (
-                          <th key={head} style={{ padding: '0 10px', color: '#6B7280', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', textAlign: head === 'Repair Needed' ? 'right' : 'left' }}>{head}</th>
+                        {['Episode #', 'Duration', 'Cover + Title', 'Change Cover', 'Play'].map((head) => (
+                          <th key={head} style={{ padding: '0 10px', color: '#6B7280', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', textAlign: head === 'Play' ? 'right' : 'left' }}>{head}</th>
                         ))}
                       </tr>
                     </thead>
@@ -3566,7 +3620,7 @@ export default function AdminStoriesPage() {
                         const markedForDeletion = markedForDeletionIds[story.id]
                         const coverUrl = episodeCoverUrl(story)
                         const reviewMark = episodeRepairMark(story.id)
-                        const reviewed = reviewMark.reviewState === 'no_repair' || reviewMark.reviewState === 'finished'
+                        const reviewed = reviewMark.reviewState === 'finished'
                         const episodeActive = thisEpisodeIsActive(story)
                         return (
                           <Fragment key={story.id}>
@@ -3579,6 +3633,7 @@ export default function AdminStoriesPage() {
                               boxShadow: markedForDeletion ? 'inset 3px 0 0 #6B7280' : reviewed ? 'inset 3px 0 0 #22C55E' : isAffectedRepairEpisode ? 'inset 3px 0 0 #F97316' : undefined,
                             }}>
                               <td style={{ padding: '10px', color: '#1F2937', fontSize: '18px', fontWeight: 800 }}>{story.episode_number || '-'}</td>
+                              <td style={{ padding: '10px', color: '#374151', fontSize: '12px' }}>{story.duration_mins ? `${story.duration_mins}m` : '—'}</td>
                               <td style={{ padding: '10px', minWidth: 0 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
                                   <div style={{ width: '40px', height: '40px', borderRadius: '4px', overflow: 'hidden', backgroundColor: '#E5E7EB', flex: '0 0 auto' }}>
@@ -3604,7 +3659,9 @@ export default function AdminStoriesPage() {
                                   </div>
                                 </div>
                               </td>
-                              <td style={{ padding: '10px', color: '#374151', fontSize: '12px' }}>{story.duration_mins ? `${story.duration_mins}m` : '—'}</td>
+                              <td style={{ padding: '8px' }}>
+                                <button type="button" onClick={() => setEpisodeCoverOpen(story.id, true)} style={actionButtonStyle('muted')}>Change Cover</button>
+                              </td>
                               <td style={{ padding: '8px', textAlign: 'right', verticalAlign: 'middle' }}>
                                 {renderEpisodeReviewActions(story)}
                               </td>
@@ -3627,7 +3684,7 @@ export default function AdminStoriesPage() {
                         const markedForDeletion = markedForDeletionIds[story.id]
                         const coverUrl = episodeCoverUrl(story)
                         const reviewMark = episodeRepairMark(story.id)
-                        const reviewed = reviewMark.reviewState === 'no_repair' || reviewMark.reviewState === 'finished'
+                        const reviewed = reviewMark.reviewState === 'finished'
                         const episodeActive = thisEpisodeIsActive(story)
                         return (
                           <div key={`mobile:${story.id}`} className="approval-mobile-episode-card" style={{
@@ -3677,6 +3734,9 @@ export default function AdminStoriesPage() {
                         </div>
                         <div style={{ marginTop: '8px', color: '#9CA3AF', fontSize: '11px' }}>
                           {isAffectedRepairEpisode ? repairSubstate(story) : workflowSubLabel(state)}
+                        </div>
+                        <div style={{ marginTop: '8px' }}>
+                          <button type="button" onClick={() => setEpisodeCoverOpen(story.id, true)} style={actionButtonStyle('muted')}>Change Cover</button>
                         </div>
                         <div className="approval-mobile-actions">
                           {renderEpisodeReviewActions(story)}
