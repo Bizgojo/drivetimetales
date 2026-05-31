@@ -106,6 +106,11 @@ type EpisodeRepairMark = {
   activeCategoryId: string | null
   coverNote: string
   coverOpen: boolean
+  candidateCoverUrl: string
+  candidatePromptPreview: string
+  coverGenerating: boolean
+  coverUploading: boolean
+  coverPreviewVersion: number
   listenState: 'unplayed' | 'in_progress' | 'listened'
   reviewState: 'unreviewed' | 'no_repair' | 'needs_repair' | 'finished'
 }
@@ -585,7 +590,7 @@ function seriesDescriptionForReview(group: StoryGroup | null, stories: Story[]) 
 }
 
 function episodeCoverUrl(story: Story) {
-  return String(story.cover_url || (story as any).coverUrl || '').trim()
+  return story.cover_url || ''
 }
 
 function approvalBlockingSummary(reasons?: string[]) {
@@ -1679,6 +1684,11 @@ function episodeRepairMarkDefault(): EpisodeRepairMark {
     activeCategoryId: null,
     coverNote: '',
     coverOpen: false,
+    candidateCoverUrl: '',
+    candidatePromptPreview: '',
+    coverGenerating: false,
+    coverUploading: false,
+    coverPreviewVersion: 0,
     listenState: 'unplayed',
     reviewState: 'unreviewed',
   }
@@ -2310,6 +2320,7 @@ export default function AdminStoriesPage() {
   const [markedForDeletionIds, setMarkedForDeletionIds] = useState<Record<string, boolean>>({})
   const [playedStoryIds, setPlayedStoryIds] = useState<Record<string, boolean>>({})
   const [episodeRepairMarks, setEpisodeRepairMarks] = useState<Record<string, EpisodeRepairMark>>({})
+  const [coverUrlOverrides, setCoverUrlOverrides] = useState<Record<string, string>>({})
   const [focusedReviewStoryId, setFocusedReviewStoryId] = useState<string | null>(null)
   const inlineAudioRef = useRef<HTMLAudioElement | null>(null)
   const [inlineAudioPaused, setInlineAudioPaused] = useState(false)
@@ -2318,6 +2329,10 @@ export default function AdminStoriesPage() {
   const pipelineRef = useRef<HTMLDivElement>(null)
   const seriesActionsRef = useRef<HTMLDivElement>(null)
   const returnSelectionAppliedRef = useRef(false)
+
+  function episodeCoverUrl(story: Story): string {
+    return coverUrlOverrides[story.id] || story.cover_url || ''
+  }
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -2629,6 +2644,146 @@ export default function AdminStoriesPage() {
       ...prev,
       [storyId]: { ...(prev[storyId] || episodeRepairMarkDefault()), coverNote, coverOpen: true },
     }))
+  }
+
+  function updateEpisodeCoverMark(storyId: string, patch: Partial<EpisodeRepairMark>) {
+    setEpisodeRepairMarks((prev) => ({
+      ...prev,
+      [storyId]: { ...(prev[storyId] || episodeRepairMarkDefault()), ...patch, coverOpen: patch.coverOpen ?? true },
+    }))
+  }
+
+  async function generateCoverForEpisode(story: Story) {
+    const mark = episodeRepairMark(story.id)
+    setEpisodeRepairMarks((prev) => ({
+      ...prev,
+      [story.id]: { ...(prev[story.id] || episodeRepairMarkDefault()), coverGenerating: true, candidateCoverUrl: '' },
+    }))
+    try {
+      const res = await fetch('/api/asc3/regenerate-cover', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storyId: story.id,
+          coverFeedback: mark.coverNote.trim() || undefined,
+          candidateOnly: true,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data?.success || !data?.candidateCoverUrl) {
+        throw new Error(data?.error || 'Cover generation failed')
+      }
+      setEpisodeRepairMarks((prev) => ({
+        ...prev,
+        [story.id]: { ...(prev[story.id] || episodeRepairMarkDefault()), coverGenerating: false, candidateCoverUrl: data.candidateCoverUrl },
+      }))
+    } catch (err) {
+      setEpisodeRepairMarks((prev) => ({
+        ...prev,
+        [story.id]: { ...(prev[story.id] || episodeRepairMarkDefault()), coverGenerating: false },
+      }))
+      alert('Cover generation failed: ' + (err instanceof Error ? err.message : String(err)))
+    }
+  }
+
+  async function acceptCoverForEpisode(story: Story, candidateUrl: string) {
+    const { error } = await supabase
+      .from('stories')
+      .update({ cover_url: candidateUrl })
+      .eq('id', story.id)
+    if (error) {
+      alert('Failed to save cover: ' + error.message)
+      return
+    }
+    setCoverUrlOverrides((prev) => ({ ...prev, [story.id]: candidateUrl }))
+    setEpisodeRepairMarks((prev) => ({
+      ...prev,
+      [story.id]: { ...(prev[story.id] || episodeRepairMarkDefault()), candidateCoverUrl: '', coverOpen: false },
+    }))
+  }
+
+  async function generateEpisodeCoverCandidate(story: Story) {
+    const mark = episodeRepairMark(story.id)
+    if (mark.coverGenerating) return
+    updateEpisodeCoverMark(story.id, { coverGenerating: true })
+    try {
+      const res = await fetch('/api/asc3/regenerate-cover', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storyId: story.id,
+          candidateOnly: true,
+          coverFeedback: mark.coverNote.trim() || undefined,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data?.success || !data?.candidateCoverUrl) {
+        throw new Error(data?.error || 'Cover candidate generation failed')
+      }
+      updateEpisodeCoverMark(story.id, {
+        candidateCoverUrl: data.candidateCoverUrl,
+        candidatePromptPreview: data.promptPreview || '',
+        coverGenerating: false,
+      })
+    } catch (err) {
+      updateEpisodeCoverMark(story.id, { coverGenerating: false })
+      alert('Cover generation failed: ' + (err instanceof Error ? err.message : String(err)))
+    }
+  }
+
+  async function uploadEpisodeCoverCandidate(story: Story, file: File | undefined) {
+    if (!file) return
+    updateEpisodeCoverMark(story.id, { coverUploading: true })
+    try {
+      const ext = file.name.split('.').pop() || 'png'
+      const path = `Covers/candidates/${story.id}-${Date.now()}.${ext}`
+      const { error: uploadError } = await supabase.storage
+        .from('audio-stories')
+        .upload(path, file, { upsert: true })
+      if (uploadError) throw uploadError
+      const { data } = supabase.storage.from('audio-stories').getPublicUrl(path)
+      updateEpisodeCoverMark(story.id, {
+        candidateCoverUrl: data.publicUrl,
+        candidatePromptPreview: '',
+        coverUploading: false,
+      })
+    } catch (err) {
+      updateEpisodeCoverMark(story.id, { coverUploading: false })
+      alert('Cover upload failed: ' + String(err))
+    }
+  }
+
+  async function acceptEpisodeCoverCandidate(story: Story) {
+    const mark = episodeRepairMark(story.id)
+    if (!mark.candidateCoverUrl) return
+    try {
+      const { data, error } = await supabase
+        .from('stories')
+        .update({ cover_url: mark.candidateCoverUrl })
+        .eq('id', story.id)
+        .select('id,cover_url')
+      if (error) throw error
+      const savedCoverUrl = String(data?.[0]?.cover_url || mark.candidateCoverUrl)
+      setStories((prev) => prev.map((item) => item.id === story.id ? { ...item, cover_url: savedCoverUrl } : item))
+      updateEpisodeCoverMark(story.id, {
+        coverOpen: false,
+        candidateCoverUrl: '',
+        candidatePromptPreview: '',
+        coverPreviewVersion: mark.coverPreviewVersion + 1,
+      })
+    } catch (err) {
+      alert('Cover save failed: ' + (err instanceof Error ? err.message : String(err)))
+    }
+  }
+
+  function closeEpisodeCoverPanel(storyId: string) {
+    updateEpisodeCoverMark(storyId, {
+      coverOpen: false,
+      candidateCoverUrl: '',
+      candidatePromptPreview: '',
+      coverGenerating: false,
+      coverUploading: false,
+    })
   }
 
   function toggleEpisodeRepairIssue(storyId: string, issue: { id: string; group: RepairGroup }) {
@@ -3057,33 +3212,84 @@ export default function AdminStoriesPage() {
   function renderCoverReviewDetails(story: Story) {
     const mark = episodeRepairMark(story.id)
     if (!mark.coverOpen) return null
+    const currentCover = episodeCoverUrl(story)
+    const { coverNote, candidateCoverUrl, coverGenerating } = mark
+    const mutedButtonStyle = actionButtonStyle('muted')
+    const orangeButtonStyle = { ...actionButtonStyle('primary'), backgroundColor: '#F97316' }
+    const coverFrameStyle = {
+      width: '80px',
+      height: '80px',
+      borderRadius: '8px',
+      overflow: 'hidden',
+      backgroundColor: '#E5E7EB',
+      border: '1px solid #E5E7EB',
+      flex: '0 0 auto',
+    }
 
     return (
-      <div style={{ display: 'grid', gap: '8px', padding: '10px', borderRadius: '8px', border: '1px solid #E5E7EB', backgroundColor: '#FFFFFF' }}>
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-          {episodeCoverUrl(story) && (
-            <div style={{ width: '80px', height: '80px', borderRadius: '8px', overflow: 'hidden', backgroundColor: '#E5E7EB', flex: '0 0 auto' }}>
-              <img src={episodeCoverUrl(story)} alt="" width={80} height={80} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+      <div style={{ display: 'grid', gap: '12px', padding: '14px', borderRadius: '10px', border: '1px solid #E5E7EB', backgroundColor: '#FFFFFF' }}>
+        {coverGenerating ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#6B7280', fontSize: '12px', fontWeight: 700 }}>
+            <span aria-hidden="true">⏳</span>
+            <span>Generating cover...</span>
+          </div>
+        ) : candidateCoverUrl ? (
+          <>
+            <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+              <div style={{ display: 'grid', gap: '6px' }}>
+                <div style={{ color: '#6B7280', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase' }}>Current</div>
+                <div style={coverFrameStyle}>
+                  {currentCover ? (
+                    <img src={currentCover} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : null}
+                </div>
+              </div>
+              <div style={{ display: 'grid', gap: '6px' }}>
+                <div style={{ color: '#6B7280', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase' }}>New</div>
+                <div style={{ ...coverFrameStyle, border: '2px solid #F97316' }}>
+                  <img src={candidateCoverUrl} alt="Generated cover candidate" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                </div>
+              </div>
             </div>
-          )}
-          <div style={{ minWidth: '220px', flex: '1 1 220px', display: 'grid', gap: '7px' }}>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <button type="button" onClick={() => acceptCoverForEpisode(story, candidateCoverUrl)} style={actionButtonStyle('success')}>Accept New Cover</button>
+              <button type="button" onClick={() => generateCoverForEpisode(story)} style={mutedButtonStyle}>Try Again</button>
+              <button
+                type="button"
+                onClick={() => setEpisodeRepairMarks((prev) => ({
+                  ...prev,
+                  [story.id]: { ...(prev[story.id] || episodeRepairMarkDefault()), candidateCoverUrl: '', coverOpen: true },
+                }))}
+                style={mutedButtonStyle}
+              >
+                Cancel
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            {currentCover && (
+              <div style={coverFrameStyle}>
+                <img src={currentCover} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              </div>
+            )}
             <label style={{ color: '#374151', fontSize: '11px', fontWeight: 900 }}>
-              Cover note
+              Cover instructions
               <textarea
-                value={mark.coverNote}
+                value={coverNote}
                 onChange={(event) => setEpisodeCoverNote(story.id, event.target.value)}
-                placeholder="Describe cover issue or desired change..."
+                placeholder="Describe the cover change you want..."
                 rows={3}
                 style={{ marginTop: '5px', width: '100%', resize: 'vertical', border: '1px solid #E5E7EB', borderRadius: '6px', padding: '7px 8px', color: '#111827', backgroundColor: '#ffffff', fontSize: '12px', lineHeight: 1.4 }}
               />
             </label>
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              <button type="button" onClick={() => { editingStoryRef.current = story; setEditingStory(story) }} style={actionButtonStyle('primary')}>Open Story Editor</button>
-              <button type="button" disabled title="No dedicated upload handler is wired on this page yet." style={{ ...actionButtonStyle('muted'), opacity: 0.55, cursor: 'not-allowed' }}>Upload New Cover</button>
-              <button type="button" onClick={() => setEpisodeCoverOpen(story.id, false)} style={actionButtonStyle('muted')}>Close</button>
+              <button type="button" onClick={() => generateCoverForEpisode(story)} style={orangeButtonStyle}>Generate New Cover</button>
+              <button type="button" disabled title="Upload coming later" style={{ ...mutedButtonStyle, cursor: 'not-allowed', opacity: 0.5 }}>Upload (coming later)</button>
+              <button type="button" onClick={() => setEpisodeCoverOpen(story.id, false)} style={mutedButtonStyle}>Close</button>
             </div>
-          </div>
-        </div>
+          </>
+        )}
       </div>
     )
   }
@@ -3524,7 +3730,7 @@ export default function AdminStoriesPage() {
                     <img src={selectedFirst.cover_url || '/images/default-cover.png'} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   </div>
                   <div style={{ minWidth: 0, flex: '1 1 auto' }}>
-                    <button type="button" onClick={() => { editingStoryRef.current = selectedFirst; setEditingStory(selectedFirst) }} title="Edit cover" style={{ border: 'none', background: 'transparent', color: '#9CA3AF', fontSize: '13px', cursor: 'pointer', padding: 0, marginBottom: '3px' }}>✎</button>
+                    <button type="button" onClick={() => setEpisodeCoverOpen(selectedFirst.id, true)} title="Change cover" style={{ border: 'none', background: 'transparent', color: '#9CA3AF', fontSize: '13px', cursor: 'pointer', padding: 0, marginBottom: '3px' }}>✎</button>
                     <div className="approval-detail-title" style={{ color: '#1F2937', fontSize: '20px', fontWeight: 800, lineHeight: 1.15 }}>{selectedTitle}</div>
                     <div style={{ marginTop: '5px', color: '#6B7280', fontSize: '12px' }}>{selectedFirst.genre || 'No genre'} • by {selectedFirst.author || 'Unknown'}</div>
                     <div style={{ marginTop: '4px', color: '#9CA3AF', fontSize: '11px' }}>
