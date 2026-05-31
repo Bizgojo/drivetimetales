@@ -18,6 +18,7 @@ interface Story {
   episode_title: string | null
   flag: string | null
   description: string | null
+  prose_text?: string | null
   is_hidden: boolean
   group_name: string | null
   is_free: boolean
@@ -45,6 +46,7 @@ interface Story {
   outro_audio_url?: string | null
   background_music_url?: string | null
   narrator_voice_name?: string | null
+  narratorVoiceName?: string | null
   series_id?: string | null
   episode_number?: number | null
   expected_episode_count?: number | null
@@ -542,8 +544,37 @@ function displaySeriesTitle(stories: Story[]) {
 }
 
 function narratorLabel(story: Story) {
-  const narrator = String(story.narrator_voice_name || '').trim()
+  const narrator = String(story.narrator_voice_name || story.narratorVoiceName || '').trim()
   return narrator || 'Narrator pending'
+}
+
+function firstNarratorLabel(stories: Story[]) {
+  const narrator = stories.map((story) => String(story.narrator_voice_name || story.narratorVoiceName || '').trim()).find(Boolean)
+  return narrator || 'Narrator pending'
+}
+
+function truncateWords(text: string, maxWords = 40) {
+  const words = text.trim().replace(/\s+/g, ' ').split(' ').filter(Boolean)
+  if (words.length <= maxWords) return words.join(' ')
+  return `${words.slice(0, maxWords).join(' ')}...`
+}
+
+function seriesDescriptionForReview(group: StoryGroup | null, stories: Story[]) {
+  const groupDescription = String((group as any)?.description || '').trim()
+  if (groupDescription) return { text: truncateWords(groupDescription), source: 'selectedItem.description' }
+
+  const firstEpisode = stories[0]
+  const episodeDescription = String(firstEpisode?.description || '').trim()
+  if (episodeDescription) return { text: truncateWords(episodeDescription), source: 'selectedItem.episodes[0].description' }
+
+  const proseText = String(firstEpisode?.prose_text || '').trim()
+  if (proseText) return { text: truncateWords(proseText), source: 'selectedItem.episodes[0].prose_text' }
+
+  return { text: 'No series description available.', source: 'fallback text' }
+}
+
+function episodeCoverUrl(story: Story) {
+  return String(story.cover_url || (story as any).coverUrl || '').trim()
 }
 
 function approvalBlockingSummary(reasons?: string[]) {
@@ -2706,54 +2737,24 @@ export default function AdminStoriesPage() {
   }
 
   function renderEpisodeActions(story: Story) {
-    const state = effectiveWorkflowState(story)
     const lane = visualWorkflowLane(story)
     const canPlay = lane !== 'cold_storage' && Boolean(story.audio_url)
-    const canShowRemasterCopy = isRemasterCandidateState(state) && productionStandardForStory(story).standard === 'remaster_candidate'
-    const openRepair = () => setRepairOpenForStoryId(story.id)
-    const moveToColdStorage = () => {
-      if (window.confirm(`Move "${story.title}" to Cold Storage?`)) setWorkflowState(story, 'cold_storage')
-    }
-    const retrieveFromColdStorage = () => {
-      if (window.confirm(`Retrieve "${story.title}" from Cold Storage and return it to review?`)) setWorkflowState(story, 'ready_for_review')
-    }
-    const returnToRepairQueue = () => {
-      if (window.confirm(`Return "${story.title}" to Repair Shop?`)) setWorkflowState(story, 'repair_queue')
-    }
-    const markRepairComplete = () => {
-      if (window.confirm(`Mark repair complete for "${story.title}" and return it to Ready for Review?`)) setWorkflowState(story, 'ready_for_review')
-    }
 
     return (
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(116px, 1fr))', alignItems: 'stretch', gap: '6px', width: '100%', minWidth: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px', width: '100%', minWidth: 0 }}>
         {canPlay && <PlayStoryButton story={story} />}
-        {state === 'ready_for_review' && <button type="button" onClick={() => setWorkflowState(story, 'approved_ready')} style={actionButtonStyle('success')}>Approve for Publishing</button>}
-        {/* Publish Now intentionally absent from ready_for_review — must go through Approved & Ready to Publish first */}
-        {state === 'ready_for_review' && <button type="button" onClick={openRepair} style={actionButtonStyle('muted')}>Move to Repair Shop</button>}
-        {state === 'ready_for_review' && <button type="button" onClick={moveToColdStorage} style={actionButtonStyle('danger')}>Move to Cold Storage</button>}
+      </div>
+    )
+  }
 
-        {state === 'approved_ready' && <button type="button" onClick={() => publishStory(story)} style={actionButtonStyle('primary')}>Publish Now</button>}
-        {state === 'approved_ready' && <button type="button" onClick={() => setWorkflowState(story, 'ready_for_review')} style={actionButtonStyle('muted')}>Return to Ready for Review</button>}
-        {state === 'approved_ready' && <button type="button" onClick={openRepair} style={actionButtonStyle('muted')}>Move to Repair Shop</button>}
-        {state === 'approved_ready' && <button type="button" onClick={moveToColdStorage} style={actionButtonStyle('danger')}>Move to Cold Storage</button>}
+  function renderEpisodeReviewActions(story: Story) {
+    const lane = visualWorkflowLane(story)
+    const canPlay = lane !== 'cold_storage' && Boolean(story.audio_url)
 
-        {state === 'repair_queue' && <button type="button" onClick={openRepair} style={actionButtonStyle('muted')}>Edit Repair Notes</button>}
-        {state === 'repair_queue' && <button type="button" onClick={() => setWorkflowState(story, 'being_repaired', { repairChecklist: normalizeRepairChecklist(story.repair_checklist) })} style={actionButtonStyle('primary')}>Send to Being Repaired</button>}
-        {state === 'repair_queue' && <button type="button" onClick={() => setWorkflowState(story, 'ready_for_review')} style={actionButtonStyle('success')}>Return to Ready for Review</button>}
-        {state === 'repair_queue' && <button type="button" onClick={moveToColdStorage} style={actionButtonStyle('danger')}>Move to Cold Storage</button>}
-
-        {state === 'being_repaired' && <button type="button" onClick={openRepair} style={actionButtonStyle('muted')}>View Repair Status</button>}
-        {state === 'being_repaired' && <button type="button" onClick={markRepairComplete} style={actionButtonStyle('success')}>Mark Repair Complete</button>}
-        {state === 'being_repaired' && <button type="button" onClick={returnToRepairQueue} style={actionButtonStyle('muted')}>Return to Repair Shop</button>}
-
-        {state === 'cold_storage' && <button type="button" onClick={retrieveFromColdStorage} style={actionButtonStyle('muted')}>Retrieve from Cold Storage</button>}
-
-        {state === 'published' && <button type="button" onClick={() => window.open(`/player/${story.id}`, '_blank', 'noopener,noreferrer')} style={actionButtonStyle('muted')}>View in App / Play</button>}
-        {canShowRemasterCopy && <RemasterCopyUnavailable />}
-        {state === 'published' && <button type="button" onClick={() => unpublishStory(story)} style={actionButtonStyle('danger')}>Unpublish to Ready to Publish</button>}
-        {state === 'unpublished_library' && <button type="button" onClick={() => setWorkflowState(story, 'ready_for_review')} style={actionButtonStyle('success')}>Return to Ready for Review</button>}
-        {state === 'unpublished_library' && <button type="button" onClick={openRepair} style={actionButtonStyle('muted')}>Move to Repair Shop</button>}
-        {state === 'unpublished_library' && <button type="button" onClick={moveToColdStorage} style={actionButtonStyle('danger')}>Move to Cold Storage</button>}
+    return (
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(98px, 1fr))', alignItems: 'stretch', gap: '6px', width: '100%', minWidth: 0 }}>
+        {canPlay && <PlayStoryButton story={story} />}
+        <button type="button" onClick={() => { editingStoryRef.current = story; setEditingStory(story) }} style={actionButtonStyle('muted')}>View / Review</button>
       </div>
     )
   }
@@ -2805,6 +2806,8 @@ export default function AdminStoriesPage() {
     isRemasterCandidateState(effectiveWorkflowState(story)) &&
     productionStandardForStory(story).standard === 'remaster_candidate'
   )
+  const selectedSeriesDescription = selectedIsSeries ? seriesDescriptionForReview(selectedGroup, selectedAllStories) : null
+  const selectedNarrator = selectedIsSeries ? firstNarratorLabel(selectedAllStories) : selectedFirst ? narratorLabel(selectedFirst) : 'Narrator pending'
 
   function markSelectedForDeletionReview() {
     if (selectedStories.length === 0) return
@@ -3181,16 +3184,34 @@ export default function AdminStoriesPage() {
                     <button type="button" onClick={() => { editingStoryRef.current = selectedFirst; setEditingStory(selectedFirst) }} title="Edit cover" style={{ border: 'none', background: 'transparent', color: '#9CA3AF', fontSize: '13px', cursor: 'pointer', padding: 0, marginBottom: '3px' }}>✎</button>
                     <div className="approval-detail-title" style={{ color: '#1F2937', fontSize: '20px', fontWeight: 800, lineHeight: 1.15 }}>{selectedTitle}</div>
                     <div style={{ marginTop: '5px', color: '#6B7280', fontSize: '12px' }}>{selectedFirst.genre || 'No genre'} • by {selectedFirst.author || 'Unknown'}</div>
-                    <div style={{ marginTop: '4px', color: '#9CA3AF', fontSize: '11px' }}>{selectedIsSeries ? `${selectedExpected} total episodes • ${selectedPresent} present` : `Standalone • ${selectedFirst.duration_mins || 0}m`}</div>
+                    <div style={{ marginTop: '4px', color: '#9CA3AF', fontSize: '11px' }}>
+                      {selectedIsSeries ? `Narrator: ${selectedNarrator} • ${selectedExpected} total episodes • ${selectedPresent} present • ${selectedTotalMinutes}m total` : `Standalone • ${selectedFirst.duration_mins || 0}m`}
+                    </div>
+                    {selectedIsSeries && (
+                      <div style={{ marginTop: '8px', color: '#4B5563', fontSize: '12px', lineHeight: 1.45, maxWidth: '760px' }}>
+                        {selectedSeriesDescription.text}
+                      </div>
+                    )}
                     <div style={{ marginTop: '6px', color: selectedApprovalReady ? '#047857' : '#B45309', fontSize: '10px', lineHeight: 1.35 }}>
                       approvalReady={String(selectedApprovalReady)} • completionSortDate={selectedCompletionSortDate || 'none'} • completionSortSource={selectedCompletionSortSource || 'see API'}
                       {selectedApprovalBlockingReasons.length > 0 && ` • missing: ${selectedApprovalBlockingReasons.slice(0, 3).join('; ')}`}
                     </div>
                   </div>
-                  <div ref={seriesActionsRef} className="approval-series-actions" style={{ position: 'relative', flex: '0 0 auto', display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                  <div ref={seriesActionsRef} className="approval-series-actions" style={{ position: 'relative', flex: '0 0 auto', display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end', gap: '8px', flexWrap: 'wrap', maxWidth: '390px' }}>
                     {selectedCanShowRemasterCopy && <RemasterCopyUnavailable compact />}
-                    <button type="button" onClick={() => setSeriesActionsOpen((value) => !value)} style={{ height: '30px', padding: '0 10px', border: '1px solid #FED7AA', borderRadius: '6px', backgroundColor: '#ffffff', color: '#E8722A', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}>Series Actions ▾</button>
-                    {seriesActionsOpen && (
+                    {selectedIsSeries && selectedGroup.type === 'series' ? (
+                      <>
+                        <button type="button" onClick={() => approveAllReady(selectedGroup)} style={actionButtonStyle('success')}>Approve for Publishing</button>
+                        <button type="button" onClick={() => openSeriesRepair(selectedGroup)} style={actionButtonStyle('muted')}>Move to Repair Shop</button>
+                        <button type="button" onClick={() => moveSeriesToColdStorage(selectedGroup)} style={actionButtonStyle('danger')}>Move to Cold Storage</button>
+                        {activePipelineTab === 'published' && selectedGroup.stories.some(isPublishedToApp) && (
+                          <button type="button" onClick={() => requestMoveSeriesToReadyForReview(selectedGroup)} style={{ ...actionButtonStyle('muted'), borderColor: '#F59E0B', backgroundColor: '#FEF3C7', color: '#92400E' }}>Unpublish Series to Review</button>
+                        )}
+                      </>
+                    ) : (
+                      <button type="button" onClick={() => setSeriesActionsOpen((value) => !value)} style={{ height: '30px', padding: '0 10px', border: '1px solid #FED7AA', borderRadius: '6px', backgroundColor: '#ffffff', color: '#E8722A', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}>Story Actions ▾</button>
+                    )}
+                    {!selectedIsSeries && seriesActionsOpen && (
                       <div style={{ position: 'absolute', right: 0, top: '36px', zIndex: 18, minWidth: '190px', padding: '6px', borderRadius: '8px', backgroundColor: '#ffffff', border: '1px solid #E5E7EB', boxShadow: '0 10px 24px rgba(15,23,42,0.16)' }}>
                         <button type="button" onClick={() => { if (selectedGroup.type === 'series') approveAllReady(selectedGroup); setSeriesActionsOpen(false) }} style={{ width: '100%', border: 'none', background: 'transparent', padding: '8px 10px', textAlign: 'left', color: '#374151', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>Approve All for Later</button>
                         {selectedGroup.type === 'series' && selectedGroup.stories.some(isPublishedToApp) && (
@@ -3237,45 +3258,34 @@ export default function AdminStoriesPage() {
                     {selectedIsSeries && <span style={{ color: '#6B7280', fontSize: '10px', borderRadius: '999px', padding: '4px 8px', backgroundColor: '#F3F4F6' }}>✓ {selectedPresent} Present</span>}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                    {activePipelineTab === 'published' && selectedGroup.type === 'series' && selectedIsSeries && selectedGroup.stories.some(isPublishedToApp) && (
-                      <button type="button" onClick={() => requestMoveSeriesToReadyForReview(selectedGroup)} style={{ border: '1px solid #F59E0B', backgroundColor: '#FEF3C7', color: '#92400E', borderRadius: '6px', padding: '7px 10px', minHeight: '30px', fontSize: '11px', lineHeight: 1.15, fontWeight: 900, cursor: 'pointer' }}>
-                        Move Series to Ready for Review
-                      </button>
-                    )}
                     <button type="button" onClick={() => console.log('view series overview', selectedGroup.key)} style={{ border: 'none', background: 'transparent', color: '#E8722A', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}>View Series Overview</button>
                   </div>
                 </div>
 
                 <div className="approval-desktop-episodes" style={{ marginTop: '10px', overflowX: 'auto' }}>
-                  <table style={{ width: '100%', minWidth: '960px', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+                  <table style={{ width: '100%', minWidth: '760px', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
                     <colgroup>
-                      <col style={{ width: '6%' }} />
-                      <col style={{ width: '20%' }} />
                       <col style={{ width: '12%' }} />
-                      <col style={{ width: '7%' }} />
-                      <col style={{ width: '13%' }} />
-                      <col style={{ width: '10%' }} />
-                      <col style={{ width: '32%' }} />
+                      <col style={{ width: '48%' }} />
+                      <col style={{ width: '12%' }} />
+                      <col style={{ width: '28%' }} />
                     </colgroup>
                     <thead>
                       <tr style={{ height: '36px', backgroundColor: '#F9FAFB' }}>
-                        {['Episode', 'Title', 'Narrator', 'Duration', 'Workflow State', 'Standard', 'Actions'].map((head) => (
-                          <th key={head} style={{ padding: '0 10px', color: '#6B7280', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', textAlign: head === 'Actions' ? 'right' : 'left' }}>{head}</th>
+                        {['Episode #', 'Cover + Title', 'Duration', 'Episode Actions'].map((head) => (
+                          <th key={head} style={{ padding: '0 10px', color: '#6B7280', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', textAlign: head === 'Episode Actions' ? 'right' : 'left' }}>{head}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
                       {selectedStories.map((story) => {
-                        const state = effectiveWorkflowState(story)
-                        const lane = visualWorkflowLane(story)
-                        const colors = WORKFLOW_COLORS[lane]
-                        const narratorName = narratorLabel(story)
                         const storyType = (story as any).story_type || 'story'
                         const audioReady = Boolean(story.audio_url || story.story_audio_url || story.audio_ready || story.story_audio_ready)
                         const isAffectedRepairEpisode = visualWorkflowLane(story) === 'repair_shop'
                         const isNeutralInRepairView = activePipelineTab === 'repair_shop' && !isAffectedRepairEpisode
                         const lastRepairIssue = firstRepairIssueLabel(story.repair_checklist)
                         const markedForDeletion = markedForDeletionIds[story.id]
+                        const coverUrl = episodeCoverUrl(story)
                         return (
                           <Fragment key={story.id}>
                             <tr style={{
@@ -3287,39 +3297,35 @@ export default function AdminStoriesPage() {
                             }}>
                               <td style={{ padding: '10px', color: '#1F2937', fontSize: '18px', fontWeight: 800 }}>{story.episode_number || '-'}</td>
                               <td style={{ padding: '10px', minWidth: 0 }}>
-                                <div style={{ color: '#1F2937', fontSize: '13px', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{story.episode_title || story.title}</div>
-                                <div style={{ color: '#9CA3AF', fontSize: '10px', marginTop: '4px' }}>{selectedIsSeries ? `Episode ${story.episode_number || '-'}` : 'Standalone story'}</div>
-                                {effectiveWorkflowState(story) === 'ready_for_review' && lastRepairIssue && (
-                                  <div style={{ display: 'inline-flex', marginTop: '5px', padding: '3px 7px', borderRadius: '999px', backgroundColor: '#ffedd5', color: '#9a3412', fontSize: '10px', fontWeight: 800 }}>
-                                    Returned from Repair • Last repair: {lastRepairIssue}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                                  <div style={{ width: '40px', height: '40px', borderRadius: '4px', overflow: 'hidden', backgroundColor: '#E5E7EB', flex: '0 0 auto' }}>
+                                    {coverUrl && <img src={coverUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
                                   </div>
-                                )}
-                                {markedForDeletion && (
-                                  <div style={{ display: 'inline-flex', marginTop: '5px', padding: '3px 7px', borderRadius: '999px', backgroundColor: '#E5E7EB', color: '#374151', fontSize: '10px', fontWeight: 900 }}>
-                                    Marked for deletion review
+                                  <div style={{ minWidth: 0 }}>
+                                    <div style={{ color: '#1F2937', fontSize: '13px', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{story.episode_title || story.title}</div>
+                                    {audioReady && <div style={{ color: '#059669', fontSize: '10px', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}><span style={{ width: '6px', height: '6px', borderRadius: '999px', backgroundColor: '#10B981' }} />Audio ready {storyType ? `(${storyType})` : ''}</div>}
+                                    {isAffectedRepairEpisode && <div style={{ color: '#9A3412', fontSize: '10px', fontWeight: 800, marginTop: '4px' }}>This episode is in Repair Shop</div>}
+                                    {effectiveWorkflowState(story) === 'ready_for_review' && lastRepairIssue && (
+                                      <div style={{ display: 'inline-flex', marginTop: '5px', padding: '3px 7px', borderRadius: '999px', backgroundColor: '#ffedd5', color: '#9a3412', fontSize: '10px', fontWeight: 800 }}>
+                                        Returned from Repair • Last repair: {lastRepairIssue}
+                                      </div>
+                                    )}
+                                    {markedForDeletion && (
+                                      <div style={{ display: 'inline-flex', marginTop: '5px', padding: '3px 7px', borderRadius: '999px', backgroundColor: '#E5E7EB', color: '#374151', fontSize: '10px', fontWeight: 900 }}>
+                                        Marked for deletion review
+                                      </div>
+                                    )}
                                   </div>
-                                )}
-                              </td>
-                              <td style={{ padding: '10px' }}>
-                                <div style={{ color: '#1F2937', fontSize: '12px' }}>{narratorName}</div>
-                                {audioReady && <div style={{ color: '#059669', fontSize: '10px', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}><span style={{ width: '6px', height: '6px', borderRadius: '999px', backgroundColor: '#10B981' }} />Audio ready {storyType ? `(${storyType})` : ''}</div>}
-                                {isAffectedRepairEpisode && <div style={{ color: '#9A3412', fontSize: '10px', fontWeight: 800, marginTop: '4px' }}>This episode is in Repair Shop</div>}
+                                </div>
                               </td>
                               <td style={{ padding: '10px', color: '#374151', fontSize: '12px' }}>{story.duration_mins ? `${story.duration_mins}m` : '—'}</td>
-                              <td style={{ padding: '10px' }}>
-                                <span style={{ display: 'inline-flex', borderRadius: '999px', padding: '4px 10px', backgroundColor: colors.bg, color: colors.text, fontSize: '11px', fontWeight: 800 }}>{workflowDisplayLabel(state)}</span>
-                                <div style={{ marginTop: '4px', color: '#9CA3AF', fontSize: '9px' }}>{isAffectedRepairEpisode ? repairSubstate(story) : workflowSubLabel(state)}</div>
-                              </td>
-                              <td style={{ padding: '10px' }}>
-                                <ProductionStandardBadge story={story} />
-                              </td>
                               <td style={{ padding: '8px', textAlign: 'right', verticalAlign: 'middle' }}>
-                                {renderEpisodeActions(story)}
+                                {renderEpisodeReviewActions(story)}
                               </td>
                             </tr>
                             {repairOpenForStoryId === story.id && (
                               <tr key={`${story.id}:repair`} style={{ borderBottom: '1px solid #F3F4F6' }}>
-                                <td colSpan={7} style={{ padding: '0 10px 12px 10px' }}>
+                                <td colSpan={4} style={{ padding: '0 10px 12px 10px' }}>
                                   <RepairChecklistPanel
                                     title={story.title}
                                     episodeNumber={story.episode_number || story.series_number}
@@ -3357,23 +3363,28 @@ export default function AdminStoriesPage() {
                     const state = effectiveWorkflowState(story)
                     const lane = visualWorkflowLane(story)
                     const colors = WORKFLOW_COLORS[lane]
-                    const narratorName = narratorLabel(story)
                     const storyType = (story as any).story_type || 'story'
                     const audioReady = Boolean(story.audio_url || story.story_audio_url || story.audio_ready || story.story_audio_ready)
                     const isAffectedRepairEpisode = visualWorkflowLane(story) === 'repair_shop'
                     const lastRepairIssue = firstRepairIssueLabel(story.repair_checklist)
                     const markedForDeletion = markedForDeletionIds[story.id]
+                    const coverUrl = episodeCoverUrl(story)
                     return (
                       <div key={`mobile:${story.id}`} className="approval-mobile-episode-card" style={{
                         boxShadow: markedForDeletion ? 'inset 3px 0 0 #6B7280' : isAffectedRepairEpisode ? 'inset 3px 0 0 #F97316' : undefined,
                         backgroundColor: markedForDeletion ? '#F3F4F6' : '#ffffff',
                       }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', alignItems: 'flex-start' }}>
-                          <div style={{ minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                            <div style={{ width: '40px', height: '40px', borderRadius: '4px', overflow: 'hidden', backgroundColor: '#E5E7EB', flex: '0 0 auto' }}>
+                              {coverUrl && <img src={coverUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                            </div>
+                            <div style={{ minWidth: 0 }}>
                             <div style={{ color: '#9CA3AF', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase' }}>
                               {selectedIsSeries ? `Episode ${story.episode_number || '-'}` : 'Standalone story'}
                             </div>
                             <div className="approval-mobile-episode-title" style={{ marginTop: '4px' }}>{story.episode_title || story.title}</div>
+                            </div>
                           </div>
                           <span style={{ flex: '0 0 auto', display: 'inline-flex', borderRadius: '999px', padding: '5px 9px', backgroundColor: colors.bg, color: colors.text, fontSize: '11px', fontWeight: 900 }}>
                             {workflowDisplayLabel(state)}
@@ -3391,10 +3402,6 @@ export default function AdminStoriesPage() {
                         )}
                         <div className="approval-mobile-meta-grid">
                           <div className="approval-mobile-meta-box">
-                            <div style={{ color: '#6B7280', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase' }}>Narrator</div>
-                            <div style={{ marginTop: '4px', color: '#111827', fontSize: '13px', fontWeight: 800, overflowWrap: 'anywhere' }}>{narratorName}</div>
-                          </div>
-                          <div className="approval-mobile-meta-box">
                             <div style={{ color: '#6B7280', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase' }}>Duration</div>
                             <div style={{ marginTop: '4px', color: '#111827', fontSize: '13px', fontWeight: 800 }}>{story.duration_mins ? `${story.duration_mins}m` : '-'}</div>
                           </div>
@@ -3404,16 +3411,12 @@ export default function AdminStoriesPage() {
                               {audioReady ? `Ready${storyType ? ` (${storyType})` : ''}` : 'Missing'}
                             </div>
                           </div>
-                          <div className="approval-mobile-meta-box">
-                            <div style={{ color: '#6B7280', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase' }}>Standard</div>
-                            <div style={{ marginTop: '5px' }}><ProductionStandardBadge story={story} /></div>
-                          </div>
                         </div>
                         <div style={{ marginTop: '8px', color: '#9CA3AF', fontSize: '11px' }}>
                           {isAffectedRepairEpisode ? repairSubstate(story) : workflowSubLabel(state)}
                         </div>
                         <div className="approval-mobile-actions">
-                          {renderEpisodeActions(story)}
+                          {renderEpisodeReviewActions(story)}
                         </div>
                         {repairOpenForStoryId === story.id && (
                           <RepairChecklistPanel
