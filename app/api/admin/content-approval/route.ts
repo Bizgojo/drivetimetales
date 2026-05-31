@@ -213,7 +213,7 @@ function episodeBlockingReasons(story: StoryRow) {
   if (story.published_on !== null) reasons.push('published_on is set, expected null')
   if (displayReviewStatus(story) !== 'pending') reasons.push(`review_status is ${displayReviewStatus(story)}, expected pending`)
   if (!bool(story.audio_url)) reasons.push('missing audio_url')
-  if (!String(story.audio_url || '').includes('/final_mix.mp3')) reasons.push('missing final_mix audio_url')
+  else if (!String(story.audio_url).includes('/final_mix.mp3') && story.workflow_state !== 'ready_for_review') reasons.push('audio_url does not contain /final_mix.mp3')
   if (!bool(story.story_audio_url)) reasons.push('missing story_audio_url')
   if (!bool(story.cover_url)) reasons.push('missing cover_url')
   if (!bool(story.prose_text)) reasons.push('missing prose_text')
