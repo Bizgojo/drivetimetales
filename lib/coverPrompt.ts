@@ -19,6 +19,17 @@ type CoverPromptParams = {
   coverFeedback?: string
 }
 
+const ENDLESS_TALES_COVER_STANDARD = [
+  'Endless Tales Cover Standard:',
+  'thumbnail-safe at phone size and readable at 100x100 px',
+  'brighter lighting by default with clear subject or object visibility',
+  'strong readable silhouette and strong contrast without crushing blacks',
+  'avoid murky low-light compositions, black-shadow-heavy scenes, and underexposed noir grading',
+  'avoid faces or important objects disappearing into shadow',
+  'cinematic lighting is welcome, but it must not be underexposed',
+  'mystery covers may be moody, but the important visual element must still be clear',
+].join(' ')
+
 function cleanInput(value: string | undefined, max: number): string {
   return (value || '').replace(/\s+/g, ' ').trim().slice(0, max)
 }
@@ -50,6 +61,20 @@ function feedbackLightingOverride(coverFeedback: string): string {
     'hard to see',
     'underexposed',
     'shadowy',
+    'shadow',
+    'shadows',
+    'black',
+    'dim',
+    'gloomy',
+    'murky',
+    'unclear',
+    'can\'t tell',
+    "can't see it",
+    'hard to read',
+    'too moody',
+    'lost in shadow',
+    'low light',
+    'low-light',
     'face clearly visible',
     'glows brighter',
     'glow brighter',
@@ -57,7 +82,7 @@ function feedbackLightingOverride(coverFeedback: string): string {
 
   if (!asksForBrighter) return ''
 
-  return 'Editor feedback says the cover is too dark or unclear: aggressively brighten the image while preserving cinematic realism, enforce a minimum brightness floor, make the subject well-exposed, use a clearer key light, lift the midtones strongly, brighten skin tones, make the key object glow brighter when appropriate, add stronger edge/rim lighting, reduce deep-black coverage, and create stronger separation from the background.'
+  return 'Editor feedback says the cover is too dark or unclear: make the image significantly brighter while preserving cinematic realism, increase face/object visibility, reduce black shadows, use warmer or clearer key light, lift the midtones strongly, brighten skin tones, improve thumbnail readability, make the key object glow brighter when appropriate, add stronger edge/rim lighting, reduce deep-black coverage, and do not merely create another dark scene.'
 }
 
 function feedbackCompositionOverride(coverFeedback: string): string {
@@ -184,9 +209,9 @@ export function buildCoverDirectionBrief(params: CoverPromptParams): CoverDirect
     emotionalPromise: inferEmotionalPromise(genre, tone, concept),
     keyObjectSymbol: inferKeyObjectSymbol(concept || params.script, params.title),
     settingBackground: inferSettingBackground(genre, concept || params.script),
-    lightingDirection: lightingOverride || 'well-exposed cinematic image with a minimum brightness floor, brighter cinematic key lighting, lifted midtones, strong edge/rim lighting, clean highlight separation, brighter skin tones, visible key object glow when appropriate, and high contrast without muddy black shadows or large dark empty areas',
+    lightingDirection: lightingOverride || 'well-exposed cinematic image with a hard minimum brightness floor; the cover must remain readable at 120px thumbnail size; use brighter cinematic key lighting, strongly lifted midtones, strong edge/rim lighting, clean highlight separation, brighter skin tones, visible key object glow when appropriate, and high contrast without muddy black shadows or large dark empty areas; prefer over-exposed-cinematic over under-exposed-cinematic',
     compositionCameraDistance: compositionOverride || 'clear foreground subject in close medium shot or close-up; the main face must be clearly visible without zooming when a person is present, and the key object must be readable; both must occupy meaningful visual area; avoid tiny distant silhouettes; focal point centered or in the upper half of the square frame',
-    thumbnailReadabilityInstruction: 'optimized for small streaming-app thumbnail readability and must remain readable on a phone-sized streaming thumbnail at about 120px height: simple shape language, one dominant focal point, strong subject-background separation, no tiny critical details',
+    thumbnailReadabilityInstruction: 'optimized for small streaming-app thumbnail readability and must remain readable on a phone-sized streaming thumbnail at about 120px height and at 100x100 px: simple shape language, one dominant focal point, strong subject-background separation, no tiny critical details',
     whatToAvoid: [
       'generic noir fog unless the story specifically requires it',
       'underexposed noir darkness',
@@ -209,8 +234,8 @@ export function buildCoverPrompt(params: CoverPromptParams): string {
   const { title, author, genre, concept, tone, coverFeedback } = params
 
   const genreStyle: Record<string, string> = {
-    thriller: 'controlled shadows, bright key light, well-exposed close-ups, cinematic dread with clear subject visibility — like a premium suspense novel',
-    mystery: 'moody but well-exposed atmospheric lighting, hidden symbols, clear clue-forward composition — like Da Vinci Code or Angels & Demons',
+    thriller: 'bright controlled lighting, tight well-exposed close-ups, cinematic dread with exceptional subject clarity — like a premium thriller hardcover; darkness may appear at the edges but the subject must have a strong bright key light',
+    mystery: 'atmospheric and moody, but brightness-floor enforced: key subject and clue-objects must be clearly readable at thumbnail size, no underexposed noir darkness allowed even for mystery — like Da Vinci Code or Angels & Demons; moody lighting is acceptable but must be bright enough to read',
     horror: 'gothic atmosphere, eerie glows, unsettling imagery, visible focal subject, and lifted midtones — like Stephen King hardcovers',
     romance: 'warm intimate lighting, emotional depth, soft bokeh — like a Nora Roberts novel',
     'sci-fi': 'vast cosmic scale, luminous practical light, futuristic atmosphere with clear readable forms — like The Martian or Dune',
@@ -264,6 +289,7 @@ export function buildCoverPrompt(params: CoverPromptParams): string {
   return (
     `A thumbnail-first, story-specific background image for an audiobook cover, optimized for small streaming-app thumbnail readability. ` +
     `Hard priority: the cover must remain instantly readable at about 120px height while someone is scrolling. ` +
+    `${ENDLESS_TALES_COVER_STANDARD} ` +
     `Genre: ${genre}${toneDesc}. ` +
     `Title reference: "${title}" by ${author}. Do not render this text. ` +
     `Visual style: ${styleRef}. ` +
@@ -280,7 +306,7 @@ export function buildCoverPrompt(params: CoverPromptParams): string {
     `Avoid: ${directionBrief.whatToAvoid.join('; ')}. ` +
     `Square format, fills entire canvas. ` +
     `Visual hierarchy must be obvious in one glance: who or what matters, the emotional focus, and the key object or symbol. ` +
-    `Hard rendering floor: the image must be well-exposed with a minimum brightness floor; reduce deep-black coverage and avoid full-frame darkness. ` +
+    `Hard rendering floor: the image must be well-exposed with a minimum brightness floor; reduce deep-black coverage, avoid full-frame darkness, and keep the subject readable at 100x100 px. ` +
     `Bright cinematic key lighting, stronger midtone lift, strong edge/rim lighting, brighter skin tones, brighter key object glow when appropriate, professional composition, strong contrast, readable thumbnail design. ` +
     `Use a large clear foreground subject with a recognizable face, a clearly lit key object, or both; faces must be clearly visible without zooming. ` +
     `The main subject must occupy meaningful visual area and should not be a tiny distant silhouette. ` +

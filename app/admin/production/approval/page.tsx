@@ -107,10 +107,9 @@ type EpisodeRepairMark = {
   coverNote: string
   coverOpen: boolean
   candidateCoverUrl: string
-  candidatePromptPreview: string
   coverGenerating: boolean
-  coverUploading: boolean
-  coverPreviewVersion: number
+  lastCoverInstruction: string
+  coverAttempt: number
   listenState: 'unplayed' | 'in_progress' | 'listened'
   reviewState: 'unreviewed' | 'no_repair' | 'needs_repair' | 'finished'
 }
@@ -1685,10 +1684,9 @@ function episodeRepairMarkDefault(): EpisodeRepairMark {
     coverNote: '',
     coverOpen: false,
     candidateCoverUrl: '',
-    candidatePromptPreview: '',
     coverGenerating: false,
-    coverUploading: false,
-    coverPreviewVersion: 0,
+    lastCoverInstruction: '',
+    coverAttempt: 0,
     listenState: 'unplayed',
     reviewState: 'unreviewed',
   }
@@ -2646,18 +2644,29 @@ export default function AdminStoriesPage() {
     }))
   }
 
-  function updateEpisodeCoverMark(storyId: string, patch: Partial<EpisodeRepairMark>) {
-    setEpisodeRepairMarks((prev) => ({
-      ...prev,
-      [storyId]: { ...(prev[storyId] || episodeRepairMarkDefault()), ...patch, coverOpen: patch.coverOpen ?? true },
-    }))
-  }
-
-  async function generateCoverForEpisode(story: Story) {
+  async function generateCoverForEpisode(story: Story, options?: { isRetry?: boolean }) {
     const mark = episodeRepairMark(story.id)
+    const nextAttempt = mark.coverAttempt + 1
+    const baseInstruction = mark.coverNote.trim()
+    const retry = Boolean(options?.isRetry || mark.candidateCoverUrl)
+    const instructionChanged = baseInstruction !== mark.lastCoverInstruction
+    const variationInstruction = retry
+      ? instructionChanged
+        ? 'Create a meaningfully different candidate using the revised instruction, with a different lighting balance, different crop, clearer focal subject, and stronger foreground/background separation.'
+        : 'Create a visibly different version with brighter lighting, clearer subject, stronger contrast, less darkness, a different crop, clearer focal subject, and stronger foreground/background separation.'
+      : ''
+    const coverStandard = 'Endless Tales Cover Standard: thumbnail-safe at phone size; brighter lighting by default; clear subject or object; strong readable silhouette; strong contrast without crushing blacks; avoid murky low-light compositions; avoid faces or important objects disappearing into shadow; use cinematic lighting, but not underexposed lighting; important visual element must be clear at 100x100 px.'
+
+    const effectiveFeedback = [
+      baseInstruction,
+      variationInstruction,
+      coverStandard,
+      retry ? `Candidate variation attempt ${nextAttempt}: do not repeat the previous composition.` : '',
+    ].filter(Boolean).join(' ')
+
     setEpisodeRepairMarks((prev) => ({
       ...prev,
-      [story.id]: { ...(prev[story.id] || episodeRepairMarkDefault()), coverGenerating: true, candidateCoverUrl: '' },
+      [story.id]: { ...(prev[story.id] || episodeRepairMarkDefault()), coverGenerating: true, candidateCoverUrl: '', coverAttempt: nextAttempt },
     }))
     try {
       const res = await fetch('/api/asc3/regenerate-cover', {
@@ -2665,7 +2674,7 @@ export default function AdminStoriesPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           storyId: story.id,
-          coverFeedback: mark.coverNote.trim() || undefined,
+          coverFeedback: effectiveFeedback || undefined,
           candidateOnly: true,
         }),
       })
@@ -2675,7 +2684,7 @@ export default function AdminStoriesPage() {
       }
       setEpisodeRepairMarks((prev) => ({
         ...prev,
-        [story.id]: { ...(prev[story.id] || episodeRepairMarkDefault()), coverGenerating: false, candidateCoverUrl: data.candidateCoverUrl },
+        [story.id]: { ...(prev[story.id] || episodeRepairMarkDefault()), coverGenerating: false, candidateCoverUrl: data.candidateCoverUrl, lastCoverInstruction: baseInstruction, coverAttempt: nextAttempt },
       }))
     } catch (err) {
       setEpisodeRepairMarks((prev) => ({
@@ -2696,94 +2705,11 @@ export default function AdminStoriesPage() {
       return
     }
     setCoverUrlOverrides((prev) => ({ ...prev, [story.id]: candidateUrl }))
+    setStories((prev) => prev.map((item) => item.id === story.id ? { ...item, cover_url: candidateUrl } : item))
     setEpisodeRepairMarks((prev) => ({
       ...prev,
-      [story.id]: { ...(prev[story.id] || episodeRepairMarkDefault()), candidateCoverUrl: '', coverOpen: false },
+      [story.id]: { ...(prev[story.id] || episodeRepairMarkDefault()), candidateCoverUrl: '', coverOpen: false, coverGenerating: false },
     }))
-  }
-
-  async function generateEpisodeCoverCandidate(story: Story) {
-    const mark = episodeRepairMark(story.id)
-    if (mark.coverGenerating) return
-    updateEpisodeCoverMark(story.id, { coverGenerating: true })
-    try {
-      const res = await fetch('/api/asc3/regenerate-cover', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          storyId: story.id,
-          candidateOnly: true,
-          coverFeedback: mark.coverNote.trim() || undefined,
-        }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok || !data?.success || !data?.candidateCoverUrl) {
-        throw new Error(data?.error || 'Cover candidate generation failed')
-      }
-      updateEpisodeCoverMark(story.id, {
-        candidateCoverUrl: data.candidateCoverUrl,
-        candidatePromptPreview: data.promptPreview || '',
-        coverGenerating: false,
-      })
-    } catch (err) {
-      updateEpisodeCoverMark(story.id, { coverGenerating: false })
-      alert('Cover generation failed: ' + (err instanceof Error ? err.message : String(err)))
-    }
-  }
-
-  async function uploadEpisodeCoverCandidate(story: Story, file: File | undefined) {
-    if (!file) return
-    updateEpisodeCoverMark(story.id, { coverUploading: true })
-    try {
-      const ext = file.name.split('.').pop() || 'png'
-      const path = `Covers/candidates/${story.id}-${Date.now()}.${ext}`
-      const { error: uploadError } = await supabase.storage
-        .from('audio-stories')
-        .upload(path, file, { upsert: true })
-      if (uploadError) throw uploadError
-      const { data } = supabase.storage.from('audio-stories').getPublicUrl(path)
-      updateEpisodeCoverMark(story.id, {
-        candidateCoverUrl: data.publicUrl,
-        candidatePromptPreview: '',
-        coverUploading: false,
-      })
-    } catch (err) {
-      updateEpisodeCoverMark(story.id, { coverUploading: false })
-      alert('Cover upload failed: ' + String(err))
-    }
-  }
-
-  async function acceptEpisodeCoverCandidate(story: Story) {
-    const mark = episodeRepairMark(story.id)
-    if (!mark.candidateCoverUrl) return
-    try {
-      const { data, error } = await supabase
-        .from('stories')
-        .update({ cover_url: mark.candidateCoverUrl })
-        .eq('id', story.id)
-        .select('id,cover_url')
-      if (error) throw error
-      const savedCoverUrl = String(data?.[0]?.cover_url || mark.candidateCoverUrl)
-      setStories((prev) => prev.map((item) => item.id === story.id ? { ...item, cover_url: savedCoverUrl } : item))
-      updateEpisodeCoverMark(story.id, {
-        coverOpen: false,
-        candidateCoverUrl: '',
-        candidatePromptPreview: '',
-        coverPreviewVersion: mark.coverPreviewVersion + 1,
-      })
-    } catch (err) {
-      alert('Cover save failed: ' + (err instanceof Error ? err.message : String(err)))
-    }
-  }
-
-  function closeEpisodeCoverPanel(storyId: string) {
-    updateEpisodeCoverMark(storyId, {
-      coverOpen: false,
-      candidateCoverUrl: '',
-      candidatePromptPreview: '',
-      coverGenerating: false,
-      coverUploading: false,
-    })
   }
 
   function toggleEpisodeRepairIssue(storyId: string, issue: { id: string; group: RepairGroup }) {
@@ -3251,14 +3177,27 @@ export default function AdminStoriesPage() {
                 </div>
               </div>
             </div>
+            <label style={{ color: '#374151', fontSize: '11px', fontWeight: 900 }}>
+              Cover instructions
+              <textarea
+                value={coverNote}
+                onChange={(event) => setEpisodeCoverNote(story.id, event.target.value)}
+                placeholder="Describe the cover change you want..."
+                rows={2}
+                style={{ marginTop: '5px', width: '100%', resize: 'vertical', border: '1px solid #E5E7EB', borderRadius: '6px', padding: '7px 8px', color: '#111827', backgroundColor: '#ffffff', fontSize: '12px', lineHeight: 1.4 }}
+              />
+            </label>
+            <div style={{ color: '#9CA3AF', fontSize: '11px', marginTop: '4px' }}>
+              Revise the instruction, then click Try Again.
+            </div>
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               <button type="button" onClick={() => acceptCoverForEpisode(story, candidateCoverUrl)} style={actionButtonStyle('success')}>Accept New Cover</button>
-              <button type="button" onClick={() => generateCoverForEpisode(story)} style={mutedButtonStyle}>Try Again</button>
+              <button type="button" onClick={() => generateCoverForEpisode(story, { isRetry: true })} style={mutedButtonStyle}>Try Again</button>
               <button
                 type="button"
                 onClick={() => setEpisodeRepairMarks((prev) => ({
                   ...prev,
-                  [story.id]: { ...(prev[story.id] || episodeRepairMarkDefault()), candidateCoverUrl: '', coverOpen: true },
+                  [story.id]: { ...(prev[story.id] || episodeRepairMarkDefault()), candidateCoverUrl: '', coverOpen: false, coverGenerating: false },
                 }))}
                 style={mutedButtonStyle}
               >
