@@ -18,6 +18,16 @@ const ADMIN_EMAILS = new Set([
   'm.postlewaite@gmail.com',
 ])
 
+const QUEUE_BLOCKING_WORKFLOW_STATES = new Set([
+  'repair_queue',
+  'being_repaired',
+  'ready_for_review',
+  'approved_ready',
+  'published',
+  'cold_storage',
+  'unpublished_library',
+])
+
 type StoryRow = {
   id: string
   title: string | null
@@ -140,6 +150,15 @@ function clean(value: unknown) {
   return String(value || '').trim()
 }
 
+function normalizedTitleKey(value: unknown) {
+  return clean(value).toLowerCase().replace(/\s+/g, ' ')
+}
+
+function timestampMs(value: string | null | undefined) {
+  const ms = Date.parse(value || '')
+  return Number.isFinite(ms) ? ms : 0
+}
+
 function numberOrNull(value: unknown) {
   const number = Number(value)
   return Number.isFinite(number) ? number : null
@@ -223,6 +242,85 @@ function queuePayload(queueItem: QueueRow | null | undefined): ConsoleItem['queu
     source: clean(queueItem.source || queueItem.author_target) || null,
     notes: clean(queueItem.notes) || null,
   }
+}
+
+function isNewerQueueRow(candidate: QueueRow, current: QueueRow) {
+  const candidateUpdated = timestampMs(candidate.updated_at)
+  const currentUpdated = timestampMs(current.updated_at)
+  if (candidateUpdated || currentUpdated) return candidateUpdated > currentUpdated
+
+  const candidateCreated = timestampMs(candidate.created_at)
+  const currentCreated = timestampMs(current.created_at)
+  if (candidateCreated || currentCreated) return candidateCreated > currentCreated
+
+  return false
+}
+
+function dedupeQueueRows(queueRows: QueueRow[]) {
+  const byTitle = new Map<string, QueueRow>()
+  const untitledRows: QueueRow[] = []
+
+  for (const queueRow of queueRows) {
+    const titleKey = normalizedTitleKey(queueRow.title)
+    if (!titleKey) {
+      untitledRows.push(queueRow)
+      continue
+    }
+
+    const existing = byTitle.get(titleKey)
+    if (!existing || isNewerQueueRow(queueRow, existing)) {
+      byTitle.set(titleKey, queueRow)
+    }
+  }
+
+  return [...byTitle.values(), ...untitledRows]
+}
+
+function storyBlocksQueue(story: StoryRow) {
+  const workflowState = clean(story.workflow_state).toLowerCase()
+  const status = clean(story.status).toLowerCase()
+  return QUEUE_BLOCKING_WORKFLOW_STATES.has(workflowState) || status === 'published'
+}
+
+function queueBlockingTitleKeys(stories: StoryRow[]) {
+  const titleKeys = new Set<string>()
+
+  for (const story of stories) {
+    if (!storyBlocksQueue(story)) continue
+
+    const storyTitleKey = normalizedTitleKey(story.title)
+    if (storyTitleKey) titleKeys.add(storyTitleKey)
+
+    const seriesTitleKey = normalizedTitleKey(story.series_name)
+    if (seriesTitleKey) titleKeys.add(seriesTitleKey)
+  }
+
+  return titleKeys
+}
+
+function filterQueueRowsAlreadyInWorkflow(queueRows: QueueRow[], stories: StoryRow[]) {
+  const blockingTitleKeys = queueBlockingTitleKeys(stories)
+  const visibleRows: QueueRow[] = []
+  const excludedRows: QueueRow[] = []
+
+  for (const queueRow of queueRows) {
+    const titleKey = normalizedTitleKey(queueRow.title)
+    if (titleKey && blockingTitleKeys.has(titleKey)) {
+      excludedRows.push(queueRow)
+      continue
+    }
+
+    visibleRows.push(queueRow)
+  }
+
+  if (excludedRows.length > 0) {
+    console.info('[production-console] Filtered queue items already represented in story workflow', {
+      excludedCount: excludedRows.length,
+      titles: Array.from(new Set(excludedRows.map((row) => clean(row.title)).filter(Boolean))).slice(0, 10),
+    })
+  }
+
+  return visibleRows
 }
 
 function queueItemToConsoleItem(queueItem: QueueRow): ConsoleItem {
@@ -439,6 +537,7 @@ export async function GET(_req: NextRequest) {
     const jobs = (jobsResult.data || []) as ProductionJobRow[]
     const queueRows = (queueResult.error ? [] : (queueResult.data || [])) as QueueRow[]
     const queueById = new Map(queueRows.map((item) => [item.id, item]))
+    const visibleQueueRows = filterQueueRowsAlreadyInWorkflow(dedupeQueueRows(queueRows), stories)
     const repairStories = stories.filter((story) => story.workflow_state === 'repair_queue' || story.workflow_state === 'being_repaired')
     const storageStories = stories.filter((story) => story.workflow_state === 'cold_storage' || story.workflow_state === 'unpublished_library')
     const incubatorStories = storageStories.filter(isIncubatorTagged)
@@ -455,7 +554,7 @@ export async function GET(_req: NextRequest) {
       inProductionItems: Array.from(inProductionByKey.values()),
       coldStorageItems: itemsForStories(coldStories, jobs),
       incubatorItems: itemsForStories(incubatorStories, jobs),
-      queueItems: queueRows.map(queueItemToConsoleItem),
+      queueItems: visibleQueueRows.map(queueItemToConsoleItem),
     })
   } catch (err: any) {
     console.error('[production-console] GET failed:', err)
