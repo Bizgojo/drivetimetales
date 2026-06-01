@@ -389,7 +389,7 @@ export async function POST(req: NextRequest) {
     for (const segment of segmentsToAudit) {
       const metrics = await analyzeAudioLoudness(segment.path)
       console.log(`  Segment loudness ${segment.name}: ${metrics.input_i.toFixed(2)} LUFS, ${metrics.input_tp.toFixed(2)} dBTP`)
-      if (!Number.isFinite(metrics.input_i) || metrics.input_i < -22) {
+      if (!Number.isFinite(metrics.input_i) || metrics.input_i < -28) {
         buriedSegments.push({
           segment: segment.name,
           lufs: Number.isFinite(metrics.input_i) ? Number(metrics.input_i.toFixed(2)) : NaN,
@@ -401,7 +401,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         success: false,
         error: 'Buried narration segment detected before render',
-        thresholdLufs: -22,
+        thresholdLufs: -28,
         buriedSegments,
       }, { status: 422 })
     }
