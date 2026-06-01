@@ -154,6 +154,13 @@ function normalizedTitleKey(value: unknown) {
   return clean(value).toLowerCase().replace(/\s+/g, ' ')
 }
 
+function extractQueueCoreTitle(value: string | null | undefined): string {
+  let text = clean(value)
+  text = text.replace(/^\[.*?\]\s*/i, '')
+  text = text.replace(/\s*[—–-]+\s*\d+\s*episodes?\s*$/i, '')
+  return text.toLowerCase().trim().replace(/\s+/g, ' ')
+}
+
 function timestampMs(value: string | null | undefined) {
   const ms = Date.parse(value || '')
   return Number.isFinite(ms) ? ms : 0
@@ -261,7 +268,7 @@ function dedupeQueueRows(queueRows: QueueRow[]) {
   const untitledRows: QueueRow[] = []
 
   for (const queueRow of queueRows) {
-    const titleKey = normalizedTitleKey(queueRow.title)
+    const titleKey = extractQueueCoreTitle(queueRow.title)
     if (!titleKey) {
       untitledRows.push(queueRow)
       continue
@@ -304,7 +311,7 @@ function filterQueueRowsAlreadyInWorkflow(queueRows: QueueRow[], stories: StoryR
   const excludedRows: QueueRow[] = []
 
   for (const queueRow of queueRows) {
-    const titleKey = normalizedTitleKey(queueRow.title)
+    const titleKey = extractQueueCoreTitle(queueRow.title)
     if (titleKey && blockingTitleKeys.has(titleKey)) {
       excludedRows.push(queueRow)
       continue
