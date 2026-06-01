@@ -220,7 +220,7 @@ function getSpokenSegmentNumbers(script: string): Set<number> {
     if (rawIdx < headerEndIdx && rawIdx !== firstAnnouncerIdx && rawIdx !== lastAnnouncerIdx) {
       if (trimmed.startsWith('NARRATOR:') || trimmed.startsWith('ANNOUNCER:')) return
     }
-    if (trimmed === '[BEAT]' || /^\[PAUSE:\d+\]$/.test(trimmed) || trimmed.startsWith('[SFX:')) {
+    if (trimmed === '[BEAT]' || trimmed === '[PAUSE]' || /^\[PAUSE:\d+\]$/.test(trimmed) || trimmed.startsWith('[SFX:')) {
       lineIndex += 1
       return
     }
