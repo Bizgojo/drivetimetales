@@ -39,6 +39,7 @@ type StoryRow = {
 
 type ProductionJobRow = {
   id: string
+  queue_item_id?: string | null
   story_id: string | null
   series_id: string | null
   status: string | null
@@ -47,6 +48,28 @@ type ProductionJobRow = {
   created_at: string | null
   state_json?: any
   error_json?: any
+}
+
+type QueueRow = {
+  id: string
+  story_id?: string | null
+  title?: string | null
+  premise?: string | null
+  setting?: string | null
+  primary_genre?: string | null
+  secondary_genre?: string | null
+  tertiary_genre?: string | null
+  duration?: string | null
+  author_target?: string | null
+  notes?: string | null
+  status?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+  total_episodes?: number | null
+  priority?: number | null
+  display_order?: number | null
+  sort_order?: number | null
+  source?: string | null
 }
 
 type ConsoleItem = {
@@ -71,6 +94,20 @@ type ConsoleItem = {
     currentStep: string | null
     updatedAt: string | null
   }>
+  queue?: {
+    id: string
+    title: string
+    genre: string | null
+    duration: string | null
+    episodeCount: number | null
+    status: string | null
+    priority: number | null
+    createdAt: string | null
+    updatedAt: string | null
+    brief: string | null
+    source: string | null
+    notes: string | null
+  } | null
 }
 
 function json(payload: Record<string, unknown>, status = 200) {
@@ -103,6 +140,11 @@ function clean(value: unknown) {
   return String(value || '').trim()
 }
 
+function numberOrNull(value: unknown) {
+  const number = Number(value)
+  return Number.isFinite(number) ? number : null
+}
+
 function episodeNumber(story: StoryRow) {
   const value = Number(story.episode_number)
   return Number.isFinite(value) && value > 0 ? value : null
@@ -133,6 +175,77 @@ function hasDocumentedRepair(stories: StoryRow[]) {
     const checklist = story.repair_checklist
     return Boolean(notes || (Array.isArray(checklist) && checklist.length > 0) || (checklist && typeof checklist === 'object' && Object.keys(checklist).length > 0))
   })
+}
+
+function isIncubatorTagged(story: StoryRow) {
+  return /\[INCUBATOR\]/i.test(String(story.review_notes || ''))
+}
+
+function queueEpisodeCount(queueItem: QueueRow) {
+  const explicit = numberOrNull(queueItem.total_episodes)
+  if (explicit && explicit > 0) return explicit
+  const notes = String(queueItem.notes || '')
+  const match = notes.match(/total\s+episodes\s*:\s*(\d+)/i)
+  return match ? Number(match[1]) : null
+}
+
+function queuePriority(queueItem: QueueRow) {
+  return numberOrNull(queueItem.priority) ?? numberOrNull(queueItem.display_order) ?? numberOrNull(queueItem.sort_order)
+}
+
+function queueGenre(queueItem: QueueRow) {
+  return [queueItem.primary_genre, queueItem.secondary_genre, queueItem.tertiary_genre]
+    .map(clean)
+    .filter(Boolean)
+    .join(' / ') || null
+}
+
+function queueBrief(queueItem: QueueRow) {
+  return [clean(queueItem.premise), clean(queueItem.setting)]
+    .filter(Boolean)
+    .join(' ')
+    .slice(0, 420) || null
+}
+
+function queuePayload(queueItem: QueueRow | null | undefined): ConsoleItem['queue'] {
+  if (!queueItem?.id) return null
+  return {
+    id: queueItem.id,
+    title: clean(queueItem.title) || 'Untitled Queue Item',
+    genre: queueGenre(queueItem),
+    duration: clean(queueItem.duration) || null,
+    episodeCount: queueEpisodeCount(queueItem),
+    status: clean(queueItem.status) || null,
+    priority: queuePriority(queueItem),
+    createdAt: queueItem.created_at || null,
+    updatedAt: queueItem.updated_at || null,
+    brief: queueBrief(queueItem),
+    source: clean(queueItem.source || queueItem.author_target) || null,
+    notes: clean(queueItem.notes) || null,
+  }
+}
+
+function queueItemToConsoleItem(queueItem: QueueRow): ConsoleItem {
+  const queue = queuePayload(queueItem)
+  return {
+    key: `queue:${queueItem.id}`,
+    type: 'job',
+    title: queue?.title || 'Untitled Queue Item',
+    seriesId: null,
+    storyId: queueItem.story_id || null,
+    episodeCount: queue?.episodeCount || 0,
+    affectedEpisodes: [],
+    workflowState: null,
+    status: queue?.status || null,
+    lastUpdated: queue?.updatedAt || queue?.createdAt || null,
+    owner: null,
+    repairNotes: null,
+    repairChecklist: null,
+    reviewNotes: null,
+    warning: null,
+    jobs: [],
+    queue,
+  }
 }
 
 function itemFromStories(stories: StoryRow[], type: 'series' | 'story', jobs: ProductionJobRow[] = []): ConsoleItem {
@@ -196,13 +309,22 @@ function itemsForStories(stories: StoryRow[], jobs: ProductionJobRow[] = []) {
   ].sort((a, b) => Date.parse(b.lastUpdated || '') - Date.parse(a.lastUpdated || ''))
 }
 
-function jobTitle(job: ProductionJobRow, storyById: Map<string, StoryRow>, seriesTitles: Map<string, string>) {
+function jobQueueItem(job: ProductionJobRow, queueById: Map<string, QueueRow>): QueueRow | null {
+  if (job.queue_item_id && queueById.has(job.queue_item_id)) return queueById.get(job.queue_item_id) || null
+  const embedded = job.state_json?.input?.queueItem || job.state_json?.queueItem
+  if (embedded?.id) return embedded as QueueRow
+  return null
+}
+
+function jobTitle(job: ProductionJobRow, storyById: Map<string, StoryRow>, seriesTitles: Map<string, string>, queueById: Map<string, QueueRow>) {
+  const queueItem = jobQueueItem(job, queueById)
+  if (queueItem) return clean(queueItem.title) || 'Untitled Queue Item'
   if (job.series_id && seriesTitles.get(job.series_id)) return seriesTitles.get(job.series_id) || 'Untitled Series'
   if (job.story_id && storyById.get(job.story_id)) return storyById.get(job.story_id)?.title || 'Untitled Story'
   return clean(job.state_json?.title || job.state_json?.seriesTitle || job.error_json?.title || job.current_step) || 'Unlinked Production Job'
 }
 
-function inProductionItems(jobs: ProductionJobRow[], stories: StoryRow[]) {
+function inProductionItems(jobs: ProductionJobRow[], stories: StoryRow[], queueById: Map<string, QueueRow>) {
   const activeStatuses = new Set(['queued', 'running', 'waiting_for_external', 'processing', 'in_progress'])
   const storyById = new Map(stories.map((story) => [story.id, story]))
   const seriesTitles = new Map<string, string>()
@@ -214,13 +336,14 @@ function inProductionItems(jobs: ProductionJobRow[], stories: StoryRow[]) {
     .filter((job) => activeStatuses.has(clean(job.status).toLowerCase()))
     .map((job): ConsoleItem => {
       const story = job.story_id ? storyById.get(job.story_id) || null : null
+      const queue = queuePayload(jobQueueItem(job, queueById))
       return {
         key: `job:${job.id}`,
         type: job.series_id ? 'series' : story ? 'story' : 'job',
-        title: jobTitle(job, storyById, seriesTitles),
+        title: jobTitle(job, storyById, seriesTitles, queueById),
         seriesId: job.series_id,
         storyId: job.story_id,
-        episodeCount: Number(job.state_json?.totalEpisodes || job.state_json?.seriesValidation?.episodeCount || (job.series_id ? 0 : 1)) || 0,
+        episodeCount: queue?.episodeCount || Number(job.state_json?.totalEpisodes || job.state_json?.seriesValidation?.episodeCount || (job.series_id ? 0 : 1)) || 0,
         affectedEpisodes: [],
         workflowState: story?.workflow_state || null,
         status: job.status,
@@ -231,6 +354,7 @@ function inProductionItems(jobs: ProductionJobRow[], stories: StoryRow[]) {
         reviewNotes: null,
         warning: null,
         jobs: [{ id: job.id, status: job.status, currentStep: job.current_step, updatedAt: job.updated_at }],
+        queue,
       }
     })
 }
@@ -292,7 +416,7 @@ export async function GET(_req: NextRequest) {
 
     const jobsResult = await supabase
       .from('production_jobs')
-      .select('id,story_id,series_id,status,current_step,updated_at,created_at,state_json,error_json')
+      .select('id,queue_item_id,story_id,series_id,status,current_step,updated_at,created_at,state_json,error_json')
       .order('updated_at', { ascending: false })
       .limit(1000)
 
@@ -300,12 +424,27 @@ export async function GET(_req: NextRequest) {
       return json({ success: false, error: jobsResult.error.message }, 500)
     }
 
+    const queueResult = await supabase
+      .from('story_queue_items')
+      .select('*')
+      .in('status', ['queued', 'dispatched'])
+      .order('created_at', { ascending: true })
+      .limit(1000)
+
+    if (queueResult.error) {
+      console.warn('[production-console] story_queue_items query failed — returning empty queue:', queueResult.error.message)
+    }
+
     const stories = (storiesResult.data || []) as StoryRow[]
     const jobs = (jobsResult.data || []) as ProductionJobRow[]
+    const queueRows = (queueResult.error ? [] : (queueResult.data || [])) as QueueRow[]
+    const queueById = new Map(queueRows.map((item) => [item.id, item]))
     const repairStories = stories.filter((story) => story.workflow_state === 'repair_queue' || story.workflow_state === 'being_repaired')
-    const coldStories = stories.filter((story) => story.workflow_state === 'cold_storage' || story.workflow_state === 'unpublished_library')
+    const storageStories = stories.filter((story) => story.workflow_state === 'cold_storage' || story.workflow_state === 'unpublished_library')
+    const incubatorStories = storageStories.filter(isIncubatorTagged)
+    const coldStories = storageStories.filter((story) => !isIncubatorTagged(story))
     const productionStoryItems = itemsForStories(stories.filter(isInProductionStory), jobs)
-    const productionJobItems = inProductionItems(jobs, stories)
+    const productionJobItems = inProductionItems(jobs, stories, queueById)
     const inProductionByKey = new Map<string, ConsoleItem>()
     for (const item of [...productionStoryItems, ...productionJobItems]) inProductionByKey.set(item.key, item)
 
@@ -315,8 +454,8 @@ export async function GET(_req: NextRequest) {
       repairItems: itemsForStories(repairStories, jobs),
       inProductionItems: Array.from(inProductionByKey.values()),
       coldStorageItems: itemsForStories(coldStories, jobs),
-      incubatorItems: [],
-      queueItems: [],
+      incubatorItems: itemsForStories(incubatorStories, jobs),
+      queueItems: queueRows.map(queueItemToConsoleItem),
     })
   } catch (err: any) {
     console.error('[production-console] GET failed:', err)

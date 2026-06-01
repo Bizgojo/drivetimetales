@@ -24,6 +24,20 @@ type ConsoleItem = {
     currentStep: string | null
     updatedAt: string | null
   }>
+  queue?: {
+    id: string
+    title: string
+    genre: string | null
+    duration: string | null
+    episodeCount: number | null
+    status: string | null
+    priority: number | null
+    createdAt: string | null
+    updatedAt: string | null
+    brief: string | null
+    source: string | null
+    notes: string | null
+  } | null
 }
 
 type ConsolePayload = {
@@ -120,7 +134,19 @@ function ItemCard({ item, color, mode }: { item: ConsoleItem; color: string; mod
             <div style={{ color: '#0F172A', fontSize: '12px', fontWeight: 900, marginTop: '3px' }}>{item.jobs?.[0]?.currentStep || 'Not recorded'}</div>
           </div>
         )}
+        {mode === 'production' && item.queue && (
+          <div style={{ padding: '9px', borderRadius: '7px', backgroundColor: '#EFF6FF' }}>
+            <div style={{ color: '#1D4ED8', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase' }}>Queue Source</div>
+            <div style={{ color: '#1E3A8A', fontSize: '12px', fontWeight: 900, marginTop: '3px' }}>{item.queue.status || 'Queued'} · {item.queue.genre || 'No genre'}</div>
+          </div>
+        )}
       </div>
+
+      {mode === 'production' && item.queue?.brief && (
+        <div style={{ marginTop: '12px', color: '#475569', fontSize: '13px', lineHeight: 1.4 }}>
+          {item.queue.brief}
+        </div>
+      )}
 
       {mode === 'repair' && (
         <div style={{ marginTop: '12px', padding: '10px', borderRadius: '8px', backgroundColor: issueText ? '#FFF7ED' : '#FEF2F2', border: `1px solid ${issueText ? '#FED7AA' : '#FECACA'}` }}>
@@ -136,6 +162,31 @@ function ItemCard({ item, color, mode }: { item: ConsoleItem; color: string; mod
           {item.reviewNotes || 'No review notes recorded.'}
         </div>
       )}
+    </div>
+  )
+}
+
+function QueueCard({ item }: { item: ConsoleItem }) {
+  const queue = item.queue
+  return (
+    <div style={{ border: '1px solid #E2E8F0', borderLeft: '4px solid #64748b', borderRadius: '8px', backgroundColor: '#ffffff', padding: '14px', boxShadow: '0 1px 2px rgba(15,23,42,0.05)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ color: '#0F172A', fontSize: '15px', fontWeight: 950, lineHeight: 1.25 }}>{queue?.title || item.title}</div>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '8px' }}>
+            <Badge color="#64748b">{queue?.status === 'dispatched' ? 'Dispatched / pending production' : 'Queued'}</Badge>
+            {queue?.genre && <Badge color="#475569">{queue.genre}</Badge>}
+            {queue?.episodeCount ? <Badge color="#475569">Episodes: {queue.episodeCount}</Badge> : queue?.duration ? <Badge color="#475569">{queue.duration}</Badge> : null}
+            {queue?.priority !== null && queue?.priority !== undefined && <Badge color="#475569">Priority: {queue.priority}</Badge>}
+          </div>
+        </div>
+        <div style={{ textAlign: 'right', color: '#64748B', fontSize: '12px', fontWeight: 800 }}>
+          <div>{formatDate(queue?.createdAt || item.lastUpdated)}</div>
+          <div style={{ marginTop: '4px' }}>{queue?.source || 'Source not recorded'}</div>
+        </div>
+      </div>
+      {queue?.brief && <div style={{ marginTop: '12px', color: '#475569', fontSize: '13px', lineHeight: 1.4 }}>{queue.brief}</div>}
+      {queue?.notes && <div style={{ marginTop: '10px', padding: '9px', borderRadius: '7px', backgroundColor: '#F8FAFC', color: '#475569', fontSize: '12px', lineHeight: 1.4 }}>{queue.notes}</div>}
     </div>
   )
 }
@@ -194,7 +245,7 @@ export default function ProductionConsolePage() {
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
           <div>
             <h1 style={{ margin: 0, color: '#111827', fontSize: '28px', fontWeight: 950 }}>Production Console</h1>
-            <p style={{ margin: '6px 0 0', color: '#64748B', fontSize: '13px', fontWeight: 700 }}>Read-only Phase 0.1 view for production visibility.</p>
+            <p style={{ margin: '6px 0 0', color: '#64748B', fontSize: '13px', fontWeight: 700 }}>Read-only Phase 0.2 view for production visibility.</p>
             {payload?.fetchedAt && <div style={{ marginTop: '6px', color: '#94A3B8', fontSize: '11px', fontWeight: 800 }}>Fetched {formatDate(payload.fetchedAt)}</div>}
           </div>
           <button type="button" onClick={loadConsole} style={{ border: '1px solid #E5E7EB', borderRadius: '8px', backgroundColor: '#ffffff', color: '#374151', padding: '8px 12px', fontSize: '12px', fontWeight: 900, cursor: 'pointer' }}>Refresh</button>
@@ -244,14 +295,18 @@ export default function ProductionConsolePage() {
         )}
 
         {!loading && !error && activeSection === 'incubator' && (
-          <Section title="Incubator" color="#64748b" count={0}>
-            <EmptyState text="Incubator requires future workflow_state support. No items shown in Phase 0.1." />
+          <Section title="Incubator" color="#64748b" count={counts.incubator}>
+            {(payload?.incubatorItems || []).length > 0
+              ? payload?.incubatorItems?.map((item) => <ItemCard key={item.key} item={item} color="#64748b" mode="cold" />)
+              : <EmptyState text="Incubator requires future workflow_state support. No items shown unless review_notes already contains [INCUBATOR]." />}
           </Section>
         )}
 
         {!loading && !error && activeSection === 'queue' && (
-          <Section title="Stories in Queue" color="#64748b" count={0}>
-            <EmptyState text="Stories in Queue is currently tracked outside the stories table. No DB-backed items shown in Phase 0.1." />
+          <Section title="Stories in Queue" color="#64748b" count={counts.queue}>
+            {(payload?.queueItems || []).length > 0
+              ? payload?.queueItems?.map((item) => <QueueCard key={item.key} item={item} />)
+              : <EmptyState text="No queued Story Queue items found." />}
           </Section>
         )}
       </div>
