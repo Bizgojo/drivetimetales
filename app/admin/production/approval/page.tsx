@@ -92,7 +92,8 @@ interface Group {
 }
 
 type WorkflowTab = 'ready_for_review' | 'approved_ready' | 'repair_queue' | 'being_repaired' | 'unpublished_library' | 'cold_storage' | 'published'
-type WorkflowLane = 'ready_for_review' | 'repair_shop' | 'approved_ready' | 'cold_storage' | 'published'
+type WorkflowLane = 'ready_for_review' | 'approved_ready' | 'published'
+type InternalWorkflowLane = WorkflowLane | 'repair_shop' | 'cold_storage'
 type WorkflowFilter = WorkflowLane | 'all'
 type RepairGroup = 'story_script' | 'audio_asc' | 'packaging'
 type RepairChecklistValue = Record<RepairGroup, string[]>
@@ -202,9 +203,7 @@ const TAB_CONFIG: Array<{
   glowColor: string
 }> = [
   { id: 'ready_for_review', label: 'Ready for Review', description: 'Ready for review.', color: '#f59e0b', softColor: '#fef3c7', glowColor: 'rgba(245,158,11,0.30)' },
-  { id: 'repair_shop', label: 'Repair Shop', description: 'Active repair work.', color: '#f97316', softColor: '#ffedd5', glowColor: 'rgba(249,115,22,0.30)' },
   { id: 'approved_ready', label: 'Ready to Publish', description: 'Cleared by Marc.', color: '#22c55e', softColor: '#dcfce7', glowColor: 'rgba(34,197,94,0.28)' },
-  { id: 'cold_storage', label: 'Cold Storage / Training Archive', description: 'Preserved artifacts.', color: '#8b5cf6', softColor: '#ede9fe', glowColor: 'rgba(139,92,246,0.28)' },
   { id: 'published', label: 'Published', description: 'Live in app.', color: '#2563eb', softColor: '#dbeafe', glowColor: 'rgba(37,99,235,0.34)' },
 ]
 
@@ -212,10 +211,17 @@ const WORKFLOW_LABELS = {
   ...Object.fromEntries(TAB_CONFIG.map((tab) => [tab.id, tab.label])),
   repair_queue: 'Repair Shop',
   being_repaired: 'Repair Shop',
+  cold_storage: 'Cold Storage / Training Archive',
   unpublished_library: 'Cold Storage / Training Archive',
 } as Record<WorkflowTab, string>
 
-const WORKFLOW_VISUALS = Object.fromEntries(TAB_CONFIG.map((tab) => [tab.id, tab])) as Record<WorkflowLane, typeof TAB_CONFIG[number]>
+const WORKFLOW_VISUALS: Record<InternalWorkflowLane, { id: InternalWorkflowLane; label: string; description: string; color: string; softColor: string; glowColor: string }> = {
+  ready_for_review: { id: 'ready_for_review', label: 'Ready for Review', description: 'Ready for review.', color: '#f59e0b', softColor: '#fef3c7', glowColor: 'rgba(245,158,11,0.30)' },
+  repair_shop: { id: 'repair_shop', label: 'Repair Shop', description: 'Active repair work.', color: '#f97316', softColor: '#ffedd5', glowColor: 'rgba(249,115,22,0.30)' },
+  approved_ready: { id: 'approved_ready', label: 'Ready to Publish', description: 'Cleared by Marc.', color: '#22c55e', softColor: '#dcfce7', glowColor: 'rgba(34,197,94,0.28)' },
+  cold_storage: { id: 'cold_storage', label: 'Cold Storage / Training Archive', description: 'Preserved artifacts.', color: '#8b5cf6', softColor: '#ede9fe', glowColor: 'rgba(139,92,246,0.28)' },
+  published: { id: 'published', label: 'Published', description: 'Live in app.', color: '#2563eb', softColor: '#dbeafe', glowColor: 'rgba(37,99,235,0.34)' },
+}
 
 const WORKFLOW_COLORS: Record<string, { bg: string; text: string; badge: string; dot: string }> = {
   ready_for_review: { bg: '#FEF3C7', text: '#92400E', badge: '#F59E0B', dot: '#F59E0B' },
@@ -230,17 +236,17 @@ const WORKFLOW_COLORS: Record<string, { bg: string; text: string; badge: string;
 
 const STREAMING_PIPELINE: Array<{ id: WorkflowLane; label: string; sub: string; color: string }> = [
   { id: 'ready_for_review', label: 'Ready for Review', sub: 'Ready for review', color: '#F59E0B' },
-  { id: 'repair_shop', label: 'Repair Shop', sub: 'Active repair work', color: '#EF4444' },
   { id: 'approved_ready', label: 'Ready to Publish', sub: 'Cleared by Marc', color: '#10B981' },
-  { id: 'cold_storage', label: 'Cold Storage / Training Archive', sub: 'Preserved artifacts', color: '#8B5CF6' },
   { id: 'published', label: 'Published', sub: 'Live in app', color: '#059669' },
 ]
 
 function effectiveWorkflowState(story: Story): WorkflowTab {
   if (story.workflow_state === 'live') return 'published'
-  if (story.workflow_state && ['ready_for_review', 'approved_ready', 'repair_queue', 'being_repaired', 'unpublished_library', 'cold_storage', 'published'].includes(story.workflow_state)) return story.workflow_state as WorkflowTab
+  if (story.workflow_state === 'cold_storage' || story.workflow_state === 'unpublished_library') return story.workflow_state
   if (!story.is_hidden && story.status === 'published') return 'published'
   if (story.is_hidden && story.status === 'published') return 'unpublished_library'
+  if (story.workflow_state === 'repair_queue' || story.workflow_state === 'being_repaired') return story.workflow_state
+  if (story.workflow_state && ['ready_for_review', 'approved_ready', 'repair_queue', 'being_repaired', 'unpublished_library', 'cold_storage', 'published'].includes(story.workflow_state)) return story.workflow_state as WorkflowTab
   if (story.review_status === 'approved') return 'approved_ready'
   if (story.review_status === 'not_approved') return 'cold_storage'
   return 'ready_for_review'
@@ -271,26 +277,38 @@ function isPublicCatalogCandidate(story: Partial<Story>) {
 }
 
 function isPublishedToApp(story: Story) {
-  return story.status === 'published' && story.is_hidden === false && ['published', 'live', null, undefined].includes(story.workflow_state as any)
+  return story.status === 'published' && story.is_hidden === false
 }
 
-function visualWorkflowLane(story: Story): WorkflowLane {
+function visualWorkflowLane(story: Story): InternalWorkflowLane {
   const state = effectiveWorkflowState(story)
+  if (state === 'cold_storage' || state === 'unpublished_library') return 'cold_storage'
+  if (isPublishedToApp(story)) return 'published'
   if (state === 'repair_queue' || state === 'being_repaired') return 'repair_shop'
-  if (state === 'published') return isPublishedToApp(story) ? 'published' : 'cold_storage'
-  return state === 'unpublished_library' ? 'cold_storage' : state
+  if (state === 'approved_ready') return 'approved_ready'
+  return 'ready_for_review'
 }
 
-function storyMatchesWorkflowLane(story: Story, lane: WorkflowLane) {
-  const state = effectiveWorkflowState(story)
-  if (lane === 'repair_shop') return state === 'repair_queue' || state === 'being_repaired'
-  if (lane === 'cold_storage') return state === 'cold_storage' || state === 'unpublished_library'
-  if (lane === 'published') return isPublishedToApp(story)
-  return state === lane
+function storyMatchesWorkflowLane(story: Story, lane: InternalWorkflowLane) {
+  return visualWorkflowLane(story) === lane
 }
 
-function storiesForWorkflowLane(stories: Story[], lane: WorkflowLane) {
+function storiesForWorkflowLane(stories: Story[], lane: InternalWorkflowLane) {
   return stories.filter((story) => storyMatchesWorkflowLane(story, lane))
+}
+
+function isApprovalWorkflowLane(lane: InternalWorkflowLane): lane is WorkflowLane {
+  return lane === 'ready_for_review' || lane === 'approved_ready' || lane === 'published'
+}
+
+function groupPrimaryWorkflowLane(group: StoryGroup, readyReviewKeys: Record<string, boolean>): InternalWorkflowLane | null {
+  const groupStories = group.type === 'series' ? group.stories : [group.story]
+  if (groupStories.some((story) => visualWorkflowLane(story) === 'cold_storage')) return 'cold_storage'
+  if (groupStories.some((story) => visualWorkflowLane(story) === 'published')) return 'published'
+  if (groupStories.some((story) => visualWorkflowLane(story) === 'repair_shop')) return 'repair_shop'
+  if (groupStories.some((story) => visualWorkflowLane(story) === 'approved_ready')) return 'approved_ready'
+  if (groupStories.some((story) => visualWorkflowLane(story) === 'ready_for_review') && readyReviewKeys[groupApprovalKey(group)] === true) return 'ready_for_review'
+  return null
 }
 
 function hasRequiredStoryFields(story: Partial<Story>) {
@@ -2190,7 +2208,7 @@ function SeriesReviewGroup({
   const blockedExplanation = blockedCount > 0
     ? seriesBlockedExplanation(group.title, renderedCount, expected, missingAudioCount, missingPackagingCount, statusBlockedCount, coldStorageCount)
     : ''
-  const dominantLane = (['repair_shop', 'ready_for_review', 'approved_ready', 'published', 'cold_storage'] as WorkflowLane[])
+  const dominantLane = (['repair_shop', 'ready_for_review', 'approved_ready', 'published', 'cold_storage'] as InternalWorkflowLane[])
     .find((lane) => group.stories.some((story) => visualWorkflowLane(story) === lane)) || 'ready_for_review'
   const visual = WORKFLOW_VISUALS[dominantLane]
 
@@ -2314,6 +2332,7 @@ export default function AdminStoriesPage() {
   const [seriesActionsOpen, setSeriesActionsOpen] = useState(false)
   const [repairEntireSeries, setRepairEntireSeries] = useState(false)
   const [seriesReadyConfirm, setSeriesReadyConfirm] = useState<{ seriesId: string; seriesName: string } | null>(null)
+  const [repairQueueBannerDismissed, setRepairQueueBannerDismissed] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<string>('')
   const [markedForDeletionIds, setMarkedForDeletionIds] = useState<Record<string, boolean>>({})
   const [playedStoryIds, setPlayedStoryIds] = useState<Record<string, boolean>>({})
@@ -2912,16 +2931,16 @@ export default function AdminStoriesPage() {
   })
 
   const workflowCounts = groupsFromReadiness.reduce((counts, group) => {
-    const groupStories = group.type === 'series' ? group.stories : [group.story]
-    const lanes = new Set(groupStories.map(visualWorkflowLane).filter((lane) => {
-      if (lane !== 'ready_for_review') return true
-      return readyReviewKeys[groupApprovalKey(group)] === true
-    }))
-    lanes.forEach((lane) => {
+    const lane = groupPrimaryWorkflowLane(group, readyReviewKeys)
+    if (lane && isApprovalWorkflowLane(lane)) {
       counts[lane] = (counts[lane] || 0) + 1
-    })
+    }
     return counts
   }, {} as Record<WorkflowLane, number>)
+
+  const repairQueueItemCount = groupsFromReadiness.reduce((count, group) => {
+    return groupPrimaryWorkflowLane(group, readyReviewKeys) === 'repair_shop' ? count + 1 : count
+  }, 0)
 
   useEffect(() => {
     if (returnSelectionAppliedRef.current || loading || (!returnTarget.storyId && !returnTarget.seriesId)) return
@@ -2935,8 +2954,8 @@ export default function AdminStoriesPage() {
     if (!matchedGroup) return
     const groupStories = matchedGroup.type === 'series' ? matchedGroup.stories : [matchedGroup.story]
     const targetStory = groupStories.find((story) => story.id === returnTarget.storyId) || groupStories[0]
-    const targetLane = readyReviewKeys[groupApprovalKey(matchedGroup)] === true ? 'ready_for_review' : visualWorkflowLane(targetStory)
-    setActivePipelineTab(targetLane)
+    const targetLane = groupPrimaryWorkflowLane(matchedGroup, readyReviewKeys) || visualWorkflowLane(targetStory)
+    setActivePipelineTab(isApprovalWorkflowLane(targetLane) ? targetLane : 'ready_for_review')
     setSeriesFilter('all')
     setSelectedSeriesKey(matchedGroup.key)
     if (matchedGroup.type === 'series') setExpandedSeries((prev) => ({ ...prev, [matchedGroup.key]: true }))
@@ -2954,6 +2973,8 @@ export default function AdminStoriesPage() {
     if (tab === 'all') return group.type === 'series'
       ? group.presentEpisodeCount || group.stories[0]?.present_episode_count || groupStories.length
       : groupStories.length
+    const primaryLane = groupPrimaryWorkflowLane(group, readyReviewKeys)
+    if (primaryLane !== tab) return 0
     return storiesForWorkflowLane(groupStories, tab).length
   }
 
@@ -2963,9 +2984,9 @@ export default function AdminStoriesPage() {
       const title = group.type === 'series' ? group.title : group.story.title
       const matchesSearch = !seriesSearch.trim() || title.toLowerCase().includes(seriesSearch.trim().toLowerCase())
       const selectedWorkflow = seriesFilter === 'all' ? activePipelineTab : seriesFilter
-      const matchesWorkflow = selectedWorkflow === 'ready_for_review'
-        ? readyReviewKeys[groupApprovalKey(group)] === true
-        : groupStories.some((story) => storyMatchesWorkflowLane(story, selectedWorkflow))
+      const primaryLane = groupPrimaryWorkflowLane(group, readyReviewKeys)
+      const validEpisodeCount = primaryLane === selectedWorkflow ? storiesForWorkflowLane(groupStories, selectedWorkflow).length : 0
+      const matchesWorkflow = primaryLane === selectedWorkflow && validEpisodeCount > 0
       return matchesSearch && matchesWorkflow
     })
     .sort((a, b) => {
@@ -3244,9 +3265,7 @@ export default function AdminStoriesPage() {
 
   const activeWorkflow = STREAMING_PIPELINE.find((item) => item.id === activePipelineTab) || STREAMING_PIPELINE[0]
   const activeWorkflowCount = workflowCounts[activePipelineTab] || 0
-  const activeEmptyMessage = activePipelineTab === 'repair_shop'
-    ? 'No active repairs.'
-    : activePipelineTab === 'published'
+  const activeEmptyMessage = activePipelineTab === 'published'
       ? 'No published stories in this view.'
       : `No ${activeWorkflow.label.toLowerCase()} items.`
   const selectedAllStories = selectedGroup ? (selectedGroup.type === 'series' ? selectedGroup.stories : [selectedGroup.story]) : []
@@ -3543,6 +3562,20 @@ export default function AdminStoriesPage() {
           </div>
         </div>
 
+        {repairQueueItemCount > 0 && !repairQueueBannerDismissed && (
+          <div style={{ marginTop: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '10px 12px', borderRadius: '10px', border: '1px solid #FED7AA', backgroundColor: '#FFF7ED', color: '#9A3412', fontSize: '12px', fontWeight: 900 }}>
+            <span>Repair Queue: {repairQueueItemCount} item(s) need attention — view in Production Console</span>
+            <button
+              type="button"
+              onClick={() => setRepairQueueBannerDismissed(true)}
+              aria-label="Dismiss repair queue notice"
+              style={{ width: '24px', height: '24px', border: 'none', borderRadius: '6px', backgroundColor: 'transparent', color: '#9A3412', cursor: 'pointer', fontSize: '14px', fontWeight: 900, lineHeight: 1 }}
+            >
+              ×
+            </button>
+          </div>
+        )}
+
         <div ref={pipelineRef} style={{ marginTop: '20px' }}>
           <div style={{ color: '#6B7280', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>Workflow Pipeline</div>
           <div className="approval-pipeline-inner" style={{ borderRadius: '10px', padding: '16px', backgroundColor: '#ffffff', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', display: 'flex', alignItems: 'stretch', gap: '12px' }}>
@@ -3793,7 +3826,7 @@ export default function AdminStoriesPage() {
                         const storyType = (story as any).story_type || 'story'
                         const audioReady = Boolean(story.audio_url || story.story_audio_url || story.audio_ready || story.story_audio_ready)
                         const isAffectedRepairEpisode = visualWorkflowLane(story) === 'repair_shop'
-                        const isNeutralInRepairView = activePipelineTab === 'repair_shop' && !isAffectedRepairEpisode
+                        const isNeutralInRepairView = false
                         const lastRepairIssue = firstRepairIssueLabel(story.repair_checklist)
                         const markedForDeletion = markedForDeletionIds[story.id]
                         const coverUrl = episodeCoverUrl(story)
