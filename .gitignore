@@ -42,3 +42,4 @@ reports/
 # Common system junk
 .DS_Store
 Thumbs.db
+tsconfig.tsbuildinfo

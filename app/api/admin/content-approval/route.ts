@@ -187,9 +187,11 @@ function displayReviewStatus(story: StoryRow) {
 }
 
 function effectiveWorkflowState(story: StoryRow): string {
-  if (story.workflow_state) return story.workflow_state
+  if (story.workflow_state === 'cold_storage' || story.workflow_state === 'unpublished_library') return story.workflow_state
   if (story.status === 'published' && story.is_hidden === false) return 'published'
   if (story.status === 'published' && story.is_hidden === true) return 'unpublished_library'
+  if (story.workflow_state === 'repair_queue' || story.workflow_state === 'being_repaired') return story.workflow_state
+  if (story.workflow_state) return story.workflow_state
   if (story.review_status === 'approved') return 'approved_ready'
   if (story.review_status === 'not_approved') return 'cold_storage'
   return 'ready_for_review'
@@ -541,7 +543,14 @@ function standaloneObject(story: StoryRow, jobs: ProductionJobRow[]) {
 }
 
 function includeItem(item: any, tab: ApprovalTab, includeBlocked: boolean) {
-  if (tab === 'ready_for_review') return item.approvalReady === true
+  if (tab === 'ready_for_review') {
+    if (item.type === 'series') {
+      return item.approvalReady === true
+        && item.episodes.length > 0
+        && item.episodes.every((episode: any) => episode.workflowState === 'ready_for_review')
+    }
+    return item.approvalReady === true && item.episode.workflowState === 'ready_for_review'
+  }
   if (includeBlocked || tab === 'all') return true
   if (item.type === 'series') return item.episodes.some((episode: any) => {
     const synthetic = {
