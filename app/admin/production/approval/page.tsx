@@ -2872,7 +2872,7 @@ export default function AdminStoriesPage() {
   async function publishAllApproved() {
     const approved = stories.filter((story) => effectiveWorkflowState(story) === 'approved_ready')
     if (approved.length === 0) return
-    if (!window.confirm(`Publish ${approved.length} ready-to-publish item(s) to the app?`)) return
+    if (!window.confirm(`Publish all ${approved.length} Ready to Publish item(s) to the live app?`)) return
     for (const story of approved) {
       const res = await fetch('/api/admin/publish-story', {
         method: 'POST',
@@ -3534,13 +3534,6 @@ export default function AdminStoriesPage() {
           .approval-repair-comments-grid > div:nth-child(2) {
             display: none !important;
           }
-          .approval-floating-publish {
-            right: 12px !important;
-            left: 12px !important;
-            bottom: 12px !important;
-            width: auto !important;
-            min-height: 46px !important;
-          }
         }
       ` }} />
 
@@ -3577,7 +3570,29 @@ export default function AdminStoriesPage() {
         )}
 
         <div ref={pipelineRef} style={{ marginTop: '20px' }}>
-          <div style={{ color: '#6B7280', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>Workflow Pipeline</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '8px' }}>
+            <div style={{ color: '#6B7280', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Workflow Pipeline</div>
+            {activePipelineTab === 'approved_ready' && (
+              <button
+                type="button"
+                onClick={publishAllApproved}
+                disabled={activeWorkflowCount === 0}
+                style={{
+                  padding: '7px 11px',
+                  borderRadius: '8px',
+                  border: '1px solid #10B981',
+                  backgroundColor: activeWorkflowCount === 0 ? '#F3F4F6' : '#ECFDF5',
+                  color: activeWorkflowCount === 0 ? '#9CA3AF' : '#047857',
+                  fontSize: '12px',
+                  fontWeight: 900,
+                  cursor: activeWorkflowCount === 0 ? 'not-allowed' : 'pointer',
+                  boxShadow: activeWorkflowCount === 0 ? 'none' : '0 8px 18px rgba(16,185,129,0.12)',
+                }}
+              >
+                [ Publish All ]
+              </button>
+            )}
+          </div>
           <div className="approval-pipeline-inner" style={{ borderRadius: '10px', padding: '16px', backgroundColor: '#ffffff', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', display: 'flex', alignItems: 'stretch', gap: '12px' }}>
             {STREAMING_PIPELINE.map((item, index) => {
               const active = activePipelineTab === item.id
@@ -3990,13 +4005,6 @@ export default function AdminStoriesPage() {
           </main>
         </div>
       </div>
-
-      {activePipelineTab === 'approved_ready' && (
-        <button className="approval-floating-publish" type="button" onClick={publishAllApproved} style={{ position: 'fixed', right: '28px', bottom: '28px', padding: '9px 13px', borderRadius: '8px', border: 'none', backgroundColor: '#10B981', color: '#ffffff', fontSize: '12px', fontWeight: 800, cursor: 'pointer', boxShadow: '0 10px 24px rgba(16,185,129,0.28)' }}>
-          Publish All Ready to Publish
-        </button>
-      )}
-
       {seriesReadyConfirm && (
         <div role="dialog" aria-modal="true" aria-label="Move series to Ready for Review" style={{ position: 'fixed', inset: 0, zIndex: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', backgroundColor: 'rgba(15,23,42,0.46)' }}>
           <div style={{ width: '100%', maxWidth: '460px', borderRadius: '10px', backgroundColor: '#ffffff', border: '1px solid #E5E7EB', boxShadow: '0 24px 80px rgba(15,23,42,0.28)', padding: '18px' }}>
