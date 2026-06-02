@@ -19,14 +19,14 @@ const NAV_GROUPS = [
   { id: 'dashboard', label: 'Dashboard', icon: '📊', items: [
     { href: '/admin', label: 'Overview' },
     { href: '/admin/command-center', label: 'Command Center' },
-    { href: '/admin/production/console', label: 'Production Console' },
-    { href: '/admin/production/approval', label: 'Content Approval' },
     { href: '/admin/accounts', label: 'Accounts & Integrations' },
   ]},
   { id: 'production', label: 'Production', icon: '🎬', items: [
     { href: '/admin/story-queue', label: 'Story Queue' },
     { href: '/admin/story-production-v2', label: 'Story Production V2' },
     { href: '/admin/asc', label: 'ASC' },
+    { href: '/admin/production/console', label: 'Production Console' },
+    { href: '/admin/production/approval', label: 'Content Approval' },
     { href: '/admin/authors-narrators-v2', label: 'Authors & Narrators' },
     { href: '/admin/story-ideas', label: 'Story Ideas' },
     { href: '/admin/genres', label: 'Genres' },
