@@ -3294,12 +3294,15 @@ export default function AdminStoriesPage() {
       : selectedGroup.story.approval_entry_reason || null
     : null
   const selectedTotalMinutes = selectedStories.reduce((sum, story) => sum + (story.duration_mins || 0), 0)
+  const selectedAverageMinutes = selectedIsSeries && selectedStories.length > 0 ? Math.round(selectedTotalMinutes / selectedStories.length) : 0
+  const selectedPanelIsSimplified = activePipelineTab === 'approved_ready' || activePipelineTab === 'published'
   const selectedMarkedForDeletion = selectedStories.some((story) => markedForDeletionIds[story.id])
   const selectedCanShowRemasterCopy = selectedStories.some((story) =>
     isRemasterCandidateState(effectiveWorkflowState(story)) &&
     productionStandardForStory(story).standard === 'remaster_candidate'
   )
   const selectedSeriesDescription = selectedIsSeries ? seriesDescriptionForReview(selectedGroup, selectedAllStories) : null
+  const selectedShortDescription = selectedIsSeries ? selectedSeriesDescription?.text || '' : selectedFirst?.description || ''
   const selectedNarrator = selectedIsSeries ? firstNarratorLabel(selectedAllStories) : selectedFirst ? narratorLabel(selectedFirst) : 'Narrator pending'
   const selectedSeriesAllReviewed = selectedIsSeries && selectedAllStories.every(
     (story) => ['no_repair', 'finished'].includes(episodeRepairMark(story.id).reviewState)
@@ -3717,40 +3720,69 @@ export default function AdminStoriesPage() {
                     <img src={selectedFirst.cover_url || '/images/default-cover.png'} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   </div>
                   <div style={{ minWidth: 0, flex: '1 1 auto' }}>
-                    <button type="button" onClick={() => setEpisodeCoverOpen(selectedFirst.id, true)} title="Change cover" style={{ border: 'none', background: 'transparent', color: '#9CA3AF', fontSize: '13px', cursor: 'pointer', padding: 0, marginBottom: '3px' }}>✎</button>
+                    {!selectedPanelIsSimplified && (
+                      <button type="button" onClick={() => setEpisodeCoverOpen(selectedFirst.id, true)} title="Change cover" style={{ border: 'none', background: 'transparent', color: '#9CA3AF', fontSize: '13px', cursor: 'pointer', padding: 0, marginBottom: '3px' }}>✎</button>
+                    )}
                     <div className="approval-detail-title" style={{ color: '#1F2937', fontSize: '20px', fontWeight: 800, lineHeight: 1.15 }}>{selectedTitle}</div>
-                    <div style={{ marginTop: '5px', color: '#6B7280', fontSize: '12px' }}>{selectedFirst.genre || 'No genre'} • by {selectedFirst.author || 'Unknown'}</div>
+                    <div style={{ marginTop: '5px', color: '#6B7280', fontSize: '12px' }}>Author: {selectedFirst.author || 'Unknown'}</div>
                     <div style={{ marginTop: '4px', color: '#9CA3AF', fontSize: '11px' }}>
-                      {selectedIsSeries ? `Narrator: ${selectedNarrator} • ${selectedExpected} total episodes • ${selectedPresent} present • ${selectedTotalMinutes}m total` : `Standalone • ${selectedFirst.duration_mins || 0}m`}
+                      Narrator: {selectedNarrator}
                     </div>
-                    {selectedIsSeries && (
-                      <div style={{ marginTop: '8px', color: '#4B5563', fontSize: '12px', lineHeight: 1.45, maxWidth: '760px' }}>
-                        {selectedSeriesDescription.text}
+                    <div style={{ marginTop: '4px', color: '#9CA3AF', fontSize: '11px' }}>
+                      {selectedIsSeries
+                        ? `${selectedExpected} episode${selectedExpected === 1 ? '' : 's'} • ${selectedTotalMinutes}m total • ${selectedAverageMinutes}m average`
+                        : `${selectedFirst.duration_mins || 0}m total`}
+                    </div>
+                    {activePipelineTab === 'published' && (
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginTop: '8px', padding: '4px 8px', borderRadius: '999px', backgroundColor: '#DCFCE7', color: '#166534', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase' }}>
+                        <span style={{ width: '7px', height: '7px', borderRadius: '999px', backgroundColor: '#22C55E' }} />
+                        Live
                       </div>
                     )}
-                    {selectedApprovalBlockingReasons.length > 0 && (
+                    {selectedShortDescription && (
+                      <div style={{ marginTop: '8px', color: '#4B5563', fontSize: '12px', lineHeight: 1.45, maxWidth: '760px' }}>
+                        {selectedShortDescription}
+                      </div>
+                    )}
+                    {!selectedPanelIsSimplified && selectedApprovalBlockingReasons.length > 0 && (
                       <div style={{ marginTop: '7px', color: '#B45309', fontSize: '11px', fontWeight: 800, lineHeight: 1.35 }}>
                         Review blocked: {selectedApprovalBlockingReasons.slice(0, 3).join('; ')}
                       </div>
                     )}
-                    <details open={selectedApprovalBlockingReasons.length > 0} style={{ marginTop: '8px' }}>
-                      <summary style={{ color: '#6B7280', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', cursor: 'pointer' }}>Review Details</summary>
-                      <div style={{ marginTop: '7px', display: 'grid', gap: '6px' }}>
-                        <StoryIntelligenceStrip
-                          stories={selectedStories}
-                          deletionMarked={selectedMarkedForDeletion}
-                          onSetProductionStandard={setSelectedProductionStandard}
-                          onMoveToColdStorage={moveSelectedToColdStorage}
-                          onMoveToRepairShop={moveSelectedToRepairShop}
-                          onMarkForDeletion={markSelectedForDeletionReview}
-                        />
-                        <div style={{ color: '#6B7280', fontSize: '10px', lineHeight: 1.35 }}>
-                          Approval ready: {selectedApprovalReady ? 'yes' : 'no'} • Completion: {selectedCompletionSortDate || 'not recorded'} • Source: {selectedCompletionSortSource || 'API readiness'}
+                    {!selectedPanelIsSimplified && (
+                      <details open={selectedApprovalBlockingReasons.length > 0} style={{ marginTop: '8px' }}>
+                        <summary style={{ color: '#6B7280', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', cursor: 'pointer' }}>Review Details</summary>
+                        <div style={{ marginTop: '7px', display: 'grid', gap: '6px' }}>
+                          <StoryIntelligenceStrip
+                            stories={selectedStories}
+                            deletionMarked={selectedMarkedForDeletion}
+                            onSetProductionStandard={setSelectedProductionStandard}
+                            onMoveToColdStorage={moveSelectedToColdStorage}
+                            onMoveToRepairShop={moveSelectedToRepairShop}
+                            onMarkForDeletion={markSelectedForDeletionReview}
+                          />
+                          <div style={{ color: '#6B7280', fontSize: '10px', lineHeight: 1.35 }}>
+                            Approval ready: {selectedApprovalReady ? 'yes' : 'no'} • Completion: {selectedCompletionSortDate || 'not recorded'} • Source: {selectedCompletionSortSource || 'API readiness'}
+                          </div>
                         </div>
-                      </div>
-                    </details>
+                      </details>
+                    )}
                   </div>
                   <div ref={seriesActionsRef} className="approval-series-actions" style={{ position: 'relative', flex: '0 0 auto', display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end', gap: '8px', flexWrap: 'wrap', maxWidth: '390px' }}>
+                    {selectedPanelIsSimplified ? (
+                      <>
+                        {activePipelineTab === 'approved_ready' && (
+                          <button type="button" onClick={() => publishStory(selectedFirst)} style={actionButtonStyle('primary')}>Publish to App</button>
+                        )}
+                        {activePipelineTab === 'published' && selectedIsSeries && selectedGroup.type === 'series' && (
+                          <button type="button" onClick={() => requestMoveSeriesToReadyForReview(selectedGroup)} style={actionButtonStyle('danger')}>Unpublish Series</button>
+                        )}
+                        {activePipelineTab === 'published' && !selectedIsSeries && (
+                          <button type="button" onClick={() => unpublishStory(selectedFirst)} style={actionButtonStyle('danger')}>Unpublish Story</button>
+                        )}
+                      </>
+                    ) : (
+                    <>
                     {selectedCanShowRemasterCopy && <RemasterCopyUnavailable compact />}
                     {selectedIsSeries && selectedGroup.type === 'series' ? (
                       <>
@@ -3773,9 +3805,6 @@ export default function AdminStoriesPage() {
                           Send Series for Repair
                         </button>
                         <button type="button" onClick={() => moveSeriesToColdStorage(selectedGroup)} style={actionButtonStyle('danger')}>Move Series to Cold Storage</button>
-                        {activePipelineTab === 'published' && selectedGroup.stories.some(isPublishedToApp) && (
-                          <button type="button" onClick={() => requestMoveSeriesToReadyForReview(selectedGroup)} style={{ ...actionButtonStyle('muted'), borderColor: '#F59E0B', backgroundColor: '#FEF3C7', color: '#92400E' }}>Unpublish Series to Review</button>
-                        )}
                         {selectedSeriesRepairMarked && (
                           <div style={{ flexBasis: '100%', color: '#B45309', fontSize: '10px', fontWeight: 800, lineHeight: 1.3, textAlign: 'right' }}>
                             Cannot approve while one or more episodes are marked for repair.
@@ -3801,10 +3830,12 @@ export default function AdminStoriesPage() {
                         <button type="button" onClick={() => { if (selectedGroup.type === 'series') moveSeriesToColdStorage(selectedGroup); else if (window.confirm(`Move "${selectedFirst.title}" to Cold Storage?`)) setWorkflowState(selectedFirst, 'cold_storage'); setSeriesActionsOpen(false) }} style={{ width: '100%', border: 'none', background: 'transparent', padding: '8px 10px', textAlign: 'left', color: '#B91C1C', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>Move to Cold Storage</button>
                       </div>
                     )}
+                    </>
+                    )}
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginTop: '20px', flexWrap: 'wrap' }}>
+                {!selectedPanelIsSimplified && <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginTop: '20px', flexWrap: 'wrap' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                     <span style={{ color: '#6B7280', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase' }}>{selectedIsSeries ? 'Episodes in this series' : 'Story detail'}</span>
                     <span style={{ color: '#6B7280', fontSize: '10px', borderRadius: '999px', padding: '4px 8px', backgroundColor: '#F3F4F6' }}>≡ Total: {selectedStories.length}</span>
@@ -3818,9 +3849,9 @@ export default function AdminStoriesPage() {
                     )}
                     <button type="button" onClick={() => console.log('view series overview', selectedGroup.key)} style={{ border: 'none', background: 'transparent', color: '#E8722A', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}>View Series Overview</button>
                   </div>
-                </div>
+                </div>}
 
-                <div className="approval-desktop-episodes" style={{ marginTop: '10px', overflowX: 'auto' }}>
+                {!selectedPanelIsSimplified && <div className="approval-desktop-episodes" style={{ marginTop: '10px', overflowX: 'auto' }}>
                   <table style={{ width: '100%', minWidth: '900px', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
                     <colgroup>
                       <col style={{ width: '8%' }} />
@@ -3918,8 +3949,8 @@ export default function AdminStoriesPage() {
                       })}
                     </tbody>
                   </table>
-                </div>
-                <div className="approval-mobile-episodes">
+                </div>}
+                {!selectedPanelIsSimplified && <div className="approval-mobile-episodes">
                   {visibleSelectedStories.map((story) => {
                     const state = effectiveWorkflowState(story)
                     const lane = visualWorkflowLane(story)
@@ -3998,8 +4029,8 @@ export default function AdminStoriesPage() {
                       </div>
                     )
                   })}
-                </div>
-                <div style={{ marginTop: '12px', color: '#9CA3AF', fontSize: '10px' }}>Showing {visibleSelectedStories.length} of {selectedStories.length} episodes</div>
+                </div>}
+                {!selectedPanelIsSimplified && <div style={{ marginTop: '12px', color: '#9CA3AF', fontSize: '10px' }}>Showing {visibleSelectedStories.length} of {selectedStories.length} episodes</div>}
               </>
             )}
           </main>
