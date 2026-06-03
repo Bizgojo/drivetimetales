@@ -1,91 +1,8 @@
-export type CommandPanelId = 'hal' | 'atlas' | 'codex' | 'terminal' | 'chatgpt' | 'claude'
-
-export type CommandPanel = {
-  id: CommandPanelId
-  name: string
-  icon: string
-  purpose: string
-  currentRole: string
-  accentColor: string
-  externalUrl: string | null
-  externalLabel: string | null
-  starterPrompt: string
-}
-
 export type ExternalToolLink = {
   id: string
   label: string
   url: string
 }
-
-export const COMMAND_PANELS: CommandPanel[] = [
-  {
-    id: 'hal',
-    name: 'Hal',
-    icon: 'H',
-    purpose: 'Production manager',
-    currentRole: 'Coordinate story production, queue movement, repair loops, and operational status.',
-    accentColor: '#f97316',
-    externalUrl: null,
-    externalLabel: null,
-    starterPrompt: 'Hal, review the current production target and report blockers, next action, and risk.',
-  },
-  {
-    id: 'atlas',
-    name: 'Atlas',
-    icon: 'A',
-    purpose: 'Operations/admin/workflow manager',
-    currentRole: 'Track launch readiness, account work, admin workflows, and cross-system operating notes.',
-    accentColor: '#0ea5e9',
-    externalUrl: null,
-    externalLabel: null,
-    starterPrompt: 'Atlas, summarize the operating state and identify the next admin decision Marc needs.',
-  },
-  {
-    id: 'codex',
-    name: 'Codex',
-    icon: '</>',
-    purpose: 'Coding implementation',
-    currentRole: 'Implement scoped code changes, run checks, and report changed files and residual risk.',
-    accentColor: '#22c55e',
-    externalUrl: null,
-    externalLabel: null,
-    starterPrompt: 'Codex, inspect the relevant files first, make the smallest safe patch, run validation, and report results.',
-  },
-  {
-    id: 'terminal',
-    name: 'Terminal',
-    icon: '$',
-    purpose: 'Local command workspace',
-    currentRole: 'Hold shell commands, runbook steps, deploy notes, and copy/paste operational sequences.',
-    accentColor: '#64748b',
-    externalUrl: null,
-    externalLabel: null,
-    starterPrompt: 'Prepare the exact terminal commands needed, with the working directory and validation step included.',
-  },
-  {
-    id: 'chatgpt',
-    name: 'ChatGPT',
-    icon: 'G',
-    purpose: 'Planning/writing/advisory workspace',
-    currentRole: 'Support product planning, copy review, launch coordination, and structured thinking.',
-    accentColor: '#10a37f',
-    externalUrl: 'https://chat.openai.com',
-    externalLabel: 'Open ChatGPT',
-    starterPrompt: 'Help turn this operational context into a clear next-step plan with risks and decisions separated.',
-  },
-  {
-    id: 'claude',
-    name: 'Claude',
-    icon: 'C',
-    purpose: 'Story/script/workflow assistant',
-    currentRole: 'Support story, script, quality review, workflow reasoning, and long-form editorial planning.',
-    accentColor: '#8b5cf6',
-    externalUrl: 'https://claude.ai',
-    externalLabel: 'Open Claude',
-    starterPrompt: 'Review this story or workflow context and return a concise diagnosis plus recommended next action.',
-  },
-]
 
 export const COMMAND_CENTER_EXTERNAL_LINKS: ExternalToolLink[] = [
   { id: 'telegram', label: 'Telegram', url: 'https://web.telegram.org' },
@@ -95,3 +12,55 @@ export const COMMAND_CENTER_EXTERNAL_LINKS: ExternalToolLink[] = [
   { id: 'vercel', label: 'Vercel', url: 'https://vercel.com/dashboard' },
   { id: 'github', label: 'GitHub', url: 'https://github.com' },
 ]
+
+export type AgentId = 'hal' | 'atlas' | 'codex' | 'susan' | 'orion'
+export type AgentStatus = 'working' | 'waiting' | 'blocked' | 'complete' | 'idle'
+export type MissionStatus = 'active' | 'waiting' | 'blocked' | 'complete' | 'archived'
+export type MissionPriority = 'P1' | 'P2' | 'P3' | 'P4'
+
+export interface AgentConfig {
+  id: AgentId
+  displayName: string
+  emoji: string
+  accentColor: string
+}
+
+export const AGENTS: AgentConfig[] = [
+  { id: 'hal', displayName: 'Hal', emoji: '🎙', accentColor: '#f97316' },
+  { id: 'atlas', displayName: 'Atlas', emoji: '🗺', accentColor: '#0ea5e9' },
+  { id: 'codex', displayName: 'Codex', emoji: '💻', accentColor: '#22c55e' },
+  { id: 'susan', displayName: 'Susan', emoji: '📊', accentColor: '#a855f7' },
+  { id: 'orion', displayName: 'Orion', emoji: '🔭', accentColor: '#ef4444' },
+]
+
+export interface AgentState {
+  status: AgentStatus
+  currentTask: string
+  percentComplete: number | null
+  waitingOn: string
+  lastActivity: string
+  eta: string
+}
+
+export interface Mission {
+  id: string
+  title: string
+  agentId: AgentId | 'unassigned'
+  status: MissionStatus
+  priority: MissionPriority
+  percentComplete: number | null
+  waitingOn: string
+  lastActivity: string
+  eta: string
+  notes: string
+  unread: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export const MISSION_PRIORITY_COLORS: Record<MissionPriority, string> = {
+  P1: '#ef4444',
+  P2: '#f97316',
+  P3: '#64748b',
+  P4: '#94a3b8',
+}
