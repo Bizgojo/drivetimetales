@@ -168,13 +168,36 @@ export interface OrionReport {
   timestamp: string
 }
 
+export type DecisionResolution = 'decided' | 'deferred' | 'not_needed'
+export type DecisionInputType = 'choice' | 'dropdown' | 'text' | 'confirm'
+
 export interface MarcBlocker {
+  // EXISTING — do not remove
   id: string
   description: string
-  department: AgentId
+  department: AgentId | string
   createdAt: string
   done: boolean
   resolvedAt: string | null
+
+  // NEW — decision workflow fields
+  title?: string                    // short clickable name (falls back to description if absent)
+  detail?: {
+    what: string                    // one sentence: what is the issue?
+    why: string                     // one sentence: why does it matter?
+    recommendation?: string         // Orion's recommendation
+    followUpOwner?: string          // department that acts on Marc's answer
+    nextActionTemplate?: string     // e.g. "Atlas updates Stripe with: {answer}"
+  }
+  inputType?: DecisionInputType
+  choiceOptions?: string[]          // for 'choice' and 'dropdown' inputType
+  chatGptPrompt?: string            // pre-filled prompt for "Ask ChatGPT" button
+
+  // Resolution (set when Marc decides)
+  resolution?: DecisionResolution | null
+  answer?: string | null
+  answeredAt?: string | null
+  nextAction?: string | null        // computed from nextActionTemplate + answer
 }
 
 export interface LaunchReadiness {

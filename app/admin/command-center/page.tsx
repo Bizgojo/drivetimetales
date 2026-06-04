@@ -9,6 +9,7 @@ import {
   type AgentId,
   type AgentState,
   type AgentStatus,
+  type DecisionResolution,
   type LaunchReadiness,
   type MarcBlocker,
   type Mission,
@@ -174,6 +175,9 @@ export default function AdminCommandCenterPage() {
   const [showReportsModal, setShowReportsModal] = useState(false)
   const [mobileTab, setMobileTab] = useState<MobileTab>('agents')
   const [orionMessage, setOrionMessage] = useState('')
+  const [expandedBlockerId, setExpandedBlockerId] = useState<string | null>(null)
+  const [draftAnswers, setDraftAnswers] = useState<Record<string, string>>({})
+  const [showResolvedBlockers, setShowResolvedBlockers] = useState(false)
   const missionWriteTimer = useRef<number | null>(null)
 
   const today = useMemo(() => {
@@ -263,12 +267,33 @@ export default function AdminCommandCenterPage() {
     return readLS<{ text: string; timestamp: string } | null>(ORION_LAST_REPLY_KEY, null)
   }, [loaded])
 
-  const markBlockerDone = (blockerId: string) => {
+  const resolveBlocker = (
+    blockerId: string,
+    resolution: DecisionResolution,
+    answer: string | null = null
+  ) => {
+    const blocker = blockers.find((b) => b.id === blockerId)
+    const nextAction =
+      answer && blocker?.detail?.nextActionTemplate
+        ? blocker.detail.nextActionTemplate.replace('{answer}', answer)
+        : null
+
     const next = blockers.map((b) =>
-      b.id === blockerId ? { ...b, done: true, resolvedAt: new Date().toISOString() } : b
+      b.id === blockerId
+        ? {
+            ...b,
+            done: true,
+            resolvedAt: new Date().toISOString(),
+            resolution,
+            answer,
+            answeredAt: new Date().toISOString(),
+            nextAction,
+          }
+        : b
     )
     setBlockers(next)
     writeLS(MARC_BLOCKERS_KEY, next)
+    setExpandedBlockerId(null)
   }
 
   const gridAgents = useMemo(
@@ -279,7 +304,248 @@ export default function AdminCommandCenterPage() {
   // ─── Marc Blockers Panel ────────────────────────────────────────────────────
 
   const renderBlockersPanel = () => {
-    if (activeBlockers.length === 0) return null
+    const activeOnes = blockers.filter((b) => !b.done)
+    const resolvedOnes = blockers.filter((b) => b.done)
+
+    if (blockers.length === 0) return null
+
+    const deptBadge = (departmentId: string) => {
+      const agent = AGENTS.find((a) => a.id === departmentId)
+      if (!agent) return (
+        <span style={{ backgroundColor: '#f1f5f9', color: '#475569', borderRadius: 12, padding: '2px 8px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' as const }}>
+          {departmentId}
+        </span>
+      )
+      return (
+        <span style={{ backgroundColor: '#fef3c7', color: '#92400e', borderRadius: 12, padding: '2px 8px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' as const }}>
+          {agent.emoji} {agent.displayName}
+        </span>
+      )
+    }
+
+    const resolutionBadge = (resolution: DecisionResolution | null | undefined) => {
+      if (!resolution) return null
+      const map: Record<DecisionResolution, { label: string; bg: string; color: string }> = {
+        decided: { label: 'Decided', bg: '#d1fae5', color: '#065f46' },
+        deferred: { label: 'Deferred', bg: '#f1f5f9', color: '#475569' },
+        not_needed: { label: 'Not Needed', bg: '#fef2f2', color: '#991b1b' },
+      }
+      const s = map[resolution]
+      return (
+        <span style={{ backgroundColor: s.bg, color: s.color, borderRadius: 12, padding: '2px 8px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' as const }}>
+          {s.label}
+        </span>
+      )
+    }
+
+    const renderInput = (blocker: MarcBlocker) => {
+      const { id, inputType, choiceOptions } = blocker
+      const draft = draftAnswers[id] ?? ''
+
+      if (inputType === 'choice') {
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
+            {(choiceOptions ?? []).map((opt) => (
+              <label key={opt} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', fontSize: 13, color: '#0f172a' }}>
+                <input
+                  type="radio"
+                  name={`blocker-choice-${id}`}
+                  value={opt}
+                  checked={draft === opt}
+                  onChange={() => setDraftAnswers((prev) => ({ ...prev, [id]: opt }))}
+                  style={{ marginTop: 2, cursor: 'pointer', flexShrink: 0 }}
+                />
+                {opt}
+              </label>
+            ))}
+          </div>
+        )
+      }
+
+      if (inputType === 'dropdown') {
+        return (
+          <select
+            value={draft}
+            onChange={(e) => setDraftAnswers((prev) => ({ ...prev, [id]: e.target.value }))}
+            style={{ width: '100%', padding: '6px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 13, color: '#0f172a', backgroundColor: '#fff' }}
+          >
+            <option value="">— select an option —</option>
+            {(choiceOptions ?? []).map((opt) => (
+              <option key={opt} value={opt}>{opt}</option>
+            ))}
+          </select>
+        )
+      }
+
+      if (inputType === 'text') {
+        return (
+          <textarea
+            rows={3}
+            placeholder="Type your answer..."
+            value={draft}
+            onChange={(e) => setDraftAnswers((prev) => ({ ...prev, [id]: e.target.value }))}
+            style={{ width: '100%', padding: '8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 13, color: '#0f172a', fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box' as const }}
+          />
+        )
+      }
+
+      if (inputType === 'confirm') {
+        const confirmText = choiceOptions?.[0] ?? 'Confirm'
+        const confirmed = draft === confirmText
+        return (
+          <div>
+            <div style={{ padding: '10px 14px', border: `2px solid ${confirmed ? '#10b981' : '#e2e8f0'}`, borderRadius: 8, backgroundColor: confirmed ? '#d1fae5' : '#f8fafc', fontSize: 13, color: confirmed ? '#065f46' : '#475569', marginBottom: 8 }}>
+              {confirmed ? '✓ ' : ''}{confirmText}
+            </div>
+            {!confirmed && (
+              <button
+                type="button"
+                onClick={() => setDraftAnswers((prev) => ({ ...prev, [id]: confirmText }))}
+                style={{ ...BTN, backgroundColor: '#fef9c3', borderColor: '#f59e0b', color: '#92400e', fontSize: 13, padding: '6px 14px' }}
+              >
+                ✓ Confirm Authorization
+              </button>
+            )}
+          </div>
+        )
+      }
+
+      return null
+    }
+
+    const renderBlockerRow = (blocker: MarcBlocker, isResolved: boolean) => {
+      const isExpanded = expandedBlockerId === blocker.id
+      const titleText = blocker.title ?? blocker.description
+      const truncated = titleText.length > 60 ? titleText.slice(0, 60) + '…' : titleText
+      const daysOpen = Math.floor((Date.now() - new Date(blocker.createdAt).getTime()) / 86400000)
+      const draft = draftAnswers[blocker.id] ?? ''
+
+      // For confirm type, answer is auto-set to choiceOptions[0] if not yet drafted
+      const effectiveAnswer = blocker.inputType === 'confirm'
+        ? (draft || (blocker.choiceOptions?.[0] ?? ''))
+        : draft
+      const canDecide = !!effectiveAnswer.trim()
+
+      const dotColor = isResolved ? '#22c55e' : '#f59e0b'
+
+      return (
+        <div key={blocker.id}>
+          {/* Row */}
+          <div
+            onClick={() => {
+              if (isResolved) return
+              setExpandedBlockerId(isExpanded ? null : blocker.id)
+            }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              padding: '7px 4px',
+              borderBottom: '1px solid #fde68a',
+              cursor: isResolved ? 'default' : 'pointer',
+              userSelect: 'none' as const,
+            }}
+          >
+            <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: dotColor, display: 'inline-block', flexShrink: 0 }} />
+            <span style={{ flex: 1, fontWeight: 600, fontSize: 13, color: '#0f172a' }}>
+              {!isResolved && (
+                <span style={{ marginRight: 6, fontSize: 11, color: '#94a3b8' }}>{isExpanded ? '▼' : '▶'}</span>
+              )}
+              {truncated}
+              {isResolved && blocker.answer && (
+                <span style={{ display: 'block', fontSize: 11, color: '#64748b', fontWeight: 400, marginTop: 2, fontStyle: 'italic' }}>
+                  → {blocker.answer.length > 80 ? blocker.answer.slice(0, 80) + '…' : blocker.answer}
+                </span>
+              )}
+            </span>
+            {deptBadge(blocker.department)}
+            <span style={{ fontSize: 11, color: '#92400e', whiteSpace: 'nowrap' as const }}>{daysOpen}d</span>
+            {isResolved && resolutionBadge(blocker.resolution)}
+          </div>
+
+          {/* Accordion */}
+          {isExpanded && !isResolved && (
+            <div style={{ margin: '8px 0 12px', borderRadius: 8, overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+
+              {/* Issue card */}
+              {blocker.detail && (
+                <div style={{ backgroundColor: '#fffbeb', padding: '12px 16px', borderBottom: '1px solid #e2e8f0' }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: '#92400e', textTransform: 'uppercase' as const, letterSpacing: '0.05em', marginBottom: 8 }}>Issue</div>
+                  <div style={{ marginBottom: 6 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' as const, letterSpacing: '0.04em' }}>WHAT: </span>
+                    <span style={{ fontSize: 13, color: '#0f172a' }}>{blocker.detail.what}</span>
+                  </div>
+                  <div style={{ marginBottom: 6 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' as const, letterSpacing: '0.04em' }}>WHY IT MATTERS: </span>
+                    <span style={{ fontSize: 13, color: '#0f172a' }}>{blocker.detail.why}</span>
+                  </div>
+                  {blocker.detail.recommendation && (
+                    <div style={{ marginBottom: 6 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' as const, letterSpacing: '0.04em' }}>ORION RECOMMENDS: </span>
+                      <span style={{ fontSize: 13, color: '#0f172a', fontStyle: 'italic' }}>{blocker.detail.recommendation}</span>
+                    </div>
+                  )}
+                  {blocker.detail.followUpOwner && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' as const, letterSpacing: '0.04em' }}>FOLLOW-UP OWNER:</span>
+                      {deptBadge(blocker.detail.followUpOwner)}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Answer section */}
+              <div style={{ backgroundColor: '#f8fafc', padding: '12px 16px', borderBottom: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: '#475569', textTransform: 'uppercase' as const, letterSpacing: '0.05em', marginBottom: 10 }}>Your Answer</div>
+                {renderInput(blocker)}
+              </div>
+
+              {/* Action buttons */}
+              <div style={{ backgroundColor: '#fff', padding: '10px 16px', display: 'flex', flexWrap: 'wrap' as const, gap: 8, alignItems: 'center' }}>
+                <button
+                  type="button"
+                  disabled={!canDecide}
+                  onClick={() => resolveBlocker(blocker.id, 'decided', effectiveAnswer || null)}
+                  style={{
+                    ...BTN,
+                    backgroundColor: canDecide ? '#10b981' : '#e2e8f0',
+                    color: canDecide ? '#fff' : '#94a3b8',
+                    borderColor: canDecide ? '#10b981' : '#e2e8f0',
+                    cursor: canDecide ? 'pointer' : 'not-allowed',
+                  }}
+                >
+                  ✓ Decide
+                </button>
+                <button
+                  type="button"
+                  onClick={() => resolveBlocker(blocker.id, 'deferred', null)}
+                  style={{ ...BTN, backgroundColor: '#64748b', color: '#fff', borderColor: '#64748b' }}
+                >
+                  → Defer
+                </button>
+                <button
+                  type="button"
+                  onClick={() => resolveBlocker(blocker.id, 'not_needed', null)}
+                  style={{ ...BTN, backgroundColor: '#fff', color: '#ef4444', borderColor: '#ef4444' }}
+                >
+                  × Not Needed
+                </button>
+                {blocker.chatGptPrompt && (
+                  <button
+                    type="button"
+                    onClick={() => window.open(`https://chat.openai.com/?q=${encodeURIComponent(blocker.chatGptPrompt!)}`, '_blank')}
+                    style={{ ...BTN, backgroundColor: '#8b5cf6', color: '#fff', borderColor: '#8b5cf6' }}
+                  >
+                    💬 Ask ChatGPT
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )
+    }
+
     return (
       <div
         style={{
@@ -290,64 +556,43 @@ export default function AdminCommandCenterPage() {
           marginBottom: 20,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
           <span style={{ fontWeight: 700, color: '#92400e' }}>⚠️ Needs Your Decision</span>
-          <span
-            style={{
-              backgroundColor: '#fef3c7',
-              color: '#92400e',
-              borderRadius: 12,
-              padding: '2px 8px',
-              fontSize: 12,
-            }}
-          >
-            {activeBlockers.length}
-          </span>
+          {activeOnes.length > 0 && (
+            <span style={{ backgroundColor: '#fef3c7', color: '#92400e', borderRadius: 12, padding: '2px 8px', fontSize: 12, fontWeight: 700 }}>
+              {activeOnes.length}
+            </span>
+          )}
+          {activeOnes.length === 0 && (
+            <span style={{ fontSize: 12, color: '#22c55e', fontWeight: 700 }}>✓ All resolved</span>
+          )}
         </div>
-        {activeBlockers.map((blocker, idx) => {
-          const agent = AGENTS.find((a) => a.id === blocker.department)
-          const daysOpen = Math.floor((Date.now() - new Date(blocker.createdAt).getTime()) / 86400000)
-          const isLast = idx === activeBlockers.length - 1
-          return (
-            <div
-              key={blocker.id}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-                padding: '6px 0',
-                borderBottom: isLast ? 'none' : '1px solid #fde68a',
-              }}
+
+        {/* Active blockers */}
+        {activeOnes.length === 0 && resolvedOnes.length === 0 && (
+          <div style={{ color: '#94a3b8', fontSize: 13 }}>(No decisions pending)</div>
+        )}
+        {activeOnes.map((b) => renderBlockerRow(b, false))}
+
+        {/* Resolved section */}
+        {resolvedOnes.length > 0 && (
+          <div style={{ marginTop: activeOnes.length > 0 ? 12 : 4 }}>
+            <button
+              type="button"
+              onClick={() => setShowResolvedBlockers((prev) => !prev)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#64748b', fontWeight: 700, padding: '4px 0', display: 'flex', alignItems: 'center', gap: 6 }}
             >
-              <span style={{ fontWeight: 600, flex: 1, fontSize: 13, color: '#0f172a' }}>
-                {blocker.description}
-              </span>
-              {agent && (
-                <span
-                  style={{
-                    backgroundColor: '#fef3c7',
-                    color: '#92400e',
-                    borderRadius: 12,
-                    padding: '2px 8px',
-                    fontSize: 11,
-                    fontWeight: 700,
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {agent.emoji} {agent.displayName}
-                </span>
-              )}
-              <span style={{ fontSize: 12, color: '#92400e', whiteSpace: 'nowrap' }}>{daysOpen}d</span>
-              <button
-                type="button"
-                onClick={() => markBlockerDone(blocker.id)}
-                style={{ ...BTN, fontSize: 11, padding: '3px 8px' }}
-              >
-                Done
-              </button>
-            </div>
-          )
-        })}
+              {showResolvedBlockers ? '▼' : '▶'}
+              <span>Resolved ({resolvedOnes.length})</span>
+            </button>
+            {showResolvedBlockers && (
+              <div style={{ marginTop: 6 }}>
+                {resolvedOnes.map((b) => renderBlockerRow(b, true))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     )
   }
