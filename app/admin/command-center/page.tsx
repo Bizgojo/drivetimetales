@@ -186,17 +186,54 @@ export default function AdminCommandCenterPage() {
   }, [])
 
   useEffect(() => {
-    const storedAgents = readLS<AgentsState | null>(AGENTS_KEY, null)
-    if (storedAgents) {
-      setAgentsState({ ...makeSeedAgents(), ...storedAgents })
-    } else {
-      const seed = makeSeedAgents()
-      setAgentsState(seed)
-      writeLS(AGENTS_KEY, seed)
-    }
-    setMissions(readLS<Mission[]>(MISSIONS_KEY, []))
-    setBlockers(readLS<MarcBlocker[]>(MARC_BLOCKERS_KEY, []))
-    setLoaded(true)
+    // Fetch from API first, fall back to localStorage
+    fetch('/api/admin/org-status')
+      .then((r) => {
+        if (!r.ok) throw new Error(`org-status ${r.status}`)
+        return r.json()
+      })
+      .then((data: {
+        agents?: AgentsState
+        missions?: Mission[]
+        blockers?: MarcBlocker[]
+        readiness?: LaunchReadiness
+        reports?: OrionReport[]
+        source?: string
+      }) => {
+        if (data.agents) {
+          setAgentsState(data.agents)
+          writeLS(AGENTS_KEY, data.agents)
+        }
+        if (data.missions) {
+          setMissions(data.missions)
+          writeLS(MISSIONS_KEY, data.missions)
+        }
+        if (data.blockers) {
+          setBlockers(data.blockers)
+          writeLS(MARC_BLOCKERS_KEY, data.blockers)
+        }
+        if (data.readiness) {
+          writeLS(LAUNCH_READINESS_KEY, data.readiness)
+        }
+        if (data.reports) {
+          writeLS(ORION_REPORTS_KEY, data.reports)
+        }
+        setLoaded(true)
+      })
+      .catch(() => {
+        // API unavailable — fall back to localStorage (existing behavior)
+        const storedAgents = readLS<AgentsState | null>(AGENTS_KEY, null)
+        if (storedAgents) {
+          setAgentsState({ ...makeSeedAgents(), ...storedAgents })
+        } else {
+          const seed = makeSeedAgents()
+          setAgentsState(seed)
+          writeLS(AGENTS_KEY, seed)
+        }
+        setMissions(readLS<Mission[]>(MISSIONS_KEY, []))
+        setBlockers(readLS<MarcBlocker[]>(MARC_BLOCKERS_KEY, []))
+        setLoaded(true)
+      })
   }, [])
 
   // Escape key closes detail panel
