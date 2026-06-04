@@ -346,13 +346,28 @@ export default function AdminCommandCenterPage() {
         return (
           <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
             {(choiceOptions ?? []).map((opt) => (
-              <label key={opt} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', fontSize: 13, color: '#0f172a' }}>
+              <label
+                key={opt}
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 8,
+                  cursor: 'pointer',
+                  fontSize: 13,
+                  color: '#0f172a',
+                  padding: '8px 10px',
+                  borderRadius: 6,
+                  border: '1px solid #e2e8f0',
+                  backgroundColor: '#fff',
+                  transition: 'background 0.1s',
+                }}
+              >
                 <input
                   type="radio"
                   name={`blocker-choice-${id}`}
                   value={opt}
-                  checked={draft === opt}
-                  onChange={() => setDraftAnswers((prev) => ({ ...prev, [id]: opt }))}
+                  checked={false}
+                  onChange={() => resolveBlocker(id, 'decided', opt)}
                   style={{ marginTop: 2, cursor: 'pointer', flexShrink: 0 }}
                 />
                 {opt}
@@ -365,9 +380,19 @@ export default function AdminCommandCenterPage() {
       if (inputType === 'dropdown') {
         return (
           <select
-            value={draft}
-            onChange={(e) => setDraftAnswers((prev) => ({ ...prev, [id]: e.target.value }))}
-            style={{ width: '100%', padding: '6px 8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 13, color: '#0f172a', backgroundColor: '#fff' }}
+            defaultValue=""
+            onChange={(e) => {
+              if (e.target.value) resolveBlocker(id, 'decided', e.target.value)
+            }}
+            style={{
+              width: '100%',
+              padding: '8px 10px',
+              border: '1px solid #e2e8f0',
+              borderRadius: 6,
+              fontSize: 13,
+              color: '#0f172a',
+              backgroundColor: '#fff',
+            }}
           >
             <option value="">— select an option —</option>
             {(choiceOptions ?? []).map((opt) => (
@@ -378,35 +403,64 @@ export default function AdminCommandCenterPage() {
       }
 
       if (inputType === 'text') {
+        const draft = draftAnswers[id] ?? ''
         return (
-          <textarea
-            rows={3}
-            placeholder="Type your answer..."
-            value={draft}
-            onChange={(e) => setDraftAnswers((prev) => ({ ...prev, [id]: e.target.value }))}
-            style={{ width: '100%', padding: '8px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 13, color: '#0f172a', fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box' as const }}
-          />
+          <div>
+            <textarea
+              rows={3}
+              placeholder="Type your answer..."
+              value={draft}
+              onChange={(e) => setDraftAnswers((prev) => ({ ...prev, [id]: e.target.value }))}
+              style={{
+                width: '100%',
+                padding: '8px',
+                border: '1px solid #e2e8f0',
+                borderRadius: 6,
+                fontSize: 13,
+                color: '#0f172a',
+                fontFamily: 'inherit',
+                resize: 'vertical' as const,
+                boxSizing: 'border-box' as const,
+                marginBottom: 8,
+              }}
+            />
+            <button
+              type="button"
+              disabled={!draft.trim()}
+              onClick={() => resolveBlocker(id, 'decided', draft)}
+              style={{
+                ...BTN,
+                backgroundColor: draft.trim() ? '#10b981' : '#e2e8f0',
+                color: draft.trim() ? '#fff' : '#94a3b8',
+                borderColor: draft.trim() ? '#10b981' : '#e2e8f0',
+                cursor: draft.trim() ? 'pointer' : 'not-allowed',
+              }}
+            >
+              Submit Answer →
+            </button>
+          </div>
         )
       }
 
       if (inputType === 'confirm') {
         const confirmText = choiceOptions?.[0] ?? 'Confirm'
-        const confirmed = draft === confirmText
         return (
-          <div>
-            <div style={{ padding: '10px 14px', border: `2px solid ${confirmed ? '#10b981' : '#e2e8f0'}`, borderRadius: 8, backgroundColor: confirmed ? '#d1fae5' : '#f8fafc', fontSize: 13, color: confirmed ? '#065f46' : '#475569', marginBottom: 8 }}>
-              {confirmed ? '✓ ' : ''}{confirmText}
-            </div>
-            {!confirmed && (
-              <button
-                type="button"
-                onClick={() => setDraftAnswers((prev) => ({ ...prev, [id]: confirmText }))}
-                style={{ ...BTN, backgroundColor: '#fef9c3', borderColor: '#f59e0b', color: '#92400e', fontSize: 13, padding: '6px 14px' }}
-              >
-                ✓ Confirm Authorization
-              </button>
-            )}
-          </div>
+          <button
+            type="button"
+            onClick={() => resolveBlocker(id, 'decided', confirmText)}
+            style={{
+              ...BTN,
+              width: '100%',
+              backgroundColor: '#f59e0b',
+              color: '#fff',
+              borderColor: '#f59e0b',
+              fontSize: 14,
+              padding: '10px 16px',
+              fontWeight: 700,
+            }}
+          >
+            ✓ {confirmText}
+          </button>
         )
       }
 
@@ -420,37 +474,26 @@ export default function AdminCommandCenterPage() {
       const daysOpen = Math.floor((Date.now() - new Date(blocker.createdAt).getTime()) / 86400000)
       const draft = draftAnswers[blocker.id] ?? ''
 
-      // For confirm type, answer is auto-set to choiceOptions[0] if not yet drafted
-      const effectiveAnswer = blocker.inputType === 'confirm'
-        ? (draft || (blocker.choiceOptions?.[0] ?? ''))
-        : draft
-      const canDecide = !!effectiveAnswer.trim()
-
       const dotColor = isResolved ? '#22c55e' : '#f59e0b'
 
       return (
         <div key={blocker.id}>
           {/* Row */}
           <div
-            onClick={() => {
-              if (isResolved) return
-              setExpandedBlockerId(isExpanded ? null : blocker.id)
-            }}
+            onClick={() => setExpandedBlockerId(isExpanded ? null : blocker.id)}
             style={{
               display: 'flex',
               alignItems: 'center',
               gap: 10,
               padding: '7px 4px',
               borderBottom: '1px solid #fde68a',
-              cursor: isResolved ? 'default' : 'pointer',
+              cursor: 'pointer',
               userSelect: 'none' as const,
             }}
           >
             <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: dotColor, display: 'inline-block', flexShrink: 0 }} />
             <span style={{ flex: 1, fontWeight: 600, fontSize: 13, color: '#0f172a' }}>
-              {!isResolved && (
-                <span style={{ marginRight: 6, fontSize: 11, color: '#94a3b8' }}>{isExpanded ? '▼' : '▶'}</span>
-              )}
+              <span style={{ marginRight: 6, fontSize: 11, color: '#94a3b8' }}>{isExpanded ? '▼' : '▶'}</span>
               {truncated}
               {isResolved && blocker.answer && (
                 <span style={{ display: 'block', fontSize: 11, color: '#64748b', fontWeight: 400, marginTop: 2, fontStyle: 'italic' }}>
@@ -462,6 +505,55 @@ export default function AdminCommandCenterPage() {
             <span style={{ fontSize: 11, color: '#92400e', whiteSpace: 'nowrap' as const }}>{daysOpen}d</span>
             {isResolved && resolutionBadge(blocker.resolution)}
           </div>
+
+          {/* Resolved Accordion — summary only, no inputs */}
+          {isExpanded && isResolved && (
+            <div style={{
+              margin: '8px 0 12px',
+              borderRadius: 8,
+              overflow: 'hidden',
+              border: '1px solid #d1fae5',
+              backgroundColor: '#f0fdf4',
+              padding: '14px 16px',
+            }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: '#065f46', textTransform: 'uppercase' as const, letterSpacing: '0.05em', marginBottom: 10 }}>
+                Resolution Summary
+              </div>
+              <div style={{ marginBottom: 8 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' as const }}>QUESTION: </span>
+                <span style={{ fontSize: 13, color: '#0f172a' }}>{blocker.title ?? blocker.description}</span>
+              </div>
+              {blocker.answer && (
+                <div style={{ marginBottom: 8, padding: '8px 12px', backgroundColor: '#fff', borderRadius: 6, border: '1px solid #d1fae5' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' as const, marginBottom: 4 }}>MARC&apos;S ANSWER</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{blocker.answer}</div>
+                </div>
+              )}
+              {blocker.answeredAt && (
+                <div style={{ marginBottom: 8 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' as const }}>DATE ANSWERED: </span>
+                  <span style={{ fontSize: 13, color: '#0f172a' }}>{new Date(blocker.answeredAt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+              )}
+              {blocker.detail?.followUpOwner && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' as const }}>FOLLOW-UP OWNER:</span>
+                  {deptBadge(blocker.detail.followUpOwner)}
+                </div>
+              )}
+              {blocker.nextAction && (
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' as const, marginBottom: 4 }}>NEXT ACTION</div>
+                  <div style={{ fontSize: 13, color: '#0f172a', padding: '8px 12px', backgroundColor: '#fff', borderRadius: 6, border: '1px solid #d1fae5' }}>{blocker.nextAction}</div>
+                </div>
+              )}
+              {blocker.resolution === 'deferred' && (
+                <div style={{ fontSize: 12, color: '#64748b', fontStyle: 'italic', marginTop: 8 }}>
+                  Deferred — no answer recorded. Click to re-open if needed... (currently view-only once resolved)
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Accordion */}
           {isExpanded && !isResolved && (
@@ -500,22 +592,15 @@ export default function AdminCommandCenterPage() {
                 {renderInput(blocker)}
               </div>
 
-              {/* Action buttons */}
-              <div style={{ backgroundColor: '#fff', padding: '10px 16px', display: 'flex', flexWrap: 'wrap' as const, gap: 8, alignItems: 'center' }}>
-                <button
-                  type="button"
-                  disabled={!canDecide}
-                  onClick={() => resolveBlocker(blocker.id, 'decided', effectiveAnswer || null)}
-                  style={{
-                    ...BTN,
-                    backgroundColor: canDecide ? '#10b981' : '#e2e8f0',
-                    color: canDecide ? '#fff' : '#94a3b8',
-                    borderColor: canDecide ? '#10b981' : '#e2e8f0',
-                    cursor: canDecide ? 'pointer' : 'not-allowed',
-                  }}
-                >
-                  ✓ Decide
-                </button>
+              {/* Action row — always: Defer + Ask ChatGPT */}
+              <div style={{
+                backgroundColor: '#fff',
+                padding: '10px 16px',
+                display: 'flex',
+                flexWrap: 'wrap' as const,
+                gap: 8,
+                alignItems: 'center',
+              }}>
                 <button
                   type="button"
                   onClick={() => resolveBlocker(blocker.id, 'deferred', null)}
@@ -525,20 +610,15 @@ export default function AdminCommandCenterPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => resolveBlocker(blocker.id, 'not_needed', null)}
-                  style={{ ...BTN, backgroundColor: '#fff', color: '#ef4444', borderColor: '#ef4444' }}
+                  onClick={() => {
+                    const prompt = blocker.chatGptPrompt
+                      ?? `I need to make a decision about: "${blocker.title ?? blocker.description}". ${blocker.detail?.what ?? ''} ${blocker.detail?.why ?? ''} What should I consider?`
+                    window.open(`https://chat.openai.com/?q=${encodeURIComponent(prompt)}`, '_blank')
+                  }}
+                  style={{ ...BTN, backgroundColor: '#8b5cf6', color: '#fff', borderColor: '#8b5cf6' }}
                 >
-                  × Not Needed
+                  💬 Ask ChatGPT
                 </button>
-                {blocker.chatGptPrompt && (
-                  <button
-                    type="button"
-                    onClick={() => window.open(`https://chat.openai.com/?q=${encodeURIComponent(blocker.chatGptPrompt!)}`, '_blank')}
-                    style={{ ...BTN, backgroundColor: '#8b5cf6', color: '#fff', borderColor: '#8b5cf6' }}
-                  >
-                    💬 Ask ChatGPT
-                  </button>
-                )}
               </div>
             </div>
           )}
