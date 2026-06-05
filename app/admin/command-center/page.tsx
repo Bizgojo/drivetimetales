@@ -180,7 +180,9 @@ export default function AdminCommandCenterPage() {
   const [expandedBlockerId, setExpandedBlockerId] = useState<string | null>(null)
   const [draftAnswers, setDraftAnswers] = useState<Record<string, string>>({})
   const [showResolvedBlockers, setShowResolvedBlockers] = useState(false)
+  const [showDeferredBlockers, setShowDeferredBlockers] = useState(false)
   const missionWriteTimer = useRef<number | null>(null)
+  const [orionReports, setOrionReports] = useState<OrionReport[]>(() => readLS<OrionReport[]>(ORION_REPORTS_KEY, []))
 
   const today = useMemo(() => {
     return new Date().toLocaleDateString('en-US', {
@@ -239,8 +241,11 @@ export default function AdminCommandCenterPage() {
         if (data.readiness) {
           writeLS(LAUNCH_READINESS_KEY, data.readiness)
         }
-        if (data.reports) {
+        if (data.reports && data.reports.length > 0) {
+          setOrionReports(data.reports)
           writeLS(ORION_REPORTS_KEY, data.reports)
+          // Note: if server returns empty (e.g. deployed env can't read local filesystem),
+          // we preserve the localStorage cache so the modal still shows cached reports.
         }
         setLoaded(true)
       })
@@ -333,7 +338,8 @@ export default function AdminCommandCenterPage() {
 
   const renderBlockersPanel = () => {
     const activeOnes = blockers.filter((b) => !b.done)
-    const resolvedOnes = blockers.filter((b) => b.done)
+    const deferredOnes = blockers.filter((b) => b.done && b.resolution === 'deferred')
+    const resolvedOnes = blockers.filter((b) => b.done && b.resolution !== null && b.resolution !== 'deferred')
 
     if (blockers.length === 0) return null
 
@@ -495,14 +501,18 @@ export default function AdminCommandCenterPage() {
       return null
     }
 
-    const renderBlockerRow = (blocker: MarcBlocker, isResolved: boolean) => {
+    const renderBlockerRow = (blocker: MarcBlocker, section: 'active' | 'deferred' | 'resolved') => {
       const isExpanded = expandedBlockerId === blocker.id
+      const isResolved = section !== 'active'
       const titleText = blocker.title ?? blocker.description
       const truncated = titleText.length > 60 ? titleText.slice(0, 60) + '…' : titleText
       const daysOpen = Math.floor((Date.now() - new Date(blocker.createdAt).getTime()) / 86400000)
       const draft = draftAnswers[blocker.id] ?? ''
 
-      const dotColor = isResolved ? '#22c55e' : '#f59e0b'
+      const dotColor = section === 'resolved' ? '#22c55e' : section === 'deferred' ? '#f59e0b' : '#ef4444'
+      const summaryBorderColor = section === 'resolved' ? '#d1fae5' : '#fde68a'
+      const summaryBgColor = section === 'resolved' ? '#f0fdf4' : '#fffbeb'
+      const summaryHeaderColor = section === 'resolved' ? '#065f46' : '#92400e'
 
       return (
         <div key={blocker.id}>
@@ -534,17 +544,17 @@ export default function AdminCommandCenterPage() {
             {isResolved && resolutionBadge(blocker.resolution)}
           </div>
 
-          {/* Resolved Accordion — summary only, no inputs */}
+          {/* Resolved/Deferred Accordion — summary only, no inputs */}
           {isExpanded && isResolved && (
             <div style={{
               margin: '8px 0 12px',
               borderRadius: 8,
               overflow: 'hidden',
-              border: '1px solid #d1fae5',
-              backgroundColor: '#f0fdf4',
+              border: `1px solid ${summaryBorderColor}`,
+              backgroundColor: summaryBgColor,
               padding: '14px 16px',
             }}>
-              <div style={{ fontSize: 11, fontWeight: 800, color: '#065f46', textTransform: 'uppercase' as const, letterSpacing: '0.05em', marginBottom: 10 }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: summaryHeaderColor, textTransform: 'uppercase' as const, letterSpacing: '0.05em', marginBottom: 10 }}>
                 Resolution Summary
               </div>
               <div style={{ marginBottom: 8 }}>
@@ -552,7 +562,7 @@ export default function AdminCommandCenterPage() {
                 <span style={{ fontSize: 13, color: '#0f172a' }}>{blocker.title ?? blocker.description}</span>
               </div>
               {blocker.answer && (
-                <div style={{ marginBottom: 8, padding: '8px 12px', backgroundColor: '#fff', borderRadius: 6, border: '1px solid #d1fae5' }}>
+                <div style={{ marginBottom: 8, padding: '8px 12px', backgroundColor: '#fff', borderRadius: 6, border: `1px solid ${summaryBorderColor}` }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' as const, marginBottom: 4 }}>MARC&apos;S ANSWER</div>
                   <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{blocker.answer}</div>
                 </div>
@@ -572,7 +582,7 @@ export default function AdminCommandCenterPage() {
               {blocker.nextAction && (
                 <div>
                   <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' as const, marginBottom: 4 }}>NEXT ACTION</div>
-                  <div style={{ fontSize: 13, color: '#0f172a', padding: '8px 12px', backgroundColor: '#fff', borderRadius: 6, border: '1px solid #d1fae5' }}>{blocker.nextAction}</div>
+                  <div style={{ fontSize: 13, color: '#0f172a', padding: '8px 12px', backgroundColor: '#fff', borderRadius: 6, border: `1px solid ${summaryBorderColor}` }}>{blocker.nextAction}</div>
                 </div>
               )}
               {blocker.resolution === 'deferred' && (
@@ -669,7 +679,12 @@ export default function AdminCommandCenterPage() {
           <span style={{ fontWeight: 700, color: '#92400e' }}>⚠️ Needs Your Decision</span>
           {activeOnes.length > 0 && (
             <span style={{ backgroundColor: '#fef3c7', color: '#92400e', borderRadius: 12, padding: '2px 8px', fontSize: 12, fontWeight: 700 }}>
-              {activeOnes.length}
+              {activeOnes.length} active
+            </span>
+          )}
+          {deferredOnes.length > 0 && (
+            <span style={{ backgroundColor: '#fef3c7', color: '#b45309', borderRadius: 12, padding: '2px 8px', fontSize: 12, fontWeight: 700 }}>
+              {deferredOnes.length} deferred
             </span>
           )}
           {activeOnes.length === 0 && (
@@ -678,25 +693,44 @@ export default function AdminCommandCenterPage() {
         </div>
 
         {/* Active blockers */}
-        {activeOnes.length === 0 && resolvedOnes.length === 0 && (
+        {activeOnes.length === 0 && deferredOnes.length === 0 && resolvedOnes.length === 0 && (
           <div style={{ color: '#94a3b8', fontSize: 13 }}>(No decisions pending)</div>
         )}
-        {activeOnes.map((b) => renderBlockerRow(b, false))}
+        {activeOnes.map((b) => renderBlockerRow(b, 'active'))}
+
+        {/* Deferred section */}
+        {deferredOnes.length > 0 && (
+          <div style={{ marginTop: activeOnes.length > 0 ? 12 : 4, borderTop: activeOnes.length > 0 ? '1px solid #fde68a' : undefined, paddingTop: activeOnes.length > 0 ? 10 : 0 }}>
+            <button
+              type="button"
+              onClick={() => setShowDeferredBlockers((prev) => !prev)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#92400e', fontWeight: 700, padding: '4px 0', display: 'flex', alignItems: 'center', gap: 6 }}
+            >
+              {showDeferredBlockers ? '▼' : '▶'}
+              <span style={{ color: '#b45309' }}>⏸ Deferred ({deferredOnes.length})</span>
+            </button>
+            {showDeferredBlockers && (
+              <div style={{ marginTop: 6 }}>
+                {deferredOnes.map((b) => renderBlockerRow(b, 'deferred'))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Resolved section */}
         {resolvedOnes.length > 0 && (
-          <div style={{ marginTop: activeOnes.length > 0 ? 12 : 4 }}>
+          <div style={{ marginTop: (activeOnes.length > 0 || deferredOnes.length > 0) ? 12 : 4 }}>
             <button
               type="button"
               onClick={() => setShowResolvedBlockers((prev) => !prev)}
               style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#64748b', fontWeight: 700, padding: '4px 0', display: 'flex', alignItems: 'center', gap: 6 }}
             >
               {showResolvedBlockers ? '▼' : '▶'}
-              <span>Resolved ({resolvedOnes.length})</span>
+              <span style={{ color: '#065f46' }}>✓ Resolved ({resolvedOnes.length})</span>
             </button>
             {showResolvedBlockers && (
               <div style={{ marginTop: 6 }}>
-                {resolvedOnes.map((b) => renderBlockerRow(b, true))}
+                {resolvedOnes.map((b) => renderBlockerRow(b, 'resolved'))}
               </div>
             )}
           </div>
@@ -987,11 +1021,15 @@ export default function AdminCommandCenterPage() {
     if (!agent) return null
     const state = agentsState[selectedAgentId] ?? makeEmptyAgentState()
 
+    // Backlog = all missions for this agent that are NOT the current task, NOT complete, NOT archived
+    const currentTaskMission = missions.find(m => m.agentId === selectedAgentId && m.status === 'active')
     const backlogMissions = missions
       .filter(
         (m) =>
           m.agentId === selectedAgentId &&
-          !['active', 'complete', 'archived'].includes(m.status)
+          m.status !== 'complete' &&
+          m.status !== 'archived' &&
+          m.id !== currentTaskMission?.id
       )
       .sort(
         (a, b) =>
@@ -1200,7 +1238,7 @@ export default function AdminCommandCenterPage() {
 
   const renderReportsModal = () => {
     if (!showReportsModal) return null
-    const reports = (readLS<OrionReport[]>(ORION_REPORTS_KEY, []) as OrionReport[]).sort(
+    const reports = [...orionReports].sort(
       (a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp)
     )
 
