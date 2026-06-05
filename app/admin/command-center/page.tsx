@@ -326,6 +326,8 @@ export default function AdminCommandCenterPage() {
     setBlockers(next)
     writeLS(MARC_BLOCKERS_KEY, next)
     setExpandedBlockerId(null)
+    // Auto-expand the relevant section so Marc can see where the item landed
+    if (resolution === 'deferred') setShowDeferredBlockers(true)
     // Persist to server — silent fail, localStorage is the backup
     fetch('/api/admin/org-status', {
       method: 'PATCH',
