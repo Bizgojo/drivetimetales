@@ -4,9 +4,12 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import fs from 'fs'
 import path from 'path'
+import type { AgentId, AgentState, Mission, MarcBlocker, LaunchReadiness } from '@/lib/config/command-center'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+
+type AgentsState = Record<AgentId, AgentState>
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -48,6 +51,37 @@ async function requireAdmin(): Promise<NextResponse | null> {
   return null
 }
 
+// ─── Supabase Storage persistence ────────────────────────────────────────────
+
+async function readOrgState(): Promise<Record<string, unknown>> {
+  try {
+    const { data, error } = await supabase.storage.from('org-state').download('state.json')
+    if (error || !data) return {}
+    const text = await data.text()
+    return JSON.parse(text) as Record<string, unknown>
+  } catch {
+    return {}
+  }
+}
+
+async function writeOrgState(patch: Record<string, unknown>): Promise<void> {
+  const current = await readOrgState()
+  const next = { ...current, ...patch }
+  const blob = new Blob([JSON.stringify(next)], { type: 'application/json' })
+
+  const { error } = await supabase.storage
+    .from('org-state')
+    .upload('state.json', blob, { upsert: true })
+
+  if (error?.message?.includes('Bucket not found') || error?.message?.toLowerCase().includes('bucket')) {
+    // Create bucket and retry
+    await supabase.storage.createBucket('org-state', { public: false })
+    await supabase.storage
+      .from('org-state')
+      .upload('state.json', blob, { upsert: true })
+  }
+}
+
 // ─── Orion Reports ───────────────────────────────────────────────────────────
 
 type OrionReport = {
@@ -73,7 +107,7 @@ function loadOrionReports(): OrionReport[] {
   }
 }
 
-// ─── Seed data (used when Supabase table doesn't exist yet) ──────────────────
+// ─── Seed data ────────────────────────────────────────────────────────────────
 
 const NOW = new Date().toISOString()
 const TODAY = new Date().toLocaleDateString('en-US', {
@@ -82,70 +116,96 @@ const TODAY = new Date().toLocaleDateString('en-US', {
   day: 'numeric',
 })
 
-const SEED_AGENTS = {
+const SEED_AGENTS: AgentsState = {
   hal: {
     status: 'working',
-    currentTask:
-      'HAL-001: Reliability self-assessment (D2) — counting first-pass acceptance rate, verifying ElevenLabs credits',
+    currentTask: 'HAL-001: Reliability self-assessment (D2) — counting first-pass acceptance rate and verifying ElevenLabs credit balance. 97 stories discovered in review pipeline.',
     percentComplete: 15,
-    waitingOn: 'Canonical Belle B voice ID from Marc',
-    lastActivity: NOW,
-    eta: '3–4 weeks to 25 stories',
-    whyItMatters:
-      'Content pipeline must demonstrate 25 reliable stories before public launch.',
-    lastReport: null,
+    waitingOn: 'Canonical Belle B voice ID from Marc. Content Approval console investigation results from Atlas.',
+    lastActivity: TODAY,
+    eta: '3–4 weeks to 25 published stories (Gate B target)',
+    whyItMatters: 'The catalog is at 4.6 hours published. Gate B requires 8 hours. 97 stories are in the pipeline but none appear in the Content Approval UI — Atlas is investigating. Without Hal clearance, no new stories reach subscribers.',
+    lastReport: {
+      text: 'HAL-001 D2 in progress. 14 published stories confirmed. 97 stories in ready_for_review/repair_queue states discovered — none visible in Content Approval UI due to final_mix.mp3 path requirement. Belle B voice ID unresolved — cannot confirm intro/outro voice on any published story. Production standard field = "unknown" in DB for all 14 published stories.',
+      timestamp: new Date('2026-06-05').toISOString(),
+    },
   },
   atlas: {
     status: 'working',
-    currentTask:
-      'ATL-001: Domain verification, /subscribe fix, Stripe billing error, platform stability',
-    percentComplete: 25,
-    waitingOn: 'Marc: authorize Stripe Annual price fix (live billing error)',
-    lastActivity: NOW,
-    eta: 'D1-D3 by Jun 9',
-    whyItMatters:
-      'Platform must be stable and billing must work before any subscriber acquisition.',
-    lastReport: null,
+    currentTask: 'ATL-001: Domain verification + platform bug fixes. ATL-CC2: Command Center corrections in progress (decision persistence, agent state, mission registry).',
+    percentComplete: 35,
+    waitingOn: 'Marc: authorize Stripe Test Driver Annual price fix. Marc: confirm/deprecate legacy Stripe price IDs.',
+    lastActivity: TODAY,
+    eta: 'Platform bugs D1–D3 by Jun 7 · Stripe fix after Marc authorization · Full mission Jun 14',
+    whyItMatters: 'Atlas owns every system that touches subscriber money and platform access. A confirmed billing error is live in Stripe right now — Test Driver Annual subscribers are being charged at the wrong rate. The Content Approval UI is broken — Hal cannot get stories to Marc for review. The /subscribe re-subscribe flow is broken — churned subscribers cannot return.',
+    lastReport: {
+      text: 'ATL platform report 2026-06-05: Production Console root cause identified — stories require audio_url containing /final_mix.mp3 path AND full packaging fields to appear in Ready For Review lane. Stripe Test Driver Annual/Monthly billing error confirmed live. Decision persistence fixed (commit bfc69a7b). Message Orion panel fixed — now routes to Telegram (commit 7fe0d02b). org_state table does not exist — switching to Supabase Storage.',
+      timestamp: new Date('2026-06-05').toISOString(),
+    },
   },
   maya: {
     status: 'working',
-    currentTask:
-      'MAYA-001 D1 complete: 2 launch-critical issues found — /subscribe broken, /player unguarded. Routing to Atlas.',
+    currentTask: 'MAYA-001 D1 complete (desktop). Two launch-critical bugs found and escalated to Atlas: /subscribe broken for expired users, /player route unguarded. Mobile testing blocked — requires physical device.',
     percentComplete: 30,
-    waitingOn: 'Human tester for mobile testing',
-    lastActivity: NOW,
-    eta: '7–10 days total',
-    whyItMatters:
-      'Subscriber experience must be validated end-to-end before launch.',
-    lastReport: null,
+    waitingOn: 'Atlas: fix /subscribe re-subscribe flow. Atlas: assess /player subscription gate. Human tester for iOS/Android mobile testing.',
+    lastActivity: TODAY,
+    eta: 'D1 desktop: complete · D1 mobile: blocked · D2 onboarding audit: 3–5 days · Full mission 7–10 days',
+    whyItMatters: 'Maya found that every subscriber who churns hits a dead end — the /subscribe CTA sends them to /signup with no path back to their billing portal. This is silent revenue loss happening right now. The /player route is potentially accessible without a subscription. These are Gate 1 failures.',
+    lastReport: {
+      text: 'MAYA D1 desktop walkthrough complete 2026-06-04. LAUNCH-CRITICAL 1: /subscribe re-subscribe flow broken — expired subscribers routed to /signup dead end, no Stripe Customer Portal path. LAUNCH-CRITICAL 2: /player in PUBLIC_PREFIXES at middleware — no subscription gate. Stripe post-checkout redirect not confirmed. Time-to-first-play (new visitor): 4–7 min. Top retention risk: no re-subscribe path for churned users.',
+      timestamp: new Date('2026-06-05').toISOString(),
+    },
   },
   susan: {
     status: 'working',
-    currentTask:
-      'SUS-001: Waitlist audit (D6), marketing intelligence, Airtable campaign orientation',
-    percentComplete: 20,
-    waitingOn: 'Marc: pricing, budget, Founding Member details',
-    lastActivity: NOW,
-    eta: '2–3 weeks for full GTM plan',
-    whyItMatters:
-      'GTM plan and waitlist strategy required to convert early interest into paying subscribers.',
-    lastReport: null,
+    currentTask: 'SUS-001: GTM planning updated with confirmed pricing. Founding Member campaign entered in Airtable (rec6HTGp3cVFa6OUt, status: Recommended). Waitlist count still unknown.',
+    percentComplete: 30,
+    waitingOn: 'Marc: marketing budget for Standard tier paid acquisition. Marc: approve Founding Member Airtable campaign. Atlas: fix X/Twitter 401 and social generator domain. Waitlist count from /admin/waitlist.',
+    lastActivity: TODAY,
+    eta: 'FM campaign brief: complete · Standard paid plan: blocked on budget decision · Full GTM plan: 2–3 weeks',
+    whyItMatters: 'Pricing is now confirmed. Susan has a campaign structure ready but cannot execute paid acquisition without a budget decision from Marc. The Founding Member window creates launch urgency — 500 spots at $2.99/month is the primary conversion lever. Every day without an active organic campaign is a missed waitlist-to-subscriber conversion.',
+    lastReport: {
+      text: 'SUS-001 GTM update 2026-06-05: Pricing confirmed — FM $2.99/mo, Standard $7.99/mo. CAC targets set: operating target $32 (3:1 ratio at $7.99/mo). FM campaign entered in Airtable — organic only, 500 cap, lifetime lock messaging. Standard annual price ID missing from .env.local — Atlas flagged. X/Twitter 401 still unresolved. Social generator posts to drivetimetales.com — wrong domain on every organic post.',
+      timestamp: new Date('2026-06-05').toISOString(),
+    },
   },
   vega: {
-    status: 'waiting',
-    currentTask:
-      'VEGA-001 D1 done: Audio quality standard drafted, waiting for Orion approval. Catalog audit of 14 stories ready to begin.',
-    percentComplete: 15,
-    waitingOn: 'Orion D1 approval · Marc: canonical Belle B voice ID',
-    lastActivity: NOW,
-    eta: '5–7 days after D1 approved',
-    whyItMatters:
-      'Audio quality gate must be established before any story is cleared for subscriber access.',
+    status: 'working',
+    currentTask: 'VEGA-001 D2 catalog audit complete. Result: 14 UNKNOWN — cannot PASS or FAIL. All 14 audio files accessible. Production standard not tracked in DB. Belle B intro/outro voice unverifiable.',
+    percentComplete: 20,
+    waitingOn: 'Marc: canonical Belle B voice ID (3 candidates). Atlas: fix production_standard field tracking in story generation pipeline. Orion: approve path forward given 14 UNKNOWN results.',
+    lastActivity: TODAY,
+    eta: 'D2 audit findings delivered · D3 (deeper audio metadata) blocked until Belle B resolved · Full mission 7–10 days',
+    whyItMatters: 'Vega cannot PASS any story for Gate 4 until the production_standard is tracked in the DB and the Belle B voice ID is confirmed. All 14 published stories are in an UNKNOWN audio quality state. Launching with UNKNOWN audio quality means potentially shipping stories with wrong voice settings, wrong loudness, or wrong structure — and not knowing it.',
+    lastReport: {
+      text: 'VEGA D2 catalog audit complete 2026-06-05. 14 stories audited, 14 UNKNOWN. Root causes: production_standard="unknown" in DB (13/14 asc_version=null), Belle B intro/outro voice ID not stored in any DB table, no production_jobs records for published stories. All 14 audio_urls return HTTP 200. Estimated total duration: 4.6 hours. Voice IDs in content: Elliott Crane (Harbor series), Ray Dolan (Exit 19 + Lost Mailbag), Finn Calloway (Meridian + Dead in Water), Iris Calloway (Rainy Morning). EXAVITQu4vr4xnSDxMaL found in narrator_audio table as "Sarah Mitchell" — data integrity issue.',
+      timestamp: new Date('2026-06-05').toISOString(),
+    },
+  },
+  // Required by AgentId type but not shown in CC grid
+  codex: {
+    status: 'idle',
+    currentTask: '',
+    percentComplete: null,
+    waitingOn: '',
+    lastActivity: TODAY,
+    eta: '',
+    whyItMatters: '',
+    lastReport: null,
+  },
+  orion: {
+    status: 'working',
+    currentTask: 'Coordinating all departments. Monitoring launch readiness. Resolving blockers.',
+    percentComplete: null,
+    waitingOn: '',
+    lastActivity: TODAY,
+    eta: '',
+    whyItMatters: 'Orion ensures the right work is done by the right department at the right time.',
     lastReport: null,
   },
 }
 
-const SEED_MISSIONS = [
+const SEED_MISSIONS: Mission[] = [
   {
     id: 'ATL-001',
     title: 'Platform stability, /subscribe fix, Stripe billing error, domain verification',
@@ -238,7 +298,7 @@ const SEED_MISSIONS = [
   },
 ]
 
-const SEED_BLOCKERS = [
+const SEED_BLOCKERS: MarcBlocker[] = [
   {
     id: 'b1',
     description: 'Has the product launched? What is the current subscriber count?',
@@ -316,7 +376,7 @@ const SEED_BLOCKERS = [
       followUpOwner: 'atlas',
       nextActionTemplate: 'Marc creates Annual price in Stripe live dashboard. Provides new price ID to Atlas. Atlas updates .env.local and redeploys.',
     },
-    chatGptPrompt: null,
+    chatGptPrompt: undefined,
   },
   {
     id: 'b4',
@@ -339,7 +399,7 @@ const SEED_BLOCKERS = [
       followUpOwner: 'atlas',
       nextActionTemplate: 'Atlas verifies Stripe price IDs. Susan updates GTM messaging.',
     },
-    chatGptPrompt: null,
+    chatGptPrompt: undefined,
   },
   {
     id: 'b5',
@@ -365,7 +425,7 @@ const SEED_BLOCKERS = [
       followUpOwner: 'atlas',
       nextActionTemplate: 'Atlas {answer} the stress-test-poller cron job.',
     },
-    chatGptPrompt: null,
+    chatGptPrompt: undefined,
   },
   {
     id: 'b6',
@@ -393,7 +453,7 @@ const SEED_BLOCKERS = [
       followUpOwner: 'atlas',
       nextActionTemplate: 'Atlas confirms trial config matches: {answer}. Gate 2 partial item closed.',
     },
-    chatGptPrompt: null,
+    chatGptPrompt: undefined,
   },
   {
     id: 'b7',
@@ -437,7 +497,7 @@ const SEED_BLOCKERS = [
       followUpOwner: 'susan',
       nextActionTemplate: 'Susan updates Founding Member GTM messaging with confirmed offer.',
     },
-    chatGptPrompt: null,
+    chatGptPrompt: undefined,
   },
   {
     id: 'b9',
@@ -465,7 +525,7 @@ const SEED_BLOCKERS = [
       followUpOwner: 'hal',
       nextActionTemplate: 'Hal queues next story productions as: {answer}',
     },
-    chatGptPrompt: null,
+    chatGptPrompt: undefined,
   },
   {
     id: 'b10',
@@ -496,7 +556,7 @@ const SEED_BLOCKERS = [
   },
 ]
 
-const SEED_READINESS = {
+const SEED_READINESS: LaunchReadiness = {
   score: 2,
   gatesGreen: 1,
   gatesYellow: 2,
@@ -506,79 +566,51 @@ const SEED_READINESS = {
   updatedAt: NOW,
 }
 
-// ─── Route handler ────────────────────────────────────────────────────────────
+// ─── Route handlers ───────────────────────────────────────────────────────────
 
 export async function GET(_req: NextRequest) {
-  try {
-    const unauthorized = await requireAdmin()
-    if (unauthorized) return unauthorized
+  const authError = await requireAdmin()
+  if (authError) return authError
 
-    // Try to read from the org_state Supabase table
-    const { data, error } = await supabase
-      .from('org_state')
-      .select('key, value')
+  const state = await readOrgState()
 
-    if (error) {
-      // Table doesn't exist yet (or another DB error) — return seed data
-      console.info('[org-status] org_state table unavailable, returning seed data:', error.message)
-      return json({
-        agents: SEED_AGENTS,
-        missions: SEED_MISSIONS,
-        blockers: SEED_BLOCKERS,
-        readiness: SEED_READINESS,
-        reports: loadOrionReports(),
-        source: 'seed',
-      })
-    }
-
-    // Parse rows from org_state table (key/value pairs)
-    const rows = (data || []) as Array<{ key: string; value: unknown }>
-    const byKey = Object.fromEntries(rows.map((r) => [r.key, r.value]))
-
-    // Load Orion reports from filesystem
-    const reports = loadOrionReports()
-
-    // Merge with seed as default (table may have partial data)
-    return json({
-      agents: (byKey['agents'] as typeof SEED_AGENTS) ?? SEED_AGENTS,
-      missions: (byKey['missions'] as typeof SEED_MISSIONS) ?? SEED_MISSIONS,
-      blockers: (byKey['blockers'] as typeof SEED_BLOCKERS) ?? SEED_BLOCKERS,
-      readiness: (byKey['readiness'] as typeof SEED_READINESS) ?? SEED_READINESS,
-      reports,
-      source: rows.length > 0 ? 'supabase' : 'seed',
-    })
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Failed to load org status'
-    console.error('[org-status] GET failed:', err)
-    return json({ success: false, error: message }, 500)
-  }
+  return json({
+    agents: (state.agents as AgentsState) ?? SEED_AGENTS,
+    missions: (state.missions as Mission[]) ?? SEED_MISSIONS,
+    blockers: (state.blockers as MarcBlocker[]) ?? SEED_BLOCKERS,
+    readiness: (state.readiness as LaunchReadiness) ?? SEED_READINESS,
+    reports: loadOrionReports(),
+    source: Object.keys(state).length > 0 ? 'storage' : 'seed',
+  })
 }
 
 export async function PATCH(req: NextRequest) {
+  const authError = await requireAdmin()
+  if (authError) return authError
+
   try {
-    const unauthorized = await requireAdmin()
-    if (unauthorized) return unauthorized
-
-    const body = await req.json().catch(() => ({}))
-    const blockers = body.blockers
-
+    const body = await req.json()
+    const { blockers } = body
     if (!Array.isArray(blockers)) {
       return json({ success: false, error: 'blockers must be an array' }, 400)
     }
-
-    const { error } = await supabase
-      .from('org_state')
-      .upsert({ key: 'blockers', value: JSON.stringify(blockers) }, { onConflict: 'key' })
-
-    if (error) {
-      console.error('[org-status] PATCH upsert failed:', error.message)
-      return json({ success: false, error: error.message }, 500)
-    }
-
+    await writeOrgState({ blockers })
     return json({ success: true })
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Failed to persist blockers'
-    console.error('[org-status] PATCH failed:', err)
-    return json({ success: false, error: message }, 500)
+  } catch (err) {
+    return json({ success: false, error: err instanceof Error ? err.message : 'Failed to persist' }, 500)
+  }
+}
+
+export async function PUT(req: NextRequest) {
+  const authError = await requireAdmin()
+  if (authError) return authError
+
+  try {
+    const body = await req.json()
+    // body can contain: agents, missions, blockers, readiness — any subset
+    await writeOrgState(body as Record<string, unknown>)
+    return json({ success: true })
+  } catch (err) {
+    return json({ success: false, error: err instanceof Error ? err.message : 'Failed to persist' }, 500)
   }
 }

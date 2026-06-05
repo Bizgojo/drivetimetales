@@ -215,8 +215,26 @@ export default function AdminCommandCenterPage() {
           writeLS(MISSIONS_KEY, data.missions)
         }
         if (data.blockers) {
-          setBlockers(data.blockers)
-          writeLS(MARC_BLOCKERS_KEY, data.blockers)
+          // MERGE: preserve local resolution state, take structure from API
+          const localBlockers = readLS<MarcBlocker[]>(MARC_BLOCKERS_KEY, [])
+          const merged = (data.blockers as MarcBlocker[]).map(apiBlocker => {
+            const local = localBlockers.find(b => b.id === apiBlocker.id)
+            // If local has a resolution decision, preserve it over the seed
+            if (local && (local.resolution || local.done)) {
+              return {
+                ...apiBlocker,          // API provides fresh text/structure
+                done: local.done,
+                resolvedAt: local.resolvedAt,
+                resolution: local.resolution ?? null,
+                answer: local.answer ?? null,
+                answeredAt: local.answeredAt ?? null,
+                nextAction: local.nextAction ?? null,
+              }
+            }
+            return apiBlocker
+          })
+          setBlockers(merged)
+          writeLS(MARC_BLOCKERS_KEY, merged)
         }
         if (data.readiness) {
           writeLS(LAUNCH_READINESS_KEY, data.readiness)
