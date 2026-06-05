@@ -47,6 +47,7 @@ const NAV_GROUPS = [
     { href: '/admin/waitlist', label: 'Waitlist' },
     { href: '/admin/social-posting', label: 'Social Posting' },
     { href: '/admin/social-analytics', label: 'Social Analytics' },
+    { href: '/admin/marketing-assets', label: 'Marketing Assets' },
   ]},
   { id: 'analytics', label: 'Analytics', icon: '📈', items: [
     { href: '/admin/analytics', label: 'Overview' },
