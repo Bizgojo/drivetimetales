@@ -231,6 +231,19 @@ export interface MarcBlocker {
   nextAction?: string | null        // computed from nextActionTemplate + answer
 }
 
+export interface MarcAction {
+  id: string                // 'ma-<missionId>-<index>'
+  missionId: string         // source mission ID (e.g. 'ATL-004')
+  agentId: AgentId | string
+  actionText: string        // the specific thing Marc must do (parsed from waitingOn)
+  missionTitle: string      // from mission.title
+  type: 'approve' | 'verify' | 'authorize' | 'decide' | 'review'
+  done: boolean
+  resolution: 'approved' | 'rejected' | 'deferred' | null
+  resolvedAt: string | null
+  note: string | null
+}
+
 export interface LaunchReadiness {
   score: number
   gatesGreen: number

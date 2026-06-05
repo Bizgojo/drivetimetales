@@ -11,6 +11,7 @@ import {
   type AgentStatus,
   type DecisionResolution,
   type LaunchReadiness,
+  type MarcAction,
   type MarcBlocker,
   type Mission,
   type MissionPriority,
@@ -28,6 +29,7 @@ const ORION_REPORTS_KEY = 'cc_orion_reports'
 const MARC_BLOCKERS_KEY = 'cc_marc_blockers'
 const LAUNCH_READINESS_KEY = 'cc_launch_readiness'
 const ORION_LAST_REPLY_KEY = 'cc_orion_last_reply'
+const MARC_ACTIONS_KEY = 'cc_marc_actions'
 
 const CC_BG = '#FAF9F6'
 const CARD: CSSProperties = {
@@ -167,6 +169,14 @@ function formatTimestamp(iso: string): string {
   })
 }
 
+function inferActionType(text: string): MarcAction['type'] {
+  const t = text.toLowerCase()
+  if (t.includes('approve') || t.includes('accept')) return 'approve'
+  if (t.includes('verify') || t.includes('re-verify') || t.includes('confirm')) return 'verify'
+  if (t.includes('authoriz')) return 'authorize'
+  return 'decide'
+}
+
 export default function AdminCommandCenterPage() {
   const [loaded, setLoaded] = useState(false)
   const [agentsState, setAgentsState] = useState<AgentsState>(() => makeSeedAgents())
@@ -184,6 +194,12 @@ export default function AdminCommandCenterPage() {
   const [showDeferredBlockers, setShowDeferredBlockers] = useState(false)
   const missionWriteTimer = useRef<number | null>(null)
   const [orionReports, setOrionReports] = useState<OrionReport[]>(() => readLS<OrionReport[]>(ORION_REPORTS_KEY, []))
+  const [marcActionResolutions, setMarcActionResolutions] = useState<Record<string, { resolution: MarcAction['resolution']; resolvedAt: string; note: string | null }>>(() =>
+    readLS(MARC_ACTIONS_KEY, {})
+  )
+  const [selectedMarcActionId, setSelectedMarcActionId] = useState<string | null>(null)
+  const [showResolvedMarcActions, setShowResolvedMarcActions] = useState(false)
+  const [marcActionNote, setMarcActionNote] = useState('')
 
   const today = useMemo(() => {
     return new Date().toLocaleDateString('en-US', {
@@ -288,6 +304,48 @@ export default function AdminCommandCenterPage() {
 
   const activeBlockers = useMemo(() => blockers.filter((b) => !b.done), [blockers])
 
+  const marcActions = useMemo<MarcAction[]>(() => {
+    const seen = new Set<string>()
+    const actions: MarcAction[] = []
+
+    const parse = (waitingOn: string, missionId: string, agentId: AgentId | string, missionTitle: string) => {
+      if (!waitingOn) return
+      waitingOn.split(' · ').forEach((part, idx) => {
+        const trimmed = part.trim()
+        if (!/^marc:/i.test(trimmed)) return
+        const actionText = trimmed.replace(/^marc:\s*/i, '').trim()
+        const key = actionText.toLowerCase().replace(/[^a-z0-9]/g, '')
+        if (seen.has(key)) return
+        seen.add(key)
+        actions.push({
+          id: `ma-${missionId}-${idx}`,
+          missionId,
+          agentId,
+          actionText,
+          missionTitle,
+          type: inferActionType(actionText),
+          done: false,
+          resolution: null,
+          resolvedAt: null,
+          note: null,
+        })
+      })
+    }
+
+    // Parse from missions
+    missions.forEach(m => {
+      if (m.status === 'complete' || m.status === 'archived') return
+      parse(m.waitingOn ?? '', m.id, m.agentId, m.title)
+    })
+
+    // Parse from agent states (for items not already in missions)
+    Object.entries(agentsState).forEach(([agentId, state]) => {
+      parse((state as AgentState).waitingOn ?? '', `agent-${agentId}`, agentId as AgentId, `${agentId} department`)
+    })
+
+    return actions
+  }, [missions, agentsState])
+
   const launchReadiness = useMemo<LaunchReadiness | null>(() => {
     if (!loaded) return null
     return readLS<LaunchReadiness | null>(LAUNCH_READINESS_KEY, null)
@@ -337,6 +395,20 @@ export default function AdminCommandCenterPage() {
     }).catch(() => {})
   }
 
+  const resolveMarcAction = (id: string, resolution: MarcAction['resolution'], note: string | null = null) => {
+    const next = { ...marcActionResolutions, [id]: { resolution, resolvedAt: new Date().toISOString(), note } }
+    setMarcActionResolutions(next)
+    writeLS(MARC_ACTIONS_KEY, next)
+    setSelectedMarcActionId(null)
+    setMarcActionNote('')
+    // Persist to server
+    fetch('/api/admin/org-status', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ marcActions: next }),
+    }).catch(() => {})
+  }
+
   const gridAgents = useMemo(
     () => AGENTS.filter((a) => GRID_AGENT_IDS.includes(a.id)),
     []
@@ -349,6 +421,9 @@ export default function AdminCommandCenterPage() {
     // Use loose != null to catch both null AND undefined (e.g. old stored data without the field)
     const deferredOnes = blockers.filter((b) => b.done && b.resolution === 'deferred')
     const resolvedOnes = blockers.filter((b) => b.done && b.resolution != null && b.resolution !== 'deferred')
+
+    const activeMarcActions = marcActions.filter(a => !marcActionResolutions[a.id])
+    const resolvedMarcActions = marcActions.filter(a => !!marcActionResolutions[a.id])
 
     if (blockers.length === 0) return null
 
@@ -686,9 +761,14 @@ export default function AdminCommandCenterPage() {
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
           <span style={{ fontWeight: 700, color: '#92400e' }}>⚠️ Needs Your Decision</span>
-          {activeOnes.length > 0 && (
+          {(activeOnes.length + activeMarcActions.length) > 0 && (
             <span style={{ backgroundColor: '#fef3c7', color: '#92400e', borderRadius: 12, padding: '2px 8px', fontSize: 12, fontWeight: 700 }}>
-              {activeOnes.length} active
+              {activeOnes.length + activeMarcActions.length} active
+            </span>
+          )}
+          {activeMarcActions.length > 0 && (
+            <span style={{ backgroundColor: '#fef3c7', color: '#92400e', borderRadius: 12, padding: '2px 8px', fontSize: 12, fontWeight: 700 }}>
+              {activeMarcActions.length} actions needed
             </span>
           )}
           {deferredOnes.length > 0 && (
@@ -705,6 +785,86 @@ export default function AdminCommandCenterPage() {
         {activeOnes.length === 0 && deferredOnes.length === 0 && resolvedOnes.length === 0 && (
           <div style={{ color: '#94a3b8', fontSize: 13 }}>(No decisions pending)</div>
         )}
+        {/* Marc Actions Required — auto-derived from missions */}
+        {activeMarcActions.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#92400e', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+              🎯 Marc Actions Required
+              <span style={{ backgroundColor: '#fef3c7', color: '#92400e', borderRadius: 12, padding: '1px 8px', fontSize: 11, fontWeight: 700 }}>
+                {activeMarcActions.length}
+              </span>
+            </div>
+            {activeMarcActions.map(action => {
+              const agent = AGENTS.find(a => a.id === action.agentId)
+              return (
+                <div
+                  key={action.id}
+                  onClick={() => { setSelectedMarcActionId(action.id); setMarcActionNote('') }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 8,
+                    padding: '8px 10px',
+                    borderRadius: 6,
+                    border: '1px solid #fde68a',
+                    backgroundColor: '#fff',
+                    marginBottom: 6,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>
+                    {action.type === 'approve' ? '✅' : action.type === 'verify' ? '🔍' : action.type === 'authorize' ? '🔐' : '🤔'}
+                  </span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#0f172a', marginBottom: 2 }}>{action.actionText}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' as const }}>
+                      {agent && (
+                        <span style={{ fontSize: 10, color: '#fff', backgroundColor: agent.accentColor, borderRadius: 10, padding: '1px 7px', fontWeight: 700 }}>
+                          {agent.emoji} {agent.displayName}
+                        </span>
+                      )}
+                      <span
+                        onClick={e => { e.stopPropagation(); setSelectedMarcActionId(action.id); setMarcActionNote('') }}
+                        style={{ fontSize: 10, color: '#3b82f6', cursor: 'pointer', textDecoration: 'underline' }}
+                      >
+                        {action.missionId}
+                      </span>
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 10, color: '#94a3b8', flexShrink: 0, alignSelf: 'center' }}>›</span>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* Resolved Marc Actions (collapsed) */}
+        {resolvedMarcActions.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <button
+              type="button"
+              onClick={() => setShowResolvedMarcActions(p => !p)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: '#64748b', fontWeight: 700, padding: '2px 0', display: 'flex', alignItems: 'center', gap: 6 }}
+            >
+              {showResolvedMarcActions ? '▼' : '▶'}
+              <span>✓ Handled Marc Actions ({resolvedMarcActions.length})</span>
+            </button>
+            {showResolvedMarcActions && (
+              <div style={{ marginTop: 4 }}>
+                {resolvedMarcActions.map(action => {
+                  const res = marcActionResolutions[action.id]
+                  return (
+                    <div key={action.id} style={{ fontSize: 11, color: '#94a3b8', padding: '4px 8px', display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <span>{res?.resolution === 'approved' ? '✅' : res?.resolution === 'rejected' ? '❌' : '⏸'}</span>
+                      <span style={{ textDecoration: 'line-through' }}>{action.actionText}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         {activeOnes.map((b) => renderBlockerRow(b, 'active'))}
 
         {/* Deferred section */}
@@ -1256,6 +1416,123 @@ export default function AdminCommandCenterPage() {
     return panelContent
   }
 
+  // ─── Marc Action Detail Modal ───────────────────────────────────────────────
+
+  const renderMarcActionModal = () => {
+    if (!selectedMarcActionId) return null
+    const action = marcActions.find(a => a.id === selectedMarcActionId)
+    if (!action) return null
+    const mission = missions.find(m => m.id === action.missionId)
+    const agent = AGENTS.find(a => a.id === action.agentId)
+    const agentState = agentsState[action.agentId as AgentId]
+
+    return (
+      <div
+        onClick={() => setSelectedMarcActionId(null)}
+        style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+      >
+        <div
+          onClick={e => e.stopPropagation()}
+          style={{ backgroundColor: '#fff', borderRadius: 12, padding: 24, maxWidth: 560, width: '100%', maxHeight: '80vh', overflowY: 'auto' as const, boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}
+        >
+          {/* Header */}
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 16 }}>
+            <span style={{ fontSize: 28 }}>
+              {action.type === 'approve' ? '✅' : action.type === 'verify' ? '🔍' : action.type === 'authorize' ? '🔐' : '🤔'}
+            </span>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: '#0f172a', marginBottom: 4 }}>{action.actionText}</div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
+                {agent && <span style={{ fontSize: 11, color: '#fff', backgroundColor: agent.accentColor, borderRadius: 10, padding: '2px 8px', fontWeight: 700 }}>{agent.emoji} {agent.displayName}</span>}
+                <span style={{ fontSize: 11, color: '#64748b', backgroundColor: '#f1f5f9', borderRadius: 10, padding: '2px 8px', fontWeight: 600 }}>{action.missionId}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Mission context */}
+          {mission && (
+            <div style={{ backgroundColor: '#f8fafc', borderRadius: 8, padding: 12, marginBottom: 14 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' as const, marginBottom: 4 }}>Mission</div>
+              <div style={{ fontSize: 13, color: '#0f172a', fontWeight: 600, marginBottom: 6 }}>{mission.title}</div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
+                <span style={{ fontSize: 11, color: '#475569' }}>Status: <strong>{mission.status}</strong></span>
+                {mission.percentComplete != null && <span style={{ fontSize: 11, color: '#475569' }}>{mission.percentComplete}% complete</span>}
+              </div>
+            </div>
+          )}
+
+          {/* Active work */}
+          {agentState?.activeTasks && agentState.activeTasks.length > 0 && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' as const, marginBottom: 4 }}>Active Work</div>
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                {agentState.activeTasks.map((t, i) => (
+                  <li key={i} style={{ fontSize: 12, color: '#475569', display: 'flex', gap: 5, marginBottom: 3 }}>
+                    <span style={{ color: agent?.accentColor ?? '#94a3b8', fontWeight: 700, flexShrink: 0 }}>•</span>
+                    {t}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Blockers */}
+          {mission?.waitingOn && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' as const, marginBottom: 4 }}>Blocked On</div>
+              <div style={{ fontSize: 12, color: '#475569' }}>{mission.waitingOn}</div>
+            </div>
+          )}
+
+          {/* Notes */}
+          {mission?.notes && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' as const, marginBottom: 4 }}>Context</div>
+              <div style={{ fontSize: 12, color: '#475569' }}>{mission.notes}</div>
+            </div>
+          )}
+
+          {/* Optional note input */}
+          <textarea
+            value={marcActionNote}
+            onChange={e => setMarcActionNote(e.target.value)}
+            placeholder="Add a note (optional)..."
+            style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #e2e8f0', fontSize: 12, resize: 'vertical', minHeight: 60, marginBottom: 12, boxSizing: 'border-box' as const }}
+          />
+
+          {/* Action buttons */}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
+            <button
+              onClick={() => resolveMarcAction(action.id, 'approved', marcActionNote || null)}
+              style={{ ...BTN, backgroundColor: '#16a34a', color: '#fff', borderColor: '#16a34a', flex: 1 }}
+            >
+              ✅ Approve
+            </button>
+            <button
+              onClick={() => resolveMarcAction(action.id, 'rejected', marcActionNote || null)}
+              style={{ ...BTN, backgroundColor: '#dc2626', color: '#fff', borderColor: '#dc2626', flex: 1 }}
+            >
+              ❌ Reject
+            </button>
+            <button
+              onClick={() => resolveMarcAction(action.id, 'deferred', marcActionNote || null)}
+              style={{ ...BTN, flex: 1 }}
+            >
+              ⏸ Defer
+            </button>
+          </div>
+
+          <button
+            onClick={() => setSelectedMarcActionId(null)}
+            style={{ ...BTN, marginTop: 8, width: '100%', color: '#64748b', borderColor: '#e2e8f0' }}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   // ─── Orion Reports Modal ────────────────────────────────────────────────────
 
   const renderReportsModal = () => {
@@ -1540,6 +1817,9 @@ export default function AdminCommandCenterPage() {
 
       {/* Orion Reports Modal */}
       {renderReportsModal()}
+
+      {/* Marc Action Detail Modal */}
+      {renderMarcActionModal()}
 
       {/* Mobile tab bar */}
       <nav className="cc-mobile-tabs">
