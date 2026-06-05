@@ -841,9 +841,17 @@ const SEED_READINESS: LaunchReadiness = {
 
 // ─── Route handlers ───────────────────────────────────────────────────────────
 
-export async function GET(_req: NextRequest) {
-  const authError = await requireAdmin()
-  if (authError) return authError
+export async function GET(req: NextRequest) {
+  // Narrow read-only bypass for Orion cron jobs (no session cookie available in isolated runs).
+  // Only allows GET. PATCH and PUT remain fully session-protected.
+  const cronKey = req.headers.get('x-orion-service-key')
+  const validCronKey = process.env.ORION_CRON_READ_KEY
+  const isCronRead = cronKey && validCronKey && cronKey === validCronKey
+
+  if (!isCronRead) {
+    const authError = await requireAdmin()
+    if (authError) return authError
+  }
 
   const state = await readOrgState()
   const reports = await loadOrionReports()
