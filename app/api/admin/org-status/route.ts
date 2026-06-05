@@ -790,10 +790,18 @@ export async function GET(_req: NextRequest) {
   const state = await readOrgState()
   const reports = await loadOrionReports()
 
+  const allBlockers: MarcBlocker[] = (state.blockers as MarcBlocker[]) ?? SEED_BLOCKERS
+  const decisions = {
+    active:   allBlockers.filter((b) => !b.done),
+    deferred: allBlockers.filter((b) => b.done && b.resolution === 'deferred'),
+    resolved: allBlockers.filter((b) => b.done && b.resolution != null && b.resolution !== 'deferred'),
+  }
+
   return json({
     agents: (state.agents as AgentsState) ?? SEED_AGENTS,
     missions: (state.missions as Mission[]) ?? SEED_MISSIONS,
-    blockers: (state.blockers as MarcBlocker[]) ?? SEED_BLOCKERS,
+    blockers: allBlockers,
+    decisions,
     readiness: (state.readiness as LaunchReadiness) ?? SEED_READINESS,
     reports,
     source: Object.keys(state).length > 0 ? 'storage' : 'seed',
