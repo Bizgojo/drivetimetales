@@ -546,6 +546,7 @@ export async function GET(_req: NextRequest) {
     const queueById = new Map(queueRows.map((item) => [item.id, item]))
     const visibleQueueRows = filterQueueRowsAlreadyInWorkflow(dedupeQueueRows(queueRows), stories)
     const repairStories = stories.filter((story) => story.workflow_state === 'repair_queue' || story.workflow_state === 'being_repaired')
+    const readyForReviewStories = stories.filter((story) => story.workflow_state === 'ready_for_review')
     const storageStories = stories.filter((story) => story.workflow_state === 'cold_storage' || story.workflow_state === 'unpublished_library')
     const incubatorStories = storageStories.filter(isIncubatorTagged)
     const coldStories = storageStories.filter((story) => !isIncubatorTagged(story))
@@ -558,6 +559,7 @@ export async function GET(_req: NextRequest) {
       success: true,
       fetchedAt: new Date().toISOString(),
       repairItems: itemsForStories(repairStories, jobs),
+      readyForReviewItems: itemsForStories(readyForReviewStories, jobs),
       inProductionItems: Array.from(inProductionByKey.values()),
       coldStorageItems: itemsForStories(coldStories, jobs),
       incubatorItems: itemsForStories(incubatorStories, jobs),

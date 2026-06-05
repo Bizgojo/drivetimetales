@@ -45,16 +45,18 @@ type ConsolePayload = {
   error?: string
   fetchedAt?: string
   repairItems?: ConsoleItem[]
+  readyForReviewItems?: ConsoleItem[]
   inProductionItems?: ConsoleItem[]
   coldStorageItems?: ConsoleItem[]
   incubatorItems?: ConsoleItem[]
   queueItems?: ConsoleItem[]
 }
 
-type SectionId = 'repair' | 'production' | 'cold' | 'incubator' | 'queue'
+type SectionId = 'repair' | 'review' | 'production' | 'cold' | 'incubator' | 'queue'
 
 const sections: Array<{ id: SectionId; label: string; color: string }> = [
   { id: 'repair', label: 'Repair Queue', color: '#f97316' },
+  { id: 'review', label: 'Ready For Review', color: '#16a34a' },
   { id: 'production', label: 'In Production', color: '#2563eb' },
   { id: 'cold', label: 'Cold Storage', color: '#8b5cf6' },
   { id: 'incubator', label: 'Incubator', color: '#64748b' },
@@ -233,6 +235,7 @@ export default function ProductionConsolePage() {
 
   const counts = useMemo(() => ({
     repair: payload?.repairItems?.length || 0,
+    review: payload?.readyForReviewItems?.length || 0,
     production: payload?.inProductionItems?.length || 0,
     cold: payload?.coldStorageItems?.length || 0,
     incubator: payload?.incubatorItems?.length || 0,
@@ -275,6 +278,14 @@ export default function ProductionConsolePage() {
             {(payload?.repairItems || []).length > 0
               ? payload?.repairItems?.map((item) => <ItemCard key={item.key} item={item} color="#f97316" mode="repair" />)
               : <EmptyState text="No Repair Queue items found." />}
+          </Section>
+        )}
+
+        {!loading && !error && activeSection === 'review' && (
+          <Section title="Ready For Review" color="#16a34a" count={counts.review}>
+            {(payload?.readyForReviewItems || []).length > 0
+              ? payload?.readyForReviewItems?.map((item) => <ItemCard key={item.key} item={item} color="#16a34a" mode="cold" />)
+              : <EmptyState text="No Ready For Review stories found." />}
           </Section>
         )}
 
