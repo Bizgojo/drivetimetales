@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import fs from 'fs'
+import path from 'path'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -44,6 +46,31 @@ async function requireAdmin(): Promise<NextResponse | null> {
   }
 
   return null
+}
+
+// ─── Orion Reports ───────────────────────────────────────────────────────────
+
+type OrionReport = {
+  id: string
+  type: 'morning' | 'evening' | 'weekly'
+  content: string
+  timestamp: string
+}
+
+function loadOrionReports(): OrionReport[] {
+  const dir = '/Users/williampostlewaite/.openclaw/workspace-orion/reports'
+  try {
+    const files = fs.readdirSync(dir).filter((f) => f.endsWith('.md')).sort().reverse()
+    return files.slice(0, 10).map((f, i) => {
+      const content = fs.readFileSync(path.join(dir, f), 'utf-8')
+      const type: OrionReport['type'] = f.includes('morning') ? 'morning' : f.includes('evening') ? 'evening' : 'weekly'
+      const dateMatch = f.match(/(\d{4}-\d{2}-\d{2})/)
+      const timestamp = dateMatch ? new Date(dateMatch[1]).toISOString() : new Date().toISOString()
+      return { id: `report-${i}`, type, content, timestamp }
+    })
+  } catch {
+    return []
+  }
 }
 
 // ─── Seed data (used when Supabase table doesn't exist yet) ──────────────────
@@ -503,7 +530,7 @@ export async function GET(_req: NextRequest) {
         missions: SEED_MISSIONS,
         blockers: SEED_BLOCKERS,
         readiness: SEED_READINESS,
-        reports: [],
+        reports: loadOrionReports(),
         source: 'seed',
       })
     }
@@ -512,18 +539,50 @@ export async function GET(_req: NextRequest) {
     const rows = (data || []) as Array<{ key: string; value: unknown }>
     const byKey = Object.fromEntries(rows.map((r) => [r.key, r.value]))
 
+    // Load Orion reports from filesystem
+    const reports = loadOrionReports()
+
     // Merge with seed as default (table may have partial data)
     return json({
       agents: (byKey['agents'] as typeof SEED_AGENTS) ?? SEED_AGENTS,
       missions: (byKey['missions'] as typeof SEED_MISSIONS) ?? SEED_MISSIONS,
       blockers: (byKey['blockers'] as typeof SEED_BLOCKERS) ?? SEED_BLOCKERS,
       readiness: (byKey['readiness'] as typeof SEED_READINESS) ?? SEED_READINESS,
-      reports: (byKey['reports'] as unknown[]) ?? [],
+      reports,
       source: rows.length > 0 ? 'supabase' : 'seed',
     })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to load org status'
     console.error('[org-status] GET failed:', err)
+    return json({ success: false, error: message }, 500)
+  }
+}
+
+export async function PATCH(req: NextRequest) {
+  try {
+    const unauthorized = await requireAdmin()
+    if (unauthorized) return unauthorized
+
+    const body = await req.json().catch(() => ({}))
+    const blockers = body.blockers
+
+    if (!Array.isArray(blockers)) {
+      return json({ success: false, error: 'blockers must be an array' }, 400)
+    }
+
+    const { error } = await supabase
+      .from('org_state')
+      .upsert({ key: 'blockers', value: JSON.stringify(blockers) }, { onConflict: 'key' })
+
+    if (error) {
+      console.error('[org-status] PATCH upsert failed:', error.message)
+      return json({ success: false, error: error.message }, 500)
+    }
+
+    return json({ success: true })
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Failed to persist blockers'
+    console.error('[org-status] PATCH failed:', err)
     return json({ success: false, error: message }, 500)
   }
 }

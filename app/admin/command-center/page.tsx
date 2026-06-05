@@ -294,6 +294,12 @@ export default function AdminCommandCenterPage() {
     setBlockers(next)
     writeLS(MARC_BLOCKERS_KEY, next)
     setExpandedBlockerId(null)
+    // Persist to server — silent fail, localStorage is the backup
+    fetch('/api/admin/org-status', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ blockers: next }),
+    }).catch(() => {})
   }
 
   const gridAgents = useMemo(
