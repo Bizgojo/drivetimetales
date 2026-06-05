@@ -221,7 +221,7 @@ export default function AdminCommandCenterPage() {
           const localBlockers = readLS<MarcBlocker[]>(MARC_BLOCKERS_KEY, [])
           const merged = (data.blockers as MarcBlocker[]).map(apiBlocker => {
             const local = localBlockers.find(b => b.id === apiBlocker.id)
-            // If local has a resolution decision, preserve it over the seed
+            // If local has a resolution decision, preserve it over the API version
             if (local && (local.resolution || local.done)) {
               return {
                 ...apiBlocker,          // API provides fresh text/structure
@@ -233,7 +233,12 @@ export default function AdminCommandCenterPage() {
                 nextAction: local.nextAction ?? null,
               }
             }
-            return apiBlocker
+            // Normalize: ensure resolution is explicitly null (never undefined) so filters behave correctly
+            return {
+              ...apiBlocker,
+              resolution: apiBlocker.resolution ?? null,
+              done: apiBlocker.done ?? false,
+            }
           })
           setBlockers(merged)
           writeLS(MARC_BLOCKERS_KEY, merged)
@@ -338,8 +343,9 @@ export default function AdminCommandCenterPage() {
 
   const renderBlockersPanel = () => {
     const activeOnes = blockers.filter((b) => !b.done)
+    // Use loose != null to catch both null AND undefined (e.g. old stored data without the field)
     const deferredOnes = blockers.filter((b) => b.done && b.resolution === 'deferred')
-    const resolvedOnes = blockers.filter((b) => b.done && b.resolution !== null && b.resolution !== 'deferred')
+    const resolvedOnes = blockers.filter((b) => b.done && b.resolution != null && b.resolution !== 'deferred')
 
     if (blockers.length === 0) return null
 

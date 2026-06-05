@@ -91,9 +91,24 @@ type OrionReport = {
   timestamp: string
 }
 
-function loadOrionReports(): OrionReport[] {
-  const dir = '/Users/williampostlewaite/.openclaw/workspace-orion/reports'
+async function loadOrionReports(): Promise<OrionReport[]> {
+  // Try Supabase Storage first (works in production)
   try {
+    const { data, error } = await supabase.storage.from('org-state').download('reports.json')
+    if (!error && data) {
+      const text = await data.text()
+      const parsed = JSON.parse(text)
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed
+    }
+  } catch {
+    // Fallback to local filesystem
+  }
+
+  // Fallback: local filesystem (dev only)
+  try {
+    const dir = '/Users/williampostlewaite/.openclaw/workspace-orion/reports'
+    if (!fs.existsSync(dir)) return []
+    
     const files = fs.readdirSync(dir).filter((f) => f.endsWith('.md')).sort().reverse()
     return files.slice(0, 10).map((f, i) => {
       const content = fs.readFileSync(path.join(dir, f), 'utf-8')
@@ -773,13 +788,14 @@ export async function GET(_req: NextRequest) {
   if (authError) return authError
 
   const state = await readOrgState()
+  const reports = await loadOrionReports()
 
   return json({
     agents: (state.agents as AgentsState) ?? SEED_AGENTS,
     missions: (state.missions as Mission[]) ?? SEED_MISSIONS,
     blockers: (state.blockers as MarcBlocker[]) ?? SEED_BLOCKERS,
     readiness: (state.readiness as LaunchReadiness) ?? SEED_READINESS,
-    reports: loadOrionReports(),
+    reports,
     source: Object.keys(state).length > 0 ? 'storage' : 'seed',
   })
 }
