@@ -13,7 +13,7 @@ export const COMMAND_CENTER_EXTERNAL_LINKS: ExternalToolLink[] = [
   { id: 'github', label: 'GitHub', url: 'https://github.com' },
 ]
 
-export type AgentId = 'hal' | 'atlas' | 'codex' | 'susan' | 'orion' | 'maya' | 'vega'
+export type AgentId = 'hal' | 'atlas' | 'codex' | 'susan' | 'orion' | 'maya' | 'vega' | 'bart' | 'lex'
 export type AgentStatus = 'working' | 'waiting' | 'blocked' | 'complete' | 'idle'
 export type MissionStatus = 'active' | 'waiting' | 'blocked' | 'complete' | 'archived'
 export type MissionPriority = 'P1' | 'P2' | 'P3' | 'P4'
@@ -123,6 +123,36 @@ export const AGENTS: AgentConfig[] = [
       'QC gate for all stories before Marc review',
       'Listening time verification',
       'Belle B voice consistency',
+    ],
+  },
+  {
+    id: 'bart',
+    displayName: 'Bart',
+    emoji: '💰',
+    accentColor: '#16a34a',
+    roleTitle: 'Chief Financial Officer',
+    responsibilities: [
+      'Financial ground truth',
+      'Mercury / Stripe tracking',
+      'Monthly recurring expenses',
+      'Runway and cash forecast',
+      'Budget and variance governance',
+      'Expenditure review',
+    ],
+  },
+  {
+    id: 'lex',
+    displayName: 'Lex',
+    emoji: '⚖️',
+    accentColor: '#7c3aed',
+    roleTitle: 'Legal & Compliance',
+    responsibilities: [
+      'Terms of service and privacy policy',
+      'Vendor contract review',
+      'IP and trademark protection',
+      'Regulatory compliance',
+      'Trial terms and refund policy',
+      'Commercial licensing verification',
     ],
   },
 ]

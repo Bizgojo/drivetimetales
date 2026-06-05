@@ -63,7 +63,7 @@ const PRIORITY_SORT: Record<MissionPriority, number> = {
 }
 
 // IDs shown in the 5-card grid
-const GRID_AGENT_IDS: AgentId[] = ['hal', 'atlas', 'maya', 'susan', 'vega']
+const GRID_AGENT_IDS: AgentId[] = ['hal', 'atlas', 'maya', 'susan', 'vega', 'bart']
 
 function readLS<T>(key: string, fallback: T): T {
   if (typeof window === 'undefined') return fallback
