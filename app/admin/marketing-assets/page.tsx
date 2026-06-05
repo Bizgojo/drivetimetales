@@ -28,11 +28,16 @@ interface MarketingAsset {
   id: string
   platform: string
   icon: string
+  accountName: string
   handle: string
+  profileUrl: string
   status: AssetStatus
   statusLabel: string
+  recoveryEmail: string
   note: string
   owner: string
+  twoFAStatus: string
+  passwordManager: string
   details: string
 }
 
@@ -41,143 +46,208 @@ const MARKETING_ASSETS: MarketingAsset[] = [
     id: 'twitter',
     platform: 'X (Twitter)',
     icon: '𝕏',
+    accountName: 'Endless Tales Audio',
     handle: '@EndlessTalesAudio',
+    profileUrl: 'https://x.com/EndlessTalesAudio',
     status: 'action_needed',
     statusLabel: 'ACTION NEEDED',
+    recoveryEmail: 'unknown',
     note: 'API connected. @EndlessTalesAudio exists. X Basic plan ($100/mo) not purchased — posting via automation blocked.',
     owner: 'Susan',
+    twoFAStatus: 'unknown',
+    passwordManager: 'unknown',
     details: 'Full API credentials in .env.local. xurl installed. Manual posting possible. Organic posting ready once X Basic plan activated.',
   },
   {
     id: 'reddit',
     platform: 'Reddit',
     icon: '🔴',
+    accountName: 'Endless Tales Audio',
     handle: 'u/EndlessTalesAudio',
+    profileUrl: 'https://reddit.com/u/EndlessTalesAudio',
     status: 'connected',
     statusLabel: 'CONNECTED',
+    recoveryEmail: 'unknown',
     note: 'Account confirmed. Manual posting via admin panel.',
     owner: 'Susan',
+    twoFAStatus: 'unknown',
+    passwordManager: 'unknown',
     details: 'No API credentials needed for manual workflow. Admin social generator supports Reddit post formatting.',
   },
   {
     id: 'email',
     platform: 'Email (Resend)',
     icon: '✉️',
+    accountName: 'Endless Tales',
     handle: 'hello@endless-tales.com',
+    profileUrl: '—',
     status: 'connected',
     statusLabel: 'CONNECTED',
+    recoveryEmail: 'marc@endless-tales.com',
     note: 'Fully operational. Transactional routes live (waitlist, referral, promo, alerts).',
     owner: 'Atlas',
+    twoFAStatus: 'unknown',
+    passwordManager: 'unknown',
     details: 'Resend API key active. Sender domain: endless-tales.com. Routes: waitlist signup, referral, promotional, system alerts.',
   },
   {
     id: 'airtable',
     platform: 'Airtable',
     icon: '📊',
-    handle: 'Base: appPYSnJkNbWCc9Lj',
+    accountName: 'Endless Tales',
+    handle: '—',
+    profileUrl: 'https://airtable.com',
     status: 'connected',
     statusLabel: 'CONNECTED',
+    recoveryEmail: 'unknown',
     note: 'Marketing operations system. Campaigns, Tasks, Expenses, Snapshots tables active.',
     owner: 'Susan',
+    twoFAStatus: 'unknown',
+    passwordManager: 'unknown',
     details: 'Tables: Campaigns (tblBBWg3lgcjBYpPy), Tasks (tblJZG3UR2Zq3qFcG), Expenses, Cash Snapshots. Campaign channels configured: Meta, TikTok, Reddit, Email, Google, X.',
   },
   {
     id: 'analytics',
     platform: 'Analytics',
     icon: '📈',
+    accountName: 'Endless Tales',
     handle: 'Vercel Analytics',
+    profileUrl: '—',
     status: 'partial',
     statusLabel: 'PARTIAL',
+    recoveryEmail: '—',
     note: 'Vercel Analytics active (pageviews only). No GA4, no Meta Pixel, no ad platform pixels.',
     owner: 'Atlas',
+    twoFAStatus: 'N/A',
+    passwordManager: 'N/A',
     details: 'Vercel Analytics tracks pageviews. No Google Analytics 4, no Google Tag Manager, no Meta Pixel, no TikTok Pixel, no Reddit Pixel in codebase. All paid acquisition is attribution-blind.',
-  },
-  {
-    id: 'facebook',
-    platform: 'Facebook',
-    icon: '📘',
-    handle: '—',
-    status: 'not_created',
-    statusLabel: 'NOT CREATED',
-    note: 'No Facebook Page confirmed.',
-    owner: '—',
-    details: 'No credentials, no page ID, no account reference found. Page should be created and handle reserved before launch.',
   },
   {
     id: 'instagram',
     platform: 'Instagram',
     icon: '📸',
-    handle: '—',
-    status: 'not_created',
-    statusLabel: 'NOT CREATED',
-    note: 'No Instagram account confirmed.',
-    owner: '—',
-    details: 'No credentials or account reference found. Handle should be reserved before launch.',
+    accountName: 'Endless Tales Audio',
+    handle: 'endlesstalesllc',
+    profileUrl: 'https://www.instagram.com/endlesstalesllc',
+    status: 'connected',
+    statusLabel: 'CONNECTED',
+    recoveryEmail: 'hello.endlesstales@gmail.com',
+    note: 'Active. Organic audience building and story promotion.',
+    owner: 'Susan',
+    twoFAStatus: 'unknown',
+    passwordManager: 'Bitwarden',
+    details: 'Account: @endlesstalesllc. Organic channel — no paid ad account linked yet. Meta Pixel not installed on platform. Handle reserved and active.',
   },
   {
     id: 'tiktok',
     platform: 'TikTok',
     icon: '🎵',
+    accountName: 'Endless Tales Audio',
+    handle: 'endlesstalesllc',
+    profileUrl: 'https://www.tiktok.com/@endlesstalesllc',
+    status: 'connected',
+    statusLabel: 'CONNECTED',
+    recoveryEmail: 'hello.endlesstales@gmail.com',
+    note: 'Active. Primary organic channel for Founding Member acquisition.',
+    owner: 'Susan',
+    twoFAStatus: 'unknown',
+    passwordManager: 'Bitwarden',
+    details: 'Account: @endlesstalesllc. TikTok Business account also active (same handle) for future paid campaigns. TikTok Pixel not yet installed on platform.',
+  },
+  {
+    id: 'tiktok_business',
+    platform: 'TikTok Business',
+    icon: '🎯',
+    accountName: 'Endless Tales Audio',
+    handle: 'endlesstalesllc',
+    profileUrl: 'https://business.tiktok.com',
+    status: 'action_needed',
+    statusLabel: 'ACTION NEEDED',
+    recoveryEmail: 'hello.endlesstales@gmail.com',
+    note: 'Business account active. TikTok Pixel not installed — blocks paid campaigns.',
+    owner: 'Susan',
+    twoFAStatus: 'unknown',
+    passwordManager: 'Bitwarden',
+    details: 'TikTok Business Center active under @endlesstalesllc. Pixel must be installed on app.endless-tales.com before paid campaigns can run. No ad spend committed.',
+  },
+  {
+    id: 'facebook',
+    platform: 'Facebook',
+    icon: '📘',
+    accountName: '—',
     handle: '—',
+    profileUrl: '—',
     status: 'not_created',
     statusLabel: 'NOT CREATED',
-    note: 'No TikTok account confirmed. Highest-priority missing channel.',
+    recoveryEmail: '—',
+    note: 'No Facebook Page confirmed.',
     owner: '—',
-    details: 'TikTok is the strongest CPA channel for commuter/driver audience. No account, no pixel. Should be created and pixel installed before any paid spend.',
+    twoFAStatus: 'N/A',
+    passwordManager: 'N/A',
+    details: 'No credentials, no page ID, no account reference found. Page should be created and handle reserved before launch.',
   },
   {
     id: 'youtube',
     platform: 'YouTube',
     icon: '▶️',
+    accountName: '—',
     handle: '—',
+    profileUrl: '—',
     status: 'not_created',
     statusLabel: 'NOT CREATED',
+    recoveryEmail: '—',
     note: 'No YouTube channel confirmed.',
     owner: '—',
+    twoFAStatus: 'N/A',
+    passwordManager: 'N/A',
     details: 'No credentials or channel ID found. Lower priority than TikTok for this audience.',
   },
   {
     id: 'google_ads',
     platform: 'Google Ads',
     icon: '🔍',
+    accountName: '—',
     handle: '—',
+    profileUrl: '—',
     status: 'not_created',
     statusLabel: 'NOT CREATED',
+    recoveryEmail: '—',
     note: 'No Google Ads account.',
     owner: '—',
+    twoFAStatus: 'N/A',
+    passwordManager: 'N/A',
     details: 'No Google Ads credentials found. Required before running search or display campaigns. Google Analytics 4 + conversion tracking also needed.',
   },
   {
     id: 'meta_ads',
     platform: 'Meta Ads',
     icon: '📢',
+    accountName: '—',
     handle: '—',
+    profileUrl: '—',
     status: 'not_created',
     statusLabel: 'NOT CREATED',
+    recoveryEmail: '—',
     note: 'No Meta Ads account.',
     owner: '—',
+    twoFAStatus: 'N/A',
+    passwordManager: 'N/A',
     details: 'No Meta Business Manager, no Ad Account, no Meta Pixel in codebase. Required before running Facebook/Instagram campaigns.',
-  },
-  {
-    id: 'tiktok_ads',
-    platform: 'TikTok Ads',
-    icon: '🎯',
-    handle: '—',
-    status: 'not_created',
-    statusLabel: 'NOT CREATED',
-    note: 'No TikTok Ads account.',
-    owner: '—',
-    details: 'No TikTok Business Center, no Ads Manager account, no TikTok Pixel. Required before paid TikTok campaigns.',
   },
   {
     id: 'reddit_ads',
     platform: 'Reddit Ads',
     icon: '📣',
+    accountName: '—',
     handle: '—',
+    profileUrl: '—',
     status: 'not_created',
     statusLabel: 'NOT CREATED',
+    recoveryEmail: '—',
     note: 'No Reddit Ads account.',
     owner: '—',
+    twoFAStatus: 'N/A',
+    passwordManager: 'N/A',
     details: 'No Reddit Ads credentials found. Reddit organic is active (u/EndlessTalesAudio). Ads account would be created when paid Reddit campaigns are authorized.',
   },
 ]
@@ -210,22 +280,56 @@ function StatusBadge({ status, label }: { status: AssetStatus; label: string }) 
   )
 }
 
+function FieldRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <>
+      <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' as const, letterSpacing: '0.05em', paddingTop: 2 }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 12, color: '#334155', fontWeight: 500, wordBreak: 'break-word' as const }}>
+        {value}
+      </div>
+    </>
+  )
+}
+
 function AssetCard({ asset }: { asset: MarketingAsset }) {
   const [expanded, setExpanded] = useState(false)
   const cfg = STATUS_CONFIG[asset.status]
+
+  const showProfileLink =
+    (asset.status === 'connected' || asset.status === 'action_needed') &&
+    asset.profileUrl !== '—'
+
+  const usernameDisplay = (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      <span style={{ fontFamily: 'monospace' }}>{asset.handle}</span>
+      {showProfileLink && (
+        <a
+          href={asset.profileUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ fontSize: 11, color: '#3b82f6', textDecoration: 'none', fontFamily: 'sans-serif' }}
+          title={asset.profileUrl}
+        >
+          ↗
+        </a>
+      )}
+    </span>
+  )
 
   return (
     <div
       style={{
         ...CARD,
         borderTop: `3px solid ${cfg.dot}`,
-        padding: '16px',
+        padding: '14px 16px',
         display: 'flex',
         flexDirection: 'column' as const,
-        gap: 8,
+        gap: 10,
       }}
     >
-      {/* Platform name + icon */}
+      {/* Header: platform + status badge */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 20 }}>{asset.icon}</span>
@@ -234,24 +338,32 @@ function AssetCard({ asset }: { asset: MarketingAsset }) {
         <StatusBadge status={asset.status} label={asset.statusLabel} />
       </div>
 
-      {/* Handle */}
-      <div style={{ fontSize: 12, color: '#64748b', fontFamily: 'monospace' }}>
-        {asset.handle}
-      </div>
-
-      {/* Note */}
+      {/* Note (summary) */}
       <div style={{ fontSize: 12, color: '#475569', lineHeight: 1.5 }}>
         {asset.note}
       </div>
 
-      {/* Owner */}
-      {asset.owner !== '—' && (
-        <div style={{ fontSize: 11, color: '#94a3b8' }}>
-          Owner: <span style={{ fontWeight: 700, color: '#64748b' }}>{asset.owner}</span>
-        </div>
-      )}
+      {/* Two-column field grid */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: '6px 12px',
+          backgroundColor: '#f8fafc',
+          border: '1px solid #e2e8f0',
+          borderRadius: 6,
+          padding: '10px 12px',
+        }}
+      >
+        <FieldRow label="Account Name" value={asset.accountName} />
+        <FieldRow label="Username" value={usernameDisplay} />
+        <FieldRow label="Owner" value={asset.owner} />
+        <FieldRow label="2FA Status" value={asset.twoFAStatus.toUpperCase()} />
+        <FieldRow label="Password Mgr" value={asset.passwordManager} />
+        <FieldRow label="Status" value={<StatusBadge status={asset.status} label={asset.statusLabel} />} />
+      </div>
 
-      {/* Details expand */}
+      {/* Details expand (includes recovery email) */}
       <div>
         <button
           type="button"
@@ -277,9 +389,30 @@ function AssetCard({ asset }: { asset: MarketingAsset }) {
               fontSize: 12,
               color: '#475569',
               lineHeight: 1.6,
+              display: 'flex',
+              flexDirection: 'column' as const,
+              gap: 8,
             }}
           >
-            {asset.details}
+            {/* Recovery email — only shown here, not in collapsed view */}
+            <div>
+              <span style={{ fontWeight: 700, color: '#334155' }}>Recovery Email: </span>
+              <span style={{ fontFamily: 'monospace' }}>{asset.recoveryEmail}</span>
+            </div>
+            {showProfileLink && (
+              <div>
+                <span style={{ fontWeight: 700, color: '#334155' }}>Profile URL: </span>
+                <a
+                  href={asset.profileUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: '#3b82f6', textDecoration: 'underline', fontSize: 12 }}
+                >
+                  {asset.profileUrl}
+                </a>
+              </div>
+            )}
+            <div>{asset.details}</div>
           </div>
         )}
       </div>
@@ -395,13 +528,13 @@ export default function MarketingAssetsPage() {
               padding: '12px 14px',
             }}
           >
-            <span style={{ fontSize: 18, flexShrink: 0 }}>🎵</span>
+            <span style={{ fontSize: 18, flexShrink: 0 }}>🎯</span>
             <div>
               <div style={{ fontWeight: 700, fontSize: 13, color: '#0f172a', marginBottom: 2 }}>
-                TikTok account + Pixel
+                TikTok Pixel — blocks paid campaigns
               </div>
               <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.5 }}>
-                Best CPA channel for commuter/driver audience. No account exists, no pixel installed. Should be the highest-priority channel to create before any paid spend.
+                TikTok Business Center is active but the pixel is not installed on app.endless-tales.com. Paid campaigns cannot run until pixel is in place. No ad spend committed yet.
               </div>
             </div>
             <span style={{ backgroundColor: '#fee2e2', color: '#991b1b', borderRadius: 12, padding: '2px 8px', fontSize: 10, fontWeight: 800, whiteSpace: 'nowrap' as const, flexShrink: 0 }}>
@@ -448,10 +581,10 @@ export default function MarketingAssetsPage() {
             <span style={{ fontSize: 18, flexShrink: 0 }}>📘</span>
             <div>
               <div style={{ fontWeight: 700, fontSize: 13, color: '#0f172a', marginBottom: 2 }}>
-                Facebook + Instagram handle reservation
+                Facebook handle reservation + Meta Ads setup
               </div>
               <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.5 }}>
-                Neither @EndlessTales nor @EndlessTalesAudio is confirmed reserved on Facebook or Instagram. Squatting risk increases as brand awareness grows. Reserve handles before public launch.
+                No Facebook Page confirmed. Instagram is active (@endlesstalesllc) but no Meta Business Manager or Ad Account created. Reserve Facebook handle and create Meta Business Manager before launch.
               </div>
             </div>
             <span style={{ backgroundColor: '#fef3c7', color: '#92400e', borderRadius: 12, padding: '2px 8px', fontSize: 10, fontWeight: 800, whiteSpace: 'nowrap' as const, flexShrink: 0 }}>
