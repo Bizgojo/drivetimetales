@@ -160,6 +160,7 @@ export const AGENTS: AgentConfig[] = [
 export interface AgentState {
   status: AgentStatus
   currentTask: string
+  activeTasks?: string[]          // Ordered list of active work items (Orion-determined priority)
   percentComplete: number | null
   waitingOn: string
   lastActivity: string

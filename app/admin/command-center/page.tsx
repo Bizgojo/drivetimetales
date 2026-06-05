@@ -85,6 +85,7 @@ function makeEmptyAgentState(): AgentState {
   return {
     status: 'idle',
     currentTask: '',
+    activeTasks: [],
     percentComplete: null,
     waitingOn: '',
     lastActivity: '',
@@ -802,24 +803,34 @@ export default function AdminCommandCenterPage() {
             {state.status}
           </span>
         </div>
-        {/* Row 4 */}
-        <ul
-          style={{
-            listStyle: 'disc',
-            paddingLeft: 16,
-            margin: 0,
-            fontSize: 11,
-            color: '#475569',
-            lineHeight: 1.5,
-            marginTop: 6,
-            marginBottom: 6,
-          }}
-        >
-          {agent.responsibilities.slice(0, 3).map((r) => (
-            <li key={r}>{r}</li>
-          ))}
-        </ul>
-        {/* Row 5 – progress bar */}
+        {/* Row 4 — Current Task (highest-priority active work) */}
+        <div style={{ marginTop: 8, marginBottom: 6 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' as const, letterSpacing: '0.05em', marginBottom: 3 }}>
+            Current Task
+          </div>
+          <div style={{ fontSize: 12, color: '#0f172a', lineHeight: 1.4, fontWeight: 600 }}>
+            {state.currentTask || <span style={{ color: '#94a3b8' }}>Not set</span>}
+          </div>
+        </div>
+
+        {/* Row 5 — Active Work list (Orion-prioritized, up to 5) */}
+        {(state.activeTasks ?? []).length > 0 && (
+          <div style={{ marginBottom: 6 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' as const, letterSpacing: '0.05em', marginBottom: 3 }}>
+              Active Work
+            </div>
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+              {(state.activeTasks ?? []).slice(0, 5).map((t, i) => (
+                <li key={i} style={{ fontSize: 11, color: '#475569', display: 'flex', alignItems: 'flex-start', gap: 5, marginBottom: 2 }}>
+                  <span style={{ color: agent.accentColor, fontWeight: 700, flexShrink: 0, lineHeight: 1.4 }}>•</span>
+                  <span style={{ lineHeight: 1.35 }}>{t}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Row 6 – progress bar */}
         {state.percentComplete !== null && (
           <div
             style={{
@@ -839,9 +850,12 @@ export default function AdminCommandCenterPage() {
             />
           </div>
         )}
-        {/* Row 6 */}
-        {teaser && (
-          <div style={{ fontSize: 12, color: '#64748b', fontStyle: 'italic' }}>{teaser}</div>
+
+        {/* Row 7 — Waiting on (compact) */}
+        {state.waitingOn && (
+          <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2, lineHeight: 1.3 }}>
+            ⏳ {state.waitingOn.length > 80 ? state.waitingOn.slice(0, 80) + '…' : state.waitingOn}
+          </div>
         )}
       </div>
     )
