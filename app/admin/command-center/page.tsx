@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import {
   AGENTS,
   MISSION_PRIORITY_COLORS,
-  ORION_CHAT_URL,
+
   type AgentConfig,
   type AgentId,
   type AgentState,
@@ -175,6 +175,8 @@ export default function AdminCommandCenterPage() {
   const [showReportsModal, setShowReportsModal] = useState(false)
   const [mobileTab, setMobileTab] = useState<MobileTab>('agents')
   const [orionMessage, setOrionMessage] = useState('')
+  const [orionSending, setOrionSending] = useState(false)
+  const [orionSendError, setOrionSendError] = useState<string | null>(null)
   const [expandedBlockerId, setExpandedBlockerId] = useState<string | null>(null)
   const [draftAnswers, setDraftAnswers] = useState<Record<string, string>>({})
   const [showResolvedBlockers, setShowResolvedBlockers] = useState(false)
@@ -262,9 +264,11 @@ export default function AdminCommandCenterPage() {
     return readLS<LaunchReadiness | null>(LAUNCH_READINESS_KEY, null)
   }, [loaded])
 
-  const orionLastReply = useMemo<{ text: string; timestamp: string } | null>(() => {
-    if (!loaded) return null
-    return readLS<{ text: string; timestamp: string } | null>(ORION_LAST_REPLY_KEY, null)
+  const [orionLastReply, setOrionLastReply] = useState<{ text: string; timestamp: string } | null>(null)
+  useEffect(() => {
+    if (loaded) {
+      setOrionLastReply(readLS<{ text: string; timestamp: string } | null>(ORION_LAST_REPLY_KEY, null))
+    }
   }, [loaded])
 
   const resolveBlocker = (
@@ -873,16 +877,39 @@ export default function AdminCommandCenterPage() {
           <div style={{ marginTop: 8 }}>
             <button
               type="button"
-              onClick={() => {
-                if (orionMessage.trim()) {
-                  window.open(ORION_CHAT_URL, '_blank')
-                  setOrionMessage('')
+              disabled={orionSending}
+              onClick={async () => {
+                if (!orionMessage.trim() || orionSending) return
+                setOrionSending(true)
+                setOrionSendError(null)
+                try {
+                  const res = await fetch('/api/admin/send-to-orion', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: orionMessage }),
+                  })
+                  const data = await res.json()
+                  if (data.success) {
+                    const reply = { text: `✓ Sent: "${orionMessage.slice(0, 80)}${orionMessage.length > 80 ? '…' : ''}"`, timestamp: new Date().toISOString() }
+                    setOrionLastReply(reply)
+                    writeLS(ORION_LAST_REPLY_KEY, reply)
+                    setOrionMessage('')
+                  } else {
+                    setOrionSendError(data.error ?? 'Send failed')
+                  }
+                } catch {
+                  setOrionSendError('Network error — could not reach server')
+                } finally {
+                  setOrionSending(false)
                 }
               }}
               style={BTN}
             >
-              Send →
+              {orionSending ? 'Sending…' : 'Send →'}
             </button>
+            {orionSendError && (
+              <div style={{ fontSize: 12, color: '#ef4444', marginTop: 4 }}>{orionSendError}</div>
+            )}
           </div>
           {orionLastReply && (
             <div
@@ -895,7 +922,7 @@ export default function AdminCommandCenterPage() {
                 marginTop: 8,
               }}
             >
-              💬{' '}
+              Last sent:{' '}
               {orionLastReply.text.length > 120
                 ? orionLastReply.text.slice(0, 120) + '…'
                 : orionLastReply.text}{' '}

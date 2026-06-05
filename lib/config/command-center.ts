@@ -210,4 +210,5 @@ export interface LaunchReadiness {
   updatedAt: string
 }
 
-export const ORION_CHAT_URL = 'https://app.openclaw.ai/chat/orion'
+// ORION_CHAT_URL is deprecated — communication now via /api/admin/send-to-orion
+// export const ORION_CHAT_URL = 'https://app.openclaw.ai/chat/orion'
