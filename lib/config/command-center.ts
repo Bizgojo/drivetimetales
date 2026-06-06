@@ -198,6 +198,7 @@ export interface Mission {
   // ORION-GOV-002 Marc Escalation Filter fields
   whyOrionCannotDecide?: string
   authorityCategory?: 'strategy' | 'publishing' | 'spending' | 'legal' | 'org-structure' | 'executive-judgment'
+  resolveUrl?: string       // where Marc goes to resolve this — internal path or external URL
 }
 
 export const MISSION_PRIORITY_COLORS: Record<MissionPriority, string> = {
@@ -257,6 +258,7 @@ export interface MarcAction {
   resolution: 'approved' | 'rejected' | 'deferred' | 'needs_info' | null
   resolvedAt: string | null
   note: string | null
+  resolveUrl?: string       // propagated from source mission
 }
 
 export interface LaunchReadiness {

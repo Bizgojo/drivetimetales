@@ -352,7 +352,7 @@ export default function AdminCommandCenterPage() {
     const seen = new Set<string>()
     const actions: MarcAction[] = []
 
-    const parse = (waitingOn: string, missionId: string, agentId: AgentId | string, missionTitle: string) => {
+    const parse = (waitingOn: string, missionId: string, agentId: AgentId | string, missionTitle: string, resolveUrl?: string) => {
       if (!waitingOn) return
       waitingOn.split(' · ').forEach((part, idx) => {
         const trimmed = part.trim()
@@ -372,6 +372,7 @@ export default function AdminCommandCenterPage() {
           resolution: null,
           resolvedAt: null,
           note: null,
+          resolveUrl,
         })
       })
     }
@@ -379,7 +380,7 @@ export default function AdminCommandCenterPage() {
     // Parse from missions
     missions.forEach(m => {
       if (m.status === 'complete' || m.status === 'archived') return
-      parse(m.waitingOn ?? '', m.id, m.agentId, m.title)
+      parse(m.waitingOn ?? '', m.id, m.agentId, m.title, m.resolveUrl)
     })
 
     // Parse from agent states (for items not already in missions)
@@ -939,7 +940,7 @@ export default function AdminCommandCenterPage() {
         )}
         {/* Marc Actions Required — auto-derived from missions */}
         {activeMarcActions.length > 0 && (
-          <div style={{ marginBottom: 12 }}>
+          <div id="marc-actions" style={{ marginBottom: 12 }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: '#92400e', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
               🎯 Marc Actions Required
               <span style={{ backgroundColor: '#fef3c7', color: '#92400e', borderRadius: 12, padding: '1px 8px', fontSize: 11, fontWeight: 700 }}>
@@ -1221,12 +1222,99 @@ export default function AdminCommandCenterPage() {
           </div>
         )}
 
-        {/* Row 7 — Waiting on (compact) */}
-        {state.waitingOn && (
-          <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2, lineHeight: 1.3 }}>
-            ⏳ {state.waitingOn.length > 80 ? state.waitingOn.slice(0, 80) + '…' : state.waitingOn}
-          </div>
-        )}
+        {/* Row 7 — Waiting on / Marc action links */}
+        {(() => {
+          // Find unresolved MarcActions for this agent
+          const agentMarcActions = marcActions.filter(
+            a => a.agentId === agent.id && !a.done && a.resolution === null
+          )
+          const marcCount = agentMarcActions.length
+
+          if (marcCount > 0) {
+            // Marc is the blocker — show action links
+            const stopProp = (e: React.MouseEvent) => e.stopPropagation()
+
+            if (marcCount === 1) {
+              const action = agentMarcActions[0]
+              const url = action.resolveUrl ?? '/admin/command-center'
+              const isExternal = url.startsWith('http')
+              return (
+                <div style={{ marginTop: 6 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: '#dc2626', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span>🔴</span> Waiting on Marc
+                  </div>
+                  <div style={{ fontSize: 10, color: '#64748b', marginBottom: 5, lineHeight: 1.3 }}>
+                    {action.actionText.length > 70 ? action.actionText.slice(0, 70) + '…' : action.actionText}
+                  </div>
+                  <a
+                    href={url}
+                    target={isExternal ? '_blank' : '_self'}
+                    rel={isExternal ? 'noopener noreferrer' : undefined}
+                    onClick={stopProp}
+                    style={{
+                      display: 'inline-block',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: '#fff',
+                      backgroundColor: '#dc2626',
+                      border: 'none',
+                      borderRadius: 6,
+                      padding: '4px 10px',
+                      textDecoration: 'none',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Resolve Issue →
+                  </a>
+                </div>
+              )
+            } else {
+              // Multiple Marc blockers — link to Marc action queue section
+              return (
+                <div style={{ marginTop: 6 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: '#dc2626', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span>🔴</span> {marcCount} items waiting on Marc
+                  </div>
+                  <a
+                    href={`/admin/command-center#marc-actions`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      // Scroll to marc action queue if on same page
+                      setTimeout(() => {
+                        document.getElementById('marc-actions')?.scrollIntoView({ behavior: 'smooth' })
+                      }, 100)
+                    }}
+                    style={{
+                      display: 'inline-block',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: '#fff',
+                      backgroundColor: '#dc2626',
+                      border: 'none',
+                      borderRadius: 6,
+                      padding: '4px 10px',
+                      textDecoration: 'none',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    View Marc-blocked items →
+                  </a>
+                </div>
+              )
+            }
+          }
+
+          // No Marc blocker — show existing waitingOn text if present
+          if (state.waitingOn) {
+            return (
+              <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2, lineHeight: 1.3 }}>
+                ⏳ {state.waitingOn.length > 80 ? state.waitingOn.slice(0, 80) + '…' : state.waitingOn}
+              </div>
+            )
+          }
+
+          return null
+        })()}
       </div>
     )
   }
