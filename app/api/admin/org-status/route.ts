@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
-import fs from 'fs'
-import path from 'path'
 import type { AgentId, AgentState, Mission, MarcBlocker, LaunchReadiness } from '@/lib/config/command-center'
 
 export const runtime = 'nodejs'
@@ -92,30 +90,30 @@ type OrionReport = {
 }
 
 async function loadOrionReports(): Promise<OrionReport[]> {
-  // Try Supabase Storage first (works in production)
   try {
-    const { data, error } = await supabase.storage.from('org-state').download('reports.json')
-    if (!error && data) {
-      const text = await data.text()
-      const parsed = JSON.parse(text)
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed
-    }
-  } catch {
-    // Fallback to local filesystem
-  }
+    const { data, error } = await supabase
+      .from('orion_messages')
+      .select('id, content, created_at')
+      .eq('role', 'orion')
+      .order('created_at', { ascending: false })
+      .limit(10)
 
-  // Fallback: local filesystem (dev only)
-  try {
-    const dir = '/Users/williampostlewaite/.openclaw/workspace-orion/reports'
-    if (!fs.existsSync(dir)) return []
-    
-    const files = fs.readdirSync(dir).filter((f) => f.endsWith('.md')).sort().reverse()
-    return files.slice(0, 10).map((f, i) => {
-      const content = fs.readFileSync(path.join(dir, f), 'utf-8')
-      const type: OrionReport['type'] = f.includes('morning') ? 'morning' : f.includes('evening') ? 'evening' : 'weekly'
-      const dateMatch = f.match(/(\d{4}-\d{2}-\d{2})/)
-      const timestamp = dateMatch ? new Date(dateMatch[1]).toISOString() : new Date().toISOString()
-      return { id: `report-${i}`, type, content, timestamp }
+    if (error || !data || data.length === 0) return []
+
+    return data.map((row, i) => {
+      // Infer report type from content keywords
+      const c = (row.content ?? '').toLowerCase()
+      const type: OrionReport['type'] = c.includes('morning') || c.includes('7:00 am') || c.includes('7 am')
+        ? 'morning'
+        : c.includes('evening') || c.includes('4:00 pm') || c.includes('4 pm')
+        ? 'evening'
+        : 'weekly'
+      return {
+        id: row.id ?? `report-${i}`,
+        type,
+        content: row.content,
+        timestamp: row.created_at,
+      }
     })
   } catch {
     return []
