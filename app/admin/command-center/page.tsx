@@ -407,6 +407,17 @@ export default function AdminCommandCenterPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ marcActions: next }),
     }).catch(() => {})
+    // For needs_info: notify Orion and return item to department
+    if (resolution === 'needs_info' && note) {
+      fetch('/api/admin/send-to-orion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: `📋 INFO REQUEST from Marc on [${id}]:\n"${note}"\n\nAction: ${marcActions.find(a => a.id === id)?.actionText ?? id}\nReturned to: ${marcActions.find(a => a.id === id)?.agentId ?? 'department'}`,
+          source: 'marc-action-request-info',
+        }),
+      }).catch(() => {})
+    }
   }
 
   const gridAgents = useMemo(
@@ -422,8 +433,14 @@ export default function AdminCommandCenterPage() {
     const deferredOnes = blockers.filter((b) => b.done && b.resolution === 'deferred')
     const resolvedOnes = blockers.filter((b) => b.done && b.resolution != null && b.resolution !== 'deferred')
 
-    const activeMarcActions = marcActions.filter(a => !marcActionResolutions[a.id])
-    const resolvedMarcActions = marcActions.filter(a => !!marcActionResolutions[a.id])
+    const activeMarcActions = marcActions.filter(a => {
+      const res = marcActionResolutions[a.id]
+      return !res || res.resolution === 'needs_info'
+    })
+    const resolvedMarcActions = marcActions.filter(a => {
+      const res = marcActionResolutions[a.id]
+      return !!res && res.resolution !== 'needs_info'
+    })
 
     if (blockers.length === 0) return null
 
@@ -846,6 +863,18 @@ export default function AdminCommandCenterPage() {
                         </span>
                       )}
                     </div>
+                    {marcActionResolutions[action.id]?.resolution === 'needs_info' && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                        <span style={{ fontSize: 10, color: '#fff', backgroundColor: '#d97706', borderRadius: 10, padding: '2px 7px', fontWeight: 700 }}>
+                          ↩ Waiting on {AGENTS.find(a => a.id === action.agentId)?.displayName ?? 'Department'}
+                        </span>
+                        {marcActionResolutions[action.id]?.note && (
+                          <span style={{ fontSize: 10, color: '#92400e', fontStyle: 'italic' }}>
+                            &ldquo;{marcActionResolutions[action.id].note}&rdquo;
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <span style={{ fontSize: 10, color: '#94a3b8', flexShrink: 0, alignSelf: 'center' }}>›</span>
                 </div>
@@ -1534,6 +1563,20 @@ export default function AdminCommandCenterPage() {
           {/* 4. Divider */}
           <hr style={{ border: 'none', borderTop: '1px solid #e2e8f0', marginBottom: 14 }} />
 
+          {/* needs_info banner — shown when item is waiting on department */}
+          {marcActionResolutions[action.id]?.resolution === 'needs_info' && (
+            <div style={{ backgroundColor: '#fef3c7', border: '1px solid #fde68a', borderRadius: 8, padding: '8px 12px', marginBottom: 12, fontSize: 12, color: '#92400e' }}>
+              <strong>↩ Waiting on {AGENTS.find(a => a.id === action.agentId)?.displayName ?? 'Department'}</strong>
+              {marcActionResolutions[action.id]?.note && (
+                <div style={{ marginTop: 4, fontStyle: 'italic' }}>&ldquo;{marcActionResolutions[action.id].note}&rdquo;</div>
+              )}
+              <div style={{ marginTop: 4, fontSize: 11, color: '#a16207' }}>
+                Marc requested info {relativeTime(marcActionResolutions[action.id]?.resolvedAt ?? '')} ago.
+                Item stays active until department responds.
+              </div>
+            </div>
+          )}
+
           {/* 5. WHAT */}
           <div style={{ marginBottom: 12 }}>
             {sectionLabel('What')}
@@ -1623,28 +1666,45 @@ export default function AdminCommandCenterPage() {
             value={marcActionNote}
             onChange={e => setMarcActionNote(e.target.value)}
             placeholder="Add a note (optional)..."
-            style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #e2e8f0', fontSize: 12, resize: 'vertical' as const, minHeight: 60, marginBottom: 12, boxSizing: 'border-box' as const }}
+            style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #e2e8f0', fontSize: 12, resize: 'vertical' as const, minHeight: 60, marginBottom: 8, boxSizing: 'border-box' as const }}
           />
 
-          {/* 16. Approve / Reject / Defer buttons */}
+          {/* Request Info helper hint */}
+          <div style={{ fontSize: 11, color: '#92400e', marginBottom: 12 }}>
+            💡 <strong>Request Info:</strong> Add a note explaining what you need, then click ↩ Request Info. The item returns to the department and stays active.
+          </div>
+
+          {/* 16. Approve / Reject / Defer / Request Info buttons */}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
             <button
               onClick={() => resolveMarcAction(action.id, 'approved', marcActionNote || null)}
-              style={{ ...BTN, backgroundColor: '#16a34a', color: '#fff', borderColor: '#16a34a', flex: 1 }}
+              style={{ ...BTN, backgroundColor: '#16a34a', color: '#fff', borderColor: '#16a34a', flex: 1, minWidth: 120 }}
             >
               ✅ Approve
             </button>
             <button
               onClick={() => resolveMarcAction(action.id, 'rejected', marcActionNote || null)}
-              style={{ ...BTN, backgroundColor: '#dc2626', color: '#fff', borderColor: '#dc2626', flex: 1 }}
+              style={{ ...BTN, backgroundColor: '#dc2626', color: '#fff', borderColor: '#dc2626', flex: 1, minWidth: 120 }}
             >
               ❌ Reject
             </button>
             <button
               onClick={() => resolveMarcAction(action.id, 'deferred', marcActionNote || null)}
-              style={{ ...BTN, flex: 1 }}
+              style={{ ...BTN, flex: 1, minWidth: 120 }}
             >
               ⏸ Defer
+            </button>
+            <button
+              onClick={() => {
+                if (!marcActionNote.trim()) {
+                  alert('Please add a note explaining what information you need.')
+                  return
+                }
+                resolveMarcAction(action.id, 'needs_info', marcActionNote || null)
+              }}
+              style={{ ...BTN, backgroundColor: '#d97706', color: '#fff', borderColor: '#d97706', flex: 1, minWidth: 120 }}
+            >
+              ↩ Request Info
             </button>
           </div>
 

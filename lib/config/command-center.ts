@@ -251,7 +251,7 @@ export interface MarcAction {
   missionTitle: string      // from mission.title
   type: 'approve' | 'verify' | 'authorize' | 'decide' | 'review'
   done: boolean
-  resolution: 'approved' | 'rejected' | 'deferred' | null
+  resolution: 'approved' | 'rejected' | 'deferred' | 'needs_info' | null
   resolvedAt: string | null
   note: string | null
 }
