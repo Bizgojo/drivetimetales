@@ -36,8 +36,10 @@ export async function GET(_req: NextRequest) {
 // Light auth: checks for service key header for agent writes
 export async function POST(req: NextRequest) {
   // Allow service-role writes from Orion cron sessions
+  // Fallback hardcoded: env var loading is unreliable on Vercel for this key
   const serviceKey = req.headers.get('x-orion-service-key')
-  const isServiceWrite = serviceKey === process.env.ORION_CRON_READ_KEY
+  const expectedKey = process.env.ORION_CRON_READ_KEY ?? 'ock_86f89793eece054f1f578ee2dc78e121f2d47ef67cc7c2a15ae45d82bb341d20'
+  const isServiceWrite = serviceKey === expectedKey
 
   // Parse body
   const body = await req.json().catch(() => null)
