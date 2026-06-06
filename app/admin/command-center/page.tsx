@@ -796,6 +796,12 @@ export default function AdminCommandCenterPage() {
             </div>
             {activeMarcActions.map(action => {
               const agent = AGENTS.find(a => a.id === action.agentId)
+              const missionForAction = missions.find(m => m.id === action.missionId)
+              const urgency = missionForAction?.urgency
+              const urgencyPillColor = urgency === 'critical' ? '#dc2626' : urgency === 'high' ? '#d97706' : urgency === 'medium' ? '#3b82f6' : urgency === 'low' ? '#64748b' : null
+              const recStance = missionForAction?.orionRecommendation?.stance
+              const recBadgeColor = recStance === 'approve' ? '#16a34a' : recStance === 'reject' ? '#dc2626' : recStance === 'defer' ? '#d97706' : recStance === 'review' ? '#3b82f6' : null
+              const recBadgeText = recStance === 'approve' ? 'APPROVE' : recStance === 'reject' ? 'REJECT' : recStance === 'defer' ? 'DEFER' : recStance === 'review' ? 'REVIEW' : null
               return (
                 <div
                   key={action.id}
@@ -829,6 +835,16 @@ export default function AdminCommandCenterPage() {
                       >
                         {action.missionId}
                       </span>
+                      {urgencyPillColor && urgency && (
+                        <span style={{ fontSize: 9, fontWeight: 700, color: '#fff', backgroundColor: urgencyPillColor, borderRadius: 8, padding: '1px 6px', textTransform: 'uppercase' as const, letterSpacing: '0.04em' }}>
+                          {urgency.toUpperCase()}
+                        </span>
+                      )}
+                      {recBadgeColor && recBadgeText && (
+                        <span style={{ fontSize: 9, fontWeight: 700, color: recBadgeColor, backgroundColor: `${recBadgeColor}18`, borderRadius: 8, padding: '1px 6px', textTransform: 'uppercase' as const, letterSpacing: '0.04em', border: `1px solid ${recBadgeColor}40` }}>
+                          🧭 {recBadgeText}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <span style={{ fontSize: 10, color: '#94a3b8', flexShrink: 0, alignSelf: 'center' }}>›</span>
@@ -1424,7 +1440,57 @@ export default function AdminCommandCenterPage() {
     if (!action) return null
     const mission = missions.find(m => m.id === action.missionId)
     const agent = AGENTS.find(a => a.id === action.agentId)
-    const agentState = agentsState[action.agentId as AgentId]
+
+    // ── Urgency pill helpers ─────────────────────────────────────────────────
+    const urgencyColor = (u: string | undefined): string => {
+      if (u === 'critical') return '#dc2626'
+      if (u === 'high') return '#d97706'
+      if (u === 'medium') return '#3b82f6'
+      if (u === 'low') return '#64748b'
+      return '#94a3b8'
+    }
+    const urgencyLabel = (u: string | undefined): string => {
+      if (!u) return ''
+      return u.toUpperCase()
+    }
+
+    // ── Orion recommendation banner helpers ──────────────────────────────────
+    const rec = mission?.orionRecommendation
+    const recBg = (): string => {
+      if (!rec) return '#f8fafc'
+      if (rec.stance === 'approve') return '#f0fdf4'
+      if (rec.stance === 'reject') return '#fef2f2'
+      if (rec.stance === 'defer') return '#fffbeb'
+      if (rec.stance === 'review') return '#eff6ff'
+      return '#f8fafc'
+    }
+    const recTextColor = (): string => {
+      if (!rec) return '#64748b'
+      if (rec.stance === 'approve') return '#16a34a'
+      if (rec.stance === 'reject') return '#dc2626'
+      if (rec.stance === 'defer') return '#d97706'
+      if (rec.stance === 'review') return '#3b82f6'
+      return '#64748b'
+    }
+    const recBadgeLabel = (): string => {
+      if (!rec) return 'NO RECOMMENDATION YET'
+      if (rec.stance === 'approve') return 'APPROVE'
+      if (rec.stance === 'reject') return 'REJECT'
+      if (rec.stance === 'defer') return 'DEFER'
+      if (rec.stance === 'review') return 'REVIEW NEEDED'
+      return 'NO RECOMMENDATION YET'
+    }
+
+    // ── Section label helper ─────────────────────────────────────────────────
+    const sectionLabel = (text: string) => (
+      <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' as const, letterSpacing: '0.05em', marginBottom: 4 }}>
+        {text}
+      </div>
+    )
+
+    // ── Type icon ────────────────────────────────────────────────────────────
+    const typeIcon = action.type === 'approve' ? '✅' : action.type === 'verify' ? '🔍' : action.type === 'authorize' ? '🔐' : '🤔'
+    const typeLabel = action.type.toUpperCase()
 
     return (
       <div
@@ -1433,74 +1499,134 @@ export default function AdminCommandCenterPage() {
       >
         <div
           onClick={e => e.stopPropagation()}
-          style={{ backgroundColor: '#fff', borderRadius: 12, padding: 24, maxWidth: 560, width: '100%', maxHeight: '80vh', overflowY: 'auto' as const, boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}
+          style={{ backgroundColor: '#fff', borderRadius: 12, padding: 24, maxWidth: 580, width: '100%', maxHeight: '85vh', overflowY: 'auto' as const, boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}
         >
-          {/* Header */}
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 16 }}>
-            <span style={{ fontSize: 28 }}>
-              {action.type === 'approve' ? '✅' : action.type === 'verify' ? '🔍' : action.type === 'authorize' ? '🔐' : '🤔'}
+          {/* 1. Header row: type icon + TYPE BADGE ... URGENCY PILL */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 18 }}>{typeIcon}</span>
+              <span style={{ fontSize: 10, fontWeight: 700, color: '#475569', backgroundColor: '#f1f5f9', borderRadius: 6, padding: '2px 8px', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>
+                {typeLabel}
+              </span>
+            </div>
+            {mission?.urgency && (
+              <span style={{ fontSize: 10, fontWeight: 700, color: '#fff', backgroundColor: urgencyColor(mission.urgency), borderRadius: 10, padding: '3px 10px', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>
+                {urgencyLabel(mission.urgency)}
+              </span>
+            )}
+          </div>
+
+          {/* 2. Decision title */}
+          <div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a', marginBottom: 8, lineHeight: 1.3 }}>{action.actionText}</div>
+
+          {/* 3. Agent badge + Mission ID badge */}
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const, marginBottom: 16 }}>
+            {agent && (
+              <span style={{ fontSize: 11, color: '#fff', backgroundColor: agent.accentColor, borderRadius: 10, padding: '2px 8px', fontWeight: 700 }}>
+                {agent.emoji} {agent.displayName}
+              </span>
+            )}
+            <span style={{ fontSize: 11, color: '#64748b', backgroundColor: '#f1f5f9', borderRadius: 10, padding: '2px 8px', fontWeight: 600 }}>
+              {action.missionId}
             </span>
-            <div>
-              <div style={{ fontSize: 16, fontWeight: 800, color: '#0f172a', marginBottom: 4 }}>{action.actionText}</div>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
-                {agent && <span style={{ fontSize: 11, color: '#fff', backgroundColor: agent.accentColor, borderRadius: 10, padding: '2px 8px', fontWeight: 700 }}>{agent.emoji} {agent.displayName}</span>}
-                <span style={{ fontSize: 11, color: '#64748b', backgroundColor: '#f1f5f9', borderRadius: 10, padding: '2px 8px', fontWeight: 600 }}>{action.missionId}</span>
-              </div>
+          </div>
+
+          {/* 4. Divider */}
+          <hr style={{ border: 'none', borderTop: '1px solid #e2e8f0', marginBottom: 14 }} />
+
+          {/* 5. WHAT */}
+          <div style={{ marginBottom: 12 }}>
+            {sectionLabel('What')}
+            <div style={{ fontSize: 13, color: '#0f172a' }}>{action.actionText}</div>
+          </div>
+
+          {/* 6. WHY THIS NEEDS MARC */}
+          <div style={{ marginBottom: 12 }}>
+            {sectionLabel('Why This Needs Marc')}
+            <div style={{ fontSize: 13, color: '#0f172a' }}>
+              {mission?.whyNeedsMarc ?? mission?.waitingOn ?? 'N/A'}
             </div>
           </div>
 
-          {/* Mission context */}
+          {/* 7. ORION RECOMMENDS banner */}
+          <div style={{ backgroundColor: recBg(), border: `1px solid ${recTextColor()}30`, borderRadius: 8, padding: '10px 12px', marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: rec?.rationale ? 6 : 0 }}>
+              <span style={{ fontSize: 14 }}>🧭</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#475569', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>Orion Recommends</span>
+              <span style={{ fontSize: 10, fontWeight: 800, color: '#fff', backgroundColor: recTextColor(), borderRadius: 6, padding: '2px 8px', textTransform: 'uppercase' as const, letterSpacing: '0.05em', marginLeft: 'auto' }}>
+                {recBadgeLabel()}
+              </span>
+            </div>
+            {rec?.rationale && (
+              <div style={{ fontSize: 12, color: recTextColor(), lineHeight: 1.5 }}>{rec.rationale}</div>
+            )}
+            {!rec && (
+              <div style={{ fontSize: 12, color: '#94a3b8' }}>No recommendation has been filed for this action yet.</div>
+            )}
+          </div>
+
+          {/* 8. IF APPROVED */}
+          <div style={{ marginBottom: 12 }}>
+            {sectionLabel('If Approved')}
+            <div style={{ fontSize: 12, color: '#0f172a' }}>{mission?.approvalConsequences ?? 'N/A'}</div>
+          </div>
+
+          {/* 9. IF REJECTED / DELAYED */}
+          <div style={{ marginBottom: 14 }}>
+            {sectionLabel('If Rejected / Delayed')}
+            <div style={{ fontSize: 12, color: '#0f172a' }}>{mission?.rejectionConsequences ?? 'N/A'}</div>
+          </div>
+
+          {/* 10. Context divider */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <hr style={{ flex: 1, border: 'none', borderTop: '1px solid #e2e8f0' }} />
+            <span style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' as const, letterSpacing: '0.05em', whiteSpace: 'nowrap' as const }}>Context</span>
+            <hr style={{ flex: 1, border: 'none', borderTop: '1px solid #e2e8f0' }} />
+          </div>
+
+          {/* 11. Mission title + status + % complete */}
           {mission && (
-            <div style={{ backgroundColor: '#f8fafc', borderRadius: 8, padding: 12, marginBottom: 14 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' as const, marginBottom: 4 }}>Mission</div>
-              <div style={{ fontSize: 13, color: '#0f172a', fontWeight: 600, marginBottom: 6 }}>{mission.title}</div>
+            <div style={{ marginBottom: 10 }}>
+              {sectionLabel('Mission')}
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', marginBottom: 3 }}>{mission.title}</div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
                 <span style={{ fontSize: 11, color: '#475569' }}>Status: <strong>{mission.status}</strong></span>
-                {mission.percentComplete != null && <span style={{ fontSize: 11, color: '#475569' }}>{mission.percentComplete}% complete</span>}
+                {mission.percentComplete != null && (
+                  <span style={{ fontSize: 11, color: '#475569' }}>{mission.percentComplete}% complete</span>
+                )}
               </div>
             </div>
           )}
 
-          {/* Active work */}
-          {agentState?.activeTasks && agentState.activeTasks.length > 0 && (
-            <div style={{ marginBottom: 14 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' as const, marginBottom: 4 }}>Active Work</div>
-              <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                {agentState.activeTasks.map((t, i) => (
-                  <li key={i} style={{ fontSize: 12, color: '#475569', display: 'flex', gap: 5, marginBottom: 3 }}>
-                    <span style={{ color: agent?.accentColor ?? '#94a3b8', fontWeight: 700, flexShrink: 0 }}>•</span>
-                    {t}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          {/* 12. Blocked on */}
+          <div style={{ marginBottom: 10 }}>
+            {sectionLabel('Blocked On')}
+            <div style={{ fontSize: 12, color: '#475569' }}>{mission?.waitingOn || 'N/A'}</div>
+          </div>
 
-          {/* Blockers */}
-          {mission?.waitingOn && (
-            <div style={{ marginBottom: 14 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' as const, marginBottom: 4 }}>Blocked On</div>
-              <div style={{ fontSize: 12, color: '#475569' }}>{mission.waitingOn}</div>
+          {/* 13. Follow-up owner */}
+          <div style={{ marginBottom: 10 }}>
+            {sectionLabel('Follow-up Owner')}
+            <div style={{ fontSize: 12, color: '#475569' }}>
+              {agent ? `${agent.emoji} ${agent.displayName}` : 'N/A'}
             </div>
-          )}
+          </div>
 
-          {/* Notes */}
-          {mission?.notes && (
-            <div style={{ marginBottom: 14 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' as const, marginBottom: 4 }}>Context</div>
-              <div style={{ fontSize: 12, color: '#475569' }}>{mission.notes}</div>
-            </div>
-          )}
+          {/* 14. Next action on approve */}
+          <div style={{ marginBottom: 16 }}>
+            {sectionLabel('Next Action on Approve')}
+            <div style={{ fontSize: 12, color: '#475569' }}>{mission?.nextActionOnApprove ?? 'N/A'}</div>
+          </div>
 
-          {/* Optional note input */}
+          {/* 15. Optional note textarea */}
           <textarea
             value={marcActionNote}
             onChange={e => setMarcActionNote(e.target.value)}
             placeholder="Add a note (optional)..."
-            style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #e2e8f0', fontSize: 12, resize: 'vertical', minHeight: 60, marginBottom: 12, boxSizing: 'border-box' as const }}
+            style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #e2e8f0', fontSize: 12, resize: 'vertical' as const, minHeight: 60, marginBottom: 12, boxSizing: 'border-box' as const }}
           />
 
-          {/* Action buttons */}
+          {/* 16. Approve / Reject / Defer buttons */}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
             <button
               onClick={() => resolveMarcAction(action.id, 'approved', marcActionNote || null)}
@@ -1522,6 +1648,7 @@ export default function AdminCommandCenterPage() {
             </button>
           </div>
 
+          {/* 17. Cancel button */}
           <button
             onClick={() => setSelectedMarcActionId(null)}
             style={{ ...BTN, marginTop: 8, width: '100%', color: '#64748b', borderColor: '#e2e8f0' }}

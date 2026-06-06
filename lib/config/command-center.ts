@@ -183,6 +183,18 @@ export interface Mission {
   unread: boolean
   createdAt: string
   updatedAt: string
+  // ORION-UX-001 Executive Approval Card Standard fields
+  orionRecommendation?: {
+    stance: 'approve' | 'reject' | 'defer' | 'review'
+    rationale: string
+  }
+  whyNeedsMarc?: string
+  approvalConsequences?: string
+  rejectionConsequences?: string
+  urgency?: 'critical' | 'high' | 'medium' | 'low'
+  urgencyReason?: string
+  nextActionOnApprove?: string
+  nextActionOnReject?: string
 }
 
 export const MISSION_PRIORITY_COLORS: Record<MissionPriority, string> = {
