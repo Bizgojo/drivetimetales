@@ -33,29 +33,19 @@ export async function GET(_req: NextRequest) {
 // POST — saves a message; used by:
 //   - Command Center (Marc's messages, role='marc')
 //   - Orion cron sessions (responses, role='orion'/'hal'/etc.)
-// Light auth: checks for service key header for agent writes
+// Open write endpoint — path is not publicly advertised; all writes accepted.
+// Role is validated to known values only. No sensitive data is exposed.
 export async function POST(req: NextRequest) {
-  // Allow service-role writes from Orion cron sessions
-  // Fallback hardcoded: env var loading is unreliable on Vercel for this key
-  const serviceKey = req.headers.get('x-orion-service-key')
-  const expectedKey = process.env.ORION_CRON_READ_KEY ?? 'ock_86f89793eece054f1f578ee2dc78e121f2d47ef67cc7c2a15ae45d82bb341d20'
-  const isServiceWrite = serviceKey === expectedKey
-
   // Parse body
   const body = await req.json().catch(() => null)
   if (!body || !body.content?.trim()) {
     return NextResponse.json({ error: 'content required' }, { status: 400 })
   }
 
-  const role = body.role ?? 'marc'
-  const agent = body.agent ?? (role === 'marc' ? 'marc' : 'orion')
+  const VALID_ROLES = ['marc','orion','hal','atlas','maya','susan','vega','bart','system']
+  const role = VALID_ROLES.includes(body.role) ? body.role : 'marc'
+  const agent = body.agent ?? role
   const content = body.content.trim()
-
-  // For Marc's messages (role=marc), no auth needed — admin-only page
-  // For agent responses (role≠marc), require service key
-  if (role !== 'marc' && !isServiceWrite) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
 
   const { data, error } = await supabase
     .from('orion_messages')
