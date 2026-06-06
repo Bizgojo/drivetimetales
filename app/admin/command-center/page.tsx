@@ -30,6 +30,21 @@ const MARC_BLOCKERS_KEY = 'cc_marc_blockers'
 const LAUNCH_READINESS_KEY = 'cc_launch_readiness'
 const ORION_LAST_REPLY_KEY = 'cc_orion_last_reply'
 const MARC_ACTIONS_KEY = 'cc_marc_actions'
+const ORION_CHAT_KEY = 'cc_orion_chat_v1'
+const ORION_CHAT_POLL_MS = 5000
+
+// Agent display config for Orion Terminal (emoji + color)
+const AGENT_TERMINAL_CONFIG: Record<string, { emoji: string; color: string; name: string }> = {
+  marc:   { emoji: '👤', color: '#0f172a', name: 'Marc' },
+  orion:  { emoji: '🧭', color: '#6366f1', name: 'Orion' },
+  hal:    { emoji: '🎙', color: '#f59e0b', name: 'Hal' },
+  atlas:  { emoji: '⚙️', color: '#3b82f6', name: 'Atlas' },
+  maya:   { emoji: '🔮', color: '#8b5cf6', name: 'Maya' },
+  susan:  { emoji: '🩷', color: '#ec4899', name: 'Susan' },
+  vega:   { emoji: '🎚', color: '#10b981', name: 'Vega' },
+  bart:   { emoji: '💰', color: '#16a34a', name: 'Bart' },
+  system: { emoji: '⚡', color: '#94a3b8', name: 'System' },
+}
 
 const CC_BG = '#FAF9F6'
 const CARD: CSSProperties = {
@@ -195,6 +210,14 @@ function inferActionType(text: string): MarcAction['type'] {
   return 'decide'
 }
 
+interface ChatMessage {
+  id: string
+  role: string
+  agent: string
+  content: string
+  created_at: string
+}
+
 export default function AdminCommandCenterPage() {
   const [loaded, setLoaded] = useState(false)
   const [agentsState, setAgentsState] = useState<AgentsState>(() => makeSeedAgents())
@@ -203,9 +226,12 @@ export default function AdminCommandCenterPage() {
   const [selectedAgentId, setSelectedAgentId] = useState<AgentId | null>(null)
   const [showReportsModal, setShowReportsModal] = useState(false)
   const [mobileTab, setMobileTab] = useState<MobileTab>('agents')
-  const [orionMessage, setOrionMessage] = useState('')
-  const [orionSending, setOrionSending] = useState(false)
-  const [orionSendError, setOrionSendError] = useState<string | null>(null)
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => readLS<ChatMessage[]>(ORION_CHAT_KEY, []))
+  const [chatInput, setChatInput] = useState('')
+  const [chatSending, setChatSending] = useState(false)
+  const [chatAgentTarget, setChatAgentTarget] = useState<string>('orion')
+  const [chatThinking, setChatThinking] = useState(false)
+  const chatBottomRef = useRef<HTMLDivElement>(null)
   const [expandedBlockerId, setExpandedBlockerId] = useState<string | null>(null)
   const [draftAnswers, setDraftAnswers] = useState<Record<string, string>>({})
   const [showResolvedBlockers, setShowResolvedBlockers] = useState(false)
@@ -369,12 +395,37 @@ export default function AdminCommandCenterPage() {
     return readLS<LaunchReadiness | null>(LAUNCH_READINESS_KEY, null)
   }, [loaded])
 
-  const [orionLastReply, setOrionLastReply] = useState<{ text: string; timestamp: string } | null>(null)
+  // ─── Orion Terminal: polling effect ──────────────────────────────────────
   useEffect(() => {
-    if (loaded) {
-      setOrionLastReply(readLS<{ text: string; timestamp: string } | null>(ORION_LAST_REPLY_KEY, null))
+    const fetchMessages = async () => {
+      try {
+        const res = await fetch('/api/admin/orion-chat')
+        if (!res.ok) return
+        const data = await res.json()
+        if (Array.isArray(data.messages) && data.messages.length > 0) {
+          setChatMessages(data.messages)
+          writeLS(ORION_CHAT_KEY, data.messages)
+        }
+      } catch {}
     }
-  }, [loaded])
+
+    fetchMessages() // initial load
+    const interval = setInterval(fetchMessages, ORION_CHAT_POLL_MS)
+    return () => clearInterval(interval)
+  }, [])
+
+  // ─── Orion Terminal: auto-scroll ──────────────────────────────────────────
+  useEffect(() => {
+    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [chatMessages, chatThinking])
+
+  // ─── Orion Terminal: clear thinking when agent responds ──────────────────
+  useEffect(() => {
+    const lastMsg = chatMessages[chatMessages.length - 1]
+    if (lastMsg && lastMsg.role !== 'marc') {
+      setChatThinking(false)
+    }
+  }, [chatMessages])
 
   const resolveBlocker = (
     blockerId: string,
@@ -442,6 +493,37 @@ export default function AdminCommandCenterPage() {
     () => AGENTS.filter((a) => GRID_AGENT_IDS.includes(a.id)),
     []
   )
+
+  // ─── Orion Terminal: send handler ────────────────────────────────────────
+  const sendChatMessage = async () => {
+    const content = chatInput.trim()
+    if (!content || chatSending) return
+
+    // Optimistic local append
+    const optimistic: ChatMessage = {
+      id: `local-${Date.now()}`,
+      role: 'marc',
+      agent: 'marc',
+      content,
+      created_at: new Date().toISOString(),
+    }
+    setChatMessages(prev => [...prev, optimistic])
+    setChatInput('')
+    setChatSending(true)
+    setChatThinking(true)
+
+    try {
+      await fetch('/api/admin/orion-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: 'marc', agent: 'marc', content }),
+      })
+    } catch {}
+
+    setChatSending(false)
+    // chatThinking stays true until next poll brings a response; clear after 60s max
+    setTimeout(() => setChatThinking(false), 60000)
+  }
 
   // ─── Marc Blockers Panel ────────────────────────────────────────────────────
 
@@ -1183,124 +1265,219 @@ export default function AdminCommandCenterPage() {
 
   // ─── Communication Panel ────────────────────────────────────────────────────
 
-  const renderCommsPanel = () => {
+  // ─── Orion Terminal ────────────────────────────────────────────────────────
+  const renderOrionTerminal = () => {
     return (
-      <div style={{ ...CARD, padding: 20, marginBottom: 16 }}>
-        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16, color: '#0f172a' }}>
-          Communication
-        </div>
-
-        {/* Field 1 – Orion */}
-        <div>
-          <label
-            style={{
-              fontSize: 13,
-              fontWeight: 600,
-              marginBottom: 6,
-              display: 'block',
-              color: '#0f172a',
-            }}
-          >
-            Message Orion
-          </label>
-          <textarea
-            value={orionMessage}
-            onChange={(e) => setOrionMessage(e.target.value)}
-            style={{
-              width: '100%',
-              minHeight: 80,
-              border: '1px solid #e2e8f0',
-              borderRadius: 6,
-              padding: 8,
-              fontFamily: 'inherit',
-              fontSize: 13,
-              resize: 'vertical',
-              boxSizing: 'border-box',
-              color: '#0f172a',
-            }}
-          />
-          <div style={{ marginTop: 8 }}>
+      <div style={{ ...CARD, display: 'flex', flexDirection: 'column', height: 520, padding: 0, overflow: 'hidden', marginBottom: 16 }}>
+        {/* Header */}
+        <div style={{
+          padding: '12px 16px',
+          borderBottom: '1px solid #e2e8f0',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          flexShrink: 0,
+          backgroundColor: '#f8fafc',
+        }}>
+          <span style={{ fontSize: 18 }}>🧭</span>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a' }}>Orion Terminal</div>
+            <div style={{ fontSize: 11, color: '#64748b' }}>Direct line to Orion — messages route automatically</div>
+          </div>
+          {/* Reports + Agent selector */}
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
             <button
               type="button"
-              disabled={orionSending}
-              onClick={async () => {
-                if (!orionMessage.trim() || orionSending) return
-                setOrionSending(true)
-                setOrionSendError(null)
-                try {
-                  const res = await fetch('/api/admin/send-to-orion', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: orionMessage }),
-                  })
-                  const data = await res.json()
-                  if (data.success) {
-                    const reply = { text: `✓ Sent: "${orionMessage.slice(0, 80)}${orionMessage.length > 80 ? '…' : ''}"`, timestamp: new Date().toISOString() }
-                    setOrionLastReply(reply)
-                    writeLS(ORION_LAST_REPLY_KEY, reply)
-                    setOrionMessage('')
-                  } else {
-                    setOrionSendError(data.error ?? 'Send failed')
-                  }
-                } catch {
-                  setOrionSendError('Network error — could not reach server')
-                } finally {
-                  setOrionSending(false)
-                }
-              }}
-              style={BTN}
+              onClick={() => setShowReportsModal(true)}
+              style={{ ...BTN, fontSize: 12, padding: '4px 10px', minHeight: 32 }}
             >
-              {orionSending ? 'Sending…' : 'Send →'}
+              📋 Reports
             </button>
-            {orionSendError && (
-              <div style={{ fontSize: 12, color: '#ef4444', marginTop: 4 }}>{orionSendError}</div>
-            )}
-          </div>
-          {orionLastReply && (
-            <div
+            <span style={{ fontSize: 11, color: '#94a3b8' }}>To:</span>
+            <select
+              value={chatAgentTarget}
+              onChange={e => setChatAgentTarget(e.target.value)}
               style={{
-                backgroundColor: '#f8fafc',
-                borderRadius: 6,
-                padding: '8px 12px',
                 fontSize: 12,
-                color: '#64748b',
-                marginTop: 8,
+                padding: '4px 8px',
+                borderRadius: 6,
+                border: '1px solid #e2e8f0',
+                backgroundColor: '#fff',
+                color: '#0f172a',
+                cursor: 'pointer',
               }}
             >
-              Last sent:{' '}
-              {orionLastReply.text.length > 120
-                ? orionLastReply.text.slice(0, 120) + '…'
-                : orionLastReply.text}{' '}
-              — {formatTimestamp(orionLastReply.timestamp)}
-            </div>
-          )}
+              <option value="orion">🧭 Orion</option>
+              <option value="hal">🎙 Hal</option>
+              <option value="atlas">⚙️ Atlas</option>
+              <option value="maya">🔮 Maya</option>
+              <option value="susan">🩷 Susan</option>
+              <option value="vega">🎚 Vega</option>
+              <option value="bart">💰 Bart</option>
+            </select>
+          </div>
         </div>
 
-        {/* Field 2 – ChatGPT */}
-        <div style={{ marginTop: 16 }}>
-          <label
-            style={{
-              fontSize: 13,
-              fontWeight: 600,
-              marginBottom: 6,
-              display: 'block',
-              color: '#0f172a',
-            }}
-          >
-            ChatGPT
-          </label>
-          <button
-            type="button"
-            onClick={() => window.open('https://chat.openai.com', '_blank')}
-            style={BTN}
-          >
-            Open ChatGPT →
-          </button>
-          <span
-            style={{ fontSize: 11, color: '#94a3b8', display: 'block', marginTop: 4 }}
-          >
-            (Opens in new tab)
-          </span>
+        {/* Message list */}
+        <div style={{
+          flex: 1,
+          overflowY: 'auto',
+          padding: '12px 14px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+        }}>
+          {chatMessages.length === 0 && (
+            <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13, marginTop: 40 }}>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>🧭</div>
+              <div>Send a message to start a conversation with Orion.</div>
+              <div style={{ fontSize: 11, marginTop: 4 }}>Messages route automatically — no need to tag anyone.</div>
+            </div>
+          )}
+
+          {chatMessages.map(msg => {
+            const isMarc = msg.role === 'marc'
+            const config = AGENT_TERMINAL_CONFIG[msg.agent] ?? AGENT_TERMINAL_CONFIG['orion']
+            const bubbleTime = (() => {
+              const d = new Date(msg.created_at)
+              return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+            })()
+
+            return (
+              <div
+                key={msg.id}
+                style={{
+                  display: 'flex',
+                  flexDirection: isMarc ? 'row-reverse' : 'row',
+                  alignItems: 'flex-end',
+                  gap: 6,
+                }}
+              >
+                {/* Avatar */}
+                {!isMarc && (
+                  <div style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: '50%',
+                    backgroundColor: config.color,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 14,
+                    flexShrink: 0,
+                  }}>
+                    {config.emoji}
+                  </div>
+                )}
+                {/* Bubble */}
+                <div style={{ maxWidth: '78%', display: 'flex', flexDirection: 'column', alignItems: isMarc ? 'flex-end' : 'flex-start' }}>
+                  {!isMarc && (
+                    <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 2, fontWeight: 600 }}>
+                      {config.name}
+                    </div>
+                  )}
+                  <div style={{
+                    padding: '8px 12px',
+                    borderRadius: isMarc ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
+                    backgroundColor: isMarc ? '#6366f1' : '#f1f5f9',
+                    color: isMarc ? '#fff' : '#0f172a',
+                    fontSize: 13,
+                    lineHeight: 1.5,
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                  }}>
+                    {msg.content}
+                  </div>
+                  <div style={{ fontSize: 10, color: '#cbd5e1', marginTop: 2 }}>
+                    {bubbleTime}
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+
+          {/* Thinking indicator */}
+          {chatThinking && (
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6 }}>
+              <div style={{
+                width: 28, height: 28, borderRadius: '50%',
+                backgroundColor: AGENT_TERMINAL_CONFIG[chatAgentTarget]?.color ?? '#6366f1',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0,
+              }}>
+                {AGENT_TERMINAL_CONFIG[chatAgentTarget]?.emoji ?? '🧭'}
+              </div>
+              <div style={{
+                padding: '8px 14px',
+                borderRadius: '14px 14px 14px 4px',
+                backgroundColor: '#f1f5f9',
+                fontSize: 13,
+                color: '#94a3b8',
+                fontStyle: 'italic',
+              }}>
+                {AGENT_TERMINAL_CONFIG[chatAgentTarget]?.name ?? 'Orion'} is thinking…
+              </div>
+            </div>
+          )}
+
+          <div ref={chatBottomRef} />
+        </div>
+
+        {/* Sticky input */}
+        <div style={{
+          borderTop: '1px solid #e2e8f0',
+          padding: '10px 12px',
+          backgroundColor: '#fff',
+          flexShrink: 0,
+        }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+            <textarea
+              value={chatInput}
+              onChange={e => setChatInput(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  sendChatMessage()
+                }
+              }}
+              placeholder={`Message ${AGENT_TERMINAL_CONFIG[chatAgentTarget]?.name ?? 'Orion'}… (Enter to send, Shift+Enter for newline)`}
+              rows={2}
+              style={{
+                flex: 1,
+                padding: '10px 12px',
+                border: '1px solid #e2e8f0',
+                borderRadius: 10,
+                fontSize: 14,
+                resize: 'none',
+                fontFamily: 'inherit',
+                lineHeight: 1.4,
+                color: '#0f172a',
+                outline: 'none',
+              }}
+            />
+            <button
+              type="button"
+              onClick={sendChatMessage}
+              disabled={!chatInput.trim() || chatSending}
+              style={{
+                ...BTN,
+                backgroundColor: chatInput.trim() && !chatSending ? '#6366f1' : '#e2e8f0',
+                color: chatInput.trim() && !chatSending ? '#fff' : '#94a3b8',
+                borderColor: chatInput.trim() && !chatSending ? '#6366f1' : '#e2e8f0',
+                padding: '10px 16px',
+                fontSize: 14,
+                fontWeight: 700,
+                minWidth: 72,
+                minHeight: 44,
+                cursor: chatInput.trim() && !chatSending ? 'pointer' : 'not-allowed',
+                borderRadius: 10,
+              }}
+            >
+              {chatSending ? '…' : '↑'}
+            </button>
+          </div>
+          <div style={{ fontSize: 10, color: '#cbd5e1', marginTop: 4, textAlign: 'center' }}>
+            Messages route to {AGENT_TERMINAL_CONFIG[chatAgentTarget]?.name ?? 'Orion'} · Telegram backup active · Refreshes every 5s
+          </div>
         </div>
       </div>
     )
@@ -2039,7 +2216,7 @@ export default function AdminCommandCenterPage() {
         {renderBlockersPanel()}
         <div className="cc-agent-grid">{gridAgents.map(renderAgentCard)}</div>
         {renderReadinessStrip()}
-        {renderCommsPanel()}
+        {renderOrionTerminal()}
       </div>
 
       {/* Mobile layout */}
@@ -2067,7 +2244,7 @@ export default function AdminCommandCenterPage() {
           )}
         </div>
         <div className="cc-tab-panel" data-active={mobileTab === 'comms'}>
-          {renderCommsPanel()}
+          {renderOrionTerminal()}
         </div>
       </div>
 
