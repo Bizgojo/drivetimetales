@@ -476,14 +476,31 @@ export default function AdminCommandCenterPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ marcActions: next }),
     }).catch(() => {})
-    // For needs_info: notify Orion and return item to department
+    // For needs_info: route to Orion (sole routing authority per ORION-GOV-003)
     if (resolution === 'needs_info' && note) {
+      const act = marcActions.find(a => a.id === id)
+      const owningDept = act?.agentId ?? 'unknown'
+      const actionText = act?.actionText ?? id
+      const missionId = act?.missionId ?? id
+
+      // 1. Write Marc's question to orion_messages (audit trail entry 1)
+      fetch('/api/admin/orion-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          role: 'marc',
+          agent: 'marc',
+          content: `📋 [Needs Your Decision — ${missionId}]\n\nMarc's question: "${note}"\n\nItem: ${actionText}\nOwning department: ${owningDept}\n\nRouted to Orion for review and consultation.`,
+        }),
+      }).catch(() => {})
+
+      // 2. Notify Orion via Telegram (backup channel)
       fetch('/api/admin/send-to-orion', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: `📋 INFO REQUEST from Marc on [${id}]:\n"${note}"\n\nAction: ${marcActions.find(a => a.id === id)?.actionText ?? id}\nReturned to: ${marcActions.find(a => a.id === id)?.agentId ?? 'department'}`,
-          source: 'marc-action-request-info',
+          message: `📋 NEEDS YOUR DECISION — Marc's question:\n"${note}"\n\nItem: ${actionText}\nMission: ${missionId}\nOwning dept: ${owningDept}\n\nOrion: you are the sole routing authority. Determine whether to answer directly or consult department(s). Respond in the Orion Terminal.`,
+          source: 'marc-action-needs-decision',
         }),
       }).catch(() => {})
     }
@@ -1014,7 +1031,7 @@ export default function AdminCommandCenterPage() {
                     {marcActionResolutions[action.id]?.resolution === 'needs_info' && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
                         <span style={{ fontSize: 10, color: '#fff', backgroundColor: '#d97706', borderRadius: 10, padding: '2px 7px', fontWeight: 700 }}>
-                          ↩ Waiting on {AGENTS.find(a => a.id === action.agentId)?.displayName ?? 'Department'}
+                          ↩ Routing to Orion
                         </span>
                         {marcActionResolutions[action.id]?.note && (
                           <span style={{ fontSize: 10, color: '#92400e', fontStyle: 'italic' }}>
@@ -1806,16 +1823,25 @@ export default function AdminCommandCenterPage() {
           {/* 4. Divider */}
           <hr style={{ border: 'none', borderTop: '1px solid #e2e8f0', marginBottom: 14 }} />
 
-          {/* needs_info banner — shown when item is waiting on department */}
+          {/* needs_info banner — Orion-centric routing per ORION-GOV-003 */}
           {marcActionResolutions[action.id]?.resolution === 'needs_info' && (
             <div style={{ backgroundColor: '#fef3c7', border: '1px solid #fde68a', borderRadius: 8, padding: '8px 12px', marginBottom: 12, fontSize: 12, color: '#92400e' }}>
-              <strong>↩ Waiting on {AGENTS.find(a => a.id === action.agentId)?.displayName ?? 'Department'}</strong>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                <span style={{ fontSize: 16 }}>🧭</span>
+                <strong>Routed to Orion for review</strong>
+              </div>
               {marcActionResolutions[action.id]?.note && (
-                <div style={{ marginTop: 4, fontStyle: 'italic' }}>&ldquo;{marcActionResolutions[action.id].note}&rdquo;</div>
+                <div style={{ marginTop: 2, fontStyle: 'italic', color: '#78350f' }}>&ldquo;{marcActionResolutions[action.id].note}&rdquo;</div>
               )}
-              <div style={{ marginTop: 4, fontSize: 11, color: '#a16207' }}>
-                Marc requested info {relativeTime(marcActionResolutions[action.id]?.resolvedAt ?? '')} ago.
-                Item stays active until department responds.
+              <div style={{ marginTop: 6, fontSize: 11, color: '#a16207', lineHeight: 1.5 }}>
+                Marc's question received by Orion {relativeTime(marcActionResolutions[action.id]?.resolvedAt ?? '')} ago.
+                Orion will consult department(s) as needed and respond in the Orion Terminal.
+                Item remains active until Marc makes a final decision.
+              </div>
+              <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#92400e' }}>
+                <span>Current owner:</span>
+                <span style={{ fontWeight: 700, backgroundColor: '#fde68a', borderRadius: 8, padding: '1px 7px' }}>🧭 Orion</span>
+                <span style={{ color: '#a16207' }}>→ check Orion Terminal for response</span>
               </div>
             </div>
           )}
