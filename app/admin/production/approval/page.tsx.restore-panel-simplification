@@ -37,7 +37,6 @@ interface Story {
   pct_finished: number
   pct_skipped: number
   created_at?: string
-  updated_at?: string | null
   status?: string | null
   audio_url?: string | null
   story_audio_url?: string | null
@@ -93,7 +92,7 @@ interface Group {
 }
 
 type WorkflowTab = 'ready_for_review' | 'approved_ready' | 'repair_queue' | 'being_repaired' | 'unpublished_library' | 'cold_storage' | 'published'
-type WorkflowLane = 'ready_for_review' | 'approved_ready' | 'published' | 'cold_storage'
+type WorkflowLane = 'ready_for_review' | 'approved_ready' | 'published'
 type InternalWorkflowLane = WorkflowLane | 'repair_shop' | 'cold_storage'
 type WorkflowFilter = WorkflowLane | 'all'
 type RepairGroup = 'story_script' | 'audio_asc' | 'packaging'
@@ -717,8 +716,7 @@ function StoryEditorPanel({
 }) {
   const [title, setTitle] = useState(story.title)
   const [author, setAuthor] = useState(story.author || '')
-  const rawEpisodeTitle = String(story.episode_title || '').trim()
-  const [episodeTitle, setEpisodeTitle] = useState(rawEpisodeTitle.toLowerCase() === 'none' ? '' : rawEpisodeTitle)
+  const [episodeTitle, setEpisodeTitle] = useState(story.episode_title || '')
   const [description, setDescription] = useState(story.description || '')
   const [primaryGenre, setPrimaryGenre] = useState((story as any).primary_genre || story.genre || '')
   const [secondaryGenre, setSecondaryGenre] = useState(story.genre_secondary || '')
@@ -2567,63 +2565,6 @@ export default function AdminStoriesPage() {
     await fetchStories()
   }
 
-  async function recoverFromColdStorage(story: Story) {
-    if (!window.confirm(`Return "${story.title}" to Ready for Review?\n\nAudio, cover, review notes, and production history will be preserved.`)) return
-    try {
-      const res = await fetch('/api/admin/content-approval?action=recover_from_cold_storage', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storyId: story.id }),
-      })
-      const result = await res.json().catch(() => ({}))
-      if (!res.ok || !result.success) { alert(`Recovery failed: ${result.error || `HTTP ${res.status}`}`); return }
-      await fetchStories()
-      setActivePipelineTab('ready_for_review')
-      setSeriesFilter('all')
-    } catch (err) { alert('Recovery failed: ' + String(err)) }
-  }
-
-  async function recoverSeriesFromColdStorage(group: Extract<StoryGroup, { type: 'series' }>) {
-    const seriesId = String(group.stories[0]?.series_id || '').trim()
-    if (!seriesId) return
-    if (!window.confirm(`Return the entire series "${group.title}" (${group.stories.length} episodes) to Ready for Review?\n\nAudio, covers, review notes, and production history will be preserved.`)) return
-    try {
-      const res = await fetch('/api/admin/content-approval?action=recover_from_cold_storage', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ seriesId }),
-      })
-      const result = await res.json().catch(() => ({}))
-      if (!res.ok || !result.success) { alert(`Recovery failed: ${result.error || `HTTP ${res.status}`}`); return }
-      await fetchStories()
-      setActivePipelineTab('ready_for_review')
-      setSeriesFilter('all')
-    } catch (err) { alert('Recovery failed: ' + String(err)) }
-  }
-
-  async function tagIncubator(group: StoryGroup) {
-    const isSeries = group.type === 'series'
-    const title = isSeries && group.type === 'series' ? group.title : (group as Extract<StoryGroup, { type: 'standalone' }>).story.title
-    const count = isSeries && group.type === 'series' ? group.stories.length : 1
-    const msg = isSeries
-      ? `Move the series "${title}" to the Incubator?\n\nAll ${count} episodes will be tagged. They remain in Cold Storage but appear in the Production Console Incubator queue.`
-      : `Move "${title}" to the Incubator?\n\nIt remains in Cold Storage but appears in the Production Console Incubator queue.`
-    if (!window.confirm(msg)) return
-    const bodyPayload = isSeries && group.type === 'series'
-      ? { seriesId: group.stories[0]?.series_id }
-      : { storyId: (group as Extract<StoryGroup, { type: 'standalone' }>).story.id }
-    try {
-      const res = await fetch('/api/admin/content-approval?action=set_incubator_tag', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(bodyPayload),
-      })
-      const result = await res.json().catch(() => ({}))
-      if (!res.ok || !result.success) { alert(`Incubator tag failed: ${result.error || `HTTP ${res.status}`}`); return }
-      await fetchStories()
-    } catch (err) { alert('Incubator tag failed: ' + String(err)) }
-  }
-
   function requestMoveSeriesToReadyForReview(group: Extract<StoryGroup, { type: 'series' }>) {
     const seriesId = String(group.stories[0]?.series_id || '').trim()
     if (!seriesId) return
@@ -3049,15 +2990,6 @@ export default function AdminStoriesPage() {
       return matchesSearch && matchesWorkflow
     })
     .sort((a, b) => {
-      if (activePipelineTab === 'cold_storage') {
-        const aDate = a.type === 'series'
-          ? Math.max(...a.stories.map((s) => new Date(s.updated_at || 0).getTime()))
-          : new Date(a.story.updated_at || 0).getTime()
-        const bDate = b.type === 'series'
-          ? Math.max(...b.stories.map((s) => new Date(s.updated_at || 0).getTime()))
-          : new Date(b.story.updated_at || 0).getTime()
-        if (bDate !== aDate) return bDate - aDate
-      }
       if (activePipelineTab === 'ready_for_review') {
         const aDate = a.type === 'series' ? a.completionSortDate : a.story.completion_sort_date
         const bDate = b.type === 'series' ? b.completionSortDate : b.story.completion_sort_date
@@ -3362,15 +3294,12 @@ export default function AdminStoriesPage() {
       : selectedGroup.story.approval_entry_reason || null
     : null
   const selectedTotalMinutes = selectedStories.reduce((sum, story) => sum + (story.duration_mins || 0), 0)
-  const selectedAverageMinutes = selectedIsSeries && selectedStories.length > 0 ? Math.round(selectedTotalMinutes / selectedStories.length) : 0
-  const selectedPanelIsSimplified = activePipelineTab === 'approved_ready' || activePipelineTab === 'published'
   const selectedMarkedForDeletion = selectedStories.some((story) => markedForDeletionIds[story.id])
   const selectedCanShowRemasterCopy = selectedStories.some((story) =>
     isRemasterCandidateState(effectiveWorkflowState(story)) &&
     productionStandardForStory(story).standard === 'remaster_candidate'
   )
   const selectedSeriesDescription = selectedIsSeries ? seriesDescriptionForReview(selectedGroup, selectedAllStories) : null
-  const selectedShortDescription = selectedIsSeries ? selectedSeriesDescription?.text || '' : selectedFirst?.description || ''
   const selectedNarrator = selectedIsSeries ? firstNarratorLabel(selectedAllStories) : selectedFirst ? narratorLabel(selectedFirst) : 'Narrator pending'
   const selectedSeriesAllReviewed = selectedIsSeries && selectedAllStories.every(
     (story) => ['no_repair', 'finished'].includes(episodeRepairMark(story.id).reviewState)
@@ -3751,7 +3680,7 @@ export default function AdminStoriesPage() {
                 const currentCount = groupEpisodeCountForTab(group, activePipelineTab)
                 const selected = selectedSeriesKey === group.key
                 return (
-                  <button key={group.key} type="button" onClick={() => setSelectedSeriesKey(group.key)} style={{ minHeight: activePipelineTab === 'cold_storage' ? '90px' : '64px', display: 'flex', alignItems: 'center', gap: '10px', width: '100%', padding: '9px 8px', borderRadius: '6px', border: 'none', borderLeft: selected ? '3px solid #E8722A' : '3px solid transparent', backgroundColor: selected ? '#FFF7ED' : '#ffffff', cursor: 'pointer', textAlign: 'left' }} onMouseEnter={(e) => { if (!selected) e.currentTarget.style.backgroundColor = '#F9FAFB' }} onMouseLeave={(e) => { if (!selected) e.currentTarget.style.backgroundColor = '#ffffff' }}>
+                  <button key={group.key} type="button" onClick={() => setSelectedSeriesKey(group.key)} style={{ minHeight: '64px', display: 'flex', alignItems: 'center', gap: '10px', width: '100%', padding: '9px 8px', borderRadius: '6px', border: 'none', borderLeft: selected ? '3px solid #E8722A' : '3px solid transparent', backgroundColor: selected ? '#FFF7ED' : '#ffffff', cursor: 'pointer', textAlign: 'left' }} onMouseEnter={(e) => { if (!selected) e.currentTarget.style.backgroundColor = '#F9FAFB' }} onMouseLeave={(e) => { if (!selected) e.currentTarget.style.backgroundColor = '#ffffff' }}>
                     <div style={{ width: '44px', height: '44px', borderRadius: '6px', overflow: 'hidden', backgroundColor: '#E5E7EB', flex: '0 0 auto' }}>
                       <img src={firstStory?.cover_url || '/images/default-cover.png'} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     </div>
@@ -3759,22 +3688,6 @@ export default function AdminStoriesPage() {
                       <div style={{ color: '#1F2937', fontSize: '13px', fontWeight: 600, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{groupTitle}</div>
                       <div style={{ color: '#9CA3AF', fontSize: '10px', marginTop: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{firstStory?.genre || 'No genre'} • {firstStory?.author || 'Unknown'}</div>
                       <div style={{ color: '#9CA3AF', fontSize: '10px', marginTop: '3px' }}>{trueSeries ? `Series • ${expected} episodes • ${present} present` : `Standalone • ${firstStory?.duration_mins || 0}m`}</div>
-                      {activePipelineTab === 'cold_storage' && (
-                        <>
-                          {firstStory?.updated_at && (
-                            <div style={{ color: '#9CA3AF', fontSize: '10px', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {'Archived '}
-                              {new Date(firstStory.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                            </div>
-                          )}
-                          {firstStory?.description && (
-                            <div style={{ color: '#9CA3AF', fontSize: '10px', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {firstStory.description.split(' ').slice(0, 10).join(' ')}
-                              {firstStory.description.split(' ').length > 10 ? '\u2026' : ''}
-                            </div>
-                          )}
-                        </>
-                      )}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flex: '0 0 auto' }}>
                       <span style={{ width: '24px', height: '24px', borderRadius: '999px', backgroundColor: currentCount > 0 ? '#E8722A' : '#E5E7EB', color: currentCount > 0 ? '#ffffff' : '#6B7280', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 700 }}>{currentCount}</span>
@@ -3804,102 +3717,40 @@ export default function AdminStoriesPage() {
                     <img src={selectedFirst.cover_url || '/images/default-cover.png'} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   </div>
                   <div style={{ minWidth: 0, flex: '1 1 auto' }}>
-                    {!selectedPanelIsSimplified && (
-                      <button type="button" onClick={() => setEpisodeCoverOpen(selectedFirst.id, true)} title="Change cover" style={{ border: 'none', background: 'transparent', color: '#9CA3AF', fontSize: '13px', cursor: 'pointer', padding: 0, marginBottom: '3px' }}>✎</button>
-                    )}
+                    <button type="button" onClick={() => setEpisodeCoverOpen(selectedFirst.id, true)} title="Change cover" style={{ border: 'none', background: 'transparent', color: '#9CA3AF', fontSize: '13px', cursor: 'pointer', padding: 0, marginBottom: '3px' }}>✎</button>
                     <div className="approval-detail-title" style={{ color: '#1F2937', fontSize: '20px', fontWeight: 800, lineHeight: 1.15 }}>{selectedTitle}</div>
-                    <div style={{ marginTop: '5px', color: '#6B7280', fontSize: '12px' }}>Author: {selectedFirst.author || 'Unknown'}</div>
+                    <div style={{ marginTop: '5px', color: '#6B7280', fontSize: '12px' }}>{selectedFirst.genre || 'No genre'} • by {selectedFirst.author || 'Unknown'}</div>
                     <div style={{ marginTop: '4px', color: '#9CA3AF', fontSize: '11px' }}>
-                      Narrator: {selectedNarrator}
+                      {selectedIsSeries ? `Narrator: ${selectedNarrator} • ${selectedExpected} total episodes • ${selectedPresent} present • ${selectedTotalMinutes}m total` : `Standalone • ${selectedFirst.duration_mins || 0}m`}
                     </div>
-                    {activePipelineTab === 'cold_storage' && selectedFirst.updated_at && (
-                      <div style={{ marginTop: '4px', color: '#9CA3AF', fontSize: '11px' }}>
-                        {'Archived: '}
-                        {new Date(selectedFirst.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                      </div>
-                    )}
-                    <div style={{ marginTop: '4px', color: '#9CA3AF', fontSize: '11px' }}>
-                      {selectedIsSeries
-                        ? `${selectedExpected} episode${selectedExpected === 1 ? '' : 's'} • ${selectedTotalMinutes}m total • ${selectedAverageMinutes}m average`
-                        : `${selectedFirst.duration_mins || 0}m total`}
-                    </div>
-                    {activePipelineTab === 'published' && (
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginTop: '8px', padding: '4px 8px', borderRadius: '999px', backgroundColor: '#DCFCE7', color: '#166534', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase' }}>
-                        <span style={{ width: '7px', height: '7px', borderRadius: '999px', backgroundColor: '#22C55E' }} />
-                        Live
-                      </div>
-                    )}
-                    {selectedShortDescription && (
+                    {selectedIsSeries && (
                       <div style={{ marginTop: '8px', color: '#4B5563', fontSize: '12px', lineHeight: 1.45, maxWidth: '760px' }}>
-                        {selectedShortDescription}
+                        {selectedSeriesDescription.text}
                       </div>
                     )}
-                    {!selectedPanelIsSimplified && selectedApprovalBlockingReasons.length > 0 && (
+                    {selectedApprovalBlockingReasons.length > 0 && (
                       <div style={{ marginTop: '7px', color: '#B45309', fontSize: '11px', fontWeight: 800, lineHeight: 1.35 }}>
                         Review blocked: {selectedApprovalBlockingReasons.slice(0, 3).join('; ')}
                       </div>
                     )}
-                    {!selectedPanelIsSimplified && (
-                      <details open={selectedApprovalBlockingReasons.length > 0} style={{ marginTop: '8px' }}>
-                        <summary style={{ color: '#6B7280', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', cursor: 'pointer' }}>Review Details</summary>
-                        <div style={{ marginTop: '7px', display: 'grid', gap: '6px' }}>
-                          <StoryIntelligenceStrip
-                            stories={selectedStories}
-                            deletionMarked={selectedMarkedForDeletion}
-                            onSetProductionStandard={setSelectedProductionStandard}
-                            onMoveToColdStorage={moveSelectedToColdStorage}
-                            onMoveToRepairShop={moveSelectedToRepairShop}
-                            onMarkForDeletion={markSelectedForDeletionReview}
-                          />
-                          <div style={{ color: '#6B7280', fontSize: '10px', lineHeight: 1.35 }}>
-                            Approval ready: {selectedApprovalReady ? 'yes' : 'no'} • Completion: {selectedCompletionSortDate || 'not recorded'} • Source: {selectedCompletionSortSource || 'API readiness'}
-                          </div>
+                    <details open={selectedApprovalBlockingReasons.length > 0} style={{ marginTop: '8px' }}>
+                      <summary style={{ color: '#6B7280', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', cursor: 'pointer' }}>Review Details</summary>
+                      <div style={{ marginTop: '7px', display: 'grid', gap: '6px' }}>
+                        <StoryIntelligenceStrip
+                          stories={selectedStories}
+                          deletionMarked={selectedMarkedForDeletion}
+                          onSetProductionStandard={setSelectedProductionStandard}
+                          onMoveToColdStorage={moveSelectedToColdStorage}
+                          onMoveToRepairShop={moveSelectedToRepairShop}
+                          onMarkForDeletion={markSelectedForDeletionReview}
+                        />
+                        <div style={{ color: '#6B7280', fontSize: '10px', lineHeight: 1.35 }}>
+                          Approval ready: {selectedApprovalReady ? 'yes' : 'no'} • Completion: {selectedCompletionSortDate || 'not recorded'} • Source: {selectedCompletionSortSource || 'API readiness'}
                         </div>
-                      </details>
-                    )}
+                      </div>
+                    </details>
                   </div>
                   <div ref={seriesActionsRef} className="approval-series-actions" style={{ position: 'relative', flex: '0 0 auto', display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end', gap: '8px', flexWrap: 'wrap', maxWidth: '390px' }}>
-                    {activePipelineTab === 'cold_storage' ? (
-                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                        {selectedIsSeries && selectedGroup?.type === 'series' ? (
-                          <button
-                            type="button"
-                            onClick={() => recoverSeriesFromColdStorage(selectedGroup as Extract<StoryGroup, { type: 'series' }>)}
-                            style={actionButtonStyle('success')}
-                          >
-                            Move to Ready for Review
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => recoverFromColdStorage(selectedFirst)}
-                            style={actionButtonStyle('success')}
-                          >
-                            Move to Ready for Review
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => selectedGroup && tagIncubator(selectedGroup)}
-                          style={actionButtonStyle('muted')}
-                        >
-                          Move to Incubator
-                        </button>
-                      </div>
-                    ) : selectedPanelIsSimplified ? (
-                      <>
-                        {activePipelineTab === 'approved_ready' && (
-                          <button type="button" onClick={() => publishStory(selectedFirst)} style={actionButtonStyle('primary')}>Publish to App</button>
-                        )}
-                        {activePipelineTab === 'published' && selectedIsSeries && selectedGroup.type === 'series' && (
-                          <button type="button" onClick={() => requestMoveSeriesToReadyForReview(selectedGroup)} style={actionButtonStyle('danger')}>Unpublish Series</button>
-                        )}
-                        {activePipelineTab === 'published' && !selectedIsSeries && (
-                          <button type="button" onClick={() => unpublishStory(selectedFirst)} style={actionButtonStyle('danger')}>Unpublish Story</button>
-                        )}
-                      </>
-                    ) : (
-                    <>
                     {selectedCanShowRemasterCopy && <RemasterCopyUnavailable compact />}
                     {selectedIsSeries && selectedGroup.type === 'series' ? (
                       <>
@@ -3922,6 +3773,9 @@ export default function AdminStoriesPage() {
                           Send Series for Repair
                         </button>
                         <button type="button" onClick={() => moveSeriesToColdStorage(selectedGroup)} style={actionButtonStyle('danger')}>Move Series to Cold Storage</button>
+                        {activePipelineTab === 'published' && selectedGroup.stories.some(isPublishedToApp) && (
+                          <button type="button" onClick={() => requestMoveSeriesToReadyForReview(selectedGroup)} style={{ ...actionButtonStyle('muted'), borderColor: '#F59E0B', backgroundColor: '#FEF3C7', color: '#92400E' }}>Unpublish Series to Review</button>
+                        )}
                         {selectedSeriesRepairMarked && (
                           <div style={{ flexBasis: '100%', color: '#B45309', fontSize: '10px', fontWeight: 800, lineHeight: 1.3, textAlign: 'right' }}>
                             Cannot approve while one or more episodes are marked for repair.
@@ -3947,12 +3801,10 @@ export default function AdminStoriesPage() {
                         <button type="button" onClick={() => { if (selectedGroup.type === 'series') moveSeriesToColdStorage(selectedGroup); else if (window.confirm(`Move "${selectedFirst.title}" to Cold Storage?`)) setWorkflowState(selectedFirst, 'cold_storage'); setSeriesActionsOpen(false) }} style={{ width: '100%', border: 'none', background: 'transparent', padding: '8px 10px', textAlign: 'left', color: '#B91C1C', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>Move to Cold Storage</button>
                       </div>
                     )}
-                    </>
-                    )}
                   </div>
                 </div>
 
-                {!selectedPanelIsSimplified && <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginTop: '20px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginTop: '20px', flexWrap: 'wrap' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                     <span style={{ color: '#6B7280', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase' }}>{selectedIsSeries ? 'Episodes in this series' : 'Story detail'}</span>
                     <span style={{ color: '#6B7280', fontSize: '10px', borderRadius: '999px', padding: '4px 8px', backgroundColor: '#F3F4F6' }}>≡ Total: {selectedStories.length}</span>
@@ -3966,9 +3818,9 @@ export default function AdminStoriesPage() {
                     )}
                     <button type="button" onClick={() => console.log('view series overview', selectedGroup.key)} style={{ border: 'none', background: 'transparent', color: '#E8722A', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}>View Series Overview</button>
                   </div>
-                </div>}
+                </div>
 
-                {!selectedPanelIsSimplified && <div className="approval-desktop-episodes" style={{ marginTop: '10px', overflowX: 'auto' }}>
+                <div className="approval-desktop-episodes" style={{ marginTop: '10px', overflowX: 'auto' }}>
                   <table style={{ width: '100%', minWidth: '900px', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
                     <colgroup>
                       <col style={{ width: '8%' }} />
@@ -4066,8 +3918,8 @@ export default function AdminStoriesPage() {
                       })}
                     </tbody>
                   </table>
-                </div>}
-                {!selectedPanelIsSimplified && <div className="approval-mobile-episodes">
+                </div>
+                <div className="approval-mobile-episodes">
                   {visibleSelectedStories.map((story) => {
                     const state = effectiveWorkflowState(story)
                     const lane = visualWorkflowLane(story)
@@ -4146,8 +3998,8 @@ export default function AdminStoriesPage() {
                       </div>
                     )
                   })}
-                </div>}
-                {!selectedPanelIsSimplified && <div style={{ marginTop: '12px', color: '#9CA3AF', fontSize: '10px' }}>Showing {visibleSelectedStories.length} of {selectedStories.length} episodes</div>}
+                </div>
+                <div style={{ marginTop: '12px', color: '#9CA3AF', fontSize: '10px' }}>Showing {visibleSelectedStories.length} of {selectedStories.length} episodes</div>
               </>
             )}
           </main>

@@ -829,7 +829,7 @@ export async function POST(req: NextRequest) {
     if (unauthorized) return unauthorized
 
     const action = clean(req.nextUrl.searchParams.get('action'))
-    if (action !== 'set_workflow_state' && action !== 'set_series_ready_for_review' && action !== 'set_production_standard') {
+    if (!["set_workflow_state","set_series_ready_for_review","set_production_standard","recover_from_cold_storage","set_incubator_tag"].includes(action)) {
       return json({ success: false, error: 'Unsupported action' }, 400)
     }
 
@@ -897,6 +897,103 @@ export async function POST(req: NextRequest) {
         stories: data || [],
         fieldsUpdated: Object.keys(update),
       })
+    }
+
+    if (action === "recover_from_cold_storage") {
+      const seriesId = clean(body.seriesId || body.series_id)
+      const singleStoryId = clean(body.storyId || body.story_id)
+
+      if (!seriesId && !singleStoryId) {
+        return json({ success: false, error: "Missing storyId or seriesId" }, 400)
+      }
+
+      const recoveryUpdate = {
+        workflow_state: "ready_for_review",
+        review_status: "pending",
+        is_hidden: true,
+        reviewed_at: null,
+        // review_notes intentionally NOT included — preserved as-is
+      }
+
+      if (seriesId) {
+        const { data, error } = await supabase
+          .from("stories")
+          .update(recoveryUpdate)
+          .eq("series_id", seriesId)
+          .select("id,workflow_state,review_notes")
+        if (error) return json({ success: false, error: error.message }, 500)
+        return json({ success: true, seriesId, updatedCount: data?.length || 0 })
+      }
+
+      const { data: storyData, error: storyError } = await supabase
+        .from("stories")
+        .select("id,workflow_state")
+        .eq("id", singleStoryId)
+        .maybeSingle()
+      if (storyError) return json({ success: false, error: storyError.message }, 500)
+      if (!storyData) return json({ success: false, error: "Story not found" }, 404)
+      if (storyData.workflow_state !== "cold_storage") {
+        return json({ success: false, error: `Story is not in cold_storage (current: ${storyData.workflow_state})` }, 400)
+      }
+
+      const { data, error } = await supabase
+        .from("stories")
+        .update(recoveryUpdate)
+        .eq("id", singleStoryId)
+        .select("id,workflow_state,review_notes")
+        .maybeSingle()
+      if (error) return json({ success: false, error: error.message }, 500)
+      return json({ success: true, story: data })
+    }
+
+    if (action === "set_incubator_tag") {
+      const seriesId = clean(body.seriesId || body.series_id)
+      const singleStoryId = clean(body.storyId || body.story_id)
+
+      if (!seriesId && !singleStoryId) {
+        return json({ success: false, error: "Missing storyId or seriesId" }, 400)
+      }
+
+      if (seriesId) {
+        const { data: seriesRows, error: fetchError } = await supabase
+          .from("stories")
+          .select("id,review_notes")
+          .eq("series_id", seriesId)
+        if (fetchError) return json({ success: false, error: fetchError.message }, 500)
+        if (!seriesRows || seriesRows.length === 0) return json({ success: false, error: "Series not found" }, 404)
+
+        let taggedCount = 0
+        for (const row of seriesRows) {
+          const current = String(row.review_notes || "").trim()
+          if (/\[INCUBATOR\]/i.test(current)) continue
+          const updated = current ? `${current} [INCUBATOR]` : "[INCUBATOR]"
+          await supabase.from("stories").update({ review_notes: updated }).eq("id", row.id)
+          taggedCount++
+        }
+        return json({ success: true, seriesId, taggedCount })
+      }
+
+      const { data: storyRow, error: fetchError } = await supabase
+        .from("stories")
+        .select("id,review_notes")
+        .eq("id", singleStoryId)
+        .maybeSingle()
+      if (fetchError) return json({ success: false, error: fetchError.message }, 500)
+      if (!storyRow) return json({ success: false, error: "Story not found" }, 404)
+
+      const current = String(storyRow.review_notes || "").trim()
+      if (/\[INCUBATOR\]/i.test(current)) {
+        return json({ success: true, story: storyRow, alreadyTagged: true })
+      }
+      const updated = current ? `${current} [INCUBATOR]` : "[INCUBATOR]"
+      const { data, error } = await supabase
+        .from("stories")
+        .update({ review_notes: updated })
+        .eq("id", singleStoryId)
+        .select("id,review_notes")
+        .maybeSingle()
+      if (error) return json({ success: false, error: error.message }, 500)
+      return json({ success: true, story: data })
     }
 
     const state = normalizeWorkflowState(body.state)
