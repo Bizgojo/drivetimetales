@@ -306,6 +306,8 @@ const SEED_MISSIONS: Mission[] = [
     urgency: 'high',
     urgencyReason: 'Blocks Vega Gate 4 assessment and all future production QC. One decision unblocks two departments.',
     nextActionOnApprove: 'Vega runs intro/outro spot-check on all 14 stories. Hal uses confirmed ID in all future production.',
+    whyOrionCannotDecide: 'Belle B voice ID is a brand identity decision affecting all future content. This is a creative direction call that requires Marc\'s unique judgment.',
+    authorityCategory: 'executive-judgment',
   },
   {
     id: 'HAL-002',
@@ -374,6 +376,8 @@ const SEED_MISSIONS: Mission[] = [
     urgency: 'critical',
     urgencyReason: 'Hard Gate 1 failure. Cannot launch while www domain is broken.',
     nextActionOnApprove: 'Atlas implements DNS fix and verifies redirect within 48 hours.',
+    whyOrionCannotDecide: 'Domain changes on the primary public platform require Marc authorization. No Orion delegation path exists for DNS changes.',
+    authorityCategory: 'executive-judgment',
   },
   {
     id: 'ATL-CC2',
@@ -396,6 +400,8 @@ const SEED_MISSIONS: Mission[] = [
     urgency: 'medium',
     urgencyReason: 'Blocking ATL-CC2 final acceptance. No operational impact while pending.',
     nextActionOnApprove: 'ATL-CC2 acceptance checklist updated. Orion marks ATL-CC2 complete if all items PASS.',
+    whyOrionCannotDecide: 'Per ORION-011 Marc Acceptance Gate: no task may be marked complete until Marc explicitly verifies. Orion cannot self-certify Marc\'s acceptance.',
+    authorityCategory: 'executive-judgment',
   },
   {
     id: 'ATL-002',
@@ -448,6 +454,8 @@ const SEED_MISSIONS: Mission[] = [
     urgency: 'high',
     urgencyReason: 'Live billing error — must fix before any subscriber pays for Annual plan.',
     nextActionOnApprove: 'Marc creates price ID in Stripe dashboard, sends ID to Orion → Atlas deploys within 1 hour.',
+    whyOrionCannotDecide: 'Stripe live dashboard access is Marc-only. This is a Marc account action — Orion has no login credentials.',
+    authorityCategory: 'executive-judgment',
   },
   {
     id: 'ATL-005',
@@ -547,6 +555,8 @@ const SEED_MISSIONS: Mission[] = [
     urgency: 'medium',
     urgencyReason: 'No immediate cost. But every day of delay is a missed organic conversion opportunity.',
     nextActionOnApprove: 'Susan posts organic content on Reddit, X, and TikTok/Reels within 24 hours of approval.',
+    whyOrionCannotDecide: 'Susan Bible requires Marc approval before any campaign activates. All public-facing campaigns are a form of publishing authority.',
+    authorityCategory: 'publishing',
   },
   {
     id: 'SUS-003',
@@ -631,6 +641,8 @@ const SEED_MISSIONS: Mission[] = [
     urgency: 'high',
     urgencyReason: 'BART-002 (live framework) is blocked until baseline accepted. Mercury balance 24 days stale. Every day of delay is a day without financial governance.',
     nextActionOnApprove: 'Bart begins BART-002 immediately. Marc generates Mercury token from Mercury → Settings → API and sends to Orion. Atlas updates .env.local within 1 hour.',
+    whyOrionCannotDecide: 'Per ORION-FIN-001 Section 3: Marc must accept the financial baseline before any variance analysis or planning begins. Orion may not self-certify financial ground truth.',
+    authorityCategory: 'executive-judgment',
   },
   {
     id: 'BART-002',
@@ -653,6 +665,8 @@ const SEED_MISSIONS: Mission[] = [
     urgency: 'high',
     urgencyReason: 'Mercury balance is 24 days stale. Last known $9,925.24. Actual balance unknown. BART-002 fully blocked.',
     nextActionOnApprove: 'Marc generates token from Mercury → Settings → API. Sends to Orion. Atlas updates .env.local and redeploys within 1 hour. Bart begins BART-002 immediately.',
+    whyOrionCannotDecide: 'Mercury banking dashboard access is Marc-only. API token generation requires Marc to log in. Orion cannot generate tokens for Marc\'s account.',
+    authorityCategory: 'executive-judgment',
   },
 ]
 

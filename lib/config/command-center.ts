@@ -195,6 +195,9 @@ export interface Mission {
   urgencyReason?: string
   nextActionOnApprove?: string
   nextActionOnReject?: string
+  // ORION-GOV-002 Marc Escalation Filter fields
+  whyOrionCannotDecide?: string
+  authorityCategory?: 'strategy' | 'publishing' | 'spending' | 'legal' | 'org-structure' | 'executive-judgment'
 }
 
 export const MISSION_PRIORITY_COLORS: Record<MissionPriority, string> = {

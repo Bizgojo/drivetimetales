@@ -67,6 +67,24 @@ const PRIORITY_SORT: Record<MissionPriority, number> = {
 // IDs shown in the 5-card grid
 const GRID_AGENT_IDS: AgentId[] = ['hal', 'atlas', 'maya', 'susan', 'vega', 'bart']
 
+// ORION-GOV-002 — Authority category display maps
+const AUTHORITY_LABELS: Record<string, string> = {
+  strategy: 'Strategy',
+  publishing: 'Publishing',
+  spending: 'Spending',
+  legal: 'Legal',
+  'org-structure': 'Org Structure',
+  'executive-judgment': 'Exec Judgment',
+}
+const AUTHORITY_COLORS: Record<string, string> = {
+  strategy: '#7c3aed',
+  publishing: '#0369a1',
+  spending: '#b45309',
+  legal: '#dc2626',
+  'org-structure': '#4b5563',
+  'executive-judgment': '#0f172a',
+}
+
 function readLS<T>(key: string, fallback: T): T {
   if (typeof window === 'undefined') return fallback
   const value = window.localStorage.getItem(key)
@@ -435,8 +453,21 @@ export default function AdminCommandCenterPage() {
 
     const activeMarcActions = marcActions.filter(a => {
       const res = marcActionResolutions[a.id]
-      return !res || res.resolution === 'needs_info'
+      if (res && res.resolution !== 'needs_info') return false
+      // ORION-GOV-002: suppress items that lack escalation documentation, unless agent-state-derived
+      if (a.missionId && !a.missionId.startsWith('agent-')) {
+        const m = missions.find(m => m.id === a.missionId)
+        if (!m?.whyOrionCannotDecide && !m?.authorityCategory) return false
+      }
+      return true
     })
+    const suppressedCount = marcActions.filter(a => {
+      const res = marcActionResolutions[a.id]
+      if (res && res.resolution !== 'needs_info') return false
+      if (!a.missionId || a.missionId.startsWith('agent-')) return false
+      const m = missions.find(m => m.id === a.missionId)
+      return !m?.whyOrionCannotDecide && !m?.authorityCategory
+    }).length
     const resolvedMarcActions = marcActions.filter(a => {
       const res = marcActionResolutions[a.id]
       return !!res && res.resolution !== 'needs_info'
@@ -788,6 +819,11 @@ export default function AdminCommandCenterPage() {
               {activeMarcActions.length} actions needed
             </span>
           )}
+          {suppressedCount > 0 && (
+            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
+              {suppressedCount} item{suppressedCount !== 1 ? 's' : ''} held — Orion documentation pending
+            </div>
+          )}
           {deferredOnes.length > 0 && (
             <span style={{ backgroundColor: '#fef3c7', color: '#b45309', borderRadius: 12, padding: '2px 8px', fontSize: 12, fontWeight: 700 }}>
               {deferredOnes.length} deferred
@@ -862,7 +898,37 @@ export default function AdminCommandCenterPage() {
                           🧭 {recBadgeText}
                         </span>
                       )}
+                      {(() => {
+                        const m = missions.find(m => m.id === action.missionId)
+                        return (
+                          <>
+                            {m?.authorityCategory && (
+                              <span style={{
+                                fontSize: 10,
+                                color: '#fff',
+                                backgroundColor: AUTHORITY_COLORS[m.authorityCategory] ?? '#4b5563',
+                                borderRadius: 10,
+                                padding: '1px 7px',
+                                fontWeight: 700,
+                                marginLeft: 4,
+                              }}>
+                                📌 {AUTHORITY_LABELS[m.authorityCategory]}
+                              </span>
+                            )}
+                          </>
+                        )
+                      })()}
                     </div>
+                    {(() => {
+                      const m = missions.find(m => m.id === action.missionId)
+                      return m?.whyOrionCannotDecide ? (
+                        <div style={{ fontSize: 10, color: '#64748b', marginTop: 3, fontStyle: 'italic' }}>
+                          {m.whyOrionCannotDecide.length > 90
+                            ? m.whyOrionCannotDecide.slice(0, 90) + '…'
+                            : m.whyOrionCannotDecide}
+                        </div>
+                      ) : null
+                    })()}
                     {marcActionResolutions[action.id]?.resolution === 'needs_info' && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
                         <span style={{ fontSize: 10, color: '#fff', backgroundColor: '#d97706', borderRadius: 10, padding: '2px 7px', fontWeight: 700 }}>
@@ -1588,6 +1654,42 @@ export default function AdminCommandCenterPage() {
             {sectionLabel('Why This Needs Marc')}
             <div style={{ fontSize: 13, color: '#0f172a' }}>
               {mission?.whyNeedsMarc ?? mission?.waitingOn ?? 'N/A'}
+            </div>
+          </div>
+
+          {/* 6b. WHY ORION CANNOT DECIDE — ORION-GOV-002 */}
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' as const, letterSpacing: '0.05em', marginBottom: 6 }}>
+              Why Orion Cannot Decide
+            </div>
+            <div style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 8,
+              padding: '8px 12px',
+              backgroundColor: '#f8fafc',
+              borderRadius: 6,
+              border: '1px solid #e2e8f0',
+            }}>
+              {mission?.authorityCategory && (
+                <span style={{
+                  fontSize: 10,
+                  color: '#fff',
+                  backgroundColor: AUTHORITY_COLORS[mission.authorityCategory] ?? '#4b5563',
+                  borderRadius: 10,
+                  padding: '2px 8px',
+                  fontWeight: 700,
+                  flexShrink: 0,
+                  textTransform: 'uppercase' as const,
+                  alignSelf: 'flex-start',
+                  marginTop: 1,
+                }}>
+                  📌 {AUTHORITY_LABELS[mission.authorityCategory]}
+                </span>
+              )}
+              <span style={{ fontSize: 12, color: '#475569', fontStyle: 'italic', lineHeight: 1.5 }}>
+                {mission?.whyOrionCannotDecide ?? 'Not documented. Orion must complete escalation review before this item appears here.'}
+              </span>
             </div>
           </div>
 
