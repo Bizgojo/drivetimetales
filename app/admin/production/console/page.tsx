@@ -2,11 +2,41 @@
 
 import { useEffect, useMemo, useState } from 'react'
 
-// ATL-CONS-001 Phase C.1 — approval gate result type (mirrors lib/story-gates)
+// ── Types (must mirror route ConsoleItem.op shape) ────────────────────────────
+
 type ApprovalGate = {
   approvalReady: boolean
   blockReasons: string[]
   recommendedAction: string | null
+}
+
+type OpData = {
+  // Repair
+  repairStage?: 'queued_for_repair' | 'being_repaired' | 'vega_review' | 'blocked'
+  repairCategories?: string[]
+  parsedRepairReasons?: string[]
+  repairOwner?: string
+  repairNextAction?: string
+  repairAfterCompletion?: string
+  queuePosition?: number
+  waitingDays?: number
+  // Production
+  stepLabel?: string
+  progressPct?: number
+  isStalled?: boolean
+  stalledHours?: number
+  productionOwner?: string
+  productionNextAction?: string
+  productionBlocker?: string | null
+  // Cold Storage
+  reasonStored?: string
+  recoverable?: 'YES' | 'NO' | 'MAYBE'
+  coldRecommendedAction?: string
+  // Queue
+  queueSource?: string
+  queueOwner?: string
+  queueNextAction?: string
+  queuePositionIndex?: number
 }
 
 type ConsoleItem = {
@@ -25,28 +55,15 @@ type ConsoleItem = {
   repairChecklist: unknown | null
   reviewNotes: string | null
   warning: string | null
-  // Phase C.1: approval pipeline fields
+  op?: OpData
   _approvalGate?: ApprovalGate
   _gate?: { blocked: boolean; blockedReason?: string; warnings: string[] }
-  jobs?: Array<{
-    id: string
-    status: string | null
-    currentStep: string | null
-    updatedAt: string | null
-  }>
+  jobs?: Array<{ id: string; status: string | null; currentStep: string | null; updatedAt: string | null }>
   queue?: {
-    id: string
-    title: string
-    genre: string | null
-    duration: string | null
-    episodeCount: number | null
-    status: string | null
-    priority: number | null
-    createdAt: string | null
-    updatedAt: string | null
-    brief: string | null
-    source: string | null
-    notes: string | null
+    id: string; title: string; genre: string | null; duration: string | null
+    episodeCount: number | null; status: string | null; priority: number | null
+    createdAt: string | null; updatedAt: string | null; brief: string | null
+    source: string | null; notes: string | null
   } | null
 }
 
@@ -55,50 +72,92 @@ type ConsolePayload = {
   error?: string
   fetchedAt?: string
   repairItems?: ConsoleItem[]
-  readyForReviewItems?: ConsoleItem[]
   inProductionItems?: ConsoleItem[]
   coldStorageItems?: ConsoleItem[]
   incubatorItems?: ConsoleItem[]
   queueItems?: ConsoleItem[]
+  readyForReviewItems?: ConsoleItem[]
 }
 
-type SectionId = 'repair' | 'review' | 'production' | 'cold' | 'incubator' | 'queue'
+type SectionId = 'queue' | 'production' | 'repair' | 'cold'
 
-const sections: Array<{ id: SectionId; label: string; color: string }> = [
-  { id: 'repair', label: 'Repair Queue', color: '#f97316' },
-  { id: 'review', label: 'Review Pipeline', color: '#16a34a' },
-  { id: 'production', label: 'In Production', color: '#2563eb' },
-  { id: 'cold', label: 'Cold Storage', color: '#8b5cf6' },
-  { id: 'incubator', label: 'Incubator', color: '#64748b' },
-  { id: 'queue', label: 'Stories in Queue', color: '#64748b' },
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const SECTIONS: Array<{ id: SectionId; label: string; color: string; icon: string }> = [
+  { id: 'queue',      label: 'Stories In Queue', color: '#64748b', icon: '📋' },
+  { id: 'production', label: 'In Production',    color: '#2563eb', icon: '⚙️' },
+  { id: 'repair',     label: 'Repair Queue',     color: '#f97316', icon: '🔧' },
+  { id: 'cold',       label: 'Cold Storage',     color: '#8b5cf6', icon: '🗄️' },
 ]
 
-function formatDate(value: string | null | undefined) {
+const REPAIR_STAGE_LABELS: Record<string, string> = {
+  queued_for_repair: 'Queued For Repair',
+  being_repaired:    'Being Repaired',
+  vega_review:       'Under Vega Review',
+  blocked:           'Blocked',
+}
+const REPAIR_STAGE_COLORS: Record<string, string> = {
+  queued_for_repair: '#f97316',
+  being_repaired:    '#2563eb',
+  vega_review:       '#7c3aed',
+  blocked:           '#dc2626',
+}
+
+const RECOVERABLE_COLORS = { YES: '#16a34a', NO: '#64748b', MAYBE: '#d97706' }
+
+const COLD_ACTION_COLORS: Record<string, string> = {
+  'Move to Production': '#2563eb',
+  'Move to Repair':     '#f97316',
+  'Keep For Training':  '#64748b',
+  'Audit Required':     '#dc2626',
+}
+
+// ── Utility ───────────────────────────────────────────────────────────────────
+
+function fmt(value: string | null | undefined) {
   if (!value) return 'Not recorded'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return 'Not recorded'
-  return date.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  const d = new Date(value)
+  if (isNaN(d.getTime())) return 'Not recorded'
+  return d.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 
-function readableChecklist(value: unknown) {
-  if (!value) return ''
-  if (typeof value === 'string') return value
-  if (Array.isArray(value)) return value.filter(Boolean).join(', ')
-  if (typeof value !== 'object') return ''
-
-  return Object.entries(value as Record<string, unknown>)
-    .flatMap(([group, items]) => {
-      if (!Array.isArray(items) || items.length === 0) return []
-      return [`${group}: ${items.join(', ')}`]
-    })
-    .join(' | ')
+function s(n: number | undefined, word: string) {
+  return `${n ?? 0} ${word}${(n ?? 0) !== 1 ? 's' : ''}`
 }
 
-function Badge({ children, color }: { children: React.ReactNode; color: string }) {
+// ── Shared components ─────────────────────────────────────────────────────────
+
+function Badge({ children, color, small }: { children: React.ReactNode; color: string; small?: boolean }) {
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', borderRadius: '999px', padding: '3px 8px', backgroundColor: `${color}18`, color, fontSize: '11px', fontWeight: 900 }}>
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', borderRadius: '999px',
+      padding: small ? '1px 6px' : '3px 8px',
+      backgroundColor: `${color}18`, color, fontSize: small ? '10px' : '11px', fontWeight: 900,
+    } as React.CSSProperties}>
       {children}
     </span>
+  )
+}
+
+function FieldGrid({ fields }: { fields: Array<{ label: string; value: React.ReactNode; accent?: string }> }) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '7px', marginTop: '10px' } as React.CSSProperties}>
+      {fields.map(({ label, value, accent }) => (
+        <div key={label} style={{ padding: '8px 10px', borderRadius: '7px', backgroundColor: '#F8FAFC', border: `1px solid ${accent ?? '#E5E7EB'}` } as React.CSSProperties}>
+          <div style={{ color: '#64748B', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em' } as React.CSSProperties}>{label}</div>
+          <div style={{ color: '#0F172A', fontSize: '12px', fontWeight: 900, marginTop: '3px', lineHeight: 1.35 } as React.CSSProperties}>{value || '—'}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function ActionRow({ label, value, color }: { label: string; value: React.ReactNode; color?: string }) {
+  return (
+    <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', padding: '8px 10px', borderRadius: '7px', backgroundColor: color ? `${color}0c` : '#F8FAFC', border: `1px solid ${color ? color + '30' : '#E5E7EB'}`, marginTop: '8px' } as React.CSSProperties}>
+      <span style={{ color: '#64748B', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap', paddingTop: '1px', minWidth: '110px' } as React.CSSProperties}>{label}</span>
+      <span style={{ color: color ?? '#0F172A', fontSize: '12px', fontWeight: 800, lineHeight: 1.4 } as React.CSSProperties}>{value}</span>
+    </div>
   )
 }
 
@@ -110,321 +169,341 @@ function EmptyState({ text }: { text: string }) {
   )
 }
 
-function ItemCard({ item, color, mode }: { item: ConsoleItem; color: string; mode: 'repair' | 'production' | 'cold' }) {
-  const checklist = readableChecklist(item.repairChecklist)
-  const issueText = item.repairNotes || checklist || item.reviewNotes || ''
-
+function SectionShell({
+  icon, title, color, count, children,
+}: { icon: string; title: string; color: string; count: number; children: React.ReactNode }) {
   return (
-    <div style={{ border: '1px solid #E2E8F0', borderLeft: `4px solid ${color}`, borderRadius: '8px', backgroundColor: '#ffffff', padding: '14px', boxShadow: '0 1px 2px rgba(15,23,42,0.05)' }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ color: '#0F172A', fontSize: '15px', fontWeight: 950, lineHeight: 1.25 }}>{item.title}</div>
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '8px' }}>
-            <Badge color={color}>{item.type === 'series' ? 'Series' : item.type === 'story' ? 'Story' : 'Job'}</Badge>
-            <Badge color="#475569">Episodes: {item.episodeCount || 'Unknown'}</Badge>
-            {item.affectedEpisodes.length > 0 && <Badge color="#475569">Affected: {item.affectedEpisodes.join(', ')}</Badge>}
-          </div>
-        </div>
-        <div style={{ textAlign: 'right', color: '#64748B', fontSize: '12px', fontWeight: 800 }}>
-          <div>{formatDate(item.lastUpdated)}</div>
-          <div style={{ marginTop: '4px' }}>{item.owner || 'Owner not assigned'}</div>
-        </div>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '8px', marginTop: '12px' }}>
-        <div style={{ padding: '9px', borderRadius: '7px', backgroundColor: '#F8FAFC' }}>
-          <div style={{ color: '#64748B', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase' }}>Workflow State</div>
-          <div style={{ color: '#0F172A', fontSize: '12px', fontWeight: 900, marginTop: '3px' }}>{item.workflowState || 'Not set'}</div>
-        </div>
-        <div style={{ padding: '9px', borderRadius: '7px', backgroundColor: '#F8FAFC' }}>
-          <div style={{ color: '#64748B', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase' }}>Status</div>
-          <div style={{ color: '#0F172A', fontSize: '12px', fontWeight: 900, marginTop: '3px' }}>{item.status || 'Not set'}</div>
-        </div>
-        {mode === 'production' && (
-          <div style={{ padding: '9px', borderRadius: '7px', backgroundColor: '#F8FAFC' }}>
-            <div style={{ color: '#64748B', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase' }}>Current Step</div>
-            <div style={{ color: '#0F172A', fontSize: '12px', fontWeight: 900, marginTop: '3px' }}>{item.jobs?.[0]?.currentStep || 'Not recorded'}</div>
-          </div>
-        )}
-        {mode === 'production' && item.queue && (
-          <div style={{ padding: '9px', borderRadius: '7px', backgroundColor: '#EFF6FF' }}>
-            <div style={{ color: '#1D4ED8', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase' }}>Queue Source</div>
-            <div style={{ color: '#1E3A8A', fontSize: '12px', fontWeight: 900, marginTop: '3px' }}>{item.queue.status || 'Queued'} · {item.queue.genre || 'No genre'}</div>
-          </div>
-        )}
-      </div>
-
-      {mode === 'production' && item.queue?.brief && (
-        <div style={{ marginTop: '12px', color: '#475569', fontSize: '13px', lineHeight: 1.4 }}>
-          {item.queue.brief}
-        </div>
-      )}
-
-      {mode === 'repair' && (
-        <div style={{ marginTop: '12px', padding: '10px', borderRadius: '8px', backgroundColor: issueText ? '#FFF7ED' : '#FEF2F2', border: `1px solid ${issueText ? '#FED7AA' : '#FECACA'}` }}>
-          <div style={{ color: issueText ? '#9A3412' : '#991B1B', fontSize: '11px', fontWeight: 950, textTransform: 'uppercase' }}>Repair Issue</div>
-          <div style={{ color: issueText ? '#7C2D12' : '#7F1D1D', fontSize: '13px', lineHeight: 1.4, marginTop: '5px', fontWeight: 750 }}>
-            {issueText || item.warning || 'No documented repair issue found.'}
-          </div>
-        </div>
-      )}
-
-      {mode === 'cold' && (
-        <div style={{ marginTop: '12px', color: '#475569', fontSize: '13px', lineHeight: 1.4 }}>
-          {item.reviewNotes || 'No review notes recorded.'}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function QueueCard({ item }: { item: ConsoleItem }) {
-  const queue = item.queue
-  return (
-    <div style={{ border: '1px solid #E2E8F0', borderLeft: '4px solid #64748b', borderRadius: '8px', backgroundColor: '#ffffff', padding: '14px', boxShadow: '0 1px 2px rgba(15,23,42,0.05)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ color: '#0F172A', fontSize: '15px', fontWeight: 950, lineHeight: 1.25 }}>{queue?.title || item.title}</div>
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '8px' }}>
-            <Badge color="#64748b">{queue?.status === 'dispatched' ? 'Dispatched / pending production' : 'Queued'}</Badge>
-            {queue?.genre && <Badge color="#475569">{queue.genre}</Badge>}
-            {queue?.episodeCount ? <Badge color="#475569">Episodes: {queue.episodeCount}</Badge> : queue?.duration ? <Badge color="#475569">{queue.duration}</Badge> : null}
-            {queue?.priority !== null && queue?.priority !== undefined && <Badge color="#475569">Priority: {queue.priority}</Badge>}
-          </div>
-        </div>
-        <div style={{ textAlign: 'right', color: '#64748B', fontSize: '12px', fontWeight: 800 }}>
-          <div>{formatDate(queue?.createdAt || item.lastUpdated)}</div>
-          <div style={{ marginTop: '4px' }}>{queue?.source || 'Source not recorded'}</div>
-        </div>
-      </div>
-      {queue?.brief && <div style={{ marginTop: '12px', color: '#475569', fontSize: '13px', lineHeight: 1.4 }}>{queue.brief}</div>}
-      {queue?.notes && <div style={{ marginTop: '10px', padding: '9px', borderRadius: '7px', backgroundColor: '#F8FAFC', color: '#475569', fontSize: '12px', lineHeight: 1.4 }}>{queue.notes}</div>}
-    </div>
-  )
-}
-
-function Section({ title, color, count, children }: { title: string; color: string; count: number; children: React.ReactNode }) {
-  return (
-    <section style={{ marginTop: '20px', borderRadius: '10px', border: '1px solid #E5E7EB', backgroundColor: '#ffffff', overflow: 'hidden' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '14px 16px', backgroundColor: '#F8FAFC', borderBottom: '1px solid #E5E7EB' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ width: '10px', height: '10px', borderRadius: '999px', backgroundColor: color }} />
-          <h2 style={{ margin: 0, color: '#111827', fontSize: '16px', fontWeight: 950 }}>{title}</h2>
+    <section style={{ marginTop: '20px', borderRadius: '10px', border: '1px solid #E5E7EB', backgroundColor: '#ffffff', overflow: 'hidden' } as React.CSSProperties}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '14px 16px', backgroundColor: '#F8FAFC', borderBottom: '1px solid #E5E7EB' } as React.CSSProperties}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' } as React.CSSProperties}>
+          <span>{icon}</span>
+          <h2 style={{ margin: 0, color: '#111827', fontSize: '16px', fontWeight: 950 } as React.CSSProperties}>{title}</h2>
         </div>
         <Badge color={color}>{count}</Badge>
       </div>
-      <div style={{ padding: '14px', display: 'grid', gap: '10px' }}>{children}</div>
+      <div style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px' } as React.CSSProperties}>{children}</div>
     </section>
   )
 }
 
-// ── ATL-CONS-001 Phase C.1: Review Pipeline Section ───────────────────────────
-// Replaces the plain "Ready For Review" section with a three-tier view:
-//   Approval Ready | Blocked — with per-story block reasons and recommended action
+// ── REPAIR QUEUE ──────────────────────────────────────────────────────────────
 
-const ACTION_COLOR: Record<string, string> = {
-  'Resume Production':        '#2563eb',
-  'Send to Repair Queue':     '#f97316',
-  'Move to Cold Storage':     '#8b5cf6',
-  'Await Missing Episode':    '#64748b',
-  'Await Metadata Completion':'#d97706',
-  'Audit Required':           '#dc2626',
-}
-
-function ReviewPipelineSection({ items }: { items: ConsoleItem[] }) {
-  const approvalReady = items.filter(i => i._approvalGate?.approvalReady === true)
-  const blocked       = items.filter(i => !i._approvalGate?.approvalReady)
-  const [showReady,   setShowReady]   = useState(true)
-  const [showBlocked, setShowBlocked] = useState(true)
-  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set())
-
-  function toggleExpand(key: string) {
-    setExpandedKeys(prev => {
-      const next = new Set(prev)
-      next.has(key) ? next.delete(key) : next.add(key)
-      return next
-    })
-  }
-
-  const total = items.length
-  const readyPct = total > 0 ? Math.round((approvalReady.length / total) * 100) : 0
+function RepairCard({ item }: { item: ConsoleItem }) {
+  const [open, setOpen] = useState(false)
+  const op = item.op ?? {}
+  const stage = op.repairStage ?? 'queued_for_repair'
+  const stageLabel = REPAIR_STAGE_LABELS[stage]
+  const stageColor = REPAIR_STAGE_COLORS[stage]
+  const categories = op.repairCategories ?? []
+  const reasons = op.parsedRepairReasons ?? []
+  const waiting = op.waitingDays ?? 0
 
   return (
-    <section style={{ marginTop: '20px', borderRadius: '10px', border: '1px solid #E5E7EB', backgroundColor: '#ffffff', overflow: 'hidden' } as React.CSSProperties}>
-      {/* Section header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '14px 16px', backgroundColor: '#F8FAFC', borderBottom: '1px solid #E5E7EB' } as React.CSSProperties}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' } as React.CSSProperties}>
-          <span style={{ width: '10px', height: '10px', borderRadius: '999px', backgroundColor: '#16a34a' } as React.CSSProperties} />
-          <h2 style={{ margin: 0, color: '#111827', fontSize: '16px', fontWeight: 950 } as React.CSSProperties}>Review Pipeline</h2>
-        </div>
-        <Badge color="#16a34a">{total}</Badge>
-      </div>
-
-      {/* Summary bar */}
-      <div style={{ padding: '14px 16px', borderBottom: '1px solid #E5E7EB', backgroundColor: '#ffffff' } as React.CSSProperties}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap', marginBottom: '10px' } as React.CSSProperties}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' } as React.CSSProperties}>
-            <span style={{ fontSize: '16px' }}>✅</span>
-            <span style={{ color: '#15803d', fontWeight: 900, fontSize: '14px' } as React.CSSProperties}>Approval Ready: {approvalReady.length}</span>
+    <div style={{ border: '1px solid #FED7AA', borderLeft: `4px solid ${stageColor}`, borderRadius: '8px', backgroundColor: '#ffffff', overflow: 'hidden' } as React.CSSProperties}>
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        style={{ width: '100%', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', padding: '13px 14px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' } as React.CSSProperties}
+      >
+        <div style={{ minWidth: 0, flex: 1 } as React.CSSProperties}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flexWrap: 'wrap' } as React.CSSProperties}>
+            <span style={{ color: '#111827', fontSize: '15px', fontWeight: 950 } as React.CSSProperties}>{item.title}</span>
+            <Badge color={stageColor}>{stageLabel}</Badge>
+            {item.type === 'series' && <Badge color="#475569" small>Series · {s(item.affectedEpisodes.length, 'ep')}</Badge>}
           </div>
-          <div style={{ color: '#94a3b8', fontSize: '14px', fontWeight: 700 }}>·</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' } as React.CSSProperties}>
-            <span style={{ fontSize: '16px' }}>🚫</span>
-            <span style={{ color: '#dc2626', fontWeight: 900, fontSize: '14px' } as React.CSSProperties}>Blocked: {blocked.length}</span>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '6px' } as React.CSSProperties}>
+            {categories.map(cat => <Badge key={cat} color="#f97316" small>{cat}</Badge>)}
+            {waiting > 0 && <Badge color="#94a3b8" small>Waiting {waiting}d</Badge>}
+            {op.queuePosition && <Badge color="#64748b" small>#{op.queuePosition} in queue</Badge>}
           </div>
-          <a
-            href="/admin/production/approval"
-            style={{ marginLeft: 'auto', padding: '5px 10px', borderRadius: '6px', backgroundColor: '#ECFDF5', border: '1px solid #A7F3D0', color: '#065F46', fontSize: '11px', fontWeight: 900, textDecoration: 'none', whiteSpace: 'nowrap' } as React.CSSProperties}
-          >
-            Open Content Approval →
-          </a>
         </div>
-        {/* Progress bar */}
-        <div style={{ height: '8px', borderRadius: '999px', backgroundColor: '#F1F5F9', overflow: 'hidden' } as React.CSSProperties}>
-          <div style={{ height: '100%', width: `${readyPct}%`, borderRadius: '999px', backgroundColor: '#16a34a', transition: 'width 0.4s ease' } as React.CSSProperties} />
-        </div>
-        <div style={{ color: '#64748b', fontSize: '11px', fontWeight: 700, marginTop: '4px' } as React.CSSProperties}>
-          {readyPct}% approval-ready · {blocked.length} {blocked.length === 1 ? 'story' : 'stories'} need attention before they appear in Content Approval
-        </div>
-      </div>
+        <span style={{ color: '#94a3b8', fontSize: '12px', flexShrink: 0, paddingTop: '2px' } as React.CSSProperties}>{open ? '▲' : '▼'}</span>
+      </button>
 
-      <div style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: '14px' } as React.CSSProperties}>
-
-        {/* ── Approval Ready ── */}
-        <div>
-          <button
-            type="button"
-            onClick={() => setShowReady(v => !v)}
-            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px', borderRadius: '7px', border: '1px solid #A7F3D0', backgroundColor: '#ECFDF5', cursor: 'pointer' } as React.CSSProperties}
-          >
-            <span style={{ color: '#065F46', fontWeight: 900, fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' } as React.CSSProperties}>
-              ✅ Approval Ready ({approvalReady.length})
-            </span>
-            <span style={{ color: '#065F46', fontSize: '12px' }}>{showReady ? '▲' : '▼'}</span>
-          </button>
-          {showReady && (
-            <div style={{ marginTop: '8px', display: 'grid', gap: '8px' } as React.CSSProperties}>
-              {approvalReady.length === 0
-                ? <EmptyState text="No stories currently pass all approval gates." />
-                : approvalReady.map(item => (
-                  <div key={item.key} style={{ border: '1px solid #A7F3D0', borderLeft: '4px solid #16a34a', borderRadius: '8px', backgroundColor: '#F0FDF4', padding: '12px 14px' } as React.CSSProperties}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' } as React.CSSProperties}>
-                      <div>
-                        <div style={{ color: '#111827', fontSize: '14px', fontWeight: 950 } as React.CSSProperties}>{item.title}</div>
-                        <div style={{ display: 'flex', gap: '6px', marginTop: '5px', flexWrap: 'wrap' } as React.CSSProperties}>
-                          <Badge color="#16a34a">{item.type === 'series' ? 'Series' : 'Story'}</Badge>
-                          <Badge color="#475569">{item.status || 'audio_ready'}</Badge>
-                          {item.lastUpdated && <Badge color="#475569">{formatDate(item.lastUpdated)}</Badge>}
-                        </div>
-                      </div>
-                      <a
-                        href="/admin/production/approval"
-                        style={{ padding: '5px 10px', borderRadius: '6px', backgroundColor: '#16a34a', color: '#ffffff', fontSize: '11px', fontWeight: 900, textDecoration: 'none', whiteSpace: 'nowrap' } as React.CSSProperties}
-                      >
-                        Review in Content Approval →
-                      </a>
-                    </div>
-                  </div>
-                ))
-              }
+      {open && (
+        <div style={{ borderTop: '1px solid #FED7AA', padding: '13px 14px', backgroundColor: '#FFFBF5' } as React.CSSProperties}>
+          {/* Reason */}
+          {reasons.length > 0 && (
+            <div style={{ marginBottom: '8px' } as React.CSSProperties}>
+              <div style={{ color: '#64748B', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '5px' } as React.CSSProperties}>Repair Reason</div>
+              {reasons.map((r, i) => (
+                <div key={i} style={{ display: 'flex', gap: '6px', fontSize: '12px', color: '#7c2d12', lineHeight: 1.45, marginBottom: '3px' } as React.CSSProperties}>
+                  <span style={{ flexShrink: 0 }}>•</span><span>{r}</span>
+                </div>
+              ))}
             </div>
           )}
+
+          <ActionRow label="Owner" value={op.repairOwner} color={stageColor} />
+          <ActionRow label="Next Action" value={op.repairNextAction} color="#f97316" />
+          <ActionRow label="After Completion" value={op.repairAfterCompletion} />
+
+          <FieldGrid fields={[
+            { label: 'State',      value: stageLabel,        accent: stageColor + '50' },
+            { label: 'Categories', value: categories.join(', ') || '—' },
+            { label: 'Last Updated', value: fmt(item.lastUpdated) },
+            { label: 'Queue Position', value: op.queuePosition ? `#${op.queuePosition}` : '—' },
+          ]} />
         </div>
-
-        {/* ── Blocked ── */}
-        <div>
-          <button
-            type="button"
-            onClick={() => setShowBlocked(v => !v)}
-            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px', borderRadius: '7px', border: '1px solid #FECACA', backgroundColor: '#FEF2F2', cursor: 'pointer' } as React.CSSProperties}
-          >
-            <span style={{ color: '#991B1B', fontWeight: 900, fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' } as React.CSSProperties}>
-              🚫 Blocked from Content Approval ({blocked.length})
-            </span>
-            <span style={{ color: '#991B1B', fontSize: '12px' }}>{showBlocked ? '▲' : '▼'}</span>
-          </button>
-          {showBlocked && (
-            <div style={{ marginTop: '8px', display: 'grid', gap: '8px' } as React.CSSProperties}>
-              {blocked.length === 0
-                ? <EmptyState text="No blocked stories." />
-                : blocked.map(item => {
-                  const gate = item._approvalGate
-                  const action = gate?.recommendedAction
-                  const actionColor = action ? (ACTION_COLOR[action] ?? '#64748b') : '#64748b'
-                  const expanded = expandedKeys.has(item.key)
-                  const reasons = gate?.blockReasons ?? []
-
-                  return (
-                    <div key={item.key} style={{ border: '1px solid #FECACA', borderLeft: '4px solid #dc2626', borderRadius: '8px', backgroundColor: '#ffffff', overflow: 'hidden' } as React.CSSProperties}>
-                      {/* Card header — always visible */}
-                      <button
-                        type="button"
-                        onClick={() => toggleExpand(item.key)}
-                        style={{ width: '100%', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', padding: '12px 14px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' } as React.CSSProperties}
-                      >
-                        <div style={{ minWidth: 0, flex: 1 } as React.CSSProperties}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flexWrap: 'wrap' } as React.CSSProperties}>
-                            <span style={{ color: '#111827', fontSize: '14px', fontWeight: 950 } as React.CSSProperties}>{item.title}</span>
-                            <span style={{ display: 'inline-flex', alignItems: 'center', borderRadius: '999px', padding: '2px 7px', backgroundColor: `${actionColor}18`, color: actionColor, fontSize: '10px', fontWeight: 900, whiteSpace: 'nowrap' } as React.CSSProperties}>
-                              {action ?? 'Audit Required'}
-                            </span>
-                          </div>
-                          <div style={{ color: '#dc2626', fontSize: '11px', fontWeight: 700, marginTop: '4px' } as React.CSSProperties}>
-                            {reasons.length} {reasons.length === 1 ? 'block' : 'blocks'} — click to {expanded ? 'hide' : 'view'} details
-                          </div>
-                        </div>
-                        <span style={{ color: '#94a3b8', fontSize: '12px', flexShrink: 0, paddingTop: '2px' } as React.CSSProperties}>{expanded ? '▲' : '▼'}</span>
-                      </button>
-
-                      {/* Expanded detail */}
-                      {expanded && (
-                        <div style={{ borderTop: '1px solid #FECACA', backgroundColor: '#FFF5F5', padding: '12px 14px' } as React.CSSProperties}>
-                          {/* Recommended action */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', padding: '8px 10px', borderRadius: '6px', backgroundColor: `${actionColor}12`, border: `1px solid ${actionColor}30` } as React.CSSProperties}>
-                            <span style={{ color: '#64748b', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.07em', whiteSpace: 'nowrap' } as React.CSSProperties}>Recommended Action</span>
-                            <span style={{ color: actionColor, fontSize: '12px', fontWeight: 900 } as React.CSSProperties}>{action ?? 'Audit Required'}</span>
-                          </div>
-                          {/* Block reasons */}
-                          <div style={{ color: '#64748b', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' } as React.CSSProperties}>
-                            Blocking reasons ({reasons.length})
-                          </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' } as React.CSSProperties}>
-                            {reasons.map((r, idx) => (
-                              <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: '7px', fontSize: '12px', color: '#7f1d1d' } as React.CSSProperties}>
-                                <span style={{ flexShrink: 0, marginTop: '1px' }}>❌</span>
-                                <span>{r}</span>
-                              </div>
-                            ))}
-                          </div>
-                          {/* Metadata strip */}
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '6px', marginTop: '10px' } as React.CSSProperties}>
-                            <div style={{ padding: '7px 9px', borderRadius: '6px', backgroundColor: '#ffffff', border: '1px solid #FECACA' } as React.CSSProperties}>
-                              <div style={{ color: '#64748b', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase' } as React.CSSProperties}>Workflow</div>
-                              <div style={{ color: '#0f172a', fontSize: '11px', fontWeight: 900, marginTop: '2px' } as React.CSSProperties}>{item.workflowState || '—'}</div>
-                            </div>
-                            <div style={{ padding: '7px 9px', borderRadius: '6px', backgroundColor: '#ffffff', border: '1px solid #FECACA' } as React.CSSProperties}>
-                              <div style={{ color: '#64748b', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase' } as React.CSSProperties}>Status</div>
-                              <div style={{ color: '#0f172a', fontSize: '11px', fontWeight: 900, marginTop: '2px' } as React.CSSProperties}>{item.status || '—'}</div>
-                            </div>
-                            <div style={{ padding: '7px 9px', borderRadius: '6px', backgroundColor: '#ffffff', border: '1px solid #FECACA' } as React.CSSProperties}>
-                              <div style={{ color: '#64748b', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase' } as React.CSSProperties}>Updated</div>
-                              <div style={{ color: '#0f172a', fontSize: '11px', fontWeight: 900, marginTop: '2px' } as React.CSSProperties}>{formatDate(item.lastUpdated)}</div>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )
-                })
-              }
-            </div>
-          )}
-        </div>
-
-      </div>
-    </section>
+      )}
+    </div>
   )
 }
+
+function RepairSection({ items }: { items: ConsoleItem[] }) {
+  if (items.length === 0) return (
+    <SectionShell icon="🔧" title="Repair Queue" color="#f97316" count={0}>
+      <EmptyState text="No stories currently in Repair Queue." />
+    </SectionShell>
+  )
+  const staged = {
+    vega_review:       items.filter(i => i.op?.repairStage === 'vega_review'),
+    being_repaired:    items.filter(i => i.op?.repairStage === 'being_repaired'),
+    queued_for_repair: items.filter(i => !i.op?.repairStage || i.op?.repairStage === 'queued_for_repair'),
+    blocked:           items.filter(i => i.op?.repairStage === 'blocked'),
+  }
+  return (
+    <SectionShell icon="🔧" title="Repair Queue" color="#f97316" count={items.length}>
+      {staged.vega_review.length > 0 && <>
+        <div style={{ color: '#7c3aed', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em' } as React.CSSProperties}>Under Vega Review ({staged.vega_review.length})</div>
+        {staged.vega_review.map(i => <RepairCard key={i.key} item={i} />)}
+      </>}
+      {staged.being_repaired.length > 0 && <>
+        <div style={{ color: '#2563eb', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em' } as React.CSSProperties}>Being Repaired ({staged.being_repaired.length})</div>
+        {staged.being_repaired.map(i => <RepairCard key={i.key} item={i} />)}
+      </>}
+      {staged.queued_for_repair.length > 0 && <>
+        <div style={{ color: '#f97316', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em' } as React.CSSProperties}>Queued For Repair ({staged.queued_for_repair.length})</div>
+        {staged.queued_for_repair.map(i => <RepairCard key={i.key} item={i} />)}
+      </>}
+      {staged.blocked.length > 0 && <>
+        <div style={{ color: '#dc2626', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em' } as React.CSSProperties}>Blocked ({staged.blocked.length})</div>
+        {staged.blocked.map(i => <RepairCard key={i.key} item={i} />)}
+      </>}
+    </SectionShell>
+  )
+}
+
+// ── IN PRODUCTION ─────────────────────────────────────────────────────────────
+
+function ProductionCard({ item }: { item: ConsoleItem }) {
+  const [open, setOpen] = useState(true) // default open — fewer items expected
+  const op = item.op ?? {}
+  const pct = op.progressPct ?? 0
+  const isStalled = op.isStalled === true
+  const stalled = op.stalledHours ?? 0
+  const color = isStalled ? '#dc2626' : '#2563eb'
+
+  return (
+    <div style={{ border: `1px solid ${isStalled ? '#FECACA' : '#BFDBFE'}`, borderLeft: `4px solid ${color}`, borderRadius: '8px', backgroundColor: '#ffffff', overflow: 'hidden' } as React.CSSProperties}>
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        style={{ width: '100%', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', padding: '13px 14px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' } as React.CSSProperties}
+      >
+        <div style={{ flex: 1, minWidth: 0 } as React.CSSProperties}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flexWrap: 'wrap' } as React.CSSProperties}>
+            <span style={{ color: '#111827', fontSize: '15px', fontWeight: 950 } as React.CSSProperties}>{item.title}</span>
+            {isStalled
+              ? <Badge color="#dc2626">⚠️ STALLED {stalled}h</Badge>
+              : <Badge color="#2563eb">In Production</Badge>}
+          </div>
+          {/* Progress bar */}
+          <div style={{ marginTop: '8px' } as React.CSSProperties}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' } as React.CSSProperties}>
+              <span style={{ color: '#64748b', fontSize: '11px', fontWeight: 700 } as React.CSSProperties}>{op.stepLabel || 'Unknown step'}</span>
+              <span style={{ color: color, fontSize: '11px', fontWeight: 900 } as React.CSSProperties}>{pct}%</span>
+            </div>
+            <div style={{ height: '6px', borderRadius: '999px', backgroundColor: '#E5E7EB', overflow: 'hidden' } as React.CSSProperties}>
+              <div style={{ height: '100%', width: `${pct}%`, borderRadius: '999px', backgroundColor: color, transition: 'width 0.4s' } as React.CSSProperties} />
+            </div>
+          </div>
+        </div>
+        <span style={{ color: '#94a3b8', fontSize: '12px', flexShrink: 0, paddingTop: '2px' } as React.CSSProperties}>{open ? '▲' : '▼'}</span>
+      </button>
+
+      {open && (
+        <div style={{ borderTop: `1px solid ${isStalled ? '#FECACA' : '#BFDBFE'}`, padding: '13px 14px', backgroundColor: isStalled ? '#FFF5F5' : '#F0F7FF' } as React.CSSProperties}>
+          {op.productionBlocker && (
+            <div style={{ display: 'flex', gap: '8px', padding: '8px 10px', borderRadius: '7px', backgroundColor: '#FEE2E2', border: '1px solid #FECACA', marginBottom: '8px' } as React.CSSProperties}>
+              <span>🚫</span>
+              <span style={{ color: '#991B1B', fontSize: '12px', fontWeight: 800 } as React.CSSProperties}>{op.productionBlocker}</span>
+            </div>
+          )}
+          <ActionRow label="Owner" value={op.productionOwner} color={color} />
+          <ActionRow label="Next Action" value={op.productionNextAction} color={isStalled ? '#dc2626' : '#2563eb'} />
+          <ActionRow label="After Completion" value="Story moves to Ready For Review → Content Approval" />
+          <FieldGrid fields={[
+            { label: 'Current Step', value: op.stepLabel },
+            { label: 'Progress',     value: `${pct}%` },
+            { label: 'Owner',        value: op.productionOwner },
+            { label: 'Last Updated', value: fmt(item.lastUpdated) },
+            { label: 'Status',       value: item.status },
+            { label: 'Episodes',     value: item.episodeCount || '—' },
+          ]} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ProductionSection({ items }: { items: ConsoleItem[] }) {
+  const active  = items.filter(i => !i.op?.isStalled)
+  const stalled = items.filter(i => i.op?.isStalled)
+  if (items.length === 0) return (
+    <SectionShell icon="⚙️" title="In Production" color="#2563eb" count={0}>
+      <EmptyState text="No active production jobs." />
+    </SectionShell>
+  )
+  return (
+    <SectionShell icon="⚙️" title="In Production" color="#2563eb" count={items.length}>
+      {stalled.length > 0 && <>
+        <div style={{ color: '#dc2626', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em' } as React.CSSProperties}>⚠️ Stalled — Local Execution Required ({stalled.length})</div>
+        {stalled.map(i => <ProductionCard key={i.key} item={i} />)}
+      </>}
+      {active.length > 0 && <>
+        {stalled.length > 0 && <div style={{ color: '#2563eb', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em' } as React.CSSProperties}>Active ({active.length})</div>}
+        {active.map(i => <ProductionCard key={i.key} item={i} />)}
+      </>}
+    </SectionShell>
+  )
+}
+
+// ── COLD STORAGE ──────────────────────────────────────────────────────────────
+
+function ColdCard({ item }: { item: ConsoleItem }) {
+  const [open, setOpen] = useState(false)
+  const op = item.op ?? {}
+  const rec = op.recoverable ?? 'NO'
+  const recColor = RECOVERABLE_COLORS[rec]
+  const actionColor = op.coldRecommendedAction ? (COLD_ACTION_COLORS[op.coldRecommendedAction] ?? '#64748b') : '#64748b'
+
+  return (
+    <div style={{ border: '1px solid #E9D5FF', borderLeft: `4px solid #8b5cf6`, borderRadius: '8px', backgroundColor: '#ffffff', overflow: 'hidden' } as React.CSSProperties}>
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        style={{ width: '100%', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', padding: '12px 14px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' } as React.CSSProperties}
+      >
+        <div style={{ flex: 1, minWidth: 0 } as React.CSSProperties}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flexWrap: 'wrap' } as React.CSSProperties}>
+            <span style={{ color: '#111827', fontSize: '14px', fontWeight: 950 } as React.CSSProperties}>{item.title}</span>
+            <Badge color={recColor} small>Recoverable: {rec}</Badge>
+            {op.coldRecommendedAction && <Badge color={actionColor} small>{op.coldRecommendedAction}</Badge>}
+          </div>
+          {op.reasonStored && (
+            <div style={{ color: '#64748b', fontSize: '11px', marginTop: '4px', lineHeight: 1.35 } as React.CSSProperties}>{op.reasonStored}</div>
+          )}
+        </div>
+        <span style={{ color: '#94a3b8', fontSize: '12px', flexShrink: 0, paddingTop: '2px' } as React.CSSProperties}>{open ? '▲' : '▼'}</span>
+      </button>
+
+      {open && (
+        <div style={{ borderTop: '1px solid #E9D5FF', padding: '12px 14px', backgroundColor: '#FAF5FF' } as React.CSSProperties}>
+          <ActionRow label="Reason Stored" value={op.reasonStored} />
+          <ActionRow label="Recommended Action" value={op.coldRecommendedAction} color={actionColor} />
+          <FieldGrid fields={[
+            { label: 'Recoverable', value: rec, accent: recColor + '50' },
+            { label: 'Type',        value: item.type === 'series' ? `Series · ${s(item.affectedEpisodes.length, 'ep')}` : 'Story' },
+            { label: 'Last Updated', value: fmt(item.lastUpdated) },
+            { label: 'Notes', value: item.reviewNotes ? item.reviewNotes.slice(0, 80) : '—' },
+          ]} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ColdSection({ items, incubatorItems }: { items: ConsoleItem[]; incubatorItems: ConsoleItem[] }) {
+  const total = items.length + incubatorItems.length
+  const recoverable = items.filter(i => i.op?.recoverable === 'YES')
+  const maybe = items.filter(i => i.op?.recoverable === 'MAYBE')
+  const notRecoverable = items.filter(i => !i.op?.recoverable || i.op?.recoverable === 'NO')
+  return (
+    <SectionShell icon="🗄️" title="Cold Storage" color="#8b5cf6" count={total}>
+      {incubatorItems.length > 0 && <>
+        <div style={{ color: '#7c3aed', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em' } as React.CSSProperties}>🌱 Incubator — Recovery Candidates ({incubatorItems.length})</div>
+        {incubatorItems.map(i => <ColdCard key={i.key} item={i} />)}
+      </>}
+      {recoverable.length > 0 && <>
+        <div style={{ color: '#16a34a', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em' } as React.CSSProperties}>Recoverable ({recoverable.length})</div>
+        {recoverable.map(i => <ColdCard key={i.key} item={i} />)}
+      </>}
+      {maybe.length > 0 && <>
+        <div style={{ color: '#d97706', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em' } as React.CSSProperties}>Possibly Recoverable ({maybe.length})</div>
+        {maybe.map(i => <ColdCard key={i.key} item={i} />)}
+      </>}
+      {notRecoverable.length > 0 && <>
+        <div style={{ color: '#64748b', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em' } as React.CSSProperties}>Archived ({notRecoverable.length})</div>
+        {notRecoverable.map(i => <ColdCard key={i.key} item={i} />)}
+      </>}
+      {total === 0 && <EmptyState text="No Cold Storage items found." />}
+    </SectionShell>
+  )
+}
+
+// ── STORIES IN QUEUE ──────────────────────────────────────────────────────────
+
+function QueueCard({ item }: { item: ConsoleItem }) {
+  const [open, setOpen] = useState(false)
+  const op = item.op ?? {}
+  const q = item.queue
+
+  return (
+    <div style={{ border: '1px solid #E2E8F0', borderLeft: '4px solid #64748b', borderRadius: '8px', backgroundColor: '#ffffff', overflow: 'hidden' } as React.CSSProperties}>
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        style={{ width: '100%', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', padding: '12px 14px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' } as React.CSSProperties}
+      >
+        <div style={{ flex: 1, minWidth: 0 } as React.CSSProperties}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flexWrap: 'wrap' } as React.CSSProperties}>
+            {op.queuePositionIndex && <span style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 900, minWidth: '20px' } as React.CSSProperties}>#{op.queuePositionIndex}</span>}
+            <span style={{ color: '#111827', fontSize: '14px', fontWeight: 950 } as React.CSSProperties}>{item.title}</span>
+            {op.queueSource && <Badge color="#64748b" small>{op.queueSource}</Badge>}
+          </div>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '5px' } as React.CSSProperties}>
+            {q?.genre && <Badge color="#475569" small>{q.genre}</Badge>}
+            {q?.episodeCount && <Badge color="#475569" small>{s(q.episodeCount, 'episode')}</Badge>}
+            {q?.duration && <Badge color="#475569" small>{q.duration}</Badge>}
+            <Badge color="#64748b" small>Owner: {op.queueOwner ?? 'Hal'}</Badge>
+          </div>
+        </div>
+        <span style={{ color: '#94a3b8', fontSize: '12px', flexShrink: 0, paddingTop: '2px' } as React.CSSProperties}>{open ? '▲' : '▼'}</span>
+      </button>
+
+      {open && (
+        <div style={{ borderTop: '1px solid #E2E8F0', padding: '12px 14px', backgroundColor: '#F8FAFC' } as React.CSSProperties}>
+          <ActionRow label="Owner"       value={op.queueOwner ?? 'Hal'}        color="#64748b" />
+          <ActionRow label="Next Action" value={op.queueNextAction}            color="#64748b" />
+          <ActionRow label="After Production" value="Story enters In Production → Ready For Review" />
+          {q?.brief && <div style={{ marginTop: '8px', color: '#475569', fontSize: '12px', lineHeight: 1.45 } as React.CSSProperties}>{q.brief}</div>}
+          <FieldGrid fields={[
+            { label: 'Source',    value: op.queueSource },
+            { label: 'Status',    value: item.status },
+            { label: 'Genre',     value: q?.genre },
+            { label: 'Episodes',  value: q?.episodeCount ? String(q.episodeCount) : '—' },
+            { label: 'Duration',  value: q?.duration },
+            { label: 'Queued',    value: fmt(q?.createdAt) },
+          ]} />
+          {q?.notes && <div style={{ marginTop: '8px', padding: '8px 10px', borderRadius: '7px', backgroundColor: '#ffffff', border: '1px solid #E2E8F0', color: '#475569', fontSize: '11px', lineHeight: 1.4 } as React.CSSProperties}>{q.notes}</div>}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function QueueSection({ items }: { items: ConsoleItem[] }) {
+  return (
+    <SectionShell icon="📋" title="Stories In Queue" color="#64748b" count={items.length}>
+      {items.length === 0
+        ? <EmptyState text="No stories queued for production." />
+        : items.map(i => <QueueCard key={i.key} item={i} />)}
+    </SectionShell>
+  )
+}
+
+// ── MAIN PAGE ─────────────────────────────────────────────────────────────────
 
 export default function ProductionConsolePage() {
   const [activeSection, setActiveSection] = useState<SectionId>('repair')
@@ -447,93 +526,87 @@ export default function ProductionConsolePage() {
     }
   }
 
-  useEffect(() => {
-    loadConsole()
-  }, [])
+  useEffect(() => { loadConsole() }, [])
 
   const counts = useMemo(() => ({
-    repair: payload?.repairItems?.length || 0,
-    review: payload?.readyForReviewItems?.length || 0,
-    production: payload?.inProductionItems?.length || 0,
-    cold: payload?.coldStorageItems?.length || 0,
-    incubator: payload?.incubatorItems?.length || 0,
-    queue: payload?.queueItems?.length || 0,
+    queue:      payload?.queueItems?.length ?? 0,
+    production: payload?.inProductionItems?.length ?? 0,
+    repair:     payload?.repairItems?.length ?? 0,
+    cold:       (payload?.coldStorageItems?.length ?? 0) + (payload?.incubatorItems?.length ?? 0),
   }), [payload])
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#F3F4F6', color: '#111827', padding: '24px' }}>
       <div style={{ maxWidth: '1180px', margin: '0 auto' }}>
+
+        {/* Header */}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
           <div>
             <h1 style={{ margin: 0, color: '#111827', fontSize: '28px', fontWeight: 950 }}>Production Console</h1>
-            <p style={{ margin: '6px 0 0', color: '#64748B', fontSize: '13px', fontWeight: 700 }}>Read-only Phase 0.2 view for production visibility.</p>
-            {payload?.fetchedAt && <div style={{ marginTop: '6px', color: '#94A3B8', fontSize: '11px', fontWeight: 800 }}>Fetched {formatDate(payload.fetchedAt)}</div>}
+            <p style={{ margin: '6px 0 0', color: '#64748B', fontSize: '13px', fontWeight: 700 }}>Operational management dashboard — ATL-CONS-002</p>
+            {payload?.fetchedAt && (
+              <div style={{ marginTop: '6px', color: '#94A3B8', fontSize: '11px', fontWeight: 800 }}>
+                Fetched {fmt(payload.fetchedAt)}
+              </div>
+            )}
           </div>
-          <button type="button" onClick={loadConsole} style={{ border: '1px solid #E5E7EB', borderRadius: '8px', backgroundColor: '#ffffff', color: '#374151', padding: '8px 12px', fontSize: '12px', fontWeight: 900, cursor: 'pointer' }}>Refresh</button>
+          <button
+            type="button"
+            onClick={loadConsole}
+            style={{ border: '1px solid #E5E7EB', borderRadius: '8px', backgroundColor: '#ffffff', color: '#374151', padding: '8px 12px', fontSize: '12px', fontWeight: 900, cursor: 'pointer' }}
+          >
+            Refresh
+          </button>
         </div>
 
+        {/* Section tabs */}
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '18px' }}>
-          {sections.map((section) => {
-            const active = activeSection === section.id
+          {SECTIONS.map(({ id, label, color, icon }) => {
+            const active = activeSection === id
             return (
               <button
-                key={section.id}
+                key={id}
                 type="button"
-                onClick={() => setActiveSection(section.id)}
-                style={{ border: `1px solid ${active ? section.color : '#E5E7EB'}`, borderRadius: '999px', backgroundColor: active ? `${section.color}12` : '#ffffff', color: active ? section.color : '#475569', padding: '8px 11px', fontSize: '12px', fontWeight: 950, cursor: 'pointer' }}
+                onClick={() => setActiveSection(id)}
+                style={{
+                  border: `1px solid ${active ? color : '#E5E7EB'}`,
+                  borderRadius: '999px',
+                  backgroundColor: active ? `${color}12` : '#ffffff',
+                  color: active ? color : '#475569',
+                  padding: '8px 11px',
+                  fontSize: '12px',
+                  fontWeight: 950,
+                  cursor: 'pointer',
+                }}
               >
-                {section.label} ({counts[section.id]})
+                {icon} {label} ({counts[id]})
               </button>
             )
           })}
         </div>
 
+        {/* Loading / error */}
         {loading && <EmptyState text="Loading Production Console..." />}
-        {error && <div style={{ marginTop: '20px', padding: '14px', borderRadius: '8px', border: '1px solid #FECACA', backgroundColor: '#FEF2F2', color: '#991B1B', fontSize: '13px', fontWeight: 800 }}>{error}</div>}
-
-        {!loading && !error && activeSection === 'repair' && (
-          <Section title="Repair Queue" color="#f97316" count={counts.repair}>
-            {(payload?.repairItems || []).length > 0
-              ? payload?.repairItems?.map((item) => <ItemCard key={item.key} item={item} color="#f97316" mode="repair" />)
-              : <EmptyState text="No Repair Queue items found." />}
-          </Section>
+        {error && (
+          <div style={{ marginTop: '20px', padding: '14px', borderRadius: '8px', border: '1px solid #FECACA', backgroundColor: '#FEF2F2', color: '#991B1B', fontSize: '13px', fontWeight: 800 }}>
+            {error}
+          </div>
         )}
 
-        {!loading && !error && activeSection === 'review' && (
-          <ReviewPipelineSection items={payload?.readyForReviewItems || []} />
-        )}
-
-        {!loading && !error && activeSection === 'production' && (
-          <Section title="In Production" color="#2563eb" count={counts.production}>
-            {(payload?.inProductionItems || []).length > 0
-              ? payload?.inProductionItems?.map((item) => <ItemCard key={item.key} item={item} color="#2563eb" mode="production" />)
-              : <EmptyState text="No active production items found from existing job/status data." />}
-          </Section>
-        )}
-
-        {!loading && !error && activeSection === 'cold' && (
-          <Section title="Cold Storage" color="#8b5cf6" count={counts.cold}>
-            {(payload?.coldStorageItems || []).length > 0
-              ? payload?.coldStorageItems?.map((item) => <ItemCard key={item.key} item={item} color="#8b5cf6" mode="cold" />)
-              : <EmptyState text="No Cold Storage items found." />}
-          </Section>
-        )}
-
-        {!loading && !error && activeSection === 'incubator' && (
-          <Section title="Incubator" color="#64748b" count={counts.incubator}>
-            {(payload?.incubatorItems || []).length > 0
-              ? payload?.incubatorItems?.map((item) => <ItemCard key={item.key} item={item} color="#64748b" mode="cold" />)
-              : <EmptyState text="Incubator requires future workflow_state support. No items shown unless review_notes already contains [INCUBATOR]." />}
-          </Section>
-        )}
-
+        {/* Sections */}
         {!loading && !error && activeSection === 'queue' && (
-          <Section title="Stories in Queue" color="#64748b" count={counts.queue}>
-            {(payload?.queueItems || []).length > 0
-              ? payload?.queueItems?.map((item) => <QueueCard key={item.key} item={item} />)
-              : <EmptyState text="No queued Story Queue items found." />}
-          </Section>
+          <QueueSection items={payload?.queueItems ?? []} />
         )}
+        {!loading && !error && activeSection === 'production' && (
+          <ProductionSection items={payload?.inProductionItems ?? []} />
+        )}
+        {!loading && !error && activeSection === 'repair' && (
+          <RepairSection items={payload?.repairItems ?? []} />
+        )}
+        {!loading && !error && activeSection === 'cold' && (
+          <ColdSection items={payload?.coldStorageItems ?? []} incubatorItems={payload?.incubatorItems ?? []} />
+        )}
+
       </div>
     </div>
   )
