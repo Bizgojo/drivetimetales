@@ -131,22 +131,22 @@ const TODAY = new Date().toLocaleDateString('en-US', {
 
 const SEED_AGENTS: AgentsState = {
   hal: {
-    status: 'working',
-    currentTask: 'Story production — building pipeline toward 25 published stories for Gate B',
+    status: 'waiting',
+    currentTask: 'Production paused — waiting on workflow clarity and Production Console redesign (June 7 directive)',
     activeTasks: [
-      'Story production — new stories in queue (~11/week cadence)',
-      'Pipeline review — 19 complete stories ready for Marc approval in Production Console',
-      'Reliability assessment — first-pass acceptance rate and ElevenLabs credit tracking',
-      'Gate B gap: 4.6h published, 8h required — 3.4h remaining',
+      'No new story production until Production Console + Content Approval are rebuilt',
+      '33 clean audio stories in Ready For Review — awaiting Marc approval via Content Approval page',
+      '4 stories in Approved Ready — awaiting Marc publish (Bridges of Bad Blood + The Manifest)',
+      'Lost Signal series (3 eps) in Repair Queue — awaiting repair assignment',
     ],
     percentComplete: 20,
-    waitingOn: 'Marc: approve 19 complete stories in Production Console · Marc: canonical Belle B voice ID',
+    waitingOn: 'Atlas: Production Console + Content Approval rebuild (ATL-CONS-001 Phase C) · Marc: approve stories in Content Approval · Marc: canonical Belle B voice ID',
     lastActivity: TODAY,
-    eta: '3–4 weeks to Gate B (8h library)',
-    whyItMatters: 'Library is at 4.6h. Gate B requires 8h. 19 stories are fully complete and waiting for Marc approval right now — approving them today closes the Gate B gap.',
+    eta: 'Resume production: after ATL-CONS-001 Phase C accepted by Marc',
+    whyItMatters: 'New production would add more stories to a broken review queue. Workflow clarity must come first. When Console + Approval are rebuilt, Hal resumes immediately.',
     lastReport: {
-      text: 'HAL report 2026-06-05: 14 published stories. 90 stories in ready_for_review — 19 fully complete (approve now), 42 empty shells, 14 non-standard audio paths, 7 missing metadata, 5 missing audio. Belle B voice ID unresolved.',
-      timestamp: new Date('2026-06-05').toISOString(),
+      text: 'Hal 2026-06-07: Production paused per Marc June 7 directive. Workflow clarity takes priority over new production. 33 clean stories in RFR await Marc review once Content Approval page is rebuilt. 4 Approved Ready stories await Marc publish. Lost Signal repair queue awaiting assignment.',
+      timestamp: new Date('2026-06-07').toISOString(),
     },
   },
   atlas: {
