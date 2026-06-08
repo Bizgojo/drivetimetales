@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { evaluateStoryGate, evaluateSeriesGate, groupBySeriesForApproval } from '@/lib/story-gates'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -801,6 +802,45 @@ export async function GET(req: NextRequest) {
 
     const items = allItems.filter((item) => includeItem(item, tab, includeBlocked))
 
+    // ── SSoT Gate Annotations (ATL-CONS-001 Phase C) ──────────────────────────
+    // Annotate each item with gate results from shared /lib/story-gates module.
+    // Series hard-block: incomplete series cannot appear in review — HARD BLOCK.
+    const rfrStoryRows = storyRows.filter(s => s.workflow_state === 'ready_for_review')
+    const rfrAsGeneric = rfrStoryRows as unknown as Record<string, unknown>[]
+
+    // Build per-item gate annotation
+    const itemsWithGate = items.map((item: any) => {
+      if (item.type === 'series') {
+        const sid = item.seriesId || item.series_id
+        const seriesGate = sid ? evaluateSeriesGate(sid, rfrAsGeneric) : null
+        const seriesBlocked = seriesGate ? !seriesGate.complete : false
+        const seriesBlockReason = seriesBlocked && seriesGate
+          ? seriesGate.missingEpisodes.length > 0
+            ? `Missing episode${seriesGate.missingEpisodes.length > 1 ? 's' : ''}: ${seriesGate.missingEpisodes.map((n: number) => `Ep ${n}`).join(', ')}`
+            : `Series incomplete — ${seriesGate.totalPresent} of ${seriesGate.totalExpected} episodes ready`
+          : undefined
+        return { ...item, _seriesGate: seriesGate, _blocked: seriesBlocked, _blockReason: seriesBlockReason }
+      } else {
+        // Standalone story
+        const storyRow = storyRows.find(s => s.id === (item.storyId || item.story?.id || item.id))
+        const gate = storyRow ? evaluateStoryGate(storyRow as unknown as Record<string, unknown>) : null
+        const recommendation = gate
+          ? gate.blocked ? 'HOLD'
+            : gate.warnings.length > 0 ? 'REVIEW REQUIRED'
+            : 'APPROVE'
+          : null
+        return { ...item, _gate: gate, _blocked: gate?.blocked ?? false, _blockReason: gate?.blockedReason, _orionRecommendation: recommendation }
+      }
+    })
+
+    // Separate blocked series (HARD BLOCK) from reviewable items
+    const reviewableItems = tab === 'ready_for_review'
+      ? itemsWithGate.filter((item: any) => !item._blocked)
+      : itemsWithGate
+    const blockedSeriesItems = tab === 'ready_for_review'
+      ? itemsWithGate.filter((item: any) => item._blocked && item.type === 'series')
+      : []
+
     return json({
       success: true,
       tab,
@@ -810,12 +850,14 @@ export async function GET(req: NextRequest) {
         seriesId: seriesId || null,
       },
       counts: {
-        items: items.length,
-        series: items.filter((item: any) => item.type === 'series').length,
-        stories: items.filter((item: any) => item.type === 'story').length,
+        items: reviewableItems.length,
+        blockedSeries: blockedSeriesItems.length,
+        series: reviewableItems.filter((item: any) => item.type === 'series').length,
+        stories: reviewableItems.filter((item: any) => item.type === 'story').length,
       },
       examples: examples(allItems),
-      items,
+      items: reviewableItems,
+      blockedSeriesItems,
     })
   } catch (err: any) {
     console.error('[content-approval] GET failed:', err)

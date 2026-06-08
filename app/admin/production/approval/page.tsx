@@ -2,6 +2,8 @@
 
 import { Fragment, useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import { evaluateStoryGate, evaluateQCChecklist, deriveOrionRecommendation } from '@/lib/story-gates'
+import type { QCChecklistItem } from '@/lib/story-gates'
 
 interface Story {
   id: string
@@ -78,6 +80,10 @@ interface Story {
   brief_json?: any
   script?: string | null
   story_type?: string | null
+  // ATL-CONS-001 Phase C: QC checklist data
+  grading_result?: Record<string, unknown> | null
+  author_id?: string | null
+  narrator_voice_id?: string | null
 }
 
 interface Genre {
@@ -673,6 +679,49 @@ function approvalReturnUrl(story: Pick<Story, 'id' | 'series_id'>) {
   const params = new URLSearchParams({ storyId: story.id })
   if (story.series_id) params.set('seriesId', story.series_id)
   return `/admin/production/approval?${params.toString()}`
+}
+
+// ATL-CONS-001 Phase C: Orion QC Panel component (hooks-safe)
+function OrionQCPanel({ story }: { story: Story }) {
+  const [qcOpen, setQcOpen] = useState(false)
+  const gate = evaluateStoryGate(story as unknown as Record<string, unknown>)
+  const { recommendation, reason } = deriveOrionRecommendation(gate)
+  const recColor = recommendation === 'APPROVE' ? '#86efac' : recommendation === 'REVIEW REQUIRED' ? '#fcd34d' : '#fca5a5'
+  const recBg = recommendation === 'APPROVE' ? 'rgba(16,185,129,0.12)' : recommendation === 'REVIEW REQUIRED' ? 'rgba(245,158,11,0.12)' : 'rgba(239,68,68,0.12)'
+  const totalEps = story.series_total ?? null
+  const isStandalone = !story.series_id
+  const qcItems = evaluateQCChecklist(story.grading_result ?? null, story.episode_number, totalEps, isStandalone)
+  const qcIcon = (s: string) => s === 'pass' ? '✅' : s === 'fail' ? '❌' : '❓'
+  const unverifiedCount = qcItems.filter(i => i.status === 'unverified').length
+
+  return (
+    <div style={{ marginTop: '10px' } as React.CSSProperties}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 12px', borderRadius: '8px', backgroundColor: recBg, border: `1px solid ${recColor}40` } as React.CSSProperties}>
+        <div style={{ color: '#94a3b8', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.08em', whiteSpace: 'nowrap' } as React.CSSProperties}>🧭 Orion</div>
+        <div style={{ color: recColor, fontSize: '12px', fontWeight: 900 } as React.CSSProperties}>{recommendation}</div>
+        <div style={{ color: '#94a3b8', fontSize: '11px', flex: 1 } as React.CSSProperties}>{reason}</div>
+        <button type="button" onClick={() => setQcOpen(o => !o)} style={{ border: 'none', background: 'transparent', color: '#94a3b8', fontSize: '11px', cursor: 'pointer', padding: '2px 6px', borderRadius: '4px', whiteSpace: 'nowrap' } as React.CSSProperties}>
+          {qcOpen ? '▲ QC' : '▼ QC'} ({unverifiedCount}❓)
+        </button>
+      </div>
+      {qcOpen && (
+        <div style={{ marginTop: '6px', padding: '10px 12px', borderRadius: '8px', backgroundColor: 'rgba(15,23,42,0.76)', border: '1px solid rgba(148,163,184,0.15)' } as React.CSSProperties}>
+          <div style={{ color: '#94a3b8', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' } as React.CSSProperties}>12-Point QC Checklist</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 16px' } as React.CSSProperties}>
+            {qcItems.map(item => (
+              <div key={item.key} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: item.status === 'pass' ? '#86efac' : item.status === 'fail' ? '#fca5a5' : '#94a3b8' } as React.CSSProperties}>
+                <span>{qcIcon(item.status)}</span>
+                <span>{item.label}</span>
+              </div>
+            ))}
+          </div>
+          {unverifiedCount === qcItems.length && (
+            <div style={{ marginTop: '8px', color: '#64748b', fontSize: '10px' } as React.CSSProperties}>❓ UNVERIFIED — no automated QC data for this story</div>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 function PlayStoryButton({ story, played = false, label, onPlayed }: { story: Story; played?: boolean; label?: string; onPlayed?: () => void }) {
@@ -2036,6 +2085,10 @@ function StoryReviewCard({
               {Boolean(story.approval_blocking_reasons?.length) && <div style={{ color: '#fed7aa', marginTop: story.approval_entry_reason ? '5px' : 0 }}>Blocked: {approvalBlockingSummary(story.approval_blocking_reasons)}</div>}
             </div>
           )}
+          {/* ATL-CONS-001 Phase C: Orion Recommendation + QC Checklist */}
+          {workflowState === 'ready_for_review' && (
+            <OrionQCPanel story={story} />
+          )}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'stretch', minWidth: '170px', justifyContent: 'center' }}>
           {workflowState !== 'cold_storage' && story.audio_url && <PlayStoryButton story={story} />}
@@ -2316,6 +2369,8 @@ export default function AdminStoriesPage() {
   const [stories, setStories] = useState<Story[]>([])
   const [approvalItems, setApprovalItems] = useState<ApprovalItem[]>([])
   const [readyReviewKeys, setReadyReviewKeys] = useState<Record<string, boolean>>({})
+  // ATL-CONS-001 Phase C: blocked series (hard-blocked from review — series incomplete)
+  const [blockedSeriesItems, setBlockedSeriesItems] = useState<any[]>([])
   const [genres, setGenres] = useState<Genre[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -2399,6 +2454,8 @@ export default function AdminStoriesPage() {
 
     const readyItems = (readyPayload.items || []) as ApprovalItem[]
     setReadyReviewKeys(Object.fromEntries(readyItems.map((item) => [approvalItemKey(item), true])))
+    // ATL-CONS-001 Phase C: capture blocked series from API (hard-blocked — series incomplete)
+    setBlockedSeriesItems((readyPayload.blockedSeriesItems || []) as any[])
 
     const items = (allPayload.items || []) as ApprovalItem[]
     setApprovalItems(items)
@@ -3717,6 +3774,34 @@ export default function AdminStoriesPage() {
             </div>
           )}
         </div>
+
+        {/* ATL-CONS-001 Phase C: Incomplete Series Hard Block Panel */}
+        {activePipelineTab === 'ready_for_review' && blockedSeriesItems.length > 0 && (
+          <div style={{ marginBottom: '16px', border: '1px solid #FCA5A5', borderRadius: '10px', backgroundColor: '#FFF5F5', padding: '14px 16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+              <span style={{ fontSize: '16px' }}>⚠️</span>
+              <span style={{ color: '#991B1B', fontSize: '13px', fontWeight: 700 }}>
+                Incomplete Series — Blocked from Review ({blockedSeriesItems.length})
+              </span>
+            </div>
+            <div style={{ color: '#7F1D1D', fontSize: '12px', marginBottom: '10px' }}>
+              These series cannot be reviewed until all episodes are in Ready for Review. Series approval requires a complete set.
+            </div>
+            {blockedSeriesItems.map((item: any, idx: number) => (
+              <div key={item.seriesId || idx} style={{ backgroundColor: '#FEE2E2', borderRadius: '6px', padding: '10px 12px', marginBottom: '6px' }}>
+                <div style={{ color: '#7F1D1D', fontSize: '13px', fontWeight: 700 }}>{item.title || item.seriesName || 'Unknown Series'}</div>
+                <div style={{ color: '#991B1B', fontSize: '12px', marginTop: '3px' }}>
+                  {item._blockReason || 'Series incomplete'}
+                </div>
+                {item._seriesGate && (
+                  <div style={{ color: '#B91C1C', fontSize: '11px', marginTop: '2px' }}>
+                    {item._seriesGate.totalPresent} of {item._seriesGate.totalExpected} episodes in queue
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="approval-panels" style={{ marginTop: '16px', display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
           <aside className="approval-left-panel" style={{ flex: '0 0 340px', backgroundColor: '#ffffff', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', padding: '16px' }}>

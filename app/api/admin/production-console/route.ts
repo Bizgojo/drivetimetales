@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { annotateStories } from '@/lib/story-gates'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -546,20 +547,26 @@ export async function GET(_req: NextRequest) {
     const queueById = new Map(queueRows.map((item) => [item.id, item]))
     const visibleQueueRows = filterQueueRowsAlreadyInWorkflow(dedupeQueueRows(queueRows), stories)
     const repairStories = stories.filter((story) => story.workflow_state === 'repair_queue' || story.workflow_state === 'being_repaired')
-    const readyForReviewStories = stories.filter((story) => story.workflow_state === 'ready_for_review')
+    // RFR: annotate with gate results so UI can show blocked/unblocked status
+    const rawRFRStories = stories.filter((story) => story.workflow_state === 'ready_for_review')
+    const annotatedRFRStories = annotateStories(rawRFRStories as unknown as Record<string, unknown>[])
     const storageStories = stories.filter((story) => story.workflow_state === 'cold_storage' || story.workflow_state === 'unpublished_library')
     const incubatorStories = storageStories.filter(isIncubatorTagged)
     const coldStories = storageStories.filter((story) => !isIncubatorTagged(story))
-    const productionStoryItems = itemsForStories(stories.filter(isInProductionStory), jobs)
+    // In Production: use active job status (not legacy stories.status field)
     const productionJobItems = inProductionItems(jobs, stories, queueById)
     const inProductionByKey = new Map<string, ConsoleItem>()
-    for (const item of [...productionStoryItems, ...productionJobItems]) inProductionByKey.set(item.key, item)
+    for (const item of productionJobItems) inProductionByKey.set(item.key, item)
 
     return json({
       success: true,
       fetchedAt: new Date().toISOString(),
       repairItems: itemsForStories(repairStories, jobs),
-      readyForReviewItems: itemsForStories(readyForReviewStories, jobs),
+      // readyForReviewItems now includes _gate field per story for blocked/reason display
+      readyForReviewItems: annotatedRFRStories.map(annotated => ({
+        ...itemsForStories([annotated as unknown as StoryRow], jobs)[0],
+        _gate: annotated._gate,
+      })).filter(item => item !== undefined),
       inProductionItems: Array.from(inProductionByKey.values()),
       coldStorageItems: itemsForStories(coldStories, jobs),
       incubatorItems: itemsForStories(incubatorStories, jobs),

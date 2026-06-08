@@ -62,6 +62,19 @@ async function readOrgState(): Promise<Record<string, unknown>> {
   }
 }
 
+// Reads agent-state.json — the live authoritative source for agent card data
+// Written by POST /api/admin/agent-status (Orion-driven, no deploy required)
+async function readAgentState(): Promise<Record<string, Partial<AgentState>>> {
+  try {
+    const { data, error } = await supabase.storage.from('org-state').download('agent-state.json')
+    if (error || !data) return {}
+    const text = await data.text()
+    return JSON.parse(text) as Record<string, Partial<AgentState>>
+  } catch {
+    return {}
+  }
+}
+
 async function writeOrgState(patch: Record<string, unknown>): Promise<void> {
   const current = await readOrgState()
   const next = { ...current, ...patch }
@@ -998,8 +1011,20 @@ export async function GET(req: NextRequest) {
     resolved: allBlockers.filter((b) => b.done && b.resolution != null && b.resolution !== 'deferred'),
   }
 
+  // Agent Card SSoT: merge SEED_AGENTS (schema defaults) with agent-state.json (live values)
+  // agent-state.json is authoritative for any field it contains.
+  // SEED_AGENTS provides structural defaults only — never overrides live storage values.
+  const agentStateOverrides = await readAgentState()
+  const agents: AgentsState = (Object.keys(SEED_AGENTS) as AgentId[]).reduce((acc, id) => {
+    acc[id as AgentId] = {
+      ...SEED_AGENTS[id as AgentId],
+      ...(agentStateOverrides[id] ?? {}),
+    }
+    return acc
+  }, {} as AgentsState)
+
   return json({
-    agents: (state.agents as AgentsState) ?? SEED_AGENTS,
+    agents,
     missions: (state.missions as Mission[]) ?? SEED_MISSIONS,
     blockers: allBlockers,
     decisions,
