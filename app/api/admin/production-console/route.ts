@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
-import { annotateStories } from '@/lib/story-gates'
+import { annotateStories, evaluateApprovalGate } from '@/lib/story-gates'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -55,6 +55,7 @@ type ProductionJobRow = {
   series_id: string | null
   status: string | null
   current_step: string | null
+  completed_at: string | null
   updated_at: string | null
   created_at: string | null
   state_json?: any
@@ -281,7 +282,7 @@ function dedupeQueueRows(queueRows: QueueRow[]) {
     }
   }
 
-  return [...byTitle.values(), ...untitledRows]
+  return [...Array.from(byTitle.values()), ...untitledRows]
 }
 
 function storyBlocksQueue(story: StoryRow) {
@@ -434,7 +435,7 @@ function inProductionItems(jobs: ProductionJobRow[], stories: StoryRow[], queueB
   const activeStatuses = new Set(['queued', 'running', 'waiting_for_external', 'processing', 'in_progress'])
   const storyById = new Map(stories.map((story) => [story.id, story]))
   const seriesTitles = new Map<string, string>()
-  for (const [seriesId, groupedStories] of groupStories(stories).series.entries()) {
+  for (const [seriesId, groupedStories] of Array.from(groupStories(stories).series.entries())) {
     seriesTitles.set(seriesId, titleForStories(groupedStories))
   }
 
@@ -547,9 +548,27 @@ export async function GET(_req: NextRequest) {
     const queueById = new Map(queueRows.map((item) => [item.id, item]))
     const visibleQueueRows = filterQueueRowsAlreadyInWorkflow(dedupeQueueRows(queueRows), stories)
     const repairStories = stories.filter((story) => story.workflow_state === 'repair_queue' || story.workflow_state === 'being_repaired')
-    // RFR: annotate with gate results so UI can show blocked/unblocked status
+
+    // RFR: annotate with gate + full approval gate (Phase C.1)
     const rawRFRStories = stories.filter((story) => story.workflow_state === 'ready_for_review')
     const annotatedRFRStories = annotateStories(rawRFRStories as unknown as Record<string, unknown>[])
+
+    // Build completed-job lookup: story_id → true if any job looks like package completion
+    const completedJobStoryIds = new Set<string>()
+    for (const job of jobs) {
+      if (!job.story_id) continue
+      const status = String(job.status ?? '').toLowerCase().trim()
+      const step   = String(job.current_step ?? '').toLowerCase().trim()
+      const done   = Boolean(job.completed_at) && (
+        status === 'complete' ||
+        step === 'ready_for_review' ||
+        step === 'complete_story_package' ||
+        step === 'series_render_final_mix' ||
+        step === 'render_final_mix'
+      )
+      if (done) completedJobStoryIds.add(job.story_id)
+    }
+
     const storageStories = stories.filter((story) => story.workflow_state === 'cold_storage' || story.workflow_state === 'unpublished_library')
     const incubatorStories = storageStories.filter(isIncubatorTagged)
     const coldStories = storageStories.filter((story) => !isIncubatorTagged(story))
@@ -562,11 +581,19 @@ export async function GET(_req: NextRequest) {
       success: true,
       fetchedAt: new Date().toISOString(),
       repairItems: itemsForStories(repairStories, jobs),
-      // readyForReviewItems now includes _gate field per story for blocked/reason display
-      readyForReviewItems: annotatedRFRStories.map(annotated => ({
-        ...itemsForStories([annotated as unknown as StoryRow], jobs)[0],
-        _gate: annotated._gate,
-      })).filter(item => item !== undefined),
+      // readyForReviewItems: full review pipeline with per-story gate + approval gate
+      readyForReviewItems: annotatedRFRStories.map(annotated => {
+        const storyId = String((annotated as any).id ?? '')
+        const approvalGate = evaluateApprovalGate(
+          annotated as unknown as Record<string, unknown>,
+          completedJobStoryIds.has(storyId)
+        )
+        return {
+          ...itemsForStories([annotated as unknown as StoryRow], jobs)[0],
+          _gate: annotated._gate,
+          _approvalGate: approvalGate,
+        }
+      }).filter(item => item !== undefined),
       inProductionItems: Array.from(inProductionByKey.values()),
       coldStorageItems: itemsForStories(coldStories, jobs),
       incubatorItems: itemsForStories(incubatorStories, jobs),

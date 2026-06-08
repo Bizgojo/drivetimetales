@@ -219,6 +219,152 @@ export function deriveOrionRecommendation(gate: GateResult): {
   return { recommendation: 'APPROVE', reason: 'All quality gates passed' }
 }
 
+// ── Approval gate (mirrors content-approval episodeBlockingReasons) ──────────
+// ATL-CONS-001 Phase C.1 — used by Production Console to show per-story
+// block reasons and recommended action for every RFR item.
+//
+// hasCompletedJob: true if the story has a production_job with
+//   completed_at set AND (status='complete' OR current_step in render/package steps)
+
+export type RecommendedAction =
+  | 'Resume Production'
+  | 'Send to Repair Queue'
+  | 'Move to Cold Storage'
+  | 'Await Missing Episode'
+  | 'Await Metadata Completion'
+  | 'Audit Required'
+
+export interface ApprovalGateResult {
+  approvalReady: boolean
+  blockReasons: string[]
+  recommendedAction: RecommendedAction | null
+}
+
+export function evaluateApprovalGate(
+  story: Record<string, unknown>,
+  hasCompletedJob: boolean
+): ApprovalGateResult {
+  const blockReasons: string[] = []
+
+  const status      = String(story.status ?? '')
+  const isHidden    = story.is_hidden === true
+  const publishedOn = story.published_on ?? null
+  const reviewStatus = String(story.review_status ?? '') || 'pending'
+  const audioUrl    = String(story.audio_url ?? '')
+  const title       = String(story.title ?? '')
+  const genre       = String(story.genre ?? '')
+  const description = String(story.description ?? '')
+  const durationMins = story.duration_mins
+
+  // 1. Production status
+  if (status !== 'audio_ready') {
+    blockReasons.push(`Status is "${status || 'empty'}" — needs "audio_ready"`)
+  }
+
+  // 2. Visibility
+  if (!isHidden) {
+    blockReasons.push('is_hidden is false — story visible in app before approval')
+  }
+
+  // 3. Already published
+  if (publishedOn !== null) {
+    blockReasons.push('published_on is set — story is already published')
+  }
+
+  // 4. Review status
+  if (reviewStatus === 'not_approved') {
+    blockReasons.push('Review status is "not_approved" — previously rejected')
+  } else if (reviewStatus !== 'pending') {
+    blockReasons.push(`Review status is "${reviewStatus}" — needs "pending"`)
+  }
+
+  // 5. Audio fields
+  if (!audioUrl) {
+    blockReasons.push('Missing audio_url — no audio produced')
+  }
+  // Note: /final_mix.mp3 check is skipped for workflow_state=ready_for_review
+  // (matches content-approval episodeBlockingReasons behaviour)
+
+  if (!story.story_audio_url) {
+    blockReasons.push('Missing story_audio_url — body-only audio not rendered')
+  }
+
+  // 6. Packaging
+  if (!story.cover_url) {
+    blockReasons.push('Missing cover art')
+  }
+  if (!story.prose_text) {
+    blockReasons.push('Missing script text (prose_text)')
+  }
+  if (!story.author_id) {
+    blockReasons.push('Missing author (author_id)')
+  }
+  if (!story.narrator_voice_id) {
+    blockReasons.push('Missing narrator voice ID')
+  }
+  if (!story.narrator_voice_name) {
+    blockReasons.push('Missing narrator voice name')
+  }
+
+  // 7. Required metadata fields
+  if (!title)       blockReasons.push('Missing title')
+  if (!genre)       blockReasons.push('Missing genre')
+  if (!description) blockReasons.push('Missing description')
+  if (!durationMins) blockReasons.push('Missing duration (duration_mins)')
+
+  // 8. Production job completion proof
+  if (!hasCompletedJob) {
+    blockReasons.push('No completed production job — completion timestamp unproven')
+  }
+
+  return {
+    approvalReady: blockReasons.length === 0,
+    blockReasons,
+    recommendedAction: blockReasons.length === 0
+      ? null
+      : deriveRecommendedAction(status, reviewStatus, audioUrl, story, hasCompletedJob, blockReasons),
+  }
+}
+
+function deriveRecommendedAction(
+  status: string,
+  reviewStatus: string,
+  audioUrl: string,
+  story: Record<string, unknown>,
+  hasCompletedJob: boolean,
+  blockReasons: string[]
+): RecommendedAction {
+  // Previously rejected — needs human decision
+  if (reviewStatus === 'not_approved') return 'Send to Repair Queue'
+
+  // Validator failed — broken script/audio
+  if (status === 'validator_failed') return 'Send to Repair Queue'
+
+  // No audio at all — needs to go back into production
+  if (!audioUrl) return 'Resume Production'
+
+  // Has audio but missing story_audio_url or not audio_ready
+  if (!story.story_audio_url) return 'Resume Production'
+  if (status !== 'audio_ready') return 'Resume Production'
+
+  // Has audio_ready status but no job proof — likely pre-ASC or legacy
+  if (!hasCompletedJob) return 'Resume Production'
+
+  // Metadata gaps (author, narrator, cover) — needs packaging work
+  const metadataMissing = !story.author_id || !story.narrator_voice_id ||
+    !story.narrator_voice_name || !story.cover_url || !story.prose_text ||
+    !story.title || !story.genre || !story.description || !story.duration_mins
+  if (metadataMissing) return 'Await Metadata Completion'
+
+  // is_hidden=false with full production stack — odd state
+  if (story.is_hidden !== true) return 'Audit Required'
+
+  // published_on set
+  if (story.published_on !== null) return 'Move to Cold Storage'
+
+  return 'Audit Required'
+}
+
 // ── QC checklist evaluation ──────────────────────────────────────────────────
 
 export type ChecklistStatus = 'pass' | 'fail' | 'unverified'

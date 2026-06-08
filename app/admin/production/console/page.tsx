@@ -2,6 +2,13 @@
 
 import { useEffect, useMemo, useState } from 'react'
 
+// ATL-CONS-001 Phase C.1 — approval gate result type (mirrors lib/story-gates)
+type ApprovalGate = {
+  approvalReady: boolean
+  blockReasons: string[]
+  recommendedAction: string | null
+}
+
 type ConsoleItem = {
   key: string
   type: 'series' | 'story' | 'job'
@@ -18,6 +25,9 @@ type ConsoleItem = {
   repairChecklist: unknown | null
   reviewNotes: string | null
   warning: string | null
+  // Phase C.1: approval pipeline fields
+  _approvalGate?: ApprovalGate
+  _gate?: { blocked: boolean; blockedReason?: string; warnings: string[] }
   jobs?: Array<{
     id: string
     status: string | null
@@ -56,7 +66,7 @@ type SectionId = 'repair' | 'review' | 'production' | 'cold' | 'incubator' | 'qu
 
 const sections: Array<{ id: SectionId; label: string; color: string }> = [
   { id: 'repair', label: 'Repair Queue', color: '#f97316' },
-  { id: 'review', label: 'Ready For Review', color: '#16a34a' },
+  { id: 'review', label: 'Review Pipeline', color: '#16a34a' },
   { id: 'production', label: 'In Production', color: '#2563eb' },
   { id: 'cold', label: 'Cold Storage', color: '#8b5cf6' },
   { id: 'incubator', label: 'Incubator', color: '#64748b' },
@@ -208,6 +218,214 @@ function Section({ title, color, count, children }: { title: string; color: stri
   )
 }
 
+// ── ATL-CONS-001 Phase C.1: Review Pipeline Section ───────────────────────────
+// Replaces the plain "Ready For Review" section with a three-tier view:
+//   Approval Ready | Blocked — with per-story block reasons and recommended action
+
+const ACTION_COLOR: Record<string, string> = {
+  'Resume Production':        '#2563eb',
+  'Send to Repair Queue':     '#f97316',
+  'Move to Cold Storage':     '#8b5cf6',
+  'Await Missing Episode':    '#64748b',
+  'Await Metadata Completion':'#d97706',
+  'Audit Required':           '#dc2626',
+}
+
+function ReviewPipelineSection({ items }: { items: ConsoleItem[] }) {
+  const approvalReady = items.filter(i => i._approvalGate?.approvalReady === true)
+  const blocked       = items.filter(i => !i._approvalGate?.approvalReady)
+  const [showReady,   setShowReady]   = useState(true)
+  const [showBlocked, setShowBlocked] = useState(true)
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set())
+
+  function toggleExpand(key: string) {
+    setExpandedKeys(prev => {
+      const next = new Set(prev)
+      next.has(key) ? next.delete(key) : next.add(key)
+      return next
+    })
+  }
+
+  const total = items.length
+  const readyPct = total > 0 ? Math.round((approvalReady.length / total) * 100) : 0
+
+  return (
+    <section style={{ marginTop: '20px', borderRadius: '10px', border: '1px solid #E5E7EB', backgroundColor: '#ffffff', overflow: 'hidden' } as React.CSSProperties}>
+      {/* Section header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '14px 16px', backgroundColor: '#F8FAFC', borderBottom: '1px solid #E5E7EB' } as React.CSSProperties}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' } as React.CSSProperties}>
+          <span style={{ width: '10px', height: '10px', borderRadius: '999px', backgroundColor: '#16a34a' } as React.CSSProperties} />
+          <h2 style={{ margin: 0, color: '#111827', fontSize: '16px', fontWeight: 950 } as React.CSSProperties}>Review Pipeline</h2>
+        </div>
+        <Badge color="#16a34a">{total}</Badge>
+      </div>
+
+      {/* Summary bar */}
+      <div style={{ padding: '14px 16px', borderBottom: '1px solid #E5E7EB', backgroundColor: '#ffffff' } as React.CSSProperties}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap', marginBottom: '10px' } as React.CSSProperties}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' } as React.CSSProperties}>
+            <span style={{ fontSize: '16px' }}>✅</span>
+            <span style={{ color: '#15803d', fontWeight: 900, fontSize: '14px' } as React.CSSProperties}>Approval Ready: {approvalReady.length}</span>
+          </div>
+          <div style={{ color: '#94a3b8', fontSize: '14px', fontWeight: 700 }}>·</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' } as React.CSSProperties}>
+            <span style={{ fontSize: '16px' }}>🚫</span>
+            <span style={{ color: '#dc2626', fontWeight: 900, fontSize: '14px' } as React.CSSProperties}>Blocked: {blocked.length}</span>
+          </div>
+          <a
+            href="/admin/production/approval"
+            style={{ marginLeft: 'auto', padding: '5px 10px', borderRadius: '6px', backgroundColor: '#ECFDF5', border: '1px solid #A7F3D0', color: '#065F46', fontSize: '11px', fontWeight: 900, textDecoration: 'none', whiteSpace: 'nowrap' } as React.CSSProperties}
+          >
+            Open Content Approval →
+          </a>
+        </div>
+        {/* Progress bar */}
+        <div style={{ height: '8px', borderRadius: '999px', backgroundColor: '#F1F5F9', overflow: 'hidden' } as React.CSSProperties}>
+          <div style={{ height: '100%', width: `${readyPct}%`, borderRadius: '999px', backgroundColor: '#16a34a', transition: 'width 0.4s ease' } as React.CSSProperties} />
+        </div>
+        <div style={{ color: '#64748b', fontSize: '11px', fontWeight: 700, marginTop: '4px' } as React.CSSProperties}>
+          {readyPct}% approval-ready · {blocked.length} {blocked.length === 1 ? 'story' : 'stories'} need attention before they appear in Content Approval
+        </div>
+      </div>
+
+      <div style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: '14px' } as React.CSSProperties}>
+
+        {/* ── Approval Ready ── */}
+        <div>
+          <button
+            type="button"
+            onClick={() => setShowReady(v => !v)}
+            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px', borderRadius: '7px', border: '1px solid #A7F3D0', backgroundColor: '#ECFDF5', cursor: 'pointer' } as React.CSSProperties}
+          >
+            <span style={{ color: '#065F46', fontWeight: 900, fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' } as React.CSSProperties}>
+              ✅ Approval Ready ({approvalReady.length})
+            </span>
+            <span style={{ color: '#065F46', fontSize: '12px' }}>{showReady ? '▲' : '▼'}</span>
+          </button>
+          {showReady && (
+            <div style={{ marginTop: '8px', display: 'grid', gap: '8px' } as React.CSSProperties}>
+              {approvalReady.length === 0
+                ? <EmptyState text="No stories currently pass all approval gates." />
+                : approvalReady.map(item => (
+                  <div key={item.key} style={{ border: '1px solid #A7F3D0', borderLeft: '4px solid #16a34a', borderRadius: '8px', backgroundColor: '#F0FDF4', padding: '12px 14px' } as React.CSSProperties}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' } as React.CSSProperties}>
+                      <div>
+                        <div style={{ color: '#111827', fontSize: '14px', fontWeight: 950 } as React.CSSProperties}>{item.title}</div>
+                        <div style={{ display: 'flex', gap: '6px', marginTop: '5px', flexWrap: 'wrap' } as React.CSSProperties}>
+                          <Badge color="#16a34a">{item.type === 'series' ? 'Series' : 'Story'}</Badge>
+                          <Badge color="#475569">{item.status || 'audio_ready'}</Badge>
+                          {item.lastUpdated && <Badge color="#475569">{formatDate(item.lastUpdated)}</Badge>}
+                        </div>
+                      </div>
+                      <a
+                        href="/admin/production/approval"
+                        style={{ padding: '5px 10px', borderRadius: '6px', backgroundColor: '#16a34a', color: '#ffffff', fontSize: '11px', fontWeight: 900, textDecoration: 'none', whiteSpace: 'nowrap' } as React.CSSProperties}
+                      >
+                        Review in Content Approval →
+                      </a>
+                    </div>
+                  </div>
+                ))
+              }
+            </div>
+          )}
+        </div>
+
+        {/* ── Blocked ── */}
+        <div>
+          <button
+            type="button"
+            onClick={() => setShowBlocked(v => !v)}
+            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px', borderRadius: '7px', border: '1px solid #FECACA', backgroundColor: '#FEF2F2', cursor: 'pointer' } as React.CSSProperties}
+          >
+            <span style={{ color: '#991B1B', fontWeight: 900, fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' } as React.CSSProperties}>
+              🚫 Blocked from Content Approval ({blocked.length})
+            </span>
+            <span style={{ color: '#991B1B', fontSize: '12px' }}>{showBlocked ? '▲' : '▼'}</span>
+          </button>
+          {showBlocked && (
+            <div style={{ marginTop: '8px', display: 'grid', gap: '8px' } as React.CSSProperties}>
+              {blocked.length === 0
+                ? <EmptyState text="No blocked stories." />
+                : blocked.map(item => {
+                  const gate = item._approvalGate
+                  const action = gate?.recommendedAction
+                  const actionColor = action ? (ACTION_COLOR[action] ?? '#64748b') : '#64748b'
+                  const expanded = expandedKeys.has(item.key)
+                  const reasons = gate?.blockReasons ?? []
+
+                  return (
+                    <div key={item.key} style={{ border: '1px solid #FECACA', borderLeft: '4px solid #dc2626', borderRadius: '8px', backgroundColor: '#ffffff', overflow: 'hidden' } as React.CSSProperties}>
+                      {/* Card header — always visible */}
+                      <button
+                        type="button"
+                        onClick={() => toggleExpand(item.key)}
+                        style={{ width: '100%', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', padding: '12px 14px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' } as React.CSSProperties}
+                      >
+                        <div style={{ minWidth: 0, flex: 1 } as React.CSSProperties}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flexWrap: 'wrap' } as React.CSSProperties}>
+                            <span style={{ color: '#111827', fontSize: '14px', fontWeight: 950 } as React.CSSProperties}>{item.title}</span>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', borderRadius: '999px', padding: '2px 7px', backgroundColor: `${actionColor}18`, color: actionColor, fontSize: '10px', fontWeight: 900, whiteSpace: 'nowrap' } as React.CSSProperties}>
+                              {action ?? 'Audit Required'}
+                            </span>
+                          </div>
+                          <div style={{ color: '#dc2626', fontSize: '11px', fontWeight: 700, marginTop: '4px' } as React.CSSProperties}>
+                            {reasons.length} {reasons.length === 1 ? 'block' : 'blocks'} — click to {expanded ? 'hide' : 'view'} details
+                          </div>
+                        </div>
+                        <span style={{ color: '#94a3b8', fontSize: '12px', flexShrink: 0, paddingTop: '2px' } as React.CSSProperties}>{expanded ? '▲' : '▼'}</span>
+                      </button>
+
+                      {/* Expanded detail */}
+                      {expanded && (
+                        <div style={{ borderTop: '1px solid #FECACA', backgroundColor: '#FFF5F5', padding: '12px 14px' } as React.CSSProperties}>
+                          {/* Recommended action */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', padding: '8px 10px', borderRadius: '6px', backgroundColor: `${actionColor}12`, border: `1px solid ${actionColor}30` } as React.CSSProperties}>
+                            <span style={{ color: '#64748b', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.07em', whiteSpace: 'nowrap' } as React.CSSProperties}>Recommended Action</span>
+                            <span style={{ color: actionColor, fontSize: '12px', fontWeight: 900 } as React.CSSProperties}>{action ?? 'Audit Required'}</span>
+                          </div>
+                          {/* Block reasons */}
+                          <div style={{ color: '#64748b', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' } as React.CSSProperties}>
+                            Blocking reasons ({reasons.length})
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' } as React.CSSProperties}>
+                            {reasons.map((r, idx) => (
+                              <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: '7px', fontSize: '12px', color: '#7f1d1d' } as React.CSSProperties}>
+                                <span style={{ flexShrink: 0, marginTop: '1px' }}>❌</span>
+                                <span>{r}</span>
+                              </div>
+                            ))}
+                          </div>
+                          {/* Metadata strip */}
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '6px', marginTop: '10px' } as React.CSSProperties}>
+                            <div style={{ padding: '7px 9px', borderRadius: '6px', backgroundColor: '#ffffff', border: '1px solid #FECACA' } as React.CSSProperties}>
+                              <div style={{ color: '#64748b', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase' } as React.CSSProperties}>Workflow</div>
+                              <div style={{ color: '#0f172a', fontSize: '11px', fontWeight: 900, marginTop: '2px' } as React.CSSProperties}>{item.workflowState || '—'}</div>
+                            </div>
+                            <div style={{ padding: '7px 9px', borderRadius: '6px', backgroundColor: '#ffffff', border: '1px solid #FECACA' } as React.CSSProperties}>
+                              <div style={{ color: '#64748b', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase' } as React.CSSProperties}>Status</div>
+                              <div style={{ color: '#0f172a', fontSize: '11px', fontWeight: 900, marginTop: '2px' } as React.CSSProperties}>{item.status || '—'}</div>
+                            </div>
+                            <div style={{ padding: '7px 9px', borderRadius: '6px', backgroundColor: '#ffffff', border: '1px solid #FECACA' } as React.CSSProperties}>
+                              <div style={{ color: '#64748b', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase' } as React.CSSProperties}>Updated</div>
+                              <div style={{ color: '#0f172a', fontSize: '11px', fontWeight: 900, marginTop: '2px' } as React.CSSProperties}>{formatDate(item.lastUpdated)}</div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })
+              }
+            </div>
+          )}
+        </div>
+
+      </div>
+    </section>
+  )
+}
+
 export default function ProductionConsolePage() {
   const [activeSection, setActiveSection] = useState<SectionId>('repair')
   const [payload, setPayload] = useState<ConsolePayload | null>(null)
@@ -282,11 +500,7 @@ export default function ProductionConsolePage() {
         )}
 
         {!loading && !error && activeSection === 'review' && (
-          <Section title="Ready For Review" color="#16a34a" count={counts.review}>
-            {(payload?.readyForReviewItems || []).length > 0
-              ? payload?.readyForReviewItems?.map((item) => <ItemCard key={item.key} item={item} color="#16a34a" mode="cold" />)
-              : <EmptyState text="No Ready For Review stories found." />}
-          </Section>
+          <ReviewPipelineSection items={payload?.readyForReviewItems || []} />
         )}
 
         {!loading && !error && activeSection === 'production' && (
