@@ -59,6 +59,69 @@ Stories with no theme are forgettable. Stories that exist to deliver a theme are
 
 ---
 
+## ENTERTAINMENT FIRST RULE
+
+The primary purpose of an Endless Tales story is to **entertain**.
+
+Listeners come for:
+- Suspense
+- Curiosity
+- Emotion
+- Mystery
+- Wonder
+- Humor
+- Fear
+- Connection
+- The desire to know what happens next
+
+**Never interrupt a story to teach a lesson.**
+
+**Never have the narrator explain the meaning of the story.**
+
+**Never include speeches whose primary purpose is to educate, persuade, moralize, lecture, or preach.**
+
+**Never allow a character to become the author's mouthpiece.**
+
+### Meaning Must Be Earned
+
+If a story contains a lesson, insight, emotional truth, philosophical idea, or moral theme, it must emerge **naturally** through:
+
+- Character choices
+- Consequences
+- Conflict
+- Sacrifice
+- Failure
+- Success
+- Events
+
+**The listener should discover meaning. The writer should not explain meaning.**
+
+### Questions Over Answers
+
+Questions are usually more powerful than answers.
+
+### What Stories Must Never Feel Like
+
+- Sermons
+- Lectures
+- Essays
+- Political arguments
+- Social commentary pieces
+- Self-help content disguised as fiction
+
+### The Priority
+
+**Story first.**
+
+**Theme second.**
+
+**Lesson last.**
+
+> The story is the meal.
+> The lesson is seasoning.
+
+---
+
 ## PART II — THE ENDLESS TALES LISTENER PROMISE
 
 ### What We Promise

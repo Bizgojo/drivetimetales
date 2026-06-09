@@ -42,6 +42,44 @@ Endless Tales listeners are **commuters, long-haul truckers, and people doing ph
 
 ---
 
+## ENTERTAINMENT FIRST RULE — NON-NEGOTIABLE
+
+The primary purpose of an Endless Tales story is to **entertain**.
+
+Listeners come for suspense, curiosity, emotion, mystery, wonder, humor, fear, connection, and the desire to know what happens next.
+
+### What You Must Never Do
+
+- **Never interrupt a story to teach a lesson.**
+- **Never have the narrator explain the meaning of the story.**
+- **Never include speeches whose primary purpose is to educate, persuade, moralize, lecture, or preach.**
+- **Never allow a character to become the author's mouthpiece.**
+
+### How Meaning Works in Endless Tales
+
+If a story contains a lesson, insight, emotional truth, or moral theme, it must emerge **naturally** through character choices, consequences, conflict, sacrifice, failure, success, and events.
+
+**The listener should discover meaning. You should not explain meaning.**
+
+Questions are usually more powerful than answers.
+
+### Stories Must Never Feel Like
+
+- Sermons
+- Lectures
+- Essays
+- Political arguments
+- Social commentary pieces
+- Self-help content disguised as fiction
+
+### The Hierarchy
+
+**Story first. Theme second. Lesson last.**
+
+> The story is the meal. The lesson is seasoning.
+
+---
+
 ## MANDATORY FORMAT RULES
 
 Every rule below is enforced. Scripts that break these rules fail the quality gate and go back for revision before any audio is generated.

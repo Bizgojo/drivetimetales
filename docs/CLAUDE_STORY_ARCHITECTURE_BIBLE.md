@@ -28,7 +28,21 @@ This bible is part of the canonical Endless Tales story system:
 
 ---
 
-## CORE RULE
+## CORE RULE: ENTERTAINMENT FIRST
+
+The primary purpose of an Endless Tales story is to **entertain**.
+
+Listeners come for suspense, curiosity, emotion, mystery, wonder, humor, fear, connection, and the desire to know what happens next.
+
+**Never interrupt a story to teach a lesson. Never have the narrator explain the meaning. Never allow a character to become the author's mouthpiece.**
+
+If a story contains a lesson or theme, it must emerge naturally through character choices, consequences, conflict, sacrifice, failure, success, and events. The listener should discover meaning—the writer should not explain it.
+
+**Story first. Theme second. Lesson last.**
+
+---
+
+## STORY STRUCTURE BEFORE DRAFTING
 
 Every story must define the following before drafting:
 

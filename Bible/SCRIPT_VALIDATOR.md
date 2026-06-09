@@ -305,7 +305,48 @@ If any time-of-day reference appears — FAIL. Quote the line.
 
 ---
 
-## SECTION 11 — SCRIPT LENGTH
+## SECTION 11 — ENTERTAINMENT FIRST RULE (NON-NEGOTIABLE)
+
+The primary purpose of an Endless Tales story is to **entertain**. The listener should discover meaning—the writer should not explain it.
+
+### Narrator Explaining Meaning
+
+**Check:** Scan all NARRATOR lines. Does the narrator explicitly state or explain the story's lesson, moral, theme, or meaning? Examples of FAIL:
+- "And so Gerald learned that friendship is more important than ambition..."
+- "In that moment, she finally understood the true meaning of sacrifice..."
+- "The moral of this tale is that courage comes in many forms..."
+
+If the narrator explains meaning or delivers a lesson — FAIL. Quote the line.
+
+### Moralizing or Preaching Speeches
+
+**Check:** Scan all dialogue. Does any character deliver a speech (3+ sentences in a single turn) whose primary purpose is to educate, moralize, preach, lecture, or deliver wisdom to the listener? Examples of FAIL:
+- A character explaining why something is right or wrong
+- A character delivering life advice or a philosophical speech
+- A character summarizing the story's theme aloud to another character as if teaching them
+- A character serving as the author's mouthpiece to deliver a message
+
+Speeches that serve the plot (a threat, a confession, a proposal, a declaration of intent) are acceptable. Speeches that serve as lessons are not.
+
+If any character delivers a moralizing or educational speech — FAIL. Quote the speech and explain why it violates the rule.
+
+### Character as Author's Mouthpiece
+
+**Check:** Does any character exist primarily to voice the author's opinions, beliefs, or messages? This character would:
+- Break dramatic consistency to state a message
+- Explain the story's point to the listener
+- Voice positions on social/political issues outside the story's context
+- Feel inserted rather than organic to the plot
+
+If any character appears to be the author's mouthpiece — FAIL. Quote the dialogue that reveals this.
+
+### Summary
+
+If all narrator lines, character speeches, and character motivations pass these checks, mark this section PASS. Otherwise, mark FAIL.
+
+---
+
+## SECTION 12 — SCRIPT LENGTH
 
 **Check:** Count the approximate words of dialogue and narration in the script body (excluding header, CHARACTER GUIDE, BELLE B block, SFX markers, and ANNOUNCER lines).
 
@@ -341,7 +382,8 @@ SECTION 7 — NARRATOR USAGE: [PASS / WARNING / FAIL]
 SECTION 8 — OPENING HOOK: [PASS / FAIL]
 SECTION 9 — ENDING: [PASS / FAIL]
 SECTION 10 — ANNOUNCER OUTRO: [PASS / FAIL]
-SECTION 11 — SCRIPT LENGTH: [PASS / WARNING]
+SECTION 11 — ENTERTAINMENT FIRST RULE: [PASS / FAIL]
+SECTION 12 — SCRIPT LENGTH: [PASS / WARNING]
 
 WARNINGS: [count]
 FAILURES: [count]
