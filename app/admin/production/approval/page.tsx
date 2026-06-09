@@ -2928,6 +2928,34 @@ export default function AdminStoriesPage() {
     setFocusedReviewStoryId(null)
   }
 
+  function buildStandaloneRepairNotes(currentMark: EpisodeRepairMark) {
+    const notes: string[] = [
+      'Repair requested by Marc.',
+      '',
+    ]
+    AUDIO_REPAIR_OPTIONS
+      .filter((option) => currentMark.checklist[option.group].includes(option.id))
+      .forEach((option) => {
+        const comment = (currentMark.categoryComments[option.id] || '').trim()
+        notes.push(`* ${option.label}: ${comment || 'No additional note provided.'}`)
+      })
+    notes.push('')
+    notes.push('Repair instructions:')
+    notes.push('Fix only the listed issues. Preserve approved voices, episode order, intro/outro standards, and series continuity.')
+    return notes.join('\n')
+  }
+
+  async function finishInlineEpisodeReview(story: Story) {
+    const currentMark = episodeRepairMarks[story.id] || episodeRepairMarkDefault()
+    const hasRepair = AUDIO_REPAIR_OPTIONS.some((option) => currentMark.checklist[option.group].includes(option.id))
+    finishEpisodeReview(story.id)
+    if (hasRealSeriesRelationship(story) || !hasRepair) return
+    await setWorkflowState(story, 'repair_queue', {
+      repairChecklist: currentMark.checklist,
+      repairNotes: buildStandaloneRepairNotes(currentMark),
+    })
+  }
+
   function buildSeriesRepairFromEpisodeMarks(storiesToRepair: Story[], seriesTitle = selectedTitle) {
     const checklist = emptyRepairChecklist()
     const notes: string[] = [
@@ -3215,7 +3243,7 @@ export default function AdminStoriesPage() {
         )}
         {renderEpisodeRepairDetails(story)}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', flexWrap: 'wrap' }}>
-          <button type="button" onClick={() => finishEpisodeReview(story.id)} style={{ padding: '6px 14px', borderRadius: '6px', border: 'none', backgroundColor: '#16A34A', color: '#ffffff', fontSize: '12px', fontWeight: 900, cursor: 'pointer' }}>
+          <button type="button" onClick={async () => { await finishInlineEpisodeReview(story) }} style={{ padding: '6px 14px', borderRadius: '6px', border: 'none', backgroundColor: '#16A34A', color: '#ffffff', fontSize: '12px', fontWeight: 900, cursor: 'pointer' }}>
             Finish Review
           </button>
           <button type="button" onClick={() => { inlineAudioRef.current?.pause(); setFocusedReviewStoryId(null) }} style={{ ...actionButtonStyle('muted'), padding: '6px 14px', borderRadius: '6px', minHeight: 'auto', fontSize: '12px' }}>
