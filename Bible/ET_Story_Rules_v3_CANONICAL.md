@@ -1,14 +1,17 @@
 # Endless Tales Story Bible v3.0
 ## Retention-First Edition
 
-**Version:** 3.0 Canonical
-**Status:** ✅ CANONICAL — Marc-Approved 2026-06-08 19:59 EDT
-**Date:** 2026-06-08 (revised 2026-06-08 14:58 EDT)
+**Version:** 3.1 Canonical
+**Status:** ✅ CANONICAL — Marc-Approved 2026-06-08 19:59 EDT | Entertainment First Rule added 2026-06-09
+**Date:** 2026-06-08 (revised 2026-06-09 11:30 EDT)
 **Owner:** Marc Postlewaite / Endless Tales
-**Supersedes:** ET_Story_Rules_v2 (April 2026)
-**Authority:** This document IS the canonical story production standard for all Endless Tales content, effective 2026-06-08 19:59 EDT. It supersedes all previous Story Bibles, rule sets, and script guidelines.
+**Supersedes:** ET_Story_Rules_v2 (April 2026), ET_Story_Rules_v1 (original)
+**Authority:** This document IS the single canonical story production standard for all Endless Tales content. It supersedes all previous Story Bibles, rule sets, and script guidelines without exception.
 **Marc Approval:** CANONICAL — Approved by Marc Postlewaite 2026-06-08 19:59 EDT
 **v2.0 Status:** RETIRED as active authority — preserved as archive reference only
+**v1.0 Status:** RETIRED — marked in-place with ⛔ header
+
+**This is the only Story Bible. All production — automated and manual — uses this document.**
 
 ---
 

@@ -1,8 +1,15 @@
+# ⛔ RETIRED — SUPERSEDED
+# This is Stage 2 Master Prompt v2.1 (April 2026).
+# CRITICAL: This file contains a retired Belle B voice ID (KWDD3Wyq30ZF5NEL01EJ).
+# Do not use this file. Canonical Stage 2 prompt is: docs/STAGE2_SCRIPT_PROMPT.md
+# Preserved as archive reference only.
+# ─────────────────────────────────────────────────────────────────────────────
+
 # STAGE 2 MASTER PROMPT — Endless Tales Script Writer
 **Version:** 2.1
 **Owner:** Marc Postlewaite / Endless Tales
 **Last Updated:** April 2026
-**Status:** LOCKED — changes require Marc's approval and version increment
+**Status:** ⛔ RETIRED — use docs/STAGE2_SCRIPT_PROMPT.md
 **Changes from v2.0:** Added full 31-author roster profiles, narrator lookup table, corrected word count targets (130 wpm), Declan Marsh updated to Boston.
 
 ---

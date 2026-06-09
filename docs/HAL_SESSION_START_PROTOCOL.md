@@ -24,8 +24,10 @@ Hal — new session starting. Before we do anything else, complete the session s
 **STEP 1 — READ THESE DOCUMENTS IN ORDER:**
 
 1. `~/Projects/ASC/ASC_Bible_April2026.docx` — read in full
-2. `~/Projects/ASC/ET_Story_Rules_v2_4_.md` — read in full
-3. `~/Projects/ASC/STAGE2_SCRIPT_PROMPT.md` — read in full
+2. `~/Projects/drivetimetales/Bible/ET_Story_Rules_v3_CANONICAL.md` — read in full (v3.0 CANONICAL, supersedes all prior versions)
+3. `~/Projects/drivetimetales/docs/STAGE2_SCRIPT_PROMPT.md` — read in full (v1.1 current — do NOT use Bible/STAGE2_SCRIPT_PROMPT_v2_1 — that file is RETIRED)
+
+⚠️ **Do NOT read ET_Story_Rules_v2_4_.md or ET_Story_Rules.md — both are retired.** Canonical rule set is v3.0 only.
 
 Do not summarize. Do not skim. Read each one completely before moving to the next.
 

@@ -97,7 +97,7 @@ AUTHOR: [author name from ET roster]
 GENRE: [primary genre]
 DESCRIPTION: [24 words maximum — punchy present-tense hook for the app listing]
 NARRATOR: [narrator name]
-ANNOUNCER: Sandy
+ANNOUNCER: Belle B
 NARRATIVE_VOICE: [first_person | third_limited | third_omniscient | second_person]
 NARRATOR_IS_CHARACTER: [true or false]
 SUNO PROMPT: [2-3 sentence music brief: genre, instrumentation, tempo, mood]

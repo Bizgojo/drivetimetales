@@ -1532,6 +1532,21 @@ function buildStandaloneScriptPrompt(story: any, brief: any, namePaletteBlock: s
 
   return `You are the Endless Tales Stage 2 script writer.
 
+🎯 ENTERTAINMENT FIRST RULE — NON-NEGOTIABLE
+
+The primary purpose of every Endless Tales story is to entertain.
+Listeners come for suspense, curiosity, emotion, mystery, wonder, humor, fear, connection, and the desire to know what happens next.
+
+NEVER interrupt a story to teach a lesson.
+NEVER have the narrator explain the meaning of the story.
+NEVER include speeches whose primary purpose is to educate, persuade, moralize, lecture, or preach.
+NEVER allow a character to become the author's mouthpiece.
+
+If a story contains a lesson, theme, or insight — it must emerge naturally through character choices, consequences, conflict, sacrifice, failure, success, and events. The listener discovers meaning. You do not explain it.
+
+Story first. Theme second. Lesson last.
+The story is the meal. The lesson is seasoning.
+
 ⭐ MANDATORY FIRST STEP: STORY RESOLUTION MAP ⭐
 
 Before you draft, build the story around the Difficult Solution Rule. Output a Story Resolution Map as a comment block at the top of the script. It will be removed before audio production.
@@ -3156,6 +3171,21 @@ function buildSeriesEpisodePrompt(series: any, episode: any, allEpisodes: any[],
 Write exactly one production-ready audio drama script for Episode ${currentEpisodeNumber} of ${totalEpisodes}.
 Use the saved series package as the source of truth. Do not invent a new series premise.
 Output ONLY the script. No commentary.
+
+🎯 ENTERTAINMENT FIRST RULE — NON-NEGOTIABLE
+
+The primary purpose of every Endless Tales story is to entertain.
+Listeners come for suspense, curiosity, emotion, mystery, wonder, humor, fear, connection, and the desire to know what happens next.
+
+NEVER interrupt a story to teach a lesson.
+NEVER have the narrator explain the meaning of the story.
+NEVER include speeches whose primary purpose is to educate, persuade, moralize, lecture, or preach.
+NEVER allow a character to become the author's mouthpiece.
+
+If a story contains a lesson, theme, or insight — it must emerge naturally through character choices, consequences, conflict, sacrifice, failure, success, and events. The listener discovers meaning. You do not explain it.
+
+Story first. Theme second. Lesson last.
+The story is the meal. The lesson is seasoning.
 
 ⭐ MANDATORY FIRST STEP: STORY RESOLUTION MAP ⭐
 

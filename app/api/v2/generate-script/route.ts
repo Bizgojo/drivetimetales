@@ -164,6 +164,21 @@ export async function POST(req: NextRequest) {
 
     const prompt = `You are the Endless Tales Stage 2 script writer.
 
+🎯 ENTERTAINMENT FIRST RULE — NON-NEGOTIABLE
+
+The primary purpose of every Endless Tales story is to entertain.
+Listeners come for suspense, curiosity, emotion, mystery, wonder, humor, fear, connection, and the desire to know what happens next.
+
+NEVER interrupt a story to teach a lesson.
+NEVER have the narrator explain the meaning of the story.
+NEVER include speeches whose primary purpose is to educate, persuade, moralize, lecture, or preach.
+NEVER allow a character to become the author's mouthpiece.
+
+If a story contains a lesson, theme, or insight — it must emerge naturally through character choices, consequences, conflict, sacrifice, failure, success, and events. The listener discovers meaning. You do not explain it.
+
+Story first. Theme second. Lesson last.
+The story is the meal. The lesson is seasoning.
+
 ⭐ MANDATORY FIRST STEP: STORY RESOLUTION MAP ⭐
 
 BEFORE you write a single line of dialogue, create a Story Resolution Map. Output it as a comment block at the top of the script (it will be removed before audio production). The map must contain all six sections:

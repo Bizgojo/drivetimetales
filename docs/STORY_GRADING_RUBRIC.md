@@ -208,6 +208,23 @@ Rule update made: [yes/no — note which document was updated]
 
 ---
 
+## ENTERTAINMENT FIRST FAILURE FLAGS
+
+These are hard failures evaluated WHEN LISTENING. A story that violates the Entertainment First Rule does not publish regardless of score.
+
+**Reject immediately if:**
+
+| Flag | What to look for |
+|---|---|
+| ❌ NARRATOR EXPLAINS LESSON | Narrator explicitly states the moral, lesson, or meaning of the story |
+| ❌ MORALIZING SPEECH | Any character delivers a 3+ sentence speech whose primary purpose is to educate, moralize, or preach |
+| ❌ AUTHOR'S MOUTHPIECE | A character exists to voice the author's opinions or deliver a message rather than serve the story |
+| ❌ FEELS LIKE A LECTURE | The overall story experience is didactic rather than entertaining |
+
+If any of these flags are present, send the script back to Claude with a specific note: "Violates Entertainment First Rule — [describe the specific offense]." Do not mix and publish.
+
+---
+
 ## STORY RESOLUTION MAP FAILURE FLAGS
 
 These are hard failures evaluated BEFORE listening. The review bot checks for these automatically. A story with any of the following violations should not proceed to audio production until fixed.

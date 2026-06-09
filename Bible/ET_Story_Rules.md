@@ -1,3 +1,10 @@
+# ⛔ RETIRED — SUPERSEDED BY v3.0
+# This is the original Endless Tales Story Rules Bible (v1, April 2026).
+# It has been retired as the active authority effective 2026-06-08 19:59 EDT.
+# Canonical standard is now: ET_Story_Rules_v3_CANONICAL.md
+# Preserved as archive reference only — do not use for new production.
+# ─────────────────────────────────────────────────────────────────────────────
+
 # Endless Tales — Story Rules Bible
 *Reference for Claude when writing or converting audio drama scripts*
 *Last updated: April 2026*
