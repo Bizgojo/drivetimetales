@@ -280,11 +280,22 @@ export default function AdminCommandCenterPage() {
         }
         // Marc Action resolutions: server is source of truth; merge localStorage under server values
         // This reconciles Firefox/Chrome split-brain: server-persisted resolutions win everywhere
-        if (data.marcActions) {
+        if (data.marcActions !== undefined) {
           const local = readLS<Record<string, { resolution: MarcAction['resolution']; resolvedAt: string; note: string | null }>>(MARC_ACTIONS_KEY, {})
           const merged = { ...local, ...data.marcActions } // server values overwrite local
           setMarcActionResolutions(merged)
           writeLS(MARC_ACTIONS_KEY, merged)
+          // Migration push: if local has resolutions the server doesn't know about yet,
+          // push the full merged set up immediately so all browsers converge.
+          // This handles the case where old resolutions lived only in localStorage
+          // before the PATCH fix was deployed.
+          if (Object.keys(merged).length > Object.keys(data.marcActions).length) {
+            fetch('/api/admin/org-status', {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ marcActions: merged }),
+            }).catch(() => {})
+          }
         }
         if (data.blockers) {
           // MERGE: preserve local resolution state, take structure from API
