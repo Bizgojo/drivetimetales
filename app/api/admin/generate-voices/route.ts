@@ -1771,7 +1771,7 @@ function parseScript(script: string): ScriptLine[] {
   const scriptStartIdx = explicitScriptStartIdx > -1 ? explicitScriptStartIdx : characterGuideStartIdx
   const headerEndIdx = scriptStartIdx > -1 ? scriptStartIdx : (firstAnnouncerIdx + 1)
   const HEADER_KEYS = [
-    'SERIES:', 'EPISODE:', 'AUTHOR:', 'GENRE:', 'DESCRIPTION:', 'SUNO PROMPT:',
+    'TITLE:', 'SERIES:', 'EPISODE:', 'AUTHOR:', 'GENRE:', 'DESCRIPTION:', 'SUNO PROMPT:',
     'NARRATIVE_VOICE:', 'NARRATOR_IS_CHARACTER:', 'NARRATOR_IS_', 'EPISODE_TITLE:',
     'SERIES_TOTAL', 'SERIES_IS_FINALE:', '[START AUDIO DRAMA SCRIPT]',
     'CHARACTER GUIDE', '---'
@@ -2241,18 +2241,22 @@ async function generateSFX(description: string, storyId: string, lineIndex: numb
 
 export async function POST(req: NextRequest) {
   try {
-    const { storyId, script: scriptParam, narratorVoiceId, narratorVoiceName, characterVoices, preflightOnly, retryMissingOnly, segmentNumber, generateBelleOnly } = await req.json()
+    const { storyId, script: scriptParam, narratorVoiceId, narratorVoiceName, characterVoices: characterVoicesParam, preflightOnly, retryMissingOnly, segmentNumber, generateBelleOnly } = await req.json()
     if (!storyId) return NextResponse.json({ success: false, error: 'storyId required' }, { status: 400 })
     let script = scriptParam
     const { data: storyRow, error: storyRowError } = await supabase
       .from('stories')
-      .select('id,title,author,genre,description,duration_mins,created_at,script,narrator_voice_id,narrator_voice_name,series_name,series_id,episode_number,series_episode_number,series_total,series_total_episodes,series_is_finale')
+      .select('id,title,author,genre,description,duration_mins,created_at,script,narrator_voice_id,narrator_voice_name,series_name,series_id,episode_number,series_episode_number,series_total,series_total_episodes,series_is_finale,options')
       .eq('id', storyId)
       .single()
     if (!script) {
       script = storyRow?.script
       if (!script) return NextResponse.json({ success: false, error: 'Script not found in database' }, { status: 400 })
     }
+    // characterVoices: explicit from request body, or fallback from story.options (set by Hal for pre-written scripts)
+    const characterVoices = characterVoicesParam
+      ?? (storyRow as any)?.options?.characterVoices
+      ?? undefined
     const unlabeledBodyLines = findUnlabeledStoryBodyLines(script)
     if (unlabeledBodyLines.length > 0) {
       if (preflightOnly === true) {
