@@ -1023,11 +1023,17 @@ export async function GET(req: NextRequest) {
     return acc
   }, {} as AgentsState)
 
+  // Use SEED_MISSIONS when stored array is empty ([] is truthy — ?? alone is insufficient)
+  const storedMissions = state.missions as Mission[] | undefined
+  const missions = (storedMissions && storedMissions.length > 0) ? storedMissions : SEED_MISSIONS
+
   return json({
     agents,
-    missions: (state.missions as Mission[]) ?? SEED_MISSIONS,
+    missions,
     blockers: allBlockers,
     decisions,
+    // Return persisted Marc Action resolutions so all browsers hydrate from one source of truth
+    marcActions: (state.marcActions as Record<string, unknown>) ?? {},
     readiness: (state.readiness as LaunchReadiness) ?? SEED_READINESS,
     reports,
     source: Object.keys(state).length > 0 ? 'storage' : 'seed',
@@ -1040,11 +1046,31 @@ export async function PATCH(req: NextRequest) {
 
   try {
     const body = await req.json()
-    const { blockers } = body
-    if (!Array.isArray(blockers)) {
-      return json({ success: false, error: 'blockers must be an array' }, 400)
+    const patch: Record<string, unknown> = {}
+
+    // Handle blockers update (existing behaviour preserved)
+    if ('blockers' in body) {
+      const { blockers } = body
+      if (!Array.isArray(blockers)) {
+        return json({ success: false, error: 'blockers must be an array' }, 400)
+      }
+      patch.blockers = blockers
     }
-    await writeOrgState({ blockers })
+
+    // Handle Marc Action resolutions — persists approved/rejected/deferred decisions cross-browser
+    if ('marcActions' in body) {
+      const { marcActions } = body
+      if (typeof marcActions !== 'object' || marcActions === null || Array.isArray(marcActions)) {
+        return json({ success: false, error: 'marcActions must be an object' }, 400)
+      }
+      patch.marcActions = marcActions
+    }
+
+    if (Object.keys(patch).length === 0) {
+      return json({ success: false, error: 'body must contain blockers or marcActions' }, 400)
+    }
+
+    await writeOrgState(patch)
     return json({ success: true })
   } catch (err) {
     return json({ success: false, error: err instanceof Error ? err.message : 'Failed to persist' }, 500)

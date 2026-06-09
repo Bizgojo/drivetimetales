@@ -80,7 +80,7 @@ const PRIORITY_SORT: Record<MissionPriority, number> = {
 }
 
 // IDs shown in the 5-card grid
-const GRID_AGENT_IDS: AgentId[] = ['hal', 'atlas', 'maya', 'susan', 'vega', 'bart']
+const GRID_AGENT_IDS: AgentId[] = ['hal', 'atlas', 'maya', 'susan', 'vega', 'bart', 'lex']
 
 // ORION-GOV-002 — Authority category display maps
 const AUTHORITY_LABELS: Record<string, string> = {
@@ -265,6 +265,7 @@ export default function AdminCommandCenterPage() {
         agents?: AgentsState
         missions?: Mission[]
         blockers?: MarcBlocker[]
+        marcActions?: Record<string, { resolution: MarcAction['resolution']; resolvedAt: string; note: string | null }>
         readiness?: LaunchReadiness
         reports?: OrionReport[]
         source?: string
@@ -276,6 +277,14 @@ export default function AdminCommandCenterPage() {
         if (data.missions) {
           setMissions(data.missions)
           writeLS(MISSIONS_KEY, data.missions)
+        }
+        // Marc Action resolutions: server is source of truth; merge localStorage under server values
+        // This reconciles Firefox/Chrome split-brain: server-persisted resolutions win everywhere
+        if (data.marcActions) {
+          const local = readLS<Record<string, { resolution: MarcAction['resolution']; resolvedAt: string; note: string | null }>>(MARC_ACTIONS_KEY, {})
+          const merged = { ...local, ...data.marcActions } // server values overwrite local
+          setMarcActionResolutions(merged)
+          writeLS(MARC_ACTIONS_KEY, merged)
         }
         if (data.blockers) {
           // MERGE: preserve local resolution state, take structure from API
