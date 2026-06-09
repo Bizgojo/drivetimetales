@@ -1245,9 +1245,17 @@ export default function AdminCommandCenterPage() {
         {/* Row 7 — Waiting on / Marc action links */}
         {(() => {
           // Find unresolved MarcActions for this agent
-          const agentMarcActions = marcActions.filter(
-            a => a.agentId === agent.id && !a.done && a.resolution === null
-          )
+          // ATL-SYNC-002 FIX A: mirror the panel's resolution filter so agent cards
+          // reflect the same resolved/needs_info state as the Marc Actions panel.
+          // Previously used a.resolution === null which is always true (action objects
+          // are never mutated); this caused resolved items to persist on agent cards
+          // even after Marc approved/rejected/deferred them in the panel.
+          const agentMarcActions = marcActions.filter(a => {
+            if (a.agentId !== agent.id) return false
+            const res = marcActionResolutions[a.id]
+            if (res && res.resolution !== 'needs_info') return false
+            return true
+          })
           const marcCount = agentMarcActions.length
 
           if (marcCount > 0) {
