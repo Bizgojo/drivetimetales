@@ -1252,14 +1252,16 @@ export default function AdminCommandCenterPage() {
                     rel={isExternal ? 'noopener noreferrer' : undefined}
                     onClick={stopProp}
                     style={{
-                      display: 'inline-block',
+                      display: 'inline-flex',
+                      alignItems: 'center',
                       fontSize: 11,
                       fontWeight: 700,
                       color: '#fff',
                       backgroundColor: '#dc2626',
                       border: 'none',
                       borderRadius: 6,
-                      padding: '4px 10px',
+                      padding: '10px 12px',
+                      minHeight: 44,
                       textDecoration: 'none',
                       cursor: 'pointer',
                     }}
@@ -1279,20 +1281,23 @@ export default function AdminCommandCenterPage() {
                     href={`/admin/command-center#marc-actions`}
                     onClick={(e) => {
                       e.stopPropagation()
-                      // Scroll to marc action queue if on same page
+                      // Fix: switch to agents tab (where #marc-actions lives) before scrolling
+                      setMobileTab('agents')
                       setTimeout(() => {
                         document.getElementById('marc-actions')?.scrollIntoView({ behavior: 'smooth' })
                       }, 100)
                     }}
                     style={{
-                      display: 'inline-block',
+                      display: 'inline-flex',
+                      alignItems: 'center',
                       fontSize: 11,
                       fontWeight: 700,
                       color: '#fff',
                       backgroundColor: '#dc2626',
                       border: 'none',
                       borderRadius: 6,
-                      padding: '4px 10px',
+                      padding: '10px 12px',
+                      minHeight: 44,
                       textDecoration: 'none',
                       cursor: 'pointer',
                     }}
@@ -1373,7 +1378,7 @@ export default function AdminCommandCenterPage() {
   // ─── Orion Terminal ────────────────────────────────────────────────────────
   const renderOrionTerminal = () => {
     return (
-      <div style={{ ...CARD, display: 'flex', flexDirection: 'column', height: 520, padding: 0, overflow: 'hidden', marginBottom: 16 }}>
+      <div style={{ ...CARD, display: 'flex', flexDirection: 'column', height: 'clamp(350px, calc(100vh - 220px), 520px)', padding: 0, overflow: 'hidden', marginBottom: 16 }}>
         {/* Header */}
         <div style={{
           padding: '12px 16px',
@@ -2071,19 +2076,19 @@ export default function AdminCommandCenterPage() {
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
             <button
               onClick={() => resolveMarcAction(action.id, 'approved', marcActionNote || null)}
-              style={{ ...BTN, backgroundColor: '#16a34a', color: '#fff', borderColor: '#16a34a', flex: 1, minWidth: 120 }}
+              style={{ ...BTN, backgroundColor: '#16a34a', color: '#fff', borderColor: '#16a34a', flexBasis: 'calc(50% - 4px)' }}
             >
               ✅ Approve
             </button>
             <button
               onClick={() => resolveMarcAction(action.id, 'rejected', marcActionNote || null)}
-              style={{ ...BTN, backgroundColor: '#dc2626', color: '#fff', borderColor: '#dc2626', flex: 1, minWidth: 120 }}
+              style={{ ...BTN, backgroundColor: '#dc2626', color: '#fff', borderColor: '#dc2626', flexBasis: 'calc(50% - 4px)' }}
             >
               ❌ Reject
             </button>
             <button
               onClick={() => resolveMarcAction(action.id, 'deferred', marcActionNote || null)}
-              style={{ ...BTN, flex: 1, minWidth: 120 }}
+              style={{ ...BTN, flexBasis: 'calc(50% - 4px)' }}
             >
               ⏸ Defer
             </button>
@@ -2095,7 +2100,7 @@ export default function AdminCommandCenterPage() {
                 }
                 resolveMarcAction(action.id, 'needs_info', marcActionNote || null)
               }}
-              style={{ ...BTN, backgroundColor: '#d97706', color: '#fff', borderColor: '#d97706', flex: 1, minWidth: 120 }}
+              style={{ ...BTN, backgroundColor: '#d97706', color: '#fff', borderColor: '#d97706', flexBasis: 'calc(50% - 4px)' }}
             >
               ↩ Request Info
             </button>
@@ -2153,6 +2158,8 @@ export default function AdminCommandCenterPage() {
             maxWidth: 'calc(100vw - 32px)',
             maxHeight: '80vh',
             overflowY: 'auto',
+            WebkitOverflowScrolling: 'touch' as any,
+            overscrollBehavior: 'contain' as any,
             backgroundColor: '#fff',
             borderRadius: 12,
             zIndex: 201,
@@ -2224,6 +2231,8 @@ export default function AdminCommandCenterPage() {
                     fontSize: 12,
                     padding: 12,
                     whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    overflowWrap: 'break-word',
                     lineHeight: 1.5,
                     backgroundColor: '#fafafa',
                     color: '#374151',
