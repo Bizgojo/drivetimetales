@@ -100,6 +100,204 @@ const AUTHORITY_COLORS: Record<string, string> = {
   'executive-judgment': '#0f172a',
 }
 
+function normalizeMarcActionText(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim()
+}
+
+function AgentBadge({ agentId }: { agentId: AgentId | string }) {
+  const agent = AGENTS.find(a => a.id === agentId)
+  return (
+    <span style={{
+      background: agent?.accentColor ?? '#475569',
+      color: '#fff',
+      borderRadius: 999,
+      padding: '4px 9px',
+      fontSize: 12,
+      fontWeight: 700,
+      whiteSpace: 'nowrap' as const,
+    }}>
+      {agent ? `${agent.emoji} ${agent.displayName}` : agentId}
+    </span>
+  )
+}
+
+function Section({ label, body, highlight }: { label: string; body: string; highlight?: boolean }) {
+  return (
+    <div>
+      <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>
+        {label}
+      </div>
+      <div style={{
+        fontSize: 14,
+        color: highlight ? '#f1f5f9' : '#cbd5e1',
+        lineHeight: 1.6,
+        background: highlight ? '#1e3a5f' : 'transparent',
+        borderRadius: highlight ? 6 : 0,
+        padding: highlight ? '10px 12px' : 0,
+      }}>
+        {body}
+      </div>
+    </div>
+  )
+}
+
+function OutcomeBox({ label, body, color }: { label: string; body: string; color: string }) {
+  return (
+    <div style={{ background: '#0f172a', border: `1px solid ${color}33`, borderRadius: 8, padding: 12 }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color, marginBottom: 6 }}>{label}</div>
+      <div style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.5 }}>{body}</div>
+    </div>
+  )
+}
+
+function InfoBox({ label, body }: { label: string; body: string }) {
+  return (
+    <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, padding: 12 }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>{label}</div>
+      <div style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.5 }}>{body}</div>
+    </div>
+  )
+}
+
+function ResolveButton({ label, color, onClick }: { label: string; color: string; onClick: () => void }) {
+  return (
+    <button onClick={onClick} style={{
+      background: `${color}22`,
+      border: `1px solid ${color}88`,
+      borderRadius: 8,
+      padding: '10px 20px',
+      color,
+      fontWeight: 600,
+      fontSize: 14,
+      cursor: 'pointer',
+      flex: 1,
+      minWidth: 100,
+    }}>
+      {label}
+    </button>
+  )
+}
+
+function MarcDecisionCard({
+  action,
+  onResolve,
+}: {
+  action: MarcAction
+  onResolve: (id: string, resolution: MarcAction['resolution'], note: string | null) => void
+}) {
+  const [note, setNote] = useState('')
+  const d = action.detail
+
+  if (!d) return null
+
+  const recColor = {
+    approve: '#22c55e',
+    reject: '#ef4444',
+    defer: '#f59e0b',
+    request_info: '#3b82f6',
+  }[d.orionRecommends]
+
+  const recLabel = {
+    approve: 'Approve',
+    reject: 'Reject',
+    defer: 'Defer',
+    request_info: 'Request Info',
+  }[d.orionRecommends]
+
+  return (
+    <div style={{
+      background: '#1e293b',
+      border: '1px solid #334155',
+      borderRadius: 12,
+      padding: 24,
+      maxWidth: 680,
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 20,
+    }}>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+        <AgentBadge agentId={action.agentId} />
+        <div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: '#f1f5f9', lineHeight: 1.3 }}>
+            {d.title}
+          </div>
+          <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
+            {action.missionId} · {action.id}
+          </div>
+        </div>
+      </div>
+
+      <Section label="Situation" body={d.situation} />
+      <Section label="What you're being asked" body={d.whatMarcDecides} highlight />
+      <Section label="Why this needs you" body={d.whyOrionCannotDecide} />
+
+      <div style={{
+        background: '#0f172a',
+        borderRadius: 8,
+        padding: 16,
+        border: `1px solid ${recColor}44`,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+          <span style={{
+            background: recColor,
+            color: '#000',
+            fontWeight: 700,
+            fontSize: 11,
+            padding: '3px 10px',
+            borderRadius: 20,
+            textTransform: 'uppercase',
+            letterSpacing: 1,
+          }}>
+            Orion recommends: {recLabel}
+          </span>
+        </div>
+        <div style={{ fontSize: 14, color: '#cbd5e1', lineHeight: 1.6 }}>
+          {d.whyRecommends}
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+        <OutcomeBox label="If approved" body={d.ifApproved} color="#22c55e" />
+        <OutcomeBox label="If deferred" body={d.ifDeferred} color="#f59e0b" />
+        <OutcomeBox label="If rejected" body={d.ifRejected} color="#ef4444" />
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+        <InfoBox label="Cost" body={d.costTimeAndMoney} />
+        <InfoBox label="Risk of delay" body={d.riskOfDelay} />
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+        <InfoBox label="Follow-up owner" body={d.followUpOwner} />
+        <InfoBox label="Next action on approve" body={d.nextActionOnApprove} />
+      </div>
+
+      <textarea
+        placeholder="Optional note for your decision..."
+        value={note}
+        onChange={e => setNote(e.target.value)}
+        style={{
+          background: '#0f172a',
+          border: '1px solid #334155',
+          borderRadius: 8,
+          padding: 12,
+          color: '#f1f5f9',
+          fontSize: 13,
+          resize: 'vertical',
+          minHeight: 60,
+        }}
+      />
+
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <ResolveButton label="Approve" color="#22c55e" onClick={() => onResolve(action.id, 'approved', note || null)} />
+        <ResolveButton label="Defer" color="#f59e0b" onClick={() => onResolve(action.id, 'deferred', note || null)} />
+        <ResolveButton label="Reject" color="#ef4444" onClick={() => onResolve(action.id, 'rejected', note || null)} />
+        <ResolveButton label="Request Info" color="#3b82f6" onClick={() => onResolve(action.id, 'needs_info', note || null)} />
+      </div>
+    </div>
+  )
+}
+
 function readLS<T>(key: string, fallback: T): T {
   if (typeof window === 'undefined') return fallback
   const value = window.localStorage.getItem(key)
@@ -243,7 +441,8 @@ export default function AdminCommandCenterPage() {
   )
   const [selectedMarcActionId, setSelectedMarcActionId] = useState<string | null>(null)
   const [showResolvedMarcActions, setShowResolvedMarcActions] = useState(false)
-  const [marcActionNote, setMarcActionNote] = useState('')
+  const [showDraftCards, setShowDraftCards] = useState(false)
+  const [toastMessage, setToastMessage] = useState<string | null>(null)
 
   const today = useMemo(() => {
     return new Date().toLocaleDateString('en-US', {
@@ -372,15 +571,17 @@ export default function AdminCommandCenterPage() {
     const seen = new Set<string>()
     const actions: MarcAction[] = []
 
-    const parse = (waitingOn: string, missionId: string, agentId: AgentId | string, missionTitle: string, resolveUrl?: string) => {
+    const parse = (waitingOn: string, missionId: string, agentId: AgentId | string, missionTitle: string, resolveUrl?: string, sourceMission?: Mission) => {
       if (!waitingOn) return
       waitingOn.split(' · ').forEach((part, idx) => {
         const trimmed = part.trim()
         if (!/^marc:/i.test(trimmed)) return
         const actionText = trimmed.replace(/^marc:\s*/i, '').trim()
-        const key = actionText.toLowerCase().replace(/[^a-z0-9]/g, '')
-        if (seen.has(key)) return
-        seen.add(key)
+        const normalizedText = normalizeMarcActionText(actionText)
+        if (seen.has(normalizedText)) return
+        seen.add(normalizedText)
+        const detail = sourceMission?.marcActionDetails?.[normalizedText]
+        const isComplete = !!detail && Object.values(detail).every(v => v !== '' && v !== null && v !== undefined)
         actions.push({
           id: `ma-${missionId}-${idx}`,
           missionId,
@@ -393,6 +594,8 @@ export default function AdminCommandCenterPage() {
           resolvedAt: null,
           note: null,
           resolveUrl,
+          detail,
+          isComplete,
         })
       })
     }
@@ -400,7 +603,7 @@ export default function AdminCommandCenterPage() {
     // Parse from missions
     missions.forEach(m => {
       if (m.status === 'complete' || m.status === 'archived') return
-      parse(m.waitingOn ?? '', m.id, m.agentId, m.title, m.resolveUrl)
+      parse(m.waitingOn ?? '', m.id, m.agentId, m.title, m.resolveUrl, m)
     })
 
     // Parse from agent states (for items not already in missions)
@@ -490,7 +693,6 @@ export default function AdminCommandCenterPage() {
     setMarcActionResolutions(next)
     writeLS(MARC_ACTIONS_KEY, next)
     setSelectedMarcActionId(null)
-    setMarcActionNote('')
     // Persist to server
     fetch('/api/admin/org-status', {
       method: 'PATCH',
@@ -525,6 +727,23 @@ export default function AdminCommandCenterPage() {
         }),
       }).catch(() => {})
     }
+  }
+
+  const showToast = (message: string) => {
+    setToastMessage(message)
+    window.setTimeout(() => setToastMessage(null), 3000)
+  }
+
+  const openMarcAction = (action: MarcAction) => {
+    if (!action.isComplete) {
+      showToast('This decision card is incomplete. Orion is working on it.')
+      return
+    }
+    setSelectedMarcActionId(action.id)
+    setMobileTab('agents')
+    window.setTimeout(() => {
+      document.getElementById('marc-actions')?.scrollIntoView({ behavior: 'smooth' })
+    }, 100)
   }
 
   const gridAgents = useMemo(
@@ -573,27 +792,20 @@ export default function AdminCommandCenterPage() {
 
     const activeMarcActions = marcActions.filter(a => {
       const res = marcActionResolutions[a.id]
-      if (res && res.resolution !== 'needs_info') return false
-      // ORION-GOV-002: suppress items that lack escalation documentation, unless agent-state-derived
-      if (a.missionId && !a.missionId.startsWith('agent-')) {
-        const m = missions.find(m => m.id === a.missionId)
-        if (!m?.whyOrionCannotDecide && !m?.authorityCategory) return false
-      }
-      return true
+      return (!res || res.resolution === null) && a.isComplete
     })
-    const suppressedCount = marcActions.filter(a => {
+
+    const draftMarcActions = marcActions.filter(a => {
       const res = marcActionResolutions[a.id]
-      if (res && res.resolution !== 'needs_info') return false
-      if (!a.missionId || a.missionId.startsWith('agent-')) return false
-      const m = missions.find(m => m.id === a.missionId)
-      return !m?.whyOrionCannotDecide && !m?.authorityCategory
-    }).length
+      return (!res || res.resolution === null) && !a.isComplete
+    })
+
     const resolvedMarcActions = marcActions.filter(a => {
       const res = marcActionResolutions[a.id]
       return !!res && res.resolution !== 'needs_info'
     })
 
-    if (blockers.length === 0) return null
+    if (blockers.length === 0 && marcActions.length === 0) return null
 
     const deptBadge = (departmentId: string) => {
       const agent = AGENTS.find((a) => a.id === departmentId)
@@ -939,9 +1151,9 @@ export default function AdminCommandCenterPage() {
               {activeMarcActions.length} actions needed
             </span>
           )}
-          {suppressedCount > 0 && (
+          {draftMarcActions.length > 0 && (
             <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
-              {suppressedCount} item{suppressedCount !== 1 ? 's' : ''} held — Orion documentation pending
+              {draftMarcActions.length} incomplete card{draftMarcActions.length !== 1 ? 's' : ''} held — Orion documentation pending
             </div>
           )}
           {deferredOnes.length > 0 && (
@@ -949,7 +1161,7 @@ export default function AdminCommandCenterPage() {
               {deferredOnes.length} deferred
             </span>
           )}
-          {activeOnes.length === 0 && (
+          {activeOnes.length === 0 && activeMarcActions.length === 0 && (
             <span style={{ fontSize: 12, color: '#22c55e', fontWeight: 700 }}>✓ All resolved</span>
           )}
         </div>
@@ -972,13 +1184,13 @@ export default function AdminCommandCenterPage() {
               const missionForAction = missions.find(m => m.id === action.missionId)
               const urgency = missionForAction?.urgency
               const urgencyPillColor = urgency === 'critical' ? '#dc2626' : urgency === 'high' ? '#d97706' : urgency === 'medium' ? '#3b82f6' : urgency === 'low' ? '#64748b' : null
-              const recStance = missionForAction?.orionRecommendation?.stance
-              const recBadgeColor = recStance === 'approve' ? '#16a34a' : recStance === 'reject' ? '#dc2626' : recStance === 'defer' ? '#d97706' : recStance === 'review' ? '#3b82f6' : null
-              const recBadgeText = recStance === 'approve' ? 'APPROVE' : recStance === 'reject' ? 'REJECT' : recStance === 'defer' ? 'DEFER' : recStance === 'review' ? 'REVIEW' : null
+              const recStance = action.detail?.orionRecommends
+              const recBadgeColor = recStance === 'approve' ? '#16a34a' : recStance === 'reject' ? '#dc2626' : recStance === 'defer' ? '#d97706' : recStance === 'request_info' ? '#3b82f6' : null
+              const recBadgeText = recStance === 'approve' ? 'APPROVE' : recStance === 'reject' ? 'REJECT' : recStance === 'defer' ? 'DEFER' : recStance === 'request_info' ? 'REQUEST INFO' : null
               return (
                 <div
                   key={action.id}
-                  onClick={() => { setSelectedMarcActionId(action.id); setMarcActionNote('') }}
+                  onClick={() => setSelectedMarcActionId(action.id)}
                   style={{
                     display: 'flex',
                     alignItems: 'flex-start',
@@ -995,7 +1207,7 @@ export default function AdminCommandCenterPage() {
                     {action.type === 'approve' ? '✅' : action.type === 'verify' ? '🔍' : action.type === 'authorize' ? '🔐' : '🤔'}
                   </span>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: '#0f172a', marginBottom: 2 }}>{action.actionText}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#0f172a', marginBottom: 2 }}>{action.detail?.title ?? action.actionText}</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' as const }}>
                       {agent && (
                         <span style={{ fontSize: 10, color: '#fff', backgroundColor: agent.accentColor, borderRadius: 10, padding: '1px 7px', fontWeight: 700 }}>
@@ -1003,7 +1215,7 @@ export default function AdminCommandCenterPage() {
                         </span>
                       )}
                       <span
-                        onClick={e => { e.stopPropagation(); setSelectedMarcActionId(action.id); setMarcActionNote('') }}
+                        onClick={e => { e.stopPropagation(); setSelectedMarcActionId(action.id) }}
                         style={{ fontSize: 10, color: '#3b82f6', cursor: 'pointer', textDecoration: 'underline' }}
                       >
                         {action.missionId}
@@ -1039,16 +1251,9 @@ export default function AdminCommandCenterPage() {
                         )
                       })()}
                     </div>
-                    {(() => {
-                      const m = missions.find(m => m.id === action.missionId)
-                      return m?.whyOrionCannotDecide ? (
-                        <div style={{ fontSize: 10, color: '#64748b', marginTop: 3, fontStyle: 'italic' }}>
-                          {m.whyOrionCannotDecide.length > 90
-                            ? m.whyOrionCannotDecide.slice(0, 90) + '…'
-                            : m.whyOrionCannotDecide}
-                        </div>
-                      ) : null
-                    })()}
+                    <div style={{ fontSize: 10, color: '#64748b', marginTop: 3, fontStyle: 'italic' }}>
+                      {action.actionText}
+                    </div>
                     {marcActionResolutions[action.id]?.resolution === 'needs_info' && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
                         <span style={{ fontSize: 10, color: '#fff', backgroundColor: '#d97706', borderRadius: 10, padding: '2px 7px', fontWeight: 700 }}>
@@ -1066,6 +1271,35 @@ export default function AdminCommandCenterPage() {
                 </div>
               )
             })}
+          </div>
+        )}
+
+        {draftMarcActions.length > 0 && (
+          <div style={{ marginTop: 16, marginBottom: 12 }}>
+            <button
+              type="button"
+              onClick={() => setShowDraftCards(!showDraftCards)}
+              style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: 13 }}
+            >
+              {showDraftCards ? '▾' : '▸'} {draftMarcActions.length} incomplete card{draftMarcActions.length !== 1 ? 's' : ''} (Orion only)
+            </button>
+            {showDraftCards && (
+              <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {draftMarcActions.map(a => (
+                  <div key={a.id} style={{
+                    background: '#0f172a',
+                    border: '1px solid #334155',
+                    borderRadius: 8,
+                    padding: 12,
+                    fontSize: 13,
+                    color: '#64748b',
+                  }}>
+                    <span style={{ color: '#94a3b8', fontWeight: 600 }}>{a.actionText}</span>
+                    <span style={{ marginLeft: 8 }}>— missing detail fields (source: {a.missionId})</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -1260,12 +1494,8 @@ export default function AdminCommandCenterPage() {
 
           if (marcCount > 0) {
             // Marc is the blocker — show action links
-            const stopProp = (e: React.MouseEvent) => e.stopPropagation()
-
             if (marcCount === 1) {
               const action = agentMarcActions[0]
-              const url = action.resolveUrl ?? '/admin/command-center'
-              const isExternal = url.startsWith('http')
               return (
                 <div style={{ marginTop: 6 }}>
                   <div style={{ fontSize: 10, fontWeight: 700, color: '#dc2626', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -1274,11 +1504,12 @@ export default function AdminCommandCenterPage() {
                   <div style={{ fontSize: 10, color: '#64748b', marginBottom: 5, lineHeight: 1.3 }}>
                     {action.actionText.length > 70 ? action.actionText.slice(0, 70) + '…' : action.actionText}
                   </div>
-                  <a
-                    href={url}
-                    target={isExternal ? '_blank' : '_self'}
-                    rel={isExternal ? 'noopener noreferrer' : undefined}
-                    onClick={stopProp}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      openMarcAction(action)
+                    }}
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
@@ -1290,12 +1521,11 @@ export default function AdminCommandCenterPage() {
                       borderRadius: 6,
                       padding: '10px 12px',
                       minHeight: 44,
-                      textDecoration: 'none',
                       cursor: 'pointer',
                     }}
                   >
                     Resolve Issue →
-                  </a>
+                  </button>
                 </div>
               )
             } else {
@@ -1305,15 +1535,16 @@ export default function AdminCommandCenterPage() {
                   <div style={{ fontSize: 10, fontWeight: 700, color: '#dc2626', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
                     <span>🔴</span> {marcCount} items waiting on Marc
                   </div>
-                  <a
-                    href={`/admin/command-center#marc-actions`}
+                  <button
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation()
-                      // Fix: switch to agents tab (where #marc-actions lives) before scrolling
-                      setMobileTab('agents')
-                      setTimeout(() => {
-                        document.getElementById('marc-actions')?.scrollIntoView({ behavior: 'smooth' })
-                      }, 100)
+                      const completeAction = agentMarcActions.find(a => a.isComplete)
+                      if (completeAction) {
+                        openMarcAction(completeAction)
+                        return
+                      }
+                      showToast('This decision card is incomplete. Orion is working on it.')
                     }}
                     style={{
                       display: 'inline-flex',
@@ -1326,12 +1557,11 @@ export default function AdminCommandCenterPage() {
                       borderRadius: 6,
                       padding: '10px 12px',
                       minHeight: 44,
-                      textDecoration: 'none',
                       cursor: 'pointer',
                     }}
                   >
                     View Marc-blocked items →
-                  </a>
+                  </button>
                 </div>
               )
             }
@@ -1850,296 +2080,21 @@ export default function AdminCommandCenterPage() {
     if (!selectedMarcActionId) return null
     const action = marcActions.find(a => a.id === selectedMarcActionId)
     if (!action) return null
-    const mission = missions.find(m => m.id === action.missionId)
-    const agent = AGENTS.find(a => a.id === action.agentId)
-
-    // ── Urgency pill helpers ─────────────────────────────────────────────────
-    const urgencyColor = (u: string | undefined): string => {
-      if (u === 'critical') return '#dc2626'
-      if (u === 'high') return '#d97706'
-      if (u === 'medium') return '#3b82f6'
-      if (u === 'low') return '#64748b'
-      return '#94a3b8'
-    }
-    const urgencyLabel = (u: string | undefined): string => {
-      if (!u) return ''
-      return u.toUpperCase()
-    }
-
-    // ── Orion recommendation banner helpers ──────────────────────────────────
-    const rec = mission?.orionRecommendation
-    const recBg = (): string => {
-      if (!rec) return '#f8fafc'
-      if (rec.stance === 'approve') return '#f0fdf4'
-      if (rec.stance === 'reject') return '#fef2f2'
-      if (rec.stance === 'defer') return '#fffbeb'
-      if (rec.stance === 'review') return '#eff6ff'
-      return '#f8fafc'
-    }
-    const recTextColor = (): string => {
-      if (!rec) return '#64748b'
-      if (rec.stance === 'approve') return '#16a34a'
-      if (rec.stance === 'reject') return '#dc2626'
-      if (rec.stance === 'defer') return '#d97706'
-      if (rec.stance === 'review') return '#3b82f6'
-      return '#64748b'
-    }
-    const recBadgeLabel = (): string => {
-      if (!rec) return 'NO RECOMMENDATION YET'
-      if (rec.stance === 'approve') return 'APPROVE'
-      if (rec.stance === 'reject') return 'REJECT'
-      if (rec.stance === 'defer') return 'DEFER'
-      if (rec.stance === 'review') return 'REVIEW NEEDED'
-      return 'NO RECOMMENDATION YET'
-    }
-
-    // ── Section label helper ─────────────────────────────────────────────────
-    const sectionLabel = (text: string) => (
-      <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' as const, letterSpacing: '0.05em', marginBottom: 4 }}>
-        {text}
-      </div>
-    )
-
-    // ── Type icon ────────────────────────────────────────────────────────────
-    const typeIcon = action.type === 'approve' ? '✅' : action.type === 'verify' ? '🔍' : action.type === 'authorize' ? '🔐' : '🤔'
-    const typeLabel = action.type.toUpperCase()
+    if (!action.isComplete) return null
 
     return (
       <div
         onClick={() => setSelectedMarcActionId(null)}
-        style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+        style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.65)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
       >
         <div
           onClick={e => e.stopPropagation()}
-          style={{ backgroundColor: '#fff', borderRadius: 12, padding: 24, maxWidth: 580, width: '100%', maxHeight: '85vh', overflowY: 'auto' as const, boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}
+          style={{ maxWidth: 720, width: '100%', maxHeight: '90vh', overflowY: 'auto' as const }}
         >
-          {/* 1. Header row: type icon + TYPE BADGE ... URGENCY PILL */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 18 }}>{typeIcon}</span>
-              <span style={{ fontSize: 10, fontWeight: 700, color: '#475569', backgroundColor: '#f1f5f9', borderRadius: 6, padding: '2px 8px', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>
-                {typeLabel}
-              </span>
-            </div>
-            {mission?.urgency && (
-              <span style={{ fontSize: 10, fontWeight: 700, color: '#fff', backgroundColor: urgencyColor(mission.urgency), borderRadius: 10, padding: '3px 10px', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>
-                {urgencyLabel(mission.urgency)}
-              </span>
-            )}
-          </div>
-
-          {/* 2. Decision title */}
-          <div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a', marginBottom: 8, lineHeight: 1.3 }}>{action.actionText}</div>
-
-          {/* 3. Agent badge + Mission ID badge */}
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const, marginBottom: 16 }}>
-            {agent && (
-              <span style={{ fontSize: 11, color: '#fff', backgroundColor: agent.accentColor, borderRadius: 10, padding: '2px 8px', fontWeight: 700 }}>
-                {agent.emoji} {agent.displayName}
-              </span>
-            )}
-            <span style={{ fontSize: 11, color: '#64748b', backgroundColor: '#f1f5f9', borderRadius: 10, padding: '2px 8px', fontWeight: 600 }}>
-              {action.missionId}
-            </span>
-          </div>
-
-          {/* 4. Divider */}
-          <hr style={{ border: 'none', borderTop: '1px solid #e2e8f0', marginBottom: 14 }} />
-
-          {/* needs_info banner — Orion-centric routing per ORION-GOV-003 */}
-          {marcActionResolutions[action.id]?.resolution === 'needs_info' && (
-            <div style={{ backgroundColor: '#fef3c7', border: '1px solid #fde68a', borderRadius: 8, padding: '8px 12px', marginBottom: 12, fontSize: 12, color: '#92400e' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                <span style={{ fontSize: 16 }}>🧭</span>
-                <strong>Routed to Orion for review</strong>
-              </div>
-              {marcActionResolutions[action.id]?.note && (
-                <div style={{ marginTop: 2, fontStyle: 'italic', color: '#78350f' }}>&ldquo;{marcActionResolutions[action.id].note}&rdquo;</div>
-              )}
-              <div style={{ marginTop: 6, fontSize: 11, color: '#a16207', lineHeight: 1.5 }}>
-                Marc's question received by Orion {relativeTime(marcActionResolutions[action.id]?.resolvedAt ?? '')} ago.
-                Orion will consult department(s) as needed and respond in the Orion Terminal.
-                Item remains active until Marc makes a final decision.
-              </div>
-              <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#92400e' }}>
-                <span>Current owner:</span>
-                <span style={{ fontWeight: 700, backgroundColor: '#fde68a', borderRadius: 8, padding: '1px 7px' }}>🧭 Orion</span>
-                <span style={{ color: '#a16207' }}>→ check Orion Terminal for response</span>
-              </div>
-            </div>
-          )}
-
-          {/* 5. WHAT */}
-          <div style={{ marginBottom: 12 }}>
-            {sectionLabel('What')}
-            <div style={{ fontSize: 13, color: '#0f172a' }}>{action.actionText}</div>
-          </div>
-
-          {/* 6. WHY THIS NEEDS MARC */}
-          <div style={{ marginBottom: 12 }}>
-            {sectionLabel('Why This Needs Marc')}
-            <div style={{ fontSize: 13, color: '#0f172a' }}>
-              {mission?.whyNeedsMarc ?? mission?.waitingOn ?? 'N/A'}
-            </div>
-          </div>
-
-          {/* 6b. WHY ORION CANNOT DECIDE — ORION-GOV-002 */}
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' as const, letterSpacing: '0.05em', marginBottom: 6 }}>
-              Why Orion Cannot Decide
-            </div>
-            <div style={{
-              display: 'flex',
-              alignItems: 'flex-start',
-              gap: 8,
-              padding: '8px 12px',
-              backgroundColor: '#f8fafc',
-              borderRadius: 6,
-              border: '1px solid #e2e8f0',
-            }}>
-              {mission?.authorityCategory && (
-                <span style={{
-                  fontSize: 10,
-                  color: '#fff',
-                  backgroundColor: AUTHORITY_COLORS[mission.authorityCategory] ?? '#4b5563',
-                  borderRadius: 10,
-                  padding: '2px 8px',
-                  fontWeight: 700,
-                  flexShrink: 0,
-                  textTransform: 'uppercase' as const,
-                  alignSelf: 'flex-start',
-                  marginTop: 1,
-                }}>
-                  📌 {AUTHORITY_LABELS[mission.authorityCategory]}
-                </span>
-              )}
-              <span style={{ fontSize: 12, color: '#475569', fontStyle: 'italic', lineHeight: 1.5 }}>
-                {mission?.whyOrionCannotDecide ?? 'Not documented. Orion must complete escalation review before this item appears here.'}
-              </span>
-            </div>
-          </div>
-
-          {/* 7. ORION RECOMMENDS banner */}
-          <div style={{ backgroundColor: recBg(), border: `1px solid ${recTextColor()}30`, borderRadius: 8, padding: '10px 12px', marginBottom: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: rec?.rationale ? 6 : 0 }}>
-              <span style={{ fontSize: 14 }}>🧭</span>
-              <span style={{ fontSize: 11, fontWeight: 700, color: '#475569', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>Orion Recommends</span>
-              <span style={{ fontSize: 10, fontWeight: 800, color: '#fff', backgroundColor: recTextColor(), borderRadius: 6, padding: '2px 8px', textTransform: 'uppercase' as const, letterSpacing: '0.05em', marginLeft: 'auto' }}>
-                {recBadgeLabel()}
-              </span>
-            </div>
-            {rec?.rationale && (
-              <div style={{ fontSize: 12, color: recTextColor(), lineHeight: 1.5 }}>{rec.rationale}</div>
-            )}
-            {!rec && (
-              <div style={{ fontSize: 12, color: '#94a3b8' }}>No recommendation has been filed for this action yet.</div>
-            )}
-          </div>
-
-          {/* 8. IF APPROVED */}
-          <div style={{ marginBottom: 12 }}>
-            {sectionLabel('If Approved')}
-            <div style={{ fontSize: 12, color: '#0f172a' }}>{mission?.approvalConsequences ?? 'N/A'}</div>
-          </div>
-
-          {/* 9. IF REJECTED / DELAYED */}
-          <div style={{ marginBottom: 14 }}>
-            {sectionLabel('If Rejected / Delayed')}
-            <div style={{ fontSize: 12, color: '#0f172a' }}>{mission?.rejectionConsequences ?? 'N/A'}</div>
-          </div>
-
-          {/* 10. Context divider */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-            <hr style={{ flex: 1, border: 'none', borderTop: '1px solid #e2e8f0' }} />
-            <span style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' as const, letterSpacing: '0.05em', whiteSpace: 'nowrap' as const }}>Context</span>
-            <hr style={{ flex: 1, border: 'none', borderTop: '1px solid #e2e8f0' }} />
-          </div>
-
-          {/* 11. Mission title + status + % complete */}
-          {mission && (
-            <div style={{ marginBottom: 10 }}>
-              {sectionLabel('Mission')}
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', marginBottom: 3 }}>{mission.title}</div>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
-                <span style={{ fontSize: 11, color: '#475569' }}>Status: <strong>{mission.status}</strong></span>
-                {mission.percentComplete != null && (
-                  <span style={{ fontSize: 11, color: '#475569' }}>{mission.percentComplete}% complete</span>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* 12. Blocked on */}
-          <div style={{ marginBottom: 10 }}>
-            {sectionLabel('Blocked On')}
-            <div style={{ fontSize: 12, color: '#475569' }}>{mission?.waitingOn || 'N/A'}</div>
-          </div>
-
-          {/* 13. Follow-up owner */}
-          <div style={{ marginBottom: 10 }}>
-            {sectionLabel('Follow-up Owner')}
-            <div style={{ fontSize: 12, color: '#475569' }}>
-              {agent ? `${agent.emoji} ${agent.displayName}` : 'N/A'}
-            </div>
-          </div>
-
-          {/* 14. Next action on approve */}
-          <div style={{ marginBottom: 16 }}>
-            {sectionLabel('Next Action on Approve')}
-            <div style={{ fontSize: 12, color: '#475569' }}>{mission?.nextActionOnApprove ?? 'N/A'}</div>
-          </div>
-
-          {/* 15. Optional note textarea */}
-          <textarea
-            value={marcActionNote}
-            onChange={e => setMarcActionNote(e.target.value)}
-            placeholder="Add a note (optional)..."
-            style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #e2e8f0', fontSize: 12, resize: 'vertical' as const, minHeight: 60, marginBottom: 8, boxSizing: 'border-box' as const }}
-          />
-
-          {/* Request Info helper hint */}
-          <div style={{ fontSize: 11, color: '#92400e', marginBottom: 12 }}>
-            💡 <strong>Request Info:</strong> Add a note explaining what you need, then click ↩ Request Info. The item returns to the department and stays active.
-          </div>
-
-          {/* 16. Approve / Reject / Defer / Request Info buttons */}
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
-            <button
-              onClick={() => resolveMarcAction(action.id, 'approved', marcActionNote || null)}
-              style={{ ...BTN, backgroundColor: '#16a34a', color: '#fff', borderColor: '#16a34a', flexBasis: 'calc(50% - 4px)' }}
-            >
-              ✅ Approve
-            </button>
-            <button
-              onClick={() => resolveMarcAction(action.id, 'rejected', marcActionNote || null)}
-              style={{ ...BTN, backgroundColor: '#dc2626', color: '#fff', borderColor: '#dc2626', flexBasis: 'calc(50% - 4px)' }}
-            >
-              ❌ Reject
-            </button>
-            <button
-              onClick={() => resolveMarcAction(action.id, 'deferred', marcActionNote || null)}
-              style={{ ...BTN, flexBasis: 'calc(50% - 4px)' }}
-            >
-              ⏸ Defer
-            </button>
-            <button
-              onClick={() => {
-                if (!marcActionNote.trim()) {
-                  alert('Please add a note explaining what information you need.')
-                  return
-                }
-                resolveMarcAction(action.id, 'needs_info', marcActionNote || null)
-              }}
-              style={{ ...BTN, backgroundColor: '#d97706', color: '#fff', borderColor: '#d97706', flexBasis: 'calc(50% - 4px)' }}
-            >
-              ↩ Request Info
-            </button>
-          </div>
-
-          {/* 17. Cancel button */}
+          <MarcDecisionCard key={action.id} action={action} onResolve={resolveMarcAction} />
           <button
             onClick={() => setSelectedMarcActionId(null)}
-            style={{ ...BTN, marginTop: 8, width: '100%', color: '#64748b', borderColor: '#e2e8f0' }}
+            style={{ ...BTN, marginTop: 8, width: '100%', color: '#cbd5e1', borderColor: '#334155', backgroundColor: '#0f172a' }}
           >
             Cancel
           </button>
@@ -2439,6 +2394,25 @@ export default function AdminCommandCenterPage() {
 
       {/* Marc Action Detail Modal */}
       {renderMarcActionModal()}
+
+      {toastMessage && (
+        <div style={{
+          position: 'fixed',
+          right: 24,
+          bottom: 76,
+          background: '#0f172a',
+          color: '#f8fafc',
+          border: '1px solid #334155',
+          borderRadius: 8,
+          padding: '10px 14px',
+          fontSize: 13,
+          fontWeight: 600,
+          zIndex: 1200,
+          boxShadow: '0 12px 28px rgba(15,23,42,0.22)',
+        }}>
+          {toastMessage}
+        </div>
+      )}
 
       {/* Mobile tab bar */}
       <nav className="cc-mobile-tabs">

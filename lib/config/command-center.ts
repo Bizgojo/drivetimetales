@@ -199,6 +199,7 @@ export interface Mission {
   whyOrionCannotDecide?: string
   authorityCategory?: 'strategy' | 'publishing' | 'spending' | 'legal' | 'org-structure' | 'executive-judgment'
   resolveUrl?: string       // where Marc goes to resolve this — internal path or external URL
+  marcActionDetails?: Partial<Record<string, MarcActionDetail>>
 }
 
 export const MISSION_PRIORITY_COLORS: Record<MissionPriority, string> = {
@@ -259,6 +260,24 @@ export interface MarcAction {
   resolvedAt: string | null
   note: string | null
   resolveUrl?: string       // propagated from source mission
+  detail?: MarcActionDetail   // Full 13-field card data. If absent -> Draft Card only.
+  isComplete: boolean         // true iff detail is present with all 13 fields populated
+}
+
+export interface MarcActionDetail {
+  title: string                      // Plain-English decision title (NOT a mission ID)
+  situation: string                  // What's happening that prompted this decision
+  whatMarcDecides: string            // The specific question Marc is answering
+  whyOrionCannotDecide: string       // Why Orion can't handle this
+  orionRecommends: 'approve' | 'reject' | 'defer' | 'request_info'
+  whyRecommends: string              // 2-4 sentences of plain reasoning
+  ifApproved: string                 // Concrete outcome
+  ifDeferred: string                 // Risk or consequence
+  ifRejected: string                 // Risk or consequence (or 'N/A - see ifDeferred' if same)
+  costTimeAndMoney: string           // e.g. "5 minutes, no cost" or "~$50"
+  riskOfDelay: string                // What gets worse the longer Marc waits
+  followUpOwner: string              // Named agent
+  nextActionOnApprove: string        // First concrete step after Marc approves
 }
 
 export interface LaunchReadiness {

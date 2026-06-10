@@ -370,6 +370,41 @@ const SEED_MISSIONS: Mission[] = [
   },
   // ── ATLAS ─────────────────────────────────────────────────────────────────
   {
+    id: 'ATL-PROD-001',
+    agentId: 'atlas',
+    title: 'Unified Production & Approval page — pre-build spec',
+    status: 'active',
+    priority: 'P1',
+    percentComplete: 0,
+    waitingOn: 'Marc: approve ATL-PROD-001 pre-build spec to begin Phase 1 code',
+    resolveUrl: '/admin/command-center',
+    lastActivity: TODAY,
+    eta: 'Phase 1 begins immediately after Marc approves',
+    notes: 'Atlas delivered the pre-build spec for unified /admin/production page. Awaiting Marc acceptance gate before code starts.',
+    unread: true,
+    createdAt: NOW,
+    updatedAt: NOW,
+    whyOrionCannotDecide: 'ORION-011 Marc Acceptance Gate — no implementation may begin until Marc approves the design document.',
+    authorityCategory: 'executive-judgment',
+    marcActionDetails: {
+      'approve atlprod001 prebuild spec to begin phase 1 code': {
+        title: 'Approve the design spec for the unified Production page',
+        situation: 'Atlas has delivered a complete pre-build spec for the unified /admin/production page (ATL-PROD-001). This page will merge the current Production Console and Content Approval pages into one view. All outstanding questions in the spec were resolved before delivery. Atlas is waiting for approval before writing any code.',
+        whatMarcDecides: 'Approve the spec as written so Atlas begins Phase 1 code, or request changes before Atlas starts.',
+        whyOrionCannotDecide: 'ORION-011 requires Marc to approve design documents before any implementation begins. Orion cannot self-certify.',
+        orionRecommends: 'approve',
+        whyRecommends: 'The spec was reviewed and both Atlas Notes were resolved. Phase 1 introduces no schema changes, no breaking changes, and no new dependencies. It adds a read-only unified view. The risk of approving is near zero. The risk of delay is continued split workflows across two pages.',
+        ifApproved: 'Atlas begins Phase 1 coding immediately. A working Needs Attention section and production queue view are delivered in 1-2 days. Marc reviews and approves Phase 1 before Phase 2 begins.',
+        ifDeferred: 'Phase 1 delays one day per day of deferral. Orion and Hal continue operating across two separate admin pages with no unified production status view.',
+        ifRejected: 'Atlas revises the spec per Marc\'s feedback and resubmits. 1-2 day revision cycle.',
+        costTimeAndMoney: '5 minutes to review the spec. No cost to approve - Atlas builds it.',
+        riskOfDelay: 'Orion cannot see production status in one place. Every day without it makes production coordination harder.',
+        followUpOwner: 'Atlas',
+        nextActionOnApprove: 'Atlas begins Phase 1 immediately - Needs Attention section, production queue, three parallel data fetches. No schema changes. Delivers working code for Marc review in 1-2 days.',
+      },
+    },
+  },
+  {
     id: 'ATL-001',
     title: 'Platform stability + Stripe Annual billing fix',
     agentId: 'atlas',
@@ -481,7 +516,7 @@ const SEED_MISSIONS: Mission[] = [
     status: 'blocked',
     priority: 'P1',
     percentComplete: 0,
-    waitingOn: 'Marc: authorize creation of correct Annual price ID in Stripe live dashboard',
+    waitingOn: 'Marc: create Founding Member annual Stripe price',
     resolveUrl: 'https://dashboard.stripe.com/prices',
     lastActivity: TODAY,
     eta: 'Same day once authorized',
@@ -498,6 +533,23 @@ const SEED_MISSIONS: Mission[] = [
     nextActionOnApprove: 'Marc creates price ID in Stripe dashboard, sends ID to Orion → Atlas deploys within 1 hour.',
     whyOrionCannotDecide: 'Stripe live dashboard access is Marc-only. This is a Marc account action — Orion has no login credentials.',
     authorityCategory: 'executive-judgment',
+    marcActionDetails: {
+      'create founding member annual stripe price': {
+        title: 'Create the Founding Member annual Stripe price ($29.99/year)',
+        situation: 'The Founding Member annual billing option is built in the codebase (ATL-PIPE-006, deployed) but non-functional because the Stripe price ID doesn\'t exist. If any FM subscriber chooses annual billing today, they are charged the wrong amount — the standard annual price instead of $29.99/year.',
+        whatMarcDecides: 'Create a $29.99/year recurring price in Stripe for the Founding Member plan, then add the price ID as an env var in Vercel.',
+        whyOrionCannotDecide: 'Stripe live dashboard and Vercel env vars are Marc-only. Orion cannot create prices or set env vars.',
+        orionRecommends: 'approve',
+        whyRecommends: 'This is a live billing risk. The code is deployed and waiting for this price to exist. Takes 5 minutes. Must be done before any FM campaign launches — it is a campaign launch gate.',
+        ifApproved: 'Annual FM billing works correctly. FM campaign can include annual option. ATL-PIPE-006 routes annual FM subscribers to $29.99/year automatically.',
+        ifDeferred: 'FM annual billing stays broken. Cannot launch FM campaign until this is set. Any subscriber who somehow chooses annual is charged the wrong amount.',
+        ifRejected: 'Annual FM option must be disabled entirely, reducing the FM value proposition. Monthly-only FM is possible but suboptimal.',
+        costTimeAndMoney: '5 minutes. Creating a Stripe price is free.',
+        riskOfDelay: 'Blocks FM campaign launch. Live billing misconfiguration for any annual FM subscriber.',
+        followUpOwner: 'Atlas (verifies env var is set)',
+        nextActionOnApprove: 'Marc creates price in Stripe → sends price_ID to Orion → Orion adds STRIPE_PRICE_FOUNDING_MEMBER_ANNUAL to Vercel → Atlas verifies → FM campaign unblocked.',
+      },
+    },
   },
   {
     id: 'ATL-005',
@@ -683,7 +735,7 @@ const SEED_MISSIONS: Mission[] = [
     status: 'active',
     priority: 'P1',
     percentComplete: 75,
-    waitingOn: 'Marc: accept corrected BART-001 baseline · Marc: new Mercury API token (generate from Mercury → Settings → API) · Marc: KIE.ai monthly cost · Marc: X API plan (free or $100/mo)',
+    waitingOn: 'Marc: accept corrected BART-001 baseline · Marc: new Mercury API token · Marc: KIE.ai monthly cost · Marc: X API plan (free or $100/mo)',
     resolveUrl: 'https://app.mercury.com/settings/api',
     lastActivity: TODAY,
     eta: 'Closes same day Marc provides 3 outstanding data points',
@@ -700,6 +752,38 @@ const SEED_MISSIONS: Mission[] = [
     nextActionOnApprove: 'Bart begins BART-002 immediately. Marc generates Mercury token from Mercury → Settings → API and sends to Orion. Atlas updates .env.local within 1 hour.',
     whyOrionCannotDecide: 'Per ORION-FIN-001 Section 3: Marc must accept the financial baseline before any variance analysis or planning begins. Orion may not self-certify financial ground truth.',
     authorityCategory: 'executive-judgment',
+    marcActionDetails: {
+      'accept corrected bart001 baseline': {
+        title: 'Accept the BART-001 corrected financial baseline',
+        situation: 'Bart filed a corrected financial baseline: MRR $0, burn $405.17/month, 22-24 month runway estimate based on May 12 Mercury balance. Two data points remain outstanding: KIE.ai monthly cost (now confirmed at $0.33/month) and X API plan (free vs $100/month). Mercury balance itself is stale pending token replacement.',
+        whatMarcDecides: 'Accept this baseline as the official Endless Tales financial ground truth, understanding that the Mercury balance will be updated once the token is replaced.',
+        whyOrionCannotDecide: 'Per ORION-FIN-001 Section 3: Marc must accept the financial baseline. Orion cannot self-certify financial ground truth.',
+        orionRecommends: 'approve',
+        whyRecommends: 'The confirmed data is accurate. The only gap is the stale Mercury balance, which will be resolved when Marc provides the new token. Accepting now unblocks BART-002 live governance framework. We can update the baseline the moment Mercury is live.',
+        ifApproved: 'BART-002 begins immediately. Bart implements live financial tracking, expenditure review chain, and monthly reporting. Mercury balance updates automatically once token is replaced.',
+        ifDeferred: 'BART-002 stays blocked. No live financial governance. Spending decisions made without an approved baseline.',
+        ifRejected: 'Bart revises per Marc\'s feedback. Specify which data point is wrong or missing.',
+        costTimeAndMoney: '2 minutes to review. No cost.',
+        riskOfDelay: 'Every financial decision is made without approved ground truth. BART-002 governance framework cannot start.',
+        followUpOwner: 'Bart',
+        nextActionOnApprove: 'Bart begins BART-002 immediately. First deliverable: live expenditure tracking report within 24 hours.',
+      },
+      'new mercury api token': {
+        title: 'Replace the Mercury API token to restore financial tracking',
+        situation: 'The Mercury API token was revoked. Bart has had no live Mercury balance data since May 12, 2026 — 29+ days ago. The cash balance in the Command Center is stale. Bart cannot complete the financial baseline or model runway accurately without current data.',
+        whatMarcDecides: 'Log in to Mercury → Settings → API → Generate new token, then send the token to Orion.',
+        whyOrionCannotDecide: 'Only Marc holds Mercury account credentials. Token generation requires logging in. Orion cannot generate tokens for Marc\'s account.',
+        orionRecommends: 'approve',
+        whyRecommends: 'This takes 2 minutes. Mercury balance is 29+ days stale. Every financial decision we make right now is based on a May 12 snapshot. Restoring the token gives Bart live cash visibility and unblocks the entire BART financial governance framework. No risk involved.',
+        ifApproved: 'Marc sends token to Orion. Atlas updates MERCURY_API_TOKEN in Vercel env vars and redeploys within 1 hour. Live Mercury balance visible in Command Center. Bart completes BART-001 baseline and begins BART-002 live financial tracking. Daily cash floor alerts activate.',
+        ifDeferred: 'Financial tracking stays blind. Runway modeling remains at May 12 data. Bart cannot complete baseline. BART-002 governance framework stays blocked. Every day of delay is a day without live cash visibility.',
+        ifRejected: 'Live Mercury tracking stays disabled permanently. Bart cannot confirm current runway. Not recommended — there is no downside to restoring the token.',
+        costTimeAndMoney: '2 minutes. No cost.',
+        riskOfDelay: '29+ days blind on cash position. Balance may have changed materially. Launch financial decisions are made without verified runway data.',
+        followUpOwner: 'Bart + Atlas',
+        nextActionOnApprove: 'Marc sends new token to Orion → Orion sends to Atlas → Atlas updates MERCURY_API_TOKEN in Vercel within 1 hour → Bart pulls live balance and completes BART-001 baseline.',
+      },
+    },
   },
   {
     id: 'BART-002',
@@ -725,6 +809,57 @@ const SEED_MISSIONS: Mission[] = [
     nextActionOnApprove: 'Marc generates token from Mercury → Settings → API. Sends to Orion. Atlas updates .env.local and redeploys within 1 hour. Bart begins BART-002 immediately.',
     whyOrionCannotDecide: 'Mercury banking dashboard access is Marc-only. API token generation requires Marc to log in. Orion cannot generate tokens for Marc\'s account.',
     authorityCategory: 'executive-judgment',
+  },
+  // ── LEX ───────────────────────────────────────────────────────────────────
+  {
+    id: 'LEX-004',
+    title: 'Endless Tales trademark and defensive domain strategy',
+    agentId: 'lex',
+    status: 'active',
+    priority: 'P1',
+    percentComplete: 40,
+    waitingOn: 'Marc: earliest commercial activity date · Marc: buy defensive domain variants',
+    resolveUrl: '/admin/command-center',
+    lastActivity: TODAY,
+    eta: 'Trademark strategy within 24 hours after Marc response',
+    notes: 'Lex found an active same-name competitor at www.endless-tales.com. Trademark and domain protection require Marc factual input and spending authorization.',
+    unread: true,
+    createdAt: NOW,
+    updatedAt: NOW,
+    whyOrionCannotDecide: 'Commercial history is Marc-only factual knowledge, and defensive domain purchases require Marc spending authorization.',
+    authorityCategory: 'legal',
+    marcActionDetails: {
+      'earliest commercial activity date': {
+        title: 'Tell Orion the earliest date Endless Tales was publicly available',
+        situation: 'Lex found an active competitor at www.endless-tales.com — same product, same pricing ($2.99/month Founding Member, 500-cap), launched April 17, 2026. Neither party holds a USPTO trademark on "Endless Tales." The date Endless Tales first had any public commercial activity determines whether we file a trademark based on prior use or need a different strategy.',
+        whatMarcDecides: 'Provide the earliest date Endless Tales was publicly offered, marketed, or made available — even in beta, invite-only, or waitlist form.',
+        whyOrionCannotDecide: 'Only Marc knows the factual commercial history of Endless Tales. This is a question of fact, not a decision Orion can make.',
+        orionRecommends: 'request_info',
+        whyRecommends: 'This single date determines the entire trademark strategy. If Endless Tales pre-dates April 17, 2026, we have strong common-law priority over the competitor. If not, Lex recommends filing now and establishing use going forward. Lex can finalize the strategy within 24 hours of receiving this date.',
+        ifApproved: 'Lex receives the date and delivers a trademark filing recommendation within 24 hours. If the date pre-dates the competitor, Lex recommends filing immediately. LEX-004 closes.',
+        ifDeferred: 'Every day of delay strengthens the competitor\'s common-law trademark position. The longer they operate publicly, the harder a future challenge becomes.',
+        ifRejected: 'N/A — this is a request for a factual answer, not a policy decision.',
+        costTimeAndMoney: '2 minutes to answer. USPTO filing ~$350 is a separate decision.',
+        riskOfDelay: 'Competitor launched April 17, 2026. Every month of public operation builds their common-law claim. Filing priority depends on who was first in commerce.',
+        followUpOwner: 'Lex',
+        nextActionOnApprove: 'Marc sends date to Orion → Lex delivers trademark strategy recommendation within 24 hours.',
+      },
+      'buy defensive domain variants': {
+        title: 'Buy defensive domain variants to block brand squatting',
+        situation: 'An active competitor operates www.endless-tales.com since April 17, 2026, with an identical product. No party holds a USPTO trademark. Domain variants — endlesstales.co, endlesstales.app, endlesstales.io, getendlesstales.com — are currently unregistered and available. Acquiring them now costs ~$50 and closes a cheap brand-protection gap.',
+        whatMarcDecides: 'Approve purchasing ~4 defensive domain variants at ~$10-15/year each (~$50 total).',
+        whyOrionCannotDecide: 'Domain purchases cost real money. All spending requires Marc\'s authorization per ORION-FIN-001.',
+        orionRecommends: 'approve',
+        whyRecommends: 'This is the cheapest brand protection action available. ~$50 to prevent squatting. The competitor\'s existence makes this more urgent, not less. Delay costs nothing today but risks having a squatter register these domains as Endless Tales gains visibility.',
+        ifApproved: 'Lex purchases the approved variants via registrar of Marc\'s choice. Redirects configured to drivetimetales.com. Lex confirms and reports back within 24 hours.',
+        ifDeferred: 'Variants remain available. Risk grows as Endless Tales gains public visibility. Recovery via UDRP dispute costs significantly more.',
+        ifRejected: 'Variants remain unregistered. Acceptable only if Marc is comfortable with the squatting risk.',
+        costTimeAndMoney: '~$50 total for 4 domains at ~$10-15/year each. 10 minutes of Lex\'s time.',
+        riskOfDelay: 'Once a squatter registers any variant, recovery is expensive or impossible. Risk is low today but grows with launch visibility.',
+        followUpOwner: 'Lex',
+        nextActionOnApprove: 'Lex purchases endlesstales.co, .app, .io, getendlesstales.com. Configures redirects. Reports confirmation within 24 hours.',
+      },
+    },
   },
 ]
 
@@ -996,6 +1131,31 @@ const SEED_READINESS: LaunchReadiness = {
   updatedAt: NOW,
 }
 
+function mergeSeedMissionDetails(storedMissions: Mission[] | undefined): Mission[] {
+  if (!storedMissions || storedMissions.length === 0) return SEED_MISSIONS
+
+  const seedById = new Map(SEED_MISSIONS.map(mission => [mission.id, mission]))
+  const storedIds = new Set(storedMissions.map(mission => mission.id))
+  const merged = storedMissions.map(mission => {
+    const seedMission = seedById.get(mission.id)
+    if (!seedMission?.marcActionDetails) return mission
+    return {
+      ...mission,
+      waitingOn: seedMission.waitingOn,
+      marcActionDetails: {
+        ...seedMission.marcActionDetails,
+        ...mission.marcActionDetails,
+      },
+    }
+  })
+
+  SEED_MISSIONS.forEach(seedMission => {
+    if (!storedIds.has(seedMission.id)) merged.push(seedMission)
+  })
+
+  return merged
+}
+
 // ─── Route handlers ───────────────────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
@@ -1032,9 +1192,8 @@ export async function GET(req: NextRequest) {
     return acc
   }, {} as AgentsState)
 
-  // Use SEED_MISSIONS when stored array is empty ([] is truthy — ?? alone is insufficient)
   const storedMissions = state.missions as Mission[] | undefined
-  const missions = (storedMissions && storedMissions.length > 0) ? storedMissions : SEED_MISSIONS
+  const missions = mergeSeedMissionDetails(storedMissions)
 
   return json({
     agents,
