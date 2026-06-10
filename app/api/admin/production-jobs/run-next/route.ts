@@ -1734,6 +1734,17 @@ async function generateStandaloneScript(job: ProductionJob, model: string) {
   if (brief.genre && generatedGenre && generatedGenre.toLowerCase() !== brief.genre.toLowerCase()) {
     briefMismatches.push(`Genre mismatch: brief="${brief.genre}" vs script="${generatedGenre}"`)
   }
+  // Title check: if brief specifies a title, warn if generated title differs substantially
+  const briefTitle = String(brief.title || '').trim()
+  if (briefTitle && generatedTitle && generatedTitle.toLowerCase() !== briefTitle.toLowerCase()) {
+    briefMismatches.push(`Title mismatch: brief="${briefTitle}" vs script="${generatedTitle}"`)
+  }
+  // Narrator check: brief may carry narrator via narrative_voice or explicit narrator field
+  const briefNarrator = String(brief.narrator || brief.narrative_voice || story.narrative_voice || '').trim()
+  const generatedNarrator = extractHeader(script, 'NARRATOR').trim()
+  if (briefNarrator && generatedNarrator && generatedNarrator.toLowerCase() !== briefNarrator.toLowerCase()) {
+    briefMismatches.push(`Narrator mismatch: brief="${briefNarrator}" vs script="${generatedNarrator}"`)
+  }
   const briefWarnings = briefMismatches.length > 0 ? briefMismatches : []
 
   // ATL-PIPE-005: Extract Belle B intro line and populate intro_text field
@@ -1742,7 +1753,7 @@ async function generateStandaloneScript(job: ProductionJob, model: string) {
     const belleIntroSection = extractBelleSection(script, 'intro')
     if (belleIntroSection) {
       // Extract text after "BELLE B:" label
-      const belleMatch = belleIntroSection.match(/BELLE\s+B:\s*(.+?)(?:\n|$)/is)
+      const belleMatch = belleIntroSection.match(/BELLE\s+B:\s*(.+?)(?:\n|$)/i)
       if (belleMatch) {
         introText = belleMatch[1].trim()
         // Validate intro_text references listener name and has specific story details (not generic)
@@ -2838,12 +2849,12 @@ async function runStandaloneRenderFinalMix(job: ProductionJob, origin: string) {
     }
     
     if (nullLufsSegments.length > 0) {
-      const failureMsg = `Segments with null/invalid LUFS detected before render_final_mix: ${nullLufsSegments.join(', ')}`
       const errorReport = {
         success: false,
+        kind: 'null_lufs_segments',
         error: 'NULL_LUFS_PRE_ASSEMBLY_GATE_FAILED',
         affectedSegments: nullLufsSegments,
-        message: failureMsg,
+        message: 'Pre-assembly gate: segments have null LUFS. Delete affected segments and reset job to generate_voices.',
         remediation: 'Delete affected segments and reset job to generate_voices step for regeneration',
       }
       // Allow max 2 render attempts before marking as terminal failure
