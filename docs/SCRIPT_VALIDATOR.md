@@ -1,7 +1,8 @@
 # SCRIPT VALIDATOR — Endless Tales
-**Version:** 1.2
-**Owner:** Marc Postlewaite / Endless Tales  
-**Last Updated:** May 2026
+**Version:** 1.1
+**Owner:** Marc Postlewaite / Endless Tales
+**Last Updated:** June 10, 2026
+**Changes from v1.0 (approved by Marc, June 10, 2026):** Section 3 changed from four Belle B intro variations to ONE intro line (matches Stage 2 v2.2 and Spec v1.3). Section 4 SFX frequency changed to Anchor SFX count check (3–6) and [MUSIC:OUT]/[MUSIC:IN] pairing checks added. New Section 8B Turn Rule check. Section 10 bridge-line checks added. Section 6 author examples updated to current roster. Section 11 word counts corrected to 130 wpm and 12–18 min series default noted. Voice ID references: Belle B is GMhgX8fCR9GUtd3kmlKC everywhere (improved May 2026 voice; wewocdDkjSLm9ZwjO7TD and KWDD3Wyq30ZF5NEL01EJ are retired). Section 2B added: Story Resolution Map check. Section 8 clarity check added.
 
 ---
 
@@ -10,22 +11,6 @@
 This document is pasted into a Claude chat along with a completed Endless Tales script. Claude runs every check below against the script and returns either a PASS or a structured failure report. This is an independent quality gate — it runs after Stage 2 script writing is complete, before the script goes to Hal for audio production.
 
 **No ElevenLabs credits are spent on a script that fails this validator.**
-
----
-
-## CANONICAL STORY SYSTEM REFERENCES
-
-Before validating story architecture, episode endings, or Belle intro/outro behavior, use these source-of-truth documents:
-
-- `CLAUDE_STORY_ARCHITECTURE_BIBLE.md`
-- `STORY_RESOLUTION_MAP_RULES.md`
-- `ENDING_SATISFACTION_VALIDATION.md`
-- `SERIES_EPISODE_STRUCTURE_RULES.md`
-- `INTRO_OUTRO_BIBLE.md`
-- `INTRO_OUTRO_PRODUCTION_RULES.md`
-- `BELLE_B_PROMPT_RULES.md`
-
-These documents define the canonical story system. This validator should evolve toward enforcing them before any audio generation.
 
 ---
 
@@ -48,13 +33,13 @@ You are running a quality gate check on an Endless Tales audio drama script. Wor
 At the end, output one of two things:
 
 **If all checks pass:**
-```
+~~~
 ✅ VALIDATOR RESULT: PASS
 Script is cleared for production. Send to Hal.
-```
+~~~
 
 **If any check fails:**
-```
+~~~
 ❌ VALIDATOR RESULT: FAIL
 Do not send to Hal. Fix the following before resubmitting:
 
@@ -64,7 +49,7 @@ Do not send to Hal. Fix the following before resubmitting:
   Fix: [exactly what to change]
 
 [repeat for each failure]
-```
+~~~
 
 Be specific. Vague feedback is not useful. If a parenthetical appears in a dialogue line, quote it. If a BEAT marker is inline, quote the full line. If the narrative voice shifts, quote both lines showing the inconsistency.
 
@@ -110,41 +95,55 @@ Check that the header block is present and complete. Every field must be populat
 
 **Check:** Does every CHARACTER GUIDE entry include: name, age, gender, accent, and a personality note? Any entry missing one of these fields — FAIL.
 
-**Check:** Are any platform voices (Belle, Sandy) listed as characters in the CHARACTER GUIDE? If yes — FAIL. Platform voices may not be cast as story characters.
+**Check:** Are any platform voices (Belle B, Sandy) listed as characters in the CHARACTER GUIDE? If yes — FAIL. Platform voices may not be cast as story characters.
 
 ---
 
-## SECTION 3 — BELLE B INTRO VARIATIONS
+## SECTION 2B — STORY RESOLUTION MAP (v1.1)
 
-**Check:** Is a `BELLE B INTRO VARIATIONS` block present at the top of the script, before `[START AUDIO DRAMA SCRIPT]`? If absent — FAIL.
+**Check:** Is a STORY RESOLUTION MAP comment block present at the very top of the script, above the Belle B intro block? If absent — FAIL.
 
-**Check:** Are there exactly 4 variations labeled V1, V2, V3, V4? If fewer than 4 — FAIL.
+**Check:** Does it contain all six sections — MAIN HOOK / WHY DIFFICULT / MIDDLE MOVEMENT / FINAL SOLUTION / WHY EARNED / VARIETY GUARDRAIL — each filled in? Any missing or empty — FAIL.
 
-**Check:** Does each variation contain `[LISTENER_NAME]`? If any variation is missing the placeholder — FAIL.
+**Check:** Is the FINAL SOLUTION specific and concrete (not "things resolve" or "the truth comes out")? Vague — FAIL.
 
-**Check:** Does `[LISTENER_NAME]` appear at different positions across the 4 variations — not always the first word? If all 4 start with `[LISTENER_NAME],` — FAIL.
+**Check:** Does the script's actual ending deliver the FINAL SOLUTION stated in the map? If the script ends differently than the map promised — FAIL (one of them is wrong; they must agree).
 
-**Check:** Does each variation include the story title in quotes? If any variation omits the title — FAIL.
+**Check:** Does the MIDDLE MOVEMENT list correspond to real turns present in the script (cross-reference Section 8B)? If the map lists developments the script never delivers — WARNING.
 
-**Check:** Is at least one variation written to work gracefully without a name (i.e., `[LISTENER_NAME]` could be replaced with `friend` or removed and the sentence still flows)? If none — FAIL.
+---
 
-**Check:** Scan all 4 variations for forbidden generic language. The following phrases or their equivalents are automatic failures:
+## SECTION 3 — BELLE B INTRO
+
+**Check:** Is a `BELLE B INTRO` block present at the top of the script, before the header block? If absent — FAIL.
+
+**Check:** Is there exactly ONE Belle B intro line? If multiple variations are present (V1/V2/V3/V4 or similar) — FAIL. One line is written; the name stitch handles personalization.
+
+**Check:** Does the line contain `[LISTENER_NAME]` exactly once? If missing or repeated — FAIL.
+
+**Check:** Is `[LISTENER_NAME]` placed naturally for this story's tone — and would the line still flow if the name were removed entirely? Test it: read the line with the placeholder deleted. If the sentence breaks without the name — FAIL. (The system omits the name for listeners whose name audio is unavailable.)
+
+**Check:** Does the line include the story title in quotes? If absent — FAIL.
+
+**Check:** Is the line one sentence, or two short sentences maximum? Longer — FAIL.
+
+**Check:** Scan the intro line for forbidden generic language. The following phrases or their equivalents are automatic failures:
 - "a great story"
 - "an exciting adventure"
 - "a thrilling mystery"
 - "for your listening pleasure"
-- "tonight's story" / "tonight's episode" / "today's story"
+- "tonight's story" / "tonight's episode" / "today's story" / any time-of-day reference
 - "I am pleased to present"
-- "Are you ready for..."
-- Any rhetorical question directed at the listener
+- "Welcome to Endless Tales" / "Endless Tales presents"
+- "Are you ready for..." or any rhetorical question directed at the listener
 
-**Check:** Do the 4 variations feel genuinely different in sentence structure — not just synonyms swapped? If 3 or more variations start with the same sentence structure (e.g., `[NAME], [adjective] story...`) — FAIL.
+**Check:** Does the line reference something SPECIFIC and sensory from the story — not a genre label? "A courier picks up a package that was never meant for him" passes. "A thrilling tale of suspense" fails.
 
 **Series episodes only (Episode 2 and beyond):**
 
-**Check:** Do the intros assume the listener is already inside the story — momentum, not invitation? If any variation re-explains the series premise or re-pitches the story concept as if the listener is new — FAIL.
+**Check:** Does the intro assume the listener is already inside the story — momentum, not invitation? If it re-explains the series premise or re-pitches the story concept as if the listener is new — FAIL.
 
-**Check:** Do the intros reference the situation or emotional state the listener was just left in at the end of the previous episode? If all 4 variations are generic re-entries with no connection to prior episode — FAIL.
+**Check:** Does the intro reference the situation or emotional state the listener was left in at the end of the previous episode? If it is a generic re-entry with no connection to the prior episode — FAIL.
 
 ---
 
@@ -185,25 +184,24 @@ If any marker is found inline with other text — FAIL. Quote every instance.
 
 If any SFX description is too vague to be produced by a sound designer — FAIL.
 
-### SFX Frequency
+### SFX Count — Anchor SFX Rule (v1.1)
 
-**Check:** Estimate the script runtime from the word count. Is there at least one SFX marker per 90 seconds of estimated runtime? (Rough guide: 150 words of dialogue/narration ≈ 60 seconds.)
+**Check:** Count the `[SFX:` markers in the script body. The target is **3 to 6 anchor SFX per story.**
+- 0 SFX markers — FAIL (the story has no sonic anchors)
+- 1–2 or 7–8 markers — WARNING (outside target; Marc decides)
+- More than 8 markers — FAIL (over-dense; this platform uses sparse, bold anchor SFX, not continuous sound design)
 
-If SFX markers are sparse — note it as a WARNING (not a FAIL), with the approximate gap.
+**Check:** Does any SFX description imply a continuous ambience bed — "throughout," "continuous," "in the background," "ambient ... under the scene"? If yes — FAIL. Quote it. Anchor SFX are discrete events, not beds.
 
-### Scene-Level Music Cues
+**Check:** Is every SFX marker placed in a natural gap — its own line between speech, at a scene transition or pivotal moment — rather than annotating something happening under dialogue? If an SFX is written to underscore simultaneous dialogue — WARNING.
 
-**Check:** Are `[MUSIC: ...]` cues present in the script body? Compare against the minimum for the target runtime:
-- 10 min: at least 3 music cues
-- 15 min: at least 4 music cues
-- 20 min: at least 5–6 music cues
-- 25 min: at least 7–8 music cues
+### Music Silence Markers (v1.1)
 
-If fewer than the minimum — FAIL. Count the music cues found and state the shortfall.
+**Check:** If `[MUSIC:OUT]` appears: is every `[MUSIC:OUT]` followed later by a `[MUSIC:IN]`? An unclosed `[MUSIC:OUT]` — FAIL.
 
-**Check:** Does at least one music cue use `[MUSIC: cuts out entirely]` or `[MUSIC: drops to near silence]` at a dramatically appropriate moment? Silence is a tool — a script that never drops the music is missing dynamic range. If absent — note as WARNING.
+**Check:** Are music markers on their own dedicated lines? Inline — FAIL.
 
-**Check:** Are music cues placed at dramatic turning points — not randomly distributed? A music cue immediately before or after a revelation, a threat appearing, or an emotional climax is correct. A music cue mid-sentence of routine dialogue is incorrect. If placement feels random — note as WARNING with examples.
+**Check:** Count `[MUSIC:OUT]` occurrences. More than 2 — FAIL (silence is a scalpel; overuse kills the effect).
 
 ### Dialogue Turn Length
 
@@ -237,12 +235,12 @@ This section is a judgment check, not a mechanical one. Use the author profile f
 
 **Check:** Read 10 randomly selected NARRATOR lines from throughout the script. Do they match the assigned author's declared tone and average sentence length?
 
-Specific checks by author:
-- **Sara Keene / Silas Graves** — sentences should average 8–12 words. Long atmospheric paragraphs — WARNING.
-- **Elias Thorn** — sentences should average 12–18 words. Short punchy sentences throughout — WARNING.
-- **Dale Harmon / Julian Mercer / Mark Holbrook** — sentences should average 10–14 words.
-- **Daniel Wren / Caroline Drake / Nina Vasquez** — sentences should average 12–18 words. Terse action-movie prose — WARNING.
-- **Marc Hobelman** — sentences should average 8–12 words, spare and weathered. Elaborate descriptive prose — WARNING.
+Use the sentence target from the assigned author's profile in STAGE2_SCRIPT_PROMPT v2.2 (the 31-author roster is the source of truth). Examples:
+- **Buck Callahan / Marc Hobelman / Nadia Cross / Rex Harding / Julian Mercer** — short and spare (8–12 words). Long atmospheric paragraphs — WARNING.
+- **Elias Thorn / Maren Holloway / Beatrice Voss / Edmund Farr** — longer, atmospheric (12–18 words). Terse action prose throughout — WARNING.
+- **Silas Cutter** — 7–10 words, fragments allowed under stress. Elegant prose — WARNING.
+- **Declan Marsh / Caroline Voss / Diana Reeve / Frances Adler** — measured middle range (12–16 words).
+If the assigned author is not listed above, read their sentence target directly from the Stage 2 roster.
 
 If the narrator voice feels obviously mismatched from the author profile — note as a WARNING with 2–3 example lines.
 
@@ -276,53 +274,23 @@ Opening that PASS:
 
 If the opening fails the hook test — FAIL. Quote the first line and explain what's wrong.
 
+**Clarity check (v1.1):** within the first ~150 words, does the listener know WHO the main character is, WHERE we are, and WHAT is happening? Mid-action openings are required, but confusion is not a hook — if a first-time listener at partial attention couldn't answer all three, FAIL. The hook comes from clarity.
+
+---
+
+## SECTION 8B — THE TURN RULE (v1.1)
+
+**Check:** Read the script and identify every **turn** — a reveal, a reversal, a new threat, a consequential decision, or a question answered that opens a bigger one. List each turn with its approximate position (word count or minute estimate at 130 wpm).
+
+- If any stretch longer than ~5 minutes (≈650 words) contains no turn — FAIL. Identify the flat stretch.
+- For stories of 20+ minutes: is there a clear midpoint reversal that reframes the protagonist's goal or the listener's understanding? If absent — FAIL.
+- Does every scene end in a different state of knowledge than it began? Scenes that only restate what the listener already knows — WARNING per instance.
+
 ---
 
 ## SECTION 9 — ENDING
 
 **Determine story type** from the header (standalone vs. series, finale vs. non-finale).
-
-### Difficult Solution Rule
-
-**Check:** Does the main story problem feel genuinely difficult or nearly impossible at the beginning? If the problem is solved by an obvious step, a convenient coincidence, or information the protagonist already had, note as WARNING or FAIL depending on severity.
-
-**Check:** Does the middle of the story progressively make the solution possible by increasing understanding, revealing leverage, escalating consequences, or forcing a meaningful choice? If the middle does not prepare the ending and the solution arrives suddenly — FAIL.
-
-**Check:** Does the ending avoid coincidence or deus-ex-machina rescue? If a new clue, new rule, convenient helper, random confession, or sudden rescue appears only to solve the ending — FAIL.
-
-**Check:** Does the climax happen onstage? If the decisive event occurs offscreen and is only explained afterward — FAIL.
-
-**Check:** Does the protagonist affect the outcome through a decisive action, confrontation, sacrifice, confession, escape, reversal, strategic trap, moral choice, or equivalent story-specific move? If the protagonist mainly watches, waits, discovers, or receives an explanation while someone/something else resolves the conflict — FAIL.
-
-**Check:** Does the ending resolve through dramatic action and consequence, not exposition alone? If the ending is mostly an explanation dump after the real conflict has already ended — FAIL.
-
-**Check:** Does the emotional arc resolve or intentionally land? If the plot is technically explained but the protagonist's emotional stakes are abandoned — FAIL.
-
-**Check:** Is this ending type meaningfully distinct from the repeated default of "find clue, receive explanation, final symbolic image"? If it feels formulaic, note as WARNING and suggest a stronger ending engine such as sacrifice, confrontation, revelation, escape, reversal, emotional confession, strategic trap, or moral choice.
-
-### Reality Anchor Doctrine
-
-**Check:** Does the story remain psychologically and behaviorally believable for its declared genre? Mystery, thriller, drama, and true-crime-adjacent stories should feel grounded and emotionally real unless the premise explicitly establishes otherwise. If the story becomes cartoonish, note as WARNING or FAIL depending on severity.
-
-**Check:** Do character choices follow understandable pressure, motive, fear, desire, loyalty, grief, greed, duty, or survival logic? If a character behaves irrationally only to move the plot forward — FAIL.
-
-**Check:** Does the escalation fit the established scale and rules of the story? If the story randomly mutates genre, introduces an impossible conspiracy scale, or adds world-breaking power without setup — FAIL.
-
-**Check:** Does the plot avoid impossible coincidence chains? If the protagonist succeeds because multiple unrelated lucky events occur in sequence rather than because of investigation, pressure, choice, or consequence — FAIL.
-
-**Escalation Ceiling Rule:** Stakes may intensify. Absurdity should not. Escalation should make the story more urgent, dangerous, personal, costly, or revealing without making it less believable.
-
-Believable escalation:
-- A compromised official blocks the protagonist's safe reporting channel.
-- A witness lies because the truth would endanger someone they love.
-- A hidden technical system has power because the script established its access and limits.
-
-Unbelievable escalation:
-- A grounded town mystery suddenly reveals an international assassin network with no setup.
-- A careful protagonist walks into an obvious trap for no emotional or practical reason.
-- The antagonist can control every camera, bank, phone, road, and witness without prior explanation.
-
-**Genre exception:** Science fiction, horror, fantasy, and magical realism may bend reality, but emotional and character logic must remain believable. The validator should still require rules, limits, costs, and coherent motives.
 
 ### Standalone Ending
 
@@ -344,8 +312,6 @@ If the ending feels unresolved or ambiguous — FAIL. Quote the final narrator l
 
 **Check:** Does the episode end on a hard cliffhanger — revelation, mortal/emotional danger, or betrayal? If the episode ends with resolution or a gentle close — FAIL.
 
-**Check:** Does the episode resolve its episode-level tension while advancing the series-level tension? If it only interrupts the episode without changing the larger series problem — FAIL.
-
 **Check:** Is the final line of the story body a burning question or a shocking statement that the listener cannot let go of? If the final line is soft or ambiguous — FAIL. Quote it.
 
 **Check:** Does the ANNOUNCER outro tease a specific named character, threat, or event from the next episode — something concrete and real? Generic teasers — FAIL. Quote the outro line.
@@ -354,7 +320,7 @@ If the ending feels unresolved or ambiguous — FAIL. Quote the final narrator l
 
 ### Series Finale Ending
 
-**Check:** Is the core series problem resolved with emotional closure? List the major threads you can identify from the script and note whether each one is resolved.
+**Check:** Are all major story threads resolved? List the major threads you can identify from the script and note whether each one is resolved.
 
 **Check:** Is the ANNOUNCER outro a formal series close with no tease or continuation implied? If it teases a sequel or leaves questions open — FAIL.
 
@@ -377,102 +343,31 @@ If any time-of-day reference appears — FAIL. Quote the line.
 - "We hope you enjoyed..."
 - "Join us next time for more great stories!"
 
+### Bridge Line (v1.1) — standalones only
+
+**Check:** If a bridge sentence follows the formal close: is this a STANDALONE? A bridge line on any series episode — FAIL.
+
+**Check:** Is the bridge exactly one sentence? Longer — FAIL.
+
+**Check:** Does it reference a specific, real next listen (a named recurring protagonist or series)? Vague ("more great stories await") — FAIL.
+
+**Check:** Is it free of promo language ("check out," "don't miss," "available now," "subscribe") and free of `[LISTENER_NAME]`? If not — FAIL.
+
 ---
 
 ## SECTION 11 — SCRIPT LENGTH
 
-**Check:** Count the approximate words of dialogue and narration in the script body (excluding header, CHARACTER GUIDE, BELLE B block, SFX markers, and ANNOUNCER lines). Belle is the spoken/persona name; BELLE B is the internal script label and reserved voice identifier.
+**Check:** Count the approximate words of dialogue and narration in the script body (excluding header, CHARACTER GUIDE, BELLE B block, SFX markers, and ANNOUNCER lines).
 
-Compare to the target runtime from the Story Brief:
-- 10 min target: 1,400–1,600 words
-- 15 min target: 2,000–2,300 words
-- 20 min target: 2,700–3,100 words
-- 25 min target: 3,400–3,800 words
+Compare to the target runtime from the Story Brief at the **130 wpm standard** (matches Stage 2 v2.2 — do not use 150 wpm ranges):
+- 10 min target: 1,200–1,400 words
+- 15 min target: 1,800–2,100 words
+- 20 min target: 2,400–2,800 words
+- 25 min target: 3,000–3,500 words
+
+**Series episodes:** unless the Brief explicitly specified a longer runtime, series episodes should target 12–18 minutes. A series episode over 18 minutes with no Brief justification — WARNING.
 
 If the word count is more than 20% under or over the target — note as a WARNING with the actual count and target range. (This is a WARNING, not a FAIL — dramatic pacing varies.)
-
----
-
-## SECTION 12 — REALITY ANCHOR AND ESCALATION CEILING
-
-Reference doctrine: `CLAUDE_STORY_ARCHITECTURE_BIBLE.md` — Reality Anchor Doctrine, Escalation Ceiling Rule.
-
-Failures in this section are hard failures. A story that violates the Reality Anchor Doctrine or Escalation Ceiling Rule is not production-ready regardless of technical format compliance.
-
----
-
-### 12a — Character Behavior
-
-**Check:** Does every character behave in a way that follows from their established psychology, information, and goals? A character doing something solely because the plot needs it — when no story-internal logic drives the decision — is a failure.
-
-If any character behavior fails this test — FAIL. Quote the line and name the logical gap.
-
-Common failures:
-- The antagonist explains their complete plan during the confrontation when no story logic compels disclosure.
-- The protagonist ignores an obvious safe exit with no stated reason for doing so.
-- A trained professional (detective, doctor, engineer) forgets basic procedure at exactly the moment the plot requires it.
-- A character established as cautious acts recklessly without a clear emotional cause.
-- A character's grief, fear, or guilt disappears between scenes without explanation.
-
-**Check:** Does the antagonist have a motivation a human being could genuinely hold? If the motivation is vague ("they are dangerous"), circular ("they want to hurt people because they are bad"), or contradicted by their own behavior — FAIL.
-
----
-
-### 12b — Genre Consistency
-
-**Check:** What genre does the story establish in its first scene? Does the story maintain that genre contract through to its ending?
-
-If the story commits to being a grounded thriller and introduces an unexplained supernatural element in the final act — FAIL, unless the supernatural was foreshadowed and seeded before the midpoint.
-
-State the detected genre. If a genre mutation occurs, quote the lines where it happens and explain what setup would have been required to make it acceptable.
-
----
-
-### 12c — Escalation Ceiling
-
-**Check:** Identify the maximum scope of the threat as established by the opening scene and premise. Then trace each escalation through the story.
-
-For each major escalation, ask:
-1. Is the new threat consistent with the genre and world established at the start?
-2. Does the protagonist respond as their established psychology would predict?
-3. Does the antagonist's behavior continue to follow their stated motivation?
-4. Could this escalation plausibly appear in a real-world account given the genre?
-
-If any escalation introduces a new type of threat — not just a larger version of the existing one — without prior setup, that is a ceiling violation — FAIL.
-
-**Believable escalation (PASS):**
-> A small-town accountant discovers her employer is skimming municipal funds. The middle reveals the mayor is complicit. The finale shows the cover-up extends to the county commissioner.
-> Stakes grow. The world stays coherent. The accountant remains in her own plausible life.
-
-**Unbelievable escalation (FAIL):**
-> A small-town accountant discovers her employer is skimming municipal funds. The middle reveals the fund was created by a shadow government. The finale offers her a seat on a secret council controlling global finance.
-> The ceiling was set at small-town fraud. The story broke through it with no earned setup.
-
-**Believable escalation (PASS):**
-> A retired detective is hired to find a missing woman. He learns she witnessed a murder. The killer turns out to be her brother, whom she was protecting.
-> Character motivations follow from human psychology. Threat type stays within the detective genre.
-
-**Unbelievable escalation (FAIL):**
-> A retired detective is hired to find a missing woman. He learns she was a government sleeper agent. She is then revealed to have been dead for years and he was dreaming.
-> Two unmotivated genre mutations — spy thriller, then supernatural. Neither was seeded.
-
-**Believable (Horror — genre with latitude):**
-> A family moves into a house with a history. Supernatural events escalate. The ghost is established in act one as a specific person with a specific unresolved need. Every subsequent event follows from that one defined supernatural entity.
-> Horror permits supernatural premises, but the rules of that premise must be set early and held.
-
-**Unbelievable (Horror — ceiling violated):**
-> A ghost is introduced in act one. Act two reveals the house is also a portal to a demon dimension. Act three reveals the demons are agents of an ancient Egyptian god.
-> Each escalation introduces a new supernatural system. No single rule holds.
-
----
-
-### 12d — Reality Anchor Summary
-
-After completing 12a–12c, state:
-
-- **Reality Anchor:** PASS / FAIL (with note if FAIL)
-- **Escalation Ceiling:** PASS / FAIL (with note if FAIL)
-- **Genre consistency:** MAINTAINED / MUTATED (note where if mutated)
 
 ---
 
@@ -480,7 +375,7 @@ After completing 12a–12c, state:
 
 After completing all sections, output the full report in this format:
 
-```
+~~~
 ENDLESS TALES SCRIPT VALIDATOR — REPORT
 ========================================
 Script: [TITLE from header]
@@ -490,16 +385,16 @@ Narrative Voice: [from header]
 
 SECTION 1 — HEADER BLOCK: [PASS / FAIL]
 SECTION 2 — CHARACTER GUIDE: [PASS / FAIL]
-SECTION 3 — BELLE B INTRO VARIATIONS: [PASS / FAIL]
+SECTION 3 — BELLE B INTRO: [PASS / FAIL]
 SECTION 4 — FORMAT COMPLIANCE: [PASS / FAIL]
 SECTION 5 — NARRATIVE VOICE CONSISTENCY: [PASS / FAIL]
 SECTION 6 — AUTHOR VOICE: [PASS / WARNING / FAIL]
 SECTION 7 — NARRATOR USAGE: [PASS / WARNING / FAIL]
 SECTION 8 — OPENING HOOK: [PASS / FAIL]
-SECTION 9 — ENDING / DIFFICULT SOLUTION: [PASS / FAIL]
+SECTION 8B — TURN RULE: [PASS / WARNING / FAIL]
+SECTION 9 — ENDING: [PASS / FAIL]
 SECTION 10 — ANNOUNCER OUTRO: [PASS / FAIL]
 SECTION 11 — SCRIPT LENGTH: [PASS / WARNING]
-SECTION 12 — REALITY ANCHOR AND ESCALATION CEILING: [PASS / FAIL]
 
 WARNINGS: [count]
 FAILURES: [count]
@@ -515,7 +410,7 @@ FAILURES TO FIX:
 WARNINGS TO REVIEW:
 [If any — list each warning with context. Marc decides whether to address.]
 ----------------------------------------
-```
+~~~
 
 **PASS threshold:** Zero failures. Warnings do not block production — Marc reviews them and decides.
 
@@ -523,6 +418,6 @@ WARNINGS TO REVIEW:
 
 ---
 
-*SCRIPT_VALIDATOR.md — Endless Tales · Version 1.2 · May 2026*
+*SCRIPT_VALIDATOR.md — Endless Tales · Version 1.1 · June 2026*  
 *Changes require Marc's approval and version increment.*  
 *Commit to GitHub at ~/Projects/ASC/ after any update.*

@@ -1,7 +1,8 @@
 # STORY BRIEF — Endless Tales
-**Version:** 1.0  
-**Owner:** Marc Postlewaite / Endless Tales  
-**Last Updated:** April 2026
+**Version:** 2.1
+**Owner:** Marc Postlewaite / Endless Tales
+**Last Updated:** June 10, 2026
+**Changes from v2.0 (approved by Marc):** PIPELINE_MODE field added (transition vs full). SFX fields reframed as Anchor SFX candidates (3–6 per story). MUSIC_MOMENTS replaced by MUSIC_SILENCE_MOMENTS ([MUSIC:OUT]/[MUSIC:IN], max 2). NEXT_LISTEN field added for Belle bridge lines. Series runtime default 12–18 minutes. Optional SOLUTION_NOTES feeding the mandatory Story Resolution Map. Aligned with PUBLISHED_STORY_SPEC v1.4 and STAGE2_SCRIPT_PROMPT v2.2.
 
 ---
 
@@ -9,69 +10,86 @@
 
 Fill out every field below. Blank fields slow down production and result in Claude making assumptions that may not match your vision. The more specific you are, the better the script.
 
-When complete, paste this brief into a new Claude chat along with the Stage 2 Master Prompt (`STAGE2_SCRIPT_PROMPT.md`) and say: **"Write the script."**
+When complete, paste this brief into a new Claude chat along with the Stage 2 Master Prompt (`STAGE2_SCRIPT_PROMPT.md` v2.2) and say: **"Write the script."**
 
 Fields marked **[REQUIRED]** must be filled. Fields marked **[OPTIONAL]** can be left blank — Claude will use defaults.
+
+---
+
+## PART 0 — PIPELINE MODE
+
+**[REQUIRED]** Which pipeline is live for this story?
+~~~
+PIPELINE_MODE: transition
+~~~
+*(Options: `transition` | `full`)*
+
+- **`transition`** — Builds 1+2 (name stitch, SFX/music-marker rendering) are NOT yet live. Claude follows ALL Stage 2 v2.2 writing rules (Resolution Map, Turn Rule, sensory anchors, opening clarity, one intro line, bridge lines) but the script must contain **NO `[SFX:]` markers, NO `[MUSIC:OUT]`/`[MUSIC:IN]` markers, and NO `[LISTENER_NAME]`** — the Belle intro is written as its no-name version. The current pipeline would read "[LISTENER_NAME]" aloud.
+- **`full`** — Builds 1+2 are live and the two-story pilot has passed. Scripts include `[LISTENER_NAME]`, 3–6 anchor SFX, and optional music silence markers.
 
 ---
 
 ## PART 1 — STORY IDENTITY
 
 **Title (working title or leave blank — Claude will suggest one):**
-```
-TITLE: 
-```
+~~~
+TITLE:
+~~~
 
 **Standalone or Series:** [REQUIRED]
-```
+~~~
 TYPE: standalone
-```
+~~~
 *(Options: `standalone` | `series`)*
 
 **If Series — Series Name:** [REQUIRED for series]
-```
-SERIES_NAME: 
-```
+~~~
+SERIES_NAME:
+~~~
 
 **If Series — Episode Number:** [REQUIRED for series]
-```
-EPISODE_NUMBER: 
-```
+~~~
+EPISODE_NUMBER:
+~~~
 
 **If Series — Total Episodes in Series:** [REQUIRED for series]
-```
-SERIES_TOTAL_EPISODES: 
-```
+~~~
+SERIES_TOTAL_EPISODES:
+~~~
 
 **If Series — Is This the Finale?:** [REQUIRED for series]
-```
+~~~
 IS_FINALE: false
-```
+~~~
 *(Options: `true` | `false`)*
+
+> **Series Release Rule reminder:** Episode 1 never publishes unless Episode 2 is approved and live in the same release. Three-episode series publish complete. Plan the brief batch accordingly.
 
 ---
 
 ## PART 2 — AUTHOR & GENRE
 
 **Author:** [REQUIRED]
-```
-AUTHOR: 
-```
-*(Choose from ET roster: Sara Keene, Elias Thorn, Dale Harmon, Julian Mercer, Daniel Wren, Mark Holbrook, Silas Graves, Nina Vasquez, Caroline Drake, Marc Hobelman)*
+~~~
+AUTHOR:
+~~~
+*(Choose from the 31-author ET roster in STAGE2_SCRIPT_PROMPT v2.2. Each author is permanently paired with their narrator — Claude assigns the narrator automatically from the NARRATOR LOOKUP TABLE.)*
 
 *(If unsure, describe the tone you want and Claude will recommend the right author.)*
 
+*(To write in the style of a classic author — Raymond Chandler, Shirley Jackson, etc. — note that in REQUIREMENTS below.)*
+
 **Primary Genre:** [REQUIRED]
-```
-GENRE: 
-```
-*(Options: Thriller, Horror, Dark Mystery, Mystery/Crime, Adventure, Drama, Sci-Fi, Western, Historical Drama, Supernatural, Family/Heartwarming)*
+~~~
+GENRE:
+~~~
+*(Options: Thriller, Horror, Dark Mystery, Mystery/Crime, Adventure, Drama, Sci-Fi, Western, Historical Drama, Supernatural, Family/Heartwarming, Comedy)*
 
 **Narrative Voice:** [OPTIONAL — Claude defaults to the author's standard voice]
-```
-NARRATIVE_VOICE: 
-```
-*(Options: `first_person` | `third_limited` | `third_omniscient` — leave blank to use author default)*
+~~~
+NARRATIVE_VOICE:
+~~~
+*(Options: `first_person` | `third_limited` | `third_omniscient` — leave blank for author default)*
 
 ---
 
@@ -79,179 +97,210 @@ NARRATIVE_VOICE:
 
 **The Core Premise:** [REQUIRED]
 Describe the story in 2–5 sentences. Who is the protagonist? What do they want? What's standing in their way? What's at stake?
-```
-PREMISE: 
+~~~
+PREMISE:
 
-```
+~~~
 
 **The Setting:** [REQUIRED]
 Time period, location, and any specific environmental details that matter to the story.
-```
-SETTING: 
+~~~
+SETTING:
 
-```
+~~~
 
 **Target Runtime:** [REQUIRED]
-```
-RUNTIME: 
-```
-*(Options: `10 min` | `15 min` | `20 min` | `25 min`)*
+~~~
+RUNTIME:
+~~~
+*(Options: `10 min` | `12 min` | `15 min` | `18 min` | `20 min` | `25 min`)*
+*(**Series episodes default to 12–18 minutes** — one commute-sized attention arc per episode, ending on a cliffhanger. 20–25 minutes is for standalones, finales, and episodes that earn it.)*
 
 **Characters:** [OPTIONAL — Claude will create characters from the premise if blank]
-List any specific characters you want in the story. Include name, role, and any key traits. Leave blank for Claude to create them from the premise.
-```
+Name, role, key traits.
+~~~
 CHARACTERS:
 
-```
+~~~
+
+**Solution Notes:** [OPTIONAL — feeds the mandatory Story Resolution Map]
+If you already know the ending, the twist, or the solution type you want (clever discovery, sacrifice, reversal, justice, bittersweet acceptance, etc.), note it here. Claude must build the full six-section Resolution Map before writing either way.
+~~~
+SOLUTION_NOTES:
+
+~~~
 
 **Specific Story Requirements:** [OPTIONAL]
-Anything else Claude must include, avoid, or handle carefully. Plot points you want hit. Themes you want explored. Content you want excluded.
-```
+Anything Claude must include, avoid, or handle carefully. Plot points, themes, exclusions, style references.
+~~~
 REQUIREMENTS:
 
-```
+~~~
 
 **If Series — Previous Episode Summary:** [REQUIRED for Episode 2+]
-Brief summary of what happened in the previous episode. What was the cliffhanger? What emotional state is the listener in? Claude uses this to write the series intro variations and to carry consequence forward.
-```
+What happened, the cliffhanger, and the emotional state the listener was left in. Claude uses this for the series re-entry intro and to carry consequence forward.
+~~~
 PREVIOUS_EPISODE:
 
-```
+~~~
 
 **If Series — Next Episode Setup:** [OPTIONAL]
-If you know what happens in the next episode, note it here. Claude uses this to write a specific, real series outro tease rather than a generic one.
-```
+If you know what happens next, note it — Claude writes a specific, real outro tease instead of a generic one.
+~~~
 NEXT_EPISODE:
 
-```
+~~~
+
+**Next Listen (bridge line):** [STANDALONES ONLY — OPTIONAL]
+If this author has a series or recurring protagonist in the catalog, name it here. Claude writes Belle's one-sentence bridge after the formal outro ("Marsh has another case waiting whenever you are"). Leave blank = no bridge line.
+~~~
+NEXT_LISTEN:
+
+~~~
 
 ---
 
 ## PART 4 — AUDIO & MUSIC DIRECTION
 
-This section directly controls how Claude writes music cues and SFX into the script, and how Hal mixes the final audio. Be specific — vague direction produces generic results.
-
 **Overall Music Energy:** [REQUIRED]
-Describe the dominant emotional tone of the music for this story. This becomes the foundation of the SUNO PROMPT.
-```
-MUSIC_ENERGY: 
-```
+The dominant emotional tone of the background music.
+~~~
+MUSIC_ENERGY:
+~~~
 *Examples:*
 - `Slow-burn dread — sparse, minimal, tension underneath everything`
 - `Driving and kinetic — pulse-based, forward momentum, no vocals`
 - `Warm and melancholic — acoustic, unhurried, bittersweet`
-- `Atmospheric and expansive — cinematic, wide, documentary feel`
 - `Tense procedural — low strings, clock-like rhythm, urban cold`
+- `Mournful and atmospheric — church organ undertones, something sacred gone wrong`
 
-**Music Reference (optional but powerful):** [OPTIONAL]
-Name a film, TV show, or composer whose score captures the sound you want. Claude uses this to sharpen the SUNO PROMPT.
-```
-MUSIC_REFERENCE: 
-```
-*Examples: `No Country for Old Men`, `True Detective Season 1`, `Arrival`, `Sicario`, `Ozark`, `Hans Zimmer — Interstellar`, `Johann Johannsson`*
+**Music Reference:** [OPTIONAL but powerful]
+A film, TV show, or composer whose score captures the sound.
+~~~
+MUSIC_REFERENCE:
+~~~
+*Examples: `No Country for Old Men`, `True Detective Season 1`, `Arrival`, `Sicario`, `Hans Zimmer — Interstellar`*
 
-**Key Dramatic Moments Needing Music Shifts:** [OPTIONAL but strongly recommended]
-List 2–4 moments in the story where the music energy needs to change significantly. Claude will write scene-level `[MUSIC: ...]` cues at these moments in the script, so Hal knows to shift the mix — not just hold a flat level throughout.
-```
-MUSIC_MOMENTS:
-- [Scene or moment]: [what the music should do]
-- [Scene or moment]: [what the music should do]
-- [Scene or moment]: [what the music should do]
-```
-*Examples:*
-- `Opening — near silence, just ambient texture, no melody`
-- `When the body is discovered — music drops out completely, silence for 3 seconds`
-- `The chase sequence — energy spikes hard, driving rhythm`
-- `Final revelation — music swells, holds, then fades slowly`
-- `Ending — single instrument only, quiet resolution`
+**Music Silence Moments:** [OPTIONAL — full pipeline mode only, max 2]
+The story's single biggest moment(s) where the music should drop to COMPLETE silence and return after ([MUSIC:OUT]/[MUSIC:IN]). One looping track otherwise plays ducked at 15% throughout — silence is the only dynamic tool, so spend it on the moment that matters most.
+~~~
+MUSIC_SILENCE_MOMENTS:
+- [moment]:
+~~~
+*Example: `When Marsh opens the confessional door — silence until he speaks`*
 
-**SFX Density:** [OPTIONAL — defaults to standard]
-```
-SFX_DENSITY: standard
-```
-*(Options: `minimal` — sparse, atmospheric only | `standard` — one significant cue per 60–90 sec | `rich` — frequent, immersive, cinematic)*
-
-**SFX Priority Environments:** [OPTIONAL]
-List the key locations or environments in the story. Claude will ensure these environments get specific, grounded SFX rather than generic ones.
-```
-SFX_ENVIRONMENTS:
-- 
-- 
-```
-*Examples: `rural highway at night`, `1940s diner kitchen`, `abandoned warehouse`, `moving semi cab interior`, `forest in early morning`*
+**Anchor SFX Candidates:** [OPTIONAL — full pipeline mode only]
+The story gets exactly 3–6 anchor SFX: bold, discrete, story-critical sounds at scene transitions and pivotal moments, never under dialogue, no continuous ambience beds. List candidate moments/sounds; Claude selects and places the final 3–6.
+~~~
+ANCHOR_SFX_CANDIDATES:
+-
+-
+~~~
+*Examples: `the confessional door — heavy wood, slow creak` · `the single gunshot in the stairwell` · `the train arriving as she decides`*
 
 **Audio Tone Notes:** [OPTIONAL]
-Anything else about how this story should sound. Silences that matter. Moments where SFX should dominate. Voices that should feel isolated vs. immersed in environment.
-```
+~~~
 AUDIO_NOTES:
 
-```
+~~~
 
 ---
 
-## PART 5 — PUBLISHING
+## PART 5 — BELLE & PUBLISHING
 
-**Story Description (24 words max):** [OPTIONAL — Claude writes one if blank]
-The punchy present-tense hook that appears on the story card in the app. If you have a specific angle you want, write it here. Otherwise Claude will write it from the premise.
-```
+### Belle Intro Line [OPTIONAL — Claude writes one if blank]
+
+Belle is the Endless Tales announcer and the listener's permanent companion — the same warm voice before every story, forever. Her job: recommend this story the way a trusted friend would, with warmth, specificity, and no wasted words.
+
+**One line is written. One set of audio is generated.** In `full` mode the line contains `[LISTENER_NAME]` once, at a natural pause, and the server-side name stitch personalizes it; the line must work gracefully without the name. In `transition` mode Claude writes the same line without the placeholder.
+
+If you have a specific angle for Belle on this story, write it here. Otherwise Claude writes it from the premise and genre using the Genre Tone Guide in Stage 2 v2.2.
+
+~~~
+BELLE_INTRO:
+
+~~~
+
+**Belle never:** uses time-of-day references · uses generic language ("great story," "exciting adventure") · directly compliments the listener · sounds like a promo or host · mentions the author or narrator by name · exceeds two short sentences · asks rhetorical questions.
+
+---
+
+### Listener Gender Skew [OPTIONAL]
+
+Calibrates Belle's word choice and register only — not her voice or warmth. One line is still written.
+~~~
+LISTENER_GENDER_SKEW: neutral
+~~~
+*(Options: `male` | `female` | `neutral`)*
+
+---
+
+### Story Description [OPTIONAL — Claude writes one if blank]
+
+The punchy present-tense hook on the story card. 24 words maximum.
+~~~
 DESCRIPTION:
 
-```
+~~~
 
 ---
 
-## COMPLETED BRIEF EXAMPLE
+## COMPLETED BRIEF EXAMPLE (full pipeline mode)
 
-```
-TITLE: The Long Haul
+~~~
+PIPELINE_MODE: full
+TITLE: The Confession Booth
 TYPE: standalone
-AUTHOR: Dale Harmon
-GENRE: Thriller
-NARRATIVE_VOICE: (blank — use author default)
-RUNTIME: 15 min
+AUTHOR: Declan Marsh
+GENRE: Mystery/Crime
+NARRATIVE_VOICE: (blank — author default)
+RUNTIME: 20 min
 
-PREMISE: A long-haul trucker making his final delivery before retirement 
-discovers his cargo isn't what the manifest says. Someone is following him. 
-He has 200 miles and six hours to decide whether to deliver it anyway or 
-find out what's really in that trailer.
+PREMISE: A parish priest is found strangled in the confessional of an old
+South Boston church. Detective Declan Marsh assumes robbery until he learns
+the dead priest heard a confession minutes before he died — and the penitent
+left behind a detail about an unsolved murder only the killer could know.
+Marsh has to find the killer before they realize what they left behind.
 
-SETTING: Interstate highway, rural American South, present day, night. 
-Truck stops, empty roads, one roadside diner.
+SETTING: South Boston, present day. An old Catholic parish church, a
+detective bureau, a triple-decker street, a waterfront bar. Winter.
 
 CHARACTERS: (blank — Claude creates from premise)
 
-REQUIREMENTS: 
-- No supernatural elements — keep it grounded
-- The cargo reveal should be morally ambiguous, not a simple good/evil setup
-- End on a choice, not a rescue
+SOLUTION_NOTES: Solution type = clever discovery. Marsh catches the killer
+through the one detail of the confession they don't know he knows.
 
-MUSIC_ENERGY: Tense and sparse — minimal instrumentation, long sustained 
-notes, the kind of music that makes an empty road feel dangerous.
+REQUIREMENTS: Resolved ending — Marsh identifies and confronts the killer.
+No supernatural elements. Grounded and procedural.
 
-MUSIC_REFERENCE: No Country for Old Men / Sicario
+NEXT_LISTEN: Declan Marsh recurring cases ("The Quiet Floor" is in the
+catalog)
 
-MUSIC_MOMENTS:
-- Opening miles — low ambient hum, almost nothing, just road noise and texture
-- When he checks the cargo — music cuts out entirely, dead silence
-- The following headlights appear — energy begins rising slowly
-- Final stretch — single sustained note, building, no resolution until story ends
+MUSIC_ENERGY: Mournful and atmospheric — church organ undertones, something
+sacred gone wrong.
+MUSIC_REFERENCE: True Detective Season 1 / Prisoners
+MUSIC_SILENCE_MOMENTS:
+- When Marsh steps into the confessional and finds the carved words —
+  silence until he reads them aloud
 
-SFX_DENSITY: rich
-SFX_ENVIRONMENTS:
-- Semi cab interior (engine, gear shifts, CB radio static)
-- Loading dock at night (distant forklifts, metal, echo)
-- Roadside diner (kitchen sounds, bell on door, sparse conversation)
-- Open highway (tire hum, wind, passing vehicles)
+ANCHOR_SFX_CANDIDATES:
+- Heavy confessional door, slow creak
+- Marsh's footsteps stopping on the marble aisle
+- The waterfront bar door as the killer walks in
+- A single phone buzz that changes everything
 
-AUDIO_NOTES: The silence when the music cuts should feel sudden and 
-physical — like something just changed. Use it deliberately, not randomly.
+AUDIO_NOTES: The confessional should feel airless and close; the church
+vast by contrast. Silence is the tool — spend it on the revelation.
 
-DESCRIPTION: A trucker's last run. A cargo he shouldn't know about. 
-And someone who needs to make sure he doesn't arrive.
-```
+BELLE_INTRO: (blank — Claude writes from premise and genre)
+LISTENER_GENDER_SKEW: neutral
+DESCRIPTION: A priest dead in his own confessional. A killer who came to
+confess. And the one detail Marsh can't unhear.
+~~~
+
+**What Claude produces from this brief:** the Story Resolution Map comment block, then the Belle intro block (one line, with `[LISTENER_NAME]` in full mode), the complete header, the Character Guide, the full script with 3–6 anchor SFX and the marked silence drop (full mode), the cliffhanger or resolution per type, the Belle outro with author credit — and, because NEXT_LISTEN is filled, the one-sentence bridge: *"Marsh has another case waiting whenever you are."*
 
 ---
 
-*STORY_BRIEF_TEMPLATE.md — Endless Tales · Version 1.0 · April 2026*  
-*Changes require Marc's approval and version increment.*  
-*Commit to GitHub at ~/Projects/ASC/ after any update.*
+*STORY_BRIEF_TEMPLATE.md — Endless Tales · Version 2.1 · June 2026*
+*Changes require Marc's approval and version increment. Commit to GitHub after any update.*
