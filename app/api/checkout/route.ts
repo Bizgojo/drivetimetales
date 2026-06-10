@@ -13,6 +13,7 @@ const FOUNDING_LIMIT = parseInt(process.env.ET_FOUNDING_MEMBER_LIMIT || '500')
 const FOUNDING_PRICE_ID = process.env.STRIPE_PRICE_FOUNDING_MEMBER!
 const STANDARD_PRICE_ID = process.env.STRIPE_PRICE_STANDARD!
 const ANNUAL_PRICE_ID = process.env.STRIPE_PRICE_ANNUAL!
+const FOUNDING_MEMBER_ANNUAL_PRICE_ID = process.env.STRIPE_PRICE_FOUNDING_MEMBER_ANNUAL
 const DEFAULT_SUCCESS_PATH = '/home?welcome=true'
 
 function safeReturnTo(returnTo: unknown) {
@@ -58,13 +59,33 @@ export async function POST(req: NextRequest) {
 
     // Auto-select founding member or standard price (ignore client-supplied priceId)
     const { priceId: resolvedPrice, isFoundingMember } = await resolvePrice()
-    // Override with annual price if selected (annual not eligible for founding member rate)
-    if (billingCycle === 'annual' && !ANNUAL_PRICE_ID) {
-      console.error('[checkout] STRIPE_PRICE_ANNUAL env var is not set')
-      return NextResponse.json({ error: 'Annual plan not available' }, { status: 500 })
+    
+    // Determine final price based on FM eligibility + billing cycle
+    let priceId: string
+    let priceLabel: string
+    
+    // ATL-PIPE-006: Apply FM annual rate when eligible + annual billing selected
+    if (billingCycle === 'annual') {
+      if (!ANNUAL_PRICE_ID) {
+        console.error('[checkout] STRIPE_PRICE_ANNUAL env var is not set')
+        return NextResponse.json({ error: 'Annual plan not available' }, { status: 500 })
+      }
+      if (isFoundingMember && FOUNDING_MEMBER_ANNUAL_PRICE_ID) {
+        priceId = FOUNDING_MEMBER_ANNUAL_PRICE_ID
+        priceLabel = 'founding member annual $29.99 locked'
+      } else if (isFoundingMember && !FOUNDING_MEMBER_ANNUAL_PRICE_ID) {
+        console.warn(`[checkout] Founding member selected annual billing but STRIPE_PRICE_FOUNDING_MEMBER_ANNUAL not configured; using standard annual`)
+        priceId = ANNUAL_PRICE_ID
+        priceLabel = 'annual $59.99'
+      } else {
+        priceId = ANNUAL_PRICE_ID
+        priceLabel = 'annual $59.99'
+      }
+    } else {
+      priceId = resolvedPrice
+      priceLabel = isFoundingMember ? 'founding member $7.99 locked' : 'standard $7.99'
     }
-    const priceId = billingCycle === 'annual' ? ANNUAL_PRICE_ID : resolvedPrice
-    console.log(`[checkout] Assigned price: ${billingCycle === 'annual' ? 'annual $59.99' : isFoundingMember ? 'founding member $7.99 locked' : 'standard $7.99'}`)
+    console.log(`[checkout] Assigned price: ${priceLabel}`)
 
     // Check if user already has a Stripe customer
     const { data: userData } = await supabase
@@ -117,7 +138,12 @@ export async function POST(req: NextRequest) {
       ],
       mode: 'subscription',
       subscription_data: {
-        metadata: { userId, isFoundingMember: isFoundingMember ? 'true' : 'false' },
+        metadata: { 
+          userId, 
+          isFoundingMember: isFoundingMember ? 'true' : 'false',
+          billingCycle: billingCycle || 'monthly',
+          fmAnnualApplied: (isFoundingMember && billingCycle === 'annual' && !!FOUNDING_MEMBER_ANNUAL_PRICE_ID) ? 'true' : 'false',
+        },
         trial_period_days: trialDays > 0 ? trialDays : undefined
       },
       success_url: `${baseUrl}${safeSuccessPath}`,
