@@ -164,6 +164,7 @@ export interface AgentState {
   percentComplete: number | null
   waitingOn: string
   lastActivity: string
+  lastUpdatedAt?: string          // ISO timestamp of most recent agent-state write (e.g. "2026-06-10T16:07:00Z")
   eta: string
   whyItMatters: string
   lastReport: { text: string; timestamp: string } | null

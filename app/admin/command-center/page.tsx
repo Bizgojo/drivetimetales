@@ -1375,6 +1375,30 @@ export default function AdminCommandCenterPage() {
 
   // ─── Agent Cards Grid ───────────────────────────────────────────────────────
 
+  /** Format an ISO timestamp or date string as "MM/yyyy h:mm AM/PM".
+   *  Falls back to "MM/yyyy" when no time component is available. */
+  function formatLastUpdated(ts?: string): string | null {
+    if (!ts) return null
+    try {
+      // Attempt full ISO parse first (includes time)
+      const d = new Date(ts)
+      if (isNaN(d.getTime())) return null
+      const mm   = String(d.getMonth() + 1).padStart(2, '0')
+      const yyyy = d.getFullYear()
+      // Only show time if the original string contained a 'T' (ISO with time)
+      if (ts.includes('T')) {
+        const h24 = d.getHours()
+        const min = String(d.getMinutes()).padStart(2, '0')
+        const ampm = h24 >= 12 ? 'PM' : 'AM'
+        const h12  = h24 % 12 || 12
+        return `${mm}/${yyyy} ${h12}:${min} ${ampm}`
+      }
+      return `${mm}/${yyyy}`
+    } catch {
+      return null
+    }
+  }
+
   const renderAgentCard = (agent: AgentConfig) => {
     const state = agentsState[agent.id] ?? makeEmptyAgentState()
     const teaser =
@@ -1405,7 +1429,13 @@ export default function AdminCommandCenterPage() {
           </span>
         </div>
         {/* Row 2 */}
-        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>{agent.roleTitle}</div>
+        <div style={{ fontSize: 12, color: '#64748b', marginBottom: formatLastUpdated(state.lastUpdatedAt) ? 2 : 8 }}>{agent.roleTitle}</div>
+        {/* Row 2b — Last Updated timestamp */}
+        {formatLastUpdated(state.lastUpdatedAt) && (
+          <div style={{ fontSize: 10, color: '#b0b8c6', marginBottom: 8, letterSpacing: '0.01em' }}>
+            Last Updated {formatLastUpdated(state.lastUpdatedAt)}
+          </div>
+        )}
         {/* Row 3 */}
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}>
           <span
