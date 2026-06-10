@@ -1304,7 +1304,67 @@ export default function AdminCommandCenterPage() {
         )}
 
         {/* Resolved Marc Actions (collapsed) */}
-        {resolvedMarcActions.length > 0 && (
+        {/* Deferred Marc Actions — separate from finalized; fully re-openable */}
+        {resolvedMarcActions.filter(a => marcActionResolutions[a.id]?.resolution === 'deferred').length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#b45309', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 5 }}>
+              ⏸ Deferred Decisions ({resolvedMarcActions.filter(a => marcActionResolutions[a.id]?.resolution === 'deferred').length})
+            </div>
+            <div>
+              {resolvedMarcActions
+                .filter(a => marcActionResolutions[a.id]?.resolution === 'deferred')
+                .map(action => {
+                  const res = marcActionResolutions[action.id]
+                  const deferredAt = res?.resolvedAt ? new Date(res.resolvedAt) : null
+                  const deferLabel = deferredAt
+                    ? deferredAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) +
+                      ' ' + deferredAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+                    : null
+                  return (
+                    <div
+                      key={action.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 8,
+                        padding: '7px 10px',
+                        borderRadius: 6,
+                        border: '1px solid #fde68a',
+                        backgroundColor: '#fffbeb',
+                        marginBottom: 5,
+                      }}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: '#0f172a', marginBottom: 2 }}>
+                          {action.detail?.title ?? action.actionText}
+                        </div>
+                        {deferLabel && (
+                          <div style={{ fontSize: 10, color: '#92400e' }}>Deferred {deferLabel}</div>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedMarcActionId(action.id)}
+                        style={{
+                          fontSize: 11, fontWeight: 700, color: '#92400e',
+                          backgroundColor: '#fef3c7', border: '1px solid #fde68a',
+                          borderRadius: 6, padding: '6px 10px',
+                          cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' as const,
+                          minHeight: 36,
+                        }}
+                      >
+                        Review Decision →
+                      </button>
+                    </div>
+                  )
+                })}
+            </div>
+          </div>
+        )}
+
+        {/* Finalized Marc Actions (approved / rejected) */}
+        {resolvedMarcActions.filter(a => marcActionResolutions[a.id]?.resolution !== 'deferred').length > 0 && (
           <div style={{ marginBottom: 12 }}>
             <button
               type="button"
@@ -1312,19 +1372,21 @@ export default function AdminCommandCenterPage() {
               style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: '#64748b', fontWeight: 700, padding: '2px 0', display: 'flex', alignItems: 'center', gap: 6 }}
             >
               {showResolvedMarcActions ? '▼' : '▶'}
-              <span>✓ Handled Marc Actions ({resolvedMarcActions.length})</span>
+              <span>✓ Handled Marc Actions ({resolvedMarcActions.filter(a => marcActionResolutions[a.id]?.resolution !== 'deferred').length})</span>
             </button>
             {showResolvedMarcActions && (
               <div style={{ marginTop: 4 }}>
-                {resolvedMarcActions.map(action => {
-                  const res = marcActionResolutions[action.id]
-                  return (
-                    <div key={action.id} style={{ fontSize: 11, color: '#94a3b8', padding: '4px 8px', display: 'flex', gap: 6, alignItems: 'center' }}>
-                      <span>{res?.resolution === 'approved' ? '✅' : res?.resolution === 'rejected' ? '❌' : '⏸'}</span>
-                      <span style={{ textDecoration: 'line-through' }}>{action.actionText}</span>
-                    </div>
-                  )
-                })}
+                {resolvedMarcActions
+                  .filter(a => marcActionResolutions[a.id]?.resolution !== 'deferred')
+                  .map(action => {
+                    const res = marcActionResolutions[action.id]
+                    return (
+                      <div key={action.id} style={{ fontSize: 11, color: '#94a3b8', padding: '4px 8px', display: 'flex', gap: 6, alignItems: 'center' }}>
+                        <span>{res?.resolution === 'approved' ? '✅' : '❌'}</span>
+                        <span style={{ textDecoration: 'line-through' }}>{action.actionText}</span>
+                      </div>
+                    )
+                  })}
               </div>
             )}
           </div>
@@ -2110,7 +2172,20 @@ export default function AdminCommandCenterPage() {
     if (!selectedMarcActionId) return null
     const action = marcActions.find(a => a.id === selectedMarcActionId)
     if (!action) return null
-    if (!action.isComplete) return null
+
+    // Deferred decisions open with full card regardless of isComplete
+    const res = marcActionResolutions[action.id]
+    const isDeferred = res?.resolution === 'deferred'
+
+    if (!action.isComplete && !isDeferred) return null
+
+    // Format "Previously Deferred" banner timestamp
+    const deferredAt = isDeferred && res?.resolvedAt ? new Date(res.resolvedAt) : null
+    const deferBannerText = deferredAt
+      ? 'Previously Deferred — ' +
+        deferredAt.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) +
+        ' at ' + deferredAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+      : null
 
     return (
       <div
@@ -2121,7 +2196,33 @@ export default function AdminCommandCenterPage() {
           onClick={e => e.stopPropagation()}
           style={{ maxWidth: 720, width: '100%', maxHeight: '90vh', overflowY: 'auto' as const }}
         >
-          <MarcDecisionCard key={action.id} action={action} onResolve={resolveMarcAction} />
+          {/* Previously Deferred banner */}
+          {deferBannerText && (
+            <div style={{
+              backgroundColor: '#fffbeb',
+              border: '1px solid #fde68a',
+              borderBottom: 'none',
+              borderRadius: '8px 8px 0 0',
+              padding: '10px 16px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+            }}>
+              <span style={{ fontSize: 16 }}>⏸</span>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#92400e' }}>
+                  {deferBannerText}
+                </div>
+                <div style={{ fontSize: 11, color: '#b45309', marginTop: 1 }}>
+                  This decision was deferred. All options are still available — approve, reject, request info, or defer again.
+                </div>
+              </div>
+            </div>
+          )}
+          {/* Full decision card — identical to first-time view */}
+          <div style={isDeferred ? { borderRadius: '0 0 8px 8px', overflow: 'hidden' } : {}}>
+            <MarcDecisionCard key={action.id} action={action} onResolve={resolveMarcAction} />
+          </div>
           <button
             onClick={() => setSelectedMarcActionId(null)}
             style={{ ...BTN, marginTop: 8, width: '100%', color: '#cbd5e1', borderColor: '#334155', backgroundColor: '#0f172a' }}
