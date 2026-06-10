@@ -1,6 +1,6 @@
 # ENDLESS TALES — STORY PRODUCTION PROCESS
 **One sheet. Every story. Start to finish.**
-*Version 1.2 · June 10, 2026*
+*Version 1.1 · June 10, 2026*
 **Changes from v1.0 (approved by Marc):** grading moved to six dimensions / 30 points (gates 22+ publish, 26+ gold). One Belle intro line (variations removed). Story Resolution Map added to review. PIPELINE_MODE step added. Series Release Rule added at publish. Document table updated for the v1.4 canonical set.
 
 ---
@@ -9,13 +9,12 @@
 
 | Document | Version | Location |
 |---|---|---|
-| Master Bible (session-start doc) | v3.1 | `~/Projects/drivetimetales/docs/ENDLESS_TALES_MASTER_BIBLE.md` |
-| Story Bible (philosophy + NEDS) | v4.0 | `~/Projects/drivetimetales/docs/ENDLESS_TALES_STORY_BIBLE.md` |
-| This process sheet | v1.2 | `~/Projects/drivetimetales/docs/STORY_PRODUCTION_PROCESS.md` |
-| Story Brief Template | v2.2 | `~/Projects/drivetimetales/docs/STORY_BRIEF_TEMPLATE.md` |
-| Stage 2 Script Prompt | v2.3 | `~/Projects/drivetimetales/docs/STAGE2_SCRIPT_PROMPT.md` |
-| Script Validator | v1.2 | `~/Projects/drivetimetales/docs/SCRIPT_VALIDATOR.md` |
-| Published Story Spec | v1.5 | `~/Projects/drivetimetales/docs/PUBLISHED_STORY_SPEC.md` |
+| Master Bible (session-start doc) | v3.0 | `~/Projects/drivetimetales/docs/ENDLESS_TALES_MASTER_BIBLE.md` |
+| This process sheet | v1.1 | `~/Projects/drivetimetales/docs/STORY_PRODUCTION_PROCESS.md` |
+| Story Brief Template | v2.1 | `~/Projects/drivetimetales/docs/STORY_BRIEF_TEMPLATE.md` |
+| Stage 2 Script Prompt | v2.2 | `~/Projects/drivetimetales/docs/STAGE2_SCRIPT_PROMPT.md` |
+| Script Validator | v1.1 | `~/Projects/drivetimetales/docs/SCRIPT_VALIDATOR.md` |
+| Published Story Spec | v1.4 | `~/Projects/drivetimetales/docs/PUBLISHED_STORY_SPEC.md` |
 | Personalization & SFX build spec | v1.0 | `~/Projects/drivetimetales/docs/PERSONALIZATION_AND_SFX_IMPLEMENTATION.md` |
 | Hal Session Start Protocol | — | `~/Projects/drivetimetales/docs/HAL_SESSION_START_PROTOCOL.md` |
 | Mix Note Protocol | — | `~/Projects/drivetimetales/docs/MIX_NOTE_PROTOCOL.md` |
@@ -26,7 +25,7 @@
 ## STEP 1 — FILL OUT THE STORY BRIEF
 **Your time: ~10 minutes**
 
-1. Open `STORY_BRIEF_TEMPLATE.md` (v2.2)
+1. Open `STORY_BRIEF_TEMPLATE.md` (v2.1)
 2. **Set PIPELINE_MODE first** — `transition` until Builds 1+2 are live and the two-story pilot has passed; `full` after
 3. Fill every REQUIRED field; fill OPTIONAL fields as specifically as you can
 4. For standalones: fill NEXT_LISTEN if the author has a series or recurring protagonist (this triggers Belle's bridge line)
@@ -36,19 +35,11 @@
 
 ---
 
-
-## STEP 1B — NEDS-SCORE THE BRIEF (the brief gate)
-**Your time: ~3 minutes (or Claude does it)**
-
-Before any script gets written, the brief gets a NEDS score (STORY_BIBLE v4.0 Part 8): Curiosity 0–3, Stakes 0–2, Escalation 0–2, Emotional Investment 0–2, Cliffhanger 0–1 (standalones max 9). **Below 7 → revise the brief, don't write the script.** If you skip this, Claude scores the brief as its first act in Step 2 and will ask for a revision instead of writing a weak story. Series only: confirm Part 6 of the brief (Central Question, Escalation Map, **Cliffhanger Chain**) is filled — a series without its cliffhanger chain is not ready to produce.
-
----
-
 ## STEP 2 — GET THE SCRIPT FROM CLAUDE
 **Your time: ~5 minutes setup, Claude writes it**
 
 1. Open a **new Claude chat**
-2. Paste in this order, nothing between: full `STAGE2_SCRIPT_PROMPT.md` (v2.3) → your completed Brief
+2. Paste in this order, nothing between: full `STAGE2_SCRIPT_PROMPT.md` (v2.2) → your completed Brief
 3. Say: **"Write the script."**
 4. Save the output as `Script_[StoryTitle]_DRAFT.md` in `~/Projects/drivetimetales/docs/Scripts/`
 
@@ -73,7 +64,7 @@ Read these four things:
 ## STEP 4 — VALIDATE THE SCRIPT
 **Your time: ~2 minutes**
 
-1. New Claude chat → paste full `SCRIPT_VALIDATOR.md` (v1.2) → paste the draft script
+1. New Claude chat → paste full `SCRIPT_VALIDATOR.md` (v1.1) → paste the draft script
 2. Say: **"Validate this script."**
 3. ✅ PASS → save as `Script_[StoryTitle]_VALIDATED.md` → Step 5. ❌ FAIL → paste the failure list back into the writing chat, say *"Fix these,"* re-validate.
 
@@ -165,4 +156,4 @@ Save as `Record_[StoryTitle].md` in `~/Projects/drivetimetales/docs/Records/`
 ---
 
 *Pick this sheet up at the start of every story. Put it down when it publishes.*
-*STORY_PRODUCTION_PROCESS.md — Endless Tales · Version 1.2 · June 2026*
+*STORY_PRODUCTION_PROCESS.md — Endless Tales · Version 1.1 · June 2026*

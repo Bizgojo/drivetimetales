@@ -3,7 +3,7 @@
 **Owner:** Marc Postlewaite / Endless Tales
 **Last Updated:** June 10, 2026
 **Status:** LOCKED — changes require Marc's approval and version increment
-**Changes from v2.1 (approved by Marc, June 10, 2026):** SFX frequency changed from every-60–90-seconds to Anchor SFX (3–6 per story, placement rules added). Belle B voice ID corrected to GMhgX8fCR9GUtd3kmlKC (the improved May 2026 voice). Story Resolution Map added as a mandatory pre-writing step (from Spec v1.3, May 20). Opening rules reconciled: hook from clarity. Added the Turn Rule (r33) and Sensory Anchor Rule (r34). Added optional [MUSIC:OUT]/[MUSIC:IN] silence markers. Added Belle B bridge line for standalone outros. Series episode runtime default set to 12–18 minutes. Quality self-check updated to match. Aligned with PUBLISHED_STORY_SPEC v1.3 and SCRIPT_VALIDATOR v1.2.
+**Changes from v2.1 (approved by Marc, June 10, 2026):** SFX frequency changed from every-60–90-seconds to Anchor SFX (3–6 per story, placement rules added). Belle B voice ID corrected to GMhgX8fCR9GUtd3kmlKC (the improved May 2026 voice). Story Resolution Map added as a mandatory pre-writing step (from Spec v1.3, May 20). Opening rules reconciled: hook from clarity. Added the Turn Rule (r33) and Sensory Anchor Rule (r34). Added optional [MUSIC:OUT]/[MUSIC:IN] silence markers. Added Belle B bridge line for standalone outros. Series episode runtime default set to 12–18 minutes. Quality self-check updated to match. Aligned with PUBLISHED_STORY_SPEC v1.3 and SCRIPT_VALIDATOR v1.1.
 
 ---
 
@@ -109,14 +109,14 @@ CROSS: Get me the report.
 CROSS: Every word.
 ~~~
 
-### Music Silence Markers — OPTIONAL (v2.3)
+### Music Silence Markers — OPTIONAL (v2.2)
 ~~~
 [MUSIC:OUT]   ← background music fades to complete silence
 [MUSIC:IN]    ← background music returns to its 15% bed
 ~~~
 Always paired, always on their own lines. Use **at most twice per story**, and only at the single biggest dramatic moment(s) — the discovery, the revelation, the confession. After minutes of constant low music, total silence makes every word land heavier. This is a scalpel, not a default: most stories use it once or not at all. Never leave a `[MUSIC:OUT]` unclosed.
 
-### SFX Frequency — ANCHOR SFX (v2.3)
+### SFX Frequency — ANCHOR SFX (v2.2)
 Include **3 to 6 anchor SFX cues per story — no more, no fewer.** An anchor SFX is a bold, foregrounded, story-critical sound: the door at the moment it matters, the gunshot, the train, the phone that changes everything.
 
 Placement rules:
@@ -138,7 +138,7 @@ Target runtime is specified in the Story Brief. Word counts are calculated at **
 - 20 minutes = approximately 2,400–2,800 words
 - 25 minutes = approximately 3,000–3,500 words
 
-**Series episode default (v2.3):** unless the Story Brief explicitly specifies otherwise, series episodes target **12–18 minutes**. Each episode is one commute-sized attention arc ending on a cliffhanger — shorter episodes mean more cliffhangers and more completion moments per listening hour. Runtimes of 20–25 minutes are reserved for standalones, finales, and episodes that genuinely earn the length.
+**Series episode default (v2.2):** unless the Story Brief explicitly specifies otherwise, series episodes target **12–18 minutes**. Each episode is one commute-sized attention arc ending on a cliffhanger — shorter episodes mean more cliffhangers and more completion moments per listening hour. Runtimes of 20–25 minutes are reserved for standalones, finales, and episodes that genuinely earn the length.
 
 ---
 
@@ -887,7 +887,7 @@ One line. Closes the story completely. Resonant and done.
 BELLE B: That was "The Confession Booth" — an Endless Tales original. Written by Declan Marsh.
 ~~~
 
-**Bridge line (v2.3) — standalones only, conditional:** if the Story Brief names a related next listen (the author has a series in the catalog, or this protagonist recurs in other stories), add ONE additional sentence after the formal close — a friend's aside, never a plug:
+**Bridge line (v2.2) — standalones only, conditional:** if the Story Brief names a related next listen (the author has a series in the catalog, or this protagonist recurs in other stories), add ONE additional sentence after the formal close — a friend's aside, never a plug:
 
 ~~~
 BELLE B: That was "The Confession Booth" — an Endless Tales original. Written by Declan Marsh. Marsh has another case waiting whenever you are.
@@ -931,14 +931,14 @@ The final line must create a burning question the listener cannot let go of. "To
 ### Series episodes — carry consequence (r17)
 At least one major development from this episode must be referenced or felt in the next. Characters are changed by events. The world cannot be in the same state at the end that it was at the beginning.
 
-### The Turn Rule (r33) — NEW in v2.3
+### The Turn Rule (r33) — NEW in v2.2
 Every 3–4 script minutes (roughly every 450–520 words at 130 wpm), something must change the listener's understanding or raise the stakes: a reveal, a reversal, a new threat, a decision with consequences, or a question answered that opens a bigger one. **No scene may end in the same state of knowledge it began in.**
 
 For stories of 20 minutes or longer, the script must contain a clear **midpoint reversal** — a development near the middle that reframes the protagonist's goal or what the listener believes is happening.
 
 Why: listener attention runs in 8–12 minute cycles. A strong opening and a strong ending do not save a flat middle — the listener who loved minute one quits at minute twelve and never hears the ending.
 
-### Sensory Anchor Rule (r34) — NEW in v2.3
+### Sensory Anchor Rule (r34) — NEW in v2.2
 Every scene must establish its physical space through **at least two concrete sensory details** (sound, temperature, smell, texture, light) within the first three NARRATOR lines of the scene. Specific, not generic: "the smell of burnt coffee and wet wool," not "the room smelled bad."
 
 Why: stories are voice-and-music with only 3–6 anchor SFX. The prose carries the sensory load. Vivid mental imagery is the engine of immersion — and imagery only comes from concrete specifics. The narrator is the listener's eyes. Write like it.
@@ -1033,45 +1033,6 @@ Output ONLY the formatted script. Begin with the Belle B intro block. End with t
 
 ---
 
-*STAGE2_SCRIPT_PROMPT.md — Endless Tales · Version 2.3 · June 2026*
+*STAGE2_SCRIPT_PROMPT.md — Endless Tales · Version 2.2 · June 2026*
 *Changes require Marc's approval and version increment.*
 *Commit to GitHub at ~/Projects/ASC/ after any update.*
-
----
-
-# v2.3 ADDENDUM — STORY BIBLE MERGE (June 10, 2026 · all approved by Marc)
-These rules are mandatory and validated. They join the rules above; on conflict within this document, the addendum wins.
-
-### r35 — DIALOGUE SEPARATION RULE
-A character may not speak two consecutive lines. Between any two lines from the same character there must be one of: a NARRATOR line, a [BEAT], a [PAUSE:X], or a line from another character. In audio, consecutive lines from one voice blend into a stutter; even a two-word narrator bridge ("He waited.") creates the space the second line needs.
-FAILING:
-~~~
-VICTOR: You work for Hendricks Financial. With a sister in Portland.
-VICTOR: Your routine is very predictable.
-~~~
-PASSING:
-~~~
-VICTOR: You work for Hendricks Financial. With a sister in Portland.
-NARRATOR: He let that sit.
-VICTOR: Your routine is very predictable.
-~~~
-
-### r36 — BELLE INTRO REQUIRED ELEMENTS
-Belle's single intro line must contain: (1) a protagonist reference (name or clear description), (2) the inciting event or central conflict stated concretely, (3) a tension-forward hook. BANNED phrases: "settle in for a story," "built to carry you," "carry you cleanly," and any wording that could be moved to a different story unchanged. All existing Belle rules stand (one line, [LISTENER_NAME] once at a natural pause in full pipeline mode, no "presents," no time-of-day, no author/narrator names).
-
-### r37 — NEDS_SCORE HEADER FIELD (required)
-Every script header includes `NEDS_SCORE: [total]/10` — the Next Episode Desire Score assigned at the brief stage (STORY_BIBLE v4.0 Part 8: Curiosity 0–3, Stakes 0–2, Escalation 0–2, Emotional Investment 0–2, Cliffhanger 0–1; standalones max 9). Briefs below 7 are revised before writing. If the brief arrives unscored, score it yourself and report the score before writing; below 7, request a revised brief instead of writing a weak script.
-
-### r38 — CLIFFHANGER TYPES AND THE FAKE TEST
-Series non-finale endings must be one of five types: Revelation, Danger, Betrayal, Discovery, or Decision (irreversible choice). The Fake Cliffhanger Test: the hook must be writable as a SPECIFIC question unanswerable without the next episode. "Who was the second person in the canyon that night?" is real; "What will happen to Hale?" is fake. Banned weak patterns: vague escalation ("things will get worse"), repeated same-type peril, hooks resolved in the next episode's first 60 seconds, ominous stranger appearances, "little did she know," and weather/mechanical peril as stakes. Write the cliffhanger FIRST — know the ending before the beginning.
-
-### r39 — HIDDEN LESSON RULE (final line standard)
-The final narrator line of any story must be a specific, concrete image, action, or observation. BANNED closing patterns: "She had learned that…", "He understood now that…", "The truth was that…", or any line that states the story's theme or lesson explicitly. Meaning is discovered by the listener, never explained by the writer. No wisdom speeches anywhere; no character as the author's mouthpiece.
-
-### r40 — SCENE RE-ORIENTATION (Commuter Reality)
-After every scene break: re-identify the character by name within the first narrator lines, establish the stakes of the scene within 30 seconds, and mark place/time changes with a narrator cue (plus an anchor SFX where one of the 3–6 is spent there). Never convey critical plot information in a single throwaway line — important reveals get one callback or confirmation. A listener who missed one exchange must still be able to follow.
-
-### r41 — CARRY CONSEQUENCE FORWARD (series)
-At least one major development from each episode — a death, discovery, alliance shift, or power change — must be explicitly reflected in the next episode. Characters are never reset between episodes.
-
-*Addendum end — STAGE2_SCRIPT_PROMPT v2.3 · June 10, 2026*

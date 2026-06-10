@@ -2,7 +2,7 @@
 **Version 1.0 · June 10, 2026 · Endless Tales**
 **Decisions locked by Marc:** one Belle B intro line · anchor SFX 3–6 per story · server-side pre-stitch · Belle voice = GMhgX8fCR9GUtd3kmlKC (improved May 2026 voice — name clips and intro parts MUST be rendered in this voice)
 
-This document covers the build work. The rules live in PUBLISHED_STORY_SPEC v1.4, STAGE2_SCRIPT_PROMPT v2.2, and SCRIPT_VALIDATOR v1.1.
+This document covers the build work. The rules live in PUBLISHED_STORY_SPEC v1.5, STAGE2_SCRIPT_PROMPT v2.2, and SCRIPT_VALIDATOR v1.1.
 
 ---
 
@@ -80,7 +80,7 @@ Player change: the player requests the intro URL from this endpoint, then plays 
 
 # PART B — ANCHOR SFX PIPELINE
 
-## B1. Script side (already enforced by Stage 2 v2.2 / Validator v1.1)
+## B1. Script side (already enforced by Stage 2 v2.3 / Validator v1.1)
 3–6 `[SFX: specific concrete description]` markers, own line, natural gaps, no ambience beds.
 
 ## B2. Audio sourcing
@@ -102,7 +102,7 @@ Produce TWO new stories under the full v1.3 spec (name stitch + anchor SFX). Mar
 
 # PART C — ROLLOUT ORDER (fits the North Star: production reliability before everything)
 
-1. **Today:** Commit the four updated documents (Spec v1.3, Stage 2 v2.2, Validator v1.1, this spec). Archive the superseded versions out of the active bible path — canonical mode applies to documents too. Update STORY_BRIEF_TEMPLATE → v2.1 (restore SFX_ENVIRONMENTS as *anchor candidates*, keep BELLE_B_INTRO field, remove the 4-variations example language).
+1. **Today:** Commit the four updated documents (Spec v1.3, Stage 2 v2.3, Validator v1.1, this spec). Archive the superseded versions out of the active bible path — canonical mode applies to documents too. Update STORY_BRIEF_TEMPLATE → v2.1 (restore SFX_ENVIRONMENTS as *anchor candidates*, keep BELLE_B_INTRO field, remove the 4-variations example language).
 2. **Build 1 (small):** `belle_name_audio` + intro part rendering + stitch endpoint. (Localhost first; Marc approves the Supabase migration.)
 3. **Build 2 (small):** SFX insert support in render-final-mix.
 4. **Pilot:** two stories, full v1.3 path, Marc grades in the car.

@@ -1,6 +1,5 @@
 # ENDLESS TALES — MASTER BIBLE
-**Version 3.1 · June 10, 2026 (evening reconciliation) · Marc Postlewaite**
-**v3.1 change:** Story Bible v3.2 (Orion/Hal, June 8–10) reconciled into the canonical set per Marc's six decisions → new STORY_BIBLE v4.0; three-phase outro music adopted (Spec v1.5); NEDS adopted as the brief gate; versions bumped: Spec v1.5, Stage 2 v2.3, Validator v1.2, Brief v2.2, Process v1.2.
+**Version 3.0 · June 10, 2026 · Marc Postlewaite**
 **This is the one document to give Claude (or Hal) at the start of any Endless Tales session.**
 
 It replaces MASTER-BIBLE.md (Feb 2026) and MASTER_RULES.md (Jan 2026) — both are ARCHIVED. They describe news briefings, credit pricing, and ADM tab workflows that no longer exist. If you are reading either of those documents, stop: they are wrong.
@@ -21,7 +20,7 @@ An audio-first cinematic story platform at app.endless-tales.com for people with
 
 **We are NOT launching July 7.** The launch date is unknown. Launch is gated on:
 1. Three good smoke tests
-2. Producing stories successfully under the new rules (Spec v1.5 / Stage 2 v2.3 / Validator v1.2)
+2. Producing stories successfully under the new rules (Spec v1.4 / Stage 2 v2.2 / Validator v1.1)
 
 Every work session begins with: TODAY'S GOAL — current gate, current blocker, what success looks like before stopping today. Every task must serve the current gate. No drift into unrelated feature work.
 
@@ -33,17 +32,16 @@ One rule lives in one document. If two documents disagree, the document listed a
 
 | Document | Version | Owns |
 |---|---|---|
-| **PUBLISHED_STORY_SPEC.md** | v1.5 | What a finished story sounds like: listening experience, audio pipeline, mix specs, name stitch, anchor SFX, Resolution Map, release rules. **Wins all conflicts about the finished product.** |
-| **STAGE2_SCRIPT_PROMPT.md** | v2.3 | How scripts get written: format, authors/narrators, Belle B writing rules, structure rules (hook, turns, sensory, endings, cliffhangers). Pasted alone into the script-writing chat. |
-| **SCRIPT_VALIDATOR.md** | v1.2 | The pre-production quality gate. Pasted alone into the validation chat. Must always mechanically agree with Stage 2. |
-| **STORY_BRIEF_TEMPLATE.md** | v2.2 | What Marc fills out per story. |
-| **STORY_PRODUCTION_PROCESS.md** | v1.2 | The step-by-step workflow sheet. |
+| **PUBLISHED_STORY_SPEC.md** | v1.4 | What a finished story sounds like: listening experience, audio pipeline, mix specs, name stitch, anchor SFX, Resolution Map, release rules. **Wins all conflicts about the finished product.** |
+| **STAGE2_SCRIPT_PROMPT.md** | v2.2 | How scripts get written: format, authors/narrators, Belle B writing rules, structure rules (hook, turns, sensory, endings, cliffhangers). Pasted alone into the script-writing chat. |
+| **SCRIPT_VALIDATOR.md** | v1.1 | The pre-production quality gate. Pasted alone into the validation chat. Must always mechanically agree with Stage 2. |
+| **STORY_BRIEF_TEMPLATE.md** | v2.1 | What Marc fills out per story. |
+| **STORY_PRODUCTION_PROCESS.md** | v1.1 | The step-by-step workflow sheet. |
 | **PERSONALIZATION_AND_SFX_IMPLEMENTATION.md** | v1.0 | Build spec: name-stitch tables/endpoints, SFX sourcing/mixing, pilot gates. |
-| **ENDLESS_TALES_STORY_BIBLE.md** | v4.0 | Story philosophy and evaluation: Primary Mission, Entertainment First, Listener Promise, Seven Pillars, Commuter Reality checklist, Series Architecture + Cliffhanger Chain, **NEDS brief gate**, Competence / Character Attachment / Hidden Lesson / Believability rules. |
-| **MASTER_BIBLE.md** (this document) | v3.1 | Everything not owned above: grading, release policy, app gates, technical standing rules, roadmap, Hal rules. |
+| **MASTER_BIBLE.md** (this document) | v3.0 | Everything not owned above: grading, release policy, app gates, technical standing rules, roadmap, Hal rules. |
 | Launch North Star | May 12, 2026 | Phase structure and gates — **except** the July 7 date and phase calendar dates, which are superseded by §2. |
 
-**ARCHIVED (move out of the active bible folder):** MASTER-BIBLE.md, MASTER_RULES.md, Spec v1.0–v1.3 (incl. the May 20 v1.3 — merged into v1.4), Stage 2 v2.0–v2.1, Validator v1.0, Brief v2.0, all Canonical_Mode_Rules duplicates (keep one copy — its rules are restated in §8), and ALL prior Story Bibles: ET_Story_Rules v1, v2.x, v3.0–v3.2 (merged into STORY_BIBLE v4.0, June 10).
+**ARCHIVED (move out of the active bible folder):** MASTER-BIBLE.md, MASTER_RULES.md, Spec v1.0–v1.3 (incl. the May 20 v1.3 — merged into v1.4), Stage 2 v2.0–v2.1, Validator v1.0, Brief v2.0, all Canonical_Mode_Rules duplicates (keep one copy — its rules are restated in §8).
 
 ---
 
@@ -67,9 +65,6 @@ One rule lives in one document. If two documents disagree, the document listed a
 
 Same problem in 3+ stories → Pattern Log → bring to Claude to update the rules.
 
-## NEDS — the brief gate (owned by STORY_BIBLE v4.0 Part 8)
-Every brief is NEDS-scored BEFORE production (Curiosity 0–3, Stakes 0–2, Escalation 0–2, Emotional Investment 0–2, Cliffhanger 0–1; max 10, standalones max 9). Below 7 = revise the brief. NEDS protects the production budget at the brief stage; the 30-point rubric above protects the catalog at the publish stage. Both apply; neither replaces the other.
-
 ## The writing rules in force (owned by Stage 2 v2.2 — summary only)
 - **Story Resolution Map:** mandatory six-section map (hook / why difficult / middle movement / final solution / why earned / variety guardrail) output as a comment block before any script is written
 - 90-second hook: open with action, revelation, or conflict — never description, backstory, or weather; hook from CLARITY — WHO/WHERE/WHAT inside 60 seconds
@@ -89,7 +84,7 @@ Every brief is NEDS-scored BEFORE production (Curiosity 0–3, Stakes 0–2, Esc
 - Exclusively the announcer — never a narrator or character. Script label `BELLE B:` only.
 - Warm friend, one listener, never a host. No time-of-day, no "welcome back," no "Endless Tales presents," no generic language, no rhetorical questions.
 - **Intro:** ONE written line containing `[LISTENER_NAME]` once, at a natural pause, gracefully survivable without the name. Server-side stitch (belle_name_audio cache → partA+name+partB, silent no-name fallback). Name in the intro ONLY — never outros.
-- **Outro:** one line, complete, specific to the story, credits author + "an Endless Tales original." Music carries underneath at ~25% and fades to silence over 3 seconds after she finishes (three-phase outro, Spec v1.5). Series non-finales tease one specific real thing from the next episode.
+- **Outro:** one line, complete, specific to the story, credits author + "an Endless Tales original." Series non-finales tease one specific real thing from the next episode.
 - **Bridge line (standalones only, conditional):** when a related series or recurring protagonist exists, ONE extra sentence after the formal close — a friend's aside ("Marsh has another case waiting whenever you are"). Never promo language, never on series episodes, never with the name.
 
 ---
@@ -151,9 +146,8 @@ One live version only. Superseded versions are archival only, never active, neve
 - STORY_GRADING_RUBRIC.md — needs the Investment dimension written in (definition in §4).
 - ~~Spec diff against repo~~ DONE June 10: repo v1.3 (May 20) merged into v1.4. Voice ID resolved: GMhgX8fCR9GUtd3kmlKC.
 - Possibly still open from April (Marc to confirm): promo magic links, admin page ID mismatch, sting/intro crossfade polish.
-- VERIFY: v3.2 claimed render-final-mix already implements the three-phase outro music automatically. Confirm in code; if absent, it joins Codex Build 2 scope.
 
 ---
 
-*ENDLESS_TALES_MASTER_BIBLE.md · v3.1 · June 10, 2026*
+*ENDLESS_TALES_MASTER_BIBLE.md · v3.0 · June 10, 2026*
 *Changes require Marc's approval and a version increment. Commit to GitHub; archive superseded versions the same day.*

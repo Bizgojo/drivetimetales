@@ -1,8 +1,8 @@
 # STORY BRIEF — Endless Tales
-**Version:** 2.2
+**Version:** 2.1
 **Owner:** Marc Postlewaite / Endless Tales
 **Last Updated:** June 10, 2026
-**Changes from v2.0 (approved by Marc):** PIPELINE_MODE field added (transition vs full). SFX fields reframed as Anchor SFX candidates (3–6 per story). MUSIC_MOMENTS replaced by MUSIC_SILENCE_MOMENTS ([MUSIC:OUT]/[MUSIC:IN], max 2). NEXT_LISTEN field added for Belle bridge lines. Series runtime default 12–18 minutes. Optional SOLUTION_NOTES feeding the mandatory Story Resolution Map. Aligned with PUBLISHED_STORY_SPEC v1.5 and STAGE2_SCRIPT_PROMPT v2.3.
+**Changes from v2.0 (approved by Marc):** PIPELINE_MODE field added (transition vs full). SFX fields reframed as Anchor SFX candidates (3–6 per story). MUSIC_MOMENTS replaced by MUSIC_SILENCE_MOMENTS ([MUSIC:OUT]/[MUSIC:IN], max 2). NEXT_LISTEN field added for Belle bridge lines. Series runtime default 12–18 minutes. Optional SOLUTION_NOTES feeding the mandatory Story Resolution Map. Aligned with PUBLISHED_STORY_SPEC v1.4 and STAGE2_SCRIPT_PROMPT v2.2.
 
 ---
 
@@ -10,7 +10,7 @@
 
 Fill out every field below. Blank fields slow down production and result in Claude making assumptions that may not match your vision. The more specific you are, the better the script.
 
-When complete, paste this brief into a new Claude chat along with the Stage 2 Master Prompt (`STAGE2_SCRIPT_PROMPT.md` v2.3) and say: **"Write the script."**
+When complete, paste this brief into a new Claude chat along with the Stage 2 Master Prompt (`STAGE2_SCRIPT_PROMPT.md` v2.2) and say: **"Write the script."**
 
 Fields marked **[REQUIRED]** must be filled. Fields marked **[OPTIONAL]** can be left blank — Claude will use defaults.
 
@@ -24,7 +24,7 @@ PIPELINE_MODE: transition
 ~~~
 *(Options: `transition` | `full`)*
 
-- **`transition`** — Builds 1+2 (name stitch, SFX/music-marker rendering) are NOT yet live. Claude follows ALL Stage 2 v2.3 writing rules (Resolution Map, Turn Rule, sensory anchors, opening clarity, one intro line, bridge lines) but the script must contain **NO `[SFX:]` markers, NO `[MUSIC:OUT]`/`[MUSIC:IN]` markers, and NO `[LISTENER_NAME]`** — the Belle intro is written as its no-name version. The current pipeline would read "[LISTENER_NAME]" aloud.
+- **`transition`** — Builds 1+2 (name stitch, SFX/music-marker rendering) are NOT yet live. Claude follows ALL Stage 2 v2.2 writing rules (Resolution Map, Turn Rule, sensory anchors, opening clarity, one intro line, bridge lines) but the script must contain **NO `[SFX:]` markers, NO `[MUSIC:OUT]`/`[MUSIC:IN]` markers, and NO `[LISTENER_NAME]`** — the Belle intro is written as its no-name version. The current pipeline would read "[LISTENER_NAME]" aloud.
 - **`full`** — Builds 1+2 are live and the two-story pilot has passed. Scripts include `[LISTENER_NAME]`, 3–6 anchor SFX, and optional music silence markers.
 
 ---
@@ -73,7 +73,7 @@ IS_FINALE: false
 ~~~
 AUTHOR:
 ~~~
-*(Choose from the 31-author ET roster in STAGE2_SCRIPT_PROMPT v2.3. Each author is permanently paired with their narrator — Claude assigns the narrator automatically from the NARRATOR LOOKUP TABLE.)*
+*(Choose from the 31-author ET roster in STAGE2_SCRIPT_PROMPT v2.2. Each author is permanently paired with their narrator — Claude assigns the narrator automatically from the NARRATOR LOOKUP TABLE.)*
 
 *(If unsure, describe the tone you want and Claude will recommend the right author.)*
 
@@ -214,7 +214,7 @@ Belle is the Endless Tales announcer and the listener's permanent companion — 
 
 **One line is written. One set of audio is generated.** In `full` mode the line contains `[LISTENER_NAME]` once, at a natural pause, and the server-side name stitch personalizes it; the line must work gracefully without the name. In `transition` mode Claude writes the same line without the placeholder.
 
-If you have a specific angle for Belle on this story, write it here. Otherwise Claude writes it from the premise and genre using the Genre Tone Guide in Stage 2 v2.3.
+If you have a specific angle for Belle on this story, write it here. Otherwise Claude writes it from the premise and genre using the Genre Tone Guide in Stage 2 v2.2.
 
 ~~~
 BELLE_INTRO:
@@ -302,34 +302,5 @@ confess. And the one detail Marsh can't unhear.
 
 ---
 
-*STORY_BRIEF_TEMPLATE.md — Endless Tales · Version 2.2 · June 2026*
+*STORY_BRIEF_TEMPLATE.md — Endless Tales · Version 2.1 · June 2026*
 *Changes require Marc's approval and version increment. Commit to GitHub after any update.*
-
----
-
-## PART 6 — SERIES DESIGN (REQUIRED for every series, before Episode 1 is briefed)
-
-Per STORY_BIBLE v4.0 Part 6, no series enters production without these five elements. Fill them once per series and attach to every episode brief in that series:
-
-~~~
-SERIES_CENTRAL_QUESTION: [one sentence — what question does this series answer?]
-SERIES_PROTAGONIST_ARC: [how the protagonist changes from Episode 1 to finale]
-SERIES_ESCALATION_MAP: [how stakes rise episode to episode — one line per episode]
-SERIES_FINALE_RESOLUTION: [emotional type: justice / sacrifice / transformation / revelation / ...]
-SERIES_CLIFFHANGER_CHAIN:
-  Ep1: [the specific hook, written as the question the listener can't answer]
-  Ep2: [hook]
-  ...  [one line per non-finale episode — REQUIRED before Ep1 production]
-~~~
-
-Preferred series lengths: 3, 5, 7, or 13 episodes (others need Marc's explicit approval). Remember the Series Release Rule: Ep1 never publishes without Ep2 live; 3-episode series publish complete.
-
-## PART 7 — NEDS PRE-SCORE (the brief gate)
-
-Every brief gets a NEDS score before production (STORY_BIBLE v4.0 Part 8): Curiosity 0–3, Stakes 0–2, Escalation 0–2, Emotional Investment 0–2, Cliffhanger 0–1 (standalones skip Cliffhanger; max 9). **Below 7 = revise the brief before any script is written.** When Hal submits briefs he scores them; when Marc fills this template himself, Claude scores it as its first act and reports the score before writing.
-
-~~~
-NEDS_PRESCORE: [ ]/10   WEAKEST CATEGORY: [name]
-~~~
-
-*Parts 6–7 added in v2.2 (June 10, 2026 reconciliation).*

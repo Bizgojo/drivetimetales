@@ -1,6 +1,6 @@
 # ENDLESS TALES — PUBLISHED STORY SPEC
 ### What a finished story sounds like. No exceptions.
-**Version 1.5 · June 10, 2026 · Marc Postlewaite**
+**Version 1.4 · June 10, 2026 · Marc Postlewaite**
 
 **Changes from v1.3 (May 20, 2026) — all approved by Marc, June 10, 2026:**
 1. Belle's intro now addresses the listener by first name — ONE written line containing `[LISTENER_NAME]`, server-side name stitch, silent no-name fallback. (Reverses the "never addresses the listener by name" rule.)
@@ -11,8 +11,6 @@
 6. **Series Release Rule:** Episode 1 never publishes without Episode 2 live; 3-episode series publish complete.
 7. Grading moves to six dimensions / 30 points (Investment added) — gates 22+ publish, 26+ gold.
 8. Voice ID confirmed: **GMhgX8fCR9GUtd3kmlKC** (improved Belle voice, May 2026). Retired IDs, never to be used: wewocdDkjSLm9ZwjO7TD, KWDD3Wyq30ZF5NEL01EJ.
-9. **Outro music (v1.5, evening reconciliation):** three-phase outro — music swells, ducks to 25% UNDER Belle's outro, fades to silence over 3 seconds after she finishes. Supersedes the v1.4 clean-silence outro.
-10. **STORY_BIBLE v4.0** joins the canonical set: NEDS brief gate, Series Architecture + Cliffhanger Chain, Competence / Character Attachment / Hidden Lesson / Believability rules. `NEDS_SCORE:` header field required.
 Carried forward unchanged from v1.3: Story Resolution Map Rule, Opening Clarity, Writing Level, Audio Clarity, two-step endpoints, dynaudnorm mix chain.
 
 ---
@@ -48,8 +46,6 @@ A subscriber presses Play. Here is exactly what they hear, in order:
 - Never mentions the author or narrator by name
 - References something SPECIFIC and sensory from the story
 - Tone: like a friend leaning over and saying "oh you have to hear this one"
-- REQUIRED elements (June 10): a protagonist reference (name or clear description), the inciting event or central conflict stated concretely, and a tension-forward hook
-- BANNED copy-paste phrases: "settle in for a story," "built to carry you," "carry you cleanly," or any line that could move to a different story unchanged
 
 GOOD: *"I've been saving this one, [LISTENER_NAME] — a courier picks up a package that was never meant for him, and the return address doesn't exist."*
 GOOD (no-name render of the same line): *"I've been saving this one — a courier picks up a package that was never meant for him, and the return address doesn't exist."*
@@ -67,9 +63,9 @@ The narrator tells the story. Characters speak their dialogue.
 - When the narrator begins speaking, music DUCKS to 15% volume
 - Music stays at 15% underneath all narrator and character dialogue
 - Music loops seamlessly if shorter than the story
-- When the narrator finishes the last line, music SWELLS slightly (~+3dB over 2 seconds)
-- Music DUCKS to ~25% of narrative level and continues underneath Belle's outro
-- After Belle finishes, music fades to complete silence over exactly 3 seconds (three-phase outro, decided June 10; render-final-mix implements it — writers never notate it)
+- When the narrator finishes the last line, music RISES back to full volume
+- Music plays at full volume for 3 seconds, then fades out completely
+- 1.0 second silence follows before Belle outro
 
 **Music silence drops (v1.4, optional):**
 - Scripts may include up to TWO paired `[MUSIC:OUT]` / `[MUSIC:IN]` markers
@@ -91,13 +87,12 @@ The narrator tells the story. Characters speak their dialogue.
 - Belle's voice is NEVER used as narrator or character — only as announcer
 - Platform narrators are never cast as characters
 
-### 5. OUTRO TRANSITION (music swell)
-- The last narrative line ends; music swells slightly (~+3dB over 2 seconds) and carries directly into Belle's outro — no silence gap
+### 5. SILENCE (1.0 second)
+- Clean silence between story body end and Belle outro
 
 ### 6. BELLE B OUTRO
 - Belle speaks ONE line, maximum two short sentences
 - Same voice, same warmth as the intro — **no [LISTENER_NAME] in outros, ever**
-- Music continues at ~25% underneath her, then fades to silence over 3 seconds after she finishes
 - Reflective and warm — leaves the listener with a feeling, not a summary
 - Must be COMPLETE — never cut off mid-sentence
 - Credits the author and says "an Endless Tales original"
@@ -251,7 +246,6 @@ ANNOUNCER: Belle B
 NARRATIVE_VOICE: [first_person / third_limited / third_omniscient]
 NARRATOR_IS_CHARACTER: [true/false]
 SUNO PROMPT: [2-3 sentences describing background music]
-NEDS_SCORE: [total]/10  — scored at the brief stage per STORY_BIBLE v4.0 Part 8
 
 CHARACTER GUIDE
 ---
@@ -298,7 +292,7 @@ NEVER use /api/asc3/generate-story-complete — it had a wrong voice ID hardcode
 - Belle: 1.5x volume
 - Narrator/character voices: 1.0x (normalized)
 - Anchor SFX: foregrounded, gaps only, loudness-normalized
-- Background music under dialogue: 15% (ducked); full volume at mid-story transitions; outro = swell +3dB/2s, duck to 25% under Belle, 3s fade to silence
+- Background music under dialogue: 15% (ducked); full volume at transitions
 - [MUSIC:OUT]/[MUSIC:IN]: ~700ms fades to/from complete silence, max 2 pairs
 - BEAT/PAUSE lines generate actual silence audio segments
 - Uses @ffmpeg-installer/ffmpeg (NOT ffmpeg-static)
@@ -329,7 +323,7 @@ NEVER use /api/asc3/generate-story-complete — it had a wrong voice ID hardcode
 
 This spec is the single source of truth.
 If any code, prompt, or instruction contradicts this document, this document wins.
-Aligned documents: STORY_BIBLE v4.0 · STAGE2_SCRIPT_PROMPT v2.3 · SCRIPT_VALIDATOR v1.2 · MASTER_BIBLE v3.1 · PERSONALIZATION_AND_SFX_IMPLEMENTATION v1.0 · AUTOPLAY_NEXT_EPISODE_SPEC v1.0
+Aligned documents: STAGE2_SCRIPT_PROMPT v2.2 · SCRIPT_VALIDATOR v1.1 · MASTER_BIBLE v3.0 · PERSONALIZATION_AND_SFX_IMPLEMENTATION v1.0 · AUTOPLAY_NEXT_EPISODE_SPEC v1.0
 
-*PUBLISHED_STORY_SPEC.md — Version 1.5 — June 10, 2026*
+*PUBLISHED_STORY_SPEC.md — Version 1.4 — June 10, 2026*
 *Changes require Marc's approval and version increment. Commit to GitHub; archive superseded versions the same day.*

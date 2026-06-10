@@ -2,7 +2,7 @@
 **Version:** 1.1
 **Owner:** Marc Postlewaite / Endless Tales
 **Last Updated:** June 10, 2026
-**Changes from v1.0 (approved by Marc, June 10, 2026):** Section 3 changed from four Belle B intro variations to ONE intro line (matches Stage 2 v2.3 and Spec v1.3). Section 4 SFX frequency changed to Anchor SFX count check (3–6) and [MUSIC:OUT]/[MUSIC:IN] pairing checks added. New Section 8B Turn Rule check. Section 10 bridge-line checks added. Section 6 author examples updated to current roster. Section 11 word counts corrected to 130 wpm and 12–18 min series default noted. Voice ID references: Belle B is GMhgX8fCR9GUtd3kmlKC everywhere (improved May 2026 voice; wewocdDkjSLm9ZwjO7TD and KWDD3Wyq30ZF5NEL01EJ are retired). Section 2B added: Story Resolution Map check. Section 8 clarity check added.
+**Changes from v1.0 (approved by Marc, June 10, 2026):** Section 3 changed from four Belle B intro variations to ONE intro line (matches Stage 2 v2.2 and Spec v1.3). Section 4 SFX frequency changed to Anchor SFX count check (3–6) and [MUSIC:OUT]/[MUSIC:IN] pairing checks added. New Section 8B Turn Rule check. Section 10 bridge-line checks added. Section 6 author examples updated to current roster. Section 11 word counts corrected to 130 wpm and 12–18 min series default noted. Voice ID references: Belle B is GMhgX8fCR9GUtd3kmlKC everywhere (improved May 2026 voice; wewocdDkjSLm9ZwjO7TD and KWDD3Wyq30ZF5NEL01EJ are retired). Section 2B added: Story Resolution Map check. Section 8 clarity check added.
 
 ---
 
@@ -99,7 +99,7 @@ Check that the header block is present and complete. Every field must be populat
 
 ---
 
-## SECTION 2B — STORY RESOLUTION MAP (v1.2)
+## SECTION 2B — STORY RESOLUTION MAP (v1.1)
 
 **Check:** Is a STORY RESOLUTION MAP comment block present at the very top of the script, above the Belle B intro block? If absent — FAIL.
 
@@ -184,7 +184,7 @@ If any marker is found inline with other text — FAIL. Quote every instance.
 
 If any SFX description is too vague to be produced by a sound designer — FAIL.
 
-### SFX Count — Anchor SFX Rule (v1.2)
+### SFX Count — Anchor SFX Rule (v1.1)
 
 **Check:** Count the `[SFX:` markers in the script body. The target is **3 to 6 anchor SFX per story.**
 - 0 SFX markers — FAIL (the story has no sonic anchors)
@@ -195,7 +195,7 @@ If any SFX description is too vague to be produced by a sound designer — FAIL.
 
 **Check:** Is every SFX marker placed in a natural gap — its own line between speech, at a scene transition or pivotal moment — rather than annotating something happening under dialogue? If an SFX is written to underscore simultaneous dialogue — WARNING.
 
-### Music Silence Markers (v1.2)
+### Music Silence Markers (v1.1)
 
 **Check:** If `[MUSIC:OUT]` appears: is every `[MUSIC:OUT]` followed later by a `[MUSIC:IN]`? An unclosed `[MUSIC:OUT]` — FAIL.
 
@@ -235,7 +235,7 @@ This section is a judgment check, not a mechanical one. Use the author profile f
 
 **Check:** Read 10 randomly selected NARRATOR lines from throughout the script. Do they match the assigned author's declared tone and average sentence length?
 
-Use the sentence target from the assigned author's profile in STAGE2_SCRIPT_PROMPT v2.3 (the 31-author roster is the source of truth). Examples:
+Use the sentence target from the assigned author's profile in STAGE2_SCRIPT_PROMPT v2.2 (the 31-author roster is the source of truth). Examples:
 - **Buck Callahan / Marc Hobelman / Nadia Cross / Rex Harding / Julian Mercer** — short and spare (8–12 words). Long atmospheric paragraphs — WARNING.
 - **Elias Thorn / Maren Holloway / Beatrice Voss / Edmund Farr** — longer, atmospheric (12–18 words). Terse action prose throughout — WARNING.
 - **Silas Cutter** — 7–10 words, fragments allowed under stress. Elegant prose — WARNING.
@@ -274,11 +274,11 @@ Opening that PASS:
 
 If the opening fails the hook test — FAIL. Quote the first line and explain what's wrong.
 
-**Clarity check (v1.2):** within the first ~150 words, does the listener know WHO the main character is, WHERE we are, and WHAT is happening? Mid-action openings are required, but confusion is not a hook — if a first-time listener at partial attention couldn't answer all three, FAIL. The hook comes from clarity.
+**Clarity check (v1.1):** within the first ~150 words, does the listener know WHO the main character is, WHERE we are, and WHAT is happening? Mid-action openings are required, but confusion is not a hook — if a first-time listener at partial attention couldn't answer all three, FAIL. The hook comes from clarity.
 
 ---
 
-## SECTION 8B — THE TURN RULE (v1.2)
+## SECTION 8B — THE TURN RULE (v1.1)
 
 **Check:** Read the script and identify every **turn** — a reveal, a reversal, a new threat, a consequential decision, or a question answered that opens a bigger one. List each turn with its approximate position (word count or minute estimate at 130 wpm).
 
@@ -343,7 +343,7 @@ If any time-of-day reference appears — FAIL. Quote the line.
 - "We hope you enjoyed..."
 - "Join us next time for more great stories!"
 
-### Bridge Line (v1.2) — standalones only
+### Bridge Line (v1.1) — standalones only
 
 **Check:** If a bridge sentence follows the formal close: is this a STANDALONE? A bridge line on any series episode — FAIL.
 
@@ -359,7 +359,7 @@ If any time-of-day reference appears — FAIL. Quote the line.
 
 **Check:** Count the approximate words of dialogue and narration in the script body (excluding header, CHARACTER GUIDE, BELLE B block, SFX markers, and ANNOUNCER lines).
 
-Compare to the target runtime from the Story Brief at the **130 wpm standard** (matches Stage 2 v2.3 — do not use 150 wpm ranges):
+Compare to the target runtime from the Story Brief at the **130 wpm standard** (matches Stage 2 v2.2 — do not use 150 wpm ranges):
 - 10 min target: 1,200–1,400 words
 - 15 min target: 1,800–2,100 words
 - 20 min target: 2,400–2,800 words
@@ -418,25 +418,6 @@ WARNINGS TO REVIEW:
 
 ---
 
-*SCRIPT_VALIDATOR.md — Endless Tales · Version 1.2 · June 2026*  
+*SCRIPT_VALIDATOR.md — Endless Tales · Version 1.1 · June 2026*  
 *Changes require Marc's approval and version increment.*  
 *Commit to GitHub at ~/Projects/ASC/ after any update.*
-
----
-
-## SECTION 14 — STORY BIBLE MERGE CHECKS (v1.2 · June 10, 2026)
-Run these in addition to all sections above. Any failure = FAIL.
-
-**14.1 NEDS header.** `NEDS_SCORE:` field present in the header in N/10 format. Missing = FAIL. Score below 7 = FLAG for Marc (production requires his explicit approval below 7).
-
-**14.2 Dialogue separation.** No character speaks two consecutive lines. Scan every adjacent pair of dialogue lines; same speaker twice in a row with no NARRATOR / [BEAT] / [PAUSE:X] / other-character line between = FAIL (report each occurrence with both lines).
-
-**14.3 Banned announcer format.** The exact phrase "Endless Tales presents" anywhere = FAIL. Any announcer label other than BELLE B: (e.g. ANNOUNCER:, JAKE:, SANDY:) = FAIL.
-
-**14.4 Belle intro required elements.** The Belle intro line must contain a protagonist reference, a concrete inciting event or conflict, and a tension hook. Missing any = FAIL. Banned phrases present ("settle in for a story," "built to carry you," "carry you cleanly") = FAIL.
-
-**14.5 Lesson-line pattern.** Final narrator line beginning with or containing "had learned that", "understood now that", "the truth was that", or any explicit statement of the story's theme = FAIL (quote the line; require a concrete image/action replacement).
-
-**14.6 Fake cliffhanger test (series non-finales only).** Restate the ending as a specific question unanswerable without the next episode. If it can only be stated vaguely ("what happens next?", "will she be okay?") = FAIL. Banned weak patterns (vague escalation, repeated peril type, ominous-stranger, "little did she know", weather/mechanical peril) = FAIL.
-
-*SCRIPT_VALIDATOR v1.2 · June 10, 2026*
