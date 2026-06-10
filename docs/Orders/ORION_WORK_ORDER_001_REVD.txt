@@ -1,0 +1,192 @@
+================================================================
+ORION WORK ORDER 001 (REV D) — ONE CANON: ADOPTION + BUILDS
+Issued by: Marc Postlewaite | June 10, 2026
+Authority: Supersedes ALL prior revisions of this order (A-C).
+Canonical documents are LIVE in the repo as of commit 3a5d7934
+(github.com/Bizgojo/drivetimetales, main, docs/). Pull from
+there. This file itself lives at docs/Orders/ in the same repo.
+================================================================
+
+SECTION 0 — IMMEDIATE UNBLOCKS (execute first)
+0a. The canonical Belle voice ID is: GMhgX8fCR9GUtd3kmlKC
+    (improved Belle voice, Marc-selected May 2026).
+    RETIRED, never to be used: wewocdDkjSLm9ZwjO7TD (old
+    original), KWDD3Wyq30ZF5NEL01EJ (always wrong).
+    -> Unblocks VEGA-intro-outro and HAL-001. Vega proceeds.
+    -> VEGA: during the 14-story verification, identify which
+       voice ID each published story's Belle intro/outro was
+       rendered with. Report retired-voice stories to Marc —
+       he decides on re-rendering.
+0b. OUTRO MUSIC VERIFICATION: Marc adopted the three-phase
+    outro (swell ~+3dB/2s after last narrative line -> duck to
+    ~25% UNDER Belle's outro -> fade to silence over 3s after
+    she finishes). Story Bible v3.2 claimed render-final-mix
+    already implements this automatically. VERIFY IN CODE.
+    If true: confirm and cite the code path. If false: it is
+    added to Codex Build 2 scope. Report which.
+
+SECTION 1 — THE CANONICAL DOCUMENT SET (commit 3a5d7934)
+One canon. It lives in repo docs/ at HEAD and nowhere else.
+Rules travel verbatim, never paraphrased. If two documents
+disagree, the owner below wins and the other is a bug fixed the
+same day.
+  ENDLESS_TALES_MASTER_BIBLE.md   v3.1 - org rules, grading,
+    release policy, roadmap. THE session-start document.
+  ENDLESS_TALES_STORY_BIBLE.md    v4.0 - story philosophy and
+    evaluation: Primary Mission, Entertainment First, Listener
+    Promise, Seven Pillars, Commuter Reality checklist, Series
+    Architecture + Cliffhanger Chain, NEDS brief gate,
+    Competence / Character Attachment / Hidden Lesson /
+    Believability rules, per-agent duties (Part 14).
+  PUBLISHED_STORY_SPEC.md         v1.5 - finished-product truth
+    incl. three-phase outro music, Belle intro standard, name
+    stitch, anchor SFX, Series Release Rule, NEDS_SCORE header.
+  STAGE2_SCRIPT_PROMPT.md         v2.3 - script writing rules
+    incl. v2.3 addendum r35-r41 (Dialogue Separation, Belle
+    intro elements, NEDS_SCORE, cliffhanger types + fake test,
+    Hidden Lesson final line, re-orientation, carry consequence).
+  SCRIPT_VALIDATOR.md             v1.2 - pre-production gate
+    incl. Section 14 merge checks.
+  STORY_BRIEF_TEMPLATE.md         v2.2 - per-story brief incl.
+    PIPELINE_MODE, Series Design (Part 6), NEDS pre-score.
+  STORY_PRODUCTION_PROCESS.md     v1.2 - workflow sheet.
+  PERSONALIZATION_AND_SFX_IMPLEMENTATION.md v1.0 - Builds 1+2.
+  AUTOPLAY_NEXT_EPISODE_SPEC.md   v1.0 - Build 3. LAUNCH GATE.
+
+RETIRED AND ARCHIVED (docs/Archive/ — purge from ALL agent
+contexts, caches, workspaces, and memories): ET_Story_Rules
+v1 / v2.x / v3.0 / v3.1 / v3.2 (the June 8-10 Story Bible —
+merged into STORY_BIBLE v4.0 by Marc's six decisions, June 10),
+Spec v1.0-v1.4, Stage 2 v2.0-v2.2, Validator v1.0-v1.1, Brief
+v2.0-v2.1, Process v1.0-v1.1, Master Bible v3.0, MASTER-BIBLE.md,
+MASTER_RULES.md. Any copy of any of these found outside
+docs/Archive/ is deleted on sight.
+
+RECONCILIATION RECORD: the six June 10 decisions merging v3.2
+into the canon are documented in STORY_BIBLE v4.0 Part 13.
+Summary: three-phase outro adopted; "Endless Tales presents" /
+ANNOUNCER:JAKE format deleted (Belle B only, strengthened intro
+standard); 31-author roster canonical (10-author table
+deprecated); anchor SFX 3-6/story (r11 every-60-90s deprecated);
+NEDS adopted as the brief gate alongside the 30-point publish
+rubric; v3.2 folded into the repo set and archived.
+
+SECTION 2 — LAUNCH DEFINITION (replaces dashboard date estimates)
+There is NO launch date. Drop Jul 4 / Jul 19 projections.
+Launch gates: (1) three consecutive clean smoke-test productions,
+(2) stories produced and published under v1.5/v2.3 rules,
+(3) autoplay next episode live (Build 3).
+Report progress against gates, not dates.
+
+SECTION 3 — PUBLISHING POLICY (Orion enforces from now on)
+  3a. BRIEF GATE: every brief gets a NEDS score before
+      production (STORY_BIBLE v4.0 Part 8). Below 7 = revise;
+      below 7 enters production only with Marc's explicit
+      written approval.
+  3b. PUBLISH GATE: 30-point rubric (Hook, Clarity, Pacing,
+      Audio, Landing, Investment). Publish at 22+, gold at 26+.
+  3c. SERIES RELEASE RULE (non-negotiable): Episode 1 never
+      publishes unless Episode 2 is approved and live in the
+      same release. 3-episode series publish complete. Applies
+      to Lost Signal and the catalog-gap batch.
+  3d. Marc approval before any publish. Unchanged.
+
+SECTION 4 — AGENT TASKINGS
+HAL (Content Director):
+  - TRANSITION MODE immediately: scripts follow Stage 2 v2.3
+    writing rules (Resolution Map block, Turn Rule, sensory
+    anchors, one Belle intro line, r35-r41 addendum, 12-18 min
+    series episodes, bridge lines) BUT contain NO [SFX:], NO
+    [MUSIC:OUT]/[MUSIC:IN], NO [LISTENER_NAME] until Builds 1+2
+    are live. Hal REJECTS scripts containing those markers —
+    the current pipeline would read [LISTENER_NAME] aloud.
+    Resolution Map comment block IS allowed — strip before
+    voice generation.
+  - NEDS duties per STORY_BIBLE v4.0 Part 14: score every
+    brief; review Cliffhanger Chains before any Ep1 dispatch;
+    Character Attachment evaluations within 5 days of finales.
+  - Lost Signal repairs proceed under current pipeline, Belle
+    voice GMhgX8fCR9GUtd3kmlKC.
+CODEX/DEV (via ChatGPT) — three builds, in order:
+  - Build 1: Belle name-stitch. Build 2: anchor SFX + music
+    markers in render-final-mix, PLUS three-phase outro if
+    Section 0b finds it missing. Sole input:
+    PERSONALIZATION_AND_SFX_IMPLEMENTATION.md v1.0 verbatim
+    (+ Spec v1.5 outro section for the conditional item). All
+    Belle audio in GMhgX8fCR9GUtd3kmlKC only. Acceptance: two
+    pilot stories fully under v1.5, each 22+/30 with Audio >= 4,
+    Marc listening in the car. No catalog retrofit until the
+    pilot passes.
+  - Build 3: autoplay next episode (LAUNCH GATE). Sole input:
+    AUTOPLAY_NEXT_EPISODE_SPEC.md v1.0 verbatim. 5-second
+    countdown, large Cancel, full sting + Belle intro on
+    advance. Acceptance: all 10 tests incl. Marc's device
+    check (#9).
+  - Constraints, all builds: Supabase migrations require Marc's
+    explicit approval, localhost first. Canonical Mode. Two-step
+    pipeline only; generate-story-complete remains banned.
+    @ffmpeg-installer/ffmpeg only. Hard-refresh after deploys.
+VEGA (Audio QC):
+  - Execute Section 0a (voice audit of all 14 published
+    stories) and Section 0b (outro music code verification).
+  - Adopt the Commuter Reality / re-orientation audit and the
+    fresh-listener test per STORY_BIBLE v4.0 Part 14. When
+    Builds 1+2 ship, add: name-stitch seam check, anchor SFX
+    count 3-6 in gaps only, music markers paired.
+ATLAS (Operations):
+  - Purge every cached/duplicated rules document from all agent
+    contexts and workspaces per Section 1. Agents read docs/
+    at HEAD only. Add version tracking (v4.0/v3.1/v1.5/v2.3/
+    v1.2/v2.2/v1.2) to Command Center.
+  - Replace dashboard launch dates with the three gates (Sec 2).
+MAYA (Product):
+  - Own Build 3 acceptance: run the 10 tests when Codex
+    delivers; schedule Marc's device check (#9). Fold into the
+    desktop/mobile UX audit scope.
+SUSAN (Marketing):
+  - Primary Rule stands: no marketing scale until launch gates
+    pass. Fix the posting domain (endless-tales.com, not
+    drivetimetales.com) before any further posts.
+BART / LEX: no new tasks. Lex note: KIE.ai-as-canonical-music
+  is consistent with Spec v1.5.
+
+SECTION 5 — MARC-BLOCKED ITEMS (track and surface)
+  - DONE: canonical set committed (07304b17 + 3a5d7934, Jun 10).
+  - Marc: decision pending on re-rendering published stories
+    found in a retired Belle voice (await Vega 0a).
+  - Marc: confirm/kill April items — promo magic links, admin
+    ID mismatch, sting crossfade polish.
+
+SECTION 6 — STANDING CANON RULE (permanent, all agents,
+including Orion, Hal, Vega, Atlas, Maya, Susan, Bart, Lex,
+Codex/ChatGPT, and every Claude session)
+  6a. NO agent may author, issue, or declare a "canonical,"
+      "master," "bible," or "single source of truth" document.
+      Ever. Rule ideas are submitted to Marc as PROPOSALS,
+      clearly labeled PROPOSAL, never self-ratified.
+  6b. The canon changes ONLY by Marc committing to repo docs/
+      with a version bump and same-day archive of the
+      superseded version.
+  6c. Every agent re-reads the canonical set from docs/ at HEAD
+      at session start. No agent relies on cached copies,
+      pasted excerpts from prior sessions, or memory of rules.
+  6d. Any contradiction discovered between two canonical
+      documents, or between a document and live code, is
+      reported to Marc the same day as a bug — never silently
+      resolved by an agent's own judgment.
+  6e. Marc approvals of rule changes given in conversation
+      (with any agent) are not canon until committed per 6b.
+      The approving agent's job is to produce the PROPOSAL
+      diff for Marc to commit.
+
+SECTION 7 — CONFIRM (required from Orion)
+Reply with: task IDs created per agent; confirmation that every
+retired document was purged from every agent context (list
+where copies were found); dashboard gate change applied; Vega
+0a and 0b tasks created; Section 6 standing rule acknowledged
+BY EACH AGENT BY NAME; and any conflict between this order and
+a live task. Do not paraphrase the canonical documents into
+agent instructions — link or attach them by version and commit.
+================================================================
+END WORK ORDER 001 (REV D)
+================================================================
