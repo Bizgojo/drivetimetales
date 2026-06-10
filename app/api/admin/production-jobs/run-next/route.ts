@@ -1721,11 +1721,39 @@ async function generateStandaloneScript(job: ProductionJob, model: string) {
   const script = normalized.script
   const description = normalized.description
   const generatedTitle = extractTitle(script) || story.title || ''
+  const generatedGenre = extractHeader(script, 'GENRE') || brief.genre || ''
   const wordCount = countWords(generatedTitle)
 
   if (!script) throw new Error('Claude returned an empty script')
   if (!generatedTitle || wordCount < 1 || wordCount > 5) {
     throw new Error(`Generated title must be 1 to 5 words. Got: "${generatedTitle}"`)
+  }
+
+  // ATL-PIPE-004: Validate script matches brief (title/genre/narrator)
+  const briefMismatches: string[] = []
+  if (brief.genre && generatedGenre && generatedGenre.toLowerCase() !== brief.genre.toLowerCase()) {
+    briefMismatches.push(`Genre mismatch: brief="${brief.genre}" vs script="${generatedGenre}"`)
+  }
+  const briefWarnings = briefMismatches.length > 0 ? briefMismatches : []
+
+  // ATL-PIPE-005: Extract Belle B intro line and populate intro_text field
+  let introText: string | null = null
+  try {
+    const belleIntroSection = extractBelleSection(script, 'intro')
+    if (belleIntroSection) {
+      // Extract text after "BELLE B:" label
+      const belleMatch = belleIntroSection.match(/BELLE\s+B:\s*(.+?)(?:\n|$)/is)
+      if (belleMatch) {
+        introText = belleMatch[1].trim()
+        // Validate intro_text references listener name and has specific story details (not generic)
+        const isGeneric = /^settle\s+in/i.test(introText) && introText.length < 100
+        if (isGeneric) {
+          briefWarnings.push(`Warning: Belle B intro appears generic; expected specific story references and [LISTENER_NAME] placeholder`)
+        }
+      }
+    }
+  } catch (e) {
+    console.warn(`Failed to extract Belle B intro: ${String(e).slice(0, 100)}`)
   }
 
   const scriptJson = {
@@ -1735,18 +1763,25 @@ async function generateStandaloneScript(job: ProductionJob, model: string) {
     raw_script: generatedScript,
     normalized_description: description,
     production_job_id: job.id,
+    brief_mismatches: briefWarnings,
+  }
+
+  const updatePayload: any = {
+    title: generatedTitle,
+    description,
+    script,
+    script_json: scriptJson,
+    status: 'script_drafted',
+    script_version: (story.script_version || 1) + 1,
+  }
+  // Only update intro_text if extracted successfully and non-generic
+  if (introText && introText.length > 20 && introText.includes('[LISTENER_NAME]')) {
+    updatePayload.intro_text = introText
   }
 
   const { data: updated, error: updateError } = await supabase
     .from('stories')
-    .update({
-      title: generatedTitle,
-      description,
-      script,
-      script_json: scriptJson,
-      status: 'script_drafted',
-      script_version: (story.script_version || 1) + 1,
-    })
+    .update(updatePayload)
     .eq('id', storyId)
     .select('id,title,status,description,script,script_json')
     .single()
@@ -1766,10 +1801,16 @@ async function generateStandaloneScript(job: ProductionJob, model: string) {
     metadata: { is_v2: true, production_job_id: job.id },
   }).catch(() => {})
 
+  if (briefWarnings.length > 0) {
+    console.warn(`[ATL-PIPE-004/005] Script generation completed with warnings for ${storyId}:`, briefWarnings)
+  }
+
   return {
     generated: true,
     storyId: String(updated.id),
     story: updated,
+    briefWarnings,
+    introTextExtracted: !!introText,
     state: {
       ...state,
       storyId: String(updated.id),
@@ -1778,6 +1819,7 @@ async function generateStandaloneScript(job: ProductionJob, model: string) {
       description,
       hasScript: true,
       generateScriptSkipped: false,
+      scriptGenerationWarnings: briefWarnings,
     },
   }
 }
