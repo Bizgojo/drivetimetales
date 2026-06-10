@@ -1390,7 +1390,9 @@ export default function AdminCommandCenterPage() {
               <span style={{ color: '#ef4444' }}>● {data.gatesRed} red</span>
             </span>
             <span style={{ fontSize: 13, color: '#475569' }}>
-              Best case: {data.bestCaseDate} · Most likely: {data.mostLikelyDate}
+              {data.bestCaseDate
+                ? `Best case: ${data.bestCaseDate} · Most likely: ${data.mostLikelyDate}`
+                : 'Launch is gate-based — no target date (Work Order 001 Rev D §2)'}
             </span>
             <span style={{ fontSize: 12, color: '#94a3b8' }}>
               Updated {relativeTime(data.updatedAt)}

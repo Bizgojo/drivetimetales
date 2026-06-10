@@ -991,8 +991,8 @@ const SEED_READINESS: LaunchReadiness = {
   gatesGreen: 1,
   gatesYellow: 2,
   gatesRed: 5,
-  bestCaseDate: 'Jul 4, 2026',
-  mostLikelyDate: 'Jul 19, 2026',
+  bestCaseDate: null,   // removed per Work Order 001 Rev D Sec 2 — no launch date, gate-based only
+  mostLikelyDate: null, // removed per Work Order 001 Rev D Sec 2 — no launch date, gate-based only
   updatedAt: NOW,
 }
 

@@ -266,8 +266,8 @@ export interface LaunchReadiness {
   gatesGreen: number
   gatesYellow: number
   gatesRed: number
-  bestCaseDate: string
-  mostLikelyDate: string
+  bestCaseDate: string | null   // null = gate-based launch (no target date)
+  mostLikelyDate: string | null // null = gate-based launch (no target date)
   updatedAt: string
 }
 
