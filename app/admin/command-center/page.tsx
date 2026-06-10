@@ -1008,8 +1008,8 @@ export default function AdminCommandCenterPage() {
             {isResolved && resolutionBadge(blocker.resolution)}
           </div>
 
-          {/* Resolved/Deferred Accordion — summary only, no inputs */}
-          {isExpanded && isResolved && (
+          {/* Resolved Accordion — summary only, no inputs (finalized decisions) */}
+          {isExpanded && section === 'resolved' && (
             <div style={{
               margin: '8px 0 12px',
               borderRadius: 8,
@@ -1049,17 +1049,42 @@ export default function AdminCommandCenterPage() {
                   <div style={{ fontSize: 13, color: '#0f172a', padding: '8px 12px', backgroundColor: '#fff', borderRadius: 6, border: `1px solid ${summaryBorderColor}` }}>{blocker.nextAction}</div>
                 </div>
               )}
-              {blocker.resolution === 'deferred' && (
-                <div style={{ fontSize: 12, color: '#64748b', fontStyle: 'italic', marginTop: 8 }}>
-                  Deferred — no answer recorded. Click to re-open if needed... (currently view-only once resolved)
-                </div>
-              )}
+              {/* deferred items no longer reach this branch — handled by active accordion below */}
             </div>
           )}
 
-          {/* Accordion */}
-          {isExpanded && !isResolved && (
-            <div style={{ margin: '8px 0 12px', borderRadius: 8, overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+          {/* Active / Deferred Accordion — full decision UI with inputs */}
+          {isExpanded && (section === 'active' || section === 'deferred') && (
+            <div style={{ margin: '8px 0 12px', borderRadius: 8, overflow: 'hidden', border: section === 'deferred' ? '1px solid #fde68a' : '1px solid #e2e8f0' }}>
+
+              {/* Previously Deferred banner */}
+              {section === 'deferred' && (
+                <div style={{
+                  backgroundColor: '#fffbeb',
+                  padding: '10px 16px',
+                  borderBottom: '1px solid #fde68a',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 8,
+                }}>
+                  <span style={{ fontSize: 15, flexShrink: 0 }}>⏸</span>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#92400e' }}>
+                      Previously Deferred
+                      {blocker.resolvedAt && (
+                        <span style={{ fontWeight: 400, marginLeft: 6 }}>
+                          — {new Date(blocker.resolvedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                          {' at '}
+                          {new Date(blocker.resolvedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#b45309', marginTop: 2 }}>
+                      Enter your answer below to resolve this decision, or defer again.
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Issue card */}
               {blocker.detail && (
