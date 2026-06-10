@@ -2644,30 +2644,39 @@ async function runStandaloneMusicGeneration(job: ProductionJob, origin: string) 
   const prompt = musicPromptFor(story.script, story.title || '', story.genre || '')
   const existingUrl = String(story.background_music_url || '').trim()
   if (existingUrl && !existingUrl.startsWith('pending:')) {
-    return {
-      success: true,
-      skippedExisting: true,
-      storyId: String(storyId),
-      backgroundMusicUrl: existingUrl,
-      prompt,
-      report: {
+    // HAL-PIPE-002 fix: verify background_music.mp3 actually exists in storage before reusing.
+    // Same class of bug as render_final_mix — DB URL can be set even if file was not persisted.
+    const { data: musicFiles } = await supabase.storage.from('audio').list(`asc3/${storyId}`, { limit: 500 })
+    const musicFileNames = (musicFiles || []).map((f: any) => f.name)
+    const musicExists = musicFileNames.includes('background_music.mp3')
+    if (musicExists) {
+      return {
         success: true,
         skippedExisting: true,
-        url: existingUrl,
-      },
-      state: {
-        ...state,
         storyId: String(storyId),
-        musicGeneration: {
-          prompt,
-          status: 'complete',
-          backgroundMusicUrl: existingUrl,
-          routeResponse: { success: true, skippedExisting: true, url: existingUrl },
+        backgroundMusicUrl: existingUrl,
+        prompt,
+        report: {
+          success: true,
           skippedExisting: true,
-          generatedAt: nowIso(),
+          url: existingUrl,
         },
-      },
+        state: {
+          ...state,
+          storyId: String(storyId),
+          musicGeneration: {
+            prompt,
+            status: 'complete',
+            backgroundMusicUrl: existingUrl,
+            routeResponse: { success: true, skippedExisting: true, url: existingUrl },
+            skippedExisting: true,
+            generatedAt: nowIso(),
+          },
+        },
+      }
     }
+    // File missing from storage despite DB URL — fall through to regenerate
+    console.warn(`[generate_music] background_music.mp3 missing from storage despite DB url — regenerating`)
   }
 
   const response = await fetch(`${origin}/api/asc3/generate-music`, {
@@ -2767,6 +2776,92 @@ async function runStandaloneRenderFinalMix(job: ProductionJob, origin: string) {
     }
   }
 
+  // ATL-PIPE-003: NULL-LUFS Pre-Assembly Gate — validate all segments before render_final_mix
+  const renderAttempts = (state.renderFinalMix?.attempts ?? 0) + 1
+  const storyAudioFolder = `asc3/${storyId}`
+  try {
+    const { data: audioFiles, error: listError } = await supabase.storage.from('audio').list(storyAudioFolder, { limit: 500 })
+    if (listError) throw new Error(`Failed to list story segments: ${listError.message}`)
+    
+    // Check all segment_XXXX.mp3 files for silence (file size ≤ 20KB indicates null/invalid LUFS)
+    const segmentPattern = /^segment_\d{4}\.mp3$/
+    const audioSegments = (audioFiles || []).filter(f => segmentPattern.test(f.name))
+    const nullLufsSegments: string[] = []
+    const SILENCE_SIZE_THRESHOLD = 20 * 1024  // 20KB threshold matching generate-voices
+    
+    for (const file of audioSegments) {
+      if ((file.metadata?.size ?? 0) <= SILENCE_SIZE_THRESHOLD) {
+        nullLufsSegments.push(file.name)
+      }
+    }
+    
+    if (nullLufsSegments.length > 0) {
+      const failureMsg = `Segments with null/invalid LUFS detected before render_final_mix: ${nullLufsSegments.join(', ')}`
+      const errorReport = {
+        success: false,
+        error: 'NULL_LUFS_PRE_ASSEMBLY_GATE_FAILED',
+        affectedSegments: nullLufsSegments,
+        message: failureMsg,
+        remediation: 'Delete affected segments and reset job to generate_voices step for regeneration',
+      }
+      // Allow max 2 render attempts before marking as terminal failure
+      if (renderAttempts >= 2) {
+        return {
+          success: false,
+          skippedExisting: false,
+          storyId: String(storyId),
+          finalAudioUrl: null,
+          storyBodyUrl: null,
+          durationSecs: null,
+          report: errorReport,
+          state: {
+            ...state,
+            storyId: String(storyId),
+            renderFinalMix: {
+              status: 'failed',
+              skippedExisting: false,
+              finalAudioUrl: null,
+              storyBodyUrl: null,
+              durationSecs: null,
+              attempts: renderAttempts,
+              routeResponse: errorReport,
+              failedAt: nowIso(),
+              terminalFailure: true,
+            },
+          },
+        }
+      }
+      // Under retry limit — fail this attempt but allow orchestrator to retry
+      return {
+        success: false,
+        skippedExisting: false,
+        storyId: String(storyId),
+        finalAudioUrl: null,
+        storyBodyUrl: null,
+        durationSecs: null,
+        report: errorReport,
+        state: {
+          ...state,
+          storyId: String(storyId),
+          renderFinalMix: {
+            status: 'failed',
+            skippedExisting: false,
+            finalAudioUrl: null,
+            storyBodyUrl: null,
+            durationSecs: null,
+            attempts: renderAttempts,
+            routeResponse: errorReport,
+            failedAt: nowIso(),
+            terminalFailure: false,
+          },
+        },
+      }
+    }
+  } catch (e) {
+    // If segment validation itself fails, log warning but continue to render attempt
+    console.warn(`[ATL-PIPE-003] Segment pre-flight validation error: ${String(e).slice(0, 200)}`)
+  }
+
   const response = await fetch(`${origin}/api/asc3/render-final-mix`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -2795,6 +2890,7 @@ async function runStandaloneRenderFinalMix(job: ProductionJob, origin: string) {
         finalAudioUrl: finalAudioUrl || null,
         storyBodyUrl: storyBodyUrl || null,
         durationSecs: Number.isFinite(durationSecs) && durationSecs > 0 ? durationSecs : null,
+        attempts: renderAttempts,
         routeResponse: report,
         [success ? 'renderedAt' : 'failedAt']: nowIso(),
       },
@@ -2817,12 +2913,11 @@ async function runStandalonePackageCompletion(job: ProductionJob, origin: string
 
   const audioUrl = String(story.audio_url || '').trim()
   const storyAudioUrl = String(story.story_audio_url || '').trim()
-  const renderComplete = String(state.renderFinalMix?.status || '').trim() === 'complete'
-  if (
-    !renderComplete &&
-    (!audioUrl || audioUrl.startsWith('pending:') || !storyAudioUrl || storyAudioUrl.startsWith('pending:'))
-  ) {
-    throw new Error('Final mix outputs must exist before complete_story_package')
+  // HAL-PIPE-002 fix: always require audio_url to be set, even when renderFinalMix.status=complete.
+  // The previous bypass allowed complete_story_package to run when audio_url was null (if render
+  // state said complete but the DB update silently failed), causing the story to reach RFR without audio.
+  if (!audioUrl || audioUrl.startsWith('pending:') || !storyAudioUrl || storyAudioUrl.startsWith('pending:')) {
+    throw new Error('Final mix outputs must exist before complete_story_package (audio_url and story_audio_url must be set in stories table)')
   }
 
   const response = await fetch(`${origin}/api/admin/complete-story-package`, {
@@ -3121,11 +3216,26 @@ async function verifyStandaloneReadyForReview(job: ProductionJob) {
   const missingFields = missingReadyForReviewFields(story)
   const structuralOk = missingFields.length === 0
 
+  // ── HAL-PIPE-002: Hard Audio Gate — final_mix.mp3 must exist in storage ──
+  // The DB audio_url field can be set even if the file was never actually uploaded.
+  // Verify the file physically exists in storage before allowing RFR promotion.
+  const audioGateIssues: string[] = []
+  if (structuralOk) {
+    const { data: storageFiles } = await supabase.storage
+      .from('audio')
+      .list(`asc3/${storyId}`, { limit: 500 })
+    const storageNames = (storageFiles || []).map((f: any) => f.name)
+    if (!storageNames.includes('final_mix.mp3')) {
+      audioGateIssues.push('Audio Gate failed: final_mix.mp3 not found in storage. Render step must be re-run.')
+    }
+  }
+  // ── END AUDIO GATE ────────────────────────────────────────────────────────
+
   // ── Intro/outro position validation ───────────────────────────────────────
   // Runs only when structural fields are present (avoids false positives on
   // audio-not-ready stories) and script is available.
-  const contentIssues: string[] = []
-  if (structuralOk && story.script) {
+  const contentIssues: string[] = [...audioGateIssues]
+  if (structuralOk && audioGateIssues.length === 0 && story.script) {
     const introText = extractBelleSection(story.script, 'intro')
     const outroText = extractBelleSection(story.script, 'outro')
     const positionResult = validateIntroOutroPositionRules(story, introText, outroText)
