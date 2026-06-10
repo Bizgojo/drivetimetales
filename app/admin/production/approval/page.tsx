@@ -3496,13 +3496,25 @@ export default function AdminStoriesPage() {
     }
   }
 
-  function moveSelectedToRepairShop() {
+  async function moveSelectedToRepairShop() {
     if (!selectedGroup || !selectedFirst) return
     if (selectedGroup.type === 'series' && selectedIsSeries) {
       moveSeriesToRepairShop(selectedGroup)
       return
     }
-    openStoryRepair(selectedFirst)
+    // ATL-PIPE-007: Standalone repair path must call API, not just set UI state
+    // Make the repair queue state change persistent via setWorkflowState, matching series behavior
+    const repairChecklist = emptyRepairChecklist()
+    const repairNotes = 'Story moved to repair queue via approval panel "Move to Repair Shop" action without specific items marked.\n\nReview and add repair items via repair intake workflow.'
+    
+    if (!window.confirm(`Move "${selectedFirst.title}" to Repair Shop?`)) return
+    
+    try {
+      await setWorkflowState(selectedFirst, 'repair_queue', { repairChecklist, repairNotes })
+      await fetchStories()
+    } catch (err) {
+      alert(`Failed to move story to repair shop: ${err instanceof Error ? err.message : String(err)}`)
+    }
   }
 
   async function setSelectedProductionStandard(productionStandard: ProductionStandardValue) {
