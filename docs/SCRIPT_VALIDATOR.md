@@ -1,5 +1,5 @@
 # SCRIPT VALIDATOR — Endless Tales
-**Version:** 1.1
+**Version:** 1.2
 **Owner:** Marc Postlewaite / Endless Tales
 **Last Updated:** June 10, 2026
 **Changes from v1.0 (approved by Marc, June 10, 2026):** Section 3 changed from four Belle B intro variations to ONE intro line (matches Stage 2 v2.3 and Spec v1.3). Section 4 SFX frequency changed to Anchor SFX count check (3–6) and [MUSIC:OUT]/[MUSIC:IN] pairing checks added. New Section 8B Turn Rule check. Section 10 bridge-line checks added. Section 6 author examples updated to current roster. Section 11 word counts corrected to 130 wpm and 12–18 min series default noted. Voice ID references: Belle B is GMhgX8fCR9GUtd3kmlKC everywhere (improved May 2026 voice; wewocdDkjSLm9ZwjO7TD and KWDD3Wyq30ZF5NEL01EJ are retired). Section 2B added: Story Resolution Map check. Section 8 clarity check added.

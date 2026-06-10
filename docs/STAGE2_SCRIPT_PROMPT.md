@@ -1,5 +1,5 @@
 # STAGE 2 MASTER PROMPT — Endless Tales Script Writer
-**Version:** 2.2
+**Version:** 2.3
 **Owner:** Marc Postlewaite / Endless Tales
 **Last Updated:** June 10, 2026
 **Status:** LOCKED — changes require Marc's approval and version increment
