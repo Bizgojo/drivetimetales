@@ -1,13 +1,13 @@
-// Canonical Belle B voice — "Belle B – Warm Healthcare Support"
-// Updated 2026-06-10 per Marc Postlewaite directive.
-// Previous canonical (GMhgX8fCR9GUtd3kmlKC, "Belle # 1") moved to legacy.
-export const CANONICAL_BELLE_B_VOICE_ID = 'wewocdDkjSLm9ZwjO7TD'
+// Canonical Belle B voice — "improved Belle voice" (Marc-selected May 2026)
+// Reinstated 2026-06-10 per Work Order 001 Rev D (Section 0a).
+// wewocdDkjSLm9ZwjO7TD was briefly set as canonical this session — REVERSED by this order.
+export const CANONICAL_BELLE_B_VOICE_ID = 'GMhgX8fCR9GUtd3kmlKC'
 
 // Belle B is reserved for Endless Tales platform intro/outro/welcome audio only.
 // Legacy Belle B IDs remain blocked so older cached rows cannot be selected as story voices.
 export const LEGACY_BELLE_B_VOICE_IDS = [
-  'GMhgX8fCR9GUtd3kmlKC', // was canonical ("Belle # 1") — superseded 2026-06-10
-  'KWDD3Wyq30ZF5NEL01EJ',
+  'wewocdDkjSLm9ZwjO7TD', // RETIRED per Work Order 001 Rev D (old original)
+  'KWDD3Wyq30ZF5NEL01EJ', // RETIRED — always wrong
   'EXAVITQu4vr4xnSDxMaL',
 ] as const
 
