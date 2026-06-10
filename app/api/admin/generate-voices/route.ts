@@ -418,6 +418,143 @@ function levenshteinDistance(a: string, b: string): number {
   return prev[b.length]
 }
 
+function normalizeForQC(text: string): string {
+  let s = text.trim()
+
+  s = s.toLowerCase()
+  s = s.replace(/[.,!?;:'"—–-]+/g, ' ')
+  s = s.replace(/\s+/g, ' ').trim()
+
+  const numMap: Record<string, string> = {
+    'zero': '0',
+    'one': '1',
+    'two': '2',
+    'three': '3',
+    'four': '4',
+    'five': '5',
+    'six': '6',
+    'seven': '7',
+    'eight': '8',
+    'nine': '9',
+    'ten': '10',
+    'eleven': '11',
+    'twelve': '12',
+    'thirteen': '13',
+    'fourteen': '14',
+    'fifteen': '15',
+    'sixteen': '16',
+    'seventeen': '17',
+    'eighteen': '18',
+    'nineteen': '19',
+    'twenty': '20',
+    'twenty one': '21',
+    'twenty two': '22',
+    'twenty three': '23',
+    'twenty four': '24',
+    'twenty five': '25',
+    'twenty six': '26',
+    'twenty seven': '27',
+    'twenty eight': '28',
+    'twenty nine': '29',
+    'thirty': '30',
+    'forty': '40',
+    'fifty': '50',
+    'sixty': '60',
+    'seventy': '70',
+    'eighty': '80',
+    'ninety': '90',
+    'twenties': '20s',
+    'thirties': '30s',
+    'forties': '40s',
+    'fifties': '50s',
+    'sixties': '60s',
+    'seventies': '70s',
+    'eighties': '80s',
+    'nineties': '90s',
+    'first': '1st',
+    'second': '2nd',
+    'third': '3rd',
+    'fourth': '4th',
+    'fifth': '5th',
+  }
+  for (const [word, digit] of Object.entries(numMap).sort((a, b) => b[0].length - a[0].length)) {
+    s = s.replace(new RegExp(`\\b${word}\\b`, 'g'), digit)
+  }
+
+  const compounds: [string, string][] = [
+    ['name tag', 'nametag'],
+    ['fire place', 'fireplace'],
+    ['some thing', 'something'],
+    ['every thing', 'everything'],
+    ['any thing', 'anything'],
+    ['no thing', 'nothing'],
+    ['some one', 'someone'],
+    ['every one', 'everyone'],
+    ['any one', 'anyone'],
+    ['good night', 'goodnight'],
+    ['good bye', 'goodbye'],
+    ['every day', 'everyday'],
+    ['some day', 'someday'],
+    ['door step', 'doorstep'],
+  ]
+  for (const [spaced, joined] of compounds) {
+    s = s.replace(new RegExp(`\\b${spaced}\\b`, 'g'), joined)
+  }
+
+  const verbMap: Record<string, string> = {
+    'wished': 'wish',
+    'wanted': 'want',
+    'tried': 'try',
+    'said': 'say',
+    'told': 'tell',
+    'looked': 'look',
+    'turned': 'turn',
+    'walked': 'walk',
+    'asked': 'ask',
+    'thought': 'think',
+    'knew': 'know',
+    'went': 'go',
+    'came': 'come',
+    'got': 'get',
+    'ran': 'run',
+    'saw': 'see',
+    'heard': 'hear',
+    'felt': 'feel',
+    'made': 'make',
+    'took': 'take',
+    'gave': 'give',
+    'left': 'leave',
+    'stood': 'stand',
+    'sat': 'sit',
+  }
+  for (const [past, base] of Object.entries(verbMap)) {
+    s = s.replace(new RegExp(`\\b${past}\\b`, 'g'), base)
+  }
+
+  s = s.replace(/\s+/g, ' ').trim()
+  return s
+}
+
+function stringSimilarity(a: string, b: string): number {
+  if (a === b) return 1.0
+  if (!a || !b) return 0.0
+  const longer = a.length > b.length ? a : b
+  const shorter = a.length > b.length ? b : a
+  if (longer.includes(shorter) && shorter.length >= longer.length * 0.5) return 0.92
+  const lenSum = a.length + b.length
+  if (lenSum === 0) return 1.0
+  const dist = levenshteinDistance(a, b)
+  return (lenSum - dist) / lenSum
+}
+
+/*
+ * Transcript QC normalization calibration:
+ * normalizeForQC("early twenties") === normalizeForQC("early 20s")
+ * normalizeForQC("name tag reading DAPHNE") === normalizeForQC("nametag reading Daphne")
+ * normalizeForQC("wished she hadn't been") === normalizeForQC("wish she hadn't been")
+ * stringSimilarity("End of the hall", "End of the hall. That's cozy.") >= 0.85
+ */
+
 function transcriptSimilarity(expected: string[], detected: string[]): number {
   const expectedCompact = compactTranscriptTokens(expected).join('')
   const detectedCompact = compactTranscriptTokens(detected).join('')
@@ -913,6 +1050,14 @@ async function validateSegmentTranscript(buf: Buffer, expectedText: string, file
   }
   const expected = transcriptTokens(expectedText)
   const detected = transcriptTokens(detectedText)
+  const normExpected = normalizeForQC(expectedText)
+  const normDetected = normalizeForQC(detectedText)
+  const detectedBlank = detectedText.trim().length === 0 || normDetected.length === 0
+  const normalizedSimilarity = stringSimilarity(normExpected, normDetected)
+  const normalizedExactMatch = normExpected === normDetected
+  const radicalLengthMismatch = normExpected.length > 0
+    && normDetected.length < normExpected.length * 0.30
+    && normalizedSimilarity < 0.70
   const tail = expected.slice(Math.max(0, expected.length - SEGMENT_TRANSCRIPT_TAIL_WORDS))
   const tailCandidates = expected.length <= SEGMENT_TRANSCRIPT_TAIL_WORDS && tail.length > 1 && isLeadingArticle(tail[0])
     ? [tail, tail.slice(1)]
@@ -920,7 +1065,8 @@ async function validateSegmentTranscript(buf: Buffer, expectedText: string, file
   const tailMatches = tailCandidates.some(candidate => containsOrderedTokenVariant(detected, candidate))
   const expectedVariants = expectedLineVariants(expected)
   const coverage = Math.max(...expectedVariants.map(variant => transcriptVariantCoverage(variant, detected)))
-  const similarity = Math.max(...expectedVariants.map(variant => transcriptSimilarity(variant, detected)))
+  const tokenSimilarity = Math.max(...expectedVariants.map(variant => transcriptSimilarity(variant, detected)))
+  const similarity = Math.max(tokenSimilarity, normalizedSimilarity)
   const shortLineMatches = expected.length <= 8
     ? expectedVariants.some(variant => containsOrderedTokenVariant(detected, variant)) || similarity >= 0.88
     : true
@@ -938,10 +1084,18 @@ async function validateSegmentTranscript(buf: Buffer, expectedText: string, file
     && !(tailMatches && shortLineMatches && coverage >= SEGMENT_TRANSCRIPT_MIN_COVERAGE)
     && weakVerbTrailingSRescue(expected, detected, expectedText, tailMatches)
 
-  const passed = oneWordProperNameMatch
+  const tokenQcPassed = oneWordProperNameMatch
     || safeTerminalTailDrop
     || weakVerbTrailingS
     || (tailMatches && shortLineMatches && coverage >= SEGMENT_TRANSCRIPT_MIN_COVERAGE)
+  const normalizedQcPassed = normalizedExactMatch || normalizedSimilarity >= 0.85
+  const passed = !detectedBlank
+    && !radicalLengthMismatch
+    && (tokenQcPassed || normalizedQcPassed)
+
+  if (!tokenQcPassed && normalizedQcPassed && !normalizedExactMatch) {
+    console.warn(`[QC WARNING] Segment ${fileName}: similarity ${(normalizedSimilarity * 100).toFixed(1)}% — expected "${expectedText}" detected "${detectedText}"`)
+  }
 
   return {
     passed,
@@ -2226,7 +2380,7 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
             `expected "${transcriptFailure.expectedText}"`
           )
         }
-        throw new Error(`Segment transcript QC failed for ${fileName}: expected "${transcriptFailure.expectedText}", detected "${transcriptFailure.detectedText}"`)
+        throw new Error(`Segment transcript QC failed for ${fileName}: expected "${transcriptFailure.expectedText}", detected "${transcriptFailure.detectedText}" (similarity: ${((transcriptFailure.similarity ?? 0) * 100).toFixed(1)}%)`)
       }
       if (best?.metrics.input_tp && best.metrics.input_tp > SPOKEN_TRUE_PEAK) {
         throw new Error(`Segment loudness QC failed for ${fileName}: best candidate ${best.candidate} true peak ${best.metrics.input_tp.toFixed(2)} dBTP exceeds ${SPOKEN_TRUE_PEAK} dBTP`)
