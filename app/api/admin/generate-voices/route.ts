@@ -5,6 +5,7 @@ import { promisify } from 'util'
 import { promises as fs } from 'fs'
 import path from 'path'
 import os from 'os'
+import { createHash } from 'crypto'
 import { CANONICAL_BELLE_B_VOICE_ID, RESERVED_BELLE_B_VOICE_IDS, isBelleBVoiceId } from '@/lib/voiceConstants'
 import { buildProductionLearningFeedback } from '@/lib/productionLearning'
 
@@ -38,6 +39,9 @@ const EL_SETTINGS = { stability: 0.5, similarity_boost: 0.75, style: 0.0, use_sp
 const SPOKEN_REFERENCE_LUFS = -16
 const SPOKEN_TRUE_PEAK = -1.5
 const SPOKEN_LRA = 11
+// ATL-PIPE-001: Silence buffer detection thresholds
+const SILENCE_BUFFER_SIZE_THRESHOLD = 20 * 1024  // 20KB
+const SILENCE_BUFFER_KNOWN_ETAG = '4514f4b04df758c455fddd733d4667b4'  // known ElevenLabs silence placeholder MD5
 const SEGMENT_QC_WARN_LUFS = -18.0
 const SEGMENT_QC_RETRY_LUFS = -18.5
 const SEGMENT_QC_HARD_FAIL_LUFS = -20.0
@@ -610,6 +614,16 @@ function transcriptTokenMatches(expected: string, detected: string): boolean {
   if (singularPluralVariantMatches(expected, detected)) return true
   if (commonFirstNameVariantMatches(expected, detected)) return true
   if (commonSurnameVariantMatches(expected, detected)) return true
+  // ATL-PIPE-008/A8: Fuzzy short-token matching for homophone-style transcription noise.
+  // Prevents near-misses like "set"→"sat" (distance 1) from failing QC.
+  // Applies only to tokens ≥ 3 chars (avoids matching tiny function words) with same first letter.
+  // Levenshtein ≤ 2 for tokens ≤ 5 chars; ≤ 3 for tokens 6-9 chars (fills gap below long-word threshold).
+  if (expected.length >= 3 && detected.length >= 3 && expected[0] === detected[0]) {
+    const maxFuzzyLen = Math.max(expected.length, detected.length)
+    const fuzzyDist = levenshteinDistance(expected, detected)
+    if (maxFuzzyLen <= 5 && fuzzyDist <= 2) return true
+    if (maxFuzzyLen > 5 && maxFuzzyLen < 10 && fuzzyDist <= 3) return true
+  }
   if (expected.length < 7 || detected.length < 7) return false
   if (expected[0] !== detected[0]) return false
 
@@ -1148,6 +1162,10 @@ function classifySegmentFailure(error: string, scriptText: string): SegmentFailu
   const e = error.toLowerCase()
   if (e.includes('transcript qc') || e.includes('coverage') || e.includes('expected') && e.includes('detected')) {
     return 'mechanical_qc'
+  }
+  // ATL-PIPE-001: Silence buffer is retriable — may be transient ElevenLabs placeholder
+  if (e.includes('silence_buffer')) {
+    return 'voice_generation'
   }
   if (e.includes('elevenlabs error') || e.includes('fetch failed') || e.includes('timeout') ||
       /elevenlabs.*\d{3}/.test(e) || e.includes('network') || e.includes('econnrefused')) {
@@ -1852,6 +1870,14 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
     })
     if (!res.ok) throw new Error(`ElevenLabs error ${res.status}: ${(await res.text()).slice(0, 200)}`)
     const rawBuf = Buffer.from(await res.arrayBuffer())
+    // ATL-PIPE-001: Reject silence placeholder buffers before any processing
+    if (rawBuf.length <= SILENCE_BUFFER_SIZE_THRESHOLD) {
+      throw new Error(`SILENCE_BUFFER: ${fileName} rejected — ElevenLabs returned ${rawBuf.length} bytes (≤ ${SILENCE_BUFFER_SIZE_THRESHOLD} silence threshold)`)
+    }
+    const rawBufMd5 = createHash('md5').update(rawBuf).digest('hex')
+    if (rawBufMd5 === SILENCE_BUFFER_KNOWN_ETAG) {
+      throw new Error(`SILENCE_BUFFER: ${fileName} rejected — matches known silence eTag ${SILENCE_BUFFER_KNOWN_ETAG}`)
+    }
     return normalizeSpokenBuffer(rawBuf, rawText, prefix)
   }
 
