@@ -1640,12 +1640,8 @@ export default function AdminCommandCenterPage() {
 
   const renderAgentCard = (agent: AgentConfig) => {
     const state = agentsState[agent.id] ?? makeEmptyAgentState()
-    const teaser =
-      state.currentTask.length > 60
-        ? state.currentTask.slice(0, 60) + '…'
-        : state.currentTask
 
-    // Compute which MarcAction IDs are shown inline in Row 4 (to exclude from Row 7)
+    // Compute which MarcAction IDs are shown inline in Section A (currentTask) — exclude from Section C
     const inlineLinkedIds = new Set<string>()
     const detectedInCurrentTask = detectMarcPhrases(state.currentTask)
     for (const { phrase } of detectedInCurrentTask) {
@@ -1657,6 +1653,16 @@ export default function AdminCommandCenterPage() {
       )
       if (match) inlineLinkedIds.add(match.id)
     }
+
+    // Section C: complete unresolved MarcActions not already linked inline in Section A
+    const sectionCActions = marcActions.filter(a => {
+      if (a.agentId !== agent.id) return false
+      if (!a.isComplete) return false
+      if (inlineLinkedIds.has(a.id)) return false
+      const res = marcActionResolutions[a.id]
+      if (res && res.resolution !== 'needs_info') return false
+      return true
+    })
 
     return (
       <div
@@ -1673,22 +1679,40 @@ export default function AdminCommandCenterPage() {
           transition: 'box-shadow 0.15s ease',
         }}
       >
-        {/* Row 1 */}
+        {/* Row 1 — Status indicator + emoji + name */}
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-          <span style={{ fontSize: 24 }}>{agent.emoji}</span>
-          <span style={{ fontSize: 17, fontWeight: 800, marginLeft: 8, color: '#0f172a' }}>
+          <span
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              backgroundColor: STATUS_DOT_COLORS[state.status],
+              display: 'inline-block',
+              flexShrink: 0,
+            }}
+          />
+          <span style={{ fontSize: 22, marginLeft: 6 }}>{agent.emoji}</span>
+          <span style={{ fontSize: 17, fontWeight: 800, marginLeft: 6, color: '#0f172a' }}>
             {agent.displayName}
           </span>
         </div>
-        {/* Row 2 */}
-        <div style={{ fontSize: 12, color: '#64748b', marginBottom: formatRelativeTime(state.currentTaskUpdatedAt ?? state.lastUpdatedAt) ? 2 : 8 }}>{agent.roleTitle}</div>
-        {/* Row 2b — Relative timestamp */}
-        {formatRelativeTime(state.currentTaskUpdatedAt ?? state.lastUpdatedAt) && (
-          <div style={{ fontSize: 10, color: '#b0b8c6', marginBottom: 8, letterSpacing: '0.01em' }}>
-            {formatRelativeTime(state.currentTaskUpdatedAt ?? state.lastUpdatedAt)}
-          </div>
-        )}
-        {/* Row 2c — Staleness warning */}
+
+        {/* Row 2 — Role title + relative timestamp */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 4,
+        }}>
+          <div style={{ fontSize: 12, color: '#64748b' }}>{agent.roleTitle}</div>
+          {formatRelativeTime(state.currentTaskUpdatedAt ?? state.lastUpdatedAt) && (
+            <div style={{ fontSize: 10, color: '#b0b8c6', letterSpacing: '0.01em' }}>
+              {formatRelativeTime(state.currentTaskUpdatedAt ?? state.lastUpdatedAt)}
+            </div>
+          )}
+        </div>
+
+        {/* Row 2b — Staleness warning */}
         {(() => {
           const ts = state.lastUpdatedAt ?? state.currentTaskUpdatedAt
           if (!ts) return null
@@ -1704,145 +1728,78 @@ export default function AdminCommandCenterPage() {
             </div>
           )
         })()}
-        {/* Row 3 */}
-        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}>
-          <span
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: '50%',
-              backgroundColor: STATUS_DOT_COLORS[state.status],
-              display: 'inline-block',
-            }}
-          />
-          <span
-            style={{
-              fontSize: 12,
-              fontWeight: 600,
-              color: STATUS_DOT_COLORS[state.status],
-              marginLeft: 6,
-            }}
-          >
-            {state.status}
-          </span>
-        </div>
-        {/* Row 4 — Current Task (highest-priority active work) */}
-        <div style={{ marginTop: 8, marginBottom: 6 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' as const, letterSpacing: '0.05em', marginBottom: 3 }}>
-            Current Task
-          </div>
-          <div style={{ fontSize: 12, color: '#334155', marginBottom: 4, lineHeight: 1.4 }}>
-            {state.currentTask
-              ? renderWithMarcLinks(
-                  state.currentTask,
-                  agent.id,
-                  marcActions,
-                  marcActionResolutions,
-                  openMarcAction,
-                  { fontSize: 12, color: '#334155' }
-                )
-              : <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>
-                  Idle{state.lastReport ? ` — last completed: ${state.lastReport.text.slice(0, 50)}…` : ''}
-                </span>}
-          </div>
-        </div>
 
-        {/* Row 5 — Active Work list (Orion-prioritized, up to 5) */}
-        {(state.activeTasks ?? []).length > 0 && (
-          <div style={{ marginBottom: 6 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' as const, letterSpacing: '0.05em', marginBottom: 3 }}>
-              Active Work
-            </div>
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-              {(state.activeTasks ?? []).slice(0, 5).map((t, i) => (
-                <li key={i} style={{ fontSize: 11, color: '#475569', display: 'flex', alignItems: 'flex-start', gap: 5, marginBottom: 2 }}>
-                  <span style={{ color: agent.accentColor, fontWeight: 700, flexShrink: 0, lineHeight: 1.4 }}>•</span>
-                  <span style={{ fontSize: 11, color: '#475569', lineHeight: 1.35 }}>{t}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {/* Row 6 – progress bar */}
+        {/* Progress bar — subtle 2px, no label */}
         {state.percentComplete !== null && (
-          <div
-            style={{
-              height: 4,
-              backgroundColor: '#e2e8f0',
-              borderRadius: 2,
-              overflow: 'hidden',
-              marginBottom: 6,
-            }}
-          >
-            <div
-              style={{
-                width: `${state.percentComplete}%`,
-                backgroundColor: agent.accentColor,
-                height: '100%',
-              }}
-            />
+          <div style={{ height: 2, backgroundColor: '#e2e8f0', borderRadius: 1, overflow: 'hidden', marginBottom: 8, marginTop: 4 }}>
+            <div style={{ width: `${state.percentComplete}%`, backgroundColor: agent.accentColor, height: '100%' }} />
           </div>
         )}
 
-        {/* Row 7 — all unresolved complete MarcActions, one per line */}
-        {(() => {
-          const agentMarcActions = marcActions.filter(a => {
-            if (a.agentId !== agent.id) return false
-            if (inlineLinkedIds.has(a.id)) return false  // already shown inline in Row 4
-            const res = marcActionResolutions[a.id]
-            if (res && res.resolution !== 'needs_info') return false
-            return true
-          })
-
-          const completeActions = agentMarcActions.filter(a => a.isComplete)
-          const hasIncompleteOnly = agentMarcActions.length > 0 && completeActions.length === 0
-
-          if (completeActions.length === 0 && !hasIncompleteOnly) {
-            // No Marc actions at all — show plain waitingOn text if present
-            if (state.waitingOn) {
-              return (
-                <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 6, lineHeight: 1.3 }}>
-                  ⏳ {state.waitingOn.length > 80 ? state.waitingOn.slice(0, 80) + '…' : state.waitingOn}
-                </div>
+        {/* Section A — What's happening now */}
+        <div style={{ fontSize: 13, color: '#334155', lineHeight: 1.45, marginTop: 8 }}>
+          {state.currentTask
+            ? renderWithMarcLinks(
+                state.currentTask,
+                agent.id,
+                marcActions,
+                marcActionResolutions,
+                openMarcAction,
+                { fontSize: 13, color: '#334155' }
               )
-            }
-            return null
-          }
+            : <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>Idle</span>}
+        </div>
 
-          return (
-            <div style={{ marginTop: 8 }}>
-              {/* Incomplete-only guard: show Orion message, not clickable */}
-              {hasIncompleteOnly && (
-                <div style={{ fontSize: 10, color: '#94a3b8', fontStyle: 'italic', marginBottom: 2 }}>
-                  ⏳ Decision card in progress — Orion completing
-                </div>
+        {/* Section B — Blocked (only if waitingOn is set) */}
+        {state.waitingOn ? (
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginTop: 8 }}>
+            <span style={{
+              width: 6, height: 6, borderRadius: '50%',
+              backgroundColor: '#ef4444', flexShrink: 0, marginTop: 4,
+            }} />
+            <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.4 }}>
+              <span style={{ fontWeight: 700, color: '#ef4444' }}>Blocked: </span>
+              {renderWithMarcLinks(
+                state.waitingOn,
+                agent.id,
+                marcActions,
+                marcActionResolutions,
+                openMarcAction,
+                { fontSize: 12, color: '#64748b' }
               )}
-              {/* One line per complete action */}
-              {completeActions.map((action) => (
-                <div key={action.id} style={{
-                  display: 'flex', alignItems: 'flex-start', gap: 6, marginBottom: 3
-                }}>
-                  <span style={{
-                    width: 7, height: 7, borderRadius: '50%',
-                    backgroundColor: '#dc2626', flexShrink: 0, marginTop: 3
-                  }} />
-                  <span
-                    onClick={(e) => { e.stopPropagation(); openMarcAction(action) }}
-                    style={{
-                      fontSize: 11, color: '#2563eb', textDecoration: 'underline',
-                      cursor: 'pointer', fontWeight: 500, lineHeight: 1.35,
-                    }}
-                  >
-                    {action.actionText.length > 72
-                      ? action.actionText.slice(0, 72) + '…'
-                      : action.actionText}
-                  </span>
-                </div>
-              ))}
             </div>
-          )
-        })()}
+          </div>
+        ) : null}
+
+        {/* Section C — Needs Your Decision (only if complete unresolved MarcActions exist) */}
+        {sectionCActions.length > 0 && (
+          <div style={{ marginTop: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5 }}>
+              <span style={{
+                width: 6, height: 6, borderRadius: '50%',
+                backgroundColor: '#f97316', flexShrink: 0,
+              }} />
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#f97316' }}>Your decision:</span>
+            </div>
+            {sectionCActions.map((action) => (
+              <div key={action.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginBottom: 4 }}>
+                <span style={{
+                  width: 6, height: 6, borderRadius: '50%',
+                  backgroundColor: '#dc2626', flexShrink: 0, marginTop: 4,
+                }} />
+                <span
+                  onClick={(e) => { e.stopPropagation(); openMarcAction(action) }}
+                  style={{
+                    fontSize: 12, color: '#2563eb', textDecoration: 'underline',
+                    cursor: 'pointer', fontWeight: 500, lineHeight: 1.35,
+                  }}
+                >
+                  {action.actionText.length > 72 ? action.actionText.slice(0, 72) + '…' : action.actionText}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     )
   }
@@ -2784,14 +2741,10 @@ export default function AdminCommandCenterPage() {
           >
             📋 Last Orion Report
           </button>
-          {/* Mobile-only refresh button */}
+          {/* Universal refresh button */}
           <button
             type="button"
-            className="cc-mobile-only"
-            onClick={() => {
-              // Force a true reload that bypasses BFCache on iOS
-              window.location.href = window.location.href
-            }}
+            onClick={() => { window.location.href = window.location.href }}
             style={{
               border: '1px solid #e2e8f0',
               borderRadius: 8,
@@ -2800,7 +2753,6 @@ export default function AdminCommandCenterPage() {
               cursor: 'pointer',
               fontSize: 18,
               lineHeight: 1,
-              marginLeft: 8,
             }}
             title="Refresh data"
           >
