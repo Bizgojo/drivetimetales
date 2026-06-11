@@ -413,7 +413,7 @@ function inferActionType(text: string): MarcAction['type'] {
 // ─── ATL-CC-INLINE-001: Marc-request detection ────────────────────────────────
 const MARC_REQUEST_PATTERNS = [
   /\bawait(?:ing|s)?\s+Marc(?:'s)?\s+(?:approval|review|decision|sign-?off|confirmation|input|go-?ahead)\b/i,
-  /\bMarc(?:\s*:|\s+must|\s+needs?\s+to|\s+should|\s+has\s+to|\s+to)\b.{0,80}/i,
+  /\bMarc(?:\s*:|(?:\s+(?:must|needs?\s+to|should|has\s+to|to)\b)).{0,80}/i,
   /\b(?:needs?|requires?|waiting\s+on|pending)\s+Marc(?:'s)?\s+(?:approval|decision|review|sign-?off|input|confirmation|go-?ahead|authorization)\b/i,
   /\bMarc\s+(?:approval|decision|review|sign-?off)\s+(?:needed|required|pending)\b/i,
 ]
