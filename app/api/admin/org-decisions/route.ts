@@ -24,6 +24,7 @@ interface RawBlocker {
   resolution?: string | null
   resolvedAt?: string | null
   answeredAt?: string | null
+  archived?: boolean          // set by Orion when a blocker is closed via state.json — excluded from all UI sections
   // all other fields intentionally omitted from the public response
   [key: string]: unknown
 }
@@ -108,9 +109,11 @@ function toSummary(b: RawBlocker): DecisionSummary {
 export async function GET(): Promise<NextResponse> {
   const { blockers, source } = await readBlockers()
 
-  const active   = blockers.filter((b) => !b.done).map(toSummary)
-  const deferred = blockers.filter((b) => b.done && b.resolution === 'deferred').map(toSummary)
-  const resolved = blockers.filter((b) => b.done && b.resolution != null && b.resolution !== 'deferred').map(toSummary)
+  // Archived blockers are excluded from all buckets — closed by Orion, not visible to UI.
+  const isArchived = (b: RawBlocker) => b.archived === true
+  const active   = blockers.filter((b) => !b.done && !isArchived(b)).map(toSummary)
+  const deferred = blockers.filter((b) => !isArchived(b) && b.done && b.resolution === 'deferred').map(toSummary)
+  const resolved = blockers.filter((b) => !isArchived(b) && b.done && b.resolution != null && b.resolution !== 'deferred').map(toSummary)
 
   const body: DecisionsResponse = {
     active,

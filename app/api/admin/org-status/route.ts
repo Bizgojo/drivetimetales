@@ -1174,10 +1174,12 @@ export async function GET(req: NextRequest) {
   const reports = await loadOrionReports()
 
   const allBlockers: MarcBlocker[] = (state.blockers as MarcBlocker[]) ?? SEED_BLOCKERS
+  // Archived blockers are excluded from all decision buckets — they have been closed by Orion.
+  const isArchived = (b: MarcBlocker) => !!(b as MarcBlocker & { archived?: boolean }).archived
   const decisions = {
-    active:   allBlockers.filter((b) => !b.done),
-    deferred: allBlockers.filter((b) => b.done && b.resolution === 'deferred'),
-    resolved: allBlockers.filter((b) => b.done && b.resolution != null && b.resolution !== 'deferred'),
+    active:   allBlockers.filter((b) => !b.done && !isArchived(b)),
+    deferred: allBlockers.filter((b) => !isArchived(b) && b.done && b.resolution === 'deferred'),
+    resolved: allBlockers.filter((b) => !isArchived(b) && b.done && b.resolution != null && b.resolution !== 'deferred'),
   }
 
   // Agent Card SSoT: merge SEED_AGENTS (schema defaults) with agent-state.json (live values)

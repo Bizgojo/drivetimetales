@@ -497,11 +497,39 @@ export default function AdminCommandCenterPage() {
           }
         }
         if (data.blockers) {
-          // MERGE: preserve local resolution state, take structure from API
+          // MERGE: API (state.json) is the source of truth for finalized states.
+          // localStorage is preserved ONLY for in-flight resolutions (PATCH sent but not yet
+          // reflected in a subsequent GET) — i.e. when the API has no resolution yet.
+          //
+          // BUG FIXED (2026-06-11): The previous logic unconditionally preferred localStorage
+          // over the API whenever localStorage had any resolution/done value. This caused Orion's
+          // direct state.json writes (archiving, closing deferred cards) to be silently overridden
+          // by stale localStorage on every page load.
+          //
+          // Priority:  archived (API) > decided/approved/rejected (API) > deferred (local) > null (local)
           const localBlockers = readLS<MarcBlocker[]>(MARC_BLOCKERS_KEY, [])
           const merged = (data.blockers as MarcBlocker[]).map(apiBlocker => {
             const local = localBlockers.find(b => b.id === apiBlocker.id)
-            // If local has a resolution decision, preserve it over the API version
+            const apiResolution = apiBlocker.resolution ?? null
+
+            // API wins when it holds a terminal state — archived or any non-deferred resolution.
+            // These states can only be set by Orion writing state.json directly, or by Marc
+            // resolving through the UI (which immediately PATCHes the server).
+            const apiIsFinal =
+              (apiBlocker as MarcBlocker & { archived?: boolean }).archived === true ||
+              (apiBlocker.done && apiResolution !== null && apiResolution !== 'deferred')
+
+            if (apiIsFinal) {
+              // API is authoritative — discard any stale localStorage state for this blocker.
+              return {
+                ...apiBlocker,
+                resolution: apiResolution,
+                done: apiBlocker.done ?? false,
+              }
+            }
+
+            // API has no final resolution yet. If localStorage has a resolution (e.g. in-flight
+            // PATCH that hasn't propagated), preserve it so the UI stays consistent.
             if (local && (local.resolution || local.done)) {
               return {
                 ...apiBlocker,          // API provides fresh text/structure
@@ -513,10 +541,11 @@ export default function AdminCommandCenterPage() {
                 nextAction: local.nextAction ?? null,
               }
             }
-            // Normalize: ensure resolution is explicitly null (never undefined) so filters behave correctly
+
+            // Neither side has a resolution — normalize and return API structure.
             return {
               ...apiBlocker,
-              resolution: apiBlocker.resolution ?? null,
+              resolution: apiResolution,
               done: apiBlocker.done ?? false,
             }
           })
@@ -785,10 +814,13 @@ export default function AdminCommandCenterPage() {
   // ─── Marc Blockers Panel ────────────────────────────────────────────────────
 
   const renderBlockersPanel = () => {
-    const activeOnes = blockers.filter((b) => !b.done)
+    // Archived blockers (set by Orion via state.json) are excluded from all sections.
+    // They have served their purpose and should not appear in any UI section.
+    const isArchived = (b: MarcBlocker) => !!(b as MarcBlocker & { archived?: boolean }).archived
+    const activeOnes = blockers.filter((b) => !b.done && !isArchived(b))
     // Use loose != null to catch both null AND undefined (e.g. old stored data without the field)
-    const deferredOnes = blockers.filter((b) => b.done && b.resolution === 'deferred')
-    const resolvedOnes = blockers.filter((b) => b.done && b.resolution != null && b.resolution !== 'deferred')
+    const deferredOnes = blockers.filter((b) => !isArchived(b) && b.done && b.resolution === 'deferred')
+    const resolvedOnes = blockers.filter((b) => !isArchived(b) && b.done && b.resolution != null && b.resolution !== 'deferred')
 
     const activeMarcActions = marcActions.filter(a => {
       const res = marcActionResolutions[a.id]
