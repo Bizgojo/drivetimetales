@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import {
   AGENTS,
   MISSION_PRIORITY_COLORS,
@@ -410,6 +410,98 @@ function inferActionType(text: string): MarcAction['type'] {
   return 'decide'
 }
 
+// ─── ATL-CC-INLINE-001: Marc-request detection ────────────────────────────────
+const MARC_REQUEST_PATTERNS = [
+  /\bawait(?:ing|s)?\s+Marc(?:'s)?\s+(?:approval|review|decision|sign-?off|confirmation|input|go-?ahead)\b/i,
+  /\bMarc(?:\s*:|\s+must|\s+needs?\s+to|\s+should|\s+has\s+to|\s+to)\b.{0,80}/i,
+  /\b(?:needs?|requires?|waiting\s+on|pending)\s+Marc(?:'s)?\s+(?:approval|decision|review|sign-?off|input|confirmation|go-?ahead|authorization)\b/i,
+  /\bMarc\s+(?:approval|decision|review|sign-?off)\s+(?:needed|required|pending)\b/i,
+]
+
+function detectMarcPhrases(text: string): Array<{ start: number; end: number; phrase: string }> {
+  const results: Array<{ start: number; end: number; phrase: string }> = []
+  for (const pattern of MARC_REQUEST_PATTERNS) {
+    const match = pattern.exec(text)
+    if (match) {
+      const overlaps = results.some(r => match.index < r.end && match.index + match[0].length > r.start)
+      if (!overlaps) {
+        results.push({ start: match.index, end: match.index + match[0].length, phrase: match[0] })
+      }
+    }
+  }
+  return results.sort((a, b) => a.start - b.start)
+}
+
+// ─── ATL-CC-INLINE-001: Inline Marc-link renderer ────────────────────────────
+function renderWithMarcLinks(
+  text: string,
+  agentId: string,
+  contextLabel: string,
+  marcActions: MarcAction[],
+  marcActionResolutions: Record<string, { resolution: MarcAction['resolution']; resolvedAt: string; note: string | null }>,
+  openMarcAction: (action: MarcAction) => void,
+  onAutoCreate: (phrase: string, agentId: string, contextLabel: string) => MarcAction | null,
+  textStyle?: React.CSSProperties,
+): React.ReactNode {
+  const phrases = detectMarcPhrases(text)
+  if (phrases.length === 0) return <span style={textStyle}>{text}</span>
+
+  const nodes: React.ReactNode[] = []
+  let cursor = 0
+  for (const { start, end, phrase } of phrases) {
+    if (start > cursor) {
+      nodes.push(<span key={`plain-${cursor}`} style={textStyle}>{text.slice(cursor, start)}</span>)
+    }
+
+    const normalizedPhrase = phrase.toLowerCase().trim()
+    const existing = marcActions.find(a =>
+      a.agentId === agentId &&
+      a.actionText.toLowerCase().includes(normalizedPhrase.slice(0, 30))
+    )
+    const resolution = existing ? marcActionResolutions[existing.id] : undefined
+    const isResolved = resolution && resolution.resolution !== null && resolution.resolution !== 'needs_info'
+
+    if (isResolved) {
+      nodes.push(
+        <span key={`resolved-${start}`} style={{ ...textStyle, textDecoration: 'line-through', color: '#94a3b8' }}>
+          {phrase}
+        </span>
+      )
+    } else {
+      nodes.push(
+        <span
+          key={`link-${start}`}
+          title="Click to answer this request"
+          onClick={(e) => {
+            e.stopPropagation()
+            if (existing) {
+              openMarcAction(existing)
+            } else {
+              const created = onAutoCreate(phrase, agentId, contextLabel)
+              if (created) openMarcAction(created)
+            }
+          }}
+          style={{
+            color: '#2563eb',
+            textDecoration: 'underline',
+            cursor: 'pointer',
+            fontWeight: 600,
+            display: 'inline',
+            ...textStyle,
+          }}
+        >
+          🔵 {phrase}
+        </span>
+      )
+    }
+    cursor = end
+  }
+  if (cursor < text.length) {
+    nodes.push(<span key={`plain-end`} style={textStyle}>{text.slice(cursor)}</span>)
+  }
+  return <>{nodes}</>
+}
+
 interface ChatMessage {
   id: string
   role: string
@@ -443,6 +535,8 @@ export default function AdminCommandCenterPage() {
   )
   const [selectedMarcActionId, setSelectedMarcActionId] = useState<string | null>(null)
   const [showResolvedMarcActions, setShowResolvedMarcActions] = useState(false)
+  // ATL-CC-INLINE-001: inline auto-created MarcActions (not yet in missions/agentState)
+  const [inlineMarcActions, setInlineMarcActions] = useState<MarcAction[]>([])
   const [showDraftCards, setShowDraftCards] = useState(false)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
 
@@ -645,8 +739,9 @@ export default function AdminCommandCenterPage() {
       parse((state as AgentState).waitingOn ?? '', `agent-${agentId}`, agentId as AgentId, `${agentId} department`)
     })
 
-    return actions
-  }, [missions, agentsState])
+    // ATL-CC-INLINE-001: merge inline auto-created actions
+    return [...actions, ...inlineMarcActions]
+  }, [missions, agentsState, inlineMarcActions])
 
   const launchReadiness = useMemo<LaunchReadiness | null>(() => {
     if (!loaded) return null
@@ -689,6 +784,31 @@ export default function AdminCommandCenterPage() {
       setChatThinking(false)
     }
   }, [chatMessages])
+
+  // ATL-CC-INLINE-001: governance lint — warn on uncovered Marc-request phrases (dev only)
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'development') return
+    for (const [agentId, state] of Object.entries(agentsState)) {
+      const fields = [
+        (state as AgentState).currentTask,
+        ...((state as AgentState).activeTasks ?? []),
+        (state as AgentState).waitingOn ?? '',
+      ]
+      for (const text of fields) {
+        if (!text) continue
+        const phrases = detectMarcPhrases(text)
+        for (const { phrase } of phrases) {
+          const covered = marcActions.some(a =>
+            a.agentId === agentId &&
+            a.actionText.toLowerCase().includes(phrase.toLowerCase().slice(0, 30))
+          )
+          if (!covered) {
+            console.warn(`[GOVERNANCE] Agent card "${agentId}" contains Marc-request language not covered by a MarcAction: "${phrase}"`)
+          }
+        }
+      }
+    }
+  }, [agentsState, marcActions])
 
   const resolveBlocker = (
     blockerId: string,
@@ -784,6 +904,29 @@ export default function AdminCommandCenterPage() {
       document.getElementById('marc-actions')?.scrollIntoView({ behavior: 'smooth' })
     }, 100)
   }
+
+  // ATL-CC-INLINE-001: auto-create a draft MarcAction from inline detected phrase
+  const handleAutoCreateMarcAction = useCallback(
+    (phrase: string, agentId: string, contextLabel: string): MarcAction | null => {
+      const id = `ma-inline-${agentId}-${Date.now()}`
+      const action: MarcAction = {
+        id,
+        missionId: `inline-${agentId}`,
+        agentId,
+        actionText: phrase,
+        missionTitle: contextLabel,
+        type: inferActionType(phrase),
+        done: false,
+        resolution: null,
+        resolvedAt: null,
+        note: null,
+        isComplete: false,
+      }
+      setInlineMarcActions(prev => [...prev, action])
+      return action
+    },
+    []
+  )
 
   const gridAgents = useMemo(
     () => AGENTS.filter((a) => GRID_AGENT_IDS.includes(a.id)),
@@ -1593,7 +1736,9 @@ export default function AdminCommandCenterPage() {
             Current Task
           </div>
           <div style={{ fontSize: 12, color: '#0f172a', lineHeight: 1.4, fontWeight: 600 }}>
-            {state.currentTask || <span style={{ color: '#94a3b8' }}>Not set</span>}
+            {state.currentTask
+              ? renderWithMarcLinks(state.currentTask, agent.id, `${agent.displayName} current task`, marcActions, marcActionResolutions, openMarcAction, handleAutoCreateMarcAction, { fontSize: 12, color: '#0f172a', lineHeight: 1.4, fontWeight: 600 })
+              : <span style={{ color: '#94a3b8' }}>Not set</span>}
           </div>
         </div>
 
@@ -1607,7 +1752,9 @@ export default function AdminCommandCenterPage() {
               {(state.activeTasks ?? []).slice(0, 5).map((t, i) => (
                 <li key={i} style={{ fontSize: 11, color: '#475569', display: 'flex', alignItems: 'flex-start', gap: 5, marginBottom: 2 }}>
                   <span style={{ color: agent.accentColor, fontWeight: 700, flexShrink: 0, lineHeight: 1.4 }}>•</span>
-                  <span style={{ lineHeight: 1.35 }}>{t}</span>
+                  <span style={{ lineHeight: 1.35 }}>
+                    {renderWithMarcLinks(t, agent.id, `${agent.displayName} active task`, marcActions, marcActionResolutions, openMarcAction, handleAutoCreateMarcAction, { fontSize: 11, color: '#475569', lineHeight: 1.35 })}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -1730,7 +1877,13 @@ export default function AdminCommandCenterPage() {
           if (state.waitingOn) {
             return (
               <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2, lineHeight: 1.3 }}>
-                ⏳ {state.waitingOn.length > 80 ? state.waitingOn.slice(0, 80) + '…' : state.waitingOn}
+                ⏳ {renderWithMarcLinks(
+                  state.waitingOn.length > 80 ? state.waitingOn.slice(0, 80) + '…' : state.waitingOn,
+                  agent.id,
+                  `${agent.displayName} waiting-on`,
+                  marcActions, marcActionResolutions, openMarcAction, handleAutoCreateMarcAction,
+                  { fontSize: 10, color: '#94a3b8', lineHeight: 1.3 }
+                )}
               </div>
             )
           }
