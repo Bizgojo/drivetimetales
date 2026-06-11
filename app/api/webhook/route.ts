@@ -86,7 +86,9 @@ export async function POST(request: NextRequest) {
               const displayName = userData.first_name || userData.display_name || 'Friend'
               const isAnnual = ((session as any).amount_total || 0) > 1000
               const planLabel = isFoundingMember ? 'Founding Member' : isAnnual ? 'Annual' : 'Monthly'
-              const priceLabel = isAnnual ? '$59.99/year' : '$7.99/month'
+              const priceLabel = isAnnual
+                ? (isFoundingMember ? '$29.99/year' : '$59.99/year')
+                : (isFoundingMember ? '$2.99/month' : '$7.99/month')
               await resend.emails.send({
                 from: 'Endless Tales <hello@endless-tales.com>',
                 to: userData.email,

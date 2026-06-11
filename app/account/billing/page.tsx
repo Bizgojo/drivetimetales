@@ -15,10 +15,10 @@ interface Invoice {
 
 const PLAN_DETAILS: Record<string, { name: string; price: string }> = {
   'free': { name: 'Free', price: '$0' },
-  'founding_member': { name: 'Founding Member 🏆', price: '$7.99/mo (locked for life)' },
+  'founding_member': { name: 'Founding Member 🏆', price: '$2.99/mo (locked for life)' },
   'standard': { name: 'Unlimited', price: '$7.99/mo' },
   // Legacy plan names (kept for backward compat)
-  'test_driver': { name: 'Founding Member 🏆', price: '$7.99/mo (locked for life)' },
+  'test_driver': { name: 'Founding Member 🏆', price: '$2.99/mo (locked for life)' },
   'commuter': { name: 'Unlimited', price: '$7.99/mo' },
   'road_warrior': { name: 'Unlimited', price: '$7.99/mo' },
 }

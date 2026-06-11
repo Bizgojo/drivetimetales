@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
       }
     } else {
       priceId = resolvedPrice
-      priceLabel = isFoundingMember ? 'founding member $7.99 locked' : 'standard $7.99'
+      priceLabel = isFoundingMember ? 'founding member $2.99/mo locked' : 'standard $7.99/mo'
     }
     console.log(`[checkout] Assigned price: ${priceLabel}`)
 

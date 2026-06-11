@@ -97,15 +97,17 @@ export default function AdminAnalyticsPage() {
     setCancelled(cancelledRows.length)
     setFounding(foundingRows.length)
 
-    // MRR: monthly plan = $7.99, annual = $59.99/12 = $5.00, founding = $7.99
+    // MRR: founding_member = $2.99/mo, annual = $59.99/12 = $5.00, standard = $7.99/mo
     let totalMrr = 0
     activeRows.forEach(s => {
       if (s.plan === 'annual') totalMrr += 5.00
+      else if (s.plan === 'founding_member') totalMrr += 2.99
       else totalMrr += 7.99
     })
     trialingRows.forEach(s => {
       // Count trialing as future MRR
       if (s.plan === 'annual') totalMrr += 5.00
+      else if (s.plan === 'founding_member') totalMrr += 2.99
       else totalMrr += 7.99
     })
     setMrr(totalMrr)
