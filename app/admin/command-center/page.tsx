@@ -1671,6 +1671,22 @@ export default function AdminCommandCenterPage() {
             {formatRelativeTime(state.currentTaskUpdatedAt ?? state.lastUpdatedAt)}
           </div>
         )}
+        {/* Row 2c — Staleness warning */}
+        {(() => {
+          const ts = state.lastUpdatedAt ?? state.currentTaskUpdatedAt
+          if (!ts) return null
+          const ageHours = (Date.now() - new Date(ts).getTime()) / 3600000
+          if (ageHours < 24) return null
+          return (
+            <div style={{
+              fontSize: 10, color: '#d97706', marginBottom: 4,
+              display: 'flex', alignItems: 'center', gap: 4,
+            }}>
+              <span>⚠️</span>
+              <span>Data {Math.floor(ageHours)}h old — agent not reporting</span>
+            </div>
+          )
+        })()}
         {/* Row 3 */}
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}>
           <span
@@ -1708,7 +1724,9 @@ export default function AdminCommandCenterPage() {
                   openMarcAction,
                   { fontSize: 12, color: '#334155' }
                 )
-              : <span style={{ color: '#94a3b8' }}>Not set</span>}
+              : <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>
+                  Idle{state.lastReport ? ` — last completed: ${state.lastReport.text.slice(0, 50)}…` : ''}
+                </span>}
           </div>
         </div>
 

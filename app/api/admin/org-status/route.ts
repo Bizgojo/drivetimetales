@@ -142,155 +142,32 @@ const TODAY = new Date().toLocaleDateString('en-US', {
   day: 'numeric',
 })
 
+// SEED_AGENTS provides type-safe structural defaults ONLY.
+// No operational descriptions — those come exclusively from agent-state.json (live source of truth).
+// If agent-state.json has no entry for an agent, the card renders idle/empty state, not stale seed text.
+const MINIMAL_AGENT_DEFAULT: AgentState = {
+  status: 'idle',
+  currentTask: '',
+  activeTasks: [],
+  percentComplete: null,
+  waitingOn: '',
+  lastActivity: '',
+  lastUpdatedAt: undefined,
+  eta: '',
+  whyItMatters: '',
+  lastReport: null,
+}
+
 const SEED_AGENTS: AgentsState = {
-  hal: {
-    status: 'waiting',
-    currentTask: 'Production paused — ATL-PROD-001 Production Console in progress. M-1 Story #1 (The Cut Beneath the Rust) reached ready_for_review June 11.',
-    activeTasks: [
-      'M-1 Story #1 complete — ready for Vega review and Marc publish decision',
-      '33 clean audio stories in Ready For Review — pending Production Console rebuild before Marc review',
-      '4 stories in Approved Ready — Bridges of Bad Blood + The Manifest (The Manifest fails story resolution gate)',
-      'Lost Signal series (3 eps) in Repair Queue — awaiting Orion repair assignment',
-    ],
-    percentComplete: 25,
-    waitingOn: 'Marc: canonical Belle B voice ID · Marc: approve stories via Content Approval (blocked on ATL-PROD-001)',
-    lastActivity: TODAY,
-    eta: 'Resume production: after ATL-CONS-001 Phase C accepted by Marc',
-    whyItMatters: 'New production would add more stories to a broken review queue. Workflow clarity must come first. When Console + Approval are rebuilt, Hal resumes immediately.',
-    lastReport: {
-      text: 'Hal 2026-06-07: Production paused per Marc June 7 directive. Workflow clarity takes priority over new production. 33 clean stories in RFR await Marc review once Content Approval page is rebuilt. 4 Approved Ready stories await Marc publish. Lost Signal repair queue awaiting assignment.',
-      timestamp: new Date('2026-06-07').toISOString(),
-    },
-  },
-  atlas: {
-    status: 'waiting',
-    currentTask: 'ATL-PROD-001 pre-build spec delivered — Production & Approval page spec ready for Marc review. Phase 1 code begins same day Marc approves.',
-    activeTasks: [
-      'ATL-PROD-001: Unified Production & Approval page — spec delivered, waiting on Marc approval to begin Phase 1 code',
-      'ATL-CC-INLINE-001: Inline Marc-request links — complete (commit e90f8ac5)',
-      'ATL-MON-001/ATL-MON-002: classify.ts misclassification + monitor rendering fixes — queued',
-    ],
-    percentComplete: 45,
-    waitingOn: 'Marc: approve ATL-PROD-001 pre-build spec (proposals/ATL-PROD-001-PREBUILT-SPEC.md)',
-    lastActivity: TODAY,
-    eta: 'ATL-CONS-001 Phase C: same day Marc approves design · ATL-CC2: same day Marc verifies · ATL-004: same day Marc provides price ID',
-    whyItMatters: 'Production Console and Content Approval workflow clarity is Marc\'s stated Priority 1. Stripe billing error is live revenue risk. ATL-CC2 acceptance gate open 48h.',
-    lastReport: {
-      text: 'Atlas 2026-06-07: ATL-CONS-001 Phase B complete (17:47). FK Safety Audit: all 13 proposed deletions structurally safe, zero child rows. Production Console Design + Content Approval Design committed (7de1174). Database cleanup: 34 records moved to cold_storage, Meridian Threshold tagged [INCUBATOR]. RFR queue: 90 → 56. ATL-CC2 R2/R3 still awaiting Marc verify.',
-      timestamp: new Date('2026-06-07').toISOString(),
-    },
-  },
-  maya: {
-    status: 'waiting',
-    currentTask: 'Desktop audit complete — 2 launch-critical bugs found and escalated to Atlas',
-    activeTasks: [
-      'Monitoring Atlas: /subscribe re-subscribe fix (churned users hit dead end)',
-      'Monitoring Atlas: /player subscription gate fix (possible unguarded route)',
-      'MAYA-002 mobile audit — blocked (needs physical iOS/Android device)',
-      'MAYA-003 onboarding audit — queued after Atlas fixes complete',
-    ],
-    percentComplete: 30,
-    waitingOn: 'Atlas: /subscribe fix + /player gate fix · Human tester for iOS/Android mobile',
-    lastActivity: TODAY,
-    eta: 'Mobile: blocked · Onboarding audit: after Atlas fixes',
-    whyItMatters: 'Churned subscribers have no path back to billing. /player may be publicly accessible. Both are Gate 1 failures blocking launch.',
-    lastReport: {
-      text: 'MAYA-001 D1 desktop complete. CRITICAL 1: /subscribe dead end for expired users. CRITICAL 2: /player in PUBLIC_PREFIXES — gate bypass risk. Time-to-first-play: 4–7 min. Both escalated to Atlas.',
-      timestamp: new Date('2026-06-05').toISOString(),
-    },
-  },
-  susan: {
-    status: 'working',
-    currentTask: 'Founding Member campaign ready — organic posts drafted for Reddit, X, and TikTok/Reels. Pending Marc go-ahead to activate.',
-    activeTasks: [
-      'GTM: FM campaign in Airtable — spec complete, pending Marc activation approval',
-      'Organic posts ready: Reddit, X, TikTok/Reels drafts complete',
-      'Platform accounts active: Instagram + TikTok (@endlesstalesllc), X (@EndlessTalesApp)',
-      'Marketing asset inventory complete — 7 accounts confirmed, 2FA audit needed',
-    ],
-    percentComplete: 40,
-    waitingOn: 'Marc: approve FM Airtable campaign · Marc: confirm X API plan (free vs $100/mo)',
-    lastActivity: TODAY,
-    eta: 'Organic campaign: immediate on Marc approval · Paid acquisition: blocked on budget',
-    whyItMatters: '7 waitlist leads + 500 FM slots available now. Campaign is ready. Only Marc approval is missing.',
-    lastReport: {
-      text: 'SUS-002 complete. Confirmed: X, Reddit, Email, Airtable, Instagram, TikTok, TikTok Business. Instagram/TikTok @endlesstalesllc active. FM campaign (rec6HTGp3cVFa6OUt): $2.99/mo, 500 cap, organic. 3 organic post drafts ready.',
-      timestamp: new Date('2026-06-05').toISOString(),
-    },
-  },
-  vega: {
-    status: 'working',
-    currentTask: 'VEGA-002 catalog classification complete — 14/14 PASS',
-    activeTasks: [
-      'VEGA-002: 14/14 published stories PASS (audio accessible, all fields confirmed)',
-      'Intro/outro verification: blocked on Belle B canonical voice ID',
-      '14 non-standard audio paths (/test/ or /asc3/) — PASS/REPAIR/RETIRE assessment queued',
-    ],
-    percentComplete: 35,
-    waitingOn: 'Marc: canonical Belle B voice ID — candidates: GMhgX8fCR9GUtd3kmlKC, EXAVITQu4vr4xnSDxMaL, KWDD3Wyq30ZF5NEL01EJ',
-    lastActivity: TODAY,
-    eta: 'Belle B decision: same day Marc chooses · Non-standard path audit: 2–3 days after',
-    whyItMatters: 'Gate 4 (Audio Quality) is RED. Belle B voice ID is the only remaining blocker — one Marc decision unblocks Vega completely.',
-    lastReport: {
-      text: 'VEGA-002 2026-06-05: 14/14 PASS. All audio HTTP 200, narrator IDs present, series complete. Intro/outro UNVERIFIED — 3 Belle B candidates, Marc must choose. 14 non-standard paths need assessment.',
-      timestamp: new Date('2026-06-05').toISOString(),
-    },
-  },
-  bart: {
-    status: 'waiting',
-    currentTask: 'BART-001 corrected baseline filed — accepted pending Mercury, KIE.ai, and X API confirmation',
-    activeTasks: [
-      'BART-001: Ground truth baseline — 3 data points pending from Marc',
-      'Mercury balance: 24 days stale — awaiting new API token from Marc',
-      'KIE.ai monthly cost: untracked service, cost unknown',
-      'X API plan: free vs $100/mo — unconfirmed',
-      'BART-002: financial framework — blocked until BART-001 fully accepted',
-    ],
-    percentComplete: 75,
-    waitingOn: 'Marc: new Mercury API token · Marc: KIE.ai monthly cost · Marc: X API plan (free vs $100/mo)',
-    lastActivity: TODAY,
-    eta: 'BART-001 closes same day Marc provides 3 data points · BART-002 begins immediately after',
-    whyItMatters: 'Runway calc is 24 days stale. Up to $110/mo in untracked burn. BART-002 cannot begin until baseline is confirmed.',
-    lastReport: {
-      text: 'BART-001 Corrected 2026-06-05: MRR $0. External subs 0. Burn $405.17/mo (9 services confirmed). Mercury last known $9,925.24 on 2026-05-12 (token revoked). Runway est. 22–24 months. KIE.ai + X API costs unknown. Break-even: 52 subs at $7.99/mo.',
-      timestamp: new Date('2026-06-05').toISOString(),
-    },
-  },
-  // Required by AgentId type but not shown in CC grid
-  lex: {
-    status: 'working',
-    currentTask: 'LEX-001 complete. Two CRITICAL legal blockers identified: trial terms conflict (ToS 14-day vs ORION-002 7-day) and Suno commercial rights unconfirmed. Trademark unfiled. Entity registration unconfirmed.',
-    percentComplete: 40,
-    waitingOn: 'Marc: resolve trial terms (7-day or 14-day? card required?) · Marc: confirm Suno subscription tier (free prohibits commercial use)',
-    lastActivity: TODAY,
-    eta: 'Blockers resolved same day Marc provides decisions',
-    whyItMatters: 'Two Gate 3 (Legal) failures block launch. Trial terms conflict is consumer protection exposure on every signup. Suno free tier commercial use prohibition means every story with Suno music could be a license violation. Both require Marc decision, not just Orion.',
-    lastReport: {
-      text: 'LEX-001 Legal Ground Truth 2026-06-05: CRITICAL — ToS (live) states 14-day trial with card required; ORION-002 states 7-day no card. One of these must be corrected before launch. CRITICAL — Suno subscription tier unconfirmed; Free tier prohibits commercial use. ElevenLabs growing_business commercial license confirmed (RESOLVED). USPTO search: "Endless Tales" clear in Class 41 — trademark not yet filed. Wonder Books Press entity registration status unconfirmed (ToS operates under this name).',
-      timestamp: new Date('2026-06-05').toISOString(),
-    },
-  },
-  // Required by AgentId type but not shown in CC grid
-  codex: {
-    status: 'idle',
-    currentTask: '',
-    percentComplete: null,
-    waitingOn: '',
-    lastActivity: TODAY,
-    eta: '',
-    whyItMatters: '',
-    lastReport: null,
-  },
-  orion: {
-    status: 'working',
-    currentTask: 'Coordinating all departments. Monitoring launch readiness. Resolving blockers.',
-    percentComplete: null,
-    waitingOn: '',
-    lastActivity: TODAY,
-    eta: '',
-    whyItMatters: 'Orion ensures the right work is done by the right department at the right time.',
-    lastReport: null,
-  },
+  hal:   { ...MINIMAL_AGENT_DEFAULT },
+  atlas: { ...MINIMAL_AGENT_DEFAULT },
+  maya:  { ...MINIMAL_AGENT_DEFAULT },
+  susan: { ...MINIMAL_AGENT_DEFAULT },
+  vega:  { ...MINIMAL_AGENT_DEFAULT },
+  bart:  { ...MINIMAL_AGENT_DEFAULT },
+  lex:   { ...MINIMAL_AGENT_DEFAULT },
+  codex: { ...MINIMAL_AGENT_DEFAULT },
+  orion: { ...MINIMAL_AGENT_DEFAULT },
 }
 
 const SEED_MISSIONS: Mission[] = [
