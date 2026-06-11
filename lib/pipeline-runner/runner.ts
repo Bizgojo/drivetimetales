@@ -267,9 +267,8 @@ export async function runPipelineLoop(
       const currentStep = (latestJob.current_step as string | null) ?? null
       const jobStatus = (latestJob.status as string) ?? ''
 
-      // Check for completion
+      // Check for completion (but NOT ready_for_review — that step must execute first to update story state)
       if (
-        currentStep === 'ready_for_review' ||
         jobStatus === 'complete' ||
         !ACTIVE_STATUSES.includes(jobStatus)
       ) {
