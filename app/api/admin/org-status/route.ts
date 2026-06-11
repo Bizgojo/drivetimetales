@@ -413,7 +413,7 @@ const SEED_MISSIONS: Mission[] = [
     waitingOn: 'Marc: create correct Stripe Annual price ID in Stripe dashboard · Atlas: re-verify www.endless-tales.com status',
     resolveUrl: 'https://dashboard.stripe.com/prices',
     lastActivity: TODAY,
-    eta: 'D1 by Jun 9',
+    eta: 'D1 investigation ongoing — HTTP 200 confirmed, cause unclear',
     notes: 'Jun 7 audit: www.endless-tales.com confirmed HTTP 200 (not 404 as previously reported). www domain status retracted as launch blocker. Stripe Annual price ID conflict confirmed in 4 env files — active billing risk.',
     unread: false,
     createdAt: NOW,
@@ -1140,7 +1140,7 @@ function mergeSeedMissionDetails(storedMissions: Mission[] | undefined): Mission
     if (!seedMission?.marcActionDetails) return mission
     return {
       ...mission,
-      waitingOn: seedMission.waitingOn,
+      waitingOn: mission.waitingOn ?? seedMission.waitingOn,
       marcActionDetails: {
         ...seedMission.marcActionDetails,
         ...mission.marcActionDetails,

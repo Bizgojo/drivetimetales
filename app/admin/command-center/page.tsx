@@ -2838,32 +2838,61 @@ export default function AdminCommandCenterPage() {
 
       {/* Mobile tab bar */}
       <nav className="cc-mobile-tabs">
-        {(
-          [
-            ['agents', '👥', 'Team'],
-            ['detail', '🔍', 'Detail'],
-            ['comms', '💬', 'Comms'],
-          ] as const
-        ).map(([tab, emoji, label]) => (
-          <button
-            key={tab}
-            type="button"
-            onClick={() => setMobileTab(tab)}
-            style={{
-              flex: 1,
-              border: 0,
-              borderTop: mobileTab === tab ? '3px solid #f97316' : '3px solid transparent',
-              backgroundColor: '#fff',
-              color: mobileTab === tab ? '#f97316' : '#475569',
-              fontSize: '11px',
-              fontWeight: 800,
-              cursor: 'pointer',
-            }}
-          >
-            <span style={{ display: 'block', fontSize: '15px' }}>{emoji}</span>
-            {label}
-          </button>
-        ))}
+        {(() => {
+          const pendingDecisionCount = marcActions.filter(a => {
+            if (!a.isComplete) return false
+            const res = marcActionResolutions[a.id]
+            return !res || res.resolution === 'needs_info'
+          }).length
+          return (
+            [
+              ['agents', '👥', 'Team'],
+              ['detail', '🔍', 'Detail'],
+              ['comms', '💬', 'Comms'],
+            ] as const
+          ).map(([tab, emoji, label]) => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setMobileTab(tab)}
+              style={{
+                flex: 1,
+                border: 0,
+                borderTop: mobileTab === tab ? '3px solid #f97316' : '3px solid transparent',
+                backgroundColor: '#fff',
+                color: mobileTab === tab ? '#f97316' : '#475569',
+                fontSize: '11px',
+                fontWeight: 800,
+                cursor: 'pointer',
+                position: 'relative',
+              }}
+            >
+              <span style={{ display: 'block', fontSize: '15px' }}>{emoji}</span>
+              {label}
+              {tab === 'agents' && pendingDecisionCount > 0 && (
+                <span style={{
+                  position: 'absolute',
+                  top: 6,
+                  right: '50%',
+                  transform: 'translateX(calc(50% + 8px))',
+                  backgroundColor: '#dc2626',
+                  color: '#fff',
+                  borderRadius: '50%',
+                  width: 16,
+                  height: 16,
+                  fontSize: 10,
+                  fontWeight: 800,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  lineHeight: 1,
+                }}>
+                  {pendingDecisionCount > 9 ? '9+' : pendingDecisionCount}
+                </span>
+              )}
+            </button>
+          ))
+        })()}
       </nav>
     </div>
   )
