@@ -1205,6 +1205,7 @@ export async function GET(req: NextRequest) {
     // Return persisted Marc Action resolutions so all browsers hydrate from one source of truth
     marcActions: (state.marcActions as Record<string, unknown>) ?? {},
     readiness: (state.readiness as LaunchReadiness) ?? SEED_READINESS,
+    m1: (state.m1 as Record<string, unknown>) ?? null,
     reports,
     source: Object.keys(state).length > 0 ? 'storage' : 'seed',
   })

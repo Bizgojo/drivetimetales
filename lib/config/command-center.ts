@@ -291,5 +291,47 @@ export interface LaunchReadiness {
   updatedAt: string
 }
 
+// ─── M-1 Milestone ────────────────────────────────────────────────────────────
+// Three consecutive fully autonomous story productions, zero human intervention.
+
+export interface M1StorySlot {
+  slot: number
+  label: string
+  title: string | null
+  storyId: string | null
+  status: string          // "Pending" | "Running" | "Vega Review" | "Qualified" | "Disqualified"
+  jobId: string | null
+  completedAt: string | null
+  vegaResult: string | null   // "PASS" | "FAIL" | null
+  vegaDetails: string | null
+  qualifies: boolean
+  disqualifyReason: string | null
+  notes: string | null
+}
+
+export interface M1LeadingCandidate {
+  slot: number
+  storyId: string
+  title: string
+  narrator: string
+  workflowState: string
+  queuePosition: number
+  rationale: string
+}
+
+export interface M1State {
+  counter: number                          // 0 | 1 | 2 | 3
+  definition: string
+  gatesRequired: string[]
+  gatesStatus: Record<string, string>      // "verified_complete" | "claimed_complete" | "not_started" | "blocked"
+  gatesAllClear: boolean
+  gateBlockSummary: string | null
+  leadingCandidate: M1LeadingCandidate | null
+  approvedReadyQueue: { rank: number; storyId: string; title: string; narrator: string; queuedSince: string }[]
+  stories: M1StorySlot[]
+  lastUpdatedAt: string
+  updatedBy: string
+}
+
 // ORION_CHAT_URL is deprecated — communication now via /api/admin/send-to-orion
 // export const ORION_CHAT_URL = 'https://app.openclaw.ai/chat/orion'

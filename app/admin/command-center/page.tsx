@@ -11,6 +11,7 @@ import {
   type AgentStatus,
   type DecisionResolution,
   type LaunchReadiness,
+  type M1State,
   type MarcAction,
   type MarcBlocker,
   type Mission,
@@ -28,6 +29,7 @@ const ACTIVE_MISSION_KEY = 'cc_v2_active_mission'
 const ORION_REPORTS_KEY = 'cc_orion_reports'
 const MARC_BLOCKERS_KEY = 'cc_marc_blockers'
 const LAUNCH_READINESS_KEY = 'cc_launch_readiness'
+const M1_STATE_KEY = 'cc_m1_state'
 const ORION_LAST_REPLY_KEY = 'cc_orion_last_reply'
 const MARC_ACTIONS_KEY = 'cc_marc_actions'
 const ORION_CHAT_KEY = 'cc_orion_chat_v1'
@@ -555,6 +557,9 @@ export default function AdminCommandCenterPage() {
         if (data.readiness) {
           writeLS(LAUNCH_READINESS_KEY, data.readiness)
         }
+        if (data.m1) {
+          writeLS(M1_STATE_KEY, data.m1)
+        }
         if (data.reports && data.reports.length > 0) {
           setOrionReports(data.reports)
           writeLS(ORION_REPORTS_KEY, data.reports)
@@ -646,6 +651,11 @@ export default function AdminCommandCenterPage() {
   const launchReadiness = useMemo<LaunchReadiness | null>(() => {
     if (!loaded) return null
     return readLS<LaunchReadiness | null>(LAUNCH_READINESS_KEY, null)
+  }, [loaded])
+
+  const m1State = useMemo<M1State | null>(() => {
+    if (!loaded) return null
+    return readLS<M1State | null>(M1_STATE_KEY, null)
   }, [loaded])
 
   // ─── Orion Terminal: polling effect ──────────────────────────────────────
@@ -1733,6 +1743,168 @@ export default function AdminCommandCenterPage() {
 
   // ─── Launch Readiness Strip ─────────────────────────────────────────────────
 
+  // ─── M-1 Milestone Panel ─────────────────────────────────────────────────
+  const renderM1Panel = () => {
+    const m1 = m1State
+    const counter   = m1?.counter ?? 0
+    const allClear  = m1?.gatesAllClear ?? false
+    const stories   = m1?.stories ?? []
+    const candidate = m1?.leadingCandidate
+    const gates     = m1?.gatesStatus ?? {}
+    const gateColor = (s: string) =>
+      s === 'verified_complete' ? '#22c55e' :
+      s === 'claimed_complete'  ? '#f59e0b' :
+      s === 'not_started'       ? '#94a3b8' : '#ef4444'
+    const gateLabel = (s: string) =>
+      s === 'verified_complete' ? '✅ Verified'   :
+      s === 'claimed_complete'  ? '🟡 Claimed'   :
+      s === 'not_started'       ? '⬜ Not Started' : '🔴 Blocked'
+    const slotColor = (slot: typeof stories[0]) =>
+      slot.qualifies     ? '#22c55e' :
+      slot.status === 'Running' || slot.status === 'Vega Review' ? '#f59e0b' :
+      slot.title         ? '#ef4444' : '#94a3b8'
+    const slotIcon  = (slot: typeof stories[0]) =>
+      slot.qualifies     ? '✅' :
+      slot.status === 'Running' ? '⚙️' :
+      slot.status === 'Vega Review' ? '🎧' :
+      slot.title         ? '❌' : '⬜'
+    const counterColor = counter === 3 ? '#22c55e' : counter > 0 ? '#f59e0b' : '#ef4444'
+
+    return (
+      <div style={{ ...CARD, padding: '14px 16px', marginBottom: 16 }}>
+        {/* Header row */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 18 }}>🏁</span>
+          <span style={{ fontWeight: 800, fontSize: 15, color: '#0f172a' }}>M-1 Milestone</span>
+          <span style={{
+            fontWeight: 800, fontSize: 13,
+            color: counterColor,
+            background: counter === 3 ? '#dcfce7' : counter > 0 ? '#fef3c7' : '#fee2e2',
+            borderRadius: 8, padding: '2px 10px'
+          }}>
+            {counter}/3 Autonomous Runs
+          </span>
+          {!allClear && (
+            <span style={{ fontSize: 12, color: '#ef4444', background: '#fee2e2', borderRadius: 6, padding: '2px 8px' }}>
+              Gates locked
+            </span>
+          )}
+          {allClear && (
+            <span style={{ fontSize: 12, color: '#22c55e', background: '#dcfce7', borderRadius: 6, padding: '2px 8px' }}>
+              Gates clear — pipeline active
+            </span>
+          )}
+          <span style={{ marginLeft: 'auto', fontSize: 11, color: '#94a3b8' }}>
+            Updated {m1?.lastUpdatedAt ? new Date(m1.lastUpdatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—'}
+          </span>
+        </div>
+
+        {/* Gates row */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+          {(m1?.gatesRequired ?? ['P1-1','P1-2','P1-3']).map(g => (
+            <div key={g} style={{
+              display: 'flex', alignItems: 'center', gap: 5,
+              background: '#f8fafc', border: '1px solid #e2e8f0',
+              borderRadius: 6, padding: '4px 10px', fontSize: 12
+            }}>
+              <span style={{ fontWeight: 700, color: '#334155' }}>{g}</span>
+              <span style={{ color: gateColor(gates[g] ?? 'not_started') }}>{gateLabel(gates[g] ?? 'not_started')}</span>
+            </div>
+          ))}
+          {!allClear && m1?.gateBlockSummary && (
+            <span style={{ fontSize: 11, color: '#64748b', alignSelf: 'center', marginLeft: 4 }}>
+              {m1.gateBlockSummary}
+            </span>
+          )}
+        </div>
+
+        {/* Story slots */}
+        <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+          {(stories.length > 0 ? stories : [{slot:1,label:'Story #1',title:null,storyId:null,status:'Pending',jobId:null,completedAt:null,vegaResult:null,vegaDetails:null,qualifies:false,disqualifyReason:null,notes:null},{slot:2,label:'Story #2',title:null,storyId:null,status:'Pending',jobId:null,completedAt:null,vegaResult:null,vegaDetails:null,qualifies:false,disqualifyReason:null,notes:null},{slot:3,label:'Story #3 — M-1 Complete',title:null,storyId:null,status:'Pending',jobId:null,completedAt:null,vegaResult:null,vegaDetails:null,qualifies:false,disqualifyReason:null,notes:null}]).map(slot => (
+            <div key={slot.slot} style={{
+              flex: '1 1 200px', minWidth: 180,
+              background: '#f8fafc', border: `1px solid ${slotColor(slot)}33`,
+              borderLeft: `3px solid ${slotColor(slot)}`,
+              borderRadius: 8, padding: '10px 12px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                <span style={{ fontSize: 14 }}>{slotIcon(slot)}</span>
+                <span style={{ fontWeight: 700, fontSize: 12, color: '#0f172a' }}>{slot.label}</span>
+                {slot.qualifies && (
+                  <span style={{ fontSize: 10, background: '#dcfce7', color: '#15803d', borderRadius: 4, padding: '1px 5px', fontWeight: 700 }}>
+                    QUALIFIED
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: 12, color: '#334155', marginBottom: 3 }}>
+                <strong>{slot.title ?? '—'}</strong>
+              </div>
+              <div style={{ fontSize: 11, color: '#64748b', marginBottom: 2 }}>
+                Status: <span style={{ color: slotColor(slot), fontWeight: 600 }}>{slot.status}</span>
+              </div>
+              {slot.completedAt && (
+                <div style={{ fontSize: 11, color: '#64748b', marginBottom: 2 }}>
+                  Completed: {new Date(slot.completedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                </div>
+              )}
+              {slot.vegaResult && (
+                <div style={{ fontSize: 11, fontWeight: 700, color: slot.vegaResult === 'PASS' ? '#22c55e' : '#ef4444', marginBottom: 2 }}>
+                  Vega: {slot.vegaResult}
+                  {slot.vegaDetails && <span style={{ fontWeight: 400, color: '#64748b' }}> — {slot.vegaDetails}</span>}
+                </div>
+              )}
+              {!slot.qualifies && slot.disqualifyReason && (
+                <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 4, fontStyle: 'italic' }}>
+                  {slot.disqualifyReason}
+                </div>
+              )}
+              {slot.notes && !slot.title && (
+                <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 4 }}>
+                  {slot.notes}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Leading candidate */}
+        {candidate && !allClear && (
+          <div style={{
+            background: '#fffbeb', border: '1px solid #fde68a',
+            borderRadius: 8, padding: '8px 12px', fontSize: 12
+          }}>
+            <span style={{ fontWeight: 700, color: '#92400e' }}>🎯 Leading candidate for Story #1: </span>
+            <span style={{ color: '#0f172a', fontWeight: 600 }}>{candidate.title}</span>
+            <span style={{ color: '#64748b' }}> ({candidate.narrator}) — Queue position #{candidate.queuePosition}, {candidate.workflowState}</span>
+            <div style={{ fontSize: 11, color: '#78716c', marginTop: 3 }}>{candidate.rationale}</div>
+          </div>
+        )}
+
+        {/* Queue */}
+        {(m1?.approvedReadyQueue ?? []).length > 0 && (
+          <div style={{ marginTop: 10 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#475569', marginBottom: 4 }}>
+              APPROVED & READY QUEUE ({m1!.approvedReadyQueue.length} stories)
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {m1!.approvedReadyQueue.map(q => (
+                <div key={q.storyId} style={{
+                  fontSize: 11, color: '#334155',
+                  background: q.rank <= 3 ? '#f0f9ff' : '#f8fafc',
+                  border: `1px solid ${q.rank <= 3 ? '#bae6fd' : '#e2e8f0'}`,
+                  borderRadius: 5, padding: '3px 8px'
+                }}>
+                  <span style={{ fontWeight: 700, color: '#0369a1' }}>#{q.rank}</span> {q.title}
+                  <span style={{ color: '#94a3b8' }}> · {q.narrator}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   const renderReadinessStrip = () => {
     const data = launchReadiness
     return (
@@ -2511,6 +2683,7 @@ export default function AdminCommandCenterPage() {
       <div className="cc-desktop-only">
         {renderBlockersPanel()}
         <div className="cc-agent-grid">{gridAgents.map(renderAgentCard)}</div>
+        {renderM1Panel()}
         {renderReadinessStrip()}
         {renderOrionTerminal()}
       </div>
@@ -2520,6 +2693,7 @@ export default function AdminCommandCenterPage() {
         <div className="cc-tab-panel" data-active={mobileTab === 'agents'}>
           {renderBlockersPanel()}
           <div className="cc-agent-grid">{gridAgents.map(renderAgentCard)}</div>
+          {renderM1Panel()}
           {renderReadinessStrip()}
         </div>
         <div className="cc-tab-panel" data-active={mobileTab === 'detail'}>
