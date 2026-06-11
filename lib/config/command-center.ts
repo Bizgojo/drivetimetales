@@ -165,6 +165,7 @@ export interface AgentState {
   waitingOn: string
   lastActivity: string
   lastUpdatedAt?: string          // ISO timestamp of most recent agent-state write (e.g. "2026-06-10T16:07:00Z")
+  currentTaskUpdatedAt?: string   // ISO timestamp when currentTask last changed
   eta: string
   whyItMatters: string
   lastReport: { text: string; timestamp: string } | null

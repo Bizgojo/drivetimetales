@@ -1594,25 +1594,28 @@ export default function AdminCommandCenterPage() {
 
   // ─── Agent Cards Grid ───────────────────────────────────────────────────────
 
-  /** Format an ISO timestamp or date string as "MM/yyyy h:mm AM/PM".
-   *  Falls back to "MM/yyyy" when no time component is available. */
-  function formatLastUpdated(ts?: string): string | null {
+  /** Returns "Updated Xm ago", "Updated Xh Ym ago", "Updated Xd Yh ago", or null. */
+  function formatRelativeTime(ts?: string): string | null {
     if (!ts) return null
     try {
-      // Attempt full ISO parse first (includes time)
       const d = new Date(ts)
       if (isNaN(d.getTime())) return null
-      const mm   = String(d.getMonth() + 1).padStart(2, '0')
-      const yyyy = d.getFullYear()
-      // Only show time if the original string contained a 'T' (ISO with time)
-      if (ts.includes('T')) {
-        const h24 = d.getHours()
-        const min = String(d.getMinutes()).padStart(2, '0')
-        const ampm = h24 >= 12 ? 'PM' : 'AM'
-        const h12  = h24 % 12 || 12
-        return `${mm}/${yyyy} ${h12}:${min} ${ampm}`
+      const diffMs = Date.now() - d.getTime()
+      const diffMins = Math.floor(diffMs / 60000)
+      if (diffMins < 1) return 'Updated just now'
+      if (diffMins < 60) return `Updated ${diffMins}m ago`
+      const diffHours = Math.floor(diffMins / 60)
+      const remMins = diffMins % 60
+      if (diffHours < 24) {
+        return remMins > 0
+          ? `Updated ${diffHours}h ${remMins}m ago`
+          : `Updated ${diffHours}h ago`
       }
-      return `${mm}/${yyyy}`
+      const diffDays = Math.floor(diffHours / 24)
+      const remHours = diffHours % 24
+      return remHours > 0
+        ? `Updated ${diffDays}d ${remHours}h ago`
+        : `Updated ${diffDays}d ago`
     } catch {
       return null
     }
@@ -1624,6 +1627,19 @@ export default function AdminCommandCenterPage() {
       state.currentTask.length > 60
         ? state.currentTask.slice(0, 60) + '…'
         : state.currentTask
+
+    // Compute which MarcAction IDs are shown inline in Row 4 (to exclude from Row 7)
+    const inlineLinkedIds = new Set<string>()
+    const detectedInCurrentTask = detectMarcPhrases(state.currentTask)
+    for (const { phrase } of detectedInCurrentTask) {
+      const normalizedPhrase = normalizeMarcActionText(phrase.replace(/^marc:\s*/i, '').trim())
+      const match = marcActions.find(a =>
+        a.agentId === agent.id &&
+        a.isComplete &&
+        normalizeMarcActionText(a.actionText) === normalizedPhrase
+      )
+      if (match) inlineLinkedIds.add(match.id)
+    }
 
     return (
       <div
@@ -1648,11 +1664,11 @@ export default function AdminCommandCenterPage() {
           </span>
         </div>
         {/* Row 2 */}
-        <div style={{ fontSize: 12, color: '#64748b', marginBottom: formatLastUpdated(state.lastUpdatedAt) ? 2 : 8 }}>{agent.roleTitle}</div>
-        {/* Row 2b — Last Updated timestamp */}
-        {formatLastUpdated(state.lastUpdatedAt) && (
+        <div style={{ fontSize: 12, color: '#64748b', marginBottom: formatRelativeTime(state.currentTaskUpdatedAt ?? state.lastUpdatedAt) ? 2 : 8 }}>{agent.roleTitle}</div>
+        {/* Row 2b — Relative timestamp */}
+        {formatRelativeTime(state.currentTaskUpdatedAt ?? state.lastUpdatedAt) && (
           <div style={{ fontSize: 10, color: '#b0b8c6', marginBottom: 8, letterSpacing: '0.01em' }}>
-            Last Updated {formatLastUpdated(state.lastUpdatedAt)}
+            {formatRelativeTime(state.currentTaskUpdatedAt ?? state.lastUpdatedAt)}
           </div>
         )}
         {/* Row 3 */}
@@ -1682,9 +1698,16 @@ export default function AdminCommandCenterPage() {
           <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' as const, letterSpacing: '0.05em', marginBottom: 3 }}>
             Current Task
           </div>
-          <div style={{ fontSize: 12, color: '#0f172a', lineHeight: 1.4, fontWeight: 600 }}>
+          <div style={{ fontSize: 12, color: '#334155', marginBottom: 4, lineHeight: 1.4 }}>
             {state.currentTask
-              ? <span>{state.currentTask}</span>
+              ? renderWithMarcLinks(
+                  state.currentTask,
+                  agent.id,
+                  marcActions,
+                  marcActionResolutions,
+                  openMarcAction,
+                  { fontSize: 12, color: '#334155' }
+                )
               : <span style={{ color: '#94a3b8' }}>Not set</span>}
           </div>
         </div>
@@ -1727,75 +1750,63 @@ export default function AdminCommandCenterPage() {
           </div>
         )}
 
-        {/* Row 7 — unified Marc-request display */}
+        {/* Row 7 — all unresolved complete MarcActions, one per line */}
         {(() => {
-          // ATL-CC-INLINE-002: unified Marc-request section
-          // Mirror the panel's resolution filter (ATL-SYNC-002 FIX A)
           const agentMarcActions = marcActions.filter(a => {
             if (a.agentId !== agent.id) return false
+            if (inlineLinkedIds.has(a.id)) return false  // already shown inline in Row 4
             const res = marcActionResolutions[a.id]
             if (res && res.resolution !== 'needs_info') return false
             return true
           })
 
-          // Separate complete from incomplete
           const completeActions = agentMarcActions.filter(a => a.isComplete)
-          const incompleteActions = agentMarcActions.filter(a => !a.isComplete)
+          const hasIncompleteOnly = agentMarcActions.length > 0 && completeActions.length === 0
 
-          // Show the first complete action as a clickable underlined link (red dot + blue text)
-          // Show at most one at a time; if multiple complete, show count badge
-          const primaryAction = completeActions[0] ?? null
-          const extraCount = completeActions.length - 1
-
-          if (primaryAction || incompleteActions.length > 0) {
-            return (
-              <div style={{ marginTop: 8 }}>
-                {primaryAction && (
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginBottom: 4 }}>
-                    <span style={{
-                      width: 7, height: 7, borderRadius: '50%',
-                      backgroundColor: '#dc2626', flexShrink: 0, marginTop: 4,
-                      display: 'inline-block',
-                    }} />
-                    <span
-                      title="Click to answer this request"
-                      onClick={(e) => { e.stopPropagation(); openMarcAction(primaryAction) }}
-                      style={{
-                        fontSize: 11, color: '#2563eb', textDecoration: 'underline',
-                        cursor: 'pointer', fontWeight: 600, lineHeight: 1.35,
-                      }}
-                    >
-                      {primaryAction.actionText.length > 72
-                        ? primaryAction.actionText.slice(0, 72) + '…'
-                        : primaryAction.actionText}
-                    </span>
-                  </div>
-                )}
-                {extraCount > 0 && (
-                  <div style={{ fontSize: 10, color: '#dc2626', marginLeft: 13, marginBottom: 2 }}>
-                    +{extraCount} more decision{extraCount > 1 ? 's' : ''} waiting
-                  </div>
-                )}
-                {/* Incomplete actions: grey text, not clickable */}
-                {incompleteActions.length > 0 && completeActions.length === 0 && (
-                  <div style={{ fontSize: 10, color: '#94a3b8', marginLeft: 13, fontStyle: 'italic' }}>
-                    ⏳ Decision card in progress — Orion completing
-                  </div>
-                )}
-              </div>
-            )
+          if (completeActions.length === 0 && !hasIncompleteOnly) {
+            // No Marc actions at all — show plain waitingOn text if present
+            if (state.waitingOn) {
+              return (
+                <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 6, lineHeight: 1.3 }}>
+                  ⏳ {state.waitingOn.length > 80 ? state.waitingOn.slice(0, 80) + '…' : state.waitingOn}
+                </div>
+              )
+            }
+            return null
           }
 
-          // No MarcActions — show plain waitingOn text if present
-          if (state.waitingOn) {
-            return (
-              <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 6, lineHeight: 1.3 }}>
-                ⏳ {state.waitingOn.length > 80 ? state.waitingOn.slice(0, 80) + '…' : state.waitingOn}
-              </div>
-            )
-          }
-
-          return null
+          return (
+            <div style={{ marginTop: 8 }}>
+              {/* Incomplete-only guard: show Orion message, not clickable */}
+              {hasIncompleteOnly && (
+                <div style={{ fontSize: 10, color: '#94a3b8', fontStyle: 'italic', marginBottom: 2 }}>
+                  ⏳ Decision card in progress — Orion completing
+                </div>
+              )}
+              {/* One line per complete action */}
+              {completeActions.map((action) => (
+                <div key={action.id} style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 6, marginBottom: 3
+                }}>
+                  <span style={{
+                    width: 7, height: 7, borderRadius: '50%',
+                    backgroundColor: '#dc2626', flexShrink: 0, marginTop: 3
+                  }} />
+                  <span
+                    onClick={(e) => { e.stopPropagation(); openMarcAction(action) }}
+                    style={{
+                      fontSize: 11, color: '#2563eb', textDecoration: 'underline',
+                      cursor: 'pointer', fontWeight: 500, lineHeight: 1.35,
+                    }}
+                  >
+                    {action.actionText.length > 72
+                      ? action.actionText.slice(0, 72) + '…'
+                      : action.actionText}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )
         })()}
       </div>
     )

@@ -1252,9 +1252,31 @@ export async function PUT(req: NextRequest) {
   if (authError) return authError
 
   try {
-    const body = await req.json()
+    const body = await req.json() as Record<string, unknown>
+
+    // Auto-stamp currentTaskUpdatedAt when currentTask changes for any agent
+    if (body.agents && typeof body.agents === 'object' && !Array.isArray(body.agents)) {
+      const existing = await readOrgState()
+      const existingAgents = (existing.agents ?? {}) as Record<string, Partial<AgentState>>
+      const patchAgents = body.agents as Record<string, Partial<AgentState>>
+
+      for (const agentId of Object.keys(patchAgents)) {
+        const patchAgent = patchAgents[agentId]
+        if (patchAgent?.currentTask !== undefined) {
+          const existingCurrentTask = existingAgents[agentId]?.currentTask
+          if (patchAgent.currentTask !== existingCurrentTask) {
+            patchAgents[agentId] = {
+              ...patchAgent,
+              currentTaskUpdatedAt: new Date().toISOString(),
+            }
+          }
+        }
+      }
+      body.agents = patchAgents
+    }
+
     // body can contain: agents, missions, blockers, readiness — any subset
-    await writeOrgState(body as Record<string, unknown>)
+    await writeOrgState(body)
     return json({ success: true })
   } catch (err) {
     return json({ success: false, error: err instanceof Error ? err.message : 'Failed to persist' }, 500)
