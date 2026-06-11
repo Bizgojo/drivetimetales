@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import {
   AGENTS,
   MISSION_PRIORITY_COLORS,
@@ -432,15 +432,13 @@ function detectMarcPhrases(text: string): Array<{ start: number; end: number; ph
   return results.sort((a, b) => a.start - b.start)
 }
 
-// ─── ATL-CC-INLINE-001: Inline Marc-link renderer ────────────────────────────
+// ─── ATL-CC-INLINE-001: Inline Marc-link renderer (used in Row 7 waitingOn only) ──
 function renderWithMarcLinks(
   text: string,
   agentId: string,
-  contextLabel: string,
   marcActions: MarcAction[],
   marcActionResolutions: Record<string, { resolution: MarcAction['resolution']; resolvedAt: string; note: string | null }>,
   openMarcAction: (action: MarcAction) => void,
-  onAutoCreate: (phrase: string, agentId: string, contextLabel: string) => MarcAction | null,
   textStyle?: React.CSSProperties,
 ): React.ReactNode {
   const phrases = detectMarcPhrases(text)
@@ -467,19 +465,14 @@ function renderWithMarcLinks(
           {phrase}
         </span>
       )
-    } else {
+    } else if (existing?.isComplete) {
       nodes.push(
         <span
           key={`link-${start}`}
           title="Click to answer this request"
           onClick={(e) => {
             e.stopPropagation()
-            if (existing) {
-              openMarcAction(existing)
-            } else {
-              const created = onAutoCreate(phrase, agentId, contextLabel)
-              if (created) openMarcAction(created)
-            }
+            openMarcAction(existing)
           }}
           style={{
             color: '#2563eb',
@@ -490,9 +483,12 @@ function renderWithMarcLinks(
             ...textStyle,
           }}
         >
-          🔵 {phrase}
+          {phrase}
         </span>
       )
+    } else {
+      // Incomplete or no matching action — plain text, not clickable
+      nodes.push(<span key={`plain-marc-${start}`} style={textStyle}>{phrase}</span>)
     }
     cursor = end
   }
@@ -535,8 +531,6 @@ export default function AdminCommandCenterPage() {
   )
   const [selectedMarcActionId, setSelectedMarcActionId] = useState<string | null>(null)
   const [showResolvedMarcActions, setShowResolvedMarcActions] = useState(false)
-  // ATL-CC-INLINE-001: inline auto-created MarcActions (not yet in missions/agentState)
-  const [inlineMarcActions, setInlineMarcActions] = useState<MarcAction[]>([])
   const [showDraftCards, setShowDraftCards] = useState(false)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
 
@@ -739,9 +733,8 @@ export default function AdminCommandCenterPage() {
       parse((state as AgentState).waitingOn ?? '', `agent-${agentId}`, agentId as AgentId, `${agentId} department`)
     })
 
-    // ATL-CC-INLINE-001: merge inline auto-created actions
-    return [...actions, ...inlineMarcActions]
-  }, [missions, agentsState, inlineMarcActions])
+    return actions
+  }, [missions, agentsState])
 
   const launchReadiness = useMemo<LaunchReadiness | null>(() => {
     if (!loaded) return null
@@ -785,30 +778,7 @@ export default function AdminCommandCenterPage() {
     }
   }, [chatMessages])
 
-  // ATL-CC-INLINE-001: governance lint — warn on uncovered Marc-request phrases (dev only)
-  useEffect(() => {
-    if (process.env.NODE_ENV !== 'development') return
-    for (const [agentId, state] of Object.entries(agentsState)) {
-      const fields = [
-        (state as AgentState).currentTask,
-        ...((state as AgentState).activeTasks ?? []),
-        (state as AgentState).waitingOn ?? '',
-      ]
-      for (const text of fields) {
-        if (!text) continue
-        const phrases = detectMarcPhrases(text)
-        for (const { phrase } of phrases) {
-          const covered = marcActions.some(a =>
-            a.agentId === agentId &&
-            a.actionText.toLowerCase().includes(phrase.toLowerCase().slice(0, 30))
-          )
-          if (!covered) {
-            console.warn(`[GOVERNANCE] Agent card "${agentId}" contains Marc-request language not covered by a MarcAction: "${phrase}"`)
-          }
-        }
-      }
-    }
-  }, [agentsState, marcActions])
+
 
   const resolveBlocker = (
     blockerId: string,
@@ -904,29 +874,6 @@ export default function AdminCommandCenterPage() {
       document.getElementById('marc-actions')?.scrollIntoView({ behavior: 'smooth' })
     }, 100)
   }
-
-  // ATL-CC-INLINE-001: auto-create a draft MarcAction from inline detected phrase
-  const handleAutoCreateMarcAction = useCallback(
-    (phrase: string, agentId: string, contextLabel: string): MarcAction | null => {
-      const id = `ma-inline-${agentId}-${Date.now()}`
-      const action: MarcAction = {
-        id,
-        missionId: `inline-${agentId}`,
-        agentId,
-        actionText: phrase,
-        missionTitle: contextLabel,
-        type: inferActionType(phrase),
-        done: false,
-        resolution: null,
-        resolvedAt: null,
-        note: null,
-        isComplete: false,
-      }
-      setInlineMarcActions(prev => [...prev, action])
-      return action
-    },
-    []
-  )
 
   const gridAgents = useMemo(
     () => AGENTS.filter((a) => GRID_AGENT_IDS.includes(a.id)),
@@ -1737,7 +1684,7 @@ export default function AdminCommandCenterPage() {
           </div>
           <div style={{ fontSize: 12, color: '#0f172a', lineHeight: 1.4, fontWeight: 600 }}>
             {state.currentTask
-              ? renderWithMarcLinks(state.currentTask, agent.id, `${agent.displayName} current task`, marcActions, marcActionResolutions, openMarcAction, handleAutoCreateMarcAction, { fontSize: 12, color: '#0f172a', lineHeight: 1.4, fontWeight: 600 })
+              ? <span>{state.currentTask}</span>
               : <span style={{ color: '#94a3b8' }}>Not set</span>}
           </div>
         </div>
@@ -1752,9 +1699,7 @@ export default function AdminCommandCenterPage() {
               {(state.activeTasks ?? []).slice(0, 5).map((t, i) => (
                 <li key={i} style={{ fontSize: 11, color: '#475569', display: 'flex', alignItems: 'flex-start', gap: 5, marginBottom: 2 }}>
                   <span style={{ color: agent.accentColor, fontWeight: 700, flexShrink: 0, lineHeight: 1.4 }}>•</span>
-                  <span style={{ lineHeight: 1.35 }}>
-                    {renderWithMarcLinks(t, agent.id, `${agent.displayName} active task`, marcActions, marcActionResolutions, openMarcAction, handleAutoCreateMarcAction, { fontSize: 11, color: '#475569', lineHeight: 1.35 })}
-                  </span>
+                  <span style={{ fontSize: 11, color: '#475569', lineHeight: 1.35 }}>{t}</span>
                 </li>
               ))}
             </ul>
@@ -1782,108 +1727,70 @@ export default function AdminCommandCenterPage() {
           </div>
         )}
 
-        {/* Row 7 — Waiting on / Marc action links */}
+        {/* Row 7 — unified Marc-request display */}
         {(() => {
-          // Find unresolved MarcActions for this agent
-          // ATL-SYNC-002 FIX A: mirror the panel's resolution filter so agent cards
-          // reflect the same resolved/needs_info state as the Marc Actions panel.
-          // Previously used a.resolution === null which is always true (action objects
-          // are never mutated); this caused resolved items to persist on agent cards
-          // even after Marc approved/rejected/deferred them in the panel.
+          // ATL-CC-INLINE-002: unified Marc-request section
+          // Mirror the panel's resolution filter (ATL-SYNC-002 FIX A)
           const agentMarcActions = marcActions.filter(a => {
             if (a.agentId !== agent.id) return false
             const res = marcActionResolutions[a.id]
             if (res && res.resolution !== 'needs_info') return false
             return true
           })
-          const marcCount = agentMarcActions.length
 
-          if (marcCount > 0) {
-            // Marc is the blocker — show action links
-            if (marcCount === 1) {
-              const action = agentMarcActions[0]
-              return (
-                <div style={{ marginTop: 6 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: '#dc2626', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <span>🔴</span> Waiting on Marc
+          // Separate complete from incomplete
+          const completeActions = agentMarcActions.filter(a => a.isComplete)
+          const incompleteActions = agentMarcActions.filter(a => !a.isComplete)
+
+          // Show the first complete action as a clickable underlined link (red dot + blue text)
+          // Show at most one at a time; if multiple complete, show count badge
+          const primaryAction = completeActions[0] ?? null
+          const extraCount = completeActions.length - 1
+
+          if (primaryAction || incompleteActions.length > 0) {
+            return (
+              <div style={{ marginTop: 8 }}>
+                {primaryAction && (
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginBottom: 4 }}>
+                    <span style={{
+                      width: 7, height: 7, borderRadius: '50%',
+                      backgroundColor: '#dc2626', flexShrink: 0, marginTop: 4,
+                      display: 'inline-block',
+                    }} />
+                    <span
+                      title="Click to answer this request"
+                      onClick={(e) => { e.stopPropagation(); openMarcAction(primaryAction) }}
+                      style={{
+                        fontSize: 11, color: '#2563eb', textDecoration: 'underline',
+                        cursor: 'pointer', fontWeight: 600, lineHeight: 1.35,
+                      }}
+                    >
+                      {primaryAction.actionText.length > 72
+                        ? primaryAction.actionText.slice(0, 72) + '…'
+                        : primaryAction.actionText}
+                    </span>
                   </div>
-                  <div style={{ fontSize: 10, color: '#64748b', marginBottom: 5, lineHeight: 1.3 }}>
-                    {action.actionText.length > 70 ? action.actionText.slice(0, 70) + '…' : action.actionText}
+                )}
+                {extraCount > 0 && (
+                  <div style={{ fontSize: 10, color: '#dc2626', marginLeft: 13, marginBottom: 2 }}>
+                    +{extraCount} more decision{extraCount > 1 ? 's' : ''} waiting
                   </div>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      openMarcAction(action)
-                    }}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      fontSize: 11,
-                      fontWeight: 700,
-                      color: '#fff',
-                      backgroundColor: '#dc2626',
-                      border: 'none',
-                      borderRadius: 6,
-                      padding: '10px 12px',
-                      minHeight: 44,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Resolve Issue →
-                  </button>
-                </div>
-              )
-            } else {
-              // Multiple Marc blockers — link to Marc action queue section
-              return (
-                <div style={{ marginTop: 6 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: '#dc2626', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <span>🔴</span> {marcCount} items waiting on Marc
+                )}
+                {/* Incomplete actions: grey text, not clickable */}
+                {incompleteActions.length > 0 && completeActions.length === 0 && (
+                  <div style={{ fontSize: 10, color: '#94a3b8', marginLeft: 13, fontStyle: 'italic' }}>
+                    ⏳ Decision card in progress — Orion completing
                   </div>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      const completeAction = agentMarcActions.find(a => a.isComplete)
-                      if (completeAction) {
-                        openMarcAction(completeAction)
-                        return
-                      }
-                      showToast('This decision card is incomplete. Orion is working on it.')
-                    }}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      fontSize: 11,
-                      fontWeight: 700,
-                      color: '#fff',
-                      backgroundColor: '#dc2626',
-                      border: 'none',
-                      borderRadius: 6,
-                      padding: '10px 12px',
-                      minHeight: 44,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    View Marc-blocked items →
-                  </button>
-                </div>
-              )
-            }
+                )}
+              </div>
+            )
           }
 
-          // No Marc blocker — show existing waitingOn text if present
+          // No MarcActions — show plain waitingOn text if present
           if (state.waitingOn) {
             return (
-              <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2, lineHeight: 1.3 }}>
-                ⏳ {renderWithMarcLinks(
-                  state.waitingOn.length > 80 ? state.waitingOn.slice(0, 80) + '…' : state.waitingOn,
-                  agent.id,
-                  `${agent.displayName} waiting-on`,
-                  marcActions, marcActionResolutions, openMarcAction, handleAutoCreateMarcAction,
-                  { fontSize: 10, color: '#94a3b8', lineHeight: 1.3 }
-                )}
+              <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 6, lineHeight: 1.3 }}>
+                ⏳ {state.waitingOn.length > 80 ? state.waitingOn.slice(0, 80) + '…' : state.waitingOn}
               </div>
             )
           }
