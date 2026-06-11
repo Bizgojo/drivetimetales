@@ -1712,23 +1712,6 @@ export default function AdminCommandCenterPage() {
           )}
         </div>
 
-        {/* Row 2b — Staleness warning */}
-        {(() => {
-          const ts = state.lastUpdatedAt ?? state.currentTaskUpdatedAt
-          if (!ts) return null
-          const ageHours = (Date.now() - new Date(ts).getTime()) / 3600000
-          if (ageHours < 24) return null
-          return (
-            <div style={{
-              fontSize: 10, color: '#d97706', marginBottom: 4,
-              display: 'flex', alignItems: 'center', gap: 4,
-            }}>
-              <span>⚠️</span>
-              <span>Data {Math.floor(ageHours)}h old — agent not reporting</span>
-            </div>
-          )
-        })()}
-
         {/* Progress bar — subtle 2px, no label */}
         {state.percentComplete !== null && (
           <div style={{ height: 2, backgroundColor: '#e2e8f0', borderRadius: 1, overflow: 'hidden', marginBottom: 8, marginTop: 4 }}>
