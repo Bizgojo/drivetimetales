@@ -672,6 +672,23 @@ export default function AdminCommandCenterPage() {
       })
   }, [])
 
+  // Re-fetch agent state when tab becomes visible again (handles iOS BFCache restore)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetch('/api/admin/org-status')
+          .then(r => r.ok ? r.json() : Promise.reject(r.status))
+          .then((data: { agents?: AgentsState; missions?: Mission[] }) => {
+            if (data.agents) setAgentsState(data.agents)
+            if (data.missions) setMissions(data.missions)
+          })
+          .catch(() => {}) // Silent: keep existing state on failure
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [])
+
   // Escape key closes detail panel
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -2759,13 +2776,37 @@ export default function AdminCommandCenterPage() {
           </h1>
           <div style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>{today}</div>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowReportsModal(true)}
-          style={BTN}
-        >
-          📋 Last Orion Report
-        </button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button
+            type="button"
+            onClick={() => setShowReportsModal(true)}
+            style={BTN}
+          >
+            📋 Last Orion Report
+          </button>
+          {/* Mobile-only refresh button */}
+          <button
+            type="button"
+            className="cc-mobile-only"
+            onClick={() => {
+              // Force a true reload that bypasses BFCache on iOS
+              window.location.href = window.location.href
+            }}
+            style={{
+              border: '1px solid #e2e8f0',
+              borderRadius: 8,
+              padding: '6px 10px',
+              backgroundColor: '#f8fafc',
+              cursor: 'pointer',
+              fontSize: 18,
+              lineHeight: 1,
+              marginLeft: 8,
+            }}
+            title="Refresh data"
+          >
+            ↻
+          </button>
+        </div>
       </header>
 
       {/* Desktop layout */}

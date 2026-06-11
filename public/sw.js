@@ -1,7 +1,7 @@
-// Endless Tales Service Worker v5
+// Endless Tales Service Worker v6
 // Full offline support: app shell + audio caching
 
-const SHELL_CACHE  = 'et-shell-v5'
+const SHELL_CACHE  = 'et-shell-v6'
 const AUDIO_CACHE  = 'et-audio-v1'
 
 // App shell pages to cache on install
