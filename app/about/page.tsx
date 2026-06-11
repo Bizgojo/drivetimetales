@@ -104,10 +104,10 @@ export default function AboutPage() {
             Have questions or feedback? We'd love to hear from you.
           </p>
           <a 
-            href="mailto:support@drivetimetales.com"
+            href="mailto:hello@endless-tales.com"
             className="block w-full py-3 bg-orange-500 text-white text-center rounded-xl font-medium"
           >
-            📧 support@drivetimetales.com
+            📧 hello@endless-tales.com
           </a>
         </div>
       </div>

@@ -98,7 +98,7 @@ The Drive Time Tales Team`
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          from: 'Drive Time Tales <noreply@drivetimetales.com>',
+          from: 'Endless Tales <hello@endless-tales.com>',
           to: referrerEmail,
           subject: subject,
           text: body

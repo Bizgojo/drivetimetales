@@ -147,8 +147,8 @@ export default function HelpPage() {
 
         <p className="text-center text-gray-500 text-sm mt-8">
           You can also email us directly at{' '}
-          <a href="mailto:support@drivetimetales.com" className="text-orange-400">
-            support@drivetimetales.com
+          <a href="mailto:hello@endless-tales.com" className="text-orange-400">
+            hello@endless-tales.com
           </a>
         </p>
       </div>

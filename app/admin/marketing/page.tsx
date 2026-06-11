@@ -47,15 +47,15 @@ export default function AdminMarketingPage() {
 
   // Generate social post text for a story
   function generatePost(story: Story, platform: 'twitter' | 'facebook' | 'instagram') {
-    const baseUrl = 'https://drivetimetales.com'
+    const baseUrl = 'https://endless-tales.com'
     const storyUrl = `${baseUrl}/story/${story.id}`
     
-    const hashtags = '#AudioDrama #Audiobook #DrivingEntertainment #DriveTimeTales'
+    const hashtags = '#AudioDrama #Audiobook #DrivingEntertainment #EndlessTales'
     
     if (platform === 'twitter') {
       return `🎧 NEW STORY: "${story.title}" by ${story.author}\n\n${story.genre} • Perfect for your commute!\n\n${storyUrl}\n\n${hashtags}`
     } else if (platform === 'facebook') {
-      return `🎧 New Audio Drama Alert! 🚗\n\n"${story.title}" by ${story.author} is now available on Drive Time Tales!\n\nGenre: ${story.genre}\n\nPerfect for your daily commute, road trips, or anytime you need great audio entertainment.\n\n👉 Listen now: ${storyUrl}\n\n${hashtags}`
+      return `🎧 New Audio Drama Alert! 🚗\n\n"${story.title}" by ${story.author} is now available on Endless Tales!\n\nGenre: ${story.genre}\n\nPerfect for your daily commute, road trips, or anytime you need great audio entertainment.\n\n👉 Listen now: ${storyUrl}\n\n${hashtags}`
     } else {
       return `🎧 NEW RELEASE 🎧\n\n"${story.title}"\nby ${story.author}\n\n📚 ${story.genre}\n🚗 Perfect for your commute!\n\nLink in bio to listen!\n\n${hashtags} #NewRelease #AudioStories`
     }
@@ -78,27 +78,27 @@ export default function AdminMarketingPage() {
     {
       name: 'New Story Release',
       icon: '🆕',
-      template: '🎧 NEW STORY: "[TITLE]" by [AUTHOR]\n\nNow streaming on Drive Time Tales!\n\n[URL]\n\n#AudioDrama #DriveTimeTales'
+      template: '🎧 NEW STORY: "[TITLE]" by [AUTHOR]\n\nNow streaming on Endless Tales!\n\n[URL]\n\n#AudioDrama #EndlessTales'
     },
     {
       name: 'Weekly Picks',
       icon: '⭐',
-      template: '⭐ THIS WEEK\'S TOP PICKS ⭐\n\n1. [STORY1]\n2. [STORY2]\n3. [STORY3]\n\nListen now at drivetimetales.com\n\n#AudioDrama #WeeklyPicks'
+      template: '⭐ THIS WEEK\'S TOP PICKS ⭐\n\n1. [STORY1]\n2. [STORY2]\n3. [STORY3]\n\nListen now at endless-tales.com\n\n#AudioDrama #WeeklyPicks'
     },
     {
       name: 'Free Story Promo',
       icon: '🆓',
-      template: '🆓 FREE TODAY! 🆓\n\n"[TITLE]" is FREE to listen!\n\nPerfect for your commute 🚗\n\n👉 drivetimetales.com\n\n#FreeAudio #DriveTimeTales'
+      template: '🆓 FREE TODAY! 🆓\n\n"[TITLE]" is FREE to listen!\n\nPerfect for your commute 🚗\n\n👉 endless-tales.com\n\n#FreeAudio #EndlessTales'
     },
     {
       name: 'Trucker Special',
       icon: '🚛',
-      template: '🚛 TRUCKERS! 🚛\n\nLong haul? We\'ve got you covered with hours of audio stories!\n\n✅ Mysteries\n✅ Thrillers\n✅ Sci-Fi\n✅ And more!\n\ndrivetimetales.com\n\n#TruckerLife #AudioStories'
+      template: '🚛 TRUCKERS! 🚛\n\nLong haul? We\'ve got you covered with hours of audio stories!\n\n✅ Mysteries\n✅ Thrillers\n✅ Sci-Fi\n✅ And more!\n\nendless-tales.com\n\n#TruckerLife #AudioStories'
     },
     {
       name: 'Commuter Tips',
       icon: '🚗',
-      template: '🚗 Make your commute fly by!\n\nTurn traffic time into story time with Drive Time Tales.\n\n🎧 Premium audio dramas\n📱 Works offline\n⏱️ 15min to 2hr stories\n\ndrivetimetales.com\n\n#CommuterLife #AudioDrama'
+      template: '🚗 Make your commute fly by!\n\nTurn traffic time into story time with Endless Tales.\n\n🎧 Premium audio dramas\n📱 Works offline\n⏱️ 15min to 2hr stories\n\nendless-tales.com\n\n#CommuterLife #AudioDrama'
     }
   ]
 
