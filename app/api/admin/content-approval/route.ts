@@ -878,6 +878,10 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    // GOVERNANCE: All story workflow_state changes MUST go through this route.
+    // Direct DB PATCHes bypass audit fields and are prohibited by governance rule ORION-GOV-006.
+    // Every transition must set workflow_state_changed_by, workflow_state_changed_at, workflow_state_change_reason.
+
     const unauthorized = await requireAdmin()
     if (unauthorized) return unauthorized
 
@@ -888,6 +892,8 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json().catch(() => ({}))
     const storyId = clean(body.storyId || body.story_id)
+    const changedBy = clean(body.changedBy || body.changed_by) || 'admin'
+    const changeReason = clean(body.reason || body.change_reason) || null
     if (action === 'set_production_standard') {
       const productionStandard = normalizeProductionStandard(body.production_standard)
       if (!storyId) return json({ success: false, error: 'Missing story_id' }, 400)
@@ -934,6 +940,9 @@ export async function POST(req: NextRequest) {
         reviewed_at: null,
         published_on: null,
         review_notes: null,
+        workflow_state_changed_by: changedBy,
+        workflow_state_changed_at: new Date().toISOString(),
+        workflow_state_change_reason: changeReason,
       }
 
       const { data, error } = await supabase
@@ -966,6 +975,9 @@ export async function POST(req: NextRequest) {
         is_hidden: true,
         reviewed_at: null,
         // review_notes intentionally NOT included — preserved as-is
+        workflow_state_changed_by: changedBy,
+        workflow_state_changed_at: new Date().toISOString(),
+        workflow_state_change_reason: changeReason,
       }
 
       if (seriesId) {
@@ -1077,6 +1089,9 @@ export async function POST(req: NextRequest) {
       update.status = 'audio_ready'
       update.published_on = null
     }
+    update.workflow_state_changed_by = changedBy
+    update.workflow_state_changed_at = new Date().toISOString()
+    update.workflow_state_change_reason = changeReason
     const { data, error } = await supabase
       .from('stories')
       .update(update)
