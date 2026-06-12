@@ -2861,33 +2861,46 @@ async function runStandaloneRenderFinalMix(job: ProductionJob, origin: string) {
     await supabase.from('stories').update({ audio_url: null, story_audio_url: null }).eq('id', storyId)
   }
 
-  // ATL-PIPE-003: NULL-LUFS Pre-Assembly Gate — validate all segments before render_final_mix
+  // ATL-PIPE-003: Pre-Assembly Silence Gate — validate all segments before render_final_mix.
+  // Threshold split (revised):
+  //   ≤ 5KB  → hard fail (truly empty / ElevenLabs error response)
+  //   5KB–20KB → warn in logs, continue render (legitimately short dialog lines)
+  //   > 20KB → always valid
   const renderAttempts = (state.renderFinalMix?.attempts ?? 0) + 1
   const storyAudioFolder = `asc3/${storyId}`
   try {
     const { data: audioFiles, error: listError } = await supabase.storage.from('audio').list(storyAudioFolder, { limit: 500 })
     if (listError) throw new Error(`Failed to list story segments: ${listError.message}`)
-    
-    // Check all segment_XXXX.mp3 files for silence (file size ≤ 20KB indicates null/invalid LUFS)
+
     const segmentPattern = /^segment_\d{4}\.mp3$/
     const audioSegments = (audioFiles || []).filter(f => segmentPattern.test(f.name))
-    const nullLufsSegments: string[] = []
-    const SILENCE_SIZE_THRESHOLD = 20 * 1024  // 20KB threshold matching generate-voices
-    
+
+    const HARD_FAIL_SIZE = 5 * 1024    // 5KB — truly empty / corrupted
+    const WARN_SIZE      = 20 * 1024   // 20KB — possibly short but may be valid
+
+    const hardFailSegments: string[] = []
+    const warnSegments: string[] = []
+
     for (const file of audioSegments) {
-      if ((file.metadata?.size ?? 0) <= SILENCE_SIZE_THRESHOLD) {
-        nullLufsSegments.push(file.name)
+      const size = file.metadata?.size ?? 0
+      if (size <= HARD_FAIL_SIZE) {
+        hardFailSegments.push(file.name)
+        console.warn(`[ATL-PIPE-003] HARD FAIL segment ${file.name}: size=${size}B ≤ ${HARD_FAIL_SIZE}B — truly empty/corrupted`)
+      } else if (size <= WARN_SIZE) {
+        warnSegments.push(file.name)
+        console.warn(`[ATL-PIPE-003] WARN segment ${file.name}: size=${size}B ≤ ${WARN_SIZE}B — short but may be valid short dialog, continuing`)
       }
     }
-    
-    if (nullLufsSegments.length > 0) {
+
+    if (hardFailSegments.length > 0) {
       const errorReport = {
         success: false,
         kind: 'null_lufs_segments',
         error: 'NULL_LUFS_PRE_ASSEMBLY_GATE_FAILED',
-        affectedSegments: nullLufsSegments,
-        message: 'Pre-assembly gate: segments have null LUFS. Delete affected segments and reset job to generate_voices.',
-        remediation: 'Delete affected segments and reset job to generate_voices step for regeneration',
+        affectedSegments: hardFailSegments,
+        warnSegments,
+        message: `Pre-assembly gate: ${hardFailSegments.length} segment(s) are truly empty (≤5KB). Reset job to generate_voices — stale segments will auto-regenerate.`,
+        remediation: 'Reset job to generate_voices step — stale segments will auto-regenerate (no manual deletion needed)',
       }
       // Allow max 2 render attempts before marking as terminal failure
       if (renderAttempts >= 2) {
@@ -2942,6 +2955,7 @@ async function runStandaloneRenderFinalMix(job: ProductionJob, origin: string) {
         },
       }
     }
+    // warnSegments are logged above but do NOT block render — short dialog lines are legitimate
   } catch (e) {
     // If segment validation itself fails, log warning but continue to render attempt
     console.warn(`[ATL-PIPE-003] Segment pre-flight validation error: ${String(e).slice(0, 200)}`)

@@ -2906,7 +2906,28 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, error: `Failed to list existing story segments: ${listAudioError.message}` }, { status: 500 })
       }
 
-      const existingSegmentNames = new Set((existingAudioFiles || []).filter(file => segmentFilePattern.test(file.name)).map(file => file.name))
+      // FIX (AC-1, AC-2): reject stale segments whose stored size is ≤ 20KB.
+      // This matches the render-final-mix silence gate threshold so that any segment
+      // flagged there will also be regenerated here on the next produce run — no manual
+      // deletion required.  Files ≤ 20KB from old-pipeline runs are silence placeholders
+      // (ElevenLabs returned an ~18KB silence response); legitimately short lines that
+      // were re-generated with the new pipeline will also be small, but they must be
+      // re-generated once so the render gate can validate them with the softer threshold.
+      const STALE_SIZE_THRESHOLD = 20 * 1024  // 20KB — matches render gate
+      const allSegmentFiles = (existingAudioFiles || []).filter(file => segmentFilePattern.test(file.name))
+      const existingSegmentNames = new Set(
+        allSegmentFiles
+          .filter(file => {
+            const size = file.metadata?.size ?? 0
+            if (size <= STALE_SIZE_THRESHOLD) {
+              const sizeKb = (size / 1024).toFixed(1)
+              console.log(`Segment ${file.name}: exists but size=${sizeKb}KB ≤ silence threshold — treating as stale/silence, will regenerate`)
+              return false
+            }
+            return true
+          })
+          .map(file => file.name)
+      )
       const targetFileName = `segment_${requestedSegmentNumber.toString().padStart(4, '0')}.mp3`
       if (existingSegmentNames.has(targetFileName)) {
         const inventory = buildInventoryReport(existingSegmentNames)
@@ -2961,7 +2982,12 @@ export async function POST(req: NextRequest) {
         console.error('  ❌ Failed to list updated story segments:', updatedListError)
         return NextResponse.json({ success: false, error: `Failed to list updated story segments: ${updatedListError.message}` }, { status: 500 })
       }
-      const updatedSegmentNames = new Set((updatedAudioFiles || []).filter(file => segmentFilePattern.test(file.name)).map(file => file.name))
+      // Also filter updated list by size to correctly identify remaining stale segments
+      const updatedSegmentNames = new Set(
+        (updatedAudioFiles || [])
+          .filter(file => segmentFilePattern.test(file.name) && (file.metadata?.size ?? 0) > STALE_SIZE_THRESHOLD)
+          .map(file => file.name)
+      )
       const inventory = buildInventoryReport(updatedSegmentNames, failures)
 
       return NextResponse.json({

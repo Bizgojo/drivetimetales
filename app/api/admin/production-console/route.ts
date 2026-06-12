@@ -170,6 +170,10 @@ export type ConsoleItem = {
     productionOwner?: string
     productionNextAction?: string
     productionBlocker?: string | null
+    // ATL-MON-002: nested error surfacing
+    errorSummary?: string | null
+    recoveryAction?: string | null
+    seriesDisplay?: string | null
 
     // Cold Storage
     reasonStored?: string
@@ -605,6 +609,66 @@ function buildRepairItems(stories: StoryRow[], jobs: ProductionJobRow[]): Consol
   })
 }
 
+// ── ATL-MON-002: Error summary builder for failed / stalled production jobs ───
+
+type ErrorSummaryResult = {
+  summary: string
+  recoveryAction: string | null
+}
+
+function buildErrorSummary(errorJson: any): ErrorSummaryResult | null {
+  if (!errorJson || typeof errorJson !== 'object') return null
+
+  // render_final_mix null_lufs_segments failure
+  const rmr = errorJson.renderFinalMixReport
+  if (rmr && typeof rmr === 'object') {
+    if (rmr.kind === 'null_lufs_segments') {
+      const affectedCount = Array.isArray(rmr.affectedSegments) ? rmr.affectedSegments.length : '?'
+      const summary = [
+        `Error: ${rmr.error ?? 'NULL_LUFS_PRE_ASSEMBLY_GATE_FAILED'}`,
+        `Message: ${rmr.message ?? 'Segments have null LUFS'}`,
+        `Affected segments: ${affectedCount}`,
+        rmr.remediation ? `Remediation: ${rmr.remediation}` : null,
+      ].filter(Boolean).join(' | ')
+      return {
+        summary,
+        recoveryAction: 'Reset job to generate_voices step — null-LUFS segments will auto-regenerate.',
+      }
+    }
+    // Other renderFinalMixReport kinds
+    const summary = [
+      rmr.error ? `Error: ${rmr.error}` : null,
+      rmr.message ? `Message: ${rmr.message}` : null,
+    ].filter(Boolean).join(' | ')
+    return { summary: summary || JSON.stringify(rmr).slice(0, 200), recoveryAction: null }
+  }
+
+  // validate_story_resolution failure
+  const srr = errorJson.storyResolutionReport
+  if (srr && typeof srr === 'object') {
+    const parts = [
+      srr.reason ? `Reason: ${srr.reason}` : null,
+      srr.confidence != null ? `Confidence: ${srr.confidence}` : null,
+    ].filter(Boolean)
+    return {
+      summary: parts.length > 0 ? parts.join(' | ') : 'Story resolution validation failed',
+      recoveryAction: null,
+    }
+  }
+
+  // Fallback: surface top-level error/message, then truncate full JSON
+  const topLevel = [
+    errorJson.error ? `Error: ${errorJson.error}` : null,
+    errorJson.message ? `Message: ${errorJson.message}` : null,
+    errorJson.step ? `Step: ${errorJson.step}` : null,
+  ].filter(Boolean).join(' | ')
+
+  if (topLevel) return { summary: topLevel, recoveryAction: null }
+
+  const fallback = JSON.stringify(errorJson)
+  return { summary: fallback.slice(0, 300) + (fallback.length > 300 ? '…' : ''), recoveryAction: null }
+}
+
 // ── ATL-CONS-002: Build in-production items with enrichment ──────────────────
 
 function jobQueueItem(job: ProductionJobRow, queueById: Map<string, QueueRow>): QueueRow | null {
@@ -623,14 +687,16 @@ function jobTitle(job: ProductionJobRow, storyById: Map<string, StoryRow>, serie
 }
 
 function buildInProductionItems(jobs: ProductionJobRow[], stories: StoryRow[], queueById: Map<string, QueueRow>): ConsoleItem[] {
-  // Show both active AND stalled (cancelled at render_final_mix) jobs
+  // Show active, stalled (cancelled at render_final_mix), AND failed jobs (for ATL-MON-002 error display)
   const relevantJobs = jobs.filter((job) => {
     const status = clean(job.status).toLowerCase()
     const step = clean(job.current_step).toLowerCase()
     const isActive = ['queued', 'running', 'waiting_for_external', 'processing', 'in_progress'].includes(status)
     // Stalled: cancelled while at a render step — needs local execution
     const isStalled = status === 'cancelled' && ['render_final_mix', 'series_render_final_mix'].includes(step)
-    return isActive || isStalled
+    // ATL-MON-002: failed jobs — show for visibility so Marc can read error details
+    const isFailed = status === 'failed'
+    return isActive || isStalled || isFailed
   })
 
   const storyById = new Map(stories.map((story) => [story.id, story]))
@@ -671,6 +737,13 @@ function buildInProductionItems(jobs: ProductionJobRow[], stories: StoryRow[], q
     const epNumber = story?.episode_number || null
     const epTotal = story?.series_total || job.state_json?.totalEpisodes || null
 
+    // ATL-MON-002: surface nested error details for failed jobs
+    const isFailed = status === 'failed'
+    const errorSummaryResult = isFailed ? buildErrorSummary(job.error_json) : null
+
+    // ATL-MON-002: fix series_id === null showing "unknown" — show "Standalone" instead
+    const seriesDisplay = job.series_id ? (seriesTitles.get(job.series_id) || job.series_id) : 'Standalone'
+
     items.push({
       key: `job:${job.id}`,
       type: job.series_id ? 'series' : story ? 'story' : 'job',
@@ -697,6 +770,10 @@ function buildInProductionItems(jobs: ProductionJobRow[], stories: StoryRow[], q
         productionOwner: owner,
         productionNextAction: nextAction,
         productionBlocker: blocker,
+        // ATL-MON-002: error details for failed jobs
+        errorSummary: errorSummaryResult?.summary ?? null,
+        recoveryAction: errorSummaryResult?.recoveryAction ?? null,
+        seriesDisplay,
       },
     })
   }

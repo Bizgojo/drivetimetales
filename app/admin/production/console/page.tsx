@@ -28,6 +28,10 @@ type OpData = {
   productionOwner?: string
   productionNextAction?: string
   productionBlocker?: string | null
+  // ATL-MON-002: nested error display
+  errorSummary?: string | null
+  recoveryAction?: string | null
+  seriesDisplay?: string | null
   // Cold Storage
   reasonStored?: string
   recoverable?: 'YES' | 'NO' | 'MAYBE'
@@ -324,6 +328,20 @@ function ProductionCard({ item }: { item: ConsoleItem }) {
 
       {open && (
         <div style={{ borderTop: `1px solid ${isStalled ? '#FECACA' : '#BFDBFE'}`, padding: '13px 14px', backgroundColor: isStalled ? '#FFF5F5' : '#F0F7FF' } as React.CSSProperties}>
+          {/* ATL-MON-002: Error summary for failed jobs */}
+          {item.status === 'failed' && op.errorSummary && (
+            <div style={{ display: 'flex', gap: '8px', padding: '8px 10px', borderRadius: '7px', backgroundColor: '#FEE2E2', border: '1px solid #FECACA', marginBottom: '8px' } as React.CSSProperties}>
+              <span>❌</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ color: '#991B1B', fontSize: '12px', fontWeight: 800 } as React.CSSProperties}>{op.errorSummary}</div>
+                {op.recoveryAction && (
+                  <div style={{ color: '#7F1D1D', fontSize: '11px', marginTop: '4px', fontStyle: 'italic' } as React.CSSProperties}>
+                    Recovery: {op.recoveryAction}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           {op.productionBlocker && (
             <div style={{ display: 'flex', gap: '8px', padding: '8px 10px', borderRadius: '7px', backgroundColor: '#FEE2E2', border: '1px solid #FECACA', marginBottom: '8px' } as React.CSSProperties}>
               <span>🚫</span>
@@ -332,11 +350,14 @@ function ProductionCard({ item }: { item: ConsoleItem }) {
           )}
           <ActionRow label="Owner" value={op.productionOwner} color={color} />
           <ActionRow label="Next Action" value={op.productionNextAction} color={isStalled ? '#dc2626' : '#2563eb'} />
-          <ActionRow label="After Completion" value="Story moves to Ready For Review → Content Approval" />
+          {item.status !== 'failed' && (
+            <ActionRow label="After Completion" value="Story moves to Ready For Review → Content Approval" />
+          )}
           <FieldGrid fields={[
             { label: 'Current Step', value: op.stepLabel },
             { label: 'Progress',     value: `${pct}%` },
             { label: 'Owner',        value: op.productionOwner },
+            { label: 'Series',       value: op.seriesDisplay ?? '—' },
             { label: 'Last Updated', value: fmt(item.lastUpdated) },
             { label: 'Status',       value: item.status },
             { label: 'Episodes',     value: item.episodeCount || '—' },
