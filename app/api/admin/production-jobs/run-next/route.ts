@@ -2814,38 +2814,51 @@ async function runStandaloneRenderFinalMix(job: ProductionJob, origin: string) {
     !existingFinalAudioUrl.startsWith('pending:') &&
     !existingStoryBodyUrl.startsWith('pending:')
   ) {
-    return {
-      success: true,
-      skippedExisting: true,
-      storyId: String(storyId),
-      finalAudioUrl: existingFinalAudioUrl,
-      storyBodyUrl: existingStoryBodyUrl,
-      durationSecs: null,
-      report: {
+    // ATL-P3: Verify final_mix.mp3 actually exists in storage before skipping render.
+    // Stale DB URLs from prior failed runs can set audio_url without the file being present,
+    // causing silent fake completions where the job advances but produces no audio.
+    const storyFolder = `asc3/${storyId}`
+    const { data: existingFiles } = await supabase.storage.from('audio').list(storyFolder, { limit: 20 })
+    const finalMixExists = (existingFiles || []).some(f => f.name === 'final_mix.mp3')
+
+    if (finalMixExists) {
+      return {
         success: true,
         skippedExisting: true,
+        storyId: String(storyId),
         finalAudioUrl: existingFinalAudioUrl,
         storyBodyUrl: existingStoryBodyUrl,
-      },
-      state: {
-        ...state,
-        storyId: String(storyId),
-        renderFinalMix: {
-          status: 'complete',
+        durationSecs: null,
+        report: {
+          success: true,
           skippedExisting: true,
           finalAudioUrl: existingFinalAudioUrl,
           storyBodyUrl: existingStoryBodyUrl,
-          durationSecs: null,
-          routeResponse: {
-            success: true,
+        },
+        state: {
+          ...state,
+          storyId: String(storyId),
+          renderFinalMix: {
+            status: 'complete',
             skippedExisting: true,
             finalAudioUrl: existingFinalAudioUrl,
             storyBodyUrl: existingStoryBodyUrl,
+            durationSecs: null,
+            routeResponse: {
+              success: true,
+              skippedExisting: true,
+              finalAudioUrl: existingFinalAudioUrl,
+              storyBodyUrl: existingStoryBodyUrl,
+            },
+            renderedAt: nowIso(),
           },
-          renderedAt: nowIso(),
         },
-      },
+      }
     }
+
+    // Stale DB URL — file missing from storage. Clear DB columns and fall through to render.
+    console.warn(`[runStandaloneRenderFinalMix] final_mix.mp3 absent from storage despite DB url set — clearing stale urls and re-rendering for ${storyId}`)
+    await supabase.from('stories').update({ audio_url: null, story_audio_url: null }).eq('id', storyId)
   }
 
   // ATL-PIPE-003: NULL-LUFS Pre-Assembly Gate — validate all segments before render_final_mix
