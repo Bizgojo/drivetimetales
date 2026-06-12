@@ -9,6 +9,7 @@ import {
   type AgentId,
   type AgentState,
   type AgentStatus,
+  type Blocker,
   type DecisionResolution,
   type LaunchReadiness,
   type M1State,
@@ -511,6 +512,7 @@ export default function AdminCommandCenterPage() {
   const [agentsState, setAgentsState] = useState<AgentsState>(() => makeSeedAgents())
   const [missions, setMissions] = useState<Mission[]>([])
   const [blockers, setBlockers] = useState<MarcBlocker[]>([])
+  const [structuredBlockers, setStructuredBlockers] = useState<Blocker[]>([])
   const [selectedAgentId, setSelectedAgentId] = useState<AgentId | null>(null)
   const [showReportsModal, setShowReportsModal] = useState(false)
   const [mobileTab, setMobileTab] = useState<MobileTab>('agents')
@@ -554,8 +556,11 @@ export default function AdminCommandCenterPage() {
         agents?: AgentsState
         missions?: Mission[]
         blockers?: MarcBlocker[]
+        structuredBlockers?: Blocker[]
+        allStructuredBlockers?: Blocker[]
         marcActions?: Record<string, { resolution: MarcAction['resolution']; resolvedAt: string; note: string | null }>
         readiness?: LaunchReadiness
+        m1?: Record<string, unknown>
         reports?: OrionReport[]
         source?: string
       }) => {
@@ -566,6 +571,12 @@ export default function AdminCommandCenterPage() {
         if (data.missions) {
           setMissions(data.missions)
           writeLS(MISSIONS_KEY, data.missions)
+        }
+        // Structured blockers SSoT — all open blockers from blockers.json
+        if (data.allStructuredBlockers) {
+          setStructuredBlockers(data.allStructuredBlockers)
+        } else if (data.structuredBlockers) {
+          setStructuredBlockers(data.structuredBlockers)
         }
         // Marc Action resolutions: server is source of truth; merge localStorage under server values
         // This reconciles Firefox/Chrome split-brain: server-persisted resolutions win everywhere
@@ -938,6 +949,11 @@ export default function AdminCommandCenterPage() {
     // Use loose != null to catch both null AND undefined (e.g. old stored data without the field)
     const deferredOnes = blockers.filter((b) => !isArchived(b) && b.done && b.resolution === 'deferred')
     const resolvedOnes = blockers.filter((b) => !isArchived(b) && b.done && b.resolution != null && b.resolution !== 'deferred')
+
+    // Structured Marc-action blockers — from blockers.json SSoT
+    const activeStructuredMarcBlockers = structuredBlockers.filter(
+      b => b.requires_marc_action && b.status === 'open'
+    )
 
     const activeMarcActions = marcActions.filter(a => {
       const res = marcActionResolutions[a.id]
@@ -1313,16 +1329,16 @@ export default function AdminCommandCenterPage() {
         }}
       >
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' as const }}>
           <span style={{ fontWeight: 700, color: '#92400e' }}>⚠️ Needs Your Decision</span>
-          {(activeOnes.length + activeMarcActions.length) > 0 && (
+          {(activeOnes.length + activeMarcActions.length + activeStructuredMarcBlockers.length) > 0 && (
             <span style={{ backgroundColor: '#fef3c7', color: '#92400e', borderRadius: 12, padding: '2px 8px', fontSize: 12, fontWeight: 700 }}>
-              {activeOnes.length + activeMarcActions.length} active
+              {activeOnes.length + activeMarcActions.length + activeStructuredMarcBlockers.length} active
             </span>
           )}
-          {activeMarcActions.length > 0 && (
+          {(activeMarcActions.length + activeStructuredMarcBlockers.length) > 0 && (
             <span style={{ backgroundColor: '#fef3c7', color: '#92400e', borderRadius: 12, padding: '2px 8px', fontSize: 12, fontWeight: 700 }}>
-              {activeMarcActions.length} actions needed
+              {activeMarcActions.length + activeStructuredMarcBlockers.length} actions needed
             </span>
           )}
           {draftMarcActions.length > 0 && (
@@ -1335,7 +1351,7 @@ export default function AdminCommandCenterPage() {
               {deferredOnes.length} deferred
             </span>
           )}
-          {activeOnes.length === 0 && activeMarcActions.length === 0 && (
+          {activeOnes.length === 0 && activeMarcActions.length === 0 && activeStructuredMarcBlockers.length === 0 && (
             <span style={{ fontSize: 12, color: '#22c55e', fontWeight: 700 }}>✓ All resolved</span>
           )}
         </div>
@@ -1442,6 +1458,58 @@ export default function AdminCommandCenterPage() {
                     )}
                   </div>
                   <span style={{ fontSize: 10, color: '#94a3b8', flexShrink: 0, alignSelf: 'center' }}>›</span>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* Structured Marc-action blockers from blockers.json SSoT */}
+        {activeStructuredMarcBlockers.length > 0 && (
+          <div id="structured-marc-blockers" style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#92400e', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+              🎯 Marc Actions Required (Structured)
+              <span style={{ backgroundColor: '#fef3c7', color: '#92400e', borderRadius: 12, padding: '1px 8px', fontSize: 11, fontWeight: 700 }}>
+                {activeStructuredMarcBlockers.length}
+              </span>
+            </div>
+            {activeStructuredMarcBlockers.map(blocker => {
+              const blockedAgent = AGENTS.find(a => a.id === blocker.blocked_agent)
+              return (
+                <div
+                  key={blocker.id}
+                  id={`blocker-${blocker.resolution_target}`}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 8,
+                    padding: '10px 12px',
+                    borderRadius: 6,
+                    border: '1px solid #fde68a',
+                    backgroundColor: '#fff',
+                    marginBottom: 6,
+                  }}
+                >
+                  <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>🔐</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 3 }}>
+                      {blocker.headline}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4, lineHeight: 1.4 }}>
+                      {blocker.context}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#92400e', fontStyle: 'italic', marginBottom: 6 }}>
+                      Orion recommends: {blocker.recommendation}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' as const }}>
+                      {blockedAgent && (
+                        <span style={{ fontSize: 10, color: '#fff', backgroundColor: blockedAgent.accentColor, borderRadius: 10, padding: '1px 7px', fontWeight: 700 }}>
+                          {blockedAgent.emoji} {blockedAgent.displayName} blocked
+                        </span>
+                      )}
+                      <span style={{ fontSize: 10, color: '#64748b' }}>Target: {blocker.resolution_target}</span>
+                    </div>
+                  </div>
                 </div>
               )
             })}
@@ -1755,26 +1823,78 @@ export default function AdminCommandCenterPage() {
           </div>
         </div>
 
-        {/* Section B — Blocked (only if waitingOn is set) */}
-        {state.waitingOn ? (
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginTop: 8 }}>
-            <span style={{
-              width: 6, height: 6, borderRadius: '50%',
-              backgroundColor: '#ef4444', flexShrink: 0, marginTop: 4,
-            }} />
-            <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.4 }}>
-              <span style={{ fontWeight: 700, color: '#ef4444' }}>Blocked: </span>
-              {renderWithMarcLinks(
-                state.waitingOn,
-                agent.id,
-                marcActions,
-                marcActionResolutions,
-                openMarcAction,
-                { fontSize: 12, color: '#64748b' }
-              )}
-            </div>
-          </div>
-        ) : null}
+        {/* Section B — Blocked (structured blockers from blockers.json SSoT) */}
+        {(() => {
+          // Priority: structured blockerIds → fallback to legacy waitingOn
+          const agentBlockerIds = state.blockerIds ?? []
+          const agentStructuredBlockers = agentBlockerIds
+            .map(id => structuredBlockers.find(b => b.id === id))
+            .filter((b): b is Blocker => !!b && b.status !== 'superseded')
+
+          if (agentStructuredBlockers.length > 0) {
+            return (
+              <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {agentStructuredBlockers.map(blocker => {
+                  const isMarcAction = blocker.requires_marc_action
+                  const dotColor = isMarcAction ? '#ef4444' : '#f97316'
+                  const label = isMarcAction ? 'Blocked:' : `Waiting on ${blocker.owner}:`
+                  const labelColor = isMarcAction ? '#ef4444' : '#f97316'
+                  const anchorId = `blocker-${blocker.resolution_target}`
+                  return (
+                    <div key={blocker.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                      <span style={{
+                        width: 6, height: 6, borderRadius: '50%',
+                        backgroundColor: dotColor, flexShrink: 0, marginTop: 4,
+                      }} />
+                      <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.4, flex: 1 }}>
+                        <span style={{ fontWeight: 700, color: labelColor }}>{label} </span>
+                        <span>{blocker.headline}</span>
+                        {' '}
+                        <a
+                          href={isMarcAction ? `#structured-marc-blockers` : `#${anchorId}`}
+                          onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            const el = document.getElementById(isMarcAction ? 'structured-marc-blockers' : anchorId)
+                            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                          }}
+                          style={{ fontSize: 11, color: '#2563eb', textDecoration: 'underline', cursor: 'pointer', whiteSpace: 'nowrap' as const }}
+                        >
+                          {isMarcAction ? 'View decision →' : 'View detail →'}
+                        </a>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          }
+
+          // Legacy fallback: free-text waitingOn (for agents without blockerIds)
+          if (state.waitingOn) {
+            return (
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginTop: 8 }}>
+                <span style={{
+                  width: 6, height: 6, borderRadius: '50%',
+                  backgroundColor: '#ef4444', flexShrink: 0, marginTop: 4,
+                }} />
+                <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.4 }}>
+                  <span style={{ fontWeight: 700, color: '#ef4444' }}>Blocked: </span>
+                  {renderWithMarcLinks(
+                    state.waitingOn,
+                    agent.id,
+                    marcActions,
+                    marcActionResolutions,
+                    openMarcAction,
+                    { fontSize: 12, color: '#64748b' }
+                  )}
+                </div>
+              </div>
+            )
+          }
+
+          return null
+        })()}
 
         {/* Section C — Needs Your Decision (only if complete unresolved MarcActions exist) */}
         {sectionCActions.length > 0 && (

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
-import type { AgentId, AgentState, Mission, MarcBlocker, LaunchReadiness } from '@/lib/config/command-center'
+import type { AgentId, AgentState, Blocker, Mission, MarcBlocker, LaunchReadiness } from '@/lib/config/command-center'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -72,6 +72,21 @@ async function readAgentState(): Promise<Record<string, Partial<AgentState>>> {
     return JSON.parse(text) as Record<string, Partial<AgentState>>
   } catch {
     return {}
+  }
+}
+
+// Reads blockers.json — the single source of truth for all agent blocked states.
+// Agent cards read blockerIds[] → look up here. "Needs Your Decision" panel filters
+// by requires_marc_action: true AND status: 'open'.
+async function readBlockers(): Promise<Blocker[]> {
+  try {
+    const { data, error } = await supabase.storage.from('org-state').download('blockers.json')
+    if (error || !data) return []
+    const text = await data.text()
+    const parsed = JSON.parse(text) as { blockers?: Blocker[] }
+    return Array.isArray(parsed.blockers) ? parsed.blockers : []
+  } catch {
+    return []
   }
 }
 
@@ -1048,6 +1063,7 @@ export async function GET(req: NextRequest) {
 
   const state = await readOrgState()
   const reports = await loadOrionReports()
+  const allStructuredBlockers = await readBlockers()
 
   const allBlockers: MarcBlocker[] = (state.blockers as MarcBlocker[]) ?? SEED_BLOCKERS
   // Archived blockers are excluded from all decision buckets — they have been closed by Orion.
@@ -1078,6 +1094,9 @@ export async function GET(req: NextRequest) {
     missions,
     blockers: allBlockers,
     decisions,
+    // Structured blockers.json SSoT — used by agent cards (via blockerIds) and Needs Your Decision panel
+    structuredBlockers: allStructuredBlockers.filter(b => b.status === 'open'),
+    allStructuredBlockers,
     // Return persisted Marc Action resolutions so all browsers hydrate from one source of truth
     marcActions: (state.marcActions as Record<string, unknown>) ?? {},
     readiness: (state.readiness as LaunchReadiness) ?? SEED_READINESS,

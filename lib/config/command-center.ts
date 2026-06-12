@@ -163,12 +163,30 @@ export interface AgentState {
   activeTasks?: string[]          // Ordered list of active work items (Orion-determined priority)
   percentComplete: number | null
   waitingOn: string
+  blockerIds?: string[]           // References to structured Blocker records in blockers.json
   lastActivity: string
   lastUpdatedAt?: string          // ISO timestamp of most recent agent-state write (e.g. "2026-06-10T16:07:00Z")
   currentTaskUpdatedAt?: string   // ISO timestamp when currentTask last changed
   eta: string
   whyItMatters: string
   lastReport: { text: string; timestamp: string } | null
+}
+
+// ─── Structured Blocker (blockers.json SSoT) ─────────────────────────────────
+// All blocked states on agent cards MUST reference a Blocker record.
+// No free-text waitingOn for blocked agents — blockerIds is authoritative.
+
+export interface Blocker {
+  id: string                        // e.g. "blk-bart-x-billing"
+  blocked_agent: AgentId | string   // which agent is blocked
+  owner: string                     // "marc" | agent id | "resolved"
+  requires_marc_action: boolean     // true → appears in Needs Your Decision panel
+  status: 'open' | 'resolved' | 'superseded'
+  headline: string                  // short display label for agent card
+  context: string                   // full explanation
+  recommendation: string            // what should be done
+  resolution_target: string         // link anchor / mission ID
+  updated_at: string                // ISO timestamp
 }
 
 export interface Mission {
