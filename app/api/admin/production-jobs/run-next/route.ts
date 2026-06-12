@@ -2509,8 +2509,8 @@ async function repairStandaloneBelleQuality(job: ProductionJob, model: string) {
 
   const failedReport = state.belleQualityValidation?.status === 'failed'
     ? state.belleQualityValidation
-    : state.belleQualityFailedReport
-  if (!failedReport) throw new Error('Belle quality repair requires a failed validation report')
+    : state.belleQualityFailedReport || state.belleAssetFailedReport
+  if (!failedReport) throw new Error('Belle quality/asset repair requires a failed validation report')
 
   const { data: story, error } = await supabase
     .from('stories')
@@ -2526,8 +2526,13 @@ async function repairStandaloneBelleQuality(job: ProductionJob, model: string) {
   if (!currentIntro || !currentOutro) throw new Error('Belle intro/outro text missing')
 
   const issueText = Array.isArray(failedReport.issues) ? failedReport.issues.join('\n') : ''
-  const repairIntro = Number(failedReport.introScore || 0) < 7 || /\bintro\b/i.test(issueText)
-  const repairOutro = Number(failedReport.outroScore || 0) < 7 || /\boutro\b/i.test(issueText)
+  const hasScores = typeof failedReport.introScore === 'number' || typeof failedReport.outroScore === 'number'
+  const repairIntro = hasScores
+    ? Number(failedReport.introScore || 0) < 7 || /\bintro\b/i.test(issueText)
+    : /\bintro\b/i.test(issueText) || !failedReport.issues || failedReport.issues.length === 0 || /\bintro/.test(String(failedReport.introText || ''))
+  const repairOutro = hasScores
+    ? Number(failedReport.outroScore || 0) < 7 || /\boutro\b/i.test(issueText)
+    : /\boutro\b/i.test(issueText) || !failedReport.issues || failedReport.issues.length === 0 || /\boutro/.test(String(failedReport.outroText || ''))
   const shouldRepairIntro = repairIntro || (!repairIntro && !repairOutro)
   const shouldRepairOutro = repairOutro || (!repairIntro && !repairOutro)
   // [LISTENER_NAME] is always required in intros — do not derive from the (possibly broken) current intro
@@ -5662,6 +5667,55 @@ export async function POST(req: NextRequest) {
       })
 
       if (!result.success) {
+        // Check if this is a text-only issue that can be repaired (vs. audio/transcript QC failures)
+        const issues = Array.isArray(result.report.issues) ? result.report.issues : []
+        const isTextOnlyFailure = issues.length > 0 && issues.every(issue =>
+          /forbidden|promotional|must include|must say|must be|incomplete|appear|missing|too|weak|atmospheric/i.test(issue)
+        )
+
+        if (isTextOnlyFailure) {
+          // Route to repair instead of failing
+          const repairState = {
+            ...result.state,
+            belleAssetValidationFailed: true,
+            belleAssetFailedReport: result.report,
+          }
+          const repairLogs = appendLog({ ...lockedJob, logs, current_step: step }, 'Queued automatic Belle asset text repair', {
+            storyId: result.storyId,
+            nextStep: NEXT_STEP_AFTER_STANDALONE_BELLE_REPAIR,
+            issueCount: issues.length,
+          })
+          const { data: repairJob, error: repairUpdateError } = await supabase
+            .from('production_jobs')
+            .update({
+              story_id: result.storyId,
+              status: 'running',
+              current_step: NEXT_STEP_AFTER_STANDALONE_BELLE_REPAIR,
+              state_json: repairState,
+              error_json: null,
+              logs: repairLogs,
+              locked_at: null,
+              locked_by: null,
+            })
+            .eq('id', lockedJob.id)
+            .select('*')
+            .single()
+
+          if (repairUpdateError) throw new Error(`Failed to queue standalone Belle asset repair: ${repairUpdateError.message}`)
+
+          return NextResponse.json({
+            success: true,
+            jobId: repairJob.id,
+            currentStep: step,
+            nextStep: repairJob.current_step,
+            storyId: result.storyId,
+            belleAssetValidationReport: result.report,
+            repairQueued: true,
+            logs: repairLogs,
+          })
+        }
+
+        // Audio/transcript QC failures cannot be automatically repaired
         const { data: failedJob, error: updateError } = await supabase
           .from('production_jobs')
           .update({
