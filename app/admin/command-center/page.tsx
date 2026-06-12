@@ -1692,8 +1692,25 @@ export default function AdminCommandCenterPage() {
             }}
           />
           <span style={{ fontSize: 22, marginLeft: 6 }}>{agent.emoji}</span>
-          <span style={{ fontSize: 17, fontWeight: 800, marginLeft: 6, color: '#0f172a' }}>
+          <span style={{ fontSize: 17, fontWeight: 800, marginLeft: 6, color: '#0f172a', flex: 1 }}>
             {agent.displayName}
+          </span>
+          <span style={{
+            fontSize: 10,
+            fontWeight: 800,
+            letterSpacing: '0.06em',
+            textTransform: 'uppercase',
+            color: STATUS_DOT_COLORS[state.status],
+            padding: '2px 6px',
+            borderRadius: 4,
+            backgroundColor: STATUS_DOT_COLORS[state.status] + '18',
+            flexShrink: 0,
+          }}>
+            {state.status === 'working' ? 'Working'
+              : state.status === 'waiting' ? 'Waiting'
+              : state.status === 'blocked' ? 'Blocked'
+              : state.status === 'complete' ? 'Complete'
+              : 'Idle'}
           </span>
         </div>
 
@@ -1720,17 +1737,22 @@ export default function AdminCommandCenterPage() {
         )}
 
         {/* Section A — What's happening now */}
-        <div style={{ fontSize: 13, color: '#334155', lineHeight: 1.45, marginTop: 8 }}>
-          {state.currentTask
-            ? renderWithMarcLinks(
-                state.currentTask,
-                agent.id,
-                marcActions,
-                marcActionResolutions,
-                openMarcAction,
-                { fontSize: 13, color: '#334155' }
-              )
-            : <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>Idle</span>}
+        <div style={{ marginTop: 8 }}>
+          <div style={{ fontSize: 10, fontWeight: 900, color: '#94a3b8', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 4 }}>
+            Working On
+          </div>
+          <div style={{ fontSize: 13, color: '#334155', lineHeight: 1.45 }}>
+            {state.currentTask
+              ? renderWithMarcLinks(
+                  state.currentTask,
+                  agent.id,
+                  marcActions,
+                  marcActionResolutions,
+                  openMarcAction,
+                  { fontSize: 13, color: '#334155' }
+                )
+              : <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>No active assignment.</span>}
+          </div>
         </div>
 
         {/* Section B — Blocked (only if waitingOn is set) */}
@@ -1857,10 +1879,11 @@ export default function AdminCommandCenterPage() {
               <span style={{ color: gateColor(gates[g] ?? 'not_started') }}>{gateLabel(gates[g] ?? 'not_started')}</span>
             </div>
           ))}
-          {!allClear && m1?.gateBlockSummary && (
-            <span style={{ fontSize: 11, color: '#64748b', alignSelf: 'center', marginLeft: 4 }}>
-              {m1.gateBlockSummary}
-            </span>
+          {!allClear && (m1?.currentBlocker || m1?.gateBlockSummary) && (
+            <div style={{ fontSize: 11, color: '#ef4444', fontWeight: 700, marginTop: 4, display: 'flex', gap: 4 }}>
+              <span style={{ flexShrink: 0 }}>⚠</span>
+              <span>{m1?.currentBlocker || m1?.gateBlockSummary}</span>
+            </div>
           )}
         </div>
 

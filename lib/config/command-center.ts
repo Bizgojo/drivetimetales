@@ -327,6 +327,7 @@ export interface M1State {
   gatesStatus: Record<string, string>      // "verified_complete" | "claimed_complete" | "not_started" | "blocked"
   gatesAllClear: boolean
   gateBlockSummary: string | null
+  currentBlocker?: string | null
   leadingCandidate: M1LeadingCandidate | null
   approvedReadyQueue: { rank: number; storyId: string; title: string; narrator: string; queuedSince: string }[]
   stories: M1StorySlot[]

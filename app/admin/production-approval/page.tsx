@@ -228,16 +228,24 @@ function ApprovalColumn({
         {APPROVAL_TABS.map((tab) => {
           const count = tabCounts[tab.id] || 0
           const active = activeTab === tab.id
-          let badge = String(count)
-          if (tab.id === 'ready_for_review') badge = `${rfrReady} ready · ${rfrBlocked} blocked`
+          // Compute ready/blocked/total per tab
+          const readyCount = tab.id === 'ready_for_review' ? rfrReady : count
+          const blockedCount = tab.id === 'ready_for_review' ? rfrBlocked : 0
+          const totalCount = count
           return (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              style={{ border: `1px solid ${active ? tab.color : '#e5e7eb'}`, borderRadius: 8, padding: '8px 12px', background: active ? `${tab.color}12` : '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 900, color: active ? tab.color : '#374151', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}
+              style={{ border: `1px solid ${active ? tab.color : '#e5e7eb'}`, borderRadius: 8, padding: '10px 14px', background: active ? `${tab.color}12` : '#fff', cursor: 'pointer', color: active ? tab.color : '#374151', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 0, minWidth: 120 }}
             >
-              <span>{tab.label}</span>
-              <span style={{ fontSize: 11, color: active ? tab.color : '#94a3b8', fontWeight: 700 }}>{badge}</span>
+              <span style={{ fontSize: 12, fontWeight: 900 }}>{tab.label}</span>
+              <span style={{ fontSize: 15, fontWeight: 900, color: active ? tab.color : '#111827', marginTop: 4, lineHeight: 1 }}>
+                {readyCount} {tab.id === 'ready_for_review' ? 'Ready Now' : tab.id === 'approved_ready' ? 'To Publish' : tab.id === 'published' ? 'Published' : tab.id === 'repair_queue' ? 'In Repair' : 'Archived'}
+              </span>
+              {blockedCount > 0 && (
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#ef4444', marginTop: 2 }}>{blockedCount} Blocked</span>
+              )}
+              <span style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', marginTop: 2 }}>{totalCount} Total</span>
             </button>
           )
         })}
