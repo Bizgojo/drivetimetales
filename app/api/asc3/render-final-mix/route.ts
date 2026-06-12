@@ -347,9 +347,12 @@ export async function POST(req: NextRequest) {
     const preparedSegments: Array<{ name: string; segmentNumber: number; path: string }> = []
     const failedSegments: string[] = []
     const segPaths: string[] = []
-    // Download and normalize segments sequentially to avoid memory pressure
-    for (let i = 0; i < parsedSegments.length; i++) {
-      const parsedSegment = parsedSegments[i]
+    // Download and normalize segments in parallel with bounded concurrency (max 10)
+    // to avoid the sequential bottleneck (~190–380s for 95 segments → ~38s).
+    const CONCURRENCY = 10
+    const preparedMap = new Map<number, { name: string; segmentNumber: number; path: string }>()
+    const failedMap = new Map<number, string>()
+    const tasks = parsedSegments.map((parsedSegment, i) => async () => {
       const seg = parsedSegment.file
       try {
         const rawPath = path.join(tmpDir, 'raw_' + seg.name)
@@ -360,13 +363,32 @@ export async function POST(req: NextRequest) {
         // Voice segments are already loudness-QC'd upstream. Do not run
         // per-segment loudnorm here; short clips can be over-attenuated.
         await execFileAsync(FFMPEG_PATH, ['-i', rawPath, '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', segPath])
-        preparedSegmentNames.push(seg.name)
-        preparedSegments.push({ name: seg.name, segmentNumber: parsedSegment.segmentNumber, path: segPath })
-        segPaths.push(segPath)
+        preparedMap.set(i, { name: seg.name, segmentNumber: parsedSegment.segmentNumber, path: segPath })
         await fs.unlink(rawPath).catch(() => {})
       } catch (e) {
-        failedSegments.push(seg.name)
+        failedMap.set(i, seg.name)
         console.error('  Segment ' + i + ' failed:', e)
+      }
+    })
+    // Run tasks with bounded concurrency
+    let taskIndex = 0
+    const runWorker = async () => {
+      while (taskIndex < tasks.length) {
+        const idx = taskIndex++
+        await tasks[idx]()
+      }
+    }
+    const workers = Array.from({ length: Math.min(CONCURRENCY, tasks.length) }, runWorker)
+    await Promise.all(workers)
+    // Re-assemble results in original order
+    for (let i = 0; i < parsedSegments.length; i++) {
+      if (preparedMap.has(i)) {
+        const entry = preparedMap.get(i)!
+        preparedSegmentNames.push(entry.name)
+        preparedSegments.push(entry)
+        segPaths.push(entry.path)
+      } else if (failedMap.has(i)) {
+        failedSegments.push(failedMap.get(i)!)
       }
     }
     console.log(`  Selected segment count: ${selectedSegmentNames.length}`)
