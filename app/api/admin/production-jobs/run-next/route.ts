@@ -2504,12 +2504,23 @@ async function repairStandaloneBelleQuality(job: ProductionJob, model: string) {
   const previousRepair = state.belleQualityRepair && typeof state.belleQualityRepair === 'object'
     ? state.belleQualityRepair
     : {}
-  const attempts = Number(previousRepair.attempts || 0)
-  if (attempts >= 1) throw new Error('Belle quality repair attempt limit reached')
 
-  const failedReport = state.belleQualityValidation?.status === 'failed'
-    ? state.belleQualityValidation
-    : state.belleQualityFailedReport || state.belleAssetFailedReport
+  // Asset-validation failures (validate_belle_assets → repair) are a separate repair cycle.
+  // They must NOT be blocked by a stale attempt counter from a prior quality-repair loop.
+  const isAssetRepair = state.belleAssetValidationFailed === true
+  if (!isAssetRepair) {
+    const attempts = Number(previousRepair.attempts || 0)
+    if (attempts >= 2) throw new Error('Belle quality repair attempt limit reached')
+  }
+
+  // Prefer the most relevant failure report for the current repair type.
+  // Asset repairs use belleAssetFailedReport (current, has actual forbidden-word issue).
+  // Quality repairs use the quality validator report.
+  const failedReport = isAssetRepair
+    ? (state.belleAssetFailedReport || state.belleQualityValidation || state.belleQualityFailedReport)
+    : (state.belleQualityValidation?.status === 'failed'
+        ? state.belleQualityValidation
+        : state.belleQualityFailedReport || state.belleAssetFailedReport)
   if (!failedReport) throw new Error('Belle quality/asset repair requires a failed validation report')
 
   const { data: story, error } = await supabase
@@ -6001,6 +6012,14 @@ export async function POST(req: NextRequest) {
       } catch (err) {
         const state = lockedJob.state_json && typeof lockedJob.state_json === 'object' ? lockedJob.state_json : {}
         const storyId = lockedJob.story_id || state.storyId
+        const repairAttempts = Number((state.belleQualityRepair as Record<string, unknown>)?.attempts ?? 0)
+        const isAssetRepair = state.belleAssetValidationFailed === true
+        const relevantReport = isAssetRepair
+          ? (state.belleAssetFailedReport || state.belleQualityFailedReport || null)
+          : (state.belleQualityFailedReport || state.belleQualityValidation || null)
+        const storyAudioBase = storyId ? `asc3/${storyId}` : null
+        const introAssets = (relevantReport as Record<string, unknown>)?.introAssets
+        const outroAssets = (relevantReport as Record<string, unknown>)?.outroAssets
         const logs = appendLog(lockedJob, 'Standalone Belle quality repair failed', {
           storyId: storyId ? String(storyId) : null,
           nextStep: null,
@@ -6013,9 +6032,28 @@ export async function POST(req: NextRequest) {
             current_step: NEXT_STEP_AFTER_STANDALONE_BELLE_REPAIR,
             error_json: {
               step,
+              jobId: lockedJob.id,
               storyId: storyId ? String(storyId) : null,
+              episodeId: lockedJob.series_id ? `${lockedJob.series_id}:ep${lockedJob.state_json?.episodeNumber ?? '?'}` : null,
               error: err instanceof Error ? err.message : String(err),
-              belleQualityFailedReport: state.belleQualityFailedReport || state.belleQualityValidation || null,
+              repairType: isAssetRepair ? 'asset_text_rule' : 'quality_validation',
+              repairAttemptCount: repairAttempts,
+              // Asset context for debugging
+              assetPaths: {
+                intro: Array.isArray(introAssets) ? (introAssets as string[]).map(f => `${storyAudioBase}/${f}`) : [],
+                outro: Array.isArray(outroAssets) ? (outroAssets as string[]).map(f => `${storyAudioBase}/${f}`) : [],
+              },
+              expectedIntroText: (relevantReport as Record<string, unknown>)?.introText ?? null,
+              expectedOutroText: (relevantReport as Record<string, unknown>)?.outroText ?? null,
+              // Note: transcript QC not run at this step; actual transcripts require manual audio inspection
+              actualTranscript: null,
+              diffSummary: Array.isArray((relevantReport as Record<string, unknown>)?.issues)
+                ? ((relevantReport as Record<string, unknown>).issues as string[]).join('; ')
+                : (err instanceof Error ? err.message : String(err)),
+              nextRecommendedAction: repairAttempts >= 2
+                ? 'Repair limit reached. Manually fix the Belle intro text in the script, delete stale intro audio, and reset job to generate_belle_assets.'
+                : 'Increase repair attempt budget or manually write correct intro text and reset to generate_belle_assets.',
+              belleQualityFailedReport: relevantReport,
               at: nowIso(),
             },
             logs,
