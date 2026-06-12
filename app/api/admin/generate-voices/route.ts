@@ -2549,12 +2549,16 @@ export async function POST(req: NextRequest) {
             const parts = introText.split('[LISTENER_NAME]')
             const beforeText = parts[0].trim()
             const afterText = parts[1].trim()
-            const [beforeUrl, afterUrl] = await Promise.all([
-              generateVoiceLine(beforeText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'intro_before'),
-              generateVoiceLine(afterText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index + 0.1, 'intro_after'),
-            ])
-            result.introUrl = beforeUrl
-            await supabase.from('stories').update({ intro_audio_url: beforeUrl, intro_before_url: beforeUrl, intro_after_url: afterUrl }).eq('id', storyId)
+            if (!beforeText && !afterText) throw new Error('Belle B intro has [LISTENER_NAME] but no surrounding text.')
+            // Only generate audio for non-empty parts — empty beforeText would cause ElevenLabs
+            // to return silence (~10KB) which fails validate_belle_assets silence rejection.
+            let beforeUrl: string | null = null
+            let afterUrl: string | null = null
+            if (beforeText) beforeUrl = await generateVoiceLine(beforeText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'intro_before')
+            if (afterText) afterUrl = await generateVoiceLine(afterText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index + 0.1, 'intro_after')
+            const primaryUrl = (beforeUrl ?? afterUrl)!
+            result.introUrl = primaryUrl
+            await supabase.from('stories').update({ intro_audio_url: primaryUrl, intro_before_url: beforeUrl ?? null, intro_after_url: afterUrl ?? null }).eq('id', storyId)
           } else {
             const introUrl = await generateVoiceLine(introText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'intro')
             result.introUrl = introUrl
@@ -2993,16 +2997,20 @@ export async function POST(req: NextRequest) {
           throw new Error('Belle B intro must contain exactly one [LISTENER_NAME] placeholder.')
         }
         if (listenerNameCount === 1) {
-          // Split into before/after name
+          // Split into before/after name — only generate audio for non-empty parts.
+          // If the intro starts with [LISTENER_NAME] (e.g. "[LISTENER_NAME], a dead man…"),
+          // beforeText will be empty and generating audio for it causes ElevenLabs to return
+          // ~10KB of silence, which fails validate_belle_assets silence rejection.
           const parts = introText.split('[LISTENER_NAME]')
           const beforeText = parts[0].trim()
           const afterText = parts[1].trim()
-          const [beforeUrl, afterUrl] = await Promise.all([
-            generateVoiceLine(beforeText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'intro_before'),
-            generateVoiceLine(afterText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index + 0.1, 'intro_after'),
-          ])
-          results.intro = beforeUrl
-          await supabase.from('stories').update({ intro_before_url: beforeUrl, intro_after_url: afterUrl }).eq('id', storyId)
+          if (!beforeText && !afterText) throw new Error('Belle B intro has [LISTENER_NAME] but no surrounding text.')
+          let beforeUrl: string | null = null
+          let afterUrl: string | null = null
+          if (beforeText) beforeUrl = await generateVoiceLine(beforeText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'intro_before')
+          if (afterText) afterUrl = await generateVoiceLine(afterText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index + 0.1, 'intro_after')
+          results.intro = (beforeUrl ?? afterUrl)!
+          await supabase.from('stories').update({ intro_before_url: beforeUrl ?? null, intro_after_url: afterUrl ?? null }).eq('id', storyId)
           console.log('  ✅ Belle B intro split (before/after name)')
         } else {
           results.intro = await generateVoiceLine(introText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'intro')
