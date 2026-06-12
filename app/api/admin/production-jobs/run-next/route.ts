@@ -1032,9 +1032,10 @@ Content rules:
 - Keep BELLE B script block labels unchanged; return spoken text only.
 - Belle sounds like a trusted friend, not a host, announcer, DJ, trailer, ad, or promo voice.
 - No "Welcome", "begins now", "only on Endless Tales", "tonight", "stay tuned", "next time", or "what happens next" for standalone stories.
-- Intro should lightly ground the listener in the story world, then add a specific emotional or sensory hook.
-- Standalone intro must include the story title and a concrete narrative hook: event, secret, danger, conflict, or mystery mechanism.
-- Intro may include [LISTENER_NAME] only if the current intro uses it; if used, it must sit naturally in a complete sentence.
+- The intro MUST speak directly to the listener using [LISTENER_NAME] — this is a personalized product; [LISTENER_NAME] must appear naturally in a complete sentence.
+- NEVER write a third-person synopsis, story description, or plot summary (e.g., "In this story...", "follows a driver...", "a man discovers..."). The listener already chose this story — do not describe it to them.
+- Address the listener directly: speak to them as a companion would, using [LISTENER_NAME] and "you".
+- Standalone intro must lightly ground the listener in the story world, then add a specific emotional or sensory hook that creates anticipation.
 - Outro should emotionally land and feel companion-like.
 - Standalone outro must feel complete and must not tease a next episode or deferred resolution.
 - Standalone outro must include the story title, author name, and the exact phrase "Endless Tales original".
@@ -2529,7 +2530,8 @@ async function repairStandaloneBelleQuality(job: ProductionJob, model: string) {
   const repairOutro = Number(failedReport.outroScore || 0) < 7 || /\boutro\b/i.test(issueText)
   const shouldRepairIntro = repairIntro || (!repairIntro && !repairOutro)
   const shouldRepairOutro = repairOutro || (!repairIntro && !repairOutro)
-  const usesName = currentIntro.includes('[LISTENER_NAME]')
+  // [LISTENER_NAME] is always required in intros — do not derive from the (possibly broken) current intro
+  const usesName = true
   const declaredStoryType = [
     story.story_type ? `story_type=${story.story_type}` : '',
     story.series_id ? `series_id=${story.series_id}` : '',
@@ -2550,7 +2552,7 @@ async function repairStandaloneBelleQuality(job: ProductionJob, model: string) {
 REPAIR REQUEST:
 Repair intro: ${shouldRepairIntro ? 'yes' : 'no'}
 Repair outro: ${shouldRepairOutro ? 'yes' : 'no'}
-Intro currently uses [LISTENER_NAME]: ${usesName ? 'yes' : 'no'}
+Intro must include [LISTENER_NAME]: yes (always required)
 
 DECLARED METADATA:
 ${declaredStoryType}
