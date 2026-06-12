@@ -5716,6 +5716,14 @@ export async function POST(req: NextRequest) {
         }
 
         // Audio/transcript QC failures cannot be automatically repaired
+        const storyAudioBase = `asc3/${result.storyId}`
+        const introAssetPaths = (result.report.introAssets || []).map((f: string) => `${storyAudioBase}/${f}`)
+        const outroAssetPaths = (result.report.outroAssets || []).map((f: string) => `${storyAudioBase}/${f}`)
+        const issuesByField = {
+          intro: (result.report.issues || []).filter((i: string) => /\bintro\b/i.test(i)),
+          outro: (result.report.issues || []).filter((i: string) => /\boutro\b/i.test(i)),
+          asset: (result.report.issues || []).filter((i: string) => /asset|missing|file/i.test(i)),
+        }
         const { data: failedJob, error: updateError } = await supabase
           .from('production_jobs')
           .update({
@@ -5727,6 +5735,16 @@ export async function POST(req: NextRequest) {
               step,
               storyId: result.storyId,
               belleAssetValidationReport: result.report,
+              // Actionable context for diagnosis
+              assetPaths: { intro: introAssetPaths, outro: outroAssetPaths },
+              expectedIntroText: result.report.introText ?? null,
+              expectedOutroText: result.report.outroText ?? null,
+              actualTranscript: null,  // transcript QC not run at this step; null = not applicable
+              diffSummary: result.report.issues?.join('; ') ?? null,
+              issuesByField,
+              recommendedAction: issuesByField.intro.length > 0 || issuesByField.outro.length > 0
+                ? 'Text-rule violation: route to repair_belle_quality to rewrite the offending Belle line(s).'
+                : 'Asset missing or unknown issue: regenerate Belle assets via generate_belle_assets.',
               at: nowIso(),
             },
             logs,

@@ -111,11 +111,69 @@ export function classifyFailure(
   payload: Record<string, unknown>,
   job: Record<string, unknown>,
 ): FailureClassification {
-  const text = failureText(payload, job)
   const context = currentFailureContext(payload, job)
+  const step = context.step ?? (job?.current_step as string | null) ?? ''
 
+  // ── Step-aware routing (MUST come before broad text patterns) ────────────
+  // These steps have known, unambiguous failure shapes. Text-matching below
+  // is too broad (accumulated logs contain words like "detected"/"expected"
+  // from unrelated prior steps, causing false positives).
+
+  if (step === 'validate_belle_assets') {
+    // Text-rule violation caught by validateBelleText() — not a transcript QC issue.
+    // Transcript QC is not run at this step; there is no expected/actual diff.
+    const report = (payload?.belleAssetValidationReport ?? {}) as Record<string, unknown>
+    const issues = Array.isArray(report.issues) ? (report.issues as string[]) : []
+    const isTextRule = issues.some(i =>
+      /forbidden|promotional|must include|must say|must be|missing|incomplete|appear|weak|atmospheric/i.test(String(i))
+    )
+    return {
+      kind: 'belle_quality',
+      retryable: false,
+      needsMarc: false,
+      reason: isTextRule
+        ? `Belle script text-rule violation: ${issues[0] ?? 'unknown issue'}`
+        : `Belle asset validation failed (${issues.length} issue${issues.length !== 1 ? 's' : ''}).`,
+      recommendedAction: isTextRule
+        ? 'Pipeline auto-routes to repair_belle_quality. No action needed unless repair also fails.'
+        : 'Inspect belleAssetValidationReport in error_json — may need asset regeneration.',
+      context,
+    }
+  }
+
+  if (step === 'validate_story_resolution') {
+    // Editorial validation — protagonist/climax/Difficult Solution Rule. Not a QC issue.
+    return {
+      kind: 'story_quality',
+      retryable: false,
+      needsMarc: true,
+      reason: 'Story resolution failed — protagonist, climax, or Difficult Solution Rule violation.',
+      recommendedAction: 'Hal should rewrite per the storyResolutionReport issues list.',
+      context,
+    }
+  }
+
+  if (step === 'voice_preflight') {
+    // Configuration/data issue — narrator not in table, voice ID missing, etc.
+    return {
+      kind: 'unknown_qc',
+      retryable: false,
+      needsMarc: false,
+      reason: 'Voice preflight failed — narrator or voice configuration missing.',
+      recommendedAction: 'Check narrator_voices table and story narrator_voice_name. Atlas can resolve.',
+      context,
+    }
+  }
+
+  // ── Text-pattern classification (for remaining steps) ────────────────────
+  const text = failureText(payload, job)
+
+  // Only apply semantic_uncertainty when the CURRENT step is voice generation
+  // and the error contains actual transcript QC language. Checking step first
+  // prevents stale log entries from prior steps from triggering false positives.
   if (
-    /transcript qc failed|detected|expected|tail|coverage|missing final|dropped/.test(text)
+    /generate_voices|generate_belle_assets/.test(step) &&
+    /transcript qc failed|expected ".*" detected|expected ".*", detected|tail silence|coverage|missing final segment|dropped word/.test(text)
   ) {
     return {
       kind: 'semantic_uncertainty',
