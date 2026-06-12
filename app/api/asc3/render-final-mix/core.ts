@@ -614,10 +614,10 @@ export async function runRenderFinalMix(storyId: string): Promise<{
         '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', outroBelleDelPath
       ])
 
-      // Mix delayed Belle over Variant B music (normalize=0 — preserve actual levels)
+      // Mix delayed Belle over Variant B music (volume=2 compensates for amix's ÷2 — preserves actual levels)
       await execFileAsync(FFMPEG_PATH, [
         '-i', outroBelleDelPath, '-i', outroMusicClipPath,
-        '-filter_complex', '[0:a][1:a]amix=inputs=2:normalize=0:duration=longest[out]',
+        '-filter_complex', '[0:a][1:a]amix=inputs=2:duration=longest[amixed];[amixed]volume=2[out]',
         '-map', '[out]', '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', outroWithMusicPath
       ])
       console.log(
