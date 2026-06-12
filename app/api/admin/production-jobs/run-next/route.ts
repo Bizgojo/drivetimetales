@@ -6,6 +6,7 @@ import { sanitizeSeriesTitle } from '@/lib/seriesTitle'
 import { buildNamePalettePromptBlock } from '@/lib/story/namePalette'
 import { recordProductionLearningEvent } from '@/lib/productionLearning'
 import { isBelleBVoiceId } from '@/lib/voiceConstants'
+import { runRenderFinalMix } from '../../../asc3/render-final-mix/core'
 
 export const runtime = 'nodejs'
 
@@ -2933,42 +2934,16 @@ async function runStandaloneRenderFinalMix(job: ProductionJob, origin: string) {
     console.warn(`[ATL-PIPE-003] Segment pre-flight validation error: ${String(e).slice(0, 200)}`)
   }
 
-  // Fix B: Explicit 750s timeout so we get an actionable error instead of a bare "fetch failed"
-  const renderAbortController = new AbortController()
-  const renderTimeoutMs = 750_000
-  const renderTimeoutHandle = setTimeout(() => {
-    renderAbortController.abort()
-  }, renderTimeoutMs)
-  let response: Response
-  try {
-    response = await fetch(`${origin}/api/asc3/render-final-mix`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ storyId }),
-      signal: renderAbortController.signal,
-    })
-  } catch (fetchErr: any) {
-    clearTimeout(renderTimeoutHandle)
-    if (renderAbortController.signal.aborted) {
-      throw new Error('render_final_mix timed out after 750s — likely audio assembly exceeded Vercel limit')
-    }
-    throw fetchErr
-  }
-  clearTimeout(renderTimeoutHandle)
-
-  if (!response.ok) {
-    const bodySnippet = await response.text().then(t => t.slice(0, 500)).catch(() => '(unreadable)')
-    console.error(`[runStandaloneRenderFinalMix] Non-OK response: status=${response.status} body=${bodySnippet}`)
-  }
-
-  const report = await readJsonOrDiagnostic(response, '/api/asc3/render-final-mix')
+  // Direct module call — eliminates HTTP hop and Vercel edge network timeout risk (ATL P1-B)
+  console.log(`[runStandaloneRenderFinalMix] Calling runRenderFinalMix directly for ${storyId}`)
+  const report = await runRenderFinalMix(String(storyId))
   const finalAudioUrl = String(report?.finalAudioUrl || '').trim()
   const storyBodyUrl = String(report?.storyBodyUrl || '').trim()
   const durationSecs = Number(report?.durationSecs || 0)
 
   // Fix C: Confirm final_mix.mp3 actually exists in storage before claiming success
   let storageConfirmed = false
-  if (response.ok && report?.success === true && Boolean(finalAudioUrl) && Boolean(storyBodyUrl)) {
+  if (report?.success === true && Boolean(finalAudioUrl) && Boolean(storyBodyUrl)) {
     const storyAudioFolderForCheck = `asc3/${storyId}`
     const { data: storageFiles, error: storageCheckErr } = await supabase.storage
       .from('audio')
@@ -2983,7 +2958,7 @@ async function runStandaloneRenderFinalMix(job: ProductionJob, origin: string) {
     }
   }
 
-  const success = response.ok && report?.success === true && Boolean(finalAudioUrl) && Boolean(storyBodyUrl) && storageConfirmed
+  const success = report?.success === true && Boolean(finalAudioUrl) && Boolean(storyBodyUrl) && storageConfirmed
 
   return {
     success,
@@ -4801,18 +4776,14 @@ async function runSeriesRenderFinalMix(job: ProductionJob, origin: string) {
     if (doneByEp[key]) continue
 
     const storyId = String(ep.id)
-    const r = await fetch(`${origin}/api/asc3/render-final-mix`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ storyId }),
-    })
-    const report = await readJsonOrDiagnostic(r, '/api/asc3/render-final-mix')
-    const ok = r.ok && report?.success === true
+    // Direct module call — eliminates HTTP hop and Vercel edge network timeout risk (ATL P1-B)
+    const report = await runRenderFinalMix(storyId)
+    const ok = report?.success === true
     doneByEp[key] = ok
     processedEp = num
-    finalMixUrl = report?.finalMixUrl || report?.audioUrl || null
-    duration = report?.durationMins || null
-    if (!ok) lastError = String(report?.error || `HTTP ${r.status}`)
+    finalMixUrl = String(report?.finalMixUrl || report?.audioUrl || '') || null
+    duration = Number(report?.durationMins || 0) || null
+    if (!ok) lastError = String(report?.error || 'render failed')
     break // one episode per call
   }
 
