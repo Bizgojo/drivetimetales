@@ -250,6 +250,119 @@ test('Each non-superseded blocked agent has a resolution_target for Unblock/View
   }
 })
 
+// ─── P2b: Blocker Resolution Workflow Tests ───────────────────────────────────
+
+/**
+ * Simulates the server-side resolve_blocker logic without hitting the network.
+ * Mirrors what the PATCH /api/admin/org-status route does.
+ */
+function resolveBlockerLogic(allBlockers, blockerId, resolution, resolvedBy) {
+  const idx = allBlockers.findIndex(b => b.id === blockerId)
+  if (idx === -1) throw new Error(`Blocker ${blockerId} not found`)
+  const now = new Date().toISOString()
+  const updated = allBlockers.map((b, i) =>
+    i === idx
+      ? { ...b, status: 'resolved', resolution, resolvedAt: now, resolvedBy: resolvedBy ?? 'marc' }
+      : b
+  )
+  return updated
+}
+
+/**
+ * Simulates removing a blockerId from an agent's blockerIds[] in agent-state.
+ */
+function removeBlockerFromAgentState(agentsState, blockedAgent, blockerId) {
+  const agentState = agentsState[blockedAgent]
+  if (!agentState) return agentsState
+  return {
+    ...agentsState,
+    [blockedAgent]: {
+      ...agentState,
+      blockerIds: (agentState.blockerIds ?? []).filter(id => id !== blockerId),
+    },
+  }
+}
+
+console.log('\n📊 P2b — Blocker Resolution Workflow Tests\n')
+
+// Test 9: After resolution, blocker status is 'resolved'
+test('After resolution, blocker has status="resolved"', () => {
+  const before = [OPEN_MARC_BLOCKER, INTERNAL_DEP_BLOCKER]
+  const after = resolveBlockerLogic(before, OPEN_MARC_BLOCKER.id, 'X API is on free tier — $0/month', 'marc')
+  const resolved = after.find(b => b.id === OPEN_MARC_BLOCKER.id)
+  assert.ok(resolved, 'Blocker must still exist in array after resolution')
+  assert.strictEqual(resolved.status, 'resolved', 'Blocker status must be "resolved"')
+  assert.strictEqual(resolved.resolution, 'X API is on free tier — $0/month', 'Resolution text must be saved')
+  assert.strictEqual(resolved.resolvedBy, 'marc', 'resolvedBy must be "marc"')
+  assert.ok(resolved.resolvedAt, 'resolvedAt must be set')
+})
+
+// Test 10: After resolution, blocker does NOT appear in activeStructuredMarcBlockers
+test('Resolved blocker does not appear in activeStructuredMarcBlockers', () => {
+  const after = resolveBlockerLogic(
+    [OPEN_MARC_BLOCKER],
+    OPEN_MARC_BLOCKER.id,
+    'Decision made',
+    'marc'
+  )
+  const activeStructuredMarcBlockers = after.filter(
+    b => b.requires_marc_action === true && b.status === 'open'
+  )
+  assert.strictEqual(
+    activeStructuredMarcBlockers.length,
+    0,
+    'Resolved blocker must not appear in active structured Marc blockers'
+  )
+})
+
+// Test 11: After resolution, getMarcDecisionCount returns 0
+test('After resolution of last blocker, getMarcDecisionCount is 0', () => {
+  const after = resolveBlockerLogic(
+    [OPEN_MARC_BLOCKER],
+    OPEN_MARC_BLOCKER.id,
+    'Decision made',
+    'marc'
+  )
+  const count = getMarcDecisionCount(after)
+  assert.strictEqual(count, 0, 'Needs Your Decision count must be 0 after resolving the only blocker')
+})
+
+// Test 12: shouldShowAllResolved returns true after resolution
+test('shouldShowAllResolved returns true after last blocker resolved', () => {
+  const after = resolveBlockerLogic(
+    [OPEN_MARC_BLOCKER],
+    OPEN_MARC_BLOCKER.id,
+    'Decision made',
+    'marc'
+  )
+  const result = shouldShowAllResolved(after, [])
+  assert.strictEqual(result, true, '"All resolved" must be shown when no open marc-action blockers remain')
+})
+
+// Test 13: blockerId removed from agent's blockerIds[] after resolution
+test('blockerId removed from agent blockerIds after resolution', () => {
+  const afterState = removeBlockerFromAgentState(
+    AGENTS_STATE_WITH_BLOCKERS,
+    OPEN_MARC_BLOCKER.blocked_agent,
+    OPEN_MARC_BLOCKER.id
+  )
+  const bartBlockerIds = afterState[OPEN_MARC_BLOCKER.blocked_agent]?.blockerIds ?? []
+  assert.strictEqual(
+    bartBlockerIds.includes(OPEN_MARC_BLOCKER.id),
+    false,
+    `blockerId ${OPEN_MARC_BLOCKER.id} must be removed from agent's blockerIds after resolution`
+  )
+})
+
+// Test 14: Resolving non-marc blockers does not affect marc decision count
+test('Resolving an internal-dep blocker does not change marc decision count', () => {
+  const before = [OPEN_MARC_BLOCKER, INTERNAL_DEP_BLOCKER]
+  const after = resolveBlockerLogic(before, INTERNAL_DEP_BLOCKER.id, 'Atlas completed the work', 'atlas')
+  const count = getMarcDecisionCount(after)
+  // OPEN_MARC_BLOCKER is still open — count should remain 1
+  assert.strictEqual(count, 1, 'Resolving an internal-dep blocker must not change the marc decision count')
+})
+
 // ─── Summary ──────────────────────────────────────────────────────────────────
 
 console.log(`\n${'─'.repeat(50)}`)

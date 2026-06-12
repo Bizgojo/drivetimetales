@@ -187,6 +187,10 @@ export interface Blocker {
   recommendation: string            // what should be done
   resolution_target: string         // link anchor / mission ID
   updated_at: string                // ISO timestamp
+  // Resolution fields (set when Marc resolves via the UI)
+  resolution?: string | null        // free-text description of what was decided
+  resolvedAt?: string | null        // ISO timestamp of resolution
+  resolvedBy?: string | null        // "marc" or other actor
 }
 
 export interface Mission {

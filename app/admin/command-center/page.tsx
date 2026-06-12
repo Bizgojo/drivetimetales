@@ -526,6 +526,11 @@ export default function AdminCommandCenterPage() {
   const [draftAnswers, setDraftAnswers] = useState<Record<string, string>>({})
   const [showResolvedBlockers, setShowResolvedBlockers] = useState(false)
   const [showDeferredBlockers, setShowDeferredBlockers] = useState(false)
+  // Structured blocker resolution workflow state
+  const [resolvingStructuredBlockerId, setResolvingStructuredBlockerId] = useState<string | null>(null)
+  const [structuredResolutionText, setStructuredResolutionText] = useState('')
+  const [structuredResolutionSubmitting, setStructuredResolutionSubmitting] = useState(false)
+  const [showResolvedStructuredBlockers, setShowResolvedStructuredBlockers] = useState(false)
   const missionWriteTimer = useRef<number | null>(null)
   const [orionReports, setOrionReports] = useState<OrionReport[]>(() => readLS<OrionReport[]>(ORION_REPORTS_KEY, []))
   const [marcActionResolutions, setMarcActionResolutions] = useState<Record<string, { resolution: MarcAction['resolution']; resolvedAt: string; note: string | null }>>(() =>
@@ -883,6 +888,54 @@ export default function AdminCommandCenterPage() {
           source: 'marc-action-needs-decision',
         }),
       }).catch(() => {})
+    }
+  }
+
+  const resolveStructuredBlocker = async (blockerId: string, resolution: string) => {
+    if (!resolution.trim()) return
+    setStructuredResolutionSubmitting(true)
+    try {
+      const res = await fetch('/api/admin/org-status', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'resolve_blocker', blockerId, resolution: resolution.trim(), resolvedBy: 'marc' }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        showToast(`Failed to resolve: ${data.error ?? 'Unknown error'}`)
+        setStructuredResolutionSubmitting(false)
+        return
+      }
+
+      const resolvedBlocker: Blocker = data.blocker
+
+      // Update structuredBlockers state: mark as resolved
+      setStructuredBlockers(prev =>
+        prev.map(b => b.id === blockerId ? resolvedBlocker : b)
+      )
+
+      // Update agentsState: remove blockerId from the blocked_agent's blockerIds[]
+      setAgentsState(prev => {
+        const agentId = resolvedBlocker.blocked_agent as AgentId
+        const agentState = prev[agentId]
+        if (!agentState) return prev
+        return {
+          ...prev,
+          [agentId]: {
+            ...agentState,
+            blockerIds: (agentState.blockerIds ?? []).filter(id => id !== blockerId),
+          },
+        }
+      })
+
+      setResolvingStructuredBlockerId(null)
+      setStructuredResolutionText('')
+      setShowResolvedStructuredBlockers(true)
+      showToast('Blocker resolved ✓')
+    } catch (err) {
+      showToast(`Error: ${err instanceof Error ? err.message : 'Unknown'}`)
+    } finally {
+      setStructuredResolutionSubmitting(false)
     }
   }
 
@@ -1351,7 +1404,7 @@ export default function AdminCommandCenterPage() {
               {deferredOnes.length} deferred
             </span>
           )}
-          {activeOnes.length === 0 && activeMarcActions.length === 0 && activeStructuredMarcBlockers.length === 0 && (
+          {activeOnes.length === 0 && activeMarcActions.length === 0 && activeStructuredMarcBlockers.length === 0 && draftMarcActions.length === 0 && (
             <span style={{ fontSize: 12, color: '#22c55e', fontWeight: 700 }}>✓ All resolved</span>
           )}
         </div>
@@ -1465,54 +1518,186 @@ export default function AdminCommandCenterPage() {
         )}
 
         {/* Structured Marc-action blockers from blockers.json SSoT */}
-        {activeStructuredMarcBlockers.length > 0 && (
+        {(activeStructuredMarcBlockers.length > 0 || structuredBlockers.filter(b => b.requires_marc_action && b.status === 'resolved').length > 0) && (
           <div id="structured-marc-blockers" style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#92400e', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
-              🎯 Marc Actions Required (Structured)
-              <span style={{ backgroundColor: '#fef3c7', color: '#92400e', borderRadius: 12, padding: '1px 8px', fontSize: 11, fontWeight: 700 }}>
-                {activeStructuredMarcBlockers.length}
-              </span>
-            </div>
-            {activeStructuredMarcBlockers.map(blocker => {
-              const blockedAgent = AGENTS.find(a => a.id === blocker.blocked_agent)
-              return (
-                <div
-                  key={blocker.id}
-                  id={`blocker-${blocker.resolution_target}`}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: 8,
-                    padding: '10px 12px',
-                    borderRadius: 6,
-                    border: '1px solid #fde68a',
-                    backgroundColor: '#fff',
-                    marginBottom: 6,
-                  }}
-                >
-                  <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>🔐</span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 3 }}>
-                      {blocker.headline}
-                    </div>
-                    <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4, lineHeight: 1.4 }}>
-                      {blocker.context}
-                    </div>
-                    <div style={{ fontSize: 12, color: '#92400e', fontStyle: 'italic', marginBottom: 6 }}>
-                      Orion recommends: {blocker.recommendation}
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' as const }}>
-                      {blockedAgent && (
-                        <span style={{ fontSize: 10, color: '#fff', backgroundColor: blockedAgent.accentColor, borderRadius: 10, padding: '1px 7px', fontWeight: 700 }}>
-                          {blockedAgent.emoji} {blockedAgent.displayName} blocked
-                        </span>
+            {activeStructuredMarcBlockers.length > 0 && (
+              <>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#92400e', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  🎯 Marc Actions Required (Structured)
+                  <span style={{ backgroundColor: '#fef3c7', color: '#92400e', borderRadius: 12, padding: '1px 8px', fontSize: 11, fontWeight: 700 }}>
+                    {activeStructuredMarcBlockers.length}
+                  </span>
+                </div>
+                {activeStructuredMarcBlockers.map(blocker => {
+                  const blockedAgent = AGENTS.find(a => a.id === blocker.blocked_agent)
+                  const isResolving = resolvingStructuredBlockerId === blocker.id
+                  return (
+                    <div
+                      key={blocker.id}
+                      id={`blocker-${blocker.resolution_target}`}
+                      style={{
+                        borderRadius: 6,
+                        border: '1px solid #fde68a',
+                        backgroundColor: '#fff',
+                        marginBottom: 6,
+                        overflow: 'hidden',
+                      }}
+                    >
+                      {/* Blocker row */}
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '10px 12px' }}>
+                        <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>🔐</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 3 }}>
+                            {blocker.headline}
+                          </div>
+                          <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4, lineHeight: 1.4 }}>
+                            {blocker.context}
+                          </div>
+                          <div style={{ fontSize: 12, color: '#92400e', fontStyle: 'italic', marginBottom: 6 }}>
+                            Orion recommends: {blocker.recommendation}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' as const }}>
+                            {blockedAgent && (
+                              <span style={{ fontSize: 10, color: '#fff', backgroundColor: blockedAgent.accentColor, borderRadius: 10, padding: '1px 7px', fontWeight: 700 }}>
+                                {blockedAgent.emoji} {blockedAgent.displayName} blocked
+                              </span>
+                            )}
+                            <span style={{ fontSize: 10, color: '#64748b' }}>Target: {blocker.resolution_target}</span>
+                          </div>
+                        </div>
+                        {/* Resolve button */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (isResolving) {
+                              setResolvingStructuredBlockerId(null)
+                              setStructuredResolutionText('')
+                            } else {
+                              setResolvingStructuredBlockerId(blocker.id)
+                              setStructuredResolutionText('')
+                            }
+                          }}
+                          style={{
+                            flexShrink: 0,
+                            padding: '6px 12px',
+                            borderRadius: 6,
+                            border: '1px solid #22c55e',
+                            backgroundColor: isResolving ? '#f0fdf4' : '#fff',
+                            color: '#15803d',
+                            fontSize: 12,
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap' as const,
+                          }}
+                        >
+                          {isResolving ? '✕ Cancel' : '✓ Resolve'}
+                        </button>
+                      </div>
+
+                      {/* Inline resolution form */}
+                      {isResolving && (
+                        <div style={{
+                          borderTop: '1px solid #fde68a',
+                          backgroundColor: '#fffbeb',
+                          padding: '12px 14px',
+                        }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: '#92400e', marginBottom: 8, textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>
+                            Enter Resolution
+                          </div>
+                          <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>
+                            <strong>Headline:</strong> {blocker.headline}
+                          </div>
+                          <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>
+                            <strong>Recommendation:</strong> {blocker.recommendation}
+                          </div>
+                          <textarea
+                            rows={3}
+                            placeholder='What was decided? (e.g. "X API is on free tier — $0/month")'
+                            value={structuredResolutionText}
+                            onChange={e => setStructuredResolutionText(e.target.value)}
+                            style={{
+                              width: '100%',
+                              padding: '8px 10px',
+                              border: '1px solid #d1fae5',
+                              borderRadius: 6,
+                              fontSize: 13,
+                              color: '#0f172a',
+                              fontFamily: 'inherit',
+                              resize: 'vertical' as const,
+                              boxSizing: 'border-box' as const,
+                              marginBottom: 8,
+                              backgroundColor: '#fff',
+                            }}
+                          />
+                          <button
+                            type="button"
+                            disabled={!structuredResolutionText.trim() || structuredResolutionSubmitting}
+                            onClick={() => resolveStructuredBlocker(blocker.id, structuredResolutionText)}
+                            style={{
+                              padding: '8px 16px',
+                              borderRadius: 6,
+                              border: 'none',
+                              backgroundColor: structuredResolutionText.trim() && !structuredResolutionSubmitting ? '#16a34a' : '#94a3b8',
+                              color: '#fff',
+                              fontSize: 13,
+                              fontWeight: 700,
+                              cursor: structuredResolutionText.trim() && !structuredResolutionSubmitting ? 'pointer' : 'not-allowed',
+                            }}
+                          >
+                            {structuredResolutionSubmitting ? 'Saving…' : '✓ Mark Resolved'}
+                          </button>
+                        </div>
                       )}
-                      <span style={{ fontSize: 10, color: '#64748b' }}>Target: {blocker.resolution_target}</span>
                     </div>
-                  </div>
+                  )
+                })}
+              </>
+            )}
+
+            {/* Resolved / Handled structured blockers (collapsed by default) */}
+            {(() => {
+              const resolvedStructuredMarcBlockers = structuredBlockers.filter(b => b.requires_marc_action && b.status === 'resolved')
+              if (resolvedStructuredMarcBlockers.length === 0) return null
+              return (
+                <div style={{ marginTop: activeStructuredMarcBlockers.length > 0 ? 8 : 0 }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowResolvedStructuredBlockers(p => !p)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: '#15803d', fontWeight: 700, padding: '2px 0', display: 'flex', alignItems: 'center', gap: 6 }}
+                  >
+                    {showResolvedStructuredBlockers ? '▼' : '▶'}
+                    <span>✓ Resolved / Handled ({resolvedStructuredMarcBlockers.length})</span>
+                  </button>
+                  {showResolvedStructuredBlockers && (
+                    <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {resolvedStructuredMarcBlockers.map(blocker => (
+                        <div key={blocker.id} style={{
+                          padding: '8px 12px',
+                          borderRadius: 6,
+                          border: '1px solid #d1fae5',
+                          backgroundColor: '#f0fdf4',
+                        }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>
+                            ✓ {blocker.headline}
+                          </div>
+                          {blocker.resolution && (
+                            <div style={{ fontSize: 12, color: '#065f46', marginBottom: 2 }}>
+                              <strong>Resolution:</strong> {blocker.resolution}
+                            </div>
+                          )}
+                          {blocker.resolvedAt && (
+                            <div style={{ fontSize: 11, color: '#94a3b8' }}>
+                              Resolved {new Date(blocker.resolvedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
+                              {blocker.resolvedBy ? ` by ${blocker.resolvedBy}` : ''}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )
-            })}
+            })()}
           </div>
         )}
 

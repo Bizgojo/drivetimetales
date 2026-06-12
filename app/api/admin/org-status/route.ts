@@ -90,6 +90,20 @@ async function readBlockers(): Promise<Blocker[]> {
   }
 }
 
+async function writeBlockers(blockers: Blocker[]): Promise<void> {
+  const blob = new Blob([JSON.stringify({ blockers })], { type: 'application/json' })
+  await supabase.storage
+    .from('org-state')
+    .upload('blockers.json', blob, { upsert: true })
+}
+
+async function writeAgentState(agentState: Record<string, Partial<AgentState>>): Promise<void> {
+  const blob = new Blob([JSON.stringify(agentState)], { type: 'application/json' })
+  await supabase.storage
+    .from('org-state')
+    .upload('agent-state.json', blob, { upsert: true })
+}
+
 async function writeOrgState(patch: Record<string, unknown>): Promise<void> {
   const current = await readOrgState()
   const next = { ...current, ...patch }
@@ -1112,6 +1126,56 @@ export async function PATCH(req: NextRequest) {
 
   try {
     const body = await req.json()
+
+    // ─── resolve_blocker: structured blockers.json resolution workflow ──────
+    if (body.action === 'resolve_blocker') {
+      const { blockerId, resolution, resolvedBy } = body as {
+        blockerId: string
+        resolution: string
+        resolvedBy?: string
+      }
+
+      if (!blockerId || typeof blockerId !== 'string') {
+        return json({ success: false, error: 'blockerId is required' }, 400)
+      }
+      if (!resolution || typeof resolution !== 'string' || !resolution.trim()) {
+        return json({ success: false, error: 'resolution text is required' }, 400)
+      }
+
+      // 1. Download and update blockers.json
+      const allBlockers = await readBlockers()
+      const blockerIndex = allBlockers.findIndex(b => b.id === blockerId)
+      if (blockerIndex === -1) {
+        return json({ success: false, error: `Blocker ${blockerId} not found` }, 404)
+      }
+
+      const updatedBlocker: Blocker = {
+        ...allBlockers[blockerIndex],
+        status: 'resolved',
+        resolution: resolution.trim(),
+        resolvedAt: new Date().toISOString(),
+        resolvedBy: resolvedBy ?? 'marc',
+      }
+      const updatedBlockers = [...allBlockers]
+      updatedBlockers[blockerIndex] = updatedBlocker
+
+      await writeBlockers(updatedBlockers)
+
+      // 2. Update agent-state.json: remove blockerId from blocked_agent's blockerIds[]
+      const agentStateMap = await readAgentState()
+      const blockedAgent = updatedBlocker.blocked_agent
+      const agentEntry = agentStateMap[blockedAgent]
+      if (agentEntry?.blockerIds && Array.isArray(agentEntry.blockerIds)) {
+        agentStateMap[blockedAgent] = {
+          ...agentEntry,
+          blockerIds: agentEntry.blockerIds.filter((id: string) => id !== blockerId),
+        }
+        await writeAgentState(agentStateMap)
+      }
+
+      return json({ success: true, blocker: updatedBlocker })
+    }
+
     const patch: Record<string, unknown> = {}
 
     // Handle blockers update (existing behaviour preserved)
@@ -1133,7 +1197,7 @@ export async function PATCH(req: NextRequest) {
     }
 
     if (Object.keys(patch).length === 0) {
-      return json({ success: false, error: 'body must contain blockers or marcActions' }, 400)
+      return json({ success: false, error: 'body must contain action, blockers, or marcActions' }, 400)
     }
 
     await writeOrgState(patch)
