@@ -2550,15 +2550,27 @@ export async function POST(req: NextRequest) {
             const beforeText = parts[0].trim()
             const afterText = parts[1].trim()
             if (!beforeText && !afterText) throw new Error('Belle B intro has [LISTENER_NAME] but no surrounding text.')
-            // Only generate audio for non-empty parts — empty beforeText would cause ElevenLabs
-            // to return silence (~10KB) which fails validate_belle_assets silence rejection.
+            // Only generate audio for non-empty parts — empty beforeText / afterText would cause
+            // ElevenLabs to return silence (~10KB) which fails validate_belle_assets silence rejection.
+            // When only one side is non-empty, use the 'intro' prefix so render_final_mix finds it
+            // as a standalone intro_*.mp3 instead of an orphaned intro_before_* or intro_after_*.
             let beforeUrl: string | null = null
             let afterUrl: string | null = null
-            if (beforeText) beforeUrl = await generateVoiceLine(beforeText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'intro_before')
-            if (afterText) afterUrl = await generateVoiceLine(afterText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index + 0.1, 'intro_after')
-            const primaryUrl = (beforeUrl ?? afterUrl)!
+            let primaryUrl: string
+            if (beforeText && afterText) {
+              // [LISTENER_NAME] in the middle — generate a matched before/after pair
+              beforeUrl = await generateVoiceLine(beforeText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'intro_before')
+              afterUrl = await generateVoiceLine(afterText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index + 0.1, 'intro_after')
+              primaryUrl = beforeUrl
+            } else if (afterText) {
+              // [LISTENER_NAME] at start — only afterText; generate as standalone intro
+              primaryUrl = await generateVoiceLine(afterText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'intro')
+            } else {
+              // [LISTENER_NAME] at end — only beforeText; generate as standalone intro
+              primaryUrl = await generateVoiceLine(beforeText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'intro')
+            }
             result.introUrl = primaryUrl
-            await supabase.from('stories').update({ intro_audio_url: primaryUrl, intro_before_url: beforeUrl ?? null, intro_after_url: afterUrl ?? null }).eq('id', storyId)
+            await supabase.from('stories').update({ intro_audio_url: primaryUrl, intro_before_url: beforeUrl, intro_after_url: afterUrl }).eq('id', storyId)
           } else {
             const introUrl = await generateVoiceLine(introText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'intro')
             result.introUrl = introUrl
@@ -3005,12 +3017,25 @@ export async function POST(req: NextRequest) {
           const beforeText = parts[0].trim()
           const afterText = parts[1].trim()
           if (!beforeText && !afterText) throw new Error('Belle B intro has [LISTENER_NAME] but no surrounding text.')
+          // When only one side is non-empty, use the 'intro' prefix so render_final_mix finds it
+          // as a standalone intro_*.mp3 instead of an orphaned intro_before_* or intro_after_*.
           let beforeUrl: string | null = null
           let afterUrl: string | null = null
-          if (beforeText) beforeUrl = await generateVoiceLine(beforeText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'intro_before')
-          if (afterText) afterUrl = await generateVoiceLine(afterText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index + 0.1, 'intro_after')
-          results.intro = (beforeUrl ?? afterUrl)!
-          await supabase.from('stories').update({ intro_before_url: beforeUrl ?? null, intro_after_url: afterUrl ?? null }).eq('id', storyId)
+          let introPrimaryUrl: string
+          if (beforeText && afterText) {
+            // [LISTENER_NAME] in the middle — generate a matched before/after pair
+            beforeUrl = await generateVoiceLine(beforeText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'intro_before')
+            afterUrl = await generateVoiceLine(afterText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index + 0.1, 'intro_after')
+            introPrimaryUrl = beforeUrl
+          } else if (afterText) {
+            // [LISTENER_NAME] at start — only afterText; generate as standalone intro
+            introPrimaryUrl = await generateVoiceLine(afterText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'intro')
+          } else {
+            // [LISTENER_NAME] at end — only beforeText; generate as standalone intro
+            introPrimaryUrl = await generateVoiceLine(beforeText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'intro')
+          }
+          results.intro = introPrimaryUrl
+          await supabase.from('stories').update({ intro_before_url: beforeUrl, intro_after_url: afterUrl }).eq('id', storyId)
           console.log('  ✅ Belle B intro split (before/after name)')
         } else {
           results.intro = await generateVoiceLine(introText, CANONICAL_BELLE_B_VOICE_ID, storyId, introLine.index, 'intro')

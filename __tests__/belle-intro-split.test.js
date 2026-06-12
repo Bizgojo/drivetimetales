@@ -35,13 +35,23 @@ async function generateBelleIntroWithName(introText, generateVoiceLine, voiceId,
 
   let beforeUrl = null
   let afterUrl = null
+  let primaryUrl
 
-  // Only generate audio for non-empty parts — empty beforeText / afterText would
-  // cause ElevenLabs to return ~10KB of silence, failing silence rejection.
-  if (beforeText) beforeUrl = await generateVoiceLine(beforeText, voiceId, storyId, lineIndex, 'intro_before')
-  if (afterText)  afterUrl  = await generateVoiceLine(afterText,  voiceId, storyId, lineIndex + 0.1, 'intro_after')
+  // When only one side is non-empty, use the 'intro' prefix so render_final_mix finds it
+  // as a standalone intro_*.mp3 instead of an orphaned intro_before_* or intro_after_*.
+  if (beforeText && afterText) {
+    // [LISTENER_NAME] in the middle — generate a matched before/after pair
+    beforeUrl = await generateVoiceLine(beforeText, voiceId, storyId, lineIndex, 'intro_before')
+    afterUrl  = await generateVoiceLine(afterText,  voiceId, storyId, lineIndex + 0.1, 'intro_after')
+    primaryUrl = beforeUrl
+  } else if (afterText) {
+    // [LISTENER_NAME] at start — only afterText; generate as standalone intro
+    primaryUrl = await generateVoiceLine(afterText, voiceId, storyId, lineIndex, 'intro')
+  } else {
+    // [LISTENER_NAME] at end — only beforeText; generate as standalone intro
+    primaryUrl = await generateVoiceLine(beforeText, voiceId, storyId, lineIndex, 'intro')
+  }
 
-  const primaryUrl = (beforeUrl ?? afterUrl)
   return { beforeUrl, afterUrl, primaryUrl }
 }
 
@@ -61,7 +71,7 @@ describe('Belle intro [LISTENER_NAME] split — regression suite (f02b4a87)', ()
 
   // ── Case 1 ────────────────────────────────────────────────────────────────
   test(
-    'case 1: intro STARTS with [LISTENER_NAME] — no intro_before call; afterUrl is primary; beforeUrl null',
+    'case 1: intro STARTS with [LISTENER_NAME] — generates standalone intro (not intro_after); beforeUrl and afterUrl both null',
     async () => {
       const introText = '[LISTENER_NAME], a dead man scratched his initials into a bridge abutment.'
 
@@ -73,17 +83,20 @@ describe('Belle intro [LISTENER_NAME] split — regression suite (f02b4a87)', ()
       const beforeCalls = generateVoiceLine.mock.calls.filter(c => c[4] === 'intro_before')
       expect(beforeCalls).toHaveLength(0)
 
-      // afterUrl IS generated
+      // afterText is non-empty but [LISTENER_NAME] is at the start → use 'intro' prefix (not 'intro_after')
       const afterCalls = generateVoiceLine.mock.calls.filter(c => c[4] === 'intro_after')
-      expect(afterCalls).toHaveLength(1)
+      expect(afterCalls).toHaveLength(0)
 
-      // intro_before_url stored as null
+      // standalone intro call with 'intro' prefix
+      const introCalls = generateVoiceLine.mock.calls.filter(c => c[4] === 'intro')
+      expect(introCalls).toHaveLength(1)
+      expect(introCalls[0][0]).toBe(', a dead man scratched his initials into a bridge abutment.')
+
+      // intro_before_url and intro_after_url are both null (no pairing)
       expect(beforeUrl).toBeNull()
+      expect(afterUrl).toBeNull()
 
-      // intro_after_url stored with the URL
-      expect(afterUrl).toBe(FAKE_URL)
-
-      // primaryUrl = afterUrl (since beforeUrl is null)
+      // primaryUrl is the standalone intro URL
       expect(primaryUrl).toBe(FAKE_URL)
     }
   )
@@ -117,7 +130,7 @@ describe('Belle intro [LISTENER_NAME] split — regression suite (f02b4a87)', ()
 
   // ── Case 3 ────────────────────────────────────────────────────────────────
   test(
-    'case 3: intro ENDS with [LISTENER_NAME] — no intro_after call; beforeUrl is primary; afterUrl null',
+    'case 3: intro ENDS with [LISTENER_NAME] — generates standalone intro (not intro_before); beforeUrl and afterUrl both null',
     async () => {
       // Note: input has no trailing period after [LISTENER_NAME] so afterText
       // trims to "" — if a period were present, afterText would be "." (non-empty).
@@ -132,15 +145,20 @@ describe('Belle intro [LISTENER_NAME] split — regression suite (f02b4a87)', ()
       const afterCalls = generateVoiceLine.mock.calls.filter(c => c[4] === 'intro_after')
       expect(afterCalls).toHaveLength(0)
 
-      // beforeUrl IS generated
+      // beforeText is non-empty but [LISTENER_NAME] is at the end → use 'intro' prefix (not 'intro_before')
       const beforeCalls = generateVoiceLine.mock.calls.filter(c => c[4] === 'intro_before')
-      expect(beforeCalls).toHaveLength(1)
-      expect(beforeUrl).toBe(FAKE_URL)
+      expect(beforeCalls).toHaveLength(0)
 
-      // intro_after_url stored as null
+      // standalone intro call with 'intro' prefix
+      const introCalls = generateVoiceLine.mock.calls.filter(c => c[4] === 'intro')
+      expect(introCalls).toHaveLength(1)
+      expect(introCalls[0][0]).toBe('A mystery begins for you,')
+
+      // intro_before_url and intro_after_url are both null (no pairing)
+      expect(beforeUrl).toBeNull()
       expect(afterUrl).toBeNull()
 
-      // primaryUrl = beforeUrl (since afterUrl is null)
+      // primaryUrl is the standalone intro URL
       expect(primaryUrl).toBe(FAKE_URL)
     }
   )
