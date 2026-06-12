@@ -857,6 +857,9 @@ export async function GET(_req: NextRequest) {
       coldStorageItems:  buildColdStorageItems(coldStories, jobs),
       incubatorItems:    itemsForStories(incubatorStories, jobs),
       queueItems:        visibleQueueRows.map((row, idx) => queueItemToConsoleItem(row, idx)),
+      // ATL-VIS-001: individual story counts before series grouping
+      repairStoriesCount: repairStories.length,
+      coldStoriesCount: storageStories.length,
       // Legacy RFR fields kept for Phase C.1 compatibility
       readyForReviewItems: annotatedRFRStories.map(annotated => {
         const storyId = String((annotated as any).id ?? '')

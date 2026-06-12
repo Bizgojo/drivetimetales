@@ -188,10 +188,15 @@ function displayReviewStatus(story: StoryRow) {
 }
 
 function effectiveWorkflowState(story: StoryRow): string {
-  if (story.workflow_state === 'cold_storage' || story.workflow_state === 'unpublished_library') return story.workflow_state
+  // ATL-F-RTP-001: DB workflow_state is authoritative for terminal states.
+  // Check these BEFORE status-based inference so that e.g. a story with
+  // workflow_state='approved_ready' but status='published' (stale status) is
+  // not incorrectly reclassified as 'unpublished_library'.
+  const TERMINAL_STATES = new Set(['approved_ready', 'cold_storage', 'unpublished_library', 'repair_queue', 'being_repaired'])
+  if (story.workflow_state && TERMINAL_STATES.has(story.workflow_state)) return story.workflow_state
+  // Status-based inference when workflow_state is not set to a known terminal state
   if (story.status === 'published' && story.is_hidden === false) return 'published'
   if (story.status === 'published' && story.is_hidden === true) return 'unpublished_library'
-  if (story.workflow_state === 'repair_queue' || story.workflow_state === 'being_repaired') return story.workflow_state
   if (story.workflow_state) return story.workflow_state
   if (story.review_status === 'approved') return 'approved_ready'
   if (story.review_status === 'not_approved') return 'cold_storage'
@@ -404,14 +409,20 @@ function episodeObject(story: StoryRow, sourceJob: ProductionJobRow | null) {
   const completionProof = completionProofForStory(story, sourceJob)
   if (!completionProof.date) blockingReasons.push(`completion timestamp not proven: ${completionProof.source}`)
   const approvalReady = blockingReasons.length === 0
+  const resolvedWorkflowState = effectiveWorkflowState(story)
+  // ATL-F-RTP-001: Normalize status for approved_ready stories so that the
+  // approval page's effectiveWorkflowState (which checks status before
+  // workflow_state) doesn't misclassify them as 'unpublished_library' when
+  // status is stale 'published'.
+  const normalizedStatus = resolvedWorkflowState === 'approved_ready' ? 'audio_ready' : story.status
   return {
     storyId: story.id,
     title: story.title,
     episodeNumber: storyEpisodeNumber(story),
-    status: story.status,
+    status: normalizedStatus,
     reviewStatus: displayReviewStatus(story),
-    workflowState: effectiveWorkflowState(story),
-    workflow_state: effectiveWorkflowState(story),
+    workflowState: resolvedWorkflowState,
+    workflow_state: resolvedWorkflowState,
     repairChecklist: story.repair_checklist || null,
     repair_checklist: story.repair_checklist || null,
     repairNotes: story.repair_notes || null,
