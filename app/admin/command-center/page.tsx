@@ -1705,9 +1705,9 @@ export default function AdminCommandCenterPage() {
           marginBottom: 4,
         }}>
           <div style={{ fontSize: 12, color: '#64748b' }}>{agent.roleTitle}</div>
-          {formatRelativeTime(state.currentTaskUpdatedAt ?? state.lastUpdatedAt) && (
+          {formatRelativeTime(state.currentTaskUpdatedAt) && (
             <div style={{ fontSize: 10, color: '#b0b8c6', letterSpacing: '0.01em' }}>
-              {formatRelativeTime(state.currentTaskUpdatedAt ?? state.lastUpdatedAt)}
+              {formatRelativeTime(state.currentTaskUpdatedAt)}
             </div>
           )}
         </div>

@@ -1139,15 +1139,21 @@ export async function PUT(req: NextRequest) {
 
       for (const agentId of Object.keys(patchAgents)) {
         const patchAgent = patchAgents[agentId]
+        const now = new Date().toISOString()
+
+        // Stamp currentTaskUpdatedAt ONLY when currentTask actually changes
         if (patchAgent?.currentTask !== undefined) {
           const existingCurrentTask = existingAgents[agentId]?.currentTask
           if (patchAgent.currentTask !== existingCurrentTask) {
-            patchAgents[agentId] = {
-              ...patchAgent,
-              currentTaskUpdatedAt: new Date().toISOString(),
-            }
+            patchAgent.currentTaskUpdatedAt = now
           }
         }
+
+        // lastUpdatedAt tracks file writes (prose, formatting, admin)
+        // Always update on any PUT — this is NOT the task-change timestamp
+        patchAgent.lastUpdatedAt = now
+
+        patchAgents[agentId] = patchAgent
       }
       body.agents = patchAgents
     }
