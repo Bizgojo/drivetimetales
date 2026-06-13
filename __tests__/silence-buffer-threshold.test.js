@@ -58,6 +58,19 @@ describe('SILENCE_BUFFER text-length-aware threshold', () => {
     expect(() => checkSilenceBuffer(text, 25000)).not.toThrow()
   })
 
+  // INC-001 regression: "She said nothing." (3 words, 18,016 bytes) must NOT be rejected
+  test('3-word text with 18,016 bytes should NOT be rejected (INC-001 regression: "She said nothing.")', () => {
+    expect(() => checkSilenceBuffer('She said nothing.', 18016)).not.toThrow()
+  })
+
+  test('3-word text with 5,120 bytes SHOULD be rejected (at short-segment boundary)', () => {
+    expect(() => checkSilenceBuffer('She said nothing.', 5120)).toThrow(/short-segment/)
+  })
+
+  test('3-word text with 5,121 bytes should NOT be rejected (just above short-segment boundary)', () => {
+    expect(() => checkSilenceBuffer('She said nothing.', 5121)).not.toThrow()
+  })
+
   // Boundary: exactly at short-segment threshold (5120) should still throw
   test('3-word text with exactly 5,120 bytes SHOULD be rejected (≤ threshold)', () => {
     const text = 'She said nothing.'

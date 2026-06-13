@@ -32,6 +32,9 @@ type OpData = {
   errorSummary?: string | null
   recoveryAction?: string | null
   seriesDisplay?: string | null
+  // ATL-OPS-001 CHANGE 1: story metadata for failed-job displays
+  storyTitle?: string | null
+  episodeDisplay?: string | null
   // Cold Storage
   reasonStored?: string
   recoverable?: 'YES' | 'NO' | 'MAYBE'
@@ -71,6 +74,16 @@ type ConsoleItem = {
   } | null
 }
 
+type RecentFailure = {
+  jobId: string
+  storyId: string | null
+  storyTitle: string
+  seriesDisplay: string
+  episodeDisplay: string | null
+  minutesSinceFailed: number
+  errorSummary: string
+}
+
 type ConsolePayload = {
   success: boolean
   error?: string
@@ -81,6 +94,7 @@ type ConsolePayload = {
   incubatorItems?: ConsoleItem[]
   queueItems?: ConsoleItem[]
   readyForReviewItems?: ConsoleItem[]
+  recentFailures?: RecentFailure[]
 }
 
 type SectionId = 'queue' | 'production' | 'repair' | 'cold'
@@ -328,12 +342,22 @@ function ProductionCard({ item }: { item: ConsoleItem }) {
 
       {open && (
         <div style={{ borderTop: `1px solid ${isStalled ? '#FECACA' : '#BFDBFE'}`, padding: '13px 14px', backgroundColor: isStalled ? '#FFF5F5' : '#F0F7FF' } as React.CSSProperties}>
-          {/* ATL-MON-002: Error summary for failed jobs */}
-          {item.status === 'failed' && op.errorSummary && (
+          {/* ATL-MON-002 / ATL-OPS-001: Error summary and story metadata for failed jobs */}
+          {item.status === 'failed' && (
             <div style={{ display: 'flex', gap: '8px', padding: '8px 10px', borderRadius: '7px', backgroundColor: '#FEE2E2', border: '1px solid #FECACA', marginBottom: '8px' } as React.CSSProperties}>
               <span>❌</span>
               <div style={{ flex: 1 }}>
-                <div style={{ color: '#991B1B', fontSize: '12px', fontWeight: 800 } as React.CSSProperties}>{op.errorSummary}</div>
+                {/* ATL-OPS-001 CHANGE 1: story metadata */}
+                <div style={{ color: '#7F1D1D', fontSize: '11px', fontWeight: 900, marginBottom: '3px' } as React.CSSProperties}>
+                  Story: &quot;{op.storyTitle || item.title}&quot;
+                  {op.seriesDisplay && op.seriesDisplay !== 'Standalone' && (
+                    <> — Series: {op.seriesDisplay}{op.episodeDisplay ? ` · ${op.episodeDisplay}` : ''}</>
+                  )}
+                  {op.seriesDisplay === 'Standalone' && <> — Standalone</>}
+                </div>
+                {op.errorSummary && (
+                  <div style={{ color: '#991B1B', fontSize: '12px', fontWeight: 800 } as React.CSSProperties}>{op.errorSummary}</div>
+                )}
                 {op.recoveryAction && (
                   <div style={{ color: '#7F1D1D', fontSize: '11px', marginTop: '4px', fontStyle: 'italic' } as React.CSSProperties}>
                     Recovery: {op.recoveryAction}
@@ -556,9 +580,39 @@ export default function ProductionConsolePage() {
     cold:       (payload?.coldStorageItems?.length ?? 0) + (payload?.incubatorItems?.length ?? 0),
   }), [payload])
 
+  // ATL-OPS-001 CHANGE 2: red alert banner data
+  const recentFailures = payload?.recentFailures ?? []
+
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#F3F4F6', color: '#111827', padding: '24px' }}>
       <div style={{ maxWidth: '1180px', margin: '0 auto' }}>
+
+        {/* ATL-OPS-001 CHANGE 2: Red alert banner for recent failures (last 24h) */}
+        {recentFailures.length > 0 && (
+          <div style={{ marginBottom: '20px', borderRadius: '10px', border: '2px solid #DC2626', backgroundColor: '#FEF2F2', padding: '14px 16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+              <span style={{ fontSize: '18px' }}>🚨</span>
+              <span style={{ color: '#991B1B', fontSize: '15px', fontWeight: 950 }}>
+                PIPELINE ALERT — {recentFailures.length} failed job{recentFailures.length !== 1 ? 's' : ''} in last 24h
+              </span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {recentFailures.map((f) => (
+                <div key={f.jobId} style={{ display: 'flex', gap: '6px', alignItems: 'flex-start', padding: '6px 10px', borderRadius: '6px', backgroundColor: '#FEE2E2', border: '1px solid #FECACA', fontSize: '12px', color: '#7F1D1D', fontWeight: 700, flexWrap: 'wrap' }}>
+                  <span>⚠️</span>
+                  <span>
+                    &quot;{f.storyTitle}&quot;
+                    {f.seriesDisplay !== 'Standalone' ? ` (${f.seriesDisplay}${f.episodeDisplay ? ` · ${f.episodeDisplay}` : ''})` : ' (Standalone)'}
+                    {' — '}
+                    <span style={{ color: '#991B1B', fontWeight: 900 }}>{f.errorSummary}</span>
+                    {' — '}
+                    <span style={{ color: '#B91C1C' }}>{f.minutesSinceFailed}m ago</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>

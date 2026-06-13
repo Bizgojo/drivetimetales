@@ -174,6 +174,9 @@ export type ConsoleItem = {
     errorSummary?: string | null
     recoveryAction?: string | null
     seriesDisplay?: string | null
+    // ATL-OPS-001 CHANGE 1: story metadata for failed-job displays
+    storyTitle?: string | null
+    episodeDisplay?: string | null
 
     // Cold Storage
     reasonStored?: string
@@ -744,6 +747,10 @@ function buildInProductionItems(jobs: ProductionJobRow[], stories: StoryRow[], q
     // ATL-MON-002: fix series_id === null showing "unknown" — show "Standalone" instead
     const seriesDisplay = job.series_id ? (seriesTitles.get(job.series_id) || job.series_id) : 'Standalone'
 
+    // ATL-OPS-001 CHANGE 1: story metadata for failed-job displays
+    const storyTitle = story?.title || clean(job.state_json?.storyTitle || '') || null
+    const episodeDisplay = epNumber ? `Ep ${epNumber}` : null
+
     items.push({
       key: `job:${job.id}`,
       type: job.series_id ? 'series' : story ? 'story' : 'job',
@@ -774,6 +781,9 @@ function buildInProductionItems(jobs: ProductionJobRow[], stories: StoryRow[], q
         errorSummary: errorSummaryResult?.summary ?? null,
         recoveryAction: errorSummaryResult?.recoveryAction ?? null,
         seriesDisplay,
+        // ATL-OPS-001 CHANGE 1: story metadata fields
+        storyTitle: storyTitle || null,
+        episodeDisplay: episodeDisplay || null,
       },
     })
   }
@@ -898,6 +908,7 @@ export async function GET(_req: NextRequest) {
     const jobs = (jobsResult.data || []) as ProductionJobRow[]
     const queueRows = (queueResult.error ? [] : (queueResult.data || [])) as QueueRow[]
     const queueById = new Map(queueRows.map((item) => [item.id, item]))
+    const storyByIdForAlerts = new Map(stories.map((s) => [s.id, s]))
 
     // Filter queue rows not already in a workflow state
     const visibleQueueRows = filterQueueRowsAlreadyInWorkflow(dedupeQueueRows(queueRows), stories)
@@ -925,9 +936,40 @@ export async function GET(_req: NextRequest) {
       if (done) completedJobStoryIds.add(job.story_id)
     }
 
+    // ATL-OPS-001 CHANGE 2: recent failures (last 24h) for alert banner
+    const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+    const recentFailedJobs = jobs.filter(
+      (j) => clean(j.status).toLowerCase() === 'failed' && (j.updated_at || '') > cutoff24h
+    )
+    const recentFailures = recentFailedJobs.map((job) => {
+      const story = job.story_id ? storyByIdForAlerts.get(job.story_id) || null : null
+      const storyTitle = story?.title || clean(job.state_json?.storyTitle || '') || 'Unknown'
+      const seriesNameForAlert = story?.series_name || null
+      const seriesDisplayForAlert = seriesNameForAlert || (job.series_id ? job.series_id : 'Standalone')
+      const episodeNum = story?.episode_number || null
+      const episodeDisplayForAlert = episodeNum ? `Ep ${episodeNum}` : null
+      const updatedMs = timestampMs(job.updated_at)
+      const minutesSinceFailed = updatedMs > 0 ? Math.round((Date.now() - updatedMs) / 60000) : 0
+      const errorJson = job.error_json && typeof job.error_json === 'object' ? job.error_json : {}
+      const step = String(errorJson.step || job.current_step || '').trim()
+      const errMsg = String(errorJson.message || errorJson.error || errorJson.reason || '').trim()
+      const errorSummary = [step, errMsg].filter(Boolean).join(' — ') || 'Unknown error'
+      return {
+        jobId: job.id,
+        storyId: job.story_id || null,
+        storyTitle,
+        seriesDisplay: seriesDisplayForAlert,
+        episodeDisplay: episodeDisplayForAlert,
+        minutesSinceFailed,
+        errorSummary,
+      }
+    })
+
     return json({
       success: true,
       fetchedAt: new Date().toISOString(),
+      // ATL-OPS-001 CHANGE 2: red alert banner data
+      recentFailures,
       // ATL-CONS-002: four operational sections
       repairItems:      buildRepairItems(repairStories, jobs),
       inProductionItems: buildInProductionItems(jobs, stories, queueById),

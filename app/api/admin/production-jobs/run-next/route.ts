@@ -816,7 +816,15 @@ function validateNarratorAssignmentSync(
     (v) => String(v.name || '').toLowerCase().trim() === normalizedScript
   )
   if (!matchedVoice) {
+    const dbVoiceNameForMsg = String(story.narrator_voice_name || '').trim()
+    const narratorIsCharacter = extractHeader(script, 'NARRATOR_IS_CHARACTER').trim()
+    const sortedVoiceNames = [...voices].map(v => v.name).filter(Boolean).sort()
     issues.push(`${px}NARRATOR "${scriptNarratorName}" not found in narrator_voices`)
+    issues.push(`  Script NARRATOR header: "${scriptNarratorName}"`)
+    issues.push(`  DB narrator_voice_name: "${dbVoiceNameForMsg || '(not set)'}"`)
+    issues.push(`  NARRATOR_IS_CHARACTER: ${narratorIsCharacter || '(not set)'} — if true, the script uses a character as narrator; the NARRATOR header must still be a valid narrator voice name`)
+    issues.push(`  Valid narrator voice names: ${sortedVoiceNames.join(', ')}`)
+    issues.push(`  Fix: Update NARRATOR header to a valid narrator voice name, e.g. '${voices[0]?.name}'`)
     return { passed: false, narratorIssues: issues, resolvedVoiceId: null, resolvedVoiceName: null }
   }
 
@@ -837,7 +845,10 @@ function validateNarratorAssignmentSync(
   const dbVoiceName = String(story.narrator_voice_name || '').trim()
   if (dbVoiceName && dbVoiceName.toLowerCase() !== normalizedScript) {
     issues.push(
-      `${px}Script says "${scriptNarratorName}" but story row has narrator_voice_name="${story.narrator_voice_name}"`
+      `${px}Narrator name mismatch: script NARRATOR header says "${scriptNarratorName}" but DB narrator_voice_name is "${story.narrator_voice_name}"`
+    )
+    issues.push(
+      `  To fix: either update the script NARRATOR header to "${story.narrator_voice_name}" (trust the DB), or update DB narrator_voice_name to "${scriptNarratorName}" (trust the script). The script header is the source of truth for new scripts.`
     )
     return { passed: false, narratorIssues: issues, resolvedVoiceId, resolvedVoiceName: matchedVoice.name }
   }
@@ -846,7 +857,10 @@ function validateNarratorAssignmentSync(
   const dbVoiceId = String(story.narrator_voice_id || '').trim()
   if (dbVoiceId && dbVoiceId !== resolvedVoiceId) {
     issues.push(
-      `${px}story.narrator_voice_id does not match narrator_voices row for script narrator "${scriptNarratorName}"`
+      `${px}Narrator voice ID mismatch: DB narrator_voice_id="${dbVoiceId}" does not match narrator_voices row ID "${resolvedVoiceId}" for script narrator "${scriptNarratorName}"`
+    )
+    issues.push(
+      `  To fix: update the DB narrator_voice_id to "${resolvedVoiceId}" to match the narrator_voices table entry for "${scriptNarratorName}".`
     )
     return { passed: false, narratorIssues: issues, resolvedVoiceId, resolvedVoiceName: matchedVoice.name }
   }
