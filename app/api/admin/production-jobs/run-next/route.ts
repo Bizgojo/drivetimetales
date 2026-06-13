@@ -2523,8 +2523,8 @@ async function repairStandaloneBelleQuality(job: ProductionJob, model: string) {
   // Asset-validation failures (validate_belle_assets → repair) are a separate repair cycle.
   // They must NOT be blocked by a stale attempt counter from a prior quality-repair loop.
   const isAssetRepair = state.belleAssetValidationFailed === true
+  const attempts = Number(previousRepair.attempts || 0)
   if (!isAssetRepair) {
-    const attempts = Number(previousRepair.attempts || 0)
     if (attempts >= 2) throw new Error('Belle quality repair attempt limit reached')
   }
 
