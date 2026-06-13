@@ -2025,8 +2025,15 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
     if (!res.ok) throw new Error(`ElevenLabs error ${res.status}: ${(await res.text()).slice(0, 200)}`)
     const rawBuf = Buffer.from(await res.arrayBuffer())
     // ATL-PIPE-001: Reject silence placeholder buffers before any processing
-    if (rawBuf.length <= SILENCE_BUFFER_SIZE_THRESHOLD) {
-      throw new Error(`SILENCE_BUFFER: ${fileName} rejected — ElevenLabs returned ${rawBuf.length} bytes (≤ ${SILENCE_BUFFER_SIZE_THRESHOLD} silence threshold)`)
+    // Text-length-aware threshold: short segments (< 10 words) use 5KB floor; standard uses 20KB
+    const segmentWordCount = rawText.trim().split(/\s+/).length
+    const isShortSegment = segmentWordCount < 10
+    const effectiveThreshold = isShortSegment ? 5 * 1024 : SILENCE_BUFFER_SIZE_THRESHOLD
+    if (rawBuf.length <= effectiveThreshold) {
+      const thresholdLabel = isShortSegment
+        ? `${effectiveThreshold} short-segment threshold, ${segmentWordCount} words`
+        : `${effectiveThreshold} standard threshold, ${segmentWordCount} words`
+      throw new Error(`SILENCE_BUFFER: ${fileName} rejected — ElevenLabs returned ${rawBuf.length} bytes (≤ ${thresholdLabel})`)
     }
     const rawBufMd5 = createHash('md5').update(rawBuf).digest('hex')
     if (rawBufMd5 === SILENCE_BUFFER_KNOWN_ETAG) {
