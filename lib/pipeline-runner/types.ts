@@ -148,6 +148,8 @@ export type StructuredErrorJson = {
   autonomous_repair?: boolean
   /** Number of autonomous retries already attempted for this failure class. */
   retry_count?: number
+  /** Maximum retries allowed for this failure class before marc_required escalation. */
+  max_retries?: number
   /** Repair playbook selected for this failure. */
   playbookId?: string | null
   /** Pipeline step that can safely resume after repair. */
