@@ -205,10 +205,10 @@ SERIES_IS_FINALE: ${isFinale ? 'true' : 'false'}
 AUTHOR: ${episode.author || brief.author || ''}
 GENRE: ${episode.genre || brief.genre || ''}
 DESCRIPTION: [70 characters or fewer, present tense only]
-NARRATOR: [assigned narrator name, not a story character unless NARRATOR_IS_CHARACTER is true]
+NARRATOR: [assigned voice name from narrator_voices — ALWAYS the voice talent name (e.g. "Ray Dolan"), NEVER a story character name, even when NARRATOR_IS_CHARACTER is true]
 ANNOUNCER: Belle B
 NARRATIVE_VOICE: ${episode.narrative_voice || brief.narrative_voice || ''}
-NARRATOR_IS_CHARACTER: [true/false, must match NARRATOR]
+NARRATOR_IS_CHARACTER: [true/false — true means the narrator IS a story character speaking in first person, but the NARRATOR header must still be the voice talent name]
 SUNO PROMPT:
 
 CHARACTER GUIDE
@@ -247,8 +247,9 @@ Series rules:
 
 Additional rules:
 - DESCRIPTION must be 70 characters or fewer and present tense only so it fits two lines on story cards. Reject past-tense story-card phrasing such as "vanished", "was", "were", "had", "found", "discovered", "left", "moved", "sealed", "signed", "forged", "buried", or "hidden".
-- If NARRATOR_IS_CHARACTER is false, NARRATOR must not be a story character name and must not include "(character)".
-- If the narrator is a story character, NARRATOR_IS_CHARACTER must be true and the script must use consistent first-person narration.
+- NARRATOR header must ALWAYS be the assigned voice talent name (e.g. "Ray Dolan", "Samuel Cord"). Never a story character name. This rule has no exceptions. (HAL-SCRIPT-001)
+- If NARRATOR_IS_CHARACTER is false, the narrator is a detached third-person voice.
+- If NARRATOR_IS_CHARACTER is true, the narrator is a story character speaking in first person — but the NARRATOR header still uses the voice talent name, not the character name.
 - Keep narrator voice consistent.
 - Do not include markdown fences.
 
