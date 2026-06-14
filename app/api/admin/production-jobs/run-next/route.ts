@@ -7,6 +7,10 @@ import { buildNamePalettePromptBlock } from '@/lib/story/namePalette'
 import { recordProductionLearningEvent } from '@/lib/productionLearning'
 import { isBelleBVoiceId } from '@/lib/voiceConstants'
 import { runRenderFinalMix } from '../../../asc3/render-final-mix/core'
+import { buildStructuredError } from '@/lib/pipeline-runner/types'
+import { classifyTrueState } from '@/lib/pipelineTruth'
+import { getPlaybookByKind } from '@/lib/repairPlaybooks'
+import { loadActiveMission } from '@/lib/missionContext'
 
 export const runtime = 'nodejs'
 
@@ -1363,15 +1367,24 @@ async function readJsonOrDiagnostic(response: Response, endpoint: string) {
 async function failJob(job: ProductionJob, error: unknown) {
   const message = error instanceof Error ? error.message : String(error)
   const logs = appendLog(job, 'Step failed', { error: message })
+  
+  // Build structured error_json to ensure classification is always possible
+  const errorJson = buildStructuredError(
+    'unknown_step',
+    message,
+    normalizeStep(job.current_step),
+    {
+      storyId: job.story_id,
+      seriesId: job.series_id,
+      marc_required: true,  // Unknown failures always require Marc
+    }
+  )
+  
   await supabase
     .from('production_jobs')
     .update({
       status: 'failed',
-      error_json: {
-        step: normalizeStep(job.current_step),
-        message,
-        at: nowIso(),
-      },
+      error_json: errorJson,
       logs,
       locked_at: null,
       locked_by: null,
@@ -4844,6 +4857,12 @@ export async function POST(req: NextRequest) {
   let activeStage: string | null = null
 
   try {
+    // Load shared mission context for this session (INC-011 prevention)
+    const activeMission = await loadActiveMission(supabase).catch(() => null)
+    if (!activeMission) {
+      console.warn('⚠️  No active mission loaded. Production work requires mission context. Set via missionContext.createMission().')
+    }
+
     const body = await req.json().catch(() => ({}))
     const requestedJobId = String(body.jobId || '').trim()
     const model = String(body.model || 'claude-opus-4-6')
