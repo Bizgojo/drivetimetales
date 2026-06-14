@@ -31,6 +31,7 @@ export type RepairStepKind =
   | 'belle_repair'        // Rewrite Belle intro/outro via repair prompt
   | 'autonomous_repair'   // Pipeline autonomously re-queues without human input
   | 'manual_fallback'     // Marc must intervene manually after retry exhaustion
+  | 'accept'             // Segment/asset is already acceptable; no repair needed (e.g. numeric equivalence)
 
 export type RepairStep = {
   kind: RepairStepKind
