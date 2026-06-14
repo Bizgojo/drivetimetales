@@ -1,3 +1,95 @@
+-- Story Excellence Ledger
+-- Records creative lessons from Marc's story rejections and review feedback.
+-- Every rejection must produce a durable lesson so future stories improve.
+-- Distinct from production_learning_events (pipeline/technical failures).
+
+CREATE TABLE IF NOT EXISTS story_excellence_lessons (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  story_id          UUID REFERENCES stories(id) ON DELETE SET NULL,
+  series_id         UUID,
+  series_title      TEXT,
+  episode_title     TEXT,
+  rejected_by       TEXT NOT NULL DEFAULT 'marc',
+  lesson_category   TEXT NOT NULL,  -- belle_quality | story_resolution | hook | cliffhanger | ending_satisfaction | pacing | cover_art | narrator_character | dialogue_quality | script_structure | genre_fidelity | personalization | other
+  lesson_text       TEXT NOT NULL,  -- What was wrong — must be specific
+  prevention_rule   TEXT,           -- Matches format: contains:<text> or word:<word>
+  applies_to_future BOOLEAN NOT NULL DEFAULT true,
+  confidence        NUMERIC NOT NULL DEFAULT 0.8 CHECK (confidence >= 0 AND confidence <= 1),
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_story_excellence_lessons_story_id
+  ON story_excellence_lessons(story_id);
+
+CREATE INDEX IF NOT EXISTS idx_story_excellence_lessons_series_id
+  ON story_excellence_lessons(series_id);
+
+CREATE INDEX IF NOT EXISTS idx_story_excellence_lessons_category
+  ON story_excellence_lessons(lesson_category);
+
+CREATE INDEX IF NOT EXISTS idx_story_excellence_lessons_applies_to_future
+  ON story_excellence_lessons(applies_to_future)
+  WHERE applies_to_future = true;
+
+CREATE INDEX IF NOT EXISTS idx_story_excellence_lessons_created_at
+  ON story_excellence_lessons(created_at DESC);
+
+COMMENT ON TABLE story_excellence_lessons IS
+  'Creative lessons from story rejections. Read by Hal before script generation. Updated by Orion/Atlas on Marc rejection.';
+
+COMMENT ON COLUMN story_excellence_lessons.prevention_rule IS
+  'Preflight-compatible rule: "contains:<text>" or "word:<word>". If matched in a future script, Hal is warned before voice generation.';
+-- Active Missions table
+-- Tracks the current smoke-test or production batch mission.
+-- Shared context for Hal, Orion, and Atlas so all agents know what they're doing.
+-- Fixes INC-011: Hal did not know the active smoke-test mission.
+
+CREATE TABLE IF NOT EXISTS active_missions (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  mission_name      TEXT NOT NULL,
+  mission_type      TEXT NOT NULL DEFAULT 'smoke_test',  -- smoke_test | batch_production | repair
+  status            TEXT NOT NULL DEFAULT 'active',       -- active | paused | complete | draft
+  stories           JSONB NOT NULL DEFAULT '[]',          -- MissionStory[] — story_id, series_title, episode_title, etc.
+  objective         TEXT NOT NULL DEFAULT '',
+  success_criteria  JSONB NOT NULL DEFAULT '[]',          -- string[]
+  created_by        TEXT NOT NULL DEFAULT 'orion',
+  notes             TEXT,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_active_missions_status
+  ON active_missions(status);
+
+CREATE INDEX IF NOT EXISTS idx_active_missions_created_at
+  ON active_missions(created_at DESC);
+
+COMMENT ON TABLE active_missions IS
+  'Shared mission context for Hal, Orion, and Atlas. All agents must load the active mission before beginning production work.';
+
+COMMENT ON COLUMN active_missions.stories IS
+  'Array of MissionStory objects: {storyId, seriesTitle, episodeTitle, episodeNumber, jobId?, trueState?, safeResumePoint?, marcRequired?}';
+
+-- Seed the three-story autonomy smoke test mission
+INSERT INTO active_missions (
+  mission_name,
+  mission_type,
+  status,
+  stories,
+  objective,
+  success_criteria,
+  created_by,
+  notes
+) VALUES (
+  'Three-Story Autonomy Smoke Test v1',
+  'smoke_test',
+  'active',
+  '[]'::jsonb,
+  'Get three stories through the full production pipeline to ready_for_review without Marc intervention. Each failure must produce a learning event or excellence lesson.',
+  '["All three stories reach ready_for_review state", "Zero Marc interventions required", "Every failure produces a structured learning event", "No failure recurs more than once", "Command Center shows true job state for all three stories"]'::jsonb,
+  'orion',
+  'Seeded by Atlas learning system migration 2026-06-13. Stories to be associated by Orion on session start.'
+) ON CONFLICT DO NOTHING;
 -- Backfill production learning events for all known failures
 -- These are the incidents from the June 2026 incident log.
 -- Each record represents a reusable prevention rule derived from a real failure.
