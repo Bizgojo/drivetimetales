@@ -2913,14 +2913,14 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, error: `Failed to list existing story segments: ${listAudioError.message}` }, { status: 500 })
       }
 
-      // FIX (AC-1, AC-2): reject stale segments whose stored size is ≤ 20KB.
-      // This matches the render-final-mix silence gate threshold so that any segment
-      // flagged there will also be regenerated here on the next produce run — no manual
-      // deletion required.  Files ≤ 20KB from old-pipeline runs are silence placeholders
-      // (ElevenLabs returned an ~18KB silence response); legitimately short lines that
-      // were re-generated with the new pipeline will also be small, but they must be
-      // re-generated once so the render gate can validate them with the softer threshold.
-      const STALE_SIZE_THRESHOLD = 20 * 1024  // 20KB — matches render gate
+      // FIX (AC-1, AC-2): reject stale segments whose stored size is ≤ stale threshold.
+      // UPDATED (ATL-PIPE-006): changed from 20KB to 5KB to match run-next hard-fail floor
+      // (commit 1938d645). Short legitimate segments (e.g. 7-word lines) produce ~15KB audio
+      // from ElevenLabs — the old 20KB threshold caused an infinite loop where segment_0066
+      // ("I'm not scared. I'm done being patient.", 15KB) was flagged as stale on every
+      // inventory and regenerated indefinitely, preventing forward progress.
+      // 5KB aligns with the run-next hard-fail floor: truly silent/corrupt files are <5KB.
+      const STALE_SIZE_THRESHOLD = 5 * 1024  // 5KB — match run-next hard-fail floor (ATL-PIPE-006)
       const allSegmentFiles = (existingAudioFiles || []).filter(file => segmentFilePattern.test(file.name))
       const existingSegmentNames = new Set(
         allSegmentFiles
@@ -2984,9 +2984,19 @@ export async function POST(req: NextRequest) {
         })
       }
 
-      const { data: updatedAudioFiles, error: updatedListError } = await supabase.storage.from('audio').list(storyAudioFolder, { limit: 500 })
+      // ATL-PIPE-006: retry storage list up to 3x — Supabase CDN occasionally returns HTML
+      // (5xx) for list operations on long-running functions, causing false job failures.
+      let updatedAudioFiles = null
+      let updatedListError = null
+      for (let listAttempt = 0; listAttempt < 3; listAttempt++) {
+        const { data: listData, error: listErr } = await supabase.storage.from('audio').list(storyAudioFolder, { limit: 500 })
+        if (!listErr) { updatedAudioFiles = listData; updatedListError = null; break }
+        updatedListError = listErr
+        console.warn(`  ⚠️ list updated segments attempt ${listAttempt + 1}/3 failed: ${listErr.message}`)
+        if (listAttempt < 2) await new Promise(r => setTimeout(r, (listAttempt + 1) * 1500))
+      }
       if (updatedListError) {
-        console.error('  ❌ Failed to list updated story segments:', updatedListError)
+        console.error('  ❌ Failed to list updated story segments after 3 attempts:', updatedListError)
         return NextResponse.json({ success: false, error: `Failed to list updated story segments: ${updatedListError.message}` }, { status: 500 })
       }
       // Also filter updated list by size to correctly identify remaining stale segments
