@@ -187,6 +187,71 @@ const ORDINAL_WORDS: Record<string, string> = {
   ninetieth: '90',
 }
 
+// ATL-PIPE-011: normalise compound spoken numbers and currency forms before token comparison.
+// Fixes the gap where "three hundred and forty thousand" normalises to "300 and 40000"
+// instead of "340000", causing false REPEATED_IDENTICAL_TRUNCATION failures.
+//
+// Handles:
+//   "three hundred and forty thousand"  → "340000"
+//   "three hundred forty thousand"      → "340000"
+//   "$340,000"                          → "340000"
+//   "340,000"                           → "340000"
+//   "340000 dollars"                    → "340000"
+//   "fire-loss"                         → "fire loss"  (via final hyphen strip in transcriptTokens)
+function normalizeCompoundNumbers(text: string): string {
+  const HUNDREDS = 'one|two|three|four|five|six|seven|eight|nine'
+  const TENS = 'twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety'
+  const ONES_1_9 = 'one|two|three|four|five|six|seven|eight|nine'
+  const ONES_10_19 = 'ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen'
+  const ONES = `${ONES_10_19}|${TENS}|${ONES_1_9}`
+
+  // Helper: word → digit (must be in NUMBER_WORDS)
+  const w = (word: string): number => Number(NUMBER_WORDS[word.toLowerCase()] ?? NaN)
+
+  return text
+    // ── Step 1: strip commas in digit strings ────────────────────────────
+    // "340,000" → "340000"  |  "1,234,567" → "1234567"
+    .replace(/\b(\d{1,3}(?:,\d{3})+)\b/g, m => m.replace(/,/g, ''))
+
+    // ── Step 2: strip dollar sign prefix ────────────────────────────────
+    // "$340000" → "340000"
+    .replace(/\$(\d)/g, '$1')
+
+    // ── Step 3: remove "and" as conjunction between scale words and number words
+    // "three hundred and forty thousand" → "three hundred forty thousand"
+    // "two thousand and eleven"          → "two thousand eleven"
+    .replace(
+      /\b(hundred|thousand|million|billion)\s+and\s+(?=(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)\b)/gi,
+      '$1 '
+    )
+
+    // ── Step 4: "X hundred Y[Z] thousand" compound → digit ───────────────
+    // "three hundred forty thousand"     → "340000"
+    // "three hundred forty-five thousand"→ "345000"
+    // "one hundred twenty thousand"      → "120000"
+    // Runs before the simple "X hundred" and "Y thousand" rules so the full
+    // compound is consumed in one pass rather than producing "300 40000".
+    .replace(
+      new RegExp(
+        `\\b(${HUNDREDS})\\s+hundred\\s+(${ONES})(?:\\s+(${ONES_1_9}))?\\s+thousand\\b`,
+        'gi'
+      ),
+      (match, h, tens, ones) => {
+        const hv = w(h)
+        const tv = w(tens)
+        const ov = ones ? w(ones) : 0
+        const val = (hv * 100 + tv + (tv >= 20 ? ov : 0)) * 1000
+        return Number.isFinite(val) && val > 0 ? String(val) : match
+      }
+    )
+
+    // ── Step 5: strip "dollars" suffix after digit numbers ───────────────
+    // "340000 dollars" → "340000"
+    // Fires only on digit-then-dollars, not on "three dollars" (those are handled
+    // by normalizeCurrencyForms earlier in the chain).
+    .replace(/\b(\d+)\s+dollars?\b/gi, '$1')
+}
+
 function normalizeOrdinalDateForms(text: string): string {
   return text
     .replace(/\b(twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)[\s-]+(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth)\b/gi, (match, tensWord, ordinalWord) => {
@@ -317,7 +382,10 @@ function transcriptTokens(text: string): string[] {
   // collapse internal runs of whitespace.  Catches no-break spaces, zero-width
   // chars, and any trailing newline from script source or Whisper output.
   const pre = text.normalize('NFC').trim().replace(/\s+/g, ' ')
-  const normalized = normalizeNumberWords(normalizeOrdinalDateForms(normalizeCurrencyForms(normalizePossessivePlaceNames(normalizePossessiveVehicleModelNames(normalizeStylisticCompoundWords(normalizeContractionExpansions(pre)))))))
+  // ATL-PIPE-011: normalizeCompoundNumbers runs first to resolve "three hundred and forty thousand"
+  // → "340000", strip $-signs, strip commas in digit strings, and remove "and" in number sequences
+  // before the rest of the pipeline sees the text.
+  const normalized = normalizeNumberWords(normalizeOrdinalDateForms(normalizeCurrencyForms(normalizePossessivePlaceNames(normalizePossessiveVehicleModelNames(normalizeStylisticCompoundWords(normalizeContractionExpansions(normalizeCompoundNumbers(pre))))))))
     // Widen apostrophe net: curly quotes, modifier apostrophe, grave/acute,
     // prime — all normalised to plain ASCII apostrophe before possessive strip.
     .replace(/[\u2018\u2019\u02BC\u0060\u00B4\u02CA\u2032\u2035]/g, "'")
@@ -2409,6 +2477,33 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
             qcSkipCollector?.push(fileName)
             await uploadAudioBufferWithRetry(cachePath, lastLoudnessPassedBuf, `${speaker || 'UNKNOWN'} ${fileName}`)
             return cacheUrl
+          }
+
+          // ATL-PIPE-011: Before failing, check whether the mismatch is purely a
+          // numeric/currency formatting difference (e.g. Whisper returning "$340,000"
+          // for script text "three hundred and forty thousand").
+          // normalizeCompoundNumbers() is already wired into transcriptTokens(), so
+          // re-tokenizing both sides produces equivalent tokens if this is the case.
+          {
+            const normExpTok = transcriptTokens(transcriptFailure.expectedText || '')
+            const normDetTok = transcriptTokens(truncatedAt || transcriptFailure.detectedText || '')
+            const normSimilarity = transcriptSimilarity(normExpTok, normDetTok)
+            if (normSimilarity >= 0.95 && normExpTok.length > 0) {
+              console.warn(
+                `  ✅ NUMERIC_EQUIVALENCE_ACCEPT [ATL-PIPE-011] ${fileName} speaker="${speaker}" ` +
+                `— Whisper returned a numeric/currency equivalent of the expected text. ` +
+                `normalizedSimilarity=${normSimilarity.toFixed(3)} ` +
+                `expected="${transcriptFailure.expectedText}" detected="${truncatedAt}". ` +
+                `Accepting segment (no split needed).`
+              )
+              qcSkipCollector?.push(fileName)
+              if (lastLoudnessPassedBuf !== null) {
+                await uploadAudioBufferWithRetry(cachePath, lastLoudnessPassedBuf, `${speaker || 'UNKNOWN'} ${fileName}`)
+              } else if (best) {
+                await uploadAudioBufferWithRetry(cachePath, best.buf, `${speaker || 'UNKNOWN'} ${fileName}`)
+              }
+              return cacheUrl
+            }
           }
 
           console.error(

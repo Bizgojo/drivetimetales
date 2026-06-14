@@ -1018,7 +1018,7 @@ Use the CURRENT rules:
 - DESCRIPTION must be 70 characters or fewer and present tense only.
 - DESCRIPTION fails if it uses past-tense constructions or past-tense story-card phrasing such as "vanished", "was", "were", "had", "found", "discovered", "left", "moved", "sealed", "signed", "forged", "buried", "hidden", or "lost".
 - DESCRIPTION PROTAGONIST RULE: the DESCRIPTION must accurately reflect who the protagonist actually is and what they are trying to do. If the script's protagonist is a security guard, DESCRIPTION must not say "driver". If the protagonist is a nurse, DESCRIPTION must not say "teacher". Mismatches between DESCRIPTION and actual protagonist role are a hard fail.
-- DESCRIPTION SPOILER RULE: DESCRIPTION is a story-card teaser, not a plot summary. It must create curiosity without revealing the resolution, the twist, or the ending.
+- DESCRIPTION SPOILER RULE: DESCRIPTION is a story-card teaser, not a plot summary. It must raise a question, not answer it. HARD FAIL if DESCRIPTION reveals: the survivor, the culprit, the missing person's status, a hidden person alive or dead, the final discovery, or the resolution payoff. Examples of failing DESCRIPTION phrases: "to a survivor", "to the killer", "reveals who did it", "the missing child is alive".
 - The script must include the required header fields.
 - The script must include a CHARACTER GUIDE.
 - The script must include BELLE B INTRO and BELLE B OUTRO blocks.
@@ -1781,6 +1781,14 @@ Additional rules:
 - Series non-finales must end on a specific cliffhanger.
 - Keep narrator voice consistent.
 - Do not include markdown fences.
+
+HAL-SCRIPT-004: NUMBER AND CURRENCY FORMATTING RULE
+- Write all numbers and money amounts as spoken words in dialogue and narration.
+- Prefer "three hundred and forty thousand dollars" over "$340,000".
+- Prefer "fourteen" over "14". Prefer "nineteen ninety-eight" over "1998" for years in dialogue.
+- Exception: exact written numbers needed for plot (badge numbers, case numbers, codes) may use digits.
+- Reason: voice TTS reads digit strings differently from how Whisper transcribes spoken audio.
+  Using spoken word forms ensures QC transcript matching succeeds without normalization workarounds.
 
 HAL-SCRIPT-003: DESCRIPTION PROTAGONIST CONSISTENCY RULE
 - The DESCRIPTION field must name the protagonist using the EXACT role/occupation that appears in the script body.

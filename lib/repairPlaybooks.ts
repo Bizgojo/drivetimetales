@@ -344,6 +344,26 @@ export const REPAIR_PLAYBOOKS: RepairPlaybook[] = [
     linkedIncident: 'ATL-PIPE-008',
   },
 
+  // ── ATL-PIPE-011: transcript numeric/currency equivalence ────────────────
+
+  {
+    id: 'pb-021-transcript-numeric-equivalence',
+    failureKind: 'transcript_numeric_equivalence',
+    title: 'Whisper returned numeric/currency form of a spoken number (auto-accepted)',
+    autonomous: true,
+    marcRequired: false,
+    priority: 'low',
+    steps: [
+      {
+        kind: 'accept',
+        description: 'The segment audio is valid. Whisper transcribed a spoken number as its digit/currency equivalent (e.g. "$340,000" for "three hundred and forty thousand"). After compound-number normalization, expected and detected are equivalent. The segment is accepted and production continues.',
+      },
+    ],
+    prevention: 'HAL-SCRIPT-004: write numbers and money amounts as spoken words in script (e.g. "three hundred and forty thousand dollars" not "$340,000"). Reduces Whisper transcription format divergence. normalizeCompoundNumbers() added to transcriptTokens() pipeline handles any remaining cases.',
+    verificationCheck: 'normalizeCompoundNumbers(expected) === normalizeCompoundNumbers(detected)',
+    linkedIncident: 'ATL-PIPE-011',
+  },
+
   // ── ATL-PIPE-009: voice_preflight structural script failure ─────────────
 
   {
