@@ -102,6 +102,8 @@ export type StructuredErrorJsonKind =
   | 'script_quality_editorial'           // AI validator: protagonist/description mismatch, hook, ending (retryable)
   | 'script_story_resolution'            // AI validator: climax offscreen, protagonist passive (retryable)
   | 'script_validator_unknown'           // AI validator: unclassified failure (not auto-retryable, marc_required)
+  // ATL-PIPE-009: voice_preflight script structural failure
+  | 'script_unlabeled_lines'             // story body contains prose not starting with NARRATOR:/CHARACTER: (retryable)
   // Legacy aliases kept for backward compat with existing error_json rows
   | 'script_blocked_word'
   | 'script_editorial_quality'

@@ -48,7 +48,7 @@ const NEXT_STEP_AFTER_SERIES_MUSIC  = 'series_render_final_mix'
 const NEXT_STEP_AFTER_SERIES_RENDER = 'complete_story_package'
 const TITLE_MAX_CHARS = 28
 const DESCRIPTION_MAX_CHARS = 70
-const DESCRIPTION_PAST_TENSE_RE = /\b(vanished|was|were|had|found|discovered|left|moved|sealed|signed|forged|buried|hidden)\b/i
+const DESCRIPTION_PAST_TENSE_RE = /\b(vanished|was|were|had|found|discovered|left|moved|sealed|signed|forged|buried|hidden|lost)\b/i
 
 // ATL-PIPE-008: Classify validate_script failure into canonical kinds.
 // isCardCopy=true means the failure came from validateCardCopy() (deterministic).
@@ -64,7 +64,7 @@ function classifyValidateScriptFailure(
 } {
   // Card-copy path (deterministic, always retryable)
   if (isCardCopy) {
-    const hasBlockedWord = /blocked word|DESCRIPTION_PAST_TENSE|forbidden|past.tense/i.test(report)
+    const hasBlockedWord = /blocked word|DESCRIPTION_PAST_TENSE|forbidden|past.tense|\blost\b/i.test(report)
     const kind: StructuredErrorJsonKind = hasBlockedWord
       ? 'script_description_blocked_word'
       : 'script_card_copy_format'
@@ -991,7 +991,7 @@ Use the CURRENT rules:
 - No SFX in the published story body.
 - The title must be 1 to 5 words and 28 characters or fewer.
 - DESCRIPTION must be 70 characters or fewer and present tense only.
-- DESCRIPTION fails if it uses past-tense constructions or past-tense story-card phrasing such as "vanished", "was", "were", "had", "found", "discovered", "left", "moved", "sealed", "signed", "forged", "buried", or "hidden".
+- DESCRIPTION fails if it uses past-tense constructions or past-tense story-card phrasing such as "vanished", "was", "were", "had", "found", "discovered", "left", "moved", "sealed", "signed", "forged", "buried", "hidden", or "lost".
 - DESCRIPTION PROTAGONIST RULE: the DESCRIPTION must accurately reflect who the protagonist actually is and what they are trying to do. If the script's protagonist is a security guard, DESCRIPTION must not say "driver". If the protagonist is a nurse, DESCRIPTION must not say "teacher". Mismatches between DESCRIPTION and actual protagonist role are a hard fail.
 - DESCRIPTION SPOILER RULE: DESCRIPTION is a story-card teaser, not a plot summary. It must create curiosity without revealing the resolution, the twist, or the ending.
 - The script must include the required header fields.
@@ -1717,6 +1717,24 @@ BELLE B OUTRO
 BELLE B: [one or two short sentences, reflective, no time-of-day reference, credits the author and says "an Endless Tales original"]
 
 Production-format hard rules:
+
+HAL-SCRIPT-002: MANDATORY LABELING RULE
+- Every prose/dialogue line after [START AUDIO DRAMA SCRIPT] must begin with a speaker label.
+- No unlabeled continuation paragraphs allowed under any circumstance.
+- A paragraph must either:
+  a) Start with NARRATOR: followed by the narration text, OR
+  b) Start with CHARACTER NAME: followed by the dialogue, OR
+  c) Be a [BRACKET CUE] for timing (beat, pause, SFX), OR
+  d) Be empty/blank
+- If narration continues from the previous line, start a new NARRATOR: line. Do not write unlabeled prose.
+- Examples of WRONG (will cause voice_preflight to fail):
+  NARRATOR: The door creaked open.
+  A figure emerged from the shadows.  <-- WRONG: unlabeled
+- Example of RIGHT:
+  NARRATOR: The door creaked open.
+  NARRATOR: A figure emerged from the shadows.
+
+Additional production-format hard rules:
 - Speaker labels are for spoken words only.
 - Character-labeled lines must contain only words that character says aloud.
 - Never put action, facial reactions, movement, blocking, inner thought, or narration under a character label.
@@ -1725,7 +1743,7 @@ Production-format hard rules:
 - Right: NARRATOR: Pike's jaw tightened.
 
 Additional rules:
-- DESCRIPTION must be 70 characters or fewer and present tense only so it fits two lines on story cards. If the brief-provided description is longer than 70 characters or uses past-tense constructions, rewrite it to comply. Reject past-tense story-card phrasing such as "vanished", "was", "were", "had", "found", "discovered", "left", "moved", "sealed", "signed", "forged", "buried", or "hidden".
+- DESCRIPTION must be 70 characters or fewer and present tense only so it fits two lines on story cards. If the brief-provided description is longer than 70 characters or uses past-tense constructions, rewrite it to comply. Reject past-tense story-card phrasing such as "vanished", "was", "were", "had", "found", "discovered", "left", "moved", "sealed", "signed", "forged", "buried", "hidden", or "lost".
 - If NARRATOR_IS_CHARACTER is false, NARRATOR must not be a story character name and must not include "(character)".
 - If the narrator is a story character, NARRATOR_IS_CHARACTER must be true and the script must use consistent first-person narration.
 - Standalone stories must end conclusively.
@@ -5264,10 +5282,15 @@ export async function POST(req: NextRequest) {
         const canAutoRetry = classification.isAutonomousRetryable && retryCount < MAX_RETRIES
         const playbook = getPlaybookByKind(classification.kind)
 
-        // Always record a learning incident so the ledger captures every failure
+        // Fix A: Always record a learning incident with job_id, story_id, and context
         const { data: learningIncident } = await supabase
           .from('production_learning_events')
           .insert({
+            job_id: lockedJob.id,
+            story_id: result.storyId || lockedJob.story_id || null,
+            series_id: lockedJob.series_id || null,
+            series_title: (lockedJob.state_json as any)?.seriesTitle || null,
+            episode_title: (lockedJob.state_json as any)?.episodeTitle || (lockedJob.state_json as any)?.storyTitle || null,
             stage: 'validate_script',
             failure_type: classification.kind,
             root_cause: reportText.slice(0, 500) || 'validate_script rejected generated script',
@@ -5587,31 +5610,168 @@ export async function POST(req: NextRequest) {
         estimatedSegmentCount: result.report?.estimatedSegmentCount || null,
       })
 
+      // ATL-PIPE-009: voice_preflight failure classification with autonomous retry
       if (!result.passed) {
-        // INC-002 prevention: classify narrator mismatch vs other preflight failures.
-        // narratorVoiceCheck is wired — if narratorIssues are present, kind='narrator_mismatch'.
+        const MAX_RETRIES = 2
+        
+        // Classify failure type: narrator mismatch, unlabeled lines, or unknown
         const hasNarratorIssue = result.narratorIssues && result.narratorIssues.length > 0
+        const hasUnlabeledLines = blockingReasons.some(r => /unlabeled.*line/i.test(r)) || (result.report as any)?.unlabeledLineCount > 0
+        const unlabeledLineCount = (result.report as any)?.unlabeledLineCount || 0
+        const unlabeledExamples = (result.report as any)?.examples || []
+        
+        let failureKind: StructuredErrorJsonKind = 'unknown_qc'
+        let isAutonomousRetryable = false
+        let recommendedAction = ''
+        
+        if (hasNarratorIssue) {
+          failureKind = 'narrator_mismatch'
+          isAutonomousRetryable = false  // narrator mismatch requires DB/manual fix, not retry
+          recommendedAction = `Narrator mismatch: ${result.narratorIssues![0]}. Update NARRATOR header or narrator_voice_name in DB.`
+        } else if (hasUnlabeledLines) {
+          failureKind = 'script_unlabeled_lines'
+          isAutonomousRetryable = true   // unlabeled lines are repairable via generate_script retry
+          recommendedAction = `${unlabeledLineCount} unlabeled story body lines found. Re-generate script with HAL-SCRIPT-002 enforced: every line must start with NARRATOR: or CHARACTER NAME:.`
+        }
+        
+        const retryCount = Number((lockedJob.state_json as any)?.voicePreflightScriptRetryCount ?? 0)
+        const canAutoRetry = isAutonomousRetryable && retryCount < MAX_RETRIES
         const firstBlocker = blockingReasons[0] || 'Voice preflight failed'
+        
+        // Always record learning incident
+        const { data: learningIncident } = await supabase
+          .from('production_learning_events')
+          .insert({
+            job_id: lockedJob.id,
+            story_id: result.storyId || lockedJob.story_id || null,
+            series_id: lockedJob.series_id || null,
+            series_title: (lockedJob.state_json as any)?.seriesTitle || null,
+            episode_title: (lockedJob.state_json as any)?.episodeTitle || (lockedJob.state_json as any)?.storyTitle || null,
+            stage: 'voice_preflight',
+            failure_type: failureKind,
+            root_cause: firstBlocker,
+            fix_applied: canAutoRetry
+              ? `Autonomous retry ${retryCount + 1}/${MAX_RETRIES}: cleared script, reset to generate_script`
+              : `${failureKind === 'narrator_mismatch' ? 'Manual DB fix required' : `Autonomous retries exhausted (${retryCount}/${MAX_RETRIES}); Marc review required`}`,
+            fix_type: canAutoRetry ? 'autonomous_retry' : failureKind === 'narrator_mismatch' ? 'manual_fix' : 'marc_review_required',
+            prevention_rule: failureKind === 'script_unlabeled_lines'
+              ? 'HAL-SCRIPT-002: every prose line must begin with NARRATOR: or CHARACTER NAME:'
+              : failureKind === 'narrator_mismatch'
+              ? 'NARRATOR header must match narrator_voice_name in stories table or narrator_voices table'
+              : null,
+            reusable: true,
+            confidence: 0.85,
+          })
+          .select('id')
+          .single()
+        
+        // If unlabeled lines and retries available: autonomous retry
+        if (canAutoRetry) {
+          const nextRetryCount = retryCount + 1
+          
+          // Clear script so generate_script regenerates
+          await supabase
+            .from('stories')
+            .update({
+              script: null,
+              script_json: null,
+              validator_result: null,
+              validator_report: null,
+              status: 'draft',
+            })
+            .eq('id', result.storyId)
+          
+          const retryLogs = appendLog(lockedJob, `Auto-retry ${nextRetryCount}/${MAX_RETRIES}: unlabeled lines detected, re-queuing to generate_script`, {
+            source: 'autonomous-runner',
+            storyId: result.storyId,
+            failureKind,
+            unlabeledLineCount,
+            retryCount: nextRetryCount,
+            learningIncidentId: learningIncident?.id || null,
+          })
+          
+          const { data: resetJob, error: updateError } = await supabase
+            .from('production_jobs')
+            .update({
+              story_id: result.storyId,
+              status: 'queued',
+              current_step: NEXT_STEP_AFTER_CREATE,
+              state_json: {
+                ...result.state,
+                voicePreflightScriptRetryCount: nextRetryCount,
+                scriptGenerated: false,
+                scriptGeneratedStoryId: null,
+                voicePreflightLastFailureKind: failureKind,
+                voicePreflightUnlabeledCount: unlabeledLineCount,
+              },
+              error_json: buildStructuredError(failureKind, recommendedAction, step, {
+                storyId: result.storyId,
+                marc_required: false,
+                autonomous_repair: true,
+                retry_count: nextRetryCount,
+                max_retries: MAX_RETRIES,
+                safe_resume_point: 'generate_script',
+                fixRecommendation: recommendedAction,
+                rootCause: firstBlocker,
+                detail: {
+                  unlabeledLineCount,
+                  examples: unlabeledExamples.slice(0, 3),
+                  blockingReasons,
+                  learningIncidentId: learningIncident?.id || null,
+                },
+              }),
+              logs: retryLogs,
+              locked_at: null,
+              locked_by: null,
+            })
+            .eq('id', lockedJob.id)
+            .select('*')
+            .single()
+          
+          if (updateError) throw new Error(`Failed to reset voice_preflight job for retry: ${updateError.message}`)
+          
+          return NextResponse.json({
+            success: true,
+            action: 'autonomous_retry',
+            jobId: resetJob!.id,
+            currentStep: step,
+            nextStep: NEXT_STEP_AFTER_CREATE,
+            retryCount: nextRetryCount,
+            maxRetries: MAX_RETRIES,
+            failureKind,
+            storyId: result.storyId,
+            unlabeledLineCount,
+            learningIncidentId: learningIncident?.id || null,
+            logs: retryLogs,
+          })
+        }
+        
+        // No auto-retry: fail with structured error_json
         const errorJsonPayload = buildStructuredError(
-          hasNarratorIssue ? 'narrator_mismatch' : 'unknown_qc',
-          hasNarratorIssue
-            ? `Narrator mismatch: ${result.narratorIssues![0]}. Check script NARRATOR header vs narrator_voices table.`
-            : firstBlocker,
+          failureKind,
+          failureKind === 'narrator_mismatch'
+            ? `${recommendedAction}`
+            : `${recommendedAction} (Retries exhausted: ${retryCount}/${MAX_RETRIES})`,
           step,
           {
             storyId: result.storyId,
-            marc_required: false, // narrator mismatch is Atlas-fixable from DB
-            autonomous_repair: hasNarratorIssue,
-            rootCause: hasNarratorIssue
-              ? 'Script NARRATOR header uses character name or name not in narrator_voices table (INC-002)'
-              : undefined,
-            fixRecommendation: hasNarratorIssue
-              ? 'Update script NARRATOR header to match narrator_voice_name from stories table. Then re-queue at voice_preflight.'
-              : undefined,
-            detail: { narratorIssues: result.narratorIssues, blockingReasons },
+            marc_required: failureKind !== 'narrator_mismatch',  // narrator can be DB-fixed by Atlas
+            autonomous_repair: false,
+            retry_count: retryCount,
+            max_retries: failureKind === 'script_unlabeled_lines' ? MAX_RETRIES : undefined,
+            safe_resume_point: failureKind === 'script_unlabeled_lines' ? 'generate_script' : undefined,
+            fixRecommendation: recommendedAction,
+            rootCause: firstBlocker,
+            detail: {
+              narratorIssues: result.narratorIssues,
+              blockingReasons,
+              unlabeledLineCount,
+              examples: unlabeledExamples.slice(0, 3),
+              learningIncidentId: learningIncident?.id || null,
+            },
           }
         )
-        const playbook = getPlaybookByKind(hasNarratorIssue ? 'narrator_mismatch' : 'unknown_qc')
+        const playbook = getPlaybookByKind(failureKind)
 
         const { data: failedJob, error: updateError } = await supabase
           .from('production_jobs')
@@ -5619,7 +5779,11 @@ export async function POST(req: NextRequest) {
             story_id: result.storyId,
             status: 'failed',
             current_step: NEXT_STEP_AFTER_STANDALONE_RESOLUTION,
-            state_json: result.state,
+            state_json: {
+              ...result.state,
+              voicePreflightScriptRetryCount: retryCount,
+              voicePreflightLastFailureKind: failureKind,
+            },
             error_json: {
               ...errorJsonPayload,
               playbookId: playbook?.id || null,
@@ -5637,15 +5801,20 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({
           success: false,
-          jobId: failedJob.id,
+          jobId: failedJob!.id,
           currentStep: step,
-          status: failedJob.status,
+          status: failedJob!.status,
           storyId: result.storyId,
+          failureKind,
           narratorIssues: result.narratorIssues,
           preflightReport: result.report,
           blockingReasons,
+          unlabeledLineCount,
+          unlabeledExamples,
           errorKind: errorJsonPayload.kind,
           playbookId: playbook?.id || null,
+          retryCount,
+          maxRetries: failureKind === 'script_unlabeled_lines' ? MAX_RETRIES : undefined,
           logs,
         }, { status: 422 })
       }

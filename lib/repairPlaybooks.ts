@@ -341,6 +341,30 @@ export const REPAIR_PLAYBOOKS: RepairPlaybook[] = [
     linkedIncident: 'ATL-PIPE-008',
   },
 
+  // ── ATL-PIPE-009: voice_preflight structural script failure ─────────────
+
+  {
+    id: 'pb-016-script-unlabeled-lines',
+    failureKind: 'script_unlabeled_lines',
+    title: 'Script body contains unlabeled prose lines (missing NARRATOR: or character label)',
+    autonomous: true,
+    marcRequired: false,
+    priority: 'high',
+    steps: [
+      {
+        kind: 'script_fix',
+        description: 'The generated script contains prose lines in the story body that do not begin with a speaker label (NARRATOR: or CHARACTER NAME:). This violates HAL-SCRIPT-002. It is a deterministic structure failure, not an editorial judgement.',
+      },
+      {
+        kind: 're_queue',
+        description: 'Job is autonomously re-queued to generate_script (retry up to 2 times). story.script, story.script_json are cleared. The next generate_script call will include HAL-SCRIPT-002 rule: every prose line must begin with NARRATOR: or a character label.',
+      },
+    ],
+    prevention: 'HAL-SCRIPT-002 is now enforced explicitly in buildStandaloneScriptPrompt: every narration/dialogue line after [START AUDIO DRAMA SCRIPT] must start with NARRATOR: or CHARACTER NAME:. No unlabeled continuation paragraphs allowed.',
+    verificationCheck: 'findUnlabeledStoryBodyLines() returns empty array for the generated script.',
+    linkedIncident: 'ATL-PIPE-009',
+  },
+
   // ── ATL-PIPE-008: validate_script failure playbooks ─────────────────────
 
   {
