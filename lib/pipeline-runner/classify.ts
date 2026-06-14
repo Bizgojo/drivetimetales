@@ -4,6 +4,9 @@
  */
 
 import type { FailureClassification, FailureContext, FailureKind } from './types'
+// StructuredErrorJson is used downstream when building error_json payloads.
+// Importing the type here keeps classify.ts aware of the schema.
+import type { StructuredErrorJson } from './types'
 
 const MAX_LOUDNESS_RETRIES_PER_SEGMENT = 3
 const MAX_TRANSIENT_RETRIES_PER_KEY = 1
@@ -155,12 +158,34 @@ export function classifyFailure(
 
   if (step === 'voice_preflight') {
     // Configuration/data issue — narrator not in table, voice ID missing, etc.
+    // Distinguish between narrator_mismatch (fixable from DB) and missing entry (needs Hal).
+    const hasDbFallback = /db narrator_voice_name|narrator_voice_name is set|use db value/i.test(text)
     return {
       kind: 'unknown_qc',
       retryable: false,
-      needsMarc: false,
-      reason: 'Voice preflight failed — narrator or voice configuration missing.',
-      recommendedAction: 'Check narrator_voices table and story narrator_voice_name. Atlas can resolve.',
+      needsMarc: !hasDbFallback,
+      reason: hasDbFallback
+        ? 'Voice preflight failed — NARRATOR header does not match narrator_voice_name. Atlas can fix from DB.'
+        : 'Voice preflight failed — narrator missing from narrator_voices table or no DB fallback available.',
+      recommendedAction: hasDbFallback
+        ? 'Atlas: update script NARRATOR header to match DB narrator_voice_name, then re-queue at voice_preflight.'
+        : 'Check narrator_voices table and story narrator_voice_name. Hal must fix the script or Atlas must add the narrator.',
+      context,
+    }
+  }
+
+  // Transcript "?" — Whisper confused, not a normalization case
+  // INC-005: transcript returning exactly "?" must be FAILED_NEEDS_MARC immediately.
+  if (
+    /generate_voices|generate_belle_assets/.test(step) &&
+    /detected\s*"?\?"?\s*$|transcript.*"\?"|\? vs |expected.*detected "\?"/.test(text)
+  ) {
+    return {
+      kind: 'semantic_uncertainty',
+      retryable: false,
+      needsMarc: true,
+      reason: 'Transcript QC returned "?" — Whisper was confused by the audio. Not a normalization case.',
+      recommendedAction: 'Marc must decide: (a) accept the segment, (b) rewrite the script line, or (c) confirm non-semantic and skip QC for this segment.',
       context,
     }
   }

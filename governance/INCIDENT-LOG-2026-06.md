@@ -161,6 +161,135 @@ See:
 
 ---
 
-**Last updated:** 2026-06-13T04:09Z  
+---
+
+## System Implementation: Production Learning & Pipeline Truth
+
+**Date:** 2026-06-13T14:00Z  
+**Status:** DEPLOYED  
+**Owner:** Atlas  
+**Scope:** Closed-loop learning system to prevent recurring failures
+
+### What Was Built
+
+**Core Modules:**
+
+1. **Story Excellence Ledger** (`lib/storyExcellenceLedger.ts`)
+   - Records creative lessons from Marc's story rejections
+   - Every rejection must produce a durable lesson (INC-011 prevention)
+   - Hal reads lessons before script generation (HAL_LEARNING_LOOP.md phase 1)
+   - DB: `story_excellence_lessons` table + migration
+
+2. **Pipeline Truth Layer** (`lib/pipelineTruth.ts`)
+   - Classifies TRUE job state from evidence (lock age, step, error_json)
+   - Prevents zombie stalls from going undetected (INC-003)
+   - Returns: ACTIVE | ZOMBIE | STALLED | PHANTOM | FAILED_NEEDS_MARC | FAILED_AUTONOMOUS | COMPLETE
+   - Used by Command Center + repair playbooks
+
+3. **Autonomous Repair Playbooks** (`lib/repairPlaybooks.ts`)
+   - Maps failure kinds → structured repair steps
+   - 11 playbooks covering INC-001 through INC-011
+   - Each playbook: steps, prevention fix, verification check
+   - Used by runner + Orion to decide "auto-fix or escalate"
+
+4. **Shared Mission Context** (`lib/missionContext.ts`)
+   - Single source of truth for "what are we doing now"
+   - Fixes INC-011 (Hal not knowing active mission)
+   - DB: `active_missions` table + seed data
+   - Agents load mission at session start
+
+5. **Artifact Validity Gate** (`lib/artifactGate.ts`)
+   - Centralizes all artifact size/LUFS/URL checks
+   - Hard-fail: ≤5KB; Warn: 5KB–20KB; Valid: >20KB
+   - Prevents segment_0066 stale loop (INC-006)
+   - Used by generate_voices + render_final_mix
+
+6. **Structured Error JSON** (pipeline-runner/types.ts)
+   - Mandatory error_json schema on all failure paths
+   - Fields: kind, message, step, marc_required, (optional) storyId, segmentNumber, rootCause
+   - Fixes INC-010 (empty_error_json preventing classification)
+   - buildStructuredError() helper ensures compliance
+
+**Database Migrations:**
+
+- `20260613_create_story_excellence_lessons.sql` — excellence ledger table
+- `20260613_create_active_missions.sql` — mission briefing table + seed
+- `20260613_backfill_learning_incidents.sql` — 11 learning events from INC-001 through INC-011
+
+**Governance Docs:**
+
+- `Bible/HAL_LEARNING_LOOP.md` — Hal's before/during/after learning cycle
+- `Bible/SHARED_MISSION_CONTEXT.md` — Mission briefing system for all agents
+- `lib/repairPlaybooks.ts` — inline documentation for each playbook
+
+**Regression Tests:**
+
+- `__tests__/learning-system-regression.test.js` — 25+ tests covering all 11 incidents
+  - INC-001: SILENCE_BUFFER word-count threshold
+  - INC-002: Narrator mismatch narrator_voices check
+  - INC-006: segment_0066 stale loop 5KB boundary
+  - INC-009: RFR gate required fields
+  - Transcript "?" special case
+
+**Enhanced Modules:**
+
+- `lib/pipeline-runner/classify.ts` — Added narrator_mismatch + transcript "?" detection
+- `lib/pipeline-runner/types.ts` — Added StructuredErrorJson type + helper
+- `lib/preflight/validator.ts` — Added narratorVoiceCheck (Check 8)
+- `lib/preflight/knownFailures.ts` — Added 4 new failures (bridges, leland, segment_0066)
+
+### Validation
+
+✅ **Code paths:** 6 new modules, 3 enhanced modules, 11 repair playbooks  
+✅ **Database:** 3 migrations, 11 backfilled learning events, 1 seed active mission  
+✅ **Tests:** 25+ regression tests covering all known failures  
+✅ **Docs:** 2 governance bibles, inline code comments, inline playbook specs  
+
+### Prevention Rules Implemented
+
+| INC | Failure Type | Prevention | Implementation |
+|-----|--------------|-----------|-----------------|
+| INC-001 | SILENCE_BUFFER | Word-count-aware 5KB/20KB threshold | generate-voices/route.ts |
+| INC-002 | Narrator mismatch | Script NARRATOR must match narrator_voices | voice_preflight classifier + preflight validator |
+| INC-003 | Zombie stale runner | Lock age check → Pipeline Truth Layer | pipelineTruth.ts |
+| INC-004 | Storage HTML 5xx | Retry list() 3x + backoff | generate-voices/route.ts |
+| INC-005 | Transcript "?" | Treat as FAILED_NEEDS_MARC, not normalizable | classify.ts |
+| INC-006 | segment_0066 loop | Lowered STALE_SIZE_THRESHOLD to 5KB | generate-voices/route.ts |
+| INC-007 | Belle intro split | Standalone vs. paired logic for [LISTENER_NAME] placement | generate-voices/route.ts |
+| INC-008 | Null LUFS stale | Artifact Validity Gate + inventory check | artifactGate.ts |
+| INC-009 | Invalid RFR | Evidence-based gate checking 13 required fields | story-gates.ts |
+| INC-010 | Empty error_json | Mandatory StructuredErrorJson schema + lint check | pipeline-runner/types.ts |
+| INC-011 | Mission context | Load active mission at session start | missionContext.ts + HAL_LEARNING_LOOP.md |
+
+### How It Works (End-to-End Example)
+
+**Scenario:** segment_0066 ("I'm not scared. I'm done being patient.", 7 words, ~15KB)
+
+**Old behavior (INC-006):**
+1. generate-voices retryMissingOnly checks 20KB threshold
+2. 15KB < 20KB → marked as stale
+3. Segment regenerated
+4. New generate-voices run → same 15KB size
+5. Still < 20KB → regenerated again
+6. Loop continues indefinitely ❌
+
+**New behavior:**
+1. generate-voices imports artifactGate.ts
+2. classifySegmentInventory() called with size=15KB
+3. Artifact gate: 15KB > 5KB hard-fail floor ✓
+4. 15KB ≤ 20KB warn range → still VALID (warn-continue)
+5. Segment treated as valid in inventory
+6. No regeneration triggered
+7. Job advances to next step ✅
+
+**Learning captured:**
+1. repairPlaybooks.ts has pb-006-segment-stale-loop
+2. production_learning_events has backfilled entry (confidence 0.99)
+3. Regression test: INC-006 covers 5KB/15KB/25KB boundaries
+4. Future similar cases prevented by artifact gate
+
+---
+
+**Last updated:** 2026-06-13T15:00Z  
 **Next review:** Weekly heartbeat by Orion  
 **Archive plan:** Once all backlog items resolve, move this to `INCIDENT-LOG-ARCHIVE-2026-06.md`
