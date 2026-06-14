@@ -345,6 +345,84 @@ export const REPAIR_PLAYBOOKS: RepairPlaybook[] = [
     linkedIncident: 'ATL-PIPE-008',
   },
 
+  // ── ATL-PIPE-012: ready_for_review gate failures ─────────────────────────
+
+  {
+    id: 'pb-rfr-outro-narrator-missing',
+    failureKind: 'rfr_outro_narrator_missing',
+    title: 'Standalone outro is missing required narrator credit — route to repair_belle_quality',
+    autonomous: true,
+    marcRequired: false,
+    priority: 'medium',
+    steps: [
+      {
+        kind: 'belle_repair',
+        description: 'Set state.belleQualityFailedReport.issues to the contentIssues array and state.isRfrOutroRepair=true. Re-queue job to repair_belle_quality. The repair LLM call receives the narrator name explicitly and must include it verbatim in the repaired outro (e.g. "Narrated by [Narrator Name].").',
+      },
+      {
+        kind: 'verify_deployment',
+        description: 'After repair, job proceeds: generate_belle_assets → validate_belle_assets → validate_belle_quality → ready_for_review. The ready_for_review gate will re-run validateIntroOutroPositionRules and check for narrator name.',
+      },
+    ],
+    prevention: 'BELLE B OUTRO template in buildStandaloneScriptPrompt now includes narrator credit requirement. BELLE_QUALITY_REPAIR_PROMPT now requires narrator name in standalone outro. validateBelleText now checks narrator presence when narrator is provided.',
+    verificationCheck: 'After repair_belle_quality, job returns to generate_belle_assets, then validate_belle_assets, validate_belle_quality, and ready_for_review. The narrator name must appear in the repaired outro.',
+    linkedIncident: 'ATL-PIPE-012',
+  },
+
+  {
+    id: 'pb-rfr-visibility-failed',
+    failureKind: 'rfr_visibility_failed',
+    title: 'Story is_hidden=true or published_on is set — cannot promote to ready_for_review',
+    autonomous: false,
+    marcRequired: true,
+    priority: 'medium',
+    steps: [
+      {
+        kind: 'db_update',
+        description: 'Atlas: verify story visibility settings in Supabase. If is_hidden should be false, clear it. If published_on is set prematurely, clear it. Then reset the job to ready_for_review.',
+      },
+    ],
+    prevention: 'Visibility gate should only reject stories intentionally hidden. If is_hidden is set during production, it should be cleared before RFR.',
+    verificationCheck: 'DB update successful: is_hidden=false and published_on is null. Job can be re-queued to ready_for_review.',
+    linkedIncident: 'ATL-PIPE-012',
+  },
+
+  {
+    id: 'pb-rfr-audio-missing',
+    failureKind: 'rfr_audio_missing',
+    title: 'final_mix.mp3 not found in storage at ready_for_review',
+    autonomous: false,
+    marcRequired: true,
+    priority: 'high',
+    steps: [
+      {
+        kind: 'check_storage',
+        description: 'The render_final_mix step completed with success but the audio file is missing from storage. Re-run render_final_mix from safe_resume_point=render_final_mix.',
+      },
+    ],
+    prevention: 'The HAL-PIPE-002 audio gate already catches this at ready_for_review. Additional check: render_final_mix should verify upload success before marking complete.',
+    verificationCheck: 'final_mix.mp3 exists in storage at asc3/{storyId}/final_mix.mp3. Job can proceed through ready_for_review.',
+    linkedIncident: 'ATL-PIPE-012',
+  },
+
+  {
+    id: 'pb-rfr-gate-unknown',
+    failureKind: 'rfr_gate_unknown',
+    title: 'Unclassified ready_for_review gate failure — requires Atlas review',
+    autonomous: false,
+    marcRequired: true,
+    priority: 'medium',
+    steps: [
+      {
+        kind: 'notify_marc',
+        description: 'Atlas: read the full error_json.contentIssues array. Classify the failure and create a new playbook entry. Determine the appropriate resume point and add an autonomous repair path if possible.',
+      },
+    ],
+    prevention: 'All RFR gate failure modes should have a classified playbook. When this fires, add a new ATL-PIPE-012 sub-entry for the specific issue.',
+    verificationCheck: 'New playbook created, classified failure, determined safe resume point.',
+    linkedIncident: 'ATL-PIPE-012',
+  },
+
   // ── ATL-PIPE-011: transcript numeric/currency equivalence ────────────────
 
   {

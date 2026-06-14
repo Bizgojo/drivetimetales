@@ -962,7 +962,7 @@ function validateNarratorAssignmentSync(
   return { passed: true, narratorIssues: [], resolvedVoiceId, resolvedVoiceName: matchedVoice.name }
 }
 
-function validateBelleText(kind: 'intro' | 'outro', text: string, options: { standalone: boolean; title?: string | null; author?: string | null }) {
+function validateBelleText(kind: 'intro' | 'outro', text: string, options: { standalone: boolean; title?: string | null; author?: string | null; narrator?: string | null }) {
   const issues: string[] = []
   const lower = text.toLowerCase()
   const wordCount = countWords(text)
@@ -1002,6 +1002,13 @@ function validateBelleText(kind: 'intro' | 'outro', text: string, options: { sta
     }
     if (options.standalone && !/\bendless tales original\b/i.test(text)) {
       issues.push('standalone outro must include the phrase "Endless Tales original".')
+    }
+    // ATL-PIPE-012: narrator credit is required in standalone outro.
+    // validateIntroOutroPositionRules enforces this at ready_for_review.
+    // Mirror the check here so repair + validate_belle_assets steps also catch it early.
+    const narrator = String(options.narrator || '').trim()
+    if (options.standalone && narrator && !belleTextIncludes(text, narrator)) {
+      issues.push(`standalone outro must include the narrator name.`)
     }
   }
 
@@ -1152,12 +1159,13 @@ MANDATORY FIELD REQUIREMENTS — you will be rejected if these are missing:
 3. CONCRETE HOOK: Standalone intro MUST include a concrete narrative hook — a specific conflict, crime, mystery mechanism, secret, danger, cover-up, wrongdoing, or story object. "Something waiting" or "a story about trust" is NOT a hook. "Paper trail breaks, someone broke it on purpose" IS a hook. "A forged deed" IS a hook. Name the specific thing that creates danger or mystery.
 4. NO SYNOPSIS: NEVER write a third-person synopsis, story description, or plot summary (e.g., "In this story...", "follows a driver...", "a man discovers..."). The listener already chose this story — do not describe it to them.
 5. DIRECT ADDRESS: Address the listener directly using [LISTENER_NAME] and "you". Speak as a companion, not a narrator.
+6. NARRATOR CREDIT (ATL-PIPE-012): Standalone outro MUST include the narrator voice talent name if provided. The narrator name is given in the NARRATOR field below. The exact phrase can vary ("Narrated by [NARRATOR]", "Voices by [NARRATOR]", or incorporated into the outro sentence), but the narrator name MUST appear verbatim in the outro.
 
 Additional content rules:
 - Standalone intro must lightly ground the listener in the story world, then add a specific emotional or sensory hook that creates anticipation.
 - Outro should emotionally land and feel companion-like.
 - Standalone outro must feel complete and must not tease a next episode or deferred resolution.
-- Standalone outro must include the story title, author name, and the exact phrase "Endless Tales original".
+- Standalone outro must include the story title, author name, narrator name (if provided), and the exact phrase "Endless Tales original".
 - Standalone outro must emotionally close around the actual resolution, choice, reveal, or final consequence of the story.
 - Outro may include brief credits only if the emotional landing remains the main point.
 - Keep outro under 42 words.
@@ -1745,7 +1753,7 @@ CHARACTER NAME: ...
 
 BELLE B OUTRO
 ---
-BELLE B: [one or two short sentences, reflective, no time-of-day reference, credits the author and says "an Endless Tales original"]
+BELLE B: [one or two short sentences, reflective, no time-of-day reference, credits both the author AND the narrator voice talent by their exact name (e.g. "Written by [AUTHOR], narrated by [NARRATOR], an Endless Tales original."), says "an Endless Tales original"]
 
 Production-format hard rules:
 
@@ -2496,11 +2504,13 @@ async function validateStandaloneBelleAssets(job: ProductionJob) {
   const introText = extractBelleSection(story.script, 'intro')
   const outroText = extractBelleSection(story.script, 'outro')
   const standalone = !story.series_id && Number(story.series_total_episodes || 1) <= 1 && String(story.story_type || '').toLowerCase() !== 'series'
+  // ATL-PIPE-012: narrator credit check now included in validateBelleText
+  const narratorFromScript = extractHeader(String(story.script || ''), 'NARRATOR').trim() || null
   const issues = [
     ...(introAssets.length > 0 ? [] : ['intro asset is missing.']),
     ...(outroAssets.length > 0 ? [] : ['outro asset is missing.']),
-    ...validateBelleText('intro', introText, { standalone, title: story.title, author: story.author }),
-    ...validateBelleText('outro', outroText, { standalone, title: story.title, author: story.author }),
+    ...validateBelleText('intro', introText, { standalone, title: story.title, author: story.author, narrator: narratorFromScript }),
+    ...validateBelleText('outro', outroText, { standalone, title: story.title, author: story.author, narrator: narratorFromScript }),
   ]
   const success = issues.length === 0
   const report = {
@@ -2609,9 +2619,11 @@ ${scriptTail(story.script, 2200)}`,
   const outroScore = typeof parsed.outroScore === 'number' ? parsed.outroScore : Number(parsed.outroScore || 0)
   const modelIssues = Array.isArray(parsed.issues) ? parsed.issues.map(String).filter(Boolean) : []
   const standalone = !story.series_id && Number(story.series_total_episodes || 1) <= 1 && String(story.story_type || '').toLowerCase() !== 'series'
+  // ATL-PIPE-012: narrator credit check included in validateBelleText
+  const narratorForQuality = extractHeader(String(story.script || ''), 'NARRATOR').trim() || null
   const deterministicIssues = [
-    ...validateBelleText('intro', introText, { standalone, title: story.title, author: story.author }),
-    ...validateBelleText('outro', outroText, { standalone, title: story.title, author: story.author }),
+    ...validateBelleText('intro', introText, { standalone, title: story.title, author: story.author, narrator: narratorForQuality }),
+    ...validateBelleText('outro', outroText, { standalone, title: story.title, author: story.author, narrator: narratorForQuality }),
   ]
   const issues = Array.from(new Set([...deterministicIssues, ...modelIssues]))
   const suggestedFixes = Array.isArray(parsed.suggestedFixes) ? parsed.suggestedFixes.map(String).filter(Boolean) : []
@@ -2672,19 +2684,25 @@ async function repairStandaloneBelleQuality(job: ProductionJob, model: string) {
   // Asset-validation failures (validate_belle_assets → repair) are a separate repair cycle.
   // They must NOT be blocked by a stale attempt counter from a prior quality-repair loop.
   const isAssetRepair = state.belleAssetValidationFailed === true
+  // ATL-PIPE-012: RFR outro narrator repair uses a separate retry counter and must not be
+  // blocked by stale belleQualityRepair.attempts from prior quality-repair loops.
+  const isRfrOutroRepair = state.isRfrOutroRepair === true
   const attempts = Number(previousRepair.attempts || 0)
-  if (!isAssetRepair) {
+  if (!isAssetRepair && !isRfrOutroRepair) {
     if (attempts >= 2) throw new Error('Belle quality repair attempt limit reached')
   }
 
   // Prefer the most relevant failure report for the current repair type.
   // Asset repairs use belleAssetFailedReport (current, has actual forbidden-word issue).
+  // RFR outro repairs use rfrOutroNarratorRepair.issue (narrator-missing message from RFR gate).
   // Quality repairs use the quality validator report.
-  const failedReport = isAssetRepair
-    ? (state.belleAssetFailedReport || state.belleQualityValidation || state.belleQualityFailedReport)
-    : (state.belleQualityValidation?.status === 'failed'
-        ? state.belleQualityValidation
-        : state.belleQualityFailedReport || state.belleAssetFailedReport)
+  const failedReport = isRfrOutroRepair
+    ? (state.belleQualityFailedReport || { issues: [state.rfrOutroNarratorRepair?.issue || 'standalone outro must name the narrator'] })
+    : isAssetRepair
+      ? (state.belleAssetFailedReport || state.belleQualityValidation || state.belleQualityFailedReport)
+      : (state.belleQualityValidation?.status === 'failed'
+          ? state.belleQualityValidation
+          : state.belleQualityFailedReport || state.belleAssetFailedReport)
   if (!failedReport) throw new Error('Belle quality/asset repair requires a failed validation report')
 
   const { data: story, error } = await supabase
@@ -2700,14 +2718,22 @@ async function repairStandaloneBelleQuality(job: ProductionJob, model: string) {
   const currentOutro = extractBelleSection(story.script, 'outro')
   if (!currentIntro || !currentOutro) throw new Error('Belle intro/outro text missing')
 
+  // ATL-PIPE-012: extract narrator name from script header for narrator-credit repair
+  const narratorForRepair = extractHeader(String(story.script || ''), 'NARRATOR').trim() || null
+
   const issueText = Array.isArray(failedReport.issues) ? failedReport.issues.join('\n') : ''
   const hasScores = typeof failedReport.introScore === 'number' || typeof failedReport.outroScore === 'number'
-  const repairIntro = hasScores
-    ? Number(failedReport.introScore || 0) < 7 || /\bintro\b/i.test(issueText)
-    : /\bintro\b/i.test(issueText) || !failedReport.issues || failedReport.issues.length === 0 || /\bintro/.test(String(failedReport.introText || ''))
-  const repairOutro = hasScores
-    ? Number(failedReport.outroScore || 0) < 7 || /\boutro\b/i.test(issueText)
-    : /\boutro\b/i.test(issueText) || !failedReport.issues || failedReport.issues.length === 0 || /\boutro/.test(String(failedReport.outroText || ''))
+  // ATL-PIPE-012: RFR outro narrator repair always targets the outro only
+  const repairIntro = isRfrOutroRepair
+    ? false
+    : hasScores
+      ? Number(failedReport.introScore || 0) < 7 || /\bintro\b/i.test(issueText)
+      : /\bintro\b/i.test(issueText) || !failedReport.issues || failedReport.issues.length === 0 || /\bintro/.test(String(failedReport.introText || ''))
+  const repairOutro = isRfrOutroRepair
+    ? true   // always repair outro when routing from RFR narrator-missing
+    : hasScores
+      ? Number(failedReport.outroScore || 0) < 7 || /\boutro\b/i.test(issueText)
+      : /\boutro\b/i.test(issueText) || !failedReport.issues || failedReport.issues.length === 0 || /\boutro/.test(String(failedReport.outroText || ''))
   const shouldRepairIntro = repairIntro || (!repairIntro && !repairOutro)
   const shouldRepairOutro = repairOutro || (!repairIntro && !repairOutro)
   // [LISTENER_NAME] is always required in intros — do not derive from the (possibly broken) current intro
@@ -2733,6 +2759,7 @@ REPAIR REQUEST:
 Repair intro: ${shouldRepairIntro ? 'yes' : 'no'}
 Repair outro: ${shouldRepairOutro ? 'yes' : 'no'}
 Intro must include [LISTENER_NAME]: yes (always required)
+${narratorForRepair ? `Outro must include narrator name: ${narratorForRepair} (required — e.g. "Narrated by ${narratorForRepair}.")` : ''}
 
 DECLARED METADATA:
 ${declaredStoryType}
@@ -2743,7 +2770,10 @@ ${story.title || 'Untitled'}
 GENRE:
 ${story.genre || 'Unknown'}
 
-CURRENT BELLE INTRO:
+${narratorForRepair ? `NARRATOR (voice talent — must appear verbatim in outro credit):
+${narratorForRepair}
+
+` : ''}CURRENT BELLE INTRO:
 ${currentIntro}
 
 CURRENT BELLE OUTRO:
@@ -2774,9 +2804,10 @@ ${scriptTail(story.script, 2200)}`,
   if (shouldRepairIntro && !repairedIntro) throw new Error('Belle quality repair did not return introText')
   if (shouldRepairOutro && !repairedOutro) throw new Error('Belle quality repair did not return outroText')
 
+  // ATL-PIPE-012: pass narratorForRepair so the post-repair check also validates narrator credit
   const deterministicIssues = [
-    ...(shouldRepairIntro ? validateBelleText('intro', repairedIntro, { standalone: true, title: story.title, author: story.author }) : []),
-    ...(shouldRepairOutro ? validateBelleText('outro', repairedOutro, { standalone: true, title: story.title, author: story.author }) : []),
+    ...(shouldRepairIntro ? validateBelleText('intro', repairedIntro, { standalone: true, title: story.title, author: story.author, narrator: narratorForRepair }) : []),
+    ...(shouldRepairOutro ? validateBelleText('outro', repairedOutro, { standalone: true, title: story.title, author: story.author, narrator: narratorForRepair }) : []),
   ]
   if (deterministicIssues.length > 0) {
     throw new Error(`Repaired Belle text failed deterministic checks: ${deterministicIssues.join('; ')}`)
@@ -3475,6 +3506,29 @@ function missingReadyForReviewFields(story: any) {
   if (!String(story?.cover_url || '').trim()) missing.push('cover_url')
   if (!String(story?.prose_text || '').trim()) missing.push('prose_text')
   return missing
+}
+
+// ── ATL-PIPE-012: classifyRfrIssues helper ───────────────────────────────
+// Categorises ready_for_review gate failures to enable targeted repair paths.
+function classifyRfrIssues(contentIssues: string[]): { kind: StructuredErrorJsonKind; narratorName?: string } {
+  if (!Array.isArray(contentIssues) || contentIssues.length === 0) {
+    return { kind: 'rfr_gate_unknown' }
+  }
+  
+  // Check for narrator missing issue (e.g. 'standalone outro must name the narrator "Nora Ashby"')
+  const narratorMatch = contentIssues
+    .find(issue => /standalone outro must name the narrator/.test(issue))
+    ?.match(/the narrator "([^"]+)"/)
+  if (narratorMatch?.[1]) {
+    return { kind: 'rfr_outro_narrator_missing', narratorName: narratorMatch[1] }
+  }
+
+  // Other issue types
+  if (contentIssues.some(issue => /audio.*missing|final_mix\.mp3/i.test(issue))) {
+    return { kind: 'rfr_audio_missing' }
+  }
+
+  return { kind: 'rfr_gate_unknown' }
 }
 
 async function verifyStandaloneReadyForReview(job: ProductionJob) {
@@ -7205,6 +7259,7 @@ export async function POST(req: NextRequest) {
 
     if (step === NEXT_STEP_AFTER_STANDALONE_PACKAGE) {
       const input = lockedJob.input_json && typeof lockedJob.input_json === 'object' ? lockedJob.input_json : {}
+      const MAX_RFR_RETRIES = 2
       const queueItem = input.queueItem || {}
       const type = storyTypeFor(lockedJob, queueItem)
 
@@ -7222,6 +7277,92 @@ export async function POST(req: NextRequest) {
       })
 
       if (!result.success) {
+        // ATL-PIPE-012: classify RFR issues and attempt autonomous repair for narrator-missing
+        const issueClassification = classifyRfrIssues(result.contentIssues || [])
+        const rfrRepairAttempts = Number((lockedJob.state_json as any)?.rfrOutroNarratorRepair?.attempts ?? 0)
+        const canRetry = issueClassification.kind === 'rfr_outro_narrator_missing' && rfrRepairAttempts < MAX_RFR_RETRIES
+
+        if (canRetry) {
+          // Route to repair_belle_quality with narrator context
+          const rfrRepairState = {
+            ...(lockedJob.state_json || {}),
+            storyId: result.storyId,
+            isRfrOutroRepair: true,
+            rfrOutroNarratorRepair: {
+              attempts: rfrRepairAttempts + 1,
+              narratorName: issueClassification.narratorName,
+              issue: result.contentIssues?.[0] || `standalone outro must name the narrator "${issueClassification.narratorName}"`,
+              failedAt: nowIso(),
+            },
+            belleQualityFailedReport: {
+              issues: result.contentIssues || [],
+            },
+          }
+
+          const logs2 = appendLog(lockedJob, `Routing to autonomous repair: ${issueClassification.kind} (attempt ${rfrRepairAttempts + 1}/${MAX_RFR_RETRIES})`, {
+            storyId: result.storyId,
+            failureKind: issueClassification.kind,
+            narratorName: issueClassification.narratorName,
+            issues: result.contentIssues,
+          })
+
+          const { data: routedJob, error: updateError } = await supabase
+            .from('production_jobs')
+            .update({
+              story_id: result.storyId,
+              status: 'running',
+              current_step: NEXT_STEP_AFTER_STANDALONE_BELLE_REPAIR,
+              state_json: rfrRepairState,
+              error_json: buildStructuredError(issueClassification.kind, `RFR gate: ${result.contentIssues?.[0] || 'unknown issue'}`, step, {
+                marc_required: false,
+                detail: { retry_count: rfrRepairAttempts + 1, max_retries: MAX_RFR_RETRIES, action: 'autonomous_repair', safe_resume_point: 'repair_belle_quality' },
+              }),
+              logs: logs2,
+              locked_at: null,
+              locked_by: null,
+            })
+            .eq('id', lockedJob.id)
+            .select('*')
+            .single()
+
+          if (updateError) throw new Error(`Failed to route ready-for-review failure to repair: ${updateError.message}`)
+
+          // Record learning incident for RFR narrator repair
+          await recordProductionLearningEvent(supabase, {
+            job_id: lockedJob.id,
+            story_id: result.storyId,
+            series_id: lockedJob.series_id,
+            series_title: (lockedJob.state_json as any)?.seriesTitle || null,
+            episode_title: (lockedJob.state_json as any)?.episodeTitle || null,
+            stage: 'ready_for_review',
+            failure_type: issueClassification.kind,
+            root_cause: `Standalone outro missing narrator credit: "${issueClassification.narratorName}"`,
+            fix_type: 'autonomous_repair',
+            fix_applied: `Routing to repair_belle_quality (attempt ${rfrRepairAttempts + 1}/${MAX_RFR_RETRIES})`,
+            prevention_rule: 'BELLE_QUALITY_REPAIR_PROMPT updated to require narrator credit; buildStandaloneScriptPrompt template updated',
+            reusable: true,
+            confidence: 0.95,
+          }).catch(() => {})
+
+          return NextResponse.json({
+            success: false,
+            jobId: routedJob.id,
+            currentStep: step,
+            nextStep: routedJob.current_step,
+            status: routedJob.status,
+            storyId: result.storyId,
+            issueClassification,
+            routedToRepair: true,
+            logs: logs2,
+          }, { status: 422 })
+        }
+
+        // Not retryable — fail with structured error
+        const failureKind = issueClassification.kind === 'rfr_outro_narrator_missing'
+          ? 'rfr_outro_narrator_missing'
+          : issueClassification.kind
+        const failureMessage = result.contentIssues?.[0] || `RFR gate failed: ${issueClassification.kind}`
+
         const { data: failedJob, error: updateError } = await supabase
           .from('production_jobs')
           .update({
@@ -7229,13 +7370,16 @@ export async function POST(req: NextRequest) {
             status: 'failed',
             current_step: NEXT_STEP_AFTER_STANDALONE_PACKAGE,
             state_json: result.state,
-            error_json: {
-              step,
-              storyId: result.storyId,
-              missingFields: result.missingFields,
-              contentIssues: result.contentIssues,
-              at: nowIso(),
-            },
+            error_json: buildStructuredError(failureKind, failureMessage, step, {
+              marc_required: true,
+              detail: {
+                playbookId: failureKind === 'rfr_outro_narrator_missing' ? 'pb-rfr-outro-narrator-missing' : `pb-${failureKind}`,
+                missingFields: result.missingFields,
+                contentIssues: result.contentIssues,
+                retry_exhausted: rfrRepairAttempts >= MAX_RFR_RETRIES,
+                max_retries: MAX_RFR_RETRIES,
+              },
+            }),
             logs,
             locked_at: null,
             locked_by: null,
@@ -7260,6 +7404,8 @@ export async function POST(req: NextRequest) {
           status: failedJob.status,
           storyId: result.storyId,
           missingFields: result.missingFields,
+          issueClassification,
+          retryExhausted: rfrRepairAttempts >= MAX_RFR_RETRIES,
           logs,
         }, { status: 422 })
       }

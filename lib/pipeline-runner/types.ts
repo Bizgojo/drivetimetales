@@ -104,6 +104,11 @@ export type StructuredErrorJsonKind =
   | 'script_validator_unknown'           // AI validator: unclassified failure (not auto-retryable, marc_required)
   // ATL-PIPE-009: voice_preflight script structural failure
   | 'script_unlabeled_lines'             // story body contains prose not starting with NARRATOR:/CHARACTER: (retryable)
+  // ATL-PIPE-012: ready_for_review gate failures
+  | 'rfr_outro_narrator_missing'         // Standalone/finale outro is missing required narrator credit
+  | 'rfr_visibility_failed'             // Story is_hidden=true or published_on is set — visibility gate failed
+  | 'rfr_audio_missing'                 // final_mix.mp3 not found in storage — audio gate failed
+  | 'rfr_gate_unknown'                  // Unclassified ready_for_review gate failure
   // ATL-PIPE-011: transcript QC numeric/currency equivalence
   | 'transcript_numeric_equivalence'     // Whisper returned digit/currency form of a spoken number — accepted after normalization
   // ATL-PIPE-010: Belle intro/outro validation and repair failure kinds
