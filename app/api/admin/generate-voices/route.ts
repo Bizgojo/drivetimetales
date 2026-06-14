@@ -8,6 +8,7 @@ import os from 'os'
 import { createHash } from 'crypto'
 import { CANONICAL_BELLE_B_VOICE_ID, RESERVED_BELLE_B_VOICE_IDS, isBelleBVoiceId } from '@/lib/voiceConstants'
 import { buildProductionLearningFeedback } from '@/lib/productionLearning'
+import { classifySegmentInventory } from '@/lib/artifactGate'
 
 export const runtime = 'nodejs'
 export const maxDuration = 800
@@ -2424,6 +2425,19 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
             `expected "${transcriptFailure.expectedText}"`
           )
         }
+        // INC-005: if Whisper returned exactly "?" (or empty), this is not a normalizable
+        // mismatch — Whisper was confused by the audio. Classify immediately as
+        // transcript_question_mark to prevent silent retry loops.
+        const detectedText = String(transcriptFailure.detectedText || '').trim()
+        if (detectedText === '?' || detectedText === '??' || detectedText === '') {
+          throw new Error(
+            `TRANSCRIPT_AMBIGUOUS: Segment ${fileName} — Whisper returned "${detectedText || '(empty)'}". ` +
+            `This is not a QC normalisation case. Whisper was confused by the audio. ` +
+            `expected "${transcriptFailure.expectedText}". ` +
+            `Inspect the audio artifact: check byte size, LUFS, and duration. ` +
+            `If the artifact is valid, regenerate once. If the problem persists, this segment requires Marc review.`
+          )
+        }
         throw new Error(`Segment transcript QC failed for ${fileName}: expected "${transcriptFailure.expectedText}", detected "${transcriptFailure.detectedText}" (similarity: ${((transcriptFailure.similarity ?? 0) * 100).toFixed(1)}%)`)
       }
       if (best?.metrics.input_tp && best.metrics.input_tp > SPOKEN_TRUE_PEAK) {
@@ -2952,26 +2966,20 @@ export async function POST(req: NextRequest) {
 
       // FIX (AC-1, AC-2): reject stale segments whose stored size is ≤ stale threshold.
       // UPDATED (ATL-PIPE-006): changed from 20KB to 5KB to match run-next hard-fail floor
-      // (commit 1938d645). Short legitimate segments (e.g. 7-word lines) produce ~15KB audio
-      // from ElevenLabs — the old 20KB threshold caused an infinite loop where segment_0066
-      // ("I'm not scared. I'm done being patient.", 15KB) was flagged as stale on every
-      // inventory and regenerated indefinitely, preventing forward progress.
-      // 5KB aligns with the run-next hard-fail floor: truly silent/corrupt files are <5KB.
-      const STALE_SIZE_THRESHOLD = 5 * 1024  // 5KB — match run-next hard-fail floor (ATL-PIPE-006)
+      // ATL-PIPE-006 + ATL-LEARN-001: Use Artifact Validity Gate for segment inventory.
+      // classifySegmentInventory() centralizes the 5KB hard-fail / 20KB warn thresholds
+      // and prevents the segment_0066 stale loop (INC-006) where short valid segments
+      // (~15KB) were falsely treated as stale under the old 20KB flat threshold.
       const allSegmentFiles = (existingAudioFiles || []).filter(file => segmentFilePattern.test(file.name))
-      const existingSegmentNames = new Set(
-        allSegmentFiles
-          .filter(file => {
-            const size = file.metadata?.size ?? 0
-            if (size <= STALE_SIZE_THRESHOLD) {
-              const sizeKb = (size / 1024).toFixed(1)
-              console.log(`Segment ${file.name}: exists but size=${sizeKb}KB ≤ silence threshold — treating as stale/silence, will regenerate`)
-              return false
-            }
-            return true
-          })
-          .map(file => file.name)
-      )
+      const gateResult = classifySegmentInventory(allSegmentFiles, segmentFilePattern)
+      const existingSegmentNames = gateResult.validSegmentNames
+      // Log hard-fails and warns for diagnostics
+      for (const name of gateResult.staleHardFailNames) {
+        console.log(`Segment ${name}: hard-fail (≤5KB) — treating as stale/silence, will regenerate`)
+      }
+      for (const name of gateResult.staleWarnNames) {
+        console.log(`Segment ${name}: warn range (5KB–20KB) — treating as valid short-line segment (INC-006)`)
+      }
       const targetFileName = `segment_${requestedSegmentNumber.toString().padStart(4, '0')}.mp3`
       if (existingSegmentNames.has(targetFileName)) {
         const inventory = buildInventoryReport(existingSegmentNames)
@@ -3036,12 +3044,9 @@ export async function POST(req: NextRequest) {
         console.error('  ❌ Failed to list updated story segments after 3 attempts:', updatedListError)
         return NextResponse.json({ success: false, error: `Failed to list updated story segments: ${updatedListError.message}` }, { status: 500 })
       }
-      // Also filter updated list by size to correctly identify remaining stale segments
-      const updatedSegmentNames = new Set(
-        (updatedAudioFiles || [])
-          .filter(file => segmentFilePattern.test(file.name) && (file.metadata?.size ?? 0) > STALE_SIZE_THRESHOLD)
-          .map(file => file.name)
-      )
+      // ATL-LEARN-001: Use Artifact Validity Gate for updated inventory (same thresholds as above)
+      const updatedGate = classifySegmentInventory(updatedAudioFiles || [], segmentFilePattern)
+      const updatedSegmentNames = updatedGate.validSegmentNames
       const inventory = buildInventoryReport(updatedSegmentNames, failures)
 
       return NextResponse.json({

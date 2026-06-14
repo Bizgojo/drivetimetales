@@ -3,6 +3,10 @@ import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { annotateStories, evaluateApprovalGate } from '@/lib/story-gates'
+import { classifyTrueState } from '@/lib/pipelineTruth'
+import { loadActiveMission } from '@/lib/missionContext'
+import { recommendRepair } from '@/lib/repairPlaybooks'
+import { loadActiveExcellenceLessons } from '@/lib/storyExcellenceLedger'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -941,7 +945,61 @@ export async function GET(_req: NextRequest) {
     const recentFailedJobs = jobs.filter(
       (j) => clean(j.status).toLowerCase() === 'failed' && (j.updated_at || '') > cutoff24h
     )
-    const recentFailures = recentFailedJobs.map((job) => {
+    // ── Learning system integration (ATL-LEARN-001) ──────────────────────────
+    // (old recentFailures map removed — replaced by enrichedRecentFailures below)
+    // Active mission context
+    const activeMission = await loadActiveMission(supabase).catch(() => null)
+
+    // True job state for all recent jobs (ACTIVE/ZOMBIE/STALLED/FAILED_NEEDS_MARC/etc.)
+    // Classifies from evidence (lock age, step, error_json) not just status field
+    const jobTruthStates = jobs.slice(0, 100).map(job => {
+      const truth = classifyTrueState({
+        id: job.id,
+        status: job.status,
+        current_step: job.current_step,
+        updated_at: job.updated_at,
+        error_json: job.error_json,
+      })
+      const errorKind = job.error_json && typeof job.error_json === 'object'
+        ? String((job.error_json as any).kind || '') : ''
+      const playbook = recommendRepair(truth.trueState, errorKind || null)
+      return {
+        jobId: job.id,
+        storyId: job.story_id || null,
+        seriesId: job.series_id || null,
+        trueState: truth.trueState,
+        status: truth.status,
+        currentStep: truth.currentStep,
+        marcRequired: truth.marcRequired,
+        safeResumePoint: truth.safeResumePoint,
+        autonomousRepairKind: truth.autonomousRepairKind,
+        errorKind: errorKind || null,
+        evidenceSummary: truth.evidenceSummary,
+        playbookId: playbook?.id || null,
+        playbookTitle: playbook?.title || null,
+        playbookSteps: playbook?.steps || [],
+        playbookAutonomous: playbook?.autonomous ?? null,
+      }
+    })
+
+    // Open Production Learning incidents (reusable prevention rules)
+    const { data: learningIncidents } = await supabase
+      .from('production_learning_events')
+      .select('id,failure_type,stage,root_cause,fix_applied,prevention_rule,reusable,confidence,created_at')
+      .eq('reusable', true)
+      .order('created_at', { ascending: false })
+      .limit(20)
+
+    // Open Story Excellence lessons (creative rules from Marc rejections)
+    const excellenceLessons = await loadActiveExcellenceLessons(supabase, { limit: 20 })
+
+    // Smoke-test: which jobs count toward HAL-AUTONOMY-SMOKE-TEST
+    const smokeTestStoryIds = new Set(
+      (activeMission?.stories || []).map((s: any) => String(s.storyId || ''))
+    )
+
+    // Enrich recentFailures with truth state + playbook
+    const enrichedRecentFailures = recentFailedJobs.map((job) => {
       const story = job.story_id ? storyByIdForAlerts.get(job.story_id) || null : null
       const storyTitle = story?.title || clean(job.state_json?.storyTitle || '') || 'Unknown'
       const seriesNameForAlert = story?.series_name || null
@@ -950,10 +1008,16 @@ export async function GET(_req: NextRequest) {
       const episodeDisplayForAlert = episodeNum ? `Ep ${episodeNum}` : null
       const updatedMs = timestampMs(job.updated_at)
       const minutesSinceFailed = updatedMs > 0 ? Math.round((Date.now() - updatedMs) / 60000) : 0
-      const errorJson = job.error_json && typeof job.error_json === 'object' ? job.error_json : {}
+      const errorJson = job.error_json && typeof job.error_json === 'object' ? job.error_json as any : {}
       const step = String(errorJson.step || job.current_step || '').trim()
       const errMsg = String(errorJson.message || errorJson.error || errorJson.reason || '').trim()
+      const errorKind = String(errorJson.kind || '').trim() || null
       const errorSummary = [step, errMsg].filter(Boolean).join(' — ') || 'Unknown error'
+      const truth = classifyTrueState({
+        id: job.id, status: job.status, current_step: job.current_step,
+        updated_at: job.updated_at, error_json: job.error_json,
+      })
+      const playbook = recommendRepair(truth.trueState, errorKind)
       return {
         jobId: job.id,
         storyId: job.story_id || null,
@@ -962,14 +1026,39 @@ export async function GET(_req: NextRequest) {
         episodeDisplay: episodeDisplayForAlert,
         minutesSinceFailed,
         errorSummary,
+        // ATL-LEARN-001: truth state enrichment
+        trueState: truth.trueState,
+        marcRequired: truth.marcRequired,
+        safeResumePoint: truth.safeResumePoint,
+        autonomousRepairKind: truth.autonomousRepairKind,
+        errorKind,
+        playbookId: playbook?.id || null,
+        playbookTitle: playbook?.title || null,
+        playbookAutonomous: playbook?.autonomous ?? null,
+        countsTowardSmokeTest: job.story_id ? smokeTestStoryIds.has(job.story_id) : false,
       }
     })
 
     return json({
       success: true,
       fetchedAt: new Date().toISOString(),
-      // ATL-OPS-001 CHANGE 2: red alert banner data
-      recentFailures,
+      // ATL-LEARN-001: learning system state
+      activeMission: activeMission ? {
+        id: activeMission.id,
+        name: activeMission.mission_name,
+        type: activeMission.mission_type,
+        status: activeMission.status,
+        objective: activeMission.objective,
+        successCriteria: activeMission.success_criteria,
+        stories: activeMission.stories,
+        createdBy: activeMission.created_by,
+        notes: activeMission.notes,
+      } : null,
+      jobTruthStates,
+      learningIncidents: learningIncidents || [],
+      excellenceLessons,
+      // ATL-OPS-001 CHANGE 2: red alert banner data (now enriched)
+      recentFailures: enrichedRecentFailures,
       // ATL-CONS-002: four operational sections
       repairItems:      buildRepairItems(repairStories, jobs),
       inProductionItems: buildInProductionItems(jobs, stories, queueById),

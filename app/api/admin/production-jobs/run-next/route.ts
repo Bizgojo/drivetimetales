@@ -5370,6 +5370,31 @@ export async function POST(req: NextRequest) {
       })
 
       if (!result.passed) {
+        // INC-002 prevention: classify narrator mismatch vs other preflight failures.
+        // narratorVoiceCheck is wired — if narratorIssues are present, kind='narrator_mismatch'.
+        const hasNarratorIssue = result.narratorIssues && result.narratorIssues.length > 0
+        const firstBlocker = blockingReasons[0] || 'Voice preflight failed'
+        const errorJsonPayload = buildStructuredError(
+          hasNarratorIssue ? 'narrator_mismatch' : 'unknown_qc',
+          hasNarratorIssue
+            ? `Narrator mismatch: ${result.narratorIssues![0]}. Check script NARRATOR header vs narrator_voices table.`
+            : firstBlocker,
+          step,
+          {
+            storyId: result.storyId,
+            marc_required: false, // narrator mismatch is Atlas-fixable from DB
+            autonomous_repair: hasNarratorIssue,
+            rootCause: hasNarratorIssue
+              ? 'Script NARRATOR header uses character name or name not in narrator_voices table (INC-002)'
+              : undefined,
+            fixRecommendation: hasNarratorIssue
+              ? 'Update script NARRATOR header to match narrator_voice_name from stories table. Then re-queue at voice_preflight.'
+              : undefined,
+            detail: { narratorIssues: result.narratorIssues, blockingReasons },
+          }
+        )
+        const playbook = getPlaybookByKind(hasNarratorIssue ? 'narrator_mismatch' : 'unknown_qc')
+
         const { data: failedJob, error: updateError } = await supabase
           .from('production_jobs')
           .update({
@@ -5378,12 +5403,9 @@ export async function POST(req: NextRequest) {
             current_step: NEXT_STEP_AFTER_STANDALONE_RESOLUTION,
             state_json: result.state,
             error_json: {
-              step,
-              storyId: result.storyId,
-              narratorIssues: result.narratorIssues && result.narratorIssues.length > 0 ? result.narratorIssues : undefined,
+              ...errorJsonPayload,
+              playbookId: playbook?.id || null,
               preflightReport: result.report,
-              blockingReasons,
-              at: nowIso(),
             },
             logs,
             locked_at: null,
@@ -5404,6 +5426,8 @@ export async function POST(req: NextRequest) {
           narratorIssues: result.narratorIssues,
           preflightReport: result.report,
           blockingReasons,
+          errorKind: errorJsonPayload.kind,
+          playbookId: playbook?.id || null,
           logs,
         }, { status: 422 })
       }
@@ -5468,6 +5492,28 @@ export async function POST(req: NextRequest) {
       })
 
       if (result.hardFailure) {
+        // Classify failure kind from the report message for structured error_json (INC-005/INC-010)
+        const failureMsg = String(result.report?.error || result.report?.message || '').trim()
+        const isTranscriptAmbiguous = /TRANSCRIPT_AMBIGUOUS/.test(failureMsg)
+        const isNarratorMismatch = /narrator.*mismatch|NARRATOR.*not found/i.test(failureMsg)
+        const isSilenceBuffer = /SILENCE_BUFFER|silence.*threshold/i.test(failureMsg)
+        const failureKind = isTranscriptAmbiguous ? 'transcript_question_mark'
+          : isNarratorMismatch ? 'narrator_mismatch'
+          : isSilenceBuffer ? 'silence_buffer'
+          : 'unknown_qc'
+        const playbook = getPlaybookByKind(failureKind)
+        const errorJsonPayload = buildStructuredError(
+          failureKind,
+          failureMsg || `Voice generation hard failure at segment ${result.segmentNumber}`,
+          step,
+          {
+            storyId: result.storyId,
+            segmentNumber: result.segmentNumber,
+            marc_required: isTranscriptAmbiguous, // transcript "?" requires Marc; others are Atlas-fixable
+            autonomous_repair: !isTranscriptAmbiguous,
+            detail: { voiceGenerationReport: result.report },
+          }
+        )
         const { data: failedJob, error: updateError } = await supabase
           .from('production_jobs')
           .update({
@@ -5475,13 +5521,7 @@ export async function POST(req: NextRequest) {
             status: 'failed',
             current_step: NEXT_STEP_AFTER_STANDALONE_PREFLIGHT,
             state_json: result.state,
-            error_json: {
-              step,
-              storyId: result.storyId,
-              segmentNumber: result.segmentNumber,
-              voiceGenerationReport: result.report,
-              at: nowIso(),
-            },
+            error_json: { ...errorJsonPayload, playbookId: playbook?.id || null },
             logs,
             locked_at: null,
             locked_by: null,
