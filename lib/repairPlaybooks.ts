@@ -28,6 +28,9 @@ export type RepairStepKind =
   | 'code_fix'            // Code change required (atlas/atlas)
   | 'check_storage'       // Verify storage bucket state
   | 'verify_deployment'   // Confirm Vercel has latest deploy
+  | 'belle_repair'        // Rewrite Belle intro/outro via repair prompt
+  | 'autonomous_repair'   // Pipeline autonomously re-queues without human input
+  | 'manual_fallback'     // Marc must intervene manually after retry exhaustion
 
 export type RepairStep = {
   kind: RepairStepKind
