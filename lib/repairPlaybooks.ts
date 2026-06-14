@@ -15,6 +15,7 @@
 
 export type RepairStepKind =
   | 'db_update'           // Update a DB row
+  | 'clear_script'        // Clear generated script and validation state
   | 'reset_job_step'      // Move job back to a safe step
   | 'reset_lease'         // Clear stale lock
   | 're_queue'            // Reset job to queued
@@ -40,7 +41,7 @@ export type RepairPlaybook = {
   title: string
   autonomous: boolean           // Can execute without Marc?
   marcRequired: boolean         // Requires Marc's decision?
-  priority: 'critical' | 'high' | 'medium' | 'low'
+  priority: 'critical' | 'high' | 'medium' | 'normal' | 'low'
   steps: RepairStep[]
   prevention: string            // What permanent fix prevents this
   verificationCheck: string     // How to know the repair worked
@@ -294,6 +295,140 @@ export const REPAIR_PLAYBOOKS: RepairPlaybook[] = [
     prevention: 'Mandatory structured error_json schema: all failure paths in run-next must produce StructuredErrorJson with kind, message, step, and marc_required populated. Add CI lint check.',
     verificationCheck: 'All failure paths produce non-empty error_json.kind and error_json.message.',
     linkedIncident: 'INC-010',
+  },
+
+  // ── ATL-PIPE-008: validate_script autonomous retry ─────────────────────
+  {
+    id: 'script_validate_retry',
+    failureKind: 'script_blocked_word',
+    title: 'validate_script failed — autonomous retry',
+    autonomous: true,
+    marcRequired: false,
+    priority: 'normal',
+    steps: [
+      {
+        kind: 'clear_script',
+        description: 'Clear generated script and validation state from story row.',
+      },
+      {
+        kind: 're_queue',
+        description: 'Reset job to generate_script. Runner will regenerate on next cycle.',
+      },
+    ],
+    prevention: 'Script generation prompt should avoid blocked DESCRIPTION words. See blocked-words list in validateCardCopy().',
+    verificationCheck: 'Job transitions from validate_script FAIL back to generate_script and produces a passing script.',
+    linkedIncident: 'ATL-PIPE-008',
+  },
+  {
+    id: 'script_validate_retry',
+    failureKind: 'script_editorial_quality',
+    title: 'validate_script failed — autonomous retry',
+    autonomous: true,
+    marcRequired: false,
+    priority: 'normal',
+    steps: [
+      {
+        kind: 'clear_script',
+        description: 'Clear generated script and validation state from story row.',
+      },
+      {
+        kind: 're_queue',
+        description: 'Reset job to generate_script. Runner will regenerate on next cycle.',
+      },
+    ],
+    prevention: 'Script generation prompt should avoid blocked DESCRIPTION words. See blocked-words list in validateCardCopy().',
+    verificationCheck: 'Job transitions from validate_script FAIL back to generate_script and produces a passing script.',
+    linkedIncident: 'ATL-PIPE-008',
+  },
+
+  // ── ATL-PIPE-008: validate_script failure playbooks ─────────────────────
+
+  {
+    id: 'pb-012-script-desc-blocked-word',
+    failureKind: 'script_description_blocked_word',
+    title: 'DESCRIPTION contains forbidden past-tense / blocked word',
+    autonomous: true,
+    marcRequired: false,
+    priority: 'high',
+    steps: [
+      {
+        kind: 'script_fix',
+        description: 'The generated script\'s DESCRIPTION line contains a past-tense or blocked word (vanished, was, were, had, found, discovered, left, moved, sealed, signed, forged, buried, hidden). This is a deterministic rule failure — not editorial judgement.',
+      },
+      {
+        kind: 're_queue',
+        description: 'Job is autonomously re-queued to generate_script (retry 1 or 2 of 2). The story.script and validator_result have been cleared. The next generate_script call will regenerate from scratch with the blocked-word rules reinforced in the prompt.',
+      },
+    ],
+    prevention: 'VALIDATOR_PROMPT and generate_script prompt both explicitly list blocked DESCRIPTION words. The model must write DESCRIPTION in present tense with active-voice verbs only.',
+    verificationCheck: 'validate_script passes: DESCRIPTION uses only present-tense verbs and is ≤70 chars.',
+    linkedIncident: 'ATL-PIPE-008',
+  },
+
+  {
+    id: 'pb-013-script-card-copy-format',
+    failureKind: 'script_card_copy_format',
+    title: 'TITLE or DESCRIPTION violates card-copy format constraints',
+    autonomous: true,
+    marcRequired: false,
+    priority: 'medium',
+    steps: [
+      {
+        kind: 'script_fix',
+        description: 'TITLE exceeds 5 words or 28 chars, or DESCRIPTION exceeds 70 chars. These are deterministic format constraints.',
+      },
+      {
+        kind: 're_queue',
+        description: 'Job is autonomously re-queued to generate_script. The story.script and validator_result have been cleared.',
+      },
+    ],
+    prevention: 'generate_script prompt must include TITLE/DESCRIPTION character and word limits explicitly.',
+    verificationCheck: 'validateCardCopy() returns no issues: TITLE ≤5 words / 28 chars, DESCRIPTION ≤70 chars.',
+    linkedIncident: 'ATL-PIPE-008',
+  },
+
+  {
+    id: 'pb-014-script-quality-editorial',
+    failureKind: 'script_quality_editorial',
+    title: 'AI validator: protagonist/description mismatch or editorial quality failure',
+    autonomous: true,
+    marcRequired: false,
+    priority: 'high',
+    steps: [
+      {
+        kind: 'script_fix',
+        description: 'AI validator failed due to DESCRIPTION not matching the protagonist role, or editorial issues (weak hook, unclear stakes, etc.). This is retryable because the model can generate a better script with the specific issue surfaced in the prompt.',
+      },
+      {
+        kind: 're_queue',
+        description: 'Job is autonomously re-queued to generate_script. story.script cleared. The validator report is preserved as diagnostic evidence for the next generation attempt.',
+      },
+    ],
+    prevention: 'VALIDATOR_PROMPT now includes DESCRIPTION PROTAGONIST RULE: DESCRIPTION must accurately reflect who the protagonist is. generate_script prompt reinforces this.',
+    verificationCheck: 'AI validator passes: DESCRIPTION matches protagonist role; hook and editorial quality pass.',
+    linkedIncident: 'ATL-PIPE-008',
+  },
+
+  {
+    id: 'pb-015-script-story-resolution',
+    failureKind: 'script_story_resolution',
+    title: 'AI validator: climax offscreen or protagonist passive at resolution',
+    autonomous: true,
+    marcRequired: false,
+    priority: 'critical',
+    steps: [
+      {
+        kind: 'script_fix',
+        description: 'AI validator caught Difficult Solution Rule violation: protagonist is passive at the climax, or the climax happens offscreen. This is retryable because DSR is reinforced in STORY_RESOLUTION_VALIDATOR_PROMPT and generate_script prompt.',
+      },
+      {
+        kind: 're_queue',
+        description: 'Job is autonomously re-queued to generate_script. The validator report is preserved. The next script generation will be prompted to place the protagonist at an active, consequential moment at the climax.',
+      },
+    ],
+    prevention: 'generate_script prompt must include Difficult Solution Rule explicitly: protagonist must take an active, costly action at the climax — not discover the villain already defeated or watch from the side.',
+    verificationCheck: 'AI validator passes: protagonist makes an active choice at the climax with real stakes. Ending is emotionally earned.',
+    linkedIncident: 'ATL-PIPE-008',
   },
 
   // ── Mission context not loaded ──────────────────────────────────────────

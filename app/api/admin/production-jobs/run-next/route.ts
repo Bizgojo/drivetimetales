@@ -7,7 +7,7 @@ import { buildNamePalettePromptBlock } from '@/lib/story/namePalette'
 import { recordProductionLearningEvent } from '@/lib/productionLearning'
 import { isBelleBVoiceId } from '@/lib/voiceConstants'
 import { runRenderFinalMix } from '../../../asc3/render-final-mix/core'
-import { buildStructuredError } from '@/lib/pipeline-runner/types'
+import { buildStructuredError, type StructuredErrorJsonKind } from '@/lib/pipeline-runner/types'
 import { classifyTrueState } from '@/lib/pipelineTruth'
 import { getPlaybookByKind } from '@/lib/repairPlaybooks'
 import { loadActiveMission } from '@/lib/missionContext'
@@ -49,6 +49,71 @@ const NEXT_STEP_AFTER_SERIES_RENDER = 'complete_story_package'
 const TITLE_MAX_CHARS = 28
 const DESCRIPTION_MAX_CHARS = 70
 const DESCRIPTION_PAST_TENSE_RE = /\b(vanished|was|were|had|found|discovered|left|moved|sealed|signed|forged|buried|hidden)\b/i
+
+// ATL-PIPE-008: Classify validate_script failure into canonical kinds.
+// isCardCopy=true means the failure came from validateCardCopy() (deterministic).
+// isCardCopy=false means the failure came from the AI validator.
+function classifyValidateScriptFailure(
+  report: string,
+  isCardCopy = false
+): {
+  kind: StructuredErrorJsonKind
+  isAutonomousRetryable: boolean
+  marcRequired: boolean
+  recommendedAction: string
+} {
+  // Card-copy path (deterministic, always retryable)
+  if (isCardCopy) {
+    const hasBlockedWord = /blocked word|DESCRIPTION_PAST_TENSE|forbidden|past.tense/i.test(report)
+    const kind: StructuredErrorJsonKind = hasBlockedWord
+      ? 'script_description_blocked_word'
+      : 'script_card_copy_format'
+    return {
+      kind,
+      isAutonomousRetryable: true,
+      marcRequired: false,
+      recommendedAction: hasBlockedWord
+        ? 'DESCRIPTION uses a forbidden past-tense word. Re-generate with explicit rule: DESCRIPTION must be ≤70 chars, present-tense, active-voice. Blocked words: vanished, was, were, had, found, discovered, left, moved, sealed, signed, forged, buried, hidden.'
+        : 'TITLE or DESCRIPTION format violation. Re-generate with card-copy constraints (TITLE ≤5 words / 28 chars; DESCRIPTION ≤70 chars, present tense).',
+    }
+  }
+
+  // AI validator path: classify from report text
+  if (/offscreen|protagonist.*passive|passive.*protagonist|climax.*off.?screen|villain.*already.*dead|solution.*easy|passive.*ending|ending.*offscreen/i.test(report)) {
+    return {
+      kind: 'script_story_resolution',
+      isAutonomousRetryable: true,
+      marcRequired: false,
+      recommendedAction: 'Story resolution failure: climax happens offscreen or protagonist is passive. Re-generate with Difficult Solution Rule reinforced: protagonist must take an active, consequential action at the climax.',
+    }
+  }
+
+  if (/description.*says|description.*mentions|description.*states|protagonist.*different|description.*mismatch|mismatch.*description|role.*mismatch|character.*role|protagonist.*is a|protagonist.*was a/i.test(report)) {
+    return {
+      kind: 'script_quality_editorial',
+      isAutonomousRetryable: true,
+      marcRequired: false,
+      recommendedAction: 'Editorial mismatch: DESCRIPTION does not match the actual protagonist role or story facts. Re-generate with instruction that DESCRIPTION must accurately reflect who the protagonist is and what they are trying to do.',
+    }
+  }
+
+  if (/hook|cliffhanger|ending|resolution|narrative|editorial|VALIDATOR RESULT.*FAIL/i.test(report)) {
+    return {
+      kind: 'script_quality_editorial',
+      isAutonomousRetryable: true,
+      marcRequired: false,
+      recommendedAction: 'AI editorial failure. Re-generate with emphasis on: strong hook, accurate DESCRIPTION, active protagonist at climax, satisfying resolution.',
+    }
+  }
+
+  // Unknown — cannot auto-retry safely
+  return {
+    kind: 'script_validator_unknown',
+    isAutonomousRetryable: false,
+    marcRequired: true,
+    recommendedAction: 'Validation failed with unrecognised pattern. Marc must inspect the validator report before re-queuing.',
+  }
+}
 
 type ProductionJob = {
   id: string
@@ -927,6 +992,8 @@ Use the CURRENT rules:
 - The title must be 1 to 5 words and 28 characters or fewer.
 - DESCRIPTION must be 70 characters or fewer and present tense only.
 - DESCRIPTION fails if it uses past-tense constructions or past-tense story-card phrasing such as "vanished", "was", "were", "had", "found", "discovered", "left", "moved", "sealed", "signed", "forged", "buried", or "hidden".
+- DESCRIPTION PROTAGONIST RULE: the DESCRIPTION must accurately reflect who the protagonist actually is and what they are trying to do. If the script's protagonist is a security guard, DESCRIPTION must not say "driver". If the protagonist is a nurse, DESCRIPTION must not say "teacher". Mismatches between DESCRIPTION and actual protagonist role are a hard fail.
+- DESCRIPTION SPOILER RULE: DESCRIPTION is a story-card teaser, not a plot summary. It must create curiosity without revealing the resolution, the twist, or the ending.
 - The script must include the required header fields.
 - The script must include a CHARACTER GUIDE.
 - The script must include BELLE B INTRO and BELLE B OUTRO blocks.
@@ -934,6 +1001,8 @@ Use the CURRENT rules:
 - Series non-finales must end on a specific cliffhanger.
 - Difficult Solution Rule: the main problem must feel genuinely difficult at the beginning, the middle must reveal leverage and escalating consequences that make the solution possible, and the ending must feel emotionally and logically earned.
 - Fail endings where the climax happens offscreen, the protagonist does not affect the outcome, the ending resolves through exposition instead of dramatic action, the emotional arc is unresolved, or the final solution is passive, too easy, or a "villain already dead" anticlimax.
+
+When the script fails, identify the SPECIFIC issue. If DESCRIPTION does not match the protagonist's role, state what the DESCRIPTION says and what the protagonist's actual role is.
 
 Return exactly one of these:
 ✅ VALIDATOR RESULT: PASS
@@ -1931,6 +2000,7 @@ ${cardCopyIssues.map((issue) => `- ${issue}`).join('\n')}`
     return {
       passed: false,
       skipped: false,
+      isCardCopyFailure: true,        // ATL-PIPE-008: signal deterministic card-copy failure
       storyId: String(storyId),
       report,
       story: updated,
@@ -1998,6 +2068,7 @@ ${cardCopyIssues.map((issue) => `- ${issue}`).join('\n')}`
   return {
     passed,
     skipped: false,
+    isCardCopyFailure: false,           // ATL-PIPE-008: AI-validator path
     storyId: String(storyId),
     report,
     story: updated,
@@ -5183,22 +5254,163 @@ export async function POST(req: NextRequest) {
         nextStep: result.passed ? NEXT_STEP_AFTER_STANDALONE_VALIDATION : null,
       })
 
+      // ATL-PIPE-008: autonomous retry with structured classification
       if (!result.passed) {
+        const MAX_RETRIES = 2
+        const reportText = typeof result.report === 'string' ? result.report : JSON.stringify(result.report || '')
+        const isCardCopy = result.isCardCopyFailure === true
+        const classification = classifyValidateScriptFailure(reportText, isCardCopy)
+        const retryCount = Number((lockedJob.state_json as any)?.validateScriptRetryCount ?? 0)
+        const canAutoRetry = classification.isAutonomousRetryable && retryCount < MAX_RETRIES
+        const playbook = getPlaybookByKind(classification.kind)
+
+        // Always record a learning incident so the ledger captures every failure
+        const { data: learningIncident } = await supabase
+          .from('production_learning_events')
+          .insert({
+            stage: 'validate_script',
+            failure_type: classification.kind,
+            root_cause: reportText.slice(0, 500) || 'validate_script rejected generated script',
+            fix_applied: canAutoRetry
+              ? `Autonomous retry ${retryCount + 1}/${MAX_RETRIES}: cleared script, reset to generate_script`
+              : `Autonomous retries exhausted (${retryCount}/${MAX_RETRIES}); Marc review required`,
+            fix_type: canAutoRetry ? 'autonomous_retry' : 'marc_review_required',
+            prevention_rule: classification.kind === 'script_description_blocked_word'
+              ? 'Script generation must not produce DESCRIPTION with blocked past-tense words'
+              : classification.kind === 'script_quality_editorial'
+              ? 'DESCRIPTION must accurately reflect protagonist role; AI validator verifies match'
+              : null,
+            reusable: true,
+            confidence: 0.85,
+          })
+          .select('id')
+          .single()
+
+        if (canAutoRetry) {
+          const nextRetryCount = retryCount + 1
+
+          // Clear story script so generate_script regenerates from scratch
+          await supabase
+            .from('stories')
+            .update({
+              script: null,
+              script_json: null,
+              validator_result: null,
+              validator_report: null,
+              status: 'draft',
+            })
+            .eq('id', result.storyId)
+
+          const retryLogs = appendLog({ ...lockedJob, logs }, `Auto-retry ${nextRetryCount}/${MAX_RETRIES}: re-queuing to generate_script after ${classification.kind}`, {
+            source: 'autonomous-runner',
+            storyId: result.storyId,
+            failureKind: classification.kind,
+            retryCount: nextRetryCount,
+            nextStep: NEXT_STEP_AFTER_CREATE,
+            learningIncidentId: learningIncident?.id || null,
+          })
+
+          const { data: resetJob, error: updateError } = await supabase
+            .from('production_jobs')
+            .update({
+              story_id: result.storyId,
+              status: 'queued',
+              current_step: NEXT_STEP_AFTER_CREATE,
+              state_json: {
+                ...result.state,
+                scriptGenerated: false,
+                scriptGeneratedStoryId: null,
+                validateScriptRetryCount: nextRetryCount,
+                validateScriptLastFailureKind: classification.kind,
+                validateScriptLastReport: reportText.slice(0, 500),
+              },
+              error_json: buildStructuredError(classification.kind, classification.recommendedAction, 'validate_script', {
+                storyId: result.storyId,
+                marc_required: false,
+                autonomous_repair: true,
+                retry_count: nextRetryCount,
+                max_retries: MAX_RETRIES,
+                safe_resume_point: 'generate_script',
+                fixRecommendation: classification.recommendedAction,
+                rootCause: reportText.slice(0, 300),
+                detail: {
+                  validatorResult: 'FAIL',
+                  validatorReport: reportText.slice(0, 1000),
+                  isCardCopyFailure: isCardCopy,
+                  playbookId: playbook?.id || null,
+                  learningIncidentId: learningIncident?.id || null,
+                  recommended_action: classification.recommendedAction,
+                  diagnostic_evidence: reportText.slice(0, 500),
+                },
+              }),
+              locked_at: null,
+              locked_by: null,
+              logs: retryLogs,
+            })
+            .eq('id', lockedJob.id)
+            .select('*')
+            .single()
+
+          if (updateError) throw new Error(`Failed to reset standalone validation job for retry: ${updateError.message}`)
+
+          return NextResponse.json({
+            success: true,
+            action: 'autonomous_retry',
+            jobId: resetJob!.id,
+            currentStep: step,
+            nextStep: NEXT_STEP_AFTER_CREATE,
+            retryCount: nextRetryCount,
+            maxRetries: MAX_RETRIES,
+            failureKind: classification.kind,
+            marcRequired: false,
+            storyId: result.storyId,
+            learningIncidentId: learningIncident?.id || null,
+            playbookId: playbook?.id || null,
+            message: `Script validation failed (${classification.kind}). Autonomous retry ${nextRetryCount}/${MAX_RETRIES} — re-queuing to generate_script.`,
+            logs: retryLogs,
+          })
+        }
+
+        // Max retries exhausted or non-retryable: fail with marc_required=true
+        const failedLogs = appendLog({ ...lockedJob, logs }, `validate_script retries exhausted (${retryCount}/${MAX_RETRIES}) — failing, Marc required`, {
+          source: 'autonomous-runner',
+          storyId: result.storyId,
+          failureKind: classification.kind,
+          retryCount,
+          learningIncidentId: learningIncident?.id || null,
+        })
+
         const { data: failedJob, error: updateError } = await supabase
           .from('production_jobs')
           .update({
             story_id: result.storyId,
             status: 'failed',
             current_step: NEXT_STEP_AFTER_STANDALONE_SCRIPT,
-            state_json: result.state,
-            error_json: {
-              step,
-              storyId: result.storyId,
-              validatorResult: 'FAIL',
-              validatorReport: result.report,
-              at: nowIso(),
+            state_json: {
+              ...result.state,
+              validateScriptRetryCount: retryCount,
+              validateScriptLastFailureKind: classification.kind,
             },
-            logs,
+            error_json: buildStructuredError(classification.kind, `Retries exhausted. ${classification.recommendedAction}`, 'validate_script', {
+              storyId: result.storyId,
+              marc_required: true,
+              autonomous_repair: false,
+              retry_count: retryCount,
+              max_retries: MAX_RETRIES,
+              safe_resume_point: 'generate_script',
+              fixRecommendation: `${MAX_RETRIES} autonomous retries failed. Marc must review: ${classification.recommendedAction}`,
+              rootCause: reportText.slice(0, 300),
+              detail: {
+                validatorResult: 'FAIL',
+                validatorReport: reportText.slice(0, 1000),
+                isCardCopyFailure: isCardCopy,
+                playbookId: playbook?.id || null,
+                learningIncidentId: learningIncident?.id || null,
+                recommended_action: classification.recommendedAction,
+                diagnostic_evidence: reportText.slice(0, 500),
+              },
+            }),
+            logs: failedLogs,
             locked_at: null,
             locked_by: null,
           })
@@ -5210,13 +5422,19 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({
           success: false,
-          jobId: failedJob.id,
+          jobId: failedJob!.id,
           currentStep: step,
-          status: failedJob.status,
+          status: failedJob!.status,
           storyId: result.storyId,
           validatorResult: 'FAIL',
           validatorReport: result.report,
-          logs,
+          failureKind: classification.kind,
+          marcRequired: true,
+          retryCount,
+          maxRetries: MAX_RETRIES,
+          playbookId: playbook?.id || null,
+          learningIncidentId: learningIncident?.id || null,
+          logs: failedLogs,
         }, { status: 422 })
       }
 

@@ -96,6 +96,15 @@ export type StructuredErrorJsonKind =
   | 'transcript_qc'
   | 'transcript_question_mark'
   | 'segment_stale_loop'
+  // ATL-PIPE-008: validate_script canonical kinds
+  | 'script_description_blocked_word'   // DESCRIPTION contains forbidden word (deterministic, retryable)
+  | 'script_card_copy_format'            // TITLE/DESCRIPTION format violation (deterministic, retryable)
+  | 'script_quality_editorial'           // AI validator: protagonist/description mismatch, hook, ending (retryable)
+  | 'script_story_resolution'            // AI validator: climax offscreen, protagonist passive (retryable)
+  | 'script_validator_unknown'           // AI validator: unclassified failure (not auto-retryable, marc_required)
+  // Legacy aliases kept for backward compat with existing error_json rows
+  | 'script_blocked_word'
+  | 'script_editorial_quality'
   | 'belle_quality'
   | 'story_quality'
   | 'cover_art'
@@ -137,6 +146,14 @@ export type StructuredErrorJson = {
   marc_required: boolean
   /** Whether the repair playbook can handle this autonomously. */
   autonomous_repair?: boolean
+  /** Number of autonomous retries already attempted for this failure class. */
+  retry_count?: number
+  /** Repair playbook selected for this failure. */
+  playbookId?: string | null
+  /** Pipeline step that can safely resume after repair. */
+  safe_resume_point?: string | null
+  /** Related production_learning_events row id. */
+  learning_incident_id?: string | null
   /** ISO timestamp of the failure. */
   at: string
 }

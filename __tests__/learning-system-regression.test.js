@@ -75,6 +75,26 @@ function checkRFRGateFields(storyRow) {
   return true
 }
 
+/**
+ * ATL-PIPE-008: validate_script failure classification for autonomous retry.
+ */
+function classifyValidateScriptFailure(report) {
+  if (/blocked word|DESCRIPTION_PAST_TENSE|forbidden/i.test(report)) return 'script_blocked_word'
+  return 'script_editorial_quality'
+}
+
+function buildStructuredError(kind, message, step, opts = {}) {
+  const isVague = !message || message.trim() === ''
+  return {
+    kind: isVague ? 'empty_error_json' : kind,
+    message: isVague ? `Failure at step ${step || 'unknown'} - no detail available. Classify as empty_error_json.` : message.trim(),
+    step,
+    marc_required: opts.marc_required ?? true,
+    at: new Date().toISOString(),
+    ...opts,
+  }
+}
+
 // ─── Jest Test Suite ──────────────────────────────────────────────────────
 
 describe('Learning System Regression Tests', () => {
@@ -201,6 +221,62 @@ describe('Learning System Regression Tests', () => {
       const transcriptText = ''
       const isEmpty = !transcriptText || transcriptText.trim() === ''
       expect(isEmpty).toBe(true)
+    })
+  })
+
+  describe('ATL-PIPE-008: validate_script retry logic', () => {
+    it('classifyValidateScriptFailure with blocked word report returns script_blocked_word', () => {
+      const report = 'DESCRIPTION_PAST_TENSE: forbidden blocked word "forged" found in DESCRIPTION.'
+      expect(classifyValidateScriptFailure(report)).toBe('script_blocked_word')
+    })
+
+    it('classifyValidateScriptFailure with editorial report returns script_editorial_quality', () => {
+      const report = 'VALIDATOR RESULT: FAIL. The story premise and description do not align.'
+      expect(classifyValidateScriptFailure(report)).toBe('script_editorial_quality')
+    })
+
+    it('retryCount=0 buildStructuredError produces marc_required=false', () => {
+      const retryCount = 0
+      const errorJson = buildStructuredError(
+        'script_blocked_word',
+        'Standalone script validation failed',
+        'validate_script',
+        {
+          storyId: 'story-1',
+          marc_required: retryCount >= 2,
+          autonomous_repair: retryCount < 2,
+          retry_count: retryCount + 1,
+          playbookId: 'script_validate_retry',
+          safe_resume_point: 'generate_script',
+          learning_incident_id: 'incident-1',
+        },
+      )
+
+      expect(errorJson.marc_required).toBe(false)
+      expect(errorJson.autonomous_repair).toBe(true)
+      expect(errorJson.retry_count).toBe(1)
+    })
+
+    it('retryCount=2 buildStructuredError produces marc_required=true', () => {
+      const retryCount = 2
+      const errorJson = buildStructuredError(
+        'script_editorial_quality',
+        'Standalone script validation failed',
+        'validate_script',
+        {
+          storyId: 'story-1',
+          marc_required: retryCount >= 2,
+          autonomous_repair: retryCount < 2,
+          retry_count: retryCount,
+          playbookId: 'script_validate_retry',
+          safe_resume_point: 'generate_script',
+          learning_incident_id: 'incident-2',
+        },
+      )
+
+      expect(errorJson.marc_required).toBe(true)
+      expect(errorJson.autonomous_repair).toBe(false)
+      expect(errorJson.retry_count).toBe(2)
     })
   })
 
