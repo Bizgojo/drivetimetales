@@ -2103,6 +2103,10 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
       if (!best || metrics.input_i > best.metrics.input_i) best = { metrics, action, candidate }
     }
 
+    // ATL-PIPE-007: track the last loudness-passing buffer so we can accept it
+    // if the transcript QC fires REPEATED_IDENTICAL_TRUNCATION on a clean prefix.
+    let lastLoudnessPassedBuf: Buffer | null = null
+
     for (let candidate = 1; candidate <= candidateCount; candidate++) {
       if (candidate > 1) buf = await generateAttempt()
       let candidateBuf = buf
@@ -2216,6 +2220,7 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
         logShortCandidateQc(fileName, speaker, candidate, metrics, action)
       }
       if (isPassingAction(action)) {
+        lastLoudnessPassedBuf = candidateBuf // ATL-PIPE-007: save loudness-passing buf for prefix-truncation rescue
         const transcriptCheck = await validateSegmentTranscript(candidateBuf, text, fileName)
         console.log(`  Segment transcript QC ${fileName} speaker="${speaker}" candidate=${candidate} coverage=${transcriptCheck.coverage.toFixed(2)} tail=${transcriptCheck.tailMatches ? 'pass' : 'fail'} result=${transcriptCheck.passed ? 'accept' : 'retry'} expected="${text.slice(0, 120)}" detected="${transcriptCheck.detectedText.slice(0, 120)}"`)
         if (!transcriptCheck.passed) {
@@ -2373,6 +2378,38 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
           const ruleCase = isLowCoverageTruncation ? 'low-coverage'
             : isCleanPrefixTruncation ? 'clean-prefix'
             : 'short-clean-prefix'
+
+          // ATL-PIPE-007: If the detected text is a clean string prefix of the expected
+          // text AND we have a loudness-passing audio buffer, accept the segment with a
+          // warning instead of blocking production.
+          //
+          // Rationale: Whisper's VAD stops at natural inter-sentence pauses. When
+          // detected is a prefix of expected (e.g. "I'll come with you." detected vs
+          // "I'll come with you. I want to see what you see." expected), the ElevenLabs
+          // audio almost certainly contains the full text — Whisper just couldn't hear
+          // past the pause. The render-final-mix uses the audio directly, not the
+          // transcript. Blocking production here is a QC false negative.
+          //
+          // Guard: detected must be ≥ 8 chars (prevents near-empty detections) and a
+          // normalized string prefix of expected (punctuation-stripped comparison).
+          const detectedNorm = (transcriptDetectedTexts[0] || '').toLowerCase().replace(/[^\w\s']/g, '').trim()
+          const expectedNorm = (transcriptFailure.expectedText || '').toLowerCase().replace(/[^\w\s']/g, '').trim()
+          const isPrefixAcceptable = detectedNorm.length >= 8
+            && expectedNorm.startsWith(detectedNorm)
+            && lastLoudnessPassedBuf !== null
+
+          if (isPrefixAcceptable) {
+            console.warn(
+              `  ⚠️ REPEATED_IDENTICAL_TRUNCATION [${ruleCase}] ${fileName} speaker="${speaker}" ` +
+              `— detected "${truncatedAt}" is a clean string prefix of expected. ` +
+              `Whisper VAD stopped at natural pause; audio almost certainly correct. ` +
+              `Accepting with warning (ATL-PIPE-007). coverage=${transcriptFailure.coverage?.toFixed(2)}`
+            )
+            qcSkipCollector?.push(fileName)
+            await uploadAudioBufferWithRetry(cachePath, lastLoudnessPassedBuf, `${speaker || 'UNKNOWN'} ${fileName}`)
+            return cacheUrl
+          }
+
           console.error(
             `  ⚠️ REPEATED_IDENTICAL_TRUNCATION [${ruleCase}] ${fileName} speaker="${speaker}" ` +
             `candidates=${transcriptDetectedTexts.length} coverage=${transcriptFailure.coverage?.toFixed(2)} ` +
