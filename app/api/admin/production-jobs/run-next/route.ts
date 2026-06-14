@@ -618,7 +618,32 @@ function belleTextIncludes(text: string, required: string) {
 }
 
 function hasConcreteNarrativeHook(text: string) {
-  return /\b(secret|danger|dangerous|conflict|mystery|mysterious|missing|vanish|vanished|disappear|disappeared|threat|threatened|betrayal|betrayed|lie|lied|hidden|buried|locked|stolen|murder|death|dead|killer|blood|blackmail|sabotage|trap|trapped|choice|warning|evidence|clue|case|crime|manifest|list|letter|message|record|signal|code|map|key|witness|suspect|truth|reveal|reckoning|ferry|ferryman|boat|captain|passenger|passengers|crossing|crossings|names?)\b/i.test(text)
+  // Named-object / event hooks (original set)
+  if (/\b(secret|danger|dangerous|conflict|mystery|mysterious|missing|vanish|vanished|disappear|disappeared|threat|threatened|betrayal|betrayed|lie|lied|hidden|buried|locked|stolen|murder|death|dead|killer|blood|blackmail|sabotage|trap|trapped|choice|warning|evidence|clue|case|crime|manifest|list|letter|message|record|signal|code|map|key|witness|suspect|truth|reveal|reckoning|ferry|ferryman|boat|captain|passenger|passengers|crossing|crossings|names?)\b/i.test(text)) return true
+  // ATL-PIPE-010: Abstract conflict-mechanism hooks — concrete wrongdoing, cover-up, or dispute.
+  // Accepts: "paper trail breaks, someone broke it on purpose", "the deed was altered",
+  //          "someone conspired to erase the record", "ownership was disputed", etc.
+  if (/\b(broke?|broken|breaks?|tamper(?:ed|ing)?|manipulat(?:ed|ing)?|falsif(?:ied|y|ication)?|alter(?:ed|ing)|erase[sd]?|destroy(?:ed|ing)?|corrupt(?:ed|ion)?|fraud(?:ulent)?|scheme[ds]?|conspir(?:acy|ed)?|cover.?up|wrong(?:ful|fully|ed|doing)?|criminal|illegal|illicit|deed|paper trail|forced|coerced|on purpose|ownership|dispute[sd]?|inherit(?:ance|ed)?|forgery|forger)\b/i.test(text)) return true
+  return false
+}
+
+// ATL-PIPE-010: classify Belle issues into canonical StructuredErrorJsonKind.
+function classifyBelleIssues(issues: string[]): StructuredErrorJsonKind {
+  const text = issues.join(' ').toLowerCase()
+  if (/hook|concrete narrative|atmospheric|story mechanism/.test(text)) return 'belle_quality_hook_missing'
+  if (/story title|must include the story title|must name the story title|\bstandalone.*title\b/.test(text)) return 'belle_quality_title_missing'
+  if (/\[listener_name\]|listener_name|placeholder|personali/.test(text)) return 'belle_quality_listener_missing'
+  return 'belle_quality_unknown'
+}
+
+// ATL-PIPE-010: classify Belle repair error message into canonical kind.
+function classifyBelleRepairError(message: string): StructuredErrorJsonKind {
+  const msg = message.toLowerCase()
+  if (/hook|concrete narrative|atmospheric/.test(msg)) return 'belle_quality_hook_missing'
+  if (/story title|must include the story title|must name the story title|\bstandalone.*title\b/.test(msg)) return 'belle_quality_title_missing'
+  if (/\[listener_name\]|listener_name|placeholder|personali/.test(msg)) return 'belle_quality_listener_missing'
+  if (/repair.*fail|fail.*repair|deterministic|attempt limit/.test(msg)) return 'belle_quality_repair_failed'
+  return 'belle_quality_unknown'
 }
 
 function hasConcreteStoryMechanism(text: string) {
@@ -1120,9 +1145,15 @@ Content rules:
 - Keep BELLE B script block labels unchanged; return spoken text only.
 - Belle sounds like a trusted friend, not a host, announcer, DJ, trailer, ad, or promo voice.
 - No "Welcome", "begins now", "only on Endless Tales", "tonight", "stay tuned", "next time", or "what happens next" for standalone stories.
-- The intro MUST speak directly to the listener using [LISTENER_NAME] — this is a personalized product; [LISTENER_NAME] must appear naturally in a complete sentence.
-- NEVER write a third-person synopsis, story description, or plot summary (e.g., "In this story...", "follows a driver...", "a man discovers..."). The listener already chose this story — do not describe it to them.
-- Address the listener directly: speak to them as a companion would, using [LISTENER_NAME] and "you".
+
+MANDATORY FIELD REQUIREMENTS — you will be rejected if these are missing:
+1. [LISTENER_NAME]: The intro MUST include [LISTENER_NAME] exactly as written, placed naturally in a complete sentence. This is non-negotiable. The product is personalized.
+2. STORY TITLE: Standalone intro and outro MUST include the exact story title as provided in TITLE above. Do not paraphrase, shorten, or omit it.
+3. CONCRETE HOOK: Standalone intro MUST include a concrete narrative hook — a specific conflict, crime, mystery mechanism, secret, danger, cover-up, wrongdoing, or story object. "Something waiting" or "a story about trust" is NOT a hook. "Paper trail breaks, someone broke it on purpose" IS a hook. "A forged deed" IS a hook. Name the specific thing that creates danger or mystery.
+4. NO SYNOPSIS: NEVER write a third-person synopsis, story description, or plot summary (e.g., "In this story...", "follows a driver...", "a man discovers..."). The listener already chose this story — do not describe it to them.
+5. DIRECT ADDRESS: Address the listener directly using [LISTENER_NAME] and "you". Speak as a companion, not a narrator.
+
+Additional content rules:
 - Standalone intro must lightly ground the listener in the story world, then add a specific emotional or sensory hook that creates anticipation.
 - Outro should emotionally land and feel companion-like.
 - Standalone outro must feel complete and must not tease a next episode or deferred resolution.
@@ -1750,6 +1781,14 @@ Additional rules:
 - Series non-finales must end on a specific cliffhanger.
 - Keep narrator voice consistent.
 - Do not include markdown fences.
+
+HAL-SCRIPT-003: DESCRIPTION PROTAGONIST CONSISTENCY RULE
+- The DESCRIPTION field must name the protagonist using the EXACT role/occupation that appears in the script body.
+- If the brief says "welfare clerk" but the script generates a "caseworker", use "caseworker" in DESCRIPTION.
+- If the brief says "driver" but the script generates a "security guard", use "security guard" in DESCRIPTION.
+- Write the script first. Then write DESCRIPTION to match who the protagonist actually is in that script.
+- Do NOT copy the brief's protagonist role into DESCRIPTION without verifying it matches your script.
+- Mismatches between DESCRIPTION and script protagonist are caught by validate_script and will force a retry.
 
 USER NOTES / CONSTRAINTS:
 ${String(brief.requirements || '').trim() || 'None'}
@@ -6183,27 +6222,132 @@ export async function POST(req: NextRequest) {
           /forbidden|promotional|must include|must say|must be|incomplete|appear|missing|too|weak|atmospheric/i.test(issue)
         )
 
+        // ATL-PIPE-010: text-only failures — classify, create learning incident, retry up to 2
         if (isTextOnlyFailure) {
-          // Route to repair instead of failing
-          const repairState = {
-            ...result.state,
-            belleAssetValidationFailed: true,
-            belleAssetFailedReport: result.report,
+          const MAX_BELLE_RETRIES = 2
+          const failureKind = classifyBelleIssues(issues)
+          const belleAssetRepairCount = Number((lockedJob.state_json as any)?.belleAssetRepairCount ?? 0)
+          const playbook = getPlaybookByKind(failureKind)
+          const canRepair = belleAssetRepairCount < MAX_BELLE_RETRIES
+
+          const { data: learningIncident } = await supabase
+            .from('production_learning_events')
+            .insert({
+              job_id: lockedJob.id,
+              story_id: result.storyId || lockedJob.story_id || null,
+              series_id: lockedJob.series_id || null,
+              series_title: (lockedJob.state_json as any)?.seriesTitle || null,
+              episode_title: (lockedJob.state_json as any)?.storyTitle || null,
+              stage: 'validate_belle_assets',
+              failure_type: failureKind,
+              root_cause: issues.join('; '),
+              fix_applied: canRepair
+                ? `Autonomous repair ${belleAssetRepairCount + 1}/${MAX_BELLE_RETRIES}: routing to repair_belle_quality`
+                : `Repair retries exhausted (${belleAssetRepairCount}/${MAX_BELLE_RETRIES}); Marc review required`,
+              fix_type: canRepair ? 'autonomous_repair' : 'marc_review_required',
+              prevention_rule: failureKind === 'belle_quality_hook_missing'
+                ? 'BELLE_QUALITY_REPAIR_PROMPT: concrete hook required; hasConcreteNarrativeHook() expanded (ATL-PIPE-010)'
+                : failureKind === 'belle_quality_title_missing'
+                ? 'BELLE_QUALITY_REPAIR_PROMPT: story title must appear exactly as written'
+                : null,
+              reusable: true,
+              confidence: 0.8,
+            })
+            .select('id')
+            .single()
+
+          if (canRepair) {
+            const repairState = {
+              ...result.state,
+              belleAssetValidationFailed: true,
+              belleAssetFailedReport: result.report,
+              belleAssetRepairCount: belleAssetRepairCount + 1,
+            }
+            const repairErrorJson = buildStructuredError(failureKind, issues.join('; '), step, {
+              storyId: result.storyId,
+              marc_required: false,
+              autonomous_repair: true,
+              retry_count: belleAssetRepairCount + 1,
+              max_retries: MAX_BELLE_RETRIES,
+              safe_resume_point: 'repair_belle_quality',
+              rootCause: issues.join('; '),
+              fixRecommendation: `Routing to repair_belle_quality (attempt ${belleAssetRepairCount + 1}/${MAX_BELLE_RETRIES})`,
+              detail: {
+                issues,
+                introText: result.report.introText ?? null,
+                outroText: result.report.outroText ?? null,
+                playbookId: playbook?.id || null,
+                learningIncidentId: learningIncident?.id || null,
+              },
+            })
+            const repairLogs = appendLog({ ...lockedJob, logs, current_step: step }, `Queued automatic Belle asset text repair (attempt ${belleAssetRepairCount + 1}/${MAX_BELLE_RETRIES})`, {
+              storyId: result.storyId,
+              nextStep: NEXT_STEP_AFTER_STANDALONE_BELLE_REPAIR,
+              failureKind,
+              issueCount: issues.length,
+              repairCount: belleAssetRepairCount + 1,
+              learningIncidentId: learningIncident?.id || null,
+            })
+            const { data: repairJob, error: repairUpdateError } = await supabase
+              .from('production_jobs')
+              .update({
+                story_id: result.storyId,
+                status: 'running',
+                current_step: NEXT_STEP_AFTER_STANDALONE_BELLE_REPAIR,
+                state_json: repairState,
+                error_json: repairErrorJson,
+                logs: repairLogs,
+                locked_at: null,
+                locked_by: null,
+              })
+              .eq('id', lockedJob.id)
+              .select('*')
+              .single()
+
+            if (repairUpdateError) throw new Error(`Failed to queue standalone Belle asset repair: ${repairUpdateError.message}`)
+
+            return NextResponse.json({
+              success: true,
+              action: 'autonomous_repair',
+              jobId: repairJob!.id,
+              currentStep: step,
+              nextStep: repairJob!.current_step,
+              storyId: result.storyId,
+              failureKind,
+              repairCount: belleAssetRepairCount + 1,
+              belleAssetValidationReport: result.report,
+              learningIncidentId: learningIncident?.id || null,
+              logs: repairLogs,
+            })
           }
-          const repairLogs = appendLog({ ...lockedJob, logs, current_step: step }, 'Queued automatic Belle asset text repair', {
+
+          // Repair retries exhausted — fail terminally
+          const exhaustedErrorJson = buildStructuredError(failureKind, `Belle asset repair exhausted (${belleAssetRepairCount}/${MAX_BELLE_RETRIES}): ${issues.join('; ')}`, step, {
             storyId: result.storyId,
-            nextStep: NEXT_STEP_AFTER_STANDALONE_BELLE_REPAIR,
-            issueCount: issues.length,
+            marc_required: true,
+            autonomous_repair: false,
+            retry_count: belleAssetRepairCount,
+            max_retries: MAX_BELLE_RETRIES,
+            safe_resume_point: 'generate_belle_assets',
+            rootCause: issues.join('; '),
+            fixRecommendation: 'Manually fix Belle intro text in script, delete stale Belle audio, reset job to generate_belle_assets.',
+            detail: {
+              issues,
+              introText: result.report.introText ?? null,
+              outroText: result.report.outroText ?? null,
+              playbookId: playbook?.id || null,
+              learningIncidentId: learningIncident?.id || null,
+            },
           })
-          const { data: repairJob, error: repairUpdateError } = await supabase
+          const { data: exhaustedJob, error: exhaustedUpdateError } = await supabase
             .from('production_jobs')
             .update({
               story_id: result.storyId,
-              status: 'running',
-              current_step: NEXT_STEP_AFTER_STANDALONE_BELLE_REPAIR,
-              state_json: repairState,
-              error_json: null,
-              logs: repairLogs,
+              status: 'failed',
+              current_step: NEXT_STEP_AFTER_STANDALONE_BELLE,
+              state_json: { ...result.state, belleAssetRepairCount },
+              error_json: { ...exhaustedErrorJson, playbookId: playbook?.id || null },
+              logs,
               locked_at: null,
               locked_by: null,
             })
@@ -6211,18 +6355,20 @@ export async function POST(req: NextRequest) {
             .select('*')
             .single()
 
-          if (repairUpdateError) throw new Error(`Failed to queue standalone Belle asset repair: ${repairUpdateError.message}`)
+          if (exhaustedUpdateError) throw new Error(`Failed to save Belle asset repair exhaustion: ${exhaustedUpdateError.message}`)
 
           return NextResponse.json({
-            success: true,
-            jobId: repairJob.id,
+            success: false,
+            jobId: exhaustedJob!.id,
             currentStep: step,
-            nextStep: repairJob.current_step,
+            status: exhaustedJob!.status,
             storyId: result.storyId,
+            failureKind,
+            marcRequired: true,
+            repairCount: belleAssetRepairCount,
             belleAssetValidationReport: result.report,
-            repairQueued: true,
-            logs: repairLogs,
-          })
+            logs,
+          }, { status: 422 })
         }
 
         // Audio/transcript QC failures cannot be automatically repaired
@@ -6234,6 +6380,22 @@ export async function POST(req: NextRequest) {
           outro: (result.report.issues || []).filter((i: string) => /\boutro\b/i.test(i)),
           asset: (result.report.issues || []).filter((i: string) => /asset|missing|file/i.test(i)),
         }
+        const qcFailureKind = classifyBelleIssues(result.report.issues || [])
+        const qcErrorJson = buildStructuredError(qcFailureKind || 'belle_quality_unknown', result.report.issues?.join('; ') || 'Belle asset QC failure', step, {
+          storyId: result.storyId,
+          marc_required: true,
+          autonomous_repair: false,
+          rootCause: result.report.issues?.join('; ') || 'Audio/transcript QC failure — cannot auto-repair',
+          fixRecommendation: issuesByField.intro.length > 0 || issuesByField.outro.length > 0
+            ? 'Text-rule violation: route to repair_belle_quality to rewrite the offending Belle line(s).'
+            : 'Asset missing or unknown issue: regenerate Belle assets via generate_belle_assets.',
+          detail: {
+            assetPaths: { intro: introAssetPaths, outro: outroAssetPaths },
+            expectedIntroText: result.report.introText ?? null,
+            expectedOutroText: result.report.outroText ?? null,
+            issuesByField,
+          },
+        })
         const { data: failedJob, error: updateError } = await supabase
           .from('production_jobs')
           .update({
@@ -6241,22 +6403,7 @@ export async function POST(req: NextRequest) {
             status: 'failed',
             current_step: NEXT_STEP_AFTER_STANDALONE_BELLE,
             state_json: result.state,
-            error_json: {
-              step,
-              storyId: result.storyId,
-              belleAssetValidationReport: result.report,
-              // Actionable context for diagnosis
-              assetPaths: { intro: introAssetPaths, outro: outroAssetPaths },
-              expectedIntroText: result.report.introText ?? null,
-              expectedOutroText: result.report.outroText ?? null,
-              actualTranscript: null,  // transcript QC not run at this step; null = not applicable
-              diffSummary: result.report.issues?.join('; ') ?? null,
-              issuesByField,
-              recommendedAction: issuesByField.intro.length > 0 || issuesByField.outro.length > 0
-                ? 'Text-rule violation: route to repair_belle_quality to rewrite the offending Belle line(s).'
-                : 'Asset missing or unknown issue: regenerate Belle assets via generate_belle_assets.',
-              at: nowIso(),
-            },
+            error_json: qcErrorJson,
             logs,
             locked_at: null,
             locked_by: null,
@@ -6269,10 +6416,11 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({
           success: false,
-          jobId: failedJob.id,
+          jobId: failedJob!.id,
           currentStep: step,
-          status: failedJob.status,
+          status: failedJob!.status,
           storyId: result.storyId,
+          failureKind: qcFailureKind,
           belleAssetValidationReport: result.report,
           logs,
         }, { status: 422 })
@@ -6509,52 +6657,149 @@ export async function POST(req: NextRequest) {
           logs,
         })
       } catch (err) {
+        // ATL-PIPE-010: structured Belle repair failure with retry logic, learning incident, playbook
+        const MAX_BELLE_REPAIR_RETRIES = 2
         const state = lockedJob.state_json && typeof lockedJob.state_json === 'object' ? lockedJob.state_json : {}
-        const storyId = lockedJob.story_id || state.storyId
-        const repairAttempts = Number((state.belleQualityRepair as Record<string, unknown>)?.attempts ?? 0)
-        const isAssetRepair = state.belleAssetValidationFailed === true
-        const relevantReport = isAssetRepair
-          ? (state.belleAssetFailedReport || state.belleQualityFailedReport || null)
-          : (state.belleQualityFailedReport || state.belleQualityValidation || null)
-        const storyAudioBase = storyId ? `asc3/${storyId}` : null
-        const introAssets = (relevantReport as Record<string, unknown>)?.introAssets
-        const outroAssets = (relevantReport as Record<string, unknown>)?.outroAssets
-        const logs = appendLog(lockedJob, 'Standalone Belle quality repair failed', {
+        const storyId = lockedJob.story_id || (state as any).storyId
+        const repairAttempts = Number(((state as any).belleQualityRepair as Record<string, unknown>)?.attempts ?? 0)
+        const isAssetRepair = (state as any).belleAssetValidationFailed === true
+        const errMessage = err instanceof Error ? err.message : String(err)
+        const isAttemptLimit = /attempt limit reached/i.test(errMessage)
+
+        const failureKind = classifyBelleRepairError(errMessage)
+        const playbook = getPlaybookByKind(failureKind)
+        const canRetry = !isAttemptLimit && repairAttempts < MAX_BELLE_REPAIR_RETRIES
+
+        // Always record learning incident
+        const { data: learningIncident } = await supabase
+          .from('production_learning_events')
+          .insert({
+            job_id: lockedJob.id,
+            story_id: storyId ? String(storyId) : null,
+            series_id: lockedJob.series_id || null,
+            series_title: (lockedJob.state_json as any)?.seriesTitle || null,
+            episode_title: (lockedJob.state_json as any)?.storyTitle || null,
+            stage: 'repair_belle_quality',
+            failure_type: failureKind,
+            root_cause: errMessage.slice(0, 500),
+            fix_applied: canRetry
+              ? `Autonomous retry ${repairAttempts + 1}/${MAX_BELLE_REPAIR_RETRIES}: re-queuing repair`
+              : 'Repair retries exhausted; Marc review required',
+            fix_type: canRetry ? 'autonomous_retry' : 'marc_review_required',
+            prevention_rule: 'BELLE_QUALITY_REPAIR_PROMPT updated: must include title, [LISTENER_NAME], concrete hook (ATL-PIPE-010)',
+            reusable: true,
+            confidence: 0.75,
+          })
+          .select('id')
+          .single()
+
+        const logs = appendLog(lockedJob, `Standalone Belle quality repair failed (attempt ${repairAttempts + 1}/${MAX_BELLE_REPAIR_RETRIES})`, {
           storyId: storyId ? String(storyId) : null,
-          nextStep: null,
-          error: err instanceof Error ? err.message : String(err),
+          error: errMessage,
+          repairAttempts,
+          failureKind,
+          canRetry,
         })
+
+        if (canRetry) {
+          const nextAttempts = repairAttempts + 1
+          const retryState = {
+            ...state,
+            belleQualityRepair: {
+              ...((state as any).belleQualityRepair || {}),
+              attempts: nextAttempts,
+              lastError: errMessage.slice(0, 300),
+              lastErrorAt: nowIso(),
+              failureKind,
+              learningIncidentId: learningIncident?.id || null,
+            },
+          }
+          const retryErrorJson = buildStructuredError(failureKind, errMessage, step, {
+            storyId: storyId ? String(storyId) : null,
+            marc_required: false,
+            autonomous_repair: true,
+            retry_count: nextAttempts,
+            max_retries: MAX_BELLE_REPAIR_RETRIES,
+            safe_resume_point: 'repair_belle_quality',
+            rootCause: errMessage.slice(0, 300),
+            fixRecommendation: `Re-queuing repair attempt ${nextAttempts}/${MAX_BELLE_REPAIR_RETRIES}`,
+            detail: {
+              repairAttempts: nextAttempts,
+              isAssetRepair,
+              playbookId: playbook?.id || null,
+              learningIncidentId: learningIncident?.id || null,
+            },
+          })
+          const retryLogs = appendLog({ ...lockedJob, logs }, `Auto-retry ${nextAttempts}/${MAX_BELLE_REPAIR_RETRIES}: re-queuing Belle repair`, {
+            storyId: storyId ? String(storyId) : null,
+            failureKind,
+            nextAttempts,
+          })
+          const { data: retryJob, error: retryUpdateError } = await supabase
+            .from('production_jobs')
+            .update({
+              status: 'queued',
+              current_step: NEXT_STEP_AFTER_STANDALONE_BELLE_REPAIR,
+              state_json: retryState,
+              error_json: retryErrorJson,
+              logs: retryLogs,
+              locked_at: null,
+              locked_by: null,
+            })
+            .eq('id', lockedJob.id)
+            .select('*')
+            .single()
+
+          if (retryUpdateError) throw new Error(`Failed to re-queue Belle repair: ${retryUpdateError.message}`)
+
+          return NextResponse.json({
+            success: true,
+            action: 'autonomous_retry',
+            jobId: retryJob!.id,
+            currentStep: step,
+            nextStep: NEXT_STEP_AFTER_STANDALONE_BELLE_REPAIR,
+            storyId: storyId ? String(storyId) : null,
+            failureKind,
+            repairAttempts: nextAttempts,
+            learningIncidentId: learningIncident?.id || null,
+            logs: retryLogs,
+          })
+        }
+
+        // Terminal failure
+        const relevantReport = isAssetRepair
+          ? ((state as any).belleAssetFailedReport || (state as any).belleQualityFailedReport || null)
+          : ((state as any).belleQualityFailedReport || (state as any).belleQualityValidation || null)
+        const terminalErrorJson = buildStructuredError(failureKind, `Belle repair exhausted (${repairAttempts}/${MAX_BELLE_REPAIR_RETRIES}): ${errMessage}`, step, {
+          storyId: storyId ? String(storyId) : null,
+          marc_required: true,
+          autonomous_repair: false,
+          retry_count: repairAttempts,
+          max_retries: MAX_BELLE_REPAIR_RETRIES,
+          safe_resume_point: 'generate_belle_assets',
+          rootCause: errMessage.slice(0, 300),
+          fixRecommendation: 'Manually fix Belle intro/outro in script, delete stale Belle audio, reset job to generate_belle_assets.',
+          detail: {
+            repairAttempts,
+            isAttemptLimit,
+            isAssetRepair,
+            repairType: isAssetRepair ? 'asset_text_rule' : 'quality_validation',
+            expectedIntroText: (relevantReport as any)?.introText ?? null,
+            expectedOutroText: (relevantReport as any)?.outroText ?? null,
+            diffSummary: Array.isArray((relevantReport as any)?.issues)
+              ? ((relevantReport as any).issues as string[]).join('; ')
+              : errMessage,
+            playbookId: playbook?.id || null,
+            learningIncidentId: learningIncident?.id || null,
+          },
+        })
+
         const { data: failedJob, error: updateError } = await supabase
           .from('production_jobs')
           .update({
             status: 'failed',
             current_step: NEXT_STEP_AFTER_STANDALONE_BELLE_REPAIR,
-            error_json: {
-              step,
-              jobId: lockedJob.id,
-              storyId: storyId ? String(storyId) : null,
-              episodeId: lockedJob.series_id ? `${lockedJob.series_id}:ep${lockedJob.state_json?.episodeNumber ?? '?'}` : null,
-              error: err instanceof Error ? err.message : String(err),
-              repairType: isAssetRepair ? 'asset_text_rule' : 'quality_validation',
-              repairAttemptCount: repairAttempts,
-              // Asset context for debugging
-              assetPaths: {
-                intro: Array.isArray(introAssets) ? (introAssets as string[]).map(f => `${storyAudioBase}/${f}`) : [],
-                outro: Array.isArray(outroAssets) ? (outroAssets as string[]).map(f => `${storyAudioBase}/${f}`) : [],
-              },
-              expectedIntroText: (relevantReport as Record<string, unknown>)?.introText ?? null,
-              expectedOutroText: (relevantReport as Record<string, unknown>)?.outroText ?? null,
-              // Note: transcript QC not run at this step; actual transcripts require manual audio inspection
-              actualTranscript: null,
-              diffSummary: Array.isArray((relevantReport as Record<string, unknown>)?.issues)
-                ? ((relevantReport as Record<string, unknown>).issues as string[]).join('; ')
-                : (err instanceof Error ? err.message : String(err)),
-              nextRecommendedAction: repairAttempts >= 2
-                ? 'Repair limit reached. Manually fix the Belle intro text in the script, delete stale intro audio, and reset job to generate_belle_assets.'
-                : 'Increase repair attempt budget or manually write correct intro text and reset to generate_belle_assets.',
-              belleQualityFailedReport: relevantReport,
-              at: nowIso(),
-            },
+            error_json: { ...terminalErrorJson, playbookId: playbook?.id || null },
             logs,
             locked_at: null,
             locked_by: null,
@@ -6567,11 +6812,15 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({
           success: false,
-          jobId: failedJob.id,
+          jobId: failedJob!.id,
           currentStep: step,
-          status: failedJob.status,
+          status: failedJob!.status,
           storyId: storyId ? String(storyId) : null,
-          error: err instanceof Error ? err.message : String(err),
+          failureKind,
+          marcRequired: true,
+          repairAttempts,
+          error: errMessage,
+          learningIncidentId: learningIncident?.id || null,
           logs,
         }, { status: 422 })
       }

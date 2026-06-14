@@ -365,6 +365,96 @@ export const REPAIR_PLAYBOOKS: RepairPlaybook[] = [
     linkedIncident: 'ATL-PIPE-009',
   },
 
+  // ── ATL-PIPE-010: Belle validation and repair playbooks ──────────────────
+
+  {
+    id: 'pb-017-belle-hook-missing',
+    failureKind: 'belle_quality_hook_missing',
+    title: 'Belle standalone intro missing concrete narrative hook',
+    autonomous: true,
+    marcRequired: false,
+    priority: 'high',
+    steps: [
+      {
+        kind: 'belle_repair',
+        description: 'The Belle intro lacks a concrete narrative hook (specific conflict, crime, mystery mechanism, or wrongdoing). ATL-PIPE-010: abstract conflict hooks (e.g. "paper trail breaks, someone broke it on purpose") are now accepted — the hook detector was updated. If this still fires, the intro is purely atmospheric with no specific conflict element at all.',
+      },
+      {
+        kind: 'autonomous_repair',
+        description: 'Job is autonomously re-queued to repair_belle_quality. Repair prompt explicitly requires: concrete hook, [LISTENER_NAME], story title. Max 2 repair attempts.',
+      },
+    ],
+    prevention: 'BELLE_QUALITY_REPAIR_PROMPT now requires: story title, [LISTENER_NAME], concrete conflict hook. hasConcreteNarrativeHook() expanded to include wrongdoing/cover-up/paper-trail patterns.',
+    verificationCheck: 'validateBelleText() returns no hook issues after repair.',
+    linkedIncident: 'ATL-PIPE-010',
+  },
+
+  {
+    id: 'pb-018-belle-title-missing',
+    failureKind: 'belle_quality_title_missing',
+    title: 'Belle standalone intro/outro missing story title',
+    autonomous: true,
+    marcRequired: false,
+    priority: 'high',
+    steps: [
+      {
+        kind: 'belle_repair',
+        description: 'Standalone Belle intro or outro does not include the exact story title. Repair prompt explicitly instructs the model to include the exact TITLE value.',
+      },
+      {
+        kind: 'autonomous_repair',
+        description: 'Job re-queued to repair_belle_quality. Max 2 repair attempts before marc_required=true.',
+      },
+    ],
+    prevention: 'BELLE_QUALITY_REPAIR_PROMPT: "MUST include exact story title". Repair deterministic checks enforce title presence.',
+    verificationCheck: 'belleTextIncludes(repairedText, story.title) returns true.',
+    linkedIncident: 'ATL-PIPE-010',
+  },
+
+  {
+    id: 'pb-019-belle-listener-missing',
+    failureKind: 'belle_quality_listener_missing',
+    title: 'Belle intro missing [LISTENER_NAME] placeholder',
+    autonomous: true,
+    marcRequired: false,
+    priority: 'high',
+    steps: [
+      {
+        kind: 'belle_repair',
+        description: 'The Belle intro does not include the [LISTENER_NAME] personalization placeholder. This is mandatory for all standalone intros.',
+      },
+      {
+        kind: 'autonomous_repair',
+        description: 'Job re-queued to repair_belle_quality. Repair prompt: [LISTENER_NAME] is always required. Max 2 attempts.',
+      },
+    ],
+    prevention: 'BELLE_QUALITY_REPAIR_PROMPT: "[LISTENER_NAME] is mandatory, always". Repair checks enforce presence.',
+    verificationCheck: 'repairedIntro.includes("[LISTENER_NAME]") returns true.',
+    linkedIncident: 'ATL-PIPE-010',
+  },
+
+  {
+    id: 'pb-020-belle-repair-failed',
+    failureKind: 'belle_quality_repair_failed',
+    title: 'Belle repair produced text that still fails deterministic checks',
+    autonomous: true,
+    marcRequired: false,
+    priority: 'critical',
+    steps: [
+      {
+        kind: 'belle_repair',
+        description: 'The repair model returned Belle text that still fails one or more deterministic rules (missing title, missing [LISTENER_NAME], missing hook, etc.). Retry repair — a second random generation may succeed.',
+      },
+      {
+        kind: 'manual_fallback',
+        description: 'After 2 repair retries: marc_required=true. Marc must manually write correct Belle intro/outro, commit to script, delete stale audio, and reset job to generate_belle_assets.',
+      },
+    ],
+    prevention: 'BELLE_QUALITY_REPAIR_PROMPT updated with explicit field preservation rules: must include title, [LISTENER_NAME], concrete hook. Never write synopsis.',
+    verificationCheck: 'deterministicIssues.length === 0 after repair.',
+    linkedIncident: 'ATL-PIPE-010',
+  },
+
   // ── ATL-PIPE-008: validate_script failure playbooks ─────────────────────
 
   {

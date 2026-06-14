@@ -104,6 +104,12 @@ export type StructuredErrorJsonKind =
   | 'script_validator_unknown'           // AI validator: unclassified failure (not auto-retryable, marc_required)
   // ATL-PIPE-009: voice_preflight script structural failure
   | 'script_unlabeled_lines'             // story body contains prose not starting with NARRATOR:/CHARACTER: (retryable)
+  // ATL-PIPE-010: Belle intro/outro validation and repair failure kinds
+  | 'belle_quality_hook_missing'         // standalone intro lacks concrete narrative hook (auto-repairable)
+  | 'belle_quality_title_missing'        // standalone intro/outro missing story title (auto-repairable)
+  | 'belle_quality_listener_missing'     // intro missing [LISTENER_NAME] placeholder (auto-repairable)
+  | 'belle_quality_repair_failed'        // repair produced text that still fails deterministic checks (retry up to 2)
+  | 'belle_quality_unknown'              // unclassified Belle failure (marc_required after retries)
   // Legacy aliases kept for backward compat with existing error_json rows
   | 'script_blocked_word'
   | 'script_editorial_quality'
