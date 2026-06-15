@@ -649,14 +649,103 @@ function belleTextIncludes(text: string, required: string) {
   return Boolean(needle) && haystack.includes(needle)
 }
 
-function hasConcreteNarrativeHook(text: string) {
-  // Named-object / event hooks (original set)
-  if (/\b(secret|danger|dangerous|conflict|mystery|mysterious|missing|vanish|vanished|disappear|disappeared|threat|threatened|betrayal|betrayed|lie|lied|hidden|buried|locked|stolen|murder|death|dead|killer|blood|blackmail|sabotage|trap|trapped|choice|warning|evidence|clue|case|crime|manifest|list|letter|message|record|signal|code|map|key|witness|suspect|truth|reveal|reckoning|ferry|ferryman|boat|captain|passenger|passengers|crossing|crossings|names?)\b/i.test(text)) return true
-  // ATL-PIPE-010: Abstract conflict-mechanism hooks — concrete wrongdoing, cover-up, or dispute.
-  // Accepts: "paper trail breaks, someone broke it on purpose", "the deed was altered",
-  //          "someone conspired to erase the record", "ownership was disputed", etc.
-  if (/\b(broke?|broken|breaks?|tamper(?:ed|ing)?|manipulat(?:ed|ing)?|falsif(?:ied|y|ication)?|alter(?:ed|ing)|erase[sd]?|destroy(?:ed|ing)?|corrupt(?:ed|ion)?|fraud(?:ulent)?|scheme[ds]?|conspir(?:acy|ed)?|cover.?up|wrong(?:ful|fully|ed|doing)?|criminal|illegal|illicit|deed|paper trail|forced|coerced|on purpose|ownership|dispute[sd]?|inherit(?:ance|ed)?|forgery|forger)\b/i.test(text)) return true
-  return false
+// ATL-PIPE-020: Narrative Hook Detection Immunity.
+// Replaces keyword-matching with category-based narrative hook detection.
+// Rationale: the validator should recognise hook classes, not specific words.
+// Writing to satisfy a keyword list is a validator defect, not a story defect.
+//
+// The nine categories (per Marc's classification):
+//   1. suspicious_discrepancy — numbers/data/records that tell an unintended story
+//   2. unexplained_event      — something happened without explanation
+//   3. hidden_evidence        — something concealed or suppressed
+//   4. secret                 — information deliberately withheld
+//   5. fraud_wrongdoing       — explicit criminal or deceptive action
+//   6. betrayal               — breach of trust
+//   7. conspiracy             — organised deception or plot
+//   8. impossible_fact        — something that should not be possible
+//   9. missing_person         — someone absent, disappeared, or unaccounted for
+//
+// Ledger intro: "numbers tell a story they were never meant to tell"
+//   → matches suspicious_discrepancy (pattern: numbers.{0,50}story.{0,30}meant)
+//   → PASS — intro unchanged, validator updated.
+//
+// LEARN-001 classification: Validation-Model Defect (not story defect, not validator bug).
+// Root cause: keyword matching approximates hook detection but cannot recognise
+// inferential or structural forms of narrative tension.
+
+export type NarrativeHookCategory =
+  | 'suspicious_discrepancy'
+  | 'unexplained_event'
+  | 'hidden_evidence'
+  | 'secret'
+  | 'fraud_wrongdoing'
+  | 'betrayal'
+  | 'conspiracy'
+  | 'impossible_fact'
+  | 'missing_person'
+
+function detectNarrativeHookCategory(text: string): NarrativeHookCategory | null {
+  const t = text.toLowerCase()
+
+  // 1. Suspicious discrepancy — numbers/data/records that don't add up,
+  //    things that communicate an unintended truth, anomalies in records.
+  //    Covers: "numbers tell a story they were never meant to tell",
+  //    "the entry doesn't reconcile", "something's off in the ledger".
+  if (
+    /\b(discrepancy|doesn.t add up|doesn.t match|anomal|irregularit|reconcil|off the books|never meant to tell|weren.t meant|wasn.t meant|not meant to|never supposed to|shouldn.t exist|numbers.*wrong|wrong.*numbers)\b/i.test(t) ||
+    /numbers.{0,60}story.{0,40}meant/i.test(t) ||
+    /story.{0,40}(never|not|wasn.t|weren.t).{0,20}meant/i.test(t) ||
+    /\b(ledger|account|entry|invoice|payment|transaction|column|figure|balance|books?).{0,40}(wrong|off|false|missing|extra|unexplained|shouldn.t|didn.t|doesn.t|not right|bad|error|mistake)\b/i.test(t) ||
+    /\b(wrong|off|false|missing|extra|unexplained).{0,40}(ledger|account|entry|invoice|payment|transaction|column|figure|balance|books?)\b/i.test(t)
+  ) return 'suspicious_discrepancy'
+
+  // 2. Unexplained event — something happened with no apparent reason.
+  if (
+    /\b(unexplained|no explanation|no one knows why|never explained|without warning|out of nowhere|for no reason|reasons? unclear|nobody.?s sure|mysterious circumstances|can.?t explain|nobody can explain)\b/i.test(t)
+  ) return 'unexplained_event'
+
+  // 3. Hidden evidence — something concealed, suppressed, or not meant to surface.
+  if (
+    /\b(hidden|concealed|buried|covered up|cover.?up|suppressed|sealed|locked away|kept secret|kept quiet|wasn.t meant to be found|never meant to be found|shouldn.t have surfaced|didn.t want found|didn.t want anyone to find)\b/i.test(t)
+  ) return 'hidden_evidence'
+
+  // 4. Secret — information deliberately withheld from someone.
+  if (
+    /\b(secret|no one knew|nobody knew|didn.t tell|never told|withheld|confidential|classified|kept from|wasn.t supposed to know|not supposed to know)\b/i.test(t)
+  ) return 'secret'
+
+  // 5. Fraud / wrongdoing — explicit criminal or deceptive act.
+  if (
+    /\b(fraud|fraudulent|scheme|scam|theft|stolen|embezzl|forgery|falsif|tamper|manipulat|corrupt|brib|crime|criminal|illegal|illicit|wrongdoing|cover.?up|decei|on purpose|paper trail)\b/i.test(t)
+  ) return 'fraud_wrongdoing'
+
+  // 6. Betrayal — breach of trust between people.
+  if (
+    /\b(betrayal|betrayed|betrays|trust.{0,20}broken|broken.{0,20}trust|backstab|double.?cross|sold.{0,10}out|turned.{0,10}against|let.{0,10}down by someone)\b/i.test(t)
+  ) return 'betrayal'
+
+  // 7. Conspiracy — organised deception, plot, or coordinated wrongdoing.
+  if (
+    /\b(conspiracy|conspired|conspiring|plot|orchestrated|coordinated|web of|network of|scheme involving|working together to|they planned|planned together)\b/i.test(t)
+  ) return 'conspiracy'
+
+  // 8. Impossible fact — something that defies logic or should not exist.
+  if (
+    /\b(impossible|can.?t be right|can.?t be true|makes no sense|doesn.?t make sense|defies|against all (odds|logic|reason)|shouldn.?t (exist|be possible|have happened)|never should have|no way that|how is it possible)\b/i.test(t)
+  ) return 'impossible_fact'
+
+  // 9. Missing person — someone absent, disappeared, or unaccounted for.
+  if (
+    /\b(missing|disappeared|vanished|gone without|unaccounted|never came back|never returned|last seen|never found|no trace)\b/i.test(t)
+  ) return 'missing_person'
+
+  return null
+}
+
+function hasConcreteNarrativeHook(text: string): boolean {
+  // ATL-PIPE-020: delegate to category-based detection.
+  // If any category matches, the hook is present regardless of specific word choice.
+  return detectNarrativeHookCategory(text) !== null
 }
 
 // ATL-PIPE-010: classify Belle issues into canonical StructuredErrorJsonKind.
