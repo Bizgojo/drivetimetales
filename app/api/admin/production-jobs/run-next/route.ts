@@ -1811,6 +1811,21 @@ GOOD: ROSA: Yes, he retired eight months ago.
 REASON: Whisper voice activity detection stops after the first short sentence ("Yes.") because the natural period pause reads as segment end. Combining into a single flowing sentence prevents false QC truncation.
 If an affirmation/negation is necessary, write it as a separate ROSA: line before the continuation line.
 
+HAL-SCRIPT-007: SHORT DIALOGUE LINE MINIMUM LENGTH
+Dialogue lines MUST be at least 5 words. Lines shorter than 5 words cause Whisper to drop
+the opening word(s) — e.g. "It's open." → Whisper returns "Open." (contraction dropped).
+BAD:  LEN: It's open.
+BAD:  ROSA: Come in.
+BAD:  WARD: Too late.
+GOOD: LEN: The door is already open, come through.
+GOOD: ROSA: You can come in now, he is ready.
+GOOD: WARD: I am afraid you are already too late.
+If the dramatic beat requires a very short response, write it as subtext in the narration or
+merge with the character's next line. Never leave a standalone line under 5 words.
+REASON: Short audio clips from ElevenLabs can cause Whisper VAD to miss the opening
+word(s), producing a partial transcript that fails QC. ATL-PIPE-017 catches some cases
+but HAL-SCRIPT-007 prevents all of them at the source.
+
 HAL-SCRIPT-003: DESCRIPTION PROTAGONIST CONSISTENCY RULE
 - The DESCRIPTION field must name the protagonist using the EXACT role/occupation that appears in the script body.
 - If the brief says "welfare clerk" but the script generates a "caseworker", use "caseworker" in DESCRIPTION.
@@ -6066,7 +6081,20 @@ export async function POST(req: NextRequest) {
             story_id: result.storyId,
             status: 'failed',
             current_step: NEXT_STEP_AFTER_STANDALONE_PREFLIGHT,
-            state_json: result.state,
+            // ATL-PIPE-018: Preserve critical preflight fields through generate_voices hard failures.
+            // result.state spreads the incoming state, which should include voicePreflightPassed.
+            // Belt-and-suspenders: if result.state somehow lost these fields (edge-case state
+            // corruption), fall back to lockedJob.state_json values so a manual reset + retry
+            // does not immediately fail with "Voice preflight must pass before generate_voices".
+            state_json: {
+              ...result.state,
+              voicePreflightPassed: result.state.voicePreflightPassed
+                ?? (lockedJob.state_json as Record<string, unknown>)?.voicePreflightPassed,
+              voicePreflightStoryId: result.state.voicePreflightStoryId
+                ?? (lockedJob.state_json as Record<string, unknown>)?.voicePreflightStoryId,
+              voicePreflight: result.state.voicePreflight
+                ?? (lockedJob.state_json as Record<string, unknown>)?.voicePreflight,
+            },
             error_json: { ...errorJsonPayload, playbookId: playbook?.id || null },
             logs,
             locked_at: null,

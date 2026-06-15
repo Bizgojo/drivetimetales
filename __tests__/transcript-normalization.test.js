@@ -537,3 +537,64 @@ describe('ATL-PIPE-016: normForPrefixCheck — The Ledger segment_0013 exact cas
     expect(expNorm.startsWith(detNorm)).toBe(false)
   })
 })
+
+// ─── ATL-PIPE-017: Short-line suffix/substring acceptance ─────────────────────
+
+describe('ATL-PIPE-017: suffix-match acceptance for short dialogue lines', () => {
+  // Mirror normForPrefixCheck logic from generate-voices (standalone helper for tests)
+  const CARD_0_19 = [
+    'zero','one','two','three','four','five','six','seven','eight','nine',
+    'ten','eleven','twelve','thirteen','fourteen','fifteen','sixteen',
+    'seventeen','eighteen','nineteen',
+  ]
+  function normForPrefixCheck(text) {
+    let s = normalizeCompoundNumbers(text)
+    for (const word of CARD_0_19) {
+      const digit = NUMBER_WORDS[word]
+      if (digit) s = s.replace(new RegExp(`\\b${word}\\b`, 'gi'), digit)
+    }
+    return s.toLowerCase().replace(/[^\w\s']/g, '').replace(/\s+/g, ' ').trim()
+  }
+
+  function isSuffixMatchAcceptable(detected, expected) {
+    const detNorm = normForPrefixCheck(detected)
+    const expNorm = normForPrefixCheck(expected)
+    return detNorm.length >= 2
+      && expNorm.includes(detNorm)
+      && detNorm.length / Math.max(expNorm.length, 1) >= 0.30
+  }
+
+  // Exact case: The Ledger segment_0049
+  it('accepts "Open." for "It\'s open." (contraction dropped by Whisper)', () => {
+    expect(isSuffixMatchAcceptable("Open.", "It's open.")).toBe(true)
+  })
+
+  it('ratio guard: "not" in "No I do not" rejected (< 30%)', () => {
+    expect(isSuffixMatchAcceptable("not", "No I do not")).toBe(false)
+  })
+
+  it('ratio guard: "now" in "Go right now" rejected (0.23 < 30%)', () => {
+    expect(isSuffixMatchAcceptable("now", "Go right now")).toBe(false)
+  })
+
+  it('unrelated text rejected ("Hello" not in "Goodbye world")', () => {
+    expect(isSuffixMatchAcceptable("Hello", "Goodbye world")).toBe(false)
+  })
+
+  it('length guard: single char "" does not match (< 2 chars after norm)', () => {
+    expect(isSuffixMatchAcceptable(".", "It's open.")).toBe(false)
+  })
+
+  it('prefix case falls through to isPrefixAcceptable, not suffix (dat in dated)', () => {
+    // "dat" IS a prefix of "dated..." — prefix check handles it; suffix should also pass
+    const detNorm = normForPrefixCheck("dat")
+    const expNorm = normForPrefixCheck("dated eight days ago")
+    // passes prefix via startsWith
+    expect(expNorm.startsWith(detNorm)).toBe(true)
+  })
+
+  it('Come in. accepted for "You can come in now" (suffix match, ratio 0.31)', () => {
+    // norm: "come in" (7) vs "you can come in now" (19) → 7/19 = 0.37 ≥ 0.30
+    expect(isSuffixMatchAcceptable("Come in.", "You can come in now")).toBe(true)
+  })
+})

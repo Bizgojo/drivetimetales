@@ -2538,12 +2538,29 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
             && expectedNorm.startsWith(detectedNorm)
             && lastLoudnessPassedBuf !== null
 
-          if (isPrefixAcceptable) {
+          // ATL-PIPE-017: Short-line suffix/substring acceptance.
+          // Very short dialogue lines (< ~4 words) are prone to Whisper dropping
+          // the opening word(s) — especially contractions ("It's", "That's").
+          // Detected "Open." (norm "open") is NOT a prefix of "It's open." (norm "its open")
+          // but IS contained within it. Accept when:
+          //   (a) detectedNorm appears as substring of expectedNorm, AND
+          //   (b) ratio of detected to expected length ≥ 0.30 (prevents single-word
+          //       false positives on long expected text like "going" in a 30-word sentence), AND
+          //   (c) audio buffer was generated (lastLoudnessPassedBuf !== null)
+          // HAL-SCRIPT-007 prevents recurrence at source (dialogue lines must be ≥ 5 words).
+          const isSuffixMatchAcceptable = !isPrefixAcceptable
+            && detectedNorm.length >= 2
+            && expectedNorm.includes(detectedNorm)
+            && detectedNorm.length / Math.max(expectedNorm.length, 1) >= 0.30
+            && lastLoudnessPassedBuf !== null
+
+          if (isPrefixAcceptable || isSuffixMatchAcceptable) {
+            const acceptRule = isPrefixAcceptable ? 'ATL-PIPE-007 prefix' : 'ATL-PIPE-017 suffix'
             console.warn(
               `  ⚠️ REPEATED_IDENTICAL_TRUNCATION [${ruleCase}] ${fileName} speaker="${speaker}" ` +
-              `— detected "${truncatedAt}" is a clean string prefix of expected. ` +
-              `Whisper VAD stopped at natural pause; audio almost certainly correct. ` +
-              `Accepting with warning (ATL-PIPE-007). coverage=${transcriptFailure.coverage?.toFixed(2)}`
+              `— detected "${truncatedAt}" ${isPrefixAcceptable ? 'is a clean prefix of' : 'appears within'} expected. ` +
+              `Whisper VAD truncated; audio almost certainly correct. ` +
+              `Accepting with warning (${acceptRule}). coverage=${transcriptFailure.coverage?.toFixed(2)}`
             )
             qcSkipCollector?.push(fileName)
             await uploadAudioBufferWithRetry(cachePath, lastLoudnessPassedBuf, `${speaker || 'UNKNOWN'} ${fileName}`)
