@@ -1798,6 +1798,8 @@ HAL-SCRIPT-004: NUMBER AND CURRENCY FORMATTING RULE
 - Reason: voice TTS reads digit strings differently from how Whisper transcribes spoken audio.
   Using spoken word forms ensures QC transcript matching succeeds without normalization workarounds.
 
+HAL-SCRIPT-005: When writing numbers in dialogue or narration, use consistent form. If you write forty-five, write all two-digit numbers as words. If you write 45, use digits. Mixed forms within a sentence create QC noise.
+
 HAL-SCRIPT-003: DESCRIPTION PROTAGONIST CONSISTENCY RULE
 - The DESCRIPTION field must name the protagonist using the EXACT role/occupation that appears in the script body.
 - If the brief says "welfare clerk" but the script generates a "caseworker", use "caseworker" in DESCRIPTION.
@@ -7411,6 +7413,50 @@ export async function POST(req: NextRequest) {
       }
 
       const completedAt = nowIso()
+
+      // ── ATL-PIPE-014: Auto-promote story on RFR success ───────────────────
+      // The pipeline validated all 14 steps. Promote the story to
+      // workflow_state=ready_for_review and is_hidden=false automatically so
+      // Marc can see it in the RFR tab without any Orion/human intervention.
+      // This satisfies Marc's M-1 rule: no manual visibility correction allowed.
+      // ORION-GOV-006 compliant: audit fields set, audit row written.
+      let storyPromotionStatus: 'ok' | 'skipped' | 'error' = 'skipped'
+      if (result.storyId) {
+        const { error: promoErr } = await supabase
+          .from('stories')
+          .update({
+            workflow_state: 'ready_for_review',
+            is_hidden: false,
+            workflow_state_changed_by: 'autonomous-runner',
+            workflow_state_changed_at: completedAt,
+            workflow_state_change_reason: `Pipeline job ${lockedJob.id} completed all 14 steps autonomously. Auto-promoted by ATL-PIPE-014.`,
+          })
+          .eq('id', result.storyId)
+
+        if (promoErr) {
+          console.error(`[ready_for_review] ATL-PIPE-014 story promotion failed for ${result.storyId}: ${promoErr.message}`)
+          storyPromotionStatus = 'error'
+        } else {
+          storyPromotionStatus = 'ok'
+          // Write ORION-GOV-006 audit row (best-effort — do not fail RFR if this errors)
+          await supabase
+            .from('story_workflow_audit')
+            .insert({
+              story_id: result.storyId,
+              from_state: null,
+              to_state: 'ready_for_review',
+              changed_by: 'autonomous-runner',
+              changed_at: completedAt,
+              reason: `ATL-PIPE-014: Pipeline job ${lockedJob.id} completed all 14 steps autonomously. Auto-promoted to ready_for_review.`,
+              session_context: lockedJob.id,
+            })
+            .then(({ error: auditErr }) => {
+              if (auditErr) console.warn(`[ready_for_review] ATL-PIPE-014 audit row insert failed (non-fatal): ${auditErr.message}`)
+            })
+        }
+      }
+      // ── END ATL-PIPE-014 ──────────────────────────────────────────────────
+
       const { data: updatedJob, error: updateError } = await supabase
         .from('production_jobs')
         .update({
@@ -7446,6 +7492,7 @@ export async function POST(req: NextRequest) {
         storyId: result.storyId,
         completedAt,
         readyForReview: result.state.readyForReview,
+        storyPromotionStatus,
         logs,
       })
     }

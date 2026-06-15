@@ -43,16 +43,24 @@ function normalizeCompoundNumbers(text) {
   const w = (word) => Number(NUMBER_WORDS[word.toLowerCase()] ?? NaN)
 
   return text
-    // Step 1: strip commas in digit strings
+    // Step 1: hyphenated two-digit word-numbers → digits
+    .replace(
+      new RegExp(`\\b(${TENS})-(${ONES_1_9})\\b`, 'gi'),
+      (match, tens, ones) => {
+        const val = w(tens) + w(ones)
+        return Number.isFinite(val) ? String(val) : match
+      }
+    )
+    // Step 2: strip commas in digit strings
     .replace(/\b(\d{1,3}(?:,\d{3})+)\b/g, m => m.replace(/,/g, ''))
-    // Step 2: strip dollar sign prefix
+    // Step 3: strip dollar sign prefix
     .replace(/\$(\d)/g, '$1')
-    // Step 3: remove "and" between scale words and number words
+    // Step 4: remove "and" between scale words and number words
     .replace(
       /\b(hundred|thousand|million|billion)\s+and\s+(?=(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)\b)/gi,
       '$1 '
     )
-    // Step 4: "X hundred Y[Z] thousand" compound → digit
+    // Step 5: "X hundred Y[Z] thousand" compound → digit
     .replace(
       new RegExp(
         `\\b(${HUNDREDS})\\s+hundred\\s+(${ONES})(?:\\s+(${ONES_1_9}))?\\s+thousand\\b`,
@@ -66,7 +74,7 @@ function normalizeCompoundNumbers(text) {
         return Number.isFinite(val) && val > 0 ? String(val) : match
       }
     )
-    // Step 5: strip "dollars" suffix after digit numbers
+    // Step 6: strip "dollars" suffix after digit numbers
     .replace(/\b(\d+)\s+dollars?\b/gi, '$1')
 }
 
@@ -131,6 +139,41 @@ describe('ATL-PIPE-011: transcript numeric/currency equivalence normalization', 
   // ── normalizeCompoundNumbers: specific transformations ───────────────
 
   describe('normalizeCompoundNumbers: specific transformations', () => {
+    it('"forty-five" → "45"', () => {
+      expect(normalizeCompoundNumbers('forty-five').trim()).toBe('45')
+    })
+
+    it('"thirty-one" → "31"', () => {
+      expect(normalizeCompoundNumbers('thirty-one').trim()).toBe('31')
+    })
+
+    it('"twenty-three seconds" → "23 seconds"', () => {
+      expect(normalizeCompoundNumbers('twenty-three seconds').trim()).toBe('23 seconds')
+    })
+
+    it('"ninety-nine" → "99"', () => {
+      expect(normalizeCompoundNumbers('ninety-nine').trim()).toBe('99')
+    })
+
+    it('"seventy-two" → "72"', () => {
+      expect(normalizeCompoundNumbers('seventy-two').trim()).toBe('72')
+    })
+
+    it('"forty" stays word form because only hyphenated forms are converted', () => {
+      expect(normalizeCompoundNumbers('forty').trim()).toBe('forty')
+    })
+
+    it('"five" stays word form because only hyphenated forms are converted', () => {
+      expect(normalizeCompoundNumbers('five').trim()).toBe('five')
+    })
+
+    it('full forty-five seconds segment normalizes to the same prefix as digit transcript', () => {
+      const expected = normalizeCompoundNumbers('The elevator took forty-five seconds to arrive.')
+      const detected = normalizeCompoundNumbers('The elevator took 45 seconds to arrive.')
+      expect(expected).toBe('The elevator took 45 seconds to arrive.')
+      expect(detected.startsWith(expected)).toBe(true)
+    })
+
     // Fix B: dollar/comma removal
     it('"$340,000" → "340000"', () => {
       expect(normalizeCompoundNumbers('$340,000').trim()).toBe('340000')

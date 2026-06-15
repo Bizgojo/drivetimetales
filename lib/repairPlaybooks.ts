@@ -42,6 +42,7 @@ export type RepairStep = {
 export type RepairPlaybook = {
   id: string
   failureKind: string           // Matches classify.ts FailureKind or error_json.kind
+  name?: string
   title: string
   autonomous: boolean           // Can execute without Marc?
   marcRequired: boolean         // Requires Marc's decision?
@@ -441,6 +442,27 @@ export const REPAIR_PLAYBOOKS: RepairPlaybook[] = [
     prevention: 'HAL-SCRIPT-004: write numbers and money amounts as spoken words in script (e.g. "three hundred and forty thousand dollars" not "$340,000"). Reduces Whisper transcription format divergence. normalizeCompoundNumbers() added to transcriptTokens() pipeline handles any remaining cases.',
     verificationCheck: 'normalizeCompoundNumbers(expected) === normalizeCompoundNumbers(detected)',
     linkedIncident: 'ATL-PIPE-011',
+  },
+
+  // ── ATL-PIPE-013: transcript hyphenated numeric equivalence ─────────────
+
+  {
+    id: 'pb-022-transcript-hyphenated-numeric',
+    failureKind: 'transcript_hyphenated_numeric',
+    name: 'Transcript hyphenated number acceptance',
+    title: 'Transcript hyphenated number acceptance',
+    autonomous: true,
+    marcRequired: false,
+    priority: 'low',
+    steps: [
+      {
+        kind: 'accept',
+        description: 'The segment audio is valid. Whisper returned the digit form of a hyphenated two-digit word-number (for example, "45" for "forty-five"). After hyphenated number normalization, expected and detected are equivalent. The segment is accepted and production continues.',
+      },
+    ],
+    prevention: 'HAL-SCRIPT-005: use consistent two-digit number form within dialogue and narration to reduce QC transcript noise.',
+    verificationCheck: 'normalizeCompoundNumbers(expected) === normalizeCompoundNumbers(detected)',
+    linkedIncident: 'ATL-PIPE-013',
   },
 
   // ── ATL-PIPE-009: voice_preflight structural script failure ─────────────

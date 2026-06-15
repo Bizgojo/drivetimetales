@@ -209,15 +209,25 @@ function normalizeCompoundNumbers(text: string): string {
   const w = (word: string): number => Number(NUMBER_WORDS[word.toLowerCase()] ?? NaN)
 
   return text
-    // ── Step 1: strip commas in digit strings ────────────────────────────
+    // ── Step 1: hyphenated two-digit word-numbers → digits ───────────────
+    // "forty-five" → "45"; standalone "forty" and "five" are left unchanged.
+    .replace(
+      new RegExp(`\\b(${TENS})-(${ONES_1_9})\\b`, 'gi'),
+      (match, tens, ones) => {
+        const val = w(tens) + w(ones)
+        return Number.isFinite(val) ? String(val) : match
+      }
+    )
+
+    // ── Step 2: strip commas in digit strings ────────────────────────────
     // "340,000" → "340000"  |  "1,234,567" → "1234567"
     .replace(/\b(\d{1,3}(?:,\d{3})+)\b/g, m => m.replace(/,/g, ''))
 
-    // ── Step 2: strip dollar sign prefix ────────────────────────────────
+    // ── Step 3: strip dollar sign prefix ────────────────────────────────
     // "$340000" → "340000"
     .replace(/\$(\d)/g, '$1')
 
-    // ── Step 3: remove "and" as conjunction between scale words and number words
+    // ── Step 4: remove "and" as conjunction between scale words and number words
     // "three hundred and forty thousand" → "three hundred forty thousand"
     // "two thousand and eleven"          → "two thousand eleven"
     .replace(
@@ -225,7 +235,7 @@ function normalizeCompoundNumbers(text: string): string {
       '$1 '
     )
 
-    // ── Step 4: "X hundred Y[Z] thousand" compound → digit ───────────────
+    // ── Step 5: "X hundred Y[Z] thousand" compound → digit ───────────────
     // "three hundred forty thousand"     → "340000"
     // "three hundred forty-five thousand"→ "345000"
     // "one hundred twenty thousand"      → "120000"
@@ -245,7 +255,7 @@ function normalizeCompoundNumbers(text: string): string {
       }
     )
 
-    // ── Step 5: strip "dollars" suffix after digit numbers ───────────────
+    // ── Step 6: strip "dollars" suffix after digit numbers ───────────────
     // "340000 dollars" → "340000"
     // Fires only on digit-then-dollars, not on "three dollars" (those are handled
     // by normalizeCurrencyForms earlier in the chain).
