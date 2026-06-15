@@ -2473,7 +2473,11 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
           // normalized string prefix of expected (punctuation-stripped comparison).
           const detectedNorm = (transcriptDetectedTexts[0] || '').toLowerCase().replace(/[^\w\s']/g, '').trim()
           const expectedNorm = (transcriptFailure.expectedText || '').toLowerCase().replace(/[^\w\s']/g, '').trim()
-          const isPrefixAcceptable = detectedNorm.length >= 8
+          // ATL-PIPE-015: lowered from >= 8 to >= 2 to handle short affirmative
+          // responses like "Yes." (norm "yes" = 3 chars) and "No." (2 chars) that
+          // are valid clean prefixes of longer lines. A 1-char guard prevents
+          // single-letter false positives (e.g. Whisper returning bare "I" or "A").
+          const isPrefixAcceptable = detectedNorm.length >= 2
             && expectedNorm.startsWith(detectedNorm)
             && lastLoudnessPassedBuf !== null
 

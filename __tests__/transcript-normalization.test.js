@@ -382,3 +382,46 @@ describe('ATL-PIPE-011: transcript numeric/currency equivalence normalization', 
   })
 
 })
+
+// ─── ATL-PIPE-015: Short prefix truncation acceptance (isPrefixAcceptable >= 2) ─
+
+describe('ATL-PIPE-015: short affirmative prefix acceptance', () => {
+  // The isPrefixAcceptable guard was >= 8. "Yes." normalises to "yes" (3 chars),
+  // which failed the guard. Fixed to >= 2 so single-word affirmations pass.
+
+  function normDetected(t) {
+    return t.toLowerCase().replace(/[^\w\s']/g, '').trim()
+  }
+
+  it('"Yes." normalised length is >= 2 (passes ATL-PIPE-015 guard)', () => {
+    expect(normDetected('Yes.').length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('"No." normalised length is >= 2', () => {
+    expect(normDetected('No.').length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('"Sure." normalised length is >= 2', () => {
+    expect(normDetected('Sure.').length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('"Yes." is a string prefix of "Yes. He retired eight months ago." after normalisation', () => {
+    const det = normDetected('Yes.')
+    const exp = normDetected('Yes. He retired eight months ago.')
+    expect(exp.startsWith(det)).toBe(true)
+  })
+
+  it('"No." is a prefix of "No. The file was stamped last week."', () => {
+    const det = normDetected('No.')
+    const exp = normDetected('No. The file was stamped last week.')
+    expect(exp.startsWith(det)).toBe(true)
+  })
+
+  it('bare "I" (1 char) is NOT >= 2 — still blocked to prevent false positives', () => {
+    expect(normDetected('I').length).toBeLessThan(2)
+  })
+
+  it('bare "A" (1 char) is NOT >= 2 — still blocked', () => {
+    expect(normDetected('A').length).toBeLessThan(2)
+  })
+})

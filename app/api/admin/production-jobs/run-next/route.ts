@@ -1800,6 +1800,17 @@ HAL-SCRIPT-004: NUMBER AND CURRENCY FORMATTING RULE
 
 HAL-SCRIPT-005: When writing numbers in dialogue or narration, use consistent form. If you write forty-five, write all two-digit numbers as words. If you write 45, use digits. Mixed forms within a sentence create QC noise.
 
+HAL-SCRIPT-006: SHORT DIALOGUE SENTENCE RULE
+Do NOT write a character dialogue line that begins with a standalone one-word sentence followed immediately by more content in the same line.
+BAD:  ROSA: Yes. He retired eight months ago.
+BAD:  GARRITY: No. The file was stamped last week.
+BAD:  DOLAN: Sure. I can check the register.
+GOOD: ROSA: He retired eight months ago—she nodded and confirmed it.
+GOOD: GARRITY: He said no; the file was stamped last week.
+GOOD: ROSA: Yes, he retired eight months ago.
+REASON: Whisper voice activity detection stops after the first short sentence ("Yes.") because the natural period pause reads as segment end. Combining into a single flowing sentence prevents false QC truncation.
+If an affirmation/negation is necessary, write it as a separate ROSA: line before the continuation line.
+
 HAL-SCRIPT-003: DESCRIPTION PROTAGONIST CONSISTENCY RULE
 - The DESCRIPTION field must name the protagonist using the EXACT role/occupation that appears in the script body.
 - If the brief says "welfare clerk" but the script generates a "caseworker", use "caseworker" in DESCRIPTION.
