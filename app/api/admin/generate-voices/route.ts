@@ -255,6 +255,25 @@ function normalizeCompoundNumbers(text: string): string {
       }
     )
 
+    // ── Step 5.5: "X thousand Y hundred" compound → digit ───────────────
+    // ATL-PIPE-016: Handles small-to-mid dollar amounts in word form.
+    // "two thousand eight hundred"   → "2800"
+    // "three thousand one hundred"   → "3100"
+    // "two thousand five hundred"    → "2500"
+    // REQUIRES the "Y hundred" part to avoid converting partial forms.
+    // "two thousand eleven" → NO MATCH (no "Y hundred"; eleven is a teen, not hundreds)
+    // "eleven thousand" alone → NO MATCH (handled only in normForPrefixCheck)
+    // Placed AFTER Step 5 so "three hundred forty thousand" is consumed first.
+    .replace(
+      new RegExp(`\\b(${ONES_10_19}|${TENS}|${ONES_1_9})\\s+thousand\\s+(${ONES_1_9})\\s+hundred\\b`, 'gi'),
+      (match, thou, hund) => {
+        const tv = w(thou) * 1000
+        const hv = w(hund) * 100
+        const val = tv + hv
+        return Number.isFinite(val) && val > 0 ? String(val) : match
+      }
+    )
+
     // ── Step 6: strip "dollars" suffix after digit numbers ───────────────
     // "340000 dollars" → "340000"
     // Fires only on digit-then-dollars, not on "three dollars" (those are handled
@@ -2471,8 +2490,33 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
           //
           // Guard: detected must be ≥ 8 chars (prevents near-empty detections) and a
           // normalized string prefix of expected (punctuation-stripped comparison).
-          const detectedNorm = (transcriptDetectedTexts[0] || '').toLowerCase().replace(/[^\w\s']/g, '').trim()
-          const expectedNorm = (transcriptFailure.expectedText || '').toLowerCase().replace(/[^\w\s']/g, '').trim()
+          // ATL-PIPE-016: normForPrefixCheck applies full number normalization
+          // (normalizeCompoundNumbers + standalone cardinal words 0-19 → digits)
+          // before the startsWith prefix comparison. This handles cases where
+          // Whisper returns digit forms ($2,800 / 11) while the script was written
+          // in word form ("two thousand eight hundred" / "eleven") — both sides
+          // normalize to the same token sequence before comparison.
+          const normForPrefixCheck = (t: string): string => {
+            // Step A: compound number normalization (handles $X,XXX, "X hundred Y thousand",
+            //         hyphenated two-digit, "X thousand Y hundred" via normalizeCompoundNumbers)
+            let s = normalizeCompoundNumbers(t)
+            // Step B: standalone cardinal words 0-19 → digits
+            // Covers temporal/quantity contexts ("eleven days ago"→"11 days ago", etc.)
+            // Applied after compound normalization so compound forms are consumed first.
+            const CARD_0_19 = [
+              'zero','one','two','three','four','five','six','seven','eight','nine',
+              'ten','eleven','twelve','thirteen','fourteen','fifteen','sixteen',
+              'seventeen','eighteen','nineteen',
+            ]
+            for (const word of CARD_0_19) {
+              const digit = NUMBER_WORDS[word]
+              if (digit) s = s.replace(new RegExp(`\\b${word}\\b`, 'gi'), digit)
+            }
+            // Step C: strip punctuation, normalise whitespace, lowercase
+            return s.toLowerCase().replace(/[^\w\s']/g, '').replace(/\s+/g, ' ').trim()
+          }
+          const detectedNorm = normForPrefixCheck(transcriptDetectedTexts[0] || '')
+          const expectedNorm = normForPrefixCheck(transcriptFailure.expectedText || '')
           // ATL-PIPE-015: lowered from >= 8 to >= 2 to handle short affirmative
           // responses like "Yes." (norm "yes" = 3 chars) and "No." (2 chars) that
           // are valid clean prefixes of longer lines. A 1-char guard prevents

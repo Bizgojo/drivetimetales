@@ -74,6 +74,19 @@ function normalizeCompoundNumbers(text) {
         return Number.isFinite(val) && val > 0 ? String(val) : match
       }
     )
+    // Step 5.5: "X thousand Y hundred" → digit (ATL-PIPE-016)
+    // Requires the "Y hundred" part — handles $X,XXX dollar amounts.
+    // "two thousand eight hundred" → "2800" (yes)
+    // "two thousand eleven" → NO MATCH (no "Y hundred" here)
+    .replace(
+      new RegExp(`\\b(${ONES_10_19}|${TENS}|${ONES_1_9})\\s+thousand\\s+(${ONES_1_9})\\s+hundred\\b`, 'gi'),
+      (match, thou, hund) => {
+        const tv = w(thou) * 1000
+        const hv = w(hund) * 100
+        const val = tv + hv
+        return Number.isFinite(val) && val > 0 ? String(val) : match
+      }
+    )
     // Step 6: strip "dollars" suffix after digit numbers
     .replace(/\b(\d+)\s+dollars?\b/gi, '$1')
 }
@@ -423,5 +436,104 @@ describe('ATL-PIPE-015: short affirmative prefix acceptance', () => {
 
   it('bare "A" (1 char) is NOT >= 2 — still blocked', () => {
     expect(normDetected('A').length).toBeLessThan(2)
+  })
+})
+
+// ─── ATL-PIPE-016: "X thousand Y hundred" normalization + normForPrefixCheck ─
+
+describe('ATL-PIPE-016: X-thousand-Y-hundred normalization', () => {
+
+  // Mirror the new Step 1.5 added to normalizeCompoundNumbers
+  const ONES_1_9  = 'one|two|three|four|five|six|seven|eight|nine'
+  const ONES_10_19 = 'ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen'
+  const TENS      = 'twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety'
+
+  function normalizeThousandHundred(text) {
+    return text.replace(
+      new RegExp(`\\b(${ONES_10_19}|${TENS}(?:-${ONES_1_9})?|${ONES_1_9})\\s+thousand(?:\\s+(${ONES_1_9})\\s+hundred)?\\b`, 'gi'),
+      (match, thou, hund) => {
+        const tv = (NUMBER_WORDS[thou.toLowerCase()] ?? NaN) * 1000
+        const hv = hund ? (NUMBER_WORDS[hund.toLowerCase()] ?? NaN) * 100 : 0
+        const val = tv + hv
+        return isFinite(val) && val > 0 ? String(val) : match
+      }
+    )
+  }
+
+  it('"two thousand eight hundred" → "2800"', () => {
+    expect(normalizeThousandHundred('two thousand eight hundred').trim()).toBe('2800')
+  })
+
+  it('"three thousand one hundred" → "3100"', () => {
+    expect(normalizeThousandHundred('three thousand one hundred').trim()).toBe('3100')
+  })
+
+  it('"two thousand five hundred" → "2500"', () => {
+    expect(normalizeThousandHundred('two thousand five hundred').trim()).toBe('2500')
+  })
+
+
+
+  it('"two thousand" (no hundreds) → "2000"', () => {
+    expect(normalizeThousandHundred('two thousand').trim()).toBe('2000')
+  })
+})
+
+describe('ATL-PIPE-016: normForPrefixCheck — The Ledger segment_0013 exact case', () => {
+  // Mirror normForPrefixCheck from generate-voices/route.ts
+  const ONES_1_9  = 'one|two|three|four|five|six|seven|eight|nine'
+  const ONES_10_19 = 'ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen'
+  const TENS      = 'twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety'
+  const CARD_0_19 = [
+    'zero','one','two','three','four','five','six','seven','eight','nine',
+    'ten','eleven','twelve','thirteen','fourteen','fifteen','sixteen',
+    'seventeen','eighteen','nineteen',
+  ]
+
+  function normForPrefixCheck(text) {
+    // Step A: normalizeCompoundNumbers (includes new Step 1.5)
+    let s = normalizeCompoundNumbers(text)
+    // Step B: standalone cardinal 0-19 → digits
+    for (const word of CARD_0_19) {
+      const digit = NUMBER_WORDS[word]
+      if (digit) s = s.replace(new RegExp(`\\b${word}\\b`, 'gi'), digit)
+    }
+    // Step C: strip punct, lowercase
+    return s.toLowerCase().replace(/[^\w\s']/g, '').replace(/\s+/g, ' ').trim()
+  }
+
+  const DETECTED = 'The first was a payment of $2,800, dated 11 days ago. The second was $3,100, dat'
+  const EXPECTED = 'The first was a payment of two thousand eight hundred dollars, dated eleven days ago. The second was three thousand one hundred dollars, dated eight days ago. The third was two thousand five hundred dollars, dated five days ago. Each one carried an invoice number. Each one was signed by Dwight Purnell.'
+
+  it('normForPrefixCheck normalises $2,800 → "2800"', () => {
+    expect(normForPrefixCheck('$2,800')).toBe('2800')
+  })
+
+  it('normForPrefixCheck normalises "two thousand eight hundred dollars" → "2800"', () => {
+    expect(normForPrefixCheck('two thousand eight hundred dollars')).toBe('2800')
+  })
+
+  it('normForPrefixCheck normalises "eleven" → "11"', () => {
+    expect(normForPrefixCheck('eleven')).toBe('11')
+  })
+
+  it('normForPrefixCheck detected norm starts with valid prefix', () => {
+    const detNorm = normForPrefixCheck(DETECTED)
+    const expNorm = normForPrefixCheck(EXPECTED)
+    // Both should now normalize number forms consistently
+    expect(detNorm.length).toBeGreaterThanOrEqual(2)
+    expect(expNorm.startsWith(detNorm)).toBe(true)
+  })
+
+  it('"dat" mid-word truncation still accepted as prefix of "dated"', () => {
+    const detNorm = normForPrefixCheck('the second was 3100 dat')
+    const expNorm = normForPrefixCheck('the second was three thousand one hundred dollars dated eight days ago')
+    expect(expNorm.startsWith(detNorm)).toBe(true)
+  })
+
+  it('unrelated short text does NOT pass (no false positives)', () => {
+    const detNorm = normForPrefixCheck('Hello world')
+    const expNorm = normForPrefixCheck('Goodbye world')
+    expect(expNorm.startsWith(detNorm)).toBe(false)
   })
 })
