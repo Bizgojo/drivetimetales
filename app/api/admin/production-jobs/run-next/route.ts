@@ -53,6 +53,38 @@ const DESCRIPTION_PAST_TENSE_RE = /\b(vanished|was|were|had|found|discovered|lef
 // ATL-PIPE-008: Classify validate_script failure into canonical kinds.
 // isCardCopy=true means the failure came from validateCardCopy() (deterministic).
 // isCardCopy=false means the failure came from the AI validator.
+// ATL-PIPE-020: Pre-generation segment length validation.
+// Finds dialogue lines shorter than SHORT_LINE_MIN_WORDS words.
+// Short dialogue lines are prone to Whisper beginning-truncation ("It's open." → "Open.")
+// because ElevenLabs produces short audio clips where Whisper's VAD drops opening words.
+// This check runs AFTER validate_script passes, preventing short lines from reaching
+// generate_voices where they would waste 64 ElevenLabs API calls before failing.
+// HAL-SCRIPT-007 is the source-level prevention rule.
+const SHORT_LINE_MIN_WORDS = 5
+
+function findShortDialogueLines(script: string): Array<{speaker: string, text: string, wordCount: number}> {
+  if (!script) return []
+  const results: Array<{speaker: string, text: string, wordCount: number}> = []
+  const lines = script.split('\n')
+  for (const line of lines) {
+    const trimmed = line.trim()
+    // Match SPEAKER_NAME: dialogue text (speaker is ALL-CAPS with optional spaces/digits)
+    const match = trimmed.match(/^([A-Z][A-Z0-9 _]{0,30}):\s*(.+)$/)
+    if (!match) continue
+    const speaker = match[1].trim()
+    // Skip narrators and Belle B — they have different length expectations
+    if (/^NARRATOR$|^BELLE\s*B?$|^BELLE$/i.test(speaker)) continue
+    const text = match[2].trim()
+    // Skip stage directions in parentheses
+    if (text.startsWith('(') && text.endsWith(')')) continue
+    const wordCount = text.split(/\s+/).filter(Boolean).length
+    if (wordCount < SHORT_LINE_MIN_WORDS) {
+      results.push({ speaker, text, wordCount })
+    }
+  }
+  return results
+}
+
 function classifyValidateScriptFailure(
   report: string,
   isCardCopy = false

@@ -2501,13 +2501,21 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
           // Whisper returns digit forms ($2,800 / 11) while the script was written
           // in word form ("two thousand eight hundred" / "eleven") — both sides
           // normalize to the same token sequence before comparison.
+          // ATL-PIPE-019: Comprehensive normalizeForTranscriptQC
+          // Extends ATL-PIPE-016 normForPrefixCheck with the full class-level
+          // normalization needed to make qc-normalization an immune defect class.
+          // Added in this commit:
+          //   Step B2: person title abbreviations (Dr.→doctor, Mr.→mister, etc.)
+          //   Step B3: apostrophe stripping — makes it's/its, Purnell's/Purnells equivalent
+          //   (Ordinals and numeric ordinal suffixes already handled by
+          //    normalizeOrdinalDateForms + normalizeCompoundNumbers upstream of this fn)
           const normForPrefixCheck = (t: string): string => {
             // Step A: compound number normalization (handles $X,XXX, "X hundred Y thousand",
             //         hyphenated two-digit, "X thousand Y hundred" via normalizeCompoundNumbers)
             let s = normalizeCompoundNumbers(t)
-            // Step B: standalone cardinal words 0-19 → digits
+
+            // Step B1: standalone cardinal words 0-19 → digits
             // Covers temporal/quantity contexts ("eleven days ago"→"11 days ago", etc.)
-            // Applied after compound normalization so compound forms are consumed first.
             const CARD_0_19 = [
               'zero','one','two','three','four','five','six','seven','eight','nine',
               'ten','eleven','twelve','thirteen','fourteen','fifteen','sixteen',
@@ -2517,8 +2525,29 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
               const digit = NUMBER_WORDS[word]
               if (digit) s = s.replace(new RegExp(`\\b${word}\\b`, 'gi'), digit)
             }
-            // Step C: strip punctuation, normalise whitespace, lowercase
-            return s.toLowerCase().replace(/[^\w\s']/g, '').replace(/\s+/g, ' ').trim()
+
+            // Step B2: person title abbreviations → full form
+            // Whisper transcribes audio "Doctor Smith" correctly but script may write
+            // "Dr. Smith". Expand to canonical full form for comparison.
+            // Also handles the reverse: script writes "Doctor" but Whisper returns "Dr."
+            s = s
+              .replace(/\bdr\.?\b/gi, 'doctor')
+              .replace(/\bmr\.?\b/gi, 'mister')
+              .replace(/\bmrs\.?\b/gi, 'missus')
+              .replace(/\bms\.?\b/gi, 'miss')
+              .replace(/\bprof\.?\b/gi, 'professor')
+              .replace(/\bst\.?\b/gi, 'saint')  // saint (names only; streets are "st" not abbreviated in scripts)
+              .replace(/\bave\.?\b/gi, 'avenue')
+
+            // Step B3: apostrophe stripping — makes contractions and possessives equivalent
+            // "it's" → "its"  |  "Purnell's" → "Purnells"  |  "don't" → "dont"
+            // Both expected and detected sides go through this, so:
+            // script: "It's open." → "its open"
+            // Whisper: "Its open." → "its open"  ← now equal
+            s = s.replace(/'/g, '')
+
+            // Step C: strip remaining punctuation, normalise whitespace, lowercase
+            return s.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim()
           }
           const detectedNorm = normForPrefixCheck(transcriptDetectedTexts[0] || '')
           const expectedNorm = normForPrefixCheck(transcriptFailure.expectedText || '')
