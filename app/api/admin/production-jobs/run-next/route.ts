@@ -6003,6 +6003,50 @@ export async function POST(req: NextRequest) {
           : isSilenceBuffer ? 'silence_buffer'
           : 'unknown_qc'
         const playbook = getPlaybookByKind(failureKind)
+
+        // ── ATL-DIAG-001: Promote generate_voices failure details to top-level ──
+        // Key fields (speaker, segment path, expected/detected text, retry
+        // recommendation) were buried at detail.voiceGenerationReport.failures[0].
+        // HAL-REPORT-001's extractErrorJsonFields() excluded 'unknown_qc' from
+        // structured detection, causing Hal to report "empty details" even when
+        // the full failure was present. Promote to top-level so any consumer
+        // (Hal report, Command Center, alerting) can surface them without deep
+        // traversal. INCIDENT-RULE-001: every known failure must become fast alert.
+        const firstFailure: Record<string, any> =
+          (result.report?.failures || [])[0] || {}
+        const segName = firstFailure.segment
+          || (result.segmentNumber != null
+              ? `segment_${String(result.segmentNumber).padStart(4, '0')}.mp3`
+              : null)
+        const extractExpected = (msg: string) => {
+          const m = msg.match(/expected\s+"([^"]+)"/)
+          return m?.[1] ?? null
+        }
+        const extractDetected = (msg: string) => {
+          const m = msg.match(/partial output\s+"([^"]+)"/)
+          return m?.[1] ?? null
+        }
+        const diagFields = {
+          // Identify exactly what failed
+          failed_segment:       segName,
+          failed_segment_path:  segName ? `asc3/${result.storyId}/${segName}` : null,
+          failed_speaker:       firstFailure.speaker || null,
+          failed_segment_type:  firstFailure.type   || null,
+          // Text comparison — makes root cause visible without reading 3-level detail
+          expected_text_excerpt: extractExpected(firstFailure.error || failureMsg || ''),
+          detected_text_excerpt: extractDetected(firstFailure.error || failureMsg || ''),
+          // Retry guidance
+          retry_recommendation: failureKind === 'unknown_qc'
+            ? 'unknown_qc: verify fix is deployed, then reset job to generate_voices. Segments 0000→(N-1) will be reused from storage.'
+            : `See playbook ${playbook?.id || failureKind} for repair path.`,
+          // Traceability
+          story_title: (lockedJob.state_json as any)?.episodeTitle
+            || (lockedJob.state_json as any)?.storyTitle
+            || null,
+          present_segment_count: result.report?.presentCount ?? null,
+        }
+        // ── END ATL-DIAG-001 ─────────────────────────────────────────────────
+
         const errorJsonPayload = buildStructuredError(
           failureKind,
           failureMsg || `Voice generation hard failure at segment ${result.segmentNumber}`,
@@ -6012,6 +6056,7 @@ export async function POST(req: NextRequest) {
             segmentNumber: result.segmentNumber,
             marc_required: isTranscriptAmbiguous, // transcript "?" requires Marc; others are Atlas-fixable
             autonomous_repair: !isTranscriptAmbiguous,
+            ...diagFields,
             detail: { voiceGenerationReport: result.report },
           }
         )

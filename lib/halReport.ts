@@ -220,8 +220,13 @@ function extractErrorJsonFields(errorJson: any): {
     ? errorJson.message.trim()
     : null
 
-  // A structured error_json must have at least a 'kind' field set (not empty/vague)
-  const isStructured = Boolean(kind && kind !== 'unknown_qc' && kind !== '')
+  // A structured error_json must have at least a 'kind' field set (not empty/vague).
+  // ATL-DIAG-001: 'unknown_qc' now includes promoted top-level diagnostic fields
+  // (failed_segment, failed_speaker, expected_text_excerpt, etc.) so it IS
+  // structured — do not exclude it. Previously unknown_qc was excluded, causing
+  // Hal to report "empty details" even when generate_voices failure was fully
+  // documented at detail.voiceGenerationReport.failures[0].
+  const isStructured = Boolean(kind && kind !== '')
   if (!isStructured && !message) return empty
 
   // Detail sub-object may carry extra fields
