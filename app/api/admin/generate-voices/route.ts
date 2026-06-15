@@ -2262,6 +2262,11 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
         && hitAdaptiveGainCap
         && extremelyQuietBeforeGain
       if (canAttemptExtendedShortRescue) {
+        // ATL-PIPE-017: mirror the normal isPassingAction path — save the loudness-passing
+        // buffer BEFORE running transcript QC so that the REPEATED_IDENTICAL_TRUNCATION
+        // prefix rescue (isPrefixAcceptable) can use it even when ALL candidates went
+        // through this extended-gain path and lastLoudnessPassedBuf was never set elsewhere.
+        lastLoudnessPassedBuf = candidateBuf
         const transcriptCheck = await validateSegmentTranscript(candidateBuf, text, fileName)
         console.log(`  Segment transcript QC ${fileName} speaker="${speaker}" candidate=${candidate} coverage=${transcriptCheck.coverage.toFixed(2)} tail=${transcriptCheck.tailMatches ? 'pass' : 'fail'} result=${transcriptCheck.passed ? 'extended_gain_rescue' : 'retry'} expected="${text.slice(0, 120)}" detected="${transcriptCheck.detectedText.slice(0, 120)}"`)
         if (!transcriptCheck.passed) {
@@ -2521,6 +2526,14 @@ async function generateVoiceLine(rawText: string, voiceId: string, storyId: stri
           // responses like "Yes." (norm "yes" = 3 chars) and "No." (2 chars) that
           // are valid clean prefixes of longer lines. A 1-char guard prevents
           // single-letter false positives (e.g. Whisper returning bare "I" or "A").
+          // ATL-PIPE-017: diagnostic log — surfaces null-buf cause in server logs
+          console.log(
+            `  [ATL-PIPE-017] ${fileName} prefix-rescue check: detectedNorm.length=${detectedNorm.length}` +
+            ` startsWithPrefix=${expectedNorm.startsWith(detectedNorm)}` +
+            ` hasLoudnessBuf=${lastLoudnessPassedBuf !== null}` +
+            ` candidates=${transcriptDetectedTexts.length}` +
+            ` coverage=${transcriptFailure.coverage?.toFixed(2)}`
+          )
           const isPrefixAcceptable = detectedNorm.length >= 2
             && expectedNorm.startsWith(detectedNorm)
             && lastLoudnessPassedBuf !== null
