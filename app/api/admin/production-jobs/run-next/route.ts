@@ -7731,9 +7731,9 @@ export async function POST(req: NextRequest) {
       const completedAt = nowIso()
 
       // ── ATL-PIPE-014: Auto-promote story on RFR success ───────────────────
-      // The pipeline validated all 14 steps. Promote the story to
-      // workflow_state=ready_for_review and is_hidden=false automatically so
-      // Marc can see it in the RFR tab without any Orion/human intervention.
+      // The Review tab queries workflow_state, so a review-ready story is
+      // is_hidden=true — hidden from the public app, visible to Marc in the
+      // admin Review tab.
       // This satisfies Marc's M-1 rule: no manual visibility correction allowed.
       // ORION-GOV-006 compliant: audit fields set, audit row written.
       let storyPromotionStatus: 'ok' | 'skipped' | 'error' = 'skipped'
@@ -7742,7 +7742,7 @@ export async function POST(req: NextRequest) {
           .from('stories')
           .update({
             workflow_state: 'ready_for_review',
-            is_hidden: false,
+            is_hidden: true,
             workflow_state_changed_by: 'autonomous-runner',
             workflow_state_changed_at: completedAt,
             workflow_state_change_reason: `Pipeline job ${lockedJob.id} completed all 14 steps autonomously. Auto-promoted by ATL-PIPE-014.`,
