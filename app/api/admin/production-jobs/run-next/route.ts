@@ -690,11 +690,14 @@ function detectNarrativeHookCategory(text: string): NarrativeHookCategory | null
   // 1. Suspicious discrepancy — numbers/data/records that don't add up,
   //    things that communicate an unintended truth, anomalies in records.
   //    Covers: "numbers tell a story they were never meant to tell",
-  //    "the entry doesn't reconcile", "something's off in the ledger".
+  //    "the entry doesn't reconcile", "entries refuse to match",
+  //    "four payments to a vendor that may not exist".
   if (
-    /\b(discrepancy|doesn.t add up|doesn.t match|anomal|irregularit|reconcil|off the books|never meant to tell|weren.t meant|wasn.t meant|not meant to|never supposed to|shouldn.t exist|numbers.*wrong|wrong.*numbers)\b/i.test(t) ||
+    /\b(discrepancy|doesn.t add up|doesn.t match|anomal|irregularit|reconciliation|reconciling|reconcile|off the books|never meant to tell|weren.t meant|wasn.t meant|not meant to|never supposed to|shouldn.t exist|can.t exist|numbers.*wrong|wrong.*numbers)\b/i.test(t) ||
     /numbers.{0,60}story.{0,40}meant/i.test(t) ||
     /story.{0,40}(never|not|wasn.t|weren.t).{0,20}meant/i.test(t) ||
+    /\b(entries|entry|payments?|invoices?|transaction|figure|amount|sum).{0,40}(refuse|fail|don.t|doesn.t|won.t|can.t).{0,20}(match|reconcile|add up|balance|align)\b/i.test(t) ||
+    /\b(vendor|account|entity|company|supplier|payee).{0,40}(may not|might not|doesn.t|don.t|can.t|cannot|never|shouldn.t).{0,20}(exist|be real|be found|have existed)\b/i.test(t) ||
     /\b(ledger|account|entry|invoice|payment|transaction|column|figure|balance|books?).{0,40}(wrong|off|false|missing|extra|unexplained|shouldn.t|didn.t|doesn.t|not right|bad|error|mistake)\b/i.test(t) ||
     /\b(wrong|off|false|missing|extra|unexplained).{0,40}(ledger|account|entry|invoice|payment|transaction|column|figure|balance|books?)\b/i.test(t)
   ) return 'suspicious_discrepancy'
@@ -765,6 +768,34 @@ function classifyBelleRepairError(message: string): StructuredErrorJsonKind {
   if (/\[listener_name\]|listener_name|placeholder|personali/.test(msg)) return 'belle_quality_listener_missing'
   if (/repair.*fail|fail.*repair|deterministic|attempt limit/.test(msg)) return 'belle_quality_repair_failed'
   return 'belle_quality_unknown'
+}
+
+// RFR Reliability Sprint — advisory vs severe defect classification.
+// Marc's rule: LLM quality validators are advisory unless they detect a severe defect.
+// Severe defects block the pipeline. Advisory defects are logged but do not block.
+//
+// SEVERE (blocks pipeline):
+//   missing intro/outro, missing title, broken sentence, wrong story,
+//   placeholder text, canon/legal violation, corrupt or incomplete audio
+//
+// ADVISORY (log and continue):
+//   hook quality, low specificity, interchangeability concern, atmospheric-only hook,
+//   intro scoring below threshold when audio is intact and text is coherent
+function isBelleSevereDefect(kind: string, issues: string[]): boolean {
+  // Severe by kind
+  if (kind === 'belle_quality_title_missing') return true      // Missing story title — listener won't know what they heard
+  if (kind === 'belle_quality_listener_missing') return true   // Missing [LISTENER_NAME] — personalization broken
+  // Hook quality is not severe — advisory only
+  if (kind === 'belle_quality_hook_missing') return false
+  // Unknown kinds: check issues text for severe signals
+  const text = issues.join(' ').toLowerCase()
+  if (/missing intro|missing outro|no intro|no outro/.test(text)) return true
+  if (/placeholder|lorem ipsum|insert here|\[title\]|\[story\]|\[name\]/.test(text)) return true
+  if (/broken sentence|incomplete sentence|truncated|cut off mid/.test(text)) return true
+  if (/wrong story|different story|wrong title|doesn.t match the story/.test(text)) return true
+  if (/canon.*violation|legal.*violation|compliance.*issue/.test(text)) return true
+  if (/corrupt|unplayable|zero bytes|silent audio|no audio/.test(text)) return true
+  return false
 }
 
 function hasConcreteStoryMechanism(text: string) {
@@ -6491,10 +6522,48 @@ export async function POST(req: NextRequest) {
           /forbidden|promotional|must include|must say|must be|incomplete|appear|missing|too|weak|atmospheric/i.test(issue)
         )
 
-        // ATL-PIPE-010: text-only failures — classify, create learning incident, retry up to 2
+        // RFR Sprint: classify defect before deciding whether to block or continue.
+        // Advisory defects (hook quality, low specificity) log and advance.
+        // Severe defects (missing title, placeholder, broken sentence) block and repair.
         if (isTextOnlyFailure) {
           const MAX_BELLE_RETRIES = 2
           const failureKind = classifyBelleIssues(issues)
+
+          // Advisory bypass: non-severe defects advance to next step with a warning log.
+          if (!isBelleSevereDefect(failureKind, issues)) {
+            const advisoryLogs = appendLog(lockedJob, `Belle quality advisory (non-blocking): ${failureKind} — ${issues.join('; ')}`, {
+              storyId: result.storyId,
+              advisoryOnly: true,
+              failureKind,
+              issueCount: issues.length,
+              nextStep: NEXT_STEP_AFTER_STANDALONE_BELLE_VALIDATION,
+            })
+            const { data: advisedJob, error: advErr } = await supabase
+              .from('production_jobs')
+              .update({
+                story_id: result.storyId,
+                status: 'running',
+                current_step: NEXT_STEP_AFTER_STANDALONE_BELLE_VALIDATION,
+                step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
+                state_json: { ...result.state, belleAdvisoryIssues: issues, belleAdvisoryKind: failureKind },
+                error_json: null,
+                logs: advisoryLogs,
+                locked_at: null, locked_by: null,
+              })
+              .eq('id', lockedJob.id).select('*').single()
+            if (advErr) throw new Error(`Advisory advance failed: ${advErr.message}`)
+            return NextResponse.json({
+              success: true,
+              action: 'advisory_advance',
+              jobId: advisedJob!.id,
+              currentStep: step,
+              nextStep: advisedJob!.current_step,
+              storyId: result.storyId,
+              advisoryIssues: issues,
+              logs: advisoryLogs,
+            })
+          }
+
           const belleAssetRepairCount = Number((lockedJob.state_json as any)?.belleAssetRepairCount ?? 0)
           const playbook = getPlaybookByKind(failureKind)
           const canRepair = belleAssetRepairCount < MAX_BELLE_RETRIES
@@ -6749,6 +6818,48 @@ export async function POST(req: NextRequest) {
       })
 
       if (!result.success) {
+        // RFR Sprint: classify LLM issues as severe vs advisory before deciding to block.
+        const llmIssues = Array.isArray(result.report.issues) ? result.report.issues : []
+        const llmKind = classifyBelleIssues(llmIssues)
+        const isLlmSevere = isBelleSevereDefect(llmKind, llmIssues)
+
+        // Advisory bypass: non-severe LLM issues log and advance without repair cycle.
+        if (!isLlmSevere) {
+          const advisoryLogs = appendLog(lockedJob, `Belle quality advisory (non-blocking): LLM score ${result.report.introScore ?? '?'}/10 — ${llmIssues.join('; ')}`, {
+            storyId: result.storyId,
+            advisoryOnly: true,
+            llmKind,
+            introScore: result.report.introScore,
+            outroScore: result.report.outroScore,
+            nextStep: NEXT_STEP_AFTER_STANDALONE_BELLE_QUALITY,
+          })
+          const { data: advisedJob, error: advErr } = await supabase
+            .from('production_jobs')
+            .update({
+              story_id: result.storyId,
+              status: 'running',
+              current_step: NEXT_STEP_AFTER_STANDALONE_BELLE_QUALITY,
+              step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
+              state_json: { ...result.state, belleQualityAdvisory: { kind: llmKind, issues: llmIssues, introScore: result.report.introScore } },
+              error_json: null,
+              logs: advisoryLogs,
+              locked_at: null, locked_by: null,
+            })
+            .eq('id', lockedJob.id).select('*').single()
+          if (advErr) throw new Error(`Belle quality advisory advance failed: ${advErr.message}`)
+          return NextResponse.json({
+            success: true,
+            action: 'advisory_advance',
+            jobId: advisedJob!.id,
+            currentStep: step,
+            nextStep: advisedJob!.current_step,
+            storyId: result.storyId,
+            advisoryIssues: llmIssues,
+            introScore: result.report.introScore,
+            logs: advisoryLogs,
+          })
+        }
+
         const repairAttempts = Number(result.state?.belleQualityRepair?.attempts || 0)
         if (repairAttempts < 1) {
           const repairState = {
