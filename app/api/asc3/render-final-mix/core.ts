@@ -547,17 +547,18 @@ export async function runRenderFinalMix(storyId: string): Promise<{
     console.log(`  story_body.mp3 duration: ${storyBodyDur.toFixed(1)}s`)
     await logLoudnessDiagnostics('story_body.mp3', storyBodyPath)
 
-    // Sting→Belle crossfade: Belle enters at STING_TO_BELLE_SEC (0.5s) — natural pause, no dead air
+    // Sting→Belle: sting completes, then a short natural gap, then Belle speaks dry.
     const stingDur = await getAudioDuration(stingPath)
     const crossfadeStart = STING_TO_BELLE_SEC
     const stingIntroPath = path.join(tmpDir, 'sting_intro.mp3')
-    const delayMs = Math.round(crossfadeStart * 1000)
+    const introGapSec = 0.4
     await execFileAsync(FFMPEG_PATH, [
       '-i', stingPath, '-i', normalizedIntroPath,
       '-filter_complex',
-      `[0:a]afade=t=out:st=${crossfadeStart}:d=${Math.max(0.5, stingDur - crossfadeStart)}[sting_fade];` +
-      `[1:a]adelay=${delayMs}|${delayMs}[intro_delayed];` +
-      `[sting_fade][intro_delayed]amix=inputs=2:duration=longest[out]`,
+      `[0:a]afade=t=out:st=${crossfadeStart}:d=${Math.max(0.5, stingDur - crossfadeStart)},aformat=sample_rates=44100:channel_layouts=stereo[sting_fade];` +
+      `anullsrc=r=44100:cl=stereo:d=${introGapSec}[gap];` +
+      `[1:a]aformat=sample_rates=44100:channel_layouts=stereo[intro];` +
+      `[sting_fade][gap][intro]concat=n=3:v=0:a=1[out]`,
       '-map', '[out]',
       '-ar', '44100', '-ac', '2', '-b:a', '192k', '-y', stingIntroPath
     ])
