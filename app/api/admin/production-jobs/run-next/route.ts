@@ -1007,6 +1007,23 @@ type NarratorValidationResult = {
   resolvedVoiceName: string | null
 }
 
+type PlatformNarratorVoice = {
+  name: string
+  gender?: string | null
+  accent?: string | null
+}
+
+type StandaloneNarratorPromptContext =
+  | {
+      mode: 'assigned'
+      narratorName: string
+      source: 'brief_json.narrator' | 'author_narrator_id'
+    }
+  | {
+      mode: 'auto_pick'
+      platformNarrators: PlatformNarratorVoice[]
+    }
+
 /** Fetch every narrator_voices row once; re-use the array across all episodes. */
 async function fetchAllNarratorVoices(): Promise<Array<{ name: string; elevenlabs_voice_id: string }>> {
   const { data, error } = await supabase
@@ -1112,6 +1129,109 @@ function validateNarratorAssignmentSync(
   }
 
   return { passed: true, narratorIssues: [], resolvedVoiceId, resolvedVoiceName: matchedVoice.name }
+}
+
+function cleanNarratorName(value: unknown) {
+  return String(value || '').replace(/\s+/g, ' ').trim()
+}
+
+function formatPlatformNarratorVoice(voice: PlatformNarratorVoice) {
+  const gender = cleanNarratorName(voice.gender) || 'unknown gender'
+  const accent = cleanNarratorName(voice.accent) || 'unknown accent'
+  return `${voice.name} (${gender}, ${accent})`
+}
+
+async function fetchPlatformNarratorsForPrompt(): Promise<PlatformNarratorVoice[]> {
+  const { data, error } = await supabase
+    .from('narrator_voices')
+    .select('name,gender,accent')
+    .eq('is_active', true)
+    .eq('is_platform_narrator', true)
+    .order('name', { ascending: true })
+
+  if (error) throw new Error(`Failed to load platform narrators: ${error.message}`)
+
+  return (data || [])
+    .map((voice: any) => ({
+      name: cleanNarratorName(voice.name),
+      gender: voice.gender,
+      accent: voice.accent,
+    }))
+    .filter((voice: PlatformNarratorVoice) => !!voice.name)
+}
+
+async function resolveStandaloneNarratorForPrompt(story: any, brief: any): Promise<StandaloneNarratorPromptContext> {
+  // The current queue/production-job shape has no confirmed narrator override field.
+  // First real source: persisted brief_json.narrator.
+  const briefNarrator = cleanNarratorName(brief?.narrator)
+  if (briefNarrator) {
+    return { mode: 'assigned', narratorName: briefNarrator, source: 'brief_json.narrator' }
+  }
+
+  const authorId = cleanNarratorName(story?.author_id)
+  if (authorId) {
+    const { data: author, error: authorError } = await supabase
+      .from('authors')
+      .select('narrator_id')
+      .eq('id', authorId)
+      .maybeSingle()
+
+    if (authorError) throw new Error(`Failed to resolve author narrator: ${authorError.message}`)
+
+    const narratorId = cleanNarratorName((author as any)?.narrator_id)
+    if (narratorId) {
+      const { data: narrator, error: narratorError } = await supabase
+        .from('narrator_voices')
+        .select('name')
+        .eq('id', narratorId)
+        .maybeSingle()
+
+      if (narratorError) throw new Error(`Failed to resolve author narrator voice: ${narratorError.message}`)
+
+      const narratorName = cleanNarratorName((narrator as any)?.name)
+      if (!narratorName) throw new Error(`Author narrator_id ${narratorId} did not resolve to a narrator_voices.name`)
+      return { mode: 'assigned', narratorName, source: 'author_narrator_id' }
+    }
+  }
+
+  const platformNarrators = await fetchPlatformNarratorsForPrompt()
+  if (platformNarrators.length === 0) {
+    throw new Error('No active platform narrators are available for auto-pick mode')
+  }
+  return { mode: 'auto_pick', platformNarrators }
+}
+
+function buildStandaloneNarratorPromptBlock(context: StandaloneNarratorPromptContext) {
+  if (context.mode === 'assigned') {
+    return [
+      'NARRATOR ASSIGNMENT:',
+      `NARRATOR: ${context.narratorName}`,
+      'This narrator is assigned. Use this exact name. Do not change it or invent another.',
+    ].join('\n')
+  }
+
+  return [
+    'NARRATOR SELECTION:',
+    'Pick EXACTLY one name from this list. Any name not on this list will cause production to fail. Do not invent a narrator name.',
+    ...context.platformNarrators.map((voice) => `- ${formatPlatformNarratorVoice(voice)}`),
+  ].join('\n')
+}
+
+function validateGeneratedStandaloneNarrator(script: string, context: StandaloneNarratorPromptContext) {
+  const generatedNarrator = extractHeader(script, 'NARRATOR').trim()
+  if (!generatedNarrator) throw new Error('Generated script is missing NARRATOR header')
+
+  if (context.mode === 'assigned') {
+    if (generatedNarrator !== context.narratorName) {
+      throw new Error(`Generated NARRATOR "${generatedNarrator}" must exactly match assigned narrator "${context.narratorName}"`)
+    }
+    return
+  }
+
+  const validNames = new Set(context.platformNarrators.map((voice) => voice.name))
+  if (!validNames.has(generatedNarrator)) {
+    throw new Error(`Generated NARRATOR "${generatedNarrator}" is not in the active platform narrator list`)
+  }
 }
 
 function validateBelleText(kind: 'intro' | 'outro', text: string, options: { standalone: boolean; title?: string | null; author?: string | null; narrator?: string | null }) {
@@ -1816,8 +1936,14 @@ async function loadRecentStoryTexts(seriesId?: string) {
   ].join('\n'))
 }
 
-function buildStandaloneScriptPrompt(story: any, brief: any, namePaletteBlock: string) {
+function buildStandaloneScriptPrompt(
+  story: any,
+  brief: any,
+  namePaletteBlock: string,
+  narratorContext: StandaloneNarratorPromptContext
+) {
   const target = runtimeTarget(brief.runtime || '')
+  const narratorPromptBlock = buildStandaloneNarratorPromptBlock(narratorContext)
 
   return `You are the Endless Tales Stage 2 script writer.
 
@@ -1875,6 +2001,8 @@ Use the CURRENT published rules:
 
 ${namePaletteBlock}
 
+${narratorPromptBlock}
+
 Required script structure:
 TITLE: [1 to 5 words, 28 characters or fewer]
 SERIES:
@@ -1885,7 +2013,7 @@ SERIES_IS_FINALE:
 AUTHOR:
 GENRE:
 DESCRIPTION: [70 characters or fewer, present tense only]
-NARRATOR: [assigned narrator name, not a story character unless NARRATOR_IS_CHARACTER is true]
+NARRATOR: ${narratorContext.mode === 'assigned' ? narratorContext.narratorName : '[pick exactly one name from the narrator selection list above]'}
 ANNOUNCER: Belle B
 NARRATIVE_VOICE:
 NARRATOR_IS_CHARACTER: [true/false, must match NARRATOR]
@@ -2017,7 +2145,7 @@ async function generateStandaloneScript(job: ProductionJob, model: string) {
 
   const { data: story, error } = await supabase
     .from('stories')
-    .select('id,title,author,author_style,genre,narrative_voice,description,brief_json,status,script,script_json,script_version')
+    .select('id,title,author,author_id,author_style,genre,narrative_voice,description,brief_json,status,script,script_json,script_version')
     .eq('id', storyId)
     .single()
 
@@ -2048,6 +2176,11 @@ async function generateStandaloneScript(job: ProductionJob, model: string) {
     }
   }
 
+  const narratorContext = await resolveStandaloneNarratorForPrompt(story, brief)
+  const promptBrief = narratorContext.mode === 'assigned'
+    ? { ...brief, narrator: narratorContext.narratorName }
+    : brief
+
   const recentStoryTexts = await loadRecentStoryTexts()
   const namePaletteBlock = buildNamePalettePromptBlock({
     genre: story.genre || brief.genre || '',
@@ -2055,7 +2188,7 @@ async function generateStandaloneScript(job: ProductionJob, model: string) {
     era: brief.era || brief.period || '',
     recentStoryTexts,
   })
-  const prompt = buildStandaloneScriptPrompt(story, brief, namePaletteBlock)
+  const prompt = buildStandaloneScriptPrompt(story, promptBrief, namePaletteBlock, narratorContext)
 
   const response = await anthropic.messages.create({
     model,
@@ -2076,6 +2209,7 @@ async function generateStandaloneScript(job: ProductionJob, model: string) {
   const wordCount = countWords(generatedTitle)
 
   if (!script) throw new Error('Claude returned an empty script')
+  validateGeneratedStandaloneNarrator(script, narratorContext)
   if (!generatedTitle || wordCount < 1 || wordCount > 5) {
     throw new Error(`Generated title must be 1 to 5 words. Got: "${generatedTitle}"`)
   }
@@ -2090,8 +2224,8 @@ async function generateStandaloneScript(job: ProductionJob, model: string) {
   if (briefTitle && generatedTitle && generatedTitle.toLowerCase() !== briefTitle.toLowerCase()) {
     briefMismatches.push(`Title mismatch: brief="${briefTitle}" vs script="${generatedTitle}"`)
   }
-  // Narrator check: brief may carry narrator via narrative_voice or explicit narrator field
-  const briefNarrator = String(brief.narrator || brief.narrative_voice || story.narrative_voice || '').trim()
+  // Narrator check: narrator resolution writes only the explicit brief narrator field.
+  const briefNarrator = String(promptBrief.narrator || '').trim()
   const generatedNarrator = extractHeader(script, 'NARRATOR').trim()
   if (briefNarrator && generatedNarrator && generatedNarrator.toLowerCase() !== briefNarrator.toLowerCase()) {
     briefMismatches.push(`Narrator mismatch: brief="${briefNarrator}" vs script="${generatedNarrator}"`)
@@ -2135,6 +2269,9 @@ async function generateStandaloneScript(job: ProductionJob, model: string) {
     script_json: scriptJson,
     status: 'script_drafted',
     script_version: (story.script_version || 1) + 1,
+  }
+  if (narratorContext.mode === 'assigned' && cleanNarratorName(brief.narrator) !== narratorContext.narratorName) {
+    updatePayload.brief_json = promptBrief
   }
   // Only update intro_text if extracted successfully and non-generic
   if (introText && introText.length > 20 && introText.includes('[LISTENER_NAME]')) {
