@@ -685,7 +685,23 @@ export type NarrativeHookCategory =
   | 'missing_person'
 
 function detectNarrativeHookCategory(text: string): NarrativeHookCategory | null {
-  const t = text.toLowerCase()
+  const raw = text.toLowerCase()
+  const normalized = raw
+    .replace(/\bshouldn.?t\b/g, 'should not')
+    .replace(/\bcan.?t\b/g, 'cannot')
+    .replace(/\bcan not\b/g, 'cannot')
+    .replace(/\bdoesn.?t\b/g, 'does not')
+    .replace(/\bisn.?t\b/g, 'is not')
+    .replace(/\bwasn.?t\b/g, 'was not')
+    .replace(/\bwon.?t\b/g, 'will not')
+  const contracted = normalized
+    .replace(/\bshould (not|never)\b/g, "shouldn't")
+    .replace(/\bcannot\b/g, "can't")
+    .replace(/\bdoes not\b/g, "doesn't")
+    .replace(/\bis not\b/g, "isn't")
+    .replace(/\bwas not\b/g, "wasn't")
+    .replace(/\bwill not\b/g, "won't")
+  const t = `${raw}\n${normalized}\n${contracted}`
 
   // 1. Suspicious discrepancy — numbers/data/records that don't add up,
   //    things that communicate an unintended truth, anomalies in records.
