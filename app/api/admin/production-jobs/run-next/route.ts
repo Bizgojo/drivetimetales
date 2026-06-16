@@ -2872,7 +2872,8 @@ async function validateStandaloneBelleQuality(job: ProductionJob, model: string)
     }
   }
 
-  if (state.belleAssetValidation?.status !== 'passed') {
+  if (state.belleAssetValidation?.status !== 'passed' &&
+      state.belleAssetValidation?.status !== 'advisory_passed') {
     throw new Error('Belle assets must pass deterministic validation before validate_belle_quality')
   }
 
@@ -6683,7 +6684,16 @@ export async function POST(req: NextRequest) {
                 status: 'running',
                 current_step: NEXT_STEP_AFTER_STANDALONE_BELLE_VALIDATION,
                 step_index: Math.max(Number(lockedJob.step_index || 0), 0) + 1,
-                state_json: { ...result.state, belleAdvisoryIssues: issues, belleAdvisoryKind: failureKind },
+                state_json: {
+                  ...result.state,
+                  belleAssetValidation: {
+                    ...result.state.belleAssetValidation,
+                    status: 'advisory_passed',
+                    advisoryOnly: true,
+                  },
+                  belleAdvisoryIssues: issues,
+                  belleAdvisoryKind: failureKind,
+                },
                 error_json: null,
                 logs: advisoryLogs,
                 locked_at: null, locked_by: null,
