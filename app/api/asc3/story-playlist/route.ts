@@ -486,7 +486,8 @@ export async function GET(req: NextRequest) {
   // authoritative source. Queue mode (hasSplitIntro) is only for intentional live personalization.
   // This prevents stale queue-mode DB fields from routing away from the corrected rendered file.
   const hasRenderedFinalMix = refUrl.includes('/asc3/') && refUrl.includes('final_mix')
-  if (hasRenderedFinalMix) {
+  const hasSplitIntro = !!(story.intro_before_url && story.intro_after_url && (story as any).story_audio_url)
+  if (hasRenderedFinalMix && !(personalizationDebug.personalizationEligible && hasSplitIntro)) {
     const belleI = await resolveBelleAudio(story, 'intro', preferredName || firstName, lastBelleVariantKey, belleSessionCount, { userId: authUser?.id || null, preferredName })
     const belleO = await resolveBelleAudio(story, 'outro', firstName, null, belleSessionCount)
     return NextResponse.json({
@@ -499,7 +500,6 @@ export async function GET(req: NextRequest) {
     })
   }
 
-  const hasSplitIntro = !!(story.intro_before_url && story.intro_after_url && (story as any).story_audio_url)
   const queue: { url: string; type: 'intro' | 'story' | 'outro'; label: string }[] = []
   const belleIntro = await resolveBelleAudio(story, 'intro', preferredName || firstName, lastBelleVariantKey, belleSessionCount, {
     userId: authUser?.id || null,
