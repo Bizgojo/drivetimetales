@@ -1849,6 +1849,7 @@ async function createStoryRow(job: ProductionJob) {
     .insert({
       title: title || 'Untitled Draft',
       author: author.name,
+      author_id: author.id || null,
       author_style: briefJson.author_style,
       genre,
       narrative_voice: briefJson.narrative_voice,
