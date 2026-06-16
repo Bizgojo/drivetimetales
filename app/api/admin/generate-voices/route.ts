@@ -1740,7 +1740,7 @@ function wordCount(value: string): number {
 }
 
 function parseHeaderValue(script: string, key: string): string {
-  const match = script.match(new RegExp(`^${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:\\s*([^\\r\\n]*)`, 'im'))
+  const match = script.match(new RegExp(`^${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:[ \\t]*([^\\r\\n]*)`, 'im'))
   return match?.[1]?.trim() || ''
 }
 
