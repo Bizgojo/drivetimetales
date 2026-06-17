@@ -32,18 +32,20 @@ type QueueItem = {
   duration: string
   authorTarget: string
   notes: string
+  bible?: string | null
   authorized: boolean
   releasedToHal: boolean
   releasedToHalAt?: string | null
   storyType?: 'standalone' | 'series'
   letClaudeCreateTitles?: boolean
   seriesTitle?: string
-  totalEpisodes?: string
+  totalEpisodes?: string | number | null
   status: QueueStatus
   createdAt: string
   updatedAt: string
 }
 
+type QueueTypeFilter = 'all' | 'standalone' | 'series'
 type QueueGroup =
   | { type: 'standalone'; item: QueueItem }
   | { type: 'series'; key: string; seriesTitle: string; items: QueueItem[] }
@@ -125,6 +127,206 @@ function durationMinutes(duration: string) {
   return match ? Number(match[1]) : 0
 }
 
+function queueTitle(item: QueueItem) {
+  if (item.letClaudeCreateTitles === false && item.title) return item.title
+  return item.seriesTitle || item.title || 'Claude will create title'
+}
+
+function itemEpisodeCount(item: QueueItem) {
+  const count = Number(item.totalEpisodes || 1)
+  return Number.isFinite(count) && count > 0 ? count : 1
+}
+
+function itemQueueType(item: QueueItem): 'standalone' | 'series' {
+  return item.storyType === 'series' || itemEpisodeCount(item) > 1 ? 'series' : 'standalone'
+}
+
+function parseBibleDetail(item: QueueItem): { bible: any | null; error: string | null } {
+  if (!item.bible) return { bible: null, error: 'Bible detail unavailable.' }
+
+  try {
+    return { bible: JSON.parse(item.bible), error: null }
+  } catch {
+    return { bible: null, error: 'Bible detail unavailable.' }
+  }
+}
+
+function readableValue(value: unknown) {
+  if (Array.isArray(value)) return value.map((entry) => String(entry || '').trim()).filter(Boolean).join(', ')
+  if (typeof value === 'object' && value !== null) return Object.values(value).map((entry) => String(entry || '').trim()).filter(Boolean).join(', ')
+  return String(value || '').trim()
+}
+
+function DetailField({ label, value }: { label: string; value: unknown }) {
+  const clean = readableValue(value)
+  if (!clean) return null
+
+  return (
+    <div>
+      <div style={{ color: '#6b7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>{label}</div>
+      <div style={{ color: '#111827', fontSize: 15, lineHeight: 1.45, marginTop: 2 }}>{clean}</div>
+    </div>
+  )
+}
+
+function BibleReadingPanel({ item, onClose }: { item: QueueItem; onClose: () => void }) {
+  const { bible, error } = parseBibleDetail(item)
+  const episodes = Array.isArray(bible?.episodes) ? bible.episodes : []
+  const displayedEpisodeCount = readableValue(bible?.type).toLowerCase() === 'standalone'
+    ? 1
+    : bible?.total_episodes || itemEpisodeCount(item)
+
+  return (
+    <div
+      style={{
+        background: 'rgba(17, 24, 39, 0.24)',
+        bottom: 0,
+        left: 0,
+        position: 'fixed',
+        right: 0,
+        top: 0,
+        zIndex: 50,
+      }}
+      onClick={onClose}
+    >
+      <aside
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: '#ffffff',
+          borderLeft: '2px solid #111827',
+          boxShadow: '-12px 0 30px rgba(17, 24, 39, 0.18)',
+          color: '#111827',
+          height: '100%',
+          marginLeft: 'auto',
+          maxWidth: 760,
+          overflowY: 'auto',
+          padding: 24,
+          width: 'min(760px, 94vw)',
+        }}
+      >
+        <div style={{ alignItems: 'flex-start', display: 'flex', gap: 16, justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ color: '#6b7280', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>Bible</div>
+            <h2 style={{ fontSize: 28, fontWeight: 900, lineHeight: 1.1, margin: '4px 0 0' }}>
+              {readableValue(bible?.title) || queueTitle(item)}
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              background: '#ffffff',
+              border: '2px solid #111827',
+              borderRadius: 8,
+              color: '#111827',
+              cursor: 'pointer',
+              fontSize: 15,
+              fontWeight: 900,
+              padding: '8px 12px',
+            }}
+          >
+            Close
+          </button>
+        </div>
+
+        {error ? (
+          <div
+            style={{
+              background: '#fef3c7',
+              border: '1px solid #f59e0b',
+              borderRadius: 8,
+              color: '#92400e',
+              fontSize: 15,
+              fontWeight: 800,
+              marginTop: 18,
+              padding: 12,
+            }}
+          >
+            {error} Showing queue row fallback details instead.
+          </div>
+        ) : null}
+
+        <div style={{ display: 'grid', gap: 14, marginTop: 18 }}>
+          <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
+            <DetailField label="Genre" value={bible?.genre || item.primaryGenre} />
+            <DetailField label="Type" value={bible?.type || itemQueueType(item)} />
+            <DetailField label="Episode count" value={displayedEpisodeCount} />
+            <DetailField label="Tone" value={bible?.tone} />
+          </div>
+          <DetailField label="Logline" value={bible?.logline} />
+          <DetailField label="Premise" value={bible?.premise || item.premise} />
+          <DetailField label="Themes" value={bible?.themes} />
+          <DetailField label="Do not break" value={bible?.do_not_break} />
+        </div>
+
+        {episodes.length ? (
+          <div style={{ display: 'grid', gap: 16, marginTop: 24 }}>
+            {episodes.map((episode: any, index: number) => {
+              const protagonist = episode?.protagonist || {}
+              const whyWeInvest = readableValue(protagonist?.why_we_invest)
+
+              return (
+                <section
+                  key={`${episode?.number || index}-${episode?.title || 'episode'}`}
+                  style={{
+                    background: '#f9fafb',
+                    border: '1px solid #d1d5db',
+                    borderRadius: 8,
+                    padding: 16,
+                  }}
+                >
+                  <div style={{ color: '#4b5563', fontSize: 12, fontWeight: 900, textTransform: 'uppercase' }}>
+                    Episode {episode?.number || index + 1}
+                  </div>
+                  <h3 style={{ fontSize: 21, fontWeight: 900, lineHeight: 1.2, margin: '4px 0 10px' }}>
+                    {episode?.title || `Episode ${index + 1}`}
+                  </h3>
+
+                  {whyWeInvest ? (
+                    <div
+                      style={{
+                        background: '#ecfdf5',
+                        border: '2px solid #047857',
+                        borderRadius: 8,
+                        color: '#064e3b',
+                        fontSize: 16,
+                        fontWeight: 900,
+                        lineHeight: 1.45,
+                        marginBottom: 14,
+                        padding: 12,
+                      }}
+                    >
+                      Why we invest: {whyWeInvest}
+                    </div>
+                  ) : null}
+
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    <DetailField label="Protagonist who" value={protagonist?.who} />
+                    <DetailField label="Protagonist want" value={protagonist?.want} />
+                    <DetailField label="Flaw or wound" value={protagonist?.flaw_or_wound} />
+                    <DetailField label="Hook" value={episode?.hook} />
+                    <DetailField label="Setup" value={episode?.setup} />
+                    <DetailField label="Rising action" value={episode?.rising_action} />
+                    <DetailField label="Mid turn" value={episode?.mid_turn} />
+                    <DetailField label="Escalation" value={episode?.escalation} />
+                    <DetailField label="Resolution" value={episode?.resolution} />
+                    <DetailField label="Key emotional beat" value={episode?.key_emotional_beat} />
+                    <DetailField label="Audio notes" value={episode?.audio_notes} />
+                  </div>
+                </section>
+              )
+            })}
+          </div>
+        ) : error ? null : (
+          <div style={{ color: '#6b7280', fontSize: 15, fontWeight: 700, marginTop: 24 }}>
+            No episode details were included in this bible.
+          </div>
+        )}
+      </aside>
+    </div>
+  )
+}
+
 function formatAverageRuntime(items: QueueItem[]) {
   const values = items.map((item) => durationMinutes(item.duration)).filter((value) => value > 0)
   if (!values.length) return '—'
@@ -155,6 +357,10 @@ export default function StoryQueuePage() {
   const [biblePasteText, setBiblePasteText] = useState('')
   const [isImportingBibles, setIsImportingBibles] = useState(false)
   const [isBibleDragActive, setIsBibleDragActive] = useState(false)
+  const [queueSearch, setQueueSearch] = useState('')
+  const [queueGenreFilter, setQueueGenreFilter] = useState('all')
+  const [queueTypeFilter, setQueueTypeFilter] = useState<QueueTypeFilter>('all')
+  const [readingBibleId, setReadingBibleId] = useState<string | null>(null)
 
   const [form, setForm] = useState({
     storyType: 'standalone' as 'standalone' | 'series',
@@ -235,48 +441,31 @@ export default function StoryQueuePage() {
   const filteredItems = useMemo(() => {
     return items.filter((item) => activeTabConfig.statuses.includes(item.status))
   }, [items, activeTabConfig])
+  const queueGenreOptions = useMemo(() => {
+    return Array.from(new Set(filteredItems.map((item) => item.primaryGenre).filter(Boolean))).sort((a, b) => a.localeCompare(b))
+  }, [filteredItems])
+  const visibleItems = useMemo(() => {
+    const search = queueSearch.trim().toLowerCase()
+
+    return filteredItems.filter((item) => {
+      const matchesSearch = !search || `${queueTitle(item)} ${item.premise || ''}`.toLowerCase().includes(search)
+      const matchesGenre = queueGenreFilter === 'all' || item.primaryGenre === queueGenreFilter
+      const type = itemQueueType(item)
+      const matchesType = queueTypeFilter === 'all' || type === queueTypeFilter
+      return matchesSearch && matchesGenre && matchesType
+    })
+  }, [filteredItems, queueGenreFilter, queueSearch, queueTypeFilter])
   const authorizedCount = useMemo(() => {
-    return filteredItems.filter((item) => item.authorized).length
-  }, [filteredItems])
+    return visibleItems.filter((item) => item.authorized).length
+  }, [visibleItems])
   const releasedCount = useMemo(() => {
-    return filteredItems.filter((item) => item.releasedToHal).length
-  }, [filteredItems])
+    return visibleItems.filter((item) => item.releasedToHal).length
+  }, [visibleItems])
   const releasableItems = useMemo(() => {
-    return filteredItems.filter((item) => item.authorized && !item.releasedToHal)
-  }, [filteredItems])
-  const allFilteredAuthorized = filteredItems.length > 0 && authorizedCount === filteredItems.length
-  const queueGroups = useMemo<QueueGroup[]>(() => {
-    const groups: QueueGroup[] = []
-    const seriesGroups = new Map<string, QueueItem[]>()
-
-    for (const item of filteredItems) {
-      const itemEpisodeCount = Math.max(1, Number(item.totalEpisodes || 1))
-      const isSeries = item.storyType === 'series' || itemEpisodeCount > 1
-      if (!isSeries) {
-        groups.push({ type: 'standalone', item })
-        continue
-      }
-
-      const seriesTitle = String(item.seriesTitle || '').trim()
-      const title = item.letClaudeCreateTitles === false ? String(item.title || '').trim() : ''
-      const keySource = seriesTitle || title || item.id
-      const key = keySource.toLowerCase()
-      const current = seriesGroups.get(key) || []
-      current.push(item)
-      seriesGroups.set(key, current)
-    }
-
-    for (const [key, groupItems] of seriesGroups) {
-      groups.push({
-        type: 'series',
-        key,
-        seriesTitle: groupItems[0]?.seriesTitle || groupItems[0]?.title || 'Claude will create title',
-        items: groupItems,
-      })
-    }
-
-    return groups
-  }, [filteredItems])
+    return visibleItems.filter((item) => item.authorized && !item.releasedToHal)
+  }, [visibleItems])
+  const allFilteredAuthorized = visibleItems.length > 0 && authorizedCount === visibleItems.length
+  const readingItem = useMemo(() => items.find((item) => item.id === readingBibleId) || null, [items, readingBibleId])
   const genreOptions = useMemo(() => {
     const options = [...adminGenres]
     if (form.primaryGenre && !options.some((genre) => genre.toLowerCase() === form.primaryGenre.toLowerCase())) {
@@ -508,10 +697,10 @@ export default function StoryQueuePage() {
   }
 
   async function toggleAllAuthorizations() {
-    if (!filteredItems.length) return
+    if (!visibleItems.length) return
 
     const nextAuthorized = !allFilteredAuthorized
-    const ids = filteredItems.map((item) => item.id)
+    const ids = visibleItems.map((item) => item.id)
     setItems((current) => current.map((item) => ids.includes(item.id) ? { ...item, authorized: nextAuthorized } : item))
 
     try {
@@ -895,161 +1084,125 @@ export default function StoryQueuePage() {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="text-sm font-semibold text-gray-700">
-              {activeTabConfig.label}: {queueGroups.length} {queueGroups.length === 1 ? 'item' : 'items'} · {authorizedCount} of {filteredItems.length} authorized · {releasedCount} sent to Hal
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={sendAuthorizedToHal}
-                disabled={!releasableItems.length}
+          <div
+            style={{
+              background: '#f9fafb',
+              border: '1px solid #d1d5db',
+              borderRadius: 8,
+              display: 'grid',
+              gap: 12,
+              padding: 12,
+            }}
+          >
+            <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'minmax(180px, 1fr) minmax(150px, 220px) auto' }}>
+              <input
+                value={queueSearch}
+                onChange={(e) => setQueueSearch(e.target.value)}
+                placeholder="Search title or premise"
                 style={{
-                  background: releasableItems.length ? '#111827' : '#e5e7eb',
-                  border: '2px solid #111827',
-                  borderRadius: 8,
-                  color: releasableItems.length ? '#ffffff' : '#6b7280',
-                  cursor: releasableItems.length ? 'pointer' : 'not-allowed',
-                  fontSize: 15,
-                  fontWeight: 800,
-                  opacity: releasableItems.length ? 1 : 0.55,
-                  padding: '8px 14px',
-                }}
-              >
-                Send to Hal ({releasableItems.length})
-              </button>
-              <button
-                type="button"
-                onClick={toggleAllAuthorizations}
-                disabled={!filteredItems.length}
-                style={{
-                  background: '#ffffff',
-                  border: '2px solid #111827',
+                  border: '1px solid #9ca3af',
                   borderRadius: 8,
                   color: '#111827',
-                  cursor: filteredItems.length ? 'pointer' : 'not-allowed',
                   fontSize: 15,
-                  fontWeight: 800,
-                  opacity: filteredItems.length ? 1 : 0.45,
-                  padding: '8px 14px',
+                  minHeight: 42,
+                  padding: '8px 10px',
+                }}
+              />
+              <select
+                value={queueGenreFilter}
+                onChange={(e) => setQueueGenreFilter(e.target.value)}
+                style={{
+                  border: '1px solid #9ca3af',
+                  borderRadius: 8,
+                  color: '#111827',
+                  fontSize: 15,
+                  minHeight: 42,
+                  padding: '8px 10px',
                 }}
               >
-                {allFilteredAuthorized ? 'Deselect All' : 'Select All'}
-              </button>
+                <option value="all">All genres</option>
+                {queueGenreOptions.map((genre) => (
+                  <option key={genre} value={genre}>{genre}</option>
+                ))}
+              </select>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {(['all', 'standalone', 'series'] as QueueTypeFilter[]).map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setQueueTypeFilter(type)}
+                    style={{
+                      background: queueTypeFilter === type ? '#111827' : '#ffffff',
+                      border: '2px solid #111827',
+                      borderRadius: 8,
+                      color: queueTypeFilter === type ? '#ffffff' : '#111827',
+                      cursor: 'pointer',
+                      fontSize: 14,
+                      fontWeight: 900,
+                      minHeight: 42,
+                      padding: '8px 10px',
+                      textTransform: 'capitalize',
+                    }}
+                  >
+                    {type}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="text-sm font-semibold text-gray-700">
+                Showing {visibleItems.length} of {filteredItems.length} · {authorizedCount} authorized · {releasedCount} sent to Hal
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={sendAuthorizedToHal}
+                  disabled={!releasableItems.length}
+                  style={{
+                    background: releasableItems.length ? '#111827' : '#e5e7eb',
+                    border: '2px solid #111827',
+                    borderRadius: 8,
+                    color: releasableItems.length ? '#ffffff' : '#6b7280',
+                    cursor: releasableItems.length ? 'pointer' : 'not-allowed',
+                    fontSize: 15,
+                    fontWeight: 800,
+                    opacity: releasableItems.length ? 1 : 0.55,
+                    padding: '8px 14px',
+                  }}
+                >
+                  Send to Hal ({releasableItems.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={toggleAllAuthorizations}
+                  disabled={!visibleItems.length}
+                  style={{
+                    background: '#ffffff',
+                    border: '2px solid #111827',
+                    borderRadius: 8,
+                    color: '#111827',
+                    cursor: visibleItems.length ? 'pointer' : 'not-allowed',
+                    fontSize: 15,
+                    fontWeight: 800,
+                    opacity: visibleItems.length ? 1 : 0.45,
+                    padding: '8px 14px',
+                  }}
+                >
+                  {allFilteredAuthorized ? 'Deselect All' : 'Select All'}
+                </button>
+              </div>
             </div>
           </div>
 
           {isLoading ? (
-            <div className="text-sm text-gray-500">Loading queue…</div>
-          ) : !queueGroups.length ? (
-            <div className="text-sm text-gray-500">No items in {activeTabConfig.label}.</div>
+            <div className="text-sm text-gray-500">Loading queue...</div>
+          ) : !visibleItems.length ? (
+            <div className="text-sm text-gray-500">No matching items in {activeTabConfig.label}.</div>
           ) : (
             <div className="space-y-3">
-              {queueGroups.map((group) => {
-                if (group.type === 'series') {
-                  const firstEpisode = group.items[0]
-                  const totalEpisodes = firstEpisode?.totalEpisodes || String(group.items.length)
-                  const genres = Array.from(new Set(group.items.map((item) => item.primaryGenre).filter(Boolean))).join(' · ') || '—'
-                  const selectedInSeries = group.items.some((item) => item.id === selectedId)
-                  const title = firstEpisode?.letClaudeCreateTitles === false ? group.seriesTitle : 'Claude will create title'
-                  const canSendSeries = group.items.every((item) => item.status === 'queued')
-
-                  return (
-                    <div
-                      key={`series-${group.key}`}
-                      className={`border rounded p-3 ${selectedInSeries ? 'border-black bg-blue-50' : 'border-blue-200 bg-white'}`}
-                    >
-                      <div className="flex items-start justify-between gap-4">
-                        <button
-                          type="button"
-                          onClick={() => firstEpisode ? setSelectedId(firstEpisode.id) : null}
-                          className="min-w-0 flex-1 text-left"
-                        >
-                          <div className="text-xs font-semibold uppercase tracking-wide text-blue-700">Series</div>
-                          <div className="font-semibold text-lg">{title}</div>
-                          <div className="mt-1 grid grid-cols-1 gap-1 text-xs text-gray-700 sm:grid-cols-2">
-                            <div><strong>Genre:</strong> {genres}</div>
-                            <div><strong>Number of episodes:</strong> {totalEpisodes}</div>
-                            <div><strong>Duration:</strong> {formatAverageRuntime(group.items)}</div>
-                            <div><strong>Status:</strong> {statusSummary(group.items)}</div>
-                          </div>
-                        </button>
-                        <div className="shrink-0 text-xs font-semibold text-gray-600">
-                          Generate this entire series sequentially
-                        </div>
-                      </div>
-
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <button onClick={() => regenerateSeriesSetup(group)} className="px-3 py-1 rounded border">
-                          Regenerate Series Setup
-                        </button>
-                        <button
-                          onClick={() => sendSeriesToProduction(group)}
-                          disabled={!canSendSeries}
-                          className="px-3 py-1 rounded border bg-black text-white disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          Send Series to Production
-                        </button>
-                        <button onClick={() => removeSeries(group)} className="px-3 py-1 rounded border text-red-700">
-                          Delete Series
-                        </button>
-                      </div>
-                      <div
-                        style={{
-                          display: 'grid',
-                          gap: 8,
-                          marginTop: 12,
-                        }}
-                      >
-                        {group.items.map((item, index) => (
-                          <label
-                            key={item.id}
-                            onClick={(e) => e.stopPropagation()}
-                            style={{
-                              alignItems: 'center',
-                              background: item.authorized ? '#ecfdf5' : '#f9fafb',
-                              border: `2px solid ${item.authorized ? '#047857' : '#d1d5db'}`,
-                              borderRadius: 8,
-                              color: '#111827',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              gap: 12,
-                              padding: '10px 12px',
-                            }}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={item.authorized}
-                              onChange={(e) => updateAuthorization(item.id, e.target.checked)}
-                              style={{ height: 24, width: 24 }}
-                            />
-                            <span style={{ fontSize: 15, fontWeight: 800 }}>
-                              Authorized for Hal · Episode {index + 1}: {item.letClaudeCreateTitles === false ? item.title : 'Claude will create title'}
-                            </span>
-                            {item.releasedToHal ? (
-                              <span
-                                style={{
-                                  background: '#dbeafe',
-                                  borderRadius: 999,
-                                  color: '#1d4ed8',
-                                  fontSize: 12,
-                                  fontWeight: 900,
-                                  marginLeft: 'auto',
-                                  padding: '4px 8px',
-                                  whiteSpace: 'nowrap',
-                                }}
-                              >
-                                Sent to Hal
-                              </span>
-                            ) : null}
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  )
-                }
-
-                const item = group.item
+              {visibleItems.map((item) => {
+                const type = itemQueueType(item)
+                const episodeCount = itemEpisodeCount(item)
                 const canSend = item.status === 'queued'
 
                 return (
@@ -1060,13 +1213,32 @@ export default function StoryQueuePage() {
                   >
                     <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0 flex-1">
-                        <div className="font-semibold">
-                          {item.letClaudeCreateTitles === false ? item.title : 'Claude will create title'}
-                        </div>
+                        <div className="font-semibold text-lg">{queueTitle(item)}</div>
                         <div className="text-sm text-gray-700 mt-1">{item.premise}</div>
-                        <div className="text-xs text-gray-500 mt-2">{item.setting || 'No setting'}</div>
-                        <div className="mt-2 inline-block rounded bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-700">
-                          Standalone · 1 episode
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <span className="rounded bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-700">
+                            {type === 'series' ? 'Series' : 'Standalone'} · {episodeCount} {episodeCount === 1 ? 'episode' : 'episodes'}
+                          </span>
+                          <span className="rounded bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-700">
+                            {[item.primaryGenre, item.duration].filter(Boolean).join(' · ')}
+                          </span>
+                          <span className="rounded bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-700">
+                            {STATUS_LABELS[item.status]}
+                          </span>
+                          {item.releasedToHal ? (
+                            <span
+                              style={{
+                                background: '#dbeafe',
+                                borderRadius: 999,
+                                color: '#1d4ed8',
+                                fontSize: 12,
+                                fontWeight: 900,
+                                padding: '4px 8px',
+                              }}
+                            >
+                              Sent to Hal
+                            </span>
+                          ) : null}
                         </div>
                       </div>
                       <div className="flex flex-col items-end gap-2 shrink-0">
@@ -1092,26 +1264,25 @@ export default function StoryQueuePage() {
                           />
                           <span style={{ fontSize: 14, fontWeight: 800 }}>Authorized for Hal</span>
                         </label>
-                        <div className="text-xs font-semibold text-gray-700">
-                          {[item.primaryGenre, item.duration].filter(Boolean).join(' · ')}
-                        </div>
-                        <div className="text-xs font-semibold bg-gray-100 px-2 py-1 rounded">
-                          {STATUS_LABELS[item.status]}
-                        </div>
-                        {item.releasedToHal ? (
-                          <div
-                            style={{
-                              background: '#dbeafe',
-                              borderRadius: 999,
-                              color: '#1d4ed8',
-                              fontSize: 12,
-                              fontWeight: 900,
-                              padding: '4px 8px',
-                            }}
-                          >
-                            Sent to Hal
-                          </div>
-                        ) : null}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setReadingBibleId(item.id)
+                          }}
+                          style={{
+                            background: '#ffffff',
+                            border: '2px solid #111827',
+                            borderRadius: 8,
+                            color: '#111827',
+                            cursor: 'pointer',
+                            fontSize: 14,
+                            fontWeight: 900,
+                            padding: '7px 10px',
+                          }}
+                        >
+                          Read bible
+                        </button>
                       </div>
                     </div>
 
@@ -1138,25 +1309,8 @@ export default function StoryQueuePage() {
             </div>
           )}
 
-          {selected ? (
-            <div className="border rounded p-3 bg-gray-50 text-sm space-y-1">
-              <div><strong>Title:</strong> {selected.letClaudeCreateTitles === false ? selected.title : 'Claude will create title'}</div>
-              <div><strong>Let Claude Create Titles:</strong> {selected.letClaudeCreateTitles === false ? 'no' : 'yes'}</div>
-              <div><strong>Type:</strong> {selected.storyType === 'series' ? 'Series' : 'Standalone'}</div>
-              {selected.storyType === 'series' ? (
-                <>
-                  <div><strong>Number of Episodes:</strong> {selected.totalEpisodes || '—'}</div>
-                </>
-              ) : null}
-              <div><strong>Premise:</strong> {selected.premise}</div>
-              <div><strong>Setting:</strong> {selected.setting || '—'}</div>
-              <div><strong>Genre · Duration:</strong> {[
-                [selected.primaryGenre, selected.secondaryGenre, selected.tertiaryGenre].filter(Boolean).join(' · ') || '—',
-                selected.duration || '—'
-              ].join(' · ')}</div>
-              <div><strong>Author Target:</strong> {selected.authorTarget || '—'}</div>
-              <div><strong>Notes:</strong> {selected.notes || '—'}</div>
-            </div>
+          {readingItem ? (
+            <BibleReadingPanel item={readingItem} onClose={() => setReadingBibleId(null)} />
           ) : null}
         </section>
       </div>
