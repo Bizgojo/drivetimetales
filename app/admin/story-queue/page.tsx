@@ -495,7 +495,7 @@ export default function StoryQueuePage() {
     const skippedText = skippedCount
       ? ` (${skippedCount} skipped: ${result.skipped.map((entry) => `#${entry.index} ${entry.reason}`).join('; ')})`
       : ''
-    return `Imported ${result.imported} of ${result.total}${skippedText}.`
+    return `Imported ${result.imported} ${result.imported === 1 ? 'bible' : 'bibles'}${skippedText}.`
   }
 
   async function importBiblesFromText(rawText: string) {
@@ -1034,6 +1034,7 @@ export default function StoryQueuePage() {
               <textarea
                 value={biblePasteText}
                 onChange={(e) => setBiblePasteText(e.target.value)}
+                onPaste={(e) => setBiblePasteText(e.clipboardData.getData('text'))}
                 placeholder="Paste bible JSON here as a fallback"
                 style={{
                   background: '#ffffff',
@@ -1050,13 +1051,13 @@ export default function StoryQueuePage() {
               <button
                 type="button"
                 onClick={() => importBiblesFromText(biblePasteText)}
-                disabled={isImportingBibles || !biblePasteText.trim()}
+                disabled={isImportingBibles}
                 style={{
-                  background: biblePasteText.trim() && !isImportingBibles ? '#ffffff' : '#e5e7eb',
+                  background: !isImportingBibles ? '#ffffff' : '#e5e7eb',
                   border: '2px solid #111827',
                   borderRadius: 8,
-                  color: biblePasteText.trim() && !isImportingBibles ? '#111827' : '#6b7280',
-                  cursor: biblePasteText.trim() && !isImportingBibles ? 'pointer' : 'not-allowed',
+                  color: !isImportingBibles ? '#111827' : '#6b7280',
+                  cursor: !isImportingBibles ? 'pointer' : 'not-allowed',
                   fontSize: 15,
                   fontWeight: 900,
                   marginTop: 10,
