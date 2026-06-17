@@ -27,6 +27,9 @@ type QueueItem = {
   duration: string
   authorTarget: string
   notes: string
+  authorized: boolean
+  releasedToHal: boolean
+  releasedToHalAt?: string | null
   storyType?: 'standalone' | 'series'
   letClaudeCreateTitles?: boolean
   seriesTitle?: string
@@ -90,11 +93,21 @@ function normalizeQueueItem(item: QueueItem): QueueItem {
   const letClaudeCreateTitles = item.letClaudeCreateTitles ?? parsedClaudeTitles.toLowerCase() !== 'false'
 
   if (storyType !== 'series') {
-    return { ...item, storyType: 'standalone', letClaudeCreateTitles }
+    return {
+      ...item,
+      authorized: item.authorized === true,
+      releasedToHal: item.releasedToHal === true,
+      releasedToHalAt: item.releasedToHalAt || null,
+      storyType: 'standalone',
+      letClaudeCreateTitles,
+    }
   }
 
   return {
     ...item,
+    authorized: item.authorized === true,
+    releasedToHal: item.releasedToHal === true,
+    releasedToHalAt: item.releasedToHalAt || null,
     storyType: 'series',
     letClaudeCreateTitles,
     seriesTitle: item.seriesTitle || readSeriesPlanValue(notes, 'Series title'),
@@ -214,6 +227,16 @@ export default function StoryQueuePage() {
   const filteredItems = useMemo(() => {
     return items.filter((item) => activeTabConfig.statuses.includes(item.status))
   }, [items, activeTabConfig])
+  const authorizedCount = useMemo(() => {
+    return filteredItems.filter((item) => item.authorized).length
+  }, [filteredItems])
+  const releasedCount = useMemo(() => {
+    return filteredItems.filter((item) => item.releasedToHal).length
+  }, [filteredItems])
+  const releasableItems = useMemo(() => {
+    return filteredItems.filter((item) => item.authorized && !item.releasedToHal)
+  }, [filteredItems])
+  const allFilteredAuthorized = filteredItems.length > 0 && authorizedCount === filteredItems.length
   const queueGroups = useMemo<QueueGroup[]>(() => {
     const groups: QueueGroup[] = []
     const seriesGroups = new Map<string, QueueItem[]>()
@@ -366,6 +389,122 @@ export default function StoryQueuePage() {
     } catch (err: any) {
       showMessage(`Status update failed: ${err?.message || err}`, 'error')
     }
+  }
+
+  async function updateAuthorization(id: string, authorized: boolean) {
+    const previousItems = items
+    setItems((current) => current.map((item) => item.id === id ? { ...item, authorized } : item))
+
+    try {
+      const res = await fetch('/api/admin/story-queue', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, authorized }),
+      })
+      if (!res.ok) throw new Error(await res.text())
+      const data = await res.json()
+      if (data?.item) {
+        const normalized = normalizeQueueItem(data.item)
+        setItems((current) => current.map((item) => item.id === id ? normalized : item))
+      }
+    } catch (err: any) {
+      setItems(previousItems)
+      showMessage(`Authorization update failed: ${err?.message || err}`, 'error')
+    }
+  }
+
+  async function toggleAllAuthorizations() {
+    if (!filteredItems.length) return
+
+    const nextAuthorized = !allFilteredAuthorized
+    const ids = filteredItems.map((item) => item.id)
+    setItems((current) => current.map((item) => ids.includes(item.id) ? { ...item, authorized: nextAuthorized } : item))
+
+    try {
+      await Promise.all(ids.map(async (id) => {
+        const res = await fetch('/api/admin/story-queue', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id, authorized: nextAuthorized }),
+        })
+        if (!res.ok) throw new Error(await res.text())
+      }))
+      await loadItems()
+      showMessage(nextAuthorized ? 'Authorized all listed queue items.' : 'Deselected all listed queue items.')
+    } catch (err: any) {
+      await loadItems()
+      showMessage(`Bulk authorization failed: ${err?.message || err}`, 'error')
+    }
+  }
+
+  async function sendAuthorizedToHal() {
+    if (!releasableItems.length) return
+
+    const releasedAt = new Date().toISOString()
+    const releasedIds: string[] = []
+    const failures: string[] = []
+
+    for (const item of releasableItems) {
+      const mode = item.storyType === 'series' || Number(item.totalEpisodes || 1) > 1 ? 'series' : 'single'
+      const title = item.letClaudeCreateTitles === false && item.title ? item.title : item.seriesTitle || item.id
+
+      try {
+        const jobRes = await fetch('/api/admin/production-jobs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            queueItemId: item.id,
+            mode,
+          }),
+        })
+        const jobText = await jobRes.text()
+        let jobData: any = {}
+        try {
+          jobData = jobText ? JSON.parse(jobText) : {}
+        } catch {
+          jobData = { error: jobText || 'Non-JSON production job response' }
+        }
+
+        if (!jobRes.ok || jobData?.success === false) {
+          failures.push(`${title}: ${jobData?.error || `production job failed (${jobRes.status})`}`)
+          continue
+        }
+
+        const releaseRes = await fetch('/api/admin/story-queue', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: item.id,
+            releasedToHal: true,
+            releasedToHalAt: releasedAt,
+          }),
+        })
+        if (!releaseRes.ok) {
+          failures.push(`${title}: production job created, but release marker failed (${await releaseRes.text()})`)
+          continue
+        }
+
+        releasedIds.push(item.id)
+        setItems((current) => current.map((currentItem) => currentItem.id === item.id
+          ? { ...currentItem, status: 'dispatched', releasedToHal: true, releasedToHalAt: releasedAt }
+          : currentItem
+        ))
+      } catch (err: any) {
+        failures.push(`${title}: ${err?.message || err}`)
+      }
+    }
+
+    await loadItems()
+
+    if (failures.length) {
+      showMessage(
+        `Sent ${releasedIds.length} ${releasedIds.length === 1 ? 'item' : 'items'} to Hal. Failed: ${failures.join(' | ')}`,
+        'error'
+      )
+      return
+    }
+
+    showMessage(`Sent ${releasedIds.length} ${releasedIds.length === 1 ? 'item' : 'items'} to Hal.`)
   }
 
   function productionUrlFor(item: QueueItem) {
@@ -581,8 +720,48 @@ export default function StoryQueuePage() {
             </div>
           </div>
 
-          <div className="text-sm font-semibold text-gray-700">
-            {activeTabConfig.label}: {queueGroups.length} {queueGroups.length === 1 ? 'item' : 'items'}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="text-sm font-semibold text-gray-700">
+              {activeTabConfig.label}: {queueGroups.length} {queueGroups.length === 1 ? 'item' : 'items'} · {authorizedCount} of {filteredItems.length} authorized · {releasedCount} sent to Hal
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={sendAuthorizedToHal}
+                disabled={!releasableItems.length}
+                style={{
+                  background: releasableItems.length ? '#111827' : '#e5e7eb',
+                  border: '2px solid #111827',
+                  borderRadius: 8,
+                  color: releasableItems.length ? '#ffffff' : '#6b7280',
+                  cursor: releasableItems.length ? 'pointer' : 'not-allowed',
+                  fontSize: 15,
+                  fontWeight: 800,
+                  opacity: releasableItems.length ? 1 : 0.55,
+                  padding: '8px 14px',
+                }}
+              >
+                Send to Hal ({releasableItems.length})
+              </button>
+              <button
+                type="button"
+                onClick={toggleAllAuthorizations}
+                disabled={!filteredItems.length}
+                style={{
+                  background: '#ffffff',
+                  border: '2px solid #111827',
+                  borderRadius: 8,
+                  color: '#111827',
+                  cursor: filteredItems.length ? 'pointer' : 'not-allowed',
+                  fontSize: 15,
+                  fontWeight: 800,
+                  opacity: filteredItems.length ? 1 : 0.45,
+                  padding: '8px 14px',
+                }}
+              >
+                {allFilteredAuthorized ? 'Deselect All' : 'Select All'}
+              </button>
+            </div>
           </div>
 
           {isLoading ? (
@@ -640,6 +819,57 @@ export default function StoryQueuePage() {
                           Delete Series
                         </button>
                       </div>
+                      <div
+                        style={{
+                          display: 'grid',
+                          gap: 8,
+                          marginTop: 12,
+                        }}
+                      >
+                        {group.items.map((item, index) => (
+                          <label
+                            key={item.id}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                              alignItems: 'center',
+                              background: item.authorized ? '#ecfdf5' : '#f9fafb',
+                              border: `2px solid ${item.authorized ? '#047857' : '#d1d5db'}`,
+                              borderRadius: 8,
+                              color: '#111827',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              gap: 12,
+                              padding: '10px 12px',
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={item.authorized}
+                              onChange={(e) => updateAuthorization(item.id, e.target.checked)}
+                              style={{ height: 24, width: 24 }}
+                            />
+                            <span style={{ fontSize: 15, fontWeight: 800 }}>
+                              Authorized for Hal · Episode {index + 1}: {item.letClaudeCreateTitles === false ? item.title : 'Claude will create title'}
+                            </span>
+                            {item.releasedToHal ? (
+                              <span
+                                style={{
+                                  background: '#dbeafe',
+                                  borderRadius: 999,
+                                  color: '#1d4ed8',
+                                  fontSize: 12,
+                                  fontWeight: 900,
+                                  marginLeft: 'auto',
+                                  padding: '4px 8px',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                Sent to Hal
+                              </span>
+                            ) : null}
+                          </label>
+                        ))}
+                      </div>
                     </div>
                   )
                 }
@@ -665,12 +895,48 @@ export default function StoryQueuePage() {
                         </div>
                       </div>
                       <div className="flex flex-col items-end gap-2 shrink-0">
+                        <label
+                          onClick={(e) => e.stopPropagation()}
+                          style={{
+                            alignItems: 'center',
+                            background: item.authorized ? '#ecfdf5' : '#f9fafb',
+                            border: `2px solid ${item.authorized ? '#047857' : '#d1d5db'}`,
+                            borderRadius: 8,
+                            color: '#111827',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            gap: 10,
+                            padding: '8px 10px',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={item.authorized}
+                            onChange={(e) => updateAuthorization(item.id, e.target.checked)}
+                            style={{ height: 24, width: 24 }}
+                          />
+                          <span style={{ fontSize: 14, fontWeight: 800 }}>Authorized for Hal</span>
+                        </label>
                         <div className="text-xs font-semibold text-gray-700">
                           {[item.primaryGenre, item.duration].filter(Boolean).join(' · ')}
                         </div>
                         <div className="text-xs font-semibold bg-gray-100 px-2 py-1 rounded">
                           {STATUS_LABELS[item.status]}
                         </div>
+                        {item.releasedToHal ? (
+                          <div
+                            style={{
+                              background: '#dbeafe',
+                              borderRadius: 999,
+                              color: '#1d4ed8',
+                              fontSize: 12,
+                              fontWeight: 900,
+                              padding: '4px 8px',
+                            }}
+                          >
+                            Sent to Hal
+                          </div>
+                        ) : null}
                       </div>
                     </div>
 

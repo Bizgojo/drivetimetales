@@ -20,6 +20,10 @@ type QueueItem = {
   duration: string
   authorTarget: string
   notes: string
+  authorized: boolean
+  bible?: string | null
+  releasedToHal: boolean
+  releasedToHalAt?: string | null
   status: QueueStatus
   createdAt: string
   updatedAt: string
@@ -38,6 +42,10 @@ type QueueRow = {
   duration: string
   author_target: string
   notes: string
+  authorized: boolean
+  bible: string | null
+  released_to_hal?: boolean | null
+  released_to_hal_at?: string | null
   status: QueueStatus
   created_at: string
   updated_at: string
@@ -57,6 +65,10 @@ function toItem(row: QueueRow): QueueItem {
     duration: row.duration,
     authorTarget: row.author_target,
     notes: row.notes,
+    authorized: row.authorized === true,
+    bible: row.bible || null,
+    releasedToHal: row.released_to_hal === true,
+    releasedToHalAt: row.released_to_hal_at || null,
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -87,6 +99,8 @@ function createRow(body: any): QueueRow {
     duration: body.duration || '15 min',
     author_target: body.authorTarget || '',
     notes: body.notes || '',
+    authorized: body.authorized === true,
+    bible: body.bible || null,
     status: body.status || 'queued',
     created_at: body.createdAt || now,
     updated_at: now,
@@ -109,6 +123,13 @@ function patchRow(body: any): Partial<QueueRow> {
   if ('duration' in body) patch.duration = body.duration || '15 min'
   if ('authorTarget' in body) patch.author_target = body.authorTarget || ''
   if ('notes' in body) patch.notes = body.notes || ''
+  if ('authorized' in body) patch.authorized = body.authorized === true
+  if ('bible' in body) patch.bible = body.bible || null
+  if ('releasedToHal' in body || 'released_to_hal' in body) patch.released_to_hal = (body.releasedToHal ?? body.released_to_hal) === true
+  if ('releasedToHalAt' in body || 'released_to_hal_at' in body) {
+    const releasedAt = body.releasedToHalAt ?? body.released_to_hal_at
+    patch.released_to_hal_at = releasedAt ? String(releasedAt) : null
+  }
   if ('status' in body) patch.status = body.status || 'queued'
   if ('totalEpisodes' in body || 'total_episodes' in body) {
     const rawEpisodes = body.totalEpisodes ?? body.total_episodes
