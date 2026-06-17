@@ -87,6 +87,63 @@ const QUEUE_TABS: Array<{ id: QueueTab; label: string; statuses: QueueStatus[] }
   { id: 'archived', label: 'Archived', statuses: ['archived'] },
 ]
 
+const BIBLE_REQUEST_PROMPT = `You are a senior story developer for Endless Tales, an audio-drama platform. Produce story bibles as a SINGLE valid JSON object following the exact schema below. Each bible must be complete enough to write the full script from, with no further questions.
+
+REQUEST: [Describe what you want — e.g. "1 standalone Mystery, 12 min" or "2 three-episode Thriller series". Specify genre, standalone or series, number of episodes, duration, and subject/premise direction.]
+
+RULES:
+- Use the 6-part spine for EVERY episode: hook, setup, rising_action, mid_turn, escalation, resolution.
+- Every story needs a CONCRETE narrative hook (a danger, secret, mystery, conflict, or impossible fact) — never just atmosphere.
+- PROTAGONIST INVESTMENT IS ESSENTIAL. These are first-person/close audio dramas heard alone — the listener lives inside the protagonist for the whole story. The listener must be GRIPPED by the protagonist within the first minute. Make us care about — or be unable to look away from — this person before the plot demands anything of us. "Compelling" matters more than "likable": a protagonist can be warm, sharp, wounded, or dangerous — but the listener must want to follow them. Fill the protagonist fields for every episode and honor them in the spine.
+- The resolution must land an emotional "echo" — a final resonant image or beat.
+- Audio-first: written to be HEARD — sensory detail, natural minimal dialogue, internal monologue for emotional shifts, a soft resonant final line.
+- Include sensible do_not_break rules per story.
+- "type" is exactly "standalone" or "series". "genre" is a single primary genre.
+- For a series: fill continuity_notes and put one entry in episodes[] per episode. For a standalone: episodes[] has exactly ONE entry, and total_episodes is 1.
+- Return ONLY valid JSON — no commentary, no markdown code fences.
+
+SCHEMA:
+{
+  "bibles": [
+    {
+      "title": "string",
+      "genre": "string",
+      "type": "standalone | series",
+      "total_episodes": 1,
+      "target_length_min": 12,
+      "logline": "one sentence shown in the queue list",
+      "premise": "full premise paragraph",
+      "tone": "string",
+      "characters": "key secondary characters",
+      "setting_rules": "string",
+      "themes": "string",
+      "do_not_break": "string",
+      "continuity_notes": "series arc notes; empty string for standalone",
+      "episodes": [
+        {
+          "number": 1,
+          "title": "episode title (same as story title for a standalone)",
+          "protagonist": {
+            "who": "name/role + one-line description",
+            "want": "what they are chasing in this story",
+            "flaw_or_wound": "the human crack that makes them relatable or real",
+            "why_we_invest": "the specific reason the listener locks onto them in the first minute — warmth, competence, a wound, a voice, a moral stake. NOT merely 'likable' — compelling."
+          },
+          "premise": "string",
+          "hook": "string",
+          "setup": "string",
+          "rising_action": "string",
+          "mid_turn": "string",
+          "escalation": "string",
+          "resolution": "string",
+          "key_emotional_beat": "string",
+          "audio_notes": "string"
+        }
+      ]
+    }
+  ]
+}`
+
 function readSeriesPlanValue(notes: string, label: string) {
   const match = notes.match(new RegExp(`^${label}:\\s*(.+)$`, 'im'))
   return match?.[1]?.trim() || ''
@@ -361,6 +418,8 @@ export default function StoryQueuePage() {
   const [queueGenreFilter, setQueueGenreFilter] = useState('all')
   const [queueTypeFilter, setQueueTypeFilter] = useState<QueueTypeFilter>('all')
   const [readingBibleId, setReadingBibleId] = useState<string | null>(null)
+  const [isBiblePromptOpen, setIsBiblePromptOpen] = useState(false)
+  const [biblePromptCopied, setBiblePromptCopied] = useState(false)
 
   const [form, setForm] = useState({
     storyType: 'standalone' as 'standalone' | 'series',
@@ -428,6 +487,12 @@ export default function StoryQueuePage() {
     return () => window.clearTimeout(t)
   }, [message, messageType])
 
+  useEffect(() => {
+    if (!biblePromptCopied) return
+    const t = window.setTimeout(() => setBiblePromptCopied(false), 1800)
+    return () => window.clearTimeout(t)
+  }, [biblePromptCopied])
+
   const selected = useMemo(() => items.find((item) => item.id === selectedId) || null, [items, selectedId])
   const activeTabConfig = QUEUE_TABS.find((tab) => tab.id === activeTab) || QUEUE_TABS[0]
   const tabCounts = useMemo(() => {
@@ -479,6 +544,15 @@ export default function StoryQueuePage() {
   function showMessage(text: string, type: MessageType = 'success') {
     setMessage(text)
     setMessageType(type)
+  }
+
+  async function copyBibleRequestPrompt() {
+    try {
+      await navigator.clipboard.writeText(BIBLE_REQUEST_PROMPT)
+      setBiblePromptCopied(true)
+    } catch (err: any) {
+      showMessage(`Copy failed: ${err?.message || err}`, 'error')
+    }
   }
 
   function parseBibleJson(rawText: string): any[] {
@@ -985,6 +1059,76 @@ export default function StoryQueuePage() {
         <section className="bg-white border border-black rounded-lg p-4 space-y-4">
           <div>
             <div className="font-semibold text-lg">Story Queue</div>
+            <div
+              style={{
+                background: '#ffffff',
+                border: '2px solid #111827',
+                borderRadius: 8,
+                color: '#111827',
+                marginTop: 12,
+                padding: 12,
+              }}
+            >
+              <div style={{ alignItems: 'center', display: 'flex', flexWrap: 'wrap', gap: 10, justifyContent: 'space-between' }}>
+                <button
+                  type="button"
+                  onClick={() => setIsBiblePromptOpen((open) => !open)}
+                  style={{
+                    background: '#ffffff',
+                    border: 0,
+                    color: '#111827',
+                    cursor: 'pointer',
+                    fontSize: 17,
+                    fontWeight: 900,
+                    padding: 0,
+                    textAlign: 'left',
+                  }}
+                >
+                  {isBiblePromptOpen ? 'Hide' : 'Show'} Bible request prompt
+                </button>
+                <div style={{ alignItems: 'center', display: 'flex', gap: 10 }}>
+                  {biblePromptCopied ? (
+                    <span style={{ color: '#047857', fontSize: 14, fontWeight: 900 }}>Copied</span>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={copyBibleRequestPrompt}
+                    style={{
+                      background: '#111827',
+                      border: '2px solid #111827',
+                      borderRadius: 8,
+                      color: '#ffffff',
+                      cursor: 'pointer',
+                      fontSize: 15,
+                      fontWeight: 900,
+                      padding: '8px 14px',
+                    }}
+                  >
+                    Copy
+                  </button>
+                </div>
+              </div>
+              {isBiblePromptOpen ? (
+                <textarea
+                  readOnly
+                  value={BIBLE_REQUEST_PROMPT}
+                  style={{
+                    background: '#f9fafb',
+                    border: '1px solid #9ca3af',
+                    borderRadius: 8,
+                    color: '#111827',
+                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                    fontSize: 13,
+                    lineHeight: 1.45,
+                    marginTop: 12,
+                    minHeight: 320,
+                    padding: 12,
+                    whiteSpace: 'pre',
+                    width: '100%',
+                  }}
+                />
+              ) : null}
+            </div>
             <div
               onDragOver={(e) => {
                 e.preventDefault()
