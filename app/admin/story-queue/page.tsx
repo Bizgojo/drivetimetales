@@ -1,6 +1,6 @@
 'use client'
 
-import { type ChangeEvent, type DragEvent, useEffect, useMemo, useState } from 'react'
+import { type ChangeEvent, type DragEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 type QueueStatus =
@@ -403,6 +403,7 @@ function statusSummary(items: QueueItem[]) {
 
 export default function StoryQueuePage() {
   const router = useRouter()
+  const biblePasteRef = useRef<HTMLTextAreaElement | null>(null)
   const [items, setItems] = useState<QueueItem[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [message, setMessage] = useState('')
@@ -412,6 +413,7 @@ export default function StoryQueuePage() {
   const [adminGenres, setAdminGenres] = useState<string[]>(GENRES)
   const [activeTab, setActiveTab] = useState<QueueTab>('active')
   const [biblePasteText, setBiblePasteText] = useState('')
+  const [bibleImportStatus, setBibleImportStatus] = useState<{ type: MessageType; text: string }>({ type: '', text: '' })
   const [isImportingBibles, setIsImportingBibles] = useState(false)
   const [isBibleDragActive, setIsBibleDragActive] = useState(false)
   const [queueSearch, setQueueSearch] = useState('')
@@ -575,7 +577,9 @@ export default function StoryQueuePage() {
   async function importBiblesFromText(rawText: string) {
     const clean = rawText.trim()
     if (!clean) {
-      showMessage('Paste or drop a JSON bible file first.', 'error')
+      const text = 'Paste or drop a JSON bible file first.'
+      showMessage(text, 'error')
+      setBibleImportStatus({ type: 'error', text })
       return
     }
 
@@ -583,10 +587,13 @@ export default function StoryQueuePage() {
     try {
       bibles = parseBibleJson(clean)
     } catch (err: any) {
-      showMessage(`Invalid JSON: ${err?.message || err}`, 'error')
+      const text = `Invalid JSON: ${err?.message || err}`
+      showMessage(text, 'error')
+      setBibleImportStatus({ type: 'error', text })
       return
     }
 
+    setBibleImportStatus({ type: '', text: '' })
     setIsImportingBibles(true)
     try {
       const res = await fetch('/api/admin/story-queue', {
@@ -602,10 +609,16 @@ export default function StoryQueuePage() {
 
       await loadItems()
       setBiblePasteText('')
+      if (biblePasteRef.current) biblePasteRef.current.value = ''
       const result = data?.result as BibleImportSummary | undefined
-      showMessage(result ? bibleImportMessage(result) : 'Bible import complete.', result?.imported ? 'success' : 'error')
+      const text = result ? bibleImportMessage(result) : 'Bible import complete.'
+      const type: MessageType = result?.imported ? 'success' : 'error'
+      showMessage(text, type)
+      setBibleImportStatus({ type, text })
     } catch (err: any) {
-      showMessage(`Bible import failed: ${err?.message || err}`, 'error')
+      const text = `Bible import failed: ${err?.message || err}`
+      showMessage(text, 'error')
+      setBibleImportStatus({ type: 'error', text })
     } finally {
       setIsImportingBibles(false)
     }
@@ -1176,6 +1189,7 @@ export default function StoryQueuePage() {
                 </label>
               </div>
               <textarea
+                ref={biblePasteRef}
                 value={biblePasteText}
                 onChange={(e) => setBiblePasteText(e.target.value)}
                 onPaste={(e) => setBiblePasteText(e.clipboardData.getData('text'))}
@@ -1194,7 +1208,7 @@ export default function StoryQueuePage() {
               />
               <button
                 type="button"
-                onClick={() => importBiblesFromText(biblePasteText)}
+                onClick={() => importBiblesFromText(biblePasteRef.current?.value || biblePasteText)}
                 disabled={isImportingBibles}
                 style={{
                   background: !isImportingBibles ? '#ffffff' : '#e5e7eb',
@@ -1210,6 +1224,18 @@ export default function StoryQueuePage() {
               >
                 {isImportingBibles ? 'Importing...' : 'Import Pasted JSON'}
               </button>
+              {bibleImportStatus.text ? (
+                <div
+                  style={{
+                    color: bibleImportStatus.type === 'error' ? '#b91c1c' : '#047857',
+                    fontSize: 14,
+                    fontWeight: 900,
+                    marginTop: 8,
+                  }}
+                >
+                  {bibleImportStatus.text}
+                </div>
+              ) : null}
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
               {QUEUE_TABS.map((tab) => (
